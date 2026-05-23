@@ -14,14 +14,13 @@ export function BuyerHeader({ title, showBack = false, action }: BuyerHeaderProp
 
   return (
     <header
-      className="fixed top-0 left-0 right-0 z-20 flex items-center justify-between px-4"
+      className="sticky top-0 z-20 flex items-center justify-between px-4"
       style={{
         height: 'var(--header-h)',
         background: 'rgba(253, 251, 247, 0.92)',
         backdropFilter: 'blur(12px)',
         WebkitBackdropFilter: 'blur(12px)',
         borderBottom: '1px solid var(--border-1)',
-        paddingTop: 'env(safe-area-inset-top, 0px)',
       }}
     >
       <div className="flex items-center gap-2">

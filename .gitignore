@@ -43,3 +43,9 @@ bun.lockb
 
 # Supabase
 .supabase/
+
+# Claude 
+.claude/
+
+#Playwright
+.playwright-mcp/

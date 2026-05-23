@@ -133,21 +133,26 @@ The unclaimed ground: a distributor-centric, multi-principal operating system wi
 
 Rating: **Strong** | **Adequate** | **Weak** | **Absent**
 
-| Capability | DealFlow (planned) | Zotok | Bizom | BeatRoute | WizCommerce | Comena | Distributo |
-|---|---|---|---|---|---|---|---|
-| **Multi-brand cockpit (cross-principal portals + dashboard)** | Strong (planned) | Weak | Absent | Absent | Weak | Absent | Weak |
-| **Cohort/geo-specific catalogs + custom pricing** | Strong (planned) | Adequate | Adequate | Adequate | Strong | Absent | Adequate |
-| **AI multimodal order intake (email/WhatsApp/image/voice)** | Strong (planned) | Strong | Absent | Adequate | Strong | Strong (deep on email/PDF) | Weak |
-| **Replenishment assistant (AI + agent-fed)** | Strong (planned) | Weak | Adequate (auto-replen) | Adequate | Weak | Absent | Absent |
-| **Order-to-cash (incl. enquiries + payments)** | Strong (planned) | Strong | Adequate | Adequate | Strong | Adequate | Adequate |
-| **Tally/Busy/Zoho integration** | Strong (table-stake) | Strong (Tally) | Adequate | Adequate | N/A (US) | N/A | Strong (Tally) |
-| **Multi-tenant SaaS architecture** | Strong (in roadmap) | Strong | Strong | Strong | Strong | Strong | Adequate |
-| **Per-user pricing fit for 10-50 agent distributors** | TBD | Adequate | Weak (enterprise) | Weak (per-user) | TBD | Adequate | Adequate |
-| **Brand performance by agent/geography** | Strong (planned) | Weak | Strong | Strong | Adequate | Absent | Weak |
+| Capability | DealFlow MVP | DealFlow Phase 2 | UI Surface | Zotok | Bizom | BeatRoute | WizCommerce | Comena | Distributo |
+|---|---|---|---|---|---|---|---|---|---|
+| **Multi-brand cockpit (dashboard + sidebar nav)** | Strong ✓ | — | Seller cockpit | Weak | Absent | Absent | Weak | Absent | Weak |
+| **Cohort/geo-specific catalogs + custom pricing** | Strong | — | Seller cockpit | Adequate | Adequate | Adequate | Strong | Absent | Adequate |
+| **Buyer PWA (mobile-first, WhatsApp OTP)** | Strong | — | Buyer PWA | Weak | Absent | Adequate | Adequate | Absent | Weak |
+| **AI multimodal order intake (email/WhatsApp/image)** | Absent (defer) | Strong | Seller cockpit | Strong | Absent | Adequate | Strong | Strong | Weak |
+| **Voice/audio intake** | Absent | Strong | Seller cockpit | Adequate | Absent | Absent | Absent | Absent | Absent |
+| **Replenishment assistant (AI + agent-fed)** | Absent (defer) | Strong | Seller cockpit | Weak | Adequate | Adequate | Weak | Absent | Absent |
+| **Order-to-cash (incl. enquiries + payments)** | Strong | — | Seller cockpit | Strong | Adequate | Adequate | Strong | Adequate | Adequate |
+| **Tally CSV export** | Strong (MVP) | — | Seller cockpit | Strong | Adequate | Adequate | N/A | N/A | Strong |
+| **Zoho Books/Inventory connector** | Strong (WineYard pilot) | — | Seller settings | Absent | Absent | Absent | N/A | N/A | Absent |
+| **Multi-tenant SaaS architecture** | Strong ✓ | — | Infra | Strong | Strong | Strong | Strong | Strong | Adequate |
+| **Per-user pricing fit for 10-50 agents** | TBD | — | — | Adequate | Weak (enterprise) | Weak (per-user) | TBD | Adequate | Adequate |
+| **Brand performance by agent/geography** | Weak (basic dashboard) | Strong | Seller cockpit | Weak | Strong | Strong | Adequate | Absent | Weak |
 
-**Where you'd actually win:** Multi-brand cockpit + replenishment assistant tied to AI intake. Nobody owns this combination.
+**MVP differentiation:** Multi-brand cockpit (unique combination of cross-principal visibility + cohort pricing + buyer PWA) is live in the shell. No competitor owns this combination in the Indian SMB distributor segment.
 
-**Where you'd struggle:** AI intake alone is now commodity — Zotok, Comena, Flipkart-Sarvam, WizCommerce all do it. You need the multi-brand wrapper to justify a premium.
+**Phase 2 unlock:** AI intake + replenishment is when DealFlow crosses from "organized distributor tool" to "intelligent distribution platform." This is the long-term moat — defer until 3+ paying customers validate the cockpit.
+
+**Where you'd struggle (and how to handle it):** AI intake alone is now commodity — Zotok, Comena, WizCommerce all do it. Ship the cockpit first to prove the distribution workflow; bolt the AI on top in Phase 2 when you can market it as a workflow accelerator rather than a standalone feature.
 
 ---
 

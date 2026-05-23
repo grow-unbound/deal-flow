@@ -1,5 +1,5 @@
 export type Surface = 'seller' | 'buyer';
-export type ThemeMode = 'light'; // 'dark' reserved for future cockpit dark mode
+export type ThemeMode = 'light'; // 'dark' reserved for future seller dark mode
 
 export const SURFACES = {
   seller: 'seller',

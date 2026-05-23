@@ -28,15 +28,16 @@ Distributor command center: manage multibrand catalogs, publish cohort-specific 
 dealflow/
 ├── app/                          # Next.js App Router
 │   ├── (auth)/                  # Auth routes
-│   ├── (app)/                   # Protected app routes (cockpit + buyer PWA)
+│   ├── (seller)/                # Distributor seller routes (dashboard, brands, products, buyers, cohorts, price-lists, catalogs, orders, exports, settings)
+│   ├── (buyer)/shop/            # Buyer PWA routes (home, catalog, orders, profile + deep: product/[id], cart, checkout)
 │   ├── api/                     # API routes & RPC wrappers
 │   ├── layout.tsx
 │   └── globals.css
 ├── src/
 │   ├── components/              # Reusable UI components
 │   │   ├── ui/                 # shadcn/ui components
-│   │   ├── layout/             # Layout components (sidebar, nav)
-│   │   ├── cockpit/            # Distributor cockpit features
+│   │   ├── layout/             # Layout components (sidebar, nav, shells)
+│   │   ├── seller/             # Distributor seller features (was: cockpit/)
 │   │   └── buyer/              # Buyer app components
 │   ├── lib/
 │   │   ├── supabase.ts         # Supabase client & auth helpers
@@ -124,6 +125,14 @@ URL: `{slug}.dealflow.in` — desktop-first, left sidebar nav with 10 nav items 
 
 ### Buyer PWA
 URL: `shop.dealflow.in/{share_token}` — mobile-first, WhatsApp OTP auth (no passwords). Two modes: tokenized (share link → OTP → order) and authenticated (persistent session).
+
+**Tab bar (4 primary tabs):** Home / Catalog / Orders / Profile
+**Deep screens (no tab bar):** Product detail, Cart, Checkout, Order Placed
+
+- **Home** — KPI grid (annual spend, open orders, credit limit), distributor list, "order again" horizontal scroll, new catalogs, recent activity
+- **Catalog** — search, location/delivery picker, filter chips, catalogs scroll, category grid, brand chips, product grid
+- **Orders** — sub-tabs (Orders / Enquiries / Invoices), status filter chips, order cards
+- **Profile** — avatar head, account card (business/GSTIN/credit/delivery), preferences, logout
 
 All primary buttons: lucide icon (left, 16px) + text label. Never icon-only for CTAs.
 

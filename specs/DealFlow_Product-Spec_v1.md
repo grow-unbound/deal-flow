@@ -419,7 +419,19 @@ Single function `app.resolve_price(tenant_product_id, buyer_id, qty)` returns th
 
 ### 7.1 Distributor Cockpit (desktop-first, mobile responsive)
 
-URL: `app.dealflow.in` (or tenant subdomain `{slug}.dealflow.in`).
+**Route group:** `app/(seller)/` — all routes under this group render inside `SellerShell`.
+
+URL: `{slug}.dealflow.in` in production. In local dev: `localhost:3000/dashboard` etc. (no subdomain routing in dev).
+
+**Shell structure** (`src/components/layout/`):
+
+| Component | File | Details |
+|---|---|---|
+| `SellerShell` | `SellerShell.tsx` | Grid: fixed 248px sidebar left + `main` with `marginLeft: var(--sidebar-w)` and `paddingTop: var(--topbar-h)` |
+| `SellerSidebar` | `SellerSidebar.tsx` | `bg-cream-50 border-r border-cream-300`. 248px fixed. Logo top, nav items, user footer (mt-auto) |
+| `SellerTopbar` | `SellerTopbar.tsx` | `bg-cream-100 border-b border-cream-300`. 64px fixed. Props: `title`, optional `action` node |
+
+Theme applied by `<ThemeProvider surface="seller">` in `app/(seller)/layout.tsx` — adds class `theme-seller` to `<html>`.
 
 **Nav (left sidebar) — each item is a lucide icon + label:**
 
@@ -434,7 +446,9 @@ URL: `app.dealflow.in` (or tenant subdomain `{slug}.dealflow.in`).
 9. Exports (`FileDown`) — Tally CSV download
 10. Settings (`Settings`) — users, theme, integrations
 
-**Sidebar footer (bottom-aligned):** a user block pinned to the bottom (use `mt-auto`) showing the signed-in user's **avatar + name + role**, with a **Logout** action (`LogOut` icon + label). Clicking the block opens a small menu (Profile, Settings, Logout).
+Active nav item: `bg-teal-500 text-cream-50 rounded-sm`. Hover: `bg-cream-200`.
+
+**Sidebar footer (bottom-aligned):** user block pinned with `mt-auto` — avatar (initial from email) + email + role chip + Logout button (`LogOut` icon + label).
 
 **Key flows (MVP must-have):**
 
@@ -446,7 +460,32 @@ URL: `app.dealflow.in` (or tenant subdomain `{slug}.dealflow.in`).
 
 ### 7.2 Buyer App (mobile-first PWA)
 
-URL: `shop.dealflow.in/{share_token}` or `buyer.dealflow.in` for logged-in buyers.
+**Route group:** `app/(buyer)/shop/*` — all buyer routes render inside `BuyerShell`.
+
+URL: `shop.dealflow.in/{share_token}` in production. In local dev: `localhost:3000/shop/catalog` etc. The `/shop/` prefix disambiguates buyer routes from seller routes in the single-app (they share the same Next.js process; in production different subdomains serve the respective surfaces).
+
+**Shell structure** (`src/components/layout/`):
+
+| Component | File | Details |
+|---|---|---|
+| `BuyerShell` | `BuyerShell.tsx` | Flex column: header (fixed) + scrollable body + tab bar (fixed). `paddingTop: var(--header-h)`, `paddingBottom: calc(var(--tab-bar-h) + env(safe-area-inset-bottom))` |
+| `BuyerHeader` | `BuyerHeader.tsx` | Frosted glass: `rgba(253,251,247,0.92)` + `backdrop-blur-md`. 52px. Optional back button (`showBack` prop). `paddingTop: env(safe-area-inset-top)` for iOS notch |
+| `BuyerTabBar` | `BuyerTabBar.tsx` | Frosted glass bottom. 60px + `env(safe-area-inset-bottom)`. 4 primary tabs: **Home · Catalog · Orders · Profile**. Cart is a deep screen (no tab). Active: `text-teal-500` |
+
+Theme applied by `<ThemeProvider surface="buyer">` in `app/(buyer)/layout.tsx` — adds class `theme-buyer` to `<html>`.
+
+**Buyer routes (local dev paths):**
+
+| Screen | Path | Tab bar? |
+|---|---|---|
+| Home (dashboard) | `/shop/home` | ✅ primary tab |
+| Catalog browse | `/shop/catalog` | ✅ primary tab |
+| Orders | `/shop/orders` | ✅ primary tab |
+| Profile | `/shop/profile` | ✅ primary tab |
+| Product detail | `/shop/product/[id]` | ❌ deep screen |
+| Cart | `/shop/cart` | ❌ deep screen |
+| Checkout | `/shop/checkout` | ❌ deep screen |
+| Order placed | `/shop/checkout` | ❌ deep screen |
 
 **Auth: WhatsApp OTP (locked).** No passwords. Buyer enters phone number → receives a one-time code on **WhatsApp** (Meta Cloud API via AiSensy/Interakt) → logged in. Fits Indian SMB WhatsApp-first behavior and dodges SMS deliverability/cost issues.
 
@@ -509,18 +548,53 @@ URL: `shop.dealflow.in/{share_token}` or `buyer.dealflow.in` for logged-in buyer
 
 ---
 
-## 10. Theme & Aesthetic — "Premium Comfort"
+## 10. Theme & Aesthetic — "Ember & Cream"
 
-**Colors/tokens live in a separate Design System file** (generated via Claude Design) that the frontend consumes — this spec does **not** hard-code the palette. The design system is the single source of truth for color, spacing, radius, and typography tokens; wire it into Tailwind `theme.extend` + shadcn CSS variables.
+**The design system is fully implemented.** Tokens live in `src/lib/theme/tokens.ts` (single source of truth) and are wired into `tailwind.config.ts`. All token classes (`bg-cream-100`, `text-teal-500`, `shadow-md`, etc.) are available in every component. Do not hardcode hex values — always use token utilities.
 
-**Intent to preserve:** the default SaaS blue-on-white signals "tool." For SMB distributors running long-established family businesses, aim for **premium, calm, trustworthy, slightly aspirational** — closer to private banking or a quiet artisan brand than typical B2B SaaS.
+**Intent:** the default SaaS blue-on-white signals "tool." For SMB distributors running long-established family businesses, aim for **premium, calm, trustworthy, slightly aspirational** — closer to private banking or a quiet artisan brand than typical B2B SaaS.
+
+### Color Palette (Ember & Cream)
+
+| Scale | Purpose | Key values |
+|---|---|---|
+| **Cream** (50–900) | Page backgrounds, cards, borders | 50: `#FDFBF7` · 100: `#FAF7F2` · 200: `#F4EFE6` · 300: `#EFE9DF` · 900: `#1A1A1A` |
+| **Teal** (50–900) | Primary actions, sidebar active, brand | 500: `#1F3A34` (primary) · 400: `#346A5C` · 300: `#5D8E81` |
+| **Ember** (50–800) | Accent, focus rings, CTAs | 400: `#C26E3A` (accent) · 300: `#DC9655` · 500: `#A55A2B` |
+| **Semantic** | Success / Warning / Danger / Info | 500-weight is the functional color; 50 is background tint |
+
+### Typography
+
+| Font | Family | Usage |
+|---|---|---|
+| **Fraunces** | Serif display | `font-display` — h1/h2/h3, hero text, brand name |
+| **Inter** | Sans-serif body | `font-sans` — all body copy, labels, navigation |
+| **JetBrains Mono** | Monospace | `font-mono` — prices, SKUs, order numbers, code |
+
+Loaded via Google Fonts in `app/globals.css`. Always set `font-display: swap`.
+
+### Spacing & Radii
+
+- Base 8px grid: tokens `1`–`11` map to 4 / 8 / 12 / 16 / 20 / 24 / 32 / 40 / 56 / 72 / 96 px.
+- Border radius: `xs` (4px) → `sm` (6px) → `md` (10px) → `lg` (14px) → `xl` (20px) → `2xl` (28px) → `pill` (999px).
+- Shadow scale `xs`–`xl` uses warm-tinted `rgba(31, 58, 52, ...)` — never cool grey.
+
+### Token locations (authoritative)
+
+| Asset | File |
+|---|---|
+| Token definitions | `src/lib/theme/tokens.ts` |
+| Tailwind config | `tailwind.config.ts` |
+| CSS custom properties + base styles | `app/globals.css` |
+| Theme provider (surface switcher) | `src/components/providers/ThemeProvider.tsx` |
+| Layout constants | `src/lib/theme/tokens.ts` → `layout` export |
 
 ### Component principles
 
-- shadcn/ui as the base; theme it from the Design System tokens (don't ship default Radix indigo).
-- **All CTAs and primary buttons use a lucide-react icon + text label** — never icon-only for primary actions. e.g., "Publish catalog" = `<Send/>` + label; "Add product" = `<Plus/>` + label; "Export to Tally" = `<FileDown/>` + label; "Logout" = `<LogOut/>` + label. Icon sits left of text, consistent 16px sizing.
-- Rounded radii (12-16px), subtle shadows (`0 1px 2px rgba(0,0,0,0.04)`), generous whitespace; denser tables in the cockpit, airier layout in the buyer app.
-- One restrained illustration accent on empty states (e.g., a linework motif) — brand presence without noise.
+- shadcn/ui as the base; all CSS variables already mapped to Ember & Cream tokens in `tailwind.config.ts`.
+- **All CTAs and primary buttons use a lucide-react icon + text label** — never icon-only for primary actions. e.g., "Publish catalog" = `<Send/>` + label; "Add product" = `<Plus/>` + label; "Export to Tally" = `<FileDown/>` + label; "Logout" = `<LogOut/>` + label. Icon sits left of text, 16px.
+- Rounded radii (`lg` = 14px for cards, `md` = 10px for inputs), subtle warm shadows, generous whitespace; denser tables in the cockpit, airier layout in the buyer app.
+- One restrained illustration accent on empty states — brand presence without noise.
 
 ### Buyer-side mood
 
@@ -533,8 +607,8 @@ URL: `shop.dealflow.in/{share_token}` or `buyer.dealflow.in` for logged-in buyer
 
 | Week | Deliverable                                                                                                                                       |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | Next.js + Supabase setup, schemas, base RLS, auth + tenant subdomain routing, PostHog + feature-flag scaffold (§3A), Zod base schemas             |
-| 2    | Master catalog seed (10 brands, 200 products), Design System tokens wired into Tailwind/shadcn, layout shells + sidebar (with bottom user/logout) |
+| 1    | ✅ Next.js + Supabase setup, schemas, base RLS, auth + tenant subdomain routing, PostHog + feature-flag scaffold (§3A), Zod base schemas             |
+| 2    | ✅ Ember & Cream design tokens → `tokens.ts` + `tailwind.config.ts`; ThemeProvider (seller/buyer surfaces); SellerShell + BuyerShell + all route groups; stub pages for all seller + buyer routes |
 | 3    | Brands + products CRUD in cockpit, CSV import, Cloudflare R2 image uploads                                                                        |
 | 4    | **Customer Master** CRUD + import → then cohorts (rule engine + static lists) + cohort preview                                                    |
 | 5    | Price lists + assignments + `resolve_price()` function + tests                                                                                    |

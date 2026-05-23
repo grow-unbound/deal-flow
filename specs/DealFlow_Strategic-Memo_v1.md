@@ -50,11 +50,20 @@
 ## 2. Recommended Scope Discipline
 
 **MVP (next 6 months):**
-1. Multi-brand cockpit (dashboard + agent/geography performance from 2-3 connector patterns).
-2. Cohort/geo catalog publishing + custom pricing rules.
-3. WhatsApp-first AI intake (text + image; defer audio).
-4. Enquiry → order → invoice with Tally sync.
-5. Multitenancy infra.
+1. Multi-brand cockpit (dashboard + agent/geography performance from 2-3 connector patterns). *UI surface: Seller cockpit — SellerShell, SellerSidebar, DataTable, DashboardStats components.*
+2. Cohort/geo catalog publishing + custom pricing rules. *UI surface: Seller cockpit — CohortForm (rule builder), PublishPreview (modal), PriceList editor.*
+3. Buyer PWA — catalog browse, cart, WhatsApp OTP, order placement. *UI surface: BuyerShell + BuyerTabBar + ProductTile + CartSheet components. Mobile-first, iOS safe-area.*
+4. Enquiry → order → invoice with Tally sync. *UI surface: Seller cockpit — OrderTable with StatusPill, invoice PDF preview.*
+5. Multitenancy infra + Zoho integration (WineYard pilot). *No dedicated UI — wired through Settings page + bg jobs.*
+
+**Design system status (complete as of Week 2):**
+- Ember & Cream tokens: `src/lib/theme/tokens.ts` → `tailwind.config.ts` ✓
+- ThemeProvider with `seller` / `buyer` surface switching ✓
+- SellerShell (sidebar 248px + topbar 64px) ✓
+- BuyerShell (frosted header 52px + bottom tab bar 60px + iOS safe area) ✓
+- Route groups: `app/(seller)/` and `app/(buyer)/shop/*` ✓
+- All seller and buyer stub pages in place ✓
+- **Next:** base UI component library (Button, Input, Card, Badge, etc.) then page-by-page implementation
 
 **Phase 2 (months 7-12):**
 1. Voice/audio intake.
@@ -62,6 +71,7 @@
 3. Payment reconciliation via image OCR.
 4. Busy + Zoho Books connectors.
 5. Brand-principal-side reporting (sell upstream).
+6. Buyer PWA as independent frontend (extract from monorepo if warranted by team size).
 
 **Phase 3 (year 2):**
 1. True AI replenishment forecasting.
