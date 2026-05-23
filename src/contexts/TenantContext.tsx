@@ -52,11 +52,13 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         setError(null);
 
         // Get all tenants for this user
-        const { data: userTenants, error: tenantsError } = await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const db = supabase as any;
+        const { data: userTenants, error: tenantsError } = await db
           .from('tenant_users')
           .select('tenant_id')
           .eq('user_id', session.user.id)
-          .eq('is_active', true);
+          .eq('is_active', true) as { data: { tenant_id: string }[] | null; error: unknown };
 
         if (tenantsError) throw tenantsError;
 
@@ -70,10 +72,10 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         const tenantIds = userTenants.map((ut) => ut.tenant_id);
 
         // Fetch tenant details
-        const { data: tenantData, error: dataError } = await supabase
+        const { data: tenantData, error: dataError } = await db
           .from('tenants')
           .select('*')
-          .in('id', tenantIds);
+          .in('id', tenantIds) as { data: Tenant[] | null; error: unknown };
 
         if (dataError) throw dataError;
 

@@ -1,5 +1,5 @@
 import type { Config } from 'tailwindcss';
-import defaultTheme from 'tailwindcss/defaultTheme';
+import { colors, fontFamily, fontSize, borderRadius, boxShadow, transitionTimingFunction, transitionDuration } from './src/lib/theme/tokens';
 
 const config: Config = {
   darkMode: ['class'],
@@ -11,34 +11,62 @@ const config: Config = {
   ],
   theme: {
     extend: {
-      fontFamily: {
-        sans: ['Inter var', ...defaultTheme.fontFamily.sans],
-      },
       colors: {
-        background: 'hsl(var(--background))',
-        foreground: 'hsl(var(--foreground))',
-        card: 'hsl(var(--card))',
-        'card-foreground': 'hsl(var(--card-foreground))',
-        popover: 'hsl(var(--popover))',
-        'popover-foreground': 'hsl(var(--popover-foreground))',
-        primary: 'hsl(var(--primary))',
-        'primary-foreground': 'hsl(var(--primary-foreground))',
-        secondary: 'hsl(var(--secondary))',
-        'secondary-foreground': 'hsl(var(--secondary-foreground))',
-        muted: 'hsl(var(--muted))',
-        'muted-foreground': 'hsl(var(--muted-foreground))',
-        accent: 'hsl(var(--accent))',
-        'accent-foreground': 'hsl(var(--accent-foreground))',
-        destructive: 'hsl(var(--destructive))',
-        'destructive-foreground': 'hsl(var(--destructive-foreground))',
-        border: 'hsl(var(--border))',
-        input: 'hsl(var(--input))',
-        ring: 'hsl(var(--ring))',
+        // Ember & Cream palette — use these directly: bg-cream-100, text-teal-500, etc.
+        cream: colors.cream,
+        teal: colors.teal,
+        ember: colors.ember,
+        success: colors.success,
+        warning: colors.warning,
+        danger: colors.danger,
+        info: colors.info,
+
+        // shadcn/ui semantic aliases — map to design system tokens
+        background:   colors.cream[100],
+        foreground:   colors.cream[900],
+        card:         '#FFFFFF',
+        'card-foreground': colors.cream[900],
+        popover:      '#FFFFFF',
+        'popover-foreground': colors.cream[900],
+        primary:      colors.teal[500],
+        'primary-foreground': colors.cream[50],
+        secondary:    colors.cream[200],
+        'secondary-foreground': colors.cream[800],
+        muted:        colors.cream[200],
+        'muted-foreground': colors.cream[700],
+        accent:       colors.ember[400],
+        'accent-foreground': colors.cream[50],
+        destructive:  colors.danger[500],
+        'destructive-foreground': colors.cream[50],
+        border:       colors.cream[300],
+        input:        colors.cream[300],
+        ring:         colors.ember[400],
       },
+
+      fontFamily: {
+        display: [...fontFamily.display],
+        sans:    [...fontFamily.body],
+        mono:    [...fontFamily.mono],
+      },
+
+      fontSize,
+
       borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
+        ...borderRadius,
+        // Keep shadcn aliases
+        DEFAULT: borderRadius.lg,
+      },
+
+      boxShadow,
+
+      transitionTimingFunction,
+      transitionDuration,
+
+      // Named layout constants as arbitrary values (use via Tailwind JIT)
+      spacing: {
+        'sidebar': '248px',
+        'topbar':  '64px',
+        'tab-bar': '60px',
       },
     },
   },

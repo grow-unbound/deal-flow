@@ -10,11 +10,8 @@ if (typeof window !== 'undefined') {
     loaded: (ph) => {
       if (process.env.NODE_ENV === 'development') ph.debug();
     },
-    // Feature flag configuration
-    feature_flags: {
-      // Explicitly enable flag ingestion with 60 second cache
-      reloadFeatureFlags: 'onEachPage',
-    },
+    // Feature flags reload on each page navigation
+    bootstrap: {},
   });
 }
 
