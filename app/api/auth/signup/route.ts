@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { SignUpSchema } from '@/lib/zod';
 import { TenantSchema } from '@/lib/zod';
+import { getPostHogClient } from '@/lib/posthog-server';
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,6 +33,11 @@ export async function POST(request: NextRequest) {
     const { data: authUser, error: authError } = await supabase.auth.signUp({
       email: authData.email,
       password: authData.password,
+      options: {
+        data: {
+          phone: authData.phone ?? null,
+        },
+      },
     });
 
     if (authError) {
@@ -52,6 +58,7 @@ export async function POST(request: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     const { data: tenant, error: tenantError } = await db
+      .schema('app')
       .from('tenants')
       .insert([
         {
@@ -78,6 +85,7 @@ export async function POST(request: NextRequest) {
 
     // Add user to tenant as admin
     const { error: userTenantError } = await db
+      .schema('app')
       .from('tenant_users')
       .insert([
         {
@@ -96,6 +104,28 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    const distinctId = request.headers.get('X-POSTHOG-DISTINCT-ID') ?? authUser.user.id;
+    const ph = getPostHogClient();
+    ph.identify({
+      distinctId: authUser.user.id,
+      properties: { email: authUser.user.email, role: 'seller_admin', tenant_id: tenant.id },
+    });
+    ph.capture({
+      distinctId,
+      event: 'server_tenant_created',
+      properties: {
+        $set: { email: authUser.user.email, role: 'seller_admin' },
+        user_id: authUser.user.id,
+        tenant_id: tenant.id,
+        tenant_slug: tenant.slug,
+        business_name: tenant.business_name,
+        primary_state: tenantData.primary_state,
+        plan: tenantData.plan,
+        $session_id: request.headers.get('X-POSTHOG-SESSION-ID') ?? undefined,
+      },
+    });
+    await ph.flush();
 
     return NextResponse.json(
       {

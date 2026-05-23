@@ -2,12 +2,13 @@ import { z } from 'zod';
 
 // Auth schemas
 export const LoginSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  identifier: z.string().min(1, 'Email or phone is required'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
 export const SignUpSchema = z.object({
   email: z.string().email('Invalid email address'),
+  phone: z.string().regex(/^[0-9]{10}$/, 'Phone must be 10 digits'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   business_name: z.string().min(1, 'Business name is required'),
   confirm_password: z.string(),
