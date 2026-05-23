@@ -4,14 +4,18 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const tabs = [
-  { label: 'Catalog', href: '/shop/catalog',  icon: CatalogIcon },
-  { label: 'Cart',    href: '/shop/cart',     icon: CartIcon },
-  { label: 'Orders',  href: '/shop/orders',   icon: OrdersIcon },
-  { label: 'Account', href: '/shop/account',  icon: AccountIcon },
+  { label: 'Home',    href: '/shop/home',    icon: HomeIcon },
+  { label: 'Catalog', href: '/shop/catalog', icon: CatalogIcon },
+  { label: 'Orders',  href: '/shop/orders',  icon: OrdersIcon },
+  { label: 'Profile', href: '/shop/profile', icon: ProfileIcon },
 ];
+
+const DEEP_SCREENS = ['/shop/product/', '/shop/cart', '/shop/checkout'];
 
 export function BuyerTabBar() {
   const pathname = usePathname();
+
+  if (DEEP_SCREENS.some(p => pathname.startsWith(p))) return null;
 
   return (
     <nav
@@ -52,17 +56,17 @@ export function BuyerTabBar() {
   );
 }
 
+function HomeIcon({ size = 22, className = '' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
+    </svg>
+  );
+}
 function CatalogIcon({ size = 22, className = '' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-    </svg>
-  );
-}
-function CartIcon({ size = 22, className = '' }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
     </svg>
   );
 }
@@ -73,7 +77,7 @@ function OrdersIcon({ size = 22, className = '' }) {
     </svg>
   );
 }
-function AccountIcon({ size = 22, className = '' }) {
+function ProfileIcon({ size = 22, className = '' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
