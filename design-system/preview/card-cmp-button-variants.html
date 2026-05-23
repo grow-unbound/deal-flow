@@ -1,0 +1,32 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css">
+<style>
+  .btn{display:inline-flex; align-items:center; gap:8px; padding:10px 16px; border-radius:10px; font-family:var(--font-body); font-size:14px; font-weight:500; line-height:1; cursor:pointer;}
+  .btn-secondary{background:#fff; color:var(--teal-700); border:1px solid var(--cream-400);}
+  .btn-ghost{background:transparent; color:var(--teal-700); border:1px solid transparent;}
+  .btn-accent{background:var(--ember-400); color:#fff; border:1px solid var(--ember-500);}
+  .btn-destructive{background:#fff; color:var(--danger-500); border:1px solid var(--danger-500);}
+  .label{font-family:var(--font-mono); font-size:10px; color:var(--cream-700); margin-top:8px; text-align:center;}
+</style>
+</head>
+<body>
+<div class="card">
+  <div style="display:flex; gap:24px; justify-content:space-around; align-items:flex-start;">
+    <div style="display:flex; flex-direction:column; align-items:center;">
+      <button class="btn btn-secondary">Save as draft</button>
+      <div class="label">secondary</div>
+    </div>
+    <div style="display:flex; flex-direction:column; align-items:center;">
+      <button class="btn btn-ghost">Cancel</button>
+      <div class="label">ghost</div>
+    </div>
+    <div style="display:flex; flex-direction:column; align-items:center;">
+      <button class="btn btn-accent">Add brand</button>
+      <div class="label">accent · 1 per page</div>
+    </div>
+    <div style="display:flex; flex-direction:column; align-items:center;">
+      <button class="btn btn-destructive">Archive</button>
+      <div class="label">destructive</div>
+    </div>
+  </div>
+</div>
+</body></html>

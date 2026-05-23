@@ -1,0 +1,25 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css">
+<style>
+  table{width:100%; border-collapse:collapse; font-family:var(--font-body); font-size:13px;}
+  th{text-align:left; font-weight:600; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--cream-700); padding:10px 12px; border-bottom:1px solid var(--cream-400);}
+  td{padding:12px; border-bottom:1px solid var(--cream-300); color:var(--cream-900); vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:var(--cream-100);}
+  .num{font-variant-numeric:tabular-nums; text-align:right;}
+  .sku{font-family:var(--font-mono); font-size:12px; color:var(--cream-700);}
+  .badge{display:inline-flex; align-items:center; gap:6px; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:500;}
+  .dot{width:6px; height:6px; border-radius:50%;}
+</style>
+</head>
+<body>
+<div class="card" style="padding:8px 12px;">
+  <table>
+    <thead><tr><th>Order</th><th>Buyer</th><th>Status</th><th class="num">Total</th></tr></thead>
+    <tbody>
+      <tr><td><div>DF-2026-00471</div><div class="sku">3 items</div></td><td>Rajan Wine Merchants</td><td><span class="badge" style="background:#FBF1DC; color:#7A5519;"><span class="dot" style="background:#B07D2C;"></span>Dispatched</span></td><td class="num">₹84,200.00</td></tr>
+      <tr><td><div>DF-2026-00470</div><div class="sku">12 items</div></td><td>Verma &amp; Sons</td><td><span class="badge" style="background:#FBEFE3; color:#6B3818;"><span class="dot" style="background:#C26E3A;"></span>Confirmed</span></td><td class="num">₹2,18,500.00</td></tr>
+      <tr><td><div>DF-2026-00469</div><div class="sku">5 items</div></td><td>Mehta Brothers</td><td><span class="badge" style="background:#ECF3EC; color:#2F5733;"><span class="dot" style="background:#4A7C4E;"></span>Delivered</span></td><td class="num">₹46,820.00</td></tr>
+    </tbody>
+  </table>
+</div>
+</body></html>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 56 56" width="56" height="56" role="img" aria-label="DealFlow">
+  <rect x="2" y="2" width="52" height="52" rx="13" fill="#1F3A34"></rect>
+  <rect x="3.5" y="3.5" width="49" height="49" rx="11.5" fill="none" stroke="#C26E3A" stroke-opacity="0.55" stroke-width="1"></rect>
+  <g fill="#FAF7F2">
+    <path d="M11 16 L11 42 L19.5 42 C25.5 42 29.5 38 29.5 29 C29.5 20 25.5 16 19.5 16 Z M16 20.5 L19 20.5 C22.5 20.5 24.4 23 24.4 29 C24.4 35 22.5 37.5 19 37.5 L16 37.5 Z"></path>
+    <path d="M31 16 L43 16 L43 20.5 L36 20.5 L36 26.5 L42 26.5 L42 31 L36 31 L36 42 L31 42 Z"></path>
+  </g>
+</svg>

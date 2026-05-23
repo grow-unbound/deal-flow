@@ -1,0 +1,41 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css">
+<style>
+  .status{
+    display:inline-flex; align-items:center;
+    padding:3px 10px;
+    border-radius:999px;
+    font-family:var(--font-body);
+    font-size:10.5px;
+    font-weight:600;
+    letter-spacing:0.10em;
+    text-transform:uppercase;
+    line-height:1.4;
+  }
+  .tag{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:3px 10px; border-radius:999px;
+    font-family:var(--font-body); font-size:12px; font-weight:500; line-height:1.4;
+  }
+</style>
+</head>
+<body>
+<div class="card" style="padding:24px;">
+  <div style="display:flex; flex-wrap:wrap; gap:10px;">
+    <span class="status" style="background:#EAF1EE; color:#142823;">Draft</span>
+    <span class="status" style="background:#E7EEF1; color:#2A4B59;">Received</span>
+    <span class="status" style="background:#FBEFE3; color:#6B3818;">Confirmed</span>
+    <span class="status" style="background:#FBF1DC; color:#7A5519;">Dispatched</span>
+    <span class="status" style="background:#ECF3EC; color:#2F5733;">Delivered</span>
+    <span class="status" style="background:#F6E5DF; color:#6B2615;">Cancelled</span>
+  </div>
+  <div style="margin-top:16px; display:flex; flex-wrap:wrap; gap:10px;">
+    <span class="tag" style="background:var(--cream-200); color:var(--cream-800);">Wine</span>
+    <span class="tag" style="background:var(--cream-200); color:var(--cream-800);">Spirits</span>
+    <span class="tag" style="background:#1F3A34; color:#FAF7F2;">Premium</span>
+    <span class="tag" style="background:#C26E3A; color:#fff;">New stock</span>
+    <span class="tag" style="background:#fff; color:var(--cream-800); border:1px solid var(--cream-400);">A-class</span>
+    <span class="tag" style="background:#fff; color:var(--cream-800); border:1px solid var(--cream-400);">North Delhi</span>
+  </div>
+  <div style="margin-top:14px; font-family:var(--font-body); font-size:11px; color:var(--cream-700);">Order status (top) — caps, tinted bg, no dot · brand &amp; cohort tags (bottom) — sentence case</div>
+</div>
+</body></html>
