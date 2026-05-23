@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 160" width="280" height="160" role="img" aria-label="Empty orders illustration">
+  <g fill="none" stroke="#A89E89" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
+    
+    
+    <path d="M82 64 L160 64 L160 100 L82 100 Z"></path>
+    <path d="M82 64 L102 50 L180 50 L160 64"></path>
+    <path d="M160 64 L180 50 L180 86 L160 100"></path>
+    <path d="M115 50 L115 64"></path>
+    <path d="M148 50 L148 64"></path>
+    
+    <path d="M44 102 L122 102 L122 138 L44 138 Z"></path>
+    <path d="M44 102 L64 88 L142 88 L122 102"></path>
+    <path d="M122 102 L142 88 L142 124 L122 138"></path>
+    <path d="M77 88 L77 102"></path>
+    <path d="M110 88 L110 102"></path>
+    
+    <path d="M148 102 L226 102 L226 138 L148 138 Z"></path>
+    <path d="M148 102 L168 88 L246 88 L226 102"></path>
+    <path d="M226 102 L246 88 L246 124 L226 138"></path>
+    <path d="M181 88 L181 102"></path>
+    <path d="M214 88 L214 102"></path>
+    
+    <path d="M120 76 L120 86"></path>
+    <circle cx="120" cy="76" r="2.5" fill="#C26E3A" stroke="none" opacity="0.55"></circle>
+  </g>
+</svg>

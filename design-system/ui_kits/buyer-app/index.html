@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DealFlow Buyer App · UI Kit</title>
+<meta name="viewport" content="width=device-width">
+<link rel="stylesheet" href="../../colors_and_type.css">
+<link rel="stylesheet" href="buyer.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/logo-mark.svg">
+
+<style>
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(ellipse at top, #f4efe6 0%, #efe9df 60%, #e2d9c9 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 28px 0;
+    font-family: var(--font-body);
+  }
+  .stage { display: flex; gap: 36px; align-items: center; flex-wrap: wrap; justify-content: center; }
+  .stage-side { max-width: 280px; }
+  .stage-side .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--cream-700); margin-bottom: 6px; }
+  .stage-side h1 { font-family: var(--font-display); font-size: 32px; line-height: 1.1; font-weight: 500; letter-spacing: -0.015em; color: var(--cream-900); margin: 0 0 12px; }
+  .stage-side p { color: var(--cream-700); line-height: 1.55; margin: 0 0 14px; font-size: 14px; }
+  .stage-side .legend {
+    margin-top: 14px;
+    font-size: 11px;
+    color: var(--cream-700);
+    line-height: 1.6;
+    padding-top: 14px;
+    border-top: 1px dashed var(--cream-400);
+  }
+  .stage-side .legend strong { color: var(--cream-900); font-weight: 600; }
+  .screen-pick {
+    display: flex; flex-direction: column; gap: 4px;
+    background: rgba(255,255,255,0.6);
+    padding: 8px; border-radius: 14px;
+    border: 1px solid var(--cream-300);
+  }
+  .screen-pick button {
+    text-align: left; padding: 8px 12px; border-radius: 8px;
+    background: transparent; border: none;
+    font: inherit; font-size: 13px; font-weight: 500; color: var(--cream-800);
+    cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .screen-pick button:hover { background: var(--cream-200); }
+  .screen-pick button.is-on { background: var(--teal-500); color: var(--cream-50); }
+  .screen-pick .tag {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--cream-200);
+    color: var(--cream-700);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .screen-pick button.is-on .tag { background: rgba(255,255,255,0.15); color: var(--cream-100); }
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="ios-frame.jsx"></script>
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="icons.jsx"></script>
+<script type="text/babel" src="Screens.jsx"></script>
+
+<script type="text/babel">
+// =====================================================================
+// TAB BAR — 4 landing tabs only: Home / Catalog / Orders / Profile.
+// Cart is NOT a tab — it's an overlay button on catalog/product when items > 0.
+// =====================================================================
+function TabBar({ active, onTab }) {
+  const tabs = [
+    { id: 'home',     label: 'Home',     Icon: BIconHome },
+    { id: 'catalog',  label: 'Catalog',  Icon: BIconCatalog },
+    { id: 'orders',   label: 'Orders',   Icon: BIconBox },
+    { id: 'profile',  label: 'Profile',  Icon: BIconUser },
+  ];
+  return (
+    <div className="b-tabbar">
+      {tabs.map(t => (
+        <div key={t.id} className={'b-tab' + (active === t.id ? ' is-active' : '')} onClick={() => onTab(t.id)}>
+          <t.Icon size={22} />
+          <span>{t.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function App() {
+  // State machines:
+  //   `screen` = current screen id (login, home, catalog, productList, product, cart, placed, orders, profile)
+  //   `tab`    = which landing tab to highlight
+  //   `sheet`  = which bottom sheet is open (profile-business)
+  const [screen, setScreen] = React.useState('login');
+  const [tab, setTab] = React.useState('home');
+  const [productId, setProductId] = React.useState('p1');
+  const [listSource, setListSource] = React.useState(null);
+  const [sheet, setSheet] = React.useState(null);
+  const [cartItems, setCartItems] = React.useState([
+    { ...BUYER_DATA.products[0], qty: 24 },
+    { ...BUYER_DATA.products[2], qty: 12 },
+    { ...BUYER_DATA.products[4], qty: 36 },
+  ]);
+  const [location, setLocation] = React.useState(BUYER_LOCATIONS[0]);
+
+  // Tab bar shows ONLY on landing screens. Deep screens hide it.
+  const LANDING_SCREENS = new Set(['home', 'catalog', 'orders', 'profile']);
+  const showTabs = LANDING_SCREENS.has(screen);
+
+  // "View cart" overlay shows on catalog browsing only (Product has its own sticky Add bar).
+  const SHOW_CART_BTN = new Set(['catalog', 'productList']);
+  const cartCount = cartItems.length;
+  const cartTotal = cartItems.reduce((s, x) => s + x.price * x.qty, 0);
+  const showViewCart = SHOW_CART_BTN.has(screen) && cartCount > 0;
+
+  const onTab = (id) => {
+    setTab(id);
+    setScreen(id);
+  };
+
+  const goCatalog = () => { setTab('catalog'); setScreen('catalog'); };
+  const goOrders  = () => { setTab('orders');  setScreen('orders'); };
+  const openProduct = (id) => { setProductId(id); setScreen('product'); };
+  const onAdd = (p, qty) => {
+    setCartItems(c => {
+      const existing = c.find(x => x.id === p.id);
+      if (existing) return c.map(x => x.id === p.id ? { ...x, qty: x.qty + qty } : x);
+      return [...c, { ...p, qty }];
+    });
+    setScreen('cart');
+  };
+
+  let content;
+  if (screen === 'login') {
+    content = <Login onContinue={() => { setScreen('home'); setTab('home'); }} />;
+  } else if (screen === 'home') {
+    content = (
+      <Home
+        onOpenCatalog={goCatalog}
+        onOpenProduct={openProduct}
+        onGoOrders={goOrders}
+        data-screen-label="01 Home · dashboard"
+      />
+    );
+  } else if (screen === 'catalog') {
+    content = (
+      <Catalog
+        onOpenProduct={openProduct}
+        onOpenList={(src) => { setListSource(src); setScreen('productList'); }}
+        onOpenLocation={() => {/* picker */}}
+        location={location}
+        data-screen-label="02 Catalog"
+      />
+    );
+  } else if (screen === 'productList') {
+    content = (
+      <ProductList
+        source={listSource}
+        onBack={() => setScreen('catalog')}
+        onOpenProduct={openProduct}
+        data-screen-label="03 Product list"
+      />
+    );
+  } else if (screen === 'product') {
+    content = (
+      <Product
+        productId={productId}
+        onBack={() => setScreen(listSource ? 'productList' : 'catalog')}
+        onAdd={onAdd}
+        data-screen-label="04 Product detail"
+      />
+    );
+  } else if (screen === 'cart') {
+    content = (
+      <Cart
+        items={cartItems}
+        onBack={() => setScreen('catalog')}
+        onCheckout={() => setScreen('placed')}
+        onChange={setCartItems}
+        location={location}
+        data-screen-label="05 Cart"
+      />
+    );
+  } else if (screen === 'placed') {
+    content = (
+      <Placed
+        onDone={() => { setCartItems([]); setScreen('home'); setTab('home'); }}
+        data-screen-label="06 Order placed"
+      />
+    );
+  } else if (screen === 'orders') {
+    content = <OrdersList data-screen-label="07 Orders" />;
+  } else if (screen === 'profile') {
+    content = (
+      <Profile
+        onLogout={() => { setScreen('login'); setTab('home'); }}
+        onOpenSheet={(name) => setSheet(name)}
+        data-screen-label="08 Profile"
+      />
+    );
+  }
+
+  const screens = [
+    { id: 'login',       label: 'Login',           tag: 'auth' },
+    { id: 'home',        label: 'Home',            tag: 'tab'  },
+    { id: 'catalog',     label: 'Catalog',         tag: 'tab'  },
+    { id: 'productList', label: 'Product list',    tag: 'deep' },
+    { id: 'product',     label: 'Product detail',  tag: 'deep' },
+    { id: 'cart',        label: 'Cart',            tag: 'deep' },
+    { id: 'placed',      label: 'Order placed',    tag: 'deep' },
+    { id: 'orders',      label: 'Orders',          tag: 'tab'  },
+    { id: 'profile',     label: 'Profile',         tag: 'tab'  },
+    { id: 'profile-edit',label: 'Profile · edit sheet', tag: 'sheet' },
+  ];
+
+  return (
+    <div className="stage">
+      <aside className="stage-side">
+        <div className="eyebrow">Buyer App · UI Kit v2</div>
+        <h1>What retailers see on their phone.</h1>
+        <p>Four landing tabs — <strong>Home</strong>, <strong>Catalog</strong>, <strong>Orders</strong>, <strong>Profile</strong>. Cart is an overlay button, not a tab. Deep screens hide the tab bar to reclaim space.</p>
+        <div className="screen-pick">
+          {screens.map(s => (
+            <button
+              key={s.id}
+              className={(s.id === 'profile-edit' ? sheet === 'business' : screen === s.id) ? 'is-on' : ''}
+              onClick={() => {
+                if (s.id === 'profile-edit') { setScreen('profile'); setTab('profile'); setSheet('business'); return; }
+                setScreen(s.id);
+                setSheet(null);
+                if (LANDING_SCREENS.has(s.id)) setTab(s.id);
+              }}
+            >
+              <span>{s.label}</span>
+              <span className="tag">{s.tag}</span>
+            </button>
+          ))}
+        </div>
+        <div className="legend">
+          <strong>tab</strong> &nbsp;= shows bottom tab bar<br/>
+          <strong>deep</strong> = hides tab bar, sticky header + sticky action bar
+        </div>
+      </aside>
+
+      <IOSDevice width={402} height={874}>
+        <div style={{ position: 'relative', height: '100%', width: '100%', overflow: 'hidden' }}>
+          {screen === 'login'
+            ? content
+            : (
+              <div className="b-app">
+                {content}
+                {showTabs && <TabBar active={tab} onTab={onTab} />}
+              </div>
+            )
+          }
+          {showViewCart && (
+            <ViewCartButton
+              count={cartCount}
+              total={cartTotal}
+              noTabs={!showTabs}
+              onView={() => setScreen('cart')}
+            />
+          )}
+          {screen === 'profile' && (
+            <BusinessEditSheet
+              open={sheet === 'business'}
+              onClose={() => setSheet(null)}
+              onSave={() => setSheet(null)}
+            />
+          )}
+        </div>
+      </IOSDevice>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
