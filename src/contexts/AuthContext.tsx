@@ -76,30 +76,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             phone: currentSession.user.phone,
           });
 
-          // Fetch tenant profile
+          // Fetch tenant profile (cast until Supabase types are generated)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const db = supabase as any;
           const tenantId = currentSession.user.user_metadata?.tenant_id;
           if (tenantId) {
-            const { data: profile, error: profileError } = await supabase
+            const { data: profile, error: profileError } = await db
               .from('tenant_users')
               .select('*')
               .eq('user_id', currentSession.user.id)
               .eq('tenant_id', tenantId)
-              .single();
+              .single() as { data: TenantProfile | null; error: unknown };
 
             if (!profileError && profile) {
-              setTenantProfile(profile as TenantProfile);
+              setTenantProfile(profile);
               setCurrentTenantId(profile.tenant_id);
             }
           }
 
           // Fetch buyer profiles
-          const { data: buyers, error: buyersError } = await supabase
+          const { data: buyers, error: buyersError } = await db
             .from('buyer_users')
             .select('*')
-            .eq('user_id', currentSession.user.id);
+            .eq('user_id', currentSession.user.id) as { data: BuyerProfile[] | null; error: unknown };
 
           if (!buyersError && buyers) {
-            setBuyerProfiles(buyers as BuyerProfile[]);
+            setBuyerProfiles(buyers);
             if (buyers.length > 0) {
               setCurrentBuyerId(buyers[0].buyer_id);
             }

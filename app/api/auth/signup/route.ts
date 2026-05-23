@@ -48,8 +48,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create tenant
-    const { data: tenant, error: tenantError } = await supabase
+    // Cast needed until Supabase types are generated from schema
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any;
+    const { data: tenant, error: tenantError } = await db
       .from('tenants')
       .insert([
         {
@@ -63,7 +65,7 @@ export async function POST(request: NextRequest) {
         },
       ])
       .select()
-      .single();
+      .single() as { data: { id: string; slug: string; business_name: string } | null; error: { message: string } | null };
 
     if (tenantError || !tenant) {
       // Clean up: delete the user if tenant creation failed
@@ -75,7 +77,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Add user to tenant as admin
-    const { error: userTenantError } = await supabase
+    const { error: userTenantError } = await db
       .from('tenant_users')
       .insert([
         {
@@ -86,7 +88,7 @@ export async function POST(request: NextRequest) {
           created_by: authUser.user.id,
           updated_by: authUser.user.id,
         },
-      ]);
+      ]) as { data: unknown; error: { message: string } | null };
 
     if (userTenantError) {
       return NextResponse.json(

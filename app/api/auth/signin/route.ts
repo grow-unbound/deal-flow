@@ -30,14 +30,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch user's tenants
-    const { data: tenants, error: tenantsError } = await supabase
+    // Fetch user's tenants (cast needed until Supabase types are generated)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any;
+    const { data: tenants, error: tenantsError } = await db
       .from('tenant_users')
       .select('tenant_id, role')
       .eq('user_id', data.user.id)
       .eq('is_active', true)
       .limit(1)
-      .single();
+      .single() as { data: { tenant_id: string; role: string } | null; error: unknown };
 
     if (tenantsError || !tenants) {
       return NextResponse.json(
@@ -47,11 +49,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Get tenant details
-    const { data: tenant, error: tenantError } = await supabase
+    const { data: tenant, error: tenantError } = await db
       .from('tenants')
       .select('*')
       .eq('id', tenants.tenant_id)
-      .single();
+      .single() as { data: { id: string; slug: string; business_name: string; subdomain?: string } | null; error: unknown };
 
     if (tenantError || !tenant) {
       return NextResponse.json(
