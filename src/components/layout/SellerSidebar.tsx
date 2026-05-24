@@ -4,32 +4,34 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { ROLES } from '@/constants';
+import { useRole } from '@/hooks/useRole';
 
-const baseNavItems = [
-  { label: 'Dashboard',   href: '/dashboard',    icon: DashboardIcon },
-  { label: 'Brands',      href: '/brands',       icon: BrandsIcon },
-  { label: 'Products',    href: '/products',     icon: ProductsIcon },
-  { label: 'Buyers',      href: '/buyers',       icon: BuyersIcon },
-  { label: 'Cohorts',     href: '/cohorts',      icon: CohortsIcon },
-  { label: 'Price lists', href: '/price-lists',  icon: PriceListsIcon },
-  { label: 'Catalogs',    href: '/catalogs',     icon: CatalogsIcon },
-  { label: 'Orders',      href: '/orders',       icon: OrdersIcon },
-  { label: 'Exports',     href: '/exports',      icon: ExportsIcon },
-  { label: 'Settings',    href: '/settings',     icon: SettingsIcon },
+const navItems = [
+  { label: 'Dashboard',    href: '/dashboard',      icon: DashboardIcon,    adminOnly: false },
+  { label: 'Brands',       href: '/brands',         icon: BrandsIcon,       adminOnly: false },
+  { label: 'Products',     href: '/products',       icon: ProductsIcon,     adminOnly: false },
+  { label: 'Buyers',       href: '/buyers',         icon: BuyersIcon,       adminOnly: false },
+  { label: 'Cohorts',      href: '/cohorts',        icon: CohortsIcon,      adminOnly: true  },
+  { label: 'Price lists',  href: '/price-lists',    icon: PriceListsIcon,   adminOnly: true  },
+  { label: 'Catalogs',     href: '/catalogs',       icon: CatalogsIcon,     adminOnly: false },
+  { label: 'Orders',       href: '/orders',         icon: OrdersIcon,       adminOnly: false },
+  { label: 'Exports',      href: '/exports',        icon: ExportsIcon,      adminOnly: false },
+  { label: 'Settings',     href: '/settings',       icon: SettingsIcon,     adminOnly: true  },
+  { label: 'Users & Roles', href: '/settings/team', icon: UsersRoundIcon,   adminOnly: true  },
 ];
 
-const adminOnlyItems = [
-  { label: 'Users & Roles', href: '/settings/team', icon: UsersRoundIcon },
-];
+const ROLE_LABELS: Record<string, string> = {
+  seller_admin: 'Seller admin',
+  seller_assistant: 'Seller assistant',
+  buyer_admin: 'Buyer admin',
+  buyer_assistant: 'Buyer assistant',
+};
 
 export function SellerSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, tenantProfile, signOut } = useAuth();
-
-  const isAdmin = tenantProfile?.role === ROLES.SELLER_ADMIN;
-  const navItems = isAdmin ? [...baseNavItems, ...adminOnlyItems] : baseNavItems;
+  const { user, signOut } = useAuth();
+  const { isSellerAdmin, role } = useRole();
 
   async function handleLogout() {
     await signOut();
@@ -51,7 +53,7 @@ export function SellerSidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-0.5">
-        {navItems.map(({ label, href, icon: Icon }) => {
+        {navItems.filter(item => !item.adminOnly || isSellerAdmin).map(({ label, href, icon: Icon }) => {
           const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
           return (
             <Link
@@ -86,7 +88,7 @@ export function SellerSidebar() {
             <p className="text-body-sm font-medium text-cream-900 truncate">
               {user?.email ?? '—'}
             </p>
-            <p className="text-caption text-cream-600">Seller admin</p>
+            <p className="text-caption text-cream-600">{role ? ROLE_LABELS[role] : '—'}</p>
           </div>
         </div>
         <button
