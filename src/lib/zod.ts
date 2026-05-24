@@ -111,7 +111,19 @@ export const OrderItemSchema = z.object({
   qty: z.coerce.number().positive('Quantity must be positive'),
 });
 
+// Team invite schemas
+export const InviteUserSchema = z.object({
+  email: z.string().email('Valid email required'),
+  role: z.enum(['seller_admin', 'seller_assistant']),
+});
+
+export const UpdateMemberRoleSchema = z.object({
+  role: z.enum(['seller_admin', 'seller_assistant']),
+});
+
 // Export types
+export type InviteUserInput = z.infer<typeof InviteUserSchema>;
+export type UpdateMemberRoleInput = z.infer<typeof UpdateMemberRoleSchema>;
 export type LoginInput = z.infer<typeof LoginSchema>;
 export type SignUpInput = z.infer<typeof SignUpSchema>;
 export type WhatsAppOTPInput = z.infer<typeof WhatsAppOTPSchema>;

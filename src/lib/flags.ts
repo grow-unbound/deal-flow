@@ -8,7 +8,6 @@ function getClient(): PostHog | null {
   if (!_client) {
     _client = new PostHog(key, {
       host: process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com',
-      // Disable queuing for server-side flag checks
       flushAt: 1,
       flushInterval: 0,
     });
@@ -16,16 +15,9 @@ function getClient(): PostHog | null {
   return _client;
 }
 
-/**
- * Server-side feature flag evaluator.
- * Falls back to false on any error so a missing key never breaks the app.
- *
- * @param flagKey  PostHog flag key (e.g. 'df_tenant_onboarding')
- * @param distinctId  User or tenant identifier; use 'anonymous' for pre-auth contexts
- */
 export async function getFlag(
   flagKey: string,
-  distinctId: string
+  distinctId: string,
 ): Promise<boolean> {
   try {
     const client = getClient();
