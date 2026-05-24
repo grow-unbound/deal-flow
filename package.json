@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "test:unit": "vitest run",
+    "test:unit": "jest",
     "test:integration": "vitest run --reporter=verbose"
   },
   "dependencies": {
