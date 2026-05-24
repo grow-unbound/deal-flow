@@ -1,123 +1,117 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
-import { SignUpSchema } from '@/lib/zod';
-import { TenantSchema } from '@/lib/zod';
+import { z } from 'zod';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
+import { getFlag } from '@/lib/flags';
+
+const SignupBodySchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+  business_name: z.string().min(1),
+  slug: z
+    .string()
+    .min(3)
+    .max(50)
+    .regex(/^[a-z0-9-]+$/, 'Slug must be lowercase letters, numbers, and hyphens'),
+});
+
+// Postgres unique-violation error code
+const PG_UNIQUE_VIOLATION = '23505';
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-
-    // Validate auth data
-    const authValidation = SignUpSchema.safeParse(body);
-    if (!authValidation.success) {
-      return NextResponse.json(
-        { error: 'Invalid auth data', details: authValidation.error.flatten() },
-        { status: 400 }
-      );
-    }
-
-    // Validate tenant data
-    const tenantValidation = TenantSchema.safeParse(body);
-    if (!tenantValidation.success) {
-      return NextResponse.json(
-        { error: 'Invalid tenant data', details: tenantValidation.error.flatten() },
-        { status: 400 }
-      );
-    }
-
-    const authData = authValidation.data;
-    const tenantData = tenantValidation.data;
-
-    // Sign up user with Supabase Auth
-    const { data: authUser, error: authError } = await supabase.auth.signUp({
-      email: authData.email,
-      password: authData.password,
-    });
-
-    if (authError) {
-      return NextResponse.json(
-        { error: 'Failed to sign up', details: authError.message },
-        { status: 400 }
-      );
-    }
-
-    if (!authUser.user) {
-      return NextResponse.json(
-        { error: 'User creation failed' },
-        { status: 500 }
-      );
-    }
-
-    // Cast needed until Supabase types are generated from schema
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = supabase as any;
-    const { data: tenant, error: tenantError } = await db
-      .from('tenants')
-      .insert([
-        {
-          slug: tenantData.slug,
-          business_name: tenantData.business_name,
-          gstin: tenantData.gstin || null,
-          primary_state: tenantData.primary_state || null,
-          plan: tenantData.plan,
-          created_by: authUser.user.id,
-          updated_by: authUser.user.id,
-        },
-      ])
-      .select()
-      .single() as { data: { id: string; slug: string; business_name: string } | null; error: { message: string } | null };
-
-    if (tenantError || !tenant) {
-      // Clean up: delete the user if tenant creation failed
-      await supabase.auth.admin.deleteUser(authUser.user.id).catch(() => {});
-      return NextResponse.json(
-        { error: 'Failed to create tenant', details: tenantError?.message },
-        { status: 500 }
-      );
-    }
-
-    // Add user to tenant as admin
-    const { error: userTenantError } = await db
-      .from('tenant_users')
-      .insert([
-        {
-          tenant_id: tenant.id,
-          user_id: authUser.user.id,
-          role: 'seller_admin',
-          joined_at: new Date().toISOString(),
-          created_by: authUser.user.id,
-          updated_by: authUser.user.id,
-        },
-      ]) as { data: unknown; error: { message: string } | null };
-
-    if (userTenantError) {
-      return NextResponse.json(
-        { error: 'Failed to add user to tenant', details: userTenantError.message },
-        { status: 500 }
-      );
-    }
-
+  // Gate: df_tenant_onboarding must be enabled
+  const flagOn = await getFlag('df_tenant_onboarding', 'anonymous-signup');
+  if (!flagOn) {
     return NextResponse.json(
-      {
-        success: true,
-        message: 'Account created successfully. Please check your email to confirm.',
-        user: {
-          id: authUser.user.id,
-          email: authUser.user.email,
-        },
-        tenant: {
-          id: tenant.id,
-          slug: tenant.slug,
-          business_name: tenant.business_name,
-        },
-      },
-      { status: 201 }
+      { error: 'This feature is not yet available.' },
+      { status: 403 }
     );
-  } catch (error) {
-    console.error('Signup error:', error);
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
+
+  const parsed = SignupBodySchema.safeParse(body);
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Validation failed', details: parsed.error.flatten() },
+      { status: 400 }
+    );
+  }
+
+  const { email, password, business_name, slug } = parsed.data;
+
+  // Step 1 — create the Supabase Auth user (anon key is fine here)
+  const { data: authData, error: authError } = await supabase.auth.signUp({
+    email,
+    password,
+  });
+
+  if (authError || !authData.user) {
+    return NextResponse.json(
+      { error: authError?.message ?? 'Failed to create user' },
+      { status: 400 }
+    );
+  }
+
+  const userId = authData.user.id;
+
+  // Step 2 — atomically create tenant + seller_admin link via SECURITY DEFINER RPC.
+  // supabaseAdmin uses the service-role key and bypasses RLS.
+  if (!supabaseAdmin) {
+    // Service key not configured — clean up the orphaned auth user and bail
+    await supabase.auth.admin?.deleteUser(userId).catch(() => {});
+    return NextResponse.json(
+      { error: 'Server misconfiguration: service key missing' },
       { status: 500 }
     );
   }
+
+  type TenantRpcResult = { tenant_id: string; slug: string; subdomain: string };
+  const { data: rpcData, error: rpcError } = await (supabaseAdmin as unknown as {
+    rpc: (fn: string, args: Record<string, string>) => Promise<{ data: TenantRpcResult | null; error: { code?: string; message?: string } | null }>;
+  }).rpc('create_tenant_and_admin', {
+    p_user_id: userId,
+    p_slug: slug,
+    p_business_name: business_name,
+  });
+
+  if (rpcError) {
+    // The service role bypasses RLS but can still throw a unique constraint error
+    if ((rpcError as { code?: string }).code === PG_UNIQUE_VIOLATION) {
+      // Roll back the auth user so the address is reusable
+      await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => {});
+      return NextResponse.json(
+        {
+          error: 'This business URL is already in use. Try a different one.',
+          code: 'SLUG_TAKEN',
+        },
+        { status: 409 }
+      );
+    }
+
+    await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => {});
+    return NextResponse.json(
+      { error: 'Failed to create workspace. Please try again.' },
+      { status: 500 }
+    );
+  }
+
+  const tenantResult = rpcData ?? { tenant_id: '', slug, subdomain: `${slug}.dealflow.in` };
+
+  return NextResponse.json(
+    {
+      success: true,
+      user: { id: userId, email },
+      tenant: {
+        tenant_id: tenantResult.tenant_id,
+        slug: tenantResult.slug,
+        subdomain: tenantResult.subdomain,
+      },
+    },
+    { status: 201 }
+  );
 }
