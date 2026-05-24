@@ -1,30 +1,27 @@
 import { PostHog } from 'posthog-node';
+import { FEATURE_FLAGS } from '@/constants';
 
-let _client: PostHog | null = null;
+export { FEATURE_FLAGS as FLAGS };
 
-function getClient(): PostHog | null {
+function createClient(): PostHog | null {
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
   if (!key) return null;
-  if (!_client) {
-    _client = new PostHog(key, {
-      host: process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com',
-      flushAt: 1,
-      flushInterval: 0,
-    });
-  }
-  return _client;
+  return new PostHog(key, {
+    host: process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com',
+    flushAt: 1,
+    flushInterval: 0,
+  });
 }
 
-export async function getFlag(
-  flagKey: string,
-  distinctId: string,
-): Promise<boolean> {
+export async function getFlag(flagName: string, tenantId: string): Promise<boolean> {
+  const client = createClient();
+  if (!client) return false;
   try {
-    const client = getClient();
-    if (!client) return false;
-    const value = await client.isFeatureEnabled(flagKey, distinctId);
-    return value === true;
+    const enabled = await client.isFeatureEnabled(flagName, tenantId);
+    return enabled === true;
   } catch {
     return false;
+  } finally {
+    await client.shutdown();
   }
 }
