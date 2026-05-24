@@ -2,8 +2,8 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
-import { ROLES, type Role } from '@/constants';
+import { supabaseBrowser as supabase } from '@/lib/supabase-browser';
+import { type Role } from '@/constants';
 
 export interface AuthUser {
   id: string;
@@ -76,35 +76,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             phone: currentSession.user.phone,
           });
 
-          // Fetch tenant profile (cast until Supabase types are generated)
+          // Use the get_user_workspace RPC (in public schema, accessible via anon key with authenticated session)
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const db = supabase as any;
-          const tenantId = currentSession.user.user_metadata?.tenant_id;
-          if (tenantId) {
-            const { data: profile, error: profileError } = await db
-              .from('tenant_users')
-              .select('*')
-              .eq('user_id', currentSession.user.id)
-              .eq('tenant_id', tenantId)
-              .single() as { data: TenantProfile | null; error: unknown };
+          const { data: wsRows } = await (supabase as any).rpc('get_user_workspace', {
+            p_user_id: currentSession.user.id,
+          });
 
-            if (!profileError && profile) {
-              setTenantProfile(profile);
-              setCurrentTenantId(profile.tenant_id);
-            }
-          }
-
-          // Fetch buyer profiles
-          const { data: buyers, error: buyersError } = await db
-            .from('buyer_users')
-            .select('*')
-            .eq('user_id', currentSession.user.id) as { data: BuyerProfile[] | null; error: unknown };
-
-          if (!buyersError && buyers) {
-            setBuyerProfiles(buyers);
-            if (buyers.length > 0) {
-              setCurrentBuyerId(buyers[0].buyer_id);
-            }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ws = (wsRows as any[] | null)?.[0] ?? null;
+          if (ws?.tenant_id) {
+            setTenantProfile({
+              id: ws.tenant_id, // using tenant_id as profile id (row id not available from RPC)
+              tenant_id: ws.tenant_id,
+              user_id: currentSession.user.id,
+              role: ws.role as Role,
+              is_active: true,
+            });
+            setCurrentTenantId(ws.tenant_id);
           }
         }
       } catch (err) {

@@ -34,6 +34,7 @@ export const FEATURE_FLAGS = {
   AI_INTAKE: 'df_ai_intake',
   REPLENISHMENT: 'df_replenishment',
   PAYMENTS: 'df_payments',
+  LENDING: 'df_lending',
 } as const;
 
 // Order statuses

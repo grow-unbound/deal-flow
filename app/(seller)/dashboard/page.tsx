@@ -3,7 +3,9 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { useCaptureEvent } from '@/hooks/useFeatureFlag';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { X, Sparkles } from 'lucide-react';
 import { SellerTopbar } from '@/components/layout/SellerTopbar';
 
 function inr(n: number): string {
@@ -56,10 +58,22 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const { currentTenant } = useTenant();
   const captureEvent = useCaptureEvent();
+  const searchParams = useSearchParams();
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    const fromSignup = searchParams.get('first_run') === '1';
+    const seen = typeof window !== 'undefined' && localStorage.getItem('df_first_run') === 'seen';
+    return fromSignup || !seen;
+  });
 
   useEffect(() => {
     captureEvent('dashboard_viewed', { tenant_id: currentTenant?.id });
-  }, [currentTenant, captureEvent]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTenant?.id]);
+
+  function dismissOnboarding() {
+    localStorage.setItem('df_first_run', 'seen');
+    setShowOnboarding(false);
+  }
 
   if (!user || !currentTenant) {
     return <p className="text-caption text-cream-600 p-8">Loading...</p>;
@@ -70,6 +84,37 @@ export default function DashboardPage() {
   return (
     <>
       <SellerTopbar title="Dashboard" />
+
+      {/* First-run onboarding banner */}
+      {showOnboarding && (
+        <div
+          role="banner"
+          className="fixed top-[var(--topbar-h)] left-[var(--sidebar-w)] right-0 z-20
+                     bg-teal-500 text-cream-50 px-6 py-3
+                     flex items-center gap-3"
+          data-testid="onboarding-banner"
+        >
+          <Sparkles className="h-4 w-4 shrink-0" />
+          <p className="font-sans text-body-sm flex-1">
+            <span className="font-semibold">Welcome to DealFlow!</span>{' '}
+            Complete your setup to start selling — add your first brand and invite your team.
+          </p>
+          <a
+            href="/settings"
+            className="font-sans text-body-sm font-semibold underline underline-offset-2
+                       hover:text-cream-200 transition-colors shrink-0"
+          >
+            Set up now
+          </a>
+          <button
+            onClick={dismissOnboarding}
+            aria-label="Dismiss welcome banner"
+            className="ml-2 p-1 rounded hover:bg-teal-600 transition-colors shrink-0"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
       <div style={{ paddingTop: 'calc(var(--topbar-h) + 24px)', padding: 'calc(var(--topbar-h) + 24px) 32px 40px' }}>
 
         {/* Page header */}

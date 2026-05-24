@@ -173,4 +173,25 @@ export type Database = {
       };
     };
   };
+  public: {
+    Tables: Record<string, never>;
+    Views: Record<string, never>;
+    Functions: {
+      get_user_workspace: {
+        Args: { p_user_id: string };
+        Returns: Array<{
+          workspace_type: 'seller' | 'buyer';
+          role: string;
+          tenant_id: string | null;
+          tenant_slug: string | null;
+          tenant_name: string | null;
+          buyer_id: string | null;
+        }>;
+      };
+      custom_access_token_hook: {
+        Args: { event: Record<string, unknown> };
+        Returns: Record<string, unknown>;
+      };
+    };
+  };
 };

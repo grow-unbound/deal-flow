@@ -1,12 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { LoginSchema } from '@/lib/zod';
+import { getPostHogClient } from '@/lib/posthog-server';
+
+function isPhone(value: string) {
+  return /^[0-9]{10}$/.test(value.trim());
+}
+
+interface WorkspaceRow {
+  workspace_type: 'seller' | 'buyer';
+  role: string;
+  tenant_id: string | null;
+  tenant_slug: string | null;
+  tenant_name: string | null;
+  buyer_id: string | null;
+}
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    // Validate input
     const validation = LoginSchema.safeParse(body);
     if (!validation.success) {
       return NextResponse.json(
@@ -15,73 +28,130 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { email, password } = validation.data;
+    const { identifier, password } = validation.data;
 
-    // Sign in with Supabase Auth
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
+    if (isPhone(identifier)) {
+      return NextResponse.json(
+        { error: 'Phone login requires OTP. Use "Login with OTP" instead.' },
+        { status: 400 }
+      );
+    }
+
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email: identifier,
       password,
     });
 
-    if (error || !data.user) {
+    if (authError || !authData.user) {
       return NextResponse.json(
         { error: 'Invalid email or password' },
         { status: 401 }
       );
     }
 
-    // Fetch user's tenants (cast needed until Supabase types are generated)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = supabase as any;
-    const { data: tenants, error: tenantsError } = await db
-      .from('tenant_users')
-      .select('tenant_id, role')
-      .eq('user_id', data.user.id)
-      .eq('is_active', true)
-      .limit(1)
-      .single() as { data: { tenant_id: string; role: string } | null; error: unknown };
+    // Resolve the current tenant from the request subdomain so the JWT hook
+    // can embed the correct tenant_id claim on the very first token.
+    const subdomain = request.headers.get('x-tenant-subdomain');
+    let currentTenantId: string | null = null;
 
-    if (tenantsError || !tenants) {
+    if (subdomain && supabaseAdmin) {
+      const db = supabaseAdmin as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+      const { data: tenantRow } = await db
+        .from('tenants')
+        .select('id')
+        .eq('subdomain', subdomain)
+        .single() as { data: { id: string } | null };
+
+      if (tenantRow?.id) {
+        currentTenantId = tenantRow.id;
+        // Store current_tenant_id in app_metadata so the JWT hook can read it
+        await supabaseAdmin.auth.admin.updateUserById(authData.user.id, {
+          app_metadata: { current_tenant_id: currentTenantId },
+        });
+      }
+    }
+
+    // Refresh session so the JWT immediately reflects the updated app_metadata
+    // (the custom_access_token_hook re-runs on refresh and picks up current_tenant_id).
+    let finalSession = authData.session;
+    if (currentTenantId && authData.session?.refresh_token) {
+      const { data: refreshData } = await supabase.auth.refreshSession({
+        refresh_token: authData.session.refresh_token,
+      });
+      if (refreshData.session) {
+        finalSession = refreshData.session;
+      }
+    }
+
+    // Use SECURITY DEFINER RPC — works regardless of PostgREST schema exposure
+    const db = supabaseAdmin ?? supabase;
+    const { data: rows, error: wsError } = await db
+      .rpc('get_user_workspace', { p_user_id: authData.user.id });
+
+    if (wsError) {
+      console.error('Workspace lookup error:', wsError);
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
+
+    const workspace = (rows as WorkspaceRow[] | null)?.[0] ?? null;
+
+    if (!workspace) {
       return NextResponse.json(
-        { error: 'User not associated with any tenant' },
+        { error: 'Account not associated with any workspace. Contact your administrator.' },
         { status: 403 }
       );
     }
 
-    // Get tenant details
-    const { data: tenant, error: tenantError } = await db
-      .from('tenants')
-      .select('*')
-      .eq('id', tenants.tenant_id)
-      .single() as { data: { id: string; slug: string; business_name: string; subdomain?: string } | null; error: unknown };
+    // PostHog server-side tracking — fire-and-forget, never block login
+    try {
+      const ph = getPostHogClient();
+      const distinctId = request.headers.get('X-POSTHOG-DISTINCT-ID') ?? authData.user.id;
+      ph.identify({
+        distinctId: authData.user.id,
+        properties: {
+          email: authData.user.email,
+          role: workspace.role,
+          workspace_type: workspace.workspace_type,
+          ...(workspace.tenant_id ? { tenant_id: workspace.tenant_id } : {}),
+        },
+      });
+      ph.capture({
+        distinctId,
+        event: 'user_signed_in',
+        properties: {
+          user_type: workspace.workspace_type,
+          role: workspace.role,
+          ...(workspace.tenant_slug ? { tenant_slug: workspace.tenant_slug } : {}),
+          $session_id: request.headers.get('X-POSTHOG-SESSION-ID') ?? undefined,
+        },
+      });
+      await ph.flush();
+    } catch (phErr) {
+      console.warn('PostHog tracking failed (non-blocking):', phErr);
+    }
 
-    if (tenantError || !tenant) {
-      return NextResponse.json(
-        { error: 'Tenant not found' },
-        { status: 404 }
-      );
+    if (workspace.workspace_type === 'seller') {
+      return NextResponse.json({
+        success: true,
+        user: { id: authData.user.id, email: authData.user.email },
+        role: workspace.role,
+        redirect: '/dashboard',
+        tenant: workspace.tenant_id
+          ? { id: workspace.tenant_id, slug: workspace.tenant_slug, business_name: workspace.tenant_name }
+          : null,
+        session: finalSession,
+      });
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Signed in successfully',
-      user: {
-        id: data.user.id,
-        email: data.user.email,
-      },
-      tenant: {
-        id: tenant.id,
-        slug: tenant.slug,
-        business_name: tenant.business_name,
-        subdomain: tenant.subdomain,
-      },
-      session: data.session,
+      user: { id: authData.user.id, email: authData.user.email },
+      role: workspace.role,
+      redirect: '/shop',
+      session: finalSession,
     });
   } catch (error) {
     console.error('Sign in error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

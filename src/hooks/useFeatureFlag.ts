@@ -3,6 +3,16 @@ import { useCallback } from 'react';
 import { FEATURE_FLAGS } from '@/constants';
 
 /**
+ * Returns a boolean directly — reactive to PostHog flag state.
+ * Use this for simple flag-on/off checks in components.
+ */
+export function useFlag(flagKey: keyof typeof FEATURE_FLAGS): boolean {
+  const posthog = usePostHog();
+  if (!posthog) return false;
+  return posthog.isFeatureEnabled(FEATURE_FLAGS[flagKey]) === true;
+}
+
+/**
  * Hook to check if a feature flag is enabled
  * Supports per-tenant overrides via tenant_id in PostHog
  */
