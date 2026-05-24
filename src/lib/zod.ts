@@ -40,6 +40,34 @@ export const BrandSchema = z.object({
   external_ref: z.string().optional(),
 });
 
+// Schema for creating a private custom brand (used in CreateBrandForm)
+export const CreateBrandSchema = z.object({
+  name: z.string().min(1, 'Brand name is required'),
+  slug: z
+    .string()
+    .min(1, 'Slug is required')
+    .regex(/^[a-z0-9-]+$/, 'Slug may only contain lowercase letters and hyphens.'),
+  description: z.string().optional(),
+  logo_url: z
+    .string()
+    .url('Must be a valid URL')
+    .optional()
+    .or(z.literal('')),
+});
+
+// Tenant product schemas
+export const TenantProductSchema = z.object({
+  master_product_id: z.string().uuid('Invalid product ID'),
+  internal_sku: z.string().min(1, 'Internal SKU is required'),
+  mrp: z.number().positive('MRP must be positive'),
+  base_selling_price: z.number().positive('Base selling price must be positive'),
+  cost_price: z.number().positive().optional(),
+  tenant_brand_id: z.string().uuid().optional(),
+  name_override: z.string().optional(),
+  default_uom: z.string().optional(),
+  pack_size: z.number().positive().optional(),
+});
+
 // Product schemas
 export const ProductSchema = z.object({
   brand_id: z.string().uuid('Invalid brand ID'),
@@ -167,6 +195,25 @@ export const BuyerCsvRowSchema = z.object({
 });
 export type BuyerCsvRow = z.infer<typeof BuyerCsvRowSchema>;
 
+// Custom product schema (master_product_id = null)
+export const CustomProductSchema = z.object({
+  master_product_id: z.string().uuid().optional().nullable(),
+  tenant_brand_id: z.string().uuid('Brand is required'),
+  internal_sku: z.string().min(1, 'Internal SKU is required'),
+  name: z.string().min(1, 'Product name is required'),
+  mrp: z.coerce.number().positive('MRP must be positive'),
+  base_selling_price: z.coerce.number().positive('Base selling price must be positive'),
+  cost_price: z.coerce.number().positive('Cost price must be positive').optional().nullable(),
+  default_uom: z.string().optional(),
+  pack_size: z.coerce.number().positive().optional().nullable(),
+  hsn_code: z.string().optional(),
+  gst_rate: z.coerce.number().min(0).max(100).optional().nullable(),
+  description: z.string().optional(),
+  attributes: z.record(z.string()).optional().default({}),
+  image_urls: z.array(z.string().url()).optional().default([]),
+});
+export type CustomProductInput = z.infer<typeof CustomProductSchema>;
+
 // Export types
 export type InviteUserInput = z.infer<typeof InviteUserSchema>;
 export type UpdateMemberRoleInput = z.infer<typeof UpdateMemberRoleSchema>;
@@ -184,3 +231,5 @@ export type PriceListItemInput = z.infer<typeof PriceListItemSchema>;
 export type PublishedCatalogInput = z.infer<typeof PublishedCatalogSchema>;
 export type OrderInput = z.infer<typeof OrderSchema>;
 export type OrderItemInput = z.infer<typeof OrderItemSchema>;
+export type CreateBrandInput = z.infer<typeof CreateBrandSchema>;
+export type TenantProductInput = z.infer<typeof TenantProductSchema>;
