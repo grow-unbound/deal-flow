@@ -49,6 +49,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Resolve the current tenant from the request subdomain so the JWT hook
+    // can embed the correct tenant_id claim on the very first token.
+    const subdomain = request.headers.get('x-tenant-subdomain');
+    let currentTenantId: string | null = null;
+
+    if (subdomain && supabaseAdmin) {
+      const db = supabaseAdmin as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+      const { data: tenantRow } = await db
+        .from('tenants')
+        .select('id')
+        .eq('subdomain', subdomain)
+        .single() as { data: { id: string } | null };
+
+      if (tenantRow?.id) {
+        currentTenantId = tenantRow.id;
+        // Store current_tenant_id in app_metadata so the JWT hook can read it
+        await supabaseAdmin.auth.admin.updateUserById(authData.user.id, {
+          app_metadata: { current_tenant_id: currentTenantId },
+        });
+      }
+    }
+
+    // Refresh session so the JWT immediately reflects the updated app_metadata
+    // (the custom_access_token_hook re-runs on refresh and picks up current_tenant_id).
+    let finalSession = authData.session;
+    if (currentTenantId && authData.session?.refresh_token) {
+      const { data: refreshData } = await supabase.auth.refreshSession({
+        refresh_token: authData.session.refresh_token,
+      });
+      if (refreshData.session) {
+        finalSession = refreshData.session;
+      }
+    }
+
     // Use SECURITY DEFINER RPC — works regardless of PostgREST schema exposure
     const db = supabaseAdmin ?? supabase;
     const { data: rows, error: wsError } = await db
@@ -105,7 +139,7 @@ export async function POST(request: NextRequest) {
         tenant: workspace.tenant_id
           ? { id: workspace.tenant_id, slug: workspace.tenant_slug, business_name: workspace.tenant_name }
           : null,
-        session: authData.session,
+        session: finalSession,
       });
     }
 
@@ -114,7 +148,7 @@ export async function POST(request: NextRequest) {
       user: { id: authData.user.id, email: authData.user.email },
       role: workspace.role,
       redirect: '/shop',
-      session: authData.session,
+      session: finalSession,
     });
   } catch (error) {
     console.error('Sign in error:', error);
