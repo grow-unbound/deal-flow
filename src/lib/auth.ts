@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import { supabase, supabaseAdmin } from './supabase';
 
 export interface JWTClaims {
   tenant_id: string | null;
@@ -34,6 +35,35 @@ export function extractVerifiedClaims(request: NextRequest): JWTClaims {
     tenant_id: request.headers.get('x-verified-tenant-id'),
     role: request.headers.get('x-verified-role'),
     buyer_id: request.headers.get('x-verified-buyer-id'),
+  };
+}
+
+/**
+ * Returns verified claims — fast path reads middleware-injected headers, falls back to
+ * Bearer token + RPC when JWT custom claims aren't present (e.g. hook not configured).
+ */
+export async function getVerifiedClaims(request: NextRequest): Promise<JWTClaims> {
+  const claims = extractVerifiedClaims(request);
+  if (claims.tenant_id) return claims;
+
+  // Fallback: verify the Bearer token and look up workspace via RPC
+  const authHeader = request.headers.get('authorization');
+  const token = authHeader?.replace('Bearer ', '');
+  if (!token) return claims;
+
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return claims;
+
+  const db = supabaseAdmin ?? supabase;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: rows } = await (db as any).rpc('get_user_workspace', { p_user_id: user.id });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ws = (rows as any[] | null)?.[0] ?? null;
+
+  return {
+    tenant_id: (ws?.tenant_id as string) ?? null,
+    role: (ws?.role as string) ?? null,
+    buyer_id: (ws?.buyer_id as string) ?? null,
   };
 }
 

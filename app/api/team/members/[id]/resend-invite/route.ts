@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { extractVerifiedClaims } from '@/lib/auth';
+import { getVerifiedClaims } from '@/lib/auth';
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
-  const claims = extractVerifiedClaims(request);
+  const { id } = await params;
+  const claims = await getVerifiedClaims(request);
 
   if (!claims.tenant_id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -24,7 +25,7 @@ export async function PUT(
     .schema('app')
     .from('tenant_users')
     .select('id, user_id, is_active')
-    .eq('id', params.id)
+    .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .single();
 
@@ -64,7 +65,7 @@ export async function PUT(
     .schema('app')
     .from('tenant_users')
     .update({ invited_at: new Date().toISOString() })
-    .eq('id', params.id);
+    .eq('id', id);
 
   return NextResponse.json({ success: true, message: 'Invite resent' });
 }

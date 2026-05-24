@@ -11,6 +11,7 @@ const PUBLIC_PREFIXES = [
   '/signup',
   '/_next',
   '/favicon.ico',
+  '/ingest', // PostHog analytics proxy — must be public so rewrites can forward it
 ];
 
 function isPublicRoute(pathname: string): boolean {

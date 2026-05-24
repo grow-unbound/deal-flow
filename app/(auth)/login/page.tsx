@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { supabaseBrowser as supabase } from '@/lib/supabase-browser';
 import posthog from 'posthog-js';
 
 function isPhone(value: string) {

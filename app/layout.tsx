@@ -3,6 +3,7 @@ import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { TenantProvider } from '@/contexts/TenantContext';
 import { PostHogProvider } from '@/components/providers/PostHogProvider';
+import { ReactQueryProvider } from '@/components/providers/ReactQueryProvider';
 
 export const metadata: Metadata = {
   title: 'DealFlow — Distributor Command Center',
@@ -18,9 +19,11 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <PostHogProvider>
-          <AuthProvider>
-            <TenantProvider>{children}</TenantProvider>
-          </AuthProvider>
+          <ReactQueryProvider>
+            <AuthProvider>
+              <TenantProvider>{children}</TenantProvider>
+            </AuthProvider>
+          </ReactQueryProvider>
         </PostHogProvider>
       </body>
     </html>
