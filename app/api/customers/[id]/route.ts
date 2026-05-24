@@ -1,0 +1,317 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { supabaseAdmin } from '@/lib/supabase';
+import { getVerifiedClaims, decodeJWTPayload } from '@/lib/auth';
+import { getFlag } from '@/lib/flags';
+import { BuyerUpdateSchema } from '@/lib/zod';
+
+// ─── GET /api/customers/[id] ────────────────────────────────────────────────
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const claims = await getVerifiedClaims(request);
+
+  if (!claims.tenant_id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  if (!claims.role?.startsWith('seller_')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const flagEnabled = await getFlag('df_customer_master', claims.tenant_id);
+  if (!flagEnabled) {
+    return NextResponse.json({ error: 'Feature not enabled' }, { status: 403 });
+  }
+
+  if (!supabaseAdmin) {
+    return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+  }
+
+  const db = supabaseAdmin as any;
+  const { data: buyer, error } = await db
+    .schema('app')
+    .from('buyers')
+    .select('*')
+    .eq('id', id)
+    .eq('tenant_id', claims.tenant_id)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (error) {
+    return NextResponse.json({ error: 'Failed to fetch customer' }, { status: 500 });
+  }
+
+  if (!buyer) {
+    return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
+  }
+
+  return NextResponse.json({ buyer });
+}
+
+// ─── PUT /api/customers/[id] ─────────────────────────────────────────────────
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const claims = await getVerifiedClaims(request);
+
+  if (!claims.tenant_id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  if (!claims.role?.startsWith('seller_')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const flagEnabled = await getFlag('df_customer_master', claims.tenant_id);
+  if (!flagEnabled) {
+    return NextResponse.json({ error: 'Feature not enabled' }, { status: 403 });
+  }
+
+  if (!supabaseAdmin) {
+    return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const parsed = BuyerUpdateSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.errors[0]?.message ?? 'Validation failed' },
+      { status: 422 },
+    );
+  }
+
+  // Cast to any for schema() chaining — mirrors pattern in app/api/customers/route.ts
+  const db = supabaseAdmin as any;
+
+  // Fetch existing buyer (tenant-scoped)
+  const { data: existing, error: fetchError } = await db
+    .schema('app')
+    .from('buyers')
+    .select('*')
+    .eq('id', id)
+    .eq('tenant_id', claims.tenant_id)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (fetchError) {
+    return NextResponse.json({ error: 'Failed to fetch customer' }, { status: 500 });
+  }
+  if (!existing) {
+    return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
+  }
+
+  // Build the update payload
+  const updateData: Record<string, any> = { ...parsed.data };
+
+  // seller_assistant cannot update financial fields — strip them silently
+  if (claims.role === 'seller_assistant') {
+    delete updateData.credit_limit;
+    delete updateData.payment_terms_days;
+  }
+
+  // external_ref is immutable once set (non-null, non-empty) — remove from update
+  if (
+    existing.external_ref &&
+    existing.external_ref.trim() !== '' &&
+    'external_ref' in updateData
+  ) {
+    delete updateData.external_ref;
+  }
+
+  // Phone uniqueness check (if phone is being changed)
+  if (updateData.phone && updateData.phone !== existing.phone) {
+    const { data: phoneMatch } = await db
+      .schema('app')
+      .from('buyers')
+      .select('id')
+      .eq('tenant_id', claims.tenant_id)
+      .eq('phone', updateData.phone)
+      .is('deleted_at', null)
+      .neq('id', id)
+      .maybeSingle();
+
+    if (phoneMatch) {
+      return NextResponse.json(
+        { error: 'A buyer with this phone number already exists.' },
+        { status: 409 },
+      );
+    }
+  }
+
+  // Compute diff for audit log (field name → new value for changed fields only)
+  const diff: Record<string, any> = {};
+  for (const key of Object.keys(updateData)) {
+    const newVal = updateData[key];
+    const oldVal = existing[key];
+    // Simple deep compare for geography (object); string comparison otherwise
+    if (JSON.stringify(newVal) !== JSON.stringify(oldVal)) {
+      diff[key] = newVal;
+    }
+  }
+
+  // Perform the update
+  const { data: updatedBuyer, error: updateError } = await db
+    .schema('app')
+    .from('buyers')
+    .update({
+      ...updateData,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .eq('tenant_id', claims.tenant_id)
+    .select()
+    .single();
+
+  if (updateError) {
+    return NextResponse.json({ error: 'Failed to update customer' }, { status: 500 });
+  }
+
+  // Extract actor_user_id from Bearer token
+  let actorUserId: string | null = null;
+  const token = request.headers.get('authorization')?.replace('Bearer ', '');
+  if (token) {
+    try {
+      const payload = decodeJWTPayload(token);
+      actorUserId = (payload.sub as string) ?? null;
+    } catch {
+      // ignore — audit log will have null actor
+    }
+  }
+
+  // Insert audit log (fire-and-forget; don't block response on failure)
+  if (Object.keys(diff).length > 0) {
+    void db
+      .schema('app')
+      .from('audit_log')
+      .insert({
+        tenant_id: claims.tenant_id,
+        actor_user_id: actorUserId,
+        entity_type: 'buyer',
+        entity_id: id,
+        action: 'update',
+        diff,
+      });
+  }
+
+  return NextResponse.json({ buyer: updatedBuyer });
+}
+
+// ─── PATCH /api/customers/[id] — EP-03-004: deactivate / reactivate ──────────
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const claims = await getVerifiedClaims(request);
+
+  if (!claims.tenant_id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Only seller_admin can deactivate/reactivate
+  if (claims.role !== 'seller_admin') {
+    return NextResponse.json({ error: 'Forbidden: seller_admin role required' }, { status: 403 });
+  }
+
+  const flagEnabled = await getFlag('df_customer_master', claims.tenant_id);
+  if (!flagEnabled) {
+    return NextResponse.json({ error: 'Feature not enabled' }, { status: 403 });
+  }
+
+  if (!supabaseAdmin) {
+    return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const { action } = body as { action?: string };
+  if (action !== 'deactivate' && action !== 'reactivate') {
+    return NextResponse.json(
+      { error: 'Invalid action. Must be "deactivate" or "reactivate".' },
+      { status: 422 },
+    );
+  }
+
+  const isActive = action === 'reactivate';
+  const db = supabaseAdmin as any;
+
+  // Verify buyer exists and belongs to tenant
+  const { data: existing, error: fetchError } = await db
+    .schema('app')
+    .from('buyers')
+    .select('id, business_name, is_active')
+    .eq('id', id)
+    .eq('tenant_id', claims.tenant_id)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (fetchError) {
+    return NextResponse.json({ error: 'Failed to fetch customer' }, { status: 500 });
+  }
+  if (!existing) {
+    return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
+  }
+
+  // Perform the status update
+  const { data: updatedBuyer, error: updateError } = await db
+    .schema('app')
+    .from('buyers')
+    .update({ is_active: isActive, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('tenant_id', claims.tenant_id)
+    .select()
+    .single();
+
+  if (updateError) {
+    return NextResponse.json({ error: 'Failed to update customer status' }, { status: 500 });
+  }
+
+  // Extract actor_user_id from Bearer token
+  let actorUserId: string | null = null;
+  const token = request.headers.get('authorization')?.replace('Bearer ', '');
+  if (token) {
+    try {
+      const payload = decodeJWTPayload(token);
+      actorUserId = (payload.sub as string) ?? null;
+    } catch {
+      // ignore
+    }
+  }
+
+  // Audit log (fire-and-forget)
+  try {
+    void db
+      .schema('app')
+      .from('audit_log')
+      .insert({
+        tenant_id: claims.tenant_id,
+        actor_user_id: actorUserId,
+        entity_type: 'buyer',
+        entity_id: id,
+        action,
+        diff: { is_active: isActive },
+      });
+  } catch {
+    // don't block response on audit failure
+  }
+
+  return NextResponse.json({ buyer: updatedBuyer });
+}
