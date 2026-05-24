@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
-import { supabase } from '@/lib/supabase';
+import { supabaseBrowser } from '@/lib/supabase-browser';
 
 export interface Tenant {
   id: string;
@@ -51,43 +51,29 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         setIsError(false);
         setError(null);
 
-        // Get all tenants for this user
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const db = supabase as any;
-        const { data: userTenants, error: tenantsError } = await db
-          .from('tenant_users')
-          .select('tenant_id')
-          .eq('user_id', session.user.id)
-          .eq('is_active', true) as { data: { tenant_id: string }[] | null; error: unknown };
-
-        if (tenantsError) throw tenantsError;
-
-        if (!userTenants || userTenants.length === 0) {
+        const { data: sessionData } = await supabaseBrowser.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) {
           setTenants([]);
           setCurrentTenant(null);
           setIsLoading(false);
           return;
         }
 
-        const tenantIds = userTenants.map((ut) => ut.tenant_id);
+        const res = await fetch('/api/tenant/current', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
 
-        // Fetch tenant details
-        const { data: tenantData, error: dataError } = await db
-          .from('tenants')
-          .select('*')
-          .in('id', tenantIds) as { data: Tenant[] | null; error: unknown };
-
-        if (dataError) throw dataError;
-
-        setTenants((tenantData as Tenant[]) || []);
-
-        // Set current tenant
-        if (currentTenantId) {
-          const current = tenantData?.find((t) => t.id === currentTenantId);
-          setCurrentTenant((current as Tenant) || null);
-        } else if (tenantData && tenantData.length > 0) {
-          setCurrentTenant((tenantData[0] as Tenant) || null);
+        if (!res.ok) {
+          setTenants([]);
+          setCurrentTenant(null);
+          setIsLoading(false);
+          return;
         }
+
+        const { tenant } = await res.json() as { tenant: Tenant };
+        setTenants([tenant]);
+        setCurrentTenant(tenant);
       } catch (err) {
         setIsError(true);
         setError(err instanceof Error ? err : new Error('Failed to fetch tenants'));
@@ -97,7 +83,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     };
 
     fetchTenants();
-  }, [session?.user, currentTenantId]);
+  }, [session?.user?.id, currentTenantId]);
 
   const switchTenant = async (tenantId: string) => {
     const tenant = tenants.find((t) => t.id === tenantId);

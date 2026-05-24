@@ -6,6 +6,7 @@ import { Pencil, MailCheck, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { InviteUserDialog } from './InviteUserDialog';
+import { supabaseBrowser } from '@/lib/supabase-browser';
 import type { TeamMember } from '@/types/team';
 
 interface Props {
@@ -13,11 +14,11 @@ interface Props {
   isAdmin: boolean;
 }
 
-async function fetchMembers(): Promise<TeamMember[]> {
-  const res = await fetch('/api/team/members');
-  if (!res.ok) throw new Error('Failed to load team members');
-  const data = await res.json();
-  return data.members as TeamMember[];
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const { data: { session } } = await supabaseBrowser.auth.getSession();
+  return session?.access_token
+    ? { Authorization: `Bearer ${session.access_token}` }
+    : {};
 }
 
 export function TeamMembersTable({ tenantId, isAdmin }: Props) {
@@ -26,22 +27,30 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
 
   const { data: members = [], isLoading, isError } = useQuery({
     queryKey: ['team', tenantId],
-    queryFn: fetchMembers,
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/team/members', { headers });
+      if (!res.ok) throw new Error('Failed to load team members');
+      const data = await res.json();
+      return data.members as TeamMember[];
+    },
   });
 
   const removeMutation = useMutation({
-    mutationFn: (id: string) =>
-      fetch(`/api/team/members/${id}`, { method: 'DELETE' }).then((r) => {
-        if (!r.ok) throw new Error('Failed to remove member');
-      }),
+    mutationFn: async (id: string) => {
+      const headers = await getAuthHeaders();
+      const r = await fetch(`/api/team/members/${id}`, { method: 'DELETE', headers });
+      if (!r.ok) throw new Error('Failed to remove member');
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['team'] }),
   });
 
   const resendMutation = useMutation({
-    mutationFn: (id: string) =>
-      fetch(`/api/team/members/${id}/resend-invite`, { method: 'PUT' }).then((r) => {
-        if (!r.ok) throw new Error('Failed to resend invite');
-      }),
+    mutationFn: async (id: string) => {
+      const headers = await getAuthHeaders();
+      const r = await fetch(`/api/team/members/${id}/resend-invite`, { method: 'PUT', headers });
+      if (!r.ok) throw new Error('Failed to resend invite');
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['team'] }),
   });
 

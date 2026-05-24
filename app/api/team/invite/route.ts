@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { InviteUserSchema } from '@/lib/zod';
-import { extractVerifiedClaims } from '@/lib/auth';
+import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 
 export async function POST(request: NextRequest) {
-  const claims = extractVerifiedClaims(request);
+  const claims = await getVerifiedClaims(request);
 
   if (!claims.tenant_id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

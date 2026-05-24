@@ -3,6 +3,7 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
+import { supabaseBrowser } from '@/lib/supabase-browser';
 import { UserPlus } from 'lucide-react';
 import {
   Dialog,
@@ -58,9 +59,13 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
       : '/api/team/invite';
     const method = isEdit ? 'PUT' : 'POST';
 
+    const { data: { session } } = await supabaseBrowser.auth.getSession();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+
     const res = await fetch(url, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(isEdit ? { role: data.role } : data),
     });
 

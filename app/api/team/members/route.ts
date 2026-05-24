@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { extractVerifiedClaims } from '@/lib/auth';
+import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import type { TeamMember } from '@/types/team';
 
 export type { TeamMember };
 
 export async function GET(request: NextRequest) {
-  const claims = extractVerifiedClaims(request);
+  const claims = await getVerifiedClaims(request);
 
   if (!claims.tenant_id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

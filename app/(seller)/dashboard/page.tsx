@@ -67,7 +67,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     captureEvent('dashboard_viewed', { tenant_id: currentTenant?.id });
-  }, [currentTenant, captureEvent]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTenant?.id]);
 
   function dismissOnboarding() {
     localStorage.setItem('df_first_run', 'seen');

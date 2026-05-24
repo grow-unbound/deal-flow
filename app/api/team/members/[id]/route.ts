@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { UpdateMemberRoleSchema } from '@/lib/zod';
-import { extractVerifiedClaims } from '@/lib/auth';
+import { getVerifiedClaims } from '@/lib/auth';
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
-  const claims = extractVerifiedClaims(request);
+  const { id } = await params;
+  const claims = await getVerifiedClaims(request);
 
   if (!claims.tenant_id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -40,7 +41,7 @@ export async function PUT(
     .schema('app')
     .from('tenant_users')
     .update({ role: validation.data.role, updated_by: claims.tenant_id })
-    .eq('id', params.id)
+    .eq('id', id)
     .eq('tenant_id', claims.tenant_id);
 
   if (error) {
@@ -52,9 +53,10 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
-  const claims = extractVerifiedClaims(request);
+  const { id } = await params;
+  const claims = await getVerifiedClaims(request);
 
   if (!claims.tenant_id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -72,7 +74,7 @@ export async function DELETE(
     .schema('app')
     .from('tenant_users')
     .delete()
-    .eq('id', params.id)
+    .eq('id', id)
     .eq('tenant_id', claims.tenant_id);
 
   if (error) {
