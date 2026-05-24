@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
@@ -14,19 +14,23 @@ import { Input } from '@/components/ui/input';
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { FEATURE_FLAGS } from '@/constants';
+import { FEATURE_FLAGS, INDIAN_STATES } from '@/constants';
 
 // ─── schema ──────────────────────────────────────────────────────────────────
 
 const SignupFormSchema = z
   .object({
     email: z.string().email('Enter a valid email address'),
+    phone: z
+      .string()
+      .regex(/^[0-9]{10}$/, 'Phone must be 10 digits')
+      .optional()
+      .or(z.literal('')),
     password: z.string().min(8, 'Password must be at least 8 characters'),
     confirm_password: z.string(),
     business_name: z.string().min(1, 'Business name is required'),
@@ -38,6 +42,8 @@ const SignupFormSchema = z
         /^[a-z0-9-]+$/,
         'Business URL may only contain lowercase letters, numbers, and hyphens'
       ),
+    primary_state: z.string().optional(),
+    gstin: z.string().optional(),
   })
   .refine((d) => d.password === d.confirm_password, {
     message: 'Passwords do not match',
@@ -98,37 +104,28 @@ function ComingSoonPage() {
 export default function SignupPage() {
   const router = useRouter();
   const posthog = usePostHog();
+  const [apiError, setApiError] = useState('');
   const [flagReady, setFlagReady] = useState(false);
   const [flagEnabled, setFlagEnabled] = useState(false);
-  const [apiError, setApiError] = useState('');
 
-  // Evaluate df_tenant_onboarding flag client-side
-  useEffect(() => {
-    if (!posthog) {
-      // PostHog not loaded yet – wait
-      return;
-    }
-    const onReady = () => {
-      const val = posthog.getFeatureFlag(FEATURE_FLAGS.TENANT_ONBOARDING);
-      setFlagEnabled(val === true);
-      setFlagReady(true);
-    };
-    // If flags are already loaded call immediately, otherwise wait for the event
-    if (posthog.isFeatureEnabled !== undefined) {
-      onReady();
-    } else {
-      posthog.onFeatureFlags(onReady);
-    }
-  }, [posthog]);
+  // Check feature flag on mount via PostHog
+  posthog?.onFeatureFlags(() => {
+    const val = posthog.isFeatureEnabled(FEATURE_FLAGS.TENANT_ONBOARDING);
+    setFlagEnabled(val === true);
+    setFlagReady(true);
+  });
 
   const form = useForm<SignupFormValues>({
     resolver: zodResolver(SignupFormSchema),
     defaultValues: {
       email: '',
+      phone: '',
       password: '',
       confirm_password: '',
       business_name: '',
       slug: '',
+      primary_state: 'Karnataka',
+      gstin: '',
     },
     mode: 'onBlur',
   });
@@ -136,10 +133,9 @@ export default function SignupPage() {
   const { isSubmitting } = form.formState;
 
   // Auto-derive slug from business_name while the slug field hasn't been
-  // manually edited (we track this via a flag in form state).
+  // manually edited (tracked via form dirty state).
   function handleBusinessNameChange(value: string) {
     form.setValue('business_name', value);
-    // Only auto-fill slug if the user hasn't touched it manually
     if (!form.getFieldState('slug').isDirty) {
       form.setValue('slug', slugify(value), { shouldDirty: false });
     }
@@ -148,14 +144,23 @@ export default function SignupPage() {
   async function onSubmit(values: SignupFormValues) {
     setApiError('');
     try {
+      const distinctId = posthog?.get_distinct_id();
+      const sessionId = posthog?.get_session_id?.();
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(distinctId && { 'X-POSTHOG-DISTINCT-ID': distinctId }),
+          ...(sessionId && { 'X-POSTHOG-SESSION-ID': sessionId }),
+        },
         body: JSON.stringify({
           email: values.email,
           password: values.password,
           business_name: values.business_name,
           slug: values.slug,
+          phone: values.phone || undefined,
+          gstin: values.gstin || undefined,
+          primary_state: values.primary_state || undefined,
         }),
       });
 
@@ -168,18 +173,26 @@ export default function SignupPage() {
           });
         } else {
           setApiError(data.error ?? 'Signup failed. Please try again.');
+          posthog?.capture('signup_failed', { reason: data.error });
         }
         return;
       }
 
-      // Redirect to the cockpit dashboard with first-run flag
+      posthog?.identify(data.user.id, { email: data.user.email });
+      posthog?.capture('user_signed_up', {
+        tenant_slug: data.tenant?.slug,
+        business_name: data.tenant?.business_name,
+        primary_state: values.primary_state,
+        plan: 'starter',
+      });
+
       router.push('/dashboard?first_run=1');
-    } catch {
+    } catch (err) {
+      posthog?.captureException(err);
       setApiError('An unexpected error occurred. Please try again.');
     }
   }
 
-  // Show a skeleton while the flag loads to avoid layout shift
   if (!flagReady) {
     return (
       <div className="bg-cream-50 border border-cream-300 rounded-lg shadow-md p-8 animate-pulse">
@@ -220,9 +233,13 @@ export default function SignupPage() {
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(onSubmit)}
-          className="space-y-4"
+          className="space-y-4 max-h-[calc(100vh-280px)] overflow-y-auto pr-1"
           noValidate
         >
+          <p className="text-caption font-semibold text-cream-500 uppercase tracking-widest" style={{ fontSize: '10px' }}>
+            Account
+          </p>
+
           {/* Email */}
           <FormField
             control={form.control}
@@ -239,10 +256,85 @@ export default function SignupPage() {
                     {...field}
                   />
                 </FormControl>
-                <FormMessage />
+                <FormMessage className="text-danger-500" />
               </FormItem>
             )}
           />
+
+          {/* Phone */}
+          <FormField
+            control={form.control}
+            name="phone"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="font-sans text-cream-700">
+                  Phone <span className="text-cream-400 font-normal normal-case">(optional)</span>
+                </FormLabel>
+                <FormControl>
+                  <div className="flex gap-2">
+                    <span className="flex items-center px-3 rounded-md bg-cream-100 border border-cream-300 text-cream-600 text-body-sm select-none">
+                      +91
+                    </span>
+                    <Input
+                      type="tel"
+                      placeholder="9876543210"
+                      maxLength={10}
+                      autoComplete="tel"
+                      className="border-cream-300 focus-visible:ring-ember-400"
+                      {...field}
+                    />
+                  </div>
+                </FormControl>
+                <FormMessage className="text-danger-500" />
+              </FormItem>
+            )}
+          />
+
+          {/* Password row */}
+          <div className="grid grid-cols-2 gap-3">
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="font-sans text-cream-700">Password</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="password"
+                      placeholder="Min 8 characters"
+                      autoComplete="new-password"
+                      className="border-cream-300 focus-visible:ring-ember-400"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage className="text-danger-500" />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="confirm_password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="font-sans text-cream-700">Confirm</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="password"
+                      placeholder="••••••••"
+                      autoComplete="new-password"
+                      className="border-cream-300 focus-visible:ring-ember-400"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage className="text-danger-500" />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <p className="text-caption font-semibold text-cream-500 uppercase tracking-widest pt-2" style={{ fontSize: '10px' }}>
+            Business
+          </p>
 
           {/* Business name */}
           <FormField
@@ -259,12 +351,12 @@ export default function SignupPage() {
                     onChange={(e) => handleBusinessNameChange(e.target.value)}
                   />
                 </FormControl>
-                <FormMessage />
+                <FormMessage className="text-danger-500" />
               </FormItem>
             )}
           />
 
-          {/* Slug / business URL */}
+          {/* Slug */}
           <FormField
             control={form.control}
             name="slug"
@@ -272,75 +364,75 @@ export default function SignupPage() {
               <FormItem>
                 <FormLabel className="font-sans text-cream-700">Business URL</FormLabel>
                 <FormControl>
-                  <div className="flex items-center rounded-md border border-cream-300 overflow-hidden focus-within:ring-2 focus-within:ring-ember-400 focus-within:border-ember-400 transition-shadow">
-                    <span className="px-3 py-2 bg-cream-100 text-cream-600 font-sans text-body-sm shrink-0 border-r border-cream-300">
-                      dealflow.in/
-                    </span>
-                    <input
-                      className="flex-1 bg-transparent px-3 py-2 font-mono text-body-sm text-cream-900 placeholder:text-cream-400 outline-none"
+                  <div className="flex rounded-md overflow-hidden border border-cream-300 focus-within:border-ember-400 focus-within:ring-2 focus-within:ring-ember-400/20 transition-colors bg-cream-50">
+                    <Input
                       placeholder="your-business"
-                      autoComplete="off"
-                      spellCheck={false}
+                      className="flex-1 border-0 shadow-none focus-visible:ring-0 rounded-none bg-transparent"
                       {...field}
+                      onChange={(e) =>
+                        field.onChange(
+                          e.target.value
+                            .toLowerCase()
+                            .replace(/[^a-z0-9-]/g, '-')
+                            .replace(/-+/g, '-')
+                        )
+                      }
                     />
+                    <span className="flex items-center px-3 text-cream-500 text-body-sm bg-cream-100 border-l border-cream-300 select-none whitespace-nowrap">
+                      .dealflow.in
+                    </span>
                   </div>
                 </FormControl>
-                <FormDescription className="font-sans text-body-sm text-cream-600">
-                  Your branded workspace URL — lowercase letters, numbers, and hyphens only.
-                </FormDescription>
-                <FormMessage />
+                <FormMessage className="text-danger-500" />
               </FormItem>
             )}
           />
 
-          {/* Password */}
-          <FormField
-            control={form.control}
-            name="password"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="font-sans text-cream-700">Password</FormLabel>
-                <FormControl>
-                  <Input
-                    type="password"
-                    placeholder="••••••••"
-                    autoComplete="new-password"
-                    className="border-cream-300 focus-visible:ring-ember-400"
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          {/* State + GSTIN row */}
+          <div className="grid grid-cols-2 gap-3">
+            <FormField
+              control={form.control}
+              name="primary_state"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="font-sans text-cream-700">State</FormLabel>
+                  <FormControl>
+                    <select
+                      {...field}
+                      className="w-full px-3 py-2.5 rounded-md bg-cream-50 border border-cream-300 text-cream-900 text-body-sm focus:outline-none focus:border-ember-400 focus:ring-2 focus:ring-ember-400/20 transition-colors"
+                    >
+                      {INDIAN_STATES.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </FormControl>
+                  <FormMessage className="text-danger-500" />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="gstin"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="font-sans text-cream-700">
+                    GSTIN <span className="text-cream-400 font-normal normal-case">(optional)</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="18AABCT1234H1Z0"
+                      className="border-cream-300 focus-visible:ring-ember-400"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage className="text-danger-500" />
+                </FormItem>
+              )}
+            />
+          </div>
 
-          {/* Confirm password */}
-          <FormField
-            control={form.control}
-            name="confirm_password"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="font-sans text-cream-700">Confirm password</FormLabel>
-                <FormControl>
-                  <Input
-                    type="password"
-                    placeholder="••••••••"
-                    autoComplete="new-password"
-                    className="border-cream-300 focus-visible:ring-ember-400"
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          {/* API-level error */}
           {apiError && (
-            <p
-              role="alert"
-              className="text-body-sm text-danger-500 bg-danger-50 px-3 py-2 rounded-md"
-            >
+            <p className="text-caption text-danger-500 bg-danger-50 px-3 py-2 rounded-md">
               {apiError}
             </p>
           )}
@@ -348,27 +440,18 @@ export default function SignupPage() {
           <Button
             type="submit"
             disabled={isSubmitting}
-            className="w-full bg-teal-500 hover:bg-teal-600 text-cream-50 font-sans font-semibold"
+            className="w-full bg-teal-500 hover:bg-teal-600 text-cream-50"
           >
-            {isSubmitting ? (
-              'Creating workspace…'
-            ) : (
-              <>
-                <Plus className="h-4 w-4 mr-2" />
-                Create my workspace
-              </>
-            )}
+            <Plus className="h-4 w-4 mr-2" />
+            {isSubmitting ? 'Creating workspace…' : 'Create my workspace'}
           </Button>
         </form>
       </Form>
 
-      <p className="mt-5 text-center font-sans text-caption text-cream-600">
+      <p className="mt-5 text-center font-sans text-body-sm text-cream-600">
         Already have an account?{' '}
-        <Link
-          href="/login"
-          className="text-ember-400 hover:text-ember-500 font-medium transition-colors"
-        >
-          Log in
+        <Link href="/login" className="text-teal-600 hover:underline font-medium">
+          Sign in
         </Link>
       </p>
     </div>

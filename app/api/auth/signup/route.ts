@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { getFlag } from '@/lib/flags';
+import { getPostHogClient } from '@/lib/posthog-server';
 
 const SignupBodySchema = z.object({
   email: z.string().email(),
@@ -12,6 +13,10 @@ const SignupBodySchema = z.object({
     .min(3)
     .max(50)
     .regex(/^[a-z0-9-]+$/, 'Slug must be lowercase letters, numbers, and hyphens'),
+  phone: z.string().regex(/^[0-9]{10}$/).optional(),
+  gstin: z.string().optional(),
+  primary_state: z.string().optional(),
+  plan: z.enum(['starter', 'growth', 'scale']).default('starter'),
 });
 
 // Postgres unique-violation error code
@@ -42,12 +47,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { email, password, business_name, slug } = parsed.data;
+  const { email, password, business_name, slug, phone, gstin, primary_state, plan } = parsed.data;
 
-  // Step 1 — create the Supabase Auth user (anon key is fine here)
+  // Step 1 — create the Supabase Auth user
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email,
     password,
+    options: {
+      data: { phone: phone ?? null },
+    },
   });
 
   if (authError || !authData.user) {
@@ -62,7 +70,6 @@ export async function POST(request: NextRequest) {
   // Step 2 — atomically create tenant + seller_admin link via SECURITY DEFINER RPC.
   // supabaseAdmin uses the service-role key and bypasses RLS.
   if (!supabaseAdmin) {
-    // Service key not configured — clean up the orphaned auth user and bail
     await supabase.auth.admin?.deleteUser(userId).catch(() => {});
     return NextResponse.json(
       { error: 'Server misconfiguration: service key missing' },
@@ -72,17 +79,17 @@ export async function POST(request: NextRequest) {
 
   type TenantRpcResult = { tenant_id: string; slug: string; subdomain: string };
   const { data: rpcData, error: rpcError } = await (supabaseAdmin as unknown as {
-    rpc: (fn: string, args: Record<string, string>) => Promise<{ data: TenantRpcResult | null; error: { code?: string; message?: string } | null }>;
+    rpc: (fn: string, args: Record<string, string | undefined>) => Promise<{ data: TenantRpcResult | null; error: { code?: string; message?: string } | null }>;
   }).rpc('create_tenant_and_admin', {
     p_user_id: userId,
     p_slug: slug,
     p_business_name: business_name,
+    p_primary_state: primary_state,
+    p_gstin: gstin,
   });
 
   if (rpcError) {
-    // The service role bypasses RLS but can still throw a unique constraint error
     if ((rpcError as { code?: string }).code === PG_UNIQUE_VIOLATION) {
-      // Roll back the auth user so the address is reusable
       await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => {});
       return NextResponse.json(
         {
@@ -101,6 +108,33 @@ export async function POST(request: NextRequest) {
   }
 
   const tenantResult = rpcData ?? { tenant_id: '', slug, subdomain: `${slug}.dealflow.in` };
+
+  // Step 3 — fire PostHog server-side event for funnel analytics
+  try {
+    const distinctId = request.headers.get('X-POSTHOG-DISTINCT-ID') ?? userId;
+    const ph = getPostHogClient();
+    ph.identify({
+      distinctId: userId,
+      properties: { email, role: 'seller_admin', tenant_id: tenantResult.tenant_id },
+    });
+    ph.capture({
+      distinctId,
+      event: 'server_tenant_created',
+      properties: {
+        $set: { email, role: 'seller_admin' },
+        user_id: userId,
+        tenant_id: tenantResult.tenant_id,
+        tenant_slug: tenantResult.slug,
+        business_name,
+        primary_state,
+        plan,
+        $session_id: request.headers.get('X-POSTHOG-SESSION-ID') ?? undefined,
+      },
+    });
+    await ph.flush();
+  } catch {
+    // Non-fatal: analytics failure should not block signup
+  }
 
   return NextResponse.json(
     {

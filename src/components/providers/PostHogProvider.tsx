@@ -4,16 +4,8 @@ import React from 'react';
 import { PostHogProvider as PostHogProviderComponent } from 'posthog-js/react';
 import posthog from 'posthog-js';
 
-if (typeof window !== 'undefined') {
-  posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY || '', {
-    api_host: 'https://us.i.posthog.com',
-    loaded: (ph) => {
-      if (process.env.NODE_ENV === 'development') ph.debug();
-    },
-    // Feature flags reload on each page navigation
-    bootstrap: {},
-  });
-}
+// PostHog is initialized in instrumentation-client.ts (Next.js 15.3+ pattern).
+// This component only provides the React context so usePostHog() hooks work throughout the app.
 
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
   return (
