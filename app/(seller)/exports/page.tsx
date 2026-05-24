@@ -1,18 +1,18 @@
 'use client';
-import { SellerTopbar } from '@/components/layout/SellerTopbar';
 
-export default function exportsPage() {
+import { SellerTopbar } from '@/components/layout/SellerTopbar';
+import { FeatureGate } from '@/components/FeatureGate';
+
+export default function ExportsPage() {
   return (
     <>
-      <SellerTopbar title="exports" />
-      <div className="px-8 py-6" style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }}>
-        <div className="bg-white border border-cream-300 rounded-lg p-8 shadow-xs text-center">
-          <p className="eyebrow mb-3">exports</p>
-          <h2 className="text-h2 font-display text-cream-900 mb-2">Coming soon</h2>
-          <p className="text-body text-cream-600 max-w-sm mx-auto">
-            This module is part of the MVP build. Check back soon.
-          </p>
-        </div>
+      <SellerTopbar title="Exports" />
+      <div style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }}>
+        <FeatureGate flag="TALLY_EXPORT">
+          <div className="px-8 py-6">
+            <p className="text-cream-600">Tally CSV export module coming soon.</p>
+          </div>
+        </FeatureGate>
       </div>
     </>
   );

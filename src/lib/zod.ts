@@ -2,12 +2,13 @@ import { z } from 'zod';
 
 // Auth schemas
 export const LoginSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  identifier: z.string().min(1, 'Email or phone is required'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
 export const SignUpSchema = z.object({
   email: z.string().email('Invalid email address'),
+  phone: z.string().regex(/^[0-9]{10}$/, 'Phone must be 10 digits'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   business_name: z.string().min(1, 'Business name is required'),
   confirm_password: z.string(),
@@ -110,7 +111,19 @@ export const OrderItemSchema = z.object({
   qty: z.coerce.number().positive('Quantity must be positive'),
 });
 
+// Team invite schemas
+export const InviteUserSchema = z.object({
+  email: z.string().email('Valid email required'),
+  role: z.enum(['seller_admin', 'seller_assistant']),
+});
+
+export const UpdateMemberRoleSchema = z.object({
+  role: z.enum(['seller_admin', 'seller_assistant']),
+});
+
 // Export types
+export type InviteUserInput = z.infer<typeof InviteUserSchema>;
+export type UpdateMemberRoleInput = z.infer<typeof UpdateMemberRoleSchema>;
 export type LoginInput = z.infer<typeof LoginSchema>;
 export type SignUpInput = z.infer<typeof SignUpSchema>;
 export type WhatsAppOTPInput = z.infer<typeof WhatsAppOTPSchema>;

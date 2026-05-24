@@ -4,24 +4,34 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRole } from '@/hooks/useRole';
 
 const navItems = [
-  { label: 'Dashboard',   href: '/dashboard',    icon: DashboardIcon },
-  { label: 'Brands',      href: '/brands',       icon: BrandsIcon },
-  { label: 'Products',    href: '/products',     icon: ProductsIcon },
-  { label: 'Buyers',      href: '/buyers',       icon: BuyersIcon },
-  { label: 'Cohorts',     href: '/cohorts',      icon: CohortsIcon },
-  { label: 'Price lists', href: '/price-lists',  icon: PriceListsIcon },
-  { label: 'Catalogs',    href: '/catalogs',     icon: CatalogsIcon },
-  { label: 'Orders',      href: '/orders',       icon: OrdersIcon },
-  { label: 'Exports',     href: '/exports',      icon: ExportsIcon },
-  { label: 'Settings',    href: '/settings',     icon: SettingsIcon },
+  { label: 'Dashboard',    href: '/dashboard',      icon: DashboardIcon,    adminOnly: false },
+  { label: 'Brands',       href: '/brands',         icon: BrandsIcon,       adminOnly: false },
+  { label: 'Products',     href: '/products',       icon: ProductsIcon,     adminOnly: false },
+  { label: 'Buyers',       href: '/buyers',         icon: BuyersIcon,       adminOnly: false },
+  { label: 'Cohorts',      href: '/cohorts',        icon: CohortsIcon,      adminOnly: true  },
+  { label: 'Price lists',  href: '/price-lists',    icon: PriceListsIcon,   adminOnly: true  },
+  { label: 'Catalogs',     href: '/catalogs',       icon: CatalogsIcon,     adminOnly: false },
+  { label: 'Orders',       href: '/orders',         icon: OrdersIcon,       adminOnly: false },
+  { label: 'Exports',      href: '/exports',        icon: ExportsIcon,      adminOnly: false },
+  { label: 'Settings',     href: '/settings',       icon: SettingsIcon,     adminOnly: true  },
+  { label: 'Users & Roles', href: '/settings/team', icon: UsersRoundIcon,   adminOnly: true  },
 ];
+
+const ROLE_LABELS: Record<string, string> = {
+  seller_admin: 'Seller admin',
+  seller_assistant: 'Seller assistant',
+  buyer_admin: 'Buyer admin',
+  buyer_assistant: 'Buyer assistant',
+};
 
 export function SellerSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, signOut } = useAuth();
+  const { isSellerAdmin, role } = useRole();
 
   async function handleLogout() {
     await signOut();
@@ -43,7 +53,7 @@ export function SellerSidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-0.5">
-        {navItems.map(({ label, href, icon: Icon }) => {
+        {navItems.filter(item => !item.adminOnly || isSellerAdmin).map(({ label, href, icon: Icon }) => {
           const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
           return (
             <Link
@@ -78,7 +88,7 @@ export function SellerSidebar() {
             <p className="text-body-sm font-medium text-cream-900 truncate">
               {user?.email ?? '—'}
             </p>
-            <p className="text-caption text-cream-600">Seller admin</p>
+            <p className="text-caption text-cream-600">{role ? ROLE_LABELS[role] : '—'}</p>
           </div>
         </div>
         <button
@@ -160,6 +170,13 @@ function SettingsIcon({ size = 16, className = '' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+function UsersRoundIcon({ size = 16, className = '' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M18 21a8 8 0 0 0-16 0" /><circle cx="10" cy="8" r="5" /><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3" />
     </svg>
   );
 }

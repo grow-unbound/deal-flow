@@ -1,0 +1,138 @@
+-- pgTAP tests for custom_access_token_hook
+-- Run with: npx supabase test db --file=tests/jwt_claims.sql
+
+BEGIN;
+
+SELECT plan(5);
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Fixtures
+-- ────────────────────────────────────────────────────────────────────────────
+DO $$
+DECLARE
+  v_tenant_id  uuid := gen_random_uuid();
+  v_tenant2_id uuid := gen_random_uuid();
+  v_seller_uid uuid := gen_random_uuid();
+  v_buyer_uid  uuid := gen_random_uuid();
+  v_buyer_id   uuid := gen_random_uuid();
+BEGIN
+  -- Insert minimal auth.users stubs (requires supabase test environment)
+  INSERT INTO auth.users (id, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
+  VALUES
+    (v_seller_uid, 'seller@test.local', 'x', now(), now(), now(), '{}', '{}'),
+    (v_buyer_uid,  'buyer@test.local',  'x', now(), now(), now(), '{}', '{}');
+
+  INSERT INTO app.tenants (id, slug, business_name, created_at, updated_at)
+  VALUES
+    (v_tenant_id,  'acme',   'Acme Dist.',   now(), now()),
+    (v_tenant2_id, 'globex', 'Globex Dist.', now(), now());
+
+  INSERT INTO app.tenant_users (id, tenant_id, user_id, role, is_active, created_at, updated_at)
+  VALUES (gen_random_uuid(), v_tenant_id, v_seller_uid, 'seller_admin', true, now(), now());
+
+  INSERT INTO app.buyers (id, tenant_id, business_name, created_at, updated_at)
+  VALUES (v_buyer_id, v_tenant2_id, 'RetailerCo', now(), now());
+
+  INSERT INTO app.buyer_users (id, buyer_id, user_id, role, is_active, created_at, updated_at)
+  VALUES (gen_random_uuid(), v_buyer_id, v_buyer_uid, 'buyer_admin', true, now(), now());
+
+  -- Store fixture IDs for use in tests via temp table
+  CREATE TEMP TABLE _fixture (key text PRIMARY KEY, val uuid);
+  INSERT INTO _fixture VALUES
+    ('tenant_id',  v_tenant_id),
+    ('tenant2_id', v_tenant2_id),
+    ('seller_uid', v_seller_uid),
+    ('buyer_uid',  v_buyer_uid),
+    ('buyer_id',   v_buyer_id);
+END $$;
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Test 1: seller user gets tenant_id and role; no buyer_id in claims
+-- ────────────────────────────────────────────────────────────────────────────
+SELECT is(
+  (
+    SELECT (public.custom_access_token_hook(
+      jsonb_build_object(
+        'user_id', (SELECT val FROM _fixture WHERE key = 'seller_uid'),
+        'claims',  jsonb_build_object('app_metadata', '{}'::jsonb)
+      )
+    ) -> 'claims' ->> 'tenant_id')::uuid
+  ),
+  (SELECT val FROM _fixture WHERE key = 'tenant_id'),
+  'seller user: tenant_id claim matches tenant_users row'
+);
+
+SELECT is(
+  (
+    public.custom_access_token_hook(
+      jsonb_build_object(
+        'user_id', (SELECT val FROM _fixture WHERE key = 'seller_uid'),
+        'claims',  jsonb_build_object('app_metadata', '{}'::jsonb)
+      )
+    ) -> 'claims' ->> 'role'
+  ),
+  'seller_admin',
+  'seller user: role claim is seller_admin'
+);
+
+SELECT ok(
+  NOT (
+    public.custom_access_token_hook(
+      jsonb_build_object(
+        'user_id', (SELECT val FROM _fixture WHERE key = 'seller_uid'),
+        'claims',  jsonb_build_object('app_metadata', '{}'::jsonb)
+      )
+    ) -> 'claims'
+  ) ? 'buyer_id',
+  'seller user: buyer_id claim is absent'
+);
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Test 2: buyer user gets buyer_id and tenant_id derived from buyer record
+-- ────────────────────────────────────────────────────────────────────────────
+SELECT is(
+  (
+    SELECT (public.custom_access_token_hook(
+      jsonb_build_object(
+        'user_id', (SELECT val FROM _fixture WHERE key = 'buyer_uid'),
+        'claims',  jsonb_build_object('app_metadata', '{}'::jsonb)
+      )
+    ) -> 'claims' ->> 'buyer_id')::uuid
+  ),
+  (SELECT val FROM _fixture WHERE key = 'buyer_id'),
+  'buyer user: buyer_id claim matches buyer_users row'
+);
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Test 3: current_tenant_id in app_metadata is respected
+-- ────────────────────────────────────────────────────────────────────────────
+DO $$
+DECLARE
+  v_seller_uid uuid := (SELECT val FROM _fixture WHERE key = 'seller_uid');
+  v_tenant2_id uuid := (SELECT val FROM _fixture WHERE key = 'tenant2_id');
+BEGIN
+  -- Give the seller a second tenant membership
+  INSERT INTO app.tenant_users (id, tenant_id, user_id, role, is_active, created_at, updated_at)
+  VALUES (gen_random_uuid(), v_tenant2_id, v_seller_uid, 'seller_assistant', true, now() + interval '1 second', now());
+END $$;
+
+SELECT is(
+  (
+    SELECT (public.custom_access_token_hook(
+      jsonb_build_object(
+        'user_id', (SELECT val FROM _fixture WHERE key = 'seller_uid'),
+        'claims',  jsonb_build_object(
+          'app_metadata', jsonb_build_object(
+            'current_tenant_id', (SELECT val FROM _fixture WHERE key = 'tenant2_id')
+          )
+        )
+      )
+    ) -> 'claims' ->> 'tenant_id')::uuid
+  ),
+  (SELECT val FROM _fixture WHERE key = 'tenant2_id'),
+  'current_tenant_id in app_metadata overrides default tenant selection'
+);
+
+SELECT * FROM finish();
+
+ROLLBACK;
