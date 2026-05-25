@@ -65,7 +65,11 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false });
 
     if (error) {
-      return NextResponse.json({ error: 'Failed to fetch products' }, { status: 500 });
+      console.error('[GET /api/tenant/products] DB error:', error.code, error.message, error.details);
+      return NextResponse.json(
+        { error: 'Failed to fetch products', code: error.code, detail: error.message },
+        { status: 500 },
+      );
     }
 
     // Fetch master product details for enrichment
@@ -149,7 +153,8 @@ export async function GET(req: NextRequest) {
     );
 
     return NextResponse.json({ products });
-  } catch {
+  } catch (err) {
+    console.error('[GET /api/tenant/products] Unexpected error:', err);
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 }
@@ -291,11 +296,16 @@ export async function POST(req: NextRequest) {
           { status: 409 }
         );
       }
-      return NextResponse.json({ error: 'Failed to add product' }, { status: 500 });
+      console.error('[POST /api/tenant/products] DB error:', insertError.code, insertError.message);
+      return NextResponse.json(
+        { error: 'Failed to add product', code: insertError.code, detail: insertError.message },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({ product: inserted }, { status: 201 });
-  } catch {
+  } catch (err) {
+    console.error('[POST /api/tenant/products] Unexpected error:', err);
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 }
