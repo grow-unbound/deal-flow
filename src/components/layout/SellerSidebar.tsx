@@ -10,7 +10,7 @@ const navItems = [
   { label: 'Dashboard',    href: '/dashboard',      icon: DashboardIcon,    adminOnly: false },
   { label: 'Brands',       href: '/brands',         icon: BrandsIcon,       adminOnly: false },
   { label: 'Products',     href: '/products',       icon: ProductsIcon,     adminOnly: false },
-  { label: 'Buyers',       href: '/buyers',         icon: BuyersIcon,       adminOnly: false },
+  { label: 'Customers',    href: '/customers',      icon: BuyersIcon,       adminOnly: false },
   { label: 'Cohorts',      href: '/cohorts',        icon: CohortsIcon,      adminOnly: true  },
   { label: 'Price lists',  href: '/price-lists',    icon: PriceListsIcon,   adminOnly: true  },
   { label: 'Catalogs',     href: '/catalogs',       icon: CatalogsIcon,     adminOnly: false },

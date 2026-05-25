@@ -40,6 +40,34 @@ export const BrandSchema = z.object({
   external_ref: z.string().optional(),
 });
 
+// Schema for creating a private custom brand (used in CreateBrandForm)
+export const CreateBrandSchema = z.object({
+  name: z.string().min(1, 'Brand name is required'),
+  slug: z
+    .string()
+    .min(1, 'Slug is required')
+    .regex(/^[a-z0-9-]+$/, 'Slug may only contain lowercase letters and hyphens.'),
+  description: z.string().optional(),
+  logo_url: z
+    .string()
+    .url('Must be a valid URL')
+    .optional()
+    .or(z.literal('')),
+});
+
+// Tenant product schemas
+export const TenantProductSchema = z.object({
+  master_product_id: z.string().uuid('Invalid product ID'),
+  internal_sku: z.string().min(1, 'Internal SKU is required'),
+  mrp: z.number().positive('MRP must be positive'),
+  base_selling_price: z.number().positive('Base selling price must be positive'),
+  cost_price: z.number().positive().optional(),
+  tenant_brand_id: z.string().uuid().optional(),
+  name_override: z.string().optional(),
+  default_uom: z.string().optional(),
+  pack_size: z.number().positive().optional(),
+});
+
 // Product schemas
 export const ProductSchema = z.object({
   brand_id: z.string().uuid('Invalid brand ID'),
@@ -66,6 +94,34 @@ export const BuyerSchema = z.object({
   payment_terms_days: z.coerce.number().default(0),
   external_ref: z.string().optional(),
 });
+
+export const BuyerGeographySchema = z.object({
+  city: z.string().optional(),
+  state: z.string().optional(),
+  pincode: z.string().optional(),
+  zone: z.string().optional(),
+});
+
+export const BuyerCreateSchema = z.object({
+  business_name: z.string().min(1, 'Business name is required'),
+  contact_name: z.string().optional(),
+  phone: z.string().regex(/^[0-9]{10}$/, 'Phone must be 10 digits'),
+  email: z.string().email('Invalid email').optional().or(z.literal('')),
+  gstin: z.string().optional(),
+  geography: BuyerGeographySchema.optional(),
+  credit_limit: z.coerce.number().default(0),
+  payment_terms_days: z.coerce.number().default(0),
+  tier: z.enum(['A', 'B', 'C']).optional(),
+  external_ref: z.string().optional(),
+});
+export type BuyerCreateInput = z.infer<typeof BuyerCreateSchema>;
+
+// Buyer update schema — partial, phone optional on edit, external_ref excluded from override
+export const BuyerUpdateSchema = BuyerCreateSchema.partial().extend({
+  // allow empty string for email/gstin to clear them; phone stays regex-validated when provided
+  phone: z.string().regex(/^[0-9]{10}$/, 'Phone must be 10 digits').optional(),
+});
+export type BuyerUpdateInput = z.infer<typeof BuyerUpdateSchema>;
 
 // Cohort schemas
 export const CohortSchema = z.object({
@@ -121,10 +177,48 @@ export const UpdateMemberRoleSchema = z.object({
   role: z.enum(['seller_admin', 'seller_assistant']),
 });
 
+// CSV import schemas
+export const BuyerCsvRowSchema = z.object({
+  business_name: z.string().min(1, 'Business name is required'),
+  phone: z.string().regex(/^[0-9]{10}$/, 'Phone must be 10 digits'),
+  contact_name: z.string().optional(),
+  email: z.string().email('Invalid email').optional().or(z.literal('')),
+  gstin: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  pincode: z.string().optional(),
+  zone: z.string().optional(),
+  tier: z.enum(['A', 'B', 'C']).optional().or(z.literal('')),
+  credit_limit: z.coerce.number().nonnegative().default(0),
+  payment_terms_days: z.coerce.number().nonnegative().default(0),
+  external_ref: z.string().optional(),
+});
+export type BuyerCsvRow = z.infer<typeof BuyerCsvRowSchema>;
+
+// Custom product schema (master_product_id = null)
+export const CustomProductSchema = z.object({
+  master_product_id: z.string().uuid().optional().nullable(),
+  tenant_brand_id: z.string().uuid('Brand is required'),
+  internal_sku: z.string().min(1, 'Internal SKU is required'),
+  name: z.string().min(1, 'Product name is required'),
+  mrp: z.coerce.number().positive('MRP must be positive'),
+  base_selling_price: z.coerce.number().positive('Base selling price must be positive'),
+  cost_price: z.coerce.number().positive('Cost price must be positive').optional().nullable(),
+  default_uom: z.string().optional(),
+  pack_size: z.coerce.number().positive().optional().nullable(),
+  hsn_code: z.string().optional(),
+  gst_rate: z.coerce.number().min(0).max(100).optional().nullable(),
+  description: z.string().optional(),
+  attributes: z.record(z.string()).optional().default({}),
+  image_urls: z.array(z.string().url()).optional().default([]),
+});
+export type CustomProductInput = z.infer<typeof CustomProductSchema>;
+
 // Export types
 export type InviteUserInput = z.infer<typeof InviteUserSchema>;
 export type UpdateMemberRoleInput = z.infer<typeof UpdateMemberRoleSchema>;
 export type LoginInput = z.infer<typeof LoginSchema>;
+export type BuyerCsvRowInput = z.infer<typeof BuyerCsvRowSchema>;
 export type SignUpInput = z.infer<typeof SignUpSchema>;
 export type WhatsAppOTPInput = z.infer<typeof WhatsAppOTPSchema>;
 export type TenantInput = z.infer<typeof TenantSchema>;
@@ -137,3 +231,5 @@ export type PriceListItemInput = z.infer<typeof PriceListItemSchema>;
 export type PublishedCatalogInput = z.infer<typeof PublishedCatalogSchema>;
 export type OrderInput = z.infer<typeof OrderSchema>;
 export type OrderItemInput = z.infer<typeof OrderItemSchema>;
+export type CreateBrandInput = z.infer<typeof CreateBrandSchema>;
+export type TenantProductInput = z.infer<typeof TenantProductSchema>;
