@@ -67,6 +67,34 @@ export const BuyerSchema = z.object({
   external_ref: z.string().optional(),
 });
 
+export const BuyerGeographySchema = z.object({
+  city: z.string().optional(),
+  state: z.string().optional(),
+  pincode: z.string().optional(),
+  zone: z.string().optional(),
+});
+
+export const BuyerCreateSchema = z.object({
+  business_name: z.string().min(1, 'Business name is required'),
+  contact_name: z.string().optional(),
+  phone: z.string().regex(/^[0-9]{10}$/, 'Phone must be 10 digits'),
+  email: z.string().email('Invalid email').optional().or(z.literal('')),
+  gstin: z.string().optional(),
+  geography: BuyerGeographySchema.optional(),
+  credit_limit: z.coerce.number().default(0),
+  payment_terms_days: z.coerce.number().default(0),
+  tier: z.enum(['A', 'B', 'C']).optional(),
+  external_ref: z.string().optional(),
+});
+export type BuyerCreateInput = z.infer<typeof BuyerCreateSchema>;
+
+// Buyer update schema — partial, phone optional on edit, external_ref excluded from override
+export const BuyerUpdateSchema = BuyerCreateSchema.partial().extend({
+  // allow empty string for email/gstin to clear them; phone stays regex-validated when provided
+  phone: z.string().regex(/^[0-9]{10}$/, 'Phone must be 10 digits').optional(),
+});
+export type BuyerUpdateInput = z.infer<typeof BuyerUpdateSchema>;
+
 // Cohort schemas
 export const CohortSchema = z.object({
   name: z.string().min(1, 'Cohort name is required'),
@@ -121,10 +149,29 @@ export const UpdateMemberRoleSchema = z.object({
   role: z.enum(['seller_admin', 'seller_assistant']),
 });
 
+// CSV import schemas
+export const BuyerCsvRowSchema = z.object({
+  business_name: z.string().min(1, 'Business name is required'),
+  phone: z.string().regex(/^[0-9]{10}$/, 'Phone must be 10 digits'),
+  contact_name: z.string().optional(),
+  email: z.string().email('Invalid email').optional().or(z.literal('')),
+  gstin: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  pincode: z.string().optional(),
+  zone: z.string().optional(),
+  tier: z.enum(['A', 'B', 'C']).optional().or(z.literal('')),
+  credit_limit: z.coerce.number().nonnegative().default(0),
+  payment_terms_days: z.coerce.number().nonnegative().default(0),
+  external_ref: z.string().optional(),
+});
+export type BuyerCsvRow = z.infer<typeof BuyerCsvRowSchema>;
+
 // Export types
 export type InviteUserInput = z.infer<typeof InviteUserSchema>;
 export type UpdateMemberRoleInput = z.infer<typeof UpdateMemberRoleSchema>;
 export type LoginInput = z.infer<typeof LoginSchema>;
+export type BuyerCsvRowInput = z.infer<typeof BuyerCsvRowSchema>;
 export type SignUpInput = z.infer<typeof SignUpSchema>;
 export type WhatsAppOTPInput = z.infer<typeof WhatsAppOTPSchema>;
 export type TenantInput = z.infer<typeof TenantSchema>;
