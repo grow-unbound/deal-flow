@@ -12,6 +12,7 @@ const PUBLIC_PREFIXES = [
   '/_next',
   '/favicon.ico',
   '/ingest', // PostHog analytics proxy — must be public so rewrites can forward it
+  '/api/debug', // Diagnostic endpoint — remove from PUBLIC_PREFIXES before going to production
 ];
 
 function isPublicRoute(pathname: string): boolean {
