@@ -9,7 +9,7 @@ import { FEATURE_FLAGS } from '@/constants';
 export function useFlag(flagKey: keyof typeof FEATURE_FLAGS): boolean {
   const posthog = usePostHog();
   if (!posthog) return false;
-  return posthog.isFeatureEnabled(FEATURE_FLAGS[flagKey]) === true;
+  return posthog.getFeatureFlag(FEATURE_FLAGS[flagKey]) === true;
 }
 
 /**

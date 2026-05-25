@@ -17,8 +17,8 @@ export async function getFlag(flagName: string, tenantId: string): Promise<boole
   const client = createClient();
   if (!client) return false;
   try {
-    const enabled = await client.isFeatureEnabled(flagName, tenantId);
-    return enabled === true;
+    const flags = await client.evaluateFlags(tenantId);
+    return flags.isEnabled(flagName);
   } catch {
     return false;
   } finally {
