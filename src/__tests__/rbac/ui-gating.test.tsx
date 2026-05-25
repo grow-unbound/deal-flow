@@ -78,7 +78,7 @@ describe('SellerSidebar nav gating', () => {
       expect(screen.getByText('Dashboard')).toBeInTheDocument();
       expect(screen.getByText('Brands')).toBeInTheDocument();
       expect(screen.getByText('Products')).toBeInTheDocument();
-      expect(screen.getByText('Buyers')).toBeInTheDocument();
+      expect(screen.getByText('Customers')).toBeInTheDocument();
       expect(screen.getByText('Catalogs')).toBeInTheDocument();
       expect(screen.getByText('Orders')).toBeInTheDocument();
       expect(screen.getByText('Exports')).toBeInTheDocument();
