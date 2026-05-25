@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { CustomProductInput } from '@/lib/zod';
+import { apiFetch, apiPost } from '@/lib/api-fetch';
 
 export interface MasterProduct {
   id: string;
@@ -69,7 +70,7 @@ export function useTenantProducts() {
   return useQuery({
     queryKey: ['tenant-products'],
     queryFn: async (): Promise<TenantProductsResponse> => {
-      const res = await fetch('/api/tenant/products');
+      const res = await apiFetch('/api/tenant/products');
       if (!res.ok) {
         throw new Error('Failed to fetch products');
       }
@@ -83,7 +84,7 @@ export function useSearchMasterProducts(query: string) {
     queryKey: ['master-products-search', query],
     queryFn: async (): Promise<SearchProductsResponse> => {
       const params = new URLSearchParams({ q: query });
-      const res = await fetch(`/api/products/search?${params.toString()}`);
+      const res = await apiFetch(`/api/products/search?${params.toString()}`);
       if (!res.ok) {
         throw new Error('Failed to search products');
       }
@@ -99,11 +100,7 @@ export function useAddProductToTenant() {
 
   return useMutation({
     mutationFn: async (payload: AddProductPayload): Promise<TenantProduct> => {
-      const res = await fetch('/api/tenant/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      const res = await apiPost('/api/tenant/products', payload);
 
       if (res.status === 409) {
         const body = await res.json().catch(() => ({}));
@@ -175,7 +172,7 @@ export function useProduct(id: string) {
   return useQuery({
     queryKey: ['tenant-product', id],
     queryFn: async () => {
-      const res = await fetch(`/api/tenant/products/${id}`);
+      const res = await apiFetch(`/api/tenant/products/${id}`);
       if (!res.ok) throw new Error('Product not found');
       return res.json() as Promise<{ product: TenantProduct }>;
     },
@@ -187,7 +184,7 @@ export function useUpdateProduct() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<TenantProduct> }) => {
-      const res = await fetch(`/api/tenant/products/${id}`, {
+      const res = await apiFetch(`/api/tenant/products/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -209,7 +206,7 @@ export function useDeactivateProduct() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/tenant/products/${id}`, {
+      const res = await apiFetch(`/api/tenant/products/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_active: false }),
@@ -228,7 +225,7 @@ export function useReactivateProduct() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/tenant/products/${id}`, {
+      const res = await apiFetch(`/api/tenant/products/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_active: true }),
@@ -254,11 +251,7 @@ export function useCreateCustomProduct() {
 
   return useMutation({
     mutationFn: async (data: CustomProductInput): Promise<{ product: TenantProduct }> => {
-      const res = await fetch('/api/tenant/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
+      const res = await apiPost('/api/tenant/products', data);
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Request failed' }));

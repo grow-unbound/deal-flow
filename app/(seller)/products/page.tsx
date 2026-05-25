@@ -16,6 +16,7 @@ import {
 import { Package, Plus, Upload } from 'lucide-react';
 import { useTenantProducts } from '@/hooks/useProducts';
 import type { TenantProduct } from '@/hooks/useProducts';
+import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 
 function ProductRow({ product }: { product: TenantProduct }) {
   return (
@@ -68,7 +69,7 @@ function ProductRow({ product }: { product: TenantProduct }) {
 }
 
 function ProductsTable() {
-  const { data, isLoading, isError } = useTenantProducts();
+  const { data, isLoading, isError, refetch } = useTenantProducts();
   const products = data?.products ?? [];
 
   if (isLoading) {
@@ -103,24 +104,21 @@ function ProductsTable() {
 
   if (isError) {
     return (
-      <div className="p-6">
-        <p className="text-red-600 text-sm">Failed to load products. Please refresh.</p>
-      </div>
+      <ErrorState
+        heading="Couldn't load products"
+        description="There was a problem fetching your product list. Please try again."
+        onRetry={() => refetch()}
+      />
     );
   }
 
   if (products.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[40vh] px-6 text-center">
-        <span className="w-16 h-16 rounded-full bg-cream-200 flex items-center justify-center mb-4">
-          <Package size={28} className="text-cream-500" />
-        </span>
-        <p className="font-display text-xl text-cream-900 mb-2">No products yet</p>
-        <p className="text-cream-600 text-sm max-w-sm">
-          Click &ldquo;Add Product&rdquo; to search the master catalog and add products to your
-          tenant inventory.
-        </p>
-      </div>
+      <EmptyState
+        icon={<Package size={28} strokeWidth={1.5} />}
+        heading="No products yet"
+        description="Search the master catalog and add products to your tenant inventory."
+      />
     );
   }
 

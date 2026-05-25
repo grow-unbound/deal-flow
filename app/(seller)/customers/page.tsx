@@ -7,6 +7,7 @@ import { supabaseBrowser } from '@/lib/supabase-browser';
 import { SellerTopbar } from '@/components/layout/SellerTopbar';
 import { FeatureGate } from '@/components/FeatureGate';
 import { Button } from '@/components/ui/button';
+import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 
 interface Buyer {
   id: string;
@@ -40,7 +41,7 @@ async function fetchCustomers(): Promise<Buyer[]> {
 }
 
 export default function CustomersPage() {
-  const { data: buyers, isLoading, error } = useQuery({
+  const { data: buyers, isLoading, error, refetch } = useQuery({
     queryKey: ['customers'],
     queryFn: fetchCustomers,
   });
@@ -73,23 +74,27 @@ export default function CustomersPage() {
             )}
 
             {error && (
-              <p className="text-danger-500 text-center py-12">
-                Failed to load customers. Please try again.
-              </p>
+              <ErrorState
+                heading="Couldn't load customers"
+                description="There was a problem fetching your customer list. Please try again."
+                onRetry={() => refetch()}
+              />
             )}
 
             {!isLoading && !error && buyers?.length === 0 && (
-              <div className="text-center py-16">
-                <p className="text-cream-600 mb-4">
-                  No customers yet. Add your first customer to get started.
-                </p>
-                <Link href="/customers/new">
-                  <Button className="bg-teal-500 hover:bg-teal-600 text-cream-50 flex items-center gap-2 mx-auto">
-                    <UserPlus size={16} />
-                    Add Customer
-                  </Button>
-                </Link>
-              </div>
+              <EmptyState
+                icon={<UserPlus size={28} strokeWidth={1.5} />}
+                heading="No customers yet"
+                description="Add your first customer to start managing buyers in your workspace."
+                action={
+                  <Link href="/customers/new">
+                    <Button className="bg-teal-500 hover:bg-teal-600 text-cream-50 flex items-center gap-2">
+                      <UserPlus size={16} />
+                      Add Customer
+                    </Button>
+                  </Link>
+                }
+              />
             )}
 
             {!isLoading && !error && buyers && buyers.length > 0 && (
