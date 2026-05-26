@@ -5,14 +5,11 @@ import { CreateProductForm } from '@/components/seller/products/CreateProductFor
 
 export default function NewProductPage() {
   return (
-    <>
+    <div className="px-8 py-6">
       <SellerTopbar title="New Product" />
-      <div
-        className="px-8 max-w-4xl mx-auto"
-        style={{ paddingTop: 'calc(var(--topbar-h) + 24px)', paddingBottom: '48px' }}
-      >
+      <div className="mx-auto max-w-4xl pb-12">
         <CreateProductForm />
       </div>
-    </>
+    </div>
   );
 }

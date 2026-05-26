@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
       .select('id')
       .eq('id', productId)
       .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null)
+      .is('is_active', true)
       .maybeSingle();
 
     if (productError || !product) {
@@ -140,7 +140,7 @@ export async function POST(req: NextRequest) {
       .select('id')
       .eq('id', tenant_product_id)
       .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null)
+      .is('is_active', true)
       .maybeSingle();
 
     if (productError || !product) {

@@ -299,13 +299,13 @@ export default function BuyerDetailPage({ params }: { params: Promise<{ id: stri
 
   return (
     <>
-      <SellerTopbar
-        title={buyer ? buyer.business_name : 'Customer Detail'}
-        action={topbarAction}
-      />
-      <div style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }}>
+      <div className="px-8 py-6">
+        <SellerTopbar
+          title={buyer ? buyer.business_name : 'Customer Detail'}
+          action={topbarAction}
+        />
         <FeatureGate flag="CUSTOMER_MASTER">
-          <div className="px-8 py-6 max-w-5xl">
+          <div className="max-w-5xl">
             {buyerLoading && (
               <p className="text-cream-600 text-center py-12">Loading…</p>
             )}

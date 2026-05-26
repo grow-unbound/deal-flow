@@ -8,17 +8,13 @@ import { ROLES } from '@/constants';
 
 export default function NewCohortPage() {
   return (
-    <>
+    <div className="px-8 py-6">
       <SellerTopbar title="Create Cohort" />
-      <div style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }}>
-        <FeatureGate flag="COHORTS">
-          <RoleGuard roles={[ROLES.SELLER_ADMIN]}>
-            <div className="px-8 py-6">
-              <CohortForm mode="create" />
-            </div>
-          </RoleGuard>
-        </FeatureGate>
-      </div>
-    </>
+      <FeatureGate flag="COHORTS">
+        <RoleGuard roles={[ROLES.SELLER_ADMIN]}>
+          <CohortForm mode="create" />
+        </RoleGuard>
+      </FeatureGate>
+    </div>
   );
 }

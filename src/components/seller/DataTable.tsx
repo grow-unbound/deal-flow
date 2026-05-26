@@ -21,12 +21,15 @@ export interface DataTableProps<T extends { id: string }> {
   columns: Column<T>[];
   loading?: boolean;
   emptyMessage?: string;
+  loadingMessage?: string;
   selectable?: boolean;
   selectedIds?: string[];
   onSelectionChange?: (ids: string[]) => void;
   sortKey?: string;
   sortDir?: 'asc' | 'desc';
   onSort?: (key: string) => void;
+  onRowClick?: (row: T) => void;
+  rowClassName?: (row: T) => string | undefined;
   currentPage?: number;
   totalPages?: number;
   onPageChange?: (page: number) => void;
@@ -38,12 +41,15 @@ function DataTable<T extends { id: string }>({
   columns,
   loading,
   emptyMessage = 'No results found.',
+  loadingMessage = 'Loading...',
   selectable,
   selectedIds = [],
   onSelectionChange,
   sortKey,
   sortDir,
   onSort,
+  onRowClick,
+  rowClassName,
   currentPage,
   totalPages,
   onPageChange,
@@ -70,10 +76,10 @@ function DataTable<T extends { id: string }>({
 
   return (
     <div className={cn('w-full', className)}>
-      <div className="overflow-x-auto rounded-lg border border-cream-200 shadow-xs">
-        <table className="w-full text-body-sm text-cream-900 border-collapse">
+      <div className="overflow-x-auto rounded-[14px] border border-cream-300 bg-white shadow-xs">
+        <table className="w-full border-collapse bg-white text-[13px] text-cream-900">
           <thead>
-            <tr className="bg-cream-100 border-b border-cream-200">
+            <tr className="border-b border-cream-400 bg-cream-50">
               {selectable && (
                 <th className="w-10 pl-4 pr-2 py-3">
                   <Checkbox
@@ -89,7 +95,7 @@ function DataTable<T extends { id: string }>({
                   key={String(col.key)}
                   style={{ width: col.width }}
                   className={cn(
-                    'px-4 py-3 text-eyebrow text-cream-600 font-medium text-left whitespace-nowrap',
+                    'px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-cream-700 whitespace-nowrap',
                     col.align === 'center' && 'text-center',
                     col.align === 'right' && 'text-right',
                     col.sortable && 'cursor-pointer select-none hover:text-cream-900 transition-colors'
@@ -113,7 +119,10 @@ function DataTable<T extends { id: string }>({
                   colSpan={columns.length + (selectable ? 1 : 0)}
                   className="py-16 text-center"
                 >
-                  <Spinner className="mx-auto" />
+                  <div className="flex flex-col items-center gap-3 text-sm text-cream-700">
+                    <Spinner className="mx-auto" />
+                    <span>{loadingMessage}</span>
+                  </div>
                 </td>
               </tr>
             ) : data.length === 0 ? (
@@ -129,10 +138,13 @@ function DataTable<T extends { id: string }>({
               data.map((row, i) => (
                 <tr
                   key={row.id}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
                   className={cn(
-                    'border-b border-cream-100 hover:bg-cream-50 transition-colors duration-fast',
+                    'border-b border-cream-300 transition-colors duration-fast',
+                    onRowClick && 'cursor-pointer hover:bg-cream-50',
                     selectedIds.includes(row.id) && 'bg-teal-50/50',
-                    i === data.length - 1 && 'border-b-0'
+                    i === data.length - 1 && 'border-b-0',
+                    rowClassName?.(row)
                   )}
                 >
                   {selectable && (
@@ -148,7 +160,7 @@ function DataTable<T extends { id: string }>({
                     <td
                       key={String(col.key)}
                       className={cn(
-                        'px-4 py-3',
+                        'px-4 py-[13px] align-middle',
                         col.align === 'center' && 'text-center',
                         col.align === 'right' && 'text-right'
                       )}

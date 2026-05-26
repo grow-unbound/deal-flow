@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     .from('buyers')
     .select('*')
     .eq('tenant_id', claims.tenant_id)
-    .is('deleted_at', null)
+    .is('is_active', true)
     .order('business_name', { ascending: true });
 
   if (error) {
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     .select('id')
     .eq('tenant_id', claims.tenant_id)
     .eq('phone', data.phone)
-    .is('deleted_at', null)
+    .is('is_active', true)
     .maybeSingle();
 
   if (phoneMatch) {
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
       .select('id')
       .eq('tenant_id', claims.tenant_id)
       .eq('external_ref', data.external_ref.trim())
-      .is('deleted_at', null)
+      .is('is_active', true)
       .maybeSingle();
 
     if (refMatch) {

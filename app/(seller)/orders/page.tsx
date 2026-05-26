@@ -5,15 +5,11 @@ import { FeatureGate } from '@/components/FeatureGate';
 
 export default function OrdersPage() {
   return (
-    <>
-      <SellerTopbar title="Orders" />
-      <div style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }}>
-        <FeatureGate flag="ORDER_MANAGEMENT">
-          <div className="px-8 py-6">
-            <p className="text-cream-600">Order management module coming soon.</p>
-          </div>
-        </FeatureGate>
+    <div className="px-8 py-6">
+      <SellerTopbar title="Orders" subtitle="Track order intake, fulfillment, and delivery status across every buyer account." />
+      <FeatureGate flag="ORDER_MANAGEMENT">
+        <p className="text-cream-600">Order management module coming soon.</p>
+      </FeatureGate>
       </div>
-    </>
   );
 }

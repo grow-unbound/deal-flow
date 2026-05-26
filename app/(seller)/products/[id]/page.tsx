@@ -15,7 +15,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const product = data?.product;
 
   return (
-    <>
+    <div className="px-8 py-6">
       <SellerTopbar
         title={product?.name_override ?? product?.internal_sku ?? 'Product'}
         action={
@@ -27,7 +27,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
           </Link>
         }
       />
-      <div className="px-8 max-w-5xl" style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }}>
+      <div className="max-w-5xl">
         {isLoading && (
           <div className="h-40 bg-cream-200 animate-pulse rounded-lg" />
         )}
@@ -119,6 +119,6 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
           </Tabs>
         )}
       </div>
-    </>
+    </div>
   );
 }

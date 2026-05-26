@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
         updated_at
       `)
       .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null)
+      .is('is_active', true)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -225,7 +225,7 @@ export async function POST(req: NextRequest) {
       .select('id')
       .eq('tenant_id', tenantId)
       .eq('internal_sku', internal_sku)
-      .is('deleted_at', null)
+      .is('is_active', true)
       .maybeSingle();
 
     if (existing) {
@@ -255,7 +255,7 @@ export async function POST(req: NextRequest) {
           .select('id')
           .eq('tenant_id', tenantId)
           .eq('master_brand_id', catalogProduct.brand_id)
-          .is('deleted_at', null)
+          .is('is_active', true)
           .maybeSingle();
 
         resolvedTenantBrandId = tenantBrand?.id ?? null;

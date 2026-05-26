@@ -107,14 +107,14 @@ export default function EditCohortPage({ params }: { params: Promise<{ id: strin
 
   return (
     <>
-      <SellerTopbar
-        title={isLoading ? 'Edit Cohort' : `Edit: ${cohort?.name ?? ''}`}
-        action={kebabMenu}
-      />
-      <div style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }}>
+      <div className="px-8 py-6">
+        <SellerTopbar
+          title={isLoading ? 'Edit Cohort' : `Edit: ${cohort?.name ?? ''}`}
+          action={kebabMenu}
+        />
         <FeatureGate flag="COHORTS">
           <RoleGuard roles={[ROLES.SELLER_ADMIN]}>
-            <div className="px-8 py-6">
+            <div>
               {isLoading && (
                 <p className="text-cream-600 text-center py-12">Loading cohort…</p>
               )}

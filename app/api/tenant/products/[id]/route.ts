@@ -82,7 +82,7 @@ export async function GET(
       `)
       .eq('id', id)
       .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null)
+      .is('is_active', true)
       .maybeSingle();
 
     if (error) {
@@ -160,7 +160,7 @@ export async function PATCH(
       .select('*')
       .eq('id', id)
       .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null)
+      .is('is_active', true)
       .maybeSingle();
 
     if (fetchError) {

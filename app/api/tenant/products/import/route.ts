@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
       .from('tenant_products')
       .select('internal_sku')
       .eq('tenant_id', tenantId)
-      .is('deleted_at', null);
+      .is('is_active', true);
 
     const existingSkuSet = new Set<string>(
       (existingSkus ?? []).map((r: { internal_sku: string }) => r.internal_sku)

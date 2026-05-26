@@ -4,20 +4,28 @@ import { ReactNode } from 'react';
 
 interface SellerTopbarProps {
   title: string;
+  subtitle?: string;
+  eyebrow?: string;
   action?: ReactNode;
 }
 
-export function SellerTopbar({ title, action }: SellerTopbarProps) {
+export function SellerTopbar({ title, subtitle, eyebrow, action }: SellerTopbarProps) {
   return (
-    <header
-      className="fixed top-0 right-0 flex items-center justify-between bg-cream-50 border-b border-cream-300 px-8 z-10"
-      style={{
-        left: 'var(--sidebar-w)',
-        height: 'var(--topbar-h)',
-      }}
-    >
-      <h1 className="text-h3 font-display font-medium text-cream-900">{title}</h1>
-      {action && <div className="flex items-center gap-3">{action}</div>}
-    </header>
+    <div className="mb-7 flex items-end justify-between gap-6 px-8 pt-6">
+      <div>
+        {eyebrow ? (
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">
+            {eyebrow}
+          </p>
+        ) : null}
+        <h1 className="font-display text-[2rem] font-medium leading-none tracking-[-0.015em] text-cream-900">
+          {title}
+        </h1>
+        {subtitle ? (
+          <p className="mt-2 max-w-[60ch] text-sm leading-6 text-cream-700">{subtitle}</p>
+        ) : null}
+      </div>
+      {action ? <div className="flex items-center gap-2">{action}</div> : null}
+    </div>
   );
 }
