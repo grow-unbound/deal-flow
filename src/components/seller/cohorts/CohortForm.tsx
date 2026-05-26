@@ -19,6 +19,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { CohortRuleBuilder } from './CohortRuleBuilder';
+import { CohortMemberSelector } from './CohortMemberSelector';
 
 interface CohortFormProps {
   mode?: 'create' | 'edit';
@@ -35,6 +36,7 @@ export function CohortForm({ mode = 'create', cohortId, defaultValues }: CohortF
     defaultValues?.is_static ? 'static' : 'dynamic',
   );
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [selectedBuyers, setSelectedBuyers] = useState<string[]>([]);
 
   const form = useForm<CohortCreateInput>({
     resolver: zodResolver(CohortCreateSchema),
@@ -72,6 +74,20 @@ export function CohortForm({ mode = 'create', cohortId, defaultValues }: CohortF
       if (!res.ok) {
         setSubmitError(body.error ?? 'Something went wrong');
         return;
+      }
+
+      // For new static cohorts with selected buyers, add members after creation
+      if (mode === 'create' && tab === 'static' && selectedBuyers.length > 0 && body.cohort?.id) {
+        const membersRes = await fetch(`/api/cohorts/${body.cohort.id}/members`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ buyer_ids: selectedBuyers }),
+        });
+        if (!membersRes.ok) {
+          const membersBody = await membersRes.json();
+          setSubmitError(membersBody.error ?? 'Cohort created but failed to add members');
+          return;
+        }
       }
 
       router.push('/cohorts');
@@ -149,9 +165,10 @@ export function CohortForm({ mode = 'create', cohortId, defaultValues }: CohortF
               <CohortRuleBuilder filters={filters} onChange={setFilters} />
             </TabsContent>
             <TabsContent value="static" className="pt-4">
-              <p className="text-caption text-cream-600">
-                Manually curate a fixed list of buyers. Available after saving the cohort.
+              <p className="text-caption text-cream-600 mb-4">
+                Select buyers to include in this cohort. You can add or remove members after saving.
               </p>
+              <CohortMemberSelector selected={selectedBuyers} onChange={setSelectedBuyers} />
             </TabsContent>
           </Tabs>
         </div>
