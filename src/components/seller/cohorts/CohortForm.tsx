@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/form';
 import { CohortRuleBuilder } from './CohortRuleBuilder';
 import { CohortMemberSelector } from './CohortMemberSelector';
+import { CohortPreviewPanel } from './CohortPreviewPanel';
 
 interface CohortFormProps {
   mode?: 'create' | 'edit';
@@ -163,6 +164,7 @@ export function CohortForm({ mode = 'create', cohortId, defaultValues }: CohortF
                 Buyers are matched automatically when rules are evaluated.
               </p>
               <CohortRuleBuilder filters={filters} onChange={setFilters} />
+              <CohortPreviewPanel filters={filters} />
             </TabsContent>
             <TabsContent value="static" className="pt-4">
               <p className="text-caption text-cream-600 mb-4">
