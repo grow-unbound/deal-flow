@@ -5,7 +5,7 @@ export interface TeamMember {
   full_name: string | null;
   phone: string | null;
   role: 'seller_admin' | 'seller_assistant';
-  status: 'active' | 'pending';
+  status: 'active' | 'pending' | 'inactive';
   invited_at: string | null;
   joined_at: string | null;
 }

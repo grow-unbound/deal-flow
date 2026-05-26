@@ -140,8 +140,8 @@ function DataTable<T extends { id: string }>({
                   key={row.id}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   className={cn(
-                    'border-b border-cream-300 transition-colors duration-fast',
-                    onRowClick && 'cursor-pointer hover:bg-cream-50',
+                    'border-b border-cream-300 transition-colors duration-fast hover:bg-cream-50',
+                    onRowClick && 'cursor-pointer',
                     selectedIds.includes(row.id) && 'bg-teal-50/50',
                     i === data.length - 1 && 'border-b-0',
                     rowClassName?.(row)

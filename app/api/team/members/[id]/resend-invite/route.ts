@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
+import { getFlag } from '@/lib/flags';
 
 export async function PUT(
   request: NextRequest,
@@ -15,6 +16,10 @@ export async function PUT(
   if (claims.role !== 'seller_admin') {
     return NextResponse.json({ error: 'Forbidden: seller_admin only' }, { status: 403 });
   }
+  const flagEnabled = await getFlag('df_tenant_onboarding', claims.tenant_id);
+  if (!flagEnabled) {
+    return NextResponse.json({ error: 'Feature not enabled' }, { status: 403 });
+  }
   if (!supabaseAdmin) {
     return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
   }
@@ -24,7 +29,7 @@ export async function PUT(
   const { data: member, error: fetchError } = await db
     .schema('app')
     .from('tenant_users')
-    .select('id, user_id, is_active')
+    .select('id, user_id, role, is_active')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .single();

@@ -61,7 +61,7 @@ const AlertDialogAction = React.forwardRef<HTMLButtonElement, AlertDialogActionP
     <button
       ref={ref}
       className={cn(
-        'inline-flex items-center justify-center rounded-md px-4 py-2 text-body-sm font-medium',
+        'inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-body-sm font-medium',
         'focus:outline-none focus-visible:ring-2 focus-visible:ring-ember-400 focus-visible:ring-offset-2',
         'disabled:pointer-events-none disabled:opacity-50',
         'bg-teal-500 text-cream-50 hover:bg-teal-600',
