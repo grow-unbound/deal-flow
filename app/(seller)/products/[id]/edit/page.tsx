@@ -15,7 +15,7 @@ function EditProductContent({ id }: { id: string }) {
 
   if (isLoading) {
     return (
-      <div className="px-8 py-6 max-w-3xl mx-auto space-y-4" style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }}>
+      <div className="mx-auto max-w-3xl space-y-4 px-8 py-6">
         {[1, 2, 3, 4].map((i) => (
           <div key={i} className="h-12 bg-cream-200 rounded animate-pulse" />
         ))}
@@ -25,10 +25,7 @@ function EditProductContent({ id }: { id: string }) {
 
   if (isError || !data?.product) {
     return (
-      <div
-        className="px-8 flex flex-col items-center justify-center min-h-[40vh]"
-        style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }}
-      >
+      <div className="flex min-h-[40vh] flex-col items-center justify-center px-8">
         <span className="w-14 h-14 rounded-full bg-cream-200 flex items-center justify-center mb-4">
           <Package size={24} className="text-cream-500" />
         </span>
@@ -41,10 +38,7 @@ function EditProductContent({ id }: { id: string }) {
   }
 
   return (
-    <div
-      className="px-8 py-6 max-w-3xl mx-auto"
-      style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }}
-    >
+    <div className="mx-auto max-w-3xl px-8 py-6">
       <EditProductForm product={data.product as Parameters<typeof EditProductForm>[0]['product']} />
     </div>
   );

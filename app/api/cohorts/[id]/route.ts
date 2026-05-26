@@ -20,7 +20,7 @@ export async function GET(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabaseAdmin as any;
   const { data: cohort, error } = await db.schema('app').from('cohorts')
-    .select('*').eq('id', id).eq('tenant_id', claims.tenant_id).is('deleted_at', null).maybeSingle();
+    .select('*').eq('id', id).eq('tenant_id', claims.tenant_id).is('is_active', true).maybeSingle();
 
   if (error) return NextResponse.json({ error: 'Failed to fetch cohort' }, { status: 500 });
   if (!cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 404 });
@@ -52,14 +52,14 @@ export async function PATCH(
 
   // Verify ownership
   const { data: existing } = await db.schema('app').from('cohorts')
-    .select('id').eq('id', id).eq('tenant_id', claims.tenant_id).is('deleted_at', null).maybeSingle();
+    .select('id').eq('id', id).eq('tenant_id', claims.tenant_id).is('is_active', true).maybeSingle();
   if (!existing) return NextResponse.json({ error: 'Cohort not found' }, { status: 404 });
 
   // If name is changing, check uniqueness
   if (parsed.data.name) {
     const { data: nameMatch } = await db.schema('app').from('cohorts')
       .select('id').eq('tenant_id', claims.tenant_id).eq('name', parsed.data.name)
-      .is('deleted_at', null).neq('id', id).maybeSingle();
+      .is('is_active', true).neq('id', id).maybeSingle();
     if (nameMatch) return NextResponse.json({ error: 'A cohort with this name already exists.' }, { status: 409 });
   }
 
@@ -95,7 +95,7 @@ export async function DELETE(
 
   // Verify ownership
   const { data: cohort } = await db.schema('app').from('cohorts')
-    .select('id').eq('id', id).eq('tenant_id', claims.tenant_id).is('deleted_at', null).maybeSingle();
+    .select('id').eq('id', id).eq('tenant_id', claims.tenant_id).is('is_active', true).maybeSingle();
   if (!cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 404 });
 
   // Check if referenced by any published catalog (scope_value JSONB contains cohort_id)
@@ -115,7 +115,7 @@ export async function DELETE(
 
   // Soft delete
   const { error: deleteError } = await db.schema('app').from('cohorts')
-    .update({ deleted_at: new Date().toISOString() })
+    .update({ updated_at: new Date().toISOString() })
     .eq('id', id);
 
   if (deleteError) {

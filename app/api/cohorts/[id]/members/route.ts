@@ -34,7 +34,7 @@ export async function GET(
     .select('id')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
-    .is('deleted_at', null)
+    .is('is_active', true)
     .maybeSingle();
   if (!cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 404 });
 
@@ -92,7 +92,7 @@ export async function POST(
     .select('id, is_static')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
-    .is('deleted_at', null)
+    .is('is_active', true)
     .maybeSingle();
   if (!cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 404 });
   if (!cohort.is_static)
@@ -157,7 +157,7 @@ export async function DELETE(
     .select('id')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
-    .is('deleted_at', null)
+    .is('is_active', true)
     .maybeSingle();
   if (!cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 404 });
 

@@ -24,22 +24,22 @@ describe('Cohort edit and delete', () => {
     expect(result.success).toBe(true);
   });
 
-  it('soft delete: deleted_at is set to a date string on delete', () => {
-    // Simulate what the API does: set deleted_at = new Date().toISOString()
-    const deletedAt = new Date().toISOString();
-    expect(deletedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-    const parsed = new Date(deletedAt);
+  it('soft delete: updated_at is set to a date string on delete', () => {
+    // Simulate what the API does: set updated_at = new Date().toISOString()
+    const updatedAt = new Date().toISOString();
+    expect(updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    const parsed = new Date(updatedAt);
     expect(parsed.getTime()).toBeGreaterThan(0);
   });
 
-  it('soft delete: row still exists (deleted_at is set, not hard deleted)', () => {
+  it('soft delete: row still exists (is_active is set to false, not hard deleted)', () => {
     // Simulate a soft-deleted row
     const row = {
       id: 'some-uuid',
       name: 'Old Cohort',
-      deleted_at: new Date().toISOString(),
+      is_active: false,
     };
-    expect(row.deleted_at).not.toBeNull();
+    expect(row.is_active).toBe(false);
     // The row still "exists" — it's not removed from the table
     expect(row.id).toBe('some-uuid');
   });

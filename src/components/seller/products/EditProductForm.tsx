@@ -487,7 +487,7 @@ export function EditProductForm({ product }: EditProductFormProps) {
 
         {product.is_active ? (
           <AlertDialog>
-            <AlertDialogTrigger asChild>
+            <AlertDialogTrigger>
               <Button
                 type="button"
                 variant="outline"

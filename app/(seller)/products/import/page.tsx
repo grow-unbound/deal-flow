@@ -6,16 +6,13 @@ import { FeatureGate } from '@/components/FeatureGate';
 
 export default function ProductImportPage() {
   return (
-    <>
+    <div className="px-8 py-6">
       <SellerTopbar title="Import Products" />
-      <div
-        className="px-8 max-w-5xl mx-auto"
-        style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }}
-      >
+      <div className="mx-auto max-w-5xl">
         <FeatureGate flag="BRAND_PRODUCT_MASTER">
           <CsvImportStepper />
         </FeatureGate>
       </div>
-    </>
+    </div>
   );
 }

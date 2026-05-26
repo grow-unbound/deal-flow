@@ -6,8 +6,11 @@ import { ROLES } from '@/constants';
 export default function SettingsPage() {
   return (
     <RoleGuard roles={[ROLES.SELLER_ADMIN]}>
-      <SellerTopbar title="Settings" />
-      <div className="px-8 py-6" style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }}>
+      <div className="px-8 py-6">
+        <SellerTopbar
+          title="Settings"
+          subtitle="Configure tenant-level preferences and workspace administration settings."
+        />
         <div className="bg-white border border-cream-300 rounded-lg p-8 shadow-xs text-center">
           <p className="eyebrow mb-3">Settings</p>
           <h2 className="text-h2 font-display text-cream-900 mb-2">Coming soon</h2>

@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     .from('cohorts')
     .select('*')
     .eq('tenant_id', claims.tenant_id)
-    .is('deleted_at', null)
+    .is('is_active', true)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
     .select('id')
     .eq('tenant_id', claims.tenant_id)
     .eq('name', data.name)
-    .is('deleted_at', null)
+    .is('is_active', true)
     .maybeSingle();
 
   if (nameMatch) {

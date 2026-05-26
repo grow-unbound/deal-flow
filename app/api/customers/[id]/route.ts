@@ -37,7 +37,7 @@ export async function GET(
     .select('*')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
-    .is('deleted_at', null)
+    .is('is_active', true)
     .maybeSingle();
 
   if (error) {
@@ -102,7 +102,7 @@ export async function PUT(
     .select('*')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
-    .is('deleted_at', null)
+    .is('is_active', true)
     .maybeSingle();
 
   if (fetchError) {
@@ -138,7 +138,7 @@ export async function PUT(
       .select('id')
       .eq('tenant_id', claims.tenant_id)
       .eq('phone', updateData.phone)
-      .is('deleted_at', null)
+      .is('is_active', true)
       .neq('id', id)
       .maybeSingle();
 
@@ -260,7 +260,7 @@ export async function PATCH(
     .select('id, business_name, is_active')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
-    .is('deleted_at', null)
+    .is('is_active', true)
     .maybeSingle();
 
   if (fetchError) {

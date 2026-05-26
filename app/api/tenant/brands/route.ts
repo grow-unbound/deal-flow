@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
         updated_at
       `)
       .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null)
+      .is('is_active', true)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
       .select('id')
       .eq('tenant_id', claims.tenant_id)
       .eq('master_brand_id', master_brand_id)
-      .is('deleted_at', null)
+      .is('is_active', true)
       .maybeSingle();
 
     if (existing) {

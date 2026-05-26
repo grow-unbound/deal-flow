@@ -26,15 +26,13 @@ export default function TeamPage() {
 
   return (
     <>
-      <SellerTopbar title="Users & Roles" action={addUserAction} />
-      <div
-        className="px-8 py-6"
-        style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }}
-      >
+      <div className="px-8 py-6">
+        <SellerTopbar
+          title="Users & Roles"
+          subtitle="Manage seller access for this tenant and keep role assignments tidy."
+          action={addUserAction}
+        />
         <div className="max-w-5xl">
-          <p className="text-body text-cream-600 mb-6">
-            Manage who has access to your DealFlow workspace.
-          </p>
           <TeamMembersTable
             tenantId={currentTenantId ?? ''}
             isAdmin={isAdmin}

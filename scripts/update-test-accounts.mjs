@@ -9,8 +9,8 @@ import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
-// ── Load .env.local ────────────────────────────────────────────────────────────
-const envPath = resolve(process.cwd(), '.env.local');
+// ── Load .env.local from project root ────────────────────────────────────────────────────────────
+const envPath = process.env.NODE_ENV === 'development' ? resolve(process.cwd(), '.env.local') : resolve(process.cwd(), '../.env.local');
 const env = Object.fromEntries(
   readFileSync(envPath, 'utf8')
     .split('\n')

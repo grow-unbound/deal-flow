@@ -1,6 +1,7 @@
 import React from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 
 interface EmptyStateProps {
   icon: React.ReactNode;
@@ -11,13 +12,15 @@ interface EmptyStateProps {
 
 export function EmptyState({ icon, heading, description, action }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-[40vh] px-6 text-center">
-      <span className="w-16 h-16 rounded-full bg-cream-200 flex items-center justify-center mb-4 text-cream-500">
+    <div className="flex min-h-[22rem] items-center rounded-[14px] border border-dashed border-cream-400 bg-cream-50 px-8 py-10">
+      <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
+      <span className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-cream-200 text-cream-500">
         {icon}
       </span>
-      <p className="font-display text-xl text-cream-900 mb-2">{heading}</p>
-      <p className="text-cream-600 text-sm max-w-sm">{description}</p>
+      <p className="mb-2 font-display text-[22px] font-medium tracking-[-0.01em] text-cream-900">{heading}</p>
+      <p className="max-w-[40ch] text-sm leading-6 text-cream-700">{description}</p>
       {action && <div className="mt-6">{action}</div>}
+      </div>
     </div>
   );
 }
@@ -34,12 +37,13 @@ export function ErrorState({
   onRetry,
 }: ErrorStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-[40vh] px-6 text-center">
-      <span className="w-16 h-16 rounded-full bg-danger-50 flex items-center justify-center mb-4 text-danger-500">
+    <div className="flex min-h-[22rem] items-center rounded-[14px] border border-dashed border-cream-400 bg-cream-50 px-8 py-10">
+      <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
+      <span className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-ember-50 text-danger-500">
         <AlertTriangle size={28} strokeWidth={1.5} />
       </span>
-      <p className="font-display text-xl text-cream-900 mb-2">{heading}</p>
-      <p className="text-cream-600 text-sm max-w-sm">{description}</p>
+      <p className="mb-2 font-display text-[22px] font-medium tracking-[-0.01em] text-cream-900">{heading}</p>
+      <p className="max-w-[40ch] text-sm leading-6 text-cream-700">{description}</p>
       {onRetry && (
         <Button
           variant="outline"
@@ -51,6 +55,24 @@ export function ErrorState({
           Try again
         </Button>
       )}
+      </div>
+    </div>
+  );
+}
+
+interface LoadingStateProps {
+  label?: string;
+}
+
+export function LoadingState({ label = 'Loading...' }: LoadingStateProps) {
+  return (
+    <div className="flex min-h-[22rem] items-center rounded-[14px] border border-dashed border-cream-400 bg-cream-50 px-8 py-10">
+      <div className="mx-auto flex flex-col items-center gap-4 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-cream-200 text-cream-700">
+          <Spinner />
+        </div>
+        <p className="text-sm text-cream-700">{label}</p>
+      </div>
     </div>
   );
 }
