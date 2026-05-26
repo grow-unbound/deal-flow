@@ -3,6 +3,10 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { InviteUserSchema } from '@/lib/zod';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import {
+  findDuplicateMember,
+  getTenantMemberDirectory,
+} from '@/lib/team-members';
 
 export async function POST(request: NextRequest) {
   const claims = await getVerifiedClaims(request);
@@ -39,38 +43,38 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { email, role } = validation.data;
+  const { email, full_name, phone, role } = validation.data;
+  const directory = await getTenantMemberDirectory(claims.tenant_id);
+  const conflict = findDuplicateMember(directory, { email, phone });
 
-  // Check if this email already belongs to an active member of this tenant
-  const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
-  const existingAuthUser = existingUsers?.users.find((u) => u.email === email);
-
-  if (existingAuthUser) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = supabaseAdmin as any;
-    const { data: existing } = await db
-      .schema('app')
-      .from('tenant_users')
-      .select('id, is_active')
-      .eq('tenant_id', claims.tenant_id)
-      .eq('user_id', existingAuthUser.id)
-      .maybeSingle();
-
-    if (existing?.is_active) {
-      return NextResponse.json(
-        { error: 'This user is already a member of your workspace.' },
-        { status: 409 },
-      );
+  if (conflict) {
+    const fieldErrors: Record<string, string[]> = {};
+    if (conflict.email) {
+      fieldErrors.email = ['This email is already used in this tenant.'];
+    }
+    if (conflict.phone) {
+      fieldErrors.phone = ['This phone number is already used in this tenant.'];
     }
 
-    // Pending invite already exists — resend via same flow below
+    return NextResponse.json(
+      {
+        error: 'Duplicate member details found',
+        fieldErrors,
+      },
+      { status: 409 },
+    );
   }
 
   // Create/invite the Supabase Auth user
   const { data: inviteData, error: inviteError } =
     await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
       redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/accept-invite`,
-      data: { tenant_id: claims.tenant_id, role },
+      data: {
+        tenant_id: claims.tenant_id,
+        role,
+        full_name,
+        phone,
+      },
     });
 
   if (inviteError || !inviteData.user) {
@@ -80,43 +84,27 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // If a pending row already exists for this user+tenant, update it
+  // The auth user now exists or has been updated by Supabase; create the tenant link row.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabaseAdmin as any;
-  const { data: pendingRow } = await db
+  const { error: insertError } = await db
     .schema('app')
     .from('tenant_users')
-    .select('id')
-    .eq('tenant_id', claims.tenant_id)
-    .eq('user_id', inviteData.user.id)
-    .maybeSingle();
+    .insert({
+      tenant_id: claims.tenant_id,
+      user_id: inviteData.user.id,
+      role,
+      is_active: false,
+      invited_at: new Date().toISOString(),
+      created_by: claims.tenant_id,
+      updated_by: claims.tenant_id,
+    });
 
-  if (pendingRow) {
-    await db
-      .schema('app')
-      .from('tenant_users')
-      .update({ role, invited_at: new Date().toISOString(), is_active: false })
-      .eq('id', pendingRow.id);
-  } else {
-    const { error: insertError } = await db
-      .schema('app')
-      .from('tenant_users')
-      .insert({
-        tenant_id: claims.tenant_id,
-        user_id: inviteData.user.id,
-        role,
-        is_active: false,
-        invited_at: new Date().toISOString(),
-        created_by: claims.tenant_id,
-        updated_by: claims.tenant_id,
-      });
-
-    if (insertError) {
-      return NextResponse.json(
-        { error: 'Failed to create team member record', details: insertError.message },
-        { status: 500 },
-      );
-    }
+  if (insertError) {
+    return NextResponse.json(
+      { error: 'Failed to create team member record', details: insertError.message },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json(

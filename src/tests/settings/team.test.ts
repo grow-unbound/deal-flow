@@ -1,9 +1,15 @@
-import { InviteUserSchema, UpdateMemberRoleSchema } from '../../lib/zod';
+import {
+  InviteUserSchema,
+  UpdateMemberRoleSchema,
+  UpdateMemberSchema,
+} from '../../lib/zod';
 
 describe('InviteUserSchema', () => {
-  it('accepts valid email and role', () => {
+  it('accepts valid member details', () => {
     const result = InviteUserSchema.safeParse({
+      full_name: 'Phani K',
       email: 'colleague@company.com',
+      phone: '9876543210',
       role: 'seller_assistant',
     });
     expect(result.success).toBe(true);
@@ -11,7 +17,9 @@ describe('InviteUserSchema', () => {
 
   it('accepts seller_admin role', () => {
     const result = InviteUserSchema.safeParse({
+      full_name: 'Admin User',
       email: 'admin@company.com',
+      phone: '9876543210',
       role: 'seller_admin',
     });
     expect(result.success).toBe(true);
@@ -19,7 +27,9 @@ describe('InviteUserSchema', () => {
 
   it('rejects invalid email', () => {
     const result = InviteUserSchema.safeParse({
+      full_name: 'Phani K',
       email: 'not-an-email',
+      phone: '9876543210',
       role: 'seller_assistant',
     });
     expect(result.success).toBe(false);
@@ -28,20 +38,77 @@ describe('InviteUserSchema', () => {
     }
   });
 
+  it('rejects invalid phone number', () => {
+    const result = InviteUserSchema.safeParse({
+      full_name: 'Phani K',
+      email: 'user@example.com',
+      phone: '12345',
+      role: 'seller_assistant',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.flatten().fieldErrors.phone).toBeDefined();
+    }
+  });
+
   it('rejects invalid role', () => {
     const result = InviteUserSchema.safeParse({
+      full_name: 'Phani K',
       email: 'user@example.com',
+      phone: '9876543210',
       role: 'buyer_admin',
-    });
+    } as never);
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.flatten().fieldErrors.role).toBeDefined();
     }
   });
 
-  it('rejects missing email', () => {
-    const result = InviteUserSchema.safeParse({ role: 'seller_assistant' });
+  it('rejects missing full name', () => {
+    const result = InviteUserSchema.safeParse({
+      email: 'user@example.com',
+      phone: '9876543210',
+      role: 'seller_assistant',
+    } as never);
     expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.flatten().fieldErrors.full_name).toBeDefined();
+    }
+  });
+});
+
+describe('UpdateMemberSchema', () => {
+  it('accepts valid seller member details', () => {
+    expect(
+      UpdateMemberSchema.safeParse({
+        full_name: 'Phani K',
+        email: 'phani@example.com',
+        phone: '9876543210',
+        role: 'seller_admin',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects buyer roles', () => {
+    expect(
+      UpdateMemberSchema.safeParse({
+        full_name: 'Phani K',
+        email: 'phani@example.com',
+        phone: '9876543210',
+        role: 'buyer_admin',
+      } as never).success,
+    ).toBe(false);
+  });
+
+  it('rejects empty phone number', () => {
+    expect(
+      UpdateMemberSchema.safeParse({
+        full_name: 'Phani K',
+        email: 'phani@example.com',
+        phone: '',
+        role: 'seller_admin',
+      } as never).success,
+    ).toBe(false);
   });
 });
 
@@ -52,11 +119,11 @@ describe('UpdateMemberRoleSchema', () => {
   });
 
   it('rejects buyer roles', () => {
-    expect(UpdateMemberRoleSchema.safeParse({ role: 'buyer_admin' }).success).toBe(false);
+    expect(UpdateMemberRoleSchema.safeParse({ role: 'buyer_admin' as never }).success).toBe(false);
   });
 
   it('rejects empty role', () => {
-    expect(UpdateMemberRoleSchema.safeParse({ role: '' }).success).toBe(false);
+    expect(UpdateMemberRoleSchema.safeParse({ role: '' as never }).success).toBe(false);
   });
 });
 
@@ -65,7 +132,7 @@ describe('getFlag fail-closed behaviour', () => {
     jest.resetModules();
     jest.mock('posthog-node', () => ({
       PostHog: jest.fn().mockImplementation(() => ({
-        isFeatureEnabled: () => { throw new Error('network error'); },
+        evaluateFlags: () => { throw new Error('network error'); },
       })),
     }));
     // eslint-disable-next-line @typescript-eslint/no-require-imports
