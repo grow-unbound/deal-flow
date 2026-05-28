@@ -20,21 +20,19 @@ export default function TeamPage() {
       className="bg-teal-500 hover:bg-teal-600 text-cream-50 flex items-center gap-2"
     >
       <UserPlus size={16} />
-      Add User
+      Add user
     </Button>
   ) : null;
 
   return (
     <>
-      <SellerTopbar title="Users & Roles" action={addUserAction} />
-      <div
-        className="px-8 py-6"
-        style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }}
-      >
+      <div className="px-8 py-6">
+        <SellerTopbar
+          title="Users & Roles"
+          subtitle="Manage seller access for this tenant and keep role assignments tidy."
+          action={addUserAction}
+        />
         <div className="max-w-5xl">
-          <p className="text-body text-cream-600 mb-6">
-            Manage who has access to your DealFlow workspace.
-          </p>
           <TeamMembersTable
             tenantId={currentTenantId ?? ''}
             isAdmin={isAdmin}

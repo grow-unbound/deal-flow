@@ -40,12 +40,8 @@ export default function NewCustomerPage() {
   }
 
   return (
-    <>
+    <div className="px-8 py-6">
       <SellerTopbar title="Add Customer" />
-      <div
-        className="px-8 py-6"
-        style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }}
-      >
         <FeatureGate flag="CUSTOMER_MASTER">
           <div className="max-w-3xl">
             <BuyerForm
@@ -57,7 +53,6 @@ export default function NewCustomerPage() {
             />
           </div>
         </FeatureGate>
-      </div>
-    </>
+    </div>
   );
 }

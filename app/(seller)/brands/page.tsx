@@ -7,6 +7,7 @@ import { SellerTopbar } from '@/components/layout/SellerTopbar';
 import { FeatureGate } from '@/components/FeatureGate';
 import { AddBrandCommand } from '@/components/seller/brands/AddBrandCommand';
 import { Button } from '@/components/ui/button';
+import { ErrorState, LoadingState, EmptyState } from '@/components/ui/empty-state';
 import { useTenantBrands } from '@/hooks/useBrands';
 import type { TenantBrand } from '@/hooks/useBrands';
 
@@ -58,36 +59,30 @@ function BrandsContent() {
   const brands = data?.brands ?? [];
 
   if (isLoading) {
-    return (
-      <div className="px-8 py-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="bg-cream-100 rounded-lg border border-cream-200 p-4 h-20 animate-pulse" />
-        ))}
-      </div>
-    );
+    return <LoadingState label="Loading brands..." />;
   }
 
   if (isError) {
     return (
-      <div className="px-8 py-6">
-        <p className="text-red-600 text-sm">Failed to load brands. Please refresh.</p>
-      </div>
+      <ErrorState
+        heading="Couldn't load brands"
+        description="There was a problem fetching your brands. Please try again."
+      />
     );
   }
 
   if (brands.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[40vh] px-6 text-center">
-        <p className="font-display text-xl text-cream-900 mb-2">No brands yet</p>
-        <p className="text-cream-600 text-sm">
-          Click &ldquo;Add Brand&rdquo; to link brands from the master catalog to your account.
-        </p>
-      </div>
+      <EmptyState
+        icon={<Plus size={28} strokeWidth={1.5} />}
+        heading="No brands yet"
+        description="Link brands from the master catalog or create a custom brand to start building your catalog."
+      />
     );
   }
 
   return (
-    <div className="px-8 py-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {brands.map((brand) => (
         <BrandCard key={brand.id} brand={brand} />
       ))}
@@ -98,7 +93,7 @@ function BrandsContent() {
 function BrandsActions() {
   return (
     <>
-      <Button asChild variant="ghost" size="sm">
+      <Button asChild variant="ghost">
         <Link href="/brands/new">
           <Plus className="w-4 h-4 mr-1" />
           Create custom brand
@@ -111,13 +106,15 @@ function BrandsActions() {
 
 export default function BrandsPage() {
   return (
-    <>
-      <SellerTopbar title="Brands" action={<BrandsActions />} />
-      <div style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }}>
-        <FeatureGate flag="BRAND_PRODUCT_MASTER">
-          <BrandsContent />
-        </FeatureGate>
+    <div className="px-8 py-6">
+      <SellerTopbar
+        title="Brands"
+        subtitle="Manage the brand principals and custom brands available to your seller workspace."
+        action={<BrandsActions />}
+      />
+      <FeatureGate flag="BRAND_PRODUCT_MASTER">
+        <BrandsContent />
+      </FeatureGate>
       </div>
-    </>
   );
 }

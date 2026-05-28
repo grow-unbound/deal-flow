@@ -131,20 +131,84 @@ export const CohortSchema = z.object({
   rules: z.record(z.any()).optional(),
 });
 
-// Price list schemas
-export const PriceListSchema = z.object({
-  name: z.string().min(1, 'Price list name is required'),
-  currency: z.string().default('INR'),
-  valid_from: z.coerce.date(),
-  valid_to: z.coerce.date().optional(),
-  priority: z.coerce.number().default(0),
+// Cohort rule schemas
+export const CohortRuleFieldSchema = z.enum([
+  'geography.state',
+  'geography.city',
+  'geography.zone',
+  'tier',
+  'brand_focus',
+]);
+
+export const CohortRuleOperatorSchema = z.enum(['eq', 'in']);
+
+export const CohortRuleFilterSchema = z.object({
+  field: CohortRuleFieldSchema,
+  operator: CohortRuleOperatorSchema,
+  value: z.union([z.string(), z.array(z.string())]),
 });
+
+export const CohortRulesSchema = z.object({
+  filters: z.array(CohortRuleFilterSchema).default([]),
+});
+
+export const CohortCreateSchema = z.object({
+  name: z.string().min(1, 'Cohort name is required'),
+  description: z.string().optional(),
+  is_static: z.boolean().default(false),
+  rules: CohortRulesSchema.optional(),
+});
+export type CohortCreateInput = z.infer<typeof CohortCreateSchema>;
+
+export const CohortUpdateSchema = CohortCreateSchema.partial();
+export type CohortUpdateInput = z.infer<typeof CohortUpdateSchema>;
+export type CohortRuleFilter = z.infer<typeof CohortRuleFilterSchema>;
+export type CohortRules = z.infer<typeof CohortRulesSchema>;
+
+// Price list schemas
+export const PriceListSchema = z
+  .object({
+    name: z.string().min(1, 'Price list name is required'),
+    currency: z.string().default('INR'),
+    valid_from: z.coerce.date(),
+    valid_to: z.coerce.date().optional(),
+    priority: z.coerce.number().default(0),
+  })
+  .refine(
+    (data) => {
+      if (data.valid_to && data.valid_from) {
+        return data.valid_to > data.valid_from;
+      }
+      return true;
+    },
+    {
+      message: 'End date must be after start date.',
+      path: ['valid_to'],
+    },
+  );
 
 export const PriceListItemSchema = z.object({
   price: z.coerce.number().positive('Price must be positive'),
   min_qty: z.coerce.number().default(1),
   max_qty: z.coerce.number().optional(),
 });
+
+export const PriceListItemCreateSchema = z.object({
+  tenant_product_id: z.string().uuid('Invalid product ID'),
+  price: z.coerce.number().positive('Price must be positive'),
+  min_qty: z.coerce.number().min(1).default(1),
+  max_qty: z.coerce.number().positive().optional().nullable(),
+});
+export type PriceListItemCreateInput = z.infer<typeof PriceListItemCreateSchema>;
+
+export const PriceListAssignmentSchema = z.object({
+  target_type: z.enum(['buyer', 'cohort', 'all_buyers']),
+  target_id: z.string().uuid().nullable().optional(),
+}).refine(
+  (d) => d.target_type === 'all_buyers' || (d.target_id != null && d.target_id !== ''),
+  { message: 'Target is required for buyer or cohort assignments.', path: ['target_id'] }
+);
+export type PriceListAssignmentInput = z.infer<typeof PriceListAssignmentSchema>;
 
 // Catalog schemas
 export const PublishedCatalogSchema = z.object({
@@ -167,14 +231,27 @@ export const OrderItemSchema = z.object({
   qty: z.coerce.number().positive('Quantity must be positive'),
 });
 
-// Team invite schemas
-export const InviteUserSchema = z.object({
-  email: z.string().email('Valid email required'),
-  role: z.enum(['seller_admin', 'seller_assistant']),
+// Team member schemas
+export const TeamMemberRoleSchema = z.enum(['seller_admin', 'seller_assistant']);
+
+export const IndianPhoneSchema = z
+  .string()
+  .trim()
+  .regex(/^[0-9]{10}$/, 'Phone number must be 10 digits');
+
+export const TeamMemberFormSchema = z.object({
+  full_name: z.string().trim().min(1, 'Full name is required'),
+  email: z.string().trim().email('Valid email required'),
+  phone: IndianPhoneSchema,
+  role: TeamMemberRoleSchema,
 });
 
+export const InviteUserSchema = TeamMemberFormSchema;
+
+export const UpdateMemberSchema = TeamMemberFormSchema;
+
 export const UpdateMemberRoleSchema = z.object({
-  role: z.enum(['seller_admin', 'seller_assistant']),
+  role: TeamMemberRoleSchema,
 });
 
 // CSV import schemas
@@ -216,6 +293,7 @@ export type CustomProductInput = z.infer<typeof CustomProductSchema>;
 
 // Export types
 export type InviteUserInput = z.infer<typeof InviteUserSchema>;
+export type UpdateMemberInput = z.infer<typeof UpdateMemberSchema>;
 export type UpdateMemberRoleInput = z.infer<typeof UpdateMemberRoleSchema>;
 export type LoginInput = z.infer<typeof LoginSchema>;
 export type BuyerCsvRowInput = z.infer<typeof BuyerCsvRowSchema>;
@@ -227,6 +305,7 @@ export type ProductInput = z.infer<typeof ProductSchema>;
 export type BuyerInput = z.infer<typeof BuyerSchema>;
 export type CohortInput = z.infer<typeof CohortSchema>;
 export type PriceListInput = z.infer<typeof PriceListSchema>;
+export type PriceListCreateInput = z.infer<typeof PriceListSchema>;
 export type PriceListItemInput = z.infer<typeof PriceListItemSchema>;
 export type PublishedCatalogInput = z.infer<typeof PublishedCatalogSchema>;
 export type OrderInput = z.infer<typeof OrderSchema>;

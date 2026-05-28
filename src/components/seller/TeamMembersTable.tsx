@@ -2,9 +2,23 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Pencil, MailCheck, Trash2 } from 'lucide-react';
+import { MailCheck, Pencil, UserPlus, UserX } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { DialogBody } from '@/components/ui/dialog';
+import { DataTable } from './DataTable';
+import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { InviteUserDialog } from './InviteUserDialog';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import type { TeamMember } from '@/types/team';
@@ -24,6 +38,10 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 export function TeamMembersTable({ tenantId, isAdmin }: Props) {
   const queryClient = useQueryClient();
   const [editMember, setEditMember] = useState<TeamMember | null>(null);
+  const [resendMember, setResendMember] = useState<TeamMember | null>(null);
+  const [resendError, setResendError] = useState<string | null>(null);
+  const [deactivateMember, setDeactivateMember] = useState<TeamMember | null>(null);
+  const [deactivateError, setDeactivateError] = useState<string | null>(null);
 
   const { data: members = [], isLoading, isError } = useQuery({
     queryKey: ['team', tenantId],
@@ -40,137 +58,149 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
     mutationFn: async (id: string) => {
       const headers = await getAuthHeaders();
       const r = await fetch(`/api/team/members/${id}`, { method: 'DELETE', headers });
-      if (!r.ok) throw new Error('Failed to remove member');
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.error ?? body.details?.message ?? 'Failed to deactivate member');
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['team'] }),
+    onSuccess: () => {
+      setDeactivateMember(null);
+      setDeactivateError(null);
+      queryClient.invalidateQueries({ queryKey: ['team'] });
+    },
+    onError: (error: Error) => {
+      setDeactivateError(error.message);
+    },
   });
 
   const resendMutation = useMutation({
     mutationFn: async (id: string) => {
       const headers = await getAuthHeaders();
       const r = await fetch(`/api/team/members/${id}/resend-invite`, { method: 'PUT', headers });
-      if (!r.ok) throw new Error('Failed to resend invite');
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.error ?? body.details?.message ?? 'Failed to resend invite');
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['team'] }),
+    onSuccess: () => {
+      setResendMember(null);
+      setResendError(null);
+      queryClient.invalidateQueries({ queryKey: ['team'] });
+    },
+    onError: (error: Error) => {
+      setResendError(error.message);
+    },
   });
-
-  if (isLoading) {
-    return (
-      <div className="py-12 text-center text-caption text-cream-600">
-        Loading team members…
-      </div>
-    );
-  }
 
   if (isError) {
     return (
-      <div className="py-12 text-center text-caption text-danger-500">
-        Failed to load team members.
-      </div>
+      <ErrorState
+        heading="Couldn't load team members"
+        description="There was a problem fetching your workspace users. Please try again."
+      />
+    );
+  }
+
+  if (!isLoading && members.length === 0) {
+    return (
+      <EmptyState
+        icon={<UserPlus size={28} strokeWidth={1.5} />}
+        heading="No team members yet"
+        description="Invite your first teammate to start collaborating inside this tenant workspace."
+      />
     );
   }
 
   return (
     <>
-      <div className="rounded-lg border border-cream-300 overflow-hidden">
-        <table className="w-full text-body-sm">
-          <thead>
-            <tr className="bg-cream-200 border-b border-cream-300">
-              <th className="text-left px-4 py-3 font-medium text-cream-700">Full Name</th>
-              <th className="text-left px-4 py-3 font-medium text-cream-700">Email</th>
-              <th className="text-left px-4 py-3 font-medium text-cream-700">Phone</th>
-              <th className="text-left px-4 py-3 font-medium text-cream-700">Role</th>
-              <th className="text-left px-4 py-3 font-medium text-cream-700">Status</th>
-              {isAdmin && (
-                <th className="text-left px-4 py-3 font-medium text-cream-700">Actions</th>
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {members.length === 0 && (
-              <tr>
-                <td
-                  colSpan={isAdmin ? 6 : 5}
-                  className="text-center py-10 text-cream-500 text-caption"
-                >
-                  No team members yet.
-                </td>
-              </tr>
-            )}
-            {members.map((member, idx) => (
-              <tr
-                key={member.id}
-                className={`border-b border-cream-200 last:border-0 ${
-                  idx % 2 === 0 ? 'bg-cream-50' : 'bg-cream-100'
-                }`}
-              >
-                <td className="px-4 py-3 text-cream-900">
-                  {member.full_name ?? <span className="text-cream-400">—</span>}
-                </td>
-                <td className="px-4 py-3 text-cream-700">{member.email}</td>
-                <td className="px-4 py-3 text-cream-700">
-                  {member.phone ?? <span className="text-cream-400">—</span>}
-                </td>
-                <td className="px-4 py-3">
-                  <RoleChip role={member.role} />
-                </td>
-                <td className="px-4 py-3">
+      <DataTable
+        data={members}
+        loading={isLoading}
+        loadingMessage="Loading team members..."
+        columns={[
+          {
+            key: 'full_name',
+            header: 'Full Name',
+            accessor: (member) => member.full_name ?? <span className="text-cream-400">—</span>,
+          },
+          {
+            key: 'email',
+            header: 'Email',
+            accessor: (member) => <span className="text-cream-700">{member.email}</span>,
+          },
+          {
+            key: 'phone',
+            header: 'Phone',
+            accessor: (member) => <span className="text-cream-700">{member.phone ?? '—'}</span>,
+          },
+          {
+            key: 'role',
+            header: 'Role',
+            accessor: (member) => <RoleChip role={member.role} />,
+          },
+          {
+            key: 'status',
+            header: 'Status',
+            accessor: (member) =>
+              member.status === 'pending' ? (
+                <span className="inline-flex items-center rounded-sm bg-amber-100 px-2 py-0.5 text-caption font-medium text-amber-700">
+                  Invited
+                </span>
+              ) : member.status === 'inactive' ? (
+                <span className="inline-flex items-center rounded-sm bg-cream-200 px-2 py-0.5 text-caption font-medium text-cream-700">
+                  Deactivated
+                </span>
+              ) : (
+                <span className="inline-flex items-center rounded-sm bg-success-50 px-2 py-0.5 text-caption font-medium text-success-700">
+                  Active
+                </span>
+              ),
+          },
+          ...(isAdmin
+            ? [{
+              key: 'actions',
+              header: 'Actions',
+              accessor: (member: TeamMember) => (
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0 text-cream-600 hover:text-cream-900"
+                    onClick={() => setEditMember(member)}
+                    title="Edit User"
+                  >
+                    <Pencil size={14} />
+                  </Button>
                   {member.status === 'pending' ? (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-sm text-caption font-medium bg-amber-100 text-amber-700">
-                      Pending
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-sm text-caption font-medium bg-success-50 text-success-700">
-                      Active
-                    </span>
-                  )}
-                </td>
-                {isAdmin && (
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 w-7 p-0 text-cream-600 hover:text-cream-900"
-                        onClick={() => setEditMember(member)}
-                        title="Edit role"
-                      >
-                        <Pencil size={14} />
-                      </Button>
-                      {member.status === 'pending' && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 w-7 p-0 text-cream-600 hover:text-teal-600"
-                          onClick={() => resendMutation.mutate(member.id)}
-                          disabled={resendMutation.isPending}
-                          title="Resend invite"
-                        >
-                          <MailCheck size={14} />
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 w-7 p-0 text-cream-600 hover:text-danger-500"
-                        onClick={() => {
-                          if (confirm(`Remove ${member.email} from your team?`)) {
-                            removeMutation.mutate(member.id);
-                          }
-                        }}
-                        disabled={removeMutation.isPending}
-                        title="Remove member"
-                      >
-                        <Trash2 size={14} />
-                      </Button>
-                    </div>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-cream-600 hover:text-teal-600"
+                      onClick={() => {
+                        setResendError(null);
+                        setResendMember(member);
+                      }}
+                      disabled={resendMutation.isPending}
+                      title="Resend invite"
+                    >
+                      <MailCheck size={14} />
+                    </Button>
+                  ) : null}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0 text-cream-600 hover:text-danger-500"
+                    onClick={() => {
+                      setDeactivateError(null);
+                      setDeactivateMember(member);
+                    }}
+                    disabled={removeMutation.isPending}
+                    title="Deactivate user"
+                  >
+                    <UserX size={14} />
+                  </Button>
+                </div>
+              ),
+              }]
+            : []),
+        ]}
+      />
 
       {editMember && (
         <InviteUserDialog
@@ -179,6 +209,143 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
           member={editMember}
         />
       )}
+
+      <AlertDialog
+        open={!!resendMember}
+        onOpenChange={(open) => {
+          if (!open) {
+            setResendMember(null);
+            setResendError(null);
+          }
+        }}
+      >
+        <AlertDialogContent className="bg-cream-50 border-cream-200">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-display text-cream-900">
+              Resend invite?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-cream-700">
+              Confirm that you want to send the invite again to this user.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <DialogBody className="space-y-4">
+            {resendError && (
+              <Alert variant="danger">
+                <AlertDescription>{resendError}</AlertDescription>
+              </Alert>
+            )}
+
+            {resendMember && (
+              <div className="space-y-2 rounded-md border border-cream-300 bg-white p-4 text-body-sm text-cream-800">
+                <div>
+                  <span className="text-cream-600">Name: </span>
+                  {resendMember.full_name ?? '—'}
+                </div>
+                <div>
+                  <span className="text-cream-600">Email: </span>
+                  {resendMember.email}
+                </div>
+                <div>
+                  <span className="text-cream-600">Phone: </span>
+                  {resendMember.phone ? `+91 ${resendMember.phone}` : '—'}
+                </div>
+              </div>
+            )}
+          </DialogBody>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={resendMutation.isPending}
+              onClick={() => {
+                setResendMember(null);
+                setResendError(null);
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!resendMember || resendMutation.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                if (resendMember) {
+                  resendMutation.mutate(resendMember.id);
+                }
+              }}
+            >
+              <MailCheck size={16} />
+              {resendMutation.isPending ? 'Sending…' : 'Resend invite'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!deactivateMember}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeactivateMember(null);
+            setDeactivateError(null);
+          }
+        }}
+      >
+        <AlertDialogContent className="bg-cream-50 border-cream-200">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-display text-cream-900">
+              Deactivate user?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-cream-700">
+              This will soft-delete the user by marking their membership inactive. They will no longer be able to sign in.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <DialogBody className="space-y-4">
+            {deactivateError && (
+              <Alert variant="danger">
+                <AlertDescription>{deactivateError}</AlertDescription>
+              </Alert>
+            )}
+
+            {deactivateMember && (
+              <div className="space-y-2 rounded-md border border-warning-500/30 bg-warning-50 p-4 text-body-sm text-warning-700">
+                <div>
+                  <span className="text-warning-700/80">Name: </span>
+                  {deactivateMember.full_name ?? '—'}
+                </div>
+                <div>
+                  <span className="text-warning-700/80">Email: </span>
+                  {deactivateMember.email}
+                </div>
+                <div>
+                  <span className="text-warning-700/80">Phone: </span>
+                  {deactivateMember.phone ? `+91 ${deactivateMember.phone}` : '—'}
+                </div>
+              </div>
+            )}
+          </DialogBody>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={removeMutation.isPending}
+              onClick={() => {
+                setDeactivateMember(null);
+                setDeactivateError(null);
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!deactivateMember || removeMutation.isPending}
+              className="bg-danger-500 text-cream-50 hover:bg-danger-600"
+              onClick={(event) => {
+                event.preventDefault();
+                if (deactivateMember) {
+                  removeMutation.mutate(deactivateMember.id);
+                }
+              }}
+            >
+              <UserX size={16} />
+              {removeMutation.isPending ? 'Deactivating…' : 'Deactivate user'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

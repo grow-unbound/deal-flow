@@ -62,6 +62,7 @@ export async function GET(request: NextRequest) {
       joined_at: string | null;
     }) => {
       const auth = authMap.get(row.user_id);
+      const status = row.is_active ? 'active' : (row.joined_at ? 'inactive' : 'pending');
       return {
         id: row.id,
         user_id: row.user_id,
@@ -69,7 +70,7 @@ export async function GET(request: NextRequest) {
         full_name: auth?.full_name ?? null,
         phone: auth?.phone ?? null,
         role: row.role,
-        status: row.is_active ? 'active' : 'pending',
+        status,
         invited_at: row.invited_at,
         joined_at: row.joined_at,
       };

@@ -38,7 +38,7 @@ export async function GET(
       .select('id, tier, geography')
       .eq('id', id)
       .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null)
+      .is('is_active', true)
       .maybeSingle();
 
     if (error || !data) {
@@ -91,7 +91,7 @@ export async function GET(
       .select('id, name, description, is_static, rules')
       .eq('tenant_id', claims.tenant_id)
       .eq('is_static', false)
-      .is('deleted_at', null);
+      .is('is_active', true);
 
     if (dynamicError) {
       // Return only static if dynamic query fails

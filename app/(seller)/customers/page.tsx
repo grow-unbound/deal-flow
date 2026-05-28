@@ -1,12 +1,15 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { UserPlus, Upload, Pencil } from 'lucide-react';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { SellerTopbar } from '@/components/layout/SellerTopbar';
 import { FeatureGate } from '@/components/FeatureGate';
+import { DataTable } from '@/components/seller/DataTable';
 import { Button } from '@/components/ui/button';
+import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 
 interface Buyer {
   id: string;
@@ -40,7 +43,8 @@ async function fetchCustomers(): Promise<Buyer[]> {
 }
 
 export default function CustomersPage() {
-  const { data: buyers, isLoading, error } = useQuery({
+  const router = useRouter();
+  const { data: buyers, isLoading, error, refetch } = useQuery({
     queryKey: ['customers'],
     queryFn: fetchCustomers,
   });
@@ -63,106 +67,104 @@ export default function CustomersPage() {
   );
 
   return (
-    <>
-      <SellerTopbar title="Customers" action={addCustomerAction} />
-      <div style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }}>
-        <FeatureGate flag="CUSTOMER_MASTER">
-          <div className="px-8 py-6">
-            {isLoading && (
-              <p className="text-cream-600 text-center py-12">Loading customers…</p>
-            )}
+    <div className="px-8 py-6">
+      <SellerTopbar
+        title="Customers"
+        subtitle="Manage buyer accounts, contact details, and activation status for your tenant."
+        action={addCustomerAction}
+      />
+      <FeatureGate flag="CUSTOMER_MASTER">
+        {error && (
+          <ErrorState
+            heading="Couldn't load customers"
+            description="There was a problem fetching your customer list. Please try again."
+            onRetry={() => refetch()}
+          />
+        )}
 
-            {error && (
-              <p className="text-danger-500 text-center py-12">
-                Failed to load customers. Please try again.
-              </p>
-            )}
+        {!isLoading && !error && buyers?.length === 0 && (
+          <EmptyState
+            icon={<UserPlus size={28} strokeWidth={1.5} />}
+            heading="No customers yet"
+            description="Add your first customer to start managing buyers in your workspace."
+            action={
+              <Link href="/customers/new">
+                <Button className="bg-teal-500 hover:bg-teal-600 text-cream-50 flex items-center gap-2">
+                  <UserPlus size={16} />
+                  Add Customer
+                </Button>
+              </Link>
+            }
+          />
+        )}
 
-            {!isLoading && !error && buyers?.length === 0 && (
-              <div className="text-center py-16">
-                <p className="text-cream-600 mb-4">
-                  No customers yet. Add your first customer to get started.
-                </p>
-                <Link href="/customers/new">
-                  <Button className="bg-teal-500 hover:bg-teal-600 text-cream-50 flex items-center gap-2 mx-auto">
-                    <UserPlus size={16} />
-                    Add Customer
-                  </Button>
-                </Link>
-              </div>
-            )}
-
-            {!isLoading && !error && buyers && buyers.length > 0 && (
-              <div className="max-w-6xl">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="bg-cream-200 text-cream-700 font-semibold text-caption">
-                      <th className="text-left px-4 py-3 rounded-tl-lg">Business Name</th>
-                      <th className="text-left px-4 py-3">Contact</th>
-                      <th className="text-left px-4 py-3">Phone</th>
-                      <th className="text-left px-4 py-3">Tier</th>
-                      <th className="text-left px-4 py-3">Status</th>
-                      <th className="text-left px-4 py-3 rounded-tr-lg">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {buyers.map((buyer, idx) => (
-                      <tr
-                        key={buyer.id}
-                        className={[
-                          idx % 2 === 0 ? 'bg-cream-50' : 'bg-cream-100',
-                          !buyer.is_active ? 'opacity-60' : '',
-                        ].join(' ')}
-                      >
-                        <td className="px-4 py-3 text-body-sm font-medium text-cream-900">
-                          {buyer.business_name}
-                        </td>
-                        <td className="px-4 py-3 text-body-sm text-cream-700">
-                          {buyer.contact_name ?? '—'}
-                        </td>
-                        <td className="px-4 py-3 text-body-sm text-cream-700 font-mono">
-                          {buyer.phone ?? '—'}
-                        </td>
-                        <td className="px-4 py-3">
-                          {buyer.tier ? (
-                            <span
-                              className={`inline-block px-2 py-0.5 rounded text-caption font-medium ${TIER_BADGE[buyer.tier] ?? ''}`}
-                            >
-                              {buyer.tier}
-                            </span>
-                          ) : (
-                            <span className="text-cream-400 text-caption">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {buyer.is_active ? (
-                            <span className="inline-block px-2 py-0.5 rounded text-caption font-medium bg-teal-50 text-teal-700">
-                              Active
-                            </span>
-                          ) : (
-                            <span className="inline-block px-2 py-0.5 rounded text-caption font-medium bg-cream-200 text-cream-500">
-                              Inactive
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <Link
-                            href={`/customers/${buyer.id}/edit`}
-                            className="inline-flex items-center gap-1 text-teal-600 hover:text-teal-700 text-caption font-medium"
-                          >
-                            <Pencil size={14} />
-                            Edit
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </FeatureGate>
-      </div>
-    </>
+        {(!error && buyers && buyers.length > 0) || isLoading ? (
+          <DataTable
+            data={buyers ?? []}
+            loading={isLoading}
+            loadingMessage="Loading customers..."
+            columns={[
+              {
+                key: 'business_name',
+                header: 'Business Name',
+                accessor: (buyer) => <span className="font-medium text-cream-900">{buyer.business_name}</span>,
+              },
+              {
+                key: 'contact_name',
+                header: 'Contact',
+                accessor: (buyer) => <span className="text-cream-700">{buyer.contact_name ?? '—'}</span>,
+              },
+              {
+                key: 'phone',
+                header: 'Phone',
+                accessor: (buyer) => <span className="font-mono text-sm text-cream-700">{buyer.phone ?? '—'}</span>,
+              },
+              {
+                key: 'tier',
+                header: 'Tier',
+                accessor: (buyer) =>
+                  buyer.tier ? (
+                    <span className={`inline-block rounded px-2 py-0.5 text-caption font-medium ${TIER_BADGE[buyer.tier] ?? ''}`}>
+                      {buyer.tier}
+                    </span>
+                  ) : (
+                    <span className="text-caption text-cream-400">—</span>
+                  ),
+              },
+              {
+                key: 'status',
+                header: 'Status',
+                accessor: (buyer) => (
+                  <span
+                    className={[
+                      'inline-flex rounded-full px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-[0.1em]',
+                      buyer.is_active ? 'bg-teal-50 text-teal-700' : 'bg-cream-200 text-cream-500',
+                    ].join(' ')}
+                  >
+                    {buyer.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                ),
+              },
+              {
+                key: 'actions',
+                header: 'Actions',
+                accessor: (buyer) => (
+                  <Link
+                    href={`/customers/${buyer.id}/edit`}
+                    onClick={(event) => event.stopPropagation()}
+                    className="inline-flex items-center gap-1 text-caption font-medium text-teal-600 hover:text-teal-700"
+                  >
+                    <Pencil size={14} />
+                    Edit
+                  </Link>
+                ),
+              },
+            ]}
+            onRowClick={(buyer) => router.push(`/customers/${buyer.id}`)}
+            rowClassName={(buyer) => (!buyer.is_active ? 'opacity-70' : undefined)}
+          />
+        ) : null}
+      </FeatureGate>
+    </div>
   );
 }

@@ -14,9 +14,8 @@ const AddProductSchema = z.object({
   name_override: z.string().optional(),
   default_uom: z.string().optional(),
   pack_size: z.coerce.number().positive().optional().nullable(),
-  hsn_code: z.string().optional(),
-  gst_rate: z.coerce.number().min(0).max(100).optional().nullable(),
-  description: z.string().optional(),
+  // hsn_code: z.string().optional(),
+  // gst_rate: z.coerce.number().min(0).max(100).optional().nullable(),
   attributes: z.record(z.string()).optional().default({}),
   image_urls: z.array(z.string().url()).optional().default([]),
 });
@@ -61,11 +60,15 @@ export async function GET(req: NextRequest) {
         updated_at
       `)
       .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null)
+      .is('is_active', true)
       .order('created_at', { ascending: false });
 
     if (error) {
-      return NextResponse.json({ error: 'Failed to fetch products' }, { status: 500 });
+      console.error('[GET /api/tenant/products] DB error:', error.code, error.message, error.details);
+      return NextResponse.json(
+        { error: 'Failed to fetch products', code: error.code, detail: error.message },
+        { status: 500 },
+      );
     }
 
     // Fetch master product details for enrichment
@@ -79,8 +82,8 @@ export async function GET(req: NextRequest) {
         id: string;
         name: string;
         master_sku: string;
-        gst_rate: number | null;
-        hsn_code: string | null;
+        // gst_rate: number | null;
+        // hsn_code: string | null;
         brand_id: string;
         brands: { id: string; name: string; slug: string; logo_url: string | null } | null;
       }
@@ -90,7 +93,7 @@ export async function GET(req: NextRequest) {
       const { data: catalogProducts } = await db
         .schema('catalog')
         .from('products')
-        .select('id, name, master_sku, gst_rate, hsn_code, brand_id, brands!inner(id, name, slug, logo_url)')
+        .select('id, name, master_sku, brand_id, brands!inner(id, name, slug, logo_url)') // gst_rate, hsn_code left out for now
         .in('id', masterProductIds);
 
       masterProducts = Object.fromEntries(
@@ -99,8 +102,8 @@ export async function GET(req: NextRequest) {
             id: string;
             name: string;
             master_sku: string;
-            gst_rate: number | null;
-            hsn_code: string | null;
+            // gst_rate: number | null;
+            // hsn_code: string | null;
             brand_id: string;
             brands: { id: string; name: string; slug: string; logo_url: string | null } | null;
           }) => [p.id, p]
@@ -149,7 +152,8 @@ export async function GET(req: NextRequest) {
     );
 
     return NextResponse.json({ products });
-  } catch {
+  } catch (err) {
+    console.error('[GET /api/tenant/products] Unexpected error:', err);
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 }
@@ -190,9 +194,8 @@ export async function POST(req: NextRequest) {
       name_override,
       default_uom,
       pack_size,
-      hsn_code,
-      gst_rate,
-      description,
+      // hsn_code,
+      // gst_rate,
       attributes,
       image_urls,
     } = parsed.data;
@@ -220,7 +223,7 @@ export async function POST(req: NextRequest) {
       .select('id')
       .eq('tenant_id', tenantId)
       .eq('internal_sku', internal_sku)
-      .is('deleted_at', null)
+      .is('is_active', true)
       .maybeSingle();
 
     if (existing) {
@@ -250,7 +253,7 @@ export async function POST(req: NextRequest) {
           .select('id')
           .eq('tenant_id', tenantId)
           .eq('master_brand_id', catalogProduct.brand_id)
-          .is('deleted_at', null)
+          .is('is_active', true)
           .maybeSingle();
 
         resolvedTenantBrandId = tenantBrand?.id ?? null;
@@ -271,9 +274,8 @@ export async function POST(req: NextRequest) {
         cost_price: effectiveCostPrice,
         default_uom: default_uom ?? null,
         pack_size: pack_size ?? null,
-        hsn_code: hsn_code ?? null,
-        gst_rate: gst_rate ?? null,
-        description: description ?? null,
+        // hsn_code: hsn_code ?? null,
+        // gst_rate: gst_rate ?? null, 
         attributes_override: attributes ?? {},
         image_urls: image_urls ?? [],
         is_active: true,
@@ -291,11 +293,16 @@ export async function POST(req: NextRequest) {
           { status: 409 }
         );
       }
-      return NextResponse.json({ error: 'Failed to add product' }, { status: 500 });
+      console.error('[POST /api/tenant/products] DB error:', insertError.code, insertError.message);
+      return NextResponse.json(
+        { error: 'Failed to add product', code: insertError.code, detail: insertError.message },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({ product: inserted }, { status: 201 });
-  } catch {
+  } catch (err) {
+    console.error('[POST /api/tenant/products] Unexpected error:', err);
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 }

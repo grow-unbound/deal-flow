@@ -83,8 +83,6 @@ export default function DashboardPage() {
 
   return (
     <>
-      <SellerTopbar title="Dashboard" />
-
       {/* First-run onboarding banner */}
       {showOnboarding && (
         <div
@@ -115,7 +113,7 @@ export default function DashboardPage() {
           </button>
         </div>
       )}
-      <div style={{ paddingTop: 'calc(var(--topbar-h) + 24px)', padding: 'calc(var(--topbar-h) + 24px) 32px 40px' }}>
+      <div style={{ padding: '24px 32px 40px' }}>
 
         {/* Page header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>

@@ -129,7 +129,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      // GoTrue rejected the token (e.g. already expired) — clear local cookies only.
+      // This avoids a 403 blocking the logout flow.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await supabase.auth.signOut({ scope: 'local' } as any);
+    }
     setUser(null);
     setTenantProfile(null);
     setBuyerProfiles([]);

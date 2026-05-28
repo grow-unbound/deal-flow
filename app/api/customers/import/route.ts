@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
       .select('phone')
       .eq('tenant_id', claims.tenant_id)
       .in('phone', validPhones)
-      .is('deleted_at', null);
+      .is('is_active', true);
 
     const existingPhones = new Set<string>(
       (existingRows ?? []).map((r: { phone: string }) => r.phone),
