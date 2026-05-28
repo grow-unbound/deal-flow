@@ -63,6 +63,14 @@ dealflow/
 
 ---
 
+## Spacing & Layout Standard
+- Forms, dialogs, alert dialogs, and confirmation sheets must use clear `header` / `body` / `footer` spacing, not ad hoc stacked blocks.
+- Keep modal inner spacing balanced: header padding at the top, consistent body padding, and a dedicated footer row for actions.
+- Use the shared dialog primitives (`DialogHeader`, `DialogBody`, `DialogFooter`) whenever possible so spacing stays consistent across screens.
+- For two-column form rows, keep labels, inputs, and helper text aligned with the form grid and avoid collapsing helper text into the action row.
+
+---
+
 ## Database: Three Schemas
 - **`auth`** — Supabase-managed identity (system-owned)
 - **`catalog`** — Master brands, products, categories. Reusable across tenants. `is_public = true` is global-readable.
