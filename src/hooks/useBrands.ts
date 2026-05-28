@@ -25,10 +25,68 @@ export interface TenantBrand {
   created_at: string;
   updated_at: string;
   master_brand: MasterBrand | null;
+  gmv_mtd?: number;
+  gmv_prev_mtd?: number;
+  growth_pct?: number;
+  portfolio_share_pct?: number;
+  sku_count?: number;
+  active_buyers_mtd?: number;
+  total_buyers?: number;
+  catalog_days_ago?: number | null;
+  catalog_name?: string | null;
+  categories?: string[];
+  alerts?: string[];
+}
+
+export interface BrandsKpis {
+  portfolio_gmv_mtd: number;
+  portfolio_gmv_prev_mtd: number;
+  brands_carried: number;
+  buyers_with_orders_mtd: number;
+  total_buyers: number;
+  need_attention_count: number;
+  catalog_freshness_count: number;
+  total_published_catalogs?: number;
+  catalog_freshness_earliest_days: number | null;
+}
+
+export interface TodaysReadItem {
+  id: string;
+  name: string;
+  growth_pct: number;
+  alerts: string[];
+}
+
+export interface TopPerformerItem {
+  id: string;
+  name: string;
+  gmv_mtd: number;
+}
+
+export interface TopRiserItem {
+  id: string;
+  name: string;
+  growth_pct: number;
+  gmv_mtd: number;
+  gmv_prev_mtd: number;
 }
 
 export interface TenantBrandsResponse {
   brands: TenantBrand[];
+  categories?: string[];
+  kpis?: BrandsKpis;
+  todays_read?: {
+    needs_attention: TodaysReadItem[];
+    top_performers: TopPerformerItem[];
+    top_risers: TopRiserItem[];
+  };
+  period?: {
+    timezone: string;
+    current_month_start: string;
+    current_month_end_exclusive: string;
+    previous_mtd_start: string;
+    previous_mtd_end_exclusive: string;
+  };
 }
 
 export interface SearchBrandsResponse {
