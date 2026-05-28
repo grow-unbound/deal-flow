@@ -20,7 +20,7 @@ export default function TeamPage() {
       className="bg-teal-500 hover:bg-teal-600 text-cream-50 flex items-center gap-2"
     >
       <UserPlus size={16} />
-      Add User
+      Add user
     </Button>
   ) : null;
 

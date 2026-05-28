@@ -35,11 +35,11 @@ const FormSchema = z.object({
   mrp: z.coerce.number().positive('MRP must be positive'),
   base_selling_price: z.coerce.number().positive('Base selling price must be positive'),
   cost_price: z.string().optional(),
-  hsn_code: z.string().optional(),
-  gst_rate: z.string().optional(),
+  // hsn_code: z.string().optional(),
+  // gst_rate: z.string().optional(),
   default_uom: z.string().optional(),
   pack_size: z.string().optional(),
-  description: z.string().optional(),
+  // description: z.string().optional(),
   attributes: z.array(z.object({ key: z.string(), value: z.string() })).default([]),
   image_urls: z.array(z.string()).default([]),
 });
@@ -78,9 +78,9 @@ export function CreateProductForm() {
 
   const { field: imageUrlsField } = useController({ control, name: 'image_urls' });
 
-  const watchedHsn = useWatch({ control, name: 'hsn_code' });
-  const watchedGst = useWatch({ control, name: 'gst_rate' });
-  const showHsnWarning = !watchedHsn || !watchedGst;
+  // const watchedHsn = useWatch({ control, name: 'hsn_code' });
+  // const watchedGst = useWatch({ control, name: 'gst_rate' });
+  // const showHsnWarning = !watchedHsn || !watchedGst;
 
   const onSubmit: SubmitHandler<FormValues> = async (formData) => {
     // Transform attributes array → object
@@ -118,9 +118,9 @@ export function CreateProductForm() {
         cost_price: costPrice,
         default_uom: formData.default_uom,
         pack_size: packSize,
-        hsn_code: formData.hsn_code,
-        gst_rate: gstRate,
-        description: formData.description,
+        // hsn_code: formData.hsn_code,
+        // gst_rate: gstRate,
+        // description: formData.description,
         attributes: attributesObj,
         image_urls: imageUrls,
       });
@@ -239,7 +239,7 @@ export function CreateProductForm() {
 
       <div className="border-t border-cream-200 my-4" />
 
-      {/* ── Section 3: Product Details ── */}
+      {/* ── Section 3: Product Details ──
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
           <Label htmlFor="hsn_code">HSN code</Label>
@@ -280,7 +280,7 @@ export function CreateProductForm() {
               HSN code and GST rate are required for Tally export.
             </p>
           </div>
-        )}
+         )}
 
         <div>
           <Label htmlFor="default_uom">Unit of measure</Label>
@@ -320,8 +320,9 @@ export function CreateProductForm() {
       </div>
 
       <div className="border-t border-cream-200 my-4" />
-
-      {/* ── Section 4: Description ── */}
+      */}
+      
+      {/* ── Section 4: Description ── 
       <div>
         <Label htmlFor="description">Description</Label>
         <Textarea
@@ -334,6 +335,7 @@ export function CreateProductForm() {
       </div>
 
       <div className="border-t border-cream-200 my-4" />
+      */}
 
       {/* ── Section 5: Attributes ── */}
       <div>
