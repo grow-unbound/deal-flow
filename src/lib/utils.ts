@@ -13,6 +13,33 @@ export function formatCurrency(amount: number, currency = 'INR'): string {
   }).format(amount);
 }
 
+export function formatCompactIndianNumber(value: number, fractionDigits = 2): string {
+  const abs = Math.abs(value);
+  if (abs < 10000) {
+    return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(value);
+  }
+
+  const units = [
+    { threshold: 10000000, suffix: 'Cr' },
+    { threshold: 100000, suffix: 'L' },
+    { threshold: 1000, suffix: 'K' },
+  ];
+
+  for (const unit of units) {
+    if (abs >= unit.threshold) {
+      const scaled = value / unit.threshold;
+      return `${scaled.toFixed(fractionDigits)}${unit.suffix}`;
+    }
+  }
+
+  return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(value);
+}
+
+export function formatCompactInr(value: number, fractionDigits = 2): string {
+  if (Math.abs(value) < 10000) return formatCurrency(value, 'INR');
+  return `₹${formatCompactIndianNumber(value, fractionDigits)}`;
+}
+
 export function formatDate(date: string | Date): string {
   return new Intl.DateTimeFormat('en-IN', {
     day: '2-digit',
