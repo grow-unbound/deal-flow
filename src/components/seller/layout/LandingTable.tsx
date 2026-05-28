@@ -1,0 +1,43 @@
+import type { ReactNode } from 'react';
+import { cn } from '@/lib/utils';
+
+interface LandingTableColumn {
+  label?: string;
+  align?: 'left' | 'right';
+  width?: number | string;
+  className?: string;
+}
+
+interface LandingTableProps {
+  columns: LandingTableColumn[];
+  children: ReactNode;
+  className?: string;
+}
+
+export function LandingTable({ columns, children, className }: LandingTableProps) {
+  return (
+    <div className={cn('overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white', className)}>
+      <table className="w-full border-collapse text-[13px]">
+        <thead>
+          <tr className="border-y border-cream-300 bg-white">
+            {columns.map((column, index) => (
+              <th
+                key={`${column.label ?? 'col'}-${index}`}
+                className={cn(
+                  'px-4 py-[11px] text-left text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700',
+                  column.align === 'right' && 'text-right',
+                  column.className
+                )}
+                style={column.width ? { width: column.width } : undefined}
+              >
+                {column.label ?? ''}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
+

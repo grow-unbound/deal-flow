@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DealFlow · Brands landing — exploration</title>
+<meta name="viewport" content="width=1440">
+<link rel="stylesheet" href="colors_and_type.css">
+<link rel="stylesheet" href="ui_kits/cockpit/cockpit.css">
+<link rel="stylesheet" href="brands/brands.css">
+<link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg">
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="brands/design-canvas.jsx"></script>
+<script type="text/babel" src="brands/tweaks-panel.jsx"></script>
+<script type="text/babel" src="ui_kits/cockpit/icons.jsx"></script>
+<script type="text/babel" src="brands/data.jsx"></script>
+<script type="text/babel" src="v2/data.jsx"></script>
+<script type="text/babel" src="brands/Shared.jsx"></script>
+<script type="text/babel" src="brands/VariationA.jsx"></script>
+<script type="text/babel" src="brands/VariationB.jsx"></script>
+<script type="text/babel" src="brands/VariationC.jsx"></script>
+<script type="text/babel" src="brands/EntityCockpits.jsx"></script>
+
+<script type="text/babel">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "horizon": "This month",
+  "sortBy": "gmv",
+  "showAlerts": true,
+  "density": "comfortable"
+}/*EDITMODE-END*/;
+
+const HORIZONS = ['This week', 'This month', 'This quarter', 'Rolling 30 days'];
+const SORT_OPTIONS = [
+  { value: 'gmv',    label: 'GMV' },
+  { value: 'growth', label: 'Growth' },
+  { value: 'share',  label: 'Share' },
+  { value: 'alpha',  label: 'A→Z' },
+];
+
+function PortfolioInsightStrip({ horizon }) {
+  return (
+    <InsightStrip tiles={[
+      { label: 'Portfolio GMV', value: inrShort(PORTFOLIO.gmv), delta: '+8.3%', deltaTone: 'up', hint: 'vs last month', tone: 'accent' },
+      { label: 'Brands carried', value: `${PORTFOLIO.brandsCarried}`, hint: `${PORTFOLIO.activeBuyersAcross} of ${PORTFOLIO.totalBuyers} buyers active` },
+      { label: 'Need attention', value: `${PORTFOLIO.brandsAtRisk}`, hint: '3 alerts open', tone: 'warn' },
+      { label: 'Catalog freshness', value: `${PORTFOLIO.catalogFresh} / ${PORTFOLIO.brandsCarried}`, hint: 'published in last 14 days' },
+    ]}/>
+  );
+}
+
+/* Each artboard = the standard chrome + one variation in the body.
+   The chrome is repeated identically across A/B/C so the user can see
+   that the layout pattern is consistent — only the "body" presentation differs. */
+function ArtboardShell({ letter, title, sub, tweaks, children }) {
+  return (
+    <div className="brand-art" style={{ background: 'var(--bg-page)' }}>
+      <div className="brand-art-label">Standard entity page · Brands</div>
+
+      <ConceptTag letter={letter} title={title} sub={sub} />
+
+      <PageHeaderStd
+        eyebrow="Portfolio"
+        title="Five brands. One portfolio."
+        subtitle="Phani Distribution carries 5 brand principals. WineYard and Khanna Brewing lead by GMV; Aravalli is climbing fast; Tara needs a call."
+        horizon={tweaks.horizon}
+        actions={
+          <>
+            <button className="cockpit-btn cockpit-btn-secondary">
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+                <span>Export</span>
+              </span>
+            </button>
+            <button className="cockpit-btn cockpit-btn-primary">
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                <span>Add a brand</span>
+              </span>
+            </button>
+          </>
+        }
+      />
+
+      <PortfolioInsightStrip horizon={tweaks.horizon} />
+
+      {children}
+    </div>
+  );
+}
+
+/* ───────────────────────────────────────────────
+   Tweaks panel — Concept A/B/C is the page-level
+   toggle for this exploration; horizon/sort/density
+   would persist into the production page.
+   ─────────────────────────────────────────────── */
+function BrandsTweaksPanel({ tweaks, setTweak }) {
+  return (
+    <TweaksPanel title="Tweaks">
+      <TweakSection label="Display">
+        <TweakSelect
+          label="Time horizon"
+          value={tweaks.horizon}
+          onChange={(v) => setTweak('horizon', v)}
+          options={HORIZONS.map(h => ({ value: h, label: h }))}
+        />
+        <TweakRadio
+          label="Sort by"
+          value={tweaks.sortBy}
+          onChange={(v) => setTweak('sortBy', v)}
+          options={SORT_OPTIONS}
+        />
+        <TweakRadio
+          label="Density"
+          value={tweaks.density}
+          onChange={(v) => setTweak('density', v)}
+          options={[{ value: 'comfortable', label: 'Comfortable' }, { value: 'compact', label: 'Compact' }]}
+        />
+        <TweakToggle
+          label="Show alert callouts"
+          value={tweaks.showAlerts}
+          onChange={(v) => setTweak('showAlerts', v)}
+        />
+      </TweakSection>
+
+      <TweakSection label="About this exploration">
+        <div style={{ fontSize: 12, color: 'var(--cream-700)', lineHeight: 1.55 }}>
+          Three landing concepts share the same standard chrome — <b>PageHeader → Insight strip → View switcher → Body</b>. The View switcher is the production-ready Report / List toggle (List shows the dense table); only the Report body changes between concepts.
+        </div>
+      </TweakSection>
+    </TweaksPanel>
+  );
+}
+
+function App() {
+  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  return (
+    <React.Fragment>
+      <DesignCanvas>
+        <DCSection
+          id="brands-landing"
+          title="Brands · landing page"
+          subtitle="Three concepts for the Report view. Each wraps the same standard chrome (PageHeader · Insight strip · View switcher). The List view is identical across concepts."
+        >
+          <DCArtboard id="a" label="Concept A · Portfolio Cockpit" width={1280} height={920}>
+            <ArtboardShell letter="A" title="Portfolio Cockpit"
+              sub="Leaderboard + Top / Attention / Rising callouts"
+              tweaks={tweaks}
+            >
+              <VariationA tweaks={tweaks} />
+            </ArtboardShell>
+          </DCArtboard>
+
+          <DCArtboard id="b" label="Concept B · Quadrant Brief" width={1280} height={920}>
+            <ArtboardShell letter="B" title="Quadrant Brief"
+              sub="Growth × Share scatter, editorial read-out"
+              tweaks={tweaks}
+            >
+              <VariationB tweaks={tweaks} />
+            </ArtboardShell>
+          </DCArtboard>
+
+          <DCArtboard id="c" label="Concept C · Brand Lookbook" width={1280} height={1180}>
+            <ArtboardShell letter="C" title="Brand Lookbook"
+              sub="Portfolio bar + large brand tiles"
+              tweaks={tweaks}
+            >
+              <VariationC tweaks={tweaks} />
+            </ArtboardShell>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="cockpit-extends"
+          title="Concept A applied to other entity landings"
+          subtitle="The same Portfolio Cockpit pattern — KPI strip → search + sort + Report/List toggle next to the table → leaderboard + Top / Attention / Rising callouts — applied to Products, Customers, Orders, Cohorts and Catalogs. Search sits next to the section title (closer to the data); the Report/List toggle stays anchored on the right."
+        >
+          <DCArtboard id="products"  label="Products · Catalog Cockpit"  width={1280} height={920}>
+            <ProductsCockpit tweaks={tweaks} />
+          </DCArtboard>
+
+          <DCArtboard id="customers" label="Customers · Buyer Cockpit"   width={1280} height={960}>
+            <CustomersCockpit tweaks={tweaks} />
+          </DCArtboard>
+
+          <DCArtboard id="orders"    label="Orders · Order Cockpit"      width={1280} height={1000}>
+            <OrdersCockpit tweaks={tweaks} />
+          </DCArtboard>
+
+          <DCArtboard id="cohorts"   label="Cohorts · Cohort Cockpit"    width={1280} height={820}>
+            <CohortsCockpit tweaks={tweaks} />
+          </DCArtboard>
+
+          <DCArtboard id="catalogs"  label="Catalogs · Catalog Cockpit"  width={1280} height={820}>
+            <CatalogsCockpit tweaks={tweaks} />
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      <BrandsTweaksPanel tweaks={tweaks} setTweak={setTweak} />
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

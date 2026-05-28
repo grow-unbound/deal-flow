@@ -1,0 +1,157 @@
+/* v3/v3.css
+   v3 = v2 chrome + v1-style three-up "Today's read" rail.
+   We reuse:
+     - everything in ../v2/v2.css  (PageHeader, InsightStrip4, FilterBar, body)
+     - .va-callout / .va-callout-* from ../brands/brands.css
+
+   What this file adds:
+     - .v3-callouts grid (horizontal 3-up, matching the InsightStrip rhythm)
+     - left-accent border per kind (risk / opportunity / info), matching v2's
+       attention-rail color logic so the page reads as one family
+     - the toggle is *not* hidden via CSS — it's omitted by `hideViewToggle`
+       in the FilterBar prop. Keeping this here as a reminder.
+*/
+
+.v3-callouts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+/* Reuse .va-callout from brands.css but tighten padding so 3-up still breathes,
+   and apply the v2 kind palette (risk / opportunity / info) as left accents. */
+.v3-callout {
+  padding: 14px 16px 16px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid var(--cream-300);
+  /* override v1 attention background tint — we want the cards to read as
+     equal weight, with the kind communicated by left accent + tag color */
+}
+.v3-callout.is-attention { background: #fff; border-color: var(--cream-300); }
+
+.v3-callout.is-risk        { border-left: 3px solid var(--danger-500); }
+.v3-callout.is-opportunity { border-left: 3px solid var(--ember-400); }
+.v3-callout.is-info        { border-left: 3px solid var(--teal-500); }
+
+/* Kind tag — sits where the eyebrow would go, but coloured */
+.v3-callout-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cream-700);
+  margin: 0;
+}
+.v3-callout-tag .dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--cream-500);
+}
+.v3-callout.is-risk        .v3-callout-tag       { color: var(--danger-700); }
+.v3-callout.is-risk        .v3-callout-tag .dot  { background: var(--danger-500); }
+.v3-callout.is-opportunity .v3-callout-tag       { color: var(--ember-700); }
+.v3-callout.is-opportunity .v3-callout-tag .dot  { background: var(--ember-400); }
+.v3-callout.is-info        .v3-callout-tag       { color: var(--teal-700); }
+.v3-callout.is-info        .v3-callout-tag .dot  { background: var(--teal-500); }
+
+.v3-callout-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap: 8px;
+}
+.v3-callout-hint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--cream-700);
+}
+
+/* Item list inside a callout — tighter than v1's so 3-up reads cleanly */
+.v3-callout-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.v3-callout-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.v3-callout-item .col-meta { flex: 1; min-width: 0; }
+.v3-callout-item .name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cream-900);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.v3-callout-item .reason {
+  font-size: 11.5px;
+  color: var(--cream-700);
+  line-height: 1.4;
+  margin-top: 2px;
+  text-wrap: pretty;
+}
+.v3-callout-item .trailing {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--cream-800);
+  flex-shrink: 0;
+}
+
+/* Empty state inside a callout */
+.v3-callout-empty {
+  font-size: 12px;
+  color: var(--cream-700);
+  padding: 4px 0;
+}
+
+/* Rationale box for the artboard caption — same shape as v2's. */
+.v3-rationale {
+  background: var(--cream-50);
+  border: 1px solid var(--cream-300);
+  border-radius: 14px;
+  padding: 20px 24px;
+  max-width: 980px;
+}
+.v3-rationale-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ember-700);
+  margin-bottom: 8px;
+}
+.v3-rationale ul {
+  margin: 0; padding: 0; list-style: none;
+  display: grid; gap: 8px;
+  font-size: 13px; line-height: 1.55;
+  color: var(--cream-800);
+}
+.v3-rationale .pushback {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--cream-400);
+}
+.v3-rationale .pushback h4 {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 500;
+  margin: 0 0 6px;
+  color: var(--cream-900);
+  letter-spacing: -0.005em;
+}
+.v3-rationale .pushback p {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--cream-800);
+}

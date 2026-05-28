@@ -48,19 +48,19 @@ export function SellerSidebar() {
 
   return (
     <aside
-      className="fixed left-0 top-0 h-screen flex flex-col bg-cream-50 border-r border-cream-300"
+      className="fixed left-0 top-0 flex h-screen flex-col border-r border-cream-300 bg-cream-100"
       style={{ width: 'var(--sidebar-w)' }}
     >
       {/* Brand mark */}
-      <div className="flex items-center gap-3 px-5 h-16 border-b border-cream-300 shrink-0">
-        <div className="w-8 h-8 bg-teal-500 rounded-md flex items-center justify-center shrink-0">
+      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-cream-300 px-5">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[11px] bg-teal-500">
           <span className="text-cream-50 font-display font-medium text-sm leading-none">DF</span>
         </div>
-        <span className="font-display font-medium text-teal-500 text-lg leading-none">DealFlow</span>
+        <span className="font-display text-lg font-medium leading-none text-teal-500">DealFlow</span>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-0.5">
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
         {navItems.filter(item => !item.adminOnly || isSellerAdmin).map(({ label, href, icon: Icon, children }) => {
           const childActive = children?.some((item) => pathname === item.href) ?? false;
           const active =
@@ -70,7 +70,7 @@ export function SellerSidebar() {
               <Link
                 href={href}
                 className={[
-                  'flex items-center gap-3 px-3 py-2 rounded-md text-body-sm font-medium transition-colors duration-fast',
+                  'flex items-center gap-3 rounded-[12px] px-3 py-2.5 text-body-sm font-medium transition-colors duration-fast',
                   active
                     ? 'bg-teal-500 text-cream-50'
                     : 'text-cream-800 hover:bg-cream-200 hover:text-cream-900',
@@ -90,7 +90,7 @@ export function SellerSidebar() {
                     key={childHref}
                     href={childHref}
                     className={[
-                      'ml-6 flex items-center gap-3 rounded-md px-3 py-2 text-body-sm font-medium transition-colors duration-fast',
+                      'ml-6 flex items-center gap-3 rounded-[10px] px-3 py-2 text-body-sm font-medium transition-colors duration-fast',
                       childIsActive
                         ? 'bg-teal-500 text-cream-50'
                         : 'text-cream-700 hover:bg-cream-200 hover:text-cream-900',
