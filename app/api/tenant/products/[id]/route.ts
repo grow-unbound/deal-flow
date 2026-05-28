@@ -12,9 +12,9 @@ const UpdateProductSchema = z.object({
   tenant_brand_id: z.string().uuid().optional().nullable(),
   default_uom: z.string().optional().nullable(),
   pack_size: z.coerce.number().positive().optional().nullable(),
-  hsn_code: z.string().optional().nullable(),
-  gst_rate: z.coerce.number().min(0).max(100).optional().nullable(),
-  description: z.string().optional().nullable(),
+  // hsn_code: z.string().optional().nullable(),
+  // gst_rate: z.coerce.number().min(0).max(100).optional().nullable(),
+  // description: z.string().optional().nullable(),
   attributes_override: z.record(z.string()).optional(),
   image_urls: z.array(z.string()).optional(),
   is_active: z.boolean().optional(),
@@ -70,19 +70,16 @@ export async function GET(
         cost_price,
         default_uom,
         pack_size,
-        hsn_code,
-        gst_rate,
-        description,
         attributes_override,
         image_urls,
         is_active,
         external_ref,
         created_at,
         updated_at
-      `)
+      `) // hsn_code, gst_rate, description left out for now
       .eq('id', id)
       .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null)
+      .is('is_active', true)
       .maybeSingle();
 
     if (error) {
@@ -160,7 +157,7 @@ export async function PATCH(
       .select('*')
       .eq('id', id)
       .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null)
+      .is('is_active', true)
       .maybeSingle();
 
     if (fetchError) {

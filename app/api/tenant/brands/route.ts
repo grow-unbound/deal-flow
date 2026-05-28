@@ -42,11 +42,15 @@ export async function GET(req: NextRequest) {
         updated_at
       `)
       .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null)
+      .is('is_active', true)
       .order('created_at', { ascending: false });
 
     if (error) {
-      return NextResponse.json({ error: 'Failed to fetch brands' }, { status: 500 });
+      console.error('[GET /api/tenant/brands] DB error:', error.code, error.message, error.details);
+      return NextResponse.json(
+        { error: 'Failed to fetch brands', code: error.code, detail: error.message },
+        { status: 500 },
+      );
     }
 
     // Fetch master brand details for all master_brand_ids
@@ -121,7 +125,7 @@ export async function POST(req: NextRequest) {
       .select('id')
       .eq('tenant_id', claims.tenant_id)
       .eq('master_brand_id', master_brand_id)
-      .is('deleted_at', null)
+      .is('is_active', true)
       .maybeSingle();
 
     if (existing) {
@@ -147,11 +151,16 @@ export async function POST(req: NextRequest) {
       if (insertError.code === '23505') {
         return NextResponse.json({ error: 'Brand already in your catalog' }, { status: 409 });
       }
-      return NextResponse.json({ error: 'Failed to add brand' }, { status: 500 });
+      console.error('[POST /api/tenant/brands] DB error:', insertError.code, insertError.message);
+      return NextResponse.json(
+        { error: 'Failed to add brand', code: insertError.code, detail: insertError.message },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({ brand: inserted }, { status: 201 });
-  } catch {
+  } catch (err) {
+    console.error('[POST /api/tenant/brands] Unexpected error:', err);
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 }

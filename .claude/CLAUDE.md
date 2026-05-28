@@ -235,6 +235,37 @@ Wk 12: Cross-tenant security tests, onboarding polish, first paid customer
 
 ---
 
+## Supabase Conventions
+
+### Migration workflow
+- **Always create migration files via CLI:** `supabase migration new <descriptive-name>` — never create or name migration files manually. The CLI generates the correct `YYYYMMDDHHMMSS_<name>.sql` timestamp format.
+- **Never create schema changes directly in the Supabase dashboard** without immediately capturing them into a migration file via `supabase db pull --local`.
+- Apply to remote with `supabase db push`. Verify with `supabase migration list`.
+
+### Always qualify schema names
+Every SQL statement — in migration files, seed files, RPC definitions, Edge Functions, and application code (Supabase JS client calls) — **must explicitly name the schema**. This project uses three schemas (`auth`, `catalog`, `app`) and ambiguity causes silent bugs.
+
+```sql
+-- ✅ correct
+SELECT * FROM app.tenants WHERE id = $1;
+INSERT INTO catalog.brands (name) VALUES ($1);
+CREATE FUNCTION app.resolve_price(...) ...
+
+-- ❌ wrong — schema is implicit and fragile
+SELECT * FROM tenants WHERE id = $1;
+```
+
+In application code, always pass `{ schema: 'app' }` or `{ schema: 'catalog' }` explicitly on the Supabase client:
+```ts
+// ✅ correct
+supabase.schema('app').from('tenants').select('*')
+
+// ❌ wrong — defaults to public, which has no tables
+supabase.from('tenants').select('*')
+```
+
+---
+
 ## Workflow Rules (from parent project)
 - Explore first, plan before coding. Use plan mode for anything touching >2 files.
 - Always verify your work. Run tests or show a diff before declaring done.

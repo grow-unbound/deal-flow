@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { CreateBrandInput } from '@/lib/zod';
+import { apiFetch, apiPost } from '@/lib/api-fetch';
 
 export interface MasterBrand {
   id: string;
@@ -43,7 +44,7 @@ export function useTenantBrands() {
   return useQuery({
     queryKey: ['tenant-brands'],
     queryFn: async (): Promise<TenantBrandsResponse> => {
-      const res = await fetch('/api/tenant/brands');
+      const res = await apiFetch('/api/tenant/brands');
       if (!res.ok) {
         throw new Error('Failed to fetch brands');
       }
@@ -57,7 +58,7 @@ export function useSearchMasterBrands(query: string) {
     queryKey: ['master-brands-search', query],
     queryFn: async (): Promise<SearchBrandsResponse> => {
       const params = new URLSearchParams({ q: query });
-      const res = await fetch(`/api/brands/search?${params.toString()}`);
+      const res = await apiFetch(`/api/brands/search?${params.toString()}`);
       if (!res.ok) {
         throw new Error('Failed to search brands');
       }
@@ -73,11 +74,7 @@ export function useAddBrandToTenant() {
 
   return useMutation({
     mutationFn: async (payload: AddBrandPayload): Promise<TenantBrand> => {
-      const res = await fetch('/api/tenant/brands', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      const res = await apiPost('/api/tenant/brands', payload);
 
       if (res.status === 409) {
         throw new Error('Brand already in your catalog');
@@ -145,11 +142,7 @@ export function useCreateCustomBrand() {
 
   return useMutation({
     mutationFn: async (data: CreateBrandInput): Promise<{ brand: TenantBrand }> => {
-      const res = await fetch('/api/brands/custom', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
+      const res = await apiPost('/api/brands/custom', data);
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Request failed' }));

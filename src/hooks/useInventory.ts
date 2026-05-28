@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiFetch, apiPost } from '@/lib/api-fetch';
 
 export interface Location {
   id: string;
@@ -53,7 +54,7 @@ export function useLocations() {
   return useQuery({
     queryKey: ['locations'],
     queryFn: async () => {
-      const res = await fetch('/api/tenant/locations');
+      const res = await apiFetch('/api/tenant/locations');
       if (!res.ok) throw new Error('Failed to fetch locations');
       return res.json() as Promise<{ locations: Location[] }>;
     },
@@ -64,7 +65,7 @@ export function useInventoryByProduct(productId: string) {
   return useQuery({
     queryKey: ['inventory', productId],
     queryFn: async () => {
-      const res = await fetch(`/api/tenant/inventory?product_id=${productId}`);
+      const res = await apiFetch(`/api/tenant/inventory?product_id=${productId}`);
       if (!res.ok) throw new Error('Failed to fetch inventory');
       return res.json() as Promise<{ inventory: InventoryRow[] }>;
     },
@@ -76,11 +77,7 @@ export function useUpsertInventory() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: UpsertInventoryInput) => {
-      const res = await fetch('/api/tenant/inventory', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
+      const res = await apiPost('/api/tenant/inventory', data);
       if (!res.ok) throw new Error('Failed to update inventory');
       return res.json();
     },
@@ -94,11 +91,7 @@ export function useCreateLocation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: { name: string; address?: object; is_default?: boolean }) => {
-      const res = await fetch('/api/tenant/locations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
+      const res = await apiPost('/api/tenant/locations', data);
       if (!res.ok) throw new Error('Failed to create location');
       return res.json();
     },

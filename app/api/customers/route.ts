@@ -33,11 +33,15 @@ export async function GET(request: NextRequest) {
     .from('buyers')
     .select('*')
     .eq('tenant_id', claims.tenant_id)
-    .is('deleted_at', null)
+    .is('is_active', true)
     .order('business_name', { ascending: true });
 
   if (error) {
-    return NextResponse.json({ error: 'Failed to fetch customers' }, { status: 500 });
+    console.error('[GET /api/customers] DB error:', error.code, error.message, error.details);
+    return NextResponse.json(
+      { error: 'Failed to fetch customers', code: error.code, detail: error.message },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ buyers: rows ?? [] });
@@ -92,7 +96,7 @@ export async function POST(request: NextRequest) {
     .select('id')
     .eq('tenant_id', claims.tenant_id)
     .eq('phone', data.phone)
-    .is('deleted_at', null)
+    .is('is_active', true)
     .maybeSingle();
 
   if (phoneMatch) {
@@ -110,7 +114,7 @@ export async function POST(request: NextRequest) {
       .select('id')
       .eq('tenant_id', claims.tenant_id)
       .eq('external_ref', data.external_ref.trim())
-      .is('deleted_at', null)
+      .is('is_active', true)
       .maybeSingle();
 
     if (refMatch) {
@@ -142,7 +146,11 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (insertError) {
-    return NextResponse.json({ error: 'Failed to create customer' }, { status: 500 });
+    console.error('[POST /api/customers] DB error:', insertError.code, insertError.message, insertError.details);
+    return NextResponse.json(
+      { error: 'Failed to create customer', code: insertError.code, detail: insertError.message },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ buyer }, { status: 201 });

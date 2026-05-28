@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useRouter } from 'next/navigation';
+import { LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRole } from '@/hooks/useRole';
 
@@ -16,8 +17,15 @@ const navItems = [
   { label: 'Catalogs',     href: '/catalogs',       icon: CatalogsIcon,     adminOnly: false },
   { label: 'Orders',       href: '/orders',         icon: OrdersIcon,       adminOnly: false },
   { label: 'Exports',      href: '/exports',        icon: ExportsIcon,      adminOnly: false },
-  { label: 'Settings',     href: '/settings',       icon: SettingsIcon,     adminOnly: true  },
-  { label: 'Users & Roles', href: '/settings/team', icon: UsersRoundIcon,   adminOnly: true  },
+  {
+    label: 'Settings',
+    href: '/settings',
+    icon: SettingsIcon,
+    adminOnly: true,
+    children: [
+      { label: 'Users & Roles', href: '/settings/team', icon: UsersRoundIcon, adminOnly: true },
+    ],
+  },
 ];
 
 const ROLE_LABELS: Record<string, string> = {
@@ -53,32 +61,62 @@ export function SellerSidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-0.5">
-        {navItems.filter(item => !item.adminOnly || isSellerAdmin).map(({ label, href, icon: Icon }) => {
-          const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+        {navItems.filter(item => !item.adminOnly || isSellerAdmin).map(({ label, href, icon: Icon, children }) => {
+          const childActive = children?.some((item) => pathname === item.href) ?? false;
+          const active =
+            !childActive && (pathname === href || (href !== '/dashboard' && pathname.startsWith(href)));
           return (
-            <Link
-              key={href}
-              href={href}
-              className={[
-                'flex items-center gap-3 px-3 py-2 rounded-md text-body-sm font-medium transition-colors duration-fast',
-                active
-                  ? 'bg-teal-500 text-cream-50'
-                  : 'text-cream-800 hover:bg-cream-200 hover:text-cream-900',
-              ].join(' ')}
-            >
-              <Icon
-                size={16}
-                className={active ? 'text-cream-50' : 'text-cream-600'}
-              />
-              {label}
-            </Link>
+            <div key={href} className="space-y-0.5">
+              <Link
+                href={href}
+                className={[
+                  'flex items-center gap-3 px-3 py-2 rounded-md text-body-sm font-medium transition-colors duration-fast',
+                  active
+                    ? 'bg-teal-500 text-cream-50'
+                    : 'text-cream-800 hover:bg-cream-200 hover:text-cream-900',
+                ].join(' ')}
+              >
+                <Icon
+                  size={16}
+                  className={active ? 'text-cream-50' : 'text-cream-600'}
+                />
+                {label}
+              </Link>
+
+              {children?.filter((item) => !item.adminOnly || isSellerAdmin).map(({ label: childLabel, href: childHref, icon: ChildIcon }) => {
+                const childIsActive = pathname === childHref;
+                return (
+                  <Link
+                    key={childHref}
+                    href={childHref}
+                    className={[
+                      'ml-6 flex items-center gap-3 rounded-md px-3 py-2 text-body-sm font-medium transition-colors duration-fast',
+                      childIsActive
+                        ? 'bg-teal-500 text-cream-50'
+                        : 'text-cream-700 hover:bg-cream-200 hover:text-cream-900',
+                    ].join(' ')}
+                  >
+                    <ChildIcon size={15} className={childIsActive ? 'text-cream-50' : 'text-cream-500'} />
+                    {childLabel}
+                  </Link>
+                );
+              })}
+            </div>
           );
         })}
       </nav>
 
       {/* User footer */}
-      <div className="shrink-0 border-t border-cream-300 px-4 py-4 mt-auto">
-        <div className="flex items-center gap-3 mb-3">
+      <div className="shrink-0 px-4 py-4 mt-auto">
+        <button
+          onClick={handleLogout}
+          className="mb-3 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-caption font-medium text-cream-700 transition-colors duration-fast hover:bg-cream-200 hover:text-cream-900"
+        >
+          <LogOut size={15} />
+          Log out
+        </button>
+        <div className="border-t border-cream-300 pt-3">
+          <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center shrink-0">
             <span className="text-teal-600 font-medium text-caption uppercase">
               {user?.email?.[0]?.toUpperCase() ?? '?'}
@@ -91,12 +129,7 @@ export function SellerSidebar() {
             <p className="text-caption text-cream-600">{role ? ROLE_LABELS[role] : '—'}</p>
           </div>
         </div>
-        <button
-          onClick={handleLogout}
-          className="w-full px-3 py-1.5 rounded-md text-caption font-medium text-cream-700 hover:bg-cream-200 hover:text-cream-900 transition-colors duration-fast text-left"
-        >
-          Log out
-        </button>
+        </div>
       </div>
     </aside>
   );

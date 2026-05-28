@@ -74,7 +74,7 @@ export default function EditCustomerPage({ params }: EditCustomerPageProps) {
     return (
       <>
         <SellerTopbar title="Edit Customer" />
-        <div style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }} className="px-8 py-6">
+        <div className="px-8 py-6">
           <p className="text-cream-600 text-center py-12">Loading customer…</p>
         </div>
       </>
@@ -85,7 +85,7 @@ export default function EditCustomerPage({ params }: EditCustomerPageProps) {
     return (
       <>
         <SellerTopbar title="Edit Customer" />
-        <div style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }} className="px-8 py-6">
+        <div className="px-8 py-6">
           <div className="text-center py-16">
             <p className="text-cream-600 mb-4">Customer not found.</p>
             <Link href="/customers" className="text-teal-600 hover:text-teal-700 flex items-center gap-1 justify-center text-body-sm">
@@ -123,10 +123,7 @@ export default function EditCustomerPage({ params }: EditCustomerPageProps) {
           </Link>
         }
       />
-      <div
-        className="px-8 py-6"
-        style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }}
-      >
+      <div className="px-8 py-6">
         <FeatureGate flag="CUSTOMER_MASTER">
           <div className="max-w-3xl">
             <BuyerForm

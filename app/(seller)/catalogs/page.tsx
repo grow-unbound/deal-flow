@@ -5,15 +5,11 @@ import { FeatureGate } from '@/components/FeatureGate';
 
 export default function CatalogsPage() {
   return (
-    <>
-      <SellerTopbar title="Catalogs" />
-      <div style={{ paddingTop: 'calc(var(--topbar-h) + 24px)' }}>
-        <FeatureGate flag="CATALOG_PUBLISHING">
-          <div className="px-8 py-6">
-            <p className="text-cream-600">Catalog publishing module coming soon.</p>
-          </div>
-        </FeatureGate>
+    <div className="px-8 py-6">
+      <SellerTopbar title="Catalogs" subtitle="Publish curated product sets for the right buyer segments at the right time." />
+      <FeatureGate flag="CATALOG_PUBLISHING">
+        <p className="text-cream-600">Catalog publishing module coming soon.</p>
+      </FeatureGate>
       </div>
-    </>
   );
 }

@@ -12,6 +12,7 @@ export * from './pagination';
 export * from './select';
 export * from './sheet';
 export * from './spinner';
+export * from './switch';
 export * from './table';
 export * from './tabs';
 export * from './textarea';
