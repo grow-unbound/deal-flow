@@ -1,0 +1,255 @@
+/* v2/details-v2.css
+   Styles for v2 detail pages — only adds delta to details/details.css
+   for the wider canvas + lens-pair widgets. */
+
+.v2-detail-body {
+  /* Tab bodies render with a small breathing margin. */
+  margin-top: 4px;
+}
+
+/* ============================================================
+   LENS PAIRS — inverse-view comparison cards
+   ============================================================ */
+.lens-pair {
+  display: grid;
+  grid-template-columns: 1fr 60px 1fr;
+  align-items: stretch;
+  gap: 0;
+  padding: 24px 28px;
+}
+
+.lens-card {
+  background: #fff;
+  border: 1px solid var(--cream-300);
+  border-radius: 14px;
+  padding: 18px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.lens-card-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--cream-700);
+  text-transform: none;
+  margin-bottom: 4px;
+}
+.lens-card-title {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--cream-900);
+  margin: 0 0 12px;
+  line-height: 1.2;
+}
+.lens-card-body { display: flex; flex-direction: column; }
+
+/* Join — vertical pipe + pill label between the two cards */
+.lens-join {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  gap: 6px;
+}
+.lens-join-line {
+  flex: 1;
+  width: 1px;
+  background: var(--cream-400);
+  min-height: 12px;
+}
+.lens-join-pill {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ember-700);
+  background: var(--ember-50);
+  border: 1px solid var(--ember-100);
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  text-align: center;
+  font-weight: 600;
+}
+
+/* Row helper */
+.lens-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px dashed var(--cream-300);
+}
+.lens-row:last-child { border-bottom: none; }
+.lens-row-meta { flex: 1; min-width: 0; }
+.lens-row-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cream-900);
+  line-height: 1.25;
+}
+.lens-row-sub {
+  font-size: 11px;
+  color: var(--cream-700);
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.lens-row-right { flex-shrink: 0; text-align: right; }
+.lens-row-tiny {
+  font-size: 11px;
+  color: var(--cream-700);
+  font-family: var(--font-mono);
+}
+.lens-row-primary {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ember-700);
+  background: var(--ember-50);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.lens-money {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--cream-900);
+}
+
+/* Rank badge for "top buyers" */
+.lens-rank {
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  background: var(--cream-100);
+  color: var(--cream-700);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Bottle thumb for SKUs */
+.lens-bottle {
+  width: 24px; height: 28px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #EAF1EE 0%, #C6DAD3 100%);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 3px;
+  flex-shrink: 0;
+}
+.lens-bottle i {
+  display: block;
+  width: 7px; height: 18px;
+  border-radius: '20% 20% 8% 8%';
+  background: linear-gradient(180deg, #1F3A34, #142823);
+}
+.lens-bottle.small { width: 18px; height: 22px; }
+.lens-bottle.small i { width: 5px; height: 14px; }
+
+/* Cohort colored dot */
+.lens-cohort-dot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Catalog tile thumb */
+.lens-cat-thumb {
+  width: 30px; height: 30px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+/* Parent-brand block for product → brand lens */
+.lens-parent {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--cream-50);
+  border: 1px solid var(--cream-300);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.lens-parent-meta { flex: 1; min-width: 0; }
+.lens-parent-name {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--cream-900);
+}
+.lens-parent-sub {
+  font-size: 11px;
+  color: var(--cream-700);
+  margin-top: 1px;
+  font-family: var(--font-mono);
+}
+.lens-parent-link {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--teal-500);
+  cursor: pointer;
+}
+.lens-parent-link:hover { color: var(--teal-600); }
+
+.lens-section-eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cream-700);
+  margin: 4px 0 6px;
+}
+.lens-footer {
+  font-size: 11.5px;
+  color: var(--cream-700);
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--cream-300);
+}
+
+/* ============================================================
+   LENS EXPLAINER — intro callout above the pairs
+   ============================================================ */
+.lens-explainer {
+  background: linear-gradient(180deg, #FFFBF4 0%, #FFFFFF 100%);
+  border: 1px solid var(--ember-200);
+  border-radius: 14px;
+  padding: 22px 26px 24px;
+  margin: 24px 28px 0;
+}
+.lens-explainer-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--cream-900);
+  margin: 8px 0 8px;
+  line-height: 1.2;
+  max-width: 50ch;
+  text-wrap: pretty;
+}
+.lens-explainer-body {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--cream-800);
+  line-height: 1.55;
+  max-width: 68ch;
+  text-wrap: pretty;
+}
+.lens-explainer-body em {
+  font-style: italic;
+  color: var(--ember-700);
+}

@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DealFlow · Detail pages — exploration</title>
+<meta name="viewport" content="width=1440">
+<link rel="stylesheet" href="colors_and_type.css">
+<link rel="stylesheet" href="ui_kits/cockpit/cockpit.css">
+<link rel="stylesheet" href="brands/brands.css">
+<link rel="stylesheet" href="details/details.css">
+<link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg">
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="brands/design-canvas.jsx"></script>
+<script type="text/babel" src="brands/tweaks-panel.jsx"></script>
+<script type="text/babel" src="brands/data.jsx"></script>
+<script type="text/babel" src="brands/Shared.jsx"></script>
+<script type="text/babel" src="details/data.jsx"></script>
+<script type="text/babel" src="details/Shared.jsx"></script>
+<script type="text/babel" src="details/Edit.jsx"></script>
+<script type="text/babel" src="details/Perf.jsx"></script>
+<script type="text/babel" src="details/Patterns.jsx"></script>
+
+<script type="text/babel">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "pattern": "toggle",
+  "compactMeta": false
+}/*EDITMODE-END*/;
+
+/* ──────────────────────────────────────────────────────────────
+   EntityPage — standard chrome wrapper used by every entity artboard.
+   Renders the full detail-page chrome (crumb → header → meta strip →
+   tabs → body). The chrome is identical across all 5 entities,
+   which is the entire point of this exploration.
+   ────────────────────────────────────────────────────────────── */
+function EntityPage({ label, mode, header, meta, tabs, active, body }) {
+  return (
+    <div className="detail-art">
+      <div className="detail-art-label">{label}</div>
+      <ModeBadge mode={mode} />
+      <DetailHeader {...header} actions={<DetailActions mode={mode} />} />
+      <MetaStrip tiles={meta} />
+      <DetailTabs tabs={tabs} active={active} onChange={() => {}} />
+      {body}
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+   ENTITY CONFIGS  — per-entity chrome content. Body fills last.
+   ────────────────────────────────────────────────────────────── */
+
+// BRAND ──────────────────────────────────────────────────────
+const brandPerf = BRAND_DETAIL.perf;
+const brandMeta = [
+  { label: 'GMV · this month', value: inrShort(brandPerf.gmv), sub: <span><span className="up">↑ +{brandPerf.growth}%</span> vs last month</span> },
+  { label: 'Share of portfolio', value: `${brandPerf.share}%`, sub: 'of ₹47.3 L' },
+  { label: 'Active buyers', value: `${brandPerf.activeBuyers}/${brandPerf.totalBuyers}`, sub: 'bought this month' },
+  { label: 'Low-stock SKUs', value: `${brandPerf.lowStock}`, sub: '4 of 82 SKUs' },
+  { label: 'Catalog freshness', value: `${brandPerf.daysSinceCatalog}d ago`, sub: 'last sent Jun 24' },
+];
+const brandTabs = [
+  { id: 'details', label: 'Details' },
+  { id: 'performance', label: 'Performance' },
+  { id: 'buyers', label: 'Buyers', badge: brandPerf.activeBuyers },
+  { id: 'catalogs', label: 'Catalogs', badge: 12 },
+  { id: 'activity', label: 'Activity' },
+];
+const brandHeader = {
+  crumbPath: [{ label: 'Brands' }, { label: BRAND_DETAIL.name, current: true }],
+  avatar: { kind: 'brand', initials: BRAND_DETAIL.initials, hue: BRAND_DETAIL.hue },
+  title: BRAND_DETAIL.name,
+  status: BRAND_DETAIL.status,
+  subtitle: [BRAND_DETAIL.category, BRAND_DETAIL.region, `Carried since ${BRAND_DETAIL.carriedSince}`, `${brandPerf.skus} SKUs`],
+};
+
+// PRODUCT ────────────────────────────────────────────────────
+const productPerf = PRODUCT_DETAIL.perf;
+const productMeta = [
+  { label: 'Units sold', value: productPerf.units, sub: <span><span className="up">↑ +{productPerf.growth}%</span> vs last month</span> },
+  { label: 'Revenue', value: inrShort(productPerf.gmv), sub: 'this month' },
+  { label: 'On hand', value: productPerf.onHand, sub: 'bottles' },
+  { label: 'Days of cover', value: `${productPerf.daysOfCover} d`, sub: 'at current pace' },
+  { label: 'Sell-through', value: `${productPerf.sellThrough}%`, sub: 'last 30 days' },
+];
+const productTabs = [
+  { id: 'details', label: 'Details' },
+  { id: 'performance', label: 'Performance' },
+  { id: 'pricing', label: 'Pricing & cohorts' },
+  { id: 'stock', label: 'Stock' },
+  { id: 'activity', label: 'Activity' },
+];
+const productHeader = {
+  crumbPath: [{ label: 'Products' }, { label: PRODUCT_DETAIL.name, current: true }],
+  avatar: { kind: 'product' },
+  title: PRODUCT_DETAIL.name,
+  status: PRODUCT_DETAIL.status,
+  subtitle: [PRODUCT_DETAIL.brand, PRODUCT_DETAIL.sku, PRODUCT_DETAIL.pack, `MRP ${inrFmt(PRODUCT_DETAIL.mrp)}`],
+};
+
+// CUSTOMER ───────────────────────────────────────────────────
+const custPerf = CUSTOMER_DETAIL.perf;
+const customerMeta = [
+  { label: 'Spend · this month', value: inrShort(custPerf.spend), sub: <span><span className="up">↑ +{custPerf.growth}%</span> vs last month</span> },
+  { label: 'Orders', value: custPerf.orders, sub: `AOV ${inrShort(custPerf.aov)}` },
+  { label: 'Last order', value: custPerf.lastOrder, sub: 'Cabernet Sauvignon ×24' },
+  { label: 'Credit used', value: inrShort(CUSTOMER_DETAIL.creditUsed), sub: `of ${inrShort(CUSTOMER_DETAIL.creditLimit)}` },
+  { label: 'Buyer since', value: CUSTOMER_DETAIL.buyerSince, sub: '5 yrs · loyal' },
+];
+const customerTabs = [
+  { id: 'details', label: 'Details' },
+  { id: 'performance', label: 'Performance' },
+  { id: 'orders', label: 'Orders', badge: custPerf.orders },
+  { id: 'invoices', label: 'Invoices & credit' },
+  { id: 'activity', label: 'Activity' },
+];
+const customerHeader = {
+  crumbPath: [{ label: 'Customers' }, { label: CUSTOMER_DETAIL.name, current: true }],
+  avatar: { kind: 'brand', initials: CUSTOMER_DETAIL.initials, hue: CUSTOMER_DETAIL.hue },
+  title: CUSTOMER_DETAIL.name,
+  status: CUSTOMER_DETAIL.status,
+  subtitle: [
+    <span><span className="pill" style={{ background: 'var(--ember-50)', color: 'var(--ember-700)', padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 500 }}>Tier {CUSTOMER_DETAIL.tier}</span></span>,
+    CUSTOMER_DETAIL.city,
+    `Buyer since ${CUSTOMER_DETAIL.buyerSince}`,
+    'Net 21 terms',
+  ],
+};
+
+// COHORT ─────────────────────────────────────────────────────
+const cohPerf = COHORT_DETAIL.perf;
+const cohortMeta = [
+  { label: 'Members', value: COHORT_DETAIL.members, sub: `of ${COHORT_DETAIL.totalBuyers} total buyers` },
+  { label: 'GMV · this month', value: inrShort(cohPerf.gmv), sub: <span><span className="up">↑ +{cohPerf.growth}%</span> vs last month</span> },
+  { label: 'Active members', value: `${cohPerf.activeMembers}/${COHORT_DETAIL.members}`, sub: 'ordered this month' },
+  { label: 'AOV', value: inrShort(cohPerf.avgOrderValue), sub: 'across orders' },
+  { label: 'Conversion', value: `${cohPerf.conversionRate}%`, sub: 'catalog → order' },
+];
+const cohortTabs = [
+  { id: 'details', label: 'Details' },
+  { id: 'performance', label: 'Performance' },
+  { id: 'members', label: 'Members', badge: COHORT_DETAIL.members },
+  { id: 'catalogs', label: 'Catalogs', badge: COHORT_DETAIL.applicableCatalogs },
+  { id: 'activity', label: 'Activity' },
+];
+const cohortHeader = {
+  crumbPath: [{ label: 'Cohorts' }, { label: COHORT_DETAIL.name, current: true }],
+  avatar: { kind: 'brand', initials: 'MP', hue: 'ember' },
+  title: COHORT_DETAIL.name,
+  status: COHORT_DETAIL.status,
+  subtitle: [COHORT_DETAIL.description.slice(0, 56) + '…', `${COHORT_DETAIL.members} members`, COHORT_DETAIL.createdBy],
+};
+
+// CATALOG ────────────────────────────────────────────────────
+const catPerf = CATALOG_DETAIL.perf;
+const catalogMeta = [
+  { label: 'Products', value: CATALOG_DETAIL.products, sub: `${CATALOG_DETAIL.brandsCovered} brands covered` },
+  { label: 'GMV', value: inrShort(catPerf.gmv), sub: <span><span className="up">↑ +{catPerf.growth}%</span> vs previous catalog</span> },
+  { label: 'Orders', value: catPerf.orders, sub: `from ${catPerf.uniqueViewers} buyers` },
+  { label: 'Conversion', value: `${catPerf.conversionRate}%`, sub: 'opens → orders' },
+  { label: 'Days left', value: `${CATALOG_DETAIL.daysLeft} d`, sub: `valid until ${CATALOG_DETAIL.validUntil}` },
+];
+const catalogTabs = [
+  { id: 'details', label: 'Details' },
+  { id: 'performance', label: 'Performance' },
+  { id: 'buyers', label: 'Buyers', badge: CATALOG_DETAIL.cohortMembers },
+  { id: 'activity', label: 'Activity' },
+];
+const catalogHeader = {
+  crumbPath: [{ label: 'Catalogs' }, { label: CATALOG_DETAIL.name, current: true }],
+  avatar: { kind: 'catalog', initials: 'SP' },
+  title: CATALOG_DETAIL.name,
+  status: CATALOG_DETAIL.status,
+  subtitle: [`Cohort: ${CATALOG_DETAIL.cohort}`, `${CATALOG_DETAIL.products} products`, `Valid ${CATALOG_DETAIL.validFrom} → ${CATALOG_DETAIL.validUntil}`, `Published by ${CATALOG_DETAIL.publishedBy}`],
+};
+
+/* ──────────────────────────────────────────────────────────────
+   TWEAKS PANEL
+   ────────────────────────────────────────────────────────────── */
+function PatternsTweaksPanel({ tweaks, setTweak }) {
+  return (
+    <TweaksPanel title="Tweaks">
+      <TweakSection label="Active pattern">
+        <TweakSelect
+          label="Mode-switching pattern"
+          value={tweaks.pattern}
+          onChange={(v) => setTweak('pattern', v)}
+          options={[
+            { value: 'tabs',   label: 'A · Tabs along the top' },
+            { value: 'toggle', label: 'B · Mode toggle in header' },
+            { value: 'split',  label: 'C · Sidebar + tabs' },
+          ]}
+        />
+      </TweakSection>
+
+      <TweakSection label="About this exploration">
+        <div style={{ fontSize: 12, color: 'var(--cream-700)', lineHeight: 1.55 }}>
+          Section 1 compares <b>three patterns</b> for switching between Details (edit) and Performance modes — all on the same Brand entity. Sections 2&ndash;6 apply <b>Pattern A (tabs)</b> to every entity in both modes so you can see the chrome scale across Products, Customers, Cohorts and Catalogs.
+        </div>
+      </TweakSection>
+    </TweaksPanel>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+   APP
+   ────────────────────────────────────────────────────────────── */
+function App() {
+  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  return (
+    <React.Fragment>
+      <DesignCanvas>
+        {/* SECTION 1 ─ Three pattern variations on the Brand entity */}
+        <DCSection
+          id="patterns"
+          title="Patterns — How modes switch"
+          subtitle="All three patterns shown on the same brand. Pick one and we'll apply it across every entity."
+        >
+          <DCArtboard id="p-a" label="A · Tabs along the top" width={1320} height={1380}>
+            <PatternA />
+          </DCArtboard>
+          <DCArtboard id="p-b" label="B · Edit / Analyze toggle" width={1320} height={1480}>
+            <PatternB />
+          </DCArtboard>
+          <DCArtboard id="p-c" label="C · Sidebar + tabs" width={1400} height={1340}>
+            <PatternC />
+          </DCArtboard>
+        </DCSection>
+
+        {/* SECTION 2 ─ Brand */}
+        <DCSection id="brand" title="Brand · WineYard Vintners" subtitle="Both modes, applied with Pattern A.">
+          <DCArtboard id="brand-edit" label="Brand · Details (edit)" width={1280} height={1540}>
+            <EntityPage
+              label="Brands › WineYard Vintners · edit"
+              mode="edit"
+              header={brandHeader}
+              meta={brandMeta}
+              tabs={brandTabs}
+              active="details"
+              body={<BrandEdit d={BRAND_DETAIL} />}
+            />
+          </DCArtboard>
+          <DCArtboard id="brand-perf" label="Brand · Performance" width={1280} height={1380}>
+            <EntityPage
+              label="Brands › WineYard Vintners · performance"
+              mode="perf"
+              header={brandHeader}
+              meta={brandMeta}
+              tabs={brandTabs}
+              active="performance"
+              body={<BrandPerf d={BRAND_DETAIL} />}
+            />
+          </DCArtboard>
+        </DCSection>
+
+        {/* SECTION 3 ─ Product */}
+        <DCSection id="product" title="Product · Cabernet Sauvignon 2021" subtitle="Edit fields + sell-through analytics.">
+          <DCArtboard id="product-edit" label="Product · Details (edit)" width={1280} height={1680}>
+            <EntityPage
+              label="Products › Cabernet Sauvignon 2021 · edit"
+              mode="edit"
+              header={productHeader}
+              meta={productMeta}
+              tabs={productTabs}
+              active="details"
+              body={<ProductEdit d={PRODUCT_DETAIL} />}
+            />
+          </DCArtboard>
+          <DCArtboard id="product-perf" label="Product · Performance" width={1280} height={1120}>
+            <EntityPage
+              label="Products › Cabernet Sauvignon 2021 · performance"
+              mode="perf"
+              header={productHeader}
+              meta={productMeta}
+              tabs={productTabs}
+              active="performance"
+              body={<ProductPerf d={PRODUCT_DETAIL} />}
+            />
+          </DCArtboard>
+        </DCSection>
+
+        {/* SECTION 4 ─ Customer */}
+        <DCSection id="customer" title="Customer · Singh Hospitality" subtitle="Identity + ledger view + spend analysis.">
+          <DCArtboard id="customer-edit" label="Customer · Details (edit)" width={1280} height={1700}>
+            <EntityPage
+              label="Customers › Singh Hospitality · edit"
+              mode="edit"
+              header={customerHeader}
+              meta={customerMeta}
+              tabs={customerTabs}
+              active="details"
+              body={<CustomerEdit d={CUSTOMER_DETAIL} />}
+            />
+          </DCArtboard>
+          <DCArtboard id="customer-perf" label="Customer · Performance" width={1280} height={1080}>
+            <EntityPage
+              label="Customers › Singh Hospitality · performance"
+              mode="perf"
+              header={customerHeader}
+              meta={customerMeta}
+              tabs={customerTabs}
+              active="performance"
+              body={<CustomerPerf d={CUSTOMER_DETAIL} />}
+            />
+          </DCArtboard>
+        </DCSection>
+
+        {/* SECTION 5 ─ Cohort */}
+        <DCSection id="cohort" title="Cohort · Maharashtra Premium" subtitle="Rules + membership + engagement.">
+          <DCArtboard id="cohort-edit" label="Cohort · Details (edit)" width={1280} height={1500}>
+            <EntityPage
+              label="Cohorts › Maharashtra Premium · edit"
+              mode="edit"
+              header={cohortHeader}
+              meta={cohortMeta}
+              tabs={cohortTabs}
+              active="details"
+              body={<CohortEdit d={COHORT_DETAIL} />}
+            />
+          </DCArtboard>
+          <DCArtboard id="cohort-perf" label="Cohort · Performance" width={1280} height={1120}>
+            <EntityPage
+              label="Cohorts › Maharashtra Premium · performance"
+              mode="perf"
+              header={cohortHeader}
+              meta={cohortMeta}
+              tabs={cohortTabs}
+              active="performance"
+              body={<CohortPerf d={COHORT_DETAIL} />}
+            />
+          </DCArtboard>
+        </DCSection>
+
+        {/* SECTION 6 ─ Catalog */}
+        <DCSection id="catalog" title="Catalog · Summer Pours" subtitle="Composition + delivery + funnel.">
+          <DCArtboard id="catalog-edit" label="Catalog · Details (edit)" width={1280} height={1720}>
+            <EntityPage
+              label="Catalogs › Summer Pours · edit"
+              mode="edit"
+              header={catalogHeader}
+              meta={catalogMeta}
+              tabs={catalogTabs}
+              active="details"
+              body={<CatalogEdit d={CATALOG_DETAIL} />}
+            />
+          </DCArtboard>
+          <DCArtboard id="catalog-perf" label="Catalog · Performance" width={1280} height={1140}>
+            <EntityPage
+              label="Catalogs › Summer Pours · performance"
+              mode="perf"
+              header={catalogHeader}
+              meta={catalogMeta}
+              tabs={catalogTabs}
+              active="performance"
+              body={<CatalogPerf d={CATALOG_DETAIL} />}
+            />
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      <PatternsTweaksPanel tweaks={tweaks} setTweak={setTweak} />
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

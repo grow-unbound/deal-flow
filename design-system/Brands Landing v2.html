@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DealFlow · Landing pages v2</title>
+<meta name="viewport" content="width=1440">
+<link rel="stylesheet" href="colors_and_type.css">
+<link rel="stylesheet" href="ui_kits/cockpit/cockpit.css">
+<link rel="stylesheet" href="brands/brands.css">
+<link rel="stylesheet" href="v2/v2.css">
+<link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg">
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- v1 deps we reuse -->
+<script type="text/babel" src="brands/design-canvas.jsx"></script>
+<script type="text/babel" src="brands/tweaks-panel.jsx"></script>
+<script type="text/babel" src="brands/data.jsx"></script>
+<script type="text/babel" src="brands/Shared.jsx"></script>
+
+<!-- v2 -->
+<script type="text/babel" src="v2/data.jsx"></script>
+<script type="text/babel" src="v2/Shared.jsx"></script>
+<script type="text/babel" src="v2/Modules.jsx"></script>
+
+<script type="text/babel">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "showRationale": true
+}/*EDITMODE-END*/;
+
+function V2TweaksPanel({ tweaks, setTweak }) {
+  return (
+    <TweaksPanel title="Tweaks">
+      <TweakSection label="Display">
+        <TweakToggle
+          label="Show the rationale note at the top"
+          value={tweaks.showRationale}
+          onChange={(v) => setTweak('showRationale', v)}
+        />
+      </TweakSection>
+      <TweakSection label="About v2">
+        <div style={{ fontSize: 12, color: 'var(--cream-700)', lineHeight: 1.55 }}>
+          Same chrome on every module: <b>PageHeader → 4-tile strip → 3-callout attention rail → inline filter bar → body</b>. Body defaults to <b>List</b> for transactional modules (Brands, Products, Customers, Orders) and <b>Grid</b> for visual / small-set modules (Cohorts, Catalogs).
+        </div>
+      </TweakSection>
+    </TweaksPanel>
+  );
+}
+
+function RationaleNote() {
+  return (
+    <div style={{
+      background: 'var(--cream-50)',
+      border: '1px solid var(--cream-300)',
+      borderRadius: 14,
+      padding: '20px 24px',
+      margin: '0 0 16px',
+      maxWidth: 980,
+    }}>
+      <div style={{
+        fontSize: 11, fontWeight: 600, letterSpacing: '0.14em',
+        textTransform: 'uppercase', color: 'var(--ember-700)', marginBottom: 8,
+      }}>What changed in v2</div>
+      <ul style={{
+        margin: 0, padding: 0, listStyle: 'none',
+        display: 'grid', gap: 8,
+        fontSize: 13, lineHeight: 1.55, color: 'var(--cream-800)',
+      }}>
+        <li><b>Width:</b> capped at 1440px, centered with cream gutters. Matches the cockpit kit.</li>
+        <li><b>One pattern, every module:</b> PageHeader → 4 KPI tiles → 3-callout attention rail → inline filter bar (search + chips + sort + view toggle) → body. Body defaults to <b>List</b> for Brands / Products / Customers / Orders, <b>Grid</b> for Cohorts / Catalogs (small sets, visual identity).</li>
+        <li><b>Search:</b> kept global ⌘K in the topbar. Added per-page inline search scoped to the visible list. Different jobs, both shipped.</li>
+        <li><b>Attention rail always shows 3.</b> Tagged by intent: <span style={{ color: 'var(--danger-700)', fontWeight: 600 }}>Needs a call</span>, <span style={{ color: 'var(--ember-700)', fontWeight: 600 }}>Worth pushing</span>, <span style={{ color: 'var(--teal-700)', fontWeight: 600 }}>Worth knowing</span>. The "worth knowing" slot absorbs informational items (e.g. "Largest credit exposure").</li>
+        <li><b>"Open buyer app"</b> moved out of the topbar into the avatar menu (sidebar footer). Topbar is calmer.</li>
+        <li><b>Primary CTA</b> is always "Add &lt;entity&gt;". A secondary CTA slot is reserved per page (e.g. <em>Invite buyer</em>, <em>Publish catalog</em>, <em>Sync to Tally</em>) — Export is parked.</li>
+      </ul>
+    </div>
+  );
+}
+
+function App() {
+  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  return (
+    <React.Fragment>
+      <DesignCanvas>
+        <DCSection
+          id="v2-rationale"
+          title="Landing pages · v2"
+          subtitle="One unified pattern across six modules. Open any artboard to step through, or focus to fullscreen."
+        >
+          {tweaks.showRationale && (
+            <DCArtboard id="rationale" label="What changed" width={1040} height={300}>
+              <RationaleNote />
+            </DCArtboard>
+          )}
+        </DCSection>
+
+        <DCSection
+          id="v2-list"
+          title="List-default modules"
+          subtitle="Brands · Products · Customers · Orders. Table-first because volume or transaction cadence demand scanning."
+        >
+          <DCArtboard id="brands"    label="01 · Brands"    width={1440} height={1000}><BrandsLandingV2 /></DCArtboard>
+          <DCArtboard id="products"  label="02 · Products"  width={1440} height={1140}><ProductsLandingV2 /></DCArtboard>
+          <DCArtboard id="customers" label="03 · Customers" width={1440} height={1120}><CustomersLandingV2 /></DCArtboard>
+          <DCArtboard id="orders"    label="04 · Orders"    width={1440} height={1080}><OrdersLandingV2 /></DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="v2-grid"
+          title="Grid-default modules"
+          subtitle="Cohorts · Catalogs. Small sets with rich identity — tiles do the work. Same chrome, different body default."
+        >
+          <DCArtboard id="cohorts"  label="05 · Cohorts"  width={1440} height={1000}><CohortsLandingV2 /></DCArtboard>
+          <DCArtboard id="catalogs" label="06 · Catalogs" width={1440} height={1020}><CatalogsLandingV2 /></DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      <V2TweaksPanel tweaks={tweaks} setTweak={setTweak} />
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
