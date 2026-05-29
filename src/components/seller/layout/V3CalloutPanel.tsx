@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { EntityAvatar, type EntityAvatarHue } from './EntityAvatar';
 
@@ -8,7 +9,7 @@ interface CalloutRow {
   hue: EntityAvatarHue;
   name: string;
   reason: string;
-  trailing: string;
+  trailing: ReactNode;
 }
 
 interface V3CalloutItem {
@@ -75,7 +76,7 @@ export function V3CalloutPanel({ items, stalenessHint = 'Updated moments ago' }:
                       <p className="truncate text-[13px] font-medium leading-[1.25] text-cream-900">{row.name}</p>
                       <p className="mt-0.5 truncate text-[11.5px] leading-[1.4] text-cream-700">{row.reason}</p>
                     </div>
-                    <p className="shrink-0 text-right font-mono text-[11.5px] font-medium text-cream-800">{row.trailing}</p>
+                    <div className="shrink-0 text-right font-mono text-[11.5px] font-medium text-cream-800">{row.trailing}</div>
                   </div>
                 ))}
               </div>

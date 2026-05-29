@@ -2,11 +2,12 @@
 import { SellerTopbar } from '@/components/layout/SellerTopbar';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { ROLES } from '@/constants';
+import { PageWrap } from '@/components/seller/layout';
 
 export default function SettingsPage() {
   return (
     <RoleGuard roles={[ROLES.SELLER_ADMIN]}>
-      <div className="px-8 py-6">
+      <PageWrap>
         <SellerTopbar
           title="Settings"
           subtitle="Configure tenant-level preferences and workspace administration settings."
@@ -18,7 +19,7 @@ export default function SettingsPage() {
             This module is part of the MVP build. Check back soon.
           </p>
         </div>
-      </div>
+      </PageWrap>
     </RoleGuard>
   );
 }

@@ -1,4 +1,4 @@
-import { usePostHog } from 'posthog-js/react';
+import { useFeatureFlagEnabled, useFeatureFlagVariantKey, usePostHog } from 'posthog-js/react';
 import { useCallback } from 'react';
 import { FEATURE_FLAGS } from '@/constants';
 
@@ -7,9 +7,7 @@ import { FEATURE_FLAGS } from '@/constants';
  * Use this for simple flag-on/off checks in components.
  */
 export function useFlag(flagKey: keyof typeof FEATURE_FLAGS): boolean {
-  const posthog = usePostHog();
-  if (!posthog) return false;
-  return posthog.getFeatureFlag(FEATURE_FLAGS[flagKey]) === true;
+  return !!useFeatureFlagEnabled(FEATURE_FLAGS[flagKey]);
 }
 
 /**
@@ -17,14 +15,11 @@ export function useFlag(flagKey: keyof typeof FEATURE_FLAGS): boolean {
  * Supports per-tenant overrides via tenant_id in PostHog
  */
 export function useFeatureFlag(flagKey: keyof typeof FEATURE_FLAGS) {
-  const posthog = usePostHog();
+  const enabled = !!useFeatureFlagEnabled(FEATURE_FLAGS[flagKey]);
 
   return useCallback((): boolean => {
-    if (!posthog) return false;
-
-    const flag = posthog.getFeatureFlag(FEATURE_FLAGS[flagKey]);
-    return flag === true;
-  }, [posthog, flagKey]);
+    return enabled;
+  }, [enabled]);
 }
 
 /**
@@ -32,13 +27,12 @@ export function useFeatureFlag(flagKey: keyof typeof FEATURE_FLAGS) {
  * Useful for staged rollouts, A/B tests
  */
 export function useFeatureFlagVariant(flagKey: keyof typeof FEATURE_FLAGS) {
-  const posthog = usePostHog();
+  const variant = useFeatureFlagVariantKey(FEATURE_FLAGS[flagKey]);
+  const enabled = !!useFeatureFlagEnabled(FEATURE_FLAGS[flagKey]);
 
   return useCallback((): string | boolean | undefined => {
-    if (!posthog) return undefined;
-
-    return posthog.getFeatureFlag(FEATURE_FLAGS[flagKey]);
-  }, [posthog, flagKey]);
+    return variant ?? enabled;
+  }, [enabled, variant]);
 }
 
 /**

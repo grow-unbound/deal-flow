@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useRouter } from 'next/navigation';
-import { LogOut } from 'lucide-react';
+import { Bell, ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTenant } from '@/contexts/TenantContext';
 import { useRole } from '@/hooks/useRole';
 
 const navItems = [
@@ -35,10 +36,16 @@ const ROLE_LABELS: Record<string, string> = {
   buyer_assistant: 'Buyer assistant',
 };
 
-export function SellerSidebar() {
+interface SellerSidebarProps {
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
+}
+
+export function SellerSidebar({ isCollapsed = false, onToggleCollapse = () => undefined }: SellerSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, signOut } = useAuth();
+  const { currentTenant } = useTenant();
   const { isSellerAdmin, role } = useRole();
 
   async function handleLogout() {
@@ -48,15 +55,30 @@ export function SellerSidebar() {
 
   return (
     <aside
-      className="fixed left-0 top-0 flex h-screen flex-col border-r border-cream-300 bg-cream-100"
+      className="fixed left-0 top-0 flex h-screen flex-col border-r border-cream-300 bg-cream-100 transition-[width] duration-base"
       style={{ width: 'var(--sidebar-w)' }}
     >
-      {/* Brand mark */}
-      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-cream-300 px-5">
+      <div className="relative flex h-16 shrink-0 items-center border-b border-cream-300 px-4">
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          className="absolute right-2 top-2 rounded-md p-1 text-cream-600 transition-colors duration-fast hover:bg-cream-200 hover:text-cream-900"
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        </button>
+
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[11px] bg-teal-500">
           <span className="text-cream-50 font-display font-medium text-sm leading-none">DF</span>
         </div>
-        <span className="font-display text-lg font-medium leading-none text-teal-500">DealFlow</span>
+        {!isCollapsed && (
+          <div className="min-w-0 pl-2.5">
+            <p className="truncate font-display text-lg font-medium leading-[1.05] text-teal-500">DealFlow</p>
+            <p className="mt-0.5 truncate text-caption text-cream-600">
+              {currentTenant?.business_name ?? 'Tenant'}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Navigation */}
@@ -70,20 +92,22 @@ export function SellerSidebar() {
               <Link
                 href={href}
                 className={[
-                  'flex items-center gap-3 rounded-[12px] px-3 py-2.5 text-body-sm font-medium transition-colors duration-fast',
+                  'flex items-center rounded-[12px] px-3 py-2.5 text-body-sm font-medium transition-colors duration-fast',
+                  isCollapsed ? 'justify-center gap-0' : 'gap-3',
                   active
                     ? 'bg-teal-500 text-cream-50'
                     : 'text-cream-800 hover:bg-cream-200 hover:text-cream-900',
                 ].join(' ')}
+                title={isCollapsed ? label : undefined}
               >
                 <Icon
                   size={16}
                   className={active ? 'text-cream-50' : 'text-cream-600'}
                 />
-                {label}
+                {!isCollapsed && label}
               </Link>
 
-              {children?.filter((item) => !item.adminOnly || isSellerAdmin).map(({ label: childLabel, href: childHref, icon: ChildIcon }) => {
+              {!isCollapsed && children?.filter((item) => !item.adminOnly || isSellerAdmin).map(({ label: childLabel, href: childHref, icon: ChildIcon }) => {
                 const childIsActive = pathname === childHref;
                 return (
                   <Link
@@ -108,12 +132,21 @@ export function SellerSidebar() {
 
       {/* User footer */}
       <div className="shrink-0 px-4 py-4 mt-auto">
+        <Link
+          href="/notifications"
+          className="mb-1 flex w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left text-body-sm font-medium text-cream-800 transition-colors duration-fast hover:bg-cream-200 hover:text-cream-900"
+          title={isCollapsed ? 'Notifications' : undefined}
+        >
+          <Bell size={16} className="text-cream-600" />
+          {!isCollapsed && 'Notifications'}
+        </Link>
         <button
           onClick={handleLogout}
-          className="mb-3 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-caption font-medium text-cream-700 transition-colors duration-fast hover:bg-cream-200 hover:text-cream-900"
+          className="mb-3 flex w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left text-body-sm font-medium text-cream-800 transition-colors duration-fast hover:bg-cream-200 hover:text-cream-900"
+          title={isCollapsed ? 'Log out' : undefined}
         >
-          <LogOut size={15} />
-          Log out
+          <LogOut size={16} className="text-cream-600" />
+          {!isCollapsed && 'Log out'}
         </button>
         <div className="border-t border-cream-300 pt-3">
           <div className="flex items-center gap-3">
@@ -122,12 +155,12 @@ export function SellerSidebar() {
               {user?.email?.[0]?.toUpperCase() ?? '?'}
             </span>
           </div>
-          <div className="min-w-0">
+          {!isCollapsed && <div className="min-w-0">
             <p className="text-body-sm font-medium text-cream-900 truncate">
               {user?.email ?? '—'}
             </p>
             <p className="text-caption text-cream-600">{role ? ROLE_LABELS[role] : '—'}</p>
-          </div>
+          </div>}
         </div>
         </div>
       </div>
