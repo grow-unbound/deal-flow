@@ -75,7 +75,6 @@ export default function EditCohortPage({ params }: { params: Promise<{ id: strin
       }
       setDeleteDialogOpen(false);
       router.push('/cohorts');
-      router.refresh();
     } catch {
       setDeleteError('Network error. Please try again.');
     } finally {

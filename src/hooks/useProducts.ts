@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { CustomProductInput } from '@/lib/zod';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
+import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 
 export interface MasterProduct {
   id: string;
@@ -195,6 +196,19 @@ export function useUpdateProduct() {
       }
       return res.json();
     },
+    onMutate: async ({ id, data }) => {
+      const snapshots = await takeSnapshots(queryClient, [['tenant-products'], ['tenant-product', id]]);
+      queryClient.setQueryData<TenantProductsResponse>(['tenant-products'], (old) => ({
+        products: (old?.products ?? []).map((product) =>
+          product.id === id ? { ...product, ...data, updated_at: new Date().toISOString() } : product,
+        ),
+      }));
+      queryClient.setQueryData<{ product: TenantProduct }>(['tenant-product', id], (old) =>
+        old?.product ? { product: { ...old.product, ...data, updated_at: new Date().toISOString() } } : old,
+      );
+      return { snapshots };
+    },
+    onError: (_error, _vars, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['tenant-products'] });
       queryClient.invalidateQueries({ queryKey: ['tenant-product', id] });
@@ -214,6 +228,21 @@ export function useDeactivateProduct() {
       if (!res.ok) throw new Error('Failed to deactivate product');
       return res.json();
     },
+    onMutate: async (id) => {
+      const snapshots = await takeSnapshots(queryClient, [['tenant-products'], ['tenant-product', id]]);
+      queryClient.setQueryData<TenantProductsResponse>(['tenant-products'], (old) => ({
+        products: (old?.products ?? []).map((product) =>
+          product.id === id ? { ...product, is_active: false, updated_at: new Date().toISOString() } : product,
+        ),
+      }));
+      queryClient.setQueryData<{ product: TenantProduct }>(['tenant-product', id], (old) =>
+        old?.product
+          ? { product: { ...old.product, is_active: false, updated_at: new Date().toISOString() } }
+          : old,
+      );
+      return { snapshots };
+    },
+    onError: (_error, _id, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['tenant-products'] });
       queryClient.invalidateQueries({ queryKey: ['tenant-product', id] });
@@ -233,6 +262,21 @@ export function useReactivateProduct() {
       if (!res.ok) throw new Error('Failed to reactivate product');
       return res.json();
     },
+    onMutate: async (id) => {
+      const snapshots = await takeSnapshots(queryClient, [['tenant-products'], ['tenant-product', id]]);
+      queryClient.setQueryData<TenantProductsResponse>(['tenant-products'], (old) => ({
+        products: (old?.products ?? []).map((product) =>
+          product.id === id ? { ...product, is_active: true, updated_at: new Date().toISOString() } : product,
+        ),
+      }));
+      queryClient.setQueryData<{ product: TenantProduct }>(['tenant-product', id], (old) =>
+        old?.product
+          ? { product: { ...old.product, is_active: true, updated_at: new Date().toISOString() } }
+          : old,
+      );
+      return { snapshots };
+    },
+    onError: (_error, _id, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['tenant-products'] });
       queryClient.invalidateQueries({ queryKey: ['tenant-product', id] });

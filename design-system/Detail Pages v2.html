@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DealFlow · Detail pages v2</title>
+<meta name="viewport" content="width=1440">
+<link rel="stylesheet" href="colors_and_type.css">
+<link rel="stylesheet" href="ui_kits/cockpit/cockpit.css">
+<link rel="stylesheet" href="brands/brands.css">
+<link rel="stylesheet" href="details/details.css">
+<link rel="stylesheet" href="v2/v2.css">
+<link rel="stylesheet" href="v2/details-v2.css">
+<link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg">
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- v1 deps we reuse -->
+<script type="text/babel" src="brands/design-canvas.jsx"></script>
+<script type="text/babel" src="brands/tweaks-panel.jsx"></script>
+<script type="text/babel" src="brands/data.jsx"></script>
+<script type="text/babel" src="brands/Shared.jsx"></script>
+<script type="text/babel" src="details/data.jsx"></script>
+<script type="text/babel" src="details/Shared.jsx"></script>
+<script type="text/babel" src="details/Perf.jsx"></script>
+
+<!-- v2 -->
+<script type="text/babel" src="v2/data.jsx"></script>
+<script type="text/babel" src="v2/Shared.jsx"></script>
+<script type="text/babel" src="v2/DetailsV2.jsx"></script>
+<script type="text/babel" src="v2/Lens.jsx"></script>
+
+<script type="text/babel">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "showRationale": true
+}/*EDITMODE-END*/;
+
+function DetailsV2TweaksPanel({ tweaks, setTweak }) {
+  return (
+    <TweaksPanel title="Tweaks">
+      <TweakSection label="Display">
+        <TweakToggle
+          label="Show rationale + lens explainer"
+          value={tweaks.showRationale}
+          onChange={(v) => setTweak('showRationale', v)}
+        />
+      </TweakSection>
+      <TweakSection label="About v2">
+        <div style={{ fontSize: 12, color: 'var(--cream-700)', lineHeight: 1.55 }}>
+          Detail pages keep the tabbed chrome but adapt per entity. <b>Meta strip trimmed to 4 tiles</b> everywhere (drop the weakest one per entity, move identity stuff to the header subtitle). <b>Tab count varies</b>: Brand 5, Product 4, Customer 4, Cohort 3, Catalog 3. The "Lens demos" section proves inverse views earn their place.
+        </div>
+      </TweakSection>
+    </TweaksPanel>
+  );
+}
+
+function DetailRationaleNote() {
+  return (
+    <div style={{
+      background: 'var(--cream-50)',
+      border: '1px solid var(--cream-300)',
+      borderRadius: 14,
+      padding: '20px 24px',
+      margin: '0 0 16px',
+      maxWidth: 980,
+    }}>
+      <div style={{
+        fontSize: 11, fontWeight: 600, letterSpacing: '0.14em',
+        textTransform: 'uppercase', color: 'var(--ember-700)', marginBottom: 8,
+      }}>What changed in v2</div>
+      <ul style={{
+        margin: 0, padding: 0, listStyle: 'none',
+        display: 'grid', gap: 8,
+        fontSize: 13, lineHeight: 1.55, color: 'var(--cream-800)',
+      }}>
+        <li><b>Tabs kept</b> — they're the right pattern. Universal chrome: breadcrumb · header · meta strip · tabs. What's <em>inside</em> the tabs differs by entity.</li>
+        <li><b>Tab count varies per entity.</b> Brand 5 (Details · Performance · Buyers · Catalogs · Activity). Product 4 (Stock folded into Performance). Customer 4 (Invoices folded into Activity). Cohort 3 (Rules merged into Details). Catalog 3 (Activity is the funnel itself). No force-fitting.</li>
+        <li><b>Meta strip cut to 4 tiles</b> on every entity. Each tile must answer "would you act differently if this number changed?" Weakest tile per entity demoted to the header subtitle.</li>
+        <li><b>Width 1440px max, centered.</b> Same as the landing pages.</li>
+        <li><b>Lens-pair demos</b> at the top show four inverse-view pairs (Brand↔Customer, Brand↔Product, Cohort↔Customer, Catalog↔Customer). Same join, different question per side — that's why both views earn their place.</li>
+      </ul>
+    </div>
+  );
+}
+
+function App() {
+  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  return (
+    <React.Fragment>
+      <DesignCanvas>
+        <DCSection
+          id="rationale"
+          title="Detail pages · v2"
+          subtitle="Tabs kept, but trimmed and varied. Plus a section answering the 'is this just duplicate views?' question."
+        >
+          {tweaks.showRationale && (
+            <DCArtboard id="rationale-note" label="What changed" width={1040} height={300}>
+              <DetailRationaleNote />
+            </DCArtboard>
+          )}
+        </DCSection>
+
+        {/* ─── Lens-pair demos ─────────────────────────────────────── */}
+        <DCSection
+          id="lens"
+          title="Lens-pair demos · same join, both sides"
+          subtitle="Each pair shows the same relational data viewed from inverse entity pages. Each side answers a different question — that's why both views earn their place."
+        >
+          {tweaks.showRationale && (
+            <DCArtboard id="lens-explainer" label="Why inverse views" width={1040} height={220}>
+              <LensExplainer />
+            </DCArtboard>
+          )}
+          <DCArtboard id="lens-1" label="01 · Brand ↔ Customer" width={1180} height={480}>
+            <div className="v2-page"><LensBrandBuyers /></div>
+          </DCArtboard>
+          <DCArtboard id="lens-2" label="02 · Brand ↔ Product" width={1180} height={460}>
+            <div className="v2-page"><LensBrandProducts /></div>
+          </DCArtboard>
+          <DCArtboard id="lens-3" label="03 · Cohort ↔ Customer" width={1180} height={460}>
+            <div className="v2-page"><LensCohortMembers /></div>
+          </DCArtboard>
+          <DCArtboard id="lens-4" label="04 · Catalog ↔ Customer" width={1180} height={520}>
+            <div className="v2-page"><LensCatalogBuyers /></div>
+          </DCArtboard>
+        </DCSection>
+
+        {/* ─── Detail pages, varied tab counts ─────────────────────── */}
+        <DCSection
+          id="brand-detail"
+          title="Brand · 5 tabs"
+          subtitle="Performance view. The 5 tabs (Details · Performance · Buyers · Catalogs · Activity) all earn their place for a brand."
+        >
+          <DCArtboard id="brand-detail-page" label="Brand · WineYard · Performance" width={1440} height={1380}>
+            <EntityPageV2
+              label="Brands › WineYard Vintners"
+              header={BRAND_V2_HEADER}
+              meta={BRAND_V2_META}
+              tabs={BRAND_V2_TABS}
+              active="performance"
+              body={<div style={{ padding: '4px 0' }}><BrandPerf d={BRAND_DETAIL} /></div>}
+              mode="perf"
+            />
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="product-detail"
+          title="Product · 4 tabs"
+          subtitle="Stock folded into Performance — products live and die on cover-days, so it's the same view."
+        >
+          <DCArtboard id="product-detail-page" label="Product · Cabernet Sauvignon · Performance" width={1440} height={1140}>
+            <EntityPageV2
+              label="Products › Cabernet Sauvignon 2021"
+              header={PRODUCT_V2_HEADER}
+              meta={PRODUCT_V2_META}
+              tabs={PRODUCT_V2_TABS}
+              active="performance"
+              body={<div style={{ padding: '4px 0' }}><ProductPerf d={PRODUCT_DETAIL} /></div>}
+              mode="perf"
+            />
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="customer-detail"
+          title="Customer · 4 tabs"
+          subtitle="Invoices folded into Activity log — a paid invoice is just an event. 'Buyer since' moved to header subtitle (sentiment, not metric)."
+        >
+          <DCArtboard id="customer-detail-page" label="Customer · Singh Hospitality · Performance" width={1440} height={1100}>
+            <EntityPageV2
+              label="Customers › Singh Hospitality"
+              header={CUSTOMER_V2_HEADER}
+              meta={CUSTOMER_V2_META}
+              tabs={CUSTOMER_V2_TABS}
+              active="performance"
+              body={<div style={{ padding: '4px 0' }}><CustomerPerf d={CUSTOMER_DETAIL} /></div>}
+              mode="perf"
+            />
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="cohort-detail"
+          title="Cohort · 3 tabs"
+          subtitle="Rules + Members merged into one 'Details & rules' tab. Catalogs are an Activity event. Three tabs is enough."
+        >
+          <DCArtboard id="cohort-detail-page" label="Cohort · Maharashtra Premium · Performance" width={1440} height={1140}>
+            <EntityPageV2
+              label="Cohorts › Maharashtra Premium"
+              header={COHORT_V2_HEADER}
+              meta={COHORT_V2_META}
+              tabs={COHORT_V2_TABS}
+              active="performance"
+              body={<div style={{ padding: '4px 0' }}><CohortPerf d={COHORT_DETAIL} /></div>}
+              mode="perf"
+            />
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="catalog-detail"
+          title="Catalog · 3 tabs"
+          subtitle="No Activity tab — the funnel itself IS the activity. Composition · Performance · Buyers is the whole story."
+        >
+          <DCArtboard id="catalog-detail-page" label="Catalog · Summer Pours · Performance" width={1440} height={1140}>
+            <EntityPageV2
+              label="Catalogs › Summer Pours"
+              header={CATALOG_V2_HEADER}
+              meta={CATALOG_V2_META}
+              tabs={CATALOG_V2_TABS}
+              active="performance"
+              body={<div style={{ padding: '4px 0' }}><CatalogPerf d={CATALOG_DETAIL} /></div>}
+              mode="perf"
+            />
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      <DetailsV2TweaksPanel tweaks={tweaks} setTweak={setTweak} />
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

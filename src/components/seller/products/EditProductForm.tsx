@@ -26,6 +26,7 @@ import {
 } from '@/hooks/useProducts';
 
 import { Button } from '@/components/ui/button';
+import { MutationButton } from '@/components/ui/mutation-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -471,14 +472,15 @@ export function EditProductForm({ product }: EditProductFormProps) {
         >
           Cancel
         </Button>
-        <Button
+        <MutationButton
           type="submit"
-          disabled={isPending}
+          isPending={isPending}
+          pendingLabel="Saving…"
           className="gap-2 bg-teal-500 text-cream-50 hover:bg-teal-600"
         >
           <Save size={16} />
-          {isPending ? 'Saving…' : 'Save changes'}
-        </Button>
+          Save changes
+        </MutationButton>
       </div>
 
       {/* ── Danger Zone ── */}
@@ -508,26 +510,29 @@ export function EditProductForm({ product }: EditProductFormProps) {
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
+                <MutationButton
                   onClick={handleDeactivate}
+                  isPending={deactivateProduct.isPending}
+                  pendingLabel="Deactivating…"
                   className="bg-danger-600 text-white hover:bg-danger-700"
                 >
-                  {deactivateProduct.isPending ? 'Deactivating…' : 'Deactivate'}
-                </AlertDialogAction>
+                  Deactivate
+                </MutationButton>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
         ) : (
-          <Button
+          <MutationButton
             type="button"
             variant="outline"
             className="gap-2"
             onClick={handleReactivate}
-            disabled={reactivateProduct.isPending}
+            isPending={reactivateProduct.isPending}
+            pendingLabel="Reactivating…"
           >
             <Eye size={16} />
-            {reactivateProduct.isPending ? 'Reactivating…' : 'Reactivate product'}
-          </Button>
+            Reactivate product
+          </MutationButton>
         )}
       </div>
     </form>

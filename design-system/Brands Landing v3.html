@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DealFlow · Landing pages v3</title>
+<meta name="viewport" content="width=1440">
+<link rel="stylesheet" href="colors_and_type.css">
+<link rel="stylesheet" href="ui_kits/cockpit/cockpit.css">
+<link rel="stylesheet" href="brands/brands.css">
+<link rel="stylesheet" href="v2/v2.css">
+<link rel="stylesheet" href="v3/v3.css">
+<link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg">
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- v1 dependencies we reuse (data, GrowthPill, BrandAvatarSm, DesignCanvas, TweaksPanel) -->
+<script type="text/babel" src="brands/design-canvas.jsx"></script>
+<script type="text/babel" src="brands/tweaks-panel.jsx"></script>
+<script type="text/babel" src="brands/data.jsx"></script>
+<script type="text/babel" src="brands/Shared.jsx"></script>
+
+<!-- v2 dependencies we reuse (PageHeaderV2, InsightStrip4, FilterBar, PageWrap, StatusTagV2) -->
+<script type="text/babel" src="v2/data.jsx"></script>
+<script type="text/babel" src="v2/Shared.jsx"></script>
+
+<!-- v3 -->
+<script type="text/babel" src="v3/Modules.jsx"></script>
+
+<script type="text/babel">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "showRationale": true
+}/*EDITMODE-END*/;
+
+function V3TweaksPanel({ tweaks, setTweak }) {
+  return (
+    <TweaksPanel title="Tweaks">
+      <TweakSection label="Display">
+        <TweakToggle
+          label="Show the rationale + push-back note"
+          value={tweaks.showRationale}
+          onChange={(v) => setTweak('showRationale', v)}
+        />
+      </TweakSection>
+      <TweakSection label="About v3">
+        <div style={{ fontSize: 12, color: 'var(--cream-700)', lineHeight: 1.55 }}>
+          v3 keeps v2's chrome (<b>PageHeader → 4-tile strip → Today's read → filter bar → body</b>) and swaps the single-item attention rail for v1's three multi-item callouts: <b>Needs attention</b>, <b>Top performers</b>, <b>Top risers</b>. The list/grid toggle is gone — each module has a fixed default body.
+        </div>
+      </TweakSection>
+    </TweaksPanel>
+  );
+}
+
+function RationaleNote() {
+  return (
+    <div className="v3-rationale">
+      <div className="v3-rationale-eyebrow">What's in v3</div>
+      <ul>
+        <li><b>Layout:</b> v2's chrome (1440-cap, PageHeader → 4 KPI tiles → Today's read → inline filter bar → body).</li>
+        <li><b>Today's read:</b> v1's three callouts, horizontal — <span style={{ color: 'var(--danger-700)', fontWeight: 600 }}>Needs attention</span>, <span style={{ color: 'var(--teal-700)', fontWeight: 600 }}>Top performers</span>, <span style={{ color: 'var(--ember-700)', fontWeight: 600 }}>Top risers</span>. Each card carries 2–3 entries with avatars.</li>
+        <li><b>Toggle removed:</b> each module has a single fixed body — list for Brands · Products · Customers · Orders, grid for Cohorts · Catalogs.</li>
+        <li><b>Read as halves:</b> top half is the digest (insights + callouts); bottom half is the full list.</li>
+      </ul>
+
+      <div className="pushback">
+        <h4>Where this gets weaker — three honest concerns</h4>
+        <p>
+          <b>1. The callouts duplicate the list.</b> "Top performers" is the list sorted by GMV, top 2. "Top risers" is the same list sorted by growth, top 2. The dense table directly below already supports both sorts. Above the fold you're showing the leaderboard twice — once as a digest, once as itself.
+        </p>
+        <p>
+          <b>2. You lose the action verb.</b> v2's rail picked one item per card and ended with <em>Call principal</em> / <em>Send proposal</em> / <em>Resolve hold</em> — a clear next step. v1-style callouts are ranked lists with no verb. The page becomes more <em>informational</em> and less <em>operational</em>.
+        </p>
+        <p>
+          <b>3. The "info" slot disappears.</b> v2 reserved one of the three for a one-off observation that isn't a ranked list ("WineYard is 35.5% of portfolio — concentration risk"). v3's three-slot template (Attention / Top / Rising) can't hold it.
+        </p>
+        <p style={{ marginTop: 12, fontStyle: 'italic', color: 'var(--cream-800)' }}>
+          The toggle removal is the right call — it wasn't doing work. The card swap is the question. A possible middle: keep v2's three-card rail and the "subject → why → action" framing, but let each card optionally hold 2–3 supporting examples when the count matters. Editorial framing on top, light enumeration when it earns it.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  return (
+    <React.Fragment>
+      <DesignCanvas>
+        <DCSection
+          id="v3-rationale"
+          title="Landing pages · v3"
+          subtitle="v2 layout · v1 cards · no toggle. Includes a push-back from me on where this gets weaker."
+        >
+          {tweaks.showRationale && (
+            <DCArtboard id="rationale" label="What's in v3 + push-back" width={1040} height={560}>
+              <RationaleNote />
+            </DCArtboard>
+          )}
+        </DCSection>
+
+        <DCSection
+          id="v3-list"
+          title="List-default modules"
+          subtitle="Brands · Products · Customers · Orders. Insights + 3-up callouts on top, dense table below — read as halves."
+        >
+          <DCArtboard id="brands"    label="01 · Brands"    width={1440} height={1080}><BrandsLandingV3 /></DCArtboard>
+          <DCArtboard id="products"  label="02 · Products"  width={1440} height={1200}><ProductsLandingV3 /></DCArtboard>
+          <DCArtboard id="customers" label="03 · Customers" width={1440} height={1180}><CustomersLandingV3 /></DCArtboard>
+          <DCArtboard id="orders"    label="04 · Orders"    width={1440} height={1140}><OrdersLandingV3 /></DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="v3-grid"
+          title="Grid-default modules"
+          subtitle="Cohorts · Catalogs. Same chrome, tile body below the callouts. (Here the callouts overlap the grid the most — see the push-back.)"
+        >
+          <DCArtboard id="cohorts"  label="05 · Cohorts"  width={1440} height={1060}><CohortsLandingV3 /></DCArtboard>
+          <DCArtboard id="catalogs" label="06 · Catalogs" width={1440} height={1080}><CatalogsLandingV3 /></DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      <V3TweaksPanel tweaks={tweaks} setTweak={setTweak} />
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
