@@ -7,6 +7,7 @@ import { IndianRupee } from 'lucide-react';
 import { PriceListSchema, type PriceListCreateInput } from '@/lib/zod';
 import { useCreatePriceList } from '@/hooks/usePriceLists';
 import { Button } from '@/components/ui/button';
+import { MutationButton } from '@/components/ui/mutation-button';
 import { Input } from '@/components/ui/input';
 import {
   Form,
@@ -169,14 +170,15 @@ export function CreatePriceListForm({ onSuccess, onCancel }: CreatePriceListForm
           >
             Cancel
           </Button>
-          <Button
+          <MutationButton
             type="submit"
-            disabled={createPriceList.isPending}
+            isPending={createPriceList.isPending}
+            pendingLabel="Creating…"
             className="bg-teal-500 hover:bg-teal-600 text-cream-50 flex items-center gap-2"
           >
             <IndianRupee size={16} />
-            {createPriceList.isPending ? 'Creating…' : 'Create price list'}
-          </Button>
+            Create price list
+          </MutationButton>
         </div>
       </form>
     </Form>

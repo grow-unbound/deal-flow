@@ -13,6 +13,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { MutationButton } from '@/components/ui/mutation-button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { apiFetch } from '@/lib/api-fetch';
 import {
   usePriceListAssignments,
@@ -189,23 +191,28 @@ export function AssignmentsPanel({ priceListId }: AssignmentsPanelProps) {
           <p className="text-sm text-red-600">{formError}</p>
         )}
 
-        <Button
+        <MutationButton
           type="submit"
+          isPending={addAssignment.isPending}
+          pendingLabel="Assigning…"
           disabled={
-            addAssignment.isPending ||
             (targetType !== 'all_buyers' && !targetId)
           }
           className="bg-teal-500 text-cream-50 hover:bg-teal-600"
         >
           Assign
-        </Button>
+        </MutationButton>
       </form>
 
       {/* Assignments list */}
       <div>
         <p className="text-sm font-medium text-cream-800 mb-3">Current Assignments</p>
         {assignmentsLoading ? (
-          <p className="text-sm text-cream-500">Loading…</p>
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-56 rounded-full" />
+            <Skeleton className="h-8 w-48 rounded-full" />
+            <Skeleton className="h-8 w-64 rounded-full" />
+          </div>
         ) : assignments.length === 0 ? (
           <p className="text-sm text-cream-500">No assignments yet.</p>
         ) : (

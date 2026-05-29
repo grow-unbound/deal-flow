@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import { Plus, Package, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { MutationButton } from '@/components/ui/mutation-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -206,14 +207,15 @@ function ConfigForm({ product, onBack, onSuccess }: ConfigFormProps) {
       </SheetBody>
 
       <SheetFooter>
-        <Button
+        <MutationButton
           type="submit"
-          disabled={addProduct.isPending}
+          isPending={addProduct.isPending}
+          pendingLabel="Adding…"
           className="w-full bg-teal-500 hover:bg-teal-600 text-cream-50 flex items-center justify-center gap-2"
         >
           <Plus size={16} />
-          {addProduct.isPending ? 'Adding…' : 'Add to catalog'}
-        </Button>
+          Add to catalog
+        </MutationButton>
       </SheetFooter>
     </form>
   );

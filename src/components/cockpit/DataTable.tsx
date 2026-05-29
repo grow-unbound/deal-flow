@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Spinner } from '@/components/ui/spinner';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Pagination } from '@/components/ui/pagination';
 import { Checkbox } from '@/components/ui/checkbox';
 
@@ -111,9 +111,13 @@ function DataTable<T extends { id: string }>({
               <tr>
                 <td
                   colSpan={columns.length + (selectable ? 1 : 0)}
-                  className="py-16 text-center"
+                  className="p-4"
                 >
-                  <Spinner className="mx-auto" />
+                  <div className="space-y-3" aria-label="Loading table rows">
+                    {Array.from({ length: 6 }).map((_, idx) => (
+                      <Skeleton key={idx} className="h-10 w-full rounded-lg" />
+                    ))}
+                  </div>
                 </td>
               </tr>
             ) : data.length === 0 ? (

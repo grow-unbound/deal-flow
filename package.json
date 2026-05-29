@@ -7,9 +7,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint src/components/seller/detail src/__tests__/seller/detail --ext .ts,.tsx --max-warnings=0 --no-config-lookup --parser @typescript-eslint/parser",
     "type-check": "tsc --noEmit",
-    "test:unit": "vitest run",
+    "test:unit": "node scripts/run-vitest.mjs",
     "test:integration": "vitest run --reporter=verbose"
   },
   "dependencies": {
