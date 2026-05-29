@@ -221,8 +221,22 @@ function ConfigForm({ product, onBack, onSuccess }: ConfigFormProps) {
   );
 }
 
-export function AddProductSheet() {
-  const [open, setOpen] = useState(false);
+interface AddProductSheetProps {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
+}
+
+export function AddProductSheet({ open: controlledOpen, onOpenChange, hideTrigger = false }: AddProductSheetProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = typeof controlledOpen === 'boolean';
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = (nextOpen: boolean) => {
+    if (!isControlled) {
+      setInternalOpen(nextOpen);
+    }
+    onOpenChange?.(nextOpen);
+  };
   const [search, setSearch] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<MasterProduct | null>(null);
 
@@ -253,13 +267,15 @@ export function AddProductSheet() {
 
   return (
     <>
-      <Button
-        onClick={() => setOpen(true)}
-        className="bg-teal-500 hover:bg-teal-600 text-cream-50 flex items-center gap-2"
-      >
-        <Plus size={16} />
-        Add Product
-      </Button>
+      {!hideTrigger ? (
+        <Button
+          onClick={() => setOpen(true)}
+          className="bg-teal-500 hover:bg-teal-600 text-cream-50 flex items-center gap-2"
+        >
+          <Plus size={16} />
+          Add Product
+        </Button>
+      ) : null}
 
       <Sheet open={open} onOpenChange={handleOpenChange}>
         <SheetContent side="right" className="flex flex-col p-0 max-w-sm">

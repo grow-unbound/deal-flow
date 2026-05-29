@@ -7,7 +7,7 @@
 - Landing pages → `design-system/Brands Landing v3.html` + `design-system/v3/Modules.jsx` + `design-system/v2/Shared.jsx`
 - Detail pages → `design-system/Detail Pages v2.html` + `design-system/v2/DetailsV2.jsx`
 
-**Total stories:** 13 across 2 epics
+**Total stories:** 15 across 2 epics
 
 ---
 
@@ -25,8 +25,8 @@ Stories EP-13-001 and EP-14-001 are **foundation stories** — they define all s
 
 | Epic | Module | Feature Flag | Stories |
 |------|--------|-------------|---------|
-| EP-13 | Cockpit Landing Pages (v3 layout) | `df_brand_product_master` · `df_customer_master` · `df_cohorts` · `df_catalog_publishing` · `df_order_management` | 7 |
-| EP-14 | Cockpit Detail Pages (v2 layout) | same as above, per entity | 6 |
+| EP-13 | Cockpit Landing Pages (v3 layout) | `df_brand_product_master` · `df_customer_master` · `df_cohorts` · `df_catalog_publishing` · `df_order_management` · `df_pricing_engine` | 8 |
+| EP-14 | Cockpit Detail Pages (v2 layout) | same as above, per entity | 7 |
 
 ---
 
@@ -806,6 +806,112 @@ npx tsc --noEmit && npm run lint
 
 ---
 
+### EP-13-008 — Price Lists Landing Page
+
+#### 1. Objective & User Value
+
+- **As a** `seller_admin`, **I want** to see all price lists in one place with their cohort coverage, validity windows, and expiry status, **so that** I can immediately spot which lists are about to lapse or which cohorts have no active pricing and act before buyers start hitting base prices.
+
+#### 2. Common Layout
+
+Uses the shared shell from **EP-13-001**.
+
+```
+PageWrap (max-w-[1440px] mx-auto)
+  ├── PageHeader         eyebrow="Pricing" · title="Price Lists"
+  ├── InsightStrip4      4 tiles — see §4
+  ├── V3CalloutPanel     3 callouts — see §4
+  ├── FilterBar          chips, sort — see §4
+  └── table.v2-table     7 columns — see §4
+```
+
+Route: `app/(seller)/price-lists/page.tsx`  
+Feature flag gate: `df_pricing_engine`
+
+#### 3. Acceptance Criteria (Functional Boundaries)
+
+- Page gated behind `df_pricing_engine`; if disabled, renders the standard flag-off empty state.
+- KPIs from `app.price_lists` joined with `app.price_list_items` and `app.price_list_assignments`.
+- "Active" = `status = 'active'` AND `valid_until >= now()`.
+- "Expiring soon" = active lists with `valid_until` within 7 days.
+- "Cohorts covered" = distinct cohorts with at least one active price list assigned via `price_list_assignments`.
+- "Products with overrides" = count of `price_list_items` where the list price differs from the product's `base_selling_price`.
+- "Expiring soon" callout: active lists with `valid_until ≤ now() + 7 days`, max 3.
+- "Most coverage" callout: top 2 lists by product count (`price_list_items` rows).
+- "Uncovered cohorts" callout: cohorts with no active `price_list_assignments` row, max 3 — renders as a risk that buyers in those cohorts fall back to `base_selling_price`.
+- Filter chips (`All`, `Active`, `Draft`, `Expired`) filter table rows client-side by `status`.
+- Clicking a price list row navigates to `/price-lists/{id}` (EP-14-007).
+- "New price list" CTA opens the price list creation dialog.
+- "Clone list" secondary CTA opens a clone-from-existing dialog.
+
+#### 4. Design System & UI/UX Constraints
+
+**PageHeader:**
+
+| Prop | Value |
+|------|-------|
+| `eyebrow` | `"Pricing"` |
+| `title` | `"Price Lists"` |
+| `subtitle` | `"Custom pricing per cohort. Each list sets prices on a window — once it lapses, buyers fall back to base. Keep them fresh."` |
+| `horizon` | `"This month"` |
+| `secondary` | `{ label: "Clone a list", icon: <Copy size={13}/> }` |
+| `primary` | `"New price list"` |
+
+**InsightStrip4 — exact 4 tiles:**
+
+| # | Label | Value source | Sub | Tone |
+|---|-------|-------------|-----|------|
+| 1 | `Active lists` | Count where `status = 'active'` AND `valid_until >= now()` | `"{draft} in draft"` | default |
+| 2 | `Cohorts covered` | Distinct cohort count in `price_list_assignments` with active list | `"of {totalCohorts} cohorts"` | default |
+| 3 | `Expiring soon` | Count of active lists with `valid_until ≤ now() + 7d` | `"renew before they lapse"` | `warn` |
+| 4 | `Products with overrides` | Count of `price_list_items` where `list_price != base_selling_price` | `"custom priced SKUs"` | default |
+
+**V3CalloutPanel — 3 callout groups:**
+
+| Group | `kind` | `eyebrow` | `hint` | Row content |
+|-------|--------|-----------|--------|-------------|
+| 1 | `risk` | `"Expiring soon"` | count | Initials avatar (from list name) + list name + `"Expires {validUntil} · {cohortsCount} cohort(s)"` + `StatusTag` trailing |
+| 2 | `info` | `"Most coverage"` | `"by products"` | Initials avatar + list name + `"{productCount} products · valid until {validUntil}"` + product count trailing |
+| 3 | `opportunity` | `"Uncovered cohorts"` | `"no active list"` | Initials avatar (from cohort name) + cohort name + `"{memberCount} buyers · falling back to base price"` + member count trailing |
+
+**FilterBar:**
+
+| Prop | Value |
+|------|-------|
+| `count` | `"{n} price lists"` (live count) |
+| `searchPlaceholder` | `"Search price list or cohort…"` |
+| `chips` | `['All', 'Active', 'Draft', 'Expired']` |
+| `activeChip` | `'All'` |
+| `sortBy` | `"Recently updated"` |
+| `hideViewToggle` | `true` |
+
+**Table — 7 columns:**
+
+| Column | Width | Content |
+|--------|-------|---------|
+| Price list | 280 px | Initials avatar (38 px, derived from list name, `hue='teal'`) + name (`.ent-name`) + sub: `"Created by {user} · {productCount} SKUs"` (`.ent-sub`) |
+| Cohort(s) | — | Cohort name(s) as comma-separated text, `text-[12.5px] text-cream-800`; if multiple: first name + `"+{n} more"` in `text-cream-500` |
+| Products | — | Count, `.num` |
+| Validity | — | `"{validFrom} → {validUntil}"`, `font-mono text-[12px]`; if expired: `text-cream-500 line-through` |
+| Avg discount | — | `"-{pct}%"` off base in `text-teal-700 font-mono font-semibold`; if no discount: `"—"` in `text-cream-400` |
+| Status | — | `StatusTag` — `success` for Active, `warning` for Draft, `neutral` for Expired |
+| › | — | Chevron |
+
+#### 5. Automated Verification Steps
+
+```bash
+npm run test:unit -- --testPathPattern=price-lists/landing
+npm run test:integration -- --testPathPattern=price-lists-landing-page
+# - Expiring soon tile = active lists with valid_until within 7 days
+# - "Expired" chip hides active/draft lists
+# - Uncovered cohorts callout = cohorts with no active price_list_assignments row
+# - Price list row click → /price-lists/{id}
+# - Flag off → flag-off empty state, no data fetched
+npx tsc --noEmit && npm run lint
+```
+
+---
+
 ---
 
 # EPIC 14 — Cockpit Detail Pages (v2 Layout)
@@ -1317,6 +1423,117 @@ npm run test:integration -- --testPathPattern=catalog-detail-page
 # - "Extend validity" visible only to seller_admin
 # - Cross-tenant isolation: catalog from another tenant → 403
 # - Draft catalog: Composition tab allows add/remove products
+npx tsc --noEmit && npm run lint
+```
+
+---
+
+### EP-14-007 — Price List Detail Page
+
+#### 1. Objective & User Value
+
+- **As a** `seller_admin`, **I want** to open a price list and see every product's custom price, which cohorts are using it, and how long it's valid, **so that** I can edit prices, extend validity, or add cohort assignments without leaving the page.
+
+#### 2. Common Layout
+
+Uses the shared shell from **EP-14-001**.
+
+```
+PageWrap (max-w-[1440px] mx-auto, pt-7)
+  ├── DetailHeader   breadcrumb="Price Lists › {name}" · list avatar · 4 subtitle items
+  ├── MetaStrip4     4 tiles — see §4
+  ├── DetailTabs     3 tabs — Pricing · Assignments · Activity
+  └── tab-body       Pricing tab active by default
+```
+
+Route: `app/(seller)/price-lists/[id]/page.tsx`  
+Feature flag gate: `df_pricing_engine`
+
+#### 3. Acceptance Criteria (Functional Boundaries)
+
+- Page loads from `app.price_lists` + `app.price_list_items` + `app.price_list_assignments` by `id`; 404 if not found or belongs to another tenant.
+- **Pricing tab (default):** Full table of all `price_list_items` for this list. Columns: Product · Brand · Base price · List price · Discount % · Stock status. `seller_admin` can inline-edit the `list_price` cell; changes persist immediately via RPC.
+- **Assignments tab (badge = assignment count):** Table of cohorts (and/or individual buyers) this list is assigned to via `price_list_assignments`. Columns: Cohort/Buyer · Members · Assigned since · Priority. `seller_admin` can add or remove assignments.
+- **Activity tab:** Chronological log — price edits, assignment changes, validity extensions, status changes. Newest first.
+- "Extend validity" action (in `DetailActions`) opens a date-picker dialog to set a new `valid_until`; persists via RPC; available only when `status = 'active'` or `status = 'draft'`.
+- "Duplicate list" action in `DetailActions` clones the list with `status = 'draft'` and a new name suffix `"(copy)"`.
+- `Edit` action enters edit mode on the Pricing tab (inline cells become editable). `Archive` sets `deleted_at = now()` with a confirmation dialog.
+- Breadcrumb "Price Lists" navigates back to `/price-lists`.
+
+#### 4. Design System & UI/UX Constraints
+
+**DetailHeader config:**
+
+| Field | Value |
+|-------|-------|
+| `crumbPath` | `[{ label: 'Price Lists', href: '/price-lists' }, { label: priceList.name, current: true }]` |
+| `avatar` | `{ kind: 'catalog', initials: derived from first 2 words of name, hue: 'teal' }` |
+| `title` | `priceList.name` |
+| `status` | `{ label: priceList.statusLabel, tone: priceList.statusTone }` |
+| `subtitle` | `['{productCount} products', 'Cohorts: {cohortNames joined by ", "}', 'Valid {validFrom} → {validUntil}', 'Created by {createdBy}']` |
+
+**Price list status in header:**
+
+| `status.label` | `status.tone` |
+|---------------|--------------|
+| `Active` | `success` |
+| `Draft` | `warning` |
+| `Expired` | `neutral` |
+
+**MetaStrip4 — exact 4 tiles:**
+
+| # | Label | Value | Sub |
+|---|-------|-------|-----|
+| 1 | `Products covered` | Count of `price_list_items` | `"across {brandCount} brands"` |
+| 2 | `Cohorts assigned` | Count of active `price_list_assignments` | `"receiving this price list"` |
+| 3 | `Avg discount` | Average `(base_selling_price - list_price) / base_selling_price * 100`% | `"vs base selling price"` |
+| 4 | `Days left` | `"{daysLeft} d"` — `0` if expired | `"valid until {validUntil}"` |
+
+> **Demoted to subtitle:** Validity window dates, created-by — already in the header subtitle. Not KPI tiles.
+
+**DetailTabs — 3 tabs:**
+
+| id | Label | Badge |
+|----|-------|-------|
+| `pricing` | `Pricing` | Product count |
+| `assignments` | `Assignments` | Assignment count |
+| `activity` | `Activity` | — |
+
+Active tab on load: `pricing`.
+
+**Pricing tab — table spec:**
+
+| Column | Content |
+|--------|---------|
+| Product | Bottle icon (32 px) + name (`.ent-name`) + sub: `{sku} · {brand}` |
+| Brand | `EntityAvatar` (22 px) + brand name |
+| Base price | INR, `font-mono text-[12.5px] text-cream-600` |
+| List price | INR, `font-mono font-semibold text-cream-950`; inline-editable in edit mode (`<input type="number">` styled to match) |
+| Discount | `"-{pct}%"`, `text-teal-700 font-mono text-[12px]`; if list price > base: `text-danger-700` (mark-up, not discount) |
+| Stock status | `StatusTag` |
+
+**Assignments tab — table spec:**
+
+| Column | Content |
+|--------|---------|
+| Cohort / Buyer | Initials avatar + name |
+| Members | Buyer count in cohort |
+| Assigned since | Date, `font-mono text-[12px]` |
+| Priority | Numeric rank (lower = higher priority in `resolve_price()`), `font-mono` |
+| — | Remove button (trash icon, `seller_admin` only) |
+
+#### 5. Automated Verification Steps
+
+```bash
+npm run test:unit -- --testPathPattern=price-lists/\[id\]
+npm run test:integration -- --testPathPattern=price-list-detail-page
+# - MetaStrip4: exactly 4 tiles; validity dates NOT a tile
+# - Inline price edit: persists to price_list_items.list_price via RPC
+# - Discount % = (base - list) / base * 100; mark-up renders in danger color
+# - "Extend validity": only visible when status is active or draft
+# - "Duplicate list": new list has status = 'draft' and name suffix "(copy)"
+# - Cross-tenant isolation: price list from another tenant → 403
+# - Assignments tab badge = count of price_list_assignments rows
 npx tsc --noEmit && npm run lint
 ```
 
