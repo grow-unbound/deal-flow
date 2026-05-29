@@ -7,7 +7,8 @@ import { PageWrap } from '@/components/seller/layout';
 import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { ErrorState, LoadingState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/empty-state';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   useArchiveTenantBrand,
   useTenantBrandDetail,
@@ -17,14 +18,58 @@ import {
 import { formatCompactInr } from '@/lib/utils';
 import { BrandDetailsTab } from './BrandDetailsTab';
 import { BrandPerformanceTab } from './BrandPerformanceTab';
+import { BrandProductsTab } from './BrandProductsTab';
 import { BrandBuyersTab } from './BrandBuyersTab';
 import { BrandCatalogsTab } from './BrandCatalogsTab';
 import { BrandActivityTimeline } from './BrandActivityTimeline';
 
-type TabId = 'details' | 'performance' | 'buyers' | 'catalogs' | 'activity';
+type TabId = 'details' | 'performance' | 'products' | 'buyers' | 'catalogs' | 'activity';
 
 interface BrandDetailPageProps {
   id: string;
+}
+
+function BrandDetailSkeleton() {
+  return (
+    <PageWrap className="pt-7">
+      <div className="space-y-6">
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-52" />
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-12 w-12 rounded-full" />
+              <div className="space-y-2">
+                <Skeleton className="h-7 w-56" />
+                <Skeleton className="h-4 w-80" />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-9 w-9 rounded-[8px]" />
+              <Skeleton className="h-9 w-24 rounded-[8px]" />
+              <Skeleton className="h-9 w-24 rounded-[8px]" />
+              <Skeleton className="h-9 w-44 rounded-[8px]" />
+            </div>
+          </div>
+        </div>
+
+        <div className="border-b border-cream-300" />
+
+        <div className="grid grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-28 rounded-[14px]" />
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-9 w-28 rounded-full" />
+          ))}
+        </div>
+
+        <Skeleton className="h-[24rem] rounded-[14px]" />
+      </div>
+    </PageWrap>
+  );
 }
 
 function subtitle(header: BrandDetailResponse['header']) {
@@ -81,7 +126,7 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
     ];
   }, [data]);
 
-  if (isLoading) return <LoadingState label="Loading brand details..." />;
+  if (isLoading) return <BrandDetailSkeleton />;
   if (isError || !data) return <ErrorState heading="Couldn't load brand" description="There was a problem fetching this brand detail page." />;
 
   return (
@@ -134,6 +179,7 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
         tabs={[
           { id: 'details', label: 'Details' },
           { id: 'performance', label: 'Performance' },
+          { id: 'products', label: 'Products', badge: data.header.skus },
           { id: 'buyers', label: 'Buyers', badge: data.buyers.length },
           { id: 'catalogs', label: 'Catalogs', badge: data.catalogs.length },
           { id: 'activity', label: 'Activity' },
@@ -150,6 +196,7 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
         />
       ) : null}
       {tab === 'performance' ? <BrandPerformanceTab performance={data.performance} /> : null}
+      {tab === 'products' ? <BrandProductsTab brandId={id} /> : null}
       {tab === 'buyers' ? <BrandBuyersTab buyers={data.buyers} /> : null}
       {tab === 'catalogs' ? <BrandCatalogsTab catalogs={data.catalogs} /> : null}
       {tab === 'activity' ? <BrandActivityTimeline activity={data.activity} /> : null}

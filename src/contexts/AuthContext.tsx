@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser';
 import { type Role } from '@/constants';
+import posthog from 'posthog-js';
 
 export interface AuthUser {
   id: string;
@@ -55,6 +56,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isError, setIsError] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
+  const hydrateWorkspace = async (activeSession: Session) => {
+    const { data: wsRows } = await (supabase as any).rpc('get_user_workspace', {
+      p_user_id: activeSession.user.id,
+    });
+
+    const ws = (wsRows as any[] | null)?.[0] ?? null;
+    if (!ws?.tenant_id) {
+      setTenantProfile(null);
+      setCurrentTenantId(null);
+      return;
+    }
+
+    setTenantProfile({
+      id: ws.tenant_id, // using tenant_id as profile id (row id not available from RPC)
+      tenant_id: ws.tenant_id,
+      user_id: activeSession.user.id,
+      role: ws.role as Role,
+      is_active: true,
+    });
+    setCurrentTenantId(ws.tenant_id);
+
+    if (activeSession.user.id) {
+      posthog.identify(activeSession.user.id, {
+        email: activeSession.user.email,
+        tenant_id: ws.tenant_id,
+        role: ws.role,
+      });
+      posthog.reloadFeatureFlags();
+    }
+  };
+
   // Initialize auth session
   useEffect(() => {
     const initializeAuth = async () => {
@@ -76,24 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             phone: currentSession.user.phone,
           });
 
-          // Use the get_user_workspace RPC (in public schema, accessible via anon key with authenticated session)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { data: wsRows } = await (supabase as any).rpc('get_user_workspace', {
-            p_user_id: currentSession.user.id,
-          });
-
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const ws = (wsRows as any[] | null)?.[0] ?? null;
-          if (ws?.tenant_id) {
-            setTenantProfile({
-              id: ws.tenant_id, // using tenant_id as profile id (row id not available from RPC)
-              tenant_id: ws.tenant_id,
-              user_id: currentSession.user.id,
-              role: ws.role as Role,
-              is_active: true,
-            });
-            setCurrentTenantId(ws.tenant_id);
-          }
+          await hydrateWorkspace(currentSession);
         }
       } catch (err) {
         setIsError(true);
@@ -116,6 +131,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: newSession.user.email || '',
           phone: newSession.user.phone,
         });
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+          try {
+            setIsLoading(true);
+            setIsError(false);
+            setError(null);
+            await hydrateWorkspace(newSession);
+          } catch (err) {
+            setIsError(true);
+            setError(err instanceof Error ? err : new Error('Workspace initialization failed'));
+          } finally {
+            setIsLoading(false);
+          }
+        }
       } else {
         setUser(null);
         setTenantProfile(null);
@@ -133,7 +161,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error) {
       // GoTrue rejected the token (e.g. already expired) — clear local cookies only.
       // This avoids a 403 blocking the logout flow.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await supabase.auth.signOut({ scope: 'local' } as any);
     }
     setUser(null);

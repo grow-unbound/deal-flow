@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MailCheck, Pencil, UserPlus, UserX } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +20,7 @@ import { DialogBody } from '@/components/ui/dialog';
 import { DataTable } from './DataTable';
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { InviteUserDialog } from './InviteUserDialog';
+import { FilterBar } from '@/components/seller/layout';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import type { TeamMember } from '@/types/team';
 
@@ -27,6 +28,12 @@ interface Props {
   tenantId: string;
   isAdmin: boolean;
 }
+
+type TeamChip = 'All users' | 'Admin' | 'Assistant' | 'Active' | 'Invited' | 'Deactivated';
+type TeamSort = 'Name (A → Z)' | 'Role' | 'Status';
+
+const TEAM_CHIPS: TeamChip[] = ['All users', 'Admin', 'Assistant', 'Active', 'Invited', 'Deactivated'];
+const TEAM_SORT_OPTIONS: TeamSort[] = ['Name (A → Z)', 'Role', 'Status'];
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const { data: { session } } = await supabaseBrowser.auth.getSession();
@@ -37,6 +44,9 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 
 export function TeamMembersTable({ tenantId, isAdmin }: Props) {
   const queryClient = useQueryClient();
+  const [query, setQuery] = useState('');
+  const [activeChip, setActiveChip] = useState<TeamChip>('All users');
+  const [sortBy, setSortBy] = useState<TeamSort>('Name (A → Z)');
   const [editMember, setEditMember] = useState<TeamMember | null>(null);
   const [resendMember, setResendMember] = useState<TeamMember | null>(null);
   const [resendError, setResendError] = useState<string | null>(null);
@@ -53,6 +63,51 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
       return data.members as TeamMember[];
     },
   });
+
+  const filteredMembers = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const statusWeight: Record<'active' | 'pending' | 'inactive', number> = {
+      active: 0,
+      pending: 1,
+      inactive: 2,
+    };
+    const roleWeight: Record<'seller_admin' | 'seller_assistant', number> = {
+      seller_admin: 0,
+      seller_assistant: 1,
+    };
+
+    return members
+      .filter((member) => {
+        const fullName = member.full_name?.toLowerCase() ?? '';
+        const matchesQuery = !q
+          || fullName.includes(q)
+          || member.email.toLowerCase().includes(q)
+          || (member.phone ?? '').toLowerCase().includes(q)
+          || member.role.toLowerCase().includes(q)
+          || member.status.toLowerCase().includes(q);
+        const matchesChip =
+          activeChip === 'All users'
+          || (activeChip === 'Admin' && member.role === 'seller_admin')
+          || (activeChip === 'Assistant' && member.role === 'seller_assistant')
+          || (activeChip === 'Active' && member.status === 'active')
+          || (activeChip === 'Invited' && member.status === 'pending')
+          || (activeChip === 'Deactivated' && member.status === 'inactive');
+        return matchesQuery && matchesChip;
+      })
+      .sort((a, b) => {
+        if (sortBy === 'Name (A → Z)') {
+          return (a.full_name ?? a.email).localeCompare(b.full_name ?? b.email);
+        }
+        if (sortBy === 'Role') {
+          const roleDiff = roleWeight[a.role] - roleWeight[b.role];
+          if (roleDiff !== 0) return roleDiff;
+          return (a.full_name ?? a.email).localeCompare(b.full_name ?? b.email);
+        }
+        const statusDiff = statusWeight[a.status] - statusWeight[b.status];
+        if (statusDiff !== 0) return statusDiff;
+        return (a.full_name ?? a.email).localeCompare(b.full_name ?? b.email);
+      });
+  }, [activeChip, members, query, sortBy]);
 
   const removeMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -109,10 +164,24 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
 
   return (
     <>
+      <FilterBar
+        count={`Showing ${filteredMembers.length} of ${members.length} users`}
+        searchPlaceholder="Search name, email, phone…"
+        chips={TEAM_CHIPS}
+        activeChip={activeChip}
+        sortBy={sortBy}
+        hideViewToggle
+        searchValue={query}
+        onSearchChange={setQuery}
+        onChipChange={(chip) => setActiveChip(chip as TeamChip)}
+        sortOptions={TEAM_SORT_OPTIONS}
+        onSortChange={(option) => setSortBy(option as TeamSort)}
+      />
       <DataTable
-        data={members}
+        data={filteredMembers}
         loading={isLoading}
         loadingMessage="Loading team members..."
+        className="-mt-px"
         columns={[
           {
             key: 'full_name',
