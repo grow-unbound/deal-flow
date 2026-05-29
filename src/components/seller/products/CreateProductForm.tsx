@@ -14,6 +14,7 @@ import { useTenantBrands } from '@/hooks/useBrands';
 import { useCreateCustomProduct, type CreateCustomProductError } from '@/hooks/useProducts';
 
 import { Button } from '@/components/ui/button';
+import { MutationButton } from '@/components/ui/mutation-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -102,11 +103,6 @@ export function CreateProductForm() {
       formData.pack_size && formData.pack_size !== ''
         ? Number(formData.pack_size)
         : undefined;
-    const gstRate =
-      formData.gst_rate && formData.gst_rate !== ''
-        ? Number(formData.gst_rate)
-        : undefined;
-
     try {
       await createProduct.mutateAsync({
         master_product_id: null,
@@ -404,14 +400,15 @@ export function CreateProductForm() {
         >
           Cancel
         </Button>
-        <Button
+        <MutationButton
           type="submit"
-          disabled={isSubmitting || createProduct.isPending}
+          isPending={isSubmitting || createProduct.isPending}
+          pendingLabel="Creating…"
           className="gap-2 bg-teal-500 text-cream-50 hover:bg-teal-600"
         >
           <Plus size={16} />
-          {isSubmitting || createProduct.isPending ? 'Creating…' : 'Create product'}
-        </Button>
+          Create product
+        </MutationButton>
       </div>
     </form>
   );

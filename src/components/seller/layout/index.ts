@@ -11,3 +11,5 @@ export { GrowthPill } from './GrowthPill';
 export { EntityAvatar } from './EntityAvatar';
 export type { EntityAvatarHue } from './EntityAvatar';
 export { LandingTable } from './LandingTable';
+export { SeeAllSheet } from './SeeAllSheet';
+export type { SeeAllSheetColumn, SeeAllSheetProps } from './SeeAllSheet';

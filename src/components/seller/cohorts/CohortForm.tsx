@@ -92,7 +92,6 @@ export function CohortForm({ mode = 'create', cohortId, defaultValues }: CohortF
       }
 
       router.push('/cohorts');
-      router.refresh();
     } catch {
       setSubmitError('Network error. Please try again.');
     }

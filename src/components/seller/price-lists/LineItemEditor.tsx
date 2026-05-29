@@ -3,7 +3,9 @@
 import { useState } from 'react';
 import { Trash2, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { MutationButton } from '@/components/ui/mutation-button';
 import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -145,15 +147,16 @@ export function LineItemEditor({ priceListId }: LineItemEditorProps) {
             onChange={(e) => setForm((f) => ({ ...f, max_qty: e.target.value }))}
           />
 
-          <Button
+          <MutationButton
             variant="outline"
             className="flex items-center gap-1.5"
             onClick={handleAdd}
-            disabled={addItem.isPending}
+            isPending={addItem.isPending}
+            pendingLabel="Adding…"
           >
             <Plus size={16} />
             Add product
-          </Button>
+          </MutationButton>
         </div>
 
         {addError && (
@@ -163,7 +166,11 @@ export function LineItemEditor({ priceListId }: LineItemEditorProps) {
 
       {/* Items table */}
       {itemsLoading ? (
-        <p className="text-cream-500 text-sm">Loading items…</p>
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, idx) => (
+            <Skeleton key={idx} className="h-10 w-full rounded-md" />
+          ))}
+        </div>
       ) : items.length === 0 ? (
         <p className="text-cream-500 text-sm">No line items yet. Add a product above.</p>
       ) : (
