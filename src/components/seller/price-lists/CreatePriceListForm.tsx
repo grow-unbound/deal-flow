@@ -21,9 +21,16 @@ import {
 interface CreatePriceListFormProps {
   onSuccess: () => void;
   onCancel: () => void;
+  initialValues?: Partial<PriceListCreateInput>;
+  submitLabel?: string;
 }
 
-export function CreatePriceListForm({ onSuccess, onCancel }: CreatePriceListFormProps) {
+export function CreatePriceListForm({
+  onSuccess,
+  onCancel,
+  initialValues,
+  submitLabel = 'Create price list',
+}: CreatePriceListFormProps) {
   const [submitError, setSubmitError] = useState<string | undefined>();
   const createPriceList = useCreatePriceList();
 
@@ -33,6 +40,7 @@ export function CreatePriceListForm({ onSuccess, onCancel }: CreatePriceListForm
       name: '',
       currency: 'INR',
       priority: 0,
+      ...initialValues,
     },
   });
 
@@ -177,7 +185,7 @@ export function CreatePriceListForm({ onSuccess, onCancel }: CreatePriceListForm
             className="bg-teal-500 hover:bg-teal-600 text-cream-50 flex items-center gap-2"
           >
             <IndianRupee size={16} />
-            Create price list
+            {submitLabel}
           </MutationButton>
         </div>
       </form>

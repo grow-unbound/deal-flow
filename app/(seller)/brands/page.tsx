@@ -18,7 +18,8 @@ import {
   StatusTag,
   V3CalloutPanel,
 } from '@/components/seller/layout';
-import { ErrorState, LoadingState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/empty-state';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useTenantBrands, type TenantBrand } from '@/hooks/useBrands';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { formatCompactInr } from '@/lib/utils';
@@ -46,6 +47,29 @@ interface BrandVm {
 
 const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'GMV (low → high)', 'Growth (high → low)', 'Catalog age (most recent)'];
 const PAGE_SIZE = 20;
+
+function BrandLandingSkeleton() {
+  return (
+    <PageWrap>
+      <div className="space-y-5">
+        <Skeleton className="h-7 w-44" />
+        <Skeleton className="h-4 w-[36rem]" />
+        <div className="grid grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-36 rounded-[14px]" />
+          ))}
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-52 rounded-[14px]" />
+          ))}
+        </div>
+        <Skeleton className="h-14 rounded-[14px]" />
+        <Skeleton className="h-[28rem] rounded-[14px]" />
+      </div>
+    </PageWrap>
+  );
+}
 
 function getInitials(name: string): string {
   return name
@@ -171,7 +195,7 @@ function BrandLandingContent() {
     return `${denom} published in the last ${days} days`;
   };
 
-  if (isLoading) return <LoadingState label="Loading brands..." />;
+  if (isLoading) return <BrandLandingSkeleton />;
   if (isError) {
     return (
       <ErrorState heading="Couldn't load brands" description="There was a problem fetching your brands. Please try again." />
