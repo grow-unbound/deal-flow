@@ -37,6 +37,7 @@ type BuyerRow = {
 };
 type ProductRow = {
   id: string;
+  master_product_id: string | null;
   internal_sku: string;
   name_override: string | null;
 };
@@ -97,12 +98,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { data: tenantProducts } = await db
     .schema('app')
     .from('tenant_products')
-    .select('id, internal_sku, name_override, base_selling_price, is_active')
+    .select('id, master_product_id, internal_sku, name_override, base_selling_price, is_active')
     .eq('tenant_id', claims.tenant_id)
     .eq('tenant_brand_id', id)
     .is('deleted_at', null);
 
   const productIds = (tenantProducts ?? []).map((p: { id: string }) => p.id);
+  const masterProductIds = Array.from(
+    new Set((tenantProducts ?? []).map((p: { master_product_id: string | null }) => p.master_product_id).filter(Boolean))
+  ) as string[];
+
+  const masterProductsRes = masterProductIds.length
+    ? await db.schema('catalog').from('master_products').select('id, name').in('id', masterProductIds)
+    : { data: [] };
 
   const [buyersRes, allBuyersRes, inventoryRes, catalogsItemsRes, auditRes] = await Promise.all([
     db
@@ -299,10 +307,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }).sort((a, b) => b.spend - a.spend);
 
   const productsMap = new Map(tenantProductsRows.map((p) => [p.id, p]));
+  const masterProductNameMap = new Map(
+    (masterProductsRes.data ?? []).map((masterProduct: { id: string; name: string }) => [masterProduct.id, masterProduct.name])
+  );
   const topSkus = Array.from(productRevenue.entries())
     .map(([productId, stats]) => ({
       product_id: productId,
-      product: productsMap.get(productId)?.name_override ?? productsMap.get(productId)?.internal_sku ?? 'Unknown SKU',
+      product:
+        productsMap.get(productId)?.name_override ??
+        masterProductNameMap.get(productsMap.get(productId)?.master_product_id ?? '') ??
+        productsMap.get(productId)?.internal_sku ??
+        'Unknown product',
       sku: productsMap.get(productId)?.internal_sku ?? '—',
       units: stats.units,
       revenue: stats.revenue,

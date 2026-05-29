@@ -20,6 +20,72 @@ export interface PriceList {
   updated_at: string;
 }
 
+export type PriceListLandingStatus = 'active' | 'draft' | 'expired';
+export type PriceListLandingStatusTone = 'success' | 'warning' | 'neutral';
+
+export interface PriceListLandingRow {
+  id: string;
+  name: string;
+  priority: number;
+  currency: string;
+  valid_from: string | null;
+  valid_to: string | null;
+  updated_at: string;
+  created_at: string;
+  status: PriceListLandingStatus;
+  status_tone: PriceListLandingStatusTone;
+  cohorts_count: number;
+  cohort_names: string[];
+  product_count: number;
+  avg_discount_pct: number | null;
+  created_by_label: string;
+  is_expiring_soon: boolean;
+}
+
+export interface PriceListsLandingResponse {
+  kpis: {
+    active_lists: number;
+    draft_lists: number;
+    expiring_soon: number;
+    cohorts_covered: number;
+    cohorts_total: number;
+    products_with_overrides: number;
+  };
+  todays_read: {
+    expiring_soon: Array<{
+      id: string;
+      name: string;
+      initials: string;
+      valid_until: string | null;
+      valid_until_label: string;
+      cohorts_count: number;
+      status: PriceListLandingStatus;
+      status_tone: PriceListLandingStatusTone;
+    }>;
+    most_coverage: Array<{
+      id: string;
+      name: string;
+      initials: string;
+      product_count: number;
+      valid_until: string | null;
+      valid_until_label: string;
+    }>;
+    uncovered_cohorts: Array<{
+      id: string;
+      name: string;
+      initials: string;
+      member_count: number;
+    }>;
+  };
+  price_lists: PriceListLandingRow[];
+  cohorts_total: number;
+  counts: {
+    active: number;
+    draft: number;
+    expired: number;
+  };
+}
+
 export interface PriceListItem {
   id: string;
   price_list_id: string;
@@ -57,6 +123,19 @@ export function usePriceLists() {
       const res = await apiFetch('/api/price-lists');
       if (!res.ok) {
         throw new Error('Failed to fetch price lists');
+      }
+      return res.json();
+    },
+  });
+}
+
+export function usePriceListsLanding() {
+  return useQuery({
+    queryKey: ['price-lists-landing'],
+    queryFn: async (): Promise<PriceListsLandingResponse> => {
+      const res = await apiFetch('/api/price-lists');
+      if (!res.ok) {
+        throw new Error('Failed to fetch price lists landing');
       }
       return res.json();
     },
@@ -104,6 +183,7 @@ export function useCreatePriceList() {
 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['price-lists'] });
+      queryClient.invalidateQueries({ queryKey: ['price-lists-landing'] });
       toast.success('Price list created');
     },
   });

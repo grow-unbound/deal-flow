@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
         updated_at
       `)
       .eq('tenant_id', claims.tenant_id)
-      .is('is_active', true)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -71,10 +71,17 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const allProducts = data ?? [];
+    const activeProducts = allProducts.filter((row: { is_active: boolean }) => row.is_active);
+    const archivedCount = allProducts.length - activeProducts.length;
+
     // Fetch master product details for enrichment
-    const masterProductIds = (data ?? [])
+    const masterProductIds = activeProducts
       .filter((r: { master_product_id: string | null }) => r.master_product_id)
       .map((r: { master_product_id: string }) => r.master_product_id);
+    const tenantBrandIds = activeProducts
+      .filter((r: { tenant_brand_id: string | null }) => r.tenant_brand_id)
+      .map((r: { tenant_brand_id: string }) => r.tenant_brand_id);
 
     let masterProducts: Record<
       string,
@@ -82,18 +89,20 @@ export async function GET(req: NextRequest) {
         id: string;
         name: string;
         master_sku: string;
-        // gst_rate: number | null;
-        // hsn_code: string | null;
+        category_name: string | null;
+        image_urls: string[] | null;
         brand_id: string;
         brands: { id: string; name: string; slug: string; logo_url: string | null } | null;
       }
     > = {};
+    let tenantBrands: Record<string, { id: string; display_name_override: string | null; master_brand_id: string | null }> = {};
+    let masterBrands: Record<string, { id: string; name: string }> = {};
 
     if (masterProductIds.length > 0) {
       const { data: catalogProducts } = await db
         .schema('catalog')
         .from('products')
-        .select('id, name, master_sku, brand_id, brands!inner(id, name, slug, logo_url)') // gst_rate, hsn_code left out for now
+        .select('id, name, master_sku, image_urls, category_id, categories(name), brand_id, brands!inner(id, name, slug, logo_url)')
         .in('id', masterProductIds);
 
       masterProducts = Object.fromEntries(
@@ -102,18 +111,123 @@ export async function GET(req: NextRequest) {
             id: string;
             name: string;
             master_sku: string;
-            // gst_rate: number | null;
-            // hsn_code: string | null;
+            image_urls: string[] | null;
+            categories: { name: string } | null;
             brand_id: string;
             brands: { id: string; name: string; slug: string; logo_url: string | null } | null;
-          }) => [p.id, p]
+          }) => [p.id, { ...p, category_name: p.categories?.name ?? null }]
         )
       );
     }
 
+    if (tenantBrandIds.length > 0) {
+      const { data: tenantBrandsData } = await db
+        .schema('app')
+        .from('tenant_brands')
+        .select('id, display_name_override, master_brand_id, deleted_at')
+        .in('id', tenantBrandIds)
+        .is('deleted_at', null);
+      tenantBrands = Object.fromEntries((tenantBrandsData ?? []).map((row: { id: string }) => [row.id, row]));
+
+      const masterBrandIds = (tenantBrandsData ?? [])
+        .map((row: { master_brand_id: string | null }) => row.master_brand_id)
+        .filter(Boolean);
+      if (masterBrandIds.length > 0) {
+        const { data: masterBrandsData } = await db
+          .schema('catalog')
+          .from('brands')
+          .select('id, name, deleted_at')
+          .in('id', masterBrandIds)
+          .is('deleted_at', null);
+        masterBrands = Object.fromEntries((masterBrandsData ?? []).map((row: { id: string }) => [row.id, row]));
+      }
+    }
+
+    const productIds = activeProducts.map((row: { id: string }) => row.id);
+    const productIdSet = new Set(productIds);
+    const inventoryByProduct = new Map<string, number>();
+    const unitsMtdByProduct = new Map<string, number>();
+    const gmvMtdByProduct = new Map<string, number>();
+    const gmvPrevByProduct = new Map<string, number>();
+
+    if (productIds.length > 0) {
+      const { data: inventoryRows } = await db
+        .schema('app')
+        .from('tenant_inventory')
+        .select('tenant_product_id, qty_available, deleted_at')
+        .in('tenant_product_id', productIds)
+        .is('deleted_at', null);
+      for (const row of inventoryRows ?? []) {
+        const qty = Number(row.qty_available ?? 0);
+        inventoryByProduct.set(row.tenant_product_id, (inventoryByProduct.get(row.tenant_product_id) ?? 0) + qty);
+      }
+    }
+
+    const now = new Date();
+    const istNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    const year = istNow.getFullYear();
+    const month = istNow.getMonth();
+    const day = istNow.getDate();
+    const mtdStart = new Date(Date.UTC(year, month, 1, 0, 0, 0)).toISOString();
+    const mtdEnd = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0)).toISOString();
+    const prevStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0)).toISOString();
+    const prevMtdEnd = new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0)).toISOString();
+
+    const { data: monthOrders } = await db
+      .schema('app')
+      .from('orders')
+      .select('id, status, deleted_at')
+      .eq('tenant_id', claims.tenant_id)
+      .neq('status', 'cancelled')
+      .is('deleted_at', null)
+      .gte('placed_at', mtdStart)
+      .lt('placed_at', mtdEnd);
+    const { data: prevOrders } = await db
+      .schema('app')
+      .from('orders')
+      .select('id, status, deleted_at')
+      .eq('tenant_id', claims.tenant_id)
+      .neq('status', 'cancelled')
+      .is('deleted_at', null)
+      .gte('placed_at', prevStart)
+      .lt('placed_at', prevMtdEnd);
+
+    const monthOrderIds = (monthOrders ?? []).map((row: { id: string }) => row.id);
+    const prevOrderIds = (prevOrders ?? []).map((row: { id: string }) => row.id);
+
+    if (monthOrderIds.length > 0) {
+      const { data: monthItems } = await db
+        .schema('app')
+        .from('order_items')
+        .select('tenant_product_id, qty, unit_price, line_total, deleted_at')
+        .in('order_id', monthOrderIds)
+        .is('deleted_at', null);
+      for (const row of monthItems ?? []) {
+        if (!productIdSet.has(row.tenant_product_id)) continue;
+        const units = Number(row.qty ?? 0);
+        const lineTotal = Number(row.line_total ?? Number(row.qty ?? 0) * Number(row.unit_price ?? 0));
+        unitsMtdByProduct.set(row.tenant_product_id, (unitsMtdByProduct.get(row.tenant_product_id) ?? 0) + units);
+        gmvMtdByProduct.set(row.tenant_product_id, (gmvMtdByProduct.get(row.tenant_product_id) ?? 0) + lineTotal);
+      }
+    }
+
+    if (prevOrderIds.length > 0) {
+      const { data: prevItems } = await db
+        .schema('app')
+        .from('order_items')
+        .select('tenant_product_id, qty, unit_price, line_total, deleted_at')
+        .in('order_id', prevOrderIds)
+        .is('deleted_at', null);
+      for (const row of prevItems ?? []) {
+        if (!productIdSet.has(row.tenant_product_id)) continue;
+        const lineTotal = Number(row.line_total ?? Number(row.qty ?? 0) * Number(row.unit_price ?? 0));
+        gmvPrevByProduct.set(row.tenant_product_id, (gmvPrevByProduct.get(row.tenant_product_id) ?? 0) + lineTotal);
+      }
+    }
+
     const role = claims.role;
 
-    const products = (data ?? []).map(
+    const products = activeProducts.map(
       (row: {
         id: string;
         tenant_id: string;
@@ -133,11 +247,36 @@ export async function GET(req: NextRequest) {
         updated_at: string;
       }) => {
         const master = row.master_product_id ? masterProducts[row.master_product_id] : null;
+        const tenantBrand = row.tenant_brand_id ? tenantBrands[row.tenant_brand_id] : null;
+        const masterBrand = tenantBrand?.master_brand_id ? masterBrands[tenantBrand.master_brand_id] : null;
+        const onHand = Math.max(0, Math.round(inventoryByProduct.get(row.id) ?? 0));
+        const unitsMtd = Math.max(0, Math.round(unitsMtdByProduct.get(row.id) ?? 0));
+        const gmvMtd = Number(gmvMtdByProduct.get(row.id) ?? 0);
+        const gmvPrev = Number(gmvPrevByProduct.get(row.id) ?? 0);
+        const avgDailyUnits = day > 0 ? unitsMtd / day : 0;
+        const computedDaysCover = onHand === 0 ? 0 : avgDailyUnits <= 0 ? 999 : Math.max(0, Math.round(onHand / avgDailyUnits));
+        const growthPct = gmvPrev > 0 ? Math.round(((gmvMtd - gmvPrev) / gmvPrev) * 100) : gmvMtd > 0 ? 100 : 0;
+        const statusTone = onHand === 0 ? 'danger' : computedDaysCover < 14 ? 'warning' : 'success';
+        const statusLabel = onHand === 0 ? 'Out of stock' : computedDaysCover < 14 ? 'Low stock' : 'On pace';
+        const brandName =
+          tenantBrand?.display_name_override ??
+          masterBrand?.name ??
+          master?.brands?.name ??
+          null;
         const enriched = {
           ...row,
+          image_urls: row.image_urls?.length ? row.image_urls : (master?.image_urls ?? null),
           master_product: master ?? null,
           display_name: row.name_override ?? master?.name ?? row.internal_sku,
-          brand_name: master?.brands?.name ?? null,
+          brand_name: brandName,
+          category_name: master?.category_name ?? 'Uncategorized',
+          on_hand: onHand,
+          days_cover: computedDaysCover,
+          units_mtd: unitsMtd,
+          gmv_mtd: gmvMtd,
+          growth_pct: growthPct,
+          status_label: statusLabel,
+          status_tone: statusTone as 'success' | 'warning' | 'danger' | 'neutral',
         };
 
         // Strip cost_price for seller_assistant role
@@ -150,8 +289,69 @@ export async function GET(req: NextRequest) {
         return enriched;
       }
     );
+    const revenueMtd = products.reduce((sum: number, row: { gmv_mtd?: number }) => sum + Number(row.gmv_mtd ?? 0), 0);
+    const revenuePrev = products.reduce((sum: number, row: { id: string }) => sum + Number(gmvPrevByProduct.get(row.id) ?? 0), 0);
+    const revenueGrowth = revenuePrev > 0 ? Math.round(((revenueMtd - revenuePrev) / revenuePrev) * 100) : revenueMtd > 0 ? 100 : 0;
+    const outOfStock = products.filter((row: { on_hand?: number }) => Number(row.on_hand ?? 0) === 0).length;
+    const lowStock = products.filter((row: { on_hand?: number; days_cover?: number }) => Number(row.on_hand ?? 0) > 0 && Number(row.days_cover ?? 0) < 14).length;
 
-    return NextResponse.json({ products });
+    const brandSet = new Set<string>();
+    for (const row of products) {
+      if (row.brand_name) brandSet.add(row.brand_name);
+    }
+    const brands = Array.from(brandSet).sort((a, b) => a.localeCompare(b));
+
+    const attention = products
+      .filter((row: { status_tone?: string; growth_pct?: number }) => row.status_tone === 'danger' || row.status_tone === 'warning' || Number(row.growth_pct ?? 0) < 0)
+      .slice(0, 3);
+    const topPerformers = [...products]
+      .sort((a, b) => Number(b.gmv_mtd ?? 0) - Number(a.gmv_mtd ?? 0))
+      .slice(0, 2);
+    const topRisers = [...products]
+      .sort((a, b) => Number(b.growth_pct ?? 0) - Number(a.growth_pct ?? 0))
+      .slice(0, 2);
+
+    const toReadItem = (row: any, index: number) => ({
+      id: row.id,
+      name: row.display_name,
+      brand: row.brand_name ?? 'Unknown brand',
+      brand_initials: (row.brand_name ?? 'Unknown brand')
+        .split(' ')
+        .map((chunk: string) => chunk[0] ?? '')
+        .join('')
+        .slice(0, 2)
+        .toUpperCase(),
+      brand_hue: (['teal', 'ember', 'cream'][index % 3] ?? 'cream') as 'teal' | 'ember' | 'cream',
+      on_hand: Number(row.on_hand ?? 0),
+      days_cover: Number(row.days_cover ?? 0),
+      growth_pct: Number(row.growth_pct ?? 0),
+      units_mtd: Number(row.units_mtd ?? 0),
+      gmv_mtd: Number(row.gmv_mtd ?? 0),
+      status: {
+        label: row.status_label ?? 'On pace',
+        tone: row.status_tone ?? 'neutral',
+      },
+    });
+
+    return NextResponse.json({
+      products,
+      brands,
+      kpis: {
+        active_skus: products.length,
+        total_skus: allProducts.length,
+        archived_skus: archivedCount,
+        out_of_stock: outOfStock,
+        low_stock: lowStock,
+        revenue_mtd: revenueMtd,
+        revenue_prev_mtd: revenuePrev,
+        revenue_growth_pct: revenueGrowth,
+      },
+      todays_read: {
+        needs_attention: attention.map(toReadItem),
+        top_performers: topPerformers.map(toReadItem),
+        top_risers: topRisers.map(toReadItem),
+      },
+    });
   } catch (err) {
     console.error('[GET /api/tenant/products] Unexpected error:', err);
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
