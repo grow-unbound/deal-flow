@@ -45,10 +45,53 @@ export interface TenantProduct {
   master_product: MasterProduct | null;
   display_name: string;
   brand_name: string | null;
+  category_name?: string | null;
+  on_hand?: number;
+  days_cover?: number;
+  units_mtd?: number;
+  gmv_mtd?: number;
+  growth_pct?: number;
+  status_label?: string;
+  status_tone?: 'success' | 'warning' | 'danger' | 'neutral';
+}
+
+export interface ProductsKpis {
+  active_skus: number;
+  total_skus: number;
+  archived_skus: number;
+  out_of_stock: number;
+  low_stock: number;
+  revenue_mtd: number;
+  revenue_prev_mtd: number;
+  revenue_growth_pct: number;
+}
+
+export interface ProductsTodaysReadItem {
+  id: string;
+  name: string;
+  brand: string;
+  brand_initials: string;
+  brand_hue: 'teal' | 'ember' | 'cream';
+  on_hand: number;
+  days_cover: number;
+  growth_pct: number;
+  units_mtd: number;
+  gmv_mtd: number;
+  status: {
+    label: string;
+    tone: 'success' | 'warning' | 'danger' | 'neutral';
+  };
 }
 
 export interface TenantProductsResponse {
   products: TenantProduct[];
+  brands?: string[];
+  kpis?: ProductsKpis;
+  todays_read?: {
+    needs_attention: ProductsTodaysReadItem[];
+    top_performers: ProductsTodaysReadItem[];
+    top_risers: ProductsTodaysReadItem[];
+  };
 }
 
 export interface SearchProductsResponse {

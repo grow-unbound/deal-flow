@@ -8,6 +8,7 @@ import { InviteUserDialog } from '@/components/seller/InviteUserDialog';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { ROLES } from '@/constants';
+import { PageWrap } from '@/components/seller/layout';
 
 export default function TeamPage() {
   const { tenantProfile, currentTenantId } = useAuth();
@@ -26,19 +27,19 @@ export default function TeamPage() {
 
   return (
     <>
-      <div className="px-8 py-6">
+      <PageWrap>
         <SellerTopbar
           title="Users & Roles"
           subtitle="Manage seller access for this tenant and keep role assignments tidy."
           action={addUserAction}
         />
-        <div className="max-w-5xl">
+        <div className="w-full">
           <TeamMembersTable
             tenantId={currentTenantId ?? ''}
             isAdmin={isAdmin}
           />
         </div>
-      </div>
+      </PageWrap>
 
       <InviteUserDialog open={inviteOpen} onOpenChange={setInviteOpen} />
     </>

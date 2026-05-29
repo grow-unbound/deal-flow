@@ -35,6 +35,7 @@ function LoginForm() {
     }
     setError('');
     setLoading(true);
+    let shouldResetLoading = true;
 
     try {
       // Step 1: Authenticate with Supabase — sets session in browser automatically
@@ -72,11 +73,12 @@ function LoginForm() {
         return;
       }
 
-      router.push(wsData.redirect ?? '/dashboard');
+      shouldResetLoading = false;
+      router.replace(wsData.redirect ?? '/dashboard');
     } catch {
       setError('An error occurred. Please try again.');
     } finally {
-      setLoading(false);
+      if (shouldResetLoading) setLoading(false);
     }
   }
 
