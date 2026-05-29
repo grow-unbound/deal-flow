@@ -5,6 +5,7 @@ import { useTenant } from '@/contexts/TenantContext';
 import { useCaptureEvent } from '@/hooks/useFeatureFlag';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { X, Sparkles } from 'lucide-react';
 import { SellerTopbar } from '@/components/layout/SellerTopbar';
 
@@ -97,13 +98,13 @@ export default function DashboardPage() {
             <span className="font-semibold">Welcome to DealFlow!</span>{' '}
             Complete your setup to start selling — add your first brand and invite your team.
           </p>
-          <a
+          <Link
             href="/settings"
             className="font-sans text-body-sm font-semibold underline underline-offset-2
                        hover:text-cream-200 transition-colors shrink-0"
           >
             Set up now
-          </a>
+          </Link>
           <button
             onClick={dismissOnboarding}
             aria-label="Dismiss welcome banner"
@@ -132,10 +133,10 @@ export default function DashboardPage() {
               Last 7 days
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
             </button>
-            <a href="/catalogs" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'var(--teal-500)', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer', textDecoration: 'none' }}>
+            <Link href="/catalogs" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'var(--teal-500)', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer', textDecoration: 'none' }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>
               Go to catalogs
-            </a>
+            </Link>
           </div>
         </div>
 
@@ -169,10 +170,10 @@ export default function DashboardPage() {
                 <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cream-900)' }}>Brand performance</div>
                 <div style={{ fontSize: 12, color: 'var(--cream-600)', marginTop: 2 }}>GMV share this week · across 5 brand principals</div>
               </div>
-              <a href="/brands" style={{ fontSize: 12, color: 'var(--teal-500)', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Link href="/brands" style={{ fontSize: 12, color: 'var(--teal-500)', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 2 }}>
                 All brands
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
-              </a>
+              </Link>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {topBrands.map(b => {
@@ -201,10 +202,10 @@ export default function DashboardPage() {
                 <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cream-900)' }}>Latest orders</div>
                 <div style={{ fontSize: 12, color: 'var(--cream-600)', marginTop: 2 }}>Across all buyers</div>
               </div>
-              <a href="/orders" style={{ fontSize: 12, color: 'var(--teal-500)', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Link href="/orders" style={{ fontSize: 12, color: 'var(--teal-500)', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 2 }}>
                 All orders
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
-              </a>
+              </Link>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
               {recentOrders.map(o => {

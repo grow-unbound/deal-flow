@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -18,6 +19,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
+import { MutationButton } from '@/components/ui/mutation-button';
 
 import { CreateBrandSchema, type CreateBrandInput } from '@/lib/zod';
 import { useCreateCustomBrand, type CreateCustomBrandError } from '@/hooks/useBrands';
@@ -88,9 +90,9 @@ export function CreateBrandForm() {
     <div className="bg-cream-100 rounded-lg p-6 shadow-sm">
       <p className="text-sm text-cream-600 mb-6">
         Create a private brand visible only to your account.{' '}
-        <a href="/brands" className="text-teal-600 hover:underline">
+        <Link href="/brands" className="text-teal-600 hover:underline">
           Search the master catalog instead
-        </a>
+        </Link>
       </p>
 
       <Form {...form}>
@@ -179,14 +181,15 @@ export function CreateBrandForm() {
 
           {/* Actions */}
           <div className="flex items-center gap-3 pt-2">
-            <Button
+            <MutationButton
               type="submit"
-              disabled={isPending}
+              isPending={isPending}
+              pendingLabel="Creating…"
               className="bg-teal-500 hover:bg-teal-600 text-cream-50"
             >
               <Plus className="w-4 h-4 mr-1" />
-              {isPending ? 'Creating…' : 'Create brand'}
-            </Button>
+              Create brand
+            </MutationButton>
             <Button
               type="button"
               variant="ghost"

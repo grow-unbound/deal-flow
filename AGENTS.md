@@ -69,6 +69,15 @@ dealflow/
 - Use the shared dialog primitives (`DialogHeader`, `DialogBody`, `DialogFooter`) whenever possible so spacing stays consistent across screens.
 - For two-column form rows, keep labels, inputs, and helper text aligned with the form grid and avoid collapsing helper text into the action row.
 
+## Navigation & Perceived Performance Standard
+- Internal navigation must be SPA-style: use `next/link` or `router.push` for in-app routes. Do not use raw `<a href="/...">` for internal pages.
+- Allowed raw anchors: external URLs, `mailto:`, `tel:`, download links, and API/file endpoints that require browser-native behavior.
+- Keep shells persistent across navigation (`app/(seller)/layout.tsx`, `app/(buyer)/layout.tsx`) and avoid patterns that remount the full app frame.
+- Add and maintain route-level `loading.tsx` skeletons for seller and buyer segments so transitions render immediately.
+- Skeleton loaders are mandatory for critical data regions and new screens; avoid blank page flashes during route/data transitions.
+- Optimistic UI is mandatory for human-triggered CTAs where rollback is safe: show instant pending state, apply optimistic cache update, rollback on error, and revalidate in background.
+- Prefer targeted React Query cache updates/invalidation over `router.refresh()`. Use `router.refresh()` only when targeted invalidation cannot provide correct data.
+
 ---
 
 ## Database: Three Schemas

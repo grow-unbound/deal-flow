@@ -181,3 +181,21 @@
     padding-top: env(safe-area-inset-top, 0px);
   }
 }
+
+@layer components {
+  .cockpit-btn {
+    @apply inline-flex items-center gap-2 rounded-[8px] border px-3 py-[7px] text-[12.5px] font-medium transition-colors;
+  }
+
+  .cockpit-btn-primary {
+    @apply border-teal-500 bg-teal-500 text-cream-50 hover:bg-teal-600 hover:border-teal-600;
+  }
+
+  .cockpit-btn-secondary {
+    @apply border-cream-400 bg-white text-teal-700 hover:border-cream-500 hover:bg-cream-100;
+  }
+
+  .cockpit-btn-ghost {
+    @apply border-transparent bg-transparent text-cream-800 hover:bg-cream-200;
+  }
+}

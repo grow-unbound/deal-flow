@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { toast } from 'sonner';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
+import { rollbackSnapshots, takeSnapshots, type OptimisticSnapshot } from '@/lib/optimistic';
 import type { PriceListAssignmentInput, PriceListCreateInput, PriceListItemCreateInput } from '@/lib/zod';
 
 export interface PriceList {
@@ -77,6 +78,30 @@ export function useCreatePriceList() {
       return res.json() as Promise<{ price_list: PriceList }>;
     },
 
+    onMutate: async (data) => {
+      const snapshots = await takeSnapshots(queryClient, [['price-lists']]);
+      queryClient.setQueryData<{ price_lists: PriceList[] }>(['price-lists'], (old) => ({
+        price_lists: [
+          {
+            id: `optimistic-${Date.now()}`,
+            name: data.name,
+            currency: data.currency,
+            valid_from: data.valid_from ? new Date(data.valid_from).toISOString() : null,
+            valid_to: data.valid_to ? new Date(data.valid_to).toISOString() : null,
+            priority: data.priority,
+            is_active: true,
+            tenant_id: '',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          ...(old?.price_lists ?? []),
+        ],
+      }));
+      return { snapshots };
+    },
+
+    onError: (_error, _data, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['price-lists'] });
       toast.success('Price list created');
@@ -127,6 +152,36 @@ export function useAddPriceListItem(priceListId: string) {
       return res.json() as Promise<{ item: PriceListItem }>;
     },
 
+    onMutate: async (data) => {
+      const snapshots = await takeSnapshots(queryClient, [
+        ['price-list-items', priceListId],
+        ['price-list', priceListId],
+      ]);
+      const optimisticItem: PriceListItem = {
+        id: `optimistic-${Date.now()}`,
+        price_list_id: priceListId,
+        tenant_product_id: data.tenant_product_id,
+        price: data.price,
+        min_qty: data.min_qty ?? 1,
+        max_qty: data.max_qty ?? null,
+      };
+      queryClient.setQueryData<{ items: PriceListItem[] }>(['price-list-items', priceListId], (old) => ({
+        items: [optimisticItem, ...(old?.items ?? [])],
+      }));
+      queryClient.setQueryData<{ price_list: PriceListDetail }>(['price-list', priceListId], (old) => {
+        if (!old?.price_list) return old;
+        return {
+          price_list: {
+            ...old.price_list,
+            items: [optimisticItem, ...(old.price_list.items ?? [])],
+          },
+        };
+      });
+      return { snapshots };
+    },
+
+    onError: (_error, _data, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['price-list-items', priceListId] });
       queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
@@ -149,6 +204,28 @@ export function useDeletePriceListItem(priceListId: string) {
         throw new Error((body as { error?: string }).error ?? 'Failed to delete item');
       }
     },
+
+    onMutate: async (itemId) => {
+      const snapshots = await takeSnapshots(queryClient, [
+        ['price-list-items', priceListId],
+        ['price-list', priceListId],
+      ]);
+      queryClient.setQueryData<{ items: PriceListItem[] }>(['price-list-items', priceListId], (old) => ({
+        items: (old?.items ?? []).filter((item) => item.id !== itemId),
+      }));
+      queryClient.setQueryData<{ price_list: PriceListDetail }>(['price-list', priceListId], (old) => {
+        if (!old?.price_list) return old;
+        return {
+          price_list: {
+            ...old.price_list,
+            items: (old.price_list.items ?? []).filter((item) => item.id !== itemId),
+          },
+        };
+      });
+      return { snapshots };
+    },
+
+    onError: (_error, _itemId, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['price-list-items', priceListId] });
@@ -188,6 +265,35 @@ export function useAddAssignment(priceListId: string) {
 
       return res.json() as Promise<{ assignment: PriceListAssignment }>;
     },
+
+    onMutate: async (data) => {
+      const snapshots = await takeSnapshots(queryClient, [
+        ['price-list-assignments', priceListId],
+        ['price-list', priceListId],
+      ]);
+      const optimisticAssignment: PriceListAssignment = {
+        id: `optimistic-${Date.now()}`,
+        price_list_id: priceListId,
+        target_type: data.target_type,
+        target_id: data.target_id ?? null,
+        created_at: new Date().toISOString(),
+      };
+      queryClient.setQueryData<{ assignments: PriceListAssignment[] }>(['price-list-assignments', priceListId], (old) => ({
+        assignments: [optimisticAssignment, ...(old?.assignments ?? [])],
+      }));
+      queryClient.setQueryData<{ price_list: PriceListDetail }>(['price-list', priceListId], (old) => {
+        if (!old?.price_list) return old;
+        return {
+          price_list: {
+            ...old.price_list,
+            assignments: [optimisticAssignment, ...(old.price_list.assignments ?? [])],
+          },
+        };
+      });
+      return { snapshots };
+    },
+
+    onError: (_error, _data, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['price-list-assignments', priceListId] });
@@ -232,6 +338,25 @@ export function useTogglePriceListActive() {
       }
       return res.json() as Promise<{ price_list: PriceList }>;
     },
+    onMutate: async ({ id, is_active }) => {
+      const snapshots = await takeSnapshots(queryClient, [['price-lists'], ['price-list', id]]);
+      queryClient.setQueryData<{ price_lists: PriceList[] }>(['price-lists'], (old) => ({
+        price_lists: (old?.price_lists ?? []).map((priceList) =>
+          priceList.id === id ? { ...priceList, is_active } : priceList,
+        ),
+      }));
+      queryClient.setQueryData<{ price_list: PriceListDetail }>(['price-list', id], (old) => {
+        if (!old?.price_list) return old;
+        return {
+          price_list: {
+            ...old.price_list,
+            is_active,
+          },
+        };
+      });
+      return { snapshots };
+    },
+    onError: (_error, _vars, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots as OptimisticSnapshot[]),
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['price-lists'] });
       queryClient.invalidateQueries({ queryKey: ['price-list', id] });
@@ -255,6 +380,28 @@ export function useDeleteAssignment(priceListId: string) {
         throw new Error((body as { error?: string }).error ?? 'Failed to remove assignment');
       }
     },
+
+    onMutate: async (assignmentId) => {
+      const snapshots = await takeSnapshots(queryClient, [
+        ['price-list-assignments', priceListId],
+        ['price-list', priceListId],
+      ]);
+      queryClient.setQueryData<{ assignments: PriceListAssignment[] }>(['price-list-assignments', priceListId], (old) => ({
+        assignments: (old?.assignments ?? []).filter((assignment) => assignment.id !== assignmentId),
+      }));
+      queryClient.setQueryData<{ price_list: PriceListDetail }>(['price-list', priceListId], (old) => {
+        if (!old?.price_list) return old;
+        return {
+          price_list: {
+            ...old.price_list,
+            assignments: (old.price_list.assignments ?? []).filter((assignment) => assignment.id !== assignmentId),
+          },
+        };
+      });
+      return { snapshots };
+    },
+
+    onError: (_error, _assignmentId, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['price-list-assignments', priceListId] });
