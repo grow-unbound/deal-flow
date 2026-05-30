@@ -99,6 +99,13 @@ export interface PriceListItem {
     name_override: string | null;
     mrp: number | null;
     base_selling_price: number | null;
+    is_active?: boolean;
+    tenant_brand?: {
+      id: string;
+      display_name_override: string | null;
+      master_brand: { name: string } | null;
+    } | null;
+    inventory?: { on_hand: number | null; reorder_level: number | null } | null;
     master_product: { name: string } | null;
   };
 }
@@ -109,11 +116,34 @@ export interface PriceListAssignment {
   target_type: 'buyer' | 'cohort' | 'all_buyers';
   target_id: string | null;
   created_at: string;
+  label?: string;
+  members?: number;
+  priority?: number;
+}
+
+export interface PriceListActivity {
+  id: number;
+  action: 'create' | 'update' | 'delete' | 'publish' | 'status_change';
+  diff: Record<string, unknown> | null;
+  ts: string;
 }
 
 export interface PriceListDetail extends PriceList {
+  status?: 'active' | 'draft' | 'expired';
+  status_label?: 'Active' | 'Draft' | 'Expired';
+  status_tone?: 'success' | 'warning' | 'neutral';
+  initials?: string;
+  created_by_label?: string;
   items: PriceListItem[];
   assignments: PriceListAssignment[];
+  activity?: PriceListActivity[];
+  stats?: {
+    products_covered: number;
+    brands_covered: number;
+    assignments_count: number;
+    avg_discount_pct: number;
+    days_left: number;
+  };
 }
 
 export function usePriceLists() {
@@ -200,6 +230,73 @@ export function usePriceListDetail(id: string) {
       return res.json();
     },
     enabled: !!id,
+  });
+}
+
+export function useUpdatePriceListItem(priceListId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ itemId, price }: { itemId: string; price: number }) => {
+      const res = await apiFetch(`/api/price-lists/${priceListId}/items/${itemId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ price }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: 'Request failed' }));
+        throw new Error((body as { error?: string }).error ?? 'Failed to update list price');
+      }
+      return res.json() as Promise<{ item: PriceListItem }>;
+    },
+    onMutate: async ({ itemId, price }) => {
+      const snapshots = await takeSnapshots(queryClient, [['price-list', priceListId], ['price-list-items', priceListId]]);
+      queryClient.setQueryData<{ price_list: PriceListDetail }>(['price-list', priceListId], (old) => {
+        if (!old?.price_list) return old;
+        return {
+          price_list: {
+            ...old.price_list,
+            items: old.price_list.items.map((item) => (item.id === itemId ? { ...item, price } : item)),
+          },
+        };
+      });
+      queryClient.setQueryData<{ items: PriceListItem[] }>(['price-list-items', priceListId], (old) => ({
+        items: (old?.items ?? []).map((item) => (item.id === itemId ? { ...item, price } : item)),
+      }));
+      return { snapshots };
+    },
+    onError: (_error, _vars, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
+      queryClient.invalidateQueries({ queryKey: ['price-list-items', priceListId] });
+      queryClient.invalidateQueries({ queryKey: ['price-lists-landing'] });
+      toast.success('List price updated');
+    },
+  });
+}
+
+export function usePriceListAction(priceListId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { action: 'duplicate' | 'extend_validity' | 'archive'; valid_to?: string }) => {
+      const res = await apiFetch(`/api/price-lists/${priceListId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: 'Request failed' }));
+        throw new Error((body as { error?: string }).error ?? 'Failed to update price list');
+      }
+      return res.json() as Promise<{ price_list: PriceList }>;
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
+      queryClient.invalidateQueries({ queryKey: ['price-lists'] });
+      queryClient.invalidateQueries({ queryKey: ['price-lists-landing'] });
+      if (vars.action === 'duplicate') toast.success('Price list duplicated');
+      if (vars.action === 'extend_validity') toast.success('Validity extended');
+      if (vars.action === 'archive') toast.success('Price list archived');
+    },
   });
 }
 

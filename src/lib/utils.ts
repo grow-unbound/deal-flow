@@ -13,6 +13,23 @@ export function formatCurrency(amount: number, currency = 'INR'): string {
   }).format(amount);
 }
 
+export function formatInrInput(raw: string): string {
+  const cleaned = raw.replace(/[^\d.]/g, '');
+  if (!cleaned) return '';
+  const [intPartRaw, decPartRaw] = cleaned.split('.');
+  const intPart = intPartRaw.replace(/^0+(?=\d)/, '') || '0';
+  const formattedInt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(Number(intPart));
+  if (decPartRaw == null) return formattedInt;
+  return `${formattedInt}.${decPartRaw.slice(0, 2)}`;
+}
+
+export function parseInrInput(value: string): number | null {
+  const normalized = value.replace(/,/g, '').trim();
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function formatCompactIndianNumber(value: number, fractionDigits = 2): string {
   const abs = Math.abs(value);
   if (abs < 10000) {
