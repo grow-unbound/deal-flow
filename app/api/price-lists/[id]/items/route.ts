@@ -39,7 +39,7 @@ export async function GET(
     .select('id')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
-    .is('is_active', true)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (!pl) {
@@ -53,6 +53,7 @@ export async function GET(
       '*, tenant_product:tenant_products(id, internal_sku, name_override, mrp, base_selling_price, master_product:catalog.products(name))',
     )
     .eq('price_list_id', id)
+    .is('deleted_at', null)
     .order('min_qty', { ascending: true });
 
   if (error) {
@@ -123,7 +124,7 @@ export async function POST(
     .select('id')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
-    .is('is_active', true)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (!pl) {
@@ -137,7 +138,7 @@ export async function POST(
     .select('id')
     .eq('id', data.tenant_product_id)
     .eq('tenant_id', claims.tenant_id)
-    .is('is_active', true)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (!product) {
@@ -153,6 +154,8 @@ export async function POST(
       price: data.price,
       min_qty: data.min_qty,
       max_qty: data.max_qty ?? null,
+      created_by: claims.sub,
+      updated_by: claims.sub,
     })
     .select()
     .single();
@@ -178,6 +181,16 @@ export async function POST(
       { status: 500 },
     );
   }
+
+  await db.schema('app').from('audit_log').insert({
+    tenant_id: claims.tenant_id,
+    actor_user_id: claims.sub,
+    entity_type: 'price_list',
+    entity_id: id,
+    action: 'create',
+    diff: { event: 'item_added', item_id: item.id },
+    ts: new Date().toISOString(),
+  });
 
   return NextResponse.json({ item }, { status: 201 });
 }

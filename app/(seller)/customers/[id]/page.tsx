@@ -1,547 +1,205 @@
 'use client';
 
-import { useState, use } from 'react';
+import { use, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  MoreVertical,
-  EyeOff,
-  Eye,
-  Pencil,
-  ArrowLeft,
-  Building2,
-  Phone,
-  Mail,
-  MapPin,
-  CreditCard,
-  Hash,
-} from 'lucide-react';
-import { supabaseBrowser } from '@/lib/supabase-browser';
-import { SellerTopbar } from '@/components/layout/SellerTopbar';
-import { FeatureGate } from '@/components/FeatureGate';
-import { useRole } from '@/hooks/useRole';
+import { Download, Share2 } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogFooter,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogAction,
-  AlertDialogCancel,
-} from '@/components/ui/alert-dialog';
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from '@/components/ui/dropdown-menu';
+import { Skeleton } from '@/components/ui/skeleton';
+import { FeatureGate } from '@/components/FeatureGate';
+import { ErrorState } from '@/components/ui/empty-state';
+import { PageWrap } from '@/components/seller/layout';
+import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
+import { CustomerActivityTab, CustomerDetailsTab, CustomerOrdersTab, CustomerPerformanceTab } from '@/components/seller/customers/detail';
+import { useRole } from '@/hooks/useRole';
+import { useTenantCustomerDetail, useToggleCustomerStatusOptimistic } from '@/hooks/useCustomersLanding';
+import { formatCompactInr } from '@/lib/utils';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+type TabId = 'details' | 'performance' | 'orders' | 'activity';
 
-interface Geography {
-  city?: string;
-  state?: string;
-  pincode?: string;
-  zone?: string;
-}
-
-interface Buyer {
-  id: string;
-  business_name: string;
-  contact_name: string | null;
-  phone: string | null;
-  email: string | null;
-  gstin: string | null;
-  tier: 'A' | 'B' | 'C' | null;
-  is_active: boolean;
-  credit_limit: number | null;
-  payment_terms_days: number | null;
-  external_ref: string | null;
-  geography: Geography | null;
-}
-
-interface Order {
-  id: string;
-  order_number: string | null;
-  placed_at: string | null;
-  total_amount: number | null;
-  status: string;
-}
-
-interface Cohort {
-  id: string;
-  name: string;
-  description: string | null;
-  is_static: boolean;
-  matched_by: 'static' | 'dynamic';
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const TIER_BADGE_CLASS: Record<string, string> = {
-  A: 'bg-teal-100 text-teal-800',
-  B: 'bg-cream-200 text-cream-700',
-  C: 'bg-cream-100 text-cream-500',
-};
-
-const ORDER_STATUS_CLASS: Record<string, string> = {
-  received: 'bg-cream-200 text-cream-700',
-  confirmed: 'bg-teal-100 text-teal-700',
-  dispatched: 'bg-amber-100 text-amber-700',
-  delivered: 'bg-teal-500 text-cream-50',
-  cancelled: 'bg-danger-50 text-danger-600',
-  draft: 'bg-cream-100 text-cream-500',
-};
-
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const {
-    data: { session },
-  } = await supabaseBrowser.auth.getSession();
-  const headers: Record<string, string> = {};
-  if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-  return headers;
-}
-
-async function fetchBuyer(id: string): Promise<Buyer> {
-  const headers = await getAuthHeaders();
-  const res = await fetch(`/api/customers/${id}`, { headers });
-  if (!res.ok) throw new Error('Failed to load customer');
-  const body = await res.json();
-  return body.buyer as Buyer;
-}
-
-async function fetchOrders(buyerId: string): Promise<Order[]> {
-  try {
-    const headers = await getAuthHeaders();
-    const res = await fetch(`/api/orders?buyer_id=${buyerId}&limit=10`, { headers });
-    if (!res.ok) return [];
-    const body = await res.json();
-    return (body.orders ?? []) as Order[];
-  } catch {
-    return [];
-  }
-}
-
-async function fetchCohorts(buyerId: string): Promise<Cohort[]> {
-  try {
-    const headers = await getAuthHeaders();
-    const res = await fetch(`/api/customers/${buyerId}/cohorts`, { headers });
-    if (!res.ok) return [];
-    const body = await res.json();
-    return (body.cohorts ?? []) as Cohort[];
-  } catch {
-    return [];
-  }
-}
-
-function formatCurrency(amount: number | null): string {
-  if (amount === null || amount === undefined) return '—';
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
-}
-
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function InfoRow({ label, value, mono }: { label: string; value?: string | null; mono?: boolean }) {
+function CustomerDetailSkeleton() {
   return (
-    <div className="flex flex-col gap-0.5">
-      <dt className="text-caption text-cream-500 uppercase tracking-wide">{label}</dt>
-      <dd className={mono ? 'font-mono text-cream-700 text-sm' : 'text-body-sm text-cream-800'}>
-        {value ?? '—'}
-      </dd>
-    </div>
-  );
-}
-
-function TierBadge({ tier }: { tier: 'A' | 'B' | 'C' | null }) {
-  if (!tier) return <span className="text-cream-400 text-caption">—</span>;
-  return (
-    <span className={`inline-block px-2.5 py-0.5 rounded-full text-caption font-semibold ${TIER_BADGE_CLASS[tier] ?? ''}`}>
-      Tier {tier}
-    </span>
-  );
-}
-
-function StatusBadge({ isActive }: { isActive: boolean }) {
-  return isActive ? (
-    <span className="inline-block px-2.5 py-0.5 rounded-full text-caption font-medium bg-success-50 text-success-700">
-      Active
-    </span>
-  ) : (
-    <span className="inline-block px-2.5 py-0.5 rounded-full text-caption font-medium bg-cream-200 text-cream-600">
-      Inactive
-    </span>
-  );
-}
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
-
-export default function BuyerDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  const router = useRouter();
-  const queryClient = useQueryClient();
-  const { isSellerAdmin } = useRole();
-
-  const [deactivateOpen, setDeactivateOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-
-  const {
-    data: buyer,
-    isLoading: buyerLoading,
-    error: buyerError,
-  } = useQuery({
-    queryKey: ['customer', id],
-    queryFn: () => fetchBuyer(id),
-  });
-
-  const { data: orders = [], isLoading: ordersLoading } = useQuery({
-    queryKey: ['customer-orders', id],
-    queryFn: () => fetchOrders(id),
-    enabled: !!buyer,
-  });
-
-  const { data: cohorts = [], isLoading: cohortsLoading } = useQuery({
-    queryKey: ['customer-cohorts', id],
-    queryFn: () => fetchCohorts(id),
-    enabled: !!buyer,
-  });
-
-  async function handleDeactivateReactivate(action: 'deactivate' | 'reactivate') {
-    setIsSubmitting(true);
-    setActionError(null);
-    try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(`/api/customers/${id}`, {
-        method: 'PATCH',
-        headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as any).error ?? 'Request failed');
-      }
-      await queryClient.invalidateQueries({ queryKey: ['customer', id] });
-      await queryClient.invalidateQueries({ queryKey: ['customers'] });
-      setDeactivateOpen(false);
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Something went wrong');
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  // ─── Topbar action slot ────────────────────────────────────────────────────
-
-  const topbarAction = (
-    <div className="flex items-center gap-2">
-      <Link href="/customers">
-        <Button variant="ghost" className="flex items-center gap-1 text-cream-600">
-          <ArrowLeft size={16} />
-          Back
-        </Button>
-      </Link>
-
-      {/* Edit button — hidden for seller_assistant */}
-      {isSellerAdmin && buyer && (
-        <Link href={`/customers/${id}/edit`}>
-          <Button variant="outline" className="flex items-center gap-2">
-            <Pencil size={15} />
-            Edit
-          </Button>
-        </Link>
-      )}
-
-      {/* Kebab menu — seller_admin only */}
-      {isSellerAdmin && buyer && (
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            className="inline-flex items-center justify-center w-9 h-9 rounded-md border border-cream-300 bg-white hover:bg-cream-50 transition-colors"
-            aria-label="More actions"
-          >
-            <MoreVertical size={16} className="text-cream-700" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {buyer.is_active ? (
-              <DropdownMenuItem
-                destructive
-                onClick={() => setDeactivateOpen(true)}
-                className="flex items-center gap-2"
-              >
-                <EyeOff size={14} />
-                Deactivate
-              </DropdownMenuItem>
-            ) : (
-              <DropdownMenuItem
-                onClick={() => handleDeactivateReactivate('reactivate')}
-                className="flex items-center gap-2"
-              >
-                <Eye size={14} />
-                Reactivate
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
-  );
-
-  // ─── Render ────────────────────────────────────────────────────────────────
-
-  return (
-    <>
-      <div className="px-8 py-6">
-        <SellerTopbar
-          title={buyer ? buyer.business_name : 'Customer Detail'}
-          action={topbarAction}
-        />
-        <FeatureGate flag="CUSTOMER_MASTER">
-          <div className="max-w-5xl">
-            {buyerLoading && (
-              <p className="text-cream-600 text-center py-12">Loading…</p>
-            )}
-
-            {buyerError && (
-              <p className="text-danger-500 text-center py-12">
-                Failed to load customer. Please try again.
-              </p>
-            )}
-
-            {actionError && (
-              <div className="mb-4 bg-danger-50 border border-danger-200 text-danger-700 rounded-md px-4 py-3 text-body-sm">
-                {actionError}
+    <PageWrap className="pt-7">
+      <div className="space-y-6">
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-52" />
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-12 w-12 rounded-[14px]" />
+              <div className="space-y-2">
+                <Skeleton className="h-7 w-56" />
+                <Skeleton className="h-4 w-80" />
               </div>
-            )}
-
-            {!buyerLoading && buyer && (
-              <>
-                {/* Status row */}
-                <div className="flex items-center gap-3 mb-6">
-                  <TierBadge tier={buyer.tier} />
-                  <StatusBadge isActive={buyer.is_active} />
-                </div>
-
-                <Tabs defaultValue="overview">
-                  <TabsList>
-                    <TabsTrigger value="overview">Overview</TabsTrigger>
-                    <TabsTrigger value="orders">Orders</TabsTrigger>
-                    <TabsTrigger value="cohorts">Cohorts</TabsTrigger>
-                  </TabsList>
-
-                  {/* ── Overview Tab ── */}
-                  <TabsContent value="overview">
-                    <div className="space-y-4 mt-2">
-                      {/* Business info */}
-                      <section className="bg-cream-100 rounded-lg p-4 shadow-xs">
-                        <h2 className="flex items-center gap-2 text-body font-semibold text-cream-900 mb-4">
-                          <Building2 size={16} className="text-cream-600" />
-                          Business Details
-                        </h2>
-                        <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
-                          <InfoRow label="Business Name" value={buyer.business_name} />
-                          <InfoRow label="Contact Name" value={buyer.contact_name} />
-                          <InfoRow label="GSTIN" value={buyer.gstin} mono />
-                          <InfoRow label="ERP ID" value={buyer.external_ref} mono />
-                        </dl>
-                      </section>
-
-                      {/* Contact */}
-                      <section className="bg-cream-100 rounded-lg p-4 shadow-xs">
-                        <h2 className="flex items-center gap-2 text-body font-semibold text-cream-900 mb-4">
-                          <Phone size={16} className="text-cream-600" />
-                          Contact
-                        </h2>
-                        <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
-                          <InfoRow label="Phone" value={buyer.phone} mono />
-                          <InfoRow label="Email" value={buyer.email} />
-                        </dl>
-                      </section>
-
-                      {/* Geography */}
-                      <section className="bg-cream-100 rounded-lg p-4 shadow-xs">
-                        <h2 className="flex items-center gap-2 text-body font-semibold text-cream-900 mb-4">
-                          <MapPin size={16} className="text-cream-600" />
-                          Location
-                        </h2>
-                        <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
-                          <InfoRow label="City" value={buyer.geography?.city} />
-                          <InfoRow label="State" value={buyer.geography?.state} />
-                          <InfoRow label="Pincode" value={buyer.geography?.pincode} mono />
-                          <InfoRow label="Zone" value={buyer.geography?.zone} />
-                        </dl>
-                      </section>
-
-                      {/* Financial */}
-                      <section className="bg-cream-100 rounded-lg p-4 shadow-xs">
-                        <h2 className="flex items-center gap-2 text-body font-semibold text-cream-900 mb-4">
-                          <CreditCard size={16} className="text-cream-600" />
-                          Financial
-                        </h2>
-                        <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
-                          <InfoRow
-                            label="Credit Limit"
-                            value={formatCurrency(buyer.credit_limit)}
-                            mono
-                          />
-                          <InfoRow
-                            label="Payment Terms"
-                            value={
-                              buyer.payment_terms_days !== null
-                                ? `${buyer.payment_terms_days} days`
-                                : undefined
-                            }
-                          />
-                        </dl>
-                      </section>
-                    </div>
-                  </TabsContent>
-
-                  {/* ── Orders Tab ── */}
-                  <TabsContent value="orders">
-                    <div className="mt-2">
-                      {ordersLoading && (
-                        <p className="text-cream-600 py-8 text-center">Loading orders…</p>
-                      )}
-                      {!ordersLoading && orders.length === 0 && (
-                        <div className="text-center py-16">
-                          <Hash size={32} className="mx-auto text-cream-300 mb-3" />
-                          <p className="text-cream-500 text-body-sm">No orders yet.</p>
-                        </div>
-                      )}
-                      {!ordersLoading && orders.length > 0 && (
-                        <table className="w-full border-collapse">
-                          <thead>
-                            <tr className="bg-cream-200 text-cream-700 font-semibold text-caption">
-                              <th className="text-left px-4 py-3 rounded-tl-lg">Order #</th>
-                              <th className="text-left px-4 py-3">Date</th>
-                              <th className="text-left px-4 py-3">Amount</th>
-                              <th className="text-left px-4 py-3 rounded-tr-lg">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {orders.map((order, idx) => (
-                              <tr
-                                key={order.id}
-                                className={idx % 2 === 0 ? 'bg-cream-50' : 'bg-cream-100'}
-                              >
-                                <td className="px-4 py-3 font-mono text-body-sm text-teal-700">
-                                  {order.order_number ?? order.id.slice(0, 8)}
-                                </td>
-                                <td className="px-4 py-3 text-body-sm text-cream-700">
-                                  {formatDate(order.placed_at)}
-                                </td>
-                                <td className="px-4 py-3 font-mono text-body-sm text-cream-800">
-                                  {formatCurrency(order.total_amount)}
-                                </td>
-                                <td className="px-4 py-3">
-                                  <span
-                                    className={`inline-block px-2 py-0.5 rounded text-caption font-medium ${ORDER_STATUS_CLASS[order.status] ?? 'bg-cream-100 text-cream-600'}`}
-                                  >
-                                    {order.status}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
-                  </TabsContent>
-
-                  {/* ── Cohorts Tab ── */}
-                  <TabsContent value="cohorts">
-                    <div className="mt-2">
-                      {cohortsLoading && (
-                        <p className="text-cream-600 py-8 text-center">Loading cohorts…</p>
-                      )}
-                      {!cohortsLoading && cohorts.length === 0 && (
-                        <div className="text-center py-16">
-                          <p className="text-cream-500 text-body-sm">
-                            Not a member of any cohorts yet.
-                          </p>
-                        </div>
-                      )}
-                      {!cohortsLoading && cohorts.length > 0 && (
-                        <div className="grid gap-3">
-                          {cohorts.map((cohort) => (
-                            <div
-                              key={cohort.id}
-                              className="bg-cream-100 rounded-lg p-4 shadow-xs flex items-start justify-between gap-4"
-                            >
-                              <div>
-                                <p className="text-body-sm font-semibold text-cream-900">
-                                  {cohort.name}
-                                </p>
-                                {cohort.description && (
-                                  <p className="text-caption text-cream-600 mt-0.5">
-                                    {cohort.description}
-                                  </p>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <Badge
-                                  className={
-                                    cohort.is_static
-                                      ? 'bg-cream-200 text-cream-700'
-                                      : 'bg-teal-50 text-teal-700'
-                                  }
-                                >
-                                  {cohort.is_static ? 'Static' : 'Dynamic'}
-                                </Badge>
-                                <Badge className="bg-cream-100 text-cream-500">
-                                  {cohort.matched_by === 'static' ? 'Direct member' : 'Rule match'}
-                                </Badge>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </TabsContent>
-                </Tabs>
-              </>
-            )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-9 w-20 rounded-[8px]" />
+              <Skeleton className="h-9 w-28 rounded-[8px]" />
+            </div>
           </div>
-        </FeatureGate>
-      </div>
+        </div>
 
-      {/* ── Deactivation AlertDialog ── */}
-      <AlertDialog open={deactivateOpen} onOpenChange={setDeactivateOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Deactivate customer?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure?{' '}
-              <strong>{buyer?.business_name}</strong> will no longer be able to place orders.
-              Existing orders will not be affected. You can reactivate at any time.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {actionError && (
-            <p className="px-6 text-caption text-danger-600">{actionError}</p>
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSubmitting} onClick={() => setDeactivateOpen(false)}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-danger-600 text-cream-50 hover:bg-danger-700"
-              disabled={isSubmitting}
-              onClick={() => handleDeactivateReactivate('deactivate')}
-            >
-              {isSubmitting ? 'Deactivating…' : 'Deactivate'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+        <div className="grid grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-28 rounded-[14px]" />
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-9 w-28 rounded-full" />
+          ))}
+        </div>
+
+        <Skeleton className="h-[24rem] rounded-[14px]" />
+      </div>
+    </PageWrap>
+  );
+}
+
+function buyerSinceLabel(value: string | null, yearsLabel: string) {
+  if (!value) return `Buyer since — · ${yearsLabel}`;
+  const since = new Date(value).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+  return `Buyer since ${since} · ${yearsLabel}`;
+}
+
+function TierPill({ tier }: { tier: 'A' | 'B' | 'C' | null }) {
+  if (!tier) return <span className="text-[11px] text-cream-700">Tier —</span>;
+  return <span className="rounded-full bg-ember-50 px-2 py-0.5 text-[11px] font-medium text-ember-700">Tier {tier}</span>;
+}
+
+export default function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  const [tab, setTab] = useState<TabId>('performance');
+  const { isSellerAdmin } = useRole();
+  const { data, isLoading, isError, error } = useTenantCustomerDetail(id);
+  const statusMutation = useToggleCustomerStatusOptimistic(id);
+
+  const tiles = useMemo(() => {
+    if (!data) return [];
+    return [
+      {
+        label: 'Spend · MTD',
+        value: formatCompactInr(data.meta_strip_4.spend_mtd),
+        sub: (
+          <span>
+            <span className={data.meta_strip_4.growth_pct >= 0 ? 'up' : 'down'}>
+              {data.meta_strip_4.growth_pct >= 0 ? '↑ +' : '↓ '}
+              {Math.abs(data.meta_strip_4.growth_pct).toFixed(1)}%
+            </span>{' '}
+            vs last month
+          </span>
+        ),
+      },
+      {
+        label: 'Orders · MTD',
+        value: data.meta_strip_4.orders_mtd,
+        sub: `AOV ${formatCompactInr(data.meta_strip_4.aov_mtd)}`,
+      },
+      {
+        label: 'Last order',
+        value: data.meta_strip_4.last_order_label,
+        sub: data.meta_strip_4.last_order_primary_product_qty,
+      },
+      {
+        label: 'Credit used',
+        value: formatCompactInr(data.meta_strip_4.credit_used),
+        sub: `of ${formatCompactInr(data.meta_strip_4.credit_limit)} · ${data.meta_strip_4.credit_used_pct}%`,
+      },
+    ];
+  }, [data]);
+
+  if (isLoading) return <CustomerDetailSkeleton />;
+  if (isError || !data) {
+    return <ErrorState heading="Couldn't load customer" description={error?.message ?? 'There was a problem fetching this customer detail page.'} />;
+  }
+
+  return (
+    <FeatureGate flag="CUSTOMER_MASTER">
+      <PageWrap className="pt-7">
+        <DetailHeader
+          crumbPath={[
+            { label: 'Customers', href: '/customers' },
+            { label: data.header.buyer_name, current: true },
+          ]}
+          avatar={{ kind: 'brand', initials: data.header.initials, hue: data.header.hue }}
+          title={data.header.buyer_name}
+          status={{ label: data.header.status_label, tone: data.header.status_tone }}
+          subtitle={[
+            <TierPill key="tier" tier={data.header.tier} />,
+            data.header.city,
+            buyerSinceLabel(data.header.buyer_since, data.header.years_label),
+            `Net ${data.header.net_terms_days} terms`,
+          ]}
+          actions={
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                aria-label="Share"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] text-cream-700 hover:bg-cream-100"
+              >
+                <Share2 size={14} />
+              </button>
+              <Button type="button" className="h-9 gap-1.5 border border-cream-400 bg-white px-4 text-[13px] font-medium text-teal-700 hover:bg-cream-100">
+                <Download size={14} />
+                Export
+              </Button>
+              <Button className="h-9 bg-teal-700 px-5 text-[13px] font-medium text-cream-50 hover:bg-teal-800">
+                Open buyer app preview
+              </Button>
+            </div>
+          }
+        />
+
+        <MetaStrip4 tiles={tiles} />
+
+        <DetailTabs
+          tabs={[
+            { id: 'details', label: 'Details' },
+            { id: 'performance', label: 'Performance' },
+            { id: 'orders', label: 'Orders', badge: data.orders.badge_count_mtd },
+            { id: 'activity', label: 'Activity' },
+          ]}
+          active={tab}
+          onChange={(value) => setTab(value as TabId)}
+        />
+
+        {tab === 'details' ? <CustomerDetailsTab id={id} details={data.details} /> : null}
+        {tab === 'performance' ? <CustomerPerformanceTab performance={data.performance} performanceV2={data.performance_v2} /> : null}
+        {tab === 'orders' ? <CustomerOrdersTab orders={data.orders.rows} /> : null}
+        {tab === 'activity' ? <CustomerActivityTab activity={data.activity} /> : null}
+
+        {isSellerAdmin && tab === 'details' ? (
+          <div className="mt-4 flex items-center gap-2">
+            <Link href={`/customers/${id}/edit`}>
+              <Button type="button" className="h-9 border border-cream-400 bg-white px-4 text-[13px] font-medium text-teal-700 hover:bg-cream-100">Edit</Button>
+            </Link>
+            <AlertDialog>
+              <AlertDialogTrigger className="inline-flex h-9 items-center justify-center rounded-md bg-teal-700 px-4 text-[13px] font-medium text-cream-50 hover:bg-teal-800">
+                {data.details.is_active ? 'Deactivate' : 'Reactivate'}
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{data.details.is_active ? 'Deactivate customer?' : 'Reactivate customer?'}</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {data.details.is_active
+                      ? 'The buyer will no longer be able to place new orders until reactivated.'
+                      : 'The buyer will be able to place orders again.'}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={statusMutation.isPending}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    disabled={statusMutation.isPending}
+                    onClick={() => statusMutation.mutate(data.details.is_active ? 'deactivate' : 'reactivate')}
+                  >
+                    {statusMutation.isPending ? 'Saving…' : 'Confirm'}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        ) : null}
+      </PageWrap>
+    </FeatureGate>
   );
 }

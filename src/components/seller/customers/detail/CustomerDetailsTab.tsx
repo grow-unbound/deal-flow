@@ -1,0 +1,80 @@
+'use client';
+
+import Link from 'next/link';
+import { useRole } from '@/hooks/useRole';
+import type { TenantCustomerDetailResponse } from '@/hooks/useCustomersLanding';
+import { formatCurrency } from '@/lib/utils';
+
+interface CustomerDetailsTabProps {
+  id: string;
+  details: TenantCustomerDetailResponse['details'];
+}
+
+function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="space-y-1">
+      <p className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">{label}</p>
+      <p className={mono ? 'font-mono text-[13px] text-cream-900' : 'text-[13px] text-cream-900'}>{value}</p>
+    </div>
+  );
+}
+
+export function CustomerDetailsTab({ id, details }: CustomerDetailsTabProps) {
+  const { isSellerAdmin } = useRole();
+
+  return (
+    <section className="mt-5 space-y-4">
+      <article className="rounded-[14px] border border-cream-300 bg-white p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="font-display text-[17px] text-cream-950">Buyer details</h3>
+          {isSellerAdmin ? (
+            <Link href={`/customers/${id}/edit`} className="text-[13px] font-medium text-teal-700 hover:text-teal-800">
+              Edit
+            </Link>
+          ) : null}
+        </div>
+
+        <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+          <Row label="Business name" value={details.business_name} />
+          <Row label="Contact name" value={details.contact_name ?? '—'} />
+          <Row label="Phone" value={details.phone ?? '—'} mono />
+          <Row label="Email" value={details.email ?? '—'} />
+          <Row label="GSTIN" value={details.gstin ?? '—'} mono />
+          <Row label="ERP ID" value={details.external_ref ?? '—'} mono />
+        </div>
+      </article>
+
+      <div className="grid grid-cols-2 gap-4">
+        <article className="rounded-[14px] border border-cream-300 bg-white p-5">
+          <h3 className="font-display text-[15px] text-cream-950">Location</h3>
+          <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4">
+            <Row label="City" value={details.city ?? '—'} />
+            <Row label="State" value={details.state ?? '—'} />
+            <Row label="Pincode" value={details.pincode ?? '—'} mono />
+            <Row label="Zone" value={details.zone ?? '—'} />
+          </div>
+        </article>
+
+        <article className="rounded-[14px] border border-cream-300 bg-white p-5">
+          <h3 className="font-display text-[15px] text-cream-950">Commercials</h3>
+          <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4">
+            <Row
+              label="Credit limit"
+              value={details.credit_limit != null ? formatCurrency(Number(details.credit_limit)) : '—'}
+              mono
+            />
+            <Row
+              label="Payment terms"
+              value={details.payment_terms_days != null ? `Net ${details.payment_terms_days} days` : '—'}
+            />
+            <Row
+              label="Cohort assignment"
+              value={details.cohorts.length ? details.cohorts.join(', ') : '—'}
+            />
+            <Row label="Status" value={details.is_active ? 'Active' : 'Inactive'} />
+          </div>
+        </article>
+      </div>
+    </section>
+  );
+}

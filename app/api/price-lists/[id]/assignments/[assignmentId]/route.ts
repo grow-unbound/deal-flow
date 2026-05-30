@@ -31,27 +31,26 @@ export async function DELETE(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabaseAdmin as any;
 
-  // Verify the price list belongs to this tenant
   const { data: pl } = await db
     .schema('app')
     .from('price_lists')
     .select('id')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
-    .is('is_active', true)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (!pl) {
     return NextResponse.json({ error: 'Price list not found' }, { status: 404 });
   }
 
-  // Verify the assignment belongs to this price list
   const { data: existingAssignment } = await db
     .schema('app')
     .from('price_list_assignments')
     .select('id')
     .eq('id', assignmentId)
     .eq('price_list_id', id)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (!existingAssignment) {
@@ -61,7 +60,7 @@ export async function DELETE(
   const { error: deleteError } = await db
     .schema('app')
     .from('price_list_assignments')
-    .delete()
+    .update({ deleted_at: new Date().toISOString(), updated_by: claims.sub })
     .eq('id', assignmentId);
 
   if (deleteError) {
@@ -75,6 +74,16 @@ export async function DELETE(
       { status: 500 },
     );
   }
+
+  await db.schema('app').from('audit_log').insert({
+    tenant_id: claims.tenant_id,
+    actor_user_id: claims.sub,
+    entity_type: 'price_list',
+    entity_id: id,
+    action: 'delete',
+    diff: { event: 'assignment_removed', assignment_id: assignmentId },
+    ts: new Date().toISOString(),
+  });
 
   return new NextResponse(null, { status: 204 });
 }
