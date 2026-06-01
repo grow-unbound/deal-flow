@@ -7,5 +7,5 @@ interface PageWrapProps {
 }
 
 export function PageWrap({ children, className }: PageWrapProps) {
-  return <div className={cn('max-w-[1440px] mx-auto w-full px-8 py-6', className)}>{children}</div>;
+  return <div className={cn('max-w-[1920px] mx-auto w-full px-8 py-6', className)}>{children}</div>;
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { createTimer } from '@/lib/server-timing';
 
 type StatusTone = 'success' | 'warning' | 'danger' | 'neutral';
 
@@ -22,6 +23,9 @@ type BuyerRow = {
   status: { label: string; tone: StatusTone };
   avatar: { initials: string; hue: 'teal' | 'ember' | 'cream' };
 };
+
+const CUSTOMERS_LANDING_CACHE_TTL_MS = 20_000;
+const customersLandingCache = new Map<string, { expiresAt: number; payload: unknown }>();
 
 function getInitials(name: string) {
   return name
@@ -60,24 +64,30 @@ function formatLastOrder(date: string | null): string {
 }
 
 export async function GET(req: NextRequest) {
+  const timer = createTimer();
+  const timedJson = (body: unknown, init?: ResponseInit) => {
+    const response = NextResponse.json(body, init);
+    response.headers.set('Server-Timing', timer.header('customers_api'));
+    return response;
+  };
   try {
     const claims = await getVerifiedClaims(req);
 
     if (!claims.tenant_id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return timedJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
     if (!claims.role?.startsWith('seller_')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return timedJson({ error: 'Forbidden' }, { status: 403 });
     }
 
     const flagEnabled = await getFlag('df_customer_master', claims.tenant_id);
     if (!flagEnabled) {
-      return NextResponse.json({ error: 'Feature not enabled' }, { status: 403 });
+      return timedJson({ error: 'Feature not enabled' }, { status: 403 });
     }
 
     if (!supabaseAdmin) {
-      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+      return timedJson({ error: 'Server configuration error' }, { status: 500 });
     }
 
     const db = supabaseAdmin as any;
@@ -85,16 +95,32 @@ export async function GET(req: NextRequest) {
 
     const { mtdStartIso, nextMonthStartIso, prevMonthStartIso, prevMonthMtdEndIso, dormantCutoffIso } = getIstBoundaries();
 
+    const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? '300'), 1000);
+    const cacheKey = [
+      tenantId,
+      limit,
+      mtdStartIso.slice(0, 10),
+      nextMonthStartIso.slice(0, 10),
+      prevMonthStartIso.slice(0, 10),
+      prevMonthMtdEndIso.slice(0, 10),
+    ].join(':');
+
+    const cached = customersLandingCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return timedJson(cached.payload);
+    }
+
     const { data: buyers, error: buyersError } = await db
       .schema('app')
       .from('buyers')
       .select('id, business_name, tier, credit_limit, is_active, geography, deleted_at')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
-      .is('deleted_at', null);
+      .is('deleted_at', null)
+      .limit(limit);
 
     if (buyersError) {
-      return NextResponse.json({ error: 'Failed to fetch buyers' }, { status: 500 });
+      return timedJson({ error: 'Failed to fetch buyers' }, { status: 500 });
     }
 
     const buyerRows = buyers ?? [];
@@ -106,6 +132,7 @@ export async function GET(req: NextRequest) {
         .from('orders')
         .select('id, buyer_id, total_amount, placed_at, status, deleted_at')
         .eq('tenant_id', tenantId)
+        .in('buyer_id', buyerIds)
         .is('deleted_at', null)
         .neq('status', 'cancelled')
         .gte('placed_at', mtdStartIso)
@@ -115,6 +142,7 @@ export async function GET(req: NextRequest) {
         .from('orders')
         .select('id, buyer_id, total_amount, placed_at, status, deleted_at')
         .eq('tenant_id', tenantId)
+        .in('buyer_id', buyerIds)
         .is('deleted_at', null)
         .neq('status', 'cancelled')
         .gte('placed_at', prevMonthStartIso)
@@ -124,6 +152,7 @@ export async function GET(req: NextRequest) {
         .from('orders')
         .select('id, buyer_id, placed_at, status, deleted_at')
         .eq('tenant_id', tenantId)
+        .in('buyer_id', buyerIds)
         .is('deleted_at', null)
         .neq('status', 'cancelled')
         .order('placed_at', { ascending: false }),
@@ -168,7 +197,7 @@ export async function GET(req: NextRequest) {
         cohorts: cohortMembersRes.error,
         invoices: invoicesRes.error,
       });
-      return NextResponse.json({ error: 'Failed to fetch customers landing data' }, { status: 500 });
+      return timedJson({ error: 'Failed to fetch customers landing data' }, { status: 500 });
     }
 
     const mtdOrders = mtdOrdersRes.data ?? [];
@@ -272,7 +301,7 @@ export async function GET(req: NextRequest) {
     const topSpenders = [...rows].sort((a, b) => b.spend_mtd - a.spend_mtd).slice(0, 2);
     const topRisers = [...rows].filter((row) => row.growth_pct > 0).sort((a, b) => b.growth_pct - a.growth_pct).slice(0, 2);
 
-    return NextResponse.json({
+    const payload = {
       kpis: {
         total,
         cohort_count: cohortSet.size,
@@ -290,8 +319,15 @@ export async function GET(req: NextRequest) {
         top_risers: topRisers,
       },
       buyers: rows,
+    };
+
+    customersLandingCache.set(cacheKey, {
+      expiresAt: Date.now() + CUSTOMERS_LANDING_CACHE_TTL_MS,
+      payload,
     });
+
+    return timedJson(payload);
   } catch {
-    return NextResponse.json({ error: 'Unexpected server error' }, { status: 500 });
+    return timedJson({ error: 'Unexpected server error' }, { status: 500 });
   }
 }

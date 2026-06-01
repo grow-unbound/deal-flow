@@ -1,8 +1,7 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useMemo } from 'react';
 import { useAuth } from './AuthContext';
-import { supabaseBrowser } from '@/lib/supabase-browser';
 
 export interface Tenant {
   id: string;
@@ -29,73 +28,41 @@ export interface TenantContextType {
 const TenantContext = createContext<TenantContextType | undefined>(undefined);
 
 export function TenantProvider({ children }: { children: React.ReactNode }) {
-  const { currentTenantId, session } = useAuth();
-  const [currentTenant, setCurrentTenant] = useState<Tenant | null>(null);
-  const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isError, setIsError] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const { currentTenantId, session, tenantProfile } = useAuth();
+  const tenant = useMemo<Tenant | null>(() => {
+    if (!session?.user) return null;
+    const tenantId = tenantProfile?.tenant_id ?? currentTenantId;
+    if (!tenantId) return null;
 
-  // Fetch tenants for current user
-  useEffect(() => {
-    const fetchTenants = async () => {
-      if (!session?.user) {
-        setTenants([]);
-        setCurrentTenant(null);
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        setIsLoading(true);
-        setIsError(false);
-        setError(null);
-
-        const { data: sessionData } = await supabaseBrowser.auth.getSession();
-        const token = sessionData.session?.access_token;
-        if (!token) {
-          setTenants([]);
-          setCurrentTenant(null);
-          setIsLoading(false);
-          return;
-        }
-
-        const res = await fetch('/api/tenant/current', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!res.ok) {
-          setTenants([]);
-          setCurrentTenant(null);
-          setIsLoading(false);
-          return;
-        }
-
-        const { tenant } = await res.json() as { tenant: Tenant };
-        setTenants([tenant]);
-        setCurrentTenant(tenant);
-      } catch (err) {
-        setIsError(true);
-        setError(err instanceof Error ? err : new Error('Failed to fetch tenants'));
-      } finally {
-        setIsLoading(false);
-      }
+    return {
+      id: tenantId,
+      slug: tenantProfile?.tenant_slug ?? tenantId,
+      business_name: tenantProfile?.tenant_name ?? 'My Business',
+      subdomain: `${tenantProfile?.tenant_slug ?? tenantId}.dealflow.in`,
+      plan: 'starter',
+      gstin: undefined,
+      primary_state: undefined,
+      settings: {},
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
+  }, [session?.user?.id, currentTenantId, tenantProfile?.tenant_id, tenantProfile?.tenant_name, tenantProfile?.tenant_slug]);
 
-    fetchTenants();
-  }, [session?.user?.id, currentTenantId]);
+  const tenants = useMemo(() => (tenant ? [tenant] : []), [tenant]);
+
+  const isLoading = false;
+  const isError = false;
+  const error = null;
 
   const switchTenant = async (tenantId: string) => {
     const tenant = tenants.find((t) => t.id === tenantId);
-    if (tenant) {
-      setCurrentTenant(tenant);
-    } else {
+    if (!tenant) {
       throw new Error('Tenant not found');
     }
   };
 
   const value: TenantContextType = {
-    currentTenant,
+    currentTenant: tenant,
     tenants,
     isLoading,
     isError,

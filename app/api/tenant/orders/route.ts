@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { createTimer } from '@/lib/server-timing';
 
 type OrderStatus = 'draft' | 'received' | 'confirmed' | 'partially_dispatched' | 'dispatched' | 'delivered' | 'cancelled';
 type StatusTone = 'success' | 'warning' | 'danger' | 'neutral';
@@ -25,6 +26,9 @@ interface OrderRow {
 interface OrderItemRow {
   order_id: string;
 }
+
+const ORDERS_LANDING_CACHE_TTL_MS = 20_000;
+const ordersLandingCache = new Map<string, { expiresAt: number; payload: unknown }>();
 
 function getInitials(name: string): string {
   return name
@@ -85,19 +89,25 @@ function getCity(geography: Record<string, unknown> | null): string {
 }
 
 export async function GET(req: NextRequest) {
+  const timer = createTimer();
+  const timedJson = (body: unknown, init?: ResponseInit) => {
+    const response = NextResponse.json(body, init);
+    response.headers.set('Server-Timing', timer.header('orders_api'));
+    return response;
+  };
   try {
     const claims = await getVerifiedClaims(req);
 
     if (!claims.tenant_id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return timedJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
     if (!claims.role?.startsWith('seller_')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return timedJson({ error: 'Forbidden' }, { status: 403 });
     }
 
     if (!supabaseAdmin) {
-      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+      return timedJson({ error: 'Server configuration error' }, { status: 500 });
     }
 
     const tenantId = claims.tenant_id;
@@ -105,7 +115,22 @@ export async function GET(req: NextRequest) {
 
     const db = supabaseAdmin;
 
-    const [buyersRes, mtdOrdersRes, prevOrdersRes] = await Promise.all([
+    const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? '200'), 500);
+    const cacheKey = [
+      tenantId,
+      limit,
+      mtdStartIso.slice(0, 10),
+      nextMonthStartIso.slice(0, 10),
+      prevMonthStartIso.slice(0, 10),
+      prevMonthMtdEndIso.slice(0, 10),
+    ].join(':');
+
+    const cached = ordersLandingCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return timedJson(cached.payload);
+    }
+
+    const [buyersRes, mtdOrdersRes, prevOrdersRes, kpiCurrentRes, kpiPrevRes] = await Promise.all([
       db
         .schema('app')
         .from('buyers')
@@ -120,7 +145,8 @@ export async function GET(req: NextRequest) {
         .is('deleted_at', null)
         .gte('placed_at', mtdStartIso)
         .lt('placed_at', nextMonthStartIso)
-        .order('placed_at', { ascending: false }),
+        .order('placed_at', { ascending: false })
+        .limit(limit),
       db
         .schema('app')
         .from('orders')
@@ -129,11 +155,27 @@ export async function GET(req: NextRequest) {
         .is('deleted_at', null)
         .gte('placed_at', prevMonthStartIso)
         .lt('placed_at', prevMonthMtdEndIso),
+      db
+        .schema('app')
+        .from('kpi_tenant_daily')
+        .select('orders_count, buyers_count, gmv')
+        .eq('tenant_id', tenantId)
+        .gte('day', mtdStartIso.slice(0, 10))
+        .lt('day', nextMonthStartIso.slice(0, 10))
+        .is('deleted_at', null),
+      db
+        .schema('app')
+        .from('kpi_tenant_daily')
+        .select('orders_count, gmv')
+        .eq('tenant_id', tenantId)
+        .gte('day', prevMonthStartIso.slice(0, 10))
+        .lt('day', prevMonthMtdEndIso.slice(0, 10))
+        .is('deleted_at', null),
     ]);
 
     if (buyersRes.error || mtdOrdersRes.error || prevOrdersRes.error) {
       console.error('[GET /api/tenant/orders] query error:', buyersRes.error || mtdOrdersRes.error || prevOrdersRes.error);
-      return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 });
+      return timedJson({ error: 'Failed to fetch orders' }, { status: 500 });
     }
 
     const buyers = (buyersRes.data ?? []) as BuyerRow[];
@@ -153,7 +195,7 @@ export async function GET(req: NextRequest) {
 
       if (orderItemsRes.error) {
         console.error('[GET /api/tenant/orders] order_items error:', orderItemsRes.error);
-        return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 });
+        return timedJson({ error: 'Failed to fetch orders' }, { status: 500 });
       }
 
       orderItems = (orderItemsRes.data ?? []) as OrderItemRow[];
@@ -169,11 +211,16 @@ export async function GET(req: NextRequest) {
       itemsCountByOrder.set(item.order_id, (itemsCountByOrder.get(item.order_id) ?? 0) + 1);
     }
 
-    const buyersMtd = new Set(mtdOrders.map((order) => order.buyer_id)).size;
-    const ordersMtd = mtdOrders.length;
-    const ordersPrevMtd = prevOrders.length;
-    const gmvMtd = mtdOrders.reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0);
-    const gmvPrevMtd = prevOrders.reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0);
+    const buyersMtd = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.buyers_count ?? 0), 0)
+      || new Set(mtdOrders.map((order) => order.buyer_id)).size;
+    const ordersMtd = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.orders_count ?? 0), 0)
+      || mtdOrders.length;
+    const ordersPrevMtd = (kpiPrevRes.data ?? []).reduce((sum, row) => sum + Number(row.orders_count ?? 0), 0)
+      || prevOrders.length;
+    const gmvMtd = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.gmv ?? 0), 0)
+      || mtdOrders.reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0);
+    const gmvPrevMtd = (kpiPrevRes.data ?? []).reduce((sum, row) => sum + Number(row.gmv ?? 0), 0)
+      || prevOrders.reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0);
     const ordersGrowthPct = ordersPrevMtd > 0 ? Math.round(((ordersMtd - ordersPrevMtd) / ordersPrevMtd) * 100) : 0;
     const aov = gmvMtd / ordersMtd;
 
@@ -212,7 +259,7 @@ export async function GET(req: NextRequest) {
     const biggestTickets = [...rows].sort((a, b) => b.gmv - a.gmv).slice(0, 2);
     const inMotion = rows.filter((row) => row.status.value === 'dispatched').slice(0, 2);
 
-    return NextResponse.json({
+    const payload = {
       period: {
         timezone: 'Asia/Kolkata',
         current_month_start: formatDateKey(new Date(mtdStartIso)),
@@ -238,9 +285,16 @@ export async function GET(req: NextRequest) {
         in_motion: inMotion,
       },
       orders: rows,
+    };
+
+    ordersLandingCache.set(cacheKey, {
+      expiresAt: Date.now() + ORDERS_LANDING_CACHE_TTL_MS,
+      payload,
     });
+
+    return timedJson(payload);
   } catch (error) {
     console.error('[GET /api/tenant/orders] unexpected error:', error);
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return timedJson({ error: 'Unauthorized' }, { status: 401 });
   }
 }

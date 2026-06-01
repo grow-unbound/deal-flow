@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { createTimer } from '@/lib/server-timing';
 import { PriceListSchema } from '@/lib/zod';
 
 type LandingStatus = 'active' | 'draft' | 'expired';
@@ -98,23 +99,29 @@ function isExpiringSoon(row: PriceListRow, nowTs: number, withinTs: number): boo
 }
 
 export async function GET(request: NextRequest) {
+  const timer = createTimer();
+  const timedJson = (body: unknown, init?: ResponseInit) => {
+    const response = NextResponse.json(body, init);
+    response.headers.set('Server-Timing', timer.header('price_lists_api'));
+    return response;
+  };
   const claims = await getVerifiedClaims(request);
 
   if (!claims.tenant_id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return timedJson({ error: 'Unauthorized' }, { status: 401 });
   }
 
   if (!claims.role?.startsWith('seller_')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    return timedJson({ error: 'Forbidden' }, { status: 403 });
   }
 
   const flagEnabled = await getFlag('df_pricing_engine', claims.tenant_id);
   if (!flagEnabled) {
-    return NextResponse.json({ error: 'Feature not enabled' }, { status: 403 });
+    return timedJson({ error: 'Feature not enabled' }, { status: 403 });
   }
 
   if (!supabaseAdmin) {
-    return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+    return timedJson({ error: 'Server configuration error' }, { status: 500 });
   }
 
   const now = new Date();
@@ -124,14 +131,7 @@ export async function GET(request: NextRequest) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabaseAdmin as any;
 
-  const [
-    priceListsRes,
-    priceListItemsRes,
-    assignmentsRes,
-    tenantProductsRes,
-    cohortsRes,
-    cohortMembersRes,
-  ] = await Promise.all([
+  const [priceListsRes, tenantProductsRes, cohortsRes] = await Promise.all([
     db
       .schema('app')
       .from('price_lists')
@@ -139,16 +139,6 @@ export async function GET(request: NextRequest) {
       .eq('tenant_id', claims.tenant_id)
       .is('deleted_at', null)
       .order('updated_at', { ascending: false }),
-    db
-      .schema('app')
-      .from('price_list_items')
-      .select('id, price_list_id, tenant_product_id, price')
-      .is('deleted_at', null),
-    db
-      .schema('app')
-      .from('price_list_assignments')
-      .select('id, price_list_id, target_type, target_id')
-      .is('deleted_at', null),
     db
       .schema('app')
       .from('tenant_products')
@@ -161,40 +151,71 @@ export async function GET(request: NextRequest) {
       .select('id, name')
       .eq('tenant_id', claims.tenant_id)
       .is('deleted_at', null),
-    db
-      .schema('app')
-      .from('cohort_members')
-      .select('cohort_id, buyer_id'),
   ]);
 
   if (
     priceListsRes.error ||
-    priceListItemsRes.error ||
-    assignmentsRes.error ||
     tenantProductsRes.error ||
-    cohortsRes.error ||
-    cohortMembersRes.error
+    cohortsRes.error
   ) {
     console.error(
       '[GET /api/price-lists] query error:',
-      priceListsRes.error ||
-        priceListItemsRes.error ||
-        assignmentsRes.error ||
-        tenantProductsRes.error ||
-        cohortsRes.error ||
-        cohortMembersRes.error,
+      priceListsRes.error || tenantProductsRes.error || cohortsRes.error,
     );
-    return NextResponse.json({ error: 'Failed to fetch price lists' }, { status: 500 });
+    return timedJson({ error: 'Failed to fetch price lists' }, { status: 500 });
   }
 
   const priceLists = (priceListsRes.data ?? []) as PriceListRow[];
-  const priceListIds = new Set(priceLists.map((pl) => pl.id));
+  const priceListIds = priceLists.map((pl) => pl.id);
+  const priceListIdSet = new Set(priceListIds);
 
-  const allItems = ((priceListItemsRes.data ?? []) as PriceListItemRow[]).filter((item) => priceListIds.has(item.price_list_id));
-  const allAssignments = ((assignmentsRes.data ?? []) as PriceListAssignmentRow[]).filter((row) => priceListIds.has(row.price_list_id));
+  let allItems: PriceListItemRow[] = [];
+  let allAssignments: PriceListAssignmentRow[] = [];
+
+  if (priceListIds.length > 0) {
+    const [priceListItemsRes, assignmentsRes] = await Promise.all([
+      db
+        .schema('app')
+        .from('price_list_items')
+        .select('id, price_list_id, tenant_product_id, price')
+        .in('price_list_id', priceListIds)
+        .is('deleted_at', null),
+      db
+        .schema('app')
+        .from('price_list_assignments')
+        .select('id, price_list_id, target_type, target_id')
+        .in('price_list_id', priceListIds)
+        .is('deleted_at', null),
+    ]);
+
+    if (priceListItemsRes.error || assignmentsRes.error) {
+      console.error('[GET /api/price-lists] item/assignment query error:', priceListItemsRes.error || assignmentsRes.error);
+      return timedJson({ error: 'Failed to fetch price lists' }, { status: 500 });
+    }
+
+    allItems = (priceListItemsRes.data ?? []) as PriceListItemRow[];
+    allAssignments = (assignmentsRes.data ?? []) as PriceListAssignmentRow[];
+  }
+
   const tenantProducts = (tenantProductsRes.data ?? []) as TenantProductRow[];
   const cohorts = (cohortsRes.data ?? []) as CohortRow[];
-  const cohortMembers = (cohortMembersRes.data ?? []) as CohortMemberRow[];
+  const cohortIds = cohorts.map((c) => c.id);
+
+  let cohortMembers: CohortMemberRow[] = [];
+  if (cohortIds.length > 0) {
+    const cohortMembersRes = await db
+      .schema('app')
+      .from('cohort_members')
+      .select('cohort_id, buyer_id')
+      .in('cohort_id', cohortIds);
+
+    if (cohortMembersRes.error) {
+      console.error('[GET /api/price-lists] cohort_members query error:', cohortMembersRes.error);
+      return timedJson({ error: 'Failed to fetch price lists' }, { status: 500 });
+    }
+
+    cohortMembers = (cohortMembersRes.data ?? []) as CohortMemberRow[];
+  }
 
   const createdByIds = Array.from(
     new Set(priceLists.map((pl) => pl.created_by).filter((id): id is string => Boolean(id))),
@@ -323,7 +344,7 @@ export async function GET(request: NextRequest) {
     .sort((a, b) => b.member_count - a.member_count)
     .slice(0, 3);
 
-  return NextResponse.json({
+  return timedJson({
     kpis: {
       active_lists: activeLists.length,
       draft_lists: draftLists.length,

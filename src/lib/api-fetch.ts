@@ -3,10 +3,40 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/database';
 
+type CachedAuth = {
+  token: string;
+  expiresAtMs: number;
+};
+
+let authCache: CachedAuth | null = null;
+let browserClient: ReturnType<typeof createClientComponentClient<Database>> | null = null;
+
+function getBrowserClient() {
+  if (!browserClient) {
+    browserClient = createClientComponentClient<Database>();
+  }
+  return browserClient;
+}
+
 async function getAuthHeaders(): Promise<Record<string, string>> {
-  const supabase = createClientComponentClient<Database>();
+  const now = Date.now();
+  if (authCache && now < authCache.expiresAtMs) {
+    return { Authorization: `Bearer ${authCache.token}` };
+  }
+
+  const supabase = getBrowserClient();
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) return {};
+  if (!session?.access_token) {
+    authCache = null;
+    return {};
+  }
+
+  const expiresAtMs = (session.expires_at ? session.expires_at * 1000 : now + 30_000) - 5_000;
+  authCache = {
+    token: session.access_token,
+    expiresAtMs,
+  };
+
   return { Authorization: `Bearer ${session.access_token}` };
 }
 

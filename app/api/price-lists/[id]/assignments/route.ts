@@ -39,7 +39,7 @@ export async function GET(
     .select('id')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
-    .is('is_active', true)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (!pl) {
@@ -51,6 +51,7 @@ export async function GET(
     .from('price_list_assignments')
     .select('*')
     .eq('price_list_id', id)
+    .is('deleted_at', null)
     .order('created_at', { ascending: true });
 
   if (error) {
@@ -116,7 +117,7 @@ export async function POST(
     .select('id')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
-    .is('is_active', true)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (!pl) {
@@ -131,7 +132,7 @@ export async function POST(
       .select('id')
       .eq('id', data.target_id)
       .eq('tenant_id', claims.tenant_id)
-      .is('is_active', true)
+      .is('deleted_at', null)
       .maybeSingle();
 
     if (!buyer) {
@@ -144,7 +145,7 @@ export async function POST(
       .select('id')
       .eq('id', data.target_id)
       .eq('tenant_id', claims.tenant_id)
-      .is('is_active', true)
+      .is('deleted_at', null)
       .maybeSingle();
 
     if (!cohort) {
@@ -159,6 +160,8 @@ export async function POST(
       price_list_id: id,
       target_type: data.target_type,
       target_id: data.target_type === 'all_buyers' ? null : (data.target_id ?? null),
+      created_by: claims.sub,
+      updated_by: claims.sub,
     })
     .select()
     .single();
@@ -180,6 +183,16 @@ export async function POST(
       { status: 500 },
     );
   }
+
+  await db.schema('app').from('audit_log').insert({
+    tenant_id: claims.tenant_id,
+    actor_user_id: claims.sub,
+    entity_type: 'price_list',
+    entity_id: id,
+    action: 'create',
+    diff: { event: 'assignment_added', assignment_id: assignment.id, target_type: assignment.target_type },
+    ts: new Date().toISOString(),
+  });
 
   return NextResponse.json({ assignment }, { status: 201 });
 }
