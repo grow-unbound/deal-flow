@@ -17,6 +17,8 @@ export interface TenantProfile {
   tenant_id: string;
   user_id: string;
   role: Role;
+  tenant_name?: string | null;
+  tenant_slug?: string | null;
   is_active: boolean;
 }
 
@@ -45,6 +47,18 @@ export interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function decodeJwtPayloadClient(token: string): Record<string, unknown> | null {
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    return JSON.parse(atob(padded)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -57,9 +71,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<Error | null>(null);
 
   const hydrateWorkspace = async (activeSession: Session) => {
-    const { data: wsRows } = await (supabase as any).rpc('get_user_workspace', {
+    const { data: wsRows, error: wsError } = await (supabase as any).rpc('get_user_workspace', {
       p_user_id: activeSession.user.id,
     });
+
+    if (wsError) {
+      throw wsError;
+    }
 
     const ws = (wsRows as any[] | null)?.[0] ?? null;
     if (!ws?.tenant_id) {
@@ -73,6 +91,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       tenant_id: ws.tenant_id,
       user_id: activeSession.user.id,
       role: ws.role as Role,
+      tenant_name: (ws.tenant_name as string | null) ?? null,
+      tenant_slug: (ws.tenant_slug as string | null) ?? null,
       is_active: true,
     });
     setCurrentTenantId(ws.tenant_id);
@@ -89,6 +109,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Initialize auth session
   useEffect(() => {
+    const primeWorkspaceFromToken = (activeSession: Session) => {
+      const claims = decodeJwtPayloadClient(activeSession.access_token);
+      const claimTenantId = typeof claims?.tenant_id === 'string' ? claims.tenant_id : null;
+      const claimRole = typeof claims?.role === 'string' ? claims.role : null;
+
+      if (!claimTenantId) return;
+
+      setCurrentTenantId(claimTenantId);
+      if (claimRole) {
+        setTenantProfile((prev) => ({
+          id: prev?.id ?? claimTenantId,
+          tenant_id: claimTenantId,
+          user_id: activeSession.user.id,
+          role: claimRole as Role,
+          tenant_name: prev?.tenant_name ?? null,
+          tenant_slug: prev?.tenant_slug ?? null,
+          is_active: true,
+        }));
+      }
+    };
+
     const initializeAuth = async () => {
       try {
         setIsLoading(true);
@@ -107,8 +148,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             email: currentSession.user.email || '',
             phone: currentSession.user.phone,
           });
+          primeWorkspaceFromToken(currentSession);
 
-          await hydrateWorkspace(currentSession);
+          // Do not block first render on workspace hydration.
+          void hydrateWorkspace(currentSession).catch((err) => {
+            setIsError(true);
+            setError(err instanceof Error ? err : new Error('Workspace initialization failed'));
+          });
         }
       } catch (err) {
         setIsError(true);
@@ -131,18 +177,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: newSession.user.email || '',
           phone: newSession.user.phone,
         });
+        primeWorkspaceFromToken(newSession);
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-          try {
-            setIsLoading(true);
-            setIsError(false);
-            setError(null);
-            await hydrateWorkspace(newSession);
-          } catch (err) {
+          setIsError(false);
+          setError(null);
+          void hydrateWorkspace(newSession).catch((err) => {
             setIsError(true);
             setError(err instanceof Error ? err : new Error('Workspace initialization failed'));
-          } finally {
-            setIsLoading(false);
-          }
+          });
         }
       } else {
         setUser(null);

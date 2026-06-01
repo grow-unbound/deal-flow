@@ -1,35 +1,17 @@
-'use client';
-
-import { ReactNode, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
+import { ReactNode } from 'react';
+import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
 import { SellerShell } from '@/components/layout/SellerShell';
 
-export default function SellerLayout({ children }: { children: ReactNode }) {
-  const router = useRouter();
-  const { user, isLoading } = useAuth();
+export default async function SellerLayout({ children }: { children: ReactNode }) {
+  const h = await headers();
+  const role = h.get('x-verified-role');
+  const tenantId = h.get('x-verified-tenant-id');
 
-  useEffect(() => {
-    if (!isLoading && !user) {
-      router.push('/login');
-    }
-  }, [user, isLoading, router]);
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-cream-100 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 bg-teal-500 rounded-md flex items-center justify-center">
-            <span className="text-cream-50 font-display font-medium">DF</span>
-          </div>
-          <p className="text-caption text-cream-600">Loading...</p>
-        </div>
-      </div>
-    );
+  if (!tenantId || !role?.startsWith('seller_')) {
+    redirect('/login');
   }
-
-  if (!user) return null;
 
   return (
     <ThemeProvider surface="seller">

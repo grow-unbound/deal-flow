@@ -12,3 +12,7 @@ export function getPostHogClient(): PostHog {
   }
   return posthogClient;
 }
+
+export function getPostHogQueryClient(): { query: (payload: Record<string, unknown>) => Promise<unknown> } {
+  return getPostHogClient() as unknown as { query: (payload: Record<string, unknown>) => Promise<unknown> };
+}

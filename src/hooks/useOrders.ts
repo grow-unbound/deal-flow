@@ -61,7 +61,7 @@ export interface TenantOrdersResponse {
   orders: OrderLandingRow[];
 }
 
-export function useTenantOrders() {
+export function useTenantOrders(initialData?: TenantOrdersResponse | null) {
   return useQuery({
     queryKey: ['tenant-orders'],
     queryFn: async (): Promise<TenantOrdersResponse> => {
@@ -69,6 +69,8 @@ export function useTenantOrders() {
       if (!res.ok) throw new Error('Failed to fetch orders');
       return res.json();
     },
+    initialData: initialData ?? undefined,
+    staleTime: 30_000,
   });
 }
 

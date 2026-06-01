@@ -1,5 +1,3 @@
-'use client';
-
 import { Bell } from 'lucide-react';
 import { SellerTopbar } from '@/components/layout/SellerTopbar';
 import { PageWrap } from '@/components/seller/layout';

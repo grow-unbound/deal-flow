@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 export default function AcceptInvitePage() {
   const router = useRouter();
@@ -61,12 +62,12 @@ export default function AcceptInvitePage() {
               Invite not found
             </h2>
             <p className="text-body-sm text-cream-600">{errorMsg}</p>
-            <a
+            <Link
               href="/login"
               className="inline-block mt-4 text-caption text-teal-500 underline"
             >
               Back to login
-            </a>
+            </Link>
           </>
         )}
       </div>

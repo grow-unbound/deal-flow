@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
+import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
 import { z } from 'zod';
 
 const UpsertInventorySchema = z.object({
@@ -212,6 +213,7 @@ export async function POST(req: NextRequest) {
       result = inserted;
     }
 
+    revalidateSellerDashboardCache(claims.tenant_id);
     return NextResponse.json({ inventory: result });
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

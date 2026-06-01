@@ -39,9 +39,14 @@ const ROLE_LABELS: Record<string, string> = {
 interface SellerSidebarProps {
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  canCollapse?: boolean;
 }
 
-export function SellerSidebar({ isCollapsed = false, onToggleCollapse = () => undefined }: SellerSidebarProps) {
+export function SellerSidebar({
+  isCollapsed = false,
+  onToggleCollapse = () => undefined,
+  canCollapse = true,
+}: SellerSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, signOut } = useAuth();
@@ -59,14 +64,16 @@ export function SellerSidebar({ isCollapsed = false, onToggleCollapse = () => un
       style={{ width: 'var(--sidebar-w)' }}
     >
       <div className="relative flex h-16 shrink-0 items-center border-b border-cream-300 px-4">
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          className="absolute right-2 top-2 rounded-md p-1 text-cream-600 transition-colors duration-fast hover:bg-cream-200 hover:text-cream-900"
-          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-        </button>
+        {canCollapse ? (
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            className="absolute right-2 top-2 rounded-md p-1 text-cream-600 transition-colors duration-fast hover:bg-cream-200 hover:text-cream-900"
+            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
+        ) : null}
 
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[11px] bg-teal-500">
           <span className="text-cream-50 font-display font-medium text-sm leading-none">DF</span>

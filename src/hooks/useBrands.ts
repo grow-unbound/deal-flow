@@ -209,7 +209,7 @@ export interface UpdateTenantBrandInput {
   archive?: boolean;
 }
 
-export function useTenantBrands() {
+export function useTenantBrands(initialData?: TenantBrandsResponse) {
   return useQuery({
     queryKey: ['tenant-brands'],
     queryFn: async (): Promise<TenantBrandsResponse> => {
@@ -219,6 +219,9 @@ export function useTenantBrands() {
       }
       return res.json();
     },
+    initialData,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 }
 

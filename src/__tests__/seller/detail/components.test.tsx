@@ -69,19 +69,19 @@ describe('DetailHeader', () => {
 });
 
 describe('PageWrap reuse', () => {
-  it('uses existing PageWrap and does not re-implement a 1440 container in detail components', () => {
+  it('uses existing PageWrap and does not re-implement a 1920 container in detail components', () => {
     const { container } = render(
       <PageWrap>
         <div>Detail Body</div>
       </PageWrap>
     );
-    expect(container.firstChild).toHaveClass('max-w-[1440px]', 'mx-auto');
+    expect(container.firstChild).toHaveClass('max-w-[1920px]', 'mx-auto');
 
     const detailDir = path.resolve(process.cwd(), 'src/components/seller/detail');
     const files = ['DetailHeader.tsx', 'MetaStrip4.tsx', 'DetailTabs.tsx', 'DetailActions.tsx'];
     for (const file of files) {
       const content = fs.readFileSync(path.join(detailDir, file), 'utf8');
-      expect(content.includes('max-w-[1440px]')).toBe(false);
+      expect(content.includes('max-w-[1920px]')).toBe(false);
     }
   });
 });

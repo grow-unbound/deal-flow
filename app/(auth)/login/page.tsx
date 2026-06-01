@@ -48,6 +48,13 @@ function LoginForm() {
         setError('Invalid email or password');
         return;
       }
+      if (authData.session) {
+        // Ensure cookie-backed session persistence is flushed before route guard checks.
+        await supabase.auth.setSession({
+          access_token: authData.session.access_token,
+          refresh_token: authData.session.refresh_token,
+        });
+      }
 
       // Step 2: Get workspace + role from server (also fires PostHog)
       const res = await fetch('/api/auth/workspace', {
@@ -75,6 +82,7 @@ function LoginForm() {
 
       shouldResetLoading = false;
       router.replace(wsData.redirect ?? '/dashboard');
+      router.refresh();
     } catch {
       setError('An error occurred. Please try again.');
     } finally {
@@ -178,10 +186,30 @@ function LoginForm() {
   );
 }
 
+function LoginFallback() {
+  return (
+    <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
+      <div className="flex items-center gap-3 mb-7">
+        <div className="w-9 h-9 bg-teal-300 rounded-md animate-pulse" />
+        <div className="h-6 w-28 rounded bg-cream-200 animate-pulse" />
+      </div>
+      <div className="space-y-3">
+        <div className="h-4 w-40 rounded bg-cream-200 animate-pulse" />
+        <div className="h-4 w-56 rounded bg-cream-200 animate-pulse" />
+      </div>
+      <div className="mt-6 space-y-4">
+        <div className="h-10 w-full rounded bg-cream-200 animate-pulse" />
+        <div className="h-10 w-full rounded bg-cream-200 animate-pulse" />
+        <div className="h-10 w-full rounded bg-cream-200 animate-pulse" />
+      </div>
+    </div>
+  );
+}
+
 // Wrap in Suspense — useSearchParams() requires it in Next.js App Router
 export default function LoginPage() {
   return (
-    <Suspense>
+    <Suspense fallback={<LoginFallback />}>
       <LoginForm />
     </Suspense>
   );
