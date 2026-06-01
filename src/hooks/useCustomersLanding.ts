@@ -147,7 +147,7 @@ export interface TenantCustomerDetailResponse {
   };
 }
 
-export function useCustomersLanding() {
+export function useCustomersLanding(initialData?: CustomersLandingResponse | null) {
   return useQuery({
     queryKey: ['tenant-customers'],
     queryFn: async (): Promise<CustomersLandingResponse> => {
@@ -155,6 +155,8 @@ export function useCustomersLanding() {
       if (!res.ok) throw new Error('Failed to fetch customers landing');
       return res.json();
     },
+    initialData: initialData ?? undefined,
+    staleTime: 30_000,
   });
 }
 

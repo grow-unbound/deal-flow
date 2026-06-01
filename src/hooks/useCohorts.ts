@@ -157,16 +157,18 @@ export interface CohortDetailResponse {
   activity: CohortDetailActivityItem[];
 }
 
-export function useCohortsLanding() {
+export function useCohortsLanding(initialData?: CohortsLandingResponse | null) {
   return useQuery({
     queryKey: ['cohorts-landing'],
     queryFn: async (): Promise<CohortsLandingResponse> => {
-      const res = await apiFetch('/api/cohorts?view=landing');
+      const res = await apiFetch('/api/tenant/cohorts');
       if (!res.ok) {
         throw new Error('Failed to fetch cohorts landing');
       }
       return res.json();
     },
+    initialData: initialData ?? undefined,
+    staleTime: 30_000,
   });
 }
 

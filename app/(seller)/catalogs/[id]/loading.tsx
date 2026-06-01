@@ -2,8 +2,8 @@ import { PageWrap } from '@/components/seller/layout';
 
 export default function CatalogDetailLoading() {
   return (
-    <PageWrap className="pt-7" role="status" aria-label="Loading catalog detail page">
-      <div className="space-y-6">
+    <PageWrap className="pt-7">
+      <div className="space-y-6" role="status" aria-label="Loading catalog detail page">
         <div className="h-6 w-56 animate-pulse rounded bg-cream-100" />
         <div className="h-20 animate-pulse rounded-[14px] bg-cream-100" />
         <div className="grid grid-cols-4 gap-3">

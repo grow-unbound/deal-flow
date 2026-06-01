@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { createTimer } from '@/lib/server-timing';
 
 type CatalogStatus = 'draft' | 'published' | 'archived';
 type DisplayStatus = 'Live' | 'Draft' | 'Ended';
@@ -101,19 +102,25 @@ function getStatusTone(status: DisplayStatus): StatusTone {
 }
 
 export async function GET(req: NextRequest) {
+  const timer = createTimer();
+  const timedJson = (body: unknown, init?: ResponseInit) => {
+    const response = NextResponse.json(body, init);
+    response.headers.set('Server-Timing', timer.header('catalogs_api'));
+    return response;
+  };
   try {
     const claims = await getVerifiedClaims(req);
 
     if (!claims.tenant_id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return timedJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
     if (!claims.role?.startsWith('seller_')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return timedJson({ error: 'Forbidden' }, { status: 403 });
     }
 
     if (!supabaseAdmin) {
-      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+      return timedJson({ error: 'Server configuration error' }, { status: 500 });
     }
 
     const tenantId = claims.tenant_id;
@@ -122,19 +129,17 @@ export async function GET(req: NextRequest) {
     const nowTs = now.getTime();
     const { mtdStartIso, nextMonthStartIso, prevMonthStartIso, prevMonthMtdEndIso } = getIstBoundaries(now);
 
-    const [catalogsRes, itemsRes, ordersRes, prevOrdersRes, cohortsRes] = await Promise.all([
+    const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? '200'), 500);
+
+    const [catalogsRes, ordersRes, prevOrdersRes, cohortsRes] = await Promise.all([
       db
         .schema('app')
         .from('published_catalogs')
         .select('id, name, scope_type, scope_value, valid_from, valid_to, status, created_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
-        .order('created_at', { ascending: false }),
-      db
-        .schema('app')
-        .from('published_catalog_items')
-        .select('catalog_id, tenant_product_id')
-        .is('deleted_at', null),
+        .order('created_at', { ascending: false })
+        .limit(limit),
       db
         .schema('app')
         .from('orders')
@@ -156,14 +161,28 @@ export async function GET(req: NextRequest) {
       db.schema('app').from('cohorts').select('id, name').eq('tenant_id', tenantId).is('deleted_at', null),
     ]);
 
-    if (catalogsRes.error || itemsRes.error || ordersRes.error || prevOrdersRes.error || cohortsRes.error) {
-      console.error('[GET /api/tenant/catalogs] query error:', catalogsRes.error || itemsRes.error || ordersRes.error || prevOrdersRes.error || cohortsRes.error);
-      return NextResponse.json({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
+    if (catalogsRes.error || ordersRes.error || prevOrdersRes.error || cohortsRes.error) {
+      console.error('[GET /api/tenant/catalogs] query error:', catalogsRes.error || ordersRes.error || prevOrdersRes.error || cohortsRes.error);
+      return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
     }
 
     const catalogs = (catalogsRes.data ?? []) as CatalogRow[];
     const catalogIds = catalogs.map((catalog) => catalog.id);
-    const items = ((itemsRes.data ?? []) as CatalogItemRow[]).filter((item) => catalogIds.includes(item.catalog_id));
+    let items: CatalogItemRow[] = [];
+    if (catalogIds.length > 0) {
+      const itemsRes = await db
+        .schema('app')
+        .from('published_catalog_items')
+        .select('catalog_id, tenant_product_id')
+        .in('catalog_id', catalogIds)
+        .is('deleted_at', null);
+
+      if (itemsRes.error) {
+        console.error('[GET /api/tenant/catalogs] items query error:', itemsRes.error);
+        return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
+      }
+      items = (itemsRes.data ?? []) as CatalogItemRow[];
+    }
     const orders = (ordersRes.data ?? []) as OrderRow[];
     const prevOrders = (prevOrdersRes.data ?? []) as OrderRow[];
     const cohorts = (cohortsRes.data ?? []) as CohortRow[];
@@ -186,7 +205,7 @@ export async function GET(req: NextRequest) {
 
       if (tenantProductsRes.error) {
         console.error('[GET /api/tenant/catalogs] tenant products error:', tenantProductsRes.error);
-        return NextResponse.json({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
+        return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
       }
 
       tenantProducts = (tenantProductsRes.data ?? []) as TenantProductRow[];
@@ -202,7 +221,7 @@ export async function GET(req: NextRequest) {
 
         if (tenantBrandsRes.error) {
           console.error('[GET /api/tenant/catalogs] tenant brands error:', tenantBrandsRes.error);
-          return NextResponse.json({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
+          return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
         }
 
         tenantBrands = (tenantBrandsRes.data ?? []) as TenantBrandRow[];
@@ -218,7 +237,7 @@ export async function GET(req: NextRequest) {
 
           if (masterBrandsRes.error) {
             console.error('[GET /api/tenant/catalogs] master brands error:', masterBrandsRes.error);
-            return NextResponse.json({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
+            return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
           }
 
           masterBrands = (masterBrandsRes.data ?? []) as MasterBrandRow[];
@@ -340,7 +359,7 @@ export async function GET(req: NextRequest) {
 
     const topRisers = [...withGrowth].sort((a, b) => b.growth_pct - a.growth_pct).slice(0, 2);
 
-    return NextResponse.json({
+    return timedJson({
       kpis: {
         live_catalogs: liveCatalogs.length,
         draft_catalogs: draftCatalogs.length,
@@ -360,6 +379,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     console.error('[GET /api/tenant/catalogs] unexpected error:', error);
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return timedJson({ error: 'Unauthorized' }, { status: 401 });
   }
 }

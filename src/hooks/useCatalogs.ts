@@ -125,7 +125,7 @@ export interface CatalogCompositionMutationRequest {
   price_override?: number | null;
 }
 
-export function useTenantCatalogs() {
+export function useTenantCatalogs(initialData?: CatalogsLandingResponse | null) {
   return useQuery({
     queryKey: ['tenant-catalogs'],
     queryFn: async (): Promise<CatalogsLandingResponse> => {
@@ -133,6 +133,8 @@ export function useTenantCatalogs() {
       if (!res.ok) throw new Error('Failed to fetch catalogs');
       return res.json();
     },
+    initialData: initialData ?? undefined,
+    staleTime: 30_000,
   });
 }
 
