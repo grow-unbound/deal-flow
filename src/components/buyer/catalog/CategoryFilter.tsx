@@ -1,0 +1,60 @@
+'use client';
+
+import * as React from 'react';
+import { cn } from '@/lib/utils';
+import type { BuyerCategory } from '@/types/buyer';
+
+interface CategoryFilterProps {
+  categories: BuyerCategory[];
+  selected: string | null;
+  onChange: (id: string | null) => void;
+}
+
+export function CategoryFilter({ categories, selected, onChange }: CategoryFilterProps) {
+  if (categories.length === 0) return null;
+
+  return (
+    <div
+      className="flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+      aria-label="Filter by category"
+    >
+      <button
+        onClick={() => onChange(null)}
+        className={cn(
+          'flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap',
+          selected === null
+            ? 'bg-[var(--teal-500)] text-white'
+            : 'bg-[var(--bg-recessed)] text-[var(--fg-2)] border border-[var(--border-1)]',
+        )}
+        aria-pressed={selected === null}
+      >
+        All
+      </button>
+      {categories.map((cat) => (
+        <button
+          key={cat.id}
+          onClick={() => onChange(selected === cat.id ? null : cat.id)}
+          className={cn(
+            'flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap',
+            selected === cat.id
+              ? 'bg-[var(--teal-500)] text-white'
+              : 'bg-[var(--bg-recessed)] text-[var(--fg-2)] border border-[var(--border-1)]',
+          )}
+          aria-pressed={selected === cat.id}
+        >
+          {cat.name}
+          {cat.product_count > 0 && (
+            <span
+              className={cn(
+                'ml-1.5 text-xs',
+                selected === cat.id ? 'text-white/75' : 'text-[var(--fg-3)]',
+              )}
+            >
+              {cat.product_count}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
