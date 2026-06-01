@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { createTimer } from '@/lib/server-timing';
 import { CohortCreateSchema } from '@/lib/zod';
 
 type CohortType = 'Geo-based' | 'Tier-based' | 'Brand affinity';
@@ -111,7 +112,7 @@ async function getCatalogViewsByCohort(
   }
 }
 
-async function getLandingPayload(tenantId: string) {
+export async function getCohortsLandingPayload(tenantId: string) {
   const db = supabaseAdmin as any;
   const { mtdStartIso, nextMonthStartIso, prevMonthStartIso, prevMonthMtdEndIso } = getIstBoundaries();
 
@@ -307,35 +308,29 @@ async function getLandingPayload(tenantId: string) {
 }
 
 export async function GET(request: NextRequest) {
+  const timer = createTimer();
+  const timedJson = (body: unknown, init?: ResponseInit) => {
+    const response = NextResponse.json(body, init);
+    response.headers.set('Server-Timing', timer.header('cohorts_api'));
+    return response;
+  };
   const claims = await getVerifiedClaims(request);
 
   if (!claims.tenant_id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return timedJson({ error: 'Unauthorized' }, { status: 401 });
   }
 
   if (!claims.role?.startsWith('seller_')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    return timedJson({ error: 'Forbidden' }, { status: 403 });
   }
 
   const flagEnabled = await getFlag('df_cohorts', claims.tenant_id);
   if (!flagEnabled) {
-    return NextResponse.json({ error: 'Feature not enabled' }, { status: 403 });
+    return timedJson({ error: 'Feature not enabled' }, { status: 403 });
   }
 
   if (!supabaseAdmin) {
-    return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
-  }
-
-  const view = request.nextUrl.searchParams.get('view');
-
-  if (view === 'landing') {
-    try {
-      const payload = await getLandingPayload(claims.tenant_id);
-      return NextResponse.json(payload);
-    } catch (error: any) {
-      console.error('[GET /api/cohorts?view=landing] DB error:', error?.code, error?.message);
-      return NextResponse.json({ error: 'Failed to fetch cohorts landing' }, { status: 500 });
-    }
+    return timedJson({ error: 'Server configuration error' }, { status: 500 });
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -350,10 +345,10 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     console.error('[GET /api/cohorts] DB error:', error.code, error.message);
-    return NextResponse.json({ error: 'Failed to fetch cohorts' }, { status: 500 });
+    return timedJson({ error: 'Failed to fetch cohorts' }, { status: 500 });
   }
 
-  return NextResponse.json({ cohorts: rows ?? [] });
+  return timedJson({ cohorts: rows ?? [] });
 }
 
 export async function POST(request: NextRequest) {

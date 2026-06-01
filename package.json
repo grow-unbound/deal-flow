@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
+    "dev:turbo": "next dev --turbo",
     "build": "next build",
     "start": "next start",
+    "perf:smoke": "node scripts/perf-smoke.mjs",
     "lint": "eslint src/components/seller/detail src/__tests__/seller/detail --ext .ts,.tsx --max-warnings=0 --no-config-lookup --parser @typescript-eslint/parser",
     "type-check": "tsc --noEmit",
     "test:unit": "node scripts/run-vitest.mjs",

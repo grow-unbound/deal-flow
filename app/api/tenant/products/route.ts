@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
+import { createTimer } from '@/lib/server-timing';
 import { z } from 'zod';
 
 const AddProductSchema = z.object({
@@ -21,19 +22,25 @@ const AddProductSchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
+  const timer = createTimer();
+  const timedJson = (body: unknown, init?: ResponseInit) => {
+    const response = NextResponse.json(body, init);
+    response.headers.set('Server-Timing', timer.header('products_api'));
+    return response;
+  };
   try {
     const claims = await getVerifiedClaims(req);
 
     if (!claims.tenant_id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return timedJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
     if (!claims.role?.startsWith('seller_')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return timedJson({ error: 'Forbidden' }, { status: 403 });
     }
 
     if (!supabaseAdmin) {
-      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+      return timedJson({ error: 'Server configuration error' }, { status: 500 });
     }
 
     const db = supabaseAdmin as any; // supabase client typed generically for multi-schema queries
@@ -65,7 +72,7 @@ export async function GET(req: NextRequest) {
 
     if (error) {
       console.error('[GET /api/tenant/products] DB error:', error.code, error.message, error.details);
-      return NextResponse.json(
+      return timedJson(
         { error: 'Failed to fetch products', code: error.code, detail: error.message },
         { status: 500 },
       );
@@ -144,7 +151,6 @@ export async function GET(req: NextRequest) {
     }
 
     const productIds = activeProducts.map((row: { id: string }) => row.id);
-    const productIdSet = new Set(productIds);
     const inventoryByProduct = new Map<string, number>();
     const unitsMtdByProduct = new Map<string, number>();
     const gmvMtdByProduct = new Map<string, number>();
@@ -168,60 +174,57 @@ export async function GET(req: NextRequest) {
     const year = istNow.getFullYear();
     const month = istNow.getMonth();
     const day = istNow.getDate();
-    const mtdStart = new Date(Date.UTC(year, month, 1, 0, 0, 0)).toISOString();
-    const mtdEnd = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0)).toISOString();
-    const prevStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0)).toISOString();
-    const prevMtdEnd = new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0)).toISOString();
+    const mtdStartDate = new Date(Date.UTC(year, month, 1, 0, 0, 0));
+    const mtdEndDate = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0));
+    const prevStartDate = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
+    const prevMtdEndDate = new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0));
 
-    const { data: monthOrders } = await db
-      .schema('app')
-      .from('orders')
-      .select('id, status, deleted_at')
-      .eq('tenant_id', claims.tenant_id)
-      .neq('status', 'cancelled')
-      .is('deleted_at', null)
-      .gte('placed_at', mtdStart)
-      .lt('placed_at', mtdEnd);
-    const { data: prevOrders } = await db
-      .schema('app')
-      .from('orders')
-      .select('id, status, deleted_at')
-      .eq('tenant_id', claims.tenant_id)
-      .neq('status', 'cancelled')
-      .is('deleted_at', null)
-      .gte('placed_at', prevStart)
-      .lt('placed_at', prevMtdEnd);
+    const mtdStartDay = mtdStartDate.toISOString().slice(0, 10);
+    const mtdEndDay = mtdEndDate.toISOString().slice(0, 10);
+    const prevStartDay = prevStartDate.toISOString().slice(0, 10);
+    const prevMtdEndDay = prevMtdEndDate.toISOString().slice(0, 10);
 
-    const monthOrderIds = (monthOrders ?? []).map((row: { id: string }) => row.id);
-    const prevOrderIds = (prevOrders ?? []).map((row: { id: string }) => row.id);
+    if (productIds.length > 0) {
+      const [mtdKpiRes, prevKpiRes] = await Promise.all([
+        db
+          .schema('app')
+          .from('kpi_product_daily')
+          .select('tenant_product_id, units_sold, revenue')
+          .eq('tenant_id', claims.tenant_id)
+          .in('tenant_product_id', productIds)
+          .gte('day', mtdStartDay)
+          .lt('day', mtdEndDay)
+          .is('deleted_at', null),
+        db
+          .schema('app')
+          .from('kpi_product_daily')
+          .select('tenant_product_id, revenue')
+          .eq('tenant_id', claims.tenant_id)
+          .in('tenant_product_id', productIds)
+          .gte('day', prevStartDay)
+          .lt('day', prevMtdEndDay)
+          .is('deleted_at', null),
+      ]);
 
-    if (monthOrderIds.length > 0) {
-      const { data: monthItems } = await db
-        .schema('app')
-        .from('order_items')
-        .select('tenant_product_id, qty, unit_price, line_total, deleted_at')
-        .in('order_id', monthOrderIds)
-        .is('deleted_at', null);
-      for (const row of monthItems ?? []) {
-        if (!productIdSet.has(row.tenant_product_id)) continue;
-        const units = Number(row.qty ?? 0);
-        const lineTotal = Number(row.line_total ?? Number(row.qty ?? 0) * Number(row.unit_price ?? 0));
-        unitsMtdByProduct.set(row.tenant_product_id, (unitsMtdByProduct.get(row.tenant_product_id) ?? 0) + units);
-        gmvMtdByProduct.set(row.tenant_product_id, (gmvMtdByProduct.get(row.tenant_product_id) ?? 0) + lineTotal);
+      for (const row of mtdKpiRes.data ?? []) {
+        const units = Number(row.units_sold ?? 0);
+        const revenue = Number(row.revenue ?? 0);
+        unitsMtdByProduct.set(
+          row.tenant_product_id,
+          (unitsMtdByProduct.get(row.tenant_product_id) ?? 0) + units,
+        );
+        gmvMtdByProduct.set(
+          row.tenant_product_id,
+          (gmvMtdByProduct.get(row.tenant_product_id) ?? 0) + revenue,
+        );
       }
-    }
 
-    if (prevOrderIds.length > 0) {
-      const { data: prevItems } = await db
-        .schema('app')
-        .from('order_items')
-        .select('tenant_product_id, qty, unit_price, line_total, deleted_at')
-        .in('order_id', prevOrderIds)
-        .is('deleted_at', null);
-      for (const row of prevItems ?? []) {
-        if (!productIdSet.has(row.tenant_product_id)) continue;
-        const lineTotal = Number(row.line_total ?? Number(row.qty ?? 0) * Number(row.unit_price ?? 0));
-        gmvPrevByProduct.set(row.tenant_product_id, (gmvPrevByProduct.get(row.tenant_product_id) ?? 0) + lineTotal);
+      for (const row of prevKpiRes.data ?? []) {
+        const revenue = Number(row.revenue ?? 0);
+        gmvPrevByProduct.set(
+          row.tenant_product_id,
+          (gmvPrevByProduct.get(row.tenant_product_id) ?? 0) + revenue,
+        );
       }
     }
 
@@ -333,7 +336,7 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({
+    return timedJson({
       products,
       brands,
       kpis: {
@@ -354,7 +357,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (err) {
     console.error('[GET /api/tenant/products] Unexpected error:', err);
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return timedJson({ error: 'Unauthorized' }, { status: 401 });
   }
 }
 

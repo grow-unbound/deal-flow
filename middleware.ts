@@ -28,20 +28,16 @@ function extractSubdomain(hostname: string): string | null {
 }
 
 export async function middleware(request: NextRequest) {
-  const res = NextResponse.next();
   const { pathname } = request.nextUrl;
   const hostname = request.headers.get('host') ?? '';
-
-  // Build response with subdomain header for downstream use
+  const requestHeaders = new Headers(request.headers);
   const subdomain = extractSubdomain(hostname);
+  requestHeaders.set('x-tenant-subdomain', subdomain ?? '');
+  let res = NextResponse.next({ request: { headers: requestHeaders } });
   res.headers.set('x-tenant-subdomain', subdomain ?? '');
 
-  // Always pass subdomain on the mutated request headers too
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set('x-tenant-subdomain', subdomain ?? '');
-
   if (isPublicRoute(pathname)) {
-    return NextResponse.next({ request: { headers: requestHeaders } });
+    return res;
   }
 
   // Validate session via Supabase (reads cookies, refreshes if needed)
@@ -79,12 +75,22 @@ export async function middleware(request: NextRequest) {
   if (tenantId) requestHeaders.set('x-verified-tenant-id', tenantId);
   if (role) requestHeaders.set('x-verified-role', role);
   if (buyerId) requestHeaders.set('x-verified-buyer-id', buyerId);
+  if (session.user?.id) requestHeaders.set('x-verified-user-id', session.user.id);
 
-  return NextResponse.next({ request: { headers: requestHeaders } });
+  // Recreate response so updated request headers propagate downstream, then
+  // re-attach any cookies that Supabase may have refreshed on the earlier response.
+  const finalized = NextResponse.next({ request: { headers: requestHeaders } });
+  finalized.headers.set('x-tenant-subdomain', subdomain ?? '');
+  for (const cookie of res.cookies.getAll()) {
+    finalized.cookies.set(cookie);
+  }
+  res = finalized;
+
+  return res;
 }
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|\\.png|\\.jpg|\\.jpeg|\\.gif|\\.svg).*)',
+    '/((?!_next/static|_next/image|_next/webpack-hmr|favicon.ico|robots.txt|sitemap.xml|\\.png|\\.jpg|\\.jpeg|\\.gif|\\.svg|\\.webp|\\.ico|\\.css|\\.js|\\.map|\\.txt|\\.woff|\\.woff2|\\.ttf).*)',
   ],
 };

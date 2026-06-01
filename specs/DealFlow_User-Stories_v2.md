@@ -7,7 +7,7 @@
 - Landing pages → `design-system/Brands Landing v3.html` + `design-system/v3/Modules.jsx` + `design-system/v2/Shared.jsx`
 - Detail pages → `design-system/Detail Pages v2.html` + `design-system/v2/DetailsV2.jsx`
 
-**Total stories:** 15 across 2 epics
+**Total stories:** 16 across 2 epics
 
 ---
 
@@ -26,7 +26,7 @@ Stories EP-13-001 and EP-14-001 are **foundation stories** — they define all s
 | Epic | Module | Feature Flag | Stories |
 |------|--------|-------------|---------|
 | EP-13 | Cockpit Landing Pages (v3 layout) | `df_brand_product_master` · `df_customer_master` · `df_cohorts` · `df_catalog_publishing` · `df_order_management` · `df_pricing_engine` | 8 |
-| EP-14 | Cockpit Detail Pages (v2 layout) | same as above, per entity | 7 |
+| EP-14 | Cockpit Detail Pages (v2 layout) | same as above, per entity | 8 |
 
 ---
 
@@ -1534,6 +1534,142 @@ npm run test:integration -- --testPathPattern=price-list-detail-page
 # - "Duplicate list": new list has status = 'draft' and name suffix "(copy)"
 # - Cross-tenant isolation: price list from another tenant → 403
 # - Assignments tab badge = count of price_list_assignments rows
+npx tsc --noEmit && npm run lint
+```
+
+---
+
+### EP-14-008 — Order Detail Page
+
+#### 1. Objective & User Value
+
+- **As a** `seller_admin` or `seller_assistant`, **I want** to open an order and see its full line-item breakdown, track it through the dispatch workflow, and pull the invoice — **so that** I can confirm, dispatch, or resolve a hold on a single order without touching the list page.
+
+#### 2. Common Layout
+
+Uses the shared shell from **EP-14-001**.
+
+```
+PageWrap (max-w-[1440px] mx-auto, pt-7)
+  ├── DetailHeader   breadcrumb="Orders › {orderId}" · order avatar · 4 subtitle items
+  ├── MetaStrip4     4 tiles — see §4
+  ├── DetailTabs     3 tabs — Items · Timeline · Invoice
+  └── tab-body       Items tab active by default
+```
+
+Route: `app/(seller)/orders/[id]/page.tsx`  
+Feature flag gate: `df_order_management`
+
+#### 3. Acceptance Criteria (Functional Boundaries)
+
+- Page loads from `app.orders` + `app.order_items` by `id`; 404 if not found or belongs to another tenant.
+- **Items tab (default):** Full line-item table for the order. Columns: Product · Brand · Qty · Unit price · Line total · Stock status. Read-only; editing line items is not permitted once an order is past `draft` status.
+- **Timeline tab:** Visual status progression bar (`draft → received → confirmed → dispatched → delivered`) with the current step highlighted. Below it: a chronological event log of every status change, note, or system event on this order — actor name, timestamp, optional note. `seller_admin` can add a manual note.
+- **Invoice tab:** Invoice preview (read-only formatted view — buyer name, GSTIN, line items, taxes, total). "Download PDF" generates and downloads the invoice PDF via a Supabase Edge Function. "Send to buyer" emails the invoice via Resend. Both actions are `seller_admin` only.
+- `DetailActions` renders status-appropriate primary actions:
+  - `draft` → "Confirm order" (advances to `received`)
+  - `received` → "Confirm & dispatch" (advances to `confirmed` then `dispatched`)
+  - `confirmed` → "Mark dispatched"
+  - `dispatched` → "Mark delivered"
+  - `on_hold` → "Resolve hold" (opens a dialog explaining the hold reason with a credit override option for `seller_admin`)
+  - `delivered` / `cancelled` → no primary action; "Export to Tally" secondary action only
+- "Cancel order" (destructive) is available until `status = 'dispatched'`; requires confirmation dialog with a reason text field.
+- Breadcrumb "Orders" navigates back to `/orders`.
+
+#### 4. Design System & UI/UX Constraints
+
+**DetailHeader config:**
+
+| Field | Value |
+|-------|-------|
+| `crumbPath` | `[{ label: 'Orders', href: '/orders' }, { label: order.id, current: true }]` |
+| `avatar` | `{ kind: 'order' }` — receipt/clipboard icon, 48×48 px, `bg-cream-200 text-cream-700` |
+| `title` | `order.id` (e.g., `"ORD-2024-0042"`) — `font-mono` |
+| `status` | `{ label: order.statusLabel, tone: order.statusTone }` |
+| `subtitle` | `[buyer.name (linked to /customers/{id}), order.deliveryAddress, 'Placed {placedAt}', '{itemCount} items · {brandCount} brands']` |
+
+**Add `'order'` to `DetailHeader` avatar `kind` union** in `src/components/seller/detail/DetailHeader.tsx`.
+
+**Order status → `StatusTag` tone mapping:**
+
+| `status` | `tone` |
+|----------|--------|
+| `draft` | `neutral` |
+| `received` | `neutral` |
+| `confirmed` | `warning` |
+| `dispatched` | `warning` |
+| `delivered` | `success` |
+| `on_hold` | `danger` |
+| `cancelled` | `neutral` |
+
+**MetaStrip4 — exact 4 tiles:**
+
+| # | Label | Value | Sub |
+|---|-------|-------|-----|
+| 1 | `Order value` | INR total for this order | `"{itemCount} items · {brandCount} brands"` |
+| 2 | `Items` | Count of `order_items` rows | `"line items in this order"` |
+| 3 | `Dispatch ETA` | Estimated dispatch date string, or `"—"` if not yet set | Status-driven sub: `"awaiting confirmation"` / `"dispatching today"` / `"delivered {date}"` |
+| 4 | `Credit impact` | INR amount this order draws against buyer's credit limit | `"of {limit} · {pct}% used"` — progress bar tint: teal if `< 75%`, warning if `≥ 75%` |
+
+> **Demoted to subtitle:** Placed date, buyer name, delivery address — all in header subtitle. Order ID is the title, not a tile.
+
+**DetailTabs — 3 tabs:**
+
+| id | Label | Badge |
+|----|-------|-------|
+| `items` | `Items` | `order_items` count |
+| `timeline` | `Timeline` | — |
+| `invoice` | `Invoice` | — |
+
+Active tab on load: `items`.
+
+**Items tab — table spec:**
+
+| Column | Content |
+|--------|---------|
+| Product | Bottle icon (32 px) + name (`.ent-name`) + sub: `{sku}` (`.ent-sub`) |
+| Brand | `EntityAvatar` (22 px) + brand name, `text-[12.5px]` |
+| Qty | Integer, `.num` |
+| Unit price | INR, `font-mono text-[12.5px]` |
+| Line total | INR, `.num-display` |
+| Stock status | `StatusTag` — reflects live inventory at time of page load |
+
+**Timeline tab — layout:**
+
+```
+Status progress bar (top)
+  Five steps: Draft · Received · Confirmed · Dispatched · Delivered
+  Completed steps: filled teal circle + teal connecting line
+  Current step: pulsing teal ring
+  Future steps: cream-300 circle + dashed line
+  Cancelled: all steps grey, "Cancelled" badge inline
+
+Event log (below bar)
+  Each event row: timestamp (font-mono, text-cream-500) · actor name · event description
+  Manual note row: italic text-cream-700 + actor + timestamp
+  "Add note" input (seller_admin only): text input + "Save note" button
+```
+
+**Invoice tab — layout:**
+
+- Formatted invoice card: `bg-white border border-cream-200 rounded-[14px] p-8 max-w-[720px]`
+- Header: DealFlow / distributor name + logo · buyer name + GSTIN · invoice number + date
+- Line items table: Product · HSN · Qty · Rate · GST% · Amount
+- Footer: Subtotal · CGST · SGST · Grand total (bold)
+- Actions row (below card): "Download PDF" (`<Download size={13}/> bg-cream-900 text-white`) · "Send to buyer" (`<Send size={13}/> bg-teal-500 text-white`) — both `seller_admin` only
+
+#### 5. Automated Verification Steps
+
+```bash
+npm run test:unit -- --testPathPattern=orders/\[id\]
+npm run test:integration -- --testPathPattern=order-detail-page
+# - MetaStrip4: exactly 4 tiles; placed date NOT a tile
+# - Status action buttons: correct CTA per status (confirmed → "Mark dispatched", etc.)
+# - "Cancel order": hidden once status = 'dispatched' or later
+# - "Resolve hold" dialog: visible only when status = 'on_hold'
+# - Invoice download: calls Edge Function, returns PDF blob
+# - Cross-tenant isolation: order from another tenant → 403
+# - Timeline bar: delivered status renders all steps filled
 npx tsc --noEmit && npm run lint
 ```
 

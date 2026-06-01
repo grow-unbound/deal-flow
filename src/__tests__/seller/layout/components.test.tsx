@@ -58,13 +58,13 @@ describe('GrowthPill', () => {
 });
 
 describe('PageWrap', () => {
-  it('renders with 1440 max width and centered layout classes', () => {
+  it('renders with 1920 max width and centered layout classes', () => {
     const { container } = render(
       <PageWrap>
         <div>Child</div>
       </PageWrap>
     );
 
-    expect(container.firstChild).toHaveClass('max-w-[1440px]', 'mx-auto', 'w-full', 'px-8', 'py-6');
+    expect(container.firstChild).toHaveClass('max-w-[1920px]', 'mx-auto', 'w-full', 'px-8', 'py-6');
   });
 });
