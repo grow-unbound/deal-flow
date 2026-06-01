@@ -166,7 +166,6 @@ function OrdersPageInner() {
               style={{
                 paddingBottom: 10,
                 paddingRight: 18,
-                borderBottom: activeTab === t.id ? '2px solid var(--teal-500)' : '2px solid transparent',
                 marginBottom: -1,
                 background: 'none',
                 border: 'none',
