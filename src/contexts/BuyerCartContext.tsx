@@ -16,9 +16,7 @@ export interface BuyerCartItem {
   line_total: number;
 }
 
-type CartState = {
-  items: BuyerCartItem[];
-};
+type CartState = { items: BuyerCartItem[] };
 
 type CartAction =
   | { type: 'ADD_ITEM'; item: BuyerCartItem }
@@ -33,9 +31,7 @@ function cartReducer(state: CartState, action: CartAction): CartState {
       return { items: action.items };
 
     case 'ADD_ITEM': {
-      const existing = state.items.find(
-        (i) => i.tenant_product_id === action.item.tenant_product_id
-      );
+      const existing = state.items.find((i) => i.tenant_product_id === action.item.tenant_product_id);
       if (existing) {
         const newQty = existing.quantity + action.item.quantity;
         return {
@@ -50,19 +46,11 @@ function cartReducer(state: CartState, action: CartAction): CartState {
     }
 
     case 'REMOVE_ITEM':
-      return {
-        items: state.items.filter(
-          (i) => i.tenant_product_id !== action.tenant_product_id
-        ),
-      };
+      return { items: state.items.filter((i) => i.tenant_product_id !== action.tenant_product_id) };
 
     case 'UPDATE_QTY': {
       if (action.quantity <= 0) {
-        return {
-          items: state.items.filter(
-            (i) => i.tenant_product_id !== action.tenant_product_id
-          ),
-        };
+        return { items: state.items.filter((i) => i.tenant_product_id !== action.tenant_product_id) };
       }
       return {
         items: state.items.map((i) =>
@@ -96,22 +84,18 @@ const CartContext = createContext<CartContextValue | null>(null);
 export function BuyerCartProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(cartReducer, { items: [] });
 
-  // Hydrate from localStorage on mount
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const items = JSON.parse(raw) as BuyerCartItem[];
-        if (Array.isArray(items)) {
-          dispatch({ type: 'HYDRATE', items });
-        }
+        if (Array.isArray(items)) dispatch({ type: 'HYDRATE', items });
       }
     } catch {
       // ignore corrupt storage
     }
   }, []);
 
-  // Persist to localStorage on every change
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.items));
@@ -128,10 +112,8 @@ export function BuyerCartProvider({ children }: { children: ReactNode }) {
     itemCount,
     subtotal,
     addItem: (item) => dispatch({ type: 'ADD_ITEM', item }),
-    removeItem: (tenant_product_id) =>
-      dispatch({ type: 'REMOVE_ITEM', tenant_product_id }),
-    updateQty: (tenant_product_id, quantity) =>
-      dispatch({ type: 'UPDATE_QTY', tenant_product_id, quantity }),
+    removeItem: (tenant_product_id) => dispatch({ type: 'REMOVE_ITEM', tenant_product_id }),
+    updateQty: (tenant_product_id, quantity) => dispatch({ type: 'UPDATE_QTY', tenant_product_id, quantity }),
     clearCart: () => dispatch({ type: 'CLEAR_CART' }),
   };
 
