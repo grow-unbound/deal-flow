@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
-import { getPostHogClient } from '@/lib/posthog-server';
+import { getPostHogQueryClient } from '@/lib/posthog-server';
+import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
 
@@ -61,7 +62,7 @@ async function fetchPosthogCatalogFunnel(catalogId: string): Promise<{ uniqueVie
   }
 
   try {
-    const posthog = getPostHogClient();
+    const posthog = getPostHogQueryClient();
 
     const uniqueViewers = await posthog.query({
       kind: 'HogQLQuery',
@@ -485,6 +486,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       .is('deleted_at', null);
 
     if (error) return NextResponse.json({ error: 'Failed to extend validity' }, { status: 500 });
+    revalidateSellerDashboardCache(claims.tenant_id);
     return NextResponse.json({ ok: true });
   }
 
@@ -504,6 +506,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       });
 
     if (error) return NextResponse.json({ error: 'Failed to add product to catalog' }, { status: 500 });
+    revalidateSellerDashboardCache(claims.tenant_id);
     return NextResponse.json({ ok: true });
   }
 
@@ -515,5 +518,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     .eq('tenant_product_id', parsed.data.tenant_product_id);
 
   if (error) return NextResponse.json({ error: 'Failed to remove product from catalog' }, { status: 500 });
+  revalidateSellerDashboardCache(claims.tenant_id);
   return NextResponse.json({ ok: true });
 }

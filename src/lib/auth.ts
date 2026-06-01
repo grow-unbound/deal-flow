@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { supabase, supabaseAdmin } from './supabase';
 
 export interface JWTClaims {
+  sub: string | null;
   tenant_id: string | null;
   role: string | null;
   buyer_id: string | null;
@@ -21,8 +22,19 @@ export class AuthorizationError extends Error {
 export function decodeJWTPayload(token: string): Record<string, unknown> {
   const part = token.split('.')[1];
   if (!part) throw new Error('Malformed JWT: missing payload segment');
-  const padded = part.replace(/-/g, '+').replace(/_/g, '/');
-  const json = Buffer.from(padded, 'base64').toString('utf-8');
+  const normalized = part.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+
+  const json = (() => {
+    // Edge-safe path (middleware/runtime environments where Buffer may be unavailable)
+    if (typeof atob === 'function') {
+      const binary = atob(padded);
+      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+      return new TextDecoder().decode(bytes);
+    }
+    return Buffer.from(padded, 'base64').toString('utf-8');
+  })();
+
   return JSON.parse(json) as Record<string, unknown>;
 }
 
@@ -32,6 +44,7 @@ export function decodeJWTPayload(token: string): Record<string, unknown> {
  */
 export function extractVerifiedClaims(request: NextRequest): JWTClaims {
   return {
+    sub: request.headers.get('x-verified-user-id'),
     tenant_id: request.headers.get('x-verified-tenant-id'),
     role: request.headers.get('x-verified-role'),
     buyer_id: request.headers.get('x-verified-buyer-id'),
@@ -61,6 +74,7 @@ export async function getVerifiedClaims(request: NextRequest): Promise<JWTClaims
   const ws = (rows as any[] | null)?.[0] ?? null;
 
   return {
+    sub: user.id,
     tenant_id: (ws?.tenant_id as string) ?? null,
     role: (ws?.role as string) ?? null,
     buyer_id: (ws?.buyer_id as string) ?? null,

@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { FEATURE_FLAGS } from '@/constants';
-import { useFlag } from '@/hooks/useFeatureFlag';
+import { useFlagState } from '@/hooks/useFeatureFlag';
 
 interface FeatureGateProps {
   flag: keyof typeof FEATURE_FLAGS;
@@ -31,7 +31,12 @@ function FeatureDisabled() {
 }
 
 export function FeatureGate({ flag, children }: FeatureGateProps) {
-  const enabled = useFlag(flag);
+  const enabled = useFlagState(flag);
+
+  // Avoid a false-negative flash while flags are hydrating.
+  if (enabled === undefined) {
+    return <>{children}</>;
+  }
 
   if (!enabled) {
     return <FeatureDisabled />;

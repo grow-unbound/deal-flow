@@ -208,7 +208,7 @@ export interface AddProductPayload {
   pack_size?: number;
 }
 
-export function useTenantProducts() {
+export function useTenantProducts(initialData?: TenantProductsResponse | null) {
   return useQuery({
     queryKey: ['tenant-products'],
     queryFn: async (): Promise<TenantProductsResponse> => {
@@ -218,6 +218,8 @@ export function useTenantProducts() {
       }
       return res.json();
     },
+    initialData: initialData ?? undefined,
+    staleTime: 30_000,
   });
 }
 

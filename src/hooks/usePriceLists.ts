@@ -159,7 +159,7 @@ export function usePriceLists() {
   });
 }
 
-export function usePriceListsLanding() {
+export function usePriceListsLanding(initialData?: PriceListsLandingResponse | null) {
   return useQuery({
     queryKey: ['price-lists-landing'],
     queryFn: async (): Promise<PriceListsLandingResponse> => {
@@ -169,6 +169,8 @@ export function usePriceListsLanding() {
       }
       return res.json();
     },
+    initialData: initialData ?? undefined,
+    staleTime: 30_000,
   });
 }
 
