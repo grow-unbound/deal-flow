@@ -2,12 +2,23 @@ import { useFeatureFlagEnabled, useFeatureFlagVariantKey, usePostHog } from 'pos
 import { useCallback } from 'react';
 import { FEATURE_FLAGS } from '@/constants';
 
+export type FlagState = boolean | undefined;
+
+/**
+ * Tri-state flag hook.
+ * - `true` / `false` when PostHog flag is resolved
+ * - `undefined` while flags are still loading
+ */
+export function useFlagState(flagKey: keyof typeof FEATURE_FLAGS): FlagState {
+  return useFeatureFlagEnabled(FEATURE_FLAGS[flagKey]);
+}
+
 /**
  * Returns a boolean directly — reactive to PostHog flag state.
  * Use this for simple flag-on/off checks in components.
  */
 export function useFlag(flagKey: keyof typeof FEATURE_FLAGS): boolean {
-  return !!useFeatureFlagEnabled(FEATURE_FLAGS[flagKey]);
+  return useFlagState(flagKey) === true;
 }
 
 /**
