@@ -73,8 +73,15 @@ dealflow/
 - Internal navigation must be SPA-style: use `next/link` or `router.push` for in-app routes. Do not use raw `<a href="/...">` for internal pages.
 - Allowed raw anchors: external URLs, `mailto:`, `tel:`, download links, and API/file endpoints that require browser-native behavior.
 - Keep shells persistent across navigation (`app/(seller)/layout.tsx`, `app/(buyer)/layout.tsx`) and avoid patterns that remount the full app frame.
-- Add and maintain route-level `loading.tsx` skeletons for seller and buyer segments so transitions render immediately.
-- Skeleton loaders are mandatory for critical data regions and new screens; avoid blank page flashes during route/data transitions.
+- Add and maintain route-level `loading.tsx` skeletons for every seller and buyer page so route transitions render immediately with no blank flash.
+- Skeleton loaders are mandatory for all new pages — landing pages, detail pages, and sub-routes alike. A `loading.tsx` is a **blocking deliverable** when creating any new `page.tsx`.
+- **Structural fidelity rule:** `loading.tsx` must mirror the exact layout of the page it covers — same padding, same grid columns, same section count and proportional heights. It must match the client component's own skeleton (e.g. `BrandLandingSkeleton`, `OrdersLoadingSkeleton`) so SSR streaming and client hydration produce no visual jump.
+- **Seller landing pages** wrap content in `max-w-[1920px] mx-auto w-full px-8 py-6` (equivalent to `PageWrap`). Use this directly in `loading.tsx` — do not import `PageWrap` (it is a client-only export).
+- **Seller detail pages** use `max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6` (equivalent to `PageWrap className="pt-7"`). Standard structure: breadcrumb bar → title row (avatar + name/desc + action buttons) → 4 KPI cards → tab pills → content panel.
+- **Buyer pages** use `p-4` or the shell's own padding; do not add extra wrappers.
+- Use only `animate-pulse bg-cream-100 border border-cream-200` for skeleton blocks and `bg-cream-200` for text/label placeholders. Do not import the shadcn `Skeleton` component into `loading.tsx` files — use plain `div`s to keep them dependency-free.
+- When a page's layout changes (sections added, removed, or resized), update its `loading.tsx` in the same PR. Treat mismatched skeletons as a layout bug.
+- Stub/scaffolded pages (not yet fully implemented) still require a `loading.tsx`; use the detail-page template as the base and add a comment noting it should be updated when the page is complete.
 - Optimistic UI is mandatory for human-triggered CTAs where rollback is safe: show instant pending state, apply optimistic cache update, rollback on error, and revalidate in background.
 - Prefer targeted React Query cache updates/invalidation over `router.refresh()`. Use `router.refresh()` only when targeted invalidation cannot provide correct data.
 
