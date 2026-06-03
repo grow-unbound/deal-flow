@@ -61,7 +61,10 @@ export async function middleware(request: NextRequest) {
   try {
     const payload = decodeJWTPayload(session.access_token);
     tenantId = (payload.tenant_id as string) ?? null;
-    role = (payload.role as string) ?? null;
+    // Application role is stored under "user_role" post-migration.
+    // Fall back to "role" for sessions issued before the JWT hook was updated
+    // (fix_jwt_role_claim_collision migration); they auto-heal on token refresh.
+    role = (payload.user_role as string) ?? (payload.role as string) ?? null;
     buyerId = (payload.buyer_id as string) ?? null;
   } catch {
     // Malformed token — treat as expired
