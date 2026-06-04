@@ -4,27 +4,9 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { createTimer } from '@/lib/server-timing';
 import { CohortCreateSchema } from '@/lib/zod';
+import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 
 type CohortType = 'Geo-based' | 'Tier-based' | 'Brand affinity';
-
-function getIstBoundaries(now = new Date()) {
-  const istNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-  const year = istNow.getFullYear();
-  const month = istNow.getMonth();
-  const day = istNow.getDate();
-
-  const mtdStart = new Date(Date.UTC(year, month, 1, 0, 0, 0));
-  const nextMonthStart = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0));
-  const prevMonthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
-  const prevMonthSameDayExclusive = new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0));
-
-  return {
-    mtdStartIso: mtdStart.toISOString(),
-    nextMonthStartIso: nextMonthStart.toISOString(),
-    prevMonthStartIso: prevMonthStart.toISOString(),
-    prevMonthMtdEndIso: prevMonthSameDayExclusive.toISOString(),
-  };
-}
 
 function deriveCohortType(rules: unknown): CohortType {
   const json = rules && typeof rules === 'object' ? (rules as Record<string, unknown>) : null;
@@ -112,9 +94,9 @@ async function getCatalogViewsByCohort(
   }
 }
 
-export async function getCohortsLandingPayload(tenantId: string) {
+export async function getCohortsLandingPayload(tenantId: string, periodInput?: string | null) {
   const db = supabaseAdmin as any;
-  const { mtdStartIso, nextMonthStartIso, prevMonthStartIso, prevMonthMtdEndIso } = getIstBoundaries();
+  const period = getSellerLandingPeriodMeta(periodInput);
 
   const { data: cohorts, error: cohortsError } = await db
     .schema('app')
@@ -150,8 +132,8 @@ export async function getCohortsLandingPayload(tenantId: string) {
       .eq('tenant_id', tenantId)
       .neq('status', 'cancelled')
       .is('deleted_at', null)
-      .gte('placed_at', mtdStartIso)
-      .lt('placed_at', nextMonthStartIso),
+      .gte('placed_at', period.current_start)
+      .lt('placed_at', period.current_end_exclusive),
     db
       .schema('app')
       .from('orders')
@@ -159,8 +141,8 @@ export async function getCohortsLandingPayload(tenantId: string) {
       .eq('tenant_id', tenantId)
       .neq('status', 'cancelled')
       .is('deleted_at', null)
-      .gte('placed_at', prevMonthStartIso)
-      .lt('placed_at', prevMonthMtdEndIso),
+      .gte('placed_at', period.previous_start)
+      .lt('placed_at', period.previous_end_exclusive),
     db
       .schema('app')
       .from('published_catalogs')
@@ -200,8 +182,8 @@ export async function getCohortsLandingPayload(tenantId: string) {
   }
 
   const viewsByCohort = await getCatalogViewsByCohort(tenantId, {
-    fromIso: mtdStartIso,
-    toIso: nextMonthStartIso,
+    fromIso: period.current_start,
+    toIso: period.current_end_exclusive,
   });
 
   const gmvMtdByCohort = new Map<string, number>();
@@ -297,13 +279,7 @@ export async function getCohortsLandingPayload(tenantId: string) {
       top_risers: topRisers,
     },
     cohorts: cohortRows,
-    period: {
-      timezone: 'Asia/Kolkata',
-      current_month_start: mtdStartIso,
-      current_month_end_exclusive: nextMonthStartIso,
-      previous_mtd_start: prevMonthStartIso,
-      previous_mtd_end_exclusive: prevMonthMtdEndIso,
-    },
+    period,
   };
 }
 

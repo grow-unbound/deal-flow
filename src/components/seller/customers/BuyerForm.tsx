@@ -494,7 +494,7 @@ export function BuyerForm({
           <Button
             type="submit"
             disabled={isSubmitting}
-            className="bg-teal-500 hover:bg-teal-600 text-cream-50 flex items-center gap-2"
+            className="flex items-center gap-2"
           >
             {mode === 'create' ? <UserPlus size={16} /> : <Save size={16} />}
             {isSubmitting

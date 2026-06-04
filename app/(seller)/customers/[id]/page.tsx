@@ -143,7 +143,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                 <Download size={14} />
                 Export
               </Button>
-              <Button className="h-9 bg-teal-700 px-5 text-[13px] font-medium text-cream-50 hover:bg-teal-800">
+              <Button size="sm">
                 Open buyer app preview
               </Button>
             </div>
@@ -171,11 +171,13 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         {isSellerAdmin && tab === 'details' ? (
           <div className="mt-4 flex items-center gap-2">
             <Link href={`/customers/${id}/edit`}>
-              <Button type="button" className="h-9 border border-cream-400 bg-white px-4 text-[13px] font-medium text-teal-700 hover:bg-cream-100">Edit</Button>
+              <Button type="button" variant="secondary" size="sm">Edit</Button>
             </Link>
             <AlertDialog>
-              <AlertDialogTrigger className="inline-flex h-9 items-center justify-center rounded-md bg-teal-700 px-4 text-[13px] font-medium text-cream-50 hover:bg-teal-800">
-                {data.details.is_active ? 'Deactivate' : 'Reactivate'}
+              <AlertDialogTrigger asChild>
+                <Button type="button" variant="destructive" size="sm">
+                  {data.details.is_active ? 'Deactivate' : 'Reactivate'}
+                </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>

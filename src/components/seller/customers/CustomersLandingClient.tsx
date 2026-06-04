@@ -19,11 +19,13 @@ import {
 } from '@/components/seller/layout';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn, formatCompactInr } from '@/lib/utils';
+import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import {
   useCustomersLanding,
   type CustomersLandingBuyer,
   type CustomersLandingResponse,
 } from '@/hooks/useCustomersLanding';
+import type { SellerLandingPeriod } from '@/lib/seller-period';
 
 const InviteUserDialog = dynamic(
   () => import('@/components/seller/InviteUserDialog').then((m) => m.InviteUserDialog),
@@ -101,9 +103,16 @@ function CustomersLoadingSkeleton() {
   );
 }
 
-function CustomersLandingContent({ initialData }: { initialData: CustomersLandingResponse | null }) {
+function CustomersLandingContent({
+  initialData,
+  initialPeriod,
+}: {
+  initialData: CustomersLandingResponse | null;
+  initialPeriod: SellerLandingPeriod;
+}) {
   const router = useRouter();
-  const { data, isLoading } = useCustomersLanding(initialData);
+  const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
+  const { data, isLoading } = useCustomersLanding(period, initialData);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [activeChip, setActiveChip] = useState<Chip>('All tiers');
@@ -149,8 +158,11 @@ function CustomersLandingContent({ initialData }: { initialData: CustomersLandin
       <PageHeader
         eyebrow="Buyers"
         title="Customers"
-        subtitle={`${data.kpis.total} retailers across ${data.kpis.cohort_count} cohorts. ${data.kpis.active} active this month. The Tier-A names buy most of revenue, and dues cluster there too.`}
-        horizon="This month"
+        subtitle={`${data.kpis.total} retailers across ${data.kpis.cohort_count} cohorts. ${data.kpis.active} active ${lowerLabel}. The Tier-A names buy most of revenue, and dues cluster there too.`}
+        horizon={horizonLabel}
+        period={period}
+        periodOptions={options}
+        onPeriodChange={setPeriod}
         secondary={{ label: 'Invite buyer', icon: <Send size={13} />, onClick: () => setInviteOpen(true) }}
         primary="Add a customer"
         onPrimaryClick={() => setAddOpen(true)}
@@ -164,7 +176,7 @@ function CustomersLandingContent({ initialData }: { initialData: CustomersLandin
             sub: `${data.kpis.active_pct}% of base ordered`,
           },
           {
-            label: 'Spend · MTD',
+            label: `Spend · ${metricSuffix}`,
             value: formatCompactInr(data.kpis.spend_mtd),
             sub: `${data.kpis.spend_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(data.kpis.spend_growth_pct)}% vs last month`,
             tone: 'accent',
@@ -220,7 +232,7 @@ function CustomersLandingContent({ initialData }: { initialData: CustomersLandin
               initials: buyer.avatar.initials,
               hue: buyer.avatar.hue,
               name: buyer.business_name,
-              reason: `${buyer.city} · ${formatCompactInr(buyer.spend_mtd)} this month`,
+              reason: `${buyer.city} · ${formatCompactInr(buyer.spend_mtd)} ${lowerLabel}`,
               trailing: <GrowthPill value={buyer.growth_pct} />,
             })),
           },
@@ -245,7 +257,7 @@ function CustomersLandingContent({ initialData }: { initialData: CustomersLandin
         columns={[
           { label: 'Buyer', width: 320, className: 'px-5' },
           { label: 'Cohort', className: 'px-5' },
-          { label: 'Spend · MTD', className: 'px-5' },
+          { label: `Spend · ${metricSuffix}`, className: 'px-5' },
           { label: 'Growth', className: 'px-5' },
           { label: 'Orders', className: 'px-5' },
           { label: 'Last order', className: 'px-5' },
@@ -310,10 +322,16 @@ function CustomersLandingContent({ initialData }: { initialData: CustomersLandin
   );
 }
 
-export function CustomersLandingClient({ initialData }: { initialData: CustomersLandingResponse | null }) {
+export function CustomersLandingClient({
+  initialData,
+  initialPeriod,
+}: {
+  initialData: CustomersLandingResponse | null;
+  initialPeriod: SellerLandingPeriod;
+}) {
   return (
     <FeatureGate flag="CUSTOMER_MASTER">
-      <CustomersLandingContent initialData={initialData} />
+      <CustomersLandingContent initialData={initialData} initialPeriod={initialPeriod} />
     </FeatureGate>
   );
 }

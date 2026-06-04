@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { MutationButton } from '@/components/ui/mutation-button';
+import { BrowseUploadField } from '@/components/ui/browse-upload-field';
 
 import { CreateBrandSchema, type CreateBrandInput } from '@/lib/zod';
 import { useCreateCustomBrand, type CreateCustomBrandError } from '@/hooks/useBrands';
@@ -45,6 +46,7 @@ export function CreateBrandForm() {
       slug: '',
       description: '',
       logo_url: '',
+      exclusivity: false,
     },
   });
 
@@ -67,6 +69,7 @@ export function CreateBrandForm() {
       const payload: CreateBrandInput = {
         name: data.name,
         slug: data.slug,
+        exclusivity: data.exclusivity ?? false,
         ...(data.description ? { description: data.description } : {}),
         ...(data.logo_url ? { logo_url: data.logo_url } : {}),
       };
@@ -163,17 +166,16 @@ export function CreateBrandForm() {
             name="logo_url"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Logo URL (optional)</FormLabel>
+                <FormLabel>Brand logo (optional)</FormLabel>
                 <FormControl>
-                  <Input
-                    type="url"
-                    placeholder="https://example.com/logo.png"
-                    {...field}
+                  <BrowseUploadField
+                    value={field.value ? [field.value] : []}
+                    onChange={(urls) => field.onChange(urls[0] ?? '')}
+                    maxFiles={1}
+                    label="Upload logo"
+                    emptyLabel="Drop a logo here or browse files"
                   />
                 </FormControl>
-                <p className="text-xs text-cream-500 mt-1">
-                  Paste a publicly accessible image URL. Image upload will be available soon.
-                </p>
                 <FormMessage />
               </FormItem>
             )}

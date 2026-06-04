@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="details/details.css">
 <link rel="stylesheet" href="v2/v2.css">
 <link rel="stylesheet" href="v2/details-v2.css">
+<link rel="stylesheet" href="v2/orders.css">
 <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg">
 
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
@@ -33,10 +34,13 @@
 <script type="text/babel" src="v2/Shared.jsx"></script>
 <script type="text/babel" src="v2/DetailsV2.jsx"></script>
 <script type="text/babel" src="v2/Lens.jsx"></script>
+<script type="text/babel" src="v2/orders-data.jsx"></script>
+<script type="text/babel" src="v2/Orders.jsx"></script>
 
 <script type="text/babel">
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
-  "showRationale": true
+  "showRationale": true,
+  "drawerState": "confirmed"
 }/*EDITMODE-END*/;
 
 function DetailsV2TweaksPanel({ tweaks, setTweak }) {
@@ -49,6 +53,14 @@ function DetailsV2TweaksPanel({ tweaks, setTweak }) {
           onChange={(v) => setTweak('showRationale', v)}
         />
       </TweakSection>
+      <TweakSection label="Order drawer (C)">
+        <TweakSelect
+          label="Drawer state"
+          value={tweaks.drawerState}
+          options={['received', 'confirmed', 'dispatched', 'delivered', 'cancelled']}
+          onChange={(v) => setTweak('drawerState', v)}
+        />
+      </TweakSection>
       <TweakSection label="About v2">
         <div style={{ fontSize: 12, color: 'var(--cream-700)', lineHeight: 1.55 }}>
           Detail pages keep the tabbed chrome but adapt per entity. <b>Meta strip trimmed to 4 tiles</b> everywhere (drop the weakest one per entity, move identity stuff to the header subtitle). <b>Tab count varies</b>: Brand 5, Product 4, Customer 4, Cohort 3, Catalog 3. The "Lens demos" section proves inverse views earn their place.
@@ -58,8 +70,7 @@ function DetailsV2TweaksPanel({ tweaks, setTweak }) {
   );
 }
 
-function DetailRationaleNote() {
-  return (
+function DetailRationaleNote() {  return (
     <div style={{
       background: 'var(--cream-50)',
       border: '1px solid var(--cream-300)',
@@ -87,6 +98,29 @@ function DetailRationaleNote() {
   );
 }
 
+function OrderDirectionsNote() {
+  return (
+    <div style={{
+      background: 'var(--cream-50)', border: '1px solid var(--cream-300)',
+      borderRadius: 14, padding: '20px 24px', maxWidth: 980,
+    }}>
+      <div style={{
+        fontSize: 11, fontWeight: 600, letterSpacing: '0.14em',
+        textTransform: 'uppercase', color: 'var(--ember-700)', marginBottom: 8,
+      }}>Order details · three directions</div>
+      <ul style={{
+        margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 8,
+        fontSize: 13, lineHeight: 1.55, color: 'var(--cream-800)',
+      }}>
+        <li><b>An order is a transaction, not a hub.</b> Brands, buyers and cohorts earn tabs and inverse lenses because you read them from many angles. An order points one way — at itself — so it gets its own focused format, not the tabbed chrome.</li>
+        <li><b>B · Transactional page (recommended).</b> One scroll, no tabs: status stepper up top, the single next action beside it, items with live stock checks, the invoice once confirmed, payment, and the full change-log. Shown below across its lifecycle states.</li>
+        <li><b>C · Slide-in drawer.</b> The everyday move — glance at an order from the log without losing your place. The same shell becomes the app-wide quick-look for any entity. Deep work still opens the full page.</li>
+        <li><b>A · Forced into tabs.</b> Included to show why it strains: even two tabs split a story that wants to be read at once. Kept as the counter-example.</li>
+      </ul>
+    </div>
+  );
+}
+
 function App() {
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
@@ -103,6 +137,64 @@ function App() {
               <DetailRationaleNote />
             </DCArtboard>
           )}
+        </DCSection>
+
+        {/* ─── ORDER DETAILS ───────────────────────────────────────── */}
+        <DCSection
+          id="order-directions"
+          title="Order details · the approach"
+          subtitle="Orders are transactional, single-entity, no inverse lenses — so they get a focused format, not the tabbed chrome. Three directions, with a recommendation."
+        >
+          {tweaks.showRationale && (
+            <DCArtboard id="order-note" label="Recommendation" width={1040} height={300}>
+              <OrderDirectionsNote />
+            </DCArtboard>
+          )}
+          <DCArtboard id="order-states" label="Every state · contextual actions" width={1240} height={680}>
+            <div className="v2-page">
+              <div className="v2-page-inner" style={{ paddingTop: 28 }}>
+                <div className="eyebrow" style={{ marginBottom: 4 }}>The workflow you live in</div>
+                <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 500, letterSpacing: '-0.01em', margin: '0 0 18px' }}>Each state shows where the order is and the one thing to do next</h2>
+                <OrderStatesStrip />
+              </div>
+            </div>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="order-b"
+          title="Direction B · transactional page (recommended)"
+          subtitle="One focused scroll. Status stepper + the next action, items with stock checks, invoice (from Confirmed on), payment, and the full change-log. Shown across the lifecycle."
+        >
+          <DCArtboard id="order-b-received" label="B · Received · needs action" width={1440} height={1380}>
+            <OrderTransactional state="received" label="Order · Received" />
+          </DCArtboard>
+          <DCArtboard id="order-b-dispatched" label="B · Dispatched · in transit" width={1440} height={1420}>
+            <OrderTransactional state="dispatched" label="Order · Dispatched" />
+          </DCArtboard>
+          <DCArtboard id="order-b-delivered" label="B · Delivered · paid" width={1440} height={1560}>
+            <OrderTransactional state="delivered" label="Order · Delivered" />
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="order-c"
+          title="Direction C · slide-in drawer (reusable)"
+          subtitle="Opened from the order log without leaving the page. The same drawer shell becomes the app-wide quick-look for any entity. Flip its state in Tweaks."
+        >
+          <DCArtboard id="order-c-list" label="C · Drawer over the order log" width={1440} height={1000}>
+            <OrdersListWithDrawer state={tweaks.drawerState} label="Orders · quick-look" />
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="order-a"
+          title="Direction A · forced into tabs (the counter-example)"
+          subtitle="Included to show why the tabbed chrome doesn't fit an order: even two tabs split a story that wants to be read at once."
+        >
+          <DCArtboard id="order-a-tabbed" label="A · Tabbed · Summary" width={1440} height={1440}>
+            <OrderTabbed active="summary" label="Order · tabbed" />
+          </DCArtboard>
         </DCSection>
 
         {/* ─── Lens-pair demos ─────────────────────────────────────── */}

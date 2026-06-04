@@ -1,0 +1,197 @@
+// details/data.jsx — Sample entity data for all 5 detail pages.
+// Each record carries enough to render BOTH the edit-mode panel
+// (form-style key/value pairs) and the performance panel.
+
+const BRAND_DETAIL = {
+  id: 'wy',
+  name: 'WineYard Vintners',
+  initials: 'WY',
+  hue: 'teal',
+  category: 'Wines',
+  region: 'Nashik, Maharashtra',
+  status: { label: 'On pace', tone: 'success' },
+  carriedSince: 'Apr 2019',
+  principalContact: { name: 'Ravi Pratap', role: 'National sales head', phone: '+91 98...12', email: 'ravi@wineyard.in' },
+  gstin: '27AABCW1234A1Z5',
+  paymentTerms: 'Net 30',
+  marginAgreement: '18%–22% (tiered)',
+  defaultCohort: 'North Delhi · A-class',
+  masterPriceList: 'WY · Base FY26',
+  notes: 'Switch to Q3 reserve allocation in July. Founder visit pending.',
+  perf: {
+    gmv: 1680000, gmvPrior: 1500000, growth: 12,
+    share: 35.5, activeBuyers: 38, totalBuyers: 142,
+    skus: 82, cohorts: 4, lowStock: 4, daysSinceCatalog: 3,
+    margin: 18.4, sellThrough: 71, repeatRate: 64,
+    trend: [62, 68, 71, 70, 78, 82, 79, 88, 84, 92, 96, 100],
+    trendLabels: ['Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May','Jun'],
+    topBuyers: [
+      { name: 'Singh Hospitality', city: 'Bengaluru', spend: 384000, orders: 6 },
+      { name: 'Verma & Sons', city: 'Gurugram', spend: 264000, orders: 4 },
+      { name: 'Rajan Wine Merchants', city: 'New Delhi', spend: 218000, orders: 5 },
+      { name: 'Mehta Brothers', city: 'Mumbai', spend: 162000, orders: 3 },
+    ],
+    topSkus: [
+      { name: 'Cabernet Sauvignon 2021', sku: 'VINO-CAB-750-2021', units: 412, gmv: 1009400 },
+      { name: 'Cabernet Franc Reserve', sku: 'VINO-CFR-750-2020', units: 168, gmv: 500640 },
+      { name: 'Estate Chardonnay 2022', sku: 'VINO-CHR-750-2022', units: 92, gmv: 170200 },
+    ],
+    catalogHistory: [
+      { name: 'Summer Pours', sent: 'Jun 24', cohort: 'North Delhi · A-class', orders: 14, gmv: 412000 },
+      { name: 'Premium Reserve', sent: 'Jun 12', cohort: 'South India Specialty', orders: 11, gmv: 612000 },
+      { name: 'Vintage Drop', sent: 'May 30', cohort: 'Maharashtra Premium', orders: 8, gmv: 248000 },
+    ],
+  },
+};
+
+const PRODUCT_DETAIL = {
+  id: 'p1',
+  name: 'Cabernet Sauvignon 2021',
+  brand: 'WineYard Vintners',
+  brandInitials: 'WY',
+  brandHue: 'teal',
+  sku: 'VINO-CAB-750-2021',
+  hsn: '22042100',
+  gstRate: '28%',
+  pack: '750 ml',
+  caseSize: '12 bottles',
+  mrp: 2800,
+  basePrice: 2450,
+  weight: '1.4 kg',
+  status: { label: 'In stock', tone: 'success' },
+  category: 'Red wine',
+  vintage: '2021',
+  description: 'Single-estate Cabernet Sauvignon from Nashik. Aged 14 months in French oak. Full-bodied, blackcurrant and graphite.',
+  perf: {
+    units: 412, unitsPrior: 368, growth: 12,
+    gmv: 1009400, returns: 0, sellThrough: 71,
+    onHand: 96, daysOfCover: 14, lastOrdered: '4h ago',
+    trend: [22, 26, 28, 32, 34, 36, 38, 42, 44, 48, 50, 52],
+    topBuyers: [
+      { name: 'Singh Hospitality', city: 'Bengaluru', units: 96 },
+      { name: 'Rajan Wine Merchants', city: 'New Delhi', units: 72 },
+      { name: 'Verma & Sons', city: 'Gurugram', units: 48 },
+      { name: 'Hotel Lalit', city: 'New Delhi', units: 36 },
+    ],
+    priceByCohort: [
+      { cohort: 'North Delhi · A-class',   price: 2450, override: false },
+      { cohort: 'Maharashtra Premium',     price: 2380, override: true },
+      { cohort: 'South India Specialty',   price: 2520, override: true },
+      { cohort: 'All buyers (base)',       price: 2450, override: false },
+    ],
+  },
+};
+
+const CUSTOMER_DETAIL = {
+  id: 'b4',
+  name: 'Singh Hospitality',
+  initials: 'SH',
+  hue: 'ember',
+  city: 'Bengaluru, Karnataka',
+  tier: 'A',
+  status: { label: 'Active', tone: 'success' },
+  buyerSince: 'Jan 2021',
+  contact: { name: 'Harpreet Singh', role: 'Procurement lead', phone: '+91 99...44', email: 'p@singhh.in' },
+  gstin: '29ABFCS9912H1ZK',
+  pan: 'ABFCS9912H',
+  paymentTerms: 'Net 21',
+  creditLimit: 600000,
+  creditUsed: 384000,
+  defaultCohort: 'South India Specialty',
+  billing: '14 Lavelle Road, Bengaluru 560001',
+  shipping: '14 Lavelle Road, Bengaluru 560001',
+  notes: 'Hospitality group · 3 hotels. Prefers Friday deliveries. Founder visit Q3.',
+  perf: {
+    spend: 612000, spendPrior: 484000, growth: 26,
+    orders: 6, aov: 102000, lastOrder: '3d ago',
+    brandMix: [
+      { name: 'WineYard', share: 48, hue: 'teal' },
+      { name: 'Khanna Brewing', share: 22, hue: 'ember' },
+      { name: 'Maison Roussel', share: 18, hue: 'cream' },
+      { name: 'Aravalli', share: 12, hue: 'ember' },
+    ],
+    topSkus: [
+      { name: 'Cabernet Sauvignon 2021', sku: 'VINO-CAB-750-2021', units: 96, gmv: 235200 },
+      { name: 'Indian Pale Ale', sku: 'KHAN-IPA-330-006', units: 84, gmv: 48720 },
+      { name: 'Chenin Blanc', sku: 'MRSL-CB-750-2022', units: 42, gmv: 68880 },
+    ],
+    trend: [42, 48, 52, 58, 64, 72, 70, 78, 84, 88, 96, 102],
+    paymentBehavior: 'On time · 22 of 24 invoices',
+    catalogOpens: 14,
+  },
+};
+
+const COHORT_DETAIL = {
+  id: 'mh-prem',
+  name: 'Maharashtra Premium',
+  status: { label: 'Active', tone: 'success' },
+  description: 'A-class and B-class buyers in Maharashtra with focus on premium wines and import labels.',
+  members: 28,
+  totalBuyers: 142,
+  rules: [
+    { k: 'State',         v: 'Maharashtra' },
+    { k: 'Tier',          v: 'A or B' },
+    { k: 'Brand focus',   v: 'WineYard, Maison Roussel' },
+    { k: 'Order history', v: '≥ ₹50 K in last 90 days' },
+  ],
+  defaultPriceList: 'MH Premium · FY26',
+  applicableCatalogs: 3,
+  createdBy: 'Phani Raju · Apr 2025',
+  perf: {
+    gmv: 1140000, gmvPrior: 1020000, growth: 12,
+    avgOrderValue: 124000, conversionRate: 38,
+    activeMembers: 19, dormantMembers: 9,
+    brandsSold: 5,
+    trend: [60, 64, 68, 66, 72, 74, 78, 82, 80, 86, 90, 94],
+    topMembers: [
+      { name: 'Mehta Brothers', city: 'Mumbai',   spend: 246000, orders: 4 },
+      { name: 'Kapoor Spirits', city: 'Pune',     spend: 184000, orders: 3 },
+      { name: 'Borivali Wines', city: 'Mumbai',   spend: 142000, orders: 3 },
+      { name: 'Solapur Cellars', city: 'Solapur', spend: 96000,  orders: 2 },
+    ],
+    catalogPerformance: [
+      { name: 'Premium Reserve',  sent: 'Jun 12', opens: 24, orders: 11, gmv: 612000 },
+      { name: 'New Arrivals · May', sent: 'May 30', opens: 22, orders: 8, gmv: 248000 },
+    ],
+  },
+};
+
+const CATALOG_DETAIL = {
+  id: 'c1',
+  name: 'Summer Pours',
+  cohort: 'North Delhi · A-class',
+  cohortMembers: 12,
+  hue: 'teal',
+  status: { label: 'Live', tone: 'success' },
+  validFrom: 'May 20',
+  validUntil: 'May 31',
+  daysLeft: 4,
+  products: 28,
+  intro: 'Six new arrivals plus the WineYard summer favourites. Order by Friday for Monday delivery.',
+  brandsCovered: 3,
+  publishedBy: 'Phani Raju',
+  publishedAt: 'May 20, 4:12 pm',
+  perf: {
+    views: 184, uniqueViewers: 11,
+    orders: 14, conversionRate: 50,
+    gmv: 412000, gmvPrior: 286000,
+    aov: 29400, growth: 44,
+    abandoners: 3,
+    trend: [0, 12, 28, 38, 46, 58, 64, 78, 92, 108, 122, 142],
+    topSkus: [
+      { name: 'Cabernet Sauvignon 2021', sku: 'VINO-CAB-750-2021', units: 96, gmv: 235200 },
+      { name: 'Cabernet Franc Reserve',  sku: 'VINO-CFR-750-2020', units: 48, gmv: 143040 },
+      { name: 'Estate Chardonnay 2022',  sku: 'VINO-CHR-750-2022', units: 24, gmv: 44400 },
+    ],
+    buyers: [
+      { name: 'Rajan Wine Merchants', city: 'New Delhi', orders: 2, gmv: 84200, opened: 'yes' },
+      { name: 'Verma & Sons',         city: 'Gurugram',  orders: 4, gmv: 218500, opened: 'yes' },
+      { name: 'Hotel Lalit',          city: 'New Delhi', orders: 3, gmv: 96200,  opened: 'yes' },
+      { name: 'Capitol Spirits',      city: 'New Delhi', orders: 0, gmv: 0,      opened: 'no' },
+    ],
+  },
+};
+
+Object.assign(window, {
+  BRAND_DETAIL, PRODUCT_DETAIL, CUSTOMER_DETAIL, COHORT_DETAIL, CATALOG_DETAIL,
+});

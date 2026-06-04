@@ -84,11 +84,11 @@ const SheetTitle = React.forwardRef<
 SheetTitle.displayName = 'SheetTitle';
 
 const SheetBody = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn('flex-1 overflow-y-auto px-5 py-4', className)} {...props} />
+  <div className={cn('flex-1 overflow-y-auto px-[22px] py-[20px]', className)} {...props} />
 );
 
 const SheetFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn('px-5 py-4 border-t border-cream-200 flex flex-col gap-2', className)} {...props} />
+  <div className={cn('flex-shrink-0 flex flex-row items-center gap-2 border-t border-cream-300 bg-cream-50 px-[22px] py-[14px]', className)} {...props} />
 );
 
 export { Sheet, SheetTrigger, SheetClose, SheetPortal, SheetOverlay, SheetContent, SheetHeader, SheetTitle, SheetBody, SheetFooter };

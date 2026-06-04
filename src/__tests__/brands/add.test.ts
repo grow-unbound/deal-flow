@@ -14,10 +14,19 @@ interface TenantBrandRow {
   tenant_id: string;
   master_brand_id: string;
   display_name_override: string | null;
+  logo_url: string | null;
   margin_pct: number | null;
   exclusivity: boolean | null;
   is_active: boolean;
   external_ref: string | null;
+  principal_name: string | null;
+  principal_email: string | null;
+  principal_phone: string | null;
+  principal_location: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  default_cohort_id: string | null;
   created_at: string;
   updated_at: string;
   master_brand: MasterBrand | null;
@@ -36,10 +45,19 @@ const mockTenantBrandRow: TenantBrandRow = {
   tenant_id: 'tenant-uuid-001',
   master_brand_id: mockMasterBrand.id,
   display_name_override: null,
+  logo_url: null,
   margin_pct: null,
   exclusivity: null,
   is_active: true,
   external_ref: null,
+  principal_name: null,
+  principal_email: null,
+  principal_phone: null,
+  principal_location: null,
+  contact_name: null,
+  contact_email: null,
+  contact_phone: null,
+  default_cohort_id: null,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
   master_brand: mockMasterBrand,
@@ -105,7 +123,13 @@ describe('Tenant brands API - add brand', () => {
     const res = await fetch('/api/tenant/brands', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ master_brand_id: mockMasterBrand.id }),
+      body: JSON.stringify({
+        mode: 'import',
+        master_brand_id: mockMasterBrand.id,
+        margin_pct: 12.5,
+        principal_name: 'Phani Team',
+        principal_location: 'Bengaluru',
+      }),
     });
 
     expect(res.ok).toBe(true);

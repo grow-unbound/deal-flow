@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
 const usePriceListDetailMock = vi.fn();
@@ -84,9 +84,10 @@ describe('price-lists/[id] detail page', () => {
     fireEvent.click(screen.getByRole('button', { name: '' }));
     expect(screen.getByText('Extend validity')).toBeInTheDocument();
 
+    cleanup();
     usePriceListDetailMock.mockReturnValueOnce({ isLoading: false, isError: false, data: { price_list: { ...detail, status: 'expired', status_label: 'Expired', status_tone: 'neutral' } } });
     render(<PriceListDetailPage />);
-    fireEvent.click(screen.getAllByRole('button', { name: '' })[1]);
+    fireEvent.click(screen.getByRole('button', { name: '' }));
     expect(screen.queryByText('Extend validity')).not.toBeInTheDocument();
   });
 });

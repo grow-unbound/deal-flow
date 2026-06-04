@@ -24,11 +24,13 @@ import OrdersPage from '../../../app/(seller)/orders/page';
 function mockOrdersData() {
   return {
     period: {
+      selected: 'month',
       timezone: 'Asia/Kolkata',
-      current_month_start: '2026-05-01',
-      current_month_end_exclusive: '2026-06-01',
-      previous_mtd_start: '2026-04-01',
-      previous_mtd_end_exclusive: '2026-04-30',
+      current_start: '2026-05-01T00:00:00.000Z',
+      current_end_exclusive: '2026-06-01T00:00:00.000Z',
+      previous_start: '2026-04-01T00:00:00.000Z',
+      previous_end_exclusive: '2026-04-30T00:00:00.000Z',
+      elapsed_days: 30,
     },
     kpis: {
       orders_mtd: 4,

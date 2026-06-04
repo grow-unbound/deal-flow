@@ -18,7 +18,7 @@ export default function TeamPage() {
   const addUserAction = isAdmin ? (
     <Button
       onClick={() => setInviteOpen(true)}
-      className="bg-teal-500 hover:bg-teal-600 text-cream-50 flex items-center gap-2"
+      className="flex items-center gap-2"
     >
       <UserPlus size={16} />
       Add user
