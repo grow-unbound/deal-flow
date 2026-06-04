@@ -19,9 +19,11 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useTenantBrands, type TenantBrand, type TenantBrandsResponse } from '@/hooks/useBrands';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { formatCompactInr } from '@/lib/utils';
+import type { SellerLandingPeriod } from '@/lib/seller-period';
 
 type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Growth (high → low)' | 'Catalog age (most recent)';
 
@@ -115,9 +117,16 @@ function toBrandVm(brand: TenantBrand, index: number): BrandVm {
   };
 }
 
-function BrandLandingContent({ initialData }: { initialData: TenantBrandsResponse | null }) {
+function BrandLandingContent({
+  initialData,
+  initialPeriod,
+}: {
+  initialData: TenantBrandsResponse | null;
+  initialPeriod: SellerLandingPeriod;
+}) {
   const router = useRouter();
-  const { data, isLoading, isError } = useTenantBrands(initialData ?? undefined);
+  const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
+  const { data, isLoading, isError } = useTenantBrands(period, initialData ?? undefined);
   const [search, setSearch] = useState('');
   const dynamicChips = useMemo(() => ['All categories', ...(data?.categories ?? []), 'At risk'], [data?.categories]);
   const [activeChip, setActiveChip] = useState<string>('All categories');
@@ -187,7 +196,7 @@ function BrandLandingContent({ initialData }: { initialData: TenantBrandsRespons
     const reasons: string[] = [];
     if (alerts.includes('low_stock')) reasons.push('Low stock SKUs (qty <= reorder point)');
     if (alerts.includes('gmv_decline')) reasons.push('GMV is below previous month-to-date');
-    if (alerts.includes('not_in_catalog_mtd')) reasons.push('Not published in any catalog this month');
+    if (alerts.includes('not_in_catalog_mtd')) reasons.push(`Not published in any catalog ${lowerLabel}`);
     return reasons.join(' · ');
   };
   const freshnessHelp = () => {
@@ -195,7 +204,7 @@ function BrandLandingContent({ initialData }: { initialData: TenantBrandsRespons
     const fresh = data?.kpis?.catalog_freshness_count ?? 0;
     const total = data?.kpis?.total_published_catalogs ?? 0;
     const denom = `${fresh}/${total} catalogs`;
-    if (days == null) return `${denom} published this month`;
+    if (days == null) return `${denom} published ${lowerLabel}`;
     if (days === 0) return `${denom} published today`;
     if (days === 1) return `${denom} published yesterday`;
     return `${denom} published in the last ${days} days`;
@@ -213,8 +222,11 @@ function BrandLandingContent({ initialData }: { initialData: TenantBrandsRespons
       <PageHeader
         eyebrow="Portfolio"
         title="Brands"
-        subtitle={`${updatedBrands.length} brand principals. Phani Distribution carries them across ${totalBuyers} buyers in this month. This is your portfolio at a glance.`}
-        horizon="This month"
+        subtitle={`${updatedBrands.length} brand principals. Phani Distribution carries them across ${totalBuyers} buyers ${lowerLabel}. This is your portfolio at a glance.`}
+        horizon={horizonLabel}
+        period={period}
+        periodOptions={options}
+        onPeriodChange={setPeriod}
         secondary={{ label: 'Invite a principal', icon: <UserPlus size={13} />, onClick: () => setInviteOpen(true) }}
         primary="Add a brand"
         onPrimaryClick={() => setAddBrandOpen(true)}
@@ -281,7 +293,7 @@ function BrandLandingContent({ initialData }: { initialData: TenantBrandsRespons
               initials: brand.initials,
               hue: brand.hue,
               name: brand.name,
-              reason: `from ${formatCompactInr(brand.gmvPrior)} → ${formatCompactInr(brand.gmv)} this month`,
+              reason: `from ${formatCompactInr(brand.gmvPrior)} → ${formatCompactInr(brand.gmv)} ${lowerLabel}`,
               trailing: brand.growth > 0 ? `↑ +${brand.growth}%` : brand.growth < 0 ? `↓ ${Math.abs(brand.growth)}%` : '· flat',
             })),
           },
@@ -305,7 +317,7 @@ function BrandLandingContent({ initialData }: { initialData: TenantBrandsRespons
       <LandingTable
         columns={[
           { label: 'Brand', width: 320, className: 'px-5' },
-          { label: 'GMV · MTD', className: 'px-5' },
+          { label: `GMV · ${metricSuffix}`, className: 'px-5' },
           { label: 'Growth', className: 'px-5' },
           { label: 'Share of portfolio', className: 'px-5' },
           { label: 'Active buyers', align: 'right', className: 'px-5' },
@@ -372,10 +384,16 @@ function BrandLandingContent({ initialData }: { initialData: TenantBrandsRespons
   );
 }
 
-export function BrandsLandingClient({ initialData }: { initialData: TenantBrandsResponse | null }) {
+export function BrandsLandingClient({
+  initialData,
+  initialPeriod,
+}: {
+  initialData: TenantBrandsResponse | null;
+  initialPeriod: SellerLandingPeriod;
+}) {
   return (
     <FeatureGate flag="BRAND_PRODUCT_MASTER">
-      <BrandLandingContent initialData={initialData} />
+      <BrandLandingContent initialData={initialData} initialPeriod={initialPeriod} />
     </FeatureGate>
   );
 }

@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-fetch';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
+import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
 
 export type CatalogDisplayStatus = 'Live' | 'Draft' | 'Ended';
 export type CatalogStatusTone = 'success' | 'warning' | 'neutral';
@@ -34,6 +35,7 @@ export interface CatalogLandingRow {
 }
 
 export interface CatalogsLandingResponse {
+  period?: SellerLandingPeriodMeta;
   kpis: {
     live_catalogs: number;
     draft_catalogs: number;
@@ -125,11 +127,11 @@ export interface CatalogCompositionMutationRequest {
   price_override?: number | null;
 }
 
-export function useTenantCatalogs(initialData?: CatalogsLandingResponse | null) {
+export function useTenantCatalogs(period: SellerLandingPeriod = 'month', initialData?: CatalogsLandingResponse | null) {
   return useQuery({
-    queryKey: ['tenant-catalogs'],
+    queryKey: ['tenant-catalogs', period],
     queryFn: async (): Promise<CatalogsLandingResponse> => {
-      const res = await apiFetch('/api/tenant/catalogs');
+      const res = await apiFetch(`/api/tenant/catalogs?period=${period}`);
       if (!res.ok) throw new Error('Failed to fetch catalogs');
       return res.json();
     },

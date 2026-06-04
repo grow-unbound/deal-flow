@@ -16,8 +16,10 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useCohortsLanding, type CohortType, type CohortsLandingResponse, type CohortsLandingRow } from '@/hooks/useCohorts';
 import { formatCompactInr } from '@/lib/utils';
+import type { SellerLandingPeriod } from '@/lib/seller-period';
 
 type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Growth (high → low)' | 'Conversion (high → low)';
 
@@ -64,9 +66,16 @@ function CohortsLandingSkeleton() {
   );
 }
 
-function CohortsLandingContent({ initialData }: { initialData: CohortsLandingResponse | null }) {
+function CohortsLandingContent({
+  initialData,
+  initialPeriod,
+}: {
+  initialData: CohortsLandingResponse | null;
+  initialPeriod: SellerLandingPeriod;
+}) {
   const router = useRouter();
-  const { data, isLoading, isError, refetch } = useCohortsLanding(initialData);
+  const { period, setPeriod, horizonLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
+  const { data, isLoading, isError, refetch } = useCohortsLanding(period, initialData);
 
   const [search, setSearch] = useState('');
   const [activeChip, setActiveChip] = useState<'All' | CohortType>('All');
@@ -116,7 +125,10 @@ function CohortsLandingContent({ initialData }: { initialData: CohortsLandingRes
         eyebrow="Segmentation"
         title="Cohorts"
         subtitle={`${kpis?.total_cohorts ?? 0} buyer groups defined by geo, tier, and brand affinity. Each one gets its own catalogs and price list.`}
-        horizon="This month"
+        horizon={horizonLabel}
+        period={period}
+        periodOptions={options}
+        onPeriodChange={setPeriod}
         secondary={{
           label: 'Publish catalog',
           icon: <Grid size={13} />,
@@ -134,7 +146,7 @@ function CohortsLandingContent({ initialData }: { initialData: CohortsLandingRes
             sub: `covering ${kpis?.covered_members ?? 0} of ${kpis?.total_buyers ?? 0} buyers`,
           },
           {
-            label: 'Combined GMV',
+            label: `Combined GMV · ${metricSuffix}`,
             value: formatCompactInr(kpis?.combined_gmv_mtd ?? 0),
             sub: `${(kpis?.growth_pct ?? 0) >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis?.growth_pct ?? 0)}% vs last month`,
             tone: 'accent',
@@ -211,7 +223,7 @@ function CohortsLandingContent({ initialData }: { initialData: CohortsLandingRes
       <div className="v2-body overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
         <div className="v2-grid-body grid grid-cols-1 gap-[14px] bg-cream-50 p-4 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map((cohort) => (
-            <CohortTile key={cohort.id} cohort={cohort} onClick={() => router.push(`/cohorts/${cohort.id}`)} />
+            <CohortTile key={cohort.id} cohort={cohort} metricSuffix={metricSuffix} onClick={() => router.push(`/cohorts/${cohort.id}`)} />
           ))}
         </div>
       </div>
@@ -219,7 +231,15 @@ function CohortsLandingContent({ initialData }: { initialData: CohortsLandingRes
   );
 }
 
-function CohortTile({ cohort, onClick }: { cohort: CohortsLandingRow; onClick: () => void }) {
+function CohortTile({
+  cohort,
+  metricSuffix,
+  onClick,
+}: {
+  cohort: CohortsLandingRow;
+  metricSuffix: string;
+  onClick: () => void;
+}) {
   return (
     <article
       className="v2-coh-tile flex cursor-pointer flex-col gap-3 rounded-[14px] border border-cream-300 bg-white px-5 py-[18px] transition-all duration-fast hover:-translate-y-[1px] hover:border-cream-500"
@@ -243,7 +263,7 @@ function CohortTile({ cohort, onClick }: { cohort: CohortsLandingRow; onClick: (
 
       <div className="v2-coh-stats mt-1 grid grid-cols-2 gap-x-3 gap-y-2.5 border-t border-cream-300 pt-3">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-cream-700">GMV · MTD</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-cream-700">{`GMV · ${metricSuffix}`}</p>
           <p className="mt-0.5 font-display text-[18px] font-medium tracking-[-0.005em] text-cream-900">{formatCompactInr(cohort.gmv_mtd)}</p>
         </div>
         <div>
@@ -269,10 +289,16 @@ function CohortTile({ cohort, onClick }: { cohort: CohortsLandingRow; onClick: (
   );
 }
 
-export function CohortsLandingClient({ initialData }: { initialData: CohortsLandingResponse | null }) {
+export function CohortsLandingClient({
+  initialData,
+  initialPeriod,
+}: {
+  initialData: CohortsLandingResponse | null;
+  initialPeriod: SellerLandingPeriod;
+}) {
   return (
     <FeatureGate flag="COHORTS">
-      <CohortsLandingContent initialData={initialData} />
+      <CohortsLandingContent initialData={initialData} initialPeriod={initialPeriod} />
     </FeatureGate>
   );
 }

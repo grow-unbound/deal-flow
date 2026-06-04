@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const payload = await getCohortsLandingPayload(claims.tenant_id);
+    const payload = await getCohortsLandingPayload(claims.tenant_id, request.nextUrl.searchParams.get('period'));
     return timedJson(payload);
   } catch (error: any) {
     console.error('[GET /api/tenant/cohorts] DB error:', error?.code, error?.message);

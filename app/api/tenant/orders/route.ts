@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
+import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 
 type OrderStatus = 'draft' | 'received' | 'confirmed' | 'partially_dispatched' | 'dispatched' | 'delivered' | 'cancelled';
 type StatusTone = 'success' | 'warning' | 'danger' | 'neutral';
@@ -46,30 +47,6 @@ function getHue(index: number): AvatarHue {
   return 'cream';
 }
 
-function formatDateKey(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-function getIstBoundaries(now = new Date()) {
-  const istNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-  const year = istNow.getFullYear();
-  const month = istNow.getMonth();
-  const day = istNow.getDate();
-
-  const mtdStart = new Date(Date.UTC(year, month, 1, 0, 0, 0));
-  const nextMonthStart = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0));
-
-  const prevMonthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
-  const prevMonthSameDayExclusive = new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0));
-
-  return {
-    mtdStartIso: mtdStart.toISOString(),
-    nextMonthStartIso: nextMonthStart.toISOString(),
-    prevMonthStartIso: prevMonthStart.toISOString(),
-    prevMonthMtdEndIso: prevMonthSameDayExclusive.toISOString(),
-  };
-}
-
 function statusMeta(status: OrderStatus): { label: string; tone: StatusTone; filterChip: string } {
   if (status === 'confirmed') return { label: 'Confirmed', tone: 'warning', filterChip: 'Confirmed' };
   if (status === 'dispatched' || status === 'partially_dispatched') {
@@ -111,7 +88,7 @@ export async function GET(req: NextRequest) {
     }
 
     const tenantId = claims.tenant_id;
-    const { mtdStartIso, nextMonthStartIso, prevMonthStartIso, prevMonthMtdEndIso } = getIstBoundaries();
+    const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
 
     const db = supabaseAdmin;
 
@@ -119,10 +96,11 @@ export async function GET(req: NextRequest) {
     const cacheKey = [
       tenantId,
       limit,
-      mtdStartIso.slice(0, 10),
-      nextMonthStartIso.slice(0, 10),
-      prevMonthStartIso.slice(0, 10),
-      prevMonthMtdEndIso.slice(0, 10),
+      period.selected,
+      period.current_start.slice(0, 10),
+      period.current_end_exclusive.slice(0, 10),
+      period.previous_start.slice(0, 10),
+      period.previous_end_exclusive.slice(0, 10),
     ].join(':');
 
     const cached = ordersLandingCache.get(cacheKey);
@@ -143,8 +121,8 @@ export async function GET(req: NextRequest) {
         .select('id, order_number, buyer_id, status, total_amount, placed_at, created_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
-        .gte('placed_at', mtdStartIso)
-        .lt('placed_at', nextMonthStartIso)
+        .gte('placed_at', period.current_start)
+        .lt('placed_at', period.current_end_exclusive)
         .order('placed_at', { ascending: false })
         .limit(limit),
       db
@@ -153,23 +131,23 @@ export async function GET(req: NextRequest) {
         .select('id, total_amount')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
-        .gte('placed_at', prevMonthStartIso)
-        .lt('placed_at', prevMonthMtdEndIso),
+        .gte('placed_at', period.previous_start)
+        .lt('placed_at', period.previous_end_exclusive),
       db
         .schema('app')
         .from('kpi_tenant_daily')
         .select('orders_count, buyers_count, gmv')
         .eq('tenant_id', tenantId)
-        .gte('day', mtdStartIso.slice(0, 10))
-        .lt('day', nextMonthStartIso.slice(0, 10))
+        .gte('day', period.current_start.slice(0, 10))
+        .lt('day', period.current_end_exclusive.slice(0, 10))
         .is('deleted_at', null),
       db
         .schema('app')
         .from('kpi_tenant_daily')
         .select('orders_count, gmv')
         .eq('tenant_id', tenantId)
-        .gte('day', prevMonthStartIso.slice(0, 10))
-        .lt('day', prevMonthMtdEndIso.slice(0, 10))
+        .gte('day', period.previous_start.slice(0, 10))
+        .lt('day', period.previous_end_exclusive.slice(0, 10))
         .is('deleted_at', null),
     ]);
 
@@ -260,13 +238,7 @@ export async function GET(req: NextRequest) {
     const inMotion = rows.filter((row) => row.status.value === 'dispatched').slice(0, 2);
 
     const payload = {
-      period: {
-        timezone: 'Asia/Kolkata',
-        current_month_start: formatDateKey(new Date(mtdStartIso)),
-        current_month_end_exclusive: formatDateKey(new Date(nextMonthStartIso)),
-        previous_mtd_start: formatDateKey(new Date(prevMonthStartIso)),
-        previous_mtd_end_exclusive: formatDateKey(new Date(prevMonthMtdEndIso)),
-      },
+      period,
       kpis: {
         orders_mtd: ordersMtd,
         orders_prev_mtd: ordersPrevMtd,

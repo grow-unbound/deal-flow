@@ -153,5 +153,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (data.default_cohort_id && buyer) {
+    await db
+      .schema('app')
+      .from('cohort_members')
+      .insert({ cohort_id: data.default_cohort_id, buyer_id: buyer.id })
+      .throwOnError();
+  }
+
   return NextResponse.json({ buyer }, { status: 201 });
 }

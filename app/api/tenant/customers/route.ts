@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { createTimer } from '@/lib/server-timing';
+import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 
 type StatusTone = 'success' | 'warning' | 'danger' | 'neutral';
 
@@ -34,28 +35,6 @@ function getInitials(name: string) {
     .join('')
     .slice(0, 2)
     .toUpperCase();
-}
-
-function getIstBoundaries(now = new Date()) {
-  const istNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-  const year = istNow.getFullYear();
-  const month = istNow.getMonth();
-  const day = istNow.getDate();
-
-  const mtdStart = new Date(Date.UTC(year, month, 1, 0, 0, 0));
-  const nextMonthStart = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0));
-  const prevMonthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
-  const prevMonthMtdEnd = new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0));
-  const dormantCutoff = new Date(istNow);
-  dormantCutoff.setDate(dormantCutoff.getDate() - 30);
-
-  return {
-    mtdStartIso: mtdStart.toISOString(),
-    nextMonthStartIso: nextMonthStart.toISOString(),
-    prevMonthStartIso: prevMonthStart.toISOString(),
-    prevMonthMtdEndIso: prevMonthMtdEnd.toISOString(),
-    dormantCutoffIso: dormantCutoff.toISOString(),
-  };
 }
 
 function formatLastOrder(date: string | null): string {
@@ -93,16 +72,21 @@ export async function GET(req: NextRequest) {
     const db = supabaseAdmin as any;
     const tenantId = claims.tenant_id;
 
-    const { mtdStartIso, nextMonthStartIso, prevMonthStartIso, prevMonthMtdEndIso, dormantCutoffIso } = getIstBoundaries();
+    const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
+    const istNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    const dormantCutoff = new Date(istNow);
+    dormantCutoff.setDate(dormantCutoff.getDate() - 30);
+    const dormantCutoffIso = dormantCutoff.toISOString();
 
     const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? '300'), 1000);
     const cacheKey = [
       tenantId,
       limit,
-      mtdStartIso.slice(0, 10),
-      nextMonthStartIso.slice(0, 10),
-      prevMonthStartIso.slice(0, 10),
-      prevMonthMtdEndIso.slice(0, 10),
+      period.selected,
+      period.current_start.slice(0, 10),
+      period.current_end_exclusive.slice(0, 10),
+      period.previous_start.slice(0, 10),
+      period.previous_end_exclusive.slice(0, 10),
     ].join(':');
 
     const cached = customersLandingCache.get(cacheKey);
@@ -135,8 +119,8 @@ export async function GET(req: NextRequest) {
         .in('buyer_id', buyerIds)
         .is('deleted_at', null)
         .neq('status', 'cancelled')
-        .gte('placed_at', mtdStartIso)
-        .lt('placed_at', nextMonthStartIso),
+        .gte('placed_at', period.current_start)
+        .lt('placed_at', period.current_end_exclusive),
       db
         .schema('app')
         .from('orders')
@@ -145,8 +129,8 @@ export async function GET(req: NextRequest) {
         .in('buyer_id', buyerIds)
         .is('deleted_at', null)
         .neq('status', 'cancelled')
-        .gte('placed_at', prevMonthStartIso)
-        .lt('placed_at', prevMonthMtdEndIso),
+        .gte('placed_at', period.previous_start)
+        .lt('placed_at', period.previous_end_exclusive),
       db
         .schema('app')
         .from('orders')
@@ -302,6 +286,7 @@ export async function GET(req: NextRequest) {
     const topRisers = [...rows].filter((row) => row.growth_pct > 0).sort((a, b) => b.growth_pct - a.growth_pct).slice(0, 2);
 
     const payload = {
+      period,
       kpis: {
         total,
         cohort_count: cohortSet.size,

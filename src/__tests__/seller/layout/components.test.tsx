@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { InsightStrip4 } from '@/components/seller/layout/InsightStrip4';
 import { StatusTag } from '@/components/seller/layout/StatusTag';
 import { GrowthPill } from '@/components/seller/layout/GrowthPill';
 import { PageWrap } from '@/components/seller/layout/PageWrap';
+import { PageHeader } from '@/components/seller/layout/PageHeader';
 
 describe('InsightStrip4', () => {
   afterEach(() => {
@@ -66,5 +67,34 @@ describe('PageWrap', () => {
     );
 
     expect(container.firstChild).toHaveClass('max-w-[1920px]', 'mx-auto', 'w-full', 'px-8', 'py-6');
+  });
+});
+
+describe('PageHeader', () => {
+  it('renders period options and calls on change', async () => {
+    const onPeriodChange = vi.fn();
+
+    render(
+      <PageHeader
+        eyebrow="Portfolio"
+        title="Brands"
+        subtitle="Summary"
+        horizon="This Month"
+        period="month"
+        periodOptions={[
+          { value: 'month', label: 'This Month' },
+          { value: 'quarter', label: 'This Quarter' },
+          { value: 'year', label: 'This Year' },
+        ]}
+        onPeriodChange={onPeriodChange}
+        secondary={{ label: 'Secondary', icon: <span>+</span> }}
+        primary="Primary"
+      />,
+    );
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: /showing this month/i }));
+    fireEvent.click(await screen.findByText('This Quarter'));
+
+    expect(onPeriodChange).toHaveBeenCalledWith('quarter');
   });
 });

@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { createTimer } from '@/lib/server-timing';
 import { z } from 'zod';
+import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 
 const AddProductSchema = z.object({
   master_product_id: z.string().uuid('Invalid product ID').optional().nullable(),
@@ -15,8 +16,10 @@ const AddProductSchema = z.object({
   name_override: z.string().optional(),
   default_uom: z.string().optional(),
   pack_size: z.coerce.number().positive().optional().nullable(),
-  // hsn_code: z.string().optional(),
-  // gst_rate: z.coerce.number().min(0).max(100).optional().nullable(),
+  hsn_code: z.string().optional(),
+  gst_rate: z.coerce.number().min(0).max(100).optional().nullable(),
+  description: z.string().optional(),
+  category_name: z.string().optional(),
   attributes: z.record(z.string()).optional().default({}),
   image_urls: z.array(z.string().url()).optional().default([]),
 });
@@ -169,20 +172,11 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const now = new Date();
-    const istNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-    const year = istNow.getFullYear();
-    const month = istNow.getMonth();
-    const day = istNow.getDate();
-    const mtdStartDate = new Date(Date.UTC(year, month, 1, 0, 0, 0));
-    const mtdEndDate = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0));
-    const prevStartDate = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
-    const prevMtdEndDate = new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0));
-
-    const mtdStartDay = mtdStartDate.toISOString().slice(0, 10);
-    const mtdEndDay = mtdEndDate.toISOString().slice(0, 10);
-    const prevStartDay = prevStartDate.toISOString().slice(0, 10);
-    const prevMtdEndDay = prevMtdEndDate.toISOString().slice(0, 10);
+    const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
+    const currentStartDay = period.current_start.slice(0, 10);
+    const currentEndDay = period.current_end_exclusive.slice(0, 10);
+    const previousStartDay = period.previous_start.slice(0, 10);
+    const previousEndDay = period.previous_end_exclusive.slice(0, 10);
 
     if (productIds.length > 0) {
       const [mtdKpiRes, prevKpiRes] = await Promise.all([
@@ -192,8 +186,8 @@ export async function GET(req: NextRequest) {
           .select('tenant_product_id, units_sold, revenue')
           .eq('tenant_id', claims.tenant_id)
           .in('tenant_product_id', productIds)
-          .gte('day', mtdStartDay)
-          .lt('day', mtdEndDay)
+          .gte('day', currentStartDay)
+          .lt('day', currentEndDay)
           .is('deleted_at', null),
         db
           .schema('app')
@@ -201,8 +195,8 @@ export async function GET(req: NextRequest) {
           .select('tenant_product_id, revenue')
           .eq('tenant_id', claims.tenant_id)
           .in('tenant_product_id', productIds)
-          .gte('day', prevStartDay)
-          .lt('day', prevMtdEndDay)
+          .gte('day', previousStartDay)
+          .lt('day', previousEndDay)
           .is('deleted_at', null),
       ]);
 
@@ -256,7 +250,7 @@ export async function GET(req: NextRequest) {
         const unitsMtd = Math.max(0, Math.round(unitsMtdByProduct.get(row.id) ?? 0));
         const gmvMtd = Number(gmvMtdByProduct.get(row.id) ?? 0);
         const gmvPrev = Number(gmvPrevByProduct.get(row.id) ?? 0);
-        const avgDailyUnits = day > 0 ? unitsMtd / day : 0;
+        const avgDailyUnits = period.elapsed_days > 0 ? unitsMtd / period.elapsed_days : 0;
         const computedDaysCover = onHand === 0 ? 0 : avgDailyUnits <= 0 ? 999 : Math.max(0, Math.round(onHand / avgDailyUnits));
         const growthPct = gmvPrev > 0 ? Math.round(((gmvMtd - gmvPrev) / gmvPrev) * 100) : gmvMtd > 0 ? 100 : 0;
         const statusTone = onHand === 0 ? 'danger' : computedDaysCover < 14 ? 'warning' : 'success';
@@ -337,6 +331,7 @@ export async function GET(req: NextRequest) {
     });
 
     return timedJson({
+      period,
       products,
       brands,
       kpis: {
@@ -397,8 +392,10 @@ export async function POST(req: NextRequest) {
       name_override,
       default_uom,
       pack_size,
-      // hsn_code,
-      // gst_rate,
+      hsn_code,
+      gst_rate,
+      description,
+      category_name,
       attributes,
       image_urls,
     } = parsed.data;
@@ -477,8 +474,10 @@ export async function POST(req: NextRequest) {
         cost_price: effectiveCostPrice,
         default_uom: default_uom ?? null,
         pack_size: pack_size ?? null,
-        // hsn_code: hsn_code ?? null,
-        // gst_rate: gst_rate ?? null, 
+        hsn_code: hsn_code ?? null,
+        gst_rate: gst_rate ?? null,
+        description: description ?? null,
+        category_name: category_name ?? null,
         attributes_override: attributes ?? {},
         image_urls: image_urls ?? [],
         is_active: true,
