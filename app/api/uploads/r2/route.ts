@@ -53,9 +53,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: firstError }, { status: 400 });
     }
 
-    const { filename, contentType, sizeBytes } = parsed.data;
+    const { filename, contentType, sizeBytes: _sizeBytes } = parsed.data;
     const sanitized = sanitizeFilename(filename);
-    const key = `products/${claims.tenant_id}/${Date.now()}-${sanitized}`;
+    const key = `uploads/${claims.tenant_id}/${Date.now()}-${sanitized}`;
 
     // Generate pre-signed URL
     const uploadUrl = await getPresignedUploadUrl(key, contentType);

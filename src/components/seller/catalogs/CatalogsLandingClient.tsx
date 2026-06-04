@@ -15,8 +15,10 @@ import {
   GrowthPill,
 } from '@/components/seller/layout';
 import { ErrorState } from '@/components/ui/empty-state';
+import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useTenantCatalogs, type CatalogLandingRow, type CatalogsLandingResponse } from '@/hooks/useCatalogs';
 import { formatCompactInr } from '@/lib/utils';
+import type { SellerLandingPeriod } from '@/lib/seller-period';
 
 type SortOption = 'Recently published' | 'GMV (high → low)' | 'Conversion (high → low)';
 type FilterChip = 'All' | 'Live' | 'Draft' | 'Ended';
@@ -57,9 +59,16 @@ function CatalogRowReason(catalog: CatalogLandingRow) {
   return `${catalog.cohort_name} · ${catalog.orders} orders`;
 }
 
-function CatalogsLandingContent({ initialData }: { initialData: CatalogsLandingResponse | null }) {
+function CatalogsLandingContent({
+  initialData,
+  initialPeriod,
+}: {
+  initialData: CatalogsLandingResponse | null;
+  initialPeriod: SellerLandingPeriod;
+}) {
   const router = useRouter();
-  const { data, isLoading, isError } = useTenantCatalogs(initialData);
+  const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
+  const { data, isLoading, isError } = useTenantCatalogs(period, initialData);
 
   const [search, setSearch] = useState('');
   const [activeChip, setActiveChip] = useState<FilterChip>('All');
@@ -96,7 +105,10 @@ function CatalogsLandingContent({ initialData }: { initialData: CatalogsLandingR
         eyebrow="Distribution"
         title="Catalogs"
         subtitle="The mailers your retailers see in the buyer app. Each one targets a cohort, runs for a validity window, and rolls up to one funnel."
-        horizon="This month"
+        horizon={horizonLabel}
+        period={period}
+        periodOptions={options}
+        onPeriodChange={setPeriod}
         secondary={{
           label: 'New from template',
           icon: <LayoutGrid size={13} />,
@@ -114,7 +126,7 @@ function CatalogsLandingContent({ initialData }: { initialData: CatalogsLandingR
             sub: `${data.kpis.draft_catalogs} in draft, ${data.kpis.ended_catalogs} ended`,
           },
           {
-            label: 'GMV from catalogs',
+            label: `GMV · ${metricSuffix}`,
             value: formatCompactInr(data.kpis.gmv_mtd),
             sub: `${data.kpis.gmv_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(data.kpis.gmv_growth_pct)}% vs last month`,
             tone: 'accent',
@@ -127,7 +139,7 @@ function CatalogsLandingContent({ initialData }: { initialData: CatalogsLandingR
           {
             label: 'Orders attributed',
             value: `${data.kpis.orders_attributed_mtd}`,
-            sub: 'this month',
+            sub: lowerLabel,
           },
         ]}
       />
@@ -252,10 +264,16 @@ function CatalogsLandingContent({ initialData }: { initialData: CatalogsLandingR
   );
 }
 
-export function CatalogsLandingClient({ initialData }: { initialData: CatalogsLandingResponse | null }) {
+export function CatalogsLandingClient({
+  initialData,
+  initialPeriod,
+}: {
+  initialData: CatalogsLandingResponse | null;
+  initialPeriod: SellerLandingPeriod;
+}) {
   return (
     <FeatureGate flag="CATALOG_PUBLISHING">
-      <CatalogsLandingContent initialData={initialData} />
+      <CatalogsLandingContent initialData={initialData} initialPeriod={initialPeriod} />
     </FeatureGate>
   );
 }

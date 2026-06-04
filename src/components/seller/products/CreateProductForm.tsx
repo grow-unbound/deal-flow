@@ -404,7 +404,7 @@ export function CreateProductForm() {
           type="submit"
           isPending={isSubmitting || createProduct.isPending}
           pendingLabel="Creating…"
-          className="gap-2 bg-teal-500 text-cream-50 hover:bg-teal-600"
+          className="gap-2"
         >
           <Plus size={16} />
           Create product

@@ -1,10 +1,11 @@
 'use client';
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import type { CreateBrandInput } from '@/lib/zod';
+import type { BrandCreateInput, CreateBrandInput, TenantBrandUpdateInput } from '@/lib/zod';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
+import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
 
 export interface MasterBrand {
   id: string;
@@ -19,10 +20,19 @@ export interface TenantBrand {
   tenant_id: string;
   master_brand_id: string;
   display_name_override: string | null;
+  logo_url: string | null;
   margin_pct: number | null;
   exclusivity: boolean | null;
   is_active: boolean;
   external_ref: string | null;
+  principal_name: string | null;
+  principal_email: string | null;
+  principal_phone: string | null;
+  principal_location: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  default_cohort_id: string | null;
   created_at: string;
   updated_at: string;
   master_brand: MasterBrand | null;
@@ -81,13 +91,7 @@ export interface TenantBrandsResponse {
     top_performers: TopPerformerItem[];
     top_risers: TopRiserItem[];
   };
-  period?: {
-    timezone: string;
-    current_month_start: string;
-    current_month_end_exclusive: string;
-    previous_mtd_start: string;
-    previous_mtd_end_exclusive: string;
-  };
+  period?: SellerLandingPeriodMeta;
 }
 
 export interface SearchBrandsResponse {
@@ -95,9 +99,16 @@ export interface SearchBrandsResponse {
 }
 
 export interface AddBrandPayload {
+  mode: 'import';
   master_brand_id: string;
   display_name_override?: string;
+  exclusivity?: boolean | null;
+  optimistic_master_brand?: MasterBrand | null;
 }
+
+export type CreateTenantBrandPayload = BrandCreateInput & {
+  optimistic_master_brand?: MasterBrand | null;
+};
 
 export interface BrandDetailHeader {
   id: string;
@@ -129,10 +140,19 @@ export interface BrandDetailRow {
   tenant_id: string;
   master_brand_id: string;
   display_name_override: string | null;
+  logo_url: string | null;
   margin_pct: number | null;
   exclusivity: boolean | null;
   is_active: boolean;
   external_ref: string | null;
+  principal_name: string | null;
+  principal_email: string | null;
+  principal_phone: string | null;
+  principal_location: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  default_cohort_id: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -200,20 +220,64 @@ export interface BrandDetailResponse {
   activity: BrandDetailActivity[];
 }
 
-export interface UpdateTenantBrandInput {
-  display_name_override?: string | null;
-  margin_pct?: number | null;
-  exclusivity?: boolean | null;
-  external_ref?: string | null;
-  is_active?: boolean;
-  archive?: boolean;
+function optimisticBrandFromPayload(payload: CreateTenantBrandPayload): TenantBrand {
+  const now = new Date().toISOString();
+  const masterBrand =
+    payload.mode === 'custom'
+      ? {
+          id: `optimistic-master-${Date.now()}`,
+          name: payload.name,
+          slug: payload.slug,
+          logo_url: payload.logo_url ?? null,
+          description: payload.description ?? null,
+        }
+      : payload.optimistic_master_brand ?? null;
+
+  return {
+    id: `optimistic-${Date.now()}`,
+    tenant_id: '',
+    master_brand_id: payload.mode === 'import' ? payload.master_brand_id : masterBrand?.id ?? '',
+    display_name_override: payload.display_name_override ?? (payload.mode === 'custom' ? payload.name : null),
+    logo_url: payload.logo_url ?? masterBrand?.logo_url ?? null,
+    margin_pct: payload.margin_pct ?? null,
+    exclusivity: payload.exclusivity ?? false,
+    is_active: true,
+    external_ref: payload.external_ref ?? null,
+    principal_name: payload.principal_name ?? null,
+    principal_email: payload.principal_email ?? null,
+    principal_phone: payload.principal_phone ?? null,
+    principal_location: payload.principal_location ?? null,
+    contact_name: payload.contact_name ?? null,
+    contact_email: payload.contact_email ?? null,
+    contact_phone: payload.contact_phone ?? null,
+    default_cohort_id: payload.default_cohort_id ?? null,
+    created_at: now,
+    updated_at: now,
+    master_brand: masterBrand,
+  };
 }
 
-export function useTenantBrands(initialData?: TenantBrandsResponse) {
+function prependOptimisticBrand(old: TenantBrandsResponse | undefined, brand: TenantBrand): TenantBrandsResponse {
+  return {
+    ...(old ?? {}),
+    brands: [brand, ...(old?.brands ?? [])],
+  };
+}
+
+function restoreQuerySnapshots(
+  queryClient: QueryClient,
+  snapshots?: Array<[readonly unknown[], TenantBrandsResponse | undefined]>,
+) {
+  snapshots?.forEach(([key, previous]) => {
+    queryClient.setQueryData(key, previous);
+  });
+}
+
+export function useTenantBrands(period: SellerLandingPeriod = 'month', initialData?: TenantBrandsResponse) {
   return useQuery({
-    queryKey: ['tenant-brands'],
+    queryKey: ['tenant-brands', period],
     queryFn: async (): Promise<TenantBrandsResponse> => {
-      const res = await apiFetch('/api/tenant/brands');
+      const res = await apiFetch(`/api/tenant/brands?period=${period}`);
       if (!res.ok) {
         throw new Error('Failed to fetch brands');
       }
@@ -256,71 +320,19 @@ export function useSearchMasterBrands(query: string) {
 }
 
 export function useAddBrandToTenant() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (payload: AddBrandPayload): Promise<TenantBrand> => {
-      const res = await apiPost('/api/tenant/brands', payload);
-
-      if (res.status === 409) {
-        throw new Error('Brand already in your catalog');
-      }
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error ?? 'Failed to add brand');
-      }
-
-      const data = await res.json();
-      return data.brand as TenantBrand;
-    },
-
-    onMutate: async (payload) => {
-      await queryClient.cancelQueries({ queryKey: ['tenant-brands'] });
-      const prev = queryClient.getQueryData<TenantBrandsResponse>(['tenant-brands']);
-
-      const optimisticBrand: TenantBrand = {
-        id: `optimistic-${Date.now()}`,
-        tenant_id: '',
-        master_brand_id: payload.master_brand_id,
-        display_name_override: payload.display_name_override ?? null,
-        margin_pct: null,
-        exclusivity: null,
-        is_active: true,
-        external_ref: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        master_brand: null,
-      };
-
-      queryClient.setQueryData<TenantBrandsResponse>(['tenant-brands'], (old) => ({
-        brands: [optimisticBrand, ...(old?.brands ?? [])],
-      }));
-
-      return { prev };
-    },
-
-    onError: (_err, _payload, context) => {
-      if (context?.prev) {
-        queryClient.setQueryData(['tenant-brands'], context.prev);
-      }
-    },
-
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['tenant-brands'] });
-    },
-
-    onSuccess: () => {
-      toast.success('Brand added to your catalog');
-    },
-  });
+  const mutation = useCreateTenantBrand();
+  return {
+    ...mutation,
+    mutateAsync: (payload: AddBrandPayload) => mutation.mutateAsync({ exclusivity: false, ...payload }),
+    mutate: (payload: AddBrandPayload) => mutation.mutate({ exclusivity: false, ...payload }),
+  };
 }
 
 export function useUpdateTenantBrand(id: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (payload: UpdateTenantBrandInput) => {
+    mutationFn: async (payload: TenantBrandUpdateInput) => {
       const res = await apiFetch(`/api/tenant/brands/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -334,7 +346,7 @@ export function useUpdateTenantBrand(id: string) {
 
       return res.json() as Promise<{ brand: BrandDetailRow }>;
     },
-    onMutate: async (payload) => {
+    onMutate: async (payload: TenantBrandUpdateInput) => {
       const snapshots = await takeSnapshots(queryClient, [['tenant-brand-detail', id], ['tenant-brands']]);
       queryClient.setQueryData<BrandDetailResponse>(['tenant-brand-detail', id], (old) =>
         old
@@ -354,11 +366,28 @@ export function useUpdateTenantBrand(id: string) {
                   payload.display_name_override === undefined
                     ? brand.display_name_override
                     : payload.display_name_override,
+                logo_url: payload.logo_url === undefined ? brand.logo_url : payload.logo_url,
                 margin_pct: payload.margin_pct === undefined ? brand.margin_pct : payload.margin_pct,
                 exclusivity:
                   payload.exclusivity === undefined ? brand.exclusivity : payload.exclusivity,
                 external_ref:
                   payload.external_ref === undefined ? brand.external_ref : payload.external_ref,
+                principal_name:
+                  payload.principal_name === undefined ? brand.principal_name : payload.principal_name,
+                principal_email:
+                  payload.principal_email === undefined ? brand.principal_email : payload.principal_email,
+                principal_phone:
+                  payload.principal_phone === undefined ? brand.principal_phone : payload.principal_phone,
+                principal_location:
+                  payload.principal_location === undefined ? brand.principal_location : payload.principal_location,
+                contact_name:
+                  payload.contact_name === undefined ? brand.contact_name : payload.contact_name,
+                contact_email:
+                  payload.contact_email === undefined ? brand.contact_email : payload.contact_email,
+                contact_phone:
+                  payload.contact_phone === undefined ? brand.contact_phone : payload.contact_phone,
+                default_cohort_id:
+                  payload.default_cohort_id === undefined ? brand.default_cohort_id : payload.default_cohort_id,
                 is_active: payload.is_active === undefined ? brand.is_active : payload.is_active,
                 updated_at: new Date().toISOString(),
               }
@@ -390,12 +419,13 @@ export interface CreateCustomBrandError {
   details?: unknown;
 }
 
-export function useCreateCustomBrand() {
+export function useCreateTenantBrand() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: CreateBrandInput): Promise<{ brand: TenantBrand }> => {
-      const res = await apiPost('/api/brands/custom', data);
+    mutationFn: async (data: CreateTenantBrandPayload): Promise<{ brand: TenantBrand }> => {
+      const { optimistic_master_brand: _optimisticMasterBrand, ...requestBody } = data;
+      const res = await apiPost('/api/tenant/brands', requestBody);
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Request failed' }));
@@ -406,35 +436,38 @@ export function useCreateCustomBrand() {
     },
 
     onMutate: async (data) => {
-      const snapshots = await takeSnapshots(queryClient, [['tenant-brands']]);
-      const optimisticBrand: TenantBrand = {
-        id: `optimistic-${Date.now()}`,
-        tenant_id: '',
-        master_brand_id: '',
-        display_name_override: data.name,
-        margin_pct: null,
-        exclusivity: null,
-        is_active: true,
-        external_ref: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        master_brand: {
-          id: `optimistic-master-${Date.now()}`,
-          name: data.name,
-          slug: data.slug,
-          logo_url: data.logo_url ?? null,
-          description: data.description ?? null,
-        },
-      };
-      queryClient.setQueryData<TenantBrandsResponse>(['tenant-brands'], (old) => ({
-        ...old,
-        brands: [optimisticBrand, ...(old?.brands ?? [])],
-      }));
+      await queryClient.cancelQueries({ queryKey: ['tenant-brands'] });
+      const snapshots = queryClient.getQueriesData<TenantBrandsResponse>({ queryKey: ['tenant-brands'] });
+      const optimisticBrand = optimisticBrandFromPayload(data);
+
+      snapshots.forEach(([key]) => {
+        queryClient.setQueryData<TenantBrandsResponse>(key, (old) => prependOptimisticBrand(old, optimisticBrand));
+      });
+
       return { snapshots };
     },
-    onError: (_error, _data, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
+    onError: (_error, _data, ctx) => restoreQuerySnapshots(queryClient, ctx?.snapshots),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-brands'] });
+      toast.success('Brand saved');
     },
   });
+}
+
+export function useCreateCustomBrand() {
+  const mutation = useCreateTenantBrand();
+
+  return {
+    ...mutation,
+    mutateAsync: (data: CreateBrandInput) =>
+      mutation.mutateAsync({
+        mode: 'custom',
+        ...data,
+      }),
+    mutate: (data: CreateBrandInput) =>
+      mutation.mutate({
+        mode: 'custom',
+        ...data,
+      }),
+  };
 }

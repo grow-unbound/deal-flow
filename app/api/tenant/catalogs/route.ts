@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
+import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 
 type CatalogStatus = 'draft' | 'published' | 'archived';
 type DisplayStatus = 'Live' | 'Draft' | 'Ended';
@@ -68,26 +69,6 @@ function getInitials(name: string): string {
     .toUpperCase();
 }
 
-function getIstBoundaries(now = new Date()) {
-  const istNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-  const year = istNow.getFullYear();
-  const month = istNow.getMonth();
-  const day = istNow.getDate();
-
-  const mtdStart = new Date(Date.UTC(year, month, 1, 0, 0, 0));
-  const nextMonthStart = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0));
-
-  const prevMonthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
-  const prevMonthSameDayExclusive = new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0));
-
-  return {
-    mtdStartIso: mtdStart.toISOString(),
-    nextMonthStartIso: nextMonthStart.toISOString(),
-    prevMonthStartIso: prevMonthStart.toISOString(),
-    prevMonthMtdEndIso: prevMonthSameDayExclusive.toISOString(),
-  };
-}
-
 function getDisplayStatus(status: CatalogStatus, validTo: string | null, nowTs: number): DisplayStatus {
   if (status === 'draft') return 'Draft';
   if (status === 'archived') return 'Ended';
@@ -127,7 +108,7 @@ export async function GET(req: NextRequest) {
     const db = supabaseAdmin;
     const now = new Date();
     const nowTs = now.getTime();
-    const { mtdStartIso, nextMonthStartIso, prevMonthStartIso, prevMonthMtdEndIso } = getIstBoundaries(now);
+    const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'), now);
 
     const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? '200'), 500);
 
@@ -147,8 +128,8 @@ export async function GET(req: NextRequest) {
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .not('catalog_id', 'is', null)
-        .gte('placed_at', mtdStartIso)
-        .lt('placed_at', nextMonthStartIso),
+        .gte('placed_at', period.current_start)
+        .lt('placed_at', period.current_end_exclusive),
       db
         .schema('app')
         .from('orders')
@@ -156,8 +137,8 @@ export async function GET(req: NextRequest) {
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .not('catalog_id', 'is', null)
-        .gte('placed_at', prevMonthStartIso)
-        .lt('placed_at', prevMonthMtdEndIso),
+        .gte('placed_at', period.previous_start)
+        .lt('placed_at', period.previous_end_exclusive),
       db.schema('app').from('cohorts').select('id, name').eq('tenant_id', tenantId).is('deleted_at', null),
     ]);
 
@@ -360,6 +341,7 @@ export async function GET(req: NextRequest) {
     const topRisers = [...withGrowth].sort((a, b) => b.growth_pct - a.growth_pct).slice(0, 2);
 
     return timedJson({
+      period,
       kpis: {
         live_catalogs: liveCatalogs.length,
         draft_catalogs: draftCatalogs.length,

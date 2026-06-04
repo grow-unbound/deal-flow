@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-fetch';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import type { CohortUpdateInput } from '@/lib/zod';
+import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
 
 export type CohortType = 'Geo-based' | 'Tier-based' | 'Brand affinity';
 
@@ -54,13 +55,14 @@ export interface CohortsLandingResponse {
     top_risers: CohortsLandingCalloutRow[];
   };
   cohorts: CohortsLandingRow[];
-  period: {
-    timezone: string;
-    current_month_start: string;
-    current_month_end_exclusive: string;
-    previous_mtd_start: string;
-    previous_mtd_end_exclusive: string;
-  };
+  period: SellerLandingPeriodMeta;
+}
+
+export interface TenantCohortOption {
+  id: string;
+  name: string;
+  description: string | null;
+  member_count: number;
 }
 
 export interface CohortDetailHeader {
@@ -157,17 +159,39 @@ export interface CohortDetailResponse {
   activity: CohortDetailActivityItem[];
 }
 
-export function useCohortsLanding(initialData?: CohortsLandingResponse | null) {
+export function useCohortsLanding(period: SellerLandingPeriod = 'month', initialData?: CohortsLandingResponse | null) {
   return useQuery({
-    queryKey: ['cohorts-landing'],
+    queryKey: ['cohorts-landing', period],
     queryFn: async (): Promise<CohortsLandingResponse> => {
-      const res = await apiFetch('/api/tenant/cohorts');
+      const res = await apiFetch(`/api/tenant/cohorts?period=${period}`);
       if (!res.ok) {
         throw new Error('Failed to fetch cohorts landing');
       }
       return res.json();
     },
     initialData: initialData ?? undefined,
+    staleTime: 30_000,
+  });
+}
+
+export function useTenantCohortOptions(enabled = true) {
+  return useQuery({
+    queryKey: ['tenant-cohort-options'],
+    queryFn: async (): Promise<TenantCohortOption[]> => {
+      const res = await apiFetch('/api/tenant/cohorts');
+      if (res.status === 403) return [];
+      if (!res.ok) {
+        throw new Error('Failed to fetch cohorts');
+      }
+      const data = (await res.json()) as CohortsLandingResponse;
+      return data.cohorts.map((cohort) => ({
+        id: cohort.id,
+        name: cohort.name,
+        description: cohort.description,
+        member_count: cohort.total_members,
+      }));
+    },
+    enabled,
     staleTime: 30_000,
   });
 }

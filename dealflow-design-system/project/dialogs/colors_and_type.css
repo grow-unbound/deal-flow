@@ -1,0 +1,263 @@
+/* =========================================================================
+   DealFlow Design System — Colors & Type
+   Theme: Ember & Cream (Premium Comfort, Atmospheric)
+   ========================================================================= */
+
+/* ---------- Webfonts ---------- */
+/* Fraunces (display serif) and Inter (UI) loaded from Google.
+   JetBrains Mono for SKUs / IDs / numerals.
+   When using offline, swap these <link>s for local @font-face from /fonts/. */
+
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* =====================================================================
+     COLORS — Ember & Cream
+     ===================================================================== */
+
+  /* --- Surfaces (warm neutrals) --- */
+  --cream-50:  #FDFBF7;   /* page tint, lightest */
+  --cream-100: #FAF7F2;   /* default page background */
+  --cream-200: #F4EFE6;   /* recessed surface */
+  --cream-300: #EFE9DF;   /* borders / hairlines */
+  --cream-400: #E2D9C9;   /* dividers / inactive */
+  --cream-500: #C9BFAC;   /* heavy border */
+  --cream-600: #A89E89;
+  --cream-700: #6B6760;   /* muted text */
+  --cream-800: #3D3A35;   /* near-black-warm */
+  --cream-900: #1A1A1A;   /* primary text */
+
+  /* --- Primary: Deep Teal (calm, premium, "private banking") --- */
+  --teal-50:  #EAF1EE;
+  --teal-100: #C6DAD3;
+  --teal-200: #95B9AE;
+  --teal-300: #5D8E81;
+  --teal-400: #346A5C;
+  --teal-500: #1F3A34;    /* primary brand */
+  --teal-600: #1A322D;
+  --teal-700: #142823;
+  --teal-800: #0E1D19;
+  --teal-900: #08110F;
+
+  /* --- Accent: Ember (warm amber/copper) --- */
+  --ember-50:  #FBEFE3;
+  --ember-100: #F5DAB8;
+  --ember-200: #ECBC85;
+  --ember-300: #DC9655;
+  --ember-400: #C26E3A;   /* primary accent */
+  --ember-500: #A55A2B;
+  --ember-600: #874720;
+  --ember-700: #6B3818;
+  --ember-800: #4F2A12;
+
+  /* --- Semantic --- */
+  --success-50:  #ECF3EC;
+  --success-500: #4A7C4E;   /* moss green, calm, never neon */
+  --success-700: #2F5733;
+
+  --warning-50:  #FBF1DC;
+  --warning-500: #B07D2C;   /* burnt gold */
+  --warning-700: #7A5519;
+
+  --danger-50:   #F6E5DF;
+  --danger-500:  #9C3A22;   /* rust red, never #FF0000 */
+  --danger-700:  #6B2615;
+
+  --info-50:     #E7EEF1;
+  --info-500:    #3F6A7C;   /* dusty blue */
+  --info-700:    #2A4B59;
+
+  /* =====================================================================
+     SEMANTIC TOKENS — use these in components, not raw scale colors
+     ===================================================================== */
+
+  /* Text */
+  --fg-1: var(--cream-900);   /* primary copy */
+  --fg-2: var(--cream-800);   /* secondary copy */
+  --fg-3: var(--cream-700);   /* muted, captions */
+  --fg-4: var(--cream-600);   /* placeholder, disabled */
+  --fg-inverse: var(--cream-50);
+  --fg-brand: var(--teal-500);
+  --fg-accent: var(--ember-400);
+
+  /* Surfaces */
+  --bg-page: var(--cream-100);
+  --bg-surface: #FFFFFF;
+  --bg-recessed: var(--cream-200);
+  --bg-overlay: rgba(26, 26, 26, 0.42);
+  --bg-brand: var(--teal-500);
+  --bg-brand-hover: var(--teal-600);
+  --bg-brand-soft: var(--teal-50);
+  --bg-accent: var(--ember-400);
+  --bg-accent-soft: var(--ember-50);
+
+  /* Borders */
+  --border-1: var(--cream-300);    /* default hairline */
+  --border-2: var(--cream-400);    /* emphasized */
+  --border-strong: var(--cream-500);
+  --border-brand: var(--teal-500);
+  --border-focus: var(--ember-400);
+
+  /* =====================================================================
+     TYPOGRAPHY
+     ===================================================================== */
+  --font-display: 'Fraunces', 'Instrument Serif', Georgia, serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Display sizes (use Fraunces; tight tracking, soft optical sizing) */
+  --text-display-xl: 64px;
+  --text-display-lg: 48px;
+  --text-display-md: 36px;
+  --text-display-sm: 28px;
+
+  /* UI scale (Inter) */
+  --text-h1: 30px;
+  --text-h2: 24px;
+  --text-h3: 20px;
+  --text-h4: 17px;
+  --text-body: 15px;
+  --text-body-sm: 13px;
+  --text-caption: 12px;
+  --text-eyebrow: 11px;     /* uppercase, tracked-out */
+
+  /* Line heights */
+  --lh-tight: 1.1;
+  --lh-snug: 1.25;
+  --lh-normal: 1.45;
+  --lh-relaxed: 1.6;
+
+  /* Letter spacing */
+  --tracking-tight: -0.02em;   /* display */
+  --tracking-snug: -0.01em;    /* h1/h2 */
+  --tracking-normal: 0;
+  --tracking-wide: 0.04em;
+  --tracking-eyebrow: 0.14em;  /* uppercase eyebrows */
+
+  /* =====================================================================
+     SPACING (8pt base, 4px half-step)
+     ===================================================================== */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 56px;
+  --space-10: 72px;
+  --space-11: 96px;
+
+  /* =====================================================================
+     RADII — rounded but not childish
+     ===================================================================== */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;       /* default card */
+  --radius-xl: 20px;       /* hero / catalog cards */
+  --radius-2xl: 28px;
+  --radius-pill: 999px;
+
+  /* =====================================================================
+     SHADOWS — subtle, warm, never harsh
+     ===================================================================== */
+  --shadow-xs: 0 1px 2px rgba(31, 58, 52, 0.04);
+  --shadow-sm: 0 1px 2px rgba(31, 58, 52, 0.05), 0 1px 3px rgba(31, 58, 52, 0.04);
+  --shadow-md: 0 2px 4px rgba(31, 58, 52, 0.04), 0 4px 12px rgba(31, 58, 52, 0.06);
+  --shadow-lg: 0 6px 16px rgba(31, 58, 52, 0.06), 0 12px 32px rgba(31, 58, 52, 0.08);
+  --shadow-xl: 0 16px 40px rgba(31, 58, 52, 0.12), 0 4px 12px rgba(31, 58, 52, 0.06);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 -1px 0 rgba(31, 58, 52, 0.03);
+
+  /* Glow / focus rings */
+  --ring-focus: 0 0 0 3px rgba(194, 110, 58, 0.25);
+  --ring-brand: 0 0 0 3px rgba(31, 58, 52, 0.18);
+
+  /* =====================================================================
+     MOTION
+     ===================================================================== */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasis: cubic-bezier(0.3, 0, 0, 1);
+  --ease-bounce-soft: cubic-bezier(0.34, 1.2, 0.64, 1);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+  --duration-atmosphere: 600ms;  /* hero / parallax / atmospheric reveals */
+
+  /* =====================================================================
+     LAYOUT
+     ===================================================================== */
+  --content-max: 1280px;
+  --sidebar-w: 248px;
+  --topbar-h: 64px;
+}
+
+/* =========================================================================
+   SEMANTIC ELEMENT STYLES
+   Apply by default; layered components can override.
+   ========================================================================= */
+
+html, body {
+  background: var(--bg-page);
+  color: var(--fg-1);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  line-height: var(--lh-normal);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4, .h-display {
+  font-family: var(--font-display);
+  font-weight: 400;            /* Fraunces looks best at 400-500 */
+  letter-spacing: var(--tracking-snug);
+  color: var(--fg-1);
+  text-wrap: balance;
+}
+
+h1 { font-size: var(--text-h1); line-height: var(--lh-tight); font-weight: 500; }
+h2 { font-size: var(--text-h2); line-height: var(--lh-tight); }
+h3 { font-size: var(--text-h3); line-height: var(--lh-snug); }
+h4 { font-size: var(--text-h4); line-height: var(--lh-snug); font-family: var(--font-body); font-weight: 600; letter-spacing: 0; }
+
+p { color: var(--fg-2); line-height: var(--lh-relaxed); text-wrap: pretty; }
+
+small, .caption {
+  font-size: var(--text-caption);
+  color: var(--fg-3);
+  letter-spacing: 0.01em;
+}
+
+.eyebrow {
+  font-family: var(--font-body);
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+code, kbd, .mono, .sku {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  font-feature-settings: 'tnum' 1, 'ss01' 1;
+  color: var(--fg-2);
+}
+
+.display-xl { font-family: var(--font-display); font-size: var(--text-display-xl); line-height: 1.02; letter-spacing: var(--tracking-tight); font-weight: 400; }
+.display-lg { font-family: var(--font-display); font-size: var(--text-display-lg); line-height: 1.04; letter-spacing: var(--tracking-tight); font-weight: 400; }
+.display-md { font-family: var(--font-display); font-size: var(--text-display-md); line-height: 1.08; letter-spacing: var(--tracking-snug); font-weight: 400; }
+.display-sm { font-family: var(--font-display); font-size: var(--text-display-sm); line-height: 1.12; letter-spacing: var(--tracking-snug); font-weight: 500; }
+
+/* Numerals — tabular by default for prices / SKUs / totals */
+.tabular, td.num, .price, .total {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+::selection {
+  background: var(--ember-100);
+  color: var(--teal-700);
+}

@@ -3,7 +3,8 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { createTimer } from '@/lib/server-timing';
-import { PriceListSchema } from '@/lib/zod';
+import { getAuthUserEmailMap } from '@/lib/server/auth-user-directory';
+import { PriceListComposerPayloadSchema, type PriceListFilterState } from '@/lib/zod';
 
 type LandingStatus = 'active' | 'draft' | 'expired';
 type LandingStatusTone = 'success' | 'warning' | 'neutral';
@@ -17,6 +18,9 @@ type PriceListRow = {
   valid_to: string | null;
   priority: number;
   is_active: boolean;
+  pricing_strategy: 'edit_each' | 'margin_from_mrp' | 'flat_off_base';
+  strategy_value: number | null;
+  filters: PriceListFilterState | null;
   created_at: string;
   updated_at: string;
   created_by: string | null;
@@ -51,11 +55,6 @@ type TenantProductRow = {
   base_selling_price: number | null;
 };
 
-type AuthUserRow = {
-  id: string;
-  email: string | null;
-};
-
 function toInitials(name: string): string {
   return name
     .split(' ')
@@ -79,9 +78,9 @@ function deriveStatus(row: PriceListRow, nowTs: number): LandingStatus {
   const validFromTs = row.valid_from ? new Date(row.valid_from).getTime() : Number.NEGATIVE_INFINITY;
   const validToTs = row.valid_to ? new Date(row.valid_to).getTime() : Number.POSITIVE_INFINITY;
 
-  if (!row.is_active) return 'expired';
-  if (validFromTs > nowTs) return 'draft';
   if (validToTs < nowTs) return 'expired';
+  if (!row.is_active) return 'draft';
+  if (validFromTs > nowTs) return 'draft';
   return 'active';
 }
 
@@ -96,6 +95,30 @@ function isExpiringSoon(row: PriceListRow, nowTs: number, withinTs: number): boo
   const startTs = row.valid_from ? new Date(row.valid_from).getTime() : Number.NEGATIVE_INFINITY;
   const endTs = new Date(row.valid_to).getTime();
   return startTs <= nowTs && endTs >= nowTs && endTs <= withinTs;
+}
+
+async function ensureTenantProducts(
+  db: any,
+  tenantId: string,
+  tenantProductIds: string[],
+) {
+  if (tenantProductIds.length === 0) {
+    return new Set<string>();
+  }
+
+  const { data, error } = await db
+    .schema('app')
+    .from('tenant_products')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .in('id', tenantProductIds)
+    .is('deleted_at', null);
+
+  if (error) {
+    throw new Error('Failed to validate selected products');
+  }
+
+  return new Set<string>(((data ?? []) as Array<{ id: string }>).map((row) => row.id));
 }
 
 export async function GET(request: NextRequest) {
@@ -135,7 +158,7 @@ export async function GET(request: NextRequest) {
     db
       .schema('app')
       .from('price_lists')
-      .select('id, tenant_id, name, currency, valid_from, valid_to, priority, is_active, created_at, updated_at, created_by')
+      .select('id, tenant_id, name, currency, valid_from, valid_to, priority, is_active, pricing_strategy, strategy_value, filters, created_at, updated_at, created_by')
       .eq('tenant_id', claims.tenant_id)
       .is('deleted_at', null)
       .order('updated_at', { ascending: false }),
@@ -221,23 +244,7 @@ export async function GET(request: NextRequest) {
     new Set(priceLists.map((pl) => pl.created_by).filter((id): id is string => Boolean(id))),
   );
 
-  const createdByMap = new Map<string, string>();
-  if (createdByIds.length > 0) {
-    const authUsersRes = await db
-      .schema('auth')
-      .from('users')
-      .select('id, email')
-      .in('id', createdByIds);
-
-    if (authUsersRes.error) {
-      console.error('[GET /api/price-lists] auth.users query error:', authUsersRes.error);
-    } else {
-      const users = (authUsersRes.data ?? []) as AuthUserRow[];
-      for (const user of users) {
-        createdByMap.set(user.id, user.email ?? 'Team member');
-      }
-    }
-  }
+  const createdByMap = await getAuthUserEmailMap(createdByIds);
 
   const productBaseMap = new Map(tenantProducts.map((row) => [row.id, Number(row.base_selling_price ?? 0)]));
   const cohortNameById = new Map(cohorts.map((cohort) => [cohort.id, cohort.name]));
@@ -424,7 +431,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const parsed = PriceListSchema.safeParse(body);
+  const parsed = PriceListComposerPayloadSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.errors[0]?.message ?? 'Validation failed' },
@@ -433,9 +440,25 @@ export async function POST(request: NextRequest) {
   }
 
   const data = parsed.data;
+  if (data.save_mode === 'publish' && data.item_prices.length === 0) {
+    return NextResponse.json({ error: 'Add at least one product before publishing.' }, { status: 422 });
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabaseAdmin as any;
+  const tenantProductIds = data.item_prices.map((item) => item.tenant_product_id);
+
+  let validProductIds: Set<string>;
+  try {
+    validProductIds = await ensureTenantProducts(db, claims.tenant_id, tenantProductIds);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to validate selected products' }, { status: 500 });
+  }
+
+  if (validProductIds.size !== tenantProductIds.length) {
+    return NextResponse.json({ error: 'One or more selected products are invalid.' }, { status: 422 });
+  }
+
   const { data: priceList, error: insertError } = await db
     .schema('app')
     .from('price_lists')
@@ -446,7 +469,12 @@ export async function POST(request: NextRequest) {
       valid_from: data.valid_from.toISOString(),
       valid_to: data.valid_to ? data.valid_to.toISOString() : null,
       priority: data.priority,
-      is_active: true,
+      is_active: data.save_mode === 'publish',
+      pricing_strategy: data.pricing_strategy,
+      strategy_value: data.pricing_strategy === 'edit_each' ? null : (data.strategy_value ?? null),
+      filters: data.filters,
+      created_by: claims.sub,
+      updated_by: claims.sub,
     })
     .select()
     .single();
@@ -458,6 +486,45 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+
+  if (data.item_prices.length > 0) {
+    const { error: itemsError } = await db
+      .schema('app')
+      .from('price_list_items')
+      .insert(
+        data.item_prices.map((item) => ({
+          price_list_id: priceList.id,
+          tenant_product_id: item.tenant_product_id,
+          price: item.price,
+          min_qty: item.min_qty,
+          max_qty: item.max_qty ?? null,
+          created_by: claims.sub,
+          updated_by: claims.sub,
+        })),
+      );
+
+    if (itemsError) {
+      console.error('[POST /api/price-lists] item insert error:', itemsError.code, itemsError.message, itemsError.details);
+      return NextResponse.json(
+        { error: 'Price list was created but products could not be saved', code: itemsError.code, detail: itemsError.message },
+        { status: 500 },
+      );
+    }
+  }
+
+  await db.schema('app').from('audit_log').insert({
+    tenant_id: claims.tenant_id,
+    actor_user_id: claims.sub,
+    entity_type: 'price_list',
+    entity_id: priceList.id,
+    action: 'create',
+    diff: {
+      event: data.save_mode === 'publish' ? 'price_list_published' : 'price_list_draft_saved',
+      item_count: data.item_prices.length,
+      pricing_strategy: data.pricing_strategy,
+    },
+    ts: new Date().toISOString(),
+  });
 
   return NextResponse.json({ price_list: priceList }, { status: 201 });
 }

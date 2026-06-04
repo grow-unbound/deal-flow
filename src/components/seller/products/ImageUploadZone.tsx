@@ -1,7 +1,6 @@
 'use client';
 
-import { useRef, useState, useCallback } from 'react';
-import { toast } from 'sonner';
+import { useCallback } from 'react';
 import { X, GripVertical, ImageIcon, Loader2 } from 'lucide-react';
 import {
   DndContext,
@@ -20,20 +19,10 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+import { useBrowseUploadField, validateUploadImageFile } from '@/components/ui/browse-upload-field';
 
 // ── Pure validation function (also exported for unit tests) ──────────────────
-export function validateImageFile(file: { size: number; type: string }): string | null {
-  if (!ALLOWED_TYPES.includes(file.type)) {
-    return 'Only JPG, PNG, and WebP images are allowed.';
-  }
-  if (file.size > MAX_SIZE_BYTES) {
-    return 'Image must be under 5MB.';
-  }
-  return null;
-}
+export const validateImageFile = validateUploadImageFile;
 
 // ── SortableImageItem ────────────────────────────────────────────────────────
 interface SortableImageItemProps {
@@ -101,99 +90,25 @@ export interface ImageUploadZoneProps {
   maxImages?: number;
 }
 
-interface UploadingFile {
-  tempId: string;
-  name: string;
-}
-
 export function ImageUploadZone({ value, onChange, maxImages = 5 }: ImageUploadZoneProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [uploading, setUploading] = useState<UploadingFile[]>([]);
+  const {
+    inputRef,
+    isDragOver,
+    setIsDragOver,
+    uploading,
+    canUploadMore,
+    openPicker,
+    handleFiles,
+    removeUrl,
+  } = useBrowseUploadField({
+    value,
+    onChange,
+    maxFiles: maxImages,
+  });
 
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
-
-  // ── File processing ──────────────────────────────────────────────────────
-  const uploadFile = useCallback(
-    async (file: File) => {
-      const validationError = validateImageFile(file);
-      if (validationError) {
-        toast.error(validationError);
-        return;
-      }
-
-      if (value.length >= maxImages) {
-        toast.error(`You can upload up to ${maxImages} images.`);
-        return;
-      }
-
-      const tempId = `${Date.now()}-${Math.random()}`;
-      setUploading((prev) => [...prev, { tempId, name: file.name }]);
-
-      try {
-        // Step 1: Get pre-signed URL from our API
-        const presignRes = await fetch('/api/uploads/r2', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            filename: file.name,
-            contentType: file.type,
-            sizeBytes: file.size,
-          }),
-        });
-
-        if (!presignRes.ok) {
-          const err = (await presignRes.json()) as { error?: string };
-          throw new Error(err.error ?? 'Failed to get upload URL');
-        }
-
-        const { uploadUrl, publicUrl } = (await presignRes.json()) as {
-          uploadUrl: string;
-          publicUrl: string;
-          key: string;
-        };
-
-        // Handle missing R2_PUBLIC_URL in local dev — skip actual upload, use placeholder
-        if (!uploadUrl || uploadUrl.includes('undefined')) {
-          console.warn('[R2 Upload] No valid uploadUrl — skipping PUT (local dev without R2 config)');
-          onChange([...value, publicUrl]);
-          return;
-        }
-
-        // Step 2: PUT file directly to R2 (browser → R2, no bytes through app server)
-        const putRes = await fetch(uploadUrl, {
-          method: 'PUT',
-          body: file,
-          headers: { 'Content-Type': file.type },
-        });
-
-        if (!putRes.ok) {
-          throw new Error(`R2 upload failed: ${putRes.status} ${putRes.statusText}`);
-        }
-
-        // Step 3: Append public URL to form state
-        onChange([...value, publicUrl]);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Upload failed';
-        toast.error(message);
-      } finally {
-        setUploading((prev) => prev.filter((u) => u.tempId !== tempId));
-      }
-    },
-    [value, onChange, maxImages]
-  );
-
-  const handleFiles = useCallback(
-    (files: FileList | null) => {
-      if (!files) return;
-      for (const file of Array.from(files)) {
-        uploadFile(file);
-      }
-    },
-    [uploadFile]
   );
 
   // ── Drag-and-drop into zone ──────────────────────────────────────────────
@@ -213,14 +128,9 @@ export function ImageUploadZone({ value, onChange, maxImages = 5 }: ImageUploadZ
   // ── Remove image ─────────────────────────────────────────────────────────
   const handleRemove = useCallback(
     (url: string) => {
-      onChange(value.filter((u) => u !== url));
-      // TODO: fire-and-forget DELETE to clean up R2 object
-      // const key = extractKeyFromUrl(url);
-      // fetch('/api/uploads/r2/delete', { method: 'DELETE', body: JSON.stringify({ key }) })
-      //   .catch((err) => console.warn('[R2 delete] failed for key', key, err));
-      console.log('[R2] Image removed from form; R2 object cleanup deferred:', url);
+      removeUrl(url);
     },
-    [value, onChange]
+    [removeUrl]
   );
 
   // ── Reorder via DnD kit ───────────────────────────────────────────────────
@@ -234,8 +144,6 @@ export function ImageUploadZone({ value, onChange, maxImages = 5 }: ImageUploadZ
     }
   };
 
-  const canUploadMore = value.length + uploading.length < maxImages;
-
   return (
     <div className="space-y-3">
       {/* Upload zone */}
@@ -243,8 +151,8 @@ export function ImageUploadZone({ value, onChange, maxImages = 5 }: ImageUploadZ
         <div
           role="button"
           tabIndex={0}
-          onClick={() => inputRef.current?.click()}
-          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && inputRef.current?.click()}
+          onClick={openPicker}
+          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && openPicker()}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}

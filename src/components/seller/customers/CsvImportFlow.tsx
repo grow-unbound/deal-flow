@@ -190,7 +190,6 @@ export function CsvImportFlow() {
           They are now available in your customer list.
         </p>
         <Button
-          className="bg-teal-500 hover:bg-teal-600 text-cream-50"
           onClick={() => router.push('/customers')}
         >
           View Customers
@@ -310,7 +309,7 @@ export function CsvImportFlow() {
             </Button>
             <Button
               disabled={validRows.length === 0}
-              className="bg-teal-500 hover:bg-teal-600 text-cream-50 flex items-center gap-2 disabled:opacity-50"
+              className="flex items-center gap-2"
               onClick={() => setStep(2)}
             >
               <FileCheck size={16} />
@@ -375,7 +374,7 @@ export function CsvImportFlow() {
               Back
             </Button>
             <Button
-              className="bg-teal-500 hover:bg-teal-600 text-cream-50 flex items-center gap-2"
+              className="flex items-center gap-2"
               onClick={handleImport}
               disabled={isImporting}
             >
