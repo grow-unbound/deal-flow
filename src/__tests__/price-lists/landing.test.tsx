@@ -16,9 +16,10 @@ vi.mock('@/hooks/usePriceLists', () => ({
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlag: (...args: unknown[]) => useFlagMock(...args),
+  useFlagState: (...args: unknown[]) => useFlagMock(...args),
 }));
 
-import PriceListsPage from '../../../app/(seller)/price-lists/page';
+import { PriceListsLandingClient } from '@/components/seller/price-lists/PriceListsLandingClient';
 
 const mockData = {
   kpis: {
@@ -140,23 +141,25 @@ describe('price lists landing page', () => {
   });
 
   it('shows expiring soon KPI from backend', () => {
-    render(<PriceListsPage />);
-    expect(screen.getByText('Expiring soon')).toBeInTheDocument();
-    expect(screen.getByText('1')).toBeInTheDocument();
+    render(<PriceListsLandingClient initialData={null} />);
+    expect(screen.getAllByText('Expiring soon')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('1')[0]).toBeInTheDocument();
   });
 
   it('expired chip hides active and draft rows', () => {
-    render(<PriceListsPage />);
+    render(<PriceListsLandingClient initialData={null} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Expired' }));
 
     expect(screen.getByText('Old Window')).toBeInTheDocument();
-    expect(screen.queryByText('May Promo')).not.toBeInTheDocument();
-    expect(screen.queryByText('June Launch')).not.toBeInTheDocument();
+    expect(screen.getByText('Old Window').closest('tr')).toBeInTheDocument();
+    const landingRows = screen.getAllByRole('row');
+    expect(landingRows.some((row) => row.textContent?.includes('May Promo'))).toBe(false);
+    expect(landingRows.some((row) => row.textContent?.includes('June Launch'))).toBe(false);
   });
 
   it('renders uncovered cohorts callout rows', () => {
-    render(<PriceListsPage />);
+    render(<PriceListsLandingClient initialData={null} />);
 
     expect(screen.getByText('Uncovered cohorts')).toBeInTheDocument();
     expect(screen.getByText(/South Retail/i)).toBeInTheDocument();
@@ -164,9 +167,11 @@ describe('price lists landing page', () => {
   });
 
   it('navigates to detail on row click', () => {
-    render(<PriceListsPage />);
+    render(<PriceListsLandingClient initialData={null} />);
 
-    fireEvent.click(screen.getByText('May Promo'));
+    const row = screen.getAllByRole('row').find((candidate) => candidate.textContent?.includes('May Promo'));
+    expect(row).toBeTruthy();
+    fireEvent.click(row!);
     expect(pushMock).toHaveBeenCalledWith('/price-lists/pl-active');
   });
 });

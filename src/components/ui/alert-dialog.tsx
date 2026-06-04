@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { Slot } from '@radix-ui/react-slot';
 import { cn } from '@/lib/utils';
 import {
   Dialog,
@@ -17,10 +18,11 @@ import {
 const AlertDialog = Dialog;
 const AlertDialogTrigger = React.forwardRef<
   HTMLButtonElement,
-  React.ButtonHTMLAttributes<HTMLButtonElement>
->(({ className, ...props }, ref) => (
-  <button ref={ref} className={cn(className)} {...props} />
-));
+  React.ButtonHTMLAttributes<HTMLButtonElement> & { asChild?: boolean }
+>(({ className, asChild = false, ...props }, ref) => {
+  const Comp = asChild ? Slot : 'button';
+  return <Comp ref={ref} className={cn(className)} {...props} />;
+});
 AlertDialogTrigger.displayName = 'AlertDialogTrigger';
 
 const AlertDialogContent = React.forwardRef<

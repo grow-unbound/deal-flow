@@ -3,7 +3,6 @@
 import { useMemo, useState } from 'react';
 import { Copy } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
 
 import { FeatureGate } from '@/components/FeatureGate';
 import {
@@ -16,23 +15,10 @@ import {
   StatusTag,
   V3CalloutPanel,
 } from '@/components/seller/layout';
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { usePriceListsLanding, type PriceListLandingRow, type PriceListsLandingResponse } from '@/hooks/usePriceLists';
 import { formatDate } from '@/lib/utils';
-
-const CreatePriceListForm = dynamic(
-  () => import('@/components/seller/price-lists/CreatePriceListForm').then((m) => m.CreatePriceListForm),
-  { ssr: false },
-);
 
 type LandingChip = 'All' | 'Active' | 'Draft' | 'Expired';
 type SortOption = 'Recently updated' | 'Name (A-Z)' | 'Products (high → low)' | 'Validity (latest end date)';
@@ -98,16 +84,7 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
   const [search, setSearch] = useState('');
   const [activeChip, setActiveChip] = useState<LandingChip>('All');
   const [sortBy, setSortBy] = useState<SortOption>('Recently updated');
-  const [newDialogOpen, setNewDialogOpen] = useState(false);
-  const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
-  const [cloneSourceId, setCloneSourceId] = useState<string>('');
-
   const allRows = data?.price_lists ?? [];
-
-  const cloneSource = useMemo(
-    () => allRows.find((row) => row.id === cloneSourceId) ?? null,
-    [allRows, cloneSourceId],
-  );
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -157,9 +134,9 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
           title="Price Lists"
           subtitle="Custom pricing per cohort. Each list sets prices on a window — once it lapses, buyers fall back to base. Keep them fresh."
           horizon="This month"
-          secondary={{ label: 'Clone a list', icon: <Copy size={13} />, onClick: () => setCloneDialogOpen(true) }}
+          secondary={{ label: 'Clone a list', icon: <Copy size={13} />, onClick: undefined }}
           primary="New price list"
-          onPrimaryClick={() => setNewDialogOpen(true)}
+          onPrimaryClick={() => router.push('/price-lists/new')}
         />
 
         <InsightStrip4
@@ -303,75 +280,6 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
           })}
         </LandingTable>
       </PageWrap>
-
-      <Dialog open={newDialogOpen} onOpenChange={setNewDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>New price list</DialogTitle>
-            <DialogDescription>Create a new pricing window for cohorts and buyers.</DialogDescription>
-          </DialogHeader>
-          <DialogBody>
-            <CreatePriceListForm onSuccess={() => setNewDialogOpen(false)} onCancel={() => setNewDialogOpen(false)} />
-          </DialogBody>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={cloneDialogOpen} onOpenChange={setCloneDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Clone a list</DialogTitle>
-            <DialogDescription>Select a source list to prefill a new one.</DialogDescription>
-          </DialogHeader>
-          <DialogBody>
-            {!cloneSource ? (
-              <div className="space-y-2">
-                <p className="text-[12px] text-cream-700">Choose source list</p>
-                <div className="max-h-[280px] space-y-2 overflow-y-auto">
-                  {allRows.map((row) => (
-                    <button
-                      key={row.id}
-                      type="button"
-                      className="w-full rounded-[10px] border border-cream-300 bg-white px-3 py-2 text-left hover:bg-cream-50"
-                      onClick={() => setCloneSourceId(row.id)}
-                    >
-                      <p className="text-[13px] font-medium text-cream-900">{row.name}</p>
-                      <p className="mt-0.5 text-[11px] text-cream-600">{row.product_count} products · {row.cohorts_count} cohorts</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <button
-                  type="button"
-                  className="text-[12px] text-teal-700 underline"
-                  onClick={() => setCloneSourceId('')}
-                >
-                  Change source
-                </button>
-                <CreatePriceListForm
-                  onSuccess={() => {
-                    setCloneDialogOpen(false);
-                    setCloneSourceId('');
-                  }}
-                  onCancel={() => {
-                    setCloneDialogOpen(false);
-                    setCloneSourceId('');
-                  }}
-                  initialValues={{
-                    name: `${cloneSource.name} (Copy)`,
-                    currency: cloneSource.currency,
-                    valid_from: cloneSource.valid_from ? new Date(cloneSource.valid_from) : new Date(),
-                    valid_to: cloneSource.valid_to ? new Date(cloneSource.valid_to) : undefined,
-                    priority: cloneSource.priority,
-                  }}
-                  submitLabel="Create cloned list"
-                />
-              </div>
-            )}
-          </DialogBody>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

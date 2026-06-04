@@ -15,6 +15,7 @@ import {
   StatusTag,
   V3CalloutPanel,
 } from '@/components/seller/layout';
+import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import {
@@ -28,6 +29,7 @@ import {
 } from '@/components/ui/dialog';
 import { useSyncToTally, useTenantOrders, type OrderLandingRow, type TenantOrdersResponse } from '@/hooks/useOrders';
 import { formatCompactInr, formatDate } from '@/lib/utils';
+import type { SellerLandingPeriod } from '@/lib/seller-period';
 
 type SortOption = 'Recent first' | 'GMV (high → low)' | 'Items (high → low)';
 type FilterChip = 'All' | 'Confirmed' | 'In transit' | 'Delivered' | 'Hold' | 'Cancelled';
@@ -65,9 +67,16 @@ function OrdersLoadingSkeleton() {
   );
 }
 
-function OrdersLandingContent({ initialData }: { initialData: TenantOrdersResponse | null }) {
+function OrdersLandingContent({
+  initialData,
+  initialPeriod,
+}: {
+  initialData: TenantOrdersResponse | null;
+  initialPeriod: SellerLandingPeriod;
+}) {
   const router = useRouter();
-  const { data, isLoading, isError } = useTenantOrders(initialData);
+  const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
+  const { data, isLoading, isError } = useTenantOrders(period, initialData);
   const syncMutation = useSyncToTally();
 
   const [search, setSearch] = useState('');
@@ -98,9 +107,9 @@ function OrdersLandingContent({ initialData }: { initialData: TenantOrdersRespon
 
   const subtitle = useMemo(() => {
     const kpis = data?.kpis;
-    if (!kpis) return 'Orders this month from your buyers. This list is your workboard.';
-    return `${kpis.orders_mtd} orders this month from ${kpis.buyers_mtd} buyers. ${kpis.pending_dispatch_count} pending dispatch, ${kpis.on_hold_count} on hold, ${kpis.delivered_count} already delivered. The list is your workboard.`;
-  }, [data?.kpis]);
+    if (!kpis) return `Orders ${lowerLabel} from your buyers. This list is your workboard.`;
+    return `${kpis.orders_mtd} orders ${lowerLabel} from ${kpis.buyers_mtd} buyers. ${kpis.pending_dispatch_count} pending dispatch, ${kpis.on_hold_count} on hold, ${kpis.delivered_count} already delivered. The list is your workboard.`;
+  }, [data?.kpis, lowerLabel]);
 
   if (isLoading) return <OrdersLoadingSkeleton />;
 
@@ -120,7 +129,10 @@ function OrdersLandingContent({ initialData }: { initialData: TenantOrdersRespon
           eyebrow="Transactions"
           title="Orders"
           subtitle={subtitle}
-          horizon="This month"
+          horizon={horizonLabel}
+          period={period}
+          periodOptions={options}
+          onPeriodChange={setPeriod}
           secondary={{
             label: syncMutation.isPending ? 'Syncing…' : 'Sync to Tally',
             icon: <RefreshCw size={13} className={syncMutation.isPending ? 'animate-spin' : undefined} />,
@@ -133,12 +145,12 @@ function OrdersLandingContent({ initialData }: { initialData: TenantOrdersRespon
         <InsightStrip4
           tiles={[
             {
-              label: 'Orders · MTD',
+              label: `Orders · ${metricSuffix}`,
               value: `${data.kpis.orders_mtd}`,
               sub: `${data.kpis.orders_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(data.kpis.orders_growth_pct)}% vs last month`,
             },
             {
-              label: 'GMV',
+              label: `GMV · ${metricSuffix}`,
               value: formatCompactInr(data.kpis.gmv_mtd),
               sub: `AOV ${formatCompactInr(data.kpis.aov)}`,
               tone: 'accent',
@@ -172,7 +184,7 @@ function OrdersLandingContent({ initialData }: { initialData: TenantOrdersRespon
             {
               kind: 'info',
               eyebrow: 'Biggest tickets',
-              hint: 'this month',
+              hint: lowerLabel,
               rows: data.todays_read.biggest_tickets.map((row) => ({
                 ...mapRowToCallout(row),
                 reason: `${row.order_id} · ${row.items_count} items · ${row.delivery_city}`,
@@ -270,10 +282,16 @@ function OrdersLandingContent({ initialData }: { initialData: TenantOrdersRespon
   );
 }
 
-export function OrdersLandingClient({ initialData }: { initialData: TenantOrdersResponse | null }) {
+export function OrdersLandingClient({
+  initialData,
+  initialPeriod,
+}: {
+  initialData: TenantOrdersResponse | null;
+  initialPeriod: SellerLandingPeriod;
+}) {
   return (
     <FeatureGate flag="ORDER_MANAGEMENT">
-      <OrdersLandingContent initialData={initialData} />
+      <OrdersLandingContent initialData={initialData} initialPeriod={initialPeriod} />
     </FeatureGate>
   );
 }

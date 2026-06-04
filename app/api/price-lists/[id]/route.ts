@@ -2,17 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { getAuthUserEmailMap } from '@/lib/server/auth-user-directory';
+import { PriceListComposerPayloadSchema } from '@/lib/zod';
 
 type PriceListStatus = 'active' | 'draft' | 'expired';
 type PriceListStatusTone = 'success' | 'warning' | 'neutral';
 
 function deriveStatus(validFrom: string | null, validTo: string | null, isActive: boolean): PriceListStatus {
-  if (!isActive) return 'expired';
   const now = Date.now();
   const fromTs = validFrom ? new Date(validFrom).getTime() : Number.NEGATIVE_INFINITY;
   const toTs = validTo ? new Date(validTo).getTime() : Number.POSITIVE_INFINITY;
-  if (fromTs > now) return 'draft';
   if (toTs < now) return 'expired';
+  if (!isActive) return 'draft';
+  if (fromTs > now) return 'draft';
   return 'active';
 }
 
@@ -30,6 +32,30 @@ function initialsFromName(name: string): string {
     .join('')
     .slice(0, 2)
     .toUpperCase();
+}
+
+async function ensureTenantProducts(
+  db: any,
+  tenantId: string,
+  tenantProductIds: string[],
+) {
+  if (tenantProductIds.length === 0) {
+    return new Set<string>();
+  }
+
+  const { data, error } = await db
+    .schema('app')
+    .from('tenant_products')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .in('id', tenantProductIds)
+    .is('deleted_at', null);
+
+  if (error) {
+    throw new Error('Failed to validate selected products');
+  }
+
+  return new Set<string>(((data ?? []) as Array<{ id: string }>).map((row) => row.id));
 }
 
 export async function GET(
@@ -81,16 +107,15 @@ export async function GET(
     return NextResponse.json({ error: 'Price list not found' }, { status: 404 });
   }
 
-  const [itemsRes, assignmentsRes, activityRes, usersRes] = await Promise.all([
+  const [itemsRes, assignmentsRes, activityRes] = await Promise.all([
     db
       .schema('app')
       .from('price_list_items')
       .select(
         `id, price_list_id, tenant_product_id, price, min_qty, max_qty, created_at, updated_at,
          tenant_product:tenant_products(
-           id, internal_sku, name_override, base_selling_price, is_active,
-           tenant_brand:tenant_brands(id, display_name_override, master_brand:catalog.brands(name)),
-           master_product:catalog.products(name)
+           id, internal_sku, name_override, mrp, base_selling_price, is_active, master_product_id,
+           tenant_brand:tenant_brands(id, display_name_override, master_brand_id)
          )`,
       )
       .eq('price_list_id', id)
@@ -112,17 +137,12 @@ export async function GET(
       .eq('entity_id', id)
       .order('ts', { ascending: false })
       .limit(100),
-    db
-      .schema('auth')
-      .from('users')
-      .select('id, email')
-      .in('id', [priceList.created_by, priceList.updated_by].filter(Boolean)),
   ]);
 
-  if (itemsRes.error || assignmentsRes.error || activityRes.error || usersRes.error) {
+  if (itemsRes.error || assignmentsRes.error || activityRes.error) {
     console.error(
       '[GET /api/price-lists/[id]] related fetch error:',
-      itemsRes.error || assignmentsRes.error || activityRes.error || usersRes.error,
+      itemsRes.error || assignmentsRes.error || activityRes.error,
     );
     return NextResponse.json({ error: 'Failed to fetch price list details' }, { status: 500 });
   }
@@ -130,7 +150,98 @@ export async function GET(
   const items = itemsRes.data ?? [];
   const assignments = assignmentsRes.data ?? [];
   const events = activityRes.data ?? [];
-  const users = usersRes.data ?? [];
+  const userMap = await getAuthUserEmailMap([priceList.created_by, priceList.updated_by].filter(Boolean));
+
+  const masterProductIds = Array.from(
+    new Set(
+      items
+        .map((item: { tenant_product?: { master_product_id?: string | null } | null }) => item.tenant_product?.master_product_id)
+        .filter(Boolean) as string[],
+    ),
+  );
+  const masterBrandIds = Array.from(
+    new Set(
+      items
+        .map(
+          (item: {
+            tenant_product?: {
+              tenant_brand?: { master_brand_id?: string | null } | null;
+            } | null;
+          }) => item.tenant_product?.tenant_brand?.master_brand_id,
+        )
+        .filter(Boolean) as string[],
+    ),
+  );
+
+  const [masterProductsRes, masterBrandsRes] = await Promise.all([
+    masterProductIds.length > 0
+      ? db.schema('catalog').from('products').select('id, name').in('id', masterProductIds)
+      : Promise.resolve({ data: [], error: null }),
+    masterBrandIds.length > 0
+      ? db.schema('catalog').from('brands').select('id, name').in('id', masterBrandIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (masterProductsRes.error || masterBrandsRes.error) {
+    console.error(
+      '[GET /api/price-lists/[id]] catalog denorm error:',
+      masterProductsRes.error || masterBrandsRes.error,
+    );
+    return NextResponse.json({ error: 'Failed to fetch product details' }, { status: 500 });
+  }
+
+  const masterProductNameMap = new Map(
+    (masterProductsRes.data ?? []).map((row: { id: string; name: string }) => [row.id, row.name]),
+  );
+  const masterBrandNameMap = new Map(
+    (masterBrandsRes.data ?? []).map((row: { id: string; name: string }) => [row.id, row.name]),
+  );
+
+  const enrichedItems = items.map(
+    (item: {
+      id: string;
+      price_list_id: string;
+      tenant_product_id: string;
+      price: number;
+      min_qty: number;
+      max_qty: number | null;
+      created_at: string;
+      updated_at: string;
+      tenant_product?: {
+        id: string;
+        internal_sku: string;
+        name_override: string | null;
+        mrp: number | null;
+        base_selling_price: number | null;
+        is_active: boolean;
+        master_product_id?: string | null;
+        tenant_brand?: {
+          id: string;
+          display_name_override: string | null;
+          master_brand_id?: string | null;
+        } | null;
+      } | null;
+    }) => ({
+      ...item,
+      tenant_product: item.tenant_product
+        ? {
+            ...item.tenant_product,
+            tenant_brand: item.tenant_product.tenant_brand
+              ? {
+                  id: item.tenant_product.tenant_brand.id,
+                  display_name_override: item.tenant_product.tenant_brand.display_name_override,
+                  master_brand: item.tenant_product.tenant_brand.master_brand_id
+                    ? { name: masterBrandNameMap.get(item.tenant_product.tenant_brand.master_brand_id) ?? 'Unknown brand' }
+                    : null,
+                }
+              : null,
+            master_product: item.tenant_product.master_product_id
+              ? { name: masterProductNameMap.get(item.tenant_product.master_product_id) ?? 'Unknown product' }
+              : null,
+          }
+        : null,
+    }),
+  );
 
   const cohortIds = assignments
     .filter((assignment: { target_type: string; target_id: string | null }) => assignment.target_type === 'cohort' && assignment.target_id)
@@ -188,7 +299,7 @@ export async function GET(
   const brandSet = new Set<string>();
   let discountAccumulator = 0;
   let discountCount = 0;
-  for (const item of items) {
+  for (const item of enrichedItems) {
     const brandName = item.tenant_product?.tenant_brand?.display_name_override ?? item.tenant_product?.tenant_brand?.master_brand?.name;
     if (brandName) brandSet.add(brandName);
     const base = Number(item.tenant_product?.base_selling_price ?? 0);
@@ -201,8 +312,6 @@ export async function GET(
   const avgDiscountPct = discountCount > 0 ? Math.round((discountAccumulator / discountCount) * 10) / 10 : 0;
   const daysLeft = priceList.valid_to ? Math.max(0, Math.ceil((new Date(priceList.valid_to).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 0;
 
-  const userMap = new Map(users.map((user: { id: string; email: string | null }) => [user.id, user.email ?? 'Team member']));
-
   return NextResponse.json({
     price_list: {
       ...priceList,
@@ -211,7 +320,7 @@ export async function GET(
       status_tone: statusInfo.tone,
       initials: initialsFromName(priceList.name),
       created_by_label: priceList.created_by ? userMap.get(priceList.created_by) ?? 'Team member' : 'Team member',
-      items,
+      items: enrichedItems,
       assignments: assignments.map((assignment: { id: string; target_type: string; target_id: string | null; created_at: string }) => {
         const label = assignment.target_type === 'cohort'
           ? (assignment.target_id ? cohortNameMap.get(assignment.target_id) ?? 'Unknown cohort' : 'Unknown cohort')
@@ -234,7 +343,7 @@ export async function GET(
       }),
       activity: events,
       stats: {
-        products_covered: items.length,
+        products_covered: enrichedItems.length,
         brands_covered: brandSet.size,
         assignments_count: assignments.length,
         avg_discount_pct: avgDiscountPct,
@@ -320,5 +429,178 @@ export async function PATCH(
     return NextResponse.json({ price_list: data });
   }
 
-  return NextResponse.json({ error: 'Unsupported action' }, { status: 400 });
+  const parsed = PriceListComposerPayloadSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.errors[0]?.message ?? 'Validation failed' },
+      { status: 422 },
+    );
+  }
+
+  const payload = parsed.data;
+  if (payload.save_mode === 'publish' && payload.item_prices.length === 0) {
+    return NextResponse.json({ error: 'Add at least one product before publishing.' }, { status: 422 });
+  }
+
+  const { data: existingPriceList, error: existingError } = await db
+    .schema('app')
+    .from('price_lists')
+    .select('id')
+    .eq('id', id)
+    .eq('tenant_id', claims.tenant_id)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (existingError) {
+    return NextResponse.json({ error: 'Failed to load price list' }, { status: 500 });
+  }
+
+  if (!existingPriceList) {
+    return NextResponse.json({ error: 'Price list not found' }, { status: 404 });
+  }
+
+  const tenantProductIds = payload.item_prices.map((item) => item.tenant_product_id);
+
+  let validProductIds: Set<string>;
+  try {
+    validProductIds = await ensureTenantProducts(db, claims.tenant_id, tenantProductIds);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to validate selected products' }, { status: 500 });
+  }
+
+  if (validProductIds.size !== tenantProductIds.length) {
+    return NextResponse.json({ error: 'One or more selected products are invalid.' }, { status: 422 });
+  }
+
+  const { error: updateError } = await db
+    .schema('app')
+    .from('price_lists')
+    .update({
+      name: payload.name,
+      currency: payload.currency,
+      valid_from: payload.valid_from.toISOString(),
+      valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
+      priority: payload.priority,
+      is_active: payload.save_mode === 'publish',
+      pricing_strategy: payload.pricing_strategy,
+      strategy_value: payload.pricing_strategy === 'edit_each' ? null : (payload.strategy_value ?? null),
+      filters: payload.filters,
+      updated_by: claims.sub,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .eq('tenant_id', claims.tenant_id)
+    .is('deleted_at', null);
+
+  if (updateError) {
+    return NextResponse.json({ error: 'Failed to update price list', detail: updateError.message }, { status: 500 });
+  }
+
+  const { data: existingItems, error: existingItemsError } = await db
+    .schema('app')
+    .from('price_list_items')
+    .select('id, tenant_product_id, min_qty, deleted_at')
+    .eq('price_list_id', id);
+
+  if (existingItemsError) {
+    return NextResponse.json({ error: 'Failed to sync price list items', detail: existingItemsError.message }, { status: 500 });
+  }
+
+  const existingByKey = new Map<string, { id: string; tenant_product_id: string; min_qty: number; deleted_at: string | null }>(
+    (existingItems ?? []).map((item: { id: string; tenant_product_id: string; min_qty: number; deleted_at: string | null }) => [
+      `${item.tenant_product_id}:${item.min_qty}`,
+      item,
+    ]),
+  );
+  const submittedKeys = new Set(payload.item_prices.map((item) => `${item.tenant_product_id}:${item.min_qty}`));
+
+  const idsToSoftDelete = (existingItems ?? [])
+    .filter((item: { tenant_product_id: string; min_qty: number; deleted_at: string | null }) => !item.deleted_at && !submittedKeys.has(`${item.tenant_product_id}:${item.min_qty}`))
+    .map((item: { id: string }) => item.id);
+
+  if (idsToSoftDelete.length > 0) {
+    const { error: softDeleteError } = await db
+      .schema('app')
+      .from('price_list_items')
+      .update({
+        deleted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        updated_by: claims.sub,
+      })
+      .in('id', idsToSoftDelete);
+
+    if (softDeleteError) {
+      return NextResponse.json({ error: 'Failed to remove unselected products', detail: softDeleteError.message }, { status: 500 });
+    }
+  }
+
+  for (const item of payload.item_prices) {
+    const key = `${item.tenant_product_id}:${item.min_qty}`;
+    const existingItem = existingByKey.get(key);
+
+    if (existingItem) {
+      const { error: itemUpdateError } = await db
+        .schema('app')
+        .from('price_list_items')
+        .update({
+          price: item.price,
+          max_qty: item.max_qty ?? null,
+          deleted_at: null,
+          updated_at: new Date().toISOString(),
+          updated_by: claims.sub,
+        })
+        .eq('id', existingItem.id);
+
+      if (itemUpdateError) {
+        return NextResponse.json({ error: 'Failed to update selected products', detail: itemUpdateError.message }, { status: 500 });
+      }
+
+      continue;
+    }
+
+    const { error: itemInsertError } = await db
+      .schema('app')
+      .from('price_list_items')
+      .insert({
+        price_list_id: id,
+        tenant_product_id: item.tenant_product_id,
+        price: item.price,
+        min_qty: item.min_qty,
+        max_qty: item.max_qty ?? null,
+        created_by: claims.sub,
+        updated_by: claims.sub,
+      });
+
+    if (itemInsertError) {
+      return NextResponse.json({ error: 'Failed to add selected products', detail: itemInsertError.message }, { status: 500 });
+    }
+  }
+
+  await db.schema('app').from('audit_log').insert({
+    tenant_id: claims.tenant_id,
+    actor_user_id: claims.sub,
+    entity_type: 'price_list',
+    entity_id: id,
+    action: payload.save_mode === 'publish' ? 'publish' : 'update',
+    diff: {
+      event: payload.save_mode === 'publish' ? 'price_list_published' : 'price_list_draft_saved',
+      item_count: payload.item_prices.length,
+      pricing_strategy: payload.pricing_strategy,
+    },
+    ts: new Date().toISOString(),
+  });
+
+  const { data: updatedPriceList, error: updatedPriceListError } = await db
+    .schema('app')
+    .from('price_lists')
+    .select('*')
+    .eq('id', id)
+    .eq('tenant_id', claims.tenant_id)
+    .maybeSingle();
+
+  if (updatedPriceListError) {
+    return NextResponse.json({ error: 'Price list updated but refresh failed' }, { status: 500 });
+  }
+
+  return NextResponse.json({ price_list: updatedPriceList as Record<string, unknown> & { id: string } });
 }

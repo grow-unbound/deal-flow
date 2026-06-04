@@ -13,20 +13,20 @@ describe('getPriceListStatus', () => {
     vi.useRealTimers();
   });
 
-  it('returns inactive when is_active=false regardless of validity window', () => {
+  it('returns draft when is_active=false regardless of validity window', () => {
     expect(getPriceListStatus({
       is_active: false,
       valid_from: '2026-01-01T00:00:00Z',
       valid_to: '2027-01-01T00:00:00Z',
-    })).toBe('inactive');
+    })).toBe('draft');
   });
 
-  it('returns scheduled when valid_from is in the future', () => {
+  it('returns draft when valid_from is in the future', () => {
     expect(getPriceListStatus({
       is_active: true,
       valid_from: '2027-01-01T00:00:00Z',
       valid_to: null,
-    })).toBe('scheduled');
+    })).toBe('draft');
   });
 
   it('returns expired when valid_to is in the past', () => {
@@ -53,11 +53,11 @@ describe('getPriceListStatus', () => {
     })).toBe('active');
   });
 
-  it('inactive takes precedence over expired', () => {
+  it('expired takes precedence over draft when validity has lapsed', () => {
     expect(getPriceListStatus({
       is_active: false,
       valid_from: '2026-01-01T00:00:00Z',
       valid_to: '2026-03-01T00:00:00Z',
-    })).toBe('inactive');
+    })).toBe('expired');
   });
 });

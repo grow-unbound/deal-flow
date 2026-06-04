@@ -1,16 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
-import { z } from 'zod';
-
-const UpdateBrandSchema = z.object({
-  display_name_override: z.string().trim().min(1).optional().nullable(),
-  margin_pct: z.number().min(0).max(100).nullable().optional(),
-  exclusivity: z.boolean().nullable().optional(),
-  external_ref: z.string().trim().nullable().optional(),
-  is_active: z.boolean().optional(),
-  archive: z.boolean().optional(),
-});
+import { TenantBrandUpdateSchema } from '@/lib/zod';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
 type OrderRow = {
@@ -55,6 +46,12 @@ function monthBounds(now = new Date()) {
   };
 }
 
+function toNullableText(value: string | null | undefined) {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const claims = await getVerifiedClaims(request);
@@ -80,7 +77,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { data: tenantBrand, error: brandError } = await db
     .schema('app')
     .from('tenant_brands')
-    .select('id, tenant_id, master_brand_id, display_name_override, margin_pct, exclusivity, is_active, external_ref, created_at, updated_at, deleted_at')
+    .select('id, tenant_id, master_brand_id, display_name_override, logo_url, margin_pct, exclusivity, is_active, external_ref, principal_name, principal_email, principal_phone, principal_location, contact_name, contact_email, contact_phone, default_cohort_id, created_at, updated_at, deleted_at')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .is('deleted_at', null)
@@ -445,7 +442,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!supabaseAdmin) return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
 
   const body = await request.json().catch(() => null);
-  const parsed = UpdateBrandSchema.safeParse(body);
+  const parsed = TenantBrandUpdateSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
 
   const db = supabaseAdmin as DbClient as any;
@@ -465,12 +462,36 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     updated_at: new Date().toISOString(),
   };
 
-  if (parsed.data.display_name_override !== undefined) payload.display_name_override = parsed.data.display_name_override;
+  if (parsed.data.display_name_override !== undefined) payload.display_name_override = toNullableText(parsed.data.display_name_override);
+  if (parsed.data.logo_url !== undefined) payload.logo_url = toNullableText(parsed.data.logo_url);
   if (parsed.data.margin_pct !== undefined) payload.margin_pct = parsed.data.margin_pct;
   if (parsed.data.exclusivity !== undefined) payload.exclusivity = parsed.data.exclusivity;
-  if (parsed.data.external_ref !== undefined) payload.external_ref = parsed.data.external_ref;
+  if (parsed.data.external_ref !== undefined) payload.external_ref = toNullableText(parsed.data.external_ref);
+  if (parsed.data.principal_name !== undefined) payload.principal_name = toNullableText(parsed.data.principal_name);
+  if (parsed.data.principal_email !== undefined) payload.principal_email = toNullableText(parsed.data.principal_email);
+  if (parsed.data.principal_phone !== undefined) payload.principal_phone = toNullableText(parsed.data.principal_phone);
+  if (parsed.data.principal_location !== undefined) payload.principal_location = toNullableText(parsed.data.principal_location);
+  if (parsed.data.contact_name !== undefined) payload.contact_name = toNullableText(parsed.data.contact_name);
+  if (parsed.data.contact_email !== undefined) payload.contact_email = toNullableText(parsed.data.contact_email);
+  if (parsed.data.contact_phone !== undefined) payload.contact_phone = toNullableText(parsed.data.contact_phone);
+  if (parsed.data.default_cohort_id !== undefined) payload.default_cohort_id = parsed.data.default_cohort_id;
   if (parsed.data.is_active !== undefined) payload.is_active = parsed.data.is_active;
   if (parsed.data.archive) payload.deleted_at = new Date().toISOString();
+
+  if (parsed.data.default_cohort_id) {
+    const { data: cohort } = await db
+      .schema('app')
+      .from('cohorts')
+      .select('id')
+      .eq('id', parsed.data.default_cohort_id)
+      .eq('tenant_id', claims.tenant_id)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (!cohort) {
+      return NextResponse.json({ error: 'Selected cohort is invalid for this tenant.' }, { status: 400 });
+    }
+  }
 
   const { data: updated, error } = await db
     .schema('app')

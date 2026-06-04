@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
       .schema('catalog')
       .from('products')
       .select(
-        'id, name, master_sku, brand_id, gst_rate, hsn_code, default_uom, pack_size, description, image_urls, brands!inner(id, name, slug, logo_url)'
+        'id, name, master_sku, brand_id, gst_rate, hsn_code, default_uom, pack_size, description, image_urls, brands!inner(id, name, slug, logo_url), categories!left(name)'
       )
       .eq('is_public', true)
       .limit(20);
@@ -56,6 +56,7 @@ export async function GET(req: NextRequest) {
         description: string | null;
         image_urls: string[] | null;
         brands: { id: string; name: string; slug: string; logo_url: string | null } | null;
+        categories: { name: string } | null;
       }) => ({
         id: row.id,
         name: row.name,
@@ -69,6 +70,7 @@ export async function GET(req: NextRequest) {
         pack_size: row.pack_size,
         description: row.description,
         image_urls: row.image_urls,
+        category_name: row.categories?.name ?? null,
       })
     );
 
