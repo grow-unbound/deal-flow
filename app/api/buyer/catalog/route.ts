@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { getVerifiedClaims } from '@/lib/auth';
+import { getBuyerAppContext } from '@/lib/auth';
 import type { BuyerCatalogItem, BuyerCatalogResponse } from '@/types/buyer';
 
 const PAGE_LIMIT = 40;
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
-    const claims = await getVerifiedClaims(req);
+    const context = await getBuyerAppContext(req);
 
-    if (!claims.tenant_id) {
+    if (!context.tenant_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const limit = Math.min(Math.max(1, Number(searchParams.get('limit') ?? PAGE_LIMIT)), 100);
     const offset = Math.max(0, Number(searchParams.get('offset') ?? 0));
 
-    const tenantId = claims.tenant_id;
+    const tenantId = context.tenant_id;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabaseAdmin as any;
 

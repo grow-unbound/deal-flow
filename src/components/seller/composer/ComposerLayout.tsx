@@ -16,7 +16,7 @@ export function ComposerShell({
   children: React.ReactNode;
   className?: string;
 }) {
-  return <div className={cn('space-y-4', className)}>{children}</div>;
+  return <div className={cn('flex min-h-[calc(100dvh-10rem)] flex-col gap-4', className)}>{children}</div>;
 }
 
 export function ComposerBreadcrumbs({
@@ -125,7 +125,7 @@ export function ComposerBodyGrid({
   className?: string;
 }) {
   return (
-    <div className={cn('grid min-h-[620px] gap-5 lg:grid-cols-[260px_minmax(0,1fr)_320px]', className)}>
+    <div className={cn('grid min-h-[620px] flex-1 items-stretch gap-5 lg:grid-cols-[260px_minmax(0,1fr)_320px]', className)}>
       {left}
       {center}
       {right}
@@ -140,7 +140,7 @@ export function ComposerSidebarCard({
   children: React.ReactNode;
   className?: string;
 }) {
-  return <aside className={cn('rounded-[14px] border border-cream-300 bg-white p-4', className)}>{children}</aside>;
+  return <aside className={cn('flex h-full flex-col rounded-[14px] border border-cream-300 bg-white p-4', className)}>{children}</aside>;
 }
 
 export function ComposerMainCard({
@@ -151,7 +151,7 @@ export function ComposerMainCard({
   className?: string;
 }) {
   return (
-    <section className={cn('flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-cream-300 bg-white', className)}>
+    <section className={cn('flex h-full min-h-0 flex-col overflow-hidden rounded-[14px] border border-cream-300 bg-white', className)}>
       {children}
     </section>
   );
@@ -183,8 +183,56 @@ export function ComposerFooterBar({
   children: React.ReactNode;
 }) {
   return (
-    <div className="sticky bottom-0 z-10 rounded-[14px] border border-cream-300 bg-white px-6 py-4 shadow-[0_-8px_24px_rgba(34,52,43,0.06)]">
+    <div className="sticky bottom-0 z-10 mt-auto rounded-[14px] border border-cream-300 bg-white px-6 py-4 shadow-[0_-8px_24px_rgba(34,52,43,0.06)]">
       {children}
     </div>
+  );
+}
+
+export function ComposerSelectableRow({
+  checked,
+  onCheckedChange,
+  className,
+  children,
+}: {
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <tr
+      className={cn('cursor-pointer border-b border-cream-300 bg-white transition-colors hover:bg-cream-50 last:border-b-0', className)}
+      onClick={(event) => {
+        const target = event.target as HTMLElement;
+        if (target.closest('a, button, input, select, textarea, [role="button"], [data-row-click-ignore="true"]')) return;
+        onCheckedChange(!checked);
+      }}
+    >
+      {children}
+    </tr>
+  );
+}
+
+export function ComposerCheckboxCell({
+  checked,
+  onCheckedChange,
+  className,
+}: {
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  className?: string;
+}) {
+  return (
+    <td className={cn('w-9 px-4 py-3 align-middle', className)} onClick={(event) => event.stopPropagation()}>
+      <div className="flex items-center justify-center">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(event) => onCheckedChange(event.target.checked)}
+          className="accent-teal-500"
+        />
+      </div>
+    </td>
   );
 }

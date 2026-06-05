@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getVerifiedClaims } from '@/lib/auth';
+import { getBuyerAppContext } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import type { BuyerAppMode } from '@/types/buyer';
 
 interface BuyerMeResponse {
+  mode: BuyerAppMode;
   buyer_id: string;
   business_name: string;
   contact_name: string;
@@ -20,9 +22,9 @@ const OPEN_STATUSES = ['draft', 'received', 'confirmed', 'partially_dispatched',
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
-    const claims = await getVerifiedClaims(request);
+    const context = await getBuyerAppContext(request);
 
-    if (!claims.buyer_id || !claims.tenant_id) {
+    if (!context.tenant_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -31,8 +33,44 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const db = supabaseAdmin;
-    const buyerId = claims.buyer_id;
-    const tenantId = claims.tenant_id;
+    const buyerId = context.buyer_id;
+    const tenantId = context.tenant_id;
+
+    if (context.mode === 'preview') {
+      const tenantRes = await db
+        .schema('app')
+        .from('tenants')
+        .select('id, business_name, slug')
+        .eq('id', tenantId)
+        .single();
+
+      if (tenantRes.error || !tenantRes.data) {
+        console.error('[GET /api/buyer/me] tenant query error:', tenantRes.error);
+        return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
+      }
+
+      const tenant = tenantRes.data;
+      const payload: BuyerMeResponse = {
+        mode: 'preview',
+        buyer_id: 'preview',
+        business_name: 'Buyer app preview',
+        contact_name: 'Preview user',
+        credit_limit: 0,
+        credit_used: 0,
+        open_orders_count: 0,
+        tenant: {
+          id: tenant.id,
+          name: tenant.business_name,
+          slug: tenant.slug,
+        },
+      };
+
+      return NextResponse.json(payload);
+    }
+
+    if (!buyerId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const [buyerRes, tenantRes, ordersRes] = await Promise.all([
       db
@@ -80,6 +118,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const tenant = tenantRes.data;
 
     const payload: BuyerMeResponse = {
+      mode: 'buyer',
       buyer_id: buyer.id,
       business_name: buyer.business_name,
       contact_name: buyer.contact_name ?? '',
