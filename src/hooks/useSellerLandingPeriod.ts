@@ -1,7 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useState } from 'react';
 
 import {
   SELLER_LANDING_PERIOD_OPTIONS,
@@ -13,17 +12,13 @@ import {
 } from '@/lib/seller-period';
 
 export function useSellerLandingPeriod(initialPeriod: SellerLandingPeriod) {
-  const router = useRouter();
-  const period = parseSellerLandingPeriod(initialPeriod);
+  const [period, setPeriodState] = useState<SellerLandingPeriod>(() => parseSellerLandingPeriod(initialPeriod));
 
   const setPeriod = useCallback(
     (nextPeriod: SellerLandingPeriod) => {
-      const params = new URLSearchParams(window.location.search);
-      params.set('period', nextPeriod);
-      const query = params.toString();
-      router.push(query ? `${window.location.pathname}?${query}` : window.location.pathname);
+      setPeriodState(parseSellerLandingPeriod(nextPeriod));
     },
-    [router],
+    [],
   );
 
   return {

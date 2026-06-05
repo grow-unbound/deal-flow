@@ -336,7 +336,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const tenantBrandById = new Map<string, string>(tenantBrands.map((row: any) => [String(row.id), String(row.master_brand_id)]));
   const masterBrandById = new Map<string, string>(((masterBrandsRes.error ? [] : masterBrandsRes.data) ?? []).map((row: any) => [String(row.id), String(row.name)]));
 
-  const invoices = await optionalSelect(db, 'invoices', 'id, issued_at, created_at, status, outstanding_balance, total_amount', claims.tenant_id, id);
+  const invoices = await optionalSelect(db, 'invoices', 'id, invoice_date, created_at, status, outstanding_balance, total_amount', claims.tenant_id, id);
   const payments = await optionalSelect(db, 'payments', 'id, paid_at, created_at, amount, status, mode', claims.tenant_id, id);
   const creditNotes = await optionalSelect(db, 'credit_notes', 'id, issued_at, created_at, amount, reason, status', claims.tenant_id, id);
   const catalogViews = await optionalSelect(db, 'catalog_views', 'id, viewed_at, created_at, catalog_id', claims.tenant_id, id);
@@ -467,7 +467,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   for (const invoice of invoices) {
     activityEvents.push({
       id: `invoice-${invoice.id}`,
-      at: invoice.issued_at ?? invoice.created_at ?? new Date().toISOString(),
+      at: invoice.invoice_date ?? invoice.created_at ?? new Date().toISOString(),
       kind: 'invoice',
       title: `Invoice ${invoice.status ?? 'issued'}`,
       subtitle: `Outstanding ₹${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(Number(invoice.outstanding_balance ?? 0))}`,

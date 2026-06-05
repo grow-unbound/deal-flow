@@ -14,6 +14,8 @@ import {
   GrowthPill,
 } from '@/components/seller/layout';
 import { ErrorState } from '@/components/ui/empty-state';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useTenantCatalogs, type CatalogLandingRow, type CatalogsLandingResponse } from '@/hooks/useCatalogs';
@@ -50,6 +52,29 @@ function CatalogsLoadingSkeleton() {
   );
 }
 
+function CatalogsDataSkeleton() {
+  return (
+    <>
+      <div className="mt-5 grid grid-cols-4 gap-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+        ))}
+      </div>
+      <div className="mt-5 grid grid-cols-3 gap-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-[190px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
+        ))}
+      </div>
+      <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+      <div className="mt-2 grid grid-cols-2 gap-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="h-[260px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
+        ))}
+      </div>
+    </>
+  );
+}
+
 function CatalogRowReason(catalog: CatalogLandingRow) {
   if (catalog.status.label === 'Draft') return 'Draft · not yet shipped to cohort';
   if (catalog.status.label === 'Ended') return `Ended ${catalog.valid_until_label} · ${catalog.orders} orders`;
@@ -69,6 +94,8 @@ function CatalogsLandingContent({
   const router = useRouter();
   const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
   const { data, isLoading, isError } = useTenantCatalogs(period, initialData);
+  const retainedData = useRetainedValue(data);
+  const landingData = data ?? retainedData;
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-catalogs-landing',
     scopeKey: period,
@@ -87,7 +114,7 @@ function CatalogsLandingContent({
   const activeChip = routeState.activeChip;
   const sortBy = routeState.sortBy;
 
-  const catalogs = data?.catalogs ?? [];
+  const catalogs = landingData?.catalogs ?? [];
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -101,9 +128,9 @@ function CatalogsLandingContent({
       });
   }, [activeChip, catalogs, search, sortBy]);
 
-  if (isLoading) return <CatalogsLoadingSkeleton />;
+  if (isLoading && !landingData) return <CatalogsLoadingSkeleton />;
 
-  if (isError || !data) {
+  if (isError && !landingData) {
     return (
       <ErrorState
         heading="Couldn't load catalogs"
@@ -111,6 +138,8 @@ function CatalogsLandingContent({
       />
     );
   }
+  if (!landingData) return <CatalogsLoadingSkeleton />;
+  const showRefreshingState = isLoading && !data;
 
   return (
     <PageWrap>
@@ -126,27 +155,36 @@ function CatalogsLandingContent({
         onPrimaryClick={() => router.push('/catalogs/new')}
       />
 
+      {showRefreshingState ? (
+        <CatalogsDataSkeleton />
+      ) : isError ? (
+        <ErrorState
+          heading="Couldn't load catalogs"
+          description="There was a problem fetching catalog funnel metrics. Please try again."
+        />
+      ) : (
+        <>
       <InsightStrip4
         tiles={[
           {
             label: 'Live catalogs',
-            value: `${data.kpis.live_catalogs}`,
-            sub: `${data.kpis.draft_catalogs} in draft, ${data.kpis.ended_catalogs} ended`,
+            value: `${landingData.kpis.live_catalogs}`,
+            sub: `${landingData.kpis.draft_catalogs} in draft, ${landingData.kpis.ended_catalogs} ended`,
           },
           {
             label: `GMV · ${metricSuffix}`,
-            value: formatCompactInr(data.kpis.gmv_mtd),
-            sub: `${data.kpis.gmv_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(data.kpis.gmv_growth_pct)}% vs last month`,
+            value: formatCompactInr(landingData.kpis.gmv_mtd),
+            sub: `${landingData.kpis.gmv_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(landingData.kpis.gmv_growth_pct)}% vs last month`,
             tone: 'accent',
           },
           {
             label: 'Avg conversion',
-            value: `${data.kpis.avg_conversion_pct}%`,
+            value: `${landingData.kpis.avg_conversion_pct}%`,
             sub: 'opens → orders',
           },
           {
             label: 'Orders attributed',
-            value: `${data.kpis.orders_attributed_mtd}`,
+            value: `${landingData.kpis.orders_attributed_mtd}`,
             sub: lowerLabel,
           },
         ]}
@@ -157,8 +195,8 @@ function CatalogsLandingContent({
           {
             kind: 'risk',
             eyebrow: 'Needs attention',
-            hint: `${data.todays_read.needs_attention.length}`,
-            rows: data.todays_read.needs_attention.map((catalog) => ({
+            hint: `${landingData.todays_read.needs_attention.length}`,
+            rows: landingData.todays_read.needs_attention.map((catalog) => ({
               initials: catalog.initials,
               hue: catalog.hue,
               name: catalog.name,
@@ -170,7 +208,7 @@ function CatalogsLandingContent({
             kind: 'info',
             eyebrow: 'Top performers',
             hint: 'by GMV',
-            rows: data.todays_read.top_performers.map((catalog) => ({
+            rows: landingData.todays_read.top_performers.map((catalog) => ({
               initials: catalog.initials,
               hue: catalog.hue,
               name: catalog.name,
@@ -182,7 +220,7 @@ function CatalogsLandingContent({
             kind: 'opportunity',
             eyebrow: 'Top risers',
             hint: 'fastest growth',
-            rows: data.todays_read.top_risers.map((catalog) => ({
+            rows: landingData.todays_read.top_risers.map((catalog) => ({
               initials: catalog.initials,
               hue: catalog.hue,
               name: catalog.name,
@@ -268,6 +306,8 @@ function CatalogsLandingContent({
           );
         })}
       </div>
+        </>
+      )}
     </PageWrap>
   );
 }
