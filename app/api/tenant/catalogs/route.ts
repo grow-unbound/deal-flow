@@ -97,12 +97,13 @@ function getStatusTone(status: DisplayStatus): StatusTone {
 }
 
 function buildCatalogScopeValue(input: {
-  cohortId: string;
+  scopeType: 'cohort' | 'all';
+  cohortId?: string | null;
   filters: CatalogComposerFilterState;
   tagOverrides?: Record<string, CatalogComposerTag | null>;
 }) {
   return {
-    cohort_id: input.cohortId,
+    ...(input.scopeType === 'cohort' && input.cohortId ? { cohort_id: input.cohortId } : {}),
     composer: {
       filters: input.filters,
       tag_overrides: input.tagOverrides ?? {},
@@ -425,17 +426,19 @@ export async function POST(request: NextRequest) {
   const db = supabaseAdmin as any;
   const payload = parsed.data;
 
-  const { data: cohort, error: cohortError } = await db
-    .schema('app')
-    .from('cohorts')
-    .select('id')
-    .eq('id', payload.cohort_id)
-    .eq('tenant_id', claims.tenant_id)
-    .is('deleted_at', null)
-    .maybeSingle();
+  if (payload.scope_type === 'cohort') {
+    const { data: cohort, error: cohortError } = await db
+      .schema('app')
+      .from('cohorts')
+      .select('id')
+      .eq('id', payload.cohort_id)
+      .eq('tenant_id', claims.tenant_id)
+      .is('deleted_at', null)
+      .maybeSingle();
 
-  if (cohortError) return NextResponse.json({ error: 'Failed to validate cohort' }, { status: 500 });
-  if (!cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 400 });
+    if (cohortError) return NextResponse.json({ error: 'Failed to validate cohort' }, { status: 500 });
+    if (!cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 400 });
+  }
 
   const tenantProductIds = payload.items.map((item) => item.tenant_product_id);
   const validProductIds = await ensureTenantProducts(db, claims.tenant_id, tenantProductIds);
@@ -452,8 +455,13 @@ export async function POST(request: NextRequest) {
     .insert({
       tenant_id: claims.tenant_id,
       name: payload.name,
-      scope_type: 'cohort',
-      scope_value: buildCatalogScopeValue({ cohortId: payload.cohort_id, filters: payload.filters, tagOverrides: payload.tag_overrides }),
+      scope_type: payload.scope_type,
+      scope_value: buildCatalogScopeValue({
+        scopeType: payload.scope_type,
+        cohortId: payload.cohort_id,
+        filters: payload.filters,
+        tagOverrides: payload.tag_overrides,
+      }),
       valid_from: payload.valid_from.toISOString(),
       valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
       status,

@@ -8,7 +8,11 @@ vi.mock('@/lib/auth', () => ({
 }));
 
 vi.mock('@/lib/posthog-server', () => ({
-  getPostHogClient: () => ({ query: vi.fn().mockResolvedValue({ results: [] }) }),
+  getPostHogQueryClient: () => ({ query: vi.fn().mockResolvedValue({ results: [] }) }),
+}));
+
+vi.mock('@/lib/server/catalog-composer', () => ({
+  getCatalogComposerPayload: vi.fn().mockResolvedValue({ products: [] }),
 }));
 
 vi.mock('@/lib/supabase', () => {

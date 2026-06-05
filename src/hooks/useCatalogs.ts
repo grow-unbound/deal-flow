@@ -74,6 +74,13 @@ export interface CatalogDetailResponse {
     share_url: string | null;
     scope_type: 'cohort' | 'buyer' | 'geography' | 'all';
     status_value: 'draft' | 'published' | 'archived';
+    selected_cohort: {
+      id: string | null;
+      name: string;
+      member_count: number;
+      scope_type: 'cohort' | 'buyer' | 'geography' | 'all';
+      display_label: string;
+    };
   };
   meta_strip_4: {
     gmv: number;
@@ -94,7 +101,43 @@ export interface CatalogDetailResponse {
     override_price: number | null;
     stock_status: 'In stock' | 'Low stock' | 'Out of stock' | string;
   }>;
+  products_summary: {
+    filters: CatalogComposerFilterState;
+    included_count: number;
+    brands_covered: number;
+    in_stock_count: number;
+    tag_overrides_count: number;
+  };
+  products: Array<{
+    tenant_product_id: string;
+    product_name: string;
+    internal_sku: string;
+    brand_name: string;
+    catalog_gmv: number;
+    catalog_units_sold: number;
+    stock_label: string;
+    stock_tone: 'success' | 'warning' | 'neutral';
+    mrp: number | null;
+    base_selling_price: number | null;
+    units_mtd: number;
+    days_cover: number | null;
+    tag: CatalogComposerTag | null;
+    override_price: number | null;
+    catalog_order: number;
+  }>;
   performance: {
+    summary: {
+      orders: number;
+      gmv: number;
+      growth_pct: number;
+      aov: number;
+      views: number;
+      unique_viewers: number;
+      conversion_rate: number;
+      abandoners: number;
+      valid_until_label: string;
+      published_at_label: string;
+    };
     funnel: {
       unique_viewers: number;
       cart_additions: number;
@@ -106,13 +149,39 @@ export interface CatalogDetailResponse {
       revenue: number;
       conversion_rate: number;
     }>;
+    cumulative_orders: Array<{
+      date: string;
+      orders_cumulative: number;
+      gmv_cumulative: number;
+    }>;
+    top_skus: Array<{
+      tenant_product_id: string;
+      product_name: string;
+      internal_sku: string;
+      gmv: number;
+      units: number;
+    }>;
+    per_buyer_activity: Array<{
+      buyer_id: string;
+      buyer_name: string;
+      city: string;
+      opened_status: 'Opened' | 'Purchased' | 'Not yet';
+      orders: number;
+      gmv: number;
+      last_opened_at: string | null;
+      last_order_at: string | null;
+    }>;
   };
   buyers: Array<{
     buyer_id: string;
     buyer_name: string;
-    status: 'Ordered' | 'Viewed' | 'Not opened' | string;
+    city: string;
+    cohort_label: string;
+    opened_status: 'Opened' | 'Purchased' | 'Not yet';
     spend: number;
     orders: number;
+    last_opened_at: string | null;
+    last_order_at: string | null;
   }>;
   permissions: {
     can_extend_validity: boolean;
@@ -121,8 +190,11 @@ export interface CatalogDetailResponse {
   composer?: {
     name: string;
     status: 'draft' | 'published' | 'archived';
+    live_status: 'draft' | 'published' | 'archived';
+    has_unpublished_changes: boolean;
     valid_from: string;
     valid_to: string | null;
+    scope_type: 'cohort' | 'all';
     cohort_id: string | null;
     filters: CatalogComposerFilterState;
     tag_overrides: Record<string, CatalogComposerTag | null>;
@@ -157,6 +229,7 @@ export interface CatalogComposerBootstrapResponse {
     name: string;
     member_count: number;
   }>;
+  buyer_count: number;
   products: CatalogComposerProduct[];
 }
 
@@ -167,6 +240,11 @@ export interface ExtendValidityRequest {
 export interface CatalogCompositionMutationRequest {
   tenant_product_id: string;
   price_override?: number | null;
+}
+
+export interface CatalogShareLinkResponse {
+  share_token: string;
+  share_url: string;
 }
 
 export function useTenantCatalogs(period: SellerLandingPeriod = 'month', initialData?: CatalogsLandingResponse | null) {
@@ -301,6 +379,97 @@ export function useExtendCatalogValidity(id: string) {
     },
     onError: (_err, _payload, context) => {
       rollbackSnapshots(queryClient, context?.snapshots);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', id] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalogs'] });
+    },
+  });
+}
+
+export function usePublishCatalog(id: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/api/tenant/catalogs/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'publish_catalog' }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to publish catalog');
+      }
+
+      return res.json() as Promise<{ ok: true; share_link: CatalogShareLinkResponse }>;
+    },
+    onMutate: async () => {
+      const snapshots = await takeSnapshots(queryClient, [['tenant-catalog-detail', id], ['tenant-catalogs']]);
+
+      queryClient.setQueryData<CatalogDetailResponse>(['tenant-catalog-detail', id], (old) =>
+        old
+          ? {
+              ...old,
+              header: {
+                ...old.header,
+                status_label: 'Live',
+                status_tone: 'success',
+                status_value: 'published',
+              },
+              permissions: {
+                ...old.permissions,
+                can_edit_composition: false,
+              },
+            }
+          : old,
+      );
+
+      return { snapshots };
+    },
+    onError: (_err, _payload, context) => {
+      rollbackSnapshots(queryClient, context?.snapshots);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', id] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalogs'] });
+      queryClient.invalidateQueries({ queryKey: ['catalog-composer-detail', id] });
+    },
+  });
+}
+
+export function useEnsureCatalogShareLink(id: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/api/tenant/catalogs/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'ensure_share_link' }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to generate share link');
+      }
+
+      return res.json() as Promise<{ share_link: CatalogShareLinkResponse }>;
+    },
+    onSuccess: ({ share_link }) => {
+      queryClient.setQueryData<CatalogDetailResponse>(['tenant-catalog-detail', id], (old) =>
+        old
+          ? {
+              ...old,
+              header: {
+                ...old.header,
+                share_token: share_link.share_token,
+                share_url: share_link.share_url,
+              },
+            }
+          : old,
+      );
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', id] });

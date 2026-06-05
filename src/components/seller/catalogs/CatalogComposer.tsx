@@ -1,39 +1,59 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check, ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Check, ChevronDown, RotateCcw, Save, Search, Send, SlidersHorizontal, TriangleAlert, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { EntityAvatar, PageWrap } from '@/components/seller/layout';
 import {
   ComposerBasicsField,
   ComposerBasicsStrip,
   ComposerBodyGrid,
+  ComposerCheckboxCell,
   ComposerBreadcrumbs,
   ComposerFooterBar,
   ComposerMainCard,
+  ComposerSelectableRow,
   ComposerShell,
   ComposerSidebarCard,
   ComposerTitleRow,
 } from '@/components/seller/composer/ComposerLayout';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-overlay';
 import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   useCatalogComposerBootstrap,
   useCatalogComposerDetail,
   useSaveCatalogComposer,
   type CatalogComposerProduct,
 } from '@/hooks/useCatalogs';
-import { cn, formatDate } from '@/lib/utils';
-import type { CatalogComposerAvailability, CatalogComposerTag } from '@/lib/zod';
+import { cn, formatDate, formatInr } from '@/lib/utils';
+import { CatalogComposerPayloadSchema, type CatalogComposerAvailability, type CatalogComposerTag } from '@/lib/zod';
 
 type ComposerMode = 'create' | 'edit';
 
 type FilterOption = {
   name: string;
   count: number;
+};
+
+type CatalogComposerFieldErrors = {
+  name?: string;
+  cohortId?: string;
+  validFrom?: string;
+  validTo?: string;
+  products?: string;
 };
 
 const AVAILABILITY_OPTIONS: Array<{ value: CatalogComposerAvailability; label: string }> = [
@@ -52,6 +72,7 @@ const TAG_OPTIONS: Array<{ value: CatalogComposerTag | 'auto'; label: string }> 
 ];
 
 const UNCATEGORIZED_FILTER_LABEL = 'Uncategorized';
+const ALL_BUYERS_SCOPE_VALUE = '__all_buyers__';
 
 function normalizeFilterLabel(value: string | null | undefined) {
   const trimmed = value?.trim();
@@ -68,15 +89,6 @@ function buildFilterOptions(values: Array<string | null | undefined>): FilterOpt
   return Array.from(counts.entries())
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => a.name.localeCompare(b.name));
-}
-
-function formatInr(value: number | null | undefined) {
-  if (value == null || Number.isNaN(value)) return '—';
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(value);
 }
 
 function isoDateInput(value: Date) {
@@ -108,15 +120,23 @@ function tagLabel(tag: CatalogComposerProduct['tag']) {
   return null;
 }
 
-function stockPillClasses(tone: CatalogComposerProduct['stock_tone']) {
-  if (tone === 'success') return 'border-teal-200 bg-teal-50 text-teal-700';
-  if (tone === 'warning') return 'border-amber-200 bg-amber-50 text-amber-700';
-  return 'border-cream-300 bg-cream-100 text-cream-700';
+function stockTextClasses(tone: CatalogComposerProduct['stock_tone']) {
+  if (tone === 'success') return 'text-teal-700';
+  if (tone === 'warning') return 'text-amber-700';
+  return 'text-cream-700';
 }
 
 function tagPillClasses(tag: CatalogComposerProduct['tag']) {
   if (tag === 'new' || tag === 'new_stock') return 'border-amber-200 bg-amber-50 text-amber-700';
   return 'border-cream-300 bg-cream-100 text-cream-700';
+}
+
+function BuyerCountPill({ count }: { count: number }) {
+  return (
+    <span className="inline-flex shrink-0 items-center rounded-full border border-cream-300 bg-cream-100 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-cream-700">
+      {count} buyers
+    </span>
+  );
 }
 
 export function CatalogComposerSkeleton() {
@@ -168,6 +188,7 @@ export function CatalogComposer({
 
   const products = bootstrap?.products ?? [];
   const cohorts = bootstrap?.cohorts ?? [];
+  const buyerCount = bootstrap?.buyer_count ?? 0;
   const detailComposer = detail?.composer;
   const isLoading = bootstrapLoading || (mode === 'edit' && detailLoading);
   const isError = bootstrapError || (mode === 'edit' && detailError);
@@ -194,6 +215,9 @@ export function CatalogComposer({
   const [initialTagOverrides, setInitialTagOverrides] = useState<Record<string, CatalogComposerTag | null>>({});
   const [initialSnapshot, setInitialSnapshot] = useState('');
   const [didInit, setDidInit] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<CatalogComposerFieldErrors>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<null | 'draft' | 'publish'>(null);
 
   useEffect(() => {
     if (didInit || products.length === 0) return;
@@ -205,7 +229,7 @@ export function CatalogComposer({
       const nextSelectedIds = new Set(detailComposer.items.map((item) => item.tenant_product_id));
 
       setName(detailComposer.name);
-      setCohortId(detailComposer.cohort_id ?? '');
+      setCohortId(detailComposer.scope_type === 'all' ? ALL_BUYERS_SCOPE_VALUE : (detailComposer.cohort_id ?? ''));
       setValidFrom(detailComposer.valid_from.slice(0, 10));
       setValidTo(detailComposer.valid_to ? detailComposer.valid_to.slice(0, 10) : '');
       setSelectedBrands(nextBrands);
@@ -221,7 +245,7 @@ export function CatalogComposer({
 
     const nextSelectedIds = new Set(products.map((product) => product.id));
     setName('');
-    setCohortId(cohorts[0]?.id ?? '');
+    setCohortId(cohorts[0]?.id ?? ALL_BUYERS_SCOPE_VALUE);
     setValidFrom(isoDateInput(new Date()));
     setValidTo('');
     setSelectedBrands(allBrandNames);
@@ -263,19 +287,30 @@ export function CatalogComposer({
     [products, selectedIds],
   );
 
-  const selectedVisibleCount = useMemo(
-    () => filteredProducts.filter((product) => selectedIds.has(product.id)).length,
+  const filteredSelectedProducts = useMemo(
+    () => filteredProducts.filter((product) => selectedIds.has(product.id)),
     [filteredProducts, selectedIds],
   );
+  const selectedVisibleCount = filteredSelectedProducts.length;
 
   const hiddenByFilters = Math.max(0, products.length - filteredProducts.length);
-  const selectedBrandCount = new Set(selectedProducts.map((product) => product.brand_name)).size;
-  const inStockCount = selectedProducts.filter((product) => product.qty_available > 0).length;
-  const newCount = selectedProducts.filter((product) => effectiveTag(product) === 'new').length;
-  const newStockCount = selectedProducts.filter((product) => effectiveTag(product) === 'new_stock').length;
-  const oldStockCount = selectedProducts.filter((product) => effectiveTag(product) === 'old_stock').length;
+  const hiddenSelectedCount = Math.max(0, selectedProducts.length - filteredSelectedProducts.length);
+  const selectedBrandCount = new Set(filteredSelectedProducts.map((product) => normalizeFilterLabel(product.brand_name))).size;
+  const inStockCount = filteredSelectedProducts.filter((product) => product.qty_available > 0).length;
+  const newCount = filteredSelectedProducts.filter((product) => effectiveTag(product) === 'new').length;
+  const newStockCount = filteredSelectedProducts.filter((product) => effectiveTag(product) === 'new_stock').length;
+  const oldStockCount = filteredSelectedProducts.filter((product) => effectiveTag(product) === 'old_stock').length;
   const selectedCohort = cohorts.find((cohort) => cohort.id === cohortId) ?? null;
+  const isAllBuyersScope = cohortId === ALL_BUYERS_SCOPE_VALUE;
+  const selectedAudienceName = isAllBuyersScope ? 'All Buyers' : (selectedCohort?.name ?? 'Choose a cohort');
+  const selectedAudienceCount = isAllBuyersScope ? buyerCount : (selectedCohort?.member_count ?? 0);
   const overriddenTagCount = Object.values(tagOverrides).filter((value) => value != null).length;
+  const pendingPublishSummary = [
+    { label: 'Name', value: name || 'Untitled catalog' },
+    { label: 'Audience', value: `${selectedAudienceName} (${selectedAudienceCount} buyers)` },
+    { label: 'Products', value: `${selectedVisibleCount} selected · ${selectedBrandCount} brands` },
+    { label: 'Validity', value: validFrom ? `${formatDate(validFrom)} → ${validTo ? formatDate(validTo) : 'Open ended'}` : '—' },
+  ];
 
   const serializedState = useMemo(
     () => JSON.stringify({
@@ -319,6 +354,15 @@ export function CatalogComposer({
     setter(current.length === allValues.length ? [] : allValues);
   }
 
+  function clearFieldError(field: keyof CatalogComposerFieldErrors) {
+    setFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  }
+
   function toggleVisibleSelection(checked: boolean) {
     const visibleIds = filteredProducts.map((product) => product.id);
     setSelectedIds((current) => {
@@ -330,6 +374,7 @@ export function CatalogComposer({
       }
       return next;
     });
+    if (checked || selectedIds.size > visibleIds.length) clearFieldError('products');
   }
 
   function resetOverrides() {
@@ -347,13 +392,13 @@ export function CatalogComposer({
     });
   }
 
-  async function handleSave(saveMode: 'draft' | 'publish') {
-    const result = await saveMutation.mutateAsync({
-      name,
-      scope_type: 'cohort',
-      cohort_id: cohortId,
-      valid_from: new Date(`${validFrom}T00:00:00`),
-      valid_to: validTo ? new Date(`${validTo}T23:59:59`) : undefined,
+  function buildSavePayload(saveMode: 'draft' | 'publish') {
+    return {
+      name: name.trim(),
+      scope_type: isAllBuyersScope ? 'all' : 'cohort',
+      cohort_id: isAllBuyersScope ? null : cohortId || null,
+      valid_from: validFrom ? `${validFrom}T00:00:00` : '',
+      valid_to: validTo ? `${validTo}T23:59:59` : undefined,
       filters: {
         brand_names: selectedBrands,
         category_names: selectedCategories,
@@ -365,9 +410,43 @@ export function CatalogComposer({
         display_order: index,
       })),
       save_mode: saveMode,
-    });
+    };
+  }
 
-    router.push(`/catalogs/${result.catalog.id}`);
+  function validateBeforeSave(saveMode: 'draft' | 'publish') {
+    const payload = buildSavePayload(saveMode);
+    const nextErrors: CatalogComposerFieldErrors = {};
+    const parsed = CatalogComposerPayloadSchema.safeParse(payload);
+
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        const path = String(issue.path[0] ?? '');
+        if (path === 'name') nextErrors.name = issue.message;
+        else if (path === 'cohort_id') nextErrors.cohortId = issue.message;
+        else if (path === 'valid_from') nextErrors.validFrom = issue.message;
+        else if (path === 'valid_to') nextErrors.validTo = issue.message;
+      }
+    }
+
+    if (payload.items.length === 0) {
+      nextErrors.products = 'Select at least one product to save this catalog.';
+    }
+
+    setFieldErrors(nextErrors);
+    return { isValid: Object.keys(nextErrors).length === 0, payload: parsed.success ? parsed.data : null };
+  }
+
+  async function handleSave(saveMode: 'draft' | 'publish') {
+    setSubmitError(null);
+    const { isValid, payload } = validateBeforeSave(saveMode);
+    if (!isValid || !payload) return;
+
+    try {
+      const result = await saveMutation.mutateAsync(payload);
+      router.push(`/catalogs/${result.catalog.id}`);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Failed to save catalog');
+    }
   }
 
   if (isError || (mode === 'edit' && !detail?.composer)) {
@@ -384,8 +463,19 @@ export function CatalogComposer({
     return <CatalogComposerSkeleton />;
   }
 
+  const isPublishedEdit = mode === 'edit' && detail?.composer?.live_status === 'published';
   const createSubtitle = 'Curate which products a cohort sees. The catalog controls visibility, availability, and what gets marked new.';
-  const editSubtitle = 'You are editing a draft catalog. Update the cohort-facing assortment, then review the summary before publishing.';
+  const editSubtitle = isPublishedEdit
+    ? 'You are staging edits for a live catalog. Save keeps current buyer assignments unchanged until you publish updates.'
+    : 'You are editing a draft catalog. Update the cohort-facing assortment, then review the summary before publishing.';
+
+  async function handleActionClick(action: 'draft' | 'publish') {
+    if (isPublishedEdit) {
+      setConfirmAction(action);
+      return;
+    }
+    await handleSave(action);
+  }
 
   return (
     <>
@@ -407,10 +497,7 @@ export function CatalogComposer({
             }}
             actions={
               <>
-                <Button type="button" className="cockpit-btn cockpit-btn-secondary">
-                  Import from CSV
-                </Button>
-                <Button type="button" className="cockpit-btn cockpit-btn-secondary" onClick={() => dirtyGuard.handleOpenChange(false)}>
+                <Button type="button" variant="ghost"  onClick={() => dirtyGuard.handleOpenChange(false)}>
                   <X className="h-3.5 w-3.5" />
                   Close
                 </Button>
@@ -422,21 +509,52 @@ export function CatalogComposer({
             <ComposerBasicsField label="Name">
               <Input
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  clearFieldError('name');
+                  setSubmitError(null);
+                }}
                 placeholder="e.g. Summer ’26 · New Arrivals"
+                error={fieldErrors.name}
                 className="h-auto border-0 bg-transparent px-0 py-0 font-medium text-[14px] text-cream-950 shadow-none focus-visible:ring-0"
               />
             </ComposerBasicsField>
 
             <ComposerBasicsField label="Cohort">
-              <Select value={cohortId} onValueChange={setCohortId}>
-                <SelectTrigger className="h-auto border-0 bg-transparent px-0 py-0 text-[14px] font-medium text-cream-950 shadow-none focus:ring-0">
-                  <SelectValue placeholder="Pick a cohort" />
+              <Select
+                value={cohortId}
+                onValueChange={(value) => {
+                  setCohortId(value);
+                  clearFieldError('cohortId');
+                  setSubmitError(null);
+                }}
+              >
+                <SelectTrigger
+                  error={fieldErrors.cohortId}
+                  className="h-auto border-0 bg-transparent px-0 py-0 text-[14px] font-medium text-cream-950 shadow-none focus:ring-0"
+                >
+                  {cohortId ? (
+                    <div className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left">
+                      <div className="min-w-0 truncate">{selectedAudienceName}</div>
+                      <BuyerCountPill count={selectedAudienceCount} />
+                    </div>
+                  ) : (
+                    <SelectValue placeholder="Pick a cohort" />
+                  )}
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value={ALL_BUYERS_SCOPE_VALUE} className="py-2.5">
+                    <div className="flex min-w-0 items-center justify-between gap-4 pr-6">
+                      <div className="min-w-0 truncate font-medium">All Buyers</div>
+                      <BuyerCountPill count={buyerCount} />
+                    </div>
+                  </SelectItem>
                   {cohorts.map((cohort) => (
-                    <SelectItem key={cohort.id} value={cohort.id}>
-                      {cohort.name} · {cohort.member_count} buyers
+                    <SelectItem key={cohort.id} value={cohort.id} className="py-2.5">
+                      <div className="flex min-w-0 items-center justify-between gap-4 pr-6">
+                        <div className="min-w-0 truncate font-medium">{cohort.name}</div>
+                        <BuyerCountPill count={cohort.member_count} />
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -458,17 +576,62 @@ export function CatalogComposer({
                   <div className="space-y-3">
                     <div>
                       <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-700">From date</p>
-                      <Input type="date" value={validFrom} onChange={(event) => setValidFrom(event.target.value)} />
+                      <Input
+                        type="date"
+                        value={validFrom}
+                        error={fieldErrors.validFrom}
+                        onChange={(event) => {
+                          setValidFrom(event.target.value);
+                          clearFieldError('validFrom');
+                          clearFieldError('validTo');
+                          setSubmitError(null);
+                        }}
+                      />
                     </div>
                     <div>
                       <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-700">To date</p>
-                      <Input type="date" value={validTo} onChange={(event) => setValidTo(event.target.value)} />
+                      <Input
+                        type="date"
+                        value={validTo}
+                        error={fieldErrors.validTo}
+                        onChange={(event) => {
+                          setValidTo(event.target.value);
+                          clearFieldError('validTo');
+                          setSubmitError(null);
+                        }}
+                      />
                     </div>
                   </div>
                 </PopoverContent>
               </Popover>
+              {fieldErrors.validFrom && !fieldErrors.validTo ? <p className="mt-1 text-[11.5px] text-danger-500">{fieldErrors.validFrom}</p> : null}
             </ComposerBasicsField>
           </ComposerBasicsStrip>
+
+          {Object.keys(fieldErrors).length > 0 ? (
+            <Alert variant="warning">
+              <AlertTitle>Fix the highlighted fields</AlertTitle>
+              <AlertDescription>
+                {Array.from(new Set(Object.values(fieldErrors).filter(Boolean))).join(' ')}
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
+          {submitError ? (
+            <Alert variant="danger">
+              <AlertTitle>Couldn&apos;t save catalog</AlertTitle>
+              <AlertDescription>{submitError}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          {isPublishedEdit ? (
+            <Alert variant="warning">
+              <AlertTitle>Editing a live catalog</AlertTitle>
+              <AlertDescription>
+                Save changes keeps the current buyer-facing catalog untouched. Publish updates pushes this staged version to the mapped cohort or buyers.
+              </AlertDescription>
+            </Alert>
+          ) : null}
 
           <ComposerBodyGrid
             left={
@@ -587,7 +750,7 @@ export function CatalogComposer({
                     </div>
                     <Popover>
                       <PopoverTrigger asChild>
-                        <Button type="button" className="cockpit-btn cockpit-btn-secondary">
+                        <Button type="button" variant="secondary">
                           <SlidersHorizontal className="h-3.5 w-3.5" />
                           Bulk adjust
                         </Button>
@@ -611,11 +774,19 @@ export function CatalogComposer({
                         </div>
                       </PopoverContent>
                     </Popover>
-                    <Button type="button" className="cockpit-btn cockpit-btn-secondary" onClick={resetOverrides} disabled={overriddenTagCount === 0}>
+                    <Button type="button" variant="ghost" onClick={resetOverrides} disabled={overriddenTagCount === 0}>
                       Reset overrides
                     </Button>
                   </div>
                 </div>
+
+                {fieldErrors.products ? (
+                  <div className="border-b border-cream-300 px-4 py-3">
+                    <Alert variant="warning">
+                      <AlertDescription>{fieldErrors.products}</AlertDescription>
+                    </Alert>
+                  </div>
+                ) : null}
 
                 {filteredProducts.length === 0 ? (
                   <div className="flex flex-1 items-center justify-center px-8 py-16 text-[13px] text-cream-700">
@@ -638,8 +809,8 @@ export function CatalogComposer({
                           <th className="border-b border-cream-300 px-4 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Brand</th>
                           <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Stock</th>
                           <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">MRP</th>
-                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Base Price</th>
-                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Units MTD</th>
+                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Selling Base Price</th>
+                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Units Sold MTD</th>
                           <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Days Cover</th>
                           <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Tag</th>
                         </tr>
@@ -650,22 +821,31 @@ export function CatalogComposer({
                           const currentTag = effectiveTag(product);
                           const tag = tagLabel(currentTag);
                           return (
-                            <tr key={product.id} className="border-b border-cream-300 last:border-b-0 bg-white">
-                              <td className="px-4 py-3 align-top">
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={(event) => {
-                                    setSelectedIds((current) => {
-                                      const next = new Set(current);
-                                      if (event.target.checked) next.add(product.id);
-                                      else next.delete(product.id);
-                                      return next;
-                                    });
-                                  }}
-                                  className="accent-teal-500"
-                                />
-                              </td>
+                            <ComposerSelectableRow
+                              key={product.id}
+                              checked={isSelected}
+                              onCheckedChange={(nextChecked) => {
+                                setSelectedIds((current) => {
+                                  const next = new Set(current);
+                                  if (nextChecked) next.add(product.id);
+                                  else next.delete(product.id);
+                                  return next;
+                                });
+                                if (nextChecked) clearFieldError('products');
+                              }}
+                            >
+                              <ComposerCheckboxCell
+                                checked={isSelected}
+                                onCheckedChange={(nextChecked) => {
+                                  setSelectedIds((current) => {
+                                    const next = new Set(current);
+                                    if (nextChecked) next.add(product.id);
+                                    else next.delete(product.id);
+                                    return next;
+                                  });
+                                  if (nextChecked) clearFieldError('products');
+                                }}
+                              />
                               <td className="px-4 py-3">
                                 <div className="flex items-center gap-3">
                                   <EntityAvatar
@@ -681,14 +861,11 @@ export function CatalogComposer({
                                 </div>
                               </td>
                               <td className="px-4 py-3 text-cream-900">{product.brand_name}</td>
-                              <td className="px-4 py-3 text-right">
-                                <span className={cn('inline-flex items-center rounded-full border px-2.5 py-1 font-mono text-[11px] font-medium', stockPillClasses(product.stock_tone))}>
-                                  {product.stock_tone !== 'neutral' ? <span className="mr-1 h-1.5 w-1.5 rounded-full bg-current opacity-70" /> : null}
-                                  {product.stock_label}
-                                </span>
+                              <td className={cn('px-4 py-3 text-right font-mono font-medium', stockTextClasses(product.stock_tone))}>
+                                {product.stock_label}
                               </td>
-                              <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatInr(product.mrp)}</td>
-                              <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatInr(product.base_selling_price)}</td>
+                              <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{product.mrp != null ? formatInr(product.mrp) : '—'}</td>
+                              <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{product.base_selling_price != null ? formatInr(product.base_selling_price) : '—'}</td>
                               <td className="px-4 py-3 text-right font-mono text-cream-900">{product.units_mtd}</td>
                               <td className="px-4 py-3 text-right font-mono text-cream-900">{product.days_cover == null ? '—' : `${product.days_cover}d`}</td>
                               <td className="px-4 py-3 text-right">
@@ -696,14 +873,19 @@ export function CatalogComposer({
                                   value={tagOverrides[product.id] ?? 'auto'}
                                   onValueChange={(value) => applyTagOverride([product.id], value as CatalogComposerTag | 'auto')}
                                 >
-                                  <SelectTrigger className="ml-auto h-auto min-w-[120px] border-0 bg-transparent px-0 py-0 text-right shadow-none focus:ring-0">
-                                    {tag ? (
-                                      <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]', tagPillClasses(currentTag))}>
-                                        {tag}
-                                      </span>
-                                    ) : (
-                                      <span className="text-cream-500">—</span>
-                                    )}
+                                  <SelectTrigger
+                                    className="ml-auto inline-flex h-auto min-w-[132px] items-center justify-end gap-1.5 border-0 bg-transparent px-0 py-0 text-right shadow-none focus:ring-0"
+                                    data-row-click-ignore="true"
+                                  >
+                                    <span>
+                                      {tag ? (
+                                        <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]', tagPillClasses(currentTag))}>
+                                          {tag}
+                                        </span>
+                                      ) : (
+                                        <span className="text-cream-500">—</span>
+                                      )}
+                                    </span>
                                   </SelectTrigger>
                                   <SelectContent align="end">
                                     {TAG_OPTIONS.map((option) => (
@@ -714,7 +896,7 @@ export function CatalogComposer({
                                   </SelectContent>
                                 </Select>
                               </td>
-                            </tr>
+                            </ComposerSelectableRow>
                           );
                         })}
                       </tbody>
@@ -733,7 +915,7 @@ export function CatalogComposer({
                         {name || 'Untitled catalog'}
                       </p>
                       <p className="mt-1 text-[12px] text-cream-700">
-                        Publishes to {selectedCohort?.name ?? 'a cohort'} ({selectedCohort?.member_count ?? 0} buyers)
+                        Publishes to {selectedAudienceName} ({selectedAudienceCount} buyers)
                       </p>
                     </div>
                   </div>
@@ -742,14 +924,15 @@ export function CatalogComposer({
 
                   <div className="space-y-3">
                     <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-[12px] leading-[1.5] text-cream-700">
-                      <div className="font-medium text-cream-900">{selectedCohort?.name ?? 'Choose a cohort'}</div>
+                      <div className="font-medium text-cream-900">{selectedAudienceName}</div>
                       <div className="mt-1">
-                        What this cohort will see: {selectedProducts.length} products across {selectedBrandCount} brands.
+                        will see: {selectedVisibleCount} products across {selectedBrandCount} brands.
                       </div>
+                      {hiddenSelectedCount > 0 ? <div className="mt-1">{hiddenSelectedCount} products are outside the current filters.</div> : null}
                     </div>
                     <div className="flex items-center justify-between text-[13px]">
                       <span className="text-cream-700">Products</span>
-                      <span className="font-mono font-medium text-cream-900">{selectedProducts.length}</span>
+                      <span className="font-mono font-medium text-cream-900">{selectedVisibleCount}</span>
                     </div>
                     <div className="flex items-center justify-between text-[13px]">
                       <span className="text-cream-700">Brands</span>
@@ -782,7 +965,7 @@ export function CatalogComposer({
                   <div className="space-y-3">
                     <div className="flex items-center justify-between text-[13px]">
                       <span className="text-cream-700">Reach</span>
-                      <span className="font-mono font-medium text-cream-900">{selectedCohort?.member_count ?? 0} buyers</span>
+                      <span className="font-mono font-medium text-cream-900">{selectedAudienceCount} buyers</span>
                     </div>
                     <div className="flex items-center justify-between text-[13px]">
                       <span className="text-cream-700">Valid from</span>
@@ -794,11 +977,39 @@ export function CatalogComposer({
                     </div>
                   </div>
 
-                  <div className="mt-auto rounded-[10px] border border-teal-200 bg-teal-50 px-3 py-3 text-[12px] leading-[1.5] text-teal-700">
+                  {isPublishedEdit ? (
+                    <>
+                      <div className="h-px bg-cream-300" />
+                      <div className="space-y-2">
+                        <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Next publish</h4>
+                        <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3">
+                          <div className="space-y-2 text-[12px] leading-[1.5] text-amber-900">
+                            {pendingPublishSummary.map((item) => (
+                              <div key={item.label} className="flex items-start justify-between gap-4">
+                                <span className="text-amber-700">{item.label}</span>
+                                <span className="max-w-[190px] text-right font-medium">{item.value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+
+                  <div className={cn(
+                    'mt-auto rounded-[10px] px-3 py-3 text-[12px] leading-[1.5]',
+                    isPublishedEdit ? 'border border-amber-200 bg-amber-50 text-amber-800' : 'border border-teal-200 bg-teal-50 text-teal-700',
+                  )}>
                     <div className="flex gap-2">
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-teal-600" />
+                      {isPublishedEdit ? (
+                        <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                      ) : (
+                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-teal-600" />
+                      )}
                       <span>
-                        Ready to publish. Buyers see this catalog as soon as it goes live.
+                        {isPublishedEdit
+                          ? 'Save keeps these edits staged privately. Publish updates is the moment mapped buyers or cohorts see the new catalog.'
+                          : 'Ready to publish. Buyers see this catalog as soon as it goes live.'}
                         {overriddenTagCount > 0 ? ` ${overriddenTagCount} product tag override${overriddenTagCount === 1 ? '' : 's'} will be preserved.` : ''}
                       </span>
                     </div>
@@ -812,26 +1023,35 @@ export function CatalogComposer({
             <div className="flex items-center gap-3">
               <div className={cn('inline-flex items-center gap-2 text-[12px]', isDirty ? 'text-ember-700' : 'text-cream-700')}>
                 <span className={cn('h-1.5 w-1.5 rounded-full', isDirty ? 'bg-ember-400' : 'bg-success-500')} />
-                {isDirty ? 'Unsaved changes' : mode === 'edit' ? 'Draft saved · auto-resumes if you close' : 'Auto-saves as you type'}
+                {isDirty
+                  ? 'Unsaved changes'
+                  : isPublishedEdit
+                    ? (detail?.composer?.has_unpublished_changes ? 'Staged changes saved · buyers still see the live catalog' : 'Live catalog · no staged changes')
+                    : mode === 'edit'
+                      ? 'Draft saved · auto-resumes if you close'
+                      : 'Auto-saves as you type'}
               </div>
               <div className="ml-auto flex items-center gap-2">
                 <Button type="button" variant="ghost" onClick={() => dirtyGuard.handleOpenChange(false)}>
+                  <RotateCcw className="h-3.5 w-3.5" />
                   {mode === 'edit' ? 'Revert changes' : 'Discard draft'}
                 </Button>
                 <Button
                   type="button"
-                  className="cockpit-btn cockpit-btn-secondary"
-                  onClick={() => void handleSave('draft')}
+                  variant="accent"
+                  onClick={() => void handleActionClick('draft')}
                   disabled={saveMutation.isPending}
                 >
-                  {mode === 'edit' ? 'Save as draft' : 'Save & close'}
+                  <Save className="h-3.5 w-3.5" />
+                  {isPublishedEdit ? 'Save changes' : mode === 'edit' ? 'Save as draft' : 'Save & close'}
                 </Button>
                 <Button
                   type="button"
                   className="cockpit-btn cockpit-btn-primary"
-                  onClick={() => void handleSave('publish')}
-                  disabled={saveMutation.isPending || selectedProducts.length === 0 || !cohortId}
+                  onClick={() => void handleActionClick('publish')}
+                  disabled={saveMutation.isPending}
                 >
+                  <Send className="h-3.5 w-3.5" />
                   {mode === 'edit' ? 'Publish updates' : 'Publish catalog'}
                 </Button>
               </div>
@@ -845,6 +1065,43 @@ export function CatalogComposer({
         onOpenChange={dirtyGuard.setDiscardOpen}
         onDiscard={dirtyGuard.confirmDiscard}
       />
+
+      <Dialog open={confirmAction !== null} onOpenChange={(open) => setConfirmAction(open ? confirmAction : null)}>
+        <DialogContent className="max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>
+              {confirmAction === 'draft' ? 'Save unpublished changes?' : 'Publish updates to buyers?'}
+            </DialogTitle>
+            <DialogDescription>
+              {confirmAction === 'draft'
+                ? 'This stores your edits as a private draft. Mapped buyers and cohorts will keep seeing the current live catalog until you publish updates.'
+                : 'This replaces the live catalog for the currently mapped buyers or cohort. Publish only when the updated assortment is ready to go live.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="pt-4 text-[13px] leading-6 text-cream-700">
+            {confirmAction === 'draft'
+              ? 'You can come back later, review these staged changes, and publish when ready.'
+              : `${selectedAudienceCount} buyers in ${selectedAudienceName} will see this updated catalog once you confirm.`}
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setConfirmAction(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={async () => {
+                if (!confirmAction) return;
+                await handleSave(confirmAction);
+                setConfirmAction(null);
+              }}
+              disabled={saveMutation.isPending}
+            >
+              {confirmAction === 'draft' ? <Save className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
+              {confirmAction === 'draft' ? 'Save changes' : 'Publish updates'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

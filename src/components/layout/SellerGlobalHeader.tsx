@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { ExternalLink, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -25,10 +24,10 @@ export function SellerGlobalHeader() {
 
       <div className="ml-auto flex items-center gap-2">
         <Button asChild variant="ghost" className="rounded-lg text-cream-800">
-          <Link href="/shop/home">
+          <a href="/api/buyer/preview/launch" target="_blank" rel="noreferrer">
             <ExternalLink size={14} />
             Open buyer app
-          </Link>
+          </a>
         </Button>
       </div>
     </header>

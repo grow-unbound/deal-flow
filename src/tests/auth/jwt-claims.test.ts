@@ -1,11 +1,24 @@
 import { NextRequest } from 'next/server';
+import { vi } from 'vitest';
+vi.mock('@/lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getUser: vi.fn(),
+    },
+  },
+  supabaseAdmin: {
+    rpc: vi.fn(),
+  },
+}));
 import {
   decodeJWTPayload,
   extractVerifiedClaims,
   assertTenantClaim,
   AuthorizationError,
+  getBuyerAppContext,
   type JWTClaims,
 } from '@/lib/auth';
+import { createBuyerPreviewToken, verifyBuyerPreviewToken } from '@/lib/buyer-preview';
 
 // A real JWT fixture (header.payload.sig) with known claims
 const FIXTURE_PAYLOAD = {
@@ -23,6 +36,10 @@ function buildJWT(payload: object): string {
 }
 
 describe('decodeJWTPayload', () => {
+  beforeEach(() => {
+    process.env.BUYER_PREVIEW_TOKEN_SECRET = 'test-preview-secret';
+  });
+
   it('decodes a well-formed JWT and returns the payload', () => {
     const token = buildJWT(FIXTURE_PAYLOAD);
     const decoded = decodeJWTPayload(token);
@@ -53,6 +70,7 @@ describe('extractVerifiedClaims', () => {
     });
     const claims = extractVerifiedClaims(req);
     expect(claims).toEqual<JWTClaims>({
+      sub: null,
       tenant_id: 'tenant-abc',
       role: 'seller_admin',
       buyer_id: 'buyer-xyz',
@@ -91,5 +109,50 @@ describe('assertTenantClaim', () => {
     expect(() =>
       assertTenantClaim({ tenant_id: 'tenant-abc', role: 'seller_admin', buyer_id: null }, 'tenant-other')
     ).toThrow(AuthorizationError);
+  });
+});
+
+describe('buyer preview tokens', () => {
+  beforeEach(() => {
+    process.env.BUYER_PREVIEW_TOKEN_SECRET = 'test-preview-secret';
+  });
+
+  it('creates and verifies a signed preview token', async () => {
+    const token = await createBuyerPreviewToken({ tenantId: 'tenant-abc', shareToken: 'cat-123' });
+    const payload = await verifyBuyerPreviewToken(token);
+
+    expect(payload?.tenant_id).toBe('tenant-abc');
+    expect(payload?.role).toBe('buyer_admin');
+    expect(payload?.share_token).toBe('cat-123');
+  });
+
+  it('rejects expired preview tokens', async () => {
+    const token = await createBuyerPreviewToken({ tenantId: 'tenant-abc', now: 100 });
+    await expect(verifyBuyerPreviewToken(token, 1000)).resolves.toBeNull();
+  });
+
+  it('prefers real buyer claims over preview mode', async () => {
+    const req = new NextRequest('http://localhost/shop/home');
+    req.headers.set('x-verified-tenant-id', 'tenant-abc');
+    req.headers.set('x-verified-role', 'buyer_admin');
+    req.headers.set('x-verified-buyer-id', 'buyer-123');
+    req.headers.set('x-buyer-preview', await createBuyerPreviewToken({ tenantId: 'tenant-abc' }));
+
+    const context = await getBuyerAppContext(req);
+    expect(context.mode).toBe('buyer');
+    expect(context.buyer_id).toBe('buyer-123');
+  });
+
+  it('allows seller-authenticated preview mode for matching tenant tokens', async () => {
+    const req = new NextRequest('http://localhost/shop/home');
+    req.headers.set('x-verified-tenant-id', 'tenant-abc');
+    req.headers.set('x-verified-role', 'seller_admin');
+    req.headers.set('x-buyer-preview', await createBuyerPreviewToken({ tenantId: 'tenant-abc', shareToken: 'cat-123' }));
+
+    const context = await getBuyerAppContext(req);
+    expect(context.mode).toBe('preview');
+    expect(context.role).toBe('buyer_admin');
+    expect(context.share_token).toBe('cat-123');
+    expect(context.buyer_id).toBeNull();
   });
 });

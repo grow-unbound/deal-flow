@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getVerifiedClaims } from '@/lib/auth';
+import { getBuyerAppContext } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
 
 interface CatalogItem {
@@ -27,9 +27,9 @@ interface CatalogItemCountRow {
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
-    const claims = await getVerifiedClaims(request);
+    const context = await getBuyerAppContext(request);
 
-    if (!claims.tenant_id || !claims.buyer_id) {
+    if (!context.tenant_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const db = supabaseAdmin;
-    const tenantId = claims.tenant_id;
+    const tenantId = context.tenant_id;
 
     const catalogsRes = await db
       .schema('app')

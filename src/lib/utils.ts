@@ -26,6 +26,10 @@ export function formatCurrency(amount: number, currency = 'INR'): string {
   }).format(amount);
 }
 
+export function formatInr(amount: number): string {
+  return formatCurrency(amount, 'INR');
+}
+
 export function formatInrInput(raw: string): string {
   const cleaned = raw.replace(/[^\d.]/g, '');
   if (!cleaned) return '';
@@ -65,9 +69,13 @@ export function formatCompactIndianNumber(value: number, fractionDigits = 2): st
   return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(value);
 }
 
-export function formatCompactInr(value: number, fractionDigits = 2): string {
-  if (Math.abs(value) < 10000) return formatCurrency(value, 'INR');
+export function formatSalesInr(value: number, fractionDigits = 2): string {
+  if (Math.abs(value) < 10000) return formatInr(value);
   return `₹${formatCompactIndianNumber(value, fractionDigits)}`;
+}
+
+export function formatCompactInr(value: number, fractionDigits = 2): string {
+  return formatSalesInr(value, fractionDigits);
 }
 
 export function formatDate(date: string | Date): string {
