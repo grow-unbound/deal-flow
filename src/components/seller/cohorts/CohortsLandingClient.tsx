@@ -129,12 +129,7 @@ function CohortsLandingContent({
         period={period}
         periodOptions={options}
         onPeriodChange={setPeriod}
-        secondary={{
-          label: 'Publish catalog',
-          icon: <Grid size={13} />,
-          onClick: () => router.push('/catalogs'),
-        }}
-        primary="New cohort"
+        primary="Add a cohort"
         onPrimaryClick={() => router.push('/cohorts/new')}
       />
 

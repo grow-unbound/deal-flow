@@ -77,6 +77,28 @@ describe('CohortCreateSchema — dynamic cohort', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.filters).toEqual([]);
+      expect(result.data.selected_buyer_ids).toEqual([]);
+      expect(result.data.excluded_buyer_ids).toEqual([]);
+    }
+  });
+
+  it('accepts last-order and GMV bucket filters with exclusions', () => {
+    const result = CohortCreateSchema.safeParse({
+      name: 'Dormant buyers with low spend',
+      is_static: false,
+      rules: {
+        filters: [
+          { field: 'last_order_bucket', operator: 'eq', value: 'dormant_90_plus_days' },
+          { field: 'gmv_90d_bucket', operator: 'in', value: ['gmv_0', 'gmv_1_50000'] },
+        ],
+        excluded_buyer_ids: ['550e8400-e29b-41d4-a716-446655440000'],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.rules?.excluded_buyer_ids).toHaveLength(1);
+      expect(result.data.rules?.filters[0]?.field).toBe('last_order_bucket');
     }
   });
 });

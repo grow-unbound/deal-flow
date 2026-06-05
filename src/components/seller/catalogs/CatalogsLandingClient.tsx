@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { LayoutGrid } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 import { FeatureGate } from '@/components/FeatureGate';
@@ -109,13 +108,8 @@ function CatalogsLandingContent({
         period={period}
         periodOptions={options}
         onPeriodChange={setPeriod}
-        secondary={{
-          label: 'New from template',
-          icon: <LayoutGrid size={13} />,
-          onClick: () => router.push('/catalogs/new?mode=template'),
-        }}
-        primary="Publish a catalog"
-        onPrimaryClick={() => router.push('/catalogs/new?mode=publish')}
+        primary="Add a catalog"
+        onPrimaryClick={() => router.push('/catalogs/new')}
       />
 
       <InsightStrip4

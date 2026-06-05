@@ -25,7 +25,7 @@ interface PageHeaderProps {
   period?: SellerLandingPeriod;
   periodOptions?: SellerLandingPeriodOption[];
   onPeriodChange?: (period: SellerLandingPeriod) => void;
-  secondary: HeaderAction;
+  secondary?: HeaderAction;
   primary: string;
   onPrimaryClick?: () => void;
 }
@@ -81,10 +81,12 @@ export function PageHeader({
             <ChevronDown size={14} />
           </button>
         )}
-        <Button variant="secondary" size="sm" onClick={secondary.onClick}>
-          {secondary.icon}
-          {secondary.label}
-        </Button>
+        {secondary ? (
+          <Button variant="secondary" size="sm" onClick={secondary.onClick}>
+            {secondary.icon}
+            {secondary.label}
+          </Button>
+        ) : null}
         <Button variant="accent" size="sm" onClick={onPrimaryClick}>
           <Plus size={13} />
           {primary}

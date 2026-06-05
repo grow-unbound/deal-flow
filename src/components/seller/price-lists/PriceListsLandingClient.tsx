@@ -134,8 +134,7 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
           title="Price Lists"
           subtitle="Custom pricing per cohort. Each list sets prices on a window — once it lapses, buyers fall back to base. Keep them fresh."
           horizon="This month"
-          secondary={{ label: 'Clone a list', icon: <Copy size={13} />, onClick: undefined }}
-          primary="New price list"
+          primary="Add a price list"
           onPrimaryClick={() => router.push('/price-lists/new')}
         />
 
