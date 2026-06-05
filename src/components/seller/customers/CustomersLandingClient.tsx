@@ -19,6 +19,7 @@ import {
 } from '@/components/seller/layout';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn, formatCompactInr } from '@/lib/utils';
+import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import {
   useCustomersLanding,
@@ -115,9 +116,23 @@ function CustomersLandingContent({
   const { data, isLoading } = useCustomersLanding(period, initialData);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
-  const [activeChip, setActiveChip] = useState<Chip>('All tiers');
-  const [sortBy, setSortBy] = useState<SortOption>('Spend (high → low)');
-  const [search, setSearch] = useState('');
+  const { state: routeState, setState: setRouteState } = useRouteSnapshot({
+    storageKey: 'seller-customers-landing',
+    scopeKey: period,
+    initialState: {
+      activeChip: 'All tiers' as Chip,
+      sortBy: 'Spend (high → low)' as SortOption,
+      search: '',
+    },
+  });
+  useRouteScrollRestoration({
+    storageKey: 'seller-customers-landing',
+    scopeKey: period,
+    ready: !isLoading,
+  });
+  const activeChip = routeState.activeChip;
+  const sortBy = routeState.sortBy;
+  const search = routeState.search;
 
   const buyers = data?.buyers ?? [];
 
@@ -247,10 +262,10 @@ function CustomersLandingContent({
         sortBy={sortBy}
         hideViewToggle
         searchValue={search}
-        onSearchChange={setSearch}
-        onChipChange={(chip) => setActiveChip(chip as Chip)}
+        onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+        onChipChange={(chip) => setRouteState((current) => ({ ...current, activeChip: chip as Chip }))}
         sortOptions={SORT_OPTIONS}
-        onSortChange={(option) => setSortBy(option as SortOption)}
+        onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
 
       <LandingTable

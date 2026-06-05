@@ -7,21 +7,37 @@ import { BrandFilter } from '@/components/buyer/catalog/BrandFilter';
 import { CatalogPageHeader } from '@/components/buyer/catalog/CatalogPageHeader';
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { LoadingSkeleton } from '@/components/buyer/catalog/LoadingSkeleton';
+import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import type { BuyerCatalogItem, BuyerBrand, BuyerCategory } from '@/types/buyer';
 
 const PAGE_LIMIT = 40;
 
 export default function CatalogPage() {
-  const [search, setSearch] = React.useState('');
-  const [selectedCategory, setSelectedCategory] = React.useState<string | null>(null);
-  const [selectedBrand, setSelectedBrand] = React.useState<string | null>(null);
-
-  const [items, setItems] = React.useState<BuyerCatalogItem[]>([]);
-  const [categories, setCategories] = React.useState<BuyerCategory[]>([]);
-  const [page, setPage] = React.useState(0);
-  const [hasMore, setHasMore] = React.useState(false);
-  const [loading, setLoading] = React.useState(true);
+  const { state: routeState, setState: setRouteState } = useRouteSnapshot({
+    storageKey: 'buyer-catalog-page',
+    initialState: {
+      search: '',
+      selectedCategory: null as string | null,
+      selectedBrand: null as string | null,
+      items: [] as BuyerCatalogItem[],
+      categories: [] as BuyerCategory[],
+      page: 0,
+      hasMore: false,
+    },
+  });
+  const search = routeState.search;
+  const selectedCategory = routeState.selectedCategory;
+  const selectedBrand = routeState.selectedBrand;
+  const items = routeState.items;
+  const categories = routeState.categories;
+  const page = routeState.page;
+  const hasMore = routeState.hasMore;
+  const [loading, setLoading] = React.useState(items.length === 0);
   const [loadingMore, setLoadingMore] = React.useState(false);
+  useRouteScrollRestoration({
+    storageKey: 'buyer-catalog-page',
+    ready: !loading,
+  });
 
   const sentinelRef = React.useRef<HTMLDivElement>(null);
   const observerRef = React.useRef<IntersectionObserver | null>(null);
@@ -38,7 +54,7 @@ export default function CatalogPage() {
     fetch('/api/buyer/categories')
       .then((r) => r.json())
       .then((data: { categories?: BuyerCategory[] }) => {
-        setCategories(data.categories ?? []);
+        setRouteState((current) => ({ ...current, categories: data.categories ?? [] }));
       })
       .catch((err) => console.error('[CatalogPage] categories fetch error:', err));
   }, []);
@@ -46,10 +62,8 @@ export default function CatalogPage() {
   // Fetch products on filter change (reset)
   React.useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setPage(0);
-    setItems([]);
-    setHasMore(false);
+    const hasCachedItems = routeState.items.length > 0;
+    setLoading(!hasCachedItems);
 
     const params = new URLSearchParams({
       limit: String(PAGE_LIMIT),
@@ -63,9 +77,12 @@ export default function CatalogPage() {
       .then((r) => r.json())
       .then((data: { items?: BuyerCatalogItem[]; has_more?: boolean }) => {
         if (cancelled) return;
-        setItems(data.items ?? []);
-        setHasMore(data.has_more ?? false);
-        setPage(1);
+        setRouteState((current) => ({
+          ...current,
+          items: data.items ?? [],
+          hasMore: data.has_more ?? false,
+          page: 1,
+        }));
       })
       .catch((err) => console.error('[CatalogPage] initial fetch error:', err))
       .finally(() => {
@@ -94,9 +111,12 @@ export default function CatalogPage() {
     fetch(`/api/buyer/catalog?${params.toString()}`)
       .then((r) => r.json())
       .then((data: { items?: BuyerCatalogItem[]; has_more?: boolean }) => {
-        setItems((prev) => [...prev, ...(data.items ?? [])]);
-        setHasMore(data.has_more ?? false);
-        setPage((p) => p + 1);
+        setRouteState((current) => ({
+          ...current,
+          items: [...current.items, ...(data.items ?? [])],
+          hasMore: data.has_more ?? false,
+          page: current.page + 1,
+        }));
       })
       .catch((err) => console.error('[CatalogPage] load more error:', err))
       .finally(() => setLoadingMore(false));
@@ -134,16 +154,22 @@ export default function CatalogPage() {
     selectedCategory !== null || selectedBrand !== null || debouncedSearch !== '';
 
   function clearFilters() {
-    setSearch('');
-    setSelectedCategory(null);
-    setSelectedBrand(null);
+    setRouteState((current) => ({
+      ...current,
+      search: '',
+      selectedCategory: null,
+      selectedBrand: null,
+    }));
   }
 
   return (
     <div className="flex flex-col pb-[var(--tab-bar)]">
       {/* Sticky search */}
       <div className="sticky top-0 z-10 bg-[var(--bg-base)] border-b border-[var(--border-1)] px-4 py-3">
-        <SearchBar value={search} onChange={setSearch} />
+        <SearchBar
+          value={search}
+          onChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+        />
       </div>
 
       {/* Filters */}
@@ -151,10 +177,14 @@ export default function CatalogPage() {
         <CategoryFilter
           categories={categories}
           selected={selectedCategory}
-          onChange={setSelectedCategory}
+          onChange={(value) => setRouteState((current) => ({ ...current, selectedCategory: value }))}
         />
         {brands.length > 0 && (
-          <BrandFilter brands={brands} selected={selectedBrand} onChange={setSelectedBrand} />
+          <BrandFilter
+            brands={brands}
+            selected={selectedBrand}
+            onChange={(value) => setRouteState((current) => ({ ...current, selectedBrand: value }))}
+          />
         )}
       </div>
 

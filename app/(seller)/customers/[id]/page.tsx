@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useMemo, useState } from 'react';
+import { use, useMemo } from 'react';
 import Link from 'next/link';
 import { Download, Share2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
@@ -12,6 +12,7 @@ import { PageWrap } from '@/components/seller/layout';
 import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
 import { CustomerActivityTab, CustomerDetailsTab, CustomerOrdersTab, CustomerPerformanceTab } from '@/components/seller/customers/detail';
 import { useRole } from '@/hooks/useRole';
+import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useTenantCustomerDetail, useToggleCustomerStatusOptimistic } from '@/hooks/useCustomersLanding';
 import { formatCompactInr } from '@/lib/utils';
 
@@ -69,7 +70,11 @@ function TierPill({ tier }: { tier: 'A' | 'B' | 'C' | null }) {
 
 export default function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const [tab, setTab] = useState<TabId>('performance');
+  const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
+    storageKey: 'seller-customer-detail-tab',
+    scopeKey: id,
+    initialState: 'performance',
+  });
   const { isSellerAdmin } = useRole();
   const { data, isLoading, isError, error } = useTenantCustomerDetail(id);
   const statusMutation = useToggleCustomerStatusOptimistic(id);

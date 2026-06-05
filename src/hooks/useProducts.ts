@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import type { CustomProductInput } from '@/lib/zod';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
+import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
 
 export interface MasterProduct {
@@ -222,7 +223,9 @@ export function useTenantProducts(period: SellerLandingPeriod = 'month', initial
       return res.json();
     },
     initialData: initialData ?? undefined,
-    staleTime: 30_000,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -238,7 +241,9 @@ export function useSearchMasterProducts(query: string) {
       return res.json();
     },
     enabled: query.length >= 1,
-    staleTime: 30_000,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -324,6 +329,9 @@ export function useProduct(id: string) {
       return res.json() as Promise<{ product: TenantProduct }>;
     },
     enabled: !!id,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -336,6 +344,9 @@ export function useProductDetail(id: string) {
       return res.json() as Promise<ProductDetailResponse>;
     },
     enabled: !!id,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    refetchOnWindowFocus: false,
   });
 }
 

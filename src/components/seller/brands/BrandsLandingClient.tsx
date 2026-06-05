@@ -19,6 +19,7 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useTenantBrands, type TenantBrand, type TenantBrandsResponse } from '@/hooks/useBrands';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
@@ -127,13 +128,28 @@ function BrandLandingContent({
   const router = useRouter();
   const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
   const { data, isLoading, isError } = useTenantBrands(period, initialData ?? undefined);
-  const [search, setSearch] = useState('');
+  const { state: routeState, setState: setRouteState } = useRouteSnapshot({
+    storageKey: 'seller-brands-landing',
+    scopeKey: period,
+    initialState: {
+      search: '',
+      activeChip: 'All categories',
+      sortBy: 'GMV (high → low)' as SortOption,
+      visibleCount: PAGE_SIZE,
+    },
+  });
+  useRouteScrollRestoration({
+    storageKey: 'seller-brands-landing',
+    scopeKey: period,
+    ready: !isLoading,
+  });
   const dynamicChips = useMemo(() => ['All categories', ...(data?.categories ?? []), 'At risk'], [data?.categories]);
-  const [activeChip, setActiveChip] = useState<string>('All categories');
-  const [sortBy, setSortBy] = useState<SortOption>('GMV (high → low)');
+  const search = routeState.search;
+  const activeChip = routeState.activeChip;
+  const sortBy = routeState.sortBy;
   const [inviteOpen, setInviteOpen] = useState(false);
   const [addBrandOpen, setAddBrandOpen] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const visibleCount = routeState.visibleCount;
 
   const brands = useMemo(() => (data?.brands ?? []).map(toBrandVm), [data?.brands]);
   const portfolioGmv = useMemo(
@@ -165,13 +181,17 @@ function BrandLandingContent({
   }, [activeChip, search, sortBy, updatedBrands]);
 
   useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
+    setRouteState((current) => ({ ...current, visibleCount: PAGE_SIZE }));
   }, [activeChip, search, sortBy]);
   const visibleRows = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
   const hasMore = visibleCount < filtered.length;
   const { sentinelRef } = useInfiniteScroll({
     hasMore,
-    onLoadMore: () => setVisibleCount((count) => Math.min(count + PAGE_SIZE, filtered.length)),
+    onLoadMore: () =>
+      setRouteState((current) => ({
+        ...current,
+        visibleCount: Math.min(current.visibleCount + PAGE_SIZE, filtered.length),
+      })),
   });
 
   const attention = useMemo(() => updatedBrands.filter((brand) => brand.alerts.length > 0), [updatedBrands]);
@@ -307,10 +327,10 @@ function BrandLandingContent({
         sortBy={sortBy}
         hideViewToggle
         searchValue={search}
-        onSearchChange={setSearch}
-        onChipChange={(chip) => setActiveChip(chip)}
+        onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+        onChipChange={(chip) => setRouteState((current) => ({ ...current, activeChip: chip }))}
         sortOptions={[...SORT_OPTIONS]}
-        onSortChange={(option) => setSortBy(option as SortOption)}
+        onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
 
       <LandingTable

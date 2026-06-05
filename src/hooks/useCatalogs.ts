@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-fetch';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
+import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { CatalogComposerFilterState, CatalogComposerPayload, CatalogComposerTag } from '@/lib/zod';
 import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
 
@@ -177,7 +178,9 @@ export function useTenantCatalogs(period: SellerLandingPeriod = 'month', initial
       return res.json();
     },
     initialData: initialData ?? undefined,
-    staleTime: 30_000,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -190,6 +193,9 @@ export function useTenantCatalogDetail(id: string) {
       return res.json();
     },
     enabled: Boolean(id),
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -202,7 +208,9 @@ export function useCatalogComposerBootstrap(enabled = true) {
       return res.json();
     },
     enabled,
-    staleTime: 30_000,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -215,6 +223,9 @@ export function useCatalogComposerDetail(id: string) {
       return res.json();
     },
     enabled: Boolean(id),
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    refetchOnWindowFocus: false,
   });
 }
 

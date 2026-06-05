@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import type { BrandCreateInput, CreateBrandInput, TenantBrandUpdateInput } from '@/lib/zod';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
+import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
 
 export interface MasterBrand {
@@ -284,7 +285,9 @@ export function useTenantBrands(period: SellerLandingPeriod = 'month', initialDa
       return res.json();
     },
     initialData,
-    staleTime: 30_000,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: (previous) => previous,
     refetchOnWindowFocus: false,
   });
 }
@@ -300,6 +303,9 @@ export function useTenantBrandDetail(id: string) {
       return res.json();
     },
     enabled: Boolean(id),
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -315,7 +321,9 @@ export function useSearchMasterBrands(query: string) {
       return res.json();
     },
     enabled: query.length >= 1,
-    staleTime: 30_000,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: (previous) => previous,
   });
 }
 
