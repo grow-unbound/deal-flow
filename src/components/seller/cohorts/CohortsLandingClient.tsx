@@ -16,6 +16,7 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useCohortsLanding, type CohortType, type CohortsLandingResponse, type CohortsLandingRow } from '@/hooks/useCohorts';
@@ -67,6 +68,29 @@ function CohortsLandingSkeleton() {
   );
 }
 
+function CohortsDataSkeleton() {
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-4 gap-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-36 rounded-[14px]" />
+        ))}
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-52 rounded-[14px]" />
+        ))}
+      </div>
+      <Skeleton className="h-14 rounded-[14px]" />
+      <div className="mt-2 grid grid-cols-2 gap-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-[220px] rounded-[14px]" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CohortsLandingContent({
   initialData,
   initialPeriod,
@@ -77,6 +101,8 @@ function CohortsLandingContent({
   const router = useRouter();
   const { period, setPeriod, horizonLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
   const { data, isLoading, isError, refetch } = useCohortsLanding(period, initialData);
+  const retainedData = useRetainedValue(data);
+  const landingData = data ?? retainedData;
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-cohorts-landing',
     scopeKey: period,
@@ -96,7 +122,7 @@ function CohortsLandingContent({
   const sortBy = routeState.sortBy;
 
   const filtered = useMemo(() => {
-    const rows = data?.cohorts ?? [];
+    const rows = landingData?.cohorts ?? [];
     const query = search.trim().toLowerCase();
 
     return rows
@@ -115,11 +141,11 @@ function CohortsLandingContent({
         if (sortBy === 'Growth (high → low)') return b.growth_pct - a.growth_pct;
         return b.conversion_pct - a.conversion_pct;
       });
-  }, [activeChip, data?.cohorts, search, sortBy]);
+  }, [activeChip, landingData?.cohorts, search, sortBy]);
 
-  if (isLoading) return <CohortsLandingSkeleton />;
+  if (isLoading && !landingData) return <CohortsLandingSkeleton />;
 
-  if (isError) {
+  if (isError && !landingData) {
     return (
       <PageWrap>
         <ErrorState
@@ -130,8 +156,10 @@ function CohortsLandingContent({
       </PageWrap>
     );
   }
+  if (!landingData) return <CohortsLandingSkeleton />;
+  const showRefreshingState = isLoading && !data;
 
-  const kpis = data?.kpis;
+  const kpis = landingData.kpis;
 
   return (
     <PageWrap>
@@ -147,6 +175,16 @@ function CohortsLandingContent({
         onPrimaryClick={() => router.push('/cohorts/new')}
       />
 
+      {showRefreshingState ? (
+        <CohortsDataSkeleton />
+      ) : isError ? (
+        <ErrorState
+          heading="Couldn't load cohorts"
+          description="There was a problem fetching your cohorts. Please try again."
+          onRetry={() => refetch()}
+        />
+      ) : (
+        <>
       <InsightStrip4
         tiles={[
           {
@@ -157,7 +195,7 @@ function CohortsLandingContent({
           {
             label: `Combined GMV · ${metricSuffix}`,
             value: formatCompactInr(kpis?.combined_gmv_mtd ?? 0),
-            sub: `${(kpis?.growth_pct ?? 0) >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis?.growth_pct ?? 0)}% vs last month`,
+            sub: `${(kpis?.growth_pct ?? 0) >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis?.growth_pct ?? 0)}% vs last ${period}`,
             tone: 'accent',
           },
           {
@@ -167,7 +205,7 @@ function CohortsLandingContent({
           },
           {
             label: 'Uncategorised',
-            value: `${kpis?.uncategorised_buyers ?? 0}`,
+            value: `${kpis?.uncategorised_buyers ?? 0} buyers`,
             sub: 'not in any cohort',
             tone: 'warn',
           },
@@ -179,8 +217,8 @@ function CohortsLandingContent({
           {
             kind: 'risk',
             eyebrow: 'Low conversion',
-            hint: `${data?.todays_read.low_conversion.length ?? 0}`,
-            rows: (data?.todays_read.low_conversion ?? []).map((row, index) => ({
+            hint: `${landingData.todays_read.low_conversion.length}`,
+            rows: landingData.todays_read.low_conversion.map((row, index) => ({
               initials: getInitials(row.name),
               hue: getHue(index),
               name: row.name,
@@ -192,7 +230,7 @@ function CohortsLandingContent({
             kind: 'info',
             eyebrow: 'Top performers',
             hint: 'by GMV',
-            rows: (data?.todays_read.top_performers ?? []).map((row, index) => ({
+            rows: landingData.todays_read.top_performers.map((row, index) => ({
               initials: getInitials(row.name),
               hue: getHue(index),
               name: row.name,
@@ -204,7 +242,7 @@ function CohortsLandingContent({
             kind: 'opportunity',
             eyebrow: 'Top risers',
             hint: 'fastest growth',
-            rows: (data?.todays_read.top_risers ?? []).map((row, index) => ({
+            rows: landingData.todays_read.top_risers.map((row, index) => ({
               initials: getInitials(row.name),
               hue: getHue(index),
               name: row.name,
@@ -236,6 +274,8 @@ function CohortsLandingContent({
           ))}
         </div>
       </div>
+        </>
+      )}
     </PageWrap>
   );
 }
