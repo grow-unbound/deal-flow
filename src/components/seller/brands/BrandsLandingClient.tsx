@@ -20,6 +20,7 @@ import {
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useTenantBrands, type TenantBrand, type TenantBrandsResponse } from '@/hooks/useBrands';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
@@ -80,6 +81,25 @@ function BrandLandingSkeleton() {
   );
 }
 
+function BrandLandingDataSkeleton() {
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-4 gap-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-36 rounded-[14px]" />
+        ))}
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-52 rounded-[14px]" />
+        ))}
+      </div>
+      <Skeleton className="h-14 rounded-[14px]" />
+      <Skeleton className="h-[28rem] rounded-[14px]" />
+    </div>
+  );
+}
+
 function getInitials(name: string): string {
   return name
     .split(' ')
@@ -128,6 +148,8 @@ function BrandLandingContent({
   const router = useRouter();
   const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
   const { data, isLoading, isError } = useTenantBrands(period, initialData ?? undefined);
+  const retainedData = useRetainedValue(data);
+  const landingData = data ?? retainedData;
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-brands-landing',
     scopeKey: period,
@@ -143,7 +165,7 @@ function BrandLandingContent({
     scopeKey: period,
     ready: !isLoading,
   });
-  const dynamicChips = useMemo(() => ['All categories', ...(data?.categories ?? []), 'At risk'], [data?.categories]);
+  const dynamicChips = useMemo(() => ['All categories', ...(landingData?.categories ?? []), 'At risk'], [landingData?.categories]);
   const search = routeState.search;
   const activeChip = routeState.activeChip;
   const sortBy = routeState.sortBy;
@@ -151,10 +173,10 @@ function BrandLandingContent({
   const [addBrandOpen, setAddBrandOpen] = useState(false);
   const visibleCount = routeState.visibleCount;
 
-  const brands = useMemo(() => (data?.brands ?? []).map(toBrandVm), [data?.brands]);
+  const brands = useMemo(() => (landingData?.brands ?? []).map(toBrandVm), [landingData?.brands]);
   const portfolioGmv = useMemo(
-    () => data?.kpis?.portfolio_gmv_mtd ?? brands.reduce((sum, brand) => sum + brand.gmv, 0),
-    [brands, data?.kpis?.portfolio_gmv_mtd]
+    () => landingData?.kpis?.portfolio_gmv_mtd ?? brands.reduce((sum, brand) => sum + brand.gmv, 0),
+    [brands, landingData?.kpis?.portfolio_gmv_mtd]
   );
   const updatedBrands = useMemo(
     () => brands.map((brand) => ({ ...brand, share: portfolioGmv > 0 ? Math.round((brand.gmv / portfolioGmv) * 100) : 0 })),
@@ -197,12 +219,13 @@ function BrandLandingContent({
   const attention = useMemo(() => updatedBrands.filter((brand) => brand.alerts.length > 0), [updatedBrands]);
   const topPerformers = useMemo(() => [...updatedBrands].sort((a, b) => b.gmv - a.gmv).slice(0, 2), [updatedBrands]);
   const topRisers = useMemo(() => [...updatedBrands].sort((a, b) => b.growth - a.growth).slice(0, 2), [updatedBrands]);
-  const catalogFresh = data?.kpis?.catalog_freshness_count ?? updatedBrands.filter((brand) => brand.daysSinceCatalog <= 14).length;
+  const catalogFresh =
+    landingData?.kpis?.catalog_freshness_count ?? updatedBrands.filter((brand) => brand.daysSinceCatalog <= 14).length;
   const growthVsPrior = useMemo(() => {
-    const prior = data?.kpis?.portfolio_gmv_prev_mtd ?? updatedBrands.reduce((sum, brand) => sum + brand.gmvPrior, 0);
+    const prior = landingData?.kpis?.portfolio_gmv_prev_mtd ?? updatedBrands.reduce((sum, brand) => sum + brand.gmvPrior, 0);
     if (prior <= 0) return 0;
     return Math.round(((portfolioGmv - prior) / prior) * 100);
-  }, [data?.kpis?.portfolio_gmv_prev_mtd, updatedBrands, portfolioGmv]);
+  }, [landingData?.kpis?.portfolio_gmv_prev_mtd, updatedBrands, portfolioGmv]);
   const activeBuyers = useMemo(
     () => updatedBrands.reduce((max, brand) => Math.max(max, brand.activeBuyers), 0),
     [updatedBrands]
@@ -220,9 +243,9 @@ function BrandLandingContent({
     return reasons.join(' · ');
   };
   const freshnessHelp = () => {
-    const days = data?.kpis?.catalog_freshness_earliest_days;
-    const fresh = data?.kpis?.catalog_freshness_count ?? 0;
-    const total = data?.kpis?.total_published_catalogs ?? 0;
+    const days = landingData?.kpis?.catalog_freshness_earliest_days;
+    const fresh = landingData?.kpis?.catalog_freshness_count ?? 0;
+    const total = landingData?.kpis?.total_published_catalogs ?? 0;
     const denom = `${fresh}/${total} catalogs`;
     if (days == null) return `${denom} published ${lowerLabel}`;
     if (days === 0) return `${denom} published today`;
@@ -230,12 +253,14 @@ function BrandLandingContent({
     return `${denom} published in the last ${days} days`;
   };
 
-  if (isLoading) return <BrandLandingSkeleton />;
-  if (isError) {
+  if (isLoading && !landingData) return <BrandLandingSkeleton />;
+  if (isError && !landingData) {
     return (
       <ErrorState heading="Couldn't load brands" description="There was a problem fetching your brands. Please try again." />
     );
   }
+  if (!landingData) return <BrandLandingSkeleton />;
+  const showRefreshingState = isLoading && !data;
 
   return (
     <PageWrap>
@@ -251,6 +276,12 @@ function BrandLandingContent({
         onPrimaryClick={() => setAddBrandOpen(true)}
       />
 
+      {showRefreshingState ? (
+        <BrandLandingDataSkeleton />
+      ) : isError ? (
+        <ErrorState heading="Couldn't load brands" description="There was a problem fetching your brands. Please try again." />
+      ) : (
+        <>
       <InsightStrip4
         tiles={[
           {
@@ -399,6 +430,8 @@ function BrandLandingContent({
 
       <InviteUserDialog open={inviteOpen} onOpenChange={setInviteOpen} />
       <AddBrandCommand open={addBrandOpen} onOpenChange={setAddBrandOpen} hideTrigger />
+        </>
+      )}
     </PageWrap>
   );
 }

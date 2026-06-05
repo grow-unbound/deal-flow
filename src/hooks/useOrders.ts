@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-fetch';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
-import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
+import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
 
 export type OrderStatusValue = 'draft' | 'received' | 'confirmed' | 'partially_dispatched' | 'dispatched' | 'delivered' | 'cancelled';
 export type OrderStatusTone = 'success' | 'warning' | 'danger' | 'neutral';
@@ -63,10 +63,9 @@ export function useTenantOrders(period: SellerLandingPeriod = 'month', initialDa
       if (!res.ok) throw new Error('Failed to fetch orders');
       return res.json();
     },
-    initialData: initialData ?? undefined,
+    initialData: getSellerLandingInitialData(period, initialData),
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
-    placeholderData: (previous) => previous,
   });
 }
 

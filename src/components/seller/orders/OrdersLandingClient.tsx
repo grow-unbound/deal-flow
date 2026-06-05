@@ -19,6 +19,7 @@ import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useRetainedValue } from '@/hooks/useRetainedValue';
 import {
   Dialog,
   DialogBody,
@@ -68,6 +69,27 @@ function OrdersLoadingSkeleton() {
   );
 }
 
+function OrdersDataSkeleton() {
+  return (
+    <>
+      <div className="mt-5 grid grid-cols-4 gap-3">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+        ))}
+      </div>
+      <div className="mt-5 grid grid-cols-3 gap-3">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div key={index} className="h-[190px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
+        ))}
+      </div>
+      <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
+      <div className="overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
+        <div className="h-[420px] animate-pulse bg-cream-50" />
+      </div>
+    </>
+  );
+}
+
 function OrdersLandingContent({
   initialData,
   initialPeriod,
@@ -78,6 +100,8 @@ function OrdersLandingContent({
   const router = useRouter();
   const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
   const { data, isLoading, isError } = useTenantOrders(period, initialData);
+  const retainedData = useRetainedValue(data);
+  const landingData = data ?? retainedData;
   const syncMutation = useSyncToTally();
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-orders-landing',
@@ -98,7 +122,7 @@ function OrdersLandingContent({
   const sortBy = routeState.sortBy;
   const [recordDialogOpen, setRecordDialogOpen] = useState(false);
 
-  const orders = data?.orders ?? [];
+  const orders = landingData?.orders ?? [];
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -120,14 +144,14 @@ function OrdersLandingContent({
   }, [activeChip, orders, search, sortBy]);
 
   const subtitle = useMemo(() => {
-    const kpis = data?.kpis;
+    const kpis = landingData?.kpis;
     if (!kpis) return `Orders ${lowerLabel} from your buyers. This list is your workboard.`;
     return `${kpis.orders_mtd} orders ${lowerLabel} from ${kpis.buyers_mtd} buyers. ${kpis.pending_dispatch_count} pending dispatch, ${kpis.on_hold_count} on hold, ${kpis.delivered_count} already delivered. The list is your workboard.`;
-  }, [data?.kpis, lowerLabel]);
+  }, [landingData?.kpis, lowerLabel]);
 
-  if (isLoading) return <OrdersLoadingSkeleton />;
+  if (isLoading && !landingData) return <OrdersLoadingSkeleton />;
 
-  if (isError || !data) {
+  if (isError && !landingData) {
     return (
       <ErrorState
         heading="Couldn't load orders"
@@ -135,6 +159,8 @@ function OrdersLandingContent({
       />
     );
   }
+  if (!landingData) return <OrdersLoadingSkeleton />;
+  const showRefreshingState = isLoading && !data;
 
   return (
     <>
@@ -156,28 +182,37 @@ function OrdersLandingContent({
           onPrimaryClick={() => setRecordDialogOpen(true)}
         />
 
+        {showRefreshingState ? (
+          <OrdersDataSkeleton />
+        ) : isError ? (
+          <ErrorState
+            heading="Couldn't load orders"
+            description="There was a problem fetching the orders workboard. Please try again."
+          />
+        ) : (
+          <>
         <InsightStrip4
           tiles={[
             {
               label: `Orders · ${metricSuffix}`,
-              value: `${data.kpis.orders_mtd}`,
-              sub: `${data.kpis.orders_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(data.kpis.orders_growth_pct)}% vs last month`,
+              value: `${landingData.kpis.orders_mtd}`,
+              sub: `${landingData.kpis.orders_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(landingData.kpis.orders_growth_pct)}% vs last month`,
             },
             {
               label: `GMV · ${metricSuffix}`,
-              value: formatCompactInr(data.kpis.gmv_mtd),
-              sub: `AOV ${formatCompactInr(data.kpis.aov)}`,
+              value: formatCompactInr(landingData.kpis.gmv_mtd),
+              sub: `AOV ${formatCompactInr(landingData.kpis.aov)}`,
               tone: 'accent',
             },
             {
               label: 'Pending dispatch',
-              value: `${data.kpis.pending_dispatch_count}`,
+              value: `${landingData.kpis.pending_dispatch_count}`,
               sub: 'awaiting confirmation',
               tone: 'warn',
             },
             {
               label: 'On hold',
-              value: `${data.kpis.on_hold_count}`,
+              value: `${landingData.kpis.on_hold_count}`,
               sub: 'credit limit issue',
             },
           ]}
@@ -188,8 +223,8 @@ function OrdersLandingContent({
             {
               kind: 'risk',
               eyebrow: 'Needs attention',
-              hint: `${data.todays_read.needs_attention.length}`,
-              rows: data.todays_read.needs_attention.map((row) => ({
+              hint: `${landingData.todays_read.needs_attention.length}`,
+              rows: landingData.todays_read.needs_attention.map((row) => ({
                 ...mapRowToCallout(row),
                 reason: `${row.order_id} · ${row.status.label} · ${row.delivery_city}`,
                 trailing: row.status.label,
@@ -199,7 +234,7 @@ function OrdersLandingContent({
               kind: 'info',
               eyebrow: 'Biggest tickets',
               hint: lowerLabel,
-              rows: data.todays_read.biggest_tickets.map((row) => ({
+              rows: landingData.todays_read.biggest_tickets.map((row) => ({
                 ...mapRowToCallout(row),
                 reason: `${row.order_id} · ${row.items_count} items · ${row.delivery_city}`,
                 trailing: formatCompactInr(row.gmv),
@@ -209,7 +244,7 @@ function OrdersLandingContent({
               kind: 'opportunity',
               eyebrow: 'In motion',
               hint: 'dispatching now',
-              rows: data.todays_read.in_motion.map((row) => ({
+              rows: landingData.todays_read.in_motion.map((row) => ({
                 ...mapRowToCallout(row),
                 reason: `${row.order_id} · ${row.delivery_city} · ${formatCompactInr(row.gmv)}`,
                 trailing: row.status.label,
@@ -270,6 +305,8 @@ function OrdersLandingContent({
             </tr>
           ))}
         </LandingTable>
+          </>
+        )}
       </PageWrap>
 
       <Dialog open={recordDialogOpen} onOpenChange={setRecordDialogOpen}>
