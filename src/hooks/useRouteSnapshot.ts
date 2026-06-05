@@ -1,0 +1,246 @@
+'use client';
+
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
+
+type StorageMode = 'session' | 'local';
+
+type SnapshotEnvelope<T> = {
+  version: number;
+  savedAt: number;
+  pathname: string;
+  payload: T;
+};
+
+type SnapshotMeta = {
+  restored: boolean;
+  savedAt: number | null;
+};
+
+type StateUpdater<T> = T | ((previous: T) => T);
+
+const ROUTE_SNAPSHOT_PREFIX = 'dealflow_route_snapshot:';
+const ROUTE_SCROLL_PREFIX = 'dealflow_route_scroll:';
+const DEFAULT_VERSION = 1;
+
+function getStorage(mode: StorageMode): Storage | null {
+  if (typeof window === 'undefined') return null;
+  return mode === 'local' ? window.localStorage : window.sessionStorage;
+}
+
+function buildStorageKey(prefix: string, key: string, pathname: string, scopeKey?: string) {
+  return `${prefix}${key}:${pathname}${scopeKey ? `:${scopeKey}` : ''}`;
+}
+
+function readSnapshot<T>(
+  storageKey: string,
+  initialState: T,
+  version: number,
+  mode: StorageMode,
+): { value: T; meta: SnapshotMeta } {
+  const storage = getStorage(mode);
+  if (!storage) {
+    return { value: initialState, meta: { restored: false, savedAt: null } };
+  }
+
+  try {
+    const raw = storage.getItem(storageKey);
+    if (!raw) {
+      return { value: initialState, meta: { restored: false, savedAt: null } };
+    }
+
+    const parsed = JSON.parse(raw) as SnapshotEnvelope<T>;
+    if (parsed.version !== version) {
+      storage.removeItem(storageKey);
+      return { value: initialState, meta: { restored: false, savedAt: null } };
+    }
+
+    return {
+      value: parsed.payload,
+      meta: { restored: true, savedAt: parsed.savedAt ?? null },
+    };
+  } catch {
+    storage?.removeItem(storageKey);
+    return { value: initialState, meta: { restored: false, savedAt: null } };
+  }
+}
+
+function writeSnapshot<T>(storageKey: string, pathname: string, value: T, version: number, mode: StorageMode) {
+  const storage = getStorage(mode);
+  if (!storage) return;
+
+  const payload: SnapshotEnvelope<T> = {
+    version,
+    savedAt: Date.now(),
+    pathname,
+    payload: value,
+  };
+
+  try {
+    storage.setItem(storageKey, JSON.stringify(payload));
+  } catch {
+    // Ignore storage quota and availability issues.
+  }
+}
+
+const useClientLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
+
+export function useRouteSnapshot<T>({
+  storageKey,
+  initialState,
+  version = DEFAULT_VERSION,
+  enabled = true,
+  mode = 'session',
+  scopeKey,
+}: {
+  storageKey: string;
+  initialState: T;
+  version?: number;
+  enabled?: boolean;
+  mode?: StorageMode;
+  scopeKey?: string;
+}) {
+  const pathname = usePathname();
+  const resolvedStorageKey = useMemo(
+    () => buildStorageKey(ROUTE_SNAPSHOT_PREFIX, storageKey, pathname, scopeKey),
+    [pathname, scopeKey, storageKey],
+  );
+
+  const initialRead = useMemo(
+    () => (enabled ? readSnapshot(resolvedStorageKey, initialState, version, mode) : { value: initialState, meta: { restored: false, savedAt: null } }),
+    [enabled, initialState, mode, resolvedStorageKey, version],
+  );
+
+  const [state, setState] = useState<T>(initialRead.value);
+  const [restoreMeta, setRestoreMeta] = useState<SnapshotMeta>(initialRead.meta);
+  const previousKeyRef = useRef(resolvedStorageKey);
+
+  useEffect(() => {
+    if (!enabled) return;
+    writeSnapshot(resolvedStorageKey, pathname, state, version, mode);
+  }, [enabled, mode, pathname, resolvedStorageKey, state, version]);
+
+  useClientLayoutEffect(() => {
+    if (!enabled) return;
+    if (previousKeyRef.current === resolvedStorageKey) return;
+    previousKeyRef.current = resolvedStorageKey;
+    const next = readSnapshot(resolvedStorageKey, initialState, version, mode);
+    setState(next.value);
+    setRestoreMeta(next.meta);
+  }, [enabled, initialState, mode, resolvedStorageKey, version]);
+
+  const clearState = () => {
+    const storage = getStorage(mode);
+    storage?.removeItem(resolvedStorageKey);
+    setState(initialState);
+    setRestoreMeta({ restored: false, savedAt: null });
+  };
+
+  const updateState = (next: StateUpdater<T>) => {
+    setState((previous) =>
+      typeof next === 'function' ? (next as (current: T) => T)(previous) : next,
+    );
+  };
+
+  return {
+    state,
+    setState: updateState,
+    clearState,
+    restoreMeta,
+  };
+}
+
+export function useRouteScrollRestoration({
+  storageKey,
+  enabled = true,
+  ready = true,
+  scopeKey,
+}: {
+  storageKey: string;
+  enabled?: boolean;
+  ready?: boolean;
+  scopeKey?: string;
+}) {
+  const pathname = usePathname();
+  const resolvedStorageKey = useMemo(
+    () => buildStorageKey(ROUTE_SCROLL_PREFIX, storageKey, pathname, scopeKey),
+    [pathname, scopeKey, storageKey],
+  );
+  const restoredRef = useRef(false);
+
+  useClientLayoutEffect(() => {
+    if (!enabled || !ready || restoredRef.current) return;
+    const storage = getStorage('session');
+    if (!storage) return;
+
+    try {
+      const raw = storage.getItem(resolvedStorageKey);
+      if (!raw) {
+        restoredRef.current = true;
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as { scrollY?: number };
+      restoredRef.current = true;
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: parsed.scrollY ?? 0, behavior: 'auto' });
+      });
+    } catch {
+      restoredRef.current = true;
+    }
+  }, [enabled, ready, resolvedStorageKey]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const storage = getStorage('session');
+    if (!storage) return;
+
+    let frame = 0;
+    const persist = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        try {
+          storage.setItem(resolvedStorageKey, JSON.stringify({ scrollY: window.scrollY }));
+        } catch {
+          // Ignore storage availability issues.
+        }
+      });
+    };
+
+    const flush = () => {
+      try {
+        storage.setItem(resolvedStorageKey, JSON.stringify({ scrollY: window.scrollY }));
+      } catch {
+        // Ignore storage availability issues.
+      }
+    };
+
+    window.addEventListener('scroll', persist, { passive: true });
+    window.addEventListener('pagehide', flush);
+
+    return () => {
+      window.removeEventListener('scroll', persist);
+      window.removeEventListener('pagehide', flush);
+      flush();
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [enabled, resolvedStorageKey]);
+}
+
+export function usePersistedDraftState<T>({
+  storageKey,
+  initialState,
+  version = DEFAULT_VERSION,
+}: {
+  storageKey: string;
+  initialState: T;
+  version?: number;
+}) {
+  return useRouteSnapshot({
+    storageKey,
+    initialState,
+    version,
+    mode: 'session',
+  });
+}

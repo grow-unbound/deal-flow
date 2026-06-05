@@ -16,6 +16,7 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useCohortsLanding, type CohortType, type CohortsLandingResponse, type CohortsLandingRow } from '@/hooks/useCohorts';
 import { formatCompactInr } from '@/lib/utils';
@@ -76,10 +77,23 @@ function CohortsLandingContent({
   const router = useRouter();
   const { period, setPeriod, horizonLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
   const { data, isLoading, isError, refetch } = useCohortsLanding(period, initialData);
-
-  const [search, setSearch] = useState('');
-  const [activeChip, setActiveChip] = useState<'All' | CohortType>('All');
-  const [sortBy, setSortBy] = useState<SortOption>('GMV (high → low)');
+  const { state: routeState, setState: setRouteState } = useRouteSnapshot({
+    storageKey: 'seller-cohorts-landing',
+    scopeKey: period,
+    initialState: {
+      search: '',
+      activeChip: 'All' as 'All' | CohortType,
+      sortBy: 'GMV (high → low)' as SortOption,
+    },
+  });
+  useRouteScrollRestoration({
+    storageKey: 'seller-cohorts-landing',
+    scopeKey: period,
+    ready: !isLoading,
+  });
+  const search = routeState.search;
+  const activeChip = routeState.activeChip;
+  const sortBy = routeState.sortBy;
 
   const filtered = useMemo(() => {
     const rows = data?.cohorts ?? [];
@@ -129,12 +143,7 @@ function CohortsLandingContent({
         period={period}
         periodOptions={options}
         onPeriodChange={setPeriod}
-        secondary={{
-          label: 'Publish catalog',
-          icon: <Grid size={13} />,
-          onClick: () => router.push('/catalogs'),
-        }}
-        primary="New cohort"
+        primary="Add a cohort"
         onPrimaryClick={() => router.push('/cohorts/new')}
       />
 
@@ -214,10 +223,10 @@ function CohortsLandingContent({
         sortBy={sortBy}
         hideViewToggle
         searchValue={search}
-        onSearchChange={setSearch}
-        onChipChange={(chip) => setActiveChip(chip as 'All' | CohortType)}
+        onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+        onChipChange={(chip) => setRouteState((current) => ({ ...current, activeChip: chip as 'All' | CohortType }))}
         sortOptions={[...SORT_OPTIONS]}
-        onSortChange={(option) => setSortBy(option as SortOption)}
+        onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
 
       <div className="v2-body overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">

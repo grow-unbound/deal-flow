@@ -13,7 +13,15 @@ interface CohortDetailsRulesTabProps {
   isSaving: boolean;
   startInEditMode?: boolean;
   onEditModeSync?: (editing: boolean) => void;
-  onSave: (payload: { name: string; description: string; rules: { filters: CohortRuleFilter[] } }) => void;
+  onSave: (payload: {
+    name: string;
+    description: string;
+    rules: {
+      filters: CohortRuleFilter[];
+      selected_buyer_ids: string[];
+      excluded_buyer_ids: string[];
+    };
+  }) => void;
 }
 
 export function CohortDetailsRulesTab({
@@ -118,7 +126,11 @@ export function CohortDetailsRulesTab({
                     onSave({
                       name,
                       description,
-                      rules: { filters },
+                      rules: {
+                        filters,
+                        selected_buyer_ids: [],
+                        excluded_buyer_ids: [],
+                      },
                     });
                     toggleEditing(false);
                   }}

@@ -1,0 +1,2 @@
+export const NAVIGATION_QUERY_STALE_TIME = 5 * 60 * 1000;
+export const NAVIGATION_QUERY_GC_TIME = 30 * 60 * 1000;

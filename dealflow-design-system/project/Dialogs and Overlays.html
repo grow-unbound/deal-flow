@@ -27,6 +27,7 @@
   <script type="text/babel" src="dialogs/modals.jsx"></script>
   <script type="text/babel" src="dialogs/slideovers.jsx"></script>
   <script type="text/babel" src="dialogs/composers.jsx"></script>
+  <script type="text/babel" src="dialogs/composers-extra.jsx"></script>
 
   <script type="text/babel" data-presets="env,react">
     const { useEffect } = React;
@@ -78,18 +79,32 @@
           </DCSection>
 
           {/* ── TIER 3 — COMPOSER ─────────────────────────────────── */}
-          <DCSection id="composer" title="Tier 3 — Composer" subtitle="One screen, two modes. Filters · data · summary. Owns a route, auto-saves a draft. Same chrome for Create and Edit.">
+          <DCSection id="composer" title="Tier 3 — Composer" subtitle="One screen, two modes. Filters · data · summary. Owns a route, auto-saves a draft. Same chrome for Create and Edit — applied to Pricelist, Cohort, and Catalog.">
             <DCArtboard id="cp-rationale" label="What changed · why Create and Edit share the composer" width={1180} height={620}>
               <ComposerRationaleCard />
             </DCArtboard>
-            <DCArtboard id="cp-empty" label="Create · empty (just opened, basics being typed)" width={1480} height={920}>
+            <DCArtboard id="cp-empty" label="Add pricelist · empty (just opened, basics being typed)" width={1480} height={920}>
               <ComposerPricelistEmpty />
             </DCArtboard>
-            <DCArtboard id="cp-create" label="Create · in progress (filters set, summary live)" width={1480} height={920}>
+            <DCArtboard id="cp-create" label="Add pricelist · in progress (filters set, summary live)" width={1480} height={920}>
               <ComposerPricelistCreate />
             </DCArtboard>
-            <DCArtboard id="cp-edit" label="Edit · live pricelist (same chrome, diff summary, modified-row markers)" width={1480} height={920}>
+            <DCArtboard id="cp-edit" label="Edit pricelist · live (same chrome, diff summary, modified-row markers)" width={1480} height={920}>
               <ComposerPricelistEdit />
+            </DCArtboard>
+
+            <DCArtboard id="cp-cohort-create" label="Add cohort · rows = buyers, summary = group profile" width={1480} height={920}>
+              <ComposerCohortCreate />
+            </DCArtboard>
+            <DCArtboard id="cp-cohort-edit" label="Edit cohort · live (referenced by pricelists + catalogs, diff summary)" width={1480} height={920}>
+              <ComposerCohortEdit />
+            </DCArtboard>
+
+            <DCArtboard id="cp-catalog-create" label="Add catalog · rows = products, summary = what the cohort will see" width={1480} height={920}>
+              <ComposerCatalogCreate />
+            </DCArtboard>
+            <DCArtboard id="cp-catalog-edit" label="Edit catalog · live to 12 buyers (added/removed product flags)" width={1480} height={920}>
+              <ComposerCatalogEdit />
             </DCArtboard>
           </DCSection>
 

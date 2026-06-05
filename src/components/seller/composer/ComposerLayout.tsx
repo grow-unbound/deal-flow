@@ -1,0 +1,190 @@
+'use client';
+
+import Link from 'next/link';
+import { cn } from '@/lib/utils';
+
+interface ComposerCrumb {
+  label: string;
+  href?: string;
+  current?: boolean;
+}
+
+export function ComposerShell({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return <div className={cn('space-y-4', className)}>{children}</div>;
+}
+
+export function ComposerBreadcrumbs({
+  items,
+}: {
+  items: ComposerCrumb[];
+}) {
+  return (
+    <nav className="flex flex-wrap items-center gap-1.5 text-[12px] text-cream-600">
+      {items.map((item, index) => (
+        <div key={`${item.label}-${index}`} className="flex items-center gap-1.5">
+          {item.href && !item.current ? (
+            <Link href={item.href} className="hover:text-cream-900">
+              {item.label}
+            </Link>
+          ) : (
+            <span className={cn(item.current ? 'font-medium text-cream-900' : '')}>{item.label}</span>
+          )}
+          {index < items.length - 1 ? <span className="text-cream-400">›</span> : null}
+        </div>
+      ))}
+    </nav>
+  );
+}
+
+export function ComposerTitleRow({
+  title,
+  subtitle,
+  status,
+  actions,
+}: {
+  title: string;
+  subtitle: string;
+  status?: {
+    label: string;
+    tone?: 'draft' | 'live';
+  };
+  actions?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-8">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="font-display text-[28px] font-semibold tracking-[-0.01em] text-cream-950">{title}</h1>
+          {status ? (
+            <span
+              className={cn(
+                'inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]',
+                status.tone === 'live'
+                  ? 'border-teal-200 bg-teal-50 text-teal-700'
+                  : 'border-cream-300 bg-cream-100 text-cream-700',
+              )}
+            >
+              {status.label}
+            </span>
+          ) : null}
+        </div>
+        <p className="mt-1.5 max-w-[72ch] text-[13px] leading-[1.55] text-cream-700">{subtitle}</p>
+      </div>
+
+      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+    </div>
+  );
+}
+
+export function ComposerBasicsStrip({
+  children,
+  columnsClassName = 'lg:grid-cols-[1.6fr_1fr_0.9fr_1fr]',
+}: {
+  children: React.ReactNode;
+  columnsClassName?: string;
+}) {
+  return (
+    <div className={cn('grid gap-0 overflow-hidden rounded-[14px] border border-cream-300 bg-white', columnsClassName)}>
+      {children}
+    </div>
+  );
+}
+
+export function ComposerBasicsField({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn('border-b border-cream-300 px-4 py-3 last:border-b-0 lg:border-b-0 lg:border-r last:lg:border-r-0', className)}>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cream-700">{label}</p>
+      <div className="mt-2">{children}</div>
+    </div>
+  );
+}
+
+export function ComposerBodyGrid({
+  left,
+  center,
+  right,
+  className,
+}: {
+  left: React.ReactNode;
+  center: React.ReactNode;
+  right: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn('grid min-h-[620px] gap-5 lg:grid-cols-[260px_minmax(0,1fr)_320px]', className)}>
+      {left}
+      {center}
+      {right}
+    </div>
+  );
+}
+
+export function ComposerSidebarCard({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return <aside className={cn('rounded-[14px] border border-cream-300 bg-white p-4', className)}>{children}</aside>;
+}
+
+export function ComposerMainCard({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={cn('flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-cream-300 bg-white', className)}>
+      {children}
+    </section>
+  );
+}
+
+export function ComposerPanelTitle({
+  title,
+  subtitle,
+  actions,
+}: {
+  title: string;
+  subtitle?: React.ReactNode;
+  actions?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-4 border-b border-cream-300 px-5 py-4">
+      <div className="min-w-0">
+        <p className="text-[13px] font-semibold text-cream-950">{title}</p>
+        {subtitle ? <p className="mt-1 max-w-[38rem] text-[12.5px] leading-[1.5] text-cream-700">{subtitle}</p> : null}
+      </div>
+      {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+    </div>
+  );
+}
+
+export function ComposerFooterBar({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="sticky bottom-0 z-10 rounded-[14px] border border-cream-300 bg-white px-6 py-4 shadow-[0_-8px_24px_rgba(34,52,43,0.06)]">
+      {children}
+    </div>
+  );
+}

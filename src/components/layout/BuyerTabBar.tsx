@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useIdleRoutePrefetch } from '@/hooks/useIdleRoutePrefetch';
 
 const tabs = [
   { label: 'Home',    href: '/shop/home',    icon: HomeIcon },
@@ -14,6 +15,7 @@ const DEEP_SCREENS = ['/shop/product/', '/shop/cart', '/shop/checkout'];
 
 export function BuyerTabBar() {
   const pathname = usePathname();
+  useIdleRoutePrefetch(tabs.map((tab) => tab.href));
 
   if (DEEP_SCREENS.some(p => pathname.startsWith(p))) return null;
 
