@@ -63,4 +63,23 @@ describe('Static cohort schema and member count', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it('manual cohort can persist selected buyers in rules metadata', () => {
+    const result = CohortCreateSchema.safeParse({
+      name: 'Manual List',
+      is_static: true,
+      rules: {
+        filters: [],
+        selected_buyer_ids: [
+          '550e8400-e29b-41d4-a716-446655440000',
+          '550e8400-e29b-41d4-a716-446655440001',
+        ],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.rules?.selected_buyer_ids).toHaveLength(2);
+    }
+  });
 });

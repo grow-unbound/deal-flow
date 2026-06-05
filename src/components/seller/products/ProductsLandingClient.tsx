@@ -19,6 +19,7 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useTenantProducts, type TenantProduct, type TenantProductsResponse } from '@/hooks/useProducts';
 import { formatCompactInr } from '@/lib/utils';
@@ -86,9 +87,23 @@ function ProductsLandingContent({
   const router = useRouter();
   const { period, setPeriod, horizonLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
   const { data, isLoading, isError, refetch } = useTenantProducts(period, initialData);
-  const [search, setSearch] = useState('');
-  const [sortBy, setSortBy] = useState<SortOption>('GMV (high → low)');
-  const [activeChip, setActiveChip] = useState('All brands');
+  const { state: routeState, setState: setRouteState } = useRouteSnapshot({
+    storageKey: 'seller-products-landing',
+    scopeKey: period,
+    initialState: {
+      search: '',
+      sortBy: 'GMV (high → low)' as SortOption,
+      activeChip: 'All brands',
+    },
+  });
+  useRouteScrollRestoration({
+    storageKey: 'seller-products-landing',
+    scopeKey: period,
+    ready: !isLoading,
+  });
+  const search = routeState.search;
+  const sortBy = routeState.sortBy;
+  const activeChip = routeState.activeChip;
   const [addProductOpen, setAddProductOpen] = useState(false);
 
   const brandChips = useMemo(() => ['All brands', ...(data?.brands ?? []), 'Low stock'], [data?.brands]);
@@ -238,10 +253,10 @@ function ProductsLandingContent({
         sortBy={sortBy}
         hideViewToggle
         searchValue={search}
-        onSearchChange={setSearch}
-        onChipChange={setActiveChip}
+        onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+        onChipChange={(value) => setRouteState((current) => ({ ...current, activeChip: value }))}
         sortOptions={[...SORT_OPTIONS]}
-        onSortChange={(option) => setSortBy(option as SortOption)}
+        onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
 
       <LandingTable

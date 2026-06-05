@@ -3,6 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-fetch';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
+import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
+import type { CatalogComposerFilterState, CatalogComposerPayload, CatalogComposerTag } from '@/lib/zod';
 import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
 
 export type CatalogDisplayStatus = 'Live' | 'Draft' | 'Ended';
@@ -116,6 +118,46 @@ export interface CatalogDetailResponse {
     can_extend_validity: boolean;
     can_edit_composition: boolean;
   };
+  composer?: {
+    name: string;
+    status: 'draft' | 'published' | 'archived';
+    valid_from: string;
+    valid_to: string | null;
+    cohort_id: string | null;
+    filters: CatalogComposerFilterState;
+    tag_overrides: Record<string, CatalogComposerTag | null>;
+    items: Array<{
+      tenant_product_id: string;
+      display_order: number;
+    }>;
+  };
+}
+
+export interface CatalogComposerProduct {
+  id: string;
+  display_name: string;
+  internal_sku: string;
+  brand_name: string;
+  category_name: string | null;
+  mrp: number | null;
+  base_selling_price: number | null;
+  qty_available: number;
+  reorder_point: number;
+  units_mtd: number;
+  days_cover: number | null;
+  tag: CatalogComposerTag | null;
+  stock_added_today: boolean;
+  stock_label: string;
+  stock_tone: 'success' | 'warning' | 'neutral';
+}
+
+export interface CatalogComposerBootstrapResponse {
+  cohorts: Array<{
+    id: string;
+    name: string;
+    member_count: number;
+  }>;
+  products: CatalogComposerProduct[];
 }
 
 export interface ExtendValidityRequest {
@@ -136,7 +178,9 @@ export function useTenantCatalogs(period: SellerLandingPeriod = 'month', initial
       return res.json();
     },
     initialData: initialData ?? undefined,
-    staleTime: 30_000,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -149,6 +193,70 @@ export function useTenantCatalogDetail(id: string) {
       return res.json();
     },
     enabled: Boolean(id),
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useCatalogComposerBootstrap(enabled = true) {
+  return useQuery({
+    queryKey: ['catalog-composer-bootstrap'],
+    queryFn: async (): Promise<CatalogComposerBootstrapResponse> => {
+      const res = await apiFetch('/api/tenant/catalogs/composer');
+      if (!res.ok) throw new Error('Failed to fetch catalog composer data');
+      return res.json();
+    },
+    enabled,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useCatalogComposerDetail(id: string) {
+  return useQuery({
+    queryKey: ['catalog-composer-detail', id],
+    queryFn: async (): Promise<CatalogDetailResponse> => {
+      const res = await apiFetch(`/api/tenant/catalogs/${id}`);
+      if (!res.ok) throw new Error('Failed to fetch catalog composer detail');
+      return res.json();
+    },
+    enabled: Boolean(id),
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useSaveCatalogComposer(catalogId?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: CatalogComposerPayload): Promise<{ catalog: { id: string; status: 'draft' | 'published' | 'archived' } }> => {
+      const url = catalogId ? `/api/tenant/catalogs/${catalogId}` : '/api/tenant/catalogs';
+      const method = catalogId ? 'PATCH' : 'POST';
+      const res = await apiFetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to save catalog');
+      }
+
+      return res.json() as Promise<{ catalog: { id: string; status: 'draft' | 'published' | 'archived' } }>;
+    },
+    onSuccess: (_data, _payload) => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-catalogs'] });
+      queryClient.invalidateQueries({ queryKey: ['catalog-composer-bootstrap'] });
+      if (catalogId) {
+        queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', catalogId] });
+        queryClient.invalidateQueries({ queryKey: ['catalog-composer-detail', catalogId] });
+      }
+    },
   });
 }
 

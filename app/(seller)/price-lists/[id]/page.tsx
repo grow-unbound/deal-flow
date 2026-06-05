@@ -16,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { apiFetch } from '@/lib/api-fetch';
 import { cn } from '@/lib/utils';
+import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import {
   useAddAssignment,
   useDeleteAssignment,
@@ -111,7 +112,11 @@ export default function PriceListDetailPage() {
   const router = useRouter();
   const { isSellerAdmin } = useRole();
 
-  const [activeTab, setActiveTab] = useState('pricing');
+  const { state: activeTab, setState: setActiveTab } = useRouteSnapshot<string>({
+    storageKey: 'seller-price-list-detail-tab',
+    scopeKey: id,
+    initialState: 'pricing',
+  });
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [extendOpen, setExtendOpen] = useState(false);
   const [validTo, setValidTo] = useState('');

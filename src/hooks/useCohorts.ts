@@ -3,7 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-fetch';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
-import type { CohortUpdateInput } from '@/lib/zod';
+import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
+import type { CohortCreateInput, CohortRules, CohortUpdateInput } from '@/lib/zod';
 import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
 
 export type CohortType = 'Geo-based' | 'Tier-based' | 'Brand affinity';
@@ -159,6 +160,53 @@ export interface CohortDetailResponse {
   activity: CohortDetailActivityItem[];
 }
 
+export interface CohortComposerFilterOption {
+  value: string;
+  label: string;
+  count: number;
+}
+
+export interface CohortComposerBuyer {
+  id: string;
+  business_name: string;
+  contact_name: string | null;
+  external_ref: string | null;
+  geography_label: string;
+  city: string | null;
+  state: string | null;
+  tier: 'A' | 'B' | 'C' | null;
+  last_order_at: string | null;
+  mtd_spend: number;
+  orders_mtd: number;
+  credit_used: number;
+  payment_terms_days: number;
+  gmv_90d: number;
+  initials: string;
+  hue: 'teal' | 'ember' | 'cream';
+}
+
+export interface CohortComposerResponse {
+  buyers: CohortComposerBuyer[];
+  filters: {
+    geographies: CohortComposerFilterOption[];
+    tiers: CohortComposerFilterOption[];
+    last_order_buckets: CohortComposerFilterOption[];
+    gmv_90d_buckets: CohortComposerFilterOption[];
+  };
+}
+
+export interface CohortMembersResponse {
+  members: Array<{
+    buyer_id: string;
+    buyers: {
+      id: string;
+      business_name: string;
+      tier: string | null;
+      is_active: boolean;
+    };
+  }>;
+}
+
 export function useCohortsLanding(period: SellerLandingPeriod = 'month', initialData?: CohortsLandingResponse | null) {
   return useQuery({
     queryKey: ['cohorts-landing', period],
@@ -170,7 +218,9 @@ export function useCohortsLanding(period: SellerLandingPeriod = 'month', initial
       return res.json();
     },
     initialData: initialData ?? undefined,
-    staleTime: 30_000,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -192,7 +242,9 @@ export function useTenantCohortOptions(enabled = true) {
       }));
     },
     enabled,
-    staleTime: 30_000,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -207,6 +259,108 @@ export function useCohortDetail(id: string) {
       return res.json();
     },
     enabled: Boolean(id),
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useCohortComposerData() {
+  return useQuery({
+    queryKey: ['cohort-composer-data'],
+    queryFn: async (): Promise<CohortComposerResponse> => {
+      const res = await apiFetch('/api/cohorts/composer');
+      if (!res.ok) {
+        throw new Error('Failed to fetch cohort composer data');
+      }
+      return res.json();
+    },
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useCohortMembers(id: string) {
+  return useQuery({
+    queryKey: ['cohort-members', id],
+    queryFn: async (): Promise<CohortMembersResponse> => {
+      const res = await apiFetch(`/api/cohorts/${id}/members`);
+      if (!res.ok) {
+        throw new Error('Failed to fetch cohort members');
+      }
+      return res.json();
+    },
+    enabled: Boolean(id),
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useSaveCohortComposer(cohortId?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: CohortCreateInput) => {
+      const res = await apiFetch(cohortId ? `/api/cohorts/${cohortId}` : '/api/cohorts', {
+        method: cohortId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to save cohort');
+      }
+
+      return res.json() as Promise<{
+        cohort: {
+          id: string;
+          name: string;
+          description: string | null;
+          is_static: boolean;
+          rules: CohortRules | null;
+          cached_member_count: number | null;
+        };
+      }>;
+    },
+    onSuccess: (_result, payload) => {
+      queryClient.invalidateQueries({ queryKey: ['cohorts-landing'] });
+      queryClient.invalidateQueries({ queryKey: ['cohort-composer-data'] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-cohort-options'] });
+      if (cohortId) {
+        queryClient.invalidateQueries({ queryKey: ['cohort-detail', cohortId] });
+        queryClient.invalidateQueries({ queryKey: ['cohort-members', cohortId] });
+      }
+
+      if (cohortId) {
+        queryClient.setQueryData<CohortDetailResponse>(['cohort-detail', cohortId], (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            header: {
+              ...old.header,
+              cohort_name: payload.name,
+              status_label: payload.is_static ? 'Static' : 'Dynamic',
+              status_tone: payload.is_static ? 'neutral' : 'success',
+              subtitle: {
+                ...old.header.subtitle,
+                description_text: payload.description ?? old.header.subtitle.description_text,
+              },
+            },
+            details_rules: {
+              ...old.details_rules,
+              name: payload.name,
+              description: payload.description ?? '',
+              is_static: payload.is_static,
+              type: payload.is_static ? 'Static list' : 'Rule-based',
+              rules: payload.rules ?? { filters: [] },
+            },
+          };
+        });
+      }
+    },
   });
 }
 

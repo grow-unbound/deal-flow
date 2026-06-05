@@ -1,5 +1,14 @@
 project_id = "deal-flow"
 
+[auth]
+enabled = true
+# Keep access tokens short-lived while allowing long-lived active sessions.
+jwt_expiry = 3600
+
+[auth.sessions]
+# Local parity for the shared seller webapp + buyer PWA session policy.
+inactivity_timeout = "360h"
+
 [api]
 enabled = true
 port = 54321

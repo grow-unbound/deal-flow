@@ -1,10 +1,20 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CalendarDays, Check, Search, SlidersHorizontal, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { EntityAvatar, PageWrap } from '@/components/seller/layout';
+import {
+  ComposerBasicsField,
+  ComposerBasicsStrip,
+  ComposerBodyGrid,
+  ComposerBreadcrumbs,
+  ComposerFooterBar,
+  ComposerMainCard,
+  ComposerShell,
+  ComposerSidebarCard,
+  ComposerTitleRow,
+} from '@/components/seller/composer/ComposerLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -421,70 +431,49 @@ export function PriceListComposer({
   return (
     <>
       <PageWrap className="pt-7 pb-6">
-        <div className="space-y-4">
-          <nav className="flex flex-wrap items-center gap-1.5 text-[12px] text-cream-600">
-            <Link href="/price-lists" className="hover:text-cream-900">
-              Price Lists
-            </Link>
-            <span className="text-cream-400">›</span>
-            <span className="font-medium text-cream-900">
-              {mode === 'edit' ? detail?.name ?? 'Edit pricelist' : 'New pricelist'}
-            </span>
-          </nav>
+        <ComposerShell>
+          <ComposerBreadcrumbs
+            items={[
+              { label: 'Price Lists', href: '/price-lists' },
+              { label: mode === 'edit' ? detail?.name ?? 'Edit pricelist' : 'New pricelist', current: true },
+            ]}
+          />
 
-          <div className="flex items-start justify-between gap-8">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="font-display text-[28px] font-semibold tracking-[-0.01em] text-cream-950">
-                  {mode === 'edit' ? 'Edit pricelist' : 'Add a pricelist'}
-                </h1>
-                <span
-                  className={cn(
-                    'inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]',
-                    mode === 'edit' && detail?.status === 'active'
-                      ? 'border-teal-200 bg-teal-50 text-teal-700'
-                      : 'border-cream-300 bg-cream-100 text-cream-700',
-                  )}
-                >
-                  {mode === 'edit' && detail?.status === 'active' ? 'Live' : 'Draft'}
-                </span>
-              </div>
-              <p className="mt-1.5 max-w-[72ch] text-[13px] leading-[1.55] text-cream-700">
-                {mode === 'edit' ? editSubtitle : createSubtitle}
-              </p>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-2">
-              {mode === 'create' ? (
-                <Button type="button" className="cockpit-btn cockpit-btn-secondary">
-                  Import from CSV
+          <ComposerTitleRow
+            title={mode === 'edit' ? 'Edit pricelist' : 'Add a pricelist'}
+            subtitle={mode === 'edit' ? editSubtitle : createSubtitle}
+            status={{ label: mode === 'edit' && detail?.status === 'active' ? 'Live' : 'Draft', tone: mode === 'edit' && detail?.status === 'active' ? 'live' : 'draft' }}
+            actions={
+              <>
+                {mode === 'create' ? (
+                  <Button type="button" className="cockpit-btn cockpit-btn-secondary">
+                    Import from CSV
+                  </Button>
+                ) : null}
+                <Button type="button" className="cockpit-btn cockpit-btn-secondary" onClick={() => dirtyGuard.handleOpenChange(false)}>
+                  <X className="h-3.5 w-3.5" />
+                  Close
                 </Button>
-              ) : null}
-              <Button type="button" className="cockpit-btn cockpit-btn-secondary" onClick={() => dirtyGuard.handleOpenChange(false)}>
-                <X className="h-3.5 w-3.5" />
-                Close
-              </Button>
-            </div>
-          </div>
+              </>
+            }
+          />
 
-          <div className="grid gap-0 overflow-hidden rounded-[14px] border border-cream-300 bg-white lg:grid-cols-[1.6fr_1fr_0.9fr_1fr]">
-            <div className="border-b border-cream-300 px-4 py-3 lg:border-b-0 lg:border-r">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cream-700">Name</p>
+          <ComposerBasicsStrip>
+            <ComposerBasicsField label="Name">
               <Input
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder="e.g. North Delhi A-class · Summer '26"
-                className="mt-2 h-auto border-0 bg-transparent px-0 py-0 font-medium text-[14px] text-cream-950 shadow-none focus-visible:ring-0"
+                className="h-auto border-0 bg-transparent px-0 py-0 font-medium text-[14px] text-cream-950 shadow-none focus-visible:ring-0"
               />
-            </div>
+            </ComposerBasicsField>
 
-            <div className="border-b border-cream-300 px-4 py-3 lg:border-b-0 lg:border-r">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cream-700">Validity</p>
+            <ComposerBasicsField label="Validity">
               <Popover>
                 <PopoverTrigger asChild>
                   <button
                     type="button"
-                    className="mt-2 flex w-full items-center justify-between gap-2 text-left text-[14px] font-medium text-cream-950"
+                    className="flex w-full items-center justify-between gap-2 text-left text-[14px] font-medium text-cream-950"
                   >
                     <span>
                       {validFrom ? `${formatDate(validFrom)} → ${validTo ? formatDate(validTo) : 'Open ended'}` : 'Set date range'}
@@ -505,31 +494,30 @@ export function PriceListComposer({
                   </div>
                 </PopoverContent>
               </Popover>
-            </div>
+            </ComposerBasicsField>
 
-            <div className="border-b border-cream-300 px-4 py-3 lg:border-b-0 lg:border-r">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cream-700">Priority</p>
+            <ComposerBasicsField label="Priority">
               <Input
                 type="number"
                 min={0}
                 value={priority}
                 onChange={(event) => setPriority(event.target.value)}
-                className="mt-2 h-auto border-0 bg-transparent px-0 py-0 font-mono text-[14px] font-medium text-cream-950 shadow-none focus-visible:ring-0"
+                className="h-auto border-0 bg-transparent px-0 py-0 font-mono text-[14px] font-medium text-cream-950 shadow-none focus-visible:ring-0"
               />
-            </div>
+            </ComposerBasicsField>
 
-            <div className="px-4 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cream-700">Selection</p>
+            <ComposerBasicsField label="Selection" className="px-4 py-3">
               <div className="mt-2 flex items-center gap-2 text-[14px] font-medium text-cream-950">
                 <span>{currentMetrics.productCount} products</span>
                 <span className="text-cream-500">·</span>
                 <span>{currentMetrics.brandCount} brands</span>
               </div>
-            </div>
-          </div>
+            </ComposerBasicsField>
+          </ComposerBasicsStrip>
 
-          <div className="grid min-h-[620px] gap-5 lg:grid-cols-[260px_minmax(0,1fr)_320px]">
-            <aside className="rounded-[14px] border border-cream-300 bg-white p-4">
+          <ComposerBodyGrid
+            left={
+              <ComposerSidebarCard>
               <div className="space-y-5">
                 <section>
                   <div className="mb-3 flex items-center justify-between">
@@ -696,9 +684,10 @@ export function PriceListComposer({
                   </div>
                 </section>
               </div>
-            </aside>
-
-            <section className="flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-cream-300 bg-white">
+              </ComposerSidebarCard>
+            }
+            center={
+              <ComposerMainCard>
               <div className="flex flex-wrap items-center gap-3 border-b border-cream-300 bg-cream-50 px-4 py-3">
                 <div>
                   <div className="text-[13px] font-semibold text-cream-900">
@@ -906,9 +895,10 @@ export function PriceListComposer({
                   </table>
                 </div>
               )}
-            </section>
-
-            <aside className="rounded-[14px] border border-cream-300 bg-white p-4">
+              </ComposerMainCard>
+            }
+            right={
+              <ComposerSidebarCard>
               <div className="flex h-full flex-col gap-4">
                 <div>
                   <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">
@@ -1035,10 +1025,11 @@ export function PriceListComposer({
                   )}
                 </div>
               </div>
-            </aside>
-          </div>
+              </ComposerSidebarCard>
+            }
+          />
 
-          <div className="sticky bottom-0 z-10 rounded-[14px] border border-cream-300 bg-white px-6 py-4 shadow-[0_-8px_24px_rgba(34,52,43,0.06)]">
+          <ComposerFooterBar>
             <div className="flex items-center gap-3">
               <div className={cn(
                 'inline-flex items-center gap-2 text-[12px]',
@@ -1069,8 +1060,8 @@ export function PriceListComposer({
                 </Button>
               </div>
             </div>
-          </div>
-        </div>
+          </ComposerFooterBar>
+        </ComposerShell>
       </PageWrap>
 
       <DiscardChangesDialog

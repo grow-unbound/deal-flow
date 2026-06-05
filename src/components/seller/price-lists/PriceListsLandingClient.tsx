@@ -17,6 +17,7 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { usePriceListsLanding, type PriceListLandingRow, type PriceListsLandingResponse } from '@/hooks/usePriceLists';
 import { formatDate } from '@/lib/utils';
 
@@ -80,10 +81,21 @@ function entityHue(index: number): 'teal' | 'ember' | 'cream' {
 function PriceListsLandingContent({ initialData }: { initialData: PriceListsLandingResponse | null }) {
   const router = useRouter();
   const { data, isLoading, isError, refetch } = usePriceListsLanding(initialData);
-
-  const [search, setSearch] = useState('');
-  const [activeChip, setActiveChip] = useState<LandingChip>('All');
-  const [sortBy, setSortBy] = useState<SortOption>('Recently updated');
+  const { state: routeState, setState: setRouteState } = useRouteSnapshot({
+    storageKey: 'seller-price-lists-landing',
+    initialState: {
+      search: '',
+      activeChip: 'All' as LandingChip,
+      sortBy: 'Recently updated' as SortOption,
+    },
+  });
+  useRouteScrollRestoration({
+    storageKey: 'seller-price-lists-landing',
+    ready: !isLoading,
+  });
+  const search = routeState.search;
+  const activeChip = routeState.activeChip;
+  const sortBy = routeState.sortBy;
   const allRows = data?.price_lists ?? [];
 
   const filteredRows = useMemo(() => {
@@ -134,8 +146,7 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
           title="Price Lists"
           subtitle="Custom pricing per cohort. Each list sets prices on a window — once it lapses, buyers fall back to base. Keep them fresh."
           horizon="This month"
-          secondary={{ label: 'Clone a list', icon: <Copy size={13} />, onClick: undefined }}
-          primary="New price list"
+          primary="Add a price list"
           onPrimaryClick={() => router.push('/price-lists/new')}
         />
 
@@ -214,10 +225,10 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
           sortBy={sortBy}
           hideViewToggle
           searchValue={search}
-          onSearchChange={setSearch}
-          onChipChange={(chip) => setActiveChip(chip as LandingChip)}
+          onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+          onChipChange={(chip) => setRouteState((current) => ({ ...current, activeChip: chip as LandingChip }))}
           sortOptions={SORT_OPTIONS}
-          onSortChange={(option) => setSortBy(option as SortOption)}
+          onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
         />
 
         <LandingTable

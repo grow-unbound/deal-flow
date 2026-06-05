@@ -18,6 +18,7 @@ import {
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
+import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import {
   Dialog,
   DialogBody,
@@ -78,10 +79,23 @@ function OrdersLandingContent({
   const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
   const { data, isLoading, isError } = useTenantOrders(period, initialData);
   const syncMutation = useSyncToTally();
-
-  const [search, setSearch] = useState('');
-  const [activeChip, setActiveChip] = useState<FilterChip>('All');
-  const [sortBy, setSortBy] = useState<SortOption>('Recent first');
+  const { state: routeState, setState: setRouteState } = useRouteSnapshot({
+    storageKey: 'seller-orders-landing',
+    scopeKey: period,
+    initialState: {
+      search: '',
+      activeChip: 'All' as FilterChip,
+      sortBy: 'Recent first' as SortOption,
+    },
+  });
+  useRouteScrollRestoration({
+    storageKey: 'seller-orders-landing',
+    scopeKey: period,
+    ready: !isLoading,
+  });
+  const search = routeState.search;
+  const activeChip = routeState.activeChip;
+  const sortBy = routeState.sortBy;
   const [recordDialogOpen, setRecordDialogOpen] = useState(false);
 
   const orders = data?.orders ?? [];
@@ -212,10 +226,10 @@ function OrdersLandingContent({
           sortBy={sortBy}
           hideViewToggle
           searchValue={search}
-          onSearchChange={setSearch}
-          onChipChange={(chip) => setActiveChip(chip as FilterChip)}
+          onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+          onChipChange={(chip) => setRouteState((current) => ({ ...current, activeChip: chip as FilterChip }))}
           sortOptions={SORT_OPTIONS}
-          onSortChange={(option) => setSortBy(option as SortOption)}
+          onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
         />
 
         <LandingTable

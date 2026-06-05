@@ -4,6 +4,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { createTimer } from '@/lib/server-timing';
 import { CohortCreateSchema } from '@/lib/zod';
+import { getCohortComposerPayload, resolveBuyerIdsForRules } from '@/lib/server/cohort-composer';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 
 type CohortType = 'Geo-based' | 'Tier-based' | 'Brand affinity';
@@ -396,5 +397,36 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create cohort' }, { status: 500 });
   }
 
-  return NextResponse.json({ cohort }, { status: 201 });
+  let cachedMemberCount = 0;
+
+  try {
+    const composer = await getCohortComposerPayload(db, claims.tenant_id);
+    const memberIds = resolveBuyerIdsForRules(composer.buyers, data.rules, data.is_static);
+    cachedMemberCount = memberIds.length;
+
+    if (memberIds.length > 0) {
+      const rows = memberIds.map((buyerId) => ({ cohort_id: cohort.id, buyer_id: buyerId }));
+      const { error: membersError } = await db
+        .schema('app')
+        .from('cohort_members')
+        .upsert(rows, { onConflict: 'cohort_id,buyer_id' });
+
+      if (membersError) {
+        console.error('[POST /api/cohorts] member sync error:', membersError.message);
+        return NextResponse.json({ error: 'Cohort created but failed to save members' }, { status: 500 });
+      }
+    }
+
+    await db
+      .schema('app')
+      .from('cohorts')
+      .update({ cached_member_count: cachedMemberCount })
+      .eq('id', cohort.id)
+      .eq('tenant_id', claims.tenant_id);
+  } catch (error: any) {
+    console.error('[POST /api/cohorts] composer sync error:', error?.message);
+    return NextResponse.json({ error: 'Cohort created but failed to build membership' }, { status: 500 });
+  }
+
+  return NextResponse.json({ cohort: { ...cohort, cached_member_count: cachedMemberCount } }, { status: 201 });
 }
