@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
-import { parseSellerLandingPeriod } from '@/lib/seller-period';
+import { getSellerLandingInitialData, parseSellerLandingPeriod } from '@/lib/seller-period';
 
 describe('seller landing period helpers', () => {
   it('defaults invalid values to month', () => {
@@ -39,5 +39,15 @@ describe('seller landing period helpers', () => {
     expect(period.previous_start).toBe('2025-01-01T00:00:00.000Z');
     expect(period.previous_end_exclusive).toBe('2025-06-04T00:00:00.000Z');
     expect(period.elapsed_days).toBe(154);
+  });
+
+  it('only reuses server landing data when it matches the selected period', () => {
+    const monthData = {
+      period: getSellerLandingPeriodMeta('month', new Date('2026-06-03T08:00:00.000Z')),
+      rows: [1, 2, 3],
+    };
+
+    expect(getSellerLandingInitialData('month', monthData)).toEqual(monthData);
+    expect(getSellerLandingInitialData('quarter', monthData)).toBeUndefined();
   });
 });

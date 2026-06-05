@@ -6,7 +6,7 @@ import type { BrandCreateInput, CreateBrandInput, TenantBrandUpdateInput } from 
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
-import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
+import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
 
 export interface MasterBrand {
   id: string;
@@ -284,10 +284,9 @@ export function useTenantBrands(period: SellerLandingPeriod = 'month', initialDa
       }
       return res.json();
     },
-    initialData,
+    initialData: getSellerLandingInitialData(period, initialData),
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
-    placeholderData: (previous) => previous,
     refetchOnWindowFocus: false,
   });
 }

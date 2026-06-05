@@ -19,6 +19,7 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useTenantProducts, type TenantProduct, type TenantProductsResponse } from '@/hooks/useProducts';
@@ -77,6 +78,25 @@ function ProductLandingSkeleton() {
   );
 }
 
+function ProductLandingDataSkeleton() {
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-4 gap-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-36 rounded-[14px]" />
+        ))}
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-52 rounded-[14px]" />
+        ))}
+      </div>
+      <Skeleton className="h-14 rounded-[14px]" />
+      <Skeleton className="h-[28rem] rounded-[14px]" />
+    </div>
+  );
+}
+
 function ProductsLandingContent({
   initialData,
   initialPeriod,
@@ -87,6 +107,8 @@ function ProductsLandingContent({
   const router = useRouter();
   const { period, setPeriod, horizonLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
   const { data, isLoading, isError, refetch } = useTenantProducts(period, initialData);
+  const retainedData = useRetainedValue(data);
+  const landingData = data ?? retainedData;
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-products-landing',
     scopeKey: period,
@@ -106,8 +128,8 @@ function ProductsLandingContent({
   const activeChip = routeState.activeChip;
   const [addProductOpen, setAddProductOpen] = useState(false);
 
-  const brandChips = useMemo(() => ['All brands', ...(data?.brands ?? []), 'Low stock'], [data?.brands]);
-  const products = useMemo(() => data?.products ?? [], [data?.products]);
+  const brandChips = useMemo(() => ['All brands', ...(landingData?.brands ?? []), 'Low stock'], [landingData?.brands]);
+  const products = useMemo(() => landingData?.products ?? [], [landingData?.products]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -138,9 +160,9 @@ function ProductsLandingContent({
       });
   }, [activeChip, products, search, sortBy]);
 
-  if (isLoading) return <ProductLandingSkeleton />;
+  if (isLoading && !landingData) return <ProductLandingSkeleton />;
 
-  if (isError) {
+  if (isError && !landingData) {
     return (
       <PageWrap>
         <ErrorState
@@ -151,8 +173,10 @@ function ProductsLandingContent({
       </PageWrap>
     );
   }
+  if (!landingData) return <ProductLandingSkeleton />;
+  const showRefreshingState = isLoading && !data;
 
-  const kpis = data?.kpis;
+  const kpis = landingData.kpis;
   const total = kpis?.total_skus ?? products.length;
   const outOfStock = kpis?.out_of_stock ?? products.filter((p) => Number(p.on_hand ?? 0) === 0).length;
   const lowStock =
@@ -164,7 +188,7 @@ function ProductsLandingContent({
       <PageHeader
         eyebrow="Catalog"
         title="Products"
-        subtitle={`${total} SKUs across ${(data?.brands ?? []).length} brands. ${outOfStock} out of stock, ${lowStock} running low — those are the ones to chase this week.`}
+        subtitle={`${total} SKUs across ${(landingData.brands ?? []).length} brands. ${outOfStock} out of stock, ${lowStock} running low — those are the ones to chase this week.`}
         horizon={horizonLabel}
         period={period}
         periodOptions={options}
@@ -178,6 +202,16 @@ function ProductsLandingContent({
         onPrimaryClick={() => setAddProductOpen(true)}
       />
 
+      {showRefreshingState ? (
+        <ProductLandingDataSkeleton />
+      ) : isError ? (
+        <ErrorState
+          heading="Couldn't load products"
+          description="There was a problem fetching your products. Please try again."
+          onRetry={() => refetch()}
+        />
+      ) : (
+        <>
       <InsightStrip4
         tiles={[
           {
@@ -209,8 +243,8 @@ function ProductsLandingContent({
           {
             kind: 'risk',
             eyebrow: 'Needs attention',
-            hint: `${data?.todays_read?.needs_attention?.length ?? 0}`,
-            rows: (data?.todays_read?.needs_attention ?? []).map((row) => ({
+            hint: `${landingData.todays_read?.needs_attention?.length ?? 0}`,
+            rows: (landingData.todays_read?.needs_attention ?? []).map((row) => ({
               initials: row.brand_initials,
               hue: row.brand_hue,
               name: row.name,
@@ -222,7 +256,7 @@ function ProductsLandingContent({
             kind: 'info',
             eyebrow: 'Top performers',
             hint: 'by GMV',
-            rows: (data?.todays_read?.top_performers ?? []).map((row) => ({
+            rows: (landingData.todays_read?.top_performers ?? []).map((row) => ({
               initials: row.brand_initials,
               hue: row.brand_hue,
               name: row.name,
@@ -234,7 +268,7 @@ function ProductsLandingContent({
             kind: 'opportunity',
             eyebrow: 'Top risers',
             hint: 'fastest growth',
-            rows: (data?.todays_read?.top_risers ?? []).map((row) => ({
+            rows: (landingData.todays_read?.top_risers ?? []).map((row) => ({
               initials: row.brand_initials,
               hue: row.brand_hue,
               name: row.name,
@@ -258,6 +292,8 @@ function ProductsLandingContent({
         sortOptions={[...SORT_OPTIONS]}
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
+        </>
+      )}
 
       <LandingTable
         columns={[
