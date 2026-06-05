@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Search, X } from 'lucide-react';
+import { Check, RotateCcw, Save, Search, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { EntityAvatar, PageWrap } from '@/components/seller/layout';
 import {
@@ -9,9 +9,11 @@ import {
   ComposerBasicsStrip,
   ComposerBodyGrid,
   ComposerBreadcrumbs,
+  ComposerCheckboxCell,
   ComposerFooterBar,
   ComposerMainCard,
   ComposerPanelTitle,
+  ComposerSelectableRow,
   ComposerShell,
   ComposerSidebarCard,
   ComposerTitleRow,
@@ -390,7 +392,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
             subtitle={mode === 'edit' ? editSubtitle : createSubtitle}
             status={{ label: mode === 'edit' ? 'Live' : 'Draft', tone: mode === 'edit' ? 'live' : 'draft' }}
             actions={
-              <Button type="button" className="cockpit-btn cockpit-btn-secondary" onClick={() => dirtyGuard.handleOpenChange(false)}>
+              <Button type="button" variant='ghost' onClick={() => dirtyGuard.handleOpenChange(false)}>
                 <X className="h-3.5 w-3.5" />
                 Close
               </Button>
@@ -698,19 +700,23 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                       {visibleRows.map((buyer) => {
                         const checked = effectiveSelectedSet.has(buyer.id);
                         return (
-                          <tr key={buyer.id} className="border-b border-cream-300 bg-white last:border-b-0">
-                            <td className="px-4 py-3 align-top">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={(event) =>
-                                  selectionMode === 'manual-selection'
-                                    ? toggleManualRow(buyer.id, event.target.checked)
-                                    : toggleRuleRow(buyer.id, event.target.checked)
-                                }
-                                className="accent-teal-500"
-                              />
-                            </td>
+                          <ComposerSelectableRow
+                            key={buyer.id}
+                            checked={checked}
+                            onCheckedChange={(nextChecked) =>
+                              selectionMode === 'manual-selection'
+                                ? toggleManualRow(buyer.id, nextChecked)
+                                : toggleRuleRow(buyer.id, nextChecked)
+                            }
+                          >
+                            <ComposerCheckboxCell
+                              checked={checked}
+                              onCheckedChange={(nextChecked) =>
+                                selectionMode === 'manual-selection'
+                                  ? toggleManualRow(buyer.id, nextChecked)
+                                  : toggleRuleRow(buyer.id, nextChecked)
+                              }
+                            />
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-3">
                                 <EntityAvatar initials={buyer.initials} hue={buyer.hue} size={32} className="rounded-[8px]" />
@@ -732,7 +738,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                             <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatCompactInr(buyer.mtd_spend)}</td>
                             <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatCompactInr(buyer.credit_used)}</td>
                             <td className="px-4 py-3 text-right font-mono text-cream-700">Net {buyer.payment_terms_days}</td>
-                          </tr>
+                          </ComposerSelectableRow>
                         );
                       })}
                     </tbody>
@@ -808,15 +814,8 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
               </div>
               <div className="ml-auto flex items-center gap-2">
                 <Button type="button" variant="ghost" onClick={() => dirtyGuard.handleOpenChange(false)}>
-                  {mode === 'edit' ? 'Discard changes' : 'Discard draft'}
-                </Button>
-                <Button
-                  type="button"
-                  className="cockpit-btn cockpit-btn-secondary"
-                  onClick={() => void handleSave('list')}
-                  disabled={saveMutation.isPending || !name.trim()}
-                >
-                  Save & close
+                <RotateCcw className="h-3.5 w-3.5" />
+                  {mode === 'edit' ? 'Revert changes' : 'Discard draft'}
                 </Button>
                 <Button
                   type="button"
@@ -824,6 +823,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                   onClick={() => void handleSave('detail')}
                   disabled={saveMutation.isPending || !name.trim() || summary.members === 0}
                 >
+                  <Save className="h-3.5 w-3.5" />
                   {mode === 'edit' ? 'Save changes' : 'Save cohort'}
                 </Button>
               </div>

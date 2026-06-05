@@ -16,7 +16,14 @@ export default function CatalogDetailLoading() {
             <div key={i} className="h-10 w-28 animate-pulse rounded-[10px] bg-cream-100" />
           ))}
         </div>
-        <div className="h-[30rem] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
+        <div className="grid grid-cols-[1.75fr_1fr] gap-4">
+          <div className="h-[22rem] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
+          <div className="h-[22rem] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="h-[18rem] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
+          <div className="h-[18rem] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
+        </div>
       </div>
     </PageWrap>
   );

@@ -1,6 +1,8 @@
 'use client';
 
 import * as React from 'react';
+import { useSearchParams } from 'next/navigation';
+import { apiFetch } from '@/lib/api-fetch';
 import { SearchBar } from '@/components/buyer/catalog/SearchBar';
 import { CategoryFilter } from '@/components/buyer/catalog/CategoryFilter';
 import { BrandFilter } from '@/components/buyer/catalog/BrandFilter';
@@ -13,6 +15,8 @@ import type { BuyerCatalogItem, BuyerBrand, BuyerCategory } from '@/types/buyer'
 const PAGE_LIMIT = 40;
 
 export default function CatalogPage() {
+  const searchParams = useSearchParams();
+  const shareToken = searchParams.get('share_token');
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'buyer-catalog-page',
     initialState: {
@@ -23,6 +27,9 @@ export default function CatalogPage() {
       categories: [] as BuyerCategory[],
       page: 0,
       hasMore: false,
+      shareCatalogName: null as string | null,
+      shareCatalogValidUntil: null as string | null,
+      loadedShareToken: null as string | null,
     },
   });
   const search = routeState.search;
@@ -32,6 +39,9 @@ export default function CatalogPage() {
   const categories = routeState.categories;
   const page = routeState.page;
   const hasMore = routeState.hasMore;
+  const shareCatalogName = routeState.shareCatalogName;
+  const shareCatalogValidUntil = routeState.shareCatalogValidUntil;
+  const loadedShareToken = routeState.loadedShareToken;
   const [loading, setLoading] = React.useState(items.length === 0);
   const [loadingMore, setLoadingMore] = React.useState(false);
   useRouteScrollRestoration({
@@ -51,7 +61,7 @@ export default function CatalogPage() {
 
   // Fetch categories once on mount
   React.useEffect(() => {
-    fetch('/api/buyer/categories')
+    apiFetch('/api/buyer/categories')
       .then((r) => r.json())
       .then((data: { categories?: BuyerCategory[] }) => {
         setRouteState((current) => ({ ...current, categories: data.categories ?? [] }));
@@ -65,6 +75,31 @@ export default function CatalogPage() {
     const hasCachedItems = routeState.items.length > 0;
     setLoading(!hasCachedItems);
 
+    if (shareToken) {
+      apiFetch(`/api/buyer/catalog/${shareToken}`)
+        .then((r) => r.json())
+        .then((data: { name?: string; valid_until?: string | null; items?: BuyerCatalogItem[] }) => {
+          if (cancelled) return;
+          setRouteState((current) => ({
+            ...current,
+            items: data.items ?? [],
+            hasMore: false,
+            page: 1,
+            shareCatalogName: data.name ?? 'Catalog',
+            shareCatalogValidUntil: data.valid_until ?? null,
+            loadedShareToken: shareToken,
+          }));
+        })
+        .catch((err) => console.error('[CatalogPage] share catalog fetch error:', err))
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const params = new URLSearchParams({
       limit: String(PAGE_LIMIT),
       offset: '0',
@@ -73,7 +108,7 @@ export default function CatalogPage() {
     if (selectedCategory) params.set('category_id', selectedCategory);
     if (selectedBrand) params.set('brand_id', selectedBrand);
 
-    fetch(`/api/buyer/catalog?${params.toString()}`)
+    apiFetch(`/api/buyer/catalog?${params.toString()}`)
       .then((r) => r.json())
       .then((data: { items?: BuyerCatalogItem[]; has_more?: boolean }) => {
         if (cancelled) return;
@@ -82,6 +117,9 @@ export default function CatalogPage() {
           items: data.items ?? [],
           hasMore: data.has_more ?? false,
           page: 1,
+          shareCatalogName: null,
+          shareCatalogValidUntil: null,
+          loadedShareToken: null,
         }));
       })
       .catch((err) => console.error('[CatalogPage] initial fetch error:', err))
@@ -92,11 +130,11 @@ export default function CatalogPage() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedSearch, selectedCategory, selectedBrand]);
+  }, [debouncedSearch, selectedCategory, selectedBrand, shareToken]);
 
   // Load more (infinite scroll)
   const loadMore = React.useCallback(() => {
-    if (loadingMore || !hasMore) return;
+    if (shareToken || loadingMore || !hasMore) return;
     setLoadingMore(true);
 
     const offset = page * PAGE_LIMIT;
@@ -108,7 +146,7 @@ export default function CatalogPage() {
     if (selectedCategory) params.set('category_id', selectedCategory);
     if (selectedBrand) params.set('brand_id', selectedBrand);
 
-    fetch(`/api/buyer/catalog?${params.toString()}`)
+    apiFetch(`/api/buyer/catalog?${params.toString()}`)
       .then((r) => r.json())
       .then((data: { items?: BuyerCatalogItem[]; has_more?: boolean }) => {
         setRouteState((current) => ({
@@ -120,7 +158,7 @@ export default function CatalogPage() {
       })
       .catch((err) => console.error('[CatalogPage] load more error:', err))
       .finally(() => setLoadingMore(false));
-  }, [loadingMore, hasMore, page, debouncedSearch, selectedCategory, selectedBrand]);
+  }, [shareToken, loadingMore, hasMore, page, debouncedSearch, selectedCategory, selectedBrand]);
 
   // Intersection observer for sentinel
   React.useEffect(() => {
@@ -147,8 +185,8 @@ export default function CatalogPage() {
   }, [items]);
 
   // Catalog name/date from first item
-  const catalogName = items[0]?.catalog_name ?? 'Catalog';
-  const catalogValidUntil = items[0]?.catalog_valid_until ?? null;
+  const catalogName = shareToken ? (shareCatalogName ?? 'Catalog') : (items[0]?.catalog_name ?? 'Catalog');
+  const catalogValidUntil = shareToken ? shareCatalogValidUntil : (items[0]?.catalog_valid_until ?? null);
 
   const hasActiveFilters =
     selectedCategory !== null || selectedBrand !== null || debouncedSearch !== '';
@@ -161,6 +199,19 @@ export default function CatalogPage() {
       selectedBrand: null,
     }));
   }
+
+  React.useEffect(() => {
+    if (loadedShareToken === shareToken) return;
+    setRouteState((current) => ({
+      ...current,
+      items: [],
+      page: 0,
+      hasMore: false,
+      shareCatalogName: null,
+      shareCatalogValidUntil: null,
+      loadedShareToken: null,
+    }));
+  }, [loadedShareToken, setRouteState, shareToken]);
 
   return (
     <div className="flex flex-col pb-[var(--tab-bar)]">

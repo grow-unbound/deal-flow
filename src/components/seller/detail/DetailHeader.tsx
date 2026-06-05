@@ -26,6 +26,7 @@ interface DetailHeaderProps {
   title: string;
   status: DetailStatus;
   subtitle: ReactNode[];
+  statusActions?: ReactNode;
   actions: ReactNode;
 }
 
@@ -49,7 +50,7 @@ function renderAvatar(avatar: DetailAvatar) {
   );
 }
 
-export function DetailHeader({ crumbPath, avatar, title, status, subtitle, actions }: DetailHeaderProps) {
+export function DetailHeader({ crumbPath, avatar, title, status, subtitle, statusActions, actions }: DetailHeaderProps) {
   return (
     <header>
       <nav className="mb-4 flex flex-wrap items-center gap-1.5 text-[12px] text-cream-600">
@@ -78,6 +79,7 @@ export function DetailHeader({ crumbPath, avatar, title, status, subtitle, actio
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="font-display text-[28px] font-semibold tracking-[-0.01em] text-cream-950">{title}</h1>
                 <StatusTag label={status.label} tone={status.tone} />
+                {statusActions ? <div className="ml-1 inline-flex items-center gap-1">{statusActions}</div> : null}
               </div>
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[13px] text-cream-700">
                 {subtitle.map((item, index) => (

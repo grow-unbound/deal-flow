@@ -9,8 +9,10 @@ import {
   ComposerBasicsStrip,
   ComposerBodyGrid,
   ComposerBreadcrumbs,
+  ComposerCheckboxCell,
   ComposerFooterBar,
   ComposerMainCard,
+  ComposerSelectableRow,
   ComposerShell,
   ComposerSidebarCard,
   ComposerTitleRow,
@@ -803,28 +805,30 @@ export function PriceListComposer({
                         const imageUrl = product.image_urls?.[0] ?? null;
 
                         return (
-                          <tr
+                          <ComposerSelectableRow
                             key={product.id}
-                            className={cn(
-                              'border-b border-cream-300 last:border-b-0',
-                              isChanged ? 'bg-ember-50/40' : 'bg-white',
-                            )}
+                            checked={isSelected}
+                            className={isChanged ? 'bg-ember-50/40' : 'bg-white'}
+                            onCheckedChange={(nextChecked) => {
+                              setDeselectedIds((current) => {
+                                const next = new Set(current);
+                                if (nextChecked) next.delete(product.id);
+                                else next.add(product.id);
+                                return next;
+                              });
+                            }}
                           >
-                            <td className="px-4 py-3 align-top">
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={(event) => {
-                                  setDeselectedIds((current) => {
-                                    const next = new Set(current);
-                                    if (event.target.checked) next.delete(product.id);
-                                    else next.add(product.id);
-                                    return next;
-                                  });
-                                }}
-                                className="accent-teal-500"
-                              />
-                            </td>
+                            <ComposerCheckboxCell
+                              checked={isSelected}
+                              onCheckedChange={(nextChecked) => {
+                                setDeselectedIds((current) => {
+                                  const next = new Set(current);
+                                  if (nextChecked) next.delete(product.id);
+                                  else next.add(product.id);
+                                  return next;
+                                });
+                              }}
+                            />
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-3">
                                 {imageUrl ? (
@@ -888,7 +892,7 @@ export function PriceListComposer({
                               {deltaPct > 0 ? '+' : ''}
                               {deltaPct.toFixed(1)}%
                             </td>
-                          </tr>
+                          </ComposerSelectableRow>
                         );
                       })}
                     </tbody>

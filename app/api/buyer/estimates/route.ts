@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { getVerifiedClaims } from '@/lib/auth';
+import { getBuyerAppContext } from '@/lib/auth';
 import { supabaseAdmin, supabase } from '@/lib/supabase';
 
 // Exported types consumed by checkout/page.tsx and EnquiriesTab
@@ -34,13 +34,10 @@ interface EstimateRow {
 
 export async function POST(request: NextRequest): Promise<NextResponse<EstimateResponse>> {
   try {
-    const claims = await getVerifiedClaims(request);
-    if (!claims.tenant_id || !claims.buyer_id) {
+    const context = await getBuyerAppContext(request);
+    if (!context.tenant_id) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
-
-    const { tenant_id, buyer_id, sub } = claims;
-    const db = supabaseAdmin ?? supabase;
 
     let body: EstimateRequest;
     try {
@@ -68,6 +65,22 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
 
     const subtotal = items.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
     const total_amount = subtotal;
+
+    if (context.mode === 'preview') {
+      return NextResponse.json({
+        success: true,
+        estimate_id: `preview-${Date.now()}`,
+        estimate_number: 'PREVIEW-INQUIRY',
+        whatsapp_sent: false,
+      });
+    }
+
+    if (!context.buyer_id) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { tenant_id, buyer_id, sub } = context;
+    const db = supabaseAdmin ?? supabase;
 
     const sortedItems = [...items].sort((a, b) => a.tenant_product_id.localeCompare(b.tenant_product_id));
     const cart_hash = createHash('sha256')
@@ -139,12 +152,20 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
 
 export async function GET(request: NextRequest) {
   try {
-    const claims = await getVerifiedClaims(request);
-    if (!claims.tenant_id || !claims.buyer_id) {
+    const context = await getBuyerAppContext(request);
+    if (!context.tenant_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { tenant_id, buyer_id } = claims;
+    if (context.mode === 'preview') {
+      return NextResponse.json({ estimates: [] });
+    }
+
+    if (!context.buyer_id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { tenant_id, buyer_id } = context;
     const db = supabaseAdmin ?? supabase;
     const limit = Math.min(Number(request.nextUrl.searchParams.get('limit') ?? '50'), 200);
 

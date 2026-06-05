@@ -73,7 +73,7 @@ export async function getCatalogComposerPayload(db: any, tenantId: string) {
   // Phase 1: fetch data that doesn't depend on each other.
   // cohort_members is intentionally excluded here — it must be scoped to this
   // tenant's cohort IDs, which we only know after the cohorts query resolves.
-  const [productsRes, cohortsRes, recentOrdersRes, monthOrdersRes] = await Promise.all([
+  const [productsRes, cohortsRes, recentOrdersRes, monthOrdersRes, buyersRes] = await Promise.all([
     db
       .schema('app')
       .from('tenant_products')
@@ -102,17 +102,26 @@ export async function getCatalogComposerPayload(db: any, tenantId: string) {
       .neq('status', 'cancelled')
       .is('deleted_at', null)
       .gte('placed_at', monthStartIso),
+    db
+      .schema('app')
+      .from('buyers')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .is('deleted_at', null),
   ]);
 
   if (productsRes.error) throw dbErr('catalog-composer: tenant_products', productsRes.error);
   if (cohortsRes.error) throw dbErr('catalog-composer: cohorts', cohortsRes.error);
   if (recentOrdersRes.error) throw dbErr('catalog-composer: recent_orders', recentOrdersRes.error);
   if (monthOrdersRes.error) throw dbErr('catalog-composer: month_orders', monthOrdersRes.error);
+  if (buyersRes.error) throw dbErr('catalog-composer: buyers', buyersRes.error);
 
   const products = (productsRes.data ?? []) as TenantProductRow[];
   const cohorts = (cohortsRes.data ?? []) as CohortRow[];
   const recentOrders = (recentOrdersRes.data ?? []) as Array<{ id: string; placed_at: string | null }>;
   const monthOrders = (monthOrdersRes.data ?? []) as Array<{ id: string; placed_at: string | null }>;
+  const buyersCount = buyersRes.count ?? 0;
 
   const cohortIds = cohorts.map((c) => c.id);
   const productIds = products.map((p) => p.id);
@@ -176,14 +185,15 @@ export async function getCatalogComposerPayload(db: any, tenantId: string) {
       ? db.schema('catalog').from('brands').select('id, name').in('id', masterBrandIds).is('deleted_at', null)
       : Promise.resolve({ data: [], error: null }),
     masterProductIds.length > 0
-      ? db.schema('catalog').from('products').select('id, category_id').in('id', masterProductIds).is('deleted_at', null)
+      ? db.schema('catalog').from('products').select('id, name, category_id').in('id', masterProductIds).is('deleted_at', null)
       : Promise.resolve({ data: [], error: null }),
   ]);
 
   if (masterBrandsRes.error) throw dbErr('catalog-composer: master_brands', masterBrandsRes.error);
   if (masterProductsRes.error) throw dbErr('catalog-composer: master_products', masterProductsRes.error);
 
-  const masterProducts = (masterProductsRes.data ?? []) as Array<{ id: string; category_id: string | null }>;
+  const masterProducts = (masterProductsRes.data ?? []) as Array<{ id: string; name: string; category_id: string | null }>;
+  const masterProductNameById = new Map(masterProducts.map((product) => [product.id, product.name]));
   const categoryIds = Array.from(new Set(masterProducts.map((product) => product.category_id).filter(Boolean))) as string[];
   const categoriesRes = categoryIds.length > 0
     ? await db.schema('catalog').from('categories').select('id, name').in('id', categoryIds).is('deleted_at', null)
@@ -235,6 +245,7 @@ export async function getCatalogComposerPayload(db: any, tenantId: string) {
   }
 
   return {
+    buyer_count: buyersCount,
     cohorts: cohorts.map((cohort) => ({
       id: cohort.id,
       name: cohort.name,
@@ -270,7 +281,10 @@ export async function getCatalogComposerPayload(db: any, tenantId: string) {
 
       return {
         id: product.id,
-        display_name: product.name_override?.trim() || product.internal_sku,
+        display_name:
+          product.name_override?.trim() ||
+          (product.master_product_id ? masterProductNameById.get(product.master_product_id) : null) ||
+          product.internal_sku,
         internal_sku: product.internal_sku,
         brand_name: brandName,
         category_name: categoryName,
