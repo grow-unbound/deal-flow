@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getVerifiedClaims } from '@/lib/auth';
+import { getBuyerAppContext } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import type { BuyerAppMode } from '@/types/buyer';
 
 type OrderStatus =
   | 'draft'
@@ -40,14 +41,16 @@ export interface BuyerOrder {
 }
 
 export interface BuyerOrdersResponse {
+  mode: BuyerAppMode;
   orders: BuyerOrder[];
+  preview_message?: string;
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
-    const claims = await getVerifiedClaims(request);
+    const context = await getBuyerAppContext(request);
 
-    if (!claims.buyer_id || !claims.tenant_id) {
+    if (!context.tenant_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -55,9 +58,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
 
+    if (context.mode === 'preview') {
+      const payload: BuyerOrdersResponse = {
+        mode: 'preview',
+        orders: [],
+        preview_message: 'Order history for a logged-in buyer will appear here.',
+      };
+      return NextResponse.json(payload);
+    }
+
+    if (!context.buyer_id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const db = supabaseAdmin;
-    const buyerId = claims.buyer_id;
-    const tenantId = claims.tenant_id;
+    const buyerId = context.buyer_id;
+    const tenantId = context.tenant_id;
     const limit = Math.min(Number(request.nextUrl.searchParams.get('limit') ?? '20'), 100);
 
     const ordersRes = await db
@@ -111,6 +127,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const catalogNameById = new Map(catalogNames.map((c) => [c.id, c.name]));
 
     const payload: BuyerOrdersResponse = {
+      mode: 'buyer',
       orders: orders.map((order) => ({
         id: order.id,
         order_number: order.order_number,

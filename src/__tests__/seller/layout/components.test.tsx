@@ -5,6 +5,7 @@ import { StatusTag } from '@/components/seller/layout/StatusTag';
 import { GrowthPill } from '@/components/seller/layout/GrowthPill';
 import { PageWrap } from '@/components/seller/layout/PageWrap';
 import { PageHeader } from '@/components/seller/layout/PageHeader';
+import { SellerGlobalHeader } from '@/components/layout/SellerGlobalHeader';
 
 describe('InsightStrip4', () => {
   afterEach(() => {
@@ -32,13 +33,13 @@ describe('InsightStrip4', () => {
 describe('StatusTag', () => {
   it('renders tone-specific classes', () => {
     const { rerender } = render(<StatusTag label="Live" tone="success" />);
-    expect(screen.getByText('Live')).toHaveClass('bg-teal-100', 'text-teal-700');
+    expect(screen.getByText('Live')).toHaveClass('bg-success-50', 'text-success-700');
 
     rerender(<StatusTag label="Live" tone="warning" />);
-    expect(screen.getByText('Live')).toHaveClass('bg-amber-100', 'text-amber-700');
+    expect(screen.getByText('Live')).toHaveClass('bg-warning-50', 'text-warning-700');
 
     rerender(<StatusTag label="Live" tone="danger" />);
-    expect(screen.getByText('Live')).toHaveClass('bg-danger-100', 'text-danger-700');
+    expect(screen.getByText('Live')).toHaveClass('bg-danger-50', 'text-danger-700');
 
     rerender(<StatusTag label="Live" tone="neutral" />);
     expect(screen.getByText('Live')).toHaveClass('bg-cream-200', 'text-cream-700');
@@ -92,9 +93,19 @@ describe('PageHeader', () => {
       />,
     );
 
-    fireEvent.pointerDown(screen.getByRole('button', { name: /showing this month/i }));
+    fireEvent.click(screen.getByRole('button', { name: /showing.*this month/i }));
     fireEvent.click(await screen.findByText('This Quarter'));
 
     expect(onPeriodChange).toHaveBeenCalledWith('quarter');
+  });
+});
+
+describe('SellerGlobalHeader', () => {
+  it('opens the buyer preview launcher in a new tab', () => {
+    render(<SellerGlobalHeader />);
+
+    const buyerAppLink = screen.getByRole('link', { name: /Open buyer app/i });
+    expect(buyerAppLink).toHaveAttribute('href', '/api/buyer/preview/launch');
+    expect(buyerAppLink).toHaveAttribute('target', '_blank');
   });
 });

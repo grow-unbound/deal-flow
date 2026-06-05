@@ -1,41 +1,46 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Copy, CalendarClock } from 'lucide-react';
+import { ExternalLink, Link2, PencilLine, Send } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useRole } from '@/hooks/useRole';
 import {
-  useAddCatalogProduct,
-  useExtendCatalogValidity,
-  useRemoveCatalogProduct,
+  useEnsureCatalogShareLink,
+  usePublishCatalog,
   useTenantCatalogDetail,
 } from '@/hooks/useCatalogs';
 import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
 import { PageWrap } from '@/components/seller/layout';
+import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/button';
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { formatCompactInr } from '@/lib/utils';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { CatalogCompositionTab } from './CatalogCompositionTab';
 import { CatalogPerformanceTab } from './CatalogPerformanceTab';
 import { CatalogBuyersTab } from './CatalogBuyersTab';
 
-type TabId = 'details' | 'performance' | 'buyers';
+type TabId = 'products' | 'performance' | 'buyers';
 
 interface CatalogDetailPageProps {
   id: string;
+}
+
+function buildBuyerPreviewLaunchHref(shareToken?: string | null) {
+  const params = new URLSearchParams();
+  if (shareToken) params.set('share_token', shareToken);
+  const query = params.toString();
+  return query ? `/api/buyer/preview/launch?${query}` : '/api/buyer/preview/launch';
 }
 
 function CatalogDetailSkeleton() {
@@ -73,17 +78,17 @@ function CatalogDetailSkeleton() {
 }
 
 export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
+  const router = useRouter();
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-catalog-detail-tab',
     scopeKey: id,
     initialState: 'performance',
   });
-  const [validUntil, setValidUntil] = useState('');
+  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
   const { isSellerAdmin } = useRole();
   const { data, isLoading, isError } = useTenantCatalogDetail(id);
-  const extendMutation = useExtendCatalogValidity(id);
-  const addMutation = useAddCatalogProduct(id);
-  const removeMutation = useRemoveCatalogProduct(id);
+  const publishMutation = usePublishCatalog(id);
+  const ensureShareLinkMutation = useEnsureCatalogShareLink(id);
 
   const tiles = useMemo(() => {
     if (!data) return [];
@@ -124,6 +129,36 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
     return <ErrorState heading="Couldn't load catalog" description="There was a problem fetching this catalog detail page." />;
   }
 
+  const isDraft = data.header.status_value === 'draft';
+  const isPublished = data.header.status_value === 'published';
+
+  async function handleCopyShareLink() {
+    try {
+      const response = await ensureShareLinkMutation.mutateAsync();
+      await navigator.clipboard.writeText(response.share_link.share_url);
+      toast.success('Share link copied');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to copy share link');
+    }
+  }
+
+  async function handlePublishCatalog() {
+    try {
+      const response = await publishMutation.mutateAsync();
+      setPublishConfirmOpen(false);
+      toast.success('Catalog published', {
+        action: {
+          label: 'Copy link',
+          onClick: () => {
+            void navigator.clipboard.writeText(response.share_link.share_url);
+          },
+        },
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to publish catalog');
+    }
+  }
+
   return (
     <PageWrap className="pt-7">
       <DetailHeader
@@ -134,6 +169,38 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
         avatar={{ kind: 'catalog', initials: data.header.initials }}
         title={data.header.name}
         status={{ label: data.header.status_label, tone: data.header.status_tone }}
+        statusActions={
+          isPublished ? (
+            <>
+              <Button
+                asChild
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-[9px] text-teal-700 hover:bg-cream-100"
+                aria-label="View in Buyer App"
+              >
+                <a
+                  href={buildBuyerPreviewLaunchHref(data.header.share_token)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <ExternalLink size={14} />
+                </a>
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-[9px] text-teal-700 hover:bg-cream-100"
+                onClick={() => void handleCopyShareLink()}
+                disabled={ensureShareLinkMutation.isPending}
+                aria-label="Copy link"
+              >
+                <Link2 size={14} />
+              </Button>
+            </>
+          ) : null
+        }
         subtitle={[
           `${data.header.products_count} products · ${data.header.brands_covered} brands`,
           `Cohort: ${data.header.cohort_name}`,
@@ -142,52 +209,41 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
         ]}
         actions={
           <div className="flex items-center gap-2 pt-1">
-            <button
-              type="button"
-              className="cockpit-btn cockpit-btn-secondary h-9 px-4"
-              onClick={async () => {
-                if (!data.header.share_url) return;
-                await navigator.clipboard.writeText(data.header.share_url);
-                toast.success('Share link copied');
-              }}
-            >
-              <Copy size={14} />
-              Copy share link
-            </button>
-
-            {isSellerAdmin && data.permissions.can_extend_validity ? (
-              <AlertDialog>
-                <AlertDialogTrigger className="cockpit-btn cockpit-btn-secondary h-9 px-4">
-                  <CalendarClock size={14} />
-                  Extend validity
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Extend catalog validity?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Set a new validity end date for this catalog.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <input
-                    type="date"
-                    className="h-10 rounded-[8px] border border-cream-300 px-3 text-[13px]"
-                    value={validUntil}
-                    onChange={(e) => setValidUntil(e.target.value)}
-                  />
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={() => {
-                        if (!validUntil) return;
-                        extendMutation.mutate({ valid_until: new Date(validUntil).toISOString() });
-                      }}
-                    >
-                      Confirm
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+            {isSellerAdmin ? (
+              <Button type="button" variant="accent" size="sm" onClick={() => router.push(`/catalogs/${id}/edit`)}>
+                <PencilLine size={14} />
+                Edit Catalog
+              </Button>
             ) : null}
+
+            {isDraft ? (
+              <Dialog open={publishConfirmOpen} onOpenChange={setPublishConfirmOpen}>
+                <Button type="button" size="sm" onClick={() => setPublishConfirmOpen(true)} disabled={publishMutation.isPending}>
+                  <Send size={14} />
+                  Publish Catalog
+                </Button>
+                <DialogContent className="max-w-[420px]">
+                  <DialogHeader>
+                    <DialogTitle>Publish this catalog?</DialogTitle>
+                    <DialogDescription>
+                      Buyers will immediately be able to open this catalog with its share link.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogBody className="pt-4 text-[13px] leading-6 text-cream-700">
+                    {data.header.products_count} products will go live for {data.header.selected_cohort.member_count} buyers in {data.header.selected_cohort.display_label}.
+                  </DialogBody>
+                  <DialogFooter>
+                    <Button type="button" variant="ghost" onClick={() => setPublishConfirmOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="button" onClick={() => void handlePublishCatalog()} disabled={publishMutation.isPending}>
+                      Confirm publish
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            ) : null}
+
           </div>
         }
       />
@@ -196,7 +252,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
 
       <DetailTabs
         tabs={[
-          { id: 'details', label: 'Composition' },
+          { id: 'products', label: 'Products', badge: data.header.products_count },
           { id: 'performance', label: 'Performance' },
           { id: 'buyers', label: 'Buyers', badge: data.meta_strip_4.cohort_members },
         ]}
@@ -204,18 +260,15 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
         onChange={(tabId) => setTab(tabId as TabId)}
       />
 
-      {tab === 'details' ? (
+      {tab === 'products' ? (
         <CatalogCompositionTab
-          rows={data.composition}
-          canEdit={data.permissions.can_edit_composition}
-          isMutating={addMutation.isPending || removeMutation.isPending}
-          onAdd={(tenantProductId) => addMutation.mutate({ tenant_product_id: tenantProductId })}
-          onRemove={(tenantProductId) => removeMutation.mutate({ tenant_product_id: tenantProductId })}
+          summary={data.products_summary}
+          rows={data.products}
         />
       ) : null}
 
       {tab === 'performance' ? <CatalogPerformanceTab performance={data.performance} /> : null}
-      {tab === 'buyers' ? <CatalogBuyersTab buyers={data.buyers} /> : null}
+      {tab === 'buyers' ? <CatalogBuyersTab buyers={data.buyers} selectedCohort={data.header.selected_cohort} /> : null}
     </PageWrap>
   );
 }

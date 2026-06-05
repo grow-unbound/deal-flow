@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { useIdleRoutePrefetch } from '@/hooks/useIdleRoutePrefetch';
 
 const tabs = [
@@ -21,7 +22,7 @@ export function BuyerTabBar() {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-20 flex items-stretch pb-safe"
+      className="sticky bottom-0 z-20 flex w-full items-stretch pb-safe"
       style={{
         height: 'calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px))',
         background: 'rgba(253, 251, 247, 0.92)',
