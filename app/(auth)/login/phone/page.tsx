@@ -1,18 +1,27 @@
 'use client';
 
-import { useState, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { PhoneInput } from '@/components/buyer/auth/PhoneInput';
 
 function PhoneLoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
   const [unregistered, setUnregistered] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get('reason') === 'session_expired') {
+      setInfo('Your session has expired. Please log in again.');
+    }
+  }, [searchParams]);
 
   async function handleSubmit(phoneNumber: string) {
     setError('');
+    setInfo('');
     setUnregistered(false);
     setLoading(true);
 
@@ -65,6 +74,12 @@ function PhoneLoginForm() {
       <p className="text-body-sm text-cream-600 mb-6">
         Enter your registered mobile number to receive an OTP.
       </p>
+
+      {info ? (
+        <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-body-sm font-medium text-amber-800">{info}</p>
+        </div>
+      ) : null}
 
       {unregistered ? (
         <div className="space-y-4">

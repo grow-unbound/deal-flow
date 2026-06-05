@@ -22,6 +22,10 @@ function LoginForm() {
   useEffect(() => {
     if (searchParams.get('registered') === '1') {
       setInfo('Account created! Check your email to confirm, then sign in.');
+      return;
+    }
+    if (searchParams.get('reason') === 'session_expired') {
+      setInfo('Your session has expired. Please log in again.');
     }
   }, [searchParams]);
 

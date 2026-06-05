@@ -188,14 +188,35 @@ export const CohortSchema = z.object({
 
 // Cohort rule schemas
 export const CohortRuleFieldSchema = z.enum([
+  'geography.label',
   'geography.state',
   'geography.city',
   'geography.zone',
   'tier',
   'brand_focus',
+  'last_order_bucket',
+  'gmv_90d_bucket',
+  'buyer_id',
 ]);
 
-export const CohortRuleOperatorSchema = z.enum(['eq', 'in']);
+export const CohortRuleOperatorSchema = z.enum(['eq', 'in', 'not_in']);
+
+export const CohortLastOrderBucketSchema = z.enum([
+  'anytime',
+  'within_30_days',
+  'within_90_days',
+  'dormant_90_plus_days',
+]);
+export type CohortLastOrderBucket = z.infer<typeof CohortLastOrderBucketSchema>;
+
+export const CohortGmv90dBucketSchema = z.enum([
+  'gmv_0',
+  'gmv_1_50000',
+  'gmv_50001_200000',
+  'gmv_200001_500000',
+  'gmv_500001_plus',
+]);
+export type CohortGmv90dBucket = z.infer<typeof CohortGmv90dBucketSchema>;
 
 export const CohortRuleFilterSchema = z.object({
   field: CohortRuleFieldSchema,
@@ -205,6 +226,8 @@ export const CohortRuleFilterSchema = z.object({
 
 export const CohortRulesSchema = z.object({
   filters: z.array(CohortRuleFilterSchema).default([]),
+  selected_buyer_ids: z.array(z.string().uuid()).default([]),
+  excluded_buyer_ids: z.array(z.string().uuid()).default([]),
 });
 
 export const CohortCreateSchema = z.object({
@@ -333,6 +356,61 @@ export const PublishedCatalogSchema = z.object({
   hero_image_url: z.string().url().optional(),
   message: z.string().optional(),
 });
+
+export const CatalogComposerAvailabilitySchema = z.enum([
+  'new_in_stock_today',
+  'in_stock_only',
+  'low_stock_only',
+  'old_stock',
+  'show_everything',
+]);
+export type CatalogComposerAvailability = z.infer<typeof CatalogComposerAvailabilitySchema>;
+
+export const CatalogComposerTagSchema = z.enum(['new', 'new_stock', 'old_stock']);
+export type CatalogComposerTag = z.infer<typeof CatalogComposerTagSchema>;
+
+export const CatalogComposerFilterStateSchema = z.object({
+  brand_names: z.array(z.string()).default([]),
+  category_names: z.array(z.string()).default([]),
+  availability: CatalogComposerAvailabilitySchema.default('show_everything'),
+});
+export type CatalogComposerFilterState = z.infer<typeof CatalogComposerFilterStateSchema>;
+
+export const CatalogComposerItemSchema = z.object({
+  tenant_product_id: z.string().uuid('Invalid product ID'),
+  display_order: z.coerce.number().int().min(0).default(0),
+});
+export type CatalogComposerItemInput = z.infer<typeof CatalogComposerItemSchema>;
+
+export const CatalogComposerPayloadSchema = z
+  .object({
+    name: z.string().min(1, 'Catalog name is required'),
+    scope_type: z.literal('cohort').default('cohort'),
+    cohort_id: z.string().uuid('Cohort is required'),
+    valid_from: z.coerce.date(),
+    valid_to: z.coerce.date().optional(),
+    filters: CatalogComposerFilterStateSchema.default({
+      brand_names: [],
+      category_names: [],
+      availability: 'show_everything',
+    }),
+    tag_overrides: z.record(CatalogComposerTagSchema.nullable()).default({}),
+    items: z.array(CatalogComposerItemSchema).default([]),
+    save_mode: z.enum(['draft', 'publish']).default('draft'),
+  })
+  .refine(
+    (data) => {
+      if (data.valid_to && data.valid_from) {
+        return data.valid_to > data.valid_from;
+      }
+      return true;
+    },
+    {
+      message: 'End date must be after start date.',
+      path: ['valid_to'],
+    },
+  );
+export type CatalogComposerPayload = z.infer<typeof CatalogComposerPayloadSchema>;
 
 // Order schemas
 export const OrderSchema = z.object({

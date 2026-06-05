@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser';
+import { clearAuthClientStorage, getSessionExpiredRedirectPath } from '@/lib/auth-session';
 import { type Role } from '@/constants';
 import posthog from 'posthog-js';
 
@@ -69,6 +70,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const manualSignOutRef = React.useRef(false);
+
+  const resetAuthState = () => {
+    clearAuthClientStorage();
+    setSession(null);
+    setUser(null);
+    setTenantProfile(null);
+    setBuyerProfiles([]);
+    setCurrentTenantId(null);
+    setCurrentBuyerId(null);
+  };
 
   const hydrateWorkspace = async (activeSession: Session) => {
     const { data: wsRows, error: wsError } = await (supabase as any).rpc('get_user_workspace', {
@@ -187,11 +199,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
         }
       } else {
-        setUser(null);
-        setTenantProfile(null);
-        setBuyerProfiles([]);
-        setCurrentTenantId(null);
-        setCurrentBuyerId(null);
+        resetAuthState();
+        const wasManualSignOut = manualSignOutRef.current;
+        manualSignOutRef.current = false;
+
+        if (
+          event === 'SIGNED_OUT' &&
+          !wasManualSignOut &&
+          typeof window !== 'undefined'
+        ) {
+          window.location.assign(getSessionExpiredRedirectPath(window.location.pathname));
+        }
       }
     });
 
@@ -199,17 +217,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
+    manualSignOutRef.current = true;
     const { error } = await supabase.auth.signOut();
     if (error) {
       // GoTrue rejected the token (e.g. already expired) — clear local cookies only.
       // This avoids a 403 blocking the logout flow.
       await supabase.auth.signOut({ scope: 'local' } as any);
     }
-    setUser(null);
-    setTenantProfile(null);
-    setBuyerProfiles([]);
-    setCurrentTenantId(null);
-    setCurrentBuyerId(null);
+    resetAuthState();
   };
 
   const switchTenant = (tenantId: string) => {

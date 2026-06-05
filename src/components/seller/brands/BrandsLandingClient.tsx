@@ -227,7 +227,6 @@ function BrandLandingContent({
         period={period}
         periodOptions={options}
         onPeriodChange={setPeriod}
-        secondary={{ label: 'Invite a principal', icon: <UserPlus size={13} />, onClick: () => setInviteOpen(true) }}
         primary="Add a brand"
         onPrimaryClick={() => setAddBrandOpen(true)}
       />

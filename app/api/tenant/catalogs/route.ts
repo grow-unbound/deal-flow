@@ -3,6 +3,8 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
+import { CatalogComposerPayloadSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
+import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
 
 type CatalogStatus = 'draft' | 'published' | 'archived';
 type DisplayStatus = 'Live' | 'Draft' | 'Ended';
@@ -27,7 +29,13 @@ interface CatalogItemRow {
 
 interface TenantProductRow {
   id: string;
+  internal_sku: string;
+  name_override: string | null;
   tenant_brand_id: string | null;
+  category_name: string | null;
+  mrp: number | null;
+  base_selling_price: number | null;
+  created_at: string;
 }
 
 interface TenantBrandRow {
@@ -44,6 +52,12 @@ interface MasterBrandRow {
 interface CohortRow {
   id: string;
   name: string;
+  cached_member_count?: number | null;
+}
+
+interface CohortMemberRow {
+  cohort_id: string;
+  buyer_id: string;
 }
 
 interface OrderRow {
@@ -82,6 +96,48 @@ function getStatusTone(status: DisplayStatus): StatusTone {
   return 'neutral';
 }
 
+function buildCatalogScopeValue(input: {
+  cohortId: string;
+  filters: CatalogComposerFilterState;
+  tagOverrides?: Record<string, CatalogComposerTag | null>;
+}) {
+  return {
+    cohort_id: input.cohortId,
+    composer: {
+      filters: input.filters,
+      tag_overrides: input.tagOverrides ?? {},
+    },
+  };
+}
+
+function generateShareToken() {
+  return crypto.randomUUID().replace(/-/g, '').slice(0, 20);
+}
+
+async function ensureTenantProducts(
+  db: any,
+  tenantId: string,
+  tenantProductIds: string[],
+) {
+  if (tenantProductIds.length === 0) {
+    return new Set<string>();
+  }
+
+  const { data, error } = await db
+    .schema('app')
+    .from('tenant_products')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .in('id', tenantProductIds)
+    .is('deleted_at', null);
+
+  if (error) {
+    throw new Error('Failed to validate selected products');
+  }
+
+  return new Set<string>(((data ?? []) as Array<{ id: string }>).map((row) => row.id));
+}
+
 export async function GET(req: NextRequest) {
   const timer = createTimer();
   const timedJson = (body: unknown, init?: ResponseInit) => {
@@ -89,6 +145,7 @@ export async function GET(req: NextRequest) {
     response.headers.set('Server-Timing', timer.header('catalogs_api'));
     return response;
   };
+
   try {
     const claims = await getVerifiedClaims(req);
 
@@ -109,7 +166,6 @@ export async function GET(req: NextRequest) {
     const now = new Date();
     const nowTs = now.getTime();
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'), now);
-
     const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? '200'), 500);
 
     const [catalogsRes, ordersRes, prevOrdersRes, cohortsRes] = await Promise.all([
@@ -169,7 +225,6 @@ export async function GET(req: NextRequest) {
     const cohorts = (cohortsRes.data ?? []) as CohortRow[];
 
     const cohortById = new Map(cohorts.map((cohort) => [cohort.id, cohort.name]));
-
     const tenantProductIds = Array.from(new Set(items.map((item) => item.tenant_product_id)));
 
     let tenantProducts: TenantProductRow[] = [];
@@ -190,7 +245,7 @@ export async function GET(req: NextRequest) {
       }
 
       tenantProducts = (tenantProductsRes.data ?? []) as TenantProductRow[];
-      const tenantBrandIds = Array.from(new Set(tenantProducts.map((product) => product.tenant_brand_id).filter(Boolean)));
+      const tenantBrandIds = Array.from(new Set(tenantProducts.map((product) => product.tenant_brand_id).filter(Boolean))) as string[];
 
       if (tenantBrandIds.length > 0) {
         const tenantBrandsRes = await db
@@ -206,7 +261,6 @@ export async function GET(req: NextRequest) {
         }
 
         tenantBrands = (tenantBrandsRes.data ?? []) as TenantBrandRow[];
-
         const masterBrandIds = Array.from(new Set(tenantBrands.map((brand) => brand.master_brand_id)));
         if (masterBrandIds.length > 0) {
           const masterBrandsRes = await db
@@ -229,7 +283,6 @@ export async function GET(req: NextRequest) {
     const tenantProductToBrand = new Map<string, string | null>(tenantProducts.map((product) => [product.id, product.tenant_brand_id]));
     const tenantBrandById = new Map(tenantBrands.map((brand) => [brand.id, brand]));
     const masterBrandById = new Map(masterBrands.map((brand) => [brand.id, brand.name]));
-
     const itemsByCatalog = new Map<string, CatalogItemRow[]>();
     for (const item of items) {
       if (!itemsByCatalog.has(item.catalog_id)) itemsByCatalog.set(item.catalog_id, []);
@@ -273,7 +326,6 @@ export async function GET(req: NextRequest) {
 
       const cohortId = catalog.scope_type === 'cohort' ? (catalog.scope_value?.cohort_id as string | undefined) : undefined;
       const cohortName = cohortId ? (cohortById.get(cohortId) ?? 'Unknown cohort') : catalog.scope_type === 'all' ? 'All buyers' : 'Targeted';
-
       const daysLeft =
         catalog.valid_to && displayStatus === 'Live'
           ? Math.max(0, Math.ceil((new Date(catalog.valid_to).getTime() - nowTs) / (1000 * 60 * 60 * 24)))
@@ -307,22 +359,17 @@ export async function GET(req: NextRequest) {
     const liveCatalogs = catalogRows.filter((catalog) => catalog.status.label === 'Live');
     const draftCatalogs = catalogRows.filter((catalog) => catalog.status.label === 'Draft');
     const endedCatalogs = catalogRows.filter((catalog) => catalog.status.label === 'Ended');
-
     const gmvMtd = orders.reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0);
     const gmvPrevMtd = prevOrders.reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0);
     const gmvGrowthPct = gmvPrevMtd > 0 ? Math.round(((gmvMtd - gmvPrevMtd) / gmvPrevMtd) * 100) : gmvMtd > 0 ? 100 : 0;
-
     const avgConversion =
       liveCatalogs.length > 0
         ? Number((liveCatalogs.reduce((sum, catalog) => sum + catalog.conversion_pct, 0) / liveCatalogs.length).toFixed(1))
         : 0;
-
     const needsAttention = catalogRows
       .filter((catalog) => catalog.status.label === 'Draft' || catalog.status.label === 'Ended' || (catalog.days_left != null && catalog.days_left <= 5 && catalog.days_left > 0))
       .slice(0, 3);
-
     const topPerformers = [...liveCatalogs].sort((a, b) => b.gmv - a.gmv).slice(0, 2);
-
     const latestByCohort = new Map<string, Array<typeof catalogRows[number]>>();
     for (const catalog of [...catalogRows].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())) {
       const key = catalog.cohort_name;
@@ -363,4 +410,85 @@ export async function GET(req: NextRequest) {
     console.error('[GET /api/tenant/catalogs] unexpected error:', error);
     return timedJson({ error: 'Unauthorized' }, { status: 401 });
   }
+}
+
+export async function POST(request: NextRequest) {
+  const claims = await getVerifiedClaims(request);
+
+  if (!claims.tenant_id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (claims.role !== 'seller_admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!supabaseAdmin) return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+
+  const parsed = CatalogComposerPayloadSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return NextResponse.json({ error: 'Invalid payload', details: parsed.error.flatten() }, { status: 400 });
+
+  const db = supabaseAdmin as any;
+  const payload = parsed.data;
+
+  const { data: cohort, error: cohortError } = await db
+    .schema('app')
+    .from('cohorts')
+    .select('id')
+    .eq('id', payload.cohort_id)
+    .eq('tenant_id', claims.tenant_id)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (cohortError) return NextResponse.json({ error: 'Failed to validate cohort' }, { status: 500 });
+  if (!cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 400 });
+
+  const tenantProductIds = payload.items.map((item) => item.tenant_product_id);
+  const validProductIds = await ensureTenantProducts(db, claims.tenant_id, tenantProductIds);
+  if (validProductIds.size !== tenantProductIds.length) {
+    return NextResponse.json({ error: 'One or more selected products are invalid' }, { status: 400 });
+  }
+
+  const status: CatalogStatus = payload.save_mode === 'publish' ? 'published' : 'draft';
+  const shareToken = payload.save_mode === 'publish' ? generateShareToken() : null;
+
+  const { data: insertedCatalog, error: insertError } = await db
+    .schema('app')
+    .from('published_catalogs')
+    .insert({
+      tenant_id: claims.tenant_id,
+      name: payload.name,
+      scope_type: 'cohort',
+      scope_value: buildCatalogScopeValue({ cohortId: payload.cohort_id, filters: payload.filters, tagOverrides: payload.tag_overrides }),
+      valid_from: payload.valid_from.toISOString(),
+      valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
+      status,
+      share_token: shareToken,
+      created_by: claims.sub,
+      updated_by: claims.sub,
+    })
+    .select('id, status')
+    .single();
+
+  if (insertError || !insertedCatalog) {
+    console.error('[POST /api/tenant/catalogs] insert error:', insertError);
+    return NextResponse.json({ error: 'Failed to create catalog' }, { status: 500 });
+  }
+
+  if (payload.items.length > 0) {
+    const { error: itemsError } = await db
+      .schema('app')
+      .from('published_catalog_items')
+      .insert(
+        payload.items.map((item) => ({
+          catalog_id: insertedCatalog.id,
+          tenant_product_id: item.tenant_product_id,
+          display_order: item.display_order,
+          created_by: claims.sub,
+          updated_by: claims.sub,
+        })),
+      );
+
+    if (itemsError) {
+      console.error('[POST /api/tenant/catalogs] items error:', itemsError);
+      return NextResponse.json({ error: 'Failed to create catalog items' }, { status: 500 });
+    }
+  }
+
+  revalidateSellerDashboardCache(claims.tenant_id);
+  return NextResponse.json({ catalog: insertedCatalog });
 }

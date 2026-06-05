@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getPostHogQueryClient } from '@/lib/posthog-server';
 import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
+import { CatalogComposerPayloadSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
 
@@ -26,6 +27,56 @@ const PatchSchema = z.discriminatedUnion('action', [
     tenant_product_id: z.string().uuid(),
   }),
 ]);
+
+function defaultCatalogFilters(): CatalogComposerFilterState {
+  return {
+    brand_names: [],
+    category_names: [],
+    availability: 'show_everything' as const,
+  };
+}
+
+function buildCatalogScopeValue(input: {
+  cohortId: string;
+  filters: CatalogComposerFilterState;
+  tagOverrides?: Record<string, CatalogComposerTag | null>;
+}) {
+  return {
+    cohort_id: input.cohortId,
+    composer: {
+      filters: input.filters,
+      tag_overrides: input.tagOverrides ?? {},
+    },
+  };
+}
+
+function generateShareToken() {
+  return crypto.randomUUID().replace(/-/g, '').slice(0, 20);
+}
+
+async function ensureTenantProducts(
+  db: DbClient,
+  tenantId: string,
+  tenantProductIds: string[],
+) {
+  if (tenantProductIds.length === 0) {
+    return new Set<string>();
+  }
+
+  const { data, error } = await db
+    .schema('app')
+    .from('tenant_products')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .in('id', tenantProductIds)
+    .is('deleted_at', null);
+
+  if (error) {
+    throw new Error('Failed to validate selected products');
+  }
+
+  return new Set<string>(((data ?? []) as Array<{ id: string }>).map((row) => row.id));
+}
 
 function getDisplayStatus(status: CatalogStatus, validTo: string | null): { label: 'Live' | 'Draft' | 'Ended'; tone: 'success' | 'warning' | 'neutral' } {
   if (status === 'draft') return { label: 'Draft', tone: 'warning' };
@@ -253,6 +304,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const inventoryByProductId = new Map(((inventoryRes.data ?? []) as Array<{ tenant_product_id: string; qty_available: number | null; reorder_point: number | null }>).map((inv) => [inv.tenant_product_id, inv]));
 
   const scopeValue = (catalog.scope_value ?? {}) as { cohort_id?: string; buyer_id?: string };
+  const composerScopeValue = (catalog.scope_value ?? {}) as {
+    cohort_id?: string;
+    composer?: {
+      filters?: ReturnType<typeof defaultCatalogFilters>;
+      tag_overrides?: Record<string, CatalogComposerTag | null>;
+    };
+  };
 
   let cohortMembers: Array<{ buyer_id: string }> = [];
   let cohortName = 'All buyers';
@@ -446,6 +504,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       can_extend_validity: claims.role === 'seller_admin',
       can_edit_composition: claims.role === 'seller_admin' && catalog.status === 'draft',
     },
+    composer: {
+      name: catalog.name,
+      status: catalog.status,
+      valid_from: catalog.valid_from,
+      valid_to: catalog.valid_to,
+      cohort_id: composerScopeValue.cohort_id ?? null,
+      filters: composerScopeValue.composer?.filters ?? defaultCatalogFilters(),
+      tag_overrides: composerScopeValue.composer?.tag_overrides ?? {},
+      items: catalogItems.map((item) => ({
+        tenant_product_id: item.tenant_product_id,
+        display_order: item.display_order ?? 0,
+      })),
+    },
   });
 }
 
@@ -457,15 +528,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!claims.role?.startsWith('seller_')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   if (!supabaseAdmin) return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
 
-  const parsed = PatchSchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
+  const rawBody = await request.json().catch(() => null);
+  const actionParsed = PatchSchema.safeParse(rawBody);
+  const composerParsed = actionParsed.success ? null : CatalogComposerPayloadSchema.safeParse(rawBody);
+  if (!actionParsed.success && !composerParsed?.success) {
+    return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
+  }
 
   const db = supabaseAdmin as DbClient;
 
   const { data: globalCatalog, error: globalCatalogError } = await db
     .schema('app')
     .from('published_catalogs')
-    .select('id, tenant_id, status')
+    .select('id, tenant_id, status, share_token')
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle();
@@ -474,13 +549,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!globalCatalog) return NextResponse.json({ error: 'Catalog not found' }, { status: 404 });
   if (globalCatalog.tenant_id !== claims.tenant_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  if (parsed.data.action === 'extend_validity') {
+  if (actionParsed.success && actionParsed.data.action === 'extend_validity') {
     if (claims.role !== 'seller_admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { error } = await db
       .schema('app')
       .from('published_catalogs')
-      .update({ valid_to: parsed.data.valid_until, updated_by: null })
+      .update({ valid_to: actionParsed.data.valid_until, updated_by: claims.sub })
       .eq('id', id)
       .eq('tenant_id', claims.tenant_id)
       .is('deleted_at', null);
@@ -491,18 +566,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   if (claims.role !== 'seller_admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  if (globalCatalog.status !== 'draft') return NextResponse.json({ error: 'Composition can only be edited for draft catalogs' }, { status: 400 });
 
-  if (parsed.data.action === 'add_product') {
+  if (actionParsed.success && actionParsed.data.action === 'add_product') {
+    if (globalCatalog.status !== 'draft') return NextResponse.json({ error: 'Composition can only be edited for draft catalogs' }, { status: 400 });
     const { error } = await db
       .schema('app')
       .from('published_catalog_items')
       .insert({
         catalog_id: id,
-        tenant_product_id: parsed.data.tenant_product_id,
-        price_override: parsed.data.price_override ?? null,
-        created_by: null,
-        updated_by: null,
+        tenant_product_id: actionParsed.data.tenant_product_id,
+        price_override: actionParsed.data.price_override ?? null,
+        created_by: claims.sub,
+        updated_by: claims.sub,
       });
 
     if (error) return NextResponse.json({ error: 'Failed to add product to catalog' }, { status: 500 });
@@ -510,14 +585,103 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ ok: true });
   }
 
-  const { error } = await db
+  if (actionParsed.success && actionParsed.data.action === 'remove_product') {
+    if (globalCatalog.status !== 'draft') return NextResponse.json({ error: 'Composition can only be edited for draft catalogs' }, { status: 400 });
+    const { error } = await db
+      .schema('app')
+      .from('published_catalog_items')
+      .update({ deleted_at: new Date().toISOString(), updated_by: claims.sub })
+      .eq('catalog_id', id)
+      .eq('tenant_product_id', actionParsed.data.tenant_product_id)
+      .is('deleted_at', null);
+
+    if (error) return NextResponse.json({ error: 'Failed to remove product from catalog' }, { status: 500 });
+    revalidateSellerDashboardCache(claims.tenant_id);
+    return NextResponse.json({ ok: true });
+  }
+
+  if (globalCatalog.status !== 'draft') {
+    return NextResponse.json({ error: 'Composition can only be edited for draft catalogs' }, { status: 400 });
+  }
+
+  if (!composerParsed?.success) {
+    return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
+  }
+
+  const payload = composerParsed.data;
+  const { data: cohort, error: cohortError } = await db
+    .schema('app')
+    .from('cohorts')
+    .select('id')
+    .eq('id', payload.cohort_id)
+    .eq('tenant_id', claims.tenant_id)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (cohortError) return NextResponse.json({ error: 'Failed to validate cohort' }, { status: 500 });
+  if (!cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 400 });
+
+  const tenantProductIds = payload.items.map((item) => item.tenant_product_id);
+  const validProductIds = await ensureTenantProducts(db, claims.tenant_id, tenantProductIds);
+  if (validProductIds.size !== tenantProductIds.length) {
+    return NextResponse.json({ error: 'One or more selected products are invalid' }, { status: 400 });
+  }
+
+  const nextStatus: CatalogStatus = payload.save_mode === 'publish' ? 'published' : 'draft';
+  const { data: updatedCatalog, error: updateCatalogError } = await db
+    .schema('app')
+    .from('published_catalogs')
+    .update({
+      name: payload.name,
+      scope_type: 'cohort',
+      scope_value: buildCatalogScopeValue({ cohortId: payload.cohort_id, filters: payload.filters, tagOverrides: payload.tag_overrides }),
+      valid_from: payload.valid_from.toISOString(),
+      valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
+      status: nextStatus,
+      share_token: nextStatus === 'published' ? globalCatalog.share_token ?? generateShareToken() : globalCatalog.share_token,
+      updated_by: claims.sub,
+    })
+    .eq('id', id)
+    .eq('tenant_id', claims.tenant_id)
+    .is('deleted_at', null)
+    .select('id, status')
+    .single();
+
+  if (updateCatalogError || !updatedCatalog) {
+    return NextResponse.json({ error: 'Failed to update catalog' }, { status: 500 });
+  }
+
+  const deletedAt = new Date().toISOString();
+  const { error: deleteItemsError } = await db
     .schema('app')
     .from('published_catalog_items')
-    .delete()
+    .update({ deleted_at: deletedAt, updated_by: claims.sub })
     .eq('catalog_id', id)
-    .eq('tenant_product_id', parsed.data.tenant_product_id);
+    .is('deleted_at', null);
 
-  if (error) return NextResponse.json({ error: 'Failed to remove product from catalog' }, { status: 500 });
+  if (deleteItemsError) {
+    return NextResponse.json({ error: 'Failed to refresh catalog items' }, { status: 500 });
+  }
+
+  if (payload.items.length > 0) {
+    const { error: insertItemsError } = await db
+      .schema('app')
+      .from('published_catalog_items')
+      .insert(
+        payload.items.map((item) => ({
+          catalog_id: id,
+          tenant_product_id: item.tenant_product_id,
+          display_order: item.display_order,
+          created_by: claims.sub,
+          updated_by: claims.sub,
+        })),
+      );
+
+    if (insertItemsError) {
+      return NextResponse.json({ error: 'Failed to save catalog items' }, { status: 500 });
+    }
+  }
+
   revalidateSellerDashboardCache(claims.tenant_id);
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ catalog: updatedCatalog });
 }
