@@ -31,6 +31,14 @@ export function parseSellerLandingPeriod(value: string | null | undefined): Sell
   return isSellerLandingPeriod(value) ? value : DEFAULT_SELLER_LANDING_PERIOD;
 }
 
+export function getSellerLandingInitialData<T extends { period?: SellerLandingPeriodMeta }>(
+  period: SellerLandingPeriod,
+  initialData?: T | null,
+): T | undefined {
+  if (!initialData?.period) return undefined;
+  return initialData.period.selected === period ? initialData : undefined;
+}
+
 export function sellerLandingPeriodLabel(period: SellerLandingPeriod): string {
   return SELLER_LANDING_PERIOD_OPTIONS.find((option) => option.value === period)?.label ?? 'This Month';
 }

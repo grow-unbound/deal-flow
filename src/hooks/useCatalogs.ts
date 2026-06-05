@@ -5,7 +5,7 @@ import { apiFetch } from '@/lib/api-fetch';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { CatalogComposerFilterState, CatalogComposerPayload, CatalogComposerTag } from '@/lib/zod';
-import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
+import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
 
 export type CatalogDisplayStatus = 'Live' | 'Draft' | 'Ended';
 export type CatalogStatusTone = 'success' | 'warning' | 'neutral';
@@ -177,10 +177,9 @@ export function useTenantCatalogs(period: SellerLandingPeriod = 'month', initial
       if (!res.ok) throw new Error('Failed to fetch catalogs');
       return res.json();
     },
-    initialData: initialData ?? undefined,
+    initialData: getSellerLandingInitialData(period, initialData),
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
-    placeholderData: (previous) => previous,
   });
 }
 
