@@ -5,7 +5,7 @@ import { apiFetch } from '@/lib/api-fetch';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { CohortCreateInput, CohortRules, CohortUpdateInput } from '@/lib/zod';
-import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
+import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
 
 export type CohortType = 'Geo-based' | 'Tier-based' | 'Brand affinity';
 
@@ -217,10 +217,9 @@ export function useCohortsLanding(period: SellerLandingPeriod = 'month', initial
       }
       return res.json();
     },
-    initialData: initialData ?? undefined,
+    initialData: getSellerLandingInitialData(period, initialData),
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
-    placeholderData: (previous) => previous,
   });
 }
 

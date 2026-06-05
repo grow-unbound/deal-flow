@@ -17,8 +17,10 @@ import {
   StatusTag,
   V3CalloutPanel,
 } from '@/components/seller/layout';
+import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn, formatCompactInr } from '@/lib/utils';
+import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import {
@@ -104,6 +106,46 @@ function CustomersLoadingSkeleton() {
   );
 }
 
+function CustomersDataSkeleton() {
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-4 gap-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-36 rounded-[14px]" />
+        ))}
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-52 rounded-[14px]" />
+        ))}
+      </div>
+      <div className="space-y-2">
+        <Skeleton className="h-14 rounded-[14px]" />
+        <div className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
+          <div className="border-b border-cream-200 p-3">
+            <div className="grid grid-cols-[320px_repeat(7,minmax(0,1fr))_40px] gap-3">
+              {Array.from({ length: 9 }).map((_, i) => (
+                <Skeleton key={`head-${i}`} className="h-3 w-full" />
+              ))}
+            </div>
+          </div>
+          <div className="p-3">
+            <div className="space-y-3">
+              {Array.from({ length: 6 }).map((_, rowIndex) => (
+                <div key={`row-${rowIndex}`} className="grid grid-cols-[320px_repeat(7,minmax(0,1fr))_40px] gap-3">
+                  {Array.from({ length: 9 }).map((_, colIndex) => (
+                    <Skeleton key={`cell-${rowIndex}-${colIndex}`} className="h-10 rounded-md" />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CustomersLandingContent({
   initialData,
   initialPeriod,
@@ -113,7 +155,9 @@ function CustomersLandingContent({
 }) {
   const router = useRouter();
   const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
-  const { data, isLoading } = useCustomersLanding(period, initialData);
+  const { data, isLoading, isError } = useCustomersLanding(period, initialData);
+  const retainedData = useRetainedValue(data);
+  const landingData = data ?? retainedData;
   const [inviteOpen, setInviteOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
@@ -134,7 +178,7 @@ function CustomersLandingContent({
   const sortBy = routeState.sortBy;
   const search = routeState.search;
 
-  const buyers = data?.buyers ?? [];
+  const buyers = landingData?.buyers ?? [];
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -164,16 +208,18 @@ function CustomersLandingContent({
       });
   }, [buyers, activeChip, search, sortBy]);
 
-  if (isLoading || !data) {
+  if (isLoading && !landingData) {
     return <CustomersLoadingSkeleton />;
   }
+  if (!landingData) return <CustomersLoadingSkeleton />;
+  const showRefreshingState = isLoading && !data;
 
   return (
     <PageWrap>
       <PageHeader
         eyebrow="Buyers"
         title="Customers"
-        subtitle={`${data.kpis.total} retailers across ${data.kpis.cohort_count} cohorts. ${data.kpis.active} active ${lowerLabel}. The Tier-A names buy most of revenue, and dues cluster there too.`}
+        subtitle={`${landingData.kpis.total} retailers across ${landingData.kpis.cohort_count} cohorts. ${landingData.kpis.active} active ${lowerLabel}. The Tier-A names buy most of revenue, and dues cluster there too.`}
         horizon={horizonLabel}
         period={period}
         periodOptions={options}
@@ -183,29 +229,38 @@ function CustomersLandingContent({
         onPrimaryClick={() => setAddOpen(true)}
       />
 
+      {showRefreshingState ? (
+        <CustomersDataSkeleton />
+      ) : isError ? (
+        <ErrorState
+          heading="Couldn't load customers"
+          description="There was a problem fetching your customers. Please try again."
+        />
+      ) : (
+        <>
       <InsightStrip4
         tiles={[
           {
             label: 'Active buyers',
-            value: `${data.kpis.active}/${data.kpis.total}`,
-            sub: `${data.kpis.active_pct}% of base ordered`,
+            value: `${landingData.kpis.active}/${landingData.kpis.total}`,
+            sub: `${landingData.kpis.active_pct}% of base ordered`,
           },
           {
             label: `Spend · ${metricSuffix}`,
-            value: formatCompactInr(data.kpis.spend_mtd),
-            sub: `${data.kpis.spend_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(data.kpis.spend_growth_pct)}% vs last month`,
+            value: formatCompactInr(landingData.kpis.spend_mtd),
+            sub: `${landingData.kpis.spend_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(landingData.kpis.spend_growth_pct)}% vs last month`,
             tone: 'accent',
           },
           {
             label: 'Dormant > 30d',
-            value: String(data.kpis.dormant_over_30d),
+            value: String(landingData.kpis.dormant_over_30d),
             sub: "haven't ordered in a month",
             tone: 'warn',
           },
           {
             label: 'Outstanding dues',
-            value: formatCompactInr(data.kpis.outstanding_dues),
-            sub: `across ${data.kpis.buyers_with_dues} buyers`,
+            value: formatCompactInr(landingData.kpis.outstanding_dues),
+            sub: `across ${landingData.kpis.buyers_with_dues} buyers`,
           },
         ]}
       />
@@ -215,8 +270,8 @@ function CustomersLandingContent({
           {
             kind: 'risk',
             eyebrow: 'Needs a call',
-            hint: `${data.callouts.needs_call.length}`,
-            rows: data.callouts.needs_call.map((buyer) => ({
+            hint: `${landingData.callouts.needs_call.length}`,
+            rows: landingData.callouts.needs_call.map((buyer) => ({
               initials: buyer.avatar.initials,
               hue: buyer.avatar.hue,
               name: buyer.business_name,
@@ -231,7 +286,7 @@ function CustomersLandingContent({
             kind: 'info',
             eyebrow: 'Top spenders',
             hint: 'by GMV',
-            rows: data.callouts.top_spenders.map((buyer) => ({
+            rows: landingData.callouts.top_spenders.map((buyer) => ({
               initials: buyer.avatar.initials,
               hue: buyer.avatar.hue,
               name: buyer.business_name,
@@ -243,7 +298,7 @@ function CustomersLandingContent({
             kind: 'opportunity',
             eyebrow: 'Top risers',
             hint: 'fastest growth',
-            rows: data.callouts.top_risers.map((buyer) => ({
+            rows: landingData.callouts.top_risers.map((buyer) => ({
               initials: buyer.avatar.initials,
               hue: buyer.avatar.hue,
               name: buyer.business_name,
@@ -267,6 +322,8 @@ function CustomersLandingContent({
         sortOptions={SORT_OPTIONS}
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
+        </>
+      )}
 
       <LandingTable
         columns={[
