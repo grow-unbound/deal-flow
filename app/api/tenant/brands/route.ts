@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
-import { z } from 'zod';
-
-const AddBrandSchema = z.object({
-  master_brand_id: z.string().uuid('Invalid brand ID'),
-  display_name_override: z.string().optional(),
-});
+import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
+import { createTenantBrand } from '@/lib/server/tenant-brand-create';
 
 type BrandAggregate = {
   brandId: string;
@@ -21,40 +17,39 @@ type BrandAggregate = {
   skuCount: number;
 };
 
-type BrandPayload = {
+type TenantBrandLandingRow = {
   id: string;
+  tenant_id: string;
+  master_brand_id: string;
   display_name_override: string | null;
-  master_brand: { name: string } | null;
+  logo_url: string | null;
+  margin_pct: number | null;
+  exclusivity: boolean | null;
+  is_active: boolean;
+  external_ref: string | null;
+  principal_name: string | null;
+  principal_email: string | null;
+  principal_phone: string | null;
+  principal_location: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  default_cohort_id: string | null;
+  created_at: string;
+  updated_at: string;
+  master_brand: { id: string; name: string; slug: string; logo_url: string | null; description: string | null } | null;
   gmv_mtd: number;
   gmv_prev_mtd: number;
   growth_pct: number;
-  alerts: string[];
+  portfolio_share_pct: number;
+  sku_count: number;
+  active_buyers_mtd: number;
+  total_buyers: number;
+  catalog_days_ago: number | null;
   categories: string[];
+  catalog_name: string | null;
+  alerts: string[];
 };
-
-function formatDateKey(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-function getIstBoundaries(now = new Date()) {
-  const istNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-  const year = istNow.getFullYear();
-  const month = istNow.getMonth();
-  const day = istNow.getDate();
-
-  const mtdStart = new Date(Date.UTC(year, month, 1, 0, 0, 0));
-  const nextMonthStart = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0));
-
-  const prevMonthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
-  const prevMonthSameDayExclusive = new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0));
-
-  return {
-    mtdStartIso: mtdStart.toISOString(),
-    nextMonthStartIso: nextMonthStart.toISOString(),
-    prevMonthStartIso: prevMonthStart.toISOString(),
-    prevMonthMtdEndIso: prevMonthSameDayExclusive.toISOString(),
-  };
-}
 
 export async function GET(req: NextRequest) {
   try {
@@ -75,7 +70,7 @@ export async function GET(req: NextRequest) {
     const db = supabaseAdmin as any;
     const tenantId = claims.tenant_id;
 
-    const { mtdStartIso, nextMonthStartIso, prevMonthStartIso, prevMonthMtdEndIso } = getIstBoundaries();
+    const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
 
     const { data: tenantBrandsData, error: tenantBrandsError } = await db
       .schema('app')
@@ -86,10 +81,19 @@ export async function GET(req: NextRequest) {
         tenant_id,
         master_brand_id,
         display_name_override,
+        logo_url,
         margin_pct,
         exclusivity,
         is_active,
         external_ref,
+        principal_name,
+        principal_email,
+        principal_phone,
+        principal_location,
+        contact_name,
+        contact_email,
+        contact_phone,
+        default_cohort_id,
         created_at,
         updated_at,
         deleted_at
@@ -195,8 +199,8 @@ export async function GET(req: NextRequest) {
       .eq('tenant_id', tenantId)
       .neq('status', 'cancelled')
       .is('deleted_at', null)
-      .gte('placed_at', mtdStartIso)
-      .lt('placed_at', nextMonthStartIso);
+      .gte('placed_at', period.current_start)
+      .lt('placed_at', period.current_end_exclusive);
 
     if (monthOrdersError) {
       console.error('[GET /api/tenant/brands] month orders error:', monthOrdersError.code, monthOrdersError.message);
@@ -210,8 +214,8 @@ export async function GET(req: NextRequest) {
       .eq('tenant_id', tenantId)
       .neq('status', 'cancelled')
       .is('deleted_at', null)
-      .gte('placed_at', prevMonthStartIso)
-      .lt('placed_at', prevMonthMtdEndIso);
+      .gte('placed_at', period.previous_start)
+      .lt('placed_at', period.previous_end_exclusive);
 
     if (prevMonthOrdersError) {
       console.error('[GET /api/tenant/brands] prev orders error:', prevMonthOrdersError.code, prevMonthOrdersError.message);
@@ -365,7 +369,7 @@ export async function GET(req: NextRequest) {
     publishedCatalogs = catalogsData ?? [];
 
     const monthCatalogs = publishedCatalogs.filter(
-      (c: { updated_at: string }) => c.updated_at >= mtdStartIso && c.updated_at < nextMonthStartIso,
+      (c: { updated_at: string }) => c.updated_at >= period.current_start && c.updated_at < period.current_end_exclusive,
     );
     const allCatalogIds = publishedCatalogs.map((c: { id: string }) => c.id);
 
@@ -437,7 +441,7 @@ export async function GET(req: NextRequest) {
         )
       : null;
 
-    const brands: BrandPayload[] = tenantBrands.map(
+    const brands: TenantBrandLandingRow[] = tenantBrands.map(
       (row: {
         id: string;
         tenant_id: string;
@@ -488,13 +492,7 @@ export async function GET(req: NextRequest) {
     const categories = Array.from(new Set(brands.flatMap((b) => b.categories))).sort((a: string, b: string) => a.localeCompare(b));
 
     return NextResponse.json({
-      period: {
-        timezone: 'Asia/Kolkata',
-        current_month_start: formatDateKey(new Date(mtdStartIso)),
-        current_month_end_exclusive: formatDateKey(new Date(nextMonthStartIso)),
-        previous_mtd_start: formatDateKey(new Date(prevMonthStartIso)),
-        previous_mtd_end_exclusive: formatDateKey(new Date(prevMonthMtdEndIso)),
-      },
+      period,
       kpis: {
         portfolio_gmv_mtd: portfolioGmvMtd,
         portfolio_gmv_prev_mtd: portfolioGmvPrevMtd,
@@ -537,60 +535,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
 
-    const body = await req.json();
-    const parsed = AddBrandSchema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid request body', details: parsed.error.flatten() }, { status: 400 });
-    }
-
-    const { master_brand_id, display_name_override } = parsed.data;
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabaseAdmin as any;
-
-    // Check for duplicate
-    const { data: existing } = await db
-      .schema('app')
-      .from('tenant_brands')
-      .select('id')
-      .eq('tenant_id', claims.tenant_id)
-      .eq('master_brand_id', master_brand_id)
-      .is('is_active', true)
-      .is('deleted_at', null)
-      .maybeSingle();
-
-    if (existing) {
-      return NextResponse.json({ error: 'Brand already in your catalog' }, { status: 409 });
-    }
-
-    const { data: inserted, error: insertError } = await db
-      .schema('app')
-      .from('tenant_brands')
-      .insert({
-        tenant_id: claims.tenant_id,
-        master_brand_id,
-        display_name_override: display_name_override ?? null,
-        is_active: true,
-        created_by: claims.tenant_id,
-        updated_by: claims.tenant_id,
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      // Unique constraint violation (race condition)
-      if (insertError.code === '23505') {
-        return NextResponse.json({ error: 'Brand already in your catalog' }, { status: 409 });
-      }
-      console.error('[POST /api/tenant/brands] DB error:', insertError.code, insertError.message);
+    const body = await req.json();
+    const created = await createTenantBrand(db, claims, body);
+    return NextResponse.json(created, { status: 201 });
+  } catch (err) {
+    if (err && typeof err === 'object' && 'status' in err && 'error' in err) {
+      const typedErr = err as { status: number; error: string; details?: unknown };
       return NextResponse.json(
-        { error: 'Failed to add brand', code: insertError.code, detail: insertError.message },
-        { status: 500 },
+        typedErr.details ? { error: typedErr.error, details: typedErr.details } : { error: typedErr.error },
+        { status: typedErr.status },
       );
     }
-
-    return NextResponse.json({ brand: inserted }, { status: 201 });
-  } catch (err) {
     console.error('[POST /api/tenant/brands] Unexpected error:', err);
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 
 function inr(n: number): string {
   const s = Math.round(n).toString();
@@ -129,8 +130,14 @@ function OrdersPageInner() {
   const searchParams = useSearchParams();
   const tabParam = searchParams.get('tab') as TabId | null;
   const highlightId = searchParams.get('highlight');
-
-  const [activeTab, setActiveTab] = useState<TabId>(tabParam ?? 'orders');
+  const { state: activeTab, setState: setActiveTab } = useRouteSnapshot<TabId>({
+    storageKey: 'buyer-orders-page-tab',
+    initialState: tabParam ?? 'orders',
+  });
+  useRouteScrollRestoration({
+    storageKey: 'buyer-orders-page-tab',
+    ready: true,
+  });
 
   // Sync tab from URL param on mount
   useEffect(() => {

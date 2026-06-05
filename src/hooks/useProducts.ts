@@ -5,6 +5,8 @@ import { toast } from 'sonner';
 import type { CustomProductInput } from '@/lib/zod';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
+import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
+import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
 
 export interface MasterProduct {
   id: string;
@@ -19,6 +21,7 @@ export interface MasterProduct {
   pack_size: number | null;
   description: string | null;
   image_urls: string[] | null;
+  category_name?: string | null;
 }
 
 export interface TenantProduct {
@@ -182,6 +185,7 @@ export interface ProductDetailResponse {
 }
 
 export interface TenantProductsResponse {
+  period?: SellerLandingPeriodMeta;
   products: TenantProduct[];
   brands?: string[];
   kpis?: ProductsKpis;
@@ -208,18 +212,20 @@ export interface AddProductPayload {
   pack_size?: number;
 }
 
-export function useTenantProducts(initialData?: TenantProductsResponse | null) {
+export function useTenantProducts(period: SellerLandingPeriod = 'month', initialData?: TenantProductsResponse | null) {
   return useQuery({
-    queryKey: ['tenant-products'],
+    queryKey: ['tenant-products', period],
     queryFn: async (): Promise<TenantProductsResponse> => {
-      const res = await apiFetch('/api/tenant/products');
+      const res = await apiFetch(`/api/tenant/products?period=${period}`);
       if (!res.ok) {
         throw new Error('Failed to fetch products');
       }
       return res.json();
     },
     initialData: initialData ?? undefined,
-    staleTime: 30_000,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -235,7 +241,9 @@ export function useSearchMasterProducts(query: string) {
       return res.json();
     },
     enabled: query.length >= 1,
-    staleTime: 30_000,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -321,6 +329,9 @@ export function useProduct(id: string) {
       return res.json() as Promise<{ product: TenantProduct }>;
     },
     enabled: !!id,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -333,6 +344,9 @@ export function useProductDetail(id: string) {
       return res.json() as Promise<ProductDetailResponse>;
     },
     enabled: !!id,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -509,5 +523,18 @@ export function useCreateCustomProduct() {
       queryClient.invalidateQueries({ queryKey: ['tenant-products'] });
       toast.success('Custom product created');
     },
+  });
+}
+
+export function useTenantProductCategories() {
+  return useQuery({
+    queryKey: ['tenant-product-categories'],
+    queryFn: async (): Promise<string[]> => {
+      const res = await apiFetch('/api/tenant/categories');
+      if (!res.ok) return [];
+      const data = await res.json() as { categories: string[] };
+      return data.categories ?? [];
+    },
+    staleTime: 60_000,
   });
 }

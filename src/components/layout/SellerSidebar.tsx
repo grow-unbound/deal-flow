@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Bell, ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
+import { useIdleRoutePrefetch } from '@/hooks/useIdleRoutePrefetch';
 import { useRole } from '@/hooks/useRole';
 
 const navItems = [
@@ -52,6 +53,11 @@ export function SellerSidebar({
   const { user, signOut } = useAuth();
   const { currentTenant } = useTenant();
   const { isSellerAdmin, role } = useRole();
+  useIdleRoutePrefetch(
+    navItems
+      .filter((item) => !item.adminOnly || isSellerAdmin)
+      .flatMap((item) => [item.href, ...(item.children?.filter((child) => !child.adminOnly || isSellerAdmin).map((child) => child.href) ?? [])]),
+  );
 
   async function handleLogout() {
     await signOut();

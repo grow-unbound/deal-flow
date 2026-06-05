@@ -1,8 +1,10 @@
 import { headers } from 'next/headers';
 import { ProductsLandingClient } from '@/components/seller/products/ProductsLandingClient';
 import type { TenantProductsResponse } from '@/hooks/useProducts';
+import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
+import type { SellerLandingPeriod } from '@/lib/seller-period';
 
-async function getProductsInitialData(): Promise<TenantProductsResponse | null> {
+async function getProductsInitialData(period: SellerLandingPeriod): Promise<TenantProductsResponse | null> {
   const h = await headers();
   const host = h.get('x-forwarded-host') ?? h.get('host');
   if (!host) return null;
@@ -11,7 +13,7 @@ async function getProductsInitialData(): Promise<TenantProductsResponse | null> 
   const cookie = h.get('cookie') ?? '';
 
   try {
-    const response = await fetch(`${proto}://${host}/api/tenant/products`, {
+    const response = await fetch(`${proto}://${host}/api/tenant/products?period=${period}`, {
       method: 'GET',
       cache: 'no-store',
       headers: {
@@ -26,7 +28,12 @@ async function getProductsInitialData(): Promise<TenantProductsResponse | null> 
   }
 }
 
-export default async function ProductsPage() {
-  const initialData = await getProductsInitialData();
-  return <ProductsLandingClient initialData={initialData} />;
+export default async function ProductsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const period = await resolveSellerLandingPeriod(searchParams);
+  const initialData = await getProductsInitialData(period);
+  return <ProductsLandingClient initialData={initialData} initialPeriod={period} />;
 }

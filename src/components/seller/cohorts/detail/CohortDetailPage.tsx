@@ -1,12 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Download, ExternalLink, Share2 } from 'lucide-react';
 import { PageWrap } from '@/components/seller/layout';
 import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatCompactInr } from '@/lib/utils';
+import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useCohortDetail, useUpdateCohortDetail } from '@/hooks/useCohorts';
 import { CohortActivityTab } from './CohortActivityTab';
 import { CohortDetailsRulesTab } from './CohortDetailsRulesTab';
@@ -59,7 +60,11 @@ function CohortDetailSkeleton() {
 }
 
 export function CohortDetailPage({ id }: CohortDetailPageProps) {
-  const [tab, setTab] = useState<TabId>('performance');
+  const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
+    storageKey: 'seller-cohort-detail-tab',
+    scopeKey: id,
+    initialState: 'performance',
+  });
   const { data, isLoading, isError } = useCohortDetail(id);
   const updateMutation = useUpdateCohortDetail(id);
 

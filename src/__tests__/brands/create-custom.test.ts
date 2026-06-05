@@ -14,6 +14,11 @@ interface TenantBrandRow {
   id: string;
   tenant_id: string;
   master_brand_id: string;
+  logo_url?: string | null;
+  principal_name?: string | null;
+  principal_location?: string | null;
+  contact_name?: string | null;
+  default_cohort_id?: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -68,6 +73,8 @@ describe('Custom brand creation API - POST /api/brands/custom', () => {
       body: JSON.stringify({
         name: 'Sunrise Electronics',
         slug: 'sunrise-electronics',
+        principal_name: 'Sunrise North',
+        principal_location: 'Mumbai',
       }),
     });
 
@@ -217,6 +224,7 @@ describe('Custom brand creation API - POST /api/brands/custom', () => {
         slug: 'sunrise-electronics',
         description: 'A consumer electronics brand',
         logo_url: 'https://example.com/logo.png',
+        contact_name: 'Aman Gupta',
       }),
     });
 

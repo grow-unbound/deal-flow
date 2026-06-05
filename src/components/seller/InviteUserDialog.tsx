@@ -345,7 +345,6 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
               <Button
                 type="submit"
                 disabled={isSubmitting}
-                className="bg-teal-500 hover:bg-teal-600 text-cream-50"
               >
                 {isEdit ? <Save size={16} /> : <UserPlus size={16} />}
                 {isSubmitting ? (isEdit ? 'Saving…' : 'Creating…') : isEdit ? 'Save changes' : 'Create User'}

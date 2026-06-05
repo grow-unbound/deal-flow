@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Dialogs &amp; Overlays · DealFlow Design System</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <link rel="stylesheet" href="dialogs/colors_and_type.css" />
+  <link rel="stylesheet" href="dialogs/dialogs.css" />
+
+  <style>
+    body { margin: 0; }
+    /* The design canvas paints its own bg; we sit inside it. */
+    #root { min-height: 100vh; }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="dialogs/design-canvas.jsx"></script>
+  <script type="text/babel" src="dialogs/shared.jsx"></script>
+  <script type="text/babel" src="dialogs/system.jsx"></script>
+  <script type="text/babel" src="dialogs/modals.jsx"></script>
+  <script type="text/babel" src="dialogs/slideovers.jsx"></script>
+  <script type="text/babel" src="dialogs/composers.jsx"></script>
+  <script type="text/babel" src="dialogs/composers-extra.jsx"></script>
+
+  <script type="text/babel" data-presets="env,react">
+    const { useEffect } = React;
+
+    function App() {
+      return (
+        <DesignCanvas title="Dialogs & overlays" subtitle="Three tiers — modal · slide-over · composer. Plus the inline-row escape hatch.">
+
+          {/* ── SYSTEM RULES ──────────────────────────────────────── */}
+          <DCSection id="system" title="System" subtitle="When to use which tier, with the deciding question and the open routing/dismiss rules.">
+            <DCArtboard id="system-rules" label="System rules + decision matrix" width={1320} height={920}>
+              <SystemRulesCard />
+            </DCArtboard>
+          </DCSection>
+
+          {/* ── TIER 1 — MODALS ───────────────────────────────────── */}
+          <DCSection id="modals" title="Tier 1 — Modal" subtitle="Confirmations, tiny captures, and dirty-close warnings. Closes on Escape and scrim.">
+            <DCArtboard id="m-invite" label="Invite team member · seller-side (Settings → Team)" width={920} height={620}>
+              <ModalInviteMember />
+            </DCArtboard>
+            <DCArtboard id="m-discard" label="Discard changes · dirty close warning" width={920} height={620}>
+              <ModalDiscardChanges />
+            </DCArtboard>
+            <DCArtboard id="m-archive" label="Archive pricelist · reversible destructive" width={920} height={620}>
+              <ModalArchivePricelist />
+            </DCArtboard>
+            <DCArtboard id="m-delete" label="Delete brand · typed-confirm, irreversible" width={920} height={620}>
+              <ModalDeleteBrand />
+            </DCArtboard>
+          </DCSection>
+
+          {/* ── TIER 2 — SLIDE-OVERS ──────────────────────────────── */}
+          <DCSection id="slideovers" title="Tier 2 — Slide-over panel" subtitle="Create a single entity. Master search lives in the name field — no upfront fork. Edit stays on the Detail page.">
+            <DCArtboard id="so-search" label="Add a brand · master search in the name field" width={1120} height={760}>
+              <SOAddBrandSearch />
+            </DCArtboard>
+            <DCArtboard id="so-filled" label="Add a brand · imported from master, ready to save" width={1120} height={760}>
+              <SOAddBrandFilled />
+            </DCArtboard>
+            <DCArtboard id="so-customer" label="Add a buyer · long-form, no master concept" width={1120} height={760}>
+              <SOAddCustomer />
+            </DCArtboard>
+            <DCArtboard id="so-stacked" label="Stacked picker · default cohort (push, never modal-on-modal)" width={1120} height={760}>
+              <SOStackedPicker />
+            </DCArtboard>
+            <DCArtboard id="so-flipup" label="Picker flip-up · field near bottom of a scrolled slide-over" width={1120} height={760}>
+              <SOPickerFlipUp />
+            </DCArtboard>
+          </DCSection>
+
+          {/* ── TIER 3 — COMPOSER ─────────────────────────────────── */}
+          <DCSection id="composer" title="Tier 3 — Composer" subtitle="One screen, two modes. Filters · data · summary. Owns a route, auto-saves a draft. Same chrome for Create and Edit — applied to Pricelist, Cohort, and Catalog.">
+            <DCArtboard id="cp-rationale" label="What changed · why Create and Edit share the composer" width={1180} height={620}>
+              <ComposerRationaleCard />
+            </DCArtboard>
+            <DCArtboard id="cp-empty" label="Add pricelist · empty (just opened, basics being typed)" width={1480} height={920}>
+              <ComposerPricelistEmpty />
+            </DCArtboard>
+            <DCArtboard id="cp-create" label="Add pricelist · in progress (filters set, summary live)" width={1480} height={920}>
+              <ComposerPricelistCreate />
+            </DCArtboard>
+            <DCArtboard id="cp-edit" label="Edit pricelist · live (same chrome, diff summary, modified-row markers)" width={1480} height={920}>
+              <ComposerPricelistEdit />
+            </DCArtboard>
+
+            <DCArtboard id="cp-cohort-create" label="Add cohort · rows = buyers, summary = group profile" width={1480} height={920}>
+              <ComposerCohortCreate />
+            </DCArtboard>
+            <DCArtboard id="cp-cohort-edit" label="Edit cohort · live (referenced by pricelists + catalogs, diff summary)" width={1480} height={920}>
+              <ComposerCohortEdit />
+            </DCArtboard>
+
+            <DCArtboard id="cp-catalog-create" label="Add catalog · rows = products, summary = what the cohort will see" width={1480} height={920}>
+              <ComposerCatalogCreate />
+            </DCArtboard>
+            <DCArtboard id="cp-catalog-edit" label="Edit catalog · live to 12 buyers (added/removed product flags)" width={1480} height={920}>
+              <ComposerCatalogEdit />
+            </DCArtboard>
+          </DCSection>
+
+          {/* ── ESCAPE HATCH — INLINE ROWS ────────────────────────── */}
+          <DCSection id="inline" title="Escape hatch — inline rows" subtitle="When the payload is small AND the user is already looking at the existing roster, beat the slide-over to it: add in place inside the standard Detail-page chrome.">
+            <DCArtboard id="inline-team" label="Customer Detail · Team tab · standard table with pinned add-row" width={1480} height={920}>
+              <InlineTeamRows />
+            </DCArtboard>
+          </DCSection>
+
+        </DesignCanvas>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 import { NextRequest, NextResponse } from 'next/server';
 import { decodeJWTPayload } from '@/lib/auth';
+import { getSessionExpiredRedirectPath } from '@/lib/auth-session';
 import type { Database } from '@/types/database';
 
 // Routes that don't require an authenticated session
@@ -47,8 +48,7 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getSession();
 
   if (!session) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('reason', 'session_expired');
+    const loginUrl = new URL(getSessionExpiredRedirectPath(pathname), request.url);
     return NextResponse.redirect(loginUrl);
   }
 
@@ -68,8 +68,7 @@ export async function middleware(request: NextRequest) {
     buyerId = (payload.buyer_id as string) ?? null;
   } catch {
     // Malformed token — treat as expired
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('reason', 'session_expired');
+    const loginUrl = new URL(getSessionExpiredRedirectPath(pathname), request.url);
     return NextResponse.redirect(loginUrl);
   }
 

@@ -16,12 +16,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { apiFetch } from '@/lib/api-fetch';
 import { cn } from '@/lib/utils';
+import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import {
   useAddAssignment,
   useDeleteAssignment,
   usePriceListAction,
   usePriceListDetail,
-  useUpdatePriceListItem,
 } from '@/hooks/usePriceLists';
 import { useRole } from '@/hooks/useRole';
 import {
@@ -112,9 +112,11 @@ export default function PriceListDetailPage() {
   const router = useRouter();
   const { isSellerAdmin } = useRole();
 
-  const [activeTab, setActiveTab] = useState('pricing');
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [draftPrices, setDraftPrices] = useState<Record<string, string>>({});
+  const { state: activeTab, setState: setActiveTab } = useRouteSnapshot<string>({
+    storageKey: 'seller-price-list-detail-tab',
+    scopeKey: id,
+    initialState: 'pricing',
+  });
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [extendOpen, setExtendOpen] = useState(false);
   const [validTo, setValidTo] = useState('');
@@ -122,7 +124,6 @@ export default function PriceListDetailPage() {
   const [assignmentTarget, setAssignmentTarget] = useState('');
 
   const { data, isLoading, isError } = usePriceListDetail(id);
-  const updateItem = useUpdatePriceListItem(id);
   const priceListAction = usePriceListAction(id);
   const addAssignment = useAddAssignment(id);
   const removeAssignment = useDeleteAssignment(id);
@@ -140,17 +141,6 @@ export default function PriceListDetailPage() {
       { id: 'activity', label: 'Activity' },
     ];
   }, [priceList?.items?.length, priceList?.assignments?.length]);
-
-  async function saveItemPrice(itemId: string) {
-    const next = Number(draftPrices[itemId]);
-    if (!Number.isFinite(next) || next <= 0) return;
-    await updateItem.mutateAsync({ itemId, price: next });
-    setDraftPrices((old) => {
-      const copy = { ...old };
-      delete copy[itemId];
-      return copy;
-    });
-  }
 
   async function onAddAssignment() {
     if (assignmentType !== 'all_buyers' && !assignmentTarget) return;
@@ -215,8 +205,8 @@ export default function PriceListDetailPage() {
                 actions={
                   <div className="flex items-center gap-2">
                     {isSellerAdmin ? (
-                      <Button type="button" className="cockpit-btn cockpit-btn-secondary" onClick={() => setIsEditMode((v) => !v)}>
-                        {isEditMode ? 'Done' : 'Edit'}
+                      <Button type="button" className="cockpit-btn cockpit-btn-secondary" onClick={() => router.push(`/price-lists/${id}/edit`)}>
+                        Edit
                       </Button>
                     ) : null}
                     {isSellerAdmin ? (
@@ -310,19 +300,7 @@ export default function PriceListDetailPage() {
                             </div>
                           </td>
                           <td className="px-4 py-3 text-right font-mono text-[12.5px] text-cream-600">{formatINR(base)}</td>
-                          <td className="px-4 py-3 text-right font-mono font-semibold text-cream-950">
-                            {isEditMode && isSellerAdmin ? (
-                              <Input
-                                type="number"
-                                value={draftPrices[item.id] ?? String(list)}
-                                onChange={(event) => setDraftPrices((old) => ({ ...old, [item.id]: event.target.value }))}
-                                onBlur={() => void saveItemPrice(item.id)}
-                                className="ml-auto h-8 w-28 text-right font-mono"
-                              />
-                            ) : (
-                              formatINR(list)
-                            )}
-                          </td>
+                          <td className="px-4 py-3 text-right font-mono font-semibold text-cream-950">{formatINR(list)}</td>
                           <td className={cn('px-4 py-3 text-right font-mono text-[12px]', pct >= 0 ? 'text-teal-700' : 'text-danger-700')}>
                             {pct >= 0 ? '-' : '+'}{Math.abs(pct).toFixed(1)}%
                           </td>
@@ -465,10 +443,6 @@ export default function PriceListDetailPage() {
               </Dialog>
             </>
           )}
-
-          <div className="mt-4">
-            <Link href="/price-lists" className="text-[12px] text-cream-600 hover:text-cream-900">Back to Price Lists</Link>
-          </div>
         </PageWrap>
       </RoleGuard>
     </FeatureGate>

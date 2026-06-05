@@ -289,7 +289,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const [masterProductsRes, tenantBrandsRes] = await Promise.all([
     masterProductIds.length && brandProductFlagEnabled
-      ? db.schema('catalog').from('master_products').select('id, name').in('id', masterProductIds)
+      ? db.schema('catalog').from('products').select('id, name').in('id', masterProductIds)
       : Promise.resolve({ data: [], error: null }),
     tenantBrandIds.length && brandProductFlagEnabled
       ? db.schema('app').from('tenant_brands').select('id, master_brand_id').in('id', tenantBrandIds).is('deleted_at', null)

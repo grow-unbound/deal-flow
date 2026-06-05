@@ -5,7 +5,15 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { toast } from 'sonner';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { rollbackSnapshots, takeSnapshots, type OptimisticSnapshot } from '@/lib/optimistic';
-import type { PriceListAssignmentInput, PriceListCreateInput, PriceListItemCreateInput } from '@/lib/zod';
+import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
+import type {
+  PriceListAssignmentInput,
+  PriceListComposerPayload,
+  PriceListCreateInput,
+  PriceListFilterState,
+  PriceListItemCreateInput,
+  PriceListPricingStrategy,
+} from '@/lib/zod';
 
 export interface PriceList {
   id: string;
@@ -15,9 +23,27 @@ export interface PriceList {
   valid_to: string | null;
   priority: number;
   is_active: boolean;
+  pricing_strategy?: PriceListPricingStrategy;
+  strategy_value?: number | null;
+  filters?: PriceListFilterState | null;
   tenant_id: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface PriceListComposerProduct {
+  id: string;
+  internal_sku: string;
+  display_name: string;
+  name_override?: string | null;
+  brand_name: string | null;
+  category_name: string | null;
+  mrp: number | null;
+  base_selling_price: number | null;
+  cost_price?: number | null;
+  image_urls?: string[] | null;
+  status_label?: string;
+  status_tone?: 'success' | 'warning' | 'danger' | 'neutral';
 }
 
 export type PriceListLandingStatus = 'active' | 'draft' | 'expired';
@@ -170,7 +196,9 @@ export function usePriceListsLanding(initialData?: PriceListsLandingResponse | n
       return res.json();
     },
     initialData: initialData ?? undefined,
-    staleTime: 30_000,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -178,8 +206,18 @@ export function useCreatePriceList() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: PriceListCreateInput): Promise<{ price_list: PriceList }> => {
-      const res = await apiPost('/api/price-lists', data);
+    mutationFn: async (data: PriceListCreateInput | PriceListComposerPayload): Promise<{ price_list: PriceList }> => {
+      const payload = 'save_mode' in data
+        ? data
+        : {
+            ...data,
+            pricing_strategy: 'edit_each' as const,
+            strategy_value: null,
+            filters: { brand_names: [], category_names: [] },
+            item_prices: [],
+            save_mode: 'publish' as const,
+          };
+      const res = await apiPost('/api/price-lists', payload);
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({ error: 'Request failed' }));
@@ -200,7 +238,10 @@ export function useCreatePriceList() {
             valid_from: data.valid_from ? new Date(data.valid_from).toISOString() : null,
             valid_to: data.valid_to ? new Date(data.valid_to).toISOString() : null,
             priority: data.priority,
-            is_active: true,
+            is_active: ('save_mode' in data ? data.save_mode : 'publish') === 'publish',
+            pricing_strategy: 'pricing_strategy' in data ? data.pricing_strategy : 'edit_each',
+            strategy_value: 'strategy_value' in data ? (data.strategy_value ?? null) : null,
+            filters: 'filters' in data ? data.filters : { brand_names: [], category_names: [] },
             tenant_id: '',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
@@ -221,6 +262,56 @@ export function useCreatePriceList() {
   });
 }
 
+export function useSavePriceListComposer(priceListId?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: PriceListComposerPayload): Promise<{ price_list: PriceList }> => {
+      const res = await apiFetch(priceListId ? `/api/price-lists/${priceListId}` : '/api/price-lists', {
+        method: priceListId ? 'PATCH' : 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: 'Request failed' }));
+        throw new Error((body as { error?: string }).error ?? 'Failed to save price list');
+      }
+
+      return res.json() as Promise<{ price_list: PriceList }>;
+    },
+    onSuccess: (_data, payload) => {
+      queryClient.invalidateQueries({ queryKey: ['price-lists'] });
+      queryClient.invalidateQueries({ queryKey: ['price-lists-landing'] });
+      if (priceListId) {
+        queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
+      }
+      toast.success(payload.save_mode === 'publish' ? 'Price list published' : 'Draft saved');
+    },
+  });
+}
+
+export function usePriceListComposerProducts(enabled = true) {
+  return useQuery({
+    queryKey: ['price-list-composer-products'],
+    queryFn: async (): Promise<PriceListComposerProduct[]> => {
+      const res = await apiFetch('/api/tenant/products');
+      if (!res.ok) {
+        throw new Error('Failed to fetch products');
+      }
+
+      const data = (await res.json()) as { products: PriceListComposerProduct[] };
+      return data.products ?? [];
+    },
+    enabled,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: (previous) => previous,
+  });
+}
+
 export function usePriceListDetail(id: string) {
   return useQuery({
     queryKey: ['price-list', id],
@@ -232,6 +323,9 @@ export function usePriceListDetail(id: string) {
       return res.json();
     },
     enabled: !!id,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -313,6 +407,9 @@ export function usePriceListItems(priceListId: string) {
       return res.json();
     },
     enabled: !!priceListId,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    refetchOnWindowFocus: false,
   });
 }
 
