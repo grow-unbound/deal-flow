@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ShoppingBag } from 'lucide-react';
 import { useCart } from '@/contexts/BuyerCartContext';
+import { apiFetch } from '@/lib/api-fetch';
 
 function inr(n: number): string {
   const s = Math.round(n).toString();
@@ -35,7 +36,7 @@ export default function CheckoutPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const res = await fetch('/api/buyer/estimates', {
+      const res = await apiFetch('/api/buyer/estimates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

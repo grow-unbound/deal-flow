@@ -6,9 +6,13 @@ const useCatalogComposerBootstrapMock = vi.fn();
 const useCatalogComposerDetailMock = vi.fn();
 const useSaveCatalogComposerMock = vi.fn();
 
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: pushMock }),
-}));
+vi.mock('next/navigation', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('next/navigation')>();
+  return {
+    ...actual,
+    useRouter: () => ({ push: pushMock }),
+  };
+});
 
 vi.mock('@/hooks/useCatalogs', () => ({
   useCatalogComposerBootstrap: (...args: unknown[]) => useCatalogComposerBootstrapMock(...args),
@@ -178,8 +182,11 @@ describe('CatalogComposer', () => {
         composer: {
           name: 'Saved Catalog',
           status: 'draft',
+          live_status: 'draft',
+          has_unpublished_changes: false,
           valid_from: '2026-06-01T00:00:00.000Z',
           valid_to: '2026-06-30T00:00:00.000Z',
+          scope_type: 'cohort',
           cohort_id: 'cohort-1',
           filters: {
             brand_names: ['Solar Estates'],
@@ -224,5 +231,86 @@ describe('CatalogComposer', () => {
       const overridesStat = screen.getByText('Manual tag overrides').parentElement?.lastElementChild;
       expect(overridesStat).toHaveTextContent('3');
     });
+  });
+
+  it('warns before saving unpublished changes for a live catalog edit', async () => {
+    useCatalogComposerDetailMock.mockReturnValue({
+      data: {
+        header: { name: 'Live Catalog' },
+        composer: {
+          name: 'Live Catalog',
+          status: 'draft',
+          live_status: 'published',
+          has_unpublished_changes: false,
+          valid_from: '2026-06-01T00:00:00.000Z',
+          valid_to: '2026-06-30T00:00:00.000Z',
+          scope_type: 'cohort',
+          cohort_id: 'cohort-1',
+          filters: {
+            brand_names: ['Solar Estates'],
+            category_names: ['Red wine'],
+            availability: 'show_everything',
+          },
+          tag_overrides: {},
+          items: [
+            { tenant_product_id: 'p-1', display_order: 0 },
+          ],
+        },
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<CatalogComposer mode="edit" catalogId="cat-1" />);
+
+    fireEvent.change(screen.getByDisplayValue('Live Catalog'), {
+      target: { value: 'Live Catalog v2' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Save changes/i }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/Save unpublished changes/i)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: /Cancel/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+
+  it('warns before publishing updates for a live catalog edit', async () => {
+    useCatalogComposerDetailMock.mockReturnValue({
+      data: {
+        header: { name: 'Live Catalog' },
+        composer: {
+          name: 'Live Catalog',
+          status: 'draft',
+          live_status: 'published',
+          has_unpublished_changes: true,
+          valid_from: '2026-06-01T00:00:00.000Z',
+          valid_to: '2026-06-30T00:00:00.000Z',
+          scope_type: 'cohort',
+          cohort_id: 'cohort-1',
+          filters: {
+            brand_names: ['Solar Estates'],
+            category_names: ['Red wine'],
+            availability: 'show_everything',
+          },
+          tag_overrides: {},
+          items: [
+            { tenant_product_id: 'p-1', display_order: 0 },
+          ],
+        },
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<CatalogComposer mode="edit" catalogId="cat-1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Publish updates/i }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/Publish updates to buyers/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/will see this updated catalog/i)).toBeInTheDocument();
   });
 });

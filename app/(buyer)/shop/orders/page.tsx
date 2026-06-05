@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { apiFetch } from '@/lib/api-fetch';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 
 function inr(n: number): string {
@@ -13,14 +14,21 @@ function inr(n: number): string {
   return '₹' + grouped + ',' + last3;
 }
 
-const orders = [
-  { id: 'DF-2026-00471', status: 'dispatched', total: 84200,  items: 3,  placed: '2 hours ago',  catalog: 'Summer Pours' },
-  { id: 'DF-2026-00466', status: 'delivered',  total: 124300, items: 9,  placed: '2 days ago',   catalog: 'Premium Reserve' },
-  { id: 'DF-2026-00451', status: 'delivered',  total: 46500,  items: 4,  placed: 'Last week',    catalog: 'New Arrivals · May' },
-  { id: 'DF-2026-00444', status: 'confirmed',  total: 218500, items: 12, placed: '8 days ago',   catalog: 'Summer Pours' },
-  { id: 'DF-2026-00432', status: 'delivered',  total: 92800,  items: 6,  placed: '12 days ago',  catalog: 'Premium Reserve' },
-  { id: 'DF-2026-00412', status: 'cancelled',  total: 12800,  items: 1,  placed: '24 days ago',  catalog: 'Summer Pours' },
-];
+interface BuyerOrder {
+  id: string;
+  order_number: string;
+  status: string;
+  total_amount: number;
+  placed_at: string;
+  catalog_name: string | null;
+  items_count: number;
+}
+
+interface OrdersResponse {
+  mode?: 'buyer' | 'preview';
+  orders: BuyerOrder[];
+  preview_message?: string;
+}
 
 const enquiries: Array<{ id: string; subject: string; status: string; distributor: string; placed: string }> = [
   { id: 'ENQ-2026-0042', subject: 'Bulk pricing on Cabernet Franc',   status: 'received',  distributor: 'Phani Distribution', placed: '3 hours ago' },
@@ -47,7 +55,7 @@ const statusColors: Record<string, { bg: string; fg: string }> = {
 };
 
 const statusLabels: Record<string, string> = {
-  received: 'Received', confirmed: 'Confirmed', dispatched: 'Dispatched',
+  draft: 'Draft', received: 'Received', confirmed: 'Confirmed', partially_dispatched: 'In Transit', dispatched: 'Dispatched',
   delivered: 'Delivered', cancelled: 'Cancelled',
   paid: 'Paid', due: 'Due', overdue: 'Overdue',
 };
@@ -128,8 +136,17 @@ function EnquiriesTab({ highlightId }: EnquiriesTabProps) {
 
 function OrdersPageInner() {
   const searchParams = useSearchParams();
-  const tabParam = searchParams.get('tab') as TabId | null;
+  const tabParamRaw = searchParams.get('tab');
+  const tabParam = tabParamRaw === 'inquiries' ? 'enquiries' : (tabParamRaw as TabId | null);
   const highlightId = searchParams.get('highlight');
+  const { state: ordersState, setState: setOrdersState } = useRouteSnapshot({
+    storageKey: 'buyer-orders-page-data',
+    initialState: {
+      orders: [] as BuyerOrder[],
+      previewMessage: null as string | null,
+      loading: true,
+    },
+  });
   const { state: activeTab, setState: setActiveTab } = useRouteSnapshot<TabId>({
     storageKey: 'buyer-orders-page-tab',
     initialState: tabParam ?? 'orders',
@@ -142,10 +159,40 @@ function OrdersPageInner() {
   // Sync tab from URL param on mount
   useEffect(() => {
     if (tabParam) setActiveTab(tabParam);
-  }, [tabParam]);
+  }, [setActiveTab, tabParam]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadOrders() {
+      try {
+        const response = await apiFetch('/api/buyer/orders');
+        const data: OrdersResponse = response.ok
+          ? await response.json()
+          : { orders: [] };
+
+        if (cancelled) return;
+
+        setOrdersState({
+          orders: data.orders ?? [],
+          previewMessage: data.preview_message ?? null,
+          loading: false,
+        });
+      } catch {
+        if (!cancelled) {
+          setOrdersState((current) => ({ ...current, loading: false }));
+        }
+      }
+    }
+
+    void loadOrders();
+    return () => {
+      cancelled = true;
+    };
+  }, [setOrdersState]);
 
   const tabs: Array<{ id: TabId; label: string; count: number }> = [
-    { id: 'orders',    label: 'Orders',    count: orders.length },
+    { id: 'orders',    label: 'Orders',    count: ordersState.orders.length },
     { id: 'enquiries', label: 'Enquiries', count: enquiries.length },
     { id: 'invoices',  label: 'Invoices',  count: invoices.length },
   ];
@@ -214,18 +261,28 @@ function OrdersPageInner() {
 
             {/* Orders list */}
             <div style={{ padding: '12px 16px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {orders.map(o => {
+              {ordersState.loading ? (
+                <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '16px 14px', textAlign: 'center' }}>
+                  <p style={{ fontSize: 13, color: 'var(--cream-600)' }}>Loading orders…</p>
+                </div>
+              ) : ordersState.orders.length === 0 ? (
+                <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '16px 14px', textAlign: 'center' }}>
+                  <p style={{ fontSize: 13, color: 'var(--cream-600)' }}>
+                    {ordersState.previewMessage ?? 'No orders yet.'}
+                  </p>
+                </div>
+              ) : ordersState.orders.map((o) => {
                 const sc = statusColors[o.status] ?? statusColors.received;
                 return (
                   <div key={o.id} style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '12px 14px', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>{o.id}</span>
+                      <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>{o.order_number}</span>
                       <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.fg }}>{statusLabels[o.status]}</span>
                     </div>
-                    <div style={{ fontSize: 13, color: 'var(--cream-800)', marginBottom: 6 }}>{o.catalog}</div>
+                    <div style={{ fontSize: 13, color: 'var(--cream-800)', marginBottom: 6 }}>{o.catalog_name ?? 'Order'}</div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 12, color: 'var(--cream-600)' }}>{o.items} products · {o.placed}</span>
-                      <span style={{ fontSize: 14, fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)' }}>{inr(o.total)}</span>
+                      <span style={{ fontSize: 12, color: 'var(--cream-600)' }}>{o.items_count} products · {new Date(o.placed_at).toLocaleDateString('en-IN')}</span>
+                      <span style={{ fontSize: 14, fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)' }}>{inr(o.total_amount)}</span>
                     </div>
                   </div>
                 );

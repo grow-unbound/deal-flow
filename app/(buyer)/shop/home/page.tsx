@@ -16,6 +16,7 @@ function inr(n: number): string {
 // ─── API response types ───────────────────────────────────────────────────────
 
 interface MeData {
+  mode?: 'buyer' | 'preview';
   buyer_id: string;
   business_name: string;
   contact_name: string;
@@ -49,7 +50,9 @@ interface BuyerOrder {
 }
 
 interface OrdersData {
+  mode?: 'buyer' | 'preview';
   orders: BuyerOrder[];
+  preview_message?: string;
 }
 
 interface CatalogItem {
@@ -200,6 +203,11 @@ export default function HomePage() {
             <h1 style={{ fontSize: 26, fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--cream-900)', lineHeight: 1.2, marginTop: 2 }}>
               {loading ? 'Your shelf, this month.' : `${meData?.tenant.name ?? 'Your distributor'}`}
             </h1>
+            {!loading && meData?.mode === 'preview' ? (
+              <p style={{ fontSize: 12, color: 'var(--cream-600)', marginTop: 6 }}>
+                Buyer app preview is using tenant-wide access. Buyer-specific numbers show as 0.
+              </p>
+            ) : null}
           </div>
           <button style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--cream-200)', border: '1px solid var(--border-1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 4 }}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--cream-700)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -340,7 +348,7 @@ export default function HomePage() {
                 return (
                   <Link
                     key={c.id}
-                    href="/shop/catalog"
+                    href={`/shop/catalog?share_token=${encodeURIComponent(c.share_token)}`}
                     style={{ flexShrink: 0, width: 160, borderRadius: 12, overflow: 'hidden', textDecoration: 'none', border: '1px solid var(--border-1)' }}
                   >
                     <div style={{ height: 90, background: hueGradients[hue], display: 'flex', alignItems: 'flex-end', padding: '12px 14px' }}>
@@ -384,7 +392,9 @@ export default function HomePage() {
               ))
             ) : recentOrders.length === 0 ? (
               <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '16px 14px', textAlign: 'center' }}>
-                <p style={{ fontSize: 13, color: 'var(--cream-600)' }}>No orders yet.</p>
+                <p style={{ fontSize: 13, color: 'var(--cream-600)' }}>
+                  {ordersData?.preview_message ?? 'No orders yet.'}
+                </p>
               </div>
             ) : (
               recentOrders.map((o) => {

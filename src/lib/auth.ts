@@ -1,11 +1,23 @@
 import type { NextRequest } from 'next/server';
 import { supabase, supabaseAdmin } from './supabase';
+import {
+  BUYER_PREVIEW_HEADER,
+  type BuyerPreviewTokenPayload,
+  verifyBuyerPreviewToken,
+} from './buyer-preview';
+import { SELLER_ROLES } from '@/constants';
 
 export interface JWTClaims {
   sub: string | null;
   tenant_id: string | null;
   role: string | null;
   buyer_id: string | null;
+}
+
+export interface BuyerAppContext extends JWTClaims {
+  mode: 'buyer' | 'preview';
+  share_token: string | null;
+  preview: BuyerPreviewTokenPayload | null;
 }
 
 export class AuthorizationError extends Error {
@@ -78,6 +90,47 @@ export async function getVerifiedClaims(request: NextRequest): Promise<JWTClaims
     tenant_id: (ws?.tenant_id as string) ?? null,
     role: (ws?.role as string) ?? null,
     buyer_id: (ws?.buyer_id as string) ?? null,
+  };
+}
+
+function isSellerRole(role: string | null): boolean {
+  return role !== null && (SELLER_ROLES as readonly string[]).includes(role);
+}
+
+export async function getBuyerAppContext(request: NextRequest): Promise<BuyerAppContext> {
+  const claims = await getVerifiedClaims(request);
+  if (claims.tenant_id && claims.buyer_id) {
+    return {
+      ...claims,
+      mode: 'buyer',
+      share_token: null,
+      preview: null,
+    };
+  }
+
+  const previewToken = request.headers.get(BUYER_PREVIEW_HEADER);
+  const preview = previewToken ? await verifyBuyerPreviewToken(previewToken) : null;
+  if (
+    preview
+    && claims.tenant_id
+    && claims.tenant_id === preview.tenant_id
+    && isSellerRole(claims.role)
+  ) {
+    return {
+      ...claims,
+      role: preview.role,
+      buyer_id: null,
+      mode: 'preview',
+      share_token: preview.share_token,
+      preview,
+    };
+  }
+
+  return {
+    ...claims,
+    mode: 'buyer',
+    share_token: null,
+    preview: null,
   };
 }
 
