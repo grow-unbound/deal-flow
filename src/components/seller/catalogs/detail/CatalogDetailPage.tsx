@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { formatCompactInr } from '@/lib/utils';
+import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { CatalogCompositionTab } from './CatalogCompositionTab';
 import { CatalogPerformanceTab } from './CatalogPerformanceTab';
 import { CatalogBuyersTab } from './CatalogBuyersTab';
@@ -72,7 +73,11 @@ function CatalogDetailSkeleton() {
 }
 
 export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
-  const [tab, setTab] = useState<TabId>('performance');
+  const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
+    storageKey: 'seller-catalog-detail-tab',
+    scopeKey: id,
+    initialState: 'performance',
+  });
   const [validUntil, setValidUntil] = useState('');
   const { isSellerAdmin } = useRole();
   const { data, isLoading, isError } = useTenantCatalogDetail(id);

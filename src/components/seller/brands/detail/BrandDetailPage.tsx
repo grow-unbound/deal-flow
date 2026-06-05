@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Archive, Download, Share2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { PageWrap } from '@/components/seller/layout';
@@ -9,6 +9,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import {
   useArchiveTenantBrand,
   useTenantBrandDetail,
@@ -85,7 +86,11 @@ function subtitle(header: BrandDetailResponse['header']) {
 
 export function BrandDetailPage({ id }: BrandDetailPageProps) {
   const router = useRouter();
-  const [tab, setTab] = useState<TabId>('performance');
+  const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
+    storageKey: 'seller-brand-detail-tab',
+    scopeKey: id,
+    initialState: 'performance',
+  });
   const { data, isLoading, isError } = useTenantBrandDetail(id);
   const updateMutation = useUpdateTenantBrand(id);
   const archiveMutation = useArchiveTenantBrand(id);

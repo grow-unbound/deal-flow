@@ -106,7 +106,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   ) as string[];
 
   const masterProductsRes = masterProductIds.length
-    ? await db.schema('catalog').from('master_products').select('id, name').in('id', masterProductIds)
+    ? await db.schema('catalog').from('products').select('id, name').in('id', masterProductIds)
     : { data: [] };
 
   const [buyersRes, allBuyersRes, inventoryRes, catalogsItemsRes, auditRes] = await Promise.all([

@@ -14,6 +14,7 @@ import {
   GrowthPill,
 } from '@/components/seller/layout';
 import { ErrorState } from '@/components/ui/empty-state';
+import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useTenantCatalogs, type CatalogLandingRow, type CatalogsLandingResponse } from '@/hooks/useCatalogs';
 import { formatCompactInr } from '@/lib/utils';
@@ -68,10 +69,23 @@ function CatalogsLandingContent({
   const router = useRouter();
   const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
   const { data, isLoading, isError } = useTenantCatalogs(period, initialData);
-
-  const [search, setSearch] = useState('');
-  const [activeChip, setActiveChip] = useState<FilterChip>('All');
-  const [sortBy, setSortBy] = useState<SortOption>('Recently published');
+  const { state: routeState, setState: setRouteState } = useRouteSnapshot({
+    storageKey: 'seller-catalogs-landing',
+    scopeKey: period,
+    initialState: {
+      search: '',
+      activeChip: 'All' as FilterChip,
+      sortBy: 'Recently published' as SortOption,
+    },
+  });
+  useRouteScrollRestoration({
+    storageKey: 'seller-catalogs-landing',
+    scopeKey: period,
+    ready: !isLoading,
+  });
+  const search = routeState.search;
+  const activeChip = routeState.activeChip;
+  const sortBy = routeState.sortBy;
 
   const catalogs = data?.catalogs ?? [];
 
@@ -187,10 +201,10 @@ function CatalogsLandingContent({
         sortBy={sortBy}
         hideViewToggle
         searchValue={search}
-        onSearchChange={setSearch}
-        onChipChange={(chip) => setActiveChip(chip as FilterChip)}
+        onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+        onChipChange={(chip) => setRouteState((current) => ({ ...current, activeChip: chip as FilterChip }))}
         sortOptions={SORT_OPTIONS}
-        onSortChange={(option) => setSortBy(option as SortOption)}
+        onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
 
       <div className="mt-2 grid grid-cols-2 gap-4">

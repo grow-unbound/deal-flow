@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api-fetch';
+import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 
 // INR formatter with Indian lakh grouping
 function inr(n: number): string {
@@ -128,10 +129,22 @@ function SkeletonBox({ w, h, radius = 8 }: { w?: string | number; h: number; rad
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
-  const [meData, setMeData] = useState<MeData | null>(null);
-  const [ordersData, setOrdersData] = useState<OrdersData | null>(null);
-  const [catalogsData, setCatalogsData] = useState<CatalogsData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { state: routeState, setState: setRouteState } = useRouteSnapshot({
+    storageKey: 'buyer-home-page',
+    initialState: {
+      meData: null as MeData | null,
+      ordersData: null as OrdersData | null,
+      catalogsData: null as CatalogsData | null,
+    },
+  });
+  const meData = routeState.meData;
+  const ordersData = routeState.ordersData;
+  const catalogsData = routeState.catalogsData;
+  const [loading, setLoading] = useState(!meData && !ordersData && !catalogsData);
+  useRouteScrollRestoration({
+    storageKey: 'buyer-home-page',
+    ready: !loading,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -153,9 +166,12 @@ export default function HomePage() {
         ]);
 
         if (!cancelled) {
-          setMeData(me);
-          setOrdersData(orders);
-          setCatalogsData(catalogs);
+          setRouteState((current) => ({
+            ...current,
+            meData: me,
+            ordersData: orders,
+            catalogsData: catalogs,
+          }));
           setLoading(false);
         }
       } catch {
