@@ -476,7 +476,7 @@ export function EditProductForm({ product }: EditProductFormProps) {
           type="submit"
           isPending={isPending}
           pendingLabel="Saving…"
-          className="gap-2 bg-teal-500 text-cream-50 hover:bg-teal-600"
+          className="gap-2"
         >
           <Save size={16} />
           Save changes

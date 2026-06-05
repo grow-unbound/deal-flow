@@ -2,6 +2,8 @@
 
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-fetch';
+import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
+import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
 
 export type OrderStatusValue = 'draft' | 'received' | 'confirmed' | 'partially_dispatched' | 'dispatched' | 'delivered' | 'cancelled';
 export type OrderStatusTone = 'success' | 'warning' | 'danger' | 'neutral';
@@ -40,14 +42,6 @@ export interface OrdersKpis {
   buyers_mtd: number;
 }
 
-export interface OrdersPeriod {
-  timezone: string;
-  current_month_start: string;
-  current_month_end_exclusive: string;
-  previous_mtd_start: string;
-  previous_mtd_end_exclusive: string;
-}
-
 export interface OrdersTodaysRead {
   needs_attention: OrderLandingRow[];
   biggest_tickets: OrderLandingRow[];
@@ -55,22 +49,24 @@ export interface OrdersTodaysRead {
 }
 
 export interface TenantOrdersResponse {
-  period: OrdersPeriod;
+  period: SellerLandingPeriodMeta;
   kpis: OrdersKpis;
   todays_read: OrdersTodaysRead;
   orders: OrderLandingRow[];
 }
 
-export function useTenantOrders(initialData?: TenantOrdersResponse | null) {
+export function useTenantOrders(period: SellerLandingPeriod = 'month', initialData?: TenantOrdersResponse | null) {
   return useQuery({
-    queryKey: ['tenant-orders'],
+    queryKey: ['tenant-orders', period],
     queryFn: async (): Promise<TenantOrdersResponse> => {
-      const res = await apiFetch('/api/tenant/orders');
+      const res = await apiFetch(`/api/tenant/orders?period=${period}`);
       if (!res.ok) throw new Error('Failed to fetch orders');
       return res.json();
     },
     initialData: initialData ?? undefined,
-    staleTime: 30_000,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: (previous) => previous,
   });
 }
 

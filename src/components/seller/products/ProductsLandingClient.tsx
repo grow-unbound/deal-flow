@@ -19,8 +19,11 @@ import {
 } from '@/components/seller/layout';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useTenantProducts, type TenantProduct, type TenantProductsResponse } from '@/hooks/useProducts';
 import { formatCompactInr } from '@/lib/utils';
+import type { SellerLandingPeriod } from '@/lib/seller-period';
 
 const AddProductSheet = dynamic(
   () => import('@/components/seller/products/AddProductSheet').then((m) => m.AddProductSheet),
@@ -74,12 +77,33 @@ function ProductLandingSkeleton() {
   );
 }
 
-function ProductsLandingContent({ initialData }: { initialData: TenantProductsResponse | null }) {
+function ProductsLandingContent({
+  initialData,
+  initialPeriod,
+}: {
+  initialData: TenantProductsResponse | null;
+  initialPeriod: SellerLandingPeriod;
+}) {
   const router = useRouter();
-  const { data, isLoading, isError, refetch } = useTenantProducts(initialData);
-  const [search, setSearch] = useState('');
-  const [sortBy, setSortBy] = useState<SortOption>('GMV (high → low)');
-  const [activeChip, setActiveChip] = useState('All brands');
+  const { period, setPeriod, horizonLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
+  const { data, isLoading, isError, refetch } = useTenantProducts(period, initialData);
+  const { state: routeState, setState: setRouteState } = useRouteSnapshot({
+    storageKey: 'seller-products-landing',
+    scopeKey: period,
+    initialState: {
+      search: '',
+      sortBy: 'GMV (high → low)' as SortOption,
+      activeChip: 'All brands',
+    },
+  });
+  useRouteScrollRestoration({
+    storageKey: 'seller-products-landing',
+    scopeKey: period,
+    ready: !isLoading,
+  });
+  const search = routeState.search;
+  const sortBy = routeState.sortBy;
+  const activeChip = routeState.activeChip;
   const [addProductOpen, setAddProductOpen] = useState(false);
 
   const brandChips = useMemo(() => ['All brands', ...(data?.brands ?? []), 'Low stock'], [data?.brands]);
@@ -141,7 +165,10 @@ function ProductsLandingContent({ initialData }: { initialData: TenantProductsRe
         eyebrow="Catalog"
         title="Products"
         subtitle={`${total} SKUs across ${(data?.brands ?? []).length} brands. ${outOfStock} out of stock, ${lowStock} running low — those are the ones to chase this week.`}
-        horizon="This month"
+        horizon={horizonLabel}
+        period={period}
+        periodOptions={options}
+        onPeriodChange={setPeriod}
         secondary={{
           label: 'Bulk import',
           icon: <Upload size={13} />,
@@ -170,7 +197,7 @@ function ProductsLandingContent({ initialData }: { initialData: TenantProductsRe
             sub: '< 14 days of cover',
           },
           {
-            label: 'Revenue',
+            label: `Revenue · ${metricSuffix}`,
             value: formatCompactInr(kpis?.revenue_mtd ?? 0),
             sub: `${growth >= 0 ? '↑ +' : '↓ '}${Math.abs(growth)}% vs last month`,
           },
@@ -211,7 +238,7 @@ function ProductsLandingContent({ initialData }: { initialData: TenantProductsRe
               initials: row.brand_initials,
               hue: row.brand_hue,
               name: row.name,
-              reason: `${row.brand} · ${formatCompactInr(row.gmv_mtd)} MTD`,
+              reason: `${row.brand} · ${formatCompactInr(row.gmv_mtd)} ${metricSuffix}`,
               trailing: <GrowthPill value={row.growth_pct} />,
             })),
           },
@@ -226,10 +253,10 @@ function ProductsLandingContent({ initialData }: { initialData: TenantProductsRe
         sortBy={sortBy}
         hideViewToggle
         searchValue={search}
-        onSearchChange={setSearch}
-        onChipChange={setActiveChip}
+        onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+        onChipChange={(value) => setRouteState((current) => ({ ...current, activeChip: value }))}
         sortOptions={[...SORT_OPTIONS]}
-        onSortChange={(option) => setSortBy(option as SortOption)}
+        onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
 
       <LandingTable
@@ -238,7 +265,7 @@ function ProductsLandingContent({ initialData }: { initialData: TenantProductsRe
           { label: 'Brand', className: 'px-5' },
           { label: 'On hand', align: 'right', className: 'px-5' },
           { label: 'Days cover', align: 'right', className: 'px-5' },
-          { label: 'Units · MTD', align: 'right', className: 'px-5' },
+          { label: `Units · ${metricSuffix}`, align: 'right', className: 'px-5' },
           { label: 'Revenue', align: 'right', className: 'px-5' },
           { label: 'Growth', className: 'px-5' },
           { label: 'Status', className: 'px-5' },
@@ -313,10 +340,16 @@ function ProductsLandingContent({ initialData }: { initialData: TenantProductsRe
   );
 }
 
-export function ProductsLandingClient({ initialData }: { initialData: TenantProductsResponse | null }) {
+export function ProductsLandingClient({
+  initialData,
+  initialPeriod,
+}: {
+  initialData: TenantProductsResponse | null;
+  initialPeriod: SellerLandingPeriod;
+}) {
   return (
     <FeatureGate flag="BRAND_PRODUCT_MASTER">
-      <ProductsLandingContent initialData={initialData} />
+      <ProductsLandingContent initialData={initialData} initialPeriod={initialPeriod} />
     </FeatureGate>
   );
 }

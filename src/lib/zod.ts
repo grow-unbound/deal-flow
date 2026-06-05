@@ -31,14 +31,35 @@ export const TenantSchema = z.object({
   plan: z.enum(['starter', 'growth', 'scale']).default('starter'),
 });
 
+const OptionalEmailSchema = z.string().email('Invalid email address').optional().or(z.literal(''));
+const OptionalPhoneSchema = z
+  .string()
+  .regex(/^[0-9]{10}$/, 'Phone must be 10 digits')
+  .optional()
+  .or(z.literal(''));
+
+export const TenantBrandMetaSchema = z.object({
+  display_name_override: z.string().trim().optional().or(z.literal('')),
+  logo_url: z.string().url('Must be a valid URL').optional().or(z.literal('')),
+  margin_pct: z.coerce.number().min(0, 'Margin must be 0 or more').max(100, 'Margin cannot exceed 100').optional().nullable(),
+  exclusivity: z.boolean().nullable().optional(),
+  external_ref: z.string().trim().optional().or(z.literal('')),
+  principal_name: z.string().trim().optional().or(z.literal('')),
+  principal_email: OptionalEmailSchema,
+  principal_phone: OptionalPhoneSchema,
+  principal_location: z.string().trim().optional().or(z.literal('')),
+  contact_name: z.string().trim().optional().or(z.literal('')),
+  contact_email: OptionalEmailSchema,
+  contact_phone: OptionalPhoneSchema,
+  default_cohort_id: z.string().uuid('Invalid cohort').optional().nullable(),
+});
+
 // Brand schemas
 export const BrandSchema = z.object({
   name: z.string().min(1, 'Brand name is required'),
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric'),
-  description: z.string().optional(),
-  logo_url: z.string().url().optional(),
-  external_ref: z.string().optional(),
-});
+  description: z.string().optional().or(z.literal('')),
+}).merge(TenantBrandMetaSchema);
 
 // Schema for creating a private custom brand (used in CreateBrandForm)
 export const CreateBrandSchema = z.object({
@@ -47,13 +68,46 @@ export const CreateBrandSchema = z.object({
     .string()
     .min(1, 'Slug is required')
     .regex(/^[a-z0-9-]+$/, 'Slug may only contain lowercase letters and hyphens.'),
-  description: z.string().optional(),
-  logo_url: z
+  description: z.string().optional().or(z.literal('')),
+}).merge(TenantBrandMetaSchema);
+
+export const ImportedBrandCreateSchema = z.object({
+  mode: z.literal('import'),
+  master_brand_id: z.string().uuid('Invalid brand ID'),
+  description: z.string().optional().or(z.literal('')),
+}).merge(TenantBrandMetaSchema);
+
+export const CustomBrandCreateSchema = z.object({
+  mode: z.literal('custom'),
+  name: z.string().min(1, 'Brand name is required'),
+  slug: z
     .string()
-    .url('Must be a valid URL')
-    .optional()
-    .or(z.literal('')),
+    .min(1, 'Slug is required')
+    .regex(/^[a-z0-9-]+$/, 'Slug may only contain lowercase letters and hyphens.'),
+  description: z.string().optional().or(z.literal('')),
+}).merge(TenantBrandMetaSchema);
+
+export const BrandCreateSchema = z.discriminatedUnion('mode', [
+  ImportedBrandCreateSchema,
+  CustomBrandCreateSchema,
+]);
+export type BrandCreateInput = z.infer<typeof BrandCreateSchema>;
+
+export const TenantBrandUpdateSchema = TenantBrandMetaSchema.partial().extend({
+  display_name_override: z.string().trim().nullable().optional(),
+  logo_url: z.string().trim().nullable().optional(),
+  external_ref: z.string().trim().nullable().optional(),
+  principal_name: z.string().trim().nullable().optional(),
+  principal_email: z.string().trim().nullable().optional(),
+  principal_phone: z.string().trim().nullable().optional(),
+  principal_location: z.string().trim().nullable().optional(),
+  contact_name: z.string().trim().nullable().optional(),
+  contact_email: z.string().trim().nullable().optional(),
+  contact_phone: z.string().trim().nullable().optional(),
+  archive: z.boolean().optional(),
+  is_active: z.boolean().optional(),
 });
+export type TenantBrandUpdateInput = z.infer<typeof TenantBrandUpdateSchema>;
 
 // Tenant product schemas
 export const TenantProductSchema = z.object({
@@ -113,6 +167,7 @@ export const BuyerCreateSchema = z.object({
   payment_terms_days: z.coerce.number().default(0),
   tier: z.enum(['A', 'B', 'C']).optional(),
   external_ref: z.string().optional(),
+  default_cohort_id: z.string().uuid('Invalid cohort').optional().nullable(),
 });
 export type BuyerCreateInput = z.infer<typeof BuyerCreateSchema>;
 
@@ -133,14 +188,35 @@ export const CohortSchema = z.object({
 
 // Cohort rule schemas
 export const CohortRuleFieldSchema = z.enum([
+  'geography.label',
   'geography.state',
   'geography.city',
   'geography.zone',
   'tier',
   'brand_focus',
+  'last_order_bucket',
+  'gmv_90d_bucket',
+  'buyer_id',
 ]);
 
-export const CohortRuleOperatorSchema = z.enum(['eq', 'in']);
+export const CohortRuleOperatorSchema = z.enum(['eq', 'in', 'not_in']);
+
+export const CohortLastOrderBucketSchema = z.enum([
+  'anytime',
+  'within_30_days',
+  'within_90_days',
+  'dormant_90_plus_days',
+]);
+export type CohortLastOrderBucket = z.infer<typeof CohortLastOrderBucketSchema>;
+
+export const CohortGmv90dBucketSchema = z.enum([
+  'gmv_0',
+  'gmv_1_50000',
+  'gmv_50001_200000',
+  'gmv_200001_500000',
+  'gmv_500001_plus',
+]);
+export type CohortGmv90dBucket = z.infer<typeof CohortGmv90dBucketSchema>;
 
 export const CohortRuleFilterSchema = z.object({
   field: CohortRuleFieldSchema,
@@ -150,6 +226,8 @@ export const CohortRuleFilterSchema = z.object({
 
 export const CohortRulesSchema = z.object({
   filters: z.array(CohortRuleFilterSchema).default([]),
+  selected_buyer_ids: z.array(z.string().uuid()).default([]),
+  excluded_buyer_ids: z.array(z.string().uuid()).default([]),
 });
 
 export const CohortCreateSchema = z.object({
@@ -187,6 +265,65 @@ export const PriceListSchema = z
     },
   );
 
+export const PriceListPricingStrategySchema = z.enum([
+  'edit_each',
+  'margin_from_mrp',
+  'flat_off_base',
+]);
+export type PriceListPricingStrategy = z.infer<typeof PriceListPricingStrategySchema>;
+
+export const PriceListFilterStateSchema = z.object({
+  brand_names: z.array(z.string()).default([]),
+  category_names: z.array(z.string()).default([]),
+});
+export type PriceListFilterState = z.infer<typeof PriceListFilterStateSchema>;
+
+export const PriceListComposerPayloadSchema = z
+  .object({
+    name: z.string().min(1, 'Price list name is required'),
+    currency: z.string().default('INR'),
+    valid_from: z.coerce.date(),
+    valid_to: z.coerce.date().optional(),
+    priority: z.coerce.number().int().min(0).default(0),
+    pricing_strategy: PriceListPricingStrategySchema.default('edit_each'),
+    strategy_value: z.coerce.number().nonnegative().nullable().optional(),
+    filters: PriceListFilterStateSchema.default({ brand_names: [], category_names: [] }),
+    item_prices: z.array(
+      z.object({
+        tenant_product_id: z.string().uuid('Invalid product ID'),
+        price: z.coerce.number().positive('Price must be positive'),
+        min_qty: z.coerce.number().min(1).default(1),
+        max_qty: z.coerce.number().positive().nullable().optional(),
+      }),
+    ).default([]),
+    save_mode: z.enum(['draft', 'publish']).default('draft'),
+  })
+  .refine(
+    (data) => {
+      if (data.valid_to && data.valid_from) {
+        return data.valid_to > data.valid_from;
+      }
+      return true;
+    },
+    {
+      message: 'End date must be after start date.',
+      path: ['valid_to'],
+    },
+  )
+  .refine(
+    (data) => {
+      if (data.pricing_strategy === 'edit_each') {
+        return true;
+      }
+      return data.strategy_value != null;
+    },
+    {
+      message: 'Strategy value is required for the selected pricing strategy.',
+      path: ['strategy_value'],
+    },
+  );
+export type PriceListComposerPayload = z.infer<typeof PriceListComposerPayloadSchema>;
+
 export const PriceListItemSchema = z.object({
   price: z.coerce.number().positive('Price must be positive'),
   min_qty: z.coerce.number().default(1),
@@ -219,6 +356,61 @@ export const PublishedCatalogSchema = z.object({
   hero_image_url: z.string().url().optional(),
   message: z.string().optional(),
 });
+
+export const CatalogComposerAvailabilitySchema = z.enum([
+  'new_in_stock_today',
+  'in_stock_only',
+  'low_stock_only',
+  'old_stock',
+  'show_everything',
+]);
+export type CatalogComposerAvailability = z.infer<typeof CatalogComposerAvailabilitySchema>;
+
+export const CatalogComposerTagSchema = z.enum(['new', 'new_stock', 'old_stock']);
+export type CatalogComposerTag = z.infer<typeof CatalogComposerTagSchema>;
+
+export const CatalogComposerFilterStateSchema = z.object({
+  brand_names: z.array(z.string()).default([]),
+  category_names: z.array(z.string()).default([]),
+  availability: CatalogComposerAvailabilitySchema.default('show_everything'),
+});
+export type CatalogComposerFilterState = z.infer<typeof CatalogComposerFilterStateSchema>;
+
+export const CatalogComposerItemSchema = z.object({
+  tenant_product_id: z.string().uuid('Invalid product ID'),
+  display_order: z.coerce.number().int().min(0).default(0),
+});
+export type CatalogComposerItemInput = z.infer<typeof CatalogComposerItemSchema>;
+
+export const CatalogComposerPayloadSchema = z
+  .object({
+    name: z.string().min(1, 'Catalog name is required'),
+    scope_type: z.literal('cohort').default('cohort'),
+    cohort_id: z.string().uuid('Cohort is required'),
+    valid_from: z.coerce.date(),
+    valid_to: z.coerce.date().optional(),
+    filters: CatalogComposerFilterStateSchema.default({
+      brand_names: [],
+      category_names: [],
+      availability: 'show_everything',
+    }),
+    tag_overrides: z.record(CatalogComposerTagSchema.nullable()).default({}),
+    items: z.array(CatalogComposerItemSchema).default([]),
+    save_mode: z.enum(['draft', 'publish']).default('draft'),
+  })
+  .refine(
+    (data) => {
+      if (data.valid_to && data.valid_from) {
+        return data.valid_to > data.valid_from;
+      }
+      return true;
+    },
+    {
+      message: 'End date must be after start date.',
+      path: ['valid_to'],
+    },
+  );
+export type CatalogComposerPayload = z.infer<typeof CatalogComposerPayloadSchema>;
 
 // Order schemas
 export const OrderSchema = z.object({
@@ -275,7 +467,7 @@ export type BuyerCsvRow = z.infer<typeof BuyerCsvRowSchema>;
 // Custom product schema (master_product_id = null)
 export const CustomProductSchema = z.object({
   master_product_id: z.string().uuid().optional().nullable(),
-  tenant_brand_id: z.string().uuid('Brand is required'),
+  tenant_brand_id: z.string().uuid('Brand is required').optional(),
   internal_sku: z.string().min(1, 'Internal SKU is required'),
   name: z.string().min(1, 'Product name is required'),
   mrp: z.coerce.number().positive('MRP must be positive'),
@@ -286,6 +478,7 @@ export const CustomProductSchema = z.object({
   hsn_code: z.string().optional(),
   gst_rate: z.coerce.number().min(0).max(100).optional().nullable(),
   description: z.string().optional(),
+  category_name: z.string().optional(),
   attributes: z.record(z.string()).optional().default({}),
   image_urls: z.array(z.string().url()).optional().default([]),
 });
@@ -311,4 +504,6 @@ export type PublishedCatalogInput = z.infer<typeof PublishedCatalogSchema>;
 export type OrderInput = z.infer<typeof OrderSchema>;
 export type OrderItemInput = z.infer<typeof OrderItemSchema>;
 export type CreateBrandInput = z.infer<typeof CreateBrandSchema>;
+export type ImportedBrandCreateInput = z.infer<typeof ImportedBrandCreateSchema>;
+export type CustomBrandCreateInput = z.infer<typeof CustomBrandCreateSchema>;
 export type TenantProductInput = z.infer<typeof TenantProductSchema>;

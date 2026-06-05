@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { CohortUpdateSchema } from '@/lib/zod';
+import { getCohortComposerPayload, resolveBuyerIdsForRules } from '@/lib/server/cohort-composer';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
 
@@ -525,7 +526,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { data: existing } = await db
     .schema('app')
     .from('cohorts')
-    .select('id')
+    .select('id, is_static, rules')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .is('deleted_at', null)
@@ -545,6 +546,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (nameMatch) return NextResponse.json({ error: 'A cohort with this name already exists.' }, { status: 409 });
   }
 
+  const nextRules =
+    parsed.data.rules !== undefined ? parsed.data.rules : existing.rules;
+  const nextIsStatic =
+    parsed.data.is_static !== undefined ? parsed.data.is_static : existing.is_static;
+
   const { data: cohort, error: updateError } = await db
     .schema('app')
     .from('cohorts')
@@ -558,6 +564,47 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (updateError) {
     console.error('[PATCH /api/cohorts/[id]]', updateError.message);
     return NextResponse.json({ error: 'Failed to update cohort' }, { status: 500 });
+  }
+
+  try {
+    const composer = await getCohortComposerPayload(db, claims.tenant_id);
+    const memberIds = resolveBuyerIdsForRules(composer.buyers, nextRules, nextIsStatic);
+
+    const { error: clearError } = await db
+      .schema('app')
+      .from('cohort_members')
+      .delete()
+      .eq('cohort_id', id);
+
+    if (clearError) {
+      console.error('[PATCH /api/cohorts/[id]] member clear error:', clearError.message);
+      return NextResponse.json({ error: 'Failed to refresh cohort members' }, { status: 500 });
+    }
+
+    if (memberIds.length > 0) {
+      const rows = memberIds.map((buyerId) => ({ cohort_id: id, buyer_id: buyerId }));
+      const { error: membersError } = await db
+        .schema('app')
+        .from('cohort_members')
+        .upsert(rows, { onConflict: 'cohort_id,buyer_id' });
+
+      if (membersError) {
+        console.error('[PATCH /api/cohorts/[id]] member sync error:', membersError.message);
+        return NextResponse.json({ error: 'Failed to refresh cohort members' }, { status: 500 });
+      }
+    }
+
+    await db
+      .schema('app')
+      .from('cohorts')
+      .update({ cached_member_count: memberIds.length, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('tenant_id', claims.tenant_id);
+
+    cohort.cached_member_count = memberIds.length;
+  } catch (error: any) {
+    console.error('[PATCH /api/cohorts/[id]] composer sync error:', error?.message);
+    return NextResponse.json({ error: 'Failed to rebuild cohort membership' }, { status: 500 });
   }
 
   return NextResponse.json({ cohort });

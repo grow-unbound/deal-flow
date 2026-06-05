@@ -1,12 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Archive, PencilLine } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { PageWrap } from '@/components/seller/layout';
 import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ui/empty-state';
+import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { useProductDetail, useUpdateProduct } from '@/hooks/useProducts';
@@ -72,7 +73,11 @@ function daysCoverClass(days: number): string {
 
 export function ProductDetailPage({ id }: ProductDetailPageProps) {
   const router = useRouter();
-  const [tab, setTab] = useState<TabId>('performance');
+  const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
+    storageKey: 'seller-product-detail-tab',
+    scopeKey: id,
+    initialState: 'performance',
+  });
   const { data, isLoading, isError } = useProductDetail(id);
   const updateProduct = useUpdateProduct();
 

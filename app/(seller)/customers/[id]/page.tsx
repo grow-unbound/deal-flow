@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useMemo, useState } from 'react';
+import { use, useMemo } from 'react';
 import Link from 'next/link';
 import { Download, Share2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
@@ -12,6 +12,7 @@ import { PageWrap } from '@/components/seller/layout';
 import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
 import { CustomerActivityTab, CustomerDetailsTab, CustomerOrdersTab, CustomerPerformanceTab } from '@/components/seller/customers/detail';
 import { useRole } from '@/hooks/useRole';
+import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useTenantCustomerDetail, useToggleCustomerStatusOptimistic } from '@/hooks/useCustomersLanding';
 import { formatCompactInr } from '@/lib/utils';
 
@@ -69,7 +70,11 @@ function TierPill({ tier }: { tier: 'A' | 'B' | 'C' | null }) {
 
 export default function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const [tab, setTab] = useState<TabId>('performance');
+  const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
+    storageKey: 'seller-customer-detail-tab',
+    scopeKey: id,
+    initialState: 'performance',
+  });
   const { isSellerAdmin } = useRole();
   const { data, isLoading, isError, error } = useTenantCustomerDetail(id);
   const statusMutation = useToggleCustomerStatusOptimistic(id);
@@ -143,7 +148,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                 <Download size={14} />
                 Export
               </Button>
-              <Button className="h-9 bg-teal-700 px-5 text-[13px] font-medium text-cream-50 hover:bg-teal-800">
+              <Button size="sm">
                 Open buyer app preview
               </Button>
             </div>
@@ -171,11 +176,13 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         {isSellerAdmin && tab === 'details' ? (
           <div className="mt-4 flex items-center gap-2">
             <Link href={`/customers/${id}/edit`}>
-              <Button type="button" className="h-9 border border-cream-400 bg-white px-4 text-[13px] font-medium text-teal-700 hover:bg-cream-100">Edit</Button>
+              <Button type="button" variant="secondary" size="sm">Edit</Button>
             </Link>
             <AlertDialog>
-              <AlertDialogTrigger className="inline-flex h-9 items-center justify-center rounded-md bg-teal-700 px-4 text-[13px] font-medium text-cream-50 hover:bg-teal-800">
-                {data.details.is_active ? 'Deactivate' : 'Reactivate'}
+              <AlertDialogTrigger asChild>
+                <Button type="button" variant="destructive" size="sm">
+                  {data.details.is_active ? 'Deactivate' : 'Reactivate'}
+                </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>

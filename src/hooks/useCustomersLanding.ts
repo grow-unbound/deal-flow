@@ -3,7 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
+import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { BuyerCreateInput } from '@/lib/zod';
+import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
 
 export type StatusTone = 'success' | 'warning' | 'danger' | 'neutral';
 export type AvatarHue = 'teal' | 'ember' | 'cream';
@@ -27,6 +29,7 @@ export interface CustomersLandingBuyer {
 }
 
 export interface CustomersLandingResponse {
+  period?: SellerLandingPeriodMeta;
   kpis: {
     total: number;
     cohort_count: number;
@@ -147,16 +150,18 @@ export interface TenantCustomerDetailResponse {
   };
 }
 
-export function useCustomersLanding(initialData?: CustomersLandingResponse | null) {
+export function useCustomersLanding(period: SellerLandingPeriod = 'month', initialData?: CustomersLandingResponse | null) {
   return useQuery({
-    queryKey: ['tenant-customers'],
+    queryKey: ['tenant-customers', period],
     queryFn: async (): Promise<CustomersLandingResponse> => {
-      const res = await apiFetch('/api/tenant/customers');
+      const res = await apiFetch(`/api/tenant/customers?period=${period}`);
       if (!res.ok) throw new Error('Failed to fetch customers landing');
       return res.json();
     },
     initialData: initialData ?? undefined,
-    staleTime: 30_000,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -177,6 +182,9 @@ export function useTenantCustomerDetail(id: string) {
       return res.json();
     },
     enabled: Boolean(id),
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    refetchOnWindowFocus: false,
   });
 }
 

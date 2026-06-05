@@ -113,7 +113,7 @@ function LocationRow({ location, inventoryRow, productId }: LocationRowProps) {
         <div className="flex justify-end">
           <Button
             size="sm"
-            className="bg-teal-500 text-cream-50 gap-1.5"
+            className="gap-1.5"
             onClick={handleSave}
             disabled={upsert.isPending}
           >
