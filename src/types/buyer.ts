@@ -40,3 +40,5 @@ export interface BuyerCatalogResponse {
 export interface BuyerCategoriesResponse {
   categories: BuyerCategory[];
 }
+
+export type BuyerAppMode = 'buyer' | 'preview';

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { getVerifiedClaims } from '@/lib/auth';
+import { getBuyerAppContext } from '@/lib/auth';
 import type { BuyerCategoriesResponse } from '@/types/buyer';
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
-    const claims = await getVerifiedClaims(req);
+    const context = await getBuyerAppContext(req);
 
-    if (!claims.tenant_id) {
+    if (!context.tenant_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
 
-    const tenantId = claims.tenant_id;
+    const tenantId = context.tenant_id;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabaseAdmin as any;
 

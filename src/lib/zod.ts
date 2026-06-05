@@ -385,8 +385,8 @@ export type CatalogComposerItemInput = z.infer<typeof CatalogComposerItemSchema>
 export const CatalogComposerPayloadSchema = z
   .object({
     name: z.string().min(1, 'Catalog name is required'),
-    scope_type: z.literal('cohort').default('cohort'),
-    cohort_id: z.string().uuid('Cohort is required'),
+    scope_type: z.enum(['cohort', 'all']).default('cohort'),
+    cohort_id: z.string().uuid('Cohort is required').nullable().optional(),
     valid_from: z.coerce.date(),
     valid_to: z.coerce.date().optional(),
     filters: CatalogComposerFilterStateSchema.default({
@@ -397,6 +397,10 @@ export const CatalogComposerPayloadSchema = z
     tag_overrides: z.record(CatalogComposerTagSchema.nullable()).default({}),
     items: z.array(CatalogComposerItemSchema).default([]),
     save_mode: z.enum(['draft', 'publish']).default('draft'),
+  })
+  .refine((data) => data.scope_type === 'all' || Boolean(data.cohort_id), {
+    message: 'Cohort is required',
+    path: ['cohort_id'],
   })
   .refine(
     (data) => {

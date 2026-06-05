@@ -1,16 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import type { BuyerCatalogItem } from '@/types/buyer';
 
 interface GuestCatalogItem {
   id: string;
-  name: string;
+  tenant_product_id: string;
+  catalog_id: string;
+  catalog_name: string;
+  catalog_valid_until: string | null;
   internal_sku: string | null;
-  brand: string;
+  display_name: string;
+  brand_id: string | null;
+  brand_name: string;
+  category_id: string | null;
+  category_name: string | null;
   price: number;
   mrp: number;
-  unit: string | null;
-  image_url: string | null;
-  in_stock: boolean;
+  default_uom: string | null;
+  pack_size: number | null;
+  image_urls: string[];
+  stock_status: 'available' | 'limited' | 'out_of_stock';
+  on_hand: number;
 }
 
 export async function GET(
@@ -79,7 +89,7 @@ export async function GET(
   const { data: tenantProducts, error: productsError } = await db
     .schema('app')
     .from('tenant_products')
-    .select('id, internal_sku, name_override, tenant_brand_id, mrp, base_selling_price, unit, image_url')
+    .select('id, internal_sku, name_override, tenant_brand_id, master_product_id, mrp, base_selling_price, default_uom, pack_size, image_urls')
     .in('id', tenantProductIds)
     .is('deleted_at', null);
 
@@ -93,16 +103,19 @@ export async function GET(
     internal_sku: string | null;
     name_override: string | null;
     tenant_brand_id: string | null;
+    master_product_id: string | null;
     mrp: number | null;
     base_selling_price: number | null;
-    unit: string | null;
-    image_url: string | null;
+    default_uom: string | null;
+    pack_size: number | null;
+    image_urls: string[] | null;
   }>;
 
   // Fetch tenant brands
   const tenantBrandIds = Array.from(new Set(products.map((p) => p.tenant_brand_id).filter(Boolean))) as string[];
 
   let brandNameById = new Map<string, string>();
+  let brandIdByTenantBrandId = new Map<string, string | null>();
 
   if (tenantBrandIds.length > 0) {
     const { data: tenantBrands, error: brandsError } = await db
@@ -143,7 +156,47 @@ export async function GET(
           b.display_name_override ?? masterBrandById.get(b.master_brand_id) ?? 'Unknown brand',
         ])
       );
+      brandIdByTenantBrandId = new Map(tenantBrandRows.map((b) => [b.id, b.master_brand_id ?? null]));
     }
+  }
+
+  const masterProductIds = Array.from(new Set(products.map((p) => p.master_product_id).filter(Boolean))) as string[];
+  let masterProductById = new Map<string, { category_id: string | null; category_name: string | null; image_urls: string[] | null }>();
+
+  if (masterProductIds.length > 0) {
+    const { data: masterProducts } = await db
+      .schema('catalog')
+      .from('products')
+      .select('id, category_id, image_urls')
+      .in('id', masterProductIds)
+      .is('deleted_at', null);
+
+    const categoryIds = Array.from(
+      new Set(((masterProducts ?? []) as Array<{ category_id: string | null }>).map((product) => product.category_id).filter(Boolean))
+    ) as string[];
+
+    let categoryNameById = new Map<string, string>();
+    if (categoryIds.length > 0) {
+      const { data: categories } = await db
+        .schema('catalog')
+        .from('categories')
+        .select('id, name')
+        .in('id', categoryIds)
+        .is('deleted_at', null);
+
+      categoryNameById = new Map(((categories ?? []) as Array<{ id: string; name: string }>).map((category) => [category.id, category.name]));
+    }
+
+    masterProductById = new Map(
+      ((masterProducts ?? []) as Array<{ id: string; category_id: string | null; image_urls: string[] | null }>).map((product) => [
+        product.id,
+        {
+          category_id: product.category_id,
+          category_name: product.category_id ? (categoryNameById.get(product.category_id) ?? null) : null,
+          image_urls: product.image_urls ?? [],
+        },
+      ])
+    );
   }
 
   // Fetch inventory for in-stock status
@@ -178,23 +231,36 @@ export async function GET(
       const brandName = product.tenant_brand_id
         ? (brandNameById.get(product.tenant_brand_id) ?? 'Unknown brand')
         : 'Unknown brand';
+      const brandId = product.tenant_brand_id ? (brandIdByTenantBrandId.get(product.tenant_brand_id) ?? null) : null;
+      const masterProduct = product.master_product_id ? (masterProductById.get(product.master_product_id) ?? null) : null;
 
       const inv = inventoryByProductId.get(item.tenant_product_id);
-      const inStock = Number(inv?.qty_available ?? 0) > 0;
+      const onHand = Math.max(0, Number(inv?.qty_available ?? 0));
       const price =
         priceOverrideByProductId.get(item.tenant_product_id) ??
         Number(product.base_selling_price ?? 0);
+      const stockStatus: BuyerCatalogItem['stock_status'] =
+        onHand === 0 ? 'out_of_stock' : onHand < 10 ? 'limited' : 'available';
 
       return {
         id: product.id,
-        name: product.name_override ?? product.internal_sku ?? 'Unknown product',
+        tenant_product_id: product.id,
+        catalog_id: catalog.id,
+        catalog_name: catalog.name,
+        catalog_valid_until: catalog.valid_to,
         internal_sku: product.internal_sku,
-        brand: brandName,
+        display_name: product.name_override ?? product.internal_sku ?? 'Unknown product',
+        brand_id: brandId,
+        brand_name: brandName,
+        category_id: masterProduct?.category_id ?? null,
+        category_name: masterProduct?.category_name ?? null,
         price,
         mrp: Number(product.mrp ?? 0),
-        unit: product.unit,
-        image_url: product.image_url,
-        in_stock: inStock,
+        default_uom: product.default_uom,
+        pack_size: product.pack_size,
+        image_urls: product.image_urls?.length ? product.image_urls : (masterProduct?.image_urls ?? []),
+        stock_status: stockStatus,
+        on_hand: onHand,
       };
     })
     .filter((item): item is GuestCatalogItem => item !== null);
@@ -202,6 +268,7 @@ export async function GET(
   return NextResponse.json({
     catalog_id: catalog.id,
     name: catalog.name,
+    valid_until: catalog.valid_to,
     products_count: guestItems.length,
     items: guestItems,
   });
