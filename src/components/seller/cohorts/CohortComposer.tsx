@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check, RotateCcw, Save, Search, X } from 'lucide-react';
+import { Check, RotateCcw, Save, Search, TriangleAlert, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { EntityAvatar, PageWrap } from '@/components/seller/layout';
 import {
@@ -12,15 +12,24 @@ import {
   ComposerCheckboxCell,
   ComposerFooterBar,
   ComposerMainCard,
-  ComposerPanelTitle,
   ComposerSelectableRow,
   ComposerShell,
   ComposerSidebarCard,
   ComposerTitleRow,
 } from '@/components/seller/composer/ComposerLayout';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-overlay';
 import {
   type CohortComposerBuyer,
@@ -29,11 +38,16 @@ import {
   useCohortMembers,
   useSaveCohortComposer,
 } from '@/hooks/useCohorts';
-import type { CohortRules } from '@/lib/zod';
+import { CohortCreateSchema, type CohortRules } from '@/lib/zod';
 import { cn, formatCompactInr } from '@/lib/utils';
 
 type ComposerMode = 'create' | 'edit';
 type CohortSelectionMode = 'rule-based' | 'manual-selection';
+
+type CohortComposerFieldErrors = {
+  name?: string;
+  members?: string;
+};
 type LastOrderBucket = 'anytime' | 'within_30_days' | 'within_90_days' | 'dormant_90_plus_days';
 type GmvBucket = 'gmv_0' | 'gmv_1_50000' | 'gmv_50001_200000' | 'gmv_200001_500000' | 'gmv_500001_plus';
 
@@ -196,6 +210,9 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
   const [search, setSearch] = useState('');
   const [didInit, setDidInit] = useState(false);
   const [initialSnapshot, setInitialSnapshot] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<CohortComposerFieldErrors>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
 
   const isLoading = composerQuery.isLoading || (mode === 'edit' && (detailQuery.isLoading || membersQuery.isLoading));
   const isError = composerQuery.isError || (mode === 'edit' && (detailQuery.isError || membersQuery.isError));
@@ -315,16 +332,41 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
   }, [didInit, initialSnapshot, serializedState]);
 
   const isDirty = didInit && Boolean(initialSnapshot) && serializedState !== initialSnapshot;
+  const isLiveEdit = mode === 'edit';
+
+  useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (!isDirty) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => window.removeEventListener('beforeunload', beforeUnload);
+  }, [isDirty]);
+
   const closeTarget = mode === 'edit' && cohortId ? `/cohorts/${cohortId}` : '/cohorts';
   const dirtyGuard = useDirtyCloseGuard({
     isDirty,
     onConfirmClose: () => router.push(closeTarget),
   });
 
-  async function handleSave(redirect: 'detail' | 'list') {
-    const result = await saveMutation.mutateAsync({
-      name,
-      description,
+  const pendingSaveSummary = useMemo(
+    () => [
+      { label: 'Name', value: name.trim() || 'Untitled cohort' },
+      {
+        label: 'Type',
+        value: selectionMode === 'manual-selection' ? 'Manual selection' : 'Rule-based',
+      },
+      { label: 'Members', value: `${summary.members} buyers` },
+      { label: 'Areas', value: `${summary.areasCovered} geographies` },
+    ],
+    [name, selectionMode, summary.areasCovered, summary.members],
+  );
+
+  function buildSavePayload() {
+    return {
+      name: name.trim(),
+      description: description.trim() || undefined,
       is_static: selectionMode === 'manual-selection',
       rules: buildRulesPayload({
         geographies: selectedGeographies,
@@ -334,14 +376,75 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
         selectedBuyerIds,
         excludedBuyerIds,
       }),
-    });
+    };
+  }
 
-    if (redirect === 'detail') {
-      router.push(`/cohorts/${result.cohort.id}`);
-      return;
+  function clearFieldError(field: keyof CohortComposerFieldErrors) {
+    setFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  }
+
+  function validateBeforeSave() {
+    const payload = buildSavePayload();
+    const nextErrors: CohortComposerFieldErrors = {};
+    const parsed = CohortCreateSchema.safeParse(payload);
+
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        const path = String(issue.path[0] ?? '');
+        if (path === 'name') nextErrors.name = issue.message;
+      }
     }
 
-    router.push('/cohorts');
+    if (summary.members === 0) {
+      nextErrors.members =
+        selectionMode === 'manual-selection'
+          ? 'Select at least one buyer to save this cohort.'
+          : 'Adjust the rules or include buyers so this cohort has at least one member.';
+    }
+
+    setFieldErrors(nextErrors);
+    return { isValid: Object.keys(nextErrors).length === 0, payload: parsed.success ? parsed.data : null };
+  }
+
+  async function handleSave(redirect: 'detail' | 'list') {
+    setSubmitError(null);
+    const { isValid, payload } = validateBeforeSave();
+    if (!isValid || !payload) return;
+
+    try {
+      const result = await saveMutation.mutateAsync(payload);
+      setInitialSnapshot(serializedState);
+
+      if (redirect === 'detail') {
+        router.push(`/cohorts/${result.cohort.id}`);
+        return;
+      }
+
+      router.push('/cohorts');
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Failed to save cohort');
+    }
+  }
+
+  async function handleSaveClick() {
+    if (isLiveEdit) {
+      setConfirmSaveOpen(true);
+      return;
+    }
+    await handleSave('detail');
+  }
+
+  function handleResetSelection() {
+    if (selectionMode === 'manual-selection') setSelectedBuyerIds([]);
+    else setExcludedBuyerIds([]);
+    setSearch('');
+    clearFieldError('members');
+    setSubmitError(null);
   }
 
   function toggleMany(current: string[], allValues: string[], setter: (values: string[]) => void) {
@@ -352,10 +455,14 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
     setSelectedBuyerIds((current) =>
       checked ? Array.from(new Set([...current, id])) : current.filter((value) => value !== id),
     );
+    clearFieldError('members');
+    setSubmitError(null);
   }
 
   function toggleRuleRow(id: string, checked: boolean) {
     setExcludedBuyerIds((current) => (checked ? current.filter((value) => value !== id) : Array.from(new Set([...current, id]))));
+    clearFieldError('members');
+    setSubmitError(null);
   }
 
   if (isLoading || !didInit) {
@@ -373,8 +480,15 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
   }
 
   const createSubtitle = 'Group buyers by geography, tier, or activity. Pricelists and catalogs target a cohort, not a one-off buyer list.';
-  const editSubtitle = 'Review the buyer set, adjust rules or manual membership, and save when the cohort profile looks right.';
+  const editSubtitle = isLiveEdit
+    ? 'You are editing a live cohort. Save applies membership and rule changes immediately for pricelists and catalogs targeting this cohort.'
+    : 'Review the buyer set, adjust rules or manual membership, and save when the cohort profile looks right.';
   const visibleIds = visibleRows.map((buyer) => buyer.id);
+  const footerStatusText = isDirty
+    ? 'Unsaved changes'
+    : isLiveEdit
+      ? 'Live cohort · no pending edits'
+      : 'Save to create this cohort';
 
   return (
     <>
@@ -403,7 +517,12 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
             <ComposerBasicsField label="Name">
               <Input
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                error={fieldErrors.name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  clearFieldError('name');
+                  setSubmitError(null);
+                }}
                 placeholder="Cohort name"
                 className="h-auto border-0 bg-transparent px-0 py-0 font-medium text-[14px] text-cream-950 shadow-none focus-visible:ring-0"
               />
@@ -438,6 +557,31 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
               </div>
             </ComposerBasicsField>
           </ComposerBasicsStrip>
+
+          {Object.keys(fieldErrors).length > 0 ? (
+            <Alert variant="warning">
+              <AlertTitle>Fix the highlighted fields</AlertTitle>
+              <AlertDescription>
+                {Array.from(new Set(Object.values(fieldErrors).filter(Boolean))).join(' ')}
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
+          {submitError ? (
+            <Alert variant="danger">
+              <AlertTitle>Couldn&apos;t save cohort</AlertTitle>
+              <AlertDescription>{submitError}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          {isLiveEdit ? (
+            <Alert variant="warning">
+              <AlertTitle>Editing a live cohort</AlertTitle>
+              <AlertDescription>
+                Save applies updates immediately. Pricelists and catalogs mapped to this cohort will use the updated buyer membership.
+              </AlertDescription>
+            </Alert>
+          ) : null}
 
           <ComposerBodyGrid
             left={
@@ -587,67 +731,42 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
             }
             center={
               <ComposerMainCard>
-                <ComposerPanelTitle
-                  title={
-                    selectionMode === 'manual-selection'
-                      ? `${selectedBuyerIds.length} buyers selected manually`
-                      : `${effectiveSelectedIds.length} buyers match the rules above`
-                  }
-                  subtitle={
-                    selectionMode === 'manual-selection'
-                      ? 'Browse with filters, then select the exact buyers to include in this cohort.'
-                      : 'Use the left filters to define the group. Uncheck any row below if you want to exclude it from this cohort.'
-                  }
-                  actions={
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="flex h-10 w-[280px] items-center gap-2 rounded-[10px] border border-cream-300 bg-white px-3">
-                        <Search className="h-4 w-4 text-cream-600" />
-                        <input
-                          value={search}
-                          onChange={(event) => setSearch(event.target.value)}
-                          placeholder="Search name, contact, city"
-                          className="w-full bg-transparent text-[13px] text-cream-900 outline-none placeholder:text-cream-500"
-                        />
-                      </div>
-                      <Button
-                        type="button"
-                        className="cockpit-btn cockpit-btn-secondary"
-                        onClick={() => {
-                          if (selectionMode === 'manual-selection') {
-                            setSelectedBuyerIds((current) => Array.from(new Set([...current, ...visibleIds])));
-                            return;
-                          }
-                          setExcludedBuyerIds((current) => current.filter((id) => !visibleIds.includes(id)));
-                        }}
-                      >
-                        {selectionMode === 'manual-selection' ? 'Select visible' : 'Include visible'}
-                      </Button>
+                <div className="flex flex-wrap items-center gap-3 border-b border-cream-300 px-5 py-4">
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold text-cream-950">
+                      {selectionMode === 'manual-selection'
+                        ? `${selectedBuyerIds.length} buyers selected manually`
+                        : `${effectiveSelectedIds.length} buyers match the rules above`}
+                    </p>
+                    <p className="mt-1 max-w-[38rem] text-[12.5px] leading-[1.5] text-cream-700">
+                      {selectionMode === 'manual-selection'
+                        ? 'Browse with filters, then select the exact buyers to include in this cohort.'
+                        : 'Use the left filters to define the group. Uncheck any row below if you want to exclude it from this cohort.'}
+                    </p>
+                  </div>
+                  <div className="ml-auto flex flex-wrap items-center gap-2">
+                    <div className="flex min-w-[240px] items-center gap-2 rounded-[8px] border border-cream-300 bg-white px-3 py-2 text-[13px] text-cream-700">
+                      <Search className="h-4 w-4 shrink-0 text-cream-600" />
+                      <input
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                        placeholder="Search name, contact, city"
+                        className="w-full bg-transparent outline-none placeholder:text-cream-600"
+                      />
                     </div>
-                  }
-                />
-
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-cream-200 px-5 py-3">
-                  <p className="text-[12px] text-cream-700">
-                    {visibleRows.length} visible
-                    <span className="text-cream-500"> · </span>
-                    {visibleSelectedCount} selected
-                  </p>
-                  <button
-                    type="button"
-                    className="rounded-[6px] border border-ember-200 bg-white px-3 py-1.5 text-[12px] font-medium text-ember-700 hover:bg-ember-50"
-                    onClick={() => {
-                      if (selectionMode === 'manual-selection') setSelectedBuyerIds([]);
-                      else setExcludedBuyerIds([]);
-                      setSelectedGeographies([]);
-                      setSelectedTiers([]);
-                      setLastOrderBucket('anytime');
-                      setSelectedGmvBuckets([]);
-                      setSearch('');
-                    }}
-                  >
-                    Reset selection
-                  </button>
+                    <Button type="button" variant="ghost" onClick={handleResetSelection}>
+                      Reset selection
+                    </Button>
+                  </div>
                 </div>
+
+                {fieldErrors.members ? (
+                  <div className="border-b border-cream-300 px-5 py-3">
+                    <Alert variant="warning">
+                      <AlertDescription>{fieldErrors.members}</AlertDescription>
+                    </Alert>
+                  </div>
+                ) : null}
 
                 {visibleRows.length === 0 ? (
                   <div className="flex flex-1 items-center justify-center px-8 py-16 text-center">
@@ -729,10 +848,8 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                               </div>
                             </td>
                             <td className="px-4 py-3 text-cream-900">{buyer.geography_label}</td>
-                            <td className="px-4 py-3">
-                              <span className="inline-flex rounded-full border border-ember-200 bg-ember-50 px-2.5 py-1 text-[12px] font-medium text-ember-700">
-                                {buyer.tier ? `${buyer.tier}-class` : 'Unsorted'}
-                              </span>
+                            <td className="px-4 py-3 font-mono text-cream-900">
+                              {buyer.tier ? `${buyer.tier}-class` : 'Unsorted'}
                             </td>
                             <td className="px-4 py-3 text-cream-900">{toRelativeDaysLabel(buyer.last_order_at)}</td>
                             <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatCompactInr(buyer.mtd_spend)}</td>
@@ -791,13 +908,47 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                   </div>
                 </div>
 
-                <div className="mt-auto rounded-[10px] border border-teal-200 bg-teal-50 px-3 py-3 text-[12px] leading-[1.5] text-teal-700">
+                {isLiveEdit ? (
+                  <>
+                    <div className="h-px bg-cream-300" />
+                    <div className="space-y-2">
+                      <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Next save</h4>
+                      <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3">
+                        <div className="space-y-2 text-[12px] leading-[1.5] text-amber-900">
+                          {pendingSaveSummary.map((item) => (
+                            <div key={item.label} className="flex items-start justify-between gap-4">
+                              <span className="text-amber-700">{item.label}</span>
+                              <span className="max-w-[190px] text-right font-medium">{item.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+
+                <div
+                  className={cn(
+                    'mt-auto rounded-[10px] px-3 py-3 text-[12px] leading-[1.5]',
+                    isLiveEdit
+                      ? 'border border-amber-200 bg-amber-50 text-amber-800'
+                      : summary.members > 0
+                        ? 'border border-teal-200 bg-teal-50 text-teal-700'
+                        : 'border border-warning-500/30 bg-warning-50 text-warning-700',
+                  )}
+                >
                   <div className="flex gap-2">
-                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-teal-600" />
+                    {isLiveEdit || summary.members === 0 ? (
+                      <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                    ) : (
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-teal-600" />
+                    )}
                     <span>
-                      {summary.members > 0
-                        ? 'Ready to save. You can target this cohort from pricelists and catalogs after this.'
-                        : 'Add a few buyers through rules or manual selection to make this cohort useful downstream.'}
+                      {isLiveEdit
+                        ? 'Save applies these edits to the live cohort immediately. Review membership before confirming.'
+                        : summary.members > 0
+                          ? 'Ready to save. You can target this cohort from pricelists and catalogs after this.'
+                          : 'Add a few buyers through rules or manual selection to make this cohort useful downstream.'}
                     </span>
                   </div>
                 </div>
@@ -809,22 +960,23 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
           <ComposerFooterBar>
             <div className="flex items-center gap-3">
               <div className={cn('inline-flex items-center gap-2 text-[12px]', isDirty ? 'text-ember-700' : 'text-cream-700')}>
-                <span className={cn('h-1.5 w-1.5 rounded-full', isDirty ? 'bg-ember-400' : 'bg-cream-400')} />
-                {isDirty ? 'Unsaved changes' : 'Save to keep these cohort edits'}
+                <span className={cn('h-1.5 w-1.5 rounded-full', isDirty ? 'bg-ember-400' : 'bg-success-500')} />
+                {footerStatusText}
               </div>
               <div className="ml-auto flex items-center gap-2">
                 <Button type="button" variant="ghost" onClick={() => dirtyGuard.handleOpenChange(false)}>
-                <RotateCcw className="h-3.5 w-3.5" />
+                  <RotateCcw className="h-3.5 w-3.5" />
                   {mode === 'edit' ? 'Revert changes' : 'Discard draft'}
                 </Button>
                 <Button
                   type="button"
-                  className="cockpit-btn cockpit-btn-primary"
-                  onClick={() => void handleSave('detail')}
-                  disabled={saveMutation.isPending || !name.trim() || summary.members === 0}
+                  variant={isLiveEdit ? 'accent' : 'primary'}
+                  className={isLiveEdit ? undefined : 'cockpit-btn cockpit-btn-primary'}
+                  onClick={() => void handleSaveClick()}
+                  disabled={saveMutation.isPending}
                 >
                   <Save className="h-3.5 w-3.5" />
-                  {mode === 'edit' ? 'Save changes' : 'Save cohort'}
+                  {isLiveEdit ? 'Save changes' : 'Save cohort'}
                 </Button>
               </div>
             </div>
@@ -837,6 +989,36 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
         onOpenChange={dirtyGuard.setDiscardOpen}
         onDiscard={dirtyGuard.confirmDiscard}
       />
+
+      <Dialog open={confirmSaveOpen} onOpenChange={setConfirmSaveOpen}>
+        <DialogContent className="max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>Save cohort changes?</DialogTitle>
+            <DialogDescription>
+              This updates membership and rules for the live cohort. Pricelists and catalogs targeting it will use the updated buyer set.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="pt-4 text-[13px] leading-6 text-cream-700">
+            {summary.members} buyers across {summary.areasCovered} areas will be in this cohort once you confirm.
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setConfirmSaveOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={async () => {
+                setConfirmSaveOpen(false);
+                await handleSave('detail');
+              }}
+              disabled={saveMutation.isPending}
+            >
+              <Save className="h-3.5 w-3.5" />
+              Save changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CalendarDays, Check, Search, SlidersHorizontal, X } from 'lucide-react';
+import { AlertTriangle, CalendarDays, Check, RotateCcw, Save, Search, Send, SlidersHorizontal, Upload, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { EntityAvatar, PageWrap } from '@/components/seller/layout';
 import {
@@ -25,6 +25,12 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-overlay';
+import {
+  computeStrategyPrice,
+  formatApplyingRuleSummary,
+  formatStrategySummary,
+  strategyLabelShort,
+} from '@/lib/price-list-strategy';
 import { cn, formatDate } from '@/lib/utils';
 import {
   type PriceListComposerProduct,
@@ -63,30 +69,6 @@ function parseCurrencyInput(value: string) {
 
 function isoDateInput(value: Date) {
   return value.toISOString().slice(0, 10);
-}
-
-function strategyLabel(value: PriceListPricingStrategy) {
-  if (value === 'margin_from_mrp') return '% margin from MRP';
-  if (value === 'flat_off_base') return 'Flat INR off base';
-  return 'Edit each price';
-}
-
-function computeStrategyPrice(
-  product: PriceListComposerProduct,
-  strategy: PriceListPricingStrategy,
-  strategyValue: string,
-) {
-  const base = Number(product.base_selling_price ?? 0);
-  const mrp = Number(product.mrp ?? 0);
-  if (strategy === 'margin_from_mrp') {
-    const discount = Number(strategyValue || 0);
-    return Math.max(0, Math.round(mrp * (1 - discount / 100)));
-  }
-  if (strategy === 'flat_off_base') {
-    const amount = Number(strategyValue || 0);
-    return Math.max(0, Math.round(base - amount));
-  }
-  return Math.max(0, Math.round(base));
 }
 
 function getInitials(value: string) {
@@ -332,6 +314,104 @@ export function PriceListComposer({
     }, 0);
   }, [currentSelectionIds, detailItemMap, mode, products, selectedItemIds]);
 
+  const isLiveEdit = mode === 'edit';
+
+  const pendingStagedSummary = useMemo(() => {
+    if (!isLiveEdit) return [];
+
+    const items: Array<{ label: string; value: string }> = [
+      { label: 'Modified rows', value: `${modifiedRows} of ${currentMetrics.productCount}` },
+    ];
+
+    if (previousMetrics?.avgDiscount != null && currentMetrics.avgDiscount != null) {
+      const previous = previousMetrics.avgDiscount;
+      const current = currentMetrics.avgDiscount;
+      if (Math.round(previous * 10) !== Math.round(current * 10)) {
+        items.push({
+          label: 'Avg discount vs base',
+          value: `-${Math.abs(previous).toFixed(1)}% → -${Math.abs(current).toFixed(1)}%`,
+        });
+      }
+    }
+
+    if (previousMetrics?.avgMargin != null && currentMetrics.avgMargin != null) {
+      const previous = previousMetrics.avgMargin;
+      const current = currentMetrics.avgMargin;
+      if (Math.round(previous * 10) !== Math.round(current * 10)) {
+        items.push({
+          label: 'Avg margin retained',
+          value: `${previous.toFixed(1)}% → ${current.toFixed(1)}%`,
+        });
+      }
+    }
+
+    if (detail && name.trim() !== detail.name) {
+      items.push({ label: 'Name', value: name.trim() || 'Untitled pricelist' });
+    }
+
+    const detailValidFrom = detail?.valid_from?.slice(0, 10) ?? '';
+    const detailValidTo = detail?.valid_to?.slice(0, 10) ?? '';
+    if (validFrom !== detailValidFrom || validTo !== detailValidTo) {
+      items.push({
+        label: 'Validity',
+        value: validFrom ? `${formatDate(validFrom)} → ${validTo ? formatDate(validTo) : 'Open ended'}` : '—',
+      });
+    }
+
+    if (detail && String(detail.priority ?? 0) !== priority) {
+      items.push({ label: 'Priority', value: priority || '0' });
+    }
+
+    const detailStrategyValue = detail?.strategy_value != null ? String(detail.strategy_value) : '';
+    if (
+      detail
+      && (
+        detail.pricing_strategy !== pricingStrategy
+        || (pricingStrategy !== 'edit_each' && detailStrategyValue !== strategyValue)
+      )
+    ) {
+      items.push({
+        label: 'Pricing strategy',
+        value: formatStrategySummary(
+          pricingStrategy,
+          pricingStrategy === 'edit_each' ? null : Number(strategyValue || 0),
+        ),
+      });
+    }
+
+    return items;
+  }, [
+    currentMetrics.avgDiscount,
+    currentMetrics.avgMargin,
+    currentMetrics.productCount,
+    detail,
+    isLiveEdit,
+    modifiedRows,
+    name,
+    previousMetrics?.avgDiscount,
+    previousMetrics?.avgMargin,
+    pricingStrategy,
+    priority,
+    strategyValue,
+    validFrom,
+    validTo,
+  ]);
+
+  const hasActiveFilters = selectedBrands.length > 0 && selectedCategories.length > 0;
+
+  const centerPanelSubtitle = useMemo(() => {
+    if (!hasActiveFilters) return 'Pick at least one brand and one category to populate the table.';
+    if (pricingStrategy === 'edit_each') {
+      return `Pricing strategy: ${strategyLabelShort(pricingStrategy)}`;
+    }
+    return formatApplyingRuleSummary(
+      pricingStrategy,
+      strategyValue,
+      visibleSelectedProducts.length,
+      Object.keys(rowOverrides).length,
+    );
+  }, [hasActiveFilters, pricingStrategy, rowOverrides, strategyValue, visibleSelectedProducts.length]);
+
   const serializedState = useMemo(() => JSON.stringify({
     name,
     validFrom,
@@ -423,12 +503,15 @@ export function PriceListComposer({
   }
 
   const createSubtitle = 'Filter the SKUs, apply pricing rules, and review the impact in the summary before publishing.';
-  const editSubtitle = 'You are editing a live pricelist. Changes apply to new orders only; in-flight orders keep their current prices.';
-  const hasActiveFilters = selectedBrands.length > 0 && selectedCategories.length > 0;
-  const showBulkBanner = pricingStrategy !== 'edit_each' && filteredProducts.length > 0;
-  const priceRuleSummary = pricingStrategy === 'margin_from_mrp'
-    ? `Applying -${strategyValue || 0}% from MRP`
-    : `Applying -₹${Number(strategyValue || 0).toLocaleString('en-IN')} off base`;
+  const editSubtitle =
+    'You are editing a live pricelist. Unsaved edits apply only after Save & apply to live; until then buyers keep the current list prices on new orders.';
+  const footerStatusText = isDirty
+    ? 'Unsaved changes'
+    : mode === 'edit' && detail?.status === 'active'
+      ? 'Live pricelist · no pending edits'
+      : mode === 'edit'
+        ? 'No unsaved changes'
+        : 'Auto-saves as you type';
 
   return (
     <>
@@ -448,11 +531,12 @@ export function PriceListComposer({
             actions={
               <>
                 {mode === 'create' ? (
-                  <Button type="button" className="cockpit-btn cockpit-btn-secondary">
+                  <Button type="button" variant="secondary">
+                    <Upload className="h-3.5 w-3.5" />
                     Import from CSV
                   </Button>
                 ) : null}
-                <Button type="button" className="cockpit-btn cockpit-btn-secondary" onClick={() => dirtyGuard.handleOpenChange(false)}>
+                <Button type="button" variant="ghost" onClick={() => dirtyGuard.handleOpenChange(false)}>
                   <X className="h-3.5 w-3.5" />
                   Close
                 </Button>
@@ -508,11 +592,12 @@ export function PriceListComposer({
               />
             </ComposerBasicsField>
 
-            <ComposerBasicsField label="Selection" className="px-4 py-3">
-              <div className="mt-2 flex items-center gap-2 text-[14px] font-medium text-cream-950">
-                <span>{currentMetrics.productCount} products</span>
-                <span className="text-cream-500">·</span>
-                <span>{currentMetrics.brandCount} brands</span>
+            <ComposerBasicsField label="Pricing strategy" className="px-4 py-3">
+              <div className="mt-2 text-[13px] font-medium leading-snug text-cream-950">
+                {formatStrategySummary(
+                  pricingStrategy,
+                  pricingStrategy === 'edit_each' ? null : Number(strategyValue || 0),
+                )}
               </div>
             </ComposerBasicsField>
           </ComposerBasicsStrip>
@@ -616,7 +701,7 @@ export function PriceListComposer({
                           onChange={() => setPricingStrategy('margin_from_mrp')}
                           className="accent-teal-500"
                         />
-                        % margin from MRP
+                        % off base price
                       </span>
                       <div
                         className={cn(
@@ -675,7 +760,7 @@ export function PriceListComposer({
                         </>
                       ) : pricingStrategy === 'margin_from_mrp' ? (
                         <>
-                          <strong className="font-medium text-cream-900">-{strategyValue || 0}% from MRP</strong> applies to all selected products. Click a row price to override it.
+                          <strong className="font-medium text-cream-900">-{strategyValue || 0}% off base price</strong> applies to all selected products. Click a row price to override it.
                         </>
                       ) : (
                         <>
@@ -698,9 +783,7 @@ export function PriceListComposer({
                       : `${filteredProducts.length} products match`}
                   </div>
                   <div className="text-[12px] text-cream-700">
-                    {hasActiveFilters
-                      ? `Pricing strategy: ${strategyLabel(pricingStrategy)}`
-                      : 'Pick at least one brand and one category to populate the table.'}
+                    {centerPanelSubtitle}
                   </div>
                 </div>
                 <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -713,34 +796,19 @@ export function PriceListComposer({
                       className="w-full bg-transparent outline-none placeholder:text-cream-600"
                     />
                   </div>
-                  <Button type="button" className="cockpit-btn cockpit-btn-secondary">
-                    <SlidersHorizontal className="h-3.5 w-3.5" />
-                    Bulk adjust
-                  </Button>
+                  {hasActiveFilters && pricingStrategy !== 'edit_each' && filteredProducts.length > 0 ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="cockpit-btn cockpit-btn-secondary"
+                      onClick={() => setRowOverrides({})}
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      Reset overrides
+                    </Button>
+                  ) : null}
                 </div>
               </div>
-
-              {showBulkBanner ? (
-                <div className="flex items-center gap-3 border-b border-ember-100 bg-ember-50 px-4 py-3 text-[12.5px] text-ember-700">
-                  <SlidersHorizontal className="h-4 w-4 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <strong className="font-semibold">{priceRuleSummary}</strong>{' '}
-                    to all {visibleSelectedProducts.length} selected products.
-                    <div className="mt-0.5 text-[11.5px] text-cream-700">
-                      {Object.keys(rowOverrides).length === 0
-                        ? 'No row overrides yet. Click any New price cell to override that one row.'
-                        : `${Object.keys(rowOverrides).length} row override${Object.keys(rowOverrides).length === 1 ? '' : 's'} preserved.`}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded-[6px] border border-ember-200 bg-white px-3 py-1.5 text-[12px] font-medium text-ember-700 hover:bg-ember-50"
-                    onClick={() => setRowOverrides({})}
-                  >
-                    Reset overrides
-                  </button>
-                </div>
-              ) : null}
 
               {!hasActiveFilters ? (
                 <div className="flex flex-1 flex-col items-center justify-center gap-4 px-8 py-16 text-center">
@@ -785,13 +853,12 @@ export function PriceListComposer({
                           />
                         </th>
                         <th className="border-b border-cream-300 px-4 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Product</th>
+                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Cost</th>
                         <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">MRP</th>
                         <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Base</th>
-                        {mode === 'edit' ? (
-                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Was</th>
-                        ) : null}
                         <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">New price</th>
-                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Δ</th>
+                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Discount</th>
+                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Margin</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -801,7 +868,9 @@ export function PriceListComposer({
                         const previousPrice = detailItemMap.get(product.id)?.price ?? null;
                         const isSelected = !deselectedIds.has(product.id);
                         const isChanged = previousPrice != null && Math.round(Number(previousPrice)) !== Math.round(nextPrice);
-                        const deltaPct = basePrice > 0 ? ((nextPrice - basePrice) / basePrice) * 100 : 0;
+                        const discountVsBase = basePrice > 0 ? ((basePrice - nextPrice) / basePrice) * 100 : null;
+                        const cost = Number(product.cost_price ?? 0);
+                        const marginPct = nextPrice > 0 && cost > 0 ? ((nextPrice - cost) / nextPrice) * 100 : null;
                         const imageUrl = product.image_urls?.[0] ?? null;
 
                         return (
@@ -851,13 +920,9 @@ export function PriceListComposer({
                                 </div>
                               </div>
                             </td>
+                            <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatInr(product.cost_price)}</td>
                             <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatInr(product.mrp)}</td>
                             <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{formatInr(product.base_selling_price)}</td>
-                            {mode === 'edit' ? (
-                              <td className="px-4 py-3 text-right font-mono font-medium text-cream-700">
-                                {previousPrice != null ? formatInr(previousPrice) : '—'}
-                              </td>
-                            ) : null}
                             <td className="px-4 py-3 text-right">
                               <div
                                 className={cn(
@@ -887,10 +952,17 @@ export function PriceListComposer({
                             </td>
                             <td className={cn(
                               'px-4 py-3 text-right font-mono text-[11px] font-medium',
-                              deltaPct <= 0 ? 'text-danger-500' : 'text-success-500',
+                              discountVsBase == null ? 'text-cream-500' : discountVsBase >= 0 ? 'text-teal-700' : 'text-danger-700',
                             )}>
-                              {deltaPct > 0 ? '+' : ''}
-                              {deltaPct.toFixed(1)}%
+                              {discountVsBase == null
+                                ? '—'
+                                : `${discountVsBase >= 0 ? '-' : '+'}${Math.abs(discountVsBase).toFixed(1)}%`}
+                            </td>
+                            <td className={cn(
+                              'px-4 py-3 text-right font-mono text-[11px] font-medium',
+                              marginPct == null ? 'text-cream-500' : 'text-cream-900',
+                            )}>
+                              {marginPct == null ? '—' : `${marginPct.toFixed(1)}%`}
                             </td>
                           </ComposerSelectableRow>
                         );
@@ -905,91 +977,45 @@ export function PriceListComposer({
               <ComposerSidebarCard>
               <div className="flex h-full flex-col gap-4">
                 <div>
-                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">
-                    {mode === 'edit' ? 'Diff · what will change' : 'Pricelist summary'}
-                  </h3>
+                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Pricelist summary</h3>
                   <div className="mt-4">
                     <p className="font-display text-[18px] font-medium tracking-[-0.005em] text-cream-900">
                       {name || 'Untitled pricelist'}
                     </p>
                     <p className="mt-1 text-[12px] text-cream-700">
-                      {mode === 'edit'
-                        ? `Created by ${detail?.created_by_label ?? 'Team member'}`
-                        : hasActiveFilters
-                          ? `Applies to ${currentMetrics.productCount} selected products`
-                          : 'Set filters and pricing rules to see the impact here.'}
+                      {hasActiveFilters
+                        ? `Applies to ${currentMetrics.productCount} selected products`
+                        : 'Set filters and pricing rules to see the impact here.'}
                     </p>
                   </div>
                 </div>
 
                 <div className="h-px bg-cream-300" />
 
-                {mode === 'edit' ? (
-                  <>
-                    <div className="space-y-3">
-                      <div className="space-y-1">
-                        <p className="text-[11.5px] font-semibold uppercase tracking-[0.04em] text-cream-700">Modified rows</p>
-                        <div className="flex items-baseline gap-2 font-mono">
-                          <span className="text-[14px] font-medium text-cream-900">{modifiedRows}</span>
-                          <span className="rounded-full bg-cream-200 px-2 py-0.5 text-[11px] text-cream-700">
-                            of {currentMetrics.productCount}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-[11.5px] font-semibold uppercase tracking-[0.04em] text-cream-700">Avg discount vs base</p>
-                        <div className="flex items-baseline gap-2 font-mono">
-                          <span className="text-[12px] text-cream-700 line-through">
-                            {previousMetrics?.avgDiscount == null ? '—' : `-${Math.abs(previousMetrics.avgDiscount).toFixed(1)}%`}
-                          </span>
-                          <span className="text-[14px] font-medium text-cream-900">
-                            {currentMetrics.avgDiscount == null ? '—' : `-${Math.abs(currentMetrics.avgDiscount).toFixed(1)}%`}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-[11.5px] font-semibold uppercase tracking-[0.04em] text-cream-700">Avg margin retained</p>
-                        <div className="flex items-baseline gap-2 font-mono">
-                          <span className="text-[12px] text-cream-700 line-through">
-                            {previousMetrics?.avgMargin == null ? '—' : `${previousMetrics.avgMargin.toFixed(1)}%`}
-                          </span>
-                          <span className="text-[14px] font-medium text-cream-900">
-                            {currentMetrics.avgMargin == null ? '—' : `${currentMetrics.avgMargin.toFixed(1)}%`}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-[13px]">
+                    <span className="text-cream-700">Products</span>
+                    <span className="font-mono font-medium text-cream-900">{currentMetrics.productCount}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[13px]">
+                    <span className="text-cream-700">Brands</span>
+                    <span className="font-mono font-medium text-cream-900">{currentMetrics.brandCount}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[13px]">
+                    <span className="text-cream-700">Avg discount vs base</span>
+                    <span className="font-mono font-medium text-cream-900">
+                      {currentMetrics.avgDiscount == null ? '—' : `-${Math.abs(currentMetrics.avgDiscount).toFixed(1)}%`}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-[13px]">
+                    <span className="text-cream-700">Avg margin retained</span>
+                    <span className="font-mono font-medium text-cream-900">
+                      {currentMetrics.avgMargin == null ? '—' : `${currentMetrics.avgMargin.toFixed(1)}%`}
+                    </span>
+                  </div>
+                </div>
 
-                    <div className="h-px bg-cream-300" />
-                  </>
-                ) : (
-                  <>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between text-[13px]">
-                        <span className="text-cream-700">Products</span>
-                        <span className="font-mono font-medium text-cream-900">{currentMetrics.productCount}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-[13px]">
-                        <span className="text-cream-700">Brands</span>
-                        <span className="font-mono font-medium text-cream-900">{currentMetrics.brandCount}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-[13px]">
-                        <span className="text-cream-700">Avg discount vs base</span>
-                        <span className="font-mono font-medium text-cream-900">
-                          {currentMetrics.avgDiscount == null ? '—' : `-${Math.abs(currentMetrics.avgDiscount).toFixed(1)}%`}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-[13px]">
-                        <span className="text-cream-700">Avg margin retained</span>
-                        <span className="font-mono font-medium text-cream-900">
-                          {currentMetrics.avgMargin == null ? '—' : `${currentMetrics.avgMargin.toFixed(1)}%`}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="h-px bg-cream-300" />
-                  </>
-                )}
+                <div className="h-px bg-cream-300" />
 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-[13px]">
@@ -1006,19 +1032,38 @@ export function PriceListComposer({
                   </div>
                 </div>
 
+                {isLiveEdit ? (
+                  <>
+                    <div className="h-px bg-cream-300" />
+                    <div className="space-y-2">
+                      <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Staged changes</h4>
+                      <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3">
+                        <div className="space-y-2 text-[12px] leading-[1.5] text-amber-900">
+                          {pendingStagedSummary.map((item) => (
+                            <div key={item.label} className="flex items-start justify-between gap-4">
+                              <span className="text-amber-700">{item.label}</span>
+                              <span className="max-w-[190px] text-right font-medium">{item.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+
                 <div
                   className={cn(
                     'mt-auto rounded-[10px] border px-3 py-3 text-[12px] leading-[1.5]',
-                    mode === 'edit' && detail?.status === 'active'
-                      ? 'border-warning-200 bg-warning-50 text-warning-800'
+                    isLiveEdit && detail?.status === 'active'
+                      ? 'border-amber-200 bg-amber-50 text-amber-800'
                       : 'border-teal-200 bg-teal-50 text-teal-700',
                   )}
                 >
-                  {mode === 'edit' && detail?.status === 'active' ? (
+                  {isLiveEdit && detail?.status === 'active' ? (
                     <div className="flex gap-2">
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-600" />
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
                       <span>
-                        Saving will update this live pricelist for future orders only. In-flight orders keep their current prices.
+                        Save & apply to live updates this pricelist for future orders only. In-flight orders keep their current prices.
                       </span>
                     </div>
                   ) : (
@@ -1035,23 +1080,30 @@ export function PriceListComposer({
 
           <ComposerFooterBar>
             <div className="flex items-center gap-3">
-              <div className={cn(
-                'inline-flex items-center gap-2 text-[12px]',
-                isDirty ? 'text-ember-700' : 'text-cream-700',
-              )}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  'h-8 gap-2 px-2 text-[12px] pointer-events-none hover:bg-transparent',
+                  isDirty ? 'text-ember-700' : 'text-cream-700',
+                )}
+              >
                 <span className={cn('h-1.5 w-1.5 rounded-full', isDirty ? 'bg-ember-400' : 'bg-success-500')} />
-                {isDirty ? 'Unsaved changes' : mode === 'edit' ? 'Draft saved · auto-resumes if you close' : 'Auto-saves as you type'}
-              </div>
+                {footerStatusText}
+              </Button>
               <div className="ml-auto flex items-center gap-2">
                 <Button type="button" variant="ghost" onClick={() => dirtyGuard.handleOpenChange(false)}>
+                  <RotateCcw className="h-3.5 w-3.5" />
                   {mode === 'edit' ? 'Revert changes' : 'Discard draft'}
                 </Button>
                 <Button
                   type="button"
-                  className="cockpit-btn cockpit-btn-secondary"
+                  variant="accent"
                   onClick={() => void handleSave('draft')}
                   disabled={saveMutation.isPending}
                 >
+                  <Save className="h-3.5 w-3.5" />
                   {mode === 'edit' ? 'Save as draft' : 'Save & close'}
                 </Button>
                 <Button
@@ -1060,6 +1112,7 @@ export function PriceListComposer({
                   onClick={() => void handleSave('publish')}
                   disabled={saveMutation.isPending || currentMetrics.productCount === 0}
                 >
+                  <Send className="h-3.5 w-3.5" />
                   {mode === 'edit' ? 'Save & apply to live' : 'Publish pricelist'}
                 </Button>
               </div>
