@@ -1,19 +1,23 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Download, ExternalLink, Share2 } from 'lucide-react';
+import Link from 'next/link';
+import { Pencil } from 'lucide-react';
 import { PageWrap } from '@/components/seller/layout';
 import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
 import { ErrorState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatCompactInr } from '@/lib/utils';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
-import { useCohortDetail, useUpdateCohortDetail } from '@/hooks/useCohorts';
-import { CohortActivityTab } from './CohortActivityTab';
-import { CohortDetailsRulesTab } from './CohortDetailsRulesTab';
+import { useRole } from '@/hooks/useRole';
+import { useCohortDetail } from '@/hooks/useCohorts';
+import { CohortBuyersTab } from './CohortBuyersTab';
 import { CohortPerformanceTab } from './CohortPerformanceTab';
 
-type TabId = 'details' | 'performance' | 'activity';
+const COHORT_DETAIL_TAB_SNAPSHOT_VERSION = 2;
+
+type TabId = 'buyers' | 'performance';
 
 interface CohortDetailPageProps {
   id: string;
@@ -34,9 +38,7 @@ function CohortDetailSkeleton() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Skeleton className="h-9 w-24 rounded-[8px]" />
-              <Skeleton className="h-9 w-24 rounded-[8px]" />
-              <Skeleton className="h-9 w-9 rounded-[8px]" />
+              <Skeleton className="h-9 w-[8.5rem] rounded-[8px]" />
             </div>
           </div>
         </div>
@@ -48,7 +50,7 @@ function CohortDetailSkeleton() {
         </div>
 
         <div className="flex items-center gap-2">
-          {Array.from({ length: 3 }).map((_, i) => (
+          {Array.from({ length: 2 }).map((_, i) => (
             <Skeleton key={i} className="h-9 w-28 rounded-full" />
           ))}
         </div>
@@ -60,13 +62,15 @@ function CohortDetailSkeleton() {
 }
 
 export function CohortDetailPage({ id }: CohortDetailPageProps) {
+  const { isSellerAdmin } = useRole();
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-cohort-detail-tab',
     scopeKey: id,
     initialState: 'performance',
+    version: COHORT_DETAIL_TAB_SNAPSHOT_VERSION,
   });
+
   const { data, isLoading, isError } = useCohortDetail(id);
-  const updateMutation = useUpdateCohortDetail(id);
 
   const tiles = useMemo(() => {
     if (!data) return [];
@@ -118,23 +122,16 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
         status={{ label: data.header.status_label, tone: data.header.status_tone }}
         subtitle={[data.header.subtitle.members_text, data.header.subtitle.description_text, data.header.subtitle.created_by_text]}
         actions={
-          <div className="flex items-center gap-2 pt-1">
-            <button
-              type="button"
-              aria-label="Share"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-cream-300 bg-cream-50 text-cream-700"
-            >
-              <Share2 size={14} />
-            </button>
-            <button type="button" className="cockpit-btn cockpit-btn-secondary h-9 px-4 text-cream-800">
-              <Download size={14} />
-              Export
-            </button>
-            <button type="button" className="cockpit-btn h-9 bg-teal-900 px-4 text-white">
-              <ExternalLink size={14} />
-              Open buyer app preview
-            </button>
-          </div>
+          isSellerAdmin ? (
+            <div className="flex items-center gap-2 pt-1">
+              <Button variant="accent" size="sm" className="h-9 px-4" asChild>
+                <Link href={`/cohorts/${id}/edit`}>
+                  <Pencil size={16} strokeWidth={2} aria-hidden />
+                  Edit cohort
+                </Link>
+              </Button>
+            </div>
+          ) : null
         }
       />
 
@@ -142,25 +139,21 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
 
       <DetailTabs
         tabs={[
-          { id: 'details', label: 'Details & rules' },
+          { id: 'buyers', label: 'Buyers' },
           { id: 'performance', label: 'Performance' },
-          { id: 'activity', label: 'Activity' },
         ]}
         active={tab}
         onChange={(value) => setTab(value as TabId)}
       />
 
-      {tab === 'details' ? (
-        <CohortDetailsRulesTab
-          detailsRules={data.details_rules}
-          isSaving={updateMutation.isPending}
-          startInEditMode={false}
-          onEditModeSync={() => {}}
-          onSave={(payload) => updateMutation.mutate(payload)}
+      {tab === 'buyers' ? (
+        <CohortBuyersTab
+          buyers={data.buyers}
+          rules_summary={data.rules_summary}
+          activeMembersMtd={data.meta_strip_4.active_members}
         />
       ) : null}
       {tab === 'performance' ? <CohortPerformanceTab performance={data.performance} /> : null}
-      {tab === 'activity' ? <CohortActivityTab activity={data.activity} /> : null}
     </PageWrap>
   );
 }

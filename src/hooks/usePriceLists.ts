@@ -64,8 +64,11 @@ export interface PriceListLandingRow {
   cohort_names: string[];
   product_count: number;
   avg_discount_pct: number | null;
+  avg_margin_pct: number | null;
   created_by_label: string;
   is_expiring_soon: boolean;
+  pricing_strategy: PriceListPricingStrategy;
+  strategy_value: number | null;
 }
 
 export interface PriceListsLandingResponse {
@@ -125,6 +128,7 @@ export interface PriceListItem {
     name_override: string | null;
     mrp: number | null;
     base_selling_price: number | null;
+    cost_price?: number | null;
     is_active?: boolean;
     tenant_brand?: {
       id: string;

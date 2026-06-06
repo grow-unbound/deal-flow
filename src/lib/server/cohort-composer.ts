@@ -437,3 +437,114 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
     },
   };
 }
+
+/** Buyer metrics for cohort members only (detail page Buyers tab). */
+export async function buildCohortMemberBuyerRows(db: DbClient, tenantId: string, memberBuyerIds: string[]): Promise<CohortComposerBuyerRow[]> {
+  const uniqueIds = Array.from(new Set(memberBuyerIds.filter(Boolean)));
+  if (uniqueIds.length === 0) return [];
+
+  const { data: buyers, error: buyersError } = await db
+    .schema('app')
+    .from('buyers')
+    .select('id, business_name, contact_name, geography, tier, payment_terms_days, credit_limit, external_ref')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .is('deleted_at', null)
+    .in('id', uniqueIds)
+    .order('business_name', { ascending: true });
+
+  if (buyersError) throw buyersError;
+
+  const buyerRows = (buyers ?? []) as BuyerDbRow[];
+  if (buyerRows.length === 0) return [];
+
+  const buyerIds = buyerRows.map((b) => b.id);
+  const { currentStartIso, nextStartIso } = getIstMonthBounds();
+  const ninetyDaysAgoIso = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [allOrdersRes, mtdOrdersRes, invoicesRes] = await Promise.all([
+    db
+      .schema('app')
+      .from('orders')
+      .select('buyer_id, total_amount, placed_at, status')
+      .eq('tenant_id', tenantId)
+      .in('buyer_id', buyerIds)
+      .is('deleted_at', null)
+      .neq('status', 'cancelled')
+      .order('placed_at', { ascending: false }),
+    db
+      .schema('app')
+      .from('orders')
+      .select('buyer_id, total_amount, placed_at, status')
+      .eq('tenant_id', tenantId)
+      .in('buyer_id', buyerIds)
+      .is('deleted_at', null)
+      .neq('status', 'cancelled')
+      .gte('placed_at', currentStartIso)
+      .lt('placed_at', nextStartIso),
+    db
+      .schema('app')
+      .from('invoices')
+      .select('buyer_id, outstanding_balance')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .in('buyer_id', buyerIds)
+      .in('status', ['issued', 'partially_paid']),
+  ]);
+
+  if (allOrdersRes.error) throw allOrdersRes.error;
+  if (mtdOrdersRes.error) throw mtdOrdersRes.error;
+  if (invoicesRes.error && !isInvoiceTableMissing(invoicesRes.error)) throw invoicesRes.error;
+
+  const allOrders = (allOrdersRes.data ?? []) as OrderDbRow[];
+  const mtdOrders = (mtdOrdersRes.data ?? []) as OrderDbRow[];
+  const invoices = isInvoiceTableMissing(invoicesRes.error) ? [] : ((invoicesRes.data ?? []) as InvoiceDbRow[]);
+
+  const lastOrderByBuyer = new Map<string, string>();
+  const mtdSpendByBuyer = new Map<string, number>();
+  const ordersMtdByBuyer = new Map<string, number>();
+  const gmv90dByBuyer = new Map<string, number>();
+  const creditUsedByBuyer = new Map<string, number>();
+
+  for (const order of allOrders) {
+    if (order.placed_at && !lastOrderByBuyer.has(order.buyer_id)) {
+      lastOrderByBuyer.set(order.buyer_id, order.placed_at);
+    }
+    if (order.placed_at && order.placed_at >= ninetyDaysAgoIso) {
+      gmv90dByBuyer.set(order.buyer_id, (gmv90dByBuyer.get(order.buyer_id) ?? 0) + Number(order.total_amount ?? 0));
+    }
+  }
+
+  for (const order of mtdOrders) {
+    mtdSpendByBuyer.set(order.buyer_id, (mtdSpendByBuyer.get(order.buyer_id) ?? 0) + Number(order.total_amount ?? 0));
+    ordersMtdByBuyer.set(order.buyer_id, (ordersMtdByBuyer.get(order.buyer_id) ?? 0) + 1);
+  }
+
+  for (const invoice of invoices) {
+    creditUsedByBuyer.set(invoice.buyer_id, (creditUsedByBuyer.get(invoice.buyer_id) ?? 0) + Number(invoice.outstanding_balance ?? 0));
+  }
+
+  return buyerRows.map((buyer, index) => {
+    const city = buyer.geography?.city?.trim() || null;
+    const state = expandStateLabel(buyer.geography?.state?.trim() || null);
+    const geographyLabel = [city, state].filter(Boolean).join(', ') || '—';
+    return {
+      id: buyer.id,
+      business_name: buyer.business_name,
+      contact_name: buyer.contact_name,
+      external_ref: buyer.external_ref,
+      geography_label: geographyLabel,
+      city,
+      state,
+      tier: buyer.tier,
+      last_order_at: lastOrderByBuyer.get(buyer.id) ?? null,
+      mtd_spend: Number((mtdSpendByBuyer.get(buyer.id) ?? 0).toFixed(2)),
+      orders_mtd: ordersMtdByBuyer.get(buyer.id) ?? 0,
+      credit_used: Number((creditUsedByBuyer.get(buyer.id) ?? 0).toFixed(2)),
+      payment_terms_days: Number(buyer.payment_terms_days ?? 0),
+      gmv_90d: Number((gmv90dByBuyer.get(buyer.id) ?? 0).toFixed(2)),
+      initials: getInitials(buyer.business_name),
+      hue: index % 3 === 0 ? 'teal' : index % 3 === 1 ? 'ember' : 'cream',
+    } satisfies CohortComposerBuyerRow;
+  });
+}
