@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 
 interface LandingTableColumn {
   label?: string;
-  align?: 'left' | 'right';
+  align?: 'left' | 'right' | 'center';
   width?: number | string;
   className?: string;
 }
@@ -26,6 +26,7 @@ export function LandingTable({ columns, children, className }: LandingTableProps
                 className={cn(
                   'px-4 py-[11px] text-left text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700',
                   column.align === 'right' && 'text-right',
+                  column.align === 'center' && 'text-center',
                   column.className
                 )}
                 style={column.width ? { width: column.width } : undefined}

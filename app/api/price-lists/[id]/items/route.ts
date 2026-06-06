@@ -50,7 +50,7 @@ export async function GET(
     .schema('app')
     .from('price_list_items')
     .select(
-      '*, tenant_product:tenant_products(id, internal_sku, name_override, mrp, base_selling_price, is_active, master_product_id, tenant_brand:tenant_brands(id, display_name_override, master_brand_id))',
+      '*, tenant_product:tenant_products(id, internal_sku, name_override, mrp, base_selling_price, cost_price, is_active, master_product_id, tenant_brand:tenant_brands(id, display_name_override, master_brand_id))',
     )
     .eq('price_list_id', id)
     .is('deleted_at', null)
@@ -118,6 +118,7 @@ export async function GET(
         name_override: string | null;
         mrp: number | null;
         base_selling_price: number | null;
+        cost_price: number | null;
         is_active?: boolean;
         master_product_id?: string | null;
         tenant_brand?: {
@@ -131,6 +132,7 @@ export async function GET(
       tenant_product: item.tenant_product
         ? {
             ...item.tenant_product,
+            cost_price: claims.role === 'seller_admin' ? item.tenant_product.cost_price ?? null : null,
             tenant_brand: item.tenant_product.tenant_brand
               ? {
                   id: item.tenant_product.tenant_brand.id,

@@ -1,4 +1,3 @@
 export { CohortDetailPage } from './CohortDetailPage';
-export { CohortDetailsRulesTab } from './CohortDetailsRulesTab';
+export { CohortBuyersTab } from './CohortBuyersTab';
 export { CohortPerformanceTab } from './CohortPerformanceTab';
-export { CohortActivityTab } from './CohortActivityTab';
