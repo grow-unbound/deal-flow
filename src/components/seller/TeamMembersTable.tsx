@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MailCheck, Pencil, UserPlus, UserX } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -17,11 +17,11 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DialogBody } from '@/components/ui/dialog';
-import { DataTable } from './DataTable';
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { InviteUserDialog } from './InviteUserDialog';
-import { FilterBar } from '@/components/seller/layout';
+import { FilterBar, LandingTable } from '@/components/seller/layout';
 import { supabaseBrowser } from '@/lib/supabase-browser';
+import { cn } from '@/lib/utils';
 import type { TeamMember } from '@/types/team';
 
 interface Props {
@@ -162,114 +162,108 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
     );
   }
 
+  const columnCount = isAdmin ? 6 : 5;
+
   return (
     <>
-      <FilterBar
-        count={`Showing ${filteredMembers.length} of ${members.length} users`}
-        searchPlaceholder="Search name, email, phone…"
-        chips={TEAM_CHIPS}
-        activeChip={activeChip}
-        sortBy={sortBy}
-        hideViewToggle
-        searchValue={query}
-        onSearchChange={setQuery}
-        onChipChange={(chip) => setActiveChip(chip as TeamChip)}
-        sortOptions={TEAM_SORT_OPTIONS}
-        onSortChange={(option) => setSortBy(option as TeamSort)}
-      />
-      <DataTable
-        data={filteredMembers}
-        loading={isLoading}
-        loadingMessage="Loading team members..."
-        className="-mt-px"
-        columns={[
-          {
-            key: 'full_name',
-            header: 'Full Name',
-            accessor: (member) => member.full_name ?? <span className="text-cream-400">—</span>,
-          },
-          {
-            key: 'email',
-            header: 'Email',
-            accessor: (member) => <span className="text-cream-700">{member.email}</span>,
-          },
-          {
-            key: 'phone',
-            header: 'Phone',
-            accessor: (member) => <span className="text-cream-700">{member.phone ?? '—'}</span>,
-          },
-          {
-            key: 'role',
-            header: 'Role',
-            accessor: (member) => <RoleChip role={member.role} />,
-          },
-          {
-            key: 'status',
-            header: 'Status',
-            accessor: (member) =>
-              member.status === 'pending' ? (
-                <span className="inline-flex items-center rounded-sm bg-amber-100 px-2 py-0.5 text-caption font-medium text-amber-700">
-                  Invited
-                </span>
-              ) : member.status === 'inactive' ? (
-                <span className="inline-flex items-center rounded-sm bg-cream-200 px-2 py-0.5 text-caption font-medium text-cream-700">
-                  Deactivated
-                </span>
-              ) : (
-                <span className="inline-flex items-center rounded-sm bg-success-50 px-2 py-0.5 text-caption font-medium text-success-700">
-                  Active
-                </span>
-              ),
-          },
-          ...(isAdmin
-            ? [{
-              key: 'actions',
-              header: 'Actions',
-              accessor: (member: TeamMember) => (
-                <div className="flex items-center gap-1">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 w-7 p-0 text-cream-600 hover:text-cream-900"
-                    onClick={() => setEditMember(member)}
-                    title="Edit User"
-                  >
-                    <Pencil size={14} />
-                  </Button>
-                  {member.status === 'pending' ? (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 w-7 p-0 text-cream-600 hover:text-teal-600"
-                      onClick={() => {
-                        setResendError(null);
-                        setResendMember(member);
-                      }}
-                      disabled={resendMutation.isPending}
-                      title="Resend invite"
-                    >
-                      <MailCheck size={14} />
-                    </Button>
-                  ) : null}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 w-7 p-0 text-cream-600 hover:text-danger-500"
-                    onClick={() => {
-                      setDeactivateError(null);
-                      setDeactivateMember(member);
-                    }}
-                    disabled={removeMutation.isPending}
-                    title="Deactivate user"
-                  >
-                    <UserX size={14} />
-                  </Button>
-                </div>
-              ),
-              }]
-            : []),
-        ]}
-      />
+      <div>
+        <FilterBar
+          count={`Showing ${filteredMembers.length} of ${members.length} users`}
+          searchPlaceholder="Search name, email, phone…"
+          chips={TEAM_CHIPS}
+          activeChip={activeChip}
+          sortBy={sortBy}
+          hideViewToggle
+          searchValue={query}
+          onSearchChange={setQuery}
+          onChipChange={(chip) => setActiveChip(chip as TeamChip)}
+          sortOptions={TEAM_SORT_OPTIONS}
+          onSortChange={(option) => setSortBy(option as TeamSort)}
+        />
+
+        <LandingTable
+          columns={[
+            { label: 'Full name', width: 220, className: 'px-5' },
+            { label: 'Email', className: 'px-5' },
+            { label: 'Phone', className: 'px-5' },
+            { label: 'Role', className: 'px-5' },
+            { label: 'Status', className: 'px-5' },
+            ...(isAdmin ? [{ label: 'Actions', align: 'right' as const, className: 'px-5' }] : []),
+          ]}
+        >
+          {isLoading ? (
+            Array.from({ length: 6 }).map((_, index) => (
+              <tr key={`loading-${index}`} className="border-b border-cream-300 bg-white">
+                <td colSpan={columnCount} className="px-5 py-3.5">
+                  <div className="h-5 animate-pulse rounded bg-cream-100" aria-hidden="true" />
+                </td>
+              </tr>
+            ))
+          ) : filteredMembers.length === 0 ? (
+            <tr>
+              <td colSpan={columnCount} className="px-5 py-16 text-center text-[13px] text-cream-500">
+                No users match your filters.
+              </td>
+            </tr>
+          ) : (
+            filteredMembers.map((member) => (
+              <tr
+                key={member.id}
+                className="border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
+              >
+                <td className="px-5 py-3.5 text-[13px] text-cream-900">
+                  {member.full_name ?? <span className="text-cream-400">—</span>}
+                </td>
+                <td className="px-5 py-3.5 text-[13px] text-cream-700">{member.email}</td>
+                <td className="px-5 py-3.5 text-[13px] text-cream-700">{member.phone ?? '—'}</td>
+                <td className="px-5 py-3.5">
+                  <RoleChip role={member.role} />
+                </td>
+                <td className="px-5 py-3.5">
+                  <StatusChip status={member.status} />
+                </td>
+                {isAdmin ? (
+                  <td className="px-5 py-3.5 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <RowActionButton
+                        label="Edit user"
+                        className="text-cream-600 hover:text-cream-900"
+                        onClick={() => setEditMember(member)}
+                      >
+                        <Pencil size={14} />
+                      </RowActionButton>
+                      {member.status === 'pending' ? (
+                        <RowActionButton
+                          label="Resend invite"
+                          className="text-cream-600 hover:text-teal-600"
+                          disabled={resendMutation.isPending}
+                          onClick={() => {
+                            setResendError(null);
+                            setResendMember(member);
+                          }}
+                        >
+                          <MailCheck size={14} />
+                        </RowActionButton>
+                      ) : null}
+                      <RowActionButton
+                        label="Deactivate user"
+                        className="text-cream-600 hover:text-danger-500"
+                        disabled={removeMutation.isPending}
+                        onClick={() => {
+                          setDeactivateError(null);
+                          setDeactivateMember(member);
+                        }}
+                      >
+                        <UserX size={14} />
+                      </RowActionButton>
+                    </div>
+                  </td>
+                ) : null}
+              </tr>
+            ))
+          )}
+        </LandingTable>
+      </div>
 
       {editMember && (
         <InviteUserDialog
@@ -422,14 +416,68 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
 function RoleChip({ role }: { role: 'seller_admin' | 'seller_assistant' }) {
   if (role === 'seller_admin') {
     return (
-      <Badge className="bg-teal-100 text-teal-700 hover:bg-teal-100 rounded-sm text-caption font-medium border-0">
+      <Badge className="rounded-sm border-0 bg-teal-100 text-caption font-medium text-teal-700 hover:bg-teal-100">
         Admin
       </Badge>
     );
   }
   return (
-    <Badge className="bg-cream-200 text-cream-700 hover:bg-cream-200 rounded-sm text-caption font-medium border-0">
+    <Badge className="rounded-sm border-0 bg-cream-200 text-caption font-medium text-cream-700 hover:bg-cream-200">
       Assistant
     </Badge>
+  );
+}
+
+function StatusChip({ status }: { status: TeamMember['status'] }) {
+  if (status === 'pending') {
+    return (
+      <span className="inline-flex items-center rounded-sm bg-amber-100 px-2 py-0.5 text-caption font-medium text-amber-700">
+        Invited
+      </span>
+    );
+  }
+  if (status === 'inactive') {
+    return (
+      <span className="inline-flex items-center rounded-sm bg-cream-200 px-2 py-0.5 text-caption font-medium text-cream-700">
+        Deactivated
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center rounded-sm bg-success-50 px-2 py-0.5 text-caption font-medium text-success-700">
+      Active
+    </span>
+  );
+}
+
+interface RowActionButtonProps {
+  label: string;
+  className?: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}
+
+function RowActionButton({ label, className, disabled, onClick, children }: RowActionButtonProps) {
+  return (
+    <div className="group relative">
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        disabled={disabled}
+        aria-label={label}
+        className={cn('h-7 w-7 p-0', className)}
+        onClick={onClick}
+      >
+        {children}
+      </Button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-md bg-cream-900 px-2 py-1 text-[11px] font-medium text-cream-50 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+      >
+        {label}
+      </span>
+    </div>
   );
 }

@@ -103,6 +103,7 @@ describe('price list detail api', () => {
             name_override: null,
             mrp: 1200,
             base_selling_price: 1000,
+            cost_price: 550,
             is_active: true,
             master_product_id: 'mp-1',
             tenant_brand: {
@@ -129,7 +130,21 @@ describe('price list detail api', () => {
     expect(body.price_list.items).toHaveLength(1);
     expect(body.price_list.items[0].tenant_product.master_product).toEqual({ name: 'Cabernet' });
     expect(body.price_list.items[0].tenant_product.tenant_brand.master_brand).toEqual({ name: 'WineYard' });
+    expect(body.price_list.items[0].tenant_product.cost_price).toBe(550);
     expect(body.price_list.created_by_label).toBe('owner@dealflow.in');
+  });
+
+  it('strips cost_price for seller_assistant', async () => {
+    getVerifiedClaimsMock.mockResolvedValueOnce({
+      tenant_id: 'tenant-1',
+      role: 'seller_assistant',
+      sub: 'user-1',
+    });
+    const request = new NextRequest('http://localhost:3000/api/price-lists/pl-1');
+    const response = await getPriceListDetail(request, { params: Promise.resolve({ id: 'pl-1' }) });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.price_list.items[0].tenant_product.cost_price).toBeNull();
   });
 
   it('returns enriched items from the items endpoint', async () => {
@@ -141,5 +156,6 @@ describe('price list detail api', () => {
     expect(body.items).toHaveLength(1);
     expect(body.items[0].tenant_product.master_product).toEqual({ name: 'Cabernet' });
     expect(body.items[0].tenant_product.tenant_brand.master_brand).toEqual({ name: 'WineYard' });
+    expect(body.items[0].tenant_product.cost_price).toBe(550);
   });
 });

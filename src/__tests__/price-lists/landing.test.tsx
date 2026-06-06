@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 
 const pushMock = vi.fn();
 const usePriceListsLandingMock = vi.fn();
@@ -7,6 +7,7 @@ const useFlagMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
+  usePathname: () => '/price-lists',
 }));
 
 vi.mock('@/hooks/usePriceLists', () => ({
@@ -78,8 +79,11 @@ const mockData = {
       cohort_names: ['Tier A'],
       product_count: 20,
       avg_discount_pct: 8,
+      avg_margin_pct: 22.5,
       created_by_label: 'owner@dealflow.in',
       is_expiring_soon: true,
+      pricing_strategy: 'edit_each' as const,
+      strategy_value: null,
     },
     {
       id: 'pl-draft',
@@ -96,8 +100,11 @@ const mockData = {
       cohort_names: ['Tier A', 'Tier B'],
       product_count: 11,
       avg_discount_pct: null,
+      avg_margin_pct: null,
       created_by_label: 'owner@dealflow.in',
       is_expiring_soon: false,
+      pricing_strategy: 'flat_off_base' as const,
+      strategy_value: 25,
     },
     {
       id: 'pl-expired',
@@ -110,12 +117,15 @@ const mockData = {
       created_at: '2026-04-01T00:00:00Z',
       status: 'expired',
       status_tone: 'neutral',
-      cohorts_count: 1,
-      cohort_names: ['Tier C'],
+      cohorts_count: 0,
+      cohort_names: [],
       product_count: 3,
       avg_discount_pct: 2,
+      avg_margin_pct: 18,
       created_by_label: 'owner@dealflow.in',
       is_expiring_soon: false,
+      pricing_strategy: 'margin_from_mrp' as const,
+      strategy_value: 10,
     },
   ],
   cohorts_total: 2,
@@ -128,6 +138,22 @@ const mockData = {
 
 describe('price lists landing page', () => {
   beforeEach(() => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const keys: string[] = [];
+      for (let i = 0; i < window.localStorage.length; i += 1) {
+        const k = window.localStorage.key(i);
+        if (k) keys.push(k);
+      }
+      keys.forEach((k) => window.localStorage.removeItem(k));
+    }
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      const keys: string[] = [];
+      for (let i = 0; i < window.sessionStorage.length; i += 1) {
+        const k = window.sessionStorage.key(i);
+        if (k) keys.push(k);
+      }
+      keys.forEach((k) => window.sessionStorage.removeItem(k));
+    }
     pushMock.mockReset();
     usePriceListsLandingMock.mockReset();
     useFlagMock.mockReset();
@@ -166,10 +192,27 @@ describe('price lists landing page', () => {
     expect(screen.getByText(/falling back to base price/i)).toBeInTheDocument();
   });
 
-  it('navigates to detail on row click', () => {
-    render(<PriceListsLandingClient initialData={null} />);
+  it('shows pricing strategy under name and em dash cohort when unassigned', () => {
+    const { container } = render(<PriceListsLandingClient initialData={null} />);
+    const tbody = container.querySelector('table tbody');
+    expect(tbody).toBeTruthy();
+    const body = tbody as HTMLElement;
+    expect(within(body).getByText(/independent product pricing/i)).toBeInTheDocument();
+    expect(within(body).getByText(/flat ₹25 off base price/i)).toBeInTheDocument();
+    expect(within(body).getByText(/10% off base price/i)).toBeInTheDocument();
 
-    const row = screen.getAllByRole('row').find((candidate) => candidate.textContent?.includes('May Promo'));
+    fireEvent.click(screen.getByRole('button', { name: 'Expired' }));
+    const expiredRow = within(body).getByText('Old Window').closest('tr');
+    expect(expiredRow?.textContent).toContain('—');
+    expect(expiredRow?.textContent).not.toContain('Unassigned');
+  });
+
+  it('navigates to detail on row click', () => {
+    const { container } = render(<PriceListsLandingClient initialData={null} />);
+    const tbody = container.querySelector('table tbody');
+    expect(tbody).toBeTruthy();
+    const promoCell = within(tbody as HTMLElement).getByText('May Promo');
+    const row = promoCell.closest('tr');
     expect(row).toBeTruthy();
     fireEvent.click(row!);
     expect(pushMock).toHaveBeenCalledWith('/price-lists/pl-active');

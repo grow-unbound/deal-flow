@@ -53,6 +53,7 @@ type CohortMemberRow = {
 type TenantProductRow = {
   id: string;
   base_selling_price: number | null;
+  cost_price: number | null;
 };
 
 function toInitials(name: string): string {
@@ -165,7 +166,7 @@ export async function GET(request: NextRequest) {
     db
       .schema('app')
       .from('tenant_products')
-      .select('id, base_selling_price')
+      .select('id, base_selling_price, cost_price')
       .eq('tenant_id', claims.tenant_id)
       .is('deleted_at', null),
     db
@@ -247,6 +248,10 @@ export async function GET(request: NextRequest) {
   const createdByMap = await getAuthUserEmailMap(createdByIds);
 
   const productBaseMap = new Map(tenantProducts.map((row) => [row.id, Number(row.base_selling_price ?? 0)]));
+  const productCostMap = new Map(
+    tenantProducts.map((row) => [row.id, row.cost_price != null ? Number(row.cost_price) : null]),
+  );
+  const canViewCost = claims.role === 'seller_admin';
   const cohortNameById = new Map(cohorts.map((cohort) => [cohort.id, cohort.name]));
 
   const memberSetByCohort = new Map<string, Set<string>>();
@@ -307,15 +312,28 @@ export async function GET(request: NextRequest) {
 
     let discountAccumulator = 0;
     let discountCount = 0;
+    let marginAccumulator = 0;
+    let marginCount = 0;
     for (const item of items) {
       const base = productBaseMap.get(item.tenant_product_id);
       if (!base || base <= 0) continue;
       const pct = ((base - Number(item.price)) / base) * 100;
       discountAccumulator += pct;
       discountCount += 1;
+
+      if (canViewCost) {
+        const list = Number(item.price);
+        const cost = productCostMap.get(item.tenant_product_id);
+        if (list > 0 && cost != null && cost > 0) {
+          marginAccumulator += ((list - cost) / list) * 100;
+          marginCount += 1;
+        }
+      }
     }
 
     const avgDiscountPct = discountCount > 0 ? Math.round((discountAccumulator / discountCount) * 10) / 10 : null;
+    const avgMarginPct =
+      canViewCost && marginCount > 0 ? Math.round((marginAccumulator / marginCount) * 10) / 10 : null;
 
     return {
       id: pl.id,
@@ -332,8 +350,11 @@ export async function GET(request: NextRequest) {
       cohort_names: cohortNames,
       product_count: items.length,
       avg_discount_pct: avgDiscountPct,
+      avg_margin_pct: avgMarginPct,
       created_by_label: pl.created_by ? createdByMap.get(pl.created_by) ?? 'Team member' : 'Team member',
       is_expiring_soon: isExpiringSoon(pl, nowTs, withinSevenDaysTs),
+      pricing_strategy: pl.pricing_strategy,
+      strategy_value: pl.strategy_value,
     };
   });
 

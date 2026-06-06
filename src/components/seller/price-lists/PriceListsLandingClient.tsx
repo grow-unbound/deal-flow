@@ -19,13 +19,14 @@ import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { usePriceListsLanding, type PriceListLandingRow, type PriceListsLandingResponse } from '@/hooks/usePriceLists';
-import { formatDate } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
+import { formatStrategySummary } from '@/lib/price-list-strategy';
 
 type LandingChip = 'All' | 'Active' | 'Draft' | 'Expired';
-type SortOption = 'Recently updated' | 'Name (A-Z)' | 'Products (high → low)' | 'Validity (latest end date)';
+type SortOption = 'Recently updated' | 'Name (A-Z)' | 'Products (high → low)' | 'Validity (latest end date)' | 'Priority (high → low)';
 
 const CHIPS: LandingChip[] = ['All', 'Active', 'Draft', 'Expired'];
-const SORT_OPTIONS: SortOption[] = ['Recently updated', 'Name (A-Z)', 'Products (high → low)', 'Validity (latest end date)'];
+const SORT_OPTIONS: SortOption[] = ['Recently updated', 'Name (A-Z)', 'Products (high → low)', 'Validity (latest end date)', 'Priority (high → low)'];
 
 function PriceListsLandingSkeleton() {
   return (
@@ -117,6 +118,7 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
     return searched.sort((a, b) => {
       if (sortBy === 'Name (A-Z)') return a.name.localeCompare(b.name);
       if (sortBy === 'Products (high → low)') return b.product_count - a.product_count;
+      if (sortBy === 'Priority (high → low)') return b.priority - a.priority;
       if (sortBy === 'Validity (latest end date)') {
         return new Date(b.valid_to ?? 0).getTime() - new Date(a.valid_to ?? 0).getTime();
       }
@@ -235,9 +237,11 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
           columns={[
             { label: 'Price list', width: 280, className: 'px-5' },
             { label: 'Cohort(s)', className: 'px-5' },
-            { label: 'Products', className: 'px-5' },
+            { label: 'Priority', align: 'center', className: 'px-5' },
+            { label: 'Products', align: 'center', className: 'px-5' },
             { label: 'Validity', className: 'px-5' },
-            { label: 'Avg discount', className: 'px-5' },
+            { label: 'Avg discount', align: 'right', className: 'px-5' },
+            { label: 'Avg margin', align: 'right', className: 'px-5' },
             { label: 'Status', className: 'px-5' },
             { width: 40, className: 'px-4' },
           ]}
@@ -245,9 +249,10 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
           {filteredRows.map((row, index) => {
             const validity = `${formatDate(row.valid_from ?? row.created_at)} → ${row.valid_to ? formatDate(row.valid_to) : 'Open'}`;
             const cohortText = row.cohort_names.length <= 1
-              ? row.cohort_names[0] ?? 'Unassigned'
+              ? row.cohort_names[0] ?? '—'
               : `${row.cohort_names[0]} +${row.cohort_names.length - 1} more`;
             const isExpired = row.status === 'expired';
+            const strategySub = formatStrategySummary(row.pricing_strategy, row.strategy_value);
 
             return (
               <tr
@@ -260,8 +265,8 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
                     <EntityAvatar initials={getInitials(row.name)} hue="teal" size={38} />
                     <div className="min-w-0">
                       <p className="ent-name truncate text-[13.5px] font-medium text-cream-900">{row.name}</p>
-                      <p className="ent-sub mt-0.5 text-[11px] uppercase tracking-[0.05em] text-cream-500">
-                        Created by {row.created_by_label} · {row.product_count} SKUs
+                      <p className="ent-sub mt-0.5 font-mono text-[11px] text-cream-500">
+                        {strategySub}
                       </p>
                     </div>
                   </div>
@@ -269,15 +274,35 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
                 <td className="px-5 py-3.5 text-[12.5px] text-cream-800">
                   {cohortText}
                 </td>
-                <td className="px-5 py-3.5 font-mono text-[13px] font-semibold text-cream-900 tabular-nums">
+                <td className="px-5 py-3.5 text-center font-mono text-[13px] font-semibold text-cream-900 tabular-nums">
+                  {row.priority}
+                </td>
+                <td className="px-5 py-3.5 text-center font-mono text-[13px] font-semibold text-cream-900 tabular-nums">
                   {row.product_count}
                 </td>
                 <td className={`px-5 py-3.5 font-mono text-[12px] ${isExpired ? 'text-cream-500 line-through' : 'text-cream-900'}`}>
                   {validity}
                 </td>
-                <td className="px-5 py-3.5">
+                <td className="px-5 py-3.5 text-right">
                   {row.avg_discount_pct != null ? (
-                    <span className="font-mono text-[13px] font-semibold text-teal-700">-{row.avg_discount_pct}%</span>
+                    <span
+                      className={cn(
+                        'font-mono text-[13px] font-semibold tabular-nums',
+                        row.avg_discount_pct >= 0 ? 'text-teal-700' : 'text-danger-700',
+                      )}
+                    >
+                      {row.avg_discount_pct >= 0 ? '-' : '+'}
+                      {Math.abs(row.avg_discount_pct).toFixed(1)}%
+                    </span>
+                  ) : (
+                    <span className="text-cream-400">—</span>
+                  )}
+                </td>
+                <td className="px-5 py-3.5 text-right">
+                  {row.avg_margin_pct != null ? (
+                    <span className="font-mono text-[13px] font-semibold tabular-nums text-cream-900">
+                      {row.avg_margin_pct.toFixed(1)}%
+                    </span>
                   ) : (
                     <span className="text-cream-400">—</span>
                   )}

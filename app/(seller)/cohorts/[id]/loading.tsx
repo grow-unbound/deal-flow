@@ -16,9 +16,7 @@ export default function CohortDetailLoading() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Skeleton className="h-9 w-24 rounded-[8px]" />
-              <Skeleton className="h-9 w-24 rounded-[8px]" />
-              <Skeleton className="h-9 w-9 rounded-[8px]" />
+              <Skeleton className="h-9 w-[8.5rem] rounded-[8px]" />
             </div>
           </div>
         </div>
@@ -30,7 +28,7 @@ export default function CohortDetailLoading() {
         </div>
 
         <div className="flex items-center gap-2">
-          {Array.from({ length: 3 }).map((_, index) => (
+          {Array.from({ length: 2 }).map((_, index) => (
             <Skeleton key={index} className="h-9 w-28 rounded-full" />
           ))}
         </div>

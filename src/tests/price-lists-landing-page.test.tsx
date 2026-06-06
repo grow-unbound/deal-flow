@@ -6,6 +6,7 @@ const useFlagMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => '/price-lists',
 }));
 
 vi.mock('@/hooks/usePriceLists', () => ({
@@ -15,9 +16,10 @@ vi.mock('@/hooks/usePriceLists', () => ({
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlag: (...args: unknown[]) => useFlagMock(...args),
+  useFlagState: (...args: unknown[]) => useFlagMock(...args),
 }));
 
-import PriceListsPage from '../../app/(seller)/price-lists/page';
+import { PriceListsLandingClient } from '@/components/seller/price-lists/PriceListsLandingClient';
 
 describe('price lists landing integration', () => {
   beforeEach(() => {
@@ -28,7 +30,7 @@ describe('price lists landing integration', () => {
   it('renders flag-off state and does not fetch data', () => {
     useFlagMock.mockReturnValue(false);
 
-    render(<PriceListsPage />);
+    render(<PriceListsLandingClient initialData={null} />);
 
     expect(screen.getByText("This feature isn't enabled yet.")).toBeInTheDocument();
     expect(usePriceListsLandingMock).not.toHaveBeenCalled();
@@ -70,8 +72,11 @@ describe('price lists landing integration', () => {
             cohort_names: ['North'],
             product_count: 5,
             avg_discount_pct: 5,
+            avg_margin_pct: 30,
             created_by_label: 'owner@dealflow.in',
             is_expiring_soon: false,
+            pricing_strategy: 'edit_each' as const,
+            strategy_value: null,
           },
           {
             id: 'pl-expired',
@@ -88,8 +93,11 @@ describe('price lists landing integration', () => {
             cohort_names: ['South'],
             product_count: 4,
             avg_discount_pct: null,
+            avg_margin_pct: null,
             created_by_label: 'owner@dealflow.in',
             is_expiring_soon: false,
+            pricing_strategy: 'edit_each' as const,
+            strategy_value: null,
           },
         ],
         cohorts_total: 2,
@@ -97,7 +105,7 @@ describe('price lists landing integration', () => {
       },
     });
 
-    render(<PriceListsPage />);
+    render(<PriceListsLandingClient initialData={null} />);
 
     expect(screen.getByText('2 price lists')).toBeInTheDocument();
 

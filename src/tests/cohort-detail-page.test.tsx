@@ -2,23 +2,33 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 const useCohortDetailMock = vi.fn();
-const useUpdateCohortDetailMock = vi.fn();
 
 vi.mock('@/hooks/useCohorts', () => ({
   useCohortDetail: () => useCohortDetailMock(),
-  useUpdateCohortDetail: () => useUpdateCohortDetailMock(),
+}));
+
+vi.mock('@/hooks/useRole', () => ({
+  useRole: () => ({
+    role: 'seller_admin',
+    isSellerAdmin: true,
+    isSellerAssistant: false,
+    isBuyerAdmin: false,
+    isBuyerAssistant: false,
+    isSeller: true,
+    isBuyer: false,
+    can: () => true,
+  }),
 }));
 
 import { CohortDetailPage } from '@/components/seller/cohorts/detail/CohortDetailPage';
 
 describe('cohort detail page integration', () => {
   beforeEach(() => {
+    sessionStorage.clear();
     useCohortDetailMock.mockReset();
-    useUpdateCohortDetailMock.mockReset();
-    useUpdateCohortDetailMock.mockReturnValue({ isPending: false, mutate: vi.fn() });
   });
 
-  it('shows 3 tabs only and renders backend conversion values', () => {
+  it('shows 2 tabs and renders backend conversion values', () => {
     useCohortDetailMock.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -26,7 +36,7 @@ describe('cohort detail page integration', () => {
         header: {
           id: 'c1',
           cohort_name: 'Maharashtra Premium',
-          status_label: 'Dynamic',
+          status_label: 'Active',
           status_tone: 'success',
           initials: 'MP',
           hue: 'ember',
@@ -72,19 +82,29 @@ describe('cohort detail page integration', () => {
           catalogs: [],
           gmv_trend_12m: [],
         },
-        activity: [],
+        buyers: [],
+        rules_summary: {
+          is_static: false,
+          member_count: 18,
+          total_tenant_buyers: 48,
+          matched_of_total_label: '18 of 48 buyers',
+          filters: [],
+        },
       },
     });
 
     render(<CohortDetailPage id="c1" />);
 
-    expect(screen.getByRole('button', { name: 'Details & rules' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Buyers' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Performance' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Activity' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Activity' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Members/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Catalogs/i })).not.toBeInTheDocument();
-    expect(screen.getByText('30.0%')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Export' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Open buyer app preview' })).toBeInTheDocument();
+    expect(screen.getAllByText('30.0%').length).toBeGreaterThanOrEqual(1);
+    const editLink = screen.getByRole('link', { name: /Edit cohort/i });
+    expect(editLink).toBeInTheDocument();
+    expect(editLink).toHaveAttribute('href', '/cohorts/c1/edit');
+    expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open buyer app preview' })).not.toBeInTheDocument();
   });
 });
