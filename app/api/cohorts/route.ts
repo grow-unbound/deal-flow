@@ -387,7 +387,8 @@ export async function POST(request: NextRequest) {
       description: data.description ?? null,
       is_static: data.is_static,
       rules: data.rules ?? null,
-      created_by: null,
+      created_by: claims.sub,
+      updated_by: claims.sub,
     })
     .select()
     .single();
