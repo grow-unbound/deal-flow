@@ -5,7 +5,10 @@ import { apiFetch } from '@/lib/api-fetch';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { CohortCreateInput, CohortRules, CohortUpdateInput } from '@/lib/zod';
+import { buildCohortRulesSummary, type CohortRulesSummary } from '@/lib/cohort-rules-summary';
 import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
+
+export type { CohortRulesSummary };
 
 export type CohortType = 'Geo-based' | 'Tier-based' | 'Brand affinity';
 
@@ -89,6 +92,22 @@ export interface CohortDetailMetaStrip4 {
   conversion_pct: number;
 }
 
+export interface CohortDetailBuyer {
+  buyer_id: string;
+  business_name: string;
+  contact_name: string | null;
+  external_ref: string | null;
+  geography_label: string;
+  tier: 'A' | 'B' | 'C' | null;
+  mtd_spend: number;
+  orders_mtd: number;
+  aov: number;
+  credit_used: number;
+  last_order_at: string | null;
+  initials: string;
+  hue: 'teal' | 'ember' | 'cream';
+}
+
 export interface CohortDetailMemberPreview {
   id: string;
   name: string;
@@ -142,22 +161,13 @@ export interface CohortDetailPerformance {
   gmv_trend_12m: Array<{ month: string; value: number }>;
 }
 
-export interface CohortDetailActivityItem {
-  id: string;
-  at: string;
-  action: string;
-  entity_type: string;
-  entity_id: string;
-  summary: string;
-  diff: Record<string, unknown> | null;
-}
-
 export interface CohortDetailResponse {
   header: CohortDetailHeader;
   meta_strip_4: CohortDetailMetaStrip4;
   details_rules: CohortDetailDetailsRules;
   performance: CohortDetailPerformance;
-  activity: CohortDetailActivityItem[];
+  buyers: CohortDetailBuyer[];
+  rules_summary: CohortRulesSummary;
 }
 
 export interface CohortComposerFilterOption {
@@ -341,8 +351,8 @@ export function useSaveCohortComposer(cohortId?: string) {
             header: {
               ...old.header,
               cohort_name: payload.name,
-              status_label: payload.is_static ? 'Static' : 'Dynamic',
-              status_tone: payload.is_static ? 'neutral' : 'success',
+              status_label: 'Active',
+              status_tone: 'success',
               subtitle: {
                 ...old.header.subtitle,
                 description_text: payload.description ?? old.header.subtitle.description_text,
@@ -356,6 +366,12 @@ export function useSaveCohortComposer(cohortId?: string) {
               type: payload.is_static ? 'Static list' : 'Rule-based',
               rules: payload.rules ?? { filters: [] },
             },
+            rules_summary: buildCohortRulesSummary({
+              is_static: payload.is_static,
+              filters: payload.rules?.filters ?? [],
+              member_count: old.rules_summary.member_count,
+              total_tenant_buyers: old.rules_summary.total_tenant_buyers,
+            }),
           };
         });
       }
@@ -391,6 +407,8 @@ export function useUpdateCohortDetail(id: string) {
           header: {
             ...old.header,
             cohort_name: payload.name ?? old.header.cohort_name,
+            status_label: 'Active',
+            status_tone: 'success',
             subtitle: {
               ...old.header.subtitle,
               description_text:
@@ -405,6 +423,13 @@ export function useUpdateCohortDetail(id: string) {
             ...old.details_rules,
             name: payload.name ?? old.details_rules.name,
             description: payload.description ?? old.details_rules.description,
+            is_static: payload.is_static ?? old.details_rules.is_static,
+            type:
+              payload.is_static !== undefined
+                ? payload.is_static
+                  ? 'Static list'
+                  : 'Rule-based'
+                : old.details_rules.type,
             rules:
               payload.rules && Array.isArray(payload.rules.filters)
                 ? {
@@ -416,6 +441,19 @@ export function useUpdateCohortDetail(id: string) {
                   }
                 : old.details_rules.rules,
           },
+          rules_summary: buildCohortRulesSummary({
+            is_static: payload.is_static ?? old.details_rules.is_static,
+            filters:
+              payload.rules && Array.isArray(payload.rules.filters)
+                ? payload.rules.filters.map((f) => ({
+                    field: f.field,
+                    operator: f.operator,
+                    value: f.value,
+                  }))
+                : old.details_rules.rules.filters,
+            member_count: old.rules_summary.member_count,
+            total_tenant_buyers: old.rules_summary.total_tenant_buyers,
+          }),
         };
       });
 

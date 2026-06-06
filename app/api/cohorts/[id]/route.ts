@@ -3,7 +3,9 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { CohortUpdateSchema } from '@/lib/zod';
-import { getCohortComposerPayload, resolveBuyerIdsForRules } from '@/lib/server/cohort-composer';
+import { buildCohortRulesSummary } from '@/lib/cohort-rules-summary';
+import { getAuthUserEmailMap } from '@/lib/server/auth-user-directory';
+import { buildCohortMemberBuyerRows, getCohortComposerPayload, resolveBuyerIdsForRules } from '@/lib/server/cohort-composer';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
 
@@ -223,7 +225,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   if (cohortError || !cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 404 });
 
-  const [{ data: buyers }, { data: members }, { data: orders }, { data: catalogRowsData }, { data: audits }, { data: catalogItems }, { data: tenantProducts }] = await Promise.all([
+  const [{ data: buyers }, { data: members }, { data: orders }, { data: catalogRowsData }, { data: catalogItems }, { data: tenantProducts }] = await Promise.all([
     db
       .schema('app')
       .from('buyers')
@@ -249,13 +251,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .select('id, scope_type, scope_value, status, name, created_at, updated_at')
       .eq('tenant_id', claims.tenant_id)
       .is('deleted_at', null),
-    db
-      .schema('app')
-      .from('audit_log')
-      .select('id, ts, action, entity_type, entity_id, diff')
-      .eq('tenant_id', claims.tenant_id)
-      .order('ts', { ascending: false })
-      .limit(300),
     db
       .schema('app')
       .from('published_catalog_items')
@@ -338,10 +333,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const twelveMonthKeys = getLastNMonthStarts(12);
   const gmvTrend12m = twelveMonthKeys.map(({ key, label }) => ({ month: label, value: Number((monthAgg.get(key)?.gmv ?? 0).toFixed(2)) }));
 
-  const memberSpendMap = new Map<string, number>();
+  const mtdSpendByBuyer = new Map<string, number>();
   for (const order of orderRows) {
-    if (!memberBuyerIds.has(order.buyer_id)) continue;
-    memberSpendMap.set(order.buyer_id, (memberSpendMap.get(order.buyer_id) ?? 0) + Number(order.total_amount ?? 0));
+    if (!memberBuyerIds.has(order.buyer_id) || !order.placed_at) continue;
+    const placedIso = new Date(order.placed_at).toISOString();
+    if (placedIso < currentStartIso || placedIso >= nextStartIso) continue;
+    mtdSpendByBuyer.set(order.buyer_id, (mtdSpendByBuyer.get(order.buyer_id) ?? 0) + Number(order.total_amount ?? 0));
   }
 
   const ordersByBuyerMtd = new Map<string, number>();
@@ -358,11 +355,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       buyer_name: member.business_name,
       city: member.geography?.city ?? member.geography?.state ?? '—',
       initials: initialsFromName(member.business_name),
-      spend_mtd: Number((memberSpendMap.get(member.id) ?? 0).toFixed(2)),
+      spend_mtd: Number((mtdSpendByBuyer.get(member.id) ?? 0).toFixed(2)),
       order_count_mtd: ordersByBuyerMtd.get(member.id) ?? 0,
     }))
-    .sort((a, b) => b.spend_mtd - a.spend_mtd)
-    .slice(0, 10);
+    .sort((a, b) => b.spend_mtd - a.spend_mtd);
 
   const dormantMembers = Math.max(0, totalMembers - activeMembersSet.size);
 
@@ -413,7 +409,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const catalogs = scopedCatalogs
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-    .slice(0, 10)
     .map((catalog) => {
       const stats = ordersByCatalogMtd.get(catalog.id) ?? { orders: 0, gmv: 0 };
       return {
@@ -426,33 +421,61 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       };
     });
 
-  const activity = (audits ?? [])
-    .filter((entry: { entity_id: string; entity_type: string }) => {
-      if (entry.entity_id === id) return true;
-      if (entry.entity_type === 'cohort_members' || entry.entity_type === 'published_catalog' || entry.entity_type === 'price_list_assignments') {
-        return true;
-      }
-      return false;
-    })
-    .slice(0, 100)
-    .map((entry: { id: string; ts: string; action: string; entity_type: string; entity_id: string; diff: Record<string, unknown> | null }) => ({
-      id: entry.id,
-      at: entry.ts,
-      action: entry.action,
-      entity_type: entry.entity_type,
-      entity_id: entry.entity_id,
-      summary: `${entry.action} ${entry.entity_type}`,
-      diff: entry.diff,
-    }));
+  const createdByUserMap = await getAuthUserEmailMap(cohort.created_by ? [cohort.created_by] : []);
+  const createdByLabel = cohort.created_by ? createdByUserMap.get(cohort.created_by) ?? 'Team member' : 'System';
+  const createdBy = `Created by ${createdByLabel}`;
 
-  const createdBy = cohort.created_by ? `Created by user ${String(cohort.created_by).slice(0, 8)}` : 'Created by system';
+  const rulesPayload = cohort.rules ?? { filters: [] };
+  const rules_summary = buildCohortRulesSummary({
+    is_static: cohort.is_static,
+    filters: rulesPayload.filters ?? [],
+    member_count: totalMembers,
+    total_tenant_buyers: buyerRows.length,
+  });
+
+  let buyersPayload: Array<{
+    buyer_id: string;
+    business_name: string;
+    contact_name: string | null;
+    external_ref: string | null;
+    geography_label: string;
+    tier: 'A' | 'B' | 'C' | null;
+    mtd_spend: number;
+    orders_mtd: number;
+    aov: number;
+    credit_used: number;
+    last_order_at: string | null;
+    initials: string;
+    hue: 'teal' | 'ember' | 'cream';
+  }> = [];
+
+  try {
+    const memberRowsDetail = await buildCohortMemberBuyerRows(db, claims.tenant_id, Array.from(memberBuyerIds));
+    buyersPayload = memberRowsDetail.map((row) => ({
+      buyer_id: row.id,
+      business_name: row.business_name,
+      contact_name: row.contact_name,
+      external_ref: row.external_ref,
+      geography_label: row.geography_label,
+      tier: row.tier,
+      mtd_spend: row.mtd_spend,
+      orders_mtd: row.orders_mtd,
+      aov: row.orders_mtd > 0 ? Number((row.mtd_spend / row.orders_mtd).toFixed(2)) : 0,
+      credit_used: row.credit_used,
+      last_order_at: row.last_order_at,
+      initials: row.initials,
+      hue: row.hue,
+    }));
+  } catch (e) {
+    console.error('[GET /api/cohorts/[id]] buildCohortMemberBuyerRows', (e as Error)?.message);
+  }
 
   return NextResponse.json({
     header: {
       id: cohort.id,
       cohort_name: cohort.name,
-      status_label: cohort.is_static ? 'Static' : 'Dynamic',
-      status_tone: cohort.is_static ? 'neutral' : 'success',
+      status_label: 'Active',
+      status_tone: 'success',
       initials: initialsFromName(cohort.name),
       hue: cohort.is_static ? 'cream' : 'ember',
       subtitle: {
@@ -497,7 +520,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       catalogs,
       gmv_trend_12m: gmvTrend12m,
     },
-    activity,
+    buyers: buyersPayload,
+    rules_summary,
   });
 }
 
@@ -554,7 +578,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { data: cohort, error: updateError } = await db
     .schema('app')
     .from('cohorts')
-    .update({ ...parsed.data, updated_at: new Date().toISOString() })
+    .update({ ...parsed.data, updated_at: new Date().toISOString(), updated_by: claims.sub })
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .is('deleted_at', null)
