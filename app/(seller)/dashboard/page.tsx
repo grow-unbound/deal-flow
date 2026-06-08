@@ -145,7 +145,7 @@ export default async function DashboardPage() {
                 <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cream-900)' }}>Latest orders</div>
                 <div style={{ fontSize: 12, color: 'var(--cream-600)', marginTop: 2 }}>Across all buyers</div>
               </div>
-              <Link href="/orders" style={{ fontSize: 12, color: 'var(--teal-500)', fontWeight: 600, textDecoration: 'none' }}>All orders</Link>
+              <Link href="/sales-orders" style={{ fontSize: 12, color: 'var(--teal-500)', fontWeight: 600, textDecoration: 'none' }}>All orders</Link>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
               {recentOrders.map((o) => {

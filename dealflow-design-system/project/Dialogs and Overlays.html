@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- @dsCard group="Brand" name="Dialogs and Overlays" subtitle="Three-tier overlay system: modal, slide-over, composer, plus inline-row escape hatch." -->
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -7,6 +8,7 @@
 
   <link rel="stylesheet" href="dialogs/colors_and_type.css" />
   <link rel="stylesheet" href="dialogs/dialogs.css" />
+  <link rel="stylesheet" href="dialogs/documents.css" />
 
   <style>
     body { margin: 0; }
@@ -28,9 +30,86 @@
   <script type="text/babel" src="dialogs/slideovers.jsx"></script>
   <script type="text/babel" src="dialogs/composers.jsx"></script>
   <script type="text/babel" src="dialogs/composers-extra.jsx"></script>
+  <script type="text/babel" src="dialogs/documents.jsx"></script>
+  <script type="text/babel" src="dialogs/documents-states.jsx"></script>
+  <script type="text/babel" src="dialogs/documents-modals.jsx"></script>
+  <script src="_ds_bundle.js"></script>
 
   <script type="text/babel" data-presets="env,react">
-    const { useEffect } = React;
+    const { useEffect, useState } = React;
+    const { Calendar } = window.DealFlowDesignSystem_13780f;
+
+    /* ── CALENDAR DEMO COMPONENTS ──────────────────────────── */
+    function CalendarModalDemo() {
+      const [selectedDate, setSelectedDate] = useState(null);
+
+      return (
+        <div className="ab">
+          <FakeCockpit section="Brands" dimmed />
+          <div className="ab-scrim"></div>
+
+          <div className="modal modal--wide">
+            <div className="modal-head">
+              <div className="title-block">
+                <h2 className="ov-title">Select delivery date</h2>
+                <p className="ov-sub" style={{ marginTop: 4 }}>
+                  Choose when you'd like to receive this order.
+                </p>
+              </div>
+              <button className="ov-close" aria-label="Close"><Icon name="x" size={16} /></button>
+            </div>
+
+            <div className="modal-body" style={{ padding: '18px 22px 4px' }}>
+              <Calendar
+                value={selectedDate}
+                onChange={setSelectedDate}
+                minDate={new Date()}
+              />
+            </div>
+
+            <div className="modal-foot">
+              <div className="spacer"></div>
+              <button className="btn btn-ghost">Cancel</button>
+              <button className="btn btn-primary" disabled={!selectedDate}>
+                {selectedDate
+                  ? `Confirm: ${selectedDate.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}`
+                  : 'Select a date'}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function CalendarStandaloneDemo() {
+      const [selectedDate, setSelectedDate] = useState(new Date(2026, 5, 15));
+
+      return (
+        <div className="ab" style={{ padding: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ maxWidth: 320 }}>
+            <div style={{
+              marginBottom: 20,
+              padding: '16px 20px',
+              background: 'var(--cream-50)',
+              borderRadius: 12,
+              border: '1px solid var(--cream-300)',
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--cream-700)', letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 6 }}>
+                Selected date
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 500, color: 'var(--cream-900)', fontFamily: 'var(--font-display)' }}>
+                {selectedDate ? selectedDate.toLocaleDateString('en-IN', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '—'}
+              </div>
+            </div>
+
+            <Calendar
+              value={selectedDate}
+              onChange={setSelectedDate}
+            />
+          </div>
+        </div>
+      );
+    }
 
     function App() {
       return (
@@ -40,6 +119,16 @@
           <DCSection id="system" title="System" subtitle="When to use which tier, with the deciding question and the open routing/dismiss rules.">
             <DCArtboard id="system-rules" label="System rules + decision matrix" width={1320} height={920}>
               <SystemRulesCard />
+            </DCArtboard>
+          </DCSection>
+
+          {/* ── CALENDAR DATE PICKER ──────────────────────────────── */}
+          <DCSection id="calendar" title="Calendar date picker" subtitle="Custom calendar widget for modal and slide-over contexts.">
+            <DCArtboard id="calendar-modal" label="Modal · Select date" width={540} height={620}>
+              <CalendarModalDemo />
+            </DCArtboard>
+            <DCArtboard id="calendar-standalone" label="Standalone calendar" width={820} height={720}>
+              <CalendarStandaloneDemo />
             </DCArtboard>
           </DCSection>
 
@@ -108,7 +197,49 @@
             </DCArtboard>
           </DCSection>
 
-          {/* ── ESCAPE HATCH — INLINE ROWS ────────────────────────── */}
+          {/* ── DOCUMENTS — ESTIMATE / SO / INVOICE ───────────────── */}
+          <DCSection id="documents" title="Documents — Estimate · Sales order · Invoice" subtitle="Composer over slide-over: a transactional document needs the buyer's pricelist, credit, stock, and totals visible while filling in lines. Same chrome reused across all three, and across Create / Edit / View.">
+            <DCArtboard id="doc-rationale" label="Why composer · how the three documents share one chrome" width={1480} height={620}>
+              <DocRationale />
+            </DCArtboard>
+
+            <DCArtboard id="doc-empty" label="State 1 · Empty (just opened, no buyer)" width={1480} height={920}>
+              <DocComposerEstimateEmpty />
+            </DCArtboard>
+            <DCArtboard id="doc-buyer" label="State 2 · Buyer picked, no lines (pricelist + credit visible)" width={1480} height={920}>
+              <DocComposerEstimateBuyer />
+            </DCArtboard>
+            <DCArtboard id="doc-progress" label="State 3 · In progress (4 lines, totals + insights live)" width={1480} height={920}>
+              <DocComposerEstimateInProgress />
+            </DCArtboard>
+            <DCArtboard id="doc-edit" label="State 4 · Edit mode (sent invoice, diff markers, version bump on save)" width={1480} height={920}>
+              <DocComposerInvoiceEdit />
+            </DCArtboard>
+            <DCArtboard id="doc-stock" label="State 5 · Stock warning (SO line over available stock)" width={1480} height={920}>
+              <DocComposerSOStockWarning />
+            </DCArtboard>
+            <DCArtboard id="doc-credit" label="State 6 · Credit-limit warning (total over buyer's credit)" width={1480} height={920}>
+              <DocComposerEstimateCreditWarn />
+            </DCArtboard>
+            <DCArtboard id="doc-sent" label="State 7 · View / read-only after send (status Sent, lifecycle action bar)" width={1480} height={920}>
+              <DocComposerInvoiceSent />
+            </DCArtboard>
+
+            <DCArtboard id="doc-modal-convert" label="Modal · Convert estimate → SO (line picker)" width={920} height={760}>
+              <ModalConvertEstimateToSO />
+            </DCArtboard>
+            <DCArtboard id="doc-modal-paid" label="Modal · Mark invoice as paid (amount, date, method, reference)" width={920} height={760}>
+              <ModalMarkInvoicePaid />
+            </DCArtboard>
+            <DCArtboard id="doc-modal-void" label="Modal · Void invoice (typed-confirm, irreversible)" width={920} height={760}>
+              <ModalVoidInvoice />
+            </DCArtboard>
+            <DCArtboard id="doc-modal-send" label="Modal · Send via WhatsApp / Email (recipient + preview)" width={920} height={820}>
+              <ModalSendInvoice />
+            </DCArtboard>
+          </DCSection>
+
+          {/* ── ESCAPE HATCH — INLINE ROWS ────────────────────── */}
           <DCSection id="inline" title="Escape hatch — inline rows" subtitle="When the payload is small AND the user is already looking at the existing roster, beat the slide-over to it: add in place inside the standard Detail-page chrome.">
             <DCArtboard id="inline-team" label="Customer Detail · Team tab · standard table with pinned add-row" width={1480} height={920}>
               <InlineTeamRows />

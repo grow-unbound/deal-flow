@@ -82,6 +82,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     const { tenant_id, buyer_id, sub } = context;
     const db = supabaseAdmin ?? supabase;
 
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
     const sortedItems = [...items].sort((a, b) => a.tenant_product_id.localeCompare(b.tenant_product_id));
     const cart_hash = createHash('sha256')
       .update(JSON.stringify(sortedItems.map((i) => ({ id: i.tenant_product_id, qty: i.qty, price: i.unit_price }))))
@@ -118,7 +120,20 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     const { data: newEstimate, error: insertError } = await (db as any)
       .schema('app')
       .from('estimates')
-      .insert({ tenant_id, buyer_id, estimate_number, status: 'pending', subtotal, total_amount, cart_hash, notes: notes ?? null, catalog_id: catalog_id ?? null, created_by: sub })
+      .insert({
+        tenant_id,
+        buyer_id,
+        estimate_number,
+        status: 'draft',
+        source: 'buyer_app',
+        expires_at: expiresAt,
+        subtotal,
+        total_amount,
+        cart_hash,
+        notes: notes ?? null,
+        catalog_id: catalog_id ?? null,
+        created_by: sub,
+      })
       .select('id, estimate_number')
       .single();
 
