@@ -19,6 +19,7 @@ import {
 } from '@/components/seller/composer/ComposerLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   Popover,
   PopoverContent,
@@ -32,6 +33,7 @@ import {
   strategyLabelShort,
 } from '@/lib/price-list-strategy';
 import { cn, formatDate } from '@/lib/utils';
+import { isoDateInput } from '@/lib/date-utils';
 import {
   type PriceListComposerProduct,
   usePriceListComposerProducts,
@@ -65,10 +67,6 @@ function parseCurrencyInput(value: string) {
   const digits = value.replace(/[^\d]/g, '');
   if (!digits) return '';
   return String(Number(digits));
-}
-
-function isoDateInput(value: Date) {
-  return value.toISOString().slice(0, 10);
 }
 
 function getInitials(value: string) {
@@ -567,16 +565,22 @@ export function PriceListComposer({
                     <CalendarDays className="h-4 w-4 shrink-0 text-cream-600" />
                   </button>
                 </PopoverTrigger>
-                <PopoverContent align="start" className="w-[340px] border-cream-300 bg-white p-4">
-                  <div className="space-y-3">
-                    <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-700">From date</p>
-                      <Input type="date" value={validFrom} onChange={(event) => setValidFrom(event.target.value)} />
-                    </div>
-                    <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-700">To date</p>
-                      <Input type="date" value={validTo} onChange={(event) => setValidTo(event.target.value)} />
-                    </div>
+                <PopoverContent align="start" className="w-auto border-cream-300 bg-transparent p-0 shadow-none">
+                  <div className="flex max-h-[min(80vh,640px)] flex-col gap-3 overflow-y-auto p-1">
+                    <DatePicker
+                      label="From date"
+                      value={validFrom}
+                      showSummary={false}
+                      className="shadow-[0_12px_32px_rgba(20,40,35,0.12),0_2px_6px_rgba(20,40,35,0.05)]"
+                      onChange={setValidFrom}
+                    />
+                    <DatePicker
+                      label="To date"
+                      value={validTo}
+                      showSummary={false}
+                      className="shadow-[0_12px_32px_rgba(20,40,35,0.12),0_2px_6px_rgba(20,40,35,0.05)]"
+                      onChange={setValidTo}
+                    />
                   </div>
                 </PopoverContent>
               </Popover>

@@ -155,7 +155,7 @@ export async function GET(req: NextRequest) {
             .eq('tenant_id', tenantId)
             .is('deleted_at', null)
             .in('buyer_id', buyerIds)
-            .in('status', ['issued', 'partially_paid'])
+            .in('status', ['sent', 'overdue'])
         : Promise.resolve({ data: [] as any[], error: null }),
     ]);
 

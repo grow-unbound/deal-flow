@@ -353,7 +353,7 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
       .in('buyer_id', buyerIds)
-      .in('status', ['issued', 'partially_paid']),
+      .in('status', ['sent', 'overdue']),
   ]);
 
   if (allOrdersRes.error) throw allOrdersRes.error;
@@ -489,7 +489,7 @@ export async function buildCohortMemberBuyerRows(db: DbClient, tenantId: string,
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
       .in('buyer_id', buyerIds)
-      .in('status', ['issued', 'partially_paid']),
+      .in('status', ['sent', 'overdue']),
   ]);
 
   if (allOrdersRes.error) throw allOrdersRes.error;

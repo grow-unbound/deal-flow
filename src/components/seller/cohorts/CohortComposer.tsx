@@ -740,8 +740,8 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                     </p>
                     <p className="mt-1 max-w-[38rem] text-[12.5px] leading-[1.5] text-cream-700">
                       {selectionMode === 'manual-selection'
-                        ? 'Browse with filters, then select the exact buyers to include in this cohort.'
-                        : 'Use the left filters to define the group. Uncheck any row below if you want to exclude it from this cohort.'}
+                        ? 'Apply filters, then select buyers to include in this cohort.'
+                        : 'Uncheck buyers you want to exclude from this cohort.'}
                     </p>
                   </div>
                   <div className="ml-auto flex flex-wrap items-center gap-2">

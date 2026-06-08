@@ -20,6 +20,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-overlay';
@@ -39,6 +40,7 @@ import {
   type CatalogComposerProduct,
 } from '@/hooks/useCatalogs';
 import { cn, formatDate, formatInr } from '@/lib/utils';
+import { isoDateInput } from '@/lib/date-utils';
 import { CatalogComposerPayloadSchema, type CatalogComposerAvailability, type CatalogComposerTag } from '@/lib/zod';
 
 type ComposerMode = 'create' | 'edit';
@@ -89,10 +91,6 @@ function buildFilterOptions(values: Array<string | null | undefined>): FilterOpt
   return Array.from(counts.entries())
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => a.name.localeCompare(b.name));
-}
-
-function isoDateInput(value: Date) {
-  return value.toISOString().slice(0, 10);
 }
 
 function getInitials(value: string) {
@@ -572,35 +570,33 @@ export function CatalogComposer({
                     <ChevronDown className="h-4 w-4 shrink-0 text-cream-600" />
                   </button>
                 </PopoverTrigger>
-                <PopoverContent align="start" className="w-[340px] border-cream-300 bg-white p-4">
-                  <div className="space-y-3">
-                    <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-700">From date</p>
-                      <Input
-                        type="date"
-                        value={validFrom}
-                        error={fieldErrors.validFrom}
-                        onChange={(event) => {
-                          setValidFrom(event.target.value);
-                          clearFieldError('validFrom');
-                          clearFieldError('validTo');
-                          setSubmitError(null);
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-700">To date</p>
-                      <Input
-                        type="date"
-                        value={validTo}
-                        error={fieldErrors.validTo}
-                        onChange={(event) => {
-                          setValidTo(event.target.value);
-                          clearFieldError('validTo');
-                          setSubmitError(null);
-                        }}
-                      />
-                    </div>
+                <PopoverContent align="start" className="w-auto border-cream-300 bg-transparent p-0 shadow-none">
+                  <div className="flex max-h-[min(80vh,640px)] flex-col gap-3 overflow-y-auto p-1">
+                    <DatePicker
+                      label="From date"
+                      value={validFrom}
+                      error={fieldErrors.validFrom}
+                      showSummary={false}
+                      className="shadow-[0_12px_32px_rgba(20,40,35,0.12),0_2px_6px_rgba(20,40,35,0.05)]"
+                      onChange={(next) => {
+                        setValidFrom(next);
+                        clearFieldError('validFrom');
+                        clearFieldError('validTo');
+                        setSubmitError(null);
+                      }}
+                    />
+                    <DatePicker
+                      label="To date"
+                      value={validTo}
+                      error={fieldErrors.validTo}
+                      showSummary={false}
+                      className="shadow-[0_12px_32px_rgba(20,40,35,0.12),0_2px_6px_rgba(20,40,35,0.05)]"
+                      onChange={(next) => {
+                        setValidTo(next);
+                        clearFieldError('validTo');
+                        setSubmitError(null);
+                      }}
+                    />
                   </div>
                 </PopoverContent>
               </Popover>
@@ -732,10 +728,10 @@ export function CatalogComposer({
                 <div className="flex flex-wrap items-center gap-3 border-b border-cream-300 bg-cream-50 px-4 py-3">
                   <div>
                     <div className="text-[13px] font-semibold text-cream-900">
-                      {filteredProducts.length} products match · {hiddenByFilters} hidden by filters
+                      {filteredProducts.length} products match the filters
                     </div>
                     <div className="text-[12px] text-cream-700">
-                      Untick to exclude. The catalog controls visibility only; buyers see their cohort pricing.
+                      Uncheck products to exclude.
                     </div>
                   </div>
                   <div className="ml-auto flex flex-wrap items-center gap-2">
