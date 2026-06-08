@@ -1,8 +1,10 @@
 import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { CatalogsLandingClient } from '@/components/seller/catalogs/CatalogsLandingClient';
 import type { CatalogsLandingResponse } from '@/hooks/useCatalogs';
 import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
+import { getFlag, FLAGS } from '@/lib/flags';
 
 async function getCatalogsInitialData(period: SellerLandingPeriod): Promise<CatalogsLandingResponse | null> {
   const h = await headers();
@@ -33,6 +35,12 @@ export default async function CatalogsPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const h = await headers();
+  const tenantId = h.get('x-verified-tenant-id');
+  if (!tenantId) redirect('/dashboard');
+
+  if (!(await getFlag(FLAGS.CATALOG_PUBLISHING, tenantId))) redirect('/dashboard');
+
   const period = await resolveSellerLandingPeriod(searchParams);
   const initialData = await getCatalogsInitialData(period);
   return <CatalogsLandingClient initialData={initialData} initialPeriod={period} />;

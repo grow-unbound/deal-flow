@@ -1,8 +1,10 @@
 import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { CohortsLandingClient } from '@/components/seller/cohorts/CohortsLandingClient';
 import type { CohortsLandingResponse } from '@/hooks/useCohorts';
 import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
+import { getFlag, FLAGS } from '@/lib/flags';
 
 async function getCohortsInitialData(period: SellerLandingPeriod): Promise<CohortsLandingResponse | null> {
   const h = await headers();
@@ -33,6 +35,12 @@ export default async function CohortsPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const h = await headers();
+  const tenantId = h.get('x-verified-tenant-id');
+  if (!tenantId) redirect('/dashboard');
+
+  if (!(await getFlag(FLAGS.COHORTS, tenantId))) redirect('/dashboard');
+
   const period = await resolveSellerLandingPeriod(searchParams);
   const initialData = await getCohortsInitialData(period);
   return <CohortsLandingClient initialData={initialData} initialPeriod={period} />;

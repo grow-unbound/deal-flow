@@ -1,13 +1,15 @@
 import { spawnSync } from 'node:child_process';
 
 const rawArgs = process.argv.slice(2);
+/** npm/pnpm pass `--` between script flags and args; Vitest treats `--` as "run everything". */
+const filtered = rawArgs.filter((a) => a !== '--');
 const passthrough = [];
 
-for (let i = 0; i < rawArgs.length; i += 1) {
-  const arg = rawArgs[i];
+for (let i = 0; i < filtered.length; i += 1) {
+  const arg = filtered[i];
 
   if (arg === '--testPathPattern') {
-    const pattern = rawArgs[i + 1];
+    const pattern = filtered[i + 1];
     if (pattern) {
       passthrough.push(pattern);
       i += 1;

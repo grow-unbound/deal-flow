@@ -1,0 +1,8 @@
+/* =========================================================================
+   DealFlow Design System — Global stylesheet entry point
+   This is what consumers `@import` or `<link>` once to get tokens + element
+   defaults. Per-surface CSS (brands/, dialogs/, v2/, details/) is local to
+   each kit page and not imported here.
+   ========================================================================= */
+
+@import url('./colors_and_type.css');

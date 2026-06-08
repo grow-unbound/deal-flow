@@ -1,6 +1,8 @@
 import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { PriceListsLandingClient } from '@/components/seller/price-lists/PriceListsLandingClient';
 import type { PriceListsLandingResponse } from '@/hooks/usePriceLists';
+import { getFlag, FLAGS } from '@/lib/flags';
 
 async function getPriceListsInitialData(): Promise<PriceListsLandingResponse | null> {
   const h = await headers();
@@ -27,6 +29,12 @@ async function getPriceListsInitialData(): Promise<PriceListsLandingResponse | n
 }
 
 export default async function PriceListsPage() {
+  const h = await headers();
+  const tenantId = h.get('x-verified-tenant-id');
+  if (!tenantId) redirect('/dashboard');
+
+  if (!(await getFlag(FLAGS.PRICING_ENGINE, tenantId))) redirect('/dashboard');
+
   const initialData = await getPriceListsInitialData();
   return <PriceListsLandingClient initialData={initialData} />;
 }

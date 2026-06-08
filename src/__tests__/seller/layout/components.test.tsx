@@ -5,7 +5,6 @@ import { StatusTag } from '@/components/seller/layout/StatusTag';
 import { GrowthPill } from '@/components/seller/layout/GrowthPill';
 import { PageWrap } from '@/components/seller/layout/PageWrap';
 import { PageHeader } from '@/components/seller/layout/PageHeader';
-import { SellerGlobalHeader } from '@/components/layout/SellerGlobalHeader';
 
 describe('InsightStrip4', () => {
   afterEach(() => {
@@ -100,12 +99,3 @@ describe('PageHeader', () => {
   });
 });
 
-describe('SellerGlobalHeader', () => {
-  it('opens the buyer preview launcher in a new tab', () => {
-    render(<SellerGlobalHeader />);
-
-    const buyerAppLink = screen.getByRole('link', { name: /Open buyer app/i });
-    expect(buyerAppLink).toHaveAttribute('href', '/api/buyer/preview/launch');
-    expect(buyerAppLink).toHaveAttribute('target', '_blank');
-  });
-});

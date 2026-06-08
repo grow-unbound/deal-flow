@@ -147,13 +147,6 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
         subtitle={subtitle(data.header)}
         actions={
           <div className="flex items-center gap-2 pt-1">
-            <button type="button" aria-label="Share" className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] text-cream-700 hover:bg-cream-100">
-              <Share2 size={14} />
-            </button>
-            <Button type="button" className="h-9 gap-1.5 border border-cream-400 bg-white px-4 text-[13px] font-medium text-teal-700 hover:bg-cream-100">
-              <Download size={14} />
-              Export
-            </Button>
             <AlertDialog>
               <AlertDialogTrigger className="cockpit-btn cockpit-btn-secondary h-9 px-4 text-cream-800">
                 <Archive size={14} />
@@ -172,7 +165,6 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-            <Button className="cockpit-btn h-9 bg-teal-700 px-5 text-cream-50 hover:bg-teal-800" onClick={() => router.push('/shop')}>Open buyer app preview</Button>
           </div>
         }
       />

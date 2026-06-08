@@ -196,47 +196,56 @@ We did **not** receive a brand-defined icon set or any production code. Lucide i
 
 ---
 
-## 7. Index
+## 7. Components & Starting Points
+
+The compiler automatically discovers components via PascalCase `.d.ts` files paired with `.jsx` siblings. Each component's `@dsCard`-tagged `.html` card is its thumbnail in the Design System tab.
+
+### Design System cards (registered under @dsCard group)
+- **Brand:** Logo, voice, illustrations, empty-state motifs
+- **Colors:** Palette (teal, ember, cream, semantic), tokens (with `@kind` annotations)
+- **Spacing:** Scale, corner radii, shadows, layout dimensions
+- **Components:** Calendar, buttons, inputs, badges, tables, navigation, cards, alerts, toggles, search, product cards, catalogs
+
+### Starting points (registered under @startingPoint)
+Consumers of this design system can fork any starting-point `.html` to kickstart their layout or component set.
+
+## 8. Project structure
 
 ```
 DealFlow Design System/
-├── README.md                ← you are here
-├── SKILL.md                 ← Agent Skills entry point (Claude Code compatible)
-├── colors_and_type.css      ← CSS variables + element defaults
+├── styles.css                   ← Root entry point (imports colors_and_type.css)
+├── colors_and_type.css          ← CSS variables + typography defaults + tokens
+├── _ds_bundle.js                ← [AUTO] Compiled component bundle (do not edit)
+├── _ds_manifest.json            ← [AUTO] Design system metadata (do not edit)
+├── README.md                    ← You are here
 ├── assets/
-│   ├── logo.svg                                 ← Mark + wordmark lockup
-│   ├── logo-mark.svg                            ← Standalone mark
-│   ├── illustration-empty-catalog.svg           ← Linework ledger motif
-│   ├── illustration-empty-orders.svg            ← Linework kraft-box motif
-│   └── pattern-grain.svg                        ← Subtle noise overlay for hero areas
-├── fonts/                   ← (empty — fonts served via Google CDN; see §8 caveats)
-├── preview/                 ← Design-system specimen cards (registered for the Design System tab)
-│   ├── _card.css                                ← Shared card chrome
-│   ├── card-brand-*.html                        ← Voice, logo, logo-variants, illustrations
-│   ├── card-color-*.html                        ← Teal, ember, cream, semantic, semantic-tokens
-│   ├── card-type-*.html                         ← Display, body, mono, composition
-│   ├── card-spacing-*.html                      ← Scale, radii, shadows
-│   └── card-cmp-*.html                          ← Buttons, inputs, badges, table, nav, cards, empty, alerts, toggles, search, catalog/product cards
-└── ui_kits/
-    ├── cockpit/                                 ← Distributor Cockpit · desktop
-    │   ├── README.md
-    │   ├── index.html                           ← Open this to view the kit
-    │   ├── cockpit.css
-    │   ├── data.jsx · icons.jsx · Common.jsx · Shell.jsx
-    │   ├── Dashboard.jsx · Catalogs.jsx · Publisher.jsx · Orders.jsx
-    └── buyer-app/                               ← Buyer App · mobile PWA
-        ├── README.md
-        ├── index.html                           ← Open this to view the kit
-        ├── buyer.css
-        ├── ios-frame.jsx · data.jsx · icons.jsx
-        └── Screens.jsx                          ← Login → Home → Catalog → Product → Cart → Placed → Orders
+│   ├── logo.svg, logo-mark.svg
+│   ├── illustration-*.svg       ← Linework ledger / kraft-box motifs
+│   └── pattern-grain.svg
+├── dialogs/
+│   ├── Calendar.jsx · Calendar.d.ts    ← Date picker component (ESM export)
+│   ├── card-cmp-calendar-picker.html   ← @dsCard thumbnail
+│   ├── colors_and_type.css (local)
+│   ├── dialogs.css · documents.css
+│   ├── shared.jsx, shared.d.ts         ← Icon set + tiny primitives
+│   ├── system.jsx                      ← System rules card
+│   ├── modals.jsx                      ← Modal tier examples
+│   ├── slideovers.jsx                  ← Slide-over panel examples
+│   ├── composers.jsx · composers-extra.jsx  ← Composer tier (Pricelist / Cohort / Catalog)
+│   ├── documents.jsx · documents-states.jsx · documents-modals.jsx  ← Document composer (Estimate / SO / Invoice)
+│   ├── design-canvas.jsx               ← Design Canvas framework
+│   └── Dialogs and Overlays.html       ← Main card showing all overlays
+├── details/, v2/, v3/, brands/          ← UI kit snapshots (landing pages, detail pages)
+├── ui_kits/
+│   ├── cockpit/                        ← Distributor Cockpit kit (desktop, multi-entity)
+│   ├── buyer-app/                      ← Buyer App kit (mobile PWA)
+│   └── [other kits]/
+└── uploads/                             ← User-uploaded files
 ```
-
-Source spec (read-only, mounted via File System Access): `deal-flow/DealFlow App/*.md` — kept outside this folder.
 
 ---
 
-## 8. Caveats & open questions
+## 9. Caveats & open questions
 
 - **Fonts are loaded via Google Fonts CDN, not bundled.** Fraunces and Inter are both there. For an offline / production build, download `Fraunces[opsz,wght].ttf`, `Inter-Variable.ttf`, `JetBrainsMono-Variable.ttf` into `fonts/` and replace the `@import` in `colors_and_type.css` with `@font-face` rules.
 - **No real logo provided.** The DF ligature mark is a proposal; happy to iterate or swap for a wordmark-only treatment.

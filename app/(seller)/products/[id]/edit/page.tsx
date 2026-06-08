@@ -5,6 +5,7 @@ import { SellerTopbar } from '@/components/layout/SellerTopbar';
 import { EditProductForm } from '@/components/seller/products/EditProductForm';
 import { useProduct } from '@/hooks/useProducts';
 import { Package } from 'lucide-react';
+import { FeatureGate } from '@/components/FeatureGate';
 
 interface EditProductPageProps {
   params: Promise<{ id: string }>;
@@ -48,9 +49,9 @@ export default function EditProductPage({ params }: EditProductPageProps) {
   const { id } = use(params);
 
   return (
-    <>
+    <FeatureGate flag="BRAND_PRODUCT_MASTER">
       <SellerTopbar title="Edit product" />
       <EditProductContent id={id} />
-    </>
+    </FeatureGate>
   );
 }

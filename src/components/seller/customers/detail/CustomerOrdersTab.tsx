@@ -45,7 +45,7 @@ export function CustomerOrdersTab({ orders }: CustomerOrdersTabProps) {
           <tr
             key={order.id}
             className="cursor-pointer border-b border-cream-300 bg-white transition-colors hover:bg-cream-50"
-            onClick={() => router.push(`/orders/${order.id}`)}
+            onClick={() => router.push(`/sales-orders/${order.id}`)}
           >
             <td className="px-5 py-3.5 font-mono text-[12px] text-teal-700">{order.order_number ?? order.id.slice(0, 8)}</td>
             <td className="px-5 py-3.5 text-cream-900">{dateLabel(order.placed_at)}</td>
