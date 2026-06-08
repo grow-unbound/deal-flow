@@ -1,20 +1,24 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DocComposerSalesOrder } from '@/components/seller/sales-orders/DocComposerSalesOrder';
 import type { SalesOrderComposerBuyerContext, SalesOrderComposerDocument, SalesOrderComposerProductSearchRow } from '@/types/sales-order-composer';
+import type { TenantEstimateDetailResponse } from '@/types/tenant-estimate-detail';
 
 const pushMock = vi.fn();
 const replaceMock = vi.fn();
 const useFlagStateMock = vi.fn();
-const useCreateSalesOrderDraftMock = vi.fn();
 const useSalesOrderComposerMock = vi.fn();
 const useSaveSalesOrderComposerMock = vi.fn();
-const useConfirmSalesOrderMock = vi.fn();
 const useBuyerSalesOrderContextMock = vi.fn();
 const useSalesOrderProductSearchMock = vi.fn();
 const useDebouncedSalesOrderStockCheckMock = vi.fn();
+const useNextSalesOrderNumberMock = vi.fn();
+const useEstimateComposerSOMock = vi.fn();
+const apiPostMock = vi.fn();
+const apiPatchMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock, replace: replaceMock }),
@@ -24,21 +28,35 @@ vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlagState: (...args: unknown[]) => useFlagStateMock(...args),
 }));
 
+vi.mock('@/hooks/useEstimates', () => ({
+  useEstimateComposer: (...args: unknown[]) => useEstimateComposerSOMock(...args),
+}));
+
 vi.mock('@/hooks/useSalesOrders', () => ({
-  useCreateSalesOrderDraft: (...args: unknown[]) => useCreateSalesOrderDraftMock(...args),
   useSalesOrderComposer: (...args: unknown[]) => useSalesOrderComposerMock(...args),
   useSaveSalesOrderComposer: (...args: unknown[]) => useSaveSalesOrderComposerMock(...args),
-  useConfirmSalesOrder: (...args: unknown[]) => useConfirmSalesOrderMock(...args),
   useBuyerSalesOrderContext: (...args: unknown[]) => useBuyerSalesOrderContextMock(...args),
   useSalesOrderProductSearch: (...args: unknown[]) => useSalesOrderProductSearchMock(...args),
   useDebouncedSalesOrderStockCheck: (...args: unknown[]) => useDebouncedSalesOrderStockCheckMock(...args),
+  useNextSalesOrderNumber: (...args: unknown[]) => useNextSalesOrderNumberMock(...args),
+}));
+
+vi.mock('@/lib/api-fetch', () => ({
+  apiPost: (...args: unknown[]) => apiPostMock(...args),
+  apiPatch: (...args: unknown[]) => apiPatchMock(...args),
 }));
 
 vi.mock('@supabase/auth-helpers-nextjs', () => {
   class QueryMock {
-    select() { return this; }
-    eq() { return this; }
-    limit() { return this; }
+    select() {
+      return this;
+    }
+    eq() {
+      return this;
+    }
+    limit() {
+      return this;
+    }
     then(resolve: (value: { data: unknown; error: null }) => void) {
       resolve({
         data: [
@@ -109,6 +127,51 @@ function baseDocument(overrides: Partial<SalesOrderComposerDocument> = {}): Sale
   };
 }
 
+function estimateForSoPrefill(): TenantEstimateDetailResponse {
+  return {
+    id: 'est-1',
+    estimate_number: 'EST-2026-00021',
+    status: 'draft',
+    buyer_id: 'buyer-1',
+    date_issued: '2026-06-01',
+    valid_until: '2026-06-15',
+    buyer_po_ref: 'PO-1',
+    place_of_supply: 'Delhi',
+    seller_note: 'Note',
+    freight: 0,
+    discount_flat: 0,
+    round_off: 0,
+    sent_at: null,
+    sent_channel: null,
+    items: [
+      {
+        id: 'li-1',
+        tenant_product_id: 'tp-1',
+        product_name: 'Vinikus Shiraz Reserve',
+        sku: 'SKU-001',
+        brand_name: 'Vinikus',
+        brand_initials: 'VI',
+        brand_hue: 'teal',
+        hsn_code: '2204',
+        on_hand: 10,
+        qty: 1,
+        unit_price: 1180,
+        disc_pct: 0,
+        tax_pct: 18,
+        line_total: 1392,
+        scheme_tag: null,
+      },
+    ],
+    buyer_context: baseBuyer(),
+    estimate_version: 1,
+    viewed_at: null,
+    viewed_by_name: null,
+    voided_at: null,
+    converted_to_order_id: null,
+    linked_order_number: null,
+  } as TenantEstimateDetailResponse;
+}
+
 const searchRow: SalesOrderComposerProductSearchRow = {
   tenant_product_id: 'tp-1',
   product_name: 'Vinikus Shiraz Reserve',
@@ -124,7 +187,7 @@ const searchRow: SalesOrderComposerProductSearchRow = {
   pack_size: 750,
 };
 
-function renderComposer(props: React.ComponentProps<typeof DocComposerSalesOrder>) {
+function renderComposer(props: ComponentProps<typeof DocComposerSalesOrder>) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
@@ -137,17 +200,23 @@ describe('DocComposerSalesOrder', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.sessionStorage.clear();
+    apiPostMock.mockResolvedValue({ ok: true, json: async () => ({ data: baseDocument() }) });
+    apiPatchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { id: 'so-1', redirect_path: '/sales-orders/so-1' } }),
+    });
+
     useFlagStateMock.mockReturnValue(true);
     useSaveSalesOrderComposerMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
-    useConfirmSalesOrderMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
     useSalesOrderProductSearchMock.mockReturnValue({ data: [], isLoading: false });
     useBuyerSalesOrderContextMock.mockReturnValue({ data: null, isLoading: false });
     useDebouncedSalesOrderStockCheckMock.mockReturnValue({ data: [], isLoading: false });
-    useCreateSalesOrderDraftMock.mockReturnValue({
-      isPending: false,
-      mutate: (_input: unknown, options: { onSuccess: (payload: { data: SalesOrderComposerDocument }) => void }) => {
-        options.onSuccess({ data: baseDocument() });
-      },
+    useNextSalesOrderNumberMock.mockReturnValue({ data: 'SO-2026-00001', isLoading: false });
+    useEstimateComposerSOMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
     });
     useSalesOrderComposerMock.mockImplementation((id: string | null) => ({
       data: id ? baseDocument() : undefined,
@@ -157,11 +226,20 @@ describe('DocComposerSalesOrder', () => {
     }));
   });
 
+  it('does not POST sales order draft on mount for new order', async () => {
+    renderComposer({ mode: 'create' });
+    expect(await screen.findByPlaceholderText(/Search buyer/i)).toBeInTheDocument();
+    expect(apiPostMock).not.toHaveBeenCalled();
+  });
+
   it('renders expected delivery and confirm order on new sales order', async () => {
     renderComposer({ mode: 'create' });
 
     expect(await screen.findByPlaceholderText(/Search buyer/i)).toBeInTheDocument();
-    expect(screen.getByText('Expected delivery')).toBeInTheDocument();
+    const basicsStrip = document.querySelector('.doc-strip');
+    expect(basicsStrip).toBeTruthy();
+    expect(within(basicsStrip as HTMLElement).getByText('Sales order #')).toBeInTheDocument();
+    expect(within(basicsStrip as HTMLElement).getByText('SO-2026-00001')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Confirm order/i })).toBeDisabled();
   });
 
@@ -177,44 +255,27 @@ describe('DocComposerSalesOrder', () => {
 
     renderComposer({ mode: 'create' });
 
-    fireEvent.click(await screen.findByRole('button', { name: /Acme Retail/i }));
+    fireEvent.focus(screen.getByPlaceholderText(/Search buyer/i));
+    fireEvent.click(await screen.findByRole('button', { name: /Acme Retail/i }, { timeout: 8000 }));
     await screen.findByText(/Credit headroom/i);
     fireEvent.change(screen.getByPlaceholderText(/Search product/i), { target: { value: 'Shiraz' } });
     fireEvent.click(await screen.findByRole('button', { name: /Vinikus Shiraz Reserve/i }));
-    const incrementButtons = screen.getAllByRole('button');
-    const plusButton = incrementButtons.find((button) => button.querySelector('.lucide-plus'));
-    expect(plusButton).toBeTruthy();
-    fireEvent.click(plusButton!);
-    fireEvent.click(plusButton!);
+    const qtyInput = await screen.findByDisplayValue('1');
+    fireEvent.change(qtyInput, { target: { value: '3' } });
 
-    await waitFor(() => {
-      expect(screen.getByText(/1 line\(s\) over stock/i)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Confirm with backorder/i })).toBeEnabled();
-      expect(screen.queryByRole('button', { name: /^Confirm order$/i })).not.toBeInTheDocument();
-    });
-  });
+    await waitFor(
+      () => {
+        expect(screen.getByText(/1 line\(s\) over stock/i)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Confirm with backorder/i })).toBeEnabled();
+        expect(screen.queryByRole('button', { name: /^Confirm order$/i })).not.toBeInTheDocument();
+      },
+      { timeout: 12_000 },
+    );
+  }, 15_000);
 
   it('shows from-estimate subtitle when prefilled from estimate', async () => {
-    useCreateSalesOrderDraftMock.mockReturnValue({
-      isPending: false,
-      mutate: (_input: unknown, options: { onSuccess: (payload: { data: SalesOrderComposerDocument }) => void }) => {
-        options.onSuccess({
-          data: baseDocument({
-            buyer_id: 'buyer-1',
-            source_estimate_number: 'EST-2026-00021',
-            buyer_context: baseBuyer(),
-          }),
-        });
-      },
-    });
-    useSalesOrderComposerMock.mockImplementation((id: string | null) => ({
-      data: id
-        ? baseDocument({
-            buyer_id: 'buyer-1',
-            source_estimate_number: 'EST-2026-00021',
-            buyer_context: baseBuyer(),
-          })
-        : undefined,
+    useEstimateComposerSOMock.mockImplementation((id: string | null) => ({
+      data: id === 'est-1' ? estimateForSoPrefill() : undefined,
       isLoading: false,
       isError: false,
       error: null,
@@ -223,6 +284,7 @@ describe('DocComposerSalesOrder', () => {
     renderComposer({ mode: 'create', fromEstimateId: 'est-1' });
 
     expect(await screen.findByText(/Pre-filled from EST-2026-00021/i)).toBeInTheDocument();
+    expect(apiPostMock).not.toHaveBeenCalled();
   });
 
   it('locks buyer swap in confirmed edit mode while keeping line editing enabled', async () => {

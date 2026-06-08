@@ -1,11 +1,20 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 
 import { effectiveInvoiceStatus, istYmd } from '@/lib/invoice-status';
 import { cn, formatCompactInr } from '@/lib/utils';
 
-export type EstimateViewBandStatus = 'draft' | 'sent' | 'converted' | 'expired' | 'void' | 'accepted' | 'declined' | 'invoiced';
+import {
+  buildEstimateTimelineSteps,
+  buildInvoiceTimelineSteps,
+  buildSalesOrderTimelineSteps,
+} from './DocStatusJourney';
+import { DocStatusTimeline, DocStatusWhatsNext } from './DocStatusTimeline';
+import type { EstimateViewBandStatus, InvoiceViewBandStatus, SalesOrderViewBandStatus } from './doc-status-types';
+
+export type { EstimateViewBandStatus, InvoiceViewBandStatus, SalesOrderViewBandStatus } from './doc-status-types';
 
 export function resolveEstimateBandStatus(status: string, validUntilYmd: string | null): EstimateViewBandStatus {
   if (status === 'void') return 'void';
@@ -45,7 +54,7 @@ function daysUntil(isoDate: string | null): number | null {
   return Math.ceil((end - Date.now()) / DAY_MS);
 }
 
-function chipClass(status: EstimateViewBandStatus): string {
+export function estimateBandChipClass(status: EstimateViewBandStatus): string {
   switch (status) {
     case 'sent':
     case 'accepted':
@@ -64,27 +73,6 @@ function chipClass(status: EstimateViewBandStatus): string {
   }
 }
 
-function chipLabel(status: EstimateViewBandStatus): string {
-  switch (status) {
-    case 'sent':
-      return 'Sent';
-    case 'accepted':
-      return 'Accepted';
-    case 'converted':
-      return 'Converted';
-    case 'invoiced':
-      return 'Invoiced';
-    case 'expired':
-      return 'Expired';
-    case 'void':
-      return 'Void';
-    case 'declined':
-      return 'Declined';
-    default:
-      return 'Draft';
-  }
-}
-
 export function DocStatusBand({
   status,
   sentAt,
@@ -94,6 +82,7 @@ export function DocStatusBand({
   voidedAt,
   convertedToOrderId,
   linkedOrderNumber,
+  whatsNext,
 }: {
   status: EstimateViewBandStatus;
   sentAt: string | null;
@@ -103,6 +92,7 @@ export function DocStatusBand({
   voidedAt: string | null;
   convertedToOrderId: string | null;
   linkedOrderNumber: string | null;
+  whatsNext?: { description: ReactNode; action?: ReactNode } | null;
 }) {
   const dLeft = daysUntil(validUntil);
   const expiredByDate = dLeft !== null && dLeft < 0;
@@ -115,7 +105,7 @@ export function DocStatusBand({
 
   const primary = (() => {
     if (status === 'draft') {
-      return <span className="text-sm text-secondary">Not yet sent</span>;
+      return null;
     }
     if (status === 'sent' || status === 'accepted') {
       return <span className="text-sm text-secondary">Sent {formatSentAt(sentAt)}</span>;
@@ -168,20 +158,22 @@ export function DocStatusBand({
         )
       : null;
 
+  const timelineSteps = buildEstimateTimelineSteps(status, { sentAt, validUntil });
+  const hasMeta = Boolean(primary || viewed || validity);
   return (
-    <div className="doc-status-band sticky top-0 z-10 flex h-10 shrink-0 items-center gap-3 border-b border-cream-300 bg-[var(--bg-recessed)] px-6">
-      <span className={cn('doc-status-chip inline-flex items-center gap-1.5 text-xs font-medium', chipClass(status))}>
-        <span className="dot" aria-hidden />
-        {chipLabel(status)}
-      </span>
-      {primary}
-      {viewed}
-      {validity}
+    <div className="doc-status-band sticky top-0 z-10 shrink-0">
+      <DocStatusTimeline ariaLabel="Estimate progress" steps={timelineSteps} />
+      {hasMeta ? (
+        <div className="doc-status-band__meta mt-4 flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1 border-t border-cream-200 pt-3 text-[13px] text-cream-600">
+          {primary}
+          {viewed}
+          {validity}
+        </div>
+      ) : null}
+      {whatsNext ? <DocStatusWhatsNext description={whatsNext.description} action={whatsNext.action} /> : null}
     </div>
   );
 }
-
-export type InvoiceViewBandStatus = 'draft' | 'sent' | 'overdue' | 'paid' | 'void';
 
 export function resolveInvoiceBandStatus(dbStatus: string, dueDate: string | null): InvoiceViewBandStatus {
   const eff = effectiveInvoiceStatus({ status: dbStatus, due_date: dueDate });
@@ -207,7 +199,7 @@ function daysFromTodayIstUntilDue(dueIso: string | null): number | null {
   return Math.round((parse(dueKey) - parse(todayKey)) / DAY_MS);
 }
 
-function invoiceChipClass(status: InvoiceViewBandStatus): string {
+export function invoiceBandChipClass(status: InvoiceViewBandStatus): string {
   switch (status) {
     case 'sent':
       return 'doc-status--sent';
@@ -219,21 +211,6 @@ function invoiceChipClass(status: InvoiceViewBandStatus): string {
       return 'doc-status--void';
     default:
       return 'doc-status--draft';
-  }
-}
-
-function invoiceChipLabel(status: InvoiceViewBandStatus): string {
-  switch (status) {
-    case 'sent':
-      return 'Sent';
-    case 'paid':
-      return 'Paid';
-    case 'overdue':
-      return 'Overdue';
-    case 'void':
-      return 'Void';
-    default:
-      return 'Draft';
   }
 }
 
@@ -249,6 +226,7 @@ export function DocStatusBandInvoice({
   amountOutstanding,
   grandTotal,
   voidedAt,
+  whatsNext,
 }: {
   dbStatus: string;
   dueDate: string | null;
@@ -261,6 +239,7 @@ export function DocStatusBandInvoice({
   amountOutstanding: number;
   grandTotal: number;
   voidedAt: string | null;
+  whatsNext?: { description: ReactNode; action?: ReactNode } | null;
 }) {
   const bandStatus = resolveInvoiceBandStatus(dbStatus, dueDate);
   const daysLeft = daysFromTodayIstUntilDue(dueDate);
@@ -289,7 +268,7 @@ export function DocStatusBandInvoice({
 
   const primary = (() => {
     if (bandStatus === 'draft') {
-      return <span className="text-sm text-secondary">Not yet sent</span>;
+      return null;
     }
     if (bandStatus === 'overdue') {
       const overdueDays = daysLeft !== null && daysLeft < 0 ? Math.abs(daysLeft) : 1;
@@ -332,29 +311,25 @@ export function DocStatusBandInvoice({
       <span className="text-sm text-secondary">{formatCompactInr(amountOutstanding)} outstanding</span>
     ) : null;
 
+  const timelineSteps = buildInvoiceTimelineSteps(bandStatus, { sentAt, paidAt, voidedAt });
+  const hasMeta = Boolean(primary || viewed || dueUrgency || outstanding);
   return (
-    <div className="doc-status-band sticky top-0 z-10 flex h-10 shrink-0 items-center gap-3 border-b border-cream-300 bg-[var(--bg-recessed)] px-6">
-      <span className={cn('doc-status-chip inline-flex items-center gap-1.5 text-xs font-medium', invoiceChipClass(bandStatus))}>
-        <span className="dot" aria-hidden />
-        {invoiceChipLabel(bandStatus)}
-      </span>
-      {primary}
-      {viewed}
-      {dueUrgency}
-      {outstanding}
+    <div className="doc-status-band sticky top-0 z-10 shrink-0">
+      <DocStatusTimeline ariaLabel="Invoice progress" steps={timelineSteps} />
+      {hasMeta ? (
+        <div className="doc-status-band__meta mt-4 flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1 border-t border-cream-200 pt-3 text-[13px] text-cream-600">
+          {primary}
+          {viewed}
+          {dueUrgency}
+          {outstanding}
+        </div>
+      ) : null}
+      {whatsNext ? <DocStatusWhatsNext description={whatsNext.description} action={whatsNext.action} /> : null}
     </div>
   );
 }
 
 /* ── Sales order view band (EP-17-005) ───────────────────────────────────── */
-
-export type SalesOrderViewBandStatus =
-  | 'draft'
-  | 'received'
-  | 'confirmed'
-  | 'dispatched'
-  | 'delivered'
-  | 'cancelled';
 
 export function resolveSalesOrderBandStatus(
   dbStatus: string,
@@ -369,7 +344,7 @@ export function resolveSalesOrderBandStatus(
   return 'received';
 }
 
-function soChipClass(s: SalesOrderViewBandStatus): string {
+export function salesOrderBandChipClass(s: SalesOrderViewBandStatus): string {
   switch (s) {
     case 'received':
       return 'doc-status--received';
@@ -386,25 +361,6 @@ function soChipClass(s: SalesOrderViewBandStatus): string {
   }
 }
 
-function soChipLabel(s: SalesOrderViewBandStatus): string {
-  switch (s) {
-    case 'draft':
-      return 'Draft';
-    case 'received':
-      return 'Received';
-    case 'confirmed':
-      return 'Confirmed';
-    case 'dispatched':
-      return 'Dispatched';
-    case 'delivered':
-      return 'Delivered';
-    case 'cancelled':
-      return 'Cancelled';
-    default:
-      return 'Draft';
-  }
-}
-
 function formatYmd(ymd: string | null): string {
   if (!ymd) return '';
   const d = new Date(`${ymd}T12:00:00.000Z`);
@@ -414,6 +370,7 @@ function formatYmd(ymd: string | null): string {
 
 export function SalesOrderDocStatusBand({
   status,
+  placedAt,
   receivedAt,
   confirmedAt,
   dispatchedAt,
@@ -423,8 +380,10 @@ export function SalesOrderDocStatusBand({
   carrier,
   cancelReason,
   hasBackorder,
+  whatsNext,
 }: {
   status: SalesOrderViewBandStatus;
+  placedAt: string | null;
   receivedAt: string | null;
   confirmedAt: string | null;
   dispatchedAt: string | null;
@@ -434,13 +393,14 @@ export function SalesOrderDocStatusBand({
   carrier: string | null;
   cancelReason: string | null;
   hasBackorder: boolean;
+  whatsNext?: { description: ReactNode; action?: ReactNode } | null;
 }) {
   const primary = (() => {
     if (status === 'draft') {
-      return <span className="text-sm text-secondary">Not yet confirmed</span>;
+      return null;
     }
     if (status === 'received') {
-      return <span className="text-sm text-secondary">{receivedAt ? formatSentAt(receivedAt) : '—'}</span>;
+      return null;
     }
     if (status === 'confirmed') {
       return (
@@ -466,7 +426,7 @@ export function SalesOrderDocStatusBand({
       );
     }
     if (status === 'delivered') {
-      return <span className="text-sm text-secondary">{deliveredAt ? formatSentAt(deliveredAt) : null}</span>;
+      return null;
     }
     if (status === 'cancelled') {
       return (
@@ -486,14 +446,25 @@ export function SalesOrderDocStatusBand({
       </span>
     ) : null;
 
+  const timelineSteps = buildSalesOrderTimelineSteps(status, {
+    receivedAt,
+    confirmedAt,
+    dispatchedAt,
+    deliveredAt,
+    cancelledAt,
+    placedAt,
+  });
+  const hasMeta = Boolean(primary || backorderNote);
   return (
-    <div className="doc-status-band sticky top-0 z-10 flex h-10 min-h-10 shrink-0 flex-wrap items-center gap-3 border-b border-cream-300 bg-[var(--bg-recessed)] px-6 py-0">
-      <span className={cn('doc-status-chip inline-flex items-center gap-1.5 text-xs font-medium', soChipClass(status))}>
-        <span className="dot" aria-hidden />
-        {soChipLabel(status)}
-      </span>
-      {primary}
-      {backorderNote}
+    <div className="doc-status-band sticky top-0 z-10 shrink-0">
+      <DocStatusTimeline ariaLabel="Sales order progress" steps={timelineSteps} />
+      {hasMeta ? (
+        <div className="doc-status-band__meta mt-4 flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1 border-t border-cream-200 pt-3 text-[13px] text-cream-600">
+          {primary}
+          {backorderNote}
+        </div>
+      ) : null}
+      {whatsNext ? <DocStatusWhatsNext description={whatsNext.description} action={whatsNext.action} /> : null}
     </div>
   );
 }

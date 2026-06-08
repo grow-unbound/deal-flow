@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { composerThreePanelGridClass } from '@/lib/composer-viewport-classes';
 import { cn } from '@/lib/utils';
 
 interface ComposerCrumb {
@@ -16,7 +17,7 @@ export function ComposerShell({
   children: React.ReactNode;
   className?: string;
 }) {
-  return <div className={cn('flex min-h-[calc(100dvh-10rem)] flex-col gap-4', className)}>{children}</div>;
+  return <div className={cn('flex min-h-0 flex-1 flex-col gap-4', className)}>{children}</div>;
 }
 
 export function ComposerBreadcrumbs({
@@ -53,6 +54,8 @@ export function ComposerTitleRow({
   status?: {
     label: string;
     tone?: 'draft' | 'live';
+    /** When set, uses shared document status chip styles (matches detail band palette). */
+    chipClassName?: string;
   };
   actions?: React.ReactNode;
 }) {
@@ -62,16 +65,23 @@ export function ComposerTitleRow({
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="font-display text-[28px] font-semibold tracking-[-0.01em] text-cream-950">{title}</h1>
           {status ? (
-            <span
-              className={cn(
-                'inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]',
-                status.tone === 'live'
-                  ? 'border-teal-200 bg-teal-50 text-teal-700'
-                  : 'border-cream-300 bg-cream-100 text-cream-700',
-              )}
-            >
-              {status.label}
-            </span>
+            status.chipClassName ? (
+              <span className={cn('doc-status-chip inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.1em]', status.chipClassName)}>
+                <span className="dot" aria-hidden />
+                {status.label}
+              </span>
+            ) : (
+              <span
+                className={cn(
+                  'inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]',
+                  status.tone === 'live'
+                    ? 'border-teal-200 bg-teal-50 text-teal-700'
+                    : 'border-cream-300 bg-cream-100 text-cream-700',
+                )}
+              >
+                {status.label}
+              </span>
+            )
           ) : null}
         </div>
         <p className="mt-1.5 max-w-[72ch] text-[13px] leading-[1.55] text-cream-700">{subtitle}</p>
@@ -125,7 +135,7 @@ export function ComposerBodyGrid({
   className?: string;
 }) {
   return (
-    <div className={cn('grid min-h-[620px] flex-1 items-stretch gap-5 lg:grid-cols-[260px_minmax(0,1fr)_320px]', className)}>
+    <div className={cn(composerThreePanelGridClass, className)}>
       {left}
       {center}
       {right}

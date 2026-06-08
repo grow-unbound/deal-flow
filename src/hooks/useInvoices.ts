@@ -1,8 +1,8 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
-import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
+import { apiFetch, apiPatch } from '@/lib/api-fetch';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import { getSellerLandingInitialData, type SellerLandingPeriod } from '@/lib/seller-period';
 import type { InvoiceComposerDocument, InvoiceComposerSavePayload } from '@/types/invoice-composer';
@@ -10,36 +10,52 @@ import type { TenantInvoicesResponse } from '@/types/tenant-invoices';
 
 export type { TenantInvoicesResponse } from '@/types/tenant-invoices';
 
-export function useCreateInvoiceDraft() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
-      const res = await apiPost('/api/tenant/invoices', {});
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error ?? 'Failed to create draft');
-      }
-      return (await res.json()) as { data: InvoiceComposerDocument };
-    },
-    onSuccess: (payload) => {
-      qc.setQueryData(['tenant-invoice-composer', payload.data.id], payload.data);
-    },
-  });
+async function fetchTenantInvoiceComposer(invoiceId: string): Promise<InvoiceComposerDocument> {
+  const res = await apiFetch(`/api/tenant/invoices/${invoiceId}?view=composer`);
+  if (res.status === 404) throw new Error('not_found');
+  if (res.status === 403) throw new Error('forbidden');
+  if (!res.ok) throw new Error('Failed to fetch invoice');
+  const json = (await res.json()) as { data: InvoiceComposerDocument };
+  return json.data;
+}
+
+export function tenantInvoiceComposerQueryOptions(invoiceId: string) {
+  return {
+    queryKey: ['tenant-invoice-composer', invoiceId] as const,
+    queryFn: () => fetchTenantInvoiceComposer(invoiceId),
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+  };
+}
+
+export async function prefetchInvoiceComposer(qc: QueryClient, invoiceId: string): Promise<void> {
+  await qc.prefetchQuery(tenantInvoiceComposerQueryOptions(invoiceId));
 }
 
 export function useInvoiceComposer(invoiceId: string | null) {
   return useQuery({
     queryKey: ['tenant-invoice-composer', invoiceId],
-    queryFn: async (): Promise<InvoiceComposerDocument> => {
-      const res = await apiFetch(`/api/tenant/invoices/${invoiceId}?view=composer`);
-      if (res.status === 404) throw new Error('not_found');
-      if (res.status === 403) throw new Error('forbidden');
-      if (!res.ok) throw new Error('Failed to fetch invoice');
-      const json = (await res.json()) as { data: InvoiceComposerDocument };
-      return json.data;
-    },
+    queryFn: () => fetchTenantInvoiceComposer(invoiceId!),
     enabled: Boolean(invoiceId),
     staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+  });
+}
+
+export function useNextInvoiceNumber(enabled: boolean) {
+  return useQuery({
+    queryKey: ['next-invoice-number'],
+    queryFn: async (): Promise<string> => {
+      const res = await apiFetch('/api/tenant/invoices/next-number');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? 'Failed to fetch next invoice number');
+      }
+      const json = (await res.json()) as { invoice_number: string };
+      return json.invoice_number;
+    },
+    enabled,
+    staleTime: 30_000,
     gcTime: NAVIGATION_QUERY_GC_TIME,
   });
 }

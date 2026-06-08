@@ -4,17 +4,18 @@ import { ArrowRightCircle, Copy, Edit2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
+import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
+import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasicsStrip';
+import { DocumentComposerLoadingSkeleton, DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
 import {
   BuyerCardFilled,
-  DocComposerFrame,
   DocStatusBand,
-  DocStrip,
-  DocTitleRow,
-  DocTop,
   InsightsCard,
   LinesTable,
+  estimateBandChipClass,
   resolveEstimateBandStatus,
   TotalsCard,
   type EstimateComposerLineRow,
@@ -34,45 +35,20 @@ import {
   useDuplicateEstimate,
   useEstimateDetail,
   useVoidEstimate,
+  seedEstimateComposerCache,
 } from '@/hooks/useEstimates';
 import { useFlagState } from '@/hooks/useFeatureFlag';
-import type { EstimateComposerProductSearchRow, EstimateComposerTotals } from '@/types/estimate-composer';
+import { computeLineTotal, computeTotals, defaultPaymentTerms } from '@/lib/documents/composer-math';
+import type { EstimateComposerProductSearchRow } from '@/types/estimate-composer';
 import { formatCompactInr } from '@/lib/utils';
 
 import { ModalConvertEstimateToSO } from '@/components/seller/estimates/modals/ModalConvertEstimateToSO';
-
-function defaultPaymentTerms(days: number) {
-  return days > 0 ? `Net ${days}` : 'Due on receipt';
-}
-
-function computeLineTotal(line: Pick<EstimateComposerLineRow, 'qty' | 'unit_price' | 'disc_pct' | 'tax_pct'>) {
-  const taxable = line.qty * line.unit_price * (1 - line.disc_pct / 100);
-  return Number((taxable + taxable * (line.tax_pct / 100)).toFixed(2));
-}
-
-function computeTotals(lines: EstimateComposerLineRow[], discountFlat: number, freight: number, roundOff: number): EstimateComposerTotals {
-  const activeLines = lines.filter((line) => line.diff !== 'removed');
-  const subtotal = activeLines.reduce((sum, line) => sum + line.qty * line.unit_price * (1 - line.disc_pct / 100), 0);
-  const taxAmount = activeLines.reduce((sum, line) => {
-    const taxable = line.qty * line.unit_price * (1 - line.disc_pct / 100);
-    return sum + taxable * (line.tax_pct / 100);
-  }, 0);
-  return {
-    subtotal,
-    discount_flat: discountFlat,
-    freight,
-    taxable_amount: Math.max(subtotal - discountFlat, 0),
-    tax_amount: taxAmount,
-    round_off: roundOff,
-    grand_total: Math.max(subtotal - discountFlat, 0) + taxAmount + freight + roundOff,
-    total_units: activeLines.reduce((sum, line) => sum + line.qty, 0),
-  };
-}
 
 const noop = () => {};
 
 export function EstimateDetailPage({ id }: { id: string }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const estimatesFlag = useFlagState('ESTIMATES');
   const { data, isLoading, isError, error } = useEstimateDetail(id);
@@ -104,7 +80,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
   }
 
   if (isLoading) {
-    return null;
+    return <DocumentComposerLoadingSkeleton showStatusBand />;
   }
 
   if (isError) {
@@ -112,7 +88,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
       return <FeatureDisabledState />;
     }
     return (
-      <div className="max-w-[1440px] mx-auto w-full px-8 py-6">
+      <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6">
         <p className="text-[13px] text-danger-700">{error instanceof Error ? error.message : 'Failed to load estimate.'}</p>
       </div>
     );
@@ -128,7 +104,6 @@ export function EstimateDetailPage({ id }: { id: string }) {
   const isAdmin = data.viewer_role === ROLES.SELLER_ADMIN;
   const terminal = data.status === 'converted' || data.status === 'void' || data.status === 'expired';
   const showEdit = !terminal;
-  const showConvert = data.status === 'sent';
   const showVoid = isAdmin && (data.status === 'draft' || data.status === 'sent');
   const showDuplicate = data.status !== 'void' && data.status !== 'converted';
 
@@ -146,6 +121,41 @@ export function EstimateDetailPage({ id }: { id: string }) {
     && buyer?.place_of_supply
     && buyer.seller_state.toLowerCase() !== buyer.place_of_supply.toLowerCase(),
   );
+
+  const statusTone = data.status === 'sent' || data.status === 'converted' ? 'live' : 'draft';
+
+  const estimateWhatsNext = (() => {
+    if (bandStatus === 'sent' || bandStatus === 'accepted') {
+      return {
+        description: 'Buyer has this estimate. When terms are agreed, convert to a sales order to start fulfillment.',
+        action: (
+          <Button type="button" size="sm" className="gap-2" onClick={() => setConvertOpen(true)}>
+            <ArrowRightCircle className="h-4 w-4" />
+            Convert to SO
+          </Button>
+        ),
+      };
+    }
+    if (bandStatus === 'draft') {
+      return {
+        description: 'Finish lines and dates, then send from edit — the buyer is notified only after send.',
+        action: null,
+      };
+    }
+    if (bandStatus === 'converted' || bandStatus === 'invoiced') {
+      return {
+        description: 'This estimate is closed. Use the sales order for fulfillment and invoicing.',
+        action: null,
+      };
+    }
+    if (bandStatus === 'void' || bandStatus === 'declined') {
+      return { description: 'This estimate is no longer active.', action: null };
+    }
+    if (bandStatus === 'expired') {
+      return { description: 'Validity has passed. Duplicate to a new estimate or void if obsolete.', action: null };
+    }
+    return null;
+  })();
 
   function handleDuplicate() {
     dupMut.mutate(undefined, {
@@ -196,9 +206,53 @@ export function EstimateDetailPage({ id }: { id: string }) {
 
   return (
     <>
-      <DocComposerFrame
+      <DocumentComposerShell
         mode="view"
         kind="estimate"
+        breadcrumbItems={[
+          { label: 'Sales' },
+          { label: 'Estimates', href: '/estimates' },
+          { label: data.estimate_number, current: true },
+        ]}
+        title={data.estimate_number}
+        subtitle={buyer ? `${buyer.business_name} · ${buyer.bill_address} · ${buyer.place_of_supply}` : 'No buyer assigned.'}
+        status={{ label: data.status_label, tone: statusTone, chipClassName: estimateBandChipClass(bandStatus) }}
+        titleActions={(
+          <>
+            {showEdit ? (
+              <Button
+                type="button"
+                size="sm"
+                className="gap-2"
+                onClick={() => {
+                  seedEstimateComposerCache(queryClient, id, data);
+                  router.push(`/estimates/${id}/edit`);
+                }}
+              >
+                <Edit2 className="h-4 w-4" />
+                {data.status === 'draft' ? 'Edit & send' : 'Edit estimate'}
+              </Button>
+            ) : null}
+            {showDuplicate ? (
+              <Button type="button" variant="ghost" size="sm" className="gap-2" onClick={handleDuplicate} disabled={dupMut.isPending}>
+                <Copy className="h-4 w-4" />
+                Duplicate
+              </Button>
+            ) : null}
+            {showVoid ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setVoidOpen(true)}
+                disabled={voidMut.isPending}
+              >
+                Void estimate
+              </Button>
+            ) : null}
+          </>
+        )}
         statusBand={(
           <DocStatusBand
             status={bandStatus}
@@ -209,89 +263,41 @@ export function EstimateDetailPage({ id }: { id: string }) {
             voidedAt={data.voided_at}
             convertedToOrderId={data.converted_to_order_id}
             linkedOrderNumber={data.linked_order_number}
+            whatsNext={estimateWhatsNext}
           />
         )}
-        top={(
-          <nav className="flex flex-wrap items-center gap-1.5 text-[12px] text-cream-600">
-            <button type="button" className="hover:text-cream-900" onClick={() => router.push('/estimates')}>
-              Estimates
-            </button>
-            <span className="text-cream-400">›</span>
-            <span className="text-cream-900">{data.estimate_number}</span>
-          </nav>
-        )}
-        titleRow={(
-          <DocTitleRow
-            title={`${data.estimate_number}`}
-            subtitle={buyer ? `${buyer?.business_name} · ${buyer.bill_address} · ${buyer.place_of_supply}` : 'No buyer assigned.'}
-            rightActions={(
-              <>
-                {showEdit ? (
-                  <Button type="button" size="sm" className="gap-2" onClick={() => router.push(`/estimates/${id}/edit`)}>
-                    <Edit2 className="h-4 w-4" />
-                    Edit estimate
-                  </Button>
-                ) : null}
-                {showConvert ? (
-                  <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setConvertOpen(true)}>
-                    <ArrowRightCircle className="h-4 w-4" />
-                    Convert to SO
-                  </Button>
-                ) : null}
-                {showDuplicate ? (
-                  <Button type="button" variant="ghost" size="sm" className="gap-2" onClick={handleDuplicate} disabled={dupMut.isPending}>
-                    <Copy className="h-4 w-4" />
-                    Duplicate
-                  </Button>
-                ) : null}
-                {showVoid ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => setVoidOpen(true)}
-                    disabled={voidMut.isPending}
-                  >
-                    Void estimate
-                  </Button>
-                ) : null}
-              </>
-            )}
-          />
-        )}
-        strip={(
-          <DocStrip
+        basics={(
+          <DocumentBasicsStrip
             kind="estimate"
             readOnly
             docNumber={data.estimate_number}
             dateIssued={data.date_issued}
-            validUntil={data.valid_until}
+            secondDate={data.valid_until}
             buyerPoRef={data.buyer_po_ref}
             placeOfSupply={data.place_of_supply}
-            placeOptions={[data.place_of_supply]}
-            onDocNumberChange={noop}
             onDateIssuedChange={noop}
-            onValidUntilChange={noop}
+            onSecondDateChange={noop}
             onBuyerPoRefChange={noop}
             onPlaceOfSupplyChange={noop}
           />
         )}
         left={buyer
           ? (
-              <BuyerCardFilled
-                buyer={buyer}
-                previewTotal={0}
-                paymentTermsValue={paymentTermsLabel}
-                readOnly
-                onPaymentTermsChange={noop}
-                onSwap={noop}
-              />
+              <ComposerSidebarCard>
+                <BuyerCardFilled
+                  buyer={buyer}
+                  previewTotal={0}
+                  paymentTermsValue={paymentTermsLabel}
+                  readOnly
+                  onPaymentTermsChange={noop}
+                  onSwap={noop}
+                />
+              </ComposerSidebarCard>
             )
           : (
-              <aside className="rounded-[14px] border border-dashed border-cream-400 bg-cream-50 p-4 text-[13px] text-cream-700">
-                No buyer on this estimate.
-              </aside>
+              <ComposerSidebarCard>
+                <p className="text-[13px] text-cream-700">No buyer on this estimate.</p>
+              </ComposerSidebarCard>
             )}
         center={(
           <LinesTable

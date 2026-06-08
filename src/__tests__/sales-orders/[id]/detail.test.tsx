@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 
 const pushMock = vi.fn();
 const useSalesOrderDetailMock = vi.fn();
@@ -7,11 +9,20 @@ const useDispatchMock = vi.fn();
 const useDeliverMock = vi.fn();
 const useCancelMock = vi.fn();
 const useFlagStateMock = vi.fn();
+const prefetchSalesOrderComposerMock = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock, replace: vi.fn() }),
   usePathname: () => '/sales-orders/ord-1',
 }));
+
+vi.mock('@/hooks/useSalesOrders', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/useSalesOrders')>();
+  return {
+    ...actual,
+    prefetchSalesOrderComposer: (...args: unknown[]) => prefetchSalesOrderComposerMock(...args),
+  };
+});
 
 vi.mock('@/hooks/useSalesOrderDetail', () => ({
   useSalesOrderDetail: (...args: unknown[]) => useSalesOrderDetailMock(...args),
@@ -27,6 +38,11 @@ vi.mock('@/hooks/useFeatureFlag', () => ({
 import type { SalesOrderDetail } from '@/types/tenant-sales-orders';
 import { ROLES } from '@/constants';
 import { SalesOrderDetailClient } from '@/components/seller/sales-orders/detail/SalesOrderDetailClient';
+
+function renderWithQueryClient(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 const TP = '11111111-1111-4111-8111-111111111111';
 
@@ -134,6 +150,7 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
   beforeEach(() => {
     vi.setSystemTime(new Date('2026-06-06T12:00:00.000Z'));
     pushMock.mockReset();
+    prefetchSalesOrderComposerMock.mockReset();
     useFlagStateMock.mockReturnValue(true);
     useDispatchMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
     useDeliverMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
@@ -147,7 +164,7 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
   });
 
   it('received: status band shows Received chip', () => {
-    const { container } = render(<SalesOrderDetailClient id="ord-1" />);
+    const { container } = renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
     const band = container.querySelector('.doc-status-band');
     expect(band).toBeTruthy();
     expect(band).toHaveTextContent(/Received/i);
@@ -165,7 +182,7 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
       isError: false,
       error: null,
     });
-    const { container } = render(<SalesOrderDetailClient id="ord-1" />);
+    const { container } = renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
     const band = container.querySelector('.doc-status-band');
     expect(band).toHaveTextContent(/Confirmed/i);
     expect(band).toHaveTextContent(/Delivery expected/i);
@@ -183,13 +200,13 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
       isError: false,
       error: null,
     });
-    const { container } = render(<SalesOrderDetailClient id="ord-1" />);
+    const { container } = renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
     const band = container.querySelector('.doc-status-band');
     expect(band).toHaveTextContent(/BlueDart/i);
   });
 
   it('view frame keeps inputs disabled or read-only', () => {
-    const { container } = render(<SalesOrderDetailClient id="ord-1" />);
+    const { container } = renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
     const frame = container.querySelector('.doc-readonly');
     expect(frame).toBeTruthy();
     const bad = frame?.querySelectorAll('input:not([disabled]):not([readonly]), textarea:not([disabled]):not([readonly])');
@@ -207,7 +224,7 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
       isError: false,
       error: null,
     });
-    render(<SalesOrderDetailClient id="ord-1" />);
+    renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
     expect(screen.getByRole('button', { name: /Dispatch/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Cancel order/i })).not.toBeInTheDocument();
   });
@@ -223,7 +240,7 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
       isError: false,
       error: null,
     });
-    render(<SalesOrderDetailClient id="ord-1" />);
+    renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
     expect(screen.getByRole('button', { name: /Cancel order/i })).toBeInTheDocument();
   });
 
@@ -234,7 +251,7 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
       isError: false,
       error: null,
     });
-    render(<SalesOrderDetailClient id="ord-1" />);
+    renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
     expect(screen.getByRole('button', { name: /Mark delivered/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Cancel order/i })).not.toBeInTheDocument();
   });
@@ -250,7 +267,7 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
       isError: false,
       error: null,
     });
-    const { container } = render(<SalesOrderDetailClient id="ord-1" />);
+    const { container } = renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
     expect(container.querySelector('.callout--warning')).toBeTruthy();
   });
 
@@ -261,7 +278,7 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
       isError: false,
       error: null,
     });
-    render(<SalesOrderDetailClient id="ord-1" />);
+    renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
     fireEvent.click(screen.getByRole('button', { name: /Dispatch/i }));
     expect(screen.getByText(/Confirm dispatch/i)).toBeInTheDocument();
   });
@@ -275,8 +292,20 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
       isError: false,
       error: null,
     });
-    render(<SalesOrderDetailClient id="ord-1" />);
+    renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
     const link = screen.getByRole('link', { name: /From: EST-88/i });
     expect(link).toHaveAttribute('href', '/estimates/est-1');
+  });
+
+  it('received shows sales order journey with Received step', () => {
+    renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
+    expect(screen.getByLabelText('Sales order progress')).toHaveTextContent('Received');
+  });
+
+  it('Edit prefetches composer then navigates', () => {
+    renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
+    fireEvent.click(screen.getByRole('button', { name: /edit order/i }));
+    expect(prefetchSalesOrderComposerMock).toHaveBeenCalledWith(expect.anything(), 'ord-1');
+    expect(pushMock).toHaveBeenCalledWith('/sales-orders/ord-1/edit');
   });
 });

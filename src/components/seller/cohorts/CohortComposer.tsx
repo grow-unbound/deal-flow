@@ -38,8 +38,9 @@ import {
   useCohortMembers,
   useSaveCohortComposer,
 } from '@/hooks/useCohorts';
-import { CohortCreateSchema, type CohortRules } from '@/lib/zod';
+import { composerPageMinHeightClass, composerThreePanelGridClass } from '@/lib/composer-viewport-classes';
 import { cn, formatCompactInr } from '@/lib/utils';
+import { CohortCreateSchema, type CohortRules } from '@/lib/zod';
 
 type ComposerMode = 'create' | 'edit';
 type CohortSelectionMode = 'rule-based' | 'manual-selection';
@@ -165,8 +166,12 @@ function matchesStructuredFilters(
 
 function CohortComposerSkeleton() {
   return (
-    <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6" role="status" aria-label="Loading cohort composer">
-      <div className="space-y-4">
+    <div
+      className={cn('mx-auto flex w-full max-w-[1920px] flex-col px-8 pt-7 pb-6', composerPageMinHeightClass)}
+      role="status"
+      aria-label="Loading cohort composer"
+    >
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
         <div className="h-4 w-44 animate-pulse rounded bg-cream-200" />
         <div className="flex items-start justify-between gap-8">
           <div className="space-y-3">
@@ -180,13 +185,13 @@ function CohortComposerSkeleton() {
             <div key={index} className="h-[82px] animate-pulse border-r border-cream-300 bg-white last:border-r-0" />
           ))}
         </div>
-        <div className="grid min-h-[620px] gap-5 lg:grid-cols-[260px_minmax(0,1fr)_320px]">
-          <div className="rounded-[14px] border border-cream-300 bg-white animate-pulse" />
-          <div className="rounded-[14px] border border-cream-300 bg-white animate-pulse" />
-          <div className="rounded-[14px] border border-cream-300 bg-white animate-pulse" />
+        <div className={composerThreePanelGridClass}>
+          <div className="animate-pulse rounded-[14px] border border-cream-300 bg-white" />
+          <div className="animate-pulse rounded-[14px] border border-cream-300 bg-white" />
+          <div className="animate-pulse rounded-[14px] border border-cream-300 bg-white" />
         </div>
-        <div className="sticky bottom-0 h-20 animate-pulse rounded-[14px] border border-cream-300 bg-white" />
       </div>
+      <div className="sticky bottom-0 z-10 mt-4 h-20 shrink-0 animate-pulse rounded-[14px] border border-cream-300 bg-white" />
     </div>
   );
 }
@@ -492,8 +497,9 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
 
   return (
     <>
-      <PageWrap className="pt-7 pb-6">
+      <PageWrap className={cn('flex flex-col', composerPageMinHeightClass, 'pt-7 pb-6')}>
         <ComposerShell>
+          <div className="flex min-h-0 flex-1 flex-col gap-4">
           <ComposerBreadcrumbs
             items={[
               { label: 'Cohorts', href: '/cohorts' },
@@ -956,6 +962,8 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
               </ComposerSidebarCard>
             }
           />
+
+          </div>
 
           <ComposerFooterBar>
             <div className="flex items-center gap-3">

@@ -8,13 +8,17 @@ import { toast } from 'sonner';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
 import {
+  ComposerSidebarCard,
+} from '@/components/seller/composer/ComposerLayout';
+import {
+  DocumentBasicsStrip,
+  DocumentComposerFooterRow,
+} from '@/components/seller/composer/DocumentBasicsStrip';
+import { DocumentComposerLoadingSkeleton, DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
+import {
   BuyerCardEmpty,
   BuyerCardFilled,
   BuyerCardLoading,
-  DocComposerFoot,
-  DocComposerFrame,
-  DocStrip,
-  DocTitleRow,
   LinesTable,
   TotalsCard,
   type EstimateComposerLineRow,
@@ -48,9 +52,13 @@ import type {
   EstimateComposerDocument,
   EstimateComposerProductSearchRow,
   EstimateComposerSavePayload,
-  EstimateComposerTotals,
   EstimateSendChannel,
 } from '@/types/estimate-composer';
+import {
+  computeLineTotal,
+  computeTotals,
+  defaultPaymentTerms,
+} from '@/lib/documents/composer-math';
 import { cn, formatCompactInr } from '@/lib/utils';
 
 const BASE_PRICING_OPTION = '__base__';
@@ -59,10 +67,6 @@ type BuyerPickerRow = Pick<
   EstimateComposerBuyerContext,
   'id' | 'business_name' | 'place_of_supply' | 'credit_used'
 >;
-
-function defaultPaymentTerms(days: number) {
-  return days > 0 ? `Net ${days}` : 'Due on receipt';
-}
 
 function isoDateOffset(daysFromToday: number) {
   const date = new Date();
@@ -101,30 +105,6 @@ function buildNewEstimateDraft(estimateNumber = 'Estimating next number...'): Es
 function parseCurrencyInput(value: string) {
   const numeric = Number(value.replace(/[^\d.]/g, ''));
   return Number.isFinite(numeric) ? numeric : 0;
-}
-
-function computeLineTotal(line: Pick<EstimateComposerLineRow, 'qty' | 'unit_price' | 'disc_pct' | 'tax_pct'>) {
-  const taxable = line.qty * line.unit_price * (1 - line.disc_pct / 100);
-  return Number((taxable + taxable * (line.tax_pct / 100)).toFixed(2));
-}
-
-function computeTotals(lines: EstimateComposerLineRow[], discountFlat: number, freight: number, roundOff: number): EstimateComposerTotals {
-  const activeLines = lines.filter((line) => line.diff !== 'removed');
-  const subtotal = activeLines.reduce((sum, line) => sum + line.qty * line.unit_price * (1 - line.disc_pct / 100), 0);
-  const taxAmount = activeLines.reduce((sum, line) => {
-    const taxable = line.qty * line.unit_price * (1 - line.disc_pct / 100);
-    return sum + taxable * (line.tax_pct / 100);
-  }, 0);
-  return {
-    subtotal,
-    discount_flat: discountFlat,
-    freight,
-    taxable_amount: Math.max(subtotal - discountFlat, 0),
-    tax_amount: taxAmount,
-    round_off: roundOff,
-    grand_total: Math.max(subtotal - discountFlat, 0) + taxAmount + freight + roundOff,
-    total_units: activeLines.reduce((sum, line) => sum + line.qty, 0),
-  };
 }
 
 function snapshotPayload(document: EstimateComposerDocument, lines: EstimateComposerLineRow[]) {
@@ -216,108 +196,6 @@ function useBuyerPicker(query: string, open: boolean) {
   });
 }
 
-export function EstimateComposerLoadingSkeleton() {
-  return (
-    <div className="max-w-[1440px] mx-auto w-full px-8 pt-7 pb-6" role="status" aria-label="Loading estimate composer">
-      <div className="space-y-4">
-        <div className="h-4 w-44 animate-pulse rounded bg-cream-200" />
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-2">
-            <div className="h-8 w-44 animate-pulse rounded bg-cream-200" />
-            <div className="h-4 w-72 animate-pulse rounded bg-cream-200" />
-          </div>
-          <div className="flex gap-2">
-            <div className="h-9 w-28 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-            <div className="h-9 w-24 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-          </div>
-        </div>
-        <div className="grid gap-0 overflow-hidden rounded-[14px] border border-cream-300 bg-white lg:grid-cols-5">
-          {Array.from({ length: 5 }).map((_, index) => (
-            <div key={index} className="border-r border-cream-300 px-4 py-3 last:border-r-0">
-              <div className="h-3 w-20 animate-pulse rounded bg-cream-200" />
-              <div className="mt-3 h-9 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-            </div>
-          ))}
-        </div>
-        <div className="grid min-h-[620px] gap-5 lg:grid-cols-[260px_minmax(0,1fr)_320px]">
-          <div className="rounded-[14px] border border-cream-300 bg-white p-4">
-            <div className="h-4 w-16 animate-pulse rounded bg-cream-200" />
-            <div className="mt-2 h-4 w-40 animate-pulse rounded bg-cream-200" />
-            <div className="mt-4 h-10 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-            <div className="mt-4 space-y-2">
-              {Array.from({ length: 3 }).map((_, index) => (
-                <div key={index} className="flex items-center gap-3 rounded-[12px] border border-cream-200 bg-cream-100 px-3 py-3">
-                  <div className="h-8 w-8 animate-pulse rounded-full bg-cream-200" />
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <div className="h-3 w-28 animate-pulse rounded bg-cream-200" />
-                    <div className="h-3 w-36 animate-pulse rounded bg-cream-200" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-[14px] border border-cream-300 bg-white">
-            <div className="border-b border-cream-300 px-5 py-4">
-              <div className="h-4 w-20 animate-pulse rounded bg-cream-200" />
-              <div className="mt-2 h-4 w-64 animate-pulse rounded bg-cream-200" />
-            </div>
-            <div className="border-b border-cream-300 px-5 py-4">
-              <div className="h-10 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-            </div>
-            <div className="space-y-3 px-4 py-4">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="grid grid-cols-[40px_minmax(0,1fr)_90px_90px_72px_72px_100px] gap-3">
-                  <div className="h-10 animate-pulse rounded bg-cream-200" />
-                  <div className="h-10 animate-pulse rounded bg-cream-100" />
-                  <div className="h-10 animate-pulse rounded bg-cream-100" />
-                  <div className="h-10 animate-pulse rounded bg-cream-100" />
-                  <div className="h-10 animate-pulse rounded bg-cream-100" />
-                  <div className="h-10 animate-pulse rounded bg-cream-100" />
-                  <div className="h-10 animate-pulse rounded bg-cream-100" />
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-4">
-            <div className="rounded-[14px] border border-cream-300 bg-white p-4">
-              <div className="h-4 w-16 animate-pulse rounded bg-cream-200" />
-              <div className="mt-4 space-y-3">
-                {Array.from({ length: 5 }).map((_, index) => (
-                  <div key={index} className="flex items-center justify-between gap-4">
-                    <div className="h-3 w-24 animate-pulse rounded bg-cream-200" />
-                    <div className="h-3 w-20 animate-pulse rounded bg-cream-200" />
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-[14px] border border-cream-300 bg-white p-4">
-              <div className="h-4 w-20 animate-pulse rounded bg-cream-200" />
-              <div className="mt-4 space-y-4">
-                {Array.from({ length: 3 }).map((_, index) => (
-                  <div key={index} className="space-y-2">
-                    <div className="h-3 w-24 animate-pulse rounded bg-cream-200" />
-                    <div className="h-3 w-32 animate-pulse rounded bg-cream-200" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="sticky bottom-0 rounded-[14px] border border-cream-300 bg-white px-6 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="h-3 w-28 animate-pulse rounded bg-cream-200" />
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="h-10 w-28 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-              <div className="h-10 w-28 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-              <div className="h-10 w-32 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function DocComposerEstimate({
   mode,
   estimateId,
@@ -372,6 +250,25 @@ export function DocComposerEstimate({
     selectedPriceListId,
   );
   const closeTarget = mode === 'edit' && estimateId ? `/estimates/${estimateId}` : '/estimates';
+
+  const prevEditEstimateIdRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (mode !== 'edit' || !estimateId) return;
+    if (prevEditEstimateIdRef.current === estimateId) return;
+    prevEditEstimateIdRef.current = estimateId;
+    setWorkingId(estimateId);
+    initializedForIdRef.current = null;
+    originalDocumentRef.current = null;
+    originalLinesRef.current = [];
+    setDocumentState(null);
+    setLineState([]);
+    setBuyerQuery('');
+    setBuyerSearchOpen(false);
+    setProductQuery('');
+    setSearchOpen(false);
+    setAutoSaveMeta({ label: 'Ready to save', tone: 'draft' });
+  }, [mode, estimateId]);
 
   useEffect(() => {
     if (mode !== 'create' || estimateId || !nextEstimateNumberQuery.data) return;
@@ -571,7 +468,7 @@ export function DocComposerEstimate({
   }
 
   if ((workingId && isLoading) || !documentState) {
-    return <EstimateComposerLoadingSkeleton />;
+    return <DocumentComposerLoadingSkeleton />;
   }
 
   const buyerResults = buyerPickerQuery.data ?? [];
@@ -752,99 +649,92 @@ export function DocComposerEstimate({
 
   return (
     <>
-      <DocComposerFrame
+      <DocumentComposerShell
         mode={mode === 'edit' ? 'edit' : 'create'}
         kind="estimate"
-        top={(
-          <nav className="flex flex-wrap items-center gap-1.5 text-[12px] text-cream-600">
-            <span>Sales</span>
-            <span className="text-cream-400">›</span>
-            <button type="button" className="hover:text-cream-900" onClick={() => router.push('/estimates')}>
-              Estimates
-            </button>
-            <span className="text-cream-400">›</span>
-            <span className="font-medium text-cream-900">{mode === 'edit' ? documentState.estimate_number : 'Add an estimate'}</span>
-          </nav>
+        breadcrumbItems={[
+          { label: 'Sales' },
+          { label: 'Estimates', href: '/estimates' },
+          {
+            label: mode === 'edit' ? documentState.estimate_number : 'Add an estimate',
+            current: true,
+          },
+        ]}
+        title={mode === 'edit' ? 'Edit estimate' : 'Add an estimate'}
+        subtitle={buyer ? `${buyer.business_name} · ${buyer.place_of_supply}` : 'Pick a buyer to begin composing this estimate.'}
+        status={
+          mode === 'edit' && documentState.status === 'sent'
+            ? { label: 'Editing live draft', tone: 'live' }
+            : { label: 'Draft', tone: 'draft' }
+        }
+        titleActions={(
+          <>
+            {diffLines.length > 0 ? (
+              <Button type="button" variant="outline" size="sm" className="gap-2">
+                <Eye className="h-4 w-4" />
+                Preview PDF
+              </Button>
+            ) : null}
+            <Button type="button" variant="ghost" className="gap-2" onClick={() => dirtyGuard.handleOpenChange(false)}>
+              <X className="h-3.5 w-3.5" />
+              Close
+            </Button>
+          </>
         )}
-        titleRow={(
-          <DocTitleRow
-            title={(
-              <span className="inline-flex flex-wrap items-center gap-2">
-                <span>{mode === 'edit' ? 'Edit estimate' : 'Add an estimate'}</span>
-                <span className="inline-flex items-center rounded-full border border-cream-300 bg-cream-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-cream-700">
-                  {mode === 'edit' && documentState.status === 'sent' ? 'Editing live draft' : 'Draft'}
-                </span>
-              </span>
-            )}
-            subtitle={buyer ? `${buyer.business_name} · ${buyer.place_of_supply}` : 'Pick a buyer to begin composing this estimate.'}
-            rightActions={(
-              <>
-                {diffLines.length > 0 ? (
-                  <Button type="button" variant="outline" size="sm" className="gap-2">
-                    <Eye className="h-4 w-4" />
-                    Preview PDF
-                  </Button>
-                ) : null}
-                <Button type="button" variant="ghost" className="gap-2" onClick={() => dirtyGuard.handleOpenChange(false)}>
-                  <X className="h-3.5 w-3.5" />
-                  Close
-                </Button>
-              </>
-            )}
-          />
-        )}
-        strip={(
-          <DocStrip
+        basics={(
+          <DocumentBasicsStrip
             kind="estimate"
             docNumber={documentState.estimate_number}
             dateIssued={documentState.date_issued}
-            validUntil={documentState.valid_until}
+            secondDate={documentState.valid_until}
             buyerPoRef={documentState.buyer_po_ref}
             placeOfSupply={documentState.place_of_supply}
             onDateIssuedChange={(value) => setDocumentPatch({ date_issued: value })}
-            onValidUntilChange={(value) => setDocumentPatch({ valid_until: value })}
+            onSecondDateChange={(value) => setDocumentPatch({ valid_until: value })}
             onBuyerPoRefChange={(value) => setDocumentPatch({ buyer_po_ref: value })}
             onPlaceOfSupplyChange={(value) => setDocumentPatch({ place_of_supply: value })}
           />
         )}
         left={(
-          <div className="space-y-4">
-            {documentState.buyer_id && buyerContextQuery.isLoading && !buyer ? (
-              <BuyerCardLoading />
-            ) : buyer ? (
-              <BuyerCardFilled
-                buyer={buyer}
-                previewTotal={totals.grand_total}
-                paymentTermsValue={paymentTermsLabel}
-                onSwap={() => {
-                  setSelectedPriceListId(null);
-                  setDocumentPatch({ buyer_id: null, buyer_context: null });
-                }}
+          <ComposerSidebarCard>
+            <div className="space-y-4">
+              {documentState.buyer_id && buyerContextQuery.isLoading && !buyer ? (
+                <BuyerCardLoading />
+              ) : buyer ? (
+                <BuyerCardFilled
+                  buyer={buyer}
+                  previewTotal={totals.grand_total}
+                  paymentTermsValue={paymentTermsLabel}
+                  onSwap={() => {
+                    setSelectedPriceListId(null);
+                    setDocumentPatch({ buyer_id: null, buyer_context: null });
+                  }}
+                />
+              ) : (
+                <BuyerCardEmpty
+                  query={buyerQuery}
+                  results={buyerResults}
+                  searchOpen={buyerSearchOpen}
+                  searchLoading={buyerPickerQuery.isLoading}
+                  onQueryChange={setBuyerQuery}
+                  onSearchOpenChange={setBuyerSearchOpen}
+                  onSelectBuyer={handleSelectBuyer}
+                />
+              )}
+              <EstimateMetaCard
+                notesValue={documentState.seller_note}
+                freightValue={documentState.freight}
+                notesExpanded={notesExpanded}
+                freightExpanded={freightExpanded}
+                onToggleNotes={() => setNotesExpanded((current) => !current)}
+                onToggleFreight={() => setFreightExpanded((current) => !current)}
+                onNotesChange={(value) => setDocumentPatch({ seller_note: value })}
+                onFreightChange={(value) => setDocumentPatch({ freight: value })}
               />
-            ) : (
-              <BuyerCardEmpty
-                query={buyerQuery}
-                results={buyerResults}
-                searchOpen={buyerSearchOpen}
-                searchLoading={buyerPickerQuery.isLoading}
-                onQueryChange={setBuyerQuery}
-                onSearchOpenChange={setBuyerSearchOpen}
-                onSelectBuyer={handleSelectBuyer}
-              />
-            )}
-            <EstimateMetaCard
-              notesValue={documentState.seller_note}
-              freightValue={documentState.freight}
-              notesExpanded={notesExpanded}
-              freightExpanded={freightExpanded}
-              onToggleNotes={() => setNotesExpanded((current) => !current)}
-              onToggleFreight={() => setFreightExpanded((current) => !current)}
-              onNotesChange={(value) => setDocumentPatch({ seller_note: value })}
-              onFreightChange={(value) => setDocumentPatch({ freight: value })}
-            />
-          </div>
+            </div>
+          </ComposerSidebarCard>
         )}
-        center={
+        center={(
           <LinesTable
             buyerSelected={Boolean(documentState.buyer_id)}
             readOnly={false}
@@ -882,7 +772,7 @@ export function DocComposerEstimate({
             onToggleFreight={() => setFreightExpanded((current) => !current)}
             onToggleInternal={() => setInternalExpanded((current) => !current)}
           />
-        }
+        )}
         right={(
           <div className="space-y-4">
             <TotalsCard
@@ -894,7 +784,7 @@ export function DocComposerEstimate({
               lineCount={activeLines.length}
             />
             {mode === 'edit' ? (
-              <section className="rounded-[14px] border border-cream-300 bg-white p-4">
+              <ComposerSidebarCard>
                 <p className="text-[13px] font-semibold text-cream-950">Staged changes</p>
                 <div className="mt-4 space-y-3 text-[12px] text-cream-700">
                   <div className="flex items-center justify-between gap-4">
@@ -923,36 +813,30 @@ export function DocComposerEstimate({
                     Save changes keeps this draft in your pipeline until you explicitly send it.
                   </div>
                 )}
-              </section>
+              </ComposerSidebarCard>
             ) : null}
           </div>
         )}
         footer={(
-          <DocComposerFoot
-            autoSaveLabel={autoSaveMeta.label}
-            autoSaveTone={autoSaveMeta.tone}
-            actions={(
-              <>
-                <Button type="button" variant="ghost" className="gap-2" onClick={handleDiscard}>
-                  <Trash2 className="h-4 w-4" />
-                  Discard draft
-                </Button>
-                <Button type="button" variant="accent" className="gap-2" onClick={() => void handleSaveAndClose()}>
-                  <FileText className="h-4 w-4" />
-                  Save &amp; close
-                </Button>
-                <Button
-                  type="button"
-                  className={primaryDisabled ? 'btn-disabled gap-2' : 'gap-2'}
-                  disabled={primaryDisabled}
-                  onClick={() => setSendOpen(true)}
-                >
-                  <Send className="h-4 w-4" />
-                  {mode === 'edit' ? 'Save & resend' : 'Send estimate'}
-                </Button>
-              </>
-            )}
-          />
+          <DocumentComposerFooterRow autoSaveLabel={autoSaveMeta.label} autoSaveTone={autoSaveMeta.tone}>
+            <Button type="button" variant="ghost" className="gap-2" onClick={handleDiscard}>
+              <Trash2 className="h-4 w-4" />
+              Discard draft
+            </Button>
+            <Button type="button" variant="accent" className="gap-2" onClick={() => void handleSaveAndClose()}>
+              <FileText className="h-4 w-4" />
+              Save &amp; close
+            </Button>
+            <Button
+              type="button"
+              className={primaryDisabled ? 'btn-disabled gap-2' : 'gap-2'}
+              disabled={primaryDisabled}
+              onClick={() => setSendOpen(true)}
+            >
+              <Send className="h-4 w-4" />
+              {mode === 'edit' ? 'Save & resend' : 'Send estimate'}
+            </Button>
+          </DocumentComposerFooterRow>
         )}
       />
 
@@ -1084,3 +968,5 @@ function EstimateMetaCard({
     </aside>
   );
 }
+
+export { DocumentComposerLoadingSkeleton as EstimateComposerLoadingSkeleton } from '@/components/seller/composer/DocumentComposerShell';

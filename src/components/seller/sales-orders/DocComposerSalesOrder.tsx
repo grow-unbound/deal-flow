@@ -1,7 +1,7 @@
 'use client';
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   ClipboardList,
@@ -15,14 +15,18 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
+import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
+import {
+  DocumentBasicsStrip,
+  DocumentComposerFooterRow,
+} from '@/components/seller/composer/DocumentBasicsStrip';
+import {
+  DocumentComposerLoadingSkeleton,
+  DocumentComposerShell,
+} from '@/components/seller/composer/DocumentComposerShell';
 import {
   BuyerCardEmpty,
   BuyerCardFilled,
-  DocComposerFoot,
-  DocComposerFrame,
-  DocStrip,
-  DocTitleRow,
-  DocTop,
   InsightsCard,
   LinesTable,
   TotalsCard,
@@ -39,16 +43,18 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useEstimateComposer } from '@/hooks/useEstimates';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import {
   useBuyerSalesOrderContext,
-  useConfirmSalesOrder,
-  useCreateSalesOrderDraft,
   useDebouncedSalesOrderStockCheck,
+  useNextSalesOrderNumber,
   useSalesOrderComposer,
   useSalesOrderProductSearch,
   useSaveSalesOrderComposer,
 } from '@/hooks/useSalesOrders';
+import { apiPatch, apiPost } from '@/lib/api-fetch';
+import { computeLineTotal, computeTotals, defaultPaymentTerms } from '@/lib/documents/composer-math';
 import { formatCompactInr } from '@/lib/utils';
 import type { Database } from '@/types/database';
 import type {
@@ -56,15 +62,16 @@ import type {
   SalesOrderComposerDocument,
   SalesOrderComposerProductSearchRow,
   SalesOrderComposerSavePayload,
-  SalesOrderComposerTotals,
 } from '@/types/sales-order-composer';
-
-const NEW_DRAFT_STORAGE_KEY = 'df:sales-order-composer:new-draft';
 
 type BuyerPickerRow = Pick<
   SalesOrderComposerBuyerContext,
   'id' | 'business_name' | 'place_of_supply' | 'credit_used'
 >;
+
+function isoToday() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 function defaultExpectedDelivery() {
   const next = new Date();
@@ -72,31 +79,25 @@ function defaultExpectedDelivery() {
   return next.toISOString().slice(0, 10);
 }
 
-function defaultPaymentTerms(days: number) {
-  return days > 0 ? `Net ${days}` : 'Due on receipt';
-}
-
-function computeLineTotal(line: Pick<EstimateComposerLineRow, 'qty' | 'unit_price' | 'disc_pct' | 'tax_pct'>) {
-  const taxable = line.qty * line.unit_price * (1 - line.disc_pct / 100);
-  return Number((taxable + taxable * (line.tax_pct / 100)).toFixed(2));
-}
-
-function computeTotals(lines: EstimateComposerLineRow[], discountFlat: number, freight: number, roundOff: number): SalesOrderComposerTotals {
-  const activeLines = lines.filter((line) => line.diff !== 'removed');
-  const subtotal = activeLines.reduce((sum, line) => sum + line.qty * line.unit_price * (1 - line.disc_pct / 100), 0);
-  const taxAmount = activeLines.reduce((sum, line) => {
-    const taxable = line.qty * line.unit_price * (1 - line.disc_pct / 100);
-    return sum + taxable * (line.tax_pct / 100);
-  }, 0);
+function buildNewSalesOrderDraft(orderNumber = 'Reserving next number...'): SalesOrderComposerDocument {
   return {
-    subtotal,
-    discount_flat: discountFlat,
-    freight,
-    taxable_amount: Math.max(subtotal - discountFlat, 0),
-    tax_amount: taxAmount,
-    round_off: roundOff,
-    grand_total: Math.max(subtotal - discountFlat, 0) + taxAmount + freight + roundOff,
-    total_units: activeLines.reduce((sum, line) => sum + line.qty, 0),
+    id: '',
+    order_number: orderNumber,
+    status: 'draft',
+    buyer_id: null,
+    order_date: isoToday(),
+    expected_delivery: defaultExpectedDelivery(),
+    buyer_po_ref: '',
+    place_of_supply: 'Unknown',
+    seller_note: '',
+    freight: 0,
+    discount_flat: 0,
+    round_off: 0,
+    has_backorder: false,
+    estimate_id: null,
+    source_estimate_number: null,
+    buyer_context: null,
+    items: [],
   };
 }
 
@@ -203,110 +204,6 @@ function useBuyerPicker(query: string) {
   });
 }
 
-export function SalesOrderComposerLoadingSkeleton() {
-  return (
-    <div className="max-w-[1440px] mx-auto w-full px-8 py-6" role="status" aria-label="Loading sales order composer">
-      <div className="space-y-4">
-        <div className="rounded-[14px] border border-cream-300 bg-white px-5 py-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="h-3 w-56 animate-pulse rounded bg-cream-200" />
-            <div className="h-7 w-24 animate-pulse rounded-full border border-cream-200 bg-cream-100" />
-            <div className="h-7 w-28 animate-pulse rounded-full border border-cream-200 bg-cream-100" />
-            <div className="ml-auto h-9 w-24 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-          </div>
-        </div>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-2">
-            <div className="h-8 w-52 animate-pulse rounded bg-cream-200" />
-            <div className="h-4 w-80 animate-pulse rounded bg-cream-200" />
-          </div>
-          <div className="h-9 w-28 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-        </div>
-        <div className="grid gap-0 overflow-hidden rounded-[14px] border border-cream-300 bg-white lg:grid-cols-5">
-          {Array.from({ length: 5 }).map((_, index) => (
-            <div key={index} className="border-r border-cream-300 px-4 py-3 last:border-r-0">
-              <div className="h-3 w-20 animate-pulse rounded bg-cream-200" />
-              <div className="mt-3 h-9 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-            </div>
-          ))}
-        </div>
-        <div className="grid min-h-[620px] gap-5 lg:grid-cols-[260px_minmax(0,1fr)_320px]">
-          <div className="rounded-[14px] border border-cream-300 bg-white p-4">
-            <div className="h-4 w-16 animate-pulse rounded bg-cream-200" />
-            <div className="mt-2 h-4 w-40 animate-pulse rounded bg-cream-200" />
-            <div className="mt-4 h-10 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-            <div className="mt-4 space-y-2">
-              {Array.from({ length: 3 }).map((_, index) => (
-                <div key={index} className="flex items-center gap-3 rounded-[12px] border border-cream-200 bg-cream-100 px-3 py-3">
-                  <div className="h-8 w-8 animate-pulse rounded-full bg-cream-200" />
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <div className="h-3 w-28 animate-pulse rounded bg-cream-200" />
-                    <div className="h-3 w-36 animate-pulse rounded bg-cream-200" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-[14px] border border-cream-300 bg-white">
-            <div className="border-b border-cream-300 px-5 py-4">
-              <div className="h-4 w-20 animate-pulse rounded bg-cream-200" />
-              <div className="mt-2 h-4 w-64 animate-pulse rounded bg-cream-200" />
-            </div>
-            <div className="border-b border-cream-300 px-5 py-4">
-              <div className="h-10 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-            </div>
-            <div className="space-y-3 px-4 py-4">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="grid grid-cols-[40px_minmax(0,1fr)_90px_90px_72px_72px_100px] gap-3">
-                  <div className="h-10 animate-pulse rounded bg-cream-200" />
-                  <div className="h-10 animate-pulse rounded bg-cream-100" />
-                  <div className="h-10 animate-pulse rounded bg-cream-100" />
-                  <div className="h-10 animate-pulse rounded bg-cream-100" />
-                  <div className="h-10 animate-pulse rounded bg-cream-100" />
-                  <div className="h-10 animate-pulse rounded bg-cream-100" />
-                  <div className="h-10 animate-pulse rounded bg-cream-100" />
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-4">
-            <div className="rounded-[14px] border border-cream-300 bg-white p-4">
-              <div className="h-3 w-32 animate-pulse rounded bg-cream-200" />
-              <div className="mt-4 h-14 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-              <div className="mt-3 space-y-3">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <div className="h-3 w-24 animate-pulse rounded bg-cream-200" />
-                    <div className="h-3 w-20 animate-pulse rounded bg-cream-200" />
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-[14px] border border-cream-300 bg-white p-4">
-              <div className="h-3 w-24 animate-pulse rounded bg-cream-200" />
-              <div className="mt-4 space-y-3">
-                {Array.from({ length: 3 }).map((_, index) => (
-                  <div key={index} className="h-10 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="sticky bottom-0 rounded-[14px] border border-cream-300 bg-white px-6 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="h-3 w-36 animate-pulse rounded bg-cream-200" />
-            <div className="flex gap-2">
-              <div className="h-10 w-24 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-              <div className="h-10 w-32 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-              <div className="h-10 w-40 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function DocComposerSalesOrder({
   mode,
   orderId,
@@ -317,72 +214,128 @@ export function DocComposerSalesOrder({
   fromEstimateId?: string;
 }) {
   const router = useRouter();
+  const qc = useQueryClient();
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const salesOrdersFlag = useFlagState('SALES_ORDERS');
 
-  const createDraftMutation = useCreateSalesOrderDraft();
   const [workingId, setWorkingId] = useState<string | null>(orderId ?? null);
   const { data, isLoading, isError, error } = useSalesOrderComposer(workingId);
+  const nextOrderNumberQuery = useNextSalesOrderNumber(mode === 'create' && !orderId);
+  const estimateForPrefill = useEstimateComposer(
+    mode === 'create' && fromEstimateId && !orderId ? fromEstimateId : null,
+  );
 
-  const [documentState, setDocumentState] = useState<SalesOrderComposerDocument | null>(null);
+  const [documentState, setDocumentState] = useState<SalesOrderComposerDocument | null>(() => {
+    if (mode === 'create' && !orderId && !fromEstimateId) return buildNewSalesOrderDraft();
+    return null;
+  });
   const [lineState, setLineState] = useState<EstimateComposerLineRow[]>([]);
   const [buyerQuery, setBuyerQuery] = useState('');
+  const [buyerSearchOpen, setBuyerSearchOpen] = useState(false);
   const [productQuery, setProductQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [paymentTermsLabel, setPaymentTermsLabel] = useState('Due on receipt');
   const [autoSaveMeta, setAutoSaveMeta] = useState<{ label: string; tone: 'draft' | 'saved' | 'warning' }>({
-    label: 'Draft created',
+    label: mode === 'create' ? 'Not saved yet' : 'Ready to save',
     tone: 'draft',
   });
   const [notesExpanded, setNotesExpanded] = useState(false);
   const [freightExpanded, setFreightExpanded] = useState(false);
   const [internalExpanded, setInternalExpanded] = useState(false);
   const [backorderOpen, setBackorderOpen] = useState(false);
+  const [pendingConfirmOrderId, setPendingConfirmOrderId] = useState<string | null>(null);
   const [notifyBuyer, setNotifyBuyer] = useState(true);
+  const [confirmPending, setConfirmPending] = useState(false);
 
   const originalDocumentRef = useRef<SalesOrderComposerDocument | null>(null);
   const originalLinesRef = useRef<EstimateComposerLineRow[]>([]);
   const initializedForIdRef = useRef<string | null>(null);
-  const createDraftCalledRef = useRef(false);
+  const prefilledFromEstimateRef = useRef(false);
 
   const saveMutation = useSaveSalesOrderComposer(workingId);
-  const confirmMutation = useConfirmSalesOrder(workingId);
   const buyerContextQuery = useBuyerSalesOrderContext(documentState?.buyer_id ?? null);
   const productSearchQuery = useSalesOrderProductSearch(productQuery, documentState?.buyer_id ?? null);
   const buyerPickerQuery = useBuyerPicker(buyerQuery);
+
+  const prevEditOrderIdRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (mode !== 'edit' || !orderId) return;
+    if (prevEditOrderIdRef.current === orderId) return;
+    prevEditOrderIdRef.current = orderId;
+    setWorkingId(orderId);
+    initializedForIdRef.current = null;
+    originalDocumentRef.current = null;
+    originalLinesRef.current = [];
+    prefilledFromEstimateRef.current = false;
+    setDocumentState(null);
+    setLineState([]);
+    setBuyerQuery('');
+    setBuyerSearchOpen(false);
+    setProductQuery('');
+    setSearchOpen(false);
+    setAutoSaveMeta({ label: 'Ready to save', tone: 'draft' });
+  }, [mode, orderId]);
 
   const diffLines = useMemo(() => mapDiffLines(lineState, originalLinesRef.current), [lineState]);
   const activeLines = useMemo(() => diffLines.filter((line) => line.diff !== 'removed'), [diffLines]);
   const stockCheckQuery = useDebouncedSalesOrderStockCheck(workingId, activeLines.length > 0);
 
   useEffect(() => {
-    if (mode !== 'create') return;
-    if (orderId) return;
-    if (workingId) return;
-    if (createDraftCalledRef.current) return;
+    prefilledFromEstimateRef.current = false;
+  }, [fromEstimateId]);
 
-    const existingId = window.sessionStorage.getItem(NEW_DRAFT_STORAGE_KEY);
-    if (existingId && !fromEstimateId) {
-      setWorkingId(existingId);
-      return;
-    }
+  useEffect(() => {
+    if (mode !== 'create' || orderId || fromEstimateId || !nextOrderNumberQuery.data) return;
+    setDocumentState((current) => current ? { ...current, order_number: nextOrderNumberQuery.data } : current);
+  }, [fromEstimateId, mode, nextOrderNumberQuery.data, orderId]);
 
-    createDraftCalledRef.current = true;
-    createDraftMutation.mutate(
-      fromEstimateId ? { from_estimate_id: fromEstimateId } : {},
-      {
-        onSuccess: ({ data: created }) => {
-          window.sessionStorage.setItem(NEW_DRAFT_STORAGE_KEY, created.id);
-          setWorkingId(created.id);
-        },
-        onError: (mutationError) => {
-          createDraftCalledRef.current = false;
-          toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to create sales order draft');
-        },
-      },
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, fromEstimateId, orderId, workingId]);
+  useEffect(() => {
+    if (mode !== 'create' || orderId || !fromEstimateId) return;
+    if (prefilledFromEstimateRef.current) return;
+    const est = estimateForPrefill.data;
+    const orderNumber = nextOrderNumberQuery.data;
+    if (!est || !orderNumber) return;
+
+    prefilledFromEstimateRef.current = true;
+    const mappedLines = (est.items ?? []).map((line) => ({
+      ...line,
+      diff: 'clean' as const,
+      line_total: computeLineTotal(line),
+    }));
+    const doc: SalesOrderComposerDocument = {
+      id: '',
+      order_number: orderNumber,
+      status: 'draft',
+      buyer_id: est.buyer_id,
+      order_date: isoToday(),
+      expected_delivery: defaultExpectedDelivery(),
+      buyer_po_ref: est.buyer_po_ref ?? '',
+      place_of_supply: est.place_of_supply,
+      seller_note: est.seller_note ?? '',
+      freight: est.freight,
+      discount_flat: est.discount_flat,
+      round_off: est.round_off,
+      has_backorder: false,
+      estimate_id: est.id,
+      source_estimate_number: est.estimate_number,
+      buyer_context: est.buyer_context as SalesOrderComposerBuyerContext | null,
+      items: [],
+    };
+    setDocumentState(doc);
+    setLineState(mappedLines);
+    originalDocumentRef.current = doc;
+    originalLinesRef.current = mappedLines;
+    setPaymentTermsLabel(defaultPaymentTerms(est.buyer_context?.payment_terms_days ?? 0));
+  }, [estimateForPrefill.data, fromEstimateId, mode, nextOrderNumberQuery.data, orderId]);
+
+  useEffect(() => {
+    if (mode !== 'create' || orderId || fromEstimateId || originalDocumentRef.current) return;
+    if (!documentState) return;
+
+    originalDocumentRef.current = documentState;
+    originalLinesRef.current = [];
+  }, [documentState, fromEstimateId, mode, orderId]);
 
   useEffect(() => {
     if (!data) return;
@@ -400,7 +353,7 @@ export function DocComposerSalesOrder({
     originalLinesRef.current = mappedLines;
     initializedForIdRef.current = data.id;
     setAutoSaveMeta({
-      label: mode === 'create' ? 'Draft created' : 'Draft saved',
+      label: mode === 'create' ? 'Not saved yet' : 'Draft saved',
       tone: mode === 'create' ? 'draft' : 'saved',
     });
   }, [data, mode]);
@@ -453,32 +406,20 @@ export function DocComposerSalesOrder({
   }, [diffLines, documentState]);
 
   useEffect(() => {
-    if (!dirty || !documentState || !workingId) return;
-    setAutoSaveMeta({ label: 'Unsaved changes', tone: 'warning' });
+    setAutoSaveMeta(dirty
+      ? { label: 'Unsaved changes', tone: 'warning' }
+      : { label: workingId ? 'Saved changes' : 'Not saved yet', tone: dirty ? 'warning' : 'saved' });
+  }, [dirty, workingId]);
 
-    const timer = window.setTimeout(() => {
-      saveMutation.mutate(toSavePayload(documentState, diffLines), {
-        onSuccess: ({ data: saved }) => {
-          setDocumentState(saved);
-          const savedLines = saved.items.map((line) => ({
-            ...line,
-            diff: 'clean' as const,
-            line_total: computeLineTotal(line),
-          }));
-          setLineState(savedLines);
-          originalDocumentRef.current = saved;
-          originalLinesRef.current = savedLines;
-          setAutoSaveMeta({ label: 'Draft saved just now', tone: 'saved' });
-        },
-        onError: (mutationError) => {
-          setAutoSaveMeta({ label: mutationError instanceof Error ? mutationError.message : 'Save failed', tone: 'warning' });
-        },
-      });
-    }, 2000);
-
-    return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [diffLines, dirty, documentState, workingId]);
+  useEffect(() => {
+    if (!dirty) return;
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => window.removeEventListener('beforeunload', beforeUnload);
+  }, [dirty]);
 
   useEffect(() => {
     if (!documentState || mode !== 'edit') return;
@@ -489,12 +430,97 @@ export function DocComposerSalesOrder({
     router.replace(`/sales-orders/${documentState.id}`);
   }, [documentState, mode, router]);
 
+  async function createDraftOnDemand(): Promise<SalesOrderComposerDocument> {
+    if (workingId && data) {
+      return data;
+    }
+
+    const res = await apiPost('/api/tenant/orders', {});
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err as { error?: string }).error ?? 'Failed to create sales order draft');
+    }
+    const json = (await res.json()) as { data: SalesOrderComposerDocument };
+    qc.setQueryData(['tenant-sales-order-composer', json.data.id], json.data);
+    setWorkingId(json.data.id);
+    return json.data;
+  }
+
+  async function saveDocumentNow(
+    nextDocument: SalesOrderComposerDocument,
+    nextLines: EstimateComposerLineRow[],
+  ): Promise<SalesOrderComposerDocument> {
+    const created = !workingId ? await createDraftOnDemand() : null;
+    const targetId = workingId ?? created?.id ?? null;
+    if (!targetId) throw new Error('Missing sales order id');
+
+    const payload = toSavePayload({
+      ...nextDocument,
+      id: targetId,
+      order_number: created?.order_number ?? nextDocument.order_number,
+    }, nextLines);
+
+    if (workingId) {
+      return new Promise<SalesOrderComposerDocument>((resolve, reject) => {
+        saveMutation.mutate(payload, {
+          onSuccess: ({ data: saved }) => resolve(saved),
+          onError: (mutationError) => reject(mutationError),
+        });
+      });
+    }
+
+    const res = await apiPatch(`/api/tenant/orders/${targetId}`, payload);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err as { error?: string }).error ?? 'Failed to save sales order');
+    }
+    const json = (await res.json()) as { data: SalesOrderComposerDocument };
+    void qc.invalidateQueries({ queryKey: ['tenant-orders'] });
+    return json.data;
+  }
+
+  async function runConfirm(orderIdForConfirm: string, hasBackorder: boolean) {
+    setConfirmPending(true);
+    try {
+      const res = await apiPatch(`/api/tenant/orders/${orderIdForConfirm}/confirm`, {
+        has_backorder: hasBackorder,
+        notify_buyer: notifyBuyer,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? 'Failed to confirm sales order');
+      }
+      const json = (await res.json()) as { data: { id: string; redirect_path: string } };
+      setBackorderOpen(false);
+      void qc.invalidateQueries({ queryKey: ['tenant-sales-order-composer', orderIdForConfirm] });
+      void qc.invalidateQueries({ queryKey: ['tenant-orders'] });
+      router.push(json.data.redirect_path);
+    } finally {
+      setConfirmPending(false);
+    }
+  }
+
   if (orderManagement === false || salesOrdersFlag === false) {
     return <FeatureDisabledState />;
   }
 
-  if (isLoading || createDraftMutation.isPending || !documentState) {
-    return <SalesOrderComposerLoadingSkeleton />;
+  if (mode === 'create' && fromEstimateId && !orderId && estimateForPrefill.isError) {
+    return (
+      <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6">
+        <p className="text-[13px] text-danger-700">
+          {estimateForPrefill.error instanceof Error
+            ? estimateForPrefill.error.message
+            : 'Could not load estimate to pre-fill this order.'}
+        </p>
+      </div>
+    );
+  }
+
+  const waitingPrefill = mode === 'create' && Boolean(fromEstimateId) && !orderId
+    && (estimateForPrefill.isLoading || !documentState);
+
+  if (waitingPrefill || (workingId && isLoading) || !documentState) {
+    return <DocumentComposerLoadingSkeleton />;
   }
 
   if (isError) {
@@ -526,7 +552,7 @@ export function DocComposerSalesOrder({
     : buyer
       ? `For ${buyer.business_name}`
       : 'Pick a buyer to begin composing this sales order.';
-  const primaryDisabled = !documentState.buyer_id || activeLines.length === 0 || confirmMutation.isPending;
+  const primaryDisabled = !documentState.buyer_id || activeLines.length === 0 || confirmPending;
   const warningText = effectiveShortLines.length > 0
     ? `${effectiveShortLines.length} line(s) over stock. ${effectiveShortLines[0]?.product_name ?? 'Line item'} — ordered ${effectiveShortLines[0]?.qty ?? 0}, only ${effectiveShortLines[0]?.on_hand ?? 0} on hand.`
     : null;
@@ -549,6 +575,7 @@ export function DocComposerSalesOrder({
     setBuyerQuery('');
     setProductQuery('');
     setSearchOpen(false);
+    setBuyerSearchOpen(false);
   }
 
   function handleAddProduct(product: SalesOrderComposerProductSearchRow) {
@@ -612,139 +639,136 @@ export function DocComposerSalesOrder({
   }
 
   function handleDiscard() {
-    window.sessionStorage.removeItem(NEW_DRAFT_STORAGE_KEY);
     router.push('/sales-orders');
   }
 
-  function handleSaveAndClose() {
+  async function handleSaveAndClose() {
     if (!documentState) return;
-    saveMutation.mutate(toSavePayload(documentState, diffLines), {
-      onSuccess: () => router.push('/sales-orders'),
-      onError: (mutationError) => {
-        toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to save sales order');
-      },
-    });
+    try {
+      const saved = await saveDocumentNow(documentState, diffLines);
+      originalDocumentRef.current = saved;
+      originalLinesRef.current = saved.items.map((line) => ({
+        ...line,
+        diff: 'clean' as const,
+        line_total: computeLineTotal(line),
+      }));
+      setDocumentState(saved);
+      setLineState(originalLinesRef.current);
+      setWorkingId(saved.id);
+      setAutoSaveMeta({ label: 'Draft saved just now', tone: 'saved' });
+      router.push('/sales-orders');
+    } catch (mutationError) {
+      toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to save sales order');
+    }
   }
 
-  function runConfirm(hasBackorder: boolean) {
-    confirmMutation.mutate(
-      { has_backorder: hasBackorder, notify_buyer: notifyBuyer },
-      {
-        onSuccess: ({ data: response }) => {
-          window.sessionStorage.removeItem(NEW_DRAFT_STORAGE_KEY);
-          setBackorderOpen(false);
-          router.push(response.redirect_path);
-        },
-        onError: (mutationError) => {
-          toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to confirm sales order');
-        },
-      },
-    );
-  }
-
-  function handleConfirmClick() {
+  async function handleConfirmClick() {
     if (!documentState) return;
-    const proceed = () => {
-      if (effectiveShortLines.length > 0) {
+
+    const linesShort = (lines: EstimateComposerLineRow[]) =>
+      lines.filter((line) => line.diff !== 'removed' && line.qty > line.on_hand);
+
+    try {
+      let doc = documentState;
+      let lines = diffLines;
+      if (dirty || !workingId) {
+        doc = await saveDocumentNow(documentState, diffLines);
+        const savedLines = doc.items.map((line) => ({
+          ...line,
+          diff: 'clean' as const,
+          line_total: computeLineTotal(line),
+        }));
+        setDocumentState(doc);
+        setLineState(savedLines);
+        originalDocumentRef.current = doc;
+        originalLinesRef.current = savedLines;
+        setWorkingId(doc.id);
+        lines = savedLines;
+      }
+
+      const clientShort = linesShort(lines);
+      const serverShort = stockCheckQuery.data?.filter((row) => row.is_short) ?? [];
+      const hasShort = serverShort.length > 0 || clientShort.length > 0;
+
+      if (hasShort) {
+        setPendingConfirmOrderId(doc.id);
         setBackorderOpen(true);
         return;
       }
-      runConfirm(false);
-    };
 
-    if (dirty) {
-      saveMutation.mutate(toSavePayload(documentState, diffLines), {
-        onSuccess: ({ data: saved }) => {
-          setDocumentState(saved);
-          const savedLines = saved.items.map((line) => ({
-            ...line,
-            diff: 'clean' as const,
-            line_total: computeLineTotal(line),
-          }));
-          setLineState(savedLines);
-          originalDocumentRef.current = saved;
-          originalLinesRef.current = savedLines;
-          proceed();
-        },
-        onError: (mutationError) => {
-          toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to save sales order');
-        },
-      });
-      return;
+      await runConfirm(doc.id, false);
+    } catch (mutationError) {
+      toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to confirm order');
     }
-
-    proceed();
   }
 
   return (
     <>
-      <DocComposerFrame
+      <DocumentComposerShell
         mode={isConfirmedEdit ? 'edit' : 'create'}
         kind="so"
-        top={(
-          <DocTop
-            kind="so"
-            docNumber={documentState.order_number}
-            modeChip={{
-              tone: isConfirmedEdit ? 'edit' : 'draft',
-              label: modeChip,
-            }}
-            autoSave={{
-              ...autoSaveMeta,
-              label: effectiveShortLines.length > 0 ? 'Resolve the stock warning before confirming' : autoSaveMeta.label,
-              tone: effectiveShortLines.length > 0 ? 'warning' : autoSaveMeta.tone,
-            }}
-            onClose={() => router.push('/sales-orders')}
-          />
+        breadcrumbItems={[
+          { label: 'Sales' },
+          { label: 'Sales orders', href: '/sales-orders' },
+          {
+            label: mode === 'edit' ? documentState.order_number : 'New sales order',
+            current: true,
+          },
+        ]}
+        title={title}
+        subtitle={subtitle}
+        status={{ label: modeChip, tone: mode === 'edit' ? 'live' : 'draft' }}
+        titleActions={(
+          <>
+            <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => toast.message('Stock report coming soon')}>
+              <PackageSearch className="h-4 w-4" />
+              Stock report
+            </Button>
+            <Button type="button" variant="ghost" className="gap-2" onClick={() => router.push('/sales-orders')}>
+              <X className="h-3.5 w-3.5" />
+              Close
+            </Button>
+          </>
         )}
-        titleRow={(
-          <DocTitleRow
-            title={title}
-            subtitle={subtitle}
-            rightActions={(
-              <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => toast.message('Stock report coming soon')}>
-                <PackageSearch className="h-4 w-4" />
-                Stock report
-              </Button>
-            )}
-          />
-        )}
-        strip={(
-          <DocStrip
+        basics={(
+          <DocumentBasicsStrip
             kind="so"
             docNumber={documentState.order_number}
             dateIssued={documentState.order_date}
-            validUntil={documentState.expected_delivery}
+            secondDate={documentState.expected_delivery}
             buyerPoRef={documentState.buyer_po_ref}
             placeOfSupply={documentState.place_of_supply}
-            placeOptions={['Delhi', 'Haryana', 'Maharashtra', 'Karnataka', 'Tamil Nadu', 'Unknown']}
-            onDocNumberChange={(value) => setDocumentPatch({ order_number: value })}
             onDateIssuedChange={(value) => setDocumentPatch({ order_date: value })}
-            onValidUntilChange={(value) => setDocumentPatch({ expected_delivery: value })}
+            onSecondDateChange={(value) => setDocumentPatch({ expected_delivery: value })}
             onBuyerPoRefChange={(value) => setDocumentPatch({ buyer_po_ref: value })}
             onPlaceOfSupplyChange={(value) => setDocumentPatch({ place_of_supply: value })}
           />
         )}
-        left={
-          buyer ? (
-            <BuyerCardFilled
-              buyer={buyer}
-              previewTotal={totals.grand_total}
-              paymentTermsValue={paymentTermsLabel}
-              readOnly={isConfirmedEdit}
-              onPaymentTermsChange={setPaymentTermsLabel}
-              onSwap={() => setDocumentPatch({ buyer_id: null, buyer_context: null })}
-            />
-          ) : (
-            <BuyerCardEmpty
-              query={buyerQuery}
-              recentBuyers={recentBuyers}
-              onQueryChange={setBuyerQuery}
-              onSelectBuyer={handleSelectBuyer}
-            />
-          )
-        }
-        center={
+        left={(
+          <ComposerSidebarCard>
+            {buyer ? (
+              <BuyerCardFilled
+                buyer={buyer}
+                previewTotal={totals.grand_total}
+                paymentTermsValue={paymentTermsLabel}
+                readOnly={isConfirmedEdit}
+                onPaymentTermsChange={setPaymentTermsLabel}
+                onSwap={() => setDocumentPatch({ buyer_id: null, buyer_context: null })}
+              />
+            ) : (
+              <BuyerCardEmpty
+                query={buyerQuery}
+                recentBuyers={recentBuyers}
+                searchOpen={buyerSearchOpen}
+                searchLoading={buyerPickerQuery.isLoading}
+                onQueryChange={setBuyerQuery}
+                onSearchOpenChange={setBuyerSearchOpen}
+                onSelectBuyer={handleSelectBuyer}
+              />
+            )}
+          </ComposerSidebarCard>
+        )}
+        center={(
           <LinesTable
             kind="so"
             buyerSelected={Boolean(documentState.buyer_id)}
@@ -772,7 +796,7 @@ export function DocComposerSalesOrder({
             onToggleFreight={() => setFreightExpanded((current) => !current)}
             onToggleInternal={() => setInternalExpanded((current) => !current)}
           />
-        }
+        )}
         right={(
           <div className="space-y-4">
             <TotalsCard
@@ -786,36 +810,37 @@ export function DocComposerSalesOrder({
           </div>
         )}
         footer={(
-          <DocComposerFoot
+          <DocumentComposerFooterRow
             autoSaveLabel={effectiveShortLines.length > 0 ? 'Resolve the stock warning before confirming' : autoSaveMeta.label}
             autoSaveTone={effectiveShortLines.length > 0 ? 'warning' : autoSaveMeta.tone}
-            actions={(
-              <>
-                <Button type="button" variant="ghost" className="gap-2" onClick={handleDiscard}>
-                  <X className="h-4 w-4" />
-                  Discard
-                </Button>
-                <Button type="button" variant="outline" className="gap-2" onClick={handleSaveAndClose}>
-                  <Save className="h-4 w-4" />
-                  Save &amp; close
-                </Button>
-                <Button
-                  type="button"
-                  variant={effectiveShortLines.length > 0 ? 'secondary' : 'primary'}
-                  className={effectiveShortLines.length > 0 ? 'gap-2 border-amber-500 text-amber-700 hover:bg-amber-50' : primaryDisabled ? 'btn-disabled gap-2' : 'gap-2'}
-                  disabled={primaryDisabled}
-                  onClick={handleConfirmClick}
-                >
-                  {effectiveShortLines.length > 0 ? <AlertTriangle className="h-4 w-4" /> : <Truck className="h-4 w-4" />}
-                  {effectiveShortLines.length > 0 ? 'Confirm with backorder' : 'Confirm order'}
-                </Button>
-              </>
-            )}
-          />
+          >
+            <Button type="button" variant="ghost" className="gap-2" onClick={handleDiscard}>
+              <X className="h-4 w-4" />
+              Discard
+            </Button>
+            <Button type="button" variant="outline" className="gap-2" onClick={() => void handleSaveAndClose()}>
+              <Save className="h-4 w-4" />
+              Save &amp; close
+            </Button>
+            <Button
+              type="button"
+              variant={effectiveShortLines.length > 0 ? 'secondary' : 'primary'}
+              className={effectiveShortLines.length > 0 ? 'gap-2 border-amber-500 text-amber-700 hover:bg-amber-50' : primaryDisabled ? 'btn-disabled gap-2' : 'gap-2'}
+              disabled={primaryDisabled}
+              onClick={() => void handleConfirmClick()}
+            >
+              {effectiveShortLines.length > 0 ? <AlertTriangle className="h-4 w-4" /> : <Truck className="h-4 w-4" />}
+              {effectiveShortLines.length > 0 ? 'Confirm with backorder' : 'Confirm order'}
+            </Button>
+          </DocumentComposerFooterRow>
         )}
       />
 
-      <Dialog open={backorderOpen} onOpenChange={setBackorderOpen}>
+      <Dialog open={backorderOpen} onOpenChange={(open) => {
+        setBackorderOpen(open);
+        if (!open) setPendingConfirmOrderId(null);
+      }}
+      >
         <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
             <DialogTitle>Confirm with backorder</DialogTitle>
@@ -840,7 +865,16 @@ export function DocComposerSalesOrder({
             <Button type="button" variant="ghost" onClick={() => setBackorderOpen(false)}>
               Cancel
             </Button>
-            <Button type="button" variant="secondary" className="gap-2 border-amber-500 text-amber-700 hover:bg-amber-50" onClick={() => runConfirm(true)}>
+            <Button
+              type="button"
+              variant="secondary"
+              className="gap-2 border-amber-500 text-amber-700 hover:bg-amber-50"
+              disabled={!pendingConfirmOrderId}
+              onClick={() => {
+                if (!pendingConfirmOrderId) return;
+                void runConfirm(pendingConfirmOrderId, true);
+              }}
+            >
               <ClipboardList className="h-4 w-4" />
               Confirm anyway
             </Button>
@@ -850,3 +884,5 @@ export function DocComposerSalesOrder({
     </>
   );
 }
+
+export { DocumentComposerLoadingSkeleton as SalesOrderComposerLoadingSkeleton } from '@/components/seller/composer/DocumentComposerShell';

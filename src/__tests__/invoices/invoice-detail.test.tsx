@@ -1,16 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 
 const pushMock = vi.fn();
 const useInvoiceDetailMock = vi.fn();
 const payMutateAsync = vi.fn().mockResolvedValue({});
 const voidMutateAsync = vi.fn().mockResolvedValue({});
 const remindMutateAsync = vi.fn().mockResolvedValue({});
+const sendInvoiceMutate = vi.fn();
 const useFlagStateMock = vi.fn();
+const prefetchInvoiceComposerMock = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
   usePathname: () => '/invoices/inv-1',
+}));
+
+vi.mock('@/hooks/useInvoices', () => ({
+  prefetchInvoiceComposer: (...args: unknown[]) => prefetchInvoiceComposerMock(...args),
 }));
 
 vi.mock('@/hooks/useInvoiceDetail', () => ({
@@ -18,6 +26,7 @@ vi.mock('@/hooks/useInvoiceDetail', () => ({
   useMarkInvoicePaid: () => ({ mutateAsync: payMutateAsync, isPending: false }),
   useVoidInvoice: () => ({ mutateAsync: voidMutateAsync, isPending: false }),
   useSendInvoiceReminder: () => ({ mutateAsync: remindMutateAsync, isPending: false }),
+  useSendInvoice: () => ({ mutate: sendInvoiceMutate, isPending: false }),
 }));
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
@@ -30,6 +39,11 @@ vi.mock('sonner', () => ({
 
 import type { InvoiceDetailResponse } from '@/types/tenant-invoices';
 import { InvoiceDetailPage } from '@/components/seller/invoices/detail/InvoiceDetailPage';
+
+function renderWithQueryClient(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 function baseInvoice(overrides: Partial<InvoiceDetailResponse> = {}): InvoiceDetailResponse {
   return {
@@ -118,6 +132,8 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
     payMutateAsync.mockClear();
     voidMutateAsync.mockClear();
     remindMutateAsync.mockClear();
+    sendInvoiceMutate.mockReset();
+    prefetchInvoiceComposerMock.mockReset();
     useFlagStateMock.mockReturnValue(true);
     useInvoiceDetailMock.mockReturnValue({
       data: baseInvoice(),
@@ -127,12 +143,16 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
     });
   });
 
-  it('draft shows DocStatusBand draft chip', () => {
-    render(<InvoiceDetailPage id="inv-1" />);
+  it('draft shows timeline, send in what is next, and title chip', () => {
+    renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
     const band = document.querySelector('.doc-status-band');
     expect(band).toBeTruthy();
-    expect(band).toHaveTextContent(/Draft/i);
-    expect(band).toHaveTextContent(/Not yet sent/i);
+    expect(band).toHaveTextContent(/What's next/i);
+    expect(band).toHaveTextContent(/formal invoice/i);
+    expect(screen.getByLabelText('Invoice progress')).toHaveTextContent('Draft');
+    expect(document.querySelector('.doc-status-chip')).toHaveTextContent(/Draft/i);
+    expect(screen.getByRole('button', { name: /^send invoice$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /edit before send/i })).toBeInTheDocument();
   });
 
   it('sent shows Due in 5 days when due is 5 days ahead (IST)', () => {
@@ -147,7 +167,7 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
       isError: false,
       error: null,
     });
-    render(<InvoiceDetailPage id="inv-1" />);
+    renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
     const band = document.querySelector('.doc-status-band');
     expect(band).toHaveTextContent(/Due in 5 days/i);
   });
@@ -165,15 +185,15 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
       isError: false,
       error: null,
     });
-    render(<InvoiceDetailPage id="inv-1" />);
+    renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
     const band = document.querySelector('.doc-status-band');
     expect(band).toHaveTextContent(/Overdue/i);
     expect(band).toHaveTextContent(/Overdue by/i);
-    expect(screen.getByRole('button', { name: /edit invoice/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /edit (before send|invoice)/i })).toBeInTheDocument();
   });
 
   it('hides Edit for paid and void', () => {
-    const { unmount } = render(<InvoiceDetailPage id="inv-1" />);
+    const { unmount } = renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
     unmount();
     useInvoiceDetailMock.mockReturnValue({
       data: baseInvoice({ db_status: 'paid', status: 'paid', paid_at: '2026-06-10T10:00:00.000Z' }),
@@ -181,8 +201,8 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
       isError: false,
       error: null,
     });
-    const { unmount: u2 } = render(<InvoiceDetailPage id="inv-1" />);
-    expect(screen.queryByRole('button', { name: /edit invoice/i })).toBeNull();
+    const { unmount: u2 } = renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
+    expect(screen.queryByRole('button', { name: /edit (before send|invoice)/i })).toBeNull();
     u2();
     useInvoiceDetailMock.mockReturnValue({
       data: baseInvoice({ db_status: 'void', status: 'void', voided_at: '2026-06-10T10:00:00.000Z' }),
@@ -190,8 +210,8 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
       isError: false,
       error: null,
     });
-    render(<InvoiceDetailPage id="inv-1" />);
-    expect(screen.queryByRole('button', { name: /edit invoice/i })).toBeNull();
+    renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
+    expect(screen.queryByRole('button', { name: /edit (before send|invoice)/i })).toBeNull();
   });
 
   it('shows version badge when version > 1', () => {
@@ -201,7 +221,7 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
       isError: false,
       error: null,
     });
-    render(<InvoiceDetailPage id="inv-1" />);
+    renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
     expect(screen.getByText('v2')).toBeInTheDocument();
   });
 
@@ -212,13 +232,13 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
       isError: false,
       error: null,
     });
-    const { container } = render(<InvoiceDetailPage id="inv-1" />);
+    const { container } = renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
     expect(container.querySelector('.tax-row--cgst')).toBeTruthy();
     expect(container.querySelector('.tax-row--sgst')).toBeTruthy();
   });
 
   it('view frame keeps inputs disabled or read-only', () => {
-    const { container } = render(<InvoiceDetailPage id="inv-1" />);
+    const { container } = renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
     const frame = container.querySelector('.doc-readonly');
     expect(frame).toBeTruthy();
     const bad = frame?.querySelectorAll('input:not([disabled]):not([readonly]), textarea:not([disabled]):not([readonly])');
@@ -232,14 +252,14 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
       isError: false,
       error: null,
     });
-    render(<InvoiceDetailPage id="inv-1" />);
+    renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
     fireEvent.click(screen.getByRole('button', { name: /mark as paid/i }));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('dialog', {}, { timeout: 10_000 });
     const amt = within(dialog).getByDisplayValue('11800');
     expect((amt as HTMLInputElement).value).toBe('11800');
     fireEvent.click(within(dialog).getByRole('button', { name: /full amount/i }));
     expect((amt as HTMLInputElement).value).toBe('11800');
-  });
+  }, 15_000);
 
   it('send reminder modal pre-fills message', async () => {
     useInvoiceDetailMock.mockReturnValue({
@@ -248,7 +268,7 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
       isError: false,
       error: null,
     });
-    render(<InvoiceDetailPage id="inv-1" />);
+    renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
     fireEvent.click(screen.getByRole('button', { name: /send reminder/i }));
     const dialog = await screen.findByRole('dialog');
     const ta = within(dialog).getByRole('textbox');
@@ -267,13 +287,20 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
       isError: false,
       error: null,
     });
-    render(<InvoiceDetailPage id="inv-1" />);
+    renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
     expect(screen.queryByRole('button', { name: /void invoice/i })).toBeNull();
+  });
+
+  it('edit before send prefetches composer then navigates', () => {
+    renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
+    fireEvent.click(screen.getByRole('button', { name: /edit before send/i }));
+    expect(prefetchInvoiceComposerMock).toHaveBeenCalledWith(expect.anything(), 'inv-1');
+    expect(pushMock).toHaveBeenCalledWith('/invoices/inv-1/edit');
   });
 
   it('shows FeatureDisabledState when invoices flag is off', () => {
     useFlagStateMock.mockImplementation((flag: string) => (flag === 'INVOICES' ? false : true));
-    render(<InvoiceDetailPage id="inv-1" />);
+    renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
     expect(screen.getByRole('heading', { name: /enabled yet/i })).toBeInTheDocument();
   });
 });

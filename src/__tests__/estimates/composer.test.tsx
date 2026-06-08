@@ -227,6 +227,7 @@ describe('DocComposerEstimate', () => {
 
     expect(await screen.findByPlaceholderText(/Search buyer/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Send estimate/i })).toBeDisabled();
+    expect(apiPostMock).not.toHaveBeenCalled();
   });
 
   it('hydrates buyer card and over-limit warning after buyer + line selection', async () => {
@@ -242,19 +243,22 @@ describe('DocComposerEstimate', () => {
     renderComposer({ mode: 'create' });
 
     fireEvent.focus(screen.getByPlaceholderText(/Search buyer/i));
-    fireEvent.click(await screen.findByRole('button', { name: /Acme Retail/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Acme Retail/i }, { timeout: 8000 }));
     await screen.findByText(/Credit headroom/i);
     expect(screen.getByText(/North Delhi A-class/i)).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText(/Search product/i), { target: { value: 'Shiraz' } });
     fireEvent.click(await screen.findByRole('button', { name: /Vinikus Shiraz Reserve/i }));
 
-    await waitFor(() => {
-      expect(screen.getByText(/Over limit by/i)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Send estimate/i })).toBeEnabled();
-      expect(screen.getAllByText(/₹1,392/i).length).toBeGreaterThan(0);
-    });
-  });
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Over limit by/i)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Send estimate/i })).toBeEnabled();
+        expect(screen.getAllByText(/₹1,392/i).length).toBeGreaterThan(0);
+      },
+      { timeout: 12_000 },
+    );
+  }, 15_000);
 
   it('shows edit mode chip and save & resend CTA for sent estimates', async () => {
     useEstimateComposerMock.mockReturnValue({

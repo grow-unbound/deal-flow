@@ -1,9 +1,9 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
 import { useDebounce } from '@/hooks/useDebounce';
-import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
+import { apiFetch, apiPatch } from '@/lib/api-fetch';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type {
   SalesOrderComposerDocument,
@@ -13,36 +13,52 @@ import type {
   SalesOrderStockCheckRow,
 } from '@/types/sales-order-composer';
 
+async function fetchTenantSalesOrderComposer(orderId: string): Promise<SalesOrderComposerDocument> {
+  const res = await apiFetch(`/api/tenant/orders/${orderId}?view=composer`);
+  if (res.status === 404) throw new Error('not_found');
+  if (res.status === 403) throw new Error('forbidden');
+  if (!res.ok) throw new Error('Failed to fetch sales order');
+  return (await res.json()) as SalesOrderComposerDocument;
+}
+
+export function tenantSalesOrderComposerQueryOptions(orderId: string) {
+  return {
+    queryKey: ['tenant-sales-order-composer', orderId] as const,
+    queryFn: () => fetchTenantSalesOrderComposer(orderId),
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+  };
+}
+
+export async function prefetchSalesOrderComposer(qc: QueryClient, orderId: string): Promise<void> {
+  await qc.prefetchQuery(tenantSalesOrderComposerQueryOptions(orderId));
+}
+
 export function useSalesOrderComposer(orderId: string | null) {
   return useQuery({
     queryKey: ['tenant-sales-order-composer', orderId],
-    queryFn: async (): Promise<SalesOrderComposerDocument> => {
-      const res = await apiFetch(`/api/tenant/orders/${orderId}?view=composer`);
-      if (res.status === 404) throw new Error('not_found');
-      if (res.status === 403) throw new Error('forbidden');
-      if (!res.ok) throw new Error('Failed to fetch sales order');
-      return res.json() as Promise<SalesOrderComposerDocument>;
-    },
+    queryFn: () => fetchTenantSalesOrderComposer(orderId!),
     enabled: Boolean(orderId),
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
   });
 }
 
-export function useCreateSalesOrderDraft() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (payload?: { from_estimate_id?: string | null }) => {
-      const res = await apiPost('/api/tenant/orders', payload ?? {});
+export function useNextSalesOrderNumber(enabled: boolean) {
+  return useQuery({
+    queryKey: ['next-sales-order-number'],
+    queryFn: async (): Promise<string> => {
+      const res = await apiFetch('/api/tenant/orders/next-number');
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error ?? 'Failed to create sales order draft');
+        throw new Error((err as { error?: string }).error ?? 'Failed to fetch next order number');
       }
-      return (await res.json()) as { data: SalesOrderComposerDocument };
+      const json = (await res.json()) as { order_number: string };
+      return json.order_number;
     },
-    onSuccess: (payload) => {
-      qc.setQueryData(['tenant-sales-order-composer', payload.data.id], payload.data);
-    },
+    enabled,
+    staleTime: 30_000,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
   });
 }
 
@@ -63,27 +79,6 @@ export function useSaveSalesOrderComposer(orderId: string | null) {
       qc.setQueryData(['tenant-sales-order-composer', orderId], payload.data);
       void qc.invalidateQueries({ queryKey: ['tenant-sales-order', orderId] });
       void qc.invalidateQueries({ queryKey: ['tenant-orders'] });
-    },
-  });
-}
-
-export function useConfirmSalesOrder(orderId: string | null) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (payload: { has_backorder: boolean; notify_buyer?: boolean }) => {
-      if (!orderId) throw new Error('Missing sales order id');
-      const res = await apiPatch(`/api/tenant/orders/${orderId}/confirm`, payload);
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error ?? 'Failed to confirm sales order');
-      }
-      return (await res.json()) as { data: { id: string; redirect_path: string } };
-    },
-    onSuccess: async () => {
-      if (!orderId) return;
-      await qc.invalidateQueries({ queryKey: ['tenant-sales-order-composer', orderId] });
-      await qc.invalidateQueries({ queryKey: ['tenant-sales-order', orderId] });
-      await qc.invalidateQueries({ queryKey: ['tenant-orders'] });
     },
   });
 }

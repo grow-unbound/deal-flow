@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const pushMock = vi.fn();
 const useEstimateDetailMock = vi.fn();
@@ -7,6 +8,7 @@ const useConvertMock = vi.fn();
 const useVoidMock = vi.fn();
 const useDupMock = vi.fn();
 const useFlagStateMock = vi.fn();
+const seedEstimateComposerCacheMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
@@ -18,15 +20,22 @@ vi.mock('@/hooks/useEstimates', () => ({
   useConvertEstimateToOrder: (...args: unknown[]) => useConvertMock(...args),
   useVoidEstimate: (...args: unknown[]) => useVoidMock(...args),
   useDuplicateEstimate: (...args: unknown[]) => useDupMock(...args),
+  seedEstimateComposerCache: (...args: unknown[]) => seedEstimateComposerCacheMock(...args),
 }));
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlagState: (...args: unknown[]) => useFlagStateMock(...args),
 }));
 
+import type { ReactElement } from 'react';
 import type { TenantEstimateDetailResponse } from '@/types/tenant-estimate-detail';
 import { ROLES } from '@/constants';
 import { EstimateDetailPage } from '@/components/seller/estimates/detail/EstimateDetailPage';
+
+function renderWithQueryClient(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -124,6 +133,7 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
   beforeEach(() => {
     vi.setSystemTime(new Date('2026-06-06T12:00:00.000Z'));
     pushMock.mockReset();
+    seedEstimateComposerCacheMock.mockReset();
     useFlagStateMock.mockReturnValue(true);
     useConvertMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
     useVoidMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
@@ -136,12 +146,14 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
     });
   });
 
-  it('draft shows DocStatusBand draft chip and not-yet-sent copy', () => {
-    render(<EstimateDetailPage id="est-1" />);
+  it('draft shows timeline, what is next copy, and title chip', () => {
+    renderWithQueryClient(<EstimateDetailPage id="est-1" />);
     const band = document.querySelector('.doc-status-band');
     expect(band).toBeTruthy();
-    expect(band).toHaveTextContent(/Draft/i);
-    expect(band).toHaveTextContent(/Not yet sent/i);
+    expect(band).toHaveTextContent(/What's next/i);
+    expect(band).toHaveTextContent(/buyer is notified only after send/i);
+    expect(screen.getByLabelText('Estimate progress')).toHaveTextContent('Draft');
+    expect(document.querySelector('.doc-status-chip')).toHaveTextContent(/Draft/i);
   });
 
   it('sent shows Sent chip, sent timestamp, and viewed line when metadata present', () => {
@@ -158,14 +170,14 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
       isError: false,
       error: null,
     });
-    render(<EstimateDetailPage id="est-1" />);
+    renderWithQueryClient(<EstimateDetailPage id="est-1" />);
     const band = document.querySelector('.doc-status-band');
     expect(band).toHaveTextContent(/Sent/i);
     expect(band).toHaveTextContent(/Viewed by Priya/i);
   });
 
   it('view frame keeps inputs disabled or read-only', () => {
-    const { container } = render(<EstimateDetailPage id="est-1" />);
+    const { container } = renderWithQueryClient(<EstimateDetailPage id="est-1" />);
     const frame = container.querySelector('.doc-readonly');
     expect(frame).toBeTruthy();
     const bad = frame?.querySelectorAll('input:not([disabled]):not([readonly]), textarea:not([disabled]):not([readonly])');
@@ -182,7 +194,7 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
       isError: false,
       error: null,
     });
-    const { unmount } = render(<EstimateDetailPage id="est-1" />);
+    const { unmount } = renderWithQueryClient(<EstimateDetailPage id="est-1" />);
     expect(screen.getByRole('button', { name: /edit estimate/i })).toBeInTheDocument();
     unmount();
 
@@ -197,20 +209,26 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
       isError: false,
       error: null,
     });
-    render(<EstimateDetailPage id="est-1" />);
+    renderWithQueryClient(<EstimateDetailPage id="est-1" />);
     expect(screen.queryByRole('button', { name: /edit estimate/i })).toBeNull();
   });
 
-  it('Edit navigates to edit route', () => {
+  it('Edit navigates to edit route and seeds composer cache', () => {
     useEstimateDetailMock.mockReturnValue({
       data: basePayload({ status: 'sent', sent_at: '2026-06-05T10:00:00.000Z' }),
       isLoading: false,
       isError: false,
       error: null,
     });
-    render(<EstimateDetailPage id="est-1" />);
+    renderWithQueryClient(<EstimateDetailPage id="est-1" />);
     fireEvent.click(screen.getByRole('button', { name: /edit estimate/i }));
+    expect(seedEstimateComposerCacheMock).toHaveBeenCalled();
     expect(pushMock).toHaveBeenCalledWith('/estimates/est-1/edit');
+  });
+
+  it('draft title action shows Edit & send', () => {
+    renderWithQueryClient(<EstimateDetailPage id="est-1" />);
+    expect(screen.getByRole('button', { name: /edit & send/i })).toBeInTheDocument();
   });
 
   it('Convert appears only for sent and opens modal', async () => {
@@ -220,7 +238,7 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
       isError: false,
       error: null,
     });
-    render(<EstimateDetailPage id="est-1" />);
+    renderWithQueryClient(<EstimateDetailPage id="est-1" />);
     fireEvent.click(screen.getByRole('button', { name: /convert to so/i }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText(/convert to sales order/i)).toBeInTheDocument();
@@ -237,13 +255,13 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
       isError: false,
       error: null,
     });
-    render(<EstimateDetailPage id="est-1" />);
+    renderWithQueryClient(<EstimateDetailPage id="est-1" />);
     expect(screen.queryByRole('button', { name: /void estimate/i })).toBeNull();
   });
 
   it('shows FeatureDisabledState when estimates flag is off', () => {
     useFlagStateMock.mockImplementation((flag: string) => (flag === 'ESTIMATES' ? false : true));
-    render(<EstimateDetailPage id="est-1" />);
+    renderWithQueryClient(<EstimateDetailPage id="est-1" />);
     expect(screen.getByRole('heading', { name: /enabled yet/i })).toBeInTheDocument();
   });
 
@@ -254,7 +272,7 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
       isError: true,
       error: new Error('forbidden'),
     });
-    render(<EstimateDetailPage id="est-1" />);
+    renderWithQueryClient(<EstimateDetailPage id="est-1" />);
     expect(screen.getByRole('heading', { name: /enabled yet/i })).toBeInTheDocument();
   });
 });

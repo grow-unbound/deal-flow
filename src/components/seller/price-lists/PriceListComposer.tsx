@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CalendarDays, Check, RotateCcw, Save, Search, Send, SlidersHorizontal, Upload, X } from 'lucide-react';
+import { AlertTriangle, Check, RotateCcw, Save, Search, Send, SlidersHorizontal, Upload, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { EntityAvatar, PageWrap } from '@/components/seller/layout';
 import {
@@ -19,12 +19,7 @@ import {
 } from '@/components/seller/composer/ComposerLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { DatePicker } from '@/components/ui/date-picker';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-overlay';
 import {
   computeStrategyPrice,
@@ -40,6 +35,7 @@ import {
   usePriceListDetail,
   useSavePriceListComposer,
 } from '@/hooks/usePriceLists';
+import { composerPageMinHeightClass, composerThreePanelGridClass } from '@/lib/composer-viewport-classes';
 import type { PriceListPricingStrategy } from '@/lib/zod';
 
 type ComposerMode = 'create' | 'edit';
@@ -127,8 +123,12 @@ function computeSummaryMetrics(
 
 function PriceListComposerSkeleton() {
   return (
-    <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6" role="status" aria-label="Loading price list composer">
-      <div className="space-y-4">
+    <div
+      className={cn('mx-auto flex w-full max-w-[1920px] flex-col px-8 pt-7 pb-6', composerPageMinHeightClass)}
+      role="status"
+      aria-label="Loading price list composer"
+    >
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
         <div className="h-4 w-44 animate-pulse rounded bg-cream-200" />
         <div className="flex items-start justify-between gap-8">
           <div className="space-y-3">
@@ -145,13 +145,13 @@ function PriceListComposerSkeleton() {
             <div key={index} className="h-[82px] animate-pulse border-r border-cream-300 bg-white last:border-r-0" />
           ))}
         </div>
-        <div className="grid min-h-[620px] gap-5 lg:grid-cols-[260px_minmax(0,1fr)_320px]">
-          <div className="rounded-[14px] border border-cream-300 bg-white animate-pulse" />
-          <div className="rounded-[14px] border border-cream-300 bg-white animate-pulse" />
-          <div className="rounded-[14px] border border-cream-300 bg-white animate-pulse" />
+        <div className={composerThreePanelGridClass}>
+          <div className="animate-pulse rounded-[14px] border border-cream-300 bg-white" />
+          <div className="animate-pulse rounded-[14px] border border-cream-300 bg-white" />
+          <div className="animate-pulse rounded-[14px] border border-cream-300 bg-white" />
         </div>
-        <div className="sticky bottom-0 h-20 animate-pulse rounded-[14px] border border-cream-300 bg-white" />
       </div>
+      <div className="sticky bottom-0 z-10 mt-4 h-20 shrink-0 animate-pulse rounded-[14px] border border-cream-300 bg-white" />
     </div>
   );
 }
@@ -513,8 +513,9 @@ export function PriceListComposer({
 
   return (
     <>
-      <PageWrap className="pt-7 pb-6">
+      <PageWrap className={cn('flex flex-col', composerPageMinHeightClass, 'pt-7 pb-6')}>
         <ComposerShell>
+          <div className="flex min-h-0 flex-1 flex-col gap-4">
           <ComposerBreadcrumbs
             items={[
               { label: 'Price Lists', href: '/price-lists' },
@@ -553,37 +554,12 @@ export function PriceListComposer({
             </ComposerBasicsField>
 
             <ComposerBasicsField label="Validity">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className="flex w-full items-center justify-between gap-2 text-left text-[14px] font-medium text-cream-950"
-                  >
-                    <span>
-                      {validFrom ? `${formatDate(validFrom)} → ${validTo ? formatDate(validTo) : 'Open ended'}` : 'Set date range'}
-                    </span>
-                    <CalendarDays className="h-4 w-4 shrink-0 text-cream-600" />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent align="start" className="w-auto border-cream-300 bg-transparent p-0 shadow-none">
-                  <div className="flex max-h-[min(80vh,640px)] flex-col gap-3 overflow-y-auto p-1">
-                    <DatePicker
-                      label="From date"
-                      value={validFrom}
-                      showSummary={false}
-                      className="shadow-[0_12px_32px_rgba(20,40,35,0.12),0_2px_6px_rgba(20,40,35,0.05)]"
-                      onChange={setValidFrom}
-                    />
-                    <DatePicker
-                      label="To date"
-                      value={validTo}
-                      showSummary={false}
-                      className="shadow-[0_12px_32px_rgba(20,40,35,0.12),0_2px_6px_rgba(20,40,35,0.05)]"
-                      onChange={setValidTo}
-                    />
-                  </div>
-                </PopoverContent>
-              </Popover>
+              <DateRangePicker
+                validFrom={validFrom}
+                validTo={validTo}
+                onValidFromChange={setValidFrom}
+                onValidToChange={setValidTo}
+              />
             </ComposerBasicsField>
 
             <ComposerBasicsField label="Priority">
@@ -1081,6 +1057,8 @@ export function PriceListComposer({
               </ComposerSidebarCard>
             }
           />
+
+          </div>
 
           <ComposerFooterBar>
             <div className="flex items-center gap-3">
