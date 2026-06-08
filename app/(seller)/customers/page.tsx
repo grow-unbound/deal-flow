@@ -1,8 +1,10 @@
 import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { CustomersLandingClient } from '@/components/seller/customers/CustomersLandingClient';
 import type { CustomersLandingResponse } from '@/hooks/useCustomersLanding';
 import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
+import { getFlag, FLAGS } from '@/lib/flags';
 
 async function getCustomersInitialData(period: SellerLandingPeriod): Promise<CustomersLandingResponse | null> {
   const h = await headers();
@@ -33,6 +35,12 @@ export default async function CustomersPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const h = await headers();
+  const tenantId = h.get('x-verified-tenant-id');
+  if (!tenantId) redirect('/dashboard');
+
+  if (!(await getFlag(FLAGS.CUSTOMER_MASTER, tenantId))) redirect('/dashboard');
+
   const period = await resolveSellerLandingPeriod(searchParams);
   const initialData = await getCustomersInitialData(period);
   return <CustomersLandingClient initialData={initialData} initialPeriod={period} />;

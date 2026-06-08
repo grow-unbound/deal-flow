@@ -27,6 +27,9 @@ export const FEATURE_FLAGS = {
   CATALOG_PUBLISHING: 'df_catalog_publishing',
   BUYER_APP: 'df_buyer_app',
   ORDER_MANAGEMENT: 'df_order_management',
+  SALES_ORDERS: 'df_sales_orders',
+  INVOICES: 'df_invoices',
+  ESTIMATES: 'df_estimates',
   SEARCH: 'df_search',
   TALLY_EXPORT: 'df_tally_export',
   ZOHO_INTEGRATION: 'df_zoho_integration',
@@ -45,6 +48,8 @@ export const ORDER_STATUSES = {
   PARTIALLY_DISPATCHED: 'partially_dispatched',
   DISPATCHED: 'dispatched',
   DELIVERED: 'delivered',
+  INVOICED: 'invoiced',
+  PARTIALLY_INVOICED: 'partially_invoiced',
   CANCELLED: 'cancelled',
 } as const;
 

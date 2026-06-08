@@ -41,6 +41,7 @@
   "exclude": [
     "node_modules",
     "archived",
-    "src/tests"
+    "src/tests",
+    "supabase/functions"
   ]
 }

@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 
-export type StatusTone = 'success' | 'warning' | 'danger' | 'neutral';
+export type StatusTone = 'success' | 'warning' | 'danger' | 'neutral' | 'accent';
 
 interface StatusTagProps {
   label: string;
@@ -13,6 +13,7 @@ const toneClasses: Record<StatusTone, string> = {
   warning: 'bg-warning-50 text-warning-700',
   danger: 'bg-danger-50 text-danger-700',
   neutral: 'bg-cream-200 text-cream-700',
+  accent: 'bg-ember-50 text-ember-700',
 };
 
 export function StatusTag({ label, tone, className }: StatusTagProps) {

@@ -12,12 +12,14 @@ interface LandingTableProps {
   columns: LandingTableColumn[];
   children: ReactNode;
   className?: string;
+  /** Merged onto `<table>` (e.g. `v2-table` from design system). */
+  tableClassName?: string;
 }
 
-export function LandingTable({ columns, children, className }: LandingTableProps) {
+export function LandingTable({ columns, children, className, tableClassName }: LandingTableProps) {
   return (
     <div className={cn('overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white', className)}>
-      <table className="w-full border-collapse text-[13px]">
+      <table className={cn('w-full border-collapse text-[13px]', tableClassName)}>
         <thead>
           <tr className="border-y border-cream-300 bg-white">
             {columns.map((column, index) => (

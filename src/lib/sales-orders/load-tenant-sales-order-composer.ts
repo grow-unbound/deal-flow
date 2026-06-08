@@ -1,0 +1,318 @@
+import type { SalesOrderComposerDocument, SalesOrderComposerLineInput } from '@/types/sales-order-composer';
+
+import { computePlaceOfSupplyFromBuyer } from '@/lib/sales-orders/compute-place-of-supply';
+import { productDisplayName } from '@/lib/sales-orders/tenant-order-detail';
+
+type DbClient = {
+  schema: (name: string) => Record<string, (...args: unknown[]) => Promise<unknown>>;
+};
+
+function formatAddress(geography: Record<string, unknown> | null | undefined): string {
+  const parts = [
+    typeof geography?.city === 'string' ? geography.city : null,
+    typeof geography?.state === 'string' ? geography.state : null,
+    typeof geography?.pincode === 'string' ? geography.pincode : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(', ') : 'Address not available';
+}
+
+/**
+ * Load sales order as composer payload (includes `draft` rows; detail loader hides drafts).
+ */
+export async function loadTenantSalesOrderComposer(
+  db: DbClient,
+  tenantId: string,
+  orderId: string,
+): Promise<'notfound' | 'forbidden' | SalesOrderComposerDocument> {
+  const d = db as any;
+
+  const { data: orderRow, error: orderError } = await d
+    .schema('app')
+    .from('orders')
+    .select(
+      [
+        'id',
+        'tenant_id',
+        'buyer_id',
+        'order_number',
+        'status',
+        'placed_at',
+        'subtotal',
+        'tax_amount',
+        'total_amount',
+        'currency',
+        'notes',
+        'estimate_id',
+        'buyer_po_ref',
+        'discount_flat',
+        'freight',
+        'round_off',
+        'has_backorder',
+        'expected_delivery',
+      ].join(', '),
+    )
+    .eq('id', orderId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (orderError || !orderRow) return 'notfound';
+  const order = orderRow as Record<string, unknown>;
+  if (order.tenant_id !== tenantId) return 'forbidden';
+
+  const buyerId = typeof order.buyer_id === 'string' ? order.buyer_id : null;
+  const estimateId = typeof order.estimate_id === 'string' ? order.estimate_id : null;
+
+  const { data: itemRowsRaw, error: itemsError } = await d
+    .schema('app')
+    .from('order_items')
+    .select('id, tenant_product_id, qty, unit_price, tax_rate, line_total, disc_pct, tax_pct, scheme_tag, on_hand_at_confirm')
+    .eq('order_id', orderId)
+    .is('deleted_at', null);
+
+  if (itemsError) {
+    console.error('[loadTenantSalesOrderComposer] items', itemsError);
+    return 'notfound';
+  }
+
+  const itemRows = (itemRowsRaw ?? []) as Array<Record<string, unknown>>;
+
+  const productIds = Array.from(
+    new Set(itemRows.map((row) => row.tenant_product_id).filter((value): value is string => typeof value === 'string')),
+  );
+
+  const { data: tenantProducts } =
+    productIds.length > 0
+      ? await d
+          .schema('app')
+          .from('tenant_products')
+          .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom, pack_size')
+          .in('id', productIds)
+          .eq('tenant_id', tenantId)
+          .is('deleted_at', null)
+      : { data: [] as Array<Record<string, unknown>> };
+
+  const inventoryRows =
+    productIds.length > 0
+      ? await d.schema('app').from('tenant_inventory').select('tenant_product_id, qty_available').in('tenant_product_id', productIds)
+      : { data: [] as Array<Record<string, unknown>> };
+
+  const productMap = new Map((tenantProducts ?? []).map((row: Record<string, unknown>) => [row.id as string, row]));
+  const inventoryMap = new Map<string, number>();
+  for (const row of (inventoryRows.data ?? []) as Array<Record<string, unknown>>) {
+    inventoryMap.set(
+      row.tenant_product_id as string,
+      (inventoryMap.get(row.tenant_product_id as string) ?? 0) + Number(row.qty_available ?? 0),
+    );
+  }
+
+  const masterProductIds = Array.from(
+    new Set(
+      (tenantProducts ?? [])
+        .map((row: Record<string, unknown>) => row.master_product_id)
+        .filter((value: unknown): value is string => typeof value === 'string'),
+    ),
+  );
+  const brandIds = Array.from(
+    new Set(
+      (tenantProducts ?? [])
+        .map((row: Record<string, unknown>) => row.tenant_brand_id)
+        .filter((value: unknown): value is string => typeof value === 'string'),
+    ),
+  );
+
+  const [masterProductsRes, tenantBrandsRes, tenantRes] = await Promise.all([
+    masterProductIds.length > 0
+      ? d.schema('catalog').from('products').select('id, name, master_sku, hsn_code, gst_rate, default_uom, pack_size').in('id', masterProductIds)
+      : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+    brandIds.length > 0
+      ? d.schema('app').from('tenant_brands').select('id, display_name_override, master_brand_id').in('id', brandIds).eq('tenant_id', tenantId)
+      : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+    d.schema('app').from('tenants').select('id, primary_state').eq('id', tenantId).maybeSingle(),
+  ]);
+
+  const masterBrandIds = Array.from(
+    new Set(
+      ((tenantBrandsRes.data ?? []) as Array<Record<string, unknown>>)
+        .map((row) => row.master_brand_id)
+        .filter((value): value is string => typeof value === 'string'),
+    ),
+  );
+  const { data: masterBrands } =
+    masterBrandIds.length > 0
+      ? await d.schema('catalog').from('brands').select('id, name').in('id', masterBrandIds)
+      : { data: [] as Array<Record<string, unknown>> };
+
+  const masterProductMap = new Map(((masterProductsRes.data ?? []) as Array<Record<string, unknown>>).map((row) => [row.id as string, row]));
+  const tenantBrandMap = new Map(((tenantBrandsRes.data ?? []) as Array<Record<string, unknown>>).map((row) => [row.id as string, row]));
+  const masterBrandMap = new Map(((masterBrands ?? []) as Array<Record<string, unknown>>).map((row) => [row.id as string, row.name as string]));
+
+  const items: SalesOrderComposerLineInput[] = itemRows.map((row, index) => {
+    const product = productMap.get(row.tenant_product_id as string) as Record<string, unknown> | undefined;
+    const master = product?.master_product_id ? masterProductMap.get(product.master_product_id as string) : undefined;
+    const tenantBrand = product?.tenant_brand_id ? tenantBrandMap.get(product.tenant_brand_id as string) : undefined;
+    const brandName =
+      (tenantBrand?.display_name_override as string | null | undefined)?.trim()
+      || (tenantBrand?.master_brand_id ? masterBrandMap.get(tenantBrand.master_brand_id as string) : undefined)
+      || 'Brand';
+    const displayName = productDisplayName(
+      (product?.name_override as string | null | undefined) ?? null,
+      (master?.name as string | null | undefined) ?? null,
+    );
+    const sku = (product?.internal_sku as string | undefined) ?? (master?.master_sku as string | undefined) ?? '—';
+    const hsn = (product?.hsn_code as string | null | undefined) ?? (master?.hsn_code as string | null | undefined) ?? null;
+    const taxPct = Number(row.tax_pct ?? row.tax_rate ?? product?.gst_rate ?? master?.gst_rate ?? 0);
+    const onHand = inventoryMap.get(row.tenant_product_id as string) ?? 0;
+    const initials =
+      brandName
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((p) => p[0] ?? '')
+        .join('')
+        .slice(0, 2)
+        .toUpperCase() || '—';
+    const hue = (['teal', 'ember', 'cream'][index % 3] ?? 'teal') as 'teal' | 'ember' | 'cream';
+    const discounted = Number(row.qty ?? 0) * Number(row.unit_price ?? 0) * (1 - Number(row.disc_pct ?? 0) / 100);
+    const lineTotal = Number(row.line_total ?? discounted + discounted * (taxPct / 100));
+    return {
+      id: String(row.id),
+      tenant_product_id: String(row.tenant_product_id),
+      product_name: displayName,
+      sku,
+      brand_name: brandName,
+      brand_initials: initials,
+      brand_hue: hue,
+      hsn_code: hsn,
+      on_hand: onHand,
+      qty: Number(row.qty ?? 0),
+      unit_price: Number(row.unit_price ?? 0),
+      disc_pct: Number(row.disc_pct ?? 0),
+      tax_pct: taxPct,
+      line_total: lineTotal,
+      scheme_tag: (row.scheme_tag as string | null | undefined) ?? null,
+    };
+  });
+
+  const buyerRes = buyerId
+    ? await d
+        .schema('app')
+        .from('buyers')
+        .select('id, business_name, contact_name, phone, email, gstin, geography, credit_limit, payment_terms_days')
+        .eq('tenant_id', tenantId)
+        .eq('id', buyerId)
+        .is('deleted_at', null)
+        .maybeSingle()
+    : { data: null, error: null };
+
+  const buyer = buyerRes.data as Record<string, unknown> | null;
+  const geo = (buyer?.geography as Record<string, unknown> | null | undefined) ?? null;
+  const placeOfSupply = computePlaceOfSupplyFromBuyer(geo, (buyer?.gstin as string | null | undefined) ?? null);
+
+  const outstandingInvoices = buyerId
+    ? await d
+        .schema('app')
+        .from('invoices')
+        .select('outstanding_balance')
+        .eq('tenant_id', tenantId)
+        .eq('buyer_id', buyerId)
+        .is('deleted_at', null)
+    : { data: [] as Array<Record<string, unknown>> };
+
+  const creditUsed = ((outstandingInvoices.data ?? []) as Array<Record<string, unknown>>).reduce(
+    (sum, row) => sum + Number(row.outstanding_balance ?? 0),
+    0,
+  );
+  const creditLimit = Number(buyer?.credit_limit ?? 0);
+  const creditAvailable = Math.max(creditLimit - creditUsed, 0);
+
+  const cohortRows = buyerId
+    ? await d.schema('app').from('cohort_members').select('cohort_id').eq('buyer_id', buyerId)
+    : { data: [] as Array<Record<string, unknown>> };
+  const cohortIds = ((cohortRows.data ?? []) as Array<Record<string, unknown>>).map((row) => row.cohort_id as string);
+  const assignmentRows = buyerId
+    ? await d
+        .schema('app')
+        .from('price_list_assignments')
+        .select('price_list_id, target_type, target_id')
+        .or(
+          cohortIds.length > 0
+            ? `and(target_type.eq.buyer,target_id.eq.${buyerId}),and(target_type.eq.cohort,target_id.in.(${cohortIds.join(',')})),target_type.eq.all_buyers`
+            : `and(target_type.eq.buyer,target_id.eq.${buyerId}),target_type.eq.all_buyers`,
+        )
+        .is('deleted_at', null)
+    : { data: [] as Array<Record<string, unknown>> };
+
+  let activePricelist: { id: string; name: string } | null = null;
+  const sortedAssignments = ((assignmentRows.data ?? []) as Array<Record<string, unknown>>).sort((a, b) => {
+    const prio = ['buyer', 'cohort', 'all_buyers'];
+    return prio.indexOf(String(a.target_type)) - prio.indexOf(String(b.target_type));
+  });
+  if (sortedAssignments[0]?.price_list_id) {
+    const { data } = await d
+      .schema('app')
+      .from('price_lists')
+      .select('id, name')
+      .eq('id', sortedAssignments[0].price_list_id)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    if (data) {
+      activePricelist = { id: data.id as string, name: data.name as string };
+    }
+  }
+
+  const buyerContext = buyer
+    ? {
+        id: String(buyer.id),
+        business_name: String(buyer.business_name ?? ''),
+        contact_name: (buyer.contact_name as string | null | undefined) ?? null,
+        phone: (buyer.phone as string | null | undefined) ?? null,
+        email: (buyer.email as string | null | undefined) ?? null,
+        gstin: (buyer.gstin as string | null | undefined) ?? null,
+        bill_address: formatAddress(geo),
+        city: (geo?.city as string | null | undefined) ?? null,
+        state: (geo?.state as string | null | undefined) ?? null,
+        pincode: (geo?.pincode as string | null | undefined) ?? null,
+        place_of_supply: placeOfSupply,
+        seller_state: (tenantRes.data?.primary_state as string | null | undefined) ?? null,
+        payment_terms_days: Number(buyer.payment_terms_days ?? 0),
+        credit_limit: creditLimit,
+        credit_used: creditUsed,
+        credit_available: creditAvailable,
+        active_pricelist: activePricelist,
+        sales_agent_name: null,
+      }
+    : null;
+
+  let sourceEstimateNumber: string | null = null;
+  if (estimateId) {
+    const { data: est } = await d.schema('app').from('estimates').select('estimate_number').eq('id', estimateId).maybeSingle();
+    sourceEstimateNumber = (est?.estimate_number as string | null | undefined) ?? null;
+  }
+
+  const placedAt = (order.placed_at as string | null | undefined) ?? null;
+  const orderDate = placedAt ? placedAt.slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const expectedDelivery = order.expected_delivery
+    ? String(order.expected_delivery).slice(0, 10)
+    : orderDate;
+
+  const notesText = (order.notes as string | null | undefined) ?? '';
+
+  return {
+    id: String(order.id),
+    order_number: String(order.order_number ?? order.id),
+    status: String(order.status ?? 'draft'),
+    buyer_id: buyerId,
+    order_date: orderDate,
+    expected_delivery: expectedDelivery,
+    buyer_po_ref: String(order.buyer_po_ref ?? ''),
+    place_of_supply: buyerContext?.place_of_supply ?? 'Unknown',
+    seller_note: notesText,
+    freight: Number(order.freight ?? 0),
+    discount_flat: Number(order.discount_flat ?? 0),
+    round_off: Number(order.round_off ?? 0),
+    has_backorder: Boolean(order.has_backorder ?? false),
+    estimate_id: estimateId,
+    source_estimate_number: sourceEstimateNumber,
+    buyer_context: buyerContext,
+    items,
+  };
+}

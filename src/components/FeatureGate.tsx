@@ -9,7 +9,7 @@ interface FeatureGateProps {
   children: React.ReactNode;
 }
 
-function FeatureDisabled() {
+export function FeatureDisabledState() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center bg-cream-50">
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -39,7 +39,7 @@ export function FeatureGate({ flag, children }: FeatureGateProps) {
   }
 
   if (!enabled) {
-    return <FeatureDisabled />;
+    return <FeatureDisabledState />;
   }
 
   return <>{children}</>;

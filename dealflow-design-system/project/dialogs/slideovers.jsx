@@ -174,7 +174,7 @@ function SOAddBrandFilled() {
             <div className="field-grid">
               <div className="field field-full">
                 <label className="field-label">Default cohort</label>
-                <div className="combo-input" style={{ justifyContent: 'space-between' }} data-comment-anchor="64a7b35ba8-div-177-17">
+                <div className="combo-input" style={{ justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--cream-600)' }}>Pick a cohort</span>
                   <Icon name="chevronRight" size={14} color="var(--cream-700)" />
                 </div>
