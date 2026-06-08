@@ -41,6 +41,16 @@ vi.mock('@/contexts/AuthContext', () => ({
   AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
+vi.mock('@/contexts/TenantContext', () => ({
+  useTenant: () => ({ currentTenant: { business_name: 'Test Tenant' } }),
+}));
+
+const useFlagStateMock = vi.fn();
+
+vi.mock('@/hooks/useFeatureFlag', () => ({
+  useFlagState: (flag: string) => useFlagStateMock(flag),
+}));
+
 function makeAuthValue(role: string) {
   return {
     session: null,
@@ -71,6 +81,7 @@ describe('SellerSidebar nav gating', () => {
   describe('seller_assistant', () => {
     beforeEach(() => {
       mockUseAuth.mockReturnValue(makeAuthValue('seller_assistant'));
+      useFlagStateMock.mockReturnValue(true);
     });
 
     it('renders non-admin nav items', () => {
@@ -80,7 +91,9 @@ describe('SellerSidebar nav gating', () => {
       expect(screen.getByText('Products')).toBeInTheDocument();
       expect(screen.getByText('Customers')).toBeInTheDocument();
       expect(screen.getByText('Catalogs')).toBeInTheDocument();
-      expect(screen.getByText('Orders')).toBeInTheDocument();
+      expect(screen.getByText('Estimates')).toBeInTheDocument();
+      expect(screen.getByText('Sales Orders')).toBeInTheDocument();
+      expect(screen.getByText('Invoices')).toBeInTheDocument();
       expect(screen.getByText('Exports')).toBeInTheDocument();
     });
 
@@ -89,9 +102,9 @@ describe('SellerSidebar nav gating', () => {
       expect(screen.queryByText('Cohorts')).not.toBeInTheDocument();
     });
 
-    it('hides Price lists nav item', () => {
+    it('hides Price Lists nav item', () => {
       render(<SellerSidebar />);
-      expect(screen.queryByText('Price lists')).not.toBeInTheDocument();
+      expect(screen.queryByText('Price Lists')).not.toBeInTheDocument();
     });
 
     it('hides Settings nav item', () => {
@@ -108,12 +121,13 @@ describe('SellerSidebar nav gating', () => {
   describe('seller_admin', () => {
     beforeEach(() => {
       mockUseAuth.mockReturnValue(makeAuthValue('seller_admin'));
+      useFlagStateMock.mockReturnValue(true);
     });
 
     it('renders all nav items including admin-only ones', () => {
       render(<SellerSidebar />);
       expect(screen.getByText('Cohorts')).toBeInTheDocument();
-      expect(screen.getByText('Price lists')).toBeInTheDocument();
+      expect(screen.getByText('Price Lists')).toBeInTheDocument();
       expect(screen.getByText('Settings')).toBeInTheDocument();
     });
 
@@ -166,19 +180,20 @@ describe('RoleGuard', () => {
     expect(screen.getByText('custom fallback')).toBeInTheDocument();
   });
 
-  it('renders nothing when tenantProfile is null (loading)', () => {
+  it('renders loading placeholder when tenantProfile is null (role not resolved)', () => {
     mockUseAuth.mockReturnValue({
       ...makeAuthValue('seller_admin'),
       tenantProfile: null,
     });
 
-    const { container } = render(
+    render(
       <RoleGuard roles={['seller_admin']}>
         <span>secret content</span>
       </RoleGuard>
     );
 
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText('secret content')).not.toBeInTheDocument();
+    expect(screen.getByText(/loading access/i)).toBeInTheDocument();
   });
 });
 

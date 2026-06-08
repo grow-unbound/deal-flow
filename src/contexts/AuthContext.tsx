@@ -6,10 +6,12 @@ import { supabaseBrowser as supabase } from '@/lib/supabase-browser';
 import { clearAuthClientStorage, getSessionExpiredRedirectPath } from '@/lib/auth-session';
 import { type Role } from '@/constants';
 import posthog from 'posthog-js';
+import { resolveUserDisplayName } from '@/lib/user-display-name';
 
 export interface AuthUser {
   id: string;
   email: string;
+  displayName: string;
   phone?: string;
 }
 
@@ -155,11 +157,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(currentSession);
 
         if (currentSession?.user) {
-          setUser({
-            id: currentSession.user.id,
-            email: currentSession.user.email || '',
-            phone: currentSession.user.phone,
-          });
+        setUser({
+          id: currentSession.user.id,
+          email: currentSession.user.email || '',
+          displayName: resolveUserDisplayName(
+            currentSession.user.user_metadata as Record<string, unknown> | undefined,
+            currentSession.user.email,
+            currentSession.user.email || 'Team member',
+          ),
+          phone: currentSession.user.phone,
+        });
           primeWorkspaceFromToken(currentSession);
 
           // Do not block first render on workspace hydration.
@@ -187,6 +194,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser({
           id: newSession.user.id,
           email: newSession.user.email || '',
+          displayName: resolveUserDisplayName(
+            newSession.user.user_metadata as Record<string, unknown> | undefined,
+            newSession.user.email,
+            newSession.user.email || 'Team member',
+          ),
           phone: newSession.user.phone,
         });
         primeWorkspaceFromToken(newSession);

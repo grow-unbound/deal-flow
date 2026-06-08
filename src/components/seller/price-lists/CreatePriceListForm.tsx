@@ -9,6 +9,7 @@ import { useCreatePriceList } from '@/hooks/usePriceLists';
 import { Button } from '@/components/ui/button';
 import { MutationButton } from '@/components/ui/mutation-button';
 import { Input } from '@/components/ui/input';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   Form,
   FormControl,
@@ -17,6 +18,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { isoDateString } from '@/lib/date-utils';
 
 interface CreatePriceListFormProps {
   onSuccess: () => void;
@@ -94,23 +96,18 @@ export function CreatePriceListForm({
             )}
           />
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <FormField
               control={form.control}
               name="valid_from"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-caption font-medium text-cream-800">Valid from</FormLabel>
                   <FormControl>
-                    <Input
-                      type="datetime-local"
-                      className="bg-cream-50"
-                      value={
-                        field.value instanceof Date
-                          ? field.value.toISOString().slice(0, 16)
-                          : (field.value as string) ?? ''
-                      }
-                      onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : undefined)}
+                    <DatePicker
+                      label="Valid from"
+                      showSummary={false}
+                      value={field.value instanceof Date ? isoDateString(field.value) : ''}
+                      onChange={(next) => field.onChange(next ? new Date(`${next}T00:00:00`) : undefined)}
                     />
                   </FormControl>
                   <FormMessage />
@@ -123,19 +120,12 @@ export function CreatePriceListForm({
               name="valid_to"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-caption font-medium text-cream-800">
-                    Valid to (optional)
-                  </FormLabel>
                   <FormControl>
-                    <Input
-                      type="datetime-local"
-                      className="bg-cream-50"
-                      value={
-                        field.value instanceof Date
-                          ? field.value.toISOString().slice(0, 16)
-                          : (field.value as string | undefined) ?? ''
-                      }
-                      onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : undefined)}
+                    <DatePicker
+                      label="Valid to (optional)"
+                      showSummary={false}
+                      value={field.value instanceof Date ? isoDateString(field.value) : ''}
+                      onChange={(next) => field.onChange(next ? new Date(`${next}T23:59:59`) : undefined)}
                     />
                   </FormControl>
                   <FormMessage />

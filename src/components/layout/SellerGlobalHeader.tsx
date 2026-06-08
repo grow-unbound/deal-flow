@@ -1,7 +1,32 @@
 'use client';
 
-import { ExternalLink, Search } from 'lucide-react';
+import Link from 'next/link';
+import { Bell, ExternalLink, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+
+export interface NotificationsBellProps {
+  unreadCount?: number;
+}
+
+export function NotificationsBell({ unreadCount = 0 }: NotificationsBellProps) {
+  const showBadge = unreadCount > 0;
+  const label = unreadCount > 99 ? '99+' : String(unreadCount);
+
+  return (
+    <Link
+      href="/notifications"
+      className="relative inline-flex rounded-[10px] p-2 text-cream-800 transition-colors duration-fast hover:bg-cream-200"
+      aria-label="Notifications"
+    >
+      <Bell size={16} />
+      {showBadge ? (
+        <span className="absolute right-0 top-0 min-w-[14px] -translate-y-px translate-x-px rounded-full bg-ember-500 px-0.5 text-center text-[9px] font-bold leading-[14px] text-white">
+          {label}
+        </span>
+      ) : null}
+    </Link>
+  );
+}
 
 export function SellerGlobalHeader() {
   return (
@@ -23,10 +48,10 @@ export function SellerGlobalHeader() {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        <NotificationsBell />
         <Button asChild variant="ghost" className="rounded-lg text-cream-800">
           <a href="/api/buyer/preview/launch" target="_blank" rel="noreferrer">
-            <ExternalLink size={14} />
-            Open buyer app
+            Open buyer app <ExternalLink size={14} />
           </a>
         </Button>
       </div>

@@ -39,6 +39,12 @@ const nextConfig = {
     NEXT_PUBLIC_WHATSAPP_PHONE_NUMBER_ID: process.env.NEXT_PUBLIC_WHATSAPP_PHONE_NUMBER_ID,
     NEXT_PUBLIC_ZOHO_DOMAIN: process.env.NEXT_PUBLIC_ZOHO_DOMAIN,
   },
+  async redirects() {
+    return [
+      { source: '/orders', destination: '/sales-orders', permanent: true },
+      { source: '/orders/:id', destination: '/sales-orders/:id', permanent: true },
+    ];
+  },
   async rewrites() {
     return [
       {
