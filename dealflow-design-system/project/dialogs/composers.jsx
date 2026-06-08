@@ -1001,4 +1001,7 @@ Object.assign(window, {
   ComposerPricelistEdit,
   ComposerRationaleCard,
   InlineTeamRows,
+  // shared chrome — reused by composers-extra.jsx (Cohort & Catalog)
+  ComposerTop,
+  ComposerTitle,
 });

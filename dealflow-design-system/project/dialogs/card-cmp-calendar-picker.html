@@ -1,0 +1,117 @@
+<!doctype html>
+<!-- @dsCard group="Components" name="Calendar date picker" subtitle="Custom calendar aligned to DealFlow palette and typography." viewport="900x760" -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Calendar Picker · DealFlow Design System</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <link rel="stylesheet" href="colors_and_type.css" />
+  <link rel="stylesheet" href="dialogs.css" />
+
+  <style>
+    body { margin: 0; background: var(--cream-100, #f5f3ee); }
+    #root { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+
+    .demo-grid {
+      display: grid;
+      grid-template-columns: repeat(3, auto);
+      gap: 32px;
+      padding: 40px;
+      align-items: start;
+      justify-content: center;
+    }
+
+    .demo-card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .demo-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--cream-600, #7c7264);
+    }
+
+    .demo-selected {
+      padding: 10px 16px;
+      background: var(--cream-50, #faf9f7);
+      border: 1px solid var(--cream-300, #ddd8cf);
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--cream-900, #1a1714);
+      font-family: var(--font-display, serif);
+      min-height: 36px;
+    }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script src="../_ds_bundle.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="env,react">
+    const { useState } = React;
+    const { Calendar } = window.DealFlowDesignSystem_13780f;
+
+    function fmt(d) {
+      if (!d) return '—';
+      return d.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    /* Default: no selection */
+    function Demo1() {
+      const [val, setVal] = useState(null);
+      return (
+        <div className="demo-card">
+          <div className="demo-label">Default · no selection</div>
+          <Calendar value={val} onChange={setVal} />
+          <div className="demo-selected">{fmt(val)}</div>
+        </div>
+      );
+    }
+
+    /* Pre-selected date */
+    function Demo2() {
+      const [val, setVal] = useState(new Date(2026, 5, 15));
+      return (
+        <div className="demo-card">
+          <div className="demo-label">Pre-selected date</div>
+          <Calendar value={val} onChange={setVal} />
+          <div className="demo-selected">{fmt(val)}</div>
+        </div>
+      );
+    }
+
+    /* Future only (minDate = today) */
+    function Demo3() {
+      const [val, setVal] = useState(null);
+      return (
+        <div className="demo-card">
+          <div className="demo-label">Future only (minDate)</div>
+          <Calendar value={val} onChange={setVal} minDate={new Date()} />
+          <div className="demo-selected">{fmt(val)}</div>
+        </div>
+      );
+    }
+
+    function App() {
+      return (
+        <div className="demo-grid">
+          <Demo1 />
+          <Demo2 />
+          <Demo3 />
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

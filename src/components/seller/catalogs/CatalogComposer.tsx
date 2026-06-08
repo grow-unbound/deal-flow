@@ -20,6 +20,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-overlay';
@@ -39,6 +40,8 @@ import {
   type CatalogComposerProduct,
 } from '@/hooks/useCatalogs';
 import { cn, formatDate, formatInr } from '@/lib/utils';
+import { isoDateInput } from '@/lib/date-utils';
+import { composerPageMinHeightClass, composerThreePanelGridClass } from '@/lib/composer-viewport-classes';
 import { CatalogComposerPayloadSchema, type CatalogComposerAvailability, type CatalogComposerTag } from '@/lib/zod';
 
 type ComposerMode = 'create' | 'edit';
@@ -91,10 +94,6 @@ function buildFilterOptions(values: Array<string | null | undefined>): FilterOpt
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function isoDateInput(value: Date) {
-  return value.toISOString().slice(0, 10);
-}
-
 function getInitials(value: string) {
   return value
     .split(' ')
@@ -141,8 +140,12 @@ function BuyerCountPill({ count }: { count: number }) {
 
 export function CatalogComposerSkeleton() {
   return (
-    <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6" role="status" aria-label="Loading catalog composer">
-      <div className="space-y-4">
+    <div
+      className={cn('mx-auto flex w-full max-w-[1920px] flex-col px-8 pt-7 pb-6', composerPageMinHeightClass)}
+      role="status"
+      aria-label="Loading catalog composer"
+    >
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
         <div className="h-4 w-44 animate-pulse rounded bg-cream-200" />
         <div className="flex items-start justify-between gap-8">
           <div className="space-y-3">
@@ -159,13 +162,13 @@ export function CatalogComposerSkeleton() {
             <div key={index} className="h-[82px] animate-pulse border-r border-cream-300 bg-white last:border-r-0" />
           ))}
         </div>
-        <div className="grid min-h-[620px] gap-5 lg:grid-cols-[260px_minmax(0,1fr)_320px]">
-          <div className="rounded-[14px] border border-cream-300 bg-white animate-pulse" />
-          <div className="rounded-[14px] border border-cream-300 bg-white animate-pulse" />
-          <div className="rounded-[14px] border border-cream-300 bg-white animate-pulse" />
+        <div className={composerThreePanelGridClass}>
+          <div className="animate-pulse rounded-[14px] border border-cream-300 bg-white" />
+          <div className="animate-pulse rounded-[14px] border border-cream-300 bg-white" />
+          <div className="animate-pulse rounded-[14px] border border-cream-300 bg-white" />
         </div>
-        <div className="sticky bottom-0 h-20 animate-pulse rounded-[14px] border border-cream-300 bg-white" />
       </div>
+      <div className="sticky bottom-0 z-10 mt-4 h-20 shrink-0 animate-pulse rounded-[14px] border border-cream-300 bg-white" />
     </div>
   );
 }
@@ -479,8 +482,9 @@ export function CatalogComposer({
 
   return (
     <>
-      <PageWrap className="pt-7 pb-6">
+      <PageWrap className={cn('flex flex-col', composerPageMinHeightClass, 'pt-7 pb-6')}>
         <ComposerShell>
+          <div className="flex min-h-0 flex-1 flex-col gap-4">
           <ComposerBreadcrumbs
             items={[
               { label: 'Catalogs', href: '/catalogs' },
@@ -562,49 +566,23 @@ export function CatalogComposer({
             </ComposerBasicsField>
 
             <ComposerBasicsField label="Validity">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className="flex w-full items-center justify-between gap-2 text-left text-[14px] font-medium text-cream-950"
-                  >
-                    <span>{validFrom ? `${formatDate(validFrom)} → ${validTo ? formatDate(validTo) : 'Open ended'}` : 'Set date range'}</span>
-                    <ChevronDown className="h-4 w-4 shrink-0 text-cream-600" />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent align="start" className="w-[340px] border-cream-300 bg-white p-4">
-                  <div className="space-y-3">
-                    <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-700">From date</p>
-                      <Input
-                        type="date"
-                        value={validFrom}
-                        error={fieldErrors.validFrom}
-                        onChange={(event) => {
-                          setValidFrom(event.target.value);
-                          clearFieldError('validFrom');
-                          clearFieldError('validTo');
-                          setSubmitError(null);
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-700">To date</p>
-                      <Input
-                        type="date"
-                        value={validTo}
-                        error={fieldErrors.validTo}
-                        onChange={(event) => {
-                          setValidTo(event.target.value);
-                          clearFieldError('validTo');
-                          setSubmitError(null);
-                        }}
-                      />
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-              {fieldErrors.validFrom && !fieldErrors.validTo ? <p className="mt-1 text-[11.5px] text-danger-500">{fieldErrors.validFrom}</p> : null}
+              <DateRangePicker
+                validFrom={validFrom}
+                validTo={validTo}
+                error={fieldErrors.validFrom && !fieldErrors.validTo ? fieldErrors.validFrom : undefined}
+                onValidFromChange={(next) => {
+                  setValidFrom(next);
+                  clearFieldError('validFrom');
+                  clearFieldError('validTo');
+                  setSubmitError(null);
+                }}
+                onValidToChange={(next) => {
+                  setValidTo(next);
+                  clearFieldError('validTo');
+                  setSubmitError(null);
+                }}
+              />
+              {fieldErrors.validTo ? <p className="mt-1 text-[11.5px] text-danger-500">{fieldErrors.validTo}</p> : null}
             </ComposerBasicsField>
           </ComposerBasicsStrip>
 
@@ -732,10 +710,10 @@ export function CatalogComposer({
                 <div className="flex flex-wrap items-center gap-3 border-b border-cream-300 bg-cream-50 px-4 py-3">
                   <div>
                     <div className="text-[13px] font-semibold text-cream-900">
-                      {filteredProducts.length} products match · {hiddenByFilters} hidden by filters
+                      {filteredProducts.length} products match the filters
                     </div>
                     <div className="text-[12px] text-cream-700">
-                      Untick to exclude. The catalog controls visibility only; buyers see their cohort pricing.
+                      Uncheck products to exclude.
                     </div>
                   </div>
                   <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -1018,6 +996,8 @@ export function CatalogComposer({
               </ComposerSidebarCard>
             }
           />
+
+          </div>
 
           <ComposerFooterBar>
             <div className="flex items-center gap-3">

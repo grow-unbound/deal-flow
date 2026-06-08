@@ -1,12 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { getVerifiedClaims } from '@/lib/auth';
+import { getFlag } from '@/lib/flags';
+import { loadTenantSalesOrderComposer } from '@/lib/sales-orders/load-tenant-sales-order-composer';
+import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
+import { FEATURE_FLAGS } from '@/constants';
 
-type OrderStatus = 'draft' | 'received' | 'confirmed' | 'partially_dispatched' | 'dispatched' | 'delivered' | 'cancelled';
+const CreateSalesOrderDraftSchema = z.object({
+  from_estimate_id: z.string().uuid().optional(),
+});
+
+type OrderStatus =
+  | 'draft'
+  | 'received'
+  | 'confirmed'
+  | 'partially_dispatched'
+  | 'dispatched'
+  | 'delivered'
+  | 'invoiced'
+  | 'partially_invoiced'
+  | 'cancelled';
 type StatusTone = 'success' | 'warning' | 'danger' | 'neutral';
 type AvatarHue = 'teal' | 'ember' | 'cream';
+
+type SalesOrderFilterChip = 'Received' | 'Confirmed' | 'In transit' | 'Invoiced' | 'Delivered' | 'Cancelled' | 'All';
 
 interface BuyerRow {
   id: string;
@@ -18,7 +38,13 @@ interface OrderRow {
   id: string;
   order_number: string;
   buyer_id: string;
-  status: OrderStatus;
+  status: string;
+  source: string | null;
+  catalog_id: string | null;
+  estimate_id: string | null;
+  placed_by: string | null;
+  subtotal: number;
+  tax_amount: number;
   total_amount: number;
   placed_at: string;
   created_at: string;
@@ -47,15 +73,24 @@ function getHue(index: number): AvatarHue {
   return 'cream';
 }
 
-function statusMeta(status: OrderStatus): { label: string; tone: StatusTone; filterChip: string } {
+function statusMeta(status: OrderStatus): { label: string; tone: StatusTone; filterChip: SalesOrderFilterChip } {
+  if (status === 'received' || status === 'draft') {
+    return { label: 'Received', tone: 'neutral', filterChip: 'Received' };
+  }
   if (status === 'confirmed') return { label: 'Confirmed', tone: 'warning', filterChip: 'Confirmed' };
-  if (status === 'dispatched' || status === 'partially_dispatched') {
+  if (status === 'partially_dispatched') {
+    return { label: 'Partly dispatched', tone: 'warning', filterChip: 'In transit' };
+  }
+  if (status === 'dispatched') {
     return { label: 'In transit', tone: 'neutral', filterChip: 'In transit' };
   }
   if (status === 'delivered') return { label: 'Delivered', tone: 'success', filterChip: 'Delivered' };
-  if (status === 'cancelled') return { label: 'Cancelled', tone: 'danger', filterChip: 'Cancelled' };
-  if (status === 'received') return { label: 'On hold', tone: 'danger', filterChip: 'Hold' };
-  return { label: 'Draft', tone: 'neutral', filterChip: 'All' };
+  if (status === 'invoiced') return { label: 'Invoiced', tone: 'success', filterChip: 'Invoiced' };
+  if (status === 'partially_invoiced') {
+    return { label: 'Partly invoiced', tone: 'warning', filterChip: 'Invoiced' };
+  }
+  if (status === 'cancelled') return { label: 'Cancelled', tone: 'neutral', filterChip: 'Cancelled' };
+  return { label: 'Received', tone: 'neutral', filterChip: 'Received' };
 }
 
 function getCity(geography: Record<string, unknown> | null): string {
@@ -63,6 +98,20 @@ function getCity(geography: Record<string, unknown> | null): string {
   const city = geography.city;
   if (typeof city === 'string' && city.trim().length > 0) return city;
   return 'Unknown city';
+}
+
+function getState(geography: Record<string, unknown> | null): string | null {
+  if (!geography) return null;
+  const state = geography.state;
+  if (typeof state === 'string' && state.trim().length > 0) return state;
+  return null;
+}
+
+function sourceLabel(source: string | null): string {
+  if (source === 'cockpit_manual') return 'seller_app';
+  if (source === 'buyer_app') return 'buyer_app';
+  if (source === 'csv_import') return 'csv_import';
+  return '—';
 }
 
 export async function GET(req: NextRequest) {
@@ -118,7 +167,7 @@ export async function GET(req: NextRequest) {
       db
         .schema('app')
         .from('orders')
-        .select('id, order_number, buyer_id, status, total_amount, placed_at, created_at')
+        .select('id, order_number, buyer_id, status, source, catalog_id, estimate_id, placed_by, subtotal, tax_amount, total_amount, placed_at, created_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .gte('placed_at', period.current_start)
@@ -159,6 +208,31 @@ export async function GET(req: NextRequest) {
     const buyers = (buyersRes.data ?? []) as BuyerRow[];
     const mtdOrders = (mtdOrdersRes.data ?? []) as OrderRow[];
     const prevOrders = (prevOrdersRes.data ?? []) as Array<{ id: string; total_amount: number }>;
+    const catalogIds = Array.from(new Set(mtdOrders.map((order) => order.catalog_id).filter((value): value is string => Boolean(value))));
+    const estimateIds = Array.from(new Set(mtdOrders.map((order) => order.estimate_id).filter((value): value is string => Boolean(value))));
+    const placedByIds = Array.from(new Set(mtdOrders.map((order) => order.placed_by).filter((value): value is string => Boolean(value))));
+
+    const [catalogsRes, estimatesRes, placedByMap] = await Promise.all([
+      catalogIds.length > 0
+        ? db.schema('app').from('published_catalogs').select('id, name').in('id', catalogIds).is('deleted_at', null)
+        : Promise.resolve({ data: [] as Array<{ id: string; name: string }>, error: null }),
+      estimateIds.length > 0
+        ? db.schema('app').from('estimates').select('id, estimate_number').in('id', estimateIds).is('deleted_at', null)
+        : Promise.resolve({ data: [] as Array<{ id: string; estimate_number: string | null }>, error: null }),
+      getAuthUserDisplayNameMap(placedByIds),
+    ]);
+
+    if (catalogsRes.error || estimatesRes.error) {
+      console.error('[GET /api/tenant/orders] supporting query error:', catalogsRes.error || estimatesRes.error);
+      return timedJson({ error: 'Failed to fetch orders' }, { status: 500 });
+    }
+
+    const catalogById = new Map<string, string>(
+      ((catalogsRes.data ?? []) as Array<{ id: string; name: string }>).map((row) => [row.id, row.name]),
+    );
+    const estimateById = new Map<string, string | null>(
+      ((estimatesRes.data ?? []) as Array<{ id: string; estimate_number: string | null }>).map((row) => [row.id, row.estimate_number]),
+    );
 
     const orderIds = mtdOrders.map((order) => order.id);
     let orderItems: OrderItemRow[] = [];
@@ -203,28 +277,45 @@ export async function GET(req: NextRequest) {
     const aov = gmvMtd / ordersMtd;
 
     const pendingDispatchCount = mtdOrders.filter((order) => order.status === 'confirmed').length;
-    const onHoldCount = mtdOrders.filter((order) => order.status === 'received').length;
+    const receivedCount = mtdOrders.filter((order) => order.status === 'received').length;
     const deliveredCount = mtdOrders.filter((order) => order.status === 'delivered').length;
 
     const rows = mtdOrders.map((order, index) => {
       const buyer = buyerById.get(order.buyer_id);
       const buyerName = buyer?.business_name ?? 'Unknown buyer';
-      const city = getCity((buyer?.geography ?? null) as Record<string, unknown> | null);
-      const meta = statusMeta(order.status);
+      const geography = (buyer?.geography ?? null) as Record<string, unknown> | null;
+      const city = getCity(geography);
+      const state = getState(geography);
+      const status = order.status as OrderStatus;
+      const meta = statusMeta(status);
+      const estimateNumber = order.estimate_id ? estimateById.get(order.estimate_id) ?? null : null;
+      const actorLabel = order.placed_by ? placedByMap.get(order.placed_by) ?? 'Team member' : 'Team member';
+      const sourceLinePrimary = estimateNumber && estimateNumber.trim().length > 0 ? estimateNumber : sourceLabel(order.source);
+      const sourceLineSecondary =
+        estimateNumber && estimateNumber.trim().length > 0 ? `Converted by ${actorLabel}` : actorLabel;
 
       return {
         id: order.id,
         order_id: order.order_number,
         buyer_id: order.buyer_id,
         buyer_name: buyerName,
+        buyer_city: city === 'Unknown city' ? null : city,
+        buyer_state: state,
         buyer_initials: getInitials(buyerName),
         buyer_hue: getHue(index),
         delivery_city: city,
         delivery_label: city,
+        source: order.source,
+        source_label: sourceLinePrimary,
+        source_detail: sourceLineSecondary,
+        catalog_name: order.catalog_id ? catalogById.get(order.catalog_id) ?? null : null,
         items_count: itemsCountByOrder.get(order.id) ?? 0,
         gmv: Number(order.total_amount ?? 0),
+        subtotal: Number(order.subtotal ?? 0),
+        tax_amount: Number(order.tax_amount ?? 0),
+        total_amount: Number(order.total_amount ?? 0),
         status: {
-          value: order.status,
+          value: status,
           label: meta.label,
           tone: meta.tone,
           filter_chip: meta.filterChip,
@@ -233,9 +324,11 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    const needsAttention = rows.filter((row) => row.status.tone === 'warning' || row.status.tone === 'danger').slice(0, 3);
-    const biggestTickets = [...rows].sort((a, b) => b.gmv - a.gmv).slice(0, 2);
-    const inMotion = rows.filter((row) => row.status.value === 'dispatched').slice(0, 2);
+    const needsAttention = rows.filter((row) => row.status.value === 'received').slice(0, 3);
+    const biggestTickets = [...rows].sort((a, b) => b.gmv - a.gmv).slice(0, 3);
+    const inMotion = rows
+      .filter((row) => row.status.value === 'dispatched' || row.status.value === 'partially_dispatched')
+      .slice(0, 3);
 
     const payload = {
       period,
@@ -247,7 +340,7 @@ export async function GET(req: NextRequest) {
         gmv_prev_mtd: gmvPrevMtd,
         aov,
         pending_dispatch_count: pendingDispatchCount,
-        on_hold_count: onHoldCount,
+        received_count: receivedCount,
         delivered_count: deliveredCount,
         buyers_mtd: buyersMtd,
       },
@@ -268,5 +361,207 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error('[GET /api/tenant/orders] unexpected error:', error);
     return timedJson({ error: 'Unauthorized' }, { status: 401 });
+  }
+}
+
+function plusDays(days: number) {
+  const next = new Date();
+  next.setDate(next.getDate() + days);
+  return next.toISOString().slice(0, 10);
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const claims = await getVerifiedClaims(request);
+
+    if (!claims.tenant_id || !claims.sub) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (!claims.role?.startsWith('seller_')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const [orderMgmt, salesOrders] = await Promise.all([
+      getFlag(FEATURE_FLAGS.ORDER_MANAGEMENT, claims.tenant_id),
+      getFlag(FEATURE_FLAGS.SALES_ORDERS, claims.tenant_id),
+    ]);
+
+    if (!orderMgmt || !salesOrders) {
+      return NextResponse.json({ error: 'Feature not enabled' }, { status: 403 });
+    }
+
+    if (!supabaseAdmin) {
+      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const parsed = CreateSalesOrderDraftSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid payload' }, { status: 400 });
+    }
+
+    const db = supabaseAdmin as any;
+    const tenantId = claims.tenant_id;
+    const fromEstimateId = parsed.data.from_estimate_id ?? null;
+
+    const { data: existingOrders, error: countError } = await db
+      .schema('app')
+      .from('orders')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+
+    if (countError) {
+      return NextResponse.json({ error: 'Failed to create draft' }, { status: 500 });
+    }
+
+    const orderNumber = `SO-${new Date().getFullYear()}-${String((existingOrders ?? []).length + 1).padStart(5, '0')}`;
+    const draftDate = new Date().toISOString();
+    const expectedDelivery = plusDays(7);
+
+    let buyerId: string | null = null;
+    let notes = '';
+    let buyerPoRef = '';
+    let discountFlat = 0;
+    let freight = 0;
+    let roundOff = 0;
+    let estimateRows: Array<Record<string, unknown>> = [];
+
+    if (fromEstimateId) {
+      const { data: estimate, error: estimateError } = await db
+        .schema('app')
+        .from('estimates')
+        .select('id, tenant_id, buyer_id, estimate_number, notes, buyer_po_ref, discount_flat, freight, round_off')
+        .eq('id', fromEstimateId)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (estimateError || !estimate) {
+        return NextResponse.json({ error: 'Estimate not found' }, { status: 404 });
+      }
+
+      const itemsRes = await db
+        .schema('app')
+        .from('estimate_items')
+        .select('tenant_product_id, qty, unit_price, tax_rate, tax_pct, disc_pct, discount_pct, scheme_tag, line_total')
+        .eq('estimate_id', fromEstimateId)
+        .is('deleted_at', null);
+
+      if (itemsRes.error) {
+        return NextResponse.json({ error: 'Failed to create draft' }, { status: 500 });
+      }
+
+      buyerId = estimate.buyer_id;
+      notes = estimate.notes ?? '';
+      buyerPoRef = estimate.buyer_po_ref ?? '';
+      discountFlat = Number(estimate.discount_flat ?? 0);
+      freight = Number(estimate.freight ?? 0);
+      roundOff = Number(estimate.round_off ?? 0);
+      estimateRows = (itemsRes.data ?? []) as Array<Record<string, unknown>>;
+    }
+
+    const subtotal = estimateRows.reduce((sum, row) => {
+      const qty = Number(row.qty ?? 0);
+      const unitPrice = Number(row.unit_price ?? 0);
+      const discPct = Number(row.disc_pct ?? row.discount_pct ?? 0);
+      return sum + qty * unitPrice * (1 - discPct / 100);
+    }, 0);
+    const taxAmount = estimateRows.reduce((sum, row) => {
+      const qty = Number(row.qty ?? 0);
+      const unitPrice = Number(row.unit_price ?? 0);
+      const discPct = Number(row.disc_pct ?? row.discount_pct ?? 0);
+      const taxable = qty * unitPrice * (1 - discPct / 100);
+      return sum + taxable * (Number(row.tax_pct ?? row.tax_rate ?? 0) / 100);
+    }, 0);
+    const totalAmount = Math.max(subtotal - discountFlat, 0) + taxAmount + freight + roundOff;
+
+    const { data: order, error: orderError } = await db
+      .schema('app')
+      .from('orders')
+      .insert({
+        tenant_id: tenantId,
+        buyer_id: buyerId,
+        placed_by: claims.sub,
+        order_number: orderNumber,
+        status: 'draft',
+        source: 'cockpit_manual',
+        subtotal,
+        tax_amount: taxAmount,
+        total_amount: totalAmount,
+        currency: 'INR',
+        notes,
+        placed_at: draftDate,
+        buyer_po_ref: buyerPoRef,
+        discount_flat: discountFlat,
+        freight,
+        round_off: roundOff,
+        has_backorder: false,
+        estimate_id: fromEstimateId,
+        expected_delivery: expectedDelivery,
+        created_by: claims.sub,
+        updated_by: claims.sub,
+      })
+      .select('id')
+      .single();
+
+    if (orderError || !order) {
+      console.error('[POST /api/tenant/orders]', orderError);
+      return NextResponse.json({ error: 'Failed to create draft' }, { status: 500 });
+    }
+
+    if (estimateRows.length > 0) {
+      const inventoryRes = await db
+        .schema('app')
+        .from('tenant_inventory')
+        .select('tenant_product_id, qty_available')
+        .in('tenant_product_id', estimateRows.map((row) => row.tenant_product_id));
+
+      const onHandByProduct = new Map<string, number>();
+      for (const inventoryRow of (inventoryRes.data ?? []) as Array<{ tenant_product_id: string; qty_available: number | null }>) {
+        onHandByProduct.set(
+          inventoryRow.tenant_product_id,
+          (onHandByProduct.get(inventoryRow.tenant_product_id) ?? 0) + Number(inventoryRow.qty_available ?? 0),
+        );
+      }
+
+      const { error: itemsInsertError } = await db
+        .schema('app')
+        .from('order_items')
+        .insert(
+          estimateRows.map((row) => ({
+            order_id: order.id,
+            tenant_product_id: row.tenant_product_id,
+            qty: Number(row.qty ?? 0),
+            unit_price: Number(row.unit_price ?? 0),
+            tax_rate: Number(row.tax_rate ?? row.tax_pct ?? 0),
+            tax_pct: Number(row.tax_pct ?? row.tax_rate ?? 0),
+            disc_pct: Number(row.disc_pct ?? row.discount_pct ?? 0),
+            scheme_tag: row.scheme_tag ?? null,
+            line_total: Number(row.line_total ?? 0),
+            on_hand_at_confirm: onHandByProduct.get(String(row.tenant_product_id)) ?? 0,
+            created_by: claims.sub,
+            updated_by: claims.sub,
+          })),
+        );
+
+      if (itemsInsertError) {
+        console.error('[POST /api/tenant/orders] order_items', itemsInsertError);
+        return NextResponse.json({ error: 'Failed to create draft' }, { status: 500 });
+      }
+    }
+
+    const composer = await loadTenantSalesOrderComposer(db, tenantId, order.id as string);
+    if (composer === 'notfound' || composer === 'forbidden') {
+      return NextResponse.json({ error: 'Failed to load draft' }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      data: composer,
+    });
+  } catch (error) {
+    console.error('[POST /api/tenant/orders]', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

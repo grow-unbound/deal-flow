@@ -43,7 +43,7 @@ Tasks:
 1. Search across src/ and supabase/ for all references to 'orders' table (the app.orders table, not the route path /orders). Fix them to reference sales_orders. Use grep to find them first, then edit.
 2. Update src/types/database.ts: rename the orders table type to sales_orders.
 3. Update src/hooks/useOrders.ts: all Supabase queries referencing .from('orders') → .from('sales_orders').
-4. Update any RPC or function in supabase/supabase/migrations/ that references app.orders by name.
+4. Update any RPC or function in supabase/migrations/ that references app.orders by name.
 5. Do NOT rename the URL route /orders in the seller app — keep the UI routes as-is. Only the DB table name changes.
 
 Validation gate: Run `npx tsc --noEmit` from /Users/phanikrovvidi/projects/deal-flow. Zero type errors related to orders/sales_orders. 

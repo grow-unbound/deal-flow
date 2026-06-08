@@ -1,0 +1,300 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { DocComposerEstimate } from '@/components/seller/estimates/DocComposerEstimate';
+import type { EstimateComposerBuyerContext, EstimateComposerDocument, EstimateComposerProductSearchRow } from '@/types/estimate-composer';
+
+const pushMock = vi.fn();
+const useFlagStateMock = vi.fn();
+const useEstimateComposerMock = vi.fn();
+const useSaveEstimateComposerMock = vi.fn();
+const useSendEstimateMock = vi.fn();
+const useBuyerEstimateContextMock = vi.fn();
+const useEstimatePriceListOptionsMock = vi.fn();
+const useEstimateProductPricingMock = vi.fn();
+const useEstimateProductSearchMock = vi.fn();
+const useNextEstimateNumberMock = vi.fn();
+const apiFetchMock = vi.fn();
+const apiPatchMock = vi.fn();
+const apiPostMock = vi.fn();
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: pushMock }),
+}));
+
+vi.mock('@/hooks/useFeatureFlag', () => ({
+  useFlagState: (...args: unknown[]) => useFlagStateMock(...args),
+}));
+
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: {
+      id: 'user-1',
+      email: 'seller@example.com',
+      displayName: 'Phani',
+    },
+  }),
+}));
+
+vi.mock('@/hooks/useEstimates', () => ({
+  useEstimateComposer: (...args: unknown[]) => useEstimateComposerMock(...args),
+  useSaveEstimateComposer: (...args: unknown[]) => useSaveEstimateComposerMock(...args),
+  useSendEstimate: (...args: unknown[]) => useSendEstimateMock(...args),
+  useBuyerEstimateContext: (...args: unknown[]) => useBuyerEstimateContextMock(...args),
+  useEstimatePriceListOptions: (...args: unknown[]) => useEstimatePriceListOptionsMock(...args),
+  useEstimateProductPricing: (...args: unknown[]) => useEstimateProductPricingMock(...args),
+  useEstimateProductSearch: (...args: unknown[]) => useEstimateProductSearchMock(...args),
+  useNextEstimateNumber: (...args: unknown[]) => useNextEstimateNumberMock(...args),
+}));
+
+vi.mock('@/lib/api-fetch', () => ({
+  apiFetch: (...args: unknown[]) => apiFetchMock(...args),
+  apiPatch: (...args: unknown[]) => apiPatchMock(...args),
+  apiPost: (...args: unknown[]) => apiPostMock(...args),
+}));
+
+vi.mock('@supabase/auth-helpers-nextjs', () => {
+  class QueryMock {
+    select() {
+      return this;
+    }
+    eq() {
+      return this;
+    }
+    ilike() {
+      return this;
+    }
+    order() {
+      return this;
+    }
+    limit() {
+      return this;
+    }
+    then(resolve: (value: { data: unknown; error: null }) => void) {
+      resolve({
+        data: [
+          {
+            id: 'buyer-1',
+            business_name: 'Acme Retail',
+            geography: { state: 'Delhi' },
+            credit_limit: 5000,
+          },
+        ],
+        error: null,
+      });
+    }
+  }
+
+  return {
+    createClientComponentClient: () => ({
+      schema: () => ({
+        from: () => new QueryMock(),
+      }),
+    }),
+  };
+});
+
+function baseBuyer(overrides: Partial<EstimateComposerBuyerContext> = {}): EstimateComposerBuyerContext {
+  return {
+    id: 'buyer-1',
+    business_name: 'Acme Retail',
+    contact_name: 'Priya',
+    phone: '9999999999',
+    email: 'buyer@example.com',
+    gstin: '07AAAAA0000A1Z5',
+    bill_address: 'Delhi, 110001',
+    city: 'Delhi',
+    state: 'Delhi',
+    pincode: '110001',
+    place_of_supply: 'Delhi',
+    seller_state: 'Maharashtra',
+    payment_terms_days: 21,
+    credit_limit: 5000,
+    credit_used: 4500,
+    credit_available: 500,
+    active_pricelist: { id: 'pl-1', name: 'North Delhi A-class' },
+    sales_agent_name: 'Phani',
+    ...overrides,
+  };
+}
+
+function baseDocument(overrides: Partial<EstimateComposerDocument> = {}): EstimateComposerDocument {
+  const base: EstimateComposerDocument = {
+    id: 'est-1',
+    estimate_number: 'EST-2026-00001',
+    status: 'draft',
+    buyer_id: null,
+    date_issued: '2026-06-07',
+    valid_until: '2026-06-21',
+    buyer_po_ref: '',
+    place_of_supply: 'Unknown',
+    seller_note: '',
+    freight: 0,
+    discount_flat: 0,
+    round_off: 0,
+    sent_at: null,
+    sent_channel: null,
+    items: [],
+    buyer_context: null,
+    estimate_version: 1,
+    viewed_at: null,
+    viewed_by_name: null,
+    voided_at: null,
+    converted_to_order_id: null,
+    linked_order_number: null,
+  };
+  return { ...base, ...overrides, estimate_version: overrides.estimate_version ?? base.estimate_version };
+}
+
+const searchRow: EstimateComposerProductSearchRow = {
+  tenant_product_id: 'tp-1',
+  product_name: 'Vinikus Shiraz Reserve',
+  sku: 'SKU-001',
+  brand_name: 'Vinikus',
+  brand_initials: 'VI',
+  brand_hue: 'teal',
+  hsn_code: '2204',
+  tax_pct: 18,
+  on_hand: 24,
+  unit_price: 1180,
+  default_uom: 'bottle',
+  pack_size: 750,
+};
+
+function renderComposer(props: React.ComponentProps<typeof DocComposerEstimate>) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <DocComposerEstimate {...props} />
+    </QueryClientProvider>,
+  );
+}
+
+describe('DocComposerEstimate', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    apiFetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/api/tenant/buyers/search')) {
+        return {
+          ok: true,
+          json: async () => ({
+            buyers: [
+              {
+                id: 'buyer-1',
+                business_name: 'Acme Retail',
+                place_of_supply: 'Delhi',
+                credit_used: 5000,
+              },
+            ],
+          }),
+        };
+      }
+      if (url.includes('/api/tenant/estimates/next-number')) {
+        return {
+          ok: true,
+          json: async () => ({ estimate_number: 'EST-2026-00001' }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({}),
+      };
+    });
+    apiPatchMock.mockResolvedValue({ ok: true, json: async () => ({ data: baseDocument() }) });
+    apiPostMock.mockResolvedValue({ ok: true, json: async () => ({ data: baseDocument() }) });
+    useFlagStateMock.mockReturnValue(true);
+    useSaveEstimateComposerMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useSendEstimateMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useEstimatePriceListOptionsMock.mockReturnValue({
+      data: [{ id: 'pl-1', name: 'North Delhi A-class' }],
+      isLoading: false,
+    });
+    useEstimateProductPricingMock.mockReturnValue({ data: {}, isLoading: false });
+    useEstimateProductSearchMock.mockReturnValue({ data: [], isLoading: false });
+    useNextEstimateNumberMock.mockReturnValue({ data: 'EST-2026-00001', isLoading: false });
+    useBuyerEstimateContextMock.mockReturnValue({ data: null, isLoading: false });
+    useEstimateComposerMock.mockImplementation((id: string | null) => ({
+      data: id ? baseDocument() : undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    }));
+  });
+
+  it('renders buyer-empty state with disabled send CTA on new estimate', async () => {
+    renderComposer({ mode: 'create' });
+
+    expect(await screen.findByPlaceholderText(/Search buyer/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Send estimate/i })).toBeDisabled();
+    expect(apiPostMock).not.toHaveBeenCalled();
+  });
+
+  it('hydrates buyer card and over-limit warning after buyer + line selection', async () => {
+    useBuyerEstimateContextMock.mockImplementation((buyerId: string | null) => ({
+      data: buyerId ? baseBuyer() : null,
+      isLoading: false,
+    }));
+    useEstimateProductSearchMock.mockImplementation((query: string) => ({
+      data: query ? [searchRow] : [],
+      isLoading: false,
+    }));
+
+    renderComposer({ mode: 'create' });
+
+    fireEvent.focus(screen.getByPlaceholderText(/Search buyer/i));
+    fireEvent.click(await screen.findByRole('button', { name: /Acme Retail/i }, { timeout: 8000 }));
+    await screen.findByText(/Credit headroom/i);
+    expect(screen.getByText(/North Delhi A-class/i)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText(/Search product/i), { target: { value: 'Shiraz' } });
+    fireEvent.click(await screen.findByRole('button', { name: /Vinikus Shiraz Reserve/i }));
+
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Over limit by/i)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Send estimate/i })).toBeEnabled();
+        expect(screen.getAllByText(/₹1,392/i).length).toBeGreaterThan(0);
+      },
+      { timeout: 12_000 },
+    );
+  }, 15_000);
+
+  it('shows edit mode chip and save & resend CTA for sent estimates', async () => {
+    useEstimateComposerMock.mockReturnValue({
+      data: baseDocument({
+        id: 'est-2',
+        status: 'sent',
+        buyer_id: 'buyer-1',
+        buyer_context: baseBuyer({ credit_limit: 20000, credit_used: 2000, credit_available: 18000 }),
+        items: [
+          {
+            id: 'line-1',
+            tenant_product_id: 'tp-1',
+            product_name: 'Vinikus Shiraz Reserve',
+            sku: 'SKU-001',
+            brand_name: 'Vinikus',
+            brand_initials: 'VI',
+            brand_hue: 'teal',
+            hsn_code: '2204',
+            on_hand: 24,
+            qty: 1,
+            unit_price: 1180,
+            disc_pct: 0,
+            tax_pct: 18,
+            line_total: 1392,
+            scheme_tag: null,
+          },
+        ],
+      }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+
+    renderComposer({ mode: 'edit', estimateId: 'est-2' });
+
+    expect(await screen.findByText(/Editing live draft/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Save & resend/i })).toBeInTheDocument();
+  });
+});
