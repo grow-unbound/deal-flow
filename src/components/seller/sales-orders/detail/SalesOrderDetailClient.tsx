@@ -3,18 +3,19 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Edit2, PackageCheck, Truck, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
+import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
+import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasicsStrip';
+import { DocumentComposerLoadingSkeleton, DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
 import {
   BuyerCardFilled,
-  DocComposerFrame,
-  DocStrip,
-  DocTitleRow,
-  DocTop,
   InsightsCard,
   LinesTable,
+  salesOrderBandChipClass,
   SalesOrderDocStatusBand,
   TotalsCard,
   resolveSalesOrderBandStatus,
@@ -38,43 +39,26 @@ import {
   useDispatchSalesOrder,
   useSalesOrderDetail,
 } from '@/hooks/useSalesOrderDetail';
+import { prefetchSalesOrderComposer } from '@/hooks/useSalesOrders';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { mapSalesOrderDetailToComposerLines, formatEstimateChipLabel } from '@/lib/sales-orders/tenant-order-detail';
+import { computeLineTotal, computeTotals, defaultPaymentTerms } from '@/lib/documents/composer-math';
 import { formatCompactInr } from '@/lib/utils';
-import type { EstimateComposerProductSearchRow, EstimateComposerTotals } from '@/types/estimate-composer';
+import type { SalesOrderUiStatus } from '@/types/tenant-sales-orders';
+import type { EstimateComposerProductSearchRow } from '@/types/estimate-composer';
 
 import { ModalCancelOrder } from './ModalCancelOrder';
 import { ModalDispatch } from './ModalDispatch';
 
-function defaultPaymentTerms(days: number) {
-  return days > 0 ? `Net ${days}` : 'Due on receipt';
-}
-
-function computeLineTotal(line: Pick<EstimateComposerLineRow, 'qty' | 'unit_price' | 'disc_pct' | 'tax_pct'>) {
-  const taxable = line.qty * line.unit_price * (1 - line.disc_pct / 100);
-  return Number((taxable + taxable * (line.tax_pct / 100)).toFixed(2));
-}
-
-function computeTotals(lines: EstimateComposerLineRow[], discountFlat: number, freight: number, roundOff: number): EstimateComposerTotals {
-  const activeLines = lines.filter((line) => line.diff !== 'removed');
-  const subtotal = activeLines.reduce((sum, line) => sum + line.qty * line.unit_price * (1 - line.disc_pct / 100), 0);
-  const taxAmount = activeLines.reduce((sum, line) => {
-    const taxable = line.qty * line.unit_price * (1 - line.disc_pct / 100);
-    return sum + taxable * (line.tax_pct / 100);
-  }, 0);
-  return {
-    subtotal,
-    discount_flat: discountFlat,
-    freight,
-    taxable_amount: Math.max(subtotal - discountFlat, 0),
-    tax_amount: taxAmount,
-    round_off: roundOff,
-    grand_total: Math.max(subtotal - discountFlat, 0) + taxAmount + freight + roundOff,
-    total_units: activeLines.reduce((sum, line) => sum + line.qty, 0),
-  };
-}
-
 const noop = () => {};
+
+const SO_STATUS_TITLE: Record<SalesOrderUiStatus, string> = {
+  received: 'Received',
+  confirmed: 'Confirmed',
+  dispatched: 'Dispatched',
+  delivered: 'Delivered',
+  cancelled: 'Cancelled',
+};
 
 function formatPlacedAt(iso: string | null): string {
   if (!iso) return '—';
@@ -89,6 +73,7 @@ function formatPlacedAt(iso: string | null): string {
 
 export function SalesOrderDetailClient({ id }: { id: string }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const salesOrdersFlag = useFlagState('SALES_ORDERS');
   const { data, isLoading, isError, error } = useSalesOrderDetail(id);
@@ -147,7 +132,7 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
   }
 
   if (isLoading) {
-    return null;
+    return <DocumentComposerLoadingSkeleton showStatusBand />;
   }
 
   if (isError) {
@@ -155,7 +140,7 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
       return <FeatureDisabledState />;
     }
     return (
-      <div className="max-w-[1440px] mx-auto w-full px-8 py-6">
+      <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6">
         <p className="text-[13px] text-danger-700">{error instanceof Error ? error.message : 'Failed to load sales order.'}</p>
       </div>
     );
@@ -172,8 +157,6 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
   const ui = data.ui_status;
 
   const showEdit = ui === 'received' || ui === 'confirmed';
-  const showDispatch = ui === 'confirmed';
-  const showDeliver = ui === 'dispatched';
   const showCancel = (ui === 'received' || ui === 'confirmed') && isAdmin;
 
   const overLimitBy = buyer ? totals.grand_total - buyer.credit_available : 0;
@@ -193,14 +176,108 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
   const orderDate = data.placed_at ? data.placed_at.slice(0, 10) : '';
   const expectedYmd = data.expected_delivery ?? '';
 
+  const statusLabel = bandStatus === 'draft' ? 'Draft' : SO_STATUS_TITLE[ui];
+  const statusTone: 'draft' | 'live' = ui === 'cancelled' || ui === 'delivered' ? 'draft' : 'live';
+
+  const soWhatsNext = (() => {
+    if (bandStatus === 'draft') {
+      return {
+        description: 'Complete buyer, lines, and dates before you confirm this order.',
+        action: null as ReactNode,
+      };
+    }
+    if (ui === 'received') {
+      return {
+        description: 'Order is logged. Confirm when you assign stock and set an expected ship date.',
+        action: null as ReactNode,
+      };
+    }
+    if (ui === 'confirmed') {
+      return {
+        description: 'Pick and ship when ready. The buyer sees movement after dispatch.',
+        action: (
+          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setDispatchOpen(true)} disabled={dispatchMut.isPending}>
+            <Truck className="h-4 w-4" />
+            Dispatch
+          </Button>
+        ),
+      };
+    }
+    if (ui === 'dispatched') {
+      return {
+        description: 'On the road with your fleet. Mark delivered once the buyer confirms receipt.',
+        action: (
+          <Button type="button" size="sm" className="gap-2" onClick={() => setDeliverOpen(true)} disabled={deliverMut.isPending}>
+            <PackageCheck className="h-4 w-4" />
+            Mark delivered
+          </Button>
+        ),
+      };
+    }
+    if (ui === 'delivered') {
+      return { description: 'This order is complete.', action: null as ReactNode };
+    }
+    if (ui === 'cancelled') {
+      return {
+        description: data.cancel_reason ? `Cancelled: ${data.cancel_reason}` : 'This order was cancelled.',
+        action: null as ReactNode,
+      };
+    }
+    return null;
+  })();
+
   return (
     <>
-      <DocComposerFrame
+      <DocumentComposerShell
         mode="view"
         kind="so"
+        breadcrumbItems={[
+          { label: 'Sales' },
+          { label: 'Sales orders', href: '/sales-orders' },
+          { label: data.order_number, current: true },
+        ]}
+        title={data.order_number}
+        subtitle={buyer ? `${buyer.business_name} · ${buyer.place_of_supply} · ${buyer.bill_address}` : 'No buyer assigned.'}
+        status={{
+          label: statusLabel,
+          tone: statusTone,
+          chipClassName: salesOrderBandChipClass(bandStatus),
+        }}
+        titleActions={(
+          <>
+            {showEdit ? (
+              <Button
+                type="button"
+                size="sm"
+                className="gap-2"
+                onClick={() => {
+                  void prefetchSalesOrderComposer(queryClient, id);
+                  router.push(`/sales-orders/${id}/edit`);
+                }}
+              >
+                <Edit2 className="h-4 w-4" />
+                Edit order
+              </Button>
+            ) : null}
+            {showCancel ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive gap-2"
+                onClick={() => setCancelOpen(true)}
+                disabled={cancelMut.isPending}
+              >
+                <X className="h-4 w-4" />
+                Cancel order
+              </Button>
+            ) : null}
+          </>
+        )}
         statusBand={(
           <SalesOrderDocStatusBand
             status={bandStatus}
+            placedAt={data.placed_at}
             receivedAt={data.received_at}
             confirmedAt={data.confirmed_at}
             dispatchedAt={data.dispatched_at}
@@ -210,94 +287,47 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
             carrier={data.carrier}
             cancelReason={data.cancel_reason}
             hasBackorder={data.has_backorder}
+            whatsNext={soWhatsNext}
           />
         )}
-        top={(
-          <DocTop
-            kind="so"
-            docNumber={data.order_number}
-            onClose={() => router.push('/sales-orders')}
-          />
-        )}
-        titleRow={(
-          <DocTitleRow
-            title={`${data.order_number} · ${buyer?.business_name ?? 'Sales order'}`}
-            subtitle={(
-              <div className="space-y-1.5">
-                {buyer ? <p>{buyer.place_of_supply} · {buyer.bill_address}</p> : <p>No buyer assigned.</p>}
-                {orderMeta}
-              </div>
-            )}
-            rightActions={(
-              <>
-                {showEdit ? (
-                  <Button type="button" size="sm" className="gap-2" onClick={() => router.push(`/sales-orders/${id}/edit`)}>
-                    <Edit2 className="h-4 w-4" />
-                    Edit order
-                  </Button>
-                ) : null}
-                {showDispatch ? (
-                  <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setDispatchOpen(true)} disabled={dispatchMut.isPending}>
-                    <Truck className="h-4 w-4" />
-                    Dispatch
-                  </Button>
-                ) : null}
-                {showDeliver ? (
-                  <Button type="button" size="sm" className="gap-2" onClick={() => setDeliverOpen(true)} disabled={deliverMut.isPending}>
-                    <PackageCheck className="h-4 w-4" />
-                    Mark delivered
-                  </Button>
-                ) : null}
-                {showCancel ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive gap-2"
-                    onClick={() => setCancelOpen(true)}
-                    disabled={cancelMut.isPending}
-                  >
-                    <X className="h-4 w-4" />
-                    Cancel order
-                  </Button>
-                ) : null}
-              </>
-            )}
-          />
-        )}
-        strip={(
-          <DocStrip
+        basics={(
+          <DocumentBasicsStrip
             kind="so"
             readOnly
             docNumber={data.order_number}
             dateIssued={orderDate}
-            validUntil={expectedYmd}
+            secondDate={expectedYmd}
             buyerPoRef={data.buyer_po_ref ?? ''}
             placeOfSupply={data.place_of_supply ?? buyer?.place_of_supply ?? 'Unknown'}
-            placeOptions={[data.place_of_supply ?? buyer?.place_of_supply ?? 'Unknown']}
-            onDocNumberChange={noop}
             onDateIssuedChange={noop}
-            onValidUntilChange={noop}
+            onSecondDateChange={noop}
             onBuyerPoRefChange={noop}
             onPlaceOfSupplyChange={noop}
           />
         )}
-        left={buyer
-          ? (
-              <BuyerCardFilled
-                buyer={buyer}
-                previewTotal={0}
-                paymentTermsValue={paymentTermsLabel}
-                readOnly
-                onPaymentTermsChange={noop}
-                onSwap={noop}
-              />
-            )
-          : (
-              <aside className="rounded-[14px] border border-dashed border-cream-400 bg-cream-50 p-4 text-[13px] text-cream-700">
-                No buyer on this order.
-              </aside>
-            )}
+        left={(
+          <ComposerSidebarCard>
+            <div className="space-y-4">
+              {buyer ? (
+                <BuyerCardFilled
+                  buyer={buyer}
+                  previewTotal={0}
+                  paymentTermsValue={paymentTermsLabel}
+                  readOnly
+                  onPaymentTermsChange={noop}
+                  onSwap={noop}
+                />
+              ) : (
+                <p className="text-[13px] text-cream-700">No buyer on this order.</p>
+              )}
+              {orderMeta ? (
+                <div className="rounded-[10px] border border-cream-200 bg-cream-50 px-3 py-3 text-[12px] leading-[1.55] text-cream-800">
+                  {orderMeta}
+                </div>
+              ) : null}
+            </div>
+          </ComposerSidebarCard>
+        )}
         center={(
           <LinesTable
             kind="so"
@@ -310,6 +340,7 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
             notesExpanded={false}
             freightExpanded={false}
             internalExpanded={false}
+            singleNoteMode
             notesValue={data.notes ?? ''}
             freightValue={String(data.freight)}
             internalValue={data.seller_note ?? ''}

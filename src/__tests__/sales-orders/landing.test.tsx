@@ -150,19 +150,17 @@ describe('sales orders landing page', () => {
     expect(screen.getByText(/AOV/)).toBeInTheDocument();
   });
 
-  it('renders source, catalog, and INR amount columns', () => {
+  it('renders source, catalog, delivery, items, and total amount columns', () => {
     render(<SalesOrdersLandingClient initialData={mockSalesOrdersData()} initialPeriod={defaultPeriod} />);
 
     expect(screen.getByText('Source')).toBeInTheDocument();
     expect(screen.getByText('Catalog')).toBeInTheDocument();
-    expect(screen.getByText('Value')).toBeInTheDocument();
-    expect(screen.getByText('Tax Amount')).toBeInTheDocument();
+    expect(screen.getByText('Delivery')).toBeInTheDocument();
+    expect(screen.getByText('Items')).toBeInTheDocument();
     expect(screen.getByText('Total Amount')).toBeInTheDocument();
     expect(screen.getByText('EST-2042')).toBeInTheDocument();
     expect(screen.getByText('Converted by Priya Shah')).toBeInTheDocument();
     expect(screen.getByText('Monsoon Promo')).toBeInTheDocument();
-    expect(screen.getByText('₹18,644')).toBeInTheDocument();
-    expect(screen.getByText('₹3,356')).toBeInTheDocument();
     expect(screen.getByText('₹22,000')).toBeInTheDocument();
   });
 

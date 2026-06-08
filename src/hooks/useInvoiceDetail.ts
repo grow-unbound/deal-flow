@@ -58,6 +58,7 @@ export function useSendInvoice(id: string) {
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['tenant-invoice', id] });
       void qc.invalidateQueries({ queryKey: ['tenant-invoices'] });
+      void qc.invalidateQueries({ queryKey: ['tenant-invoice-composer', id] });
     },
   });
 }

@@ -1,21 +1,22 @@
 'use client';
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { useQuery } from '@tanstack/react-query';
-import { Download, Eye, FileText, Mail, MessageCircle, Send, Trash2 } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Download, Eye, FileText, Mail, MessageCircle, Send, Trash2, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
+import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
+import {
+  DocumentBasicsStrip,
+  DocumentComposerFooterRow,
+} from '@/components/seller/composer/DocumentBasicsStrip';
+import { DocumentComposerShell, DocumentComposerLoadingSkeleton } from '@/components/seller/composer/DocumentComposerShell';
 import {
   BuyerCardEmpty,
   BuyerCardFilled,
-  DocComposerFoot,
-  DocComposerFrame,
-  DocStrip,
-  DocTitleRow,
-  DocTop,
   InsightsCard,
   LinesTable,
   TotalsCard,
@@ -23,7 +24,8 @@ import {
 } from '@/components/seller/document-composer';
 import { FEATURE_FLAGS } from '@/constants';
 import { useFlagState } from '@/hooks/useFeatureFlag';
-import { useCreateInvoiceDraft, useInvoiceComposer, useSaveInvoiceComposer, useSendInvoice } from '@/hooks/useInvoices';
+import { useBuyerEstimateContext } from '@/hooks/useEstimates';
+import { useInvoiceComposer, useNextInvoiceNumber, useSaveInvoiceComposer, useSendInvoice } from '@/hooks/useInvoices';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/ui/button';
 import {
@@ -35,17 +37,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { apiPatch, apiPost } from '@/lib/api-fetch';
 import type { Database } from '@/types/database';
 import type {
   InvoiceComposerBuyerContext,
   InvoiceComposerDocument,
   InvoiceComposerProductSearchRow,
   InvoiceComposerSavePayload,
-  InvoiceComposerTotals,
 } from '@/types/invoice-composer';
+import { computeLineTotal, computeTotals, defaultPaymentTerms } from '@/lib/documents/composer-math';
 import { formatCompactInr } from '@/lib/utils';
-
-const NEW_DRAFT_STORAGE_KEY = 'df:invoice-composer:new-draft';
 
 type SendChannel = 'whatsapp' | 'email' | 'download';
 
@@ -54,36 +55,32 @@ type BuyerPickerRow = Pick<
   'id' | 'business_name' | 'place_of_supply' | 'credit_used'
 >;
 
-function defaultPaymentTerms(days: number) {
-  return days > 0 ? `Net ${days}` : 'Due on receipt';
+function isoToday() {
+  return new Date().toISOString().slice(0, 10);
 }
 
-function computeLineTotal(line: Pick<EstimateComposerLineRow, 'qty' | 'unit_price' | 'disc_pct' | 'tax_pct'>) {
-  const taxable = line.qty * line.unit_price * (1 - line.disc_pct / 100);
-  return Number((taxable + taxable * (line.tax_pct / 100)).toFixed(2));
-}
-
-function computeTotals(
-  lines: EstimateComposerLineRow[],
-  discountFlat: number,
-  freight: number,
-  roundOff: number,
-): InvoiceComposerTotals {
-  const activeLines = lines.filter((line) => line.diff !== 'removed');
-  const subtotal = activeLines.reduce((sum, line) => sum + line.qty * line.unit_price * (1 - line.disc_pct / 100), 0);
-  const taxAmount = activeLines.reduce((sum, line) => {
-    const taxable = line.qty * line.unit_price * (1 - line.disc_pct / 100);
-    return sum + taxable * (line.tax_pct / 100);
-  }, 0);
+function buildNewInvoiceDraft(invoiceNumber = 'Reserving next number...'): InvoiceComposerDocument {
   return {
-    subtotal,
-    discount_flat: discountFlat,
-    freight,
-    taxable_amount: Math.max(subtotal - discountFlat, 0),
-    tax_amount: taxAmount,
-    round_off: roundOff,
-    grand_total: Math.max(subtotal - discountFlat, 0) + taxAmount + freight + roundOff,
-    total_units: activeLines.reduce((sum, line) => sum + line.qty, 0),
+    id: '',
+    invoice_number: invoiceNumber,
+    status: 'draft',
+    buyer_id: null,
+    invoice_date: isoToday(),
+    due_date: null,
+    buyer_po_ref: '',
+    place_of_supply: 'Unknown',
+    seller_note: '',
+    freight: 0,
+    discount_flat: 0,
+    round_off: 0,
+    sent_at: null,
+    sent_channel: null,
+    items: [],
+    buyer_context: null,
+    order_id: null,
+    estimate_id: null,
+    linked_order_number: null,
+    linked_estimate_number: null,
   };
 }
 
@@ -184,99 +181,6 @@ function useBuyerPicker(query: string) {
   });
 }
 
-export function InvoiceComposerLoadingSkeleton() {
-  return (
-    <div className="max-w-[1440px] mx-auto w-full px-8 py-6" role="status" aria-label="Loading invoice composer">
-      <div className="space-y-4">
-        <div className="rounded-[14px] border border-cream-300 bg-white px-5 py-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="h-3 w-52 animate-pulse rounded bg-cream-200" />
-            <div className="h-7 w-24 animate-pulse rounded-full border border-cream-200 bg-cream-100" />
-            <div className="h-7 w-20 animate-pulse rounded-full border border-cream-200 bg-cream-100" />
-            <div className="ml-auto flex items-center gap-3">
-              <div className="h-3 w-28 animate-pulse rounded bg-cream-200" />
-              <div className="h-9 w-24 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-            </div>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-2">
-            <div className="h-8 w-44 animate-pulse rounded bg-cream-200" />
-            <div className="h-4 w-72 animate-pulse rounded bg-cream-200" />
-          </div>
-          <div className="h-9 w-28 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-        </div>
-        <div className="grid gap-0 overflow-hidden rounded-[14px] border border-cream-300 bg-white lg:grid-cols-5">
-          {Array.from({ length: 5 }).map((_, index) => (
-            <div key={index} className="border-r border-cream-300 px-4 py-3 last:border-r-0">
-              <div className="h-3 w-20 animate-pulse rounded bg-cream-200" />
-              <div className="mt-3 h-9 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-            </div>
-          ))}
-        </div>
-        <div className="grid min-h-[620px] gap-5 lg:grid-cols-[260px_minmax(0,1fr)_320px]">
-          <div className="rounded-[14px] border border-cream-300 bg-white p-4">
-            <div className="h-4 w-16 animate-pulse rounded bg-cream-200" />
-            <div className="mt-4 h-10 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-            <div className="mt-4 space-y-2">
-              {Array.from({ length: 3 }).map((_, index) => (
-                <div key={index} className="flex items-center gap-3 rounded-[12px] border border-cream-200 bg-cream-100 px-3 py-3">
-                  <div className="h-8 w-8 animate-pulse rounded-full bg-cream-200" />
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <div className="h-3 w-28 animate-pulse rounded bg-cream-200" />
-                    <div className="h-3 w-36 animate-pulse rounded bg-cream-200" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-[14px] border border-cream-300 bg-white">
-            <div className="border-b border-cream-300 px-5 py-4">
-              <div className="h-4 w-20 animate-pulse rounded bg-cream-200" />
-            </div>
-            <div className="space-y-3 px-4 py-4">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="grid grid-cols-[40px_minmax(0,1fr)_90px_90px_72px_72px_100px] gap-3">
-                  <div className="h-10 animate-pulse rounded bg-cream-200" />
-                  <div className="h-10 animate-pulse rounded bg-cream-100" />
-                  <div className="h-10 animate-pulse rounded bg-cream-100" />
-                  <div className="h-10 animate-pulse rounded bg-cream-100" />
-                  <div className="h-10 animate-pulse rounded bg-cream-100" />
-                  <div className="h-10 animate-pulse rounded bg-cream-100" />
-                  <div className="h-10 animate-pulse rounded bg-cream-100" />
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-4">
-            <div className="rounded-[14px] border border-cream-300 bg-white p-4">
-              <div className="h-4 w-16 animate-pulse rounded bg-cream-200" />
-              <div className="mt-4 space-y-3">
-                {Array.from({ length: 5 }).map((_, index) => (
-                  <div key={index} className="flex items-center justify-between gap-4">
-                    <div className="h-3 w-24 animate-pulse rounded bg-cream-200" />
-                    <div className="h-3 w-20 animate-pulse rounded bg-cream-200" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="sticky bottom-0 rounded-[14px] border border-cream-300 bg-white px-6 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="h-3 w-28 animate-pulse rounded bg-cream-200" />
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="h-10 w-28 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-              <div className="h-10 w-28 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-              <div className="h-10 w-32 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function DocComposerInvoice({
   mode,
   invoiceId,
@@ -285,16 +189,20 @@ export function DocComposerInvoice({
   invoiceId?: string;
 }) {
   const router = useRouter();
+  const qc = useQueryClient();
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const invoicesFlag = useFlagState('INVOICES');
 
-  const createDraftMutation = useCreateInvoiceDraft();
   const [workingId, setWorkingId] = useState<string | null>(invoiceId ?? null);
   const { data, isLoading, isError, error } = useInvoiceComposer(workingId);
+  const nextInvoiceNumberQuery = useNextInvoiceNumber(mode === 'create' && !invoiceId);
 
-  const [documentState, setDocumentState] = useState<InvoiceComposerDocument | null>(null);
+  const [documentState, setDocumentState] = useState<InvoiceComposerDocument | null>(() => (
+    mode === 'create' && !invoiceId ? buildNewInvoiceDraft() : null
+  ));
   const [lineState, setLineState] = useState<EstimateComposerLineRow[]>([]);
   const [buyerQuery, setBuyerQuery] = useState('');
+  const [buyerSearchOpen, setBuyerSearchOpen] = useState(false);
   const [productQuery, setProductQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [paymentTermsLabel, setPaymentTermsLabel] = useState('Due on receipt');
@@ -303,7 +211,7 @@ export function DocComposerInvoice({
   const [sendRecipient, setSendRecipient] = useState('');
   const [sendMessage, setSendMessage] = useState('Please review and pay this invoice.');
   const [autoSaveMeta, setAutoSaveMeta] = useState<{ label: string; tone: 'draft' | 'saved' | 'warning' }>({
-    label: 'Draft created',
+    label: mode === 'create' ? 'Not saved yet' : 'Ready to save',
     tone: 'draft',
   });
   const [notesExpanded, setNotesExpanded] = useState(false);
@@ -313,13 +221,31 @@ export function DocComposerInvoice({
   const originalDocumentRef = useRef<InvoiceComposerDocument | null>(null);
   const originalLinesRef = useRef<EstimateComposerLineRow[]>([]);
   const initializedForIdRef = useRef<string | null>(null);
-  const createDraftCalledRef = useRef(false);
 
   const saveMutation = useSaveInvoiceComposer(workingId);
   const sendMutation = useSendInvoice(workingId);
   const buyerPickerQuery = useBuyerPicker(buyerQuery);
+  const buyerContextQuery = useBuyerEstimateContext(documentState?.buyer_id ?? null);
 
-  // Product search reuses the estimate endpoint — same tenant product catalogue
+  const prevEditInvoiceIdRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (mode !== 'edit' || !invoiceId) return;
+    if (prevEditInvoiceIdRef.current === invoiceId) return;
+    prevEditInvoiceIdRef.current = invoiceId;
+    setWorkingId(invoiceId);
+    initializedForIdRef.current = null;
+    originalDocumentRef.current = null;
+    originalLinesRef.current = [];
+    setDocumentState(null);
+    setLineState([]);
+    setBuyerQuery('');
+    setBuyerSearchOpen(false);
+    setProductQuery('');
+    setSearchOpen(false);
+    setAutoSaveMeta({ label: 'Ready to save', tone: 'draft' });
+  }, [mode, invoiceId]);
+
   const productSearchQuery = useQuery({
     queryKey: ['invoice-product-search', productQuery, documentState?.buyer_id ?? null],
     queryFn: async (): Promise<InvoiceComposerProductSearchRow[]> => {
@@ -336,30 +262,9 @@ export function DocComposerInvoice({
   });
 
   useEffect(() => {
-    if (mode !== 'create') return;
-    if (invoiceId) return;
-    if (workingId) return;
-    if (createDraftCalledRef.current) return;
-
-    const existingId = window.sessionStorage.getItem(NEW_DRAFT_STORAGE_KEY);
-    if (existingId) {
-      setWorkingId(existingId);
-      return;
-    }
-
-    createDraftCalledRef.current = true;
-    createDraftMutation.mutate(undefined, {
-      onSuccess: ({ data: created }) => {
-        window.sessionStorage.setItem(NEW_DRAFT_STORAGE_KEY, created.id);
-        setWorkingId(created.id);
-      },
-      onError: (mutationError) => {
-        createDraftCalledRef.current = false;
-        toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to create draft');
-      },
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, invoiceId, workingId]);
+    if (mode !== 'create' || invoiceId || !nextInvoiceNumberQuery.data) return;
+    setDocumentState((current) => current ? { ...current, invoice_number: nextInvoiceNumberQuery.data } : current);
+  }, [invoiceId, mode, nextInvoiceNumberQuery.data]);
 
   useEffect(() => {
     if (!data) return;
@@ -378,10 +283,38 @@ export function DocComposerInvoice({
     originalLinesRef.current = mappedLines;
     initializedForIdRef.current = data.id;
     setAutoSaveMeta({
-      label: mode === 'create' ? 'Draft created' : 'Draft saved',
+      label: mode === 'create' ? 'Not saved yet' : 'Draft saved',
       tone: mode === 'create' ? 'draft' : 'saved',
     });
   }, [data, mode]);
+
+  useEffect(() => {
+    if (mode !== 'create' || invoiceId || originalDocumentRef.current) return;
+    if (!documentState) return;
+
+    originalDocumentRef.current = documentState;
+    originalLinesRef.current = [];
+  }, [documentState, invoiceId, mode]);
+
+  useEffect(() => {
+    const nextContext = buyerContextQuery.data;
+    if (!nextContext || !documentState) return;
+    if (documentState.buyer_id !== nextContext.id) return;
+    if (
+      documentState.buyer_context?.id === nextContext.id
+      && documentState.buyer_context?.credit_available === nextContext.credit_available
+      && documentState.place_of_supply === nextContext.place_of_supply
+    ) {
+      return;
+    }
+
+    setDocumentState((current) => current ? ({
+      ...current,
+      place_of_supply: nextContext.place_of_supply,
+      buyer_context: nextContext,
+    }) : current);
+    setPaymentTermsLabel(defaultPaymentTerms(nextContext.payment_terms_days));
+  }, [buyerContextQuery.data, documentState]);
 
   const diffLines = useMemo(() => mapDiffLines(lineState, originalLinesRef.current), [lineState]);
   const totals = useMemo(
@@ -412,32 +345,69 @@ export function DocComposerInvoice({
   }, [diffLines, documentState]);
 
   useEffect(() => {
-    if (!dirty || !documentState || !workingId) return;
-    setAutoSaveMeta({ label: 'Unsaved changes', tone: 'warning' });
+    setAutoSaveMeta(dirty
+      ? { label: 'Unsaved changes', tone: 'warning' }
+      : { label: workingId ? 'Saved changes' : 'Not saved yet', tone: dirty ? 'warning' : 'saved' });
+  }, [dirty, workingId]);
 
-    const timer = window.setTimeout(() => {
-      saveMutation.mutate(toSavePayload(documentState, diffLines), {
-        onSuccess: ({ data: saved }) => {
-          setDocumentState(saved);
-          const savedLines = saved.items.map((line) => ({
-            ...line,
-            diff: 'clean' as const,
-            line_total: computeLineTotal(line),
-          }));
-          setLineState(savedLines);
-          originalDocumentRef.current = saved;
-          originalLinesRef.current = savedLines;
-          setAutoSaveMeta({ label: 'Draft saved just now', tone: 'saved' });
-        },
-        onError: (mutationError) => {
-          setAutoSaveMeta({ label: mutationError instanceof Error ? mutationError.message : 'Save failed', tone: 'warning' });
-        },
+  useEffect(() => {
+    if (!dirty) return;
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => window.removeEventListener('beforeunload', beforeUnload);
+  }, [dirty]);
+
+  async function createDraftOnDemand(): Promise<InvoiceComposerDocument> {
+    if (workingId && data) {
+      return data;
+    }
+
+    const res = await apiPost('/api/tenant/invoices', {});
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err as { error?: string }).error ?? 'Failed to create draft');
+    }
+    const json = (await res.json()) as { data: InvoiceComposerDocument };
+    qc.setQueryData(['tenant-invoice-composer', json.data.id], json.data);
+    setWorkingId(json.data.id);
+    return json.data;
+  }
+
+  async function saveDocumentNow(
+    nextDocument: InvoiceComposerDocument,
+    nextLines: EstimateComposerLineRow[],
+  ): Promise<InvoiceComposerDocument> {
+    const created = !workingId ? await createDraftOnDemand() : null;
+    const targetId = workingId ?? created?.id ?? null;
+    if (!targetId) throw new Error('Missing invoice id');
+
+    const payload = toSavePayload({
+      ...nextDocument,
+      id: targetId,
+      invoice_number: created?.invoice_number ?? nextDocument.invoice_number,
+    }, nextLines);
+
+    if (workingId) {
+      return new Promise<InvoiceComposerDocument>((resolve, reject) => {
+        saveMutation.mutate(payload, {
+          onSuccess: ({ data: saved }) => resolve(saved),
+          onError: (mutationError) => reject(mutationError),
+        });
       });
-    }, 2000);
+    }
 
-    return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [diffLines, dirty, documentState, workingId]);
+    const res = await apiPatch(`/api/tenant/invoices/${targetId}`, { action: 'save', ...payload });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err as { error?: string }).error ?? 'Failed to save invoice');
+    }
+    const json = (await res.json()) as { data: InvoiceComposerDocument };
+    void qc.invalidateQueries({ queryKey: ['tenant-invoices'] });
+    return json.data;
+  }
 
   if (orderManagement === false || invoicesFlag === false) {
     return <FeatureDisabledState />;
@@ -454,11 +424,11 @@ export function DocComposerInvoice({
     );
   }
 
-  if (isLoading || createDraftMutation.isPending || !documentState) {
-    return <InvoiceComposerLoadingSkeleton />;
+  if ((workingId && isLoading) || !documentState) {
+    return <DocumentComposerLoadingSkeleton />;
   }
 
-  const buyer = documentState.buyer_context ?? null;
+  const buyer = documentState.buyer_context ?? buyerContextQuery.data ?? null;
   const recentBuyers = buyerPickerQuery.data ?? [];
   const activeLines = diffLines.filter((line) => line.diff !== 'removed');
   const primaryDisabled = !documentState.buyer_id || activeLines.length === 0;
@@ -481,6 +451,7 @@ export function DocComposerInvoice({
     setBuyerQuery('');
     setProductQuery('');
     setSearchOpen(false);
+    setBuyerSearchOpen(false);
   }
 
   function handleAddProduct(product: InvoiceComposerProductSearchRow) {
@@ -538,106 +509,141 @@ export function DocComposerInvoice({
   }
 
   function handleDiscard() {
-    window.sessionStorage.removeItem(NEW_DRAFT_STORAGE_KEY);
     router.push('/invoices');
   }
 
-  function handleSaveAndClose() {
+  async function handleSaveAndClose() {
     if (!documentState) return;
-    saveMutation.mutate(toSavePayload(documentState, diffLines), {
-      onSuccess: () => {
-        window.sessionStorage.removeItem(NEW_DRAFT_STORAGE_KEY);
-        router.push('/invoices');
-      },
-      onError: (mutationError) => {
-        toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to save invoice');
-      },
-    });
+    try {
+      const saved = await saveDocumentNow(documentState, diffLines);
+      originalDocumentRef.current = saved;
+      originalLinesRef.current = saved.items.map((line) => ({
+        ...line,
+        diff: 'clean' as const,
+        line_total: computeLineTotal(line),
+      }));
+      setDocumentState(saved);
+      setLineState(originalLinesRef.current);
+      setAutoSaveMeta({ label: 'Draft saved just now', tone: 'saved' });
+      router.push('/invoices');
+    } catch (mutationError) {
+      toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to save invoice');
+    }
   }
 
-  function handleSend() {
+  async function handleSend() {
     if (!documentState) return;
-    saveMutation.mutate(toSavePayload(documentState, diffLines), {
-      onSuccess: () => {
+    const hadWorkingId = Boolean(workingId);
+    try {
+      const saved = await saveDocumentNow(documentState, diffLines);
+      const targetId = saved.id;
+      setWorkingId(targetId);
+      setDocumentState(saved);
+      originalDocumentRef.current = saved;
+      originalLinesRef.current = saved.items.map((line) => ({
+        ...line,
+        diff: 'clean' as const,
+        line_total: computeLineTotal(line),
+      }));
+      setLineState(originalLinesRef.current);
+
+      if (hadWorkingId) {
         sendMutation.mutate(undefined, {
           onSuccess: () => {
-            window.sessionStorage.removeItem(NEW_DRAFT_STORAGE_KEY);
             setSendOpen(false);
-            router.push(`/invoices/${workingId}`);
+            router.push(`/invoices/${targetId}`);
           },
           onError: (mutationError) => {
             toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to send invoice');
           },
         });
-      },
-      onError: (mutationError) => {
-        toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to save before sending');
-      },
-    });
+        return;
+      }
+
+      const res = await apiPatch(`/api/tenant/invoices/${targetId}`, { action: 'send' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? 'Failed to send invoice');
+      }
+
+      setSendOpen(false);
+      void qc.invalidateQueries({ queryKey: ['tenant-invoices'] });
+      router.push(`/invoices/${targetId}`);
+    } catch (mutationError) {
+      toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to save or send invoice');
+    }
   }
 
   return (
     <>
-      <DocComposerFrame
+      <DocumentComposerShell
         mode={mode === 'edit' ? 'edit' : 'create'}
         kind="invoice"
-        top={(
-          <DocTop
-            kind="invoice"
-            docNumber={documentState.invoice_number}
-            modeChip={{ tone: 'draft', label: 'Draft' }}
-            autoSave={autoSaveMeta}
-            onClose={() => router.push('/invoices')}
-          />
-        )}
-        titleRow={(
-          <DocTitleRow
-            title={mode === 'edit' ? 'Edit invoice' : 'New invoice'}
-            subtitle={buyer ? `${buyer.business_name} · ${buyer.place_of_supply}` : 'Pick a buyer to begin composing this invoice.'}
-            rightActions={activeLines.length > 0 ? (
+        breadcrumbItems={[
+          { label: 'Sales' },
+          { label: 'Invoices', href: '/invoices' },
+          {
+            label: mode === 'edit' ? documentState.invoice_number : 'New invoice',
+            current: true,
+          },
+        ]}
+        title={mode === 'edit' ? 'Edit invoice' : 'New invoice'}
+        subtitle={buyer ? `${buyer.business_name} · ${buyer.place_of_supply}` : 'Pick a buyer to begin composing this invoice.'}
+        status={{ label: 'Draft', tone: 'draft' }}
+        titleActions={(
+          <>
+            {activeLines.length > 0 ? (
               <Button type="button" variant="outline" size="sm" className="gap-2">
                 <Eye className="h-4 w-4" />
                 Preview PDF
               </Button>
-            ) : undefined}
-          />
+            ) : null}
+            <Button type="button" variant="ghost" className="gap-2" onClick={() => router.push('/invoices')}>
+              <X className="h-3.5 w-3.5" />
+              Close
+            </Button>
+          </>
         )}
-        strip={(
-          <DocStrip
+        basics={(
+          <DocumentBasicsStrip
             kind="invoice"
             docNumber={documentState.invoice_number}
             dateIssued={documentState.invoice_date}
-            validUntil={documentState.due_date ?? ''}
+            secondDate={documentState.due_date ?? ''}
             buyerPoRef={documentState.buyer_po_ref}
             placeOfSupply={documentState.place_of_supply}
-            placeOptions={['Delhi', 'Haryana', 'Maharashtra', 'Karnataka', 'Tamil Nadu', 'Unknown']}
-            onDocNumberChange={(value) => setDocumentPatch({ invoice_number: value })}
             onDateIssuedChange={(value) => setDocumentPatch({ invoice_date: value })}
-            onValidUntilChange={(value) => setDocumentPatch({ due_date: value || null })}
+            onSecondDateChange={(value) => setDocumentPatch({ due_date: value || null })}
             onBuyerPoRefChange={(value) => setDocumentPatch({ buyer_po_ref: value })}
             onPlaceOfSupplyChange={(value) => setDocumentPatch({ place_of_supply: value })}
           />
         )}
-        left={
-          buyer ? (
-            <BuyerCardFilled
-              buyer={buyer}
-              previewTotal={totals.grand_total}
-              paymentTermsValue={paymentTermsLabel}
-              onPaymentTermsChange={setPaymentTermsLabel}
-              onSwap={() => setDocumentPatch({ buyer_id: null, buyer_context: null })}
-            />
-          ) : (
-            <BuyerCardEmpty
-              query={buyerQuery}
-              recentBuyers={recentBuyers}
-              onQueryChange={setBuyerQuery}
-              onSelectBuyer={handleSelectBuyer}
-            />
-          )
-        }
+        left={(
+          <ComposerSidebarCard>
+            {buyer ? (
+              <BuyerCardFilled
+                buyer={buyer}
+                previewTotal={totals.grand_total}
+                paymentTermsValue={paymentTermsLabel}
+                onPaymentTermsChange={setPaymentTermsLabel}
+                onSwap={() => setDocumentPatch({ buyer_id: null, buyer_context: null })}
+              />
+            ) : (
+              <BuyerCardEmpty
+                query={buyerQuery}
+                recentBuyers={recentBuyers}
+                searchOpen={buyerSearchOpen}
+                searchLoading={buyerPickerQuery.isLoading}
+                onQueryChange={setBuyerQuery}
+                onSearchOpenChange={setBuyerSearchOpen}
+                onSelectBuyer={handleSelectBuyer}
+              />
+            )}
+          </ComposerSidebarCard>
+        )}
         center={(
           <LinesTable
+            kind="invoice"
             buyerSelected={Boolean(documentState.buyer_id)}
             readOnly={false}
             lines={diffLines}
@@ -677,31 +683,25 @@ export function DocComposerInvoice({
           </div>
         )}
         footer={(
-          <DocComposerFoot
-            autoSaveLabel={autoSaveMeta.label}
-            autoSaveTone={autoSaveMeta.tone}
-            actions={(
-              <>
-                <Button type="button" variant="ghost" className="gap-2" onClick={handleDiscard}>
-                  <Trash2 className="h-4 w-4" />
-                  Discard draft
-                </Button>
-                <Button type="button" variant="outline" className="gap-2" onClick={handleSaveAndClose}>
-                  <FileText className="h-4 w-4" />
-                  Save &amp; close
-                </Button>
-                <Button
-                  type="button"
-                  className={primaryDisabled ? 'btn-disabled gap-2' : 'gap-2'}
-                  disabled={primaryDisabled}
-                  onClick={() => setSendOpen(true)}
-                >
-                  <Send className="h-4 w-4" />
-                  Send invoice
-                </Button>
-              </>
-            )}
-          />
+          <DocumentComposerFooterRow autoSaveLabel={autoSaveMeta.label} autoSaveTone={autoSaveMeta.tone}>
+            <Button type="button" variant="ghost" className="gap-2" onClick={handleDiscard}>
+              <Trash2 className="h-4 w-4" />
+              Discard draft
+            </Button>
+            <Button type="button" variant="outline" className="gap-2" onClick={() => void handleSaveAndClose()}>
+              <FileText className="h-4 w-4" />
+              Save &amp; close
+            </Button>
+            <Button
+              type="button"
+              className={primaryDisabled ? 'btn-disabled gap-2' : 'gap-2'}
+              disabled={primaryDisabled}
+              onClick={() => setSendOpen(true)}
+            >
+              <Send className="h-4 w-4" />
+              Send invoice
+            </Button>
+          </DocumentComposerFooterRow>
         )}
       />
 
@@ -754,7 +754,7 @@ export function DocComposerInvoice({
               type="button"
               className="gap-2"
               disabled={sendMutation.isPending || saveMutation.isPending}
-              onClick={handleSend}
+              onClick={() => void handleSend()}
             >
               <Send className="h-4 w-4" />
               Send now
@@ -765,3 +765,5 @@ export function DocComposerInvoice({
     </>
   );
 }
+
+export { DocumentComposerLoadingSkeleton as InvoiceComposerLoadingSkeleton } from '@/components/seller/composer/DocumentComposerShell';

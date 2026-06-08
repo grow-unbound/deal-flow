@@ -1,15 +1,30 @@
-type PageProps = {
+import { headers } from 'next/headers';
+
+import { FeatureDisabledState } from '@/components/FeatureGate';
+import { DocComposerInvoice } from '@/components/seller/invoices/DocComposerInvoice';
+import { FLAGS, getFlag } from '@/lib/flags';
+
+interface PageProps {
   params: Promise<{ id: string }>;
-};
+}
 
 export default async function EditInvoicePage({ params }: PageProps) {
+  const h = await headers();
+  const tenantId = h.get('x-verified-tenant-id');
+
+  if (!tenantId) {
+    return <FeatureDisabledState />;
+  }
+
+  const [orderMgmt, invoices] = await Promise.all([
+    getFlag(FLAGS.ORDER_MANAGEMENT, tenantId),
+    getFlag(FLAGS.INVOICES, tenantId),
+  ]);
+
+  if (!orderMgmt || !invoices) {
+    return <FeatureDisabledState />;
+  }
+
   const { id } = await params;
-  return (
-    <div className="mx-auto max-w-[1920px] w-full px-8 py-6">
-      <h1 className="font-display text-xl text-cream-900">Edit invoice</h1>
-      <p className="mt-2 font-sans text-sm text-cream-700">
-        Composer for invoice <span className="font-mono text-cream-800">{id}</span> is not wired on this route yet.
-      </p>
-    </div>
-  );
+  return <DocComposerInvoice mode="edit" invoiceId={id} />;
 }

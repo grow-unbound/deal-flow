@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
 import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
@@ -43,17 +43,36 @@ export function useTenantEstimates(period: SellerLandingPeriod = 'month', initia
   });
 }
 
+async function fetchTenantEstimateDetail(estimateId: string): Promise<TenantEstimateDetailResponse> {
+  const res = await apiFetch(`/api/tenant/estimates/${estimateId}`);
+  if (res.status === 404) throw new Error('not_found');
+  if (res.status === 403) throw new Error('forbidden');
+  if (!res.ok) throw new Error('Failed to fetch estimate');
+  const json = (await res.json()) as { data: TenantEstimateDetailResponse };
+  return json.data;
+}
+
+export function tenantEstimateComposerQueryOptions(estimateId: string) {
+  return {
+    queryKey: ['tenant-estimate-composer', estimateId] as const,
+    queryFn: () => fetchTenantEstimateDetail(estimateId),
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+  };
+}
+
+export async function prefetchEstimateComposer(qc: QueryClient, estimateId: string): Promise<void> {
+  await qc.prefetchQuery(tenantEstimateComposerQueryOptions(estimateId));
+}
+
+export function seedEstimateComposerCache(qc: QueryClient, estimateId: string, data: TenantEstimateDetailResponse): void {
+  qc.setQueryData(tenantEstimateComposerQueryOptions(estimateId).queryKey, data);
+}
+
 export function useEstimateDetail(estimateId: string) {
   return useQuery({
     queryKey: ['tenant-estimate-detail', estimateId],
-    queryFn: async (): Promise<TenantEstimateDetailResponse> => {
-      const res = await apiFetch(`/api/tenant/estimates/${estimateId}`);
-      if (res.status === 404) throw new Error('not_found');
-      if (res.status === 403) throw new Error('forbidden');
-      if (!res.ok) throw new Error('Failed to fetch estimate');
-      const json = (await res.json()) as { data: TenantEstimateDetailResponse };
-      return json.data;
-    },
+    queryFn: () => fetchTenantEstimateDetail(estimateId),
     enabled: Boolean(estimateId),
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
@@ -176,34 +195,10 @@ export function useEstimateSellerNote(estimateId: string) {
 export function useEstimateComposer(estimateId: string | null) {
   return useQuery({
     queryKey: ['tenant-estimate-composer', estimateId],
-    queryFn: async (): Promise<TenantEstimateDetailResponse> => {
-      const res = await apiFetch(`/api/tenant/estimates/${estimateId}`);
-      if (res.status === 404) throw new Error('not_found');
-      if (res.status === 403) throw new Error('forbidden');
-      if (!res.ok) throw new Error('Failed to fetch estimate');
-      const json = (await res.json()) as { data: TenantEstimateDetailResponse };
-      return json.data;
-    },
+    queryFn: () => fetchTenantEstimateDetail(estimateId!),
     enabled: Boolean(estimateId),
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
-  });
-}
-
-export function useCreateEstimateDraft() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
-      const res = await apiPost('/api/tenant/estimates', {});
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error ?? 'Failed to create draft');
-      }
-      return (await res.json()) as { data: EstimateComposerDocument };
-    },
-    onSuccess: (payload) => {
-      qc.setQueryData(['tenant-estimate-composer', payload.data.id], payload.data);
-    },
   });
 }
 

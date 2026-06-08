@@ -105,6 +105,7 @@ export function CreatePriceListForm({
                   <FormControl>
                     <DatePicker
                       label="Valid from"
+                      mode="overlay"
                       showSummary={false}
                       value={field.value instanceof Date ? isoDateString(field.value) : ''}
                       onChange={(next) => field.onChange(next ? new Date(`${next}T00:00:00`) : undefined)}
@@ -123,6 +124,7 @@ export function CreatePriceListForm({
                   <FormControl>
                     <DatePicker
                       label="Valid to (optional)"
+                      mode="overlay"
                       showSummary={false}
                       value={field.value instanceof Date ? isoDateString(field.value) : ''}
                       onChange={(next) => field.onChange(next ? new Date(`${next}T23:59:59`) : undefined)}

@@ -1,55 +1,78 @@
 'use client';
 
-import { Ban, Edit2, IndianRupee, Mail } from 'lucide-react';
+import { Ban, Edit2, IndianRupee, Mail, Send } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
+import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
+import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasicsStrip';
+import { DocumentComposerLoadingSkeleton, DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
 import {
   BuyerCardFilled,
-  DocComposerFrame,
   DocStatusBandInvoice,
-  DocStrip,
-  DocTitleRow,
-  DocTop,
   InsightsCard,
+  invoiceBandChipClass,
   LinesTable,
+  resolveInvoiceBandStatus,
   TotalsCard,
   type EstimateComposerLineRow,
+  type InvoiceViewBandStatus,
 } from '@/components/seller/document-composer';
 import { ModalMarkInvoicePaid, ModalSendInvoice, ModalVoidInvoice } from '@/components/seller/invoices/modals';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { INDIAN_STATES, ROLES } from '@/constants';
+import { ROLES } from '@/constants';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import {
   useInvoiceDetail,
   useMarkInvoicePaid,
+  useSendInvoice,
   useSendInvoiceReminder,
   useVoidInvoice,
 } from '@/hooks/useInvoiceDetail';
+import { prefetchInvoiceComposer } from '@/hooks/useInvoices';
+import { defaultPaymentTerms } from '@/lib/documents/composer-math';
 import { formatCompactInr } from '@/lib/utils';
 import type { EstimateComposerBuyerContext, EstimateComposerProductSearchRow, EstimateComposerTotals } from '@/types/estimate-composer';
 
 const noop = () => {};
 
-function defaultPaymentTerms(days: number) {
-  return days > 0 ? `Net ${days}` : 'Due on receipt';
-}
+const INVOICE_CHIP_LABEL: Record<InvoiceViewBandStatus, string> = {
+  draft: 'Draft',
+  sent: 'Sent',
+  overdue: 'Overdue',
+  paid: 'Paid',
+  void: 'Void',
+};
 
 export function InvoiceDetailPage({ id }: { id: string }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const invoicesFlag = useFlagState('INVOICES');
   const { data, isLoading, isError, error } = useInvoiceDetail(id);
   const payMut = useMarkInvoicePaid(id);
   const voidMut = useVoidInvoice(id);
   const remindMut = useSendInvoiceReminder(id);
+  const sendInvoiceMut = useSendInvoice(id);
 
   const [payOpen, setPayOpen] = useState(false);
   const [remindOpen, setRemindOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
 
   const buyerContext: EstimateComposerBuyerContext | null = useMemo(() => {
     if (!data?.buyer?.id) return null;
@@ -161,7 +184,7 @@ export function InvoiceDetailPage({ id }: { id: string }) {
   }
 
   if (isLoading) {
-    return null;
+    return <DocumentComposerLoadingSkeleton showStatusBand />;
   }
 
   if (isError) {
@@ -169,7 +192,7 @@ export function InvoiceDetailPage({ id }: { id: string }) {
       return <FeatureDisabledState />;
     }
     return (
-      <div className="mx-auto w-full max-w-[1440px] px-8 py-6">
+      <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6">
         <p className="text-[13px] text-danger-700">{error instanceof Error ? error.message : 'Failed to load invoice.'}</p>
       </div>
     );
@@ -181,17 +204,109 @@ export function InvoiceDetailPage({ id }: { id: string }) {
 
   const terminalPaidOrVoid = data.status === 'paid' || data.status === 'void';
   const showEdit = !terminalPaidOrVoid;
-  const showPayRemind = data.status === 'sent' || data.status === 'overdue';
   const showVoidBtn =
     data.viewer_role === ROLES.SELLER_ADMIN && (data.status === 'draft' || data.status === 'sent' || data.status === 'overdue');
 
-  const placeOptions = Array.from(new Set([...INDIAN_STATES, data.place_of_supply, 'Unknown']));
+  const invoiceBandStatus = resolveInvoiceBandStatus(data.db_status, data.due_date);
+  const invoiceChipTone: 'draft' | 'live' =
+    invoiceBandStatus === 'paid' || invoiceBandStatus === 'void' || invoiceBandStatus === 'draft' ? 'draft' : 'live';
+
+  const invoiceWhatsNext = (() => {
+    if (invoiceBandStatus === 'draft') {
+      return {
+        description: 'Review lines and totals, then send — the buyer receives this as their formal invoice.',
+        action: (
+          <Button type="button" size="sm" className="gap-2" onClick={() => setSendOpen(true)} disabled={sendInvoiceMut.isPending}>
+            <Send className="h-4 w-4" />
+            Send invoice
+          </Button>
+        ),
+      };
+    }
+    if (invoiceBandStatus === 'sent' || invoiceBandStatus === 'overdue') {
+      return {
+        description:
+          invoiceBandStatus === 'overdue'
+            ? 'This invoice is past due. Record payment or follow up with the buyer.'
+            : 'Awaiting payment. Record when funds clear, or nudge the buyer with a reminder.',
+        action: (
+          <Button type="button" size="sm" className="gap-2" onClick={() => setPayOpen(true)}>
+            <IndianRupee className="h-4 w-4" />
+            Mark as paid
+          </Button>
+        ),
+      };
+    }
+    if (invoiceBandStatus === 'paid') {
+      return { description: 'This invoice is fully paid.', action: null };
+    }
+    if (invoiceBandStatus === 'void') {
+      return { description: 'This invoice is void and has no remaining balance.', action: null };
+    }
+    return null;
+  })();
 
   return (
     <>
-      <DocComposerFrame
+      <DocumentComposerShell
         mode="view"
         kind="invoice"
+        breadcrumbItems={[
+          { label: 'Sales' },
+          { label: 'Invoices', href: '/invoices' },
+          { label: data.doc_number, current: true },
+        ]}
+        title={data.doc_number}
+        subtitle={buyerContext ? `${data.buyer.name} · ${data.place_of_supply} · ${buyerContext.bill_address}` : 'No buyer on this invoice.'}
+        status={{
+          label: INVOICE_CHIP_LABEL[invoiceBandStatus],
+          tone: invoiceChipTone,
+          chipClassName: invoiceBandChipClass(invoiceBandStatus),
+        }}
+        titleActions={(
+          <>
+            {data.version > 1 ? (
+              <Badge variant="warning" className="text-xs font-medium">
+                v
+                {data.version}
+              </Badge>
+            ) : null}
+            {showEdit ? (
+              <Button
+                type="button"
+                size="sm"
+                className="gap-2"
+                variant={data.status === 'draft' ? 'outline' : 'primary'}
+                onClick={() => {
+                  void prefetchInvoiceComposer(queryClient, id);
+                  router.push(`/invoices/${id}/edit`);
+                }}
+              >
+                <Edit2 className="h-4 w-4" />
+                {data.status === 'draft' ? 'Edit before send' : 'Edit invoice'}
+              </Button>
+            ) : null}
+            {invoiceBandStatus === 'sent' || invoiceBandStatus === 'overdue' ? (
+              <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setRemindOpen(true)}>
+                <Mail className="h-4 w-4" />
+                Send reminder
+              </Button>
+            ) : null}
+            {showVoidBtn ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setVoidOpen(true)}
+                disabled={voidMut.isPending}
+              >
+                <Ban className="h-4 w-4" />
+                Void invoice
+              </Button>
+            ) : null}
+          </>
+        )}
         statusBand={(
           <DocStatusBandInvoice
             dbStatus={data.db_status}
@@ -205,94 +320,41 @@ export function InvoiceDetailPage({ id }: { id: string }) {
             amountOutstanding={data.amount_outstanding}
             grandTotal={data.totals.grand_total}
             voidedAt={data.voided_at}
+            whatsNext={invoiceWhatsNext}
           />
         )}
-        top={(
-          <DocTop kind="invoice" docNumber={data.doc_number} onClose={() => router.push('/invoices')} />
-        )}
-        titleRow={(
-          <DocTitleRow
-            title={(
-              <span className="flex flex-wrap items-center gap-2">
-                <span>{`${data.doc_number} · ${data.buyer.name}`}</span>
-                {data.version > 1 ? (
-                  <Badge variant="warning" className="text-xs font-medium">
-                    v
-                    {data.version}
-                  </Badge>
-                ) : null}
-              </span>
-            )}
-            subtitle={buyerContext ? `${data.place_of_supply} · ${buyerContext.bill_address}` : 'No buyer on this invoice.'}
-            rightActions={(
-              <>
-                {showEdit ? (
-                  <Button type="button" size="sm" className="gap-2" onClick={() => router.push(`/invoices/${id}/edit`)}>
-                    <Edit2 className="h-4 w-4" />
-                    Edit invoice
-                  </Button>
-                ) : null}
-                {showPayRemind ? (
-                  <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setPayOpen(true)}>
-                    <IndianRupee className="h-4 w-4" />
-                    Mark as paid
-                  </Button>
-                ) : null}
-                {showPayRemind ? (
-                  <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setRemindOpen(true)}>
-                    <Mail className="h-4 w-4" />
-                    Send reminder
-                  </Button>
-                ) : null}
-                {showVoidBtn ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => setVoidOpen(true)}
-                    disabled={voidMut.isPending}
-                  >
-                    <Ban className="h-4 w-4" />
-                    Void invoice
-                  </Button>
-                ) : null}
-              </>
-            )}
-          />
-        )}
-        strip={(
-          <DocStrip
+        basics={(
+          <DocumentBasicsStrip
             kind="invoice"
             readOnly
             docNumber={data.doc_number}
             dateIssued={data.invoice_date}
-            validUntil={data.due_date ?? ''}
+            secondDate={data.due_date ?? ''}
             buyerPoRef={data.buyer_po_ref ?? ''}
             placeOfSupply={data.place_of_supply}
-            placeOptions={placeOptions}
-            onDocNumberChange={noop}
             onDateIssuedChange={noop}
-            onValidUntilChange={noop}
+            onSecondDateChange={noop}
             onBuyerPoRefChange={noop}
             onPlaceOfSupplyChange={noop}
           />
         )}
         left={buyerContext
           ? (
-              <BuyerCardFilled
-                buyer={buyerContext}
-                previewTotal={totals.grand_total}
-                paymentTermsValue={paymentTermsLabel}
-                readOnly
-                onPaymentTermsChange={noop}
-                onSwap={noop}
-              />
+              <ComposerSidebarCard>
+                <BuyerCardFilled
+                  buyer={buyerContext}
+                  previewTotal={totals.grand_total}
+                  paymentTermsValue={paymentTermsLabel}
+                  readOnly
+                  onPaymentTermsChange={noop}
+                  onSwap={noop}
+                />
+              </ComposerSidebarCard>
             )
           : (
-              <aside className="rounded-[14px] border border-dashed border-cream-400 bg-cream-50 p-4 text-[13px] text-cream-700">
-                No buyer on this invoice.
-              </aside>
+              <ComposerSidebarCard>
+                <p className="text-[13px] text-cream-700">No buyer on this invoice.</p>
+              </ComposerSidebarCard>
             )}
         center={(
           <LinesTable
@@ -372,6 +434,37 @@ export function InvoiceDetailPage({ id }: { id: string }) {
           toast.success('Invoice voided');
         }}
       />
+
+      <AlertDialog open={sendOpen} onOpenChange={setSendOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Send this invoice?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The buyer will see invoice {data.doc_number} as sent. You can still edit later if needed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={sendInvoiceMut.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={sendInvoiceMut.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                sendInvoiceMut.mutate(undefined, {
+                  onSuccess: () => {
+                    setSendOpen(false);
+                    toast.success('Invoice sent');
+                  },
+                  onError: (err) => {
+                    toast.error(err instanceof Error ? err.message : 'Failed to send');
+                  },
+                });
+              }}
+            >
+              {sendInvoiceMut.isPending ? 'Sending…' : 'Send invoice'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

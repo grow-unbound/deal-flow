@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isSameDay, startOfDay } from '@/lib/date-utils';
@@ -76,10 +76,14 @@ export function Calendar({ value, onChange, minDate, maxDate, className }: Calen
     return new Date(today.getFullYear(), today.getMonth(), 1);
   });
 
+  const valueMonthKey = value ? `${value.getFullYear()}-${value.getMonth()}` : null;
+  const prevMonthKey = useRef(valueMonthKey);
+
   useEffect(() => {
-    if (!value) return;
+    if (!value || !valueMonthKey || valueMonthKey === prevMonthKey.current) return;
+    prevMonthKey.current = valueMonthKey;
     setViewDate(new Date(value.getFullYear(), value.getMonth(), 1));
-  }, [value]);
+  }, [value, valueMonthKey]);
 
   const calendarDays = useMemo(() => buildCalendarDays(viewDate), [viewDate]);
   const today = useMemo(() => startOfDay(new Date()), []);
