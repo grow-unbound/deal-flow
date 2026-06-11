@@ -31,19 +31,38 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'No tenant associated with this account' }, { status: 404 });
   }
 
-  // Build tenant from RPC data — avoids direct app-schema PostgREST access
-  // (app schema is not in Supabase's exposed schemas list)
+  const tenantId = workspace.tenant_id as string;
+
+  const [{ data: tRow }, { data: tsRow }] = await Promise.all([
+    supabaseAdmin
+      .schema('app')
+      .from('tenants')
+      .select('business_name, plan, gstin, primary_state, settings, created_at, updated_at')
+      .eq('id', tenantId)
+      .maybeSingle(),
+    supabaseAdmin.schema('app').from('tenant_settings').select('settings').eq('tenant_id', tenantId).maybeSingle(),
+  ]);
+
+  const planRaw = (tRow?.plan as string | undefined) ?? 'starter';
+  const plan = planRaw === 'growth' || planRaw === 'scale' || planRaw === 'starter' ? planRaw : 'starter';
+
+  const settingsFromTs = (tsRow as { settings?: Record<string, unknown> } | null)?.settings;
+  const settingsFromLegacy = (tRow?.settings as Record<string, unknown> | undefined) ?? {};
+  const settings = (tsRow != null ? (settingsFromTs ?? {}) : settingsFromLegacy) as Record<string, unknown>;
+
   const tenant = {
-    id: workspace.tenant_id as string,
-    slug: (workspace.tenant_slug ?? workspace.tenant_id) as string,
-    business_name: (workspace.tenant_name ?? 'My Business') as string,
-    subdomain: `${workspace.tenant_slug ?? workspace.tenant_id}.dealflow.in`,
-    plan: 'starter' as const,
-    gstin: null as string | null,
-    primary_state: null as string | null,
-    settings: {} as Record<string, unknown>,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    id: tenantId,
+    slug: (workspace.tenant_slug ?? tenantId) as string,
+    business_name: ((workspace.tenant_name as string | undefined) ??
+      (tRow?.business_name as string | undefined) ??
+      'My Business') as string,
+    subdomain: `${workspace.tenant_slug ?? tenantId}.dealflow.in`,
+    plan: plan as 'starter' | 'growth' | 'scale',
+    gstin: (tRow?.gstin as string | null | undefined) ?? null,
+    primary_state: (tRow?.primary_state as string | null | undefined) ?? null,
+    settings,
+    created_at: (tRow?.created_at as string | undefined) ?? new Date().toISOString(),
+    updated_at: (tRow?.updated_at as string | undefined) ?? new Date().toISOString(),
   };
 
   return NextResponse.json({

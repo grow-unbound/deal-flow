@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch } from '@/lib/api-fetch';
+import { roundMoney } from '@/lib/currency-input';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { InvoiceDetailResponse } from '@/types/tenant-invoices';
 
@@ -85,9 +86,11 @@ export function useMarkInvoicePaid(id: string) {
       await qc.cancelQueries({ queryKey: ['tenant-invoice', id] });
       const prev = qc.getQueryData<InvoiceDetailResponse>(['tenant-invoice', id]);
       if (!prev) return { prev };
-      const nextPaid = prev.amount_paid + body.amount;
-      const nextOutstanding = Math.max(prev.totals.grand_total - nextPaid, 0);
+      const payAmount = roundMoney(body.amount);
+      const nextPaid = roundMoney(prev.amount_paid + payAmount);
+      const nextOutstanding = roundMoney(Math.max(prev.totals.grand_total - nextPaid, 0));
       const paidFully = nextOutstanding < 0.005;
+      const paidAt = body.paid_at ?? new Date().toISOString();
       qc.setQueryData<InvoiceDetailResponse>(['tenant-invoice', id], {
         ...prev,
         amount_paid: nextPaid,
@@ -96,11 +99,21 @@ export function useMarkInvoicePaid(id: string) {
           ? {
               status: 'paid',
               db_status: 'paid',
-              paid_at: body.paid_at ?? new Date().toISOString(),
+              paid_at: paidAt,
             }
           : {}),
         payment_method: body.payment_method,
         payment_reference: body.payment_reference ?? prev.payment_reference,
+        payments: [
+          ...prev.payments,
+          {
+            id: `optimistic-${Date.now()}`,
+            amount: payAmount,
+            paid_at: paidAt,
+            payment_method: body.payment_method,
+            payment_reference: body.payment_reference ?? null,
+          },
+        ],
       });
       return { prev };
     },

@@ -1,10 +1,21 @@
 'use client';
 
 import type { FC } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CreditCard,
+  Link as LinkIcon,
+  LogOut,
+  MapPin,
+  Users,
+  Zap,
+} from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { useIdleRoutePrefetch } from '@/hooks/useIdleRoutePrefetch';
@@ -94,7 +105,23 @@ export const navGroups: NavGroup[] = [
         href: '/settings',
         icon: SettingsIcon,
         adminOnly: true,
-        children: [{ label: 'Users & Roles', href: '/settings/team', icon: UsersRoundIcon, adminOnly: true }],
+        children: [
+          { label: 'Team', href: '/settings/team', icon: Users as FC<{ size?: number; className?: string }>, adminOnly: true },
+          { label: 'Modules', href: '/settings/modules', icon: Zap as FC<{ size?: number; className?: string }>, adminOnly: true },
+          { label: 'Locations', href: '/settings/locations', icon: MapPin as FC<{ size?: number; className?: string }>, adminOnly: true },
+          {
+            label: 'Integrations',
+            href: '/settings/integrations',
+            icon: LinkIcon as FC<{ size?: number; className?: string }>,
+            adminOnly: true,
+          },
+          {
+            label: 'Billing & Plan',
+            href: '/settings/billing',
+            icon: CreditCard as FC<{ size?: number; className?: string }>,
+            adminOnly: true,
+          },
+        ],
       },
     ],
   },
@@ -128,6 +155,8 @@ export function collectPrefetchHrefs(
     ]);
 }
 
+const SETTINGS_SUBMENU_LS_KEY = 'df_sidebar_settings_expanded';
+
 const ROLE_LABELS: Record<string, string> = {
   seller_admin: 'Seller admin',
   seller_assistant: 'Seller assistant',
@@ -151,6 +180,22 @@ export function SellerSidebar({
   const { user, signOut } = useAuth();
   const { currentTenant } = useTenant();
   const { isSellerAdmin, role } = useRole();
+  const isUnderSettingsRoute = pathname === '/settings' || pathname.startsWith('/settings/');
+  const [settingsSubmenuOpen, setSettingsSubmenuOpen] = useState(true);
+
+  useEffect(() => {
+    if (isUnderSettingsRoute) {
+      setSettingsSubmenuOpen(true);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(SETTINGS_SUBMENU_LS_KEY);
+      if (raw === 'true') setSettingsSubmenuOpen(true);
+      else if (raw === 'false') setSettingsSubmenuOpen(false);
+    } catch {
+      // ignore
+    }
+  }, [pathname, isUnderSettingsRoute]);
   const brandProductFlag = useFlagState('BRAND_PRODUCT_MASTER');
   const customerMasterFlag = useFlagState('CUSTOMER_MASTER');
   const cohortsFlag = useFlagState('COHORTS');
@@ -193,9 +238,90 @@ export function SellerSidebar({
   }
 
   function renderNavItem(item: NavItem) {
+    const visibleChildren = item.children?.filter((c) => !c.adminOnly || isSellerAdmin) ?? [];
+    const isSettingsGroup = item.href === '/settings' && visibleChildren.length > 0;
+
+    if (isSettingsGroup) {
+      const childActive = visibleChildren.some((c) => pathname === c.href);
+      const parentActive = pathname === '/settings' && !childActive;
+      const showChildren = !isCollapsed && settingsSubmenuOpen;
+
+      return (
+        <div key={item.href} className="space-y-0.5">
+          <div
+            className={[
+              'flex items-center rounded-[12px] text-body-sm font-medium transition-colors duration-fast',
+              parentActive ? 'bg-teal-500 text-cream-50' : 'text-cream-800',
+            ].join(' ')}
+          >
+            <Link
+              href={item.href}
+              className={[
+                'flex min-w-0 flex-1 items-center px-3 py-2.5 transition-colors duration-fast',
+                isCollapsed ? 'justify-center gap-0' : 'gap-3',
+                parentActive ? '' : 'hover:bg-cream-200 hover:text-cream-900',
+              ].join(' ')}
+              title={isCollapsed ? item.label : undefined}
+            >
+              <item.icon size={16} className={parentActive ? 'text-cream-50' : 'text-cream-600'} />
+              {!isCollapsed && <span className="truncate">{item.label}</span>}
+            </Link>
+            {!isCollapsed ? (
+              <button
+                type="button"
+                className={[
+                  'mr-1 shrink-0 rounded-md p-1.5 transition-colors duration-fast',
+                  parentActive
+                    ? 'text-cream-50 hover:bg-teal-600/80'
+                    : 'text-cream-600 hover:bg-cream-200 hover:text-cream-900',
+                ].join(' ')}
+                aria-expanded={settingsSubmenuOpen}
+                aria-label={settingsSubmenuOpen ? 'Collapse settings sections' : 'Expand settings sections'}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSettingsSubmenuOpen((prev) => {
+                    const next = !prev;
+                    try {
+                      localStorage.setItem(SETTINGS_SUBMENU_LS_KEY, String(next));
+                    } catch {
+                      // ignore
+                    }
+                    return next;
+                  });
+                }}
+              >
+                {settingsSubmenuOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </button>
+            ) : null}
+          </div>
+
+          {showChildren
+            ? visibleChildren.map(({ label: childLabel, href: childHref, icon: ChildIcon }) => {
+                const childIsActive = pathname === childHref;
+                return (
+                  <Link
+                    key={childHref}
+                    href={childHref}
+                    className={[
+                      'ml-6 flex items-center gap-3 rounded-[10px] px-3 py-2 text-body-sm font-medium transition-colors duration-fast',
+                      childIsActive ? 'bg-teal-500 text-cream-50' : 'text-cream-700 hover:bg-cream-200 hover:text-cream-900',
+                    ].join(' ')}
+                  >
+                    <ChildIcon size={15} className={childIsActive ? 'text-cream-50' : 'text-cream-500'} />
+                    {childLabel}
+                  </Link>
+                );
+              })
+            : null}
+        </div>
+      );
+    }
+
     const childActive = item.children?.some((c) => pathname === c.href) ?? false;
     const active =
-      !childActive && (pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href)));
+      !childActive &&
+      (pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(`${item.href}/`)));
     return (
       <div key={item.href} className="space-y-0.5">
         <Link
@@ -425,15 +551,6 @@ function SettingsIcon({ size = 16, className = '' }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-    </svg>
-  );
-}
-function UsersRoundIcon({ size = 16, className = '' }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M18 21a8 8 0 0 0-16 0" />
-      <circle cx="10" cy="8" r="5" />
-      <path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3" />
     </svg>
   );
 }

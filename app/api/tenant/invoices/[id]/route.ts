@@ -11,7 +11,6 @@ import { computePlaceOfSupplyFromBuyer } from '@/lib/sales-orders/compute-place-
 import { productDisplayName } from '@/lib/sales-orders/tenant-order-detail';
 import { supabaseAdmin } from '@/lib/supabase';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbClient = any;
 import type {
   InvoiceDetailBuyerDto,
@@ -19,6 +18,7 @@ import type {
   InvoiceDetailResponse,
   InvoiceDetailTotalsDto,
   InvoiceDetailViewerRole,
+  InvoicePaymentRecordDto,
   InvoiceStatusValue,
 } from '@/types/tenant-invoices';
 
@@ -180,7 +180,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ? await db
           .schema('app')
           .from('tenant_products')
-          .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom')
+          .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom, mrp')
           .in('id', productIds)
           .eq('tenant_id', claims.tenant_id)
           .is('deleted_at', null)
@@ -193,22 +193,67 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .filter((value: unknown): value is string => typeof value === 'string'),
     ),
   );
+  const brandIds = Array.from(
+    new Set(
+      (tenantProducts ?? [])
+        .map((row: Record<string, unknown>) => row.tenant_brand_id)
+        .filter((value: unknown): value is string => typeof value === 'string'),
+    ),
+  );
 
-  const masterProductsRes =
+  const [masterProductsRes, tenantBrandsRes] = await Promise.all([
     masterProductIds.length > 0
-      ? await db.schema('catalog').from('products').select('id, name, master_sku, hsn_code, gst_rate').in('id', masterProductIds)
+      ? db.schema('catalog').from('products').select('id, name, master_sku, hsn_code, gst_rate').in('id', masterProductIds)
+      : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+    brandIds.length > 0
+      ? db
+          .schema('app')
+          .from('tenant_brands')
+          .select('id, display_name_override, master_brand_id')
+          .in('id', brandIds)
+          .eq('tenant_id', claims.tenant_id)
+      : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+  ]);
+
+  const masterBrandIds = Array.from(
+    new Set(
+      ((tenantBrandsRes.data ?? []) as Array<Record<string, unknown>>)
+        .map((row) => row.master_brand_id)
+        .filter((value: unknown): value is string => typeof value === 'string'),
+    ),
+  );
+  const { data: masterBrands } =
+    masterBrandIds.length > 0
+      ? await db.schema('catalog').from('brands').select('id, name').in('id', masterBrandIds)
       : { data: [] as Array<Record<string, unknown>> };
 
   const productMap = new Map((tenantProducts ?? []).map((row: Record<string, unknown>) => [row.id as string, row]));
   const masterProductMap = new Map(((masterProductsRes.data ?? []) as Array<Record<string, unknown>>).map((row) => [row.id as string, row]));
+  const tenantBrandMap = new Map(((tenantBrandsRes.data ?? []) as Array<Record<string, unknown>>).map((row) => [row.id as string, row]));
+  const masterBrandMap = new Map(((masterBrands ?? []) as Array<Record<string, unknown>>).map((row) => [row.id as string, row.name as string]));
 
-  const items: InvoiceDetailItemDto[] = lineRows.map((row) => {
+  const items: InvoiceDetailItemDto[] = lineRows.map((row, index) => {
     const product = productMap.get(row.tenant_product_id as string) as Record<string, unknown> | undefined;
     const master = product?.master_product_id ? masterProductMap.get(product.master_product_id as string) : undefined;
+    const tenantBrand = product?.tenant_brand_id ? tenantBrandMap.get(product.tenant_brand_id as string) : undefined;
+    const brandName =
+      (tenantBrand?.display_name_override as string | null | undefined)?.trim()
+      || (tenantBrand?.master_brand_id ? masterBrandMap.get(tenantBrand.master_brand_id as string) : undefined)
+      || 'Brand';
+    const brandInitials =
+      brandName
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((part) => part[0] ?? '')
+        .join('')
+        .slice(0, 2)
+        .toUpperCase() || 'BR';
+    const brandHue = (['teal', 'ember', 'cream'][index % 3] ?? 'teal') as InvoiceDetailItemDto['brand_hue'];
     const displayName = productDisplayName(
       (product?.name_override as string | null | undefined) ?? null,
       (master?.name as string | null | undefined) ?? null,
     );
+    const sku = (product?.internal_sku as string | undefined) ?? (master?.master_sku as string | undefined) ?? (row.sku as string | undefined) ?? '—';
     const hsn =
       (row.hsn_code as string | null | undefined)
       ?? (product?.hsn_code as string | null | undefined)
@@ -216,11 +261,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ?? null;
     const unit = (product?.default_uom as string | null | undefined)?.trim() || '—';
     return {
+      tenant_product_id: String(row.tenant_product_id ?? product?.id ?? ''),
       product_name: displayName || String(row.sku ?? 'Line item'),
+      sku,
+      brand_name: brandName,
+      brand_initials: brandInitials,
+      brand_hue: brandHue,
       hsn,
       qty: Number(row.qty ?? 0),
       unit,
       rate: Number(row.unit_price ?? 0),
+      mrp: Number(product?.mrp ?? 0),
       discount_pct: Number(row.disc_pct ?? 0),
       line_total: Number(row.line_total ?? 0),
       tax_pct: row.tax_pct != null ? Number(row.tax_pct) : null,
@@ -318,6 +369,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const viewerRole: InvoiceDetailViewerRole = claims.role === ROLES.SELLER_ADMIN ? 'seller_admin' : 'seller_assistant';
 
+  const { data: paymentRows } = await db
+    .schema('app')
+    .from('payments')
+    .select('id, amount, paid_at, mode, external_ref')
+    .eq('tenant_id', claims.tenant_id)
+    .eq('invoice_id', id)
+    .is('deleted_at', null)
+    .order('paid_at', { ascending: true });
+
+  const payments: InvoicePaymentRecordDto[] = (paymentRows ?? []).map((row) => ({
+    id: String(row.id),
+    amount: Math.round(Number(row.amount ?? 0) * 100) / 100,
+    paid_at: String(row.paid_at ?? ''),
+    payment_method: (row.mode as string | null | undefined) ?? null,
+    payment_reference: (row.external_ref as string | null | undefined) ?? null,
+  }));
+
   const payload: InvoiceDetailResponse = {
     id: String(inv.id),
     doc_number: String(inv.invoice_number ?? '—'),
@@ -332,8 +400,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     paid_at: (inv.paid_at as string | null | undefined) ?? null,
     payment_method: (inv.payment_method as string | null | undefined) ?? null,
     payment_reference: (inv.payment_reference as string | null | undefined) ?? null,
-    amount_outstanding: Number(inv.outstanding_balance ?? 0),
-    amount_paid: Number(inv.amount_paid ?? 0),
+    amount_outstanding: Math.round(Number(inv.outstanding_balance ?? 0) * 100) / 100,
+    amount_paid: Math.round(Number(inv.amount_paid ?? 0) * 100) / 100,
     voided_at: (inv.voided_at as string | null | undefined) ?? null,
     last_reminder_at: (inv.last_reminder_at as string | null | undefined) ?? null,
     gstin_locked: Boolean(inv.gstin_locked),
@@ -351,6 +419,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     linked_estimate_number: linkedEstimateNumber,
     viewer_role: viewerRole,
     seller_note: String(inv.notes ?? ''),
+    payments,
   };
 
   return NextResponse.json(payload);

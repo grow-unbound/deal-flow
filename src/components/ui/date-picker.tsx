@@ -30,6 +30,8 @@ export interface DatePickerProps {
   /** overlay = popover calendar (default); inline = always-visible panel; panel = calendar only */
   mode?: 'overlay' | 'inline' | 'panel';
   showSummary?: boolean;
+  /** Merges with default trigger styles (e.g. document basics strip — borderless). */
+  triggerClassName?: string;
 }
 
 const popoverMotion =
@@ -49,6 +51,7 @@ export function DatePicker({
   className,
   mode = 'overlay',
   showSummary = false,
+  triggerClassName: triggerClassNameProp,
 }: DatePickerProps) {
   const generatedId = useId();
   const inputId = id ?? generatedId;
@@ -86,6 +89,7 @@ export function DatePicker({
     'disabled:cursor-not-allowed disabled:bg-cream-100 disabled:opacity-50',
     inputValue ? 'font-medium text-cream-900' : 'text-cream-600',
     error && 'border-danger-500 focus-visible:border-danger-500 focus-visible:ring-danger-500/20',
+    triggerClassNameProp,
   );
 
   const calendarPanel = (

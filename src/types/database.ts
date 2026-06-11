@@ -98,13 +98,37 @@ export type Database = {
           subdomain: string | null;
           plan: string;
           settings: Record<string, any>;
+          whatsapp_credits_balance: number;
+          whatsapp_credits_purchased: number;
           created_at: string;
           updated_at: string;
           created_by: string;
           updated_by: string;
         };
-        Insert: Omit<Database['app']['Tables']['tenants']['Row'], 'id' | 'created_at' | 'updated_at'>;
+        Insert: Omit<
+          Database['app']['Tables']['tenants']['Row'],
+          'id' | 'created_at' | 'updated_at' | 'whatsapp_credits_balance' | 'whatsapp_credits_purchased'
+        > &
+          Partial<Pick<Database['app']['Tables']['tenants']['Row'], 'whatsapp_credits_balance' | 'whatsapp_credits_purchased'>>;
         Update: Partial<Database['app']['Tables']['tenants']['Insert']>;
+      };
+      tenant_settings: {
+        Row: {
+          tenant_id: string;
+          settings: Record<string, unknown>;
+          created_at: string;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          tenant_id: string;
+          settings?: Record<string, unknown>;
+          updated_by?: string | null;
+        };
+        Update: {
+          settings?: Record<string, unknown>;
+          updated_by?: string | null;
+        };
       };
       tenant_users: {
         Row: {

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Edit2, PackageCheck, Truck, X } from 'lucide-react';
+import { Edit2, Loader2, PackageCheck, Send, Truck, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
@@ -13,13 +13,12 @@ import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasics
 import { DocumentComposerLoadingSkeleton, DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
 import {
   BuyerCardFilled,
-  InsightsCard,
   LinesTable,
   salesOrderBandChipClass,
-  SalesOrderDocStatusBand,
   TotalsCard,
   resolveSalesOrderBandStatus,
   type EstimateComposerLineRow,
+  ModalSendDocument,
 } from '@/components/seller/document-composer';
 import {
   AlertDialog,
@@ -38,6 +37,8 @@ import {
   useDeliverSalesOrder,
   useDispatchSalesOrder,
   useSalesOrderDetail,
+  useSendSalesOrder,
+  useConfirmSalesOrder,
 } from '@/hooks/useSalesOrderDetail';
 import { prefetchSalesOrderComposer } from '@/hooks/useSalesOrders';
 import { useFlagState } from '@/hooks/useFeatureFlag';
@@ -80,10 +81,14 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
   const dispatchMut = useDispatchSalesOrder(id);
   const deliverMut = useDeliverSalesOrder(id);
   const cancelMut = useCancelSalesOrder(id);
+  const sendMut = useSendSalesOrder(id);
+  const confirmMut = useConfirmSalesOrder(id);
 
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [dispatchOpen, setDispatchOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [deliverOpen, setDeliverOpen] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
 
   const diffLines: EstimateComposerLineRow[] = useMemo(() => {
     if (!data) return [];
@@ -132,7 +137,7 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
   }
 
   if (isLoading) {
-    return <DocumentComposerLoadingSkeleton showStatusBand />;
+    return <DocumentComposerLoadingSkeleton />;
   }
 
   if (isError) {
@@ -156,17 +161,14 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
   const isAdmin = data.viewer_role === ROLES.SELLER_ADMIN;
   const ui = data.ui_status;
 
+  const showConfirm = ui === 'received';
+  const showDispatch = ui === 'confirmed';
   const showEdit = ui === 'received' || ui === 'confirmed';
   const showCancel = (ui === 'received' || ui === 'confirmed') && isAdmin;
+  const showSend = ui === 'received' || ui === 'confirmed' || ui === 'dispatched';
 
   const overLimitBy = buyer ? totals.grand_total - buyer.credit_available : 0;
   const creditWarning = buyer && overLimitBy > 0 ? `Over limit by ${formatCompactInr(overLimitBy)}.` : null;
-  const expiringSoon = (() => {
-    if (!data.expected_delivery) return false;
-    const today = new Date();
-    const exp = new Date(`${data.expected_delivery}T23:59:59.000Z`);
-    return (exp.getTime() - today.getTime()) / (24 * 60 * 60 * 1000) <= 3;
-  })();
   const isInterState = Boolean(
     buyer?.seller_state
     && buyer?.place_of_supply
@@ -179,60 +181,12 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
   const statusLabel = bandStatus === 'draft' ? 'Draft' : SO_STATUS_TITLE[ui];
   const statusTone: 'draft' | 'live' = ui === 'cancelled' || ui === 'delivered' ? 'draft' : 'live';
 
-  const soWhatsNext = (() => {
-    if (bandStatus === 'draft') {
-      return {
-        description: 'Complete buyer, lines, and dates before you confirm this order.',
-        action: null as ReactNode,
-      };
-    }
-    if (ui === 'received') {
-      return {
-        description: 'Order is logged. Confirm when you assign stock and set an expected ship date.',
-        action: null as ReactNode,
-      };
-    }
-    if (ui === 'confirmed') {
-      return {
-        description: 'Pick and ship when ready. The buyer sees movement after dispatch.',
-        action: (
-          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setDispatchOpen(true)} disabled={dispatchMut.isPending}>
-            <Truck className="h-4 w-4" />
-            Dispatch
-          </Button>
-        ),
-      };
-    }
-    if (ui === 'dispatched') {
-      return {
-        description: 'On the road with your fleet. Mark delivered once the buyer confirms receipt.',
-        action: (
-          <Button type="button" size="sm" className="gap-2" onClick={() => setDeliverOpen(true)} disabled={deliverMut.isPending}>
-            <PackageCheck className="h-4 w-4" />
-            Mark delivered
-          </Button>
-        ),
-      };
-    }
-    if (ui === 'delivered') {
-      return { description: 'This order is complete.', action: null as ReactNode };
-    }
-    if (ui === 'cancelled') {
-      return {
-        description: data.cancel_reason ? `Cancelled: ${data.cancel_reason}` : 'This order was cancelled.',
-        action: null as ReactNode,
-      };
-    }
-    return null;
-  })();
-
   return (
     <>
       <DocumentComposerShell
         mode="view"
         kind="so"
         breadcrumbItems={[
-          { label: 'Sales' },
           { label: 'Sales orders', href: '/sales-orders' },
           { label: data.order_number, current: true },
         ]}
@@ -259,6 +213,32 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
                 Edit order
               </Button>
             ) : null}
+            {showSend ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => setSendOpen(true)}
+                disabled={sendMut.isPending}
+              >
+                {sendMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Send sales order
+              </Button>
+            ) : null}
+            {showConfirm ? (
+              <Button
+                type="button"
+                variant="accent"
+                size="sm"
+                className="gap-2"
+                onClick={() => setConfirmOpen(true)}
+                disabled={confirmMut.isPending}
+              >  
+                <Truck className="h-4 w-4" />
+                Confirm order
+              </Button>
+            ) : null}
             {showCancel ? (
               <Button
                 type="button"
@@ -272,23 +252,26 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
                 Cancel order
               </Button>
             ) : null}
+            {ui === 'confirmed' ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => setDispatchOpen(true)}
+                disabled={dispatchMut.isPending}
+              >
+                <Truck className="h-4 w-4" />
+                Dispatch
+              </Button>
+            ) : null}
+            {ui === 'dispatched' ? (
+              <Button type="button" size="sm" className="gap-2" onClick={() => setDeliverOpen(true)} disabled={deliverMut.isPending}>
+                <PackageCheck className="h-4 w-4" />
+                Mark delivered
+              </Button>
+            ) : null}
           </>
-        )}
-        statusBand={(
-          <SalesOrderDocStatusBand
-            status={bandStatus}
-            placedAt={data.placed_at}
-            receivedAt={data.received_at}
-            confirmedAt={data.confirmed_at}
-            dispatchedAt={data.dispatched_at}
-            deliveredAt={data.delivered_at}
-            cancelledAt={data.cancelled_at}
-            deliveryDateYmd={expectedYmd || null}
-            carrier={data.carrier}
-            cancelReason={data.cancel_reason}
-            hasBackorder={data.has_backorder}
-            whatsNext={soWhatsNext}
-          />
         )}
         basics={(
           <DocumentBasicsStrip
@@ -315,7 +298,7 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
                   paymentTermsValue={paymentTermsLabel}
                   readOnly
                   onPaymentTermsChange={noop}
-                  onSwap={noop}
+                  onChangeBuyer={noop}
                 />
               ) : (
                 <p className="text-[13px] text-cream-700">No buyer on this order.</p>
@@ -323,6 +306,11 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
               {orderMeta ? (
                 <div className="rounded-[10px] border border-cream-200 bg-cream-50 px-3 py-3 text-[12px] leading-[1.55] text-cream-800">
                   {orderMeta}
+                </div>
+              ) : null}
+              {data.has_backorder && (ui === 'confirmed' || ui === 'dispatched') ? (
+                <div className="callout callout--warning text-[12px] leading-[1.5]">
+                  <strong>Backorder.</strong> Some lines exceed available stock — buyer has been notified.
                 </div>
               ) : null}
             </div>
@@ -360,7 +348,6 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
         right={(
           <div className="space-y-4">
             <TotalsCard totals={totals} previousTotals={null} creditWarning={creditWarning} isInterState={isInterState} lineCount={diffLines.length} />
-            <InsightsCard buyer={buyer} expiringSoon={expiringSoon} readOnly />
           </div>
         )}
       />
@@ -386,6 +373,26 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
         }}
       />
 
+      <ModalSendDocument
+        open={sendOpen}
+        onOpenChange={setSendOpen}
+        title="Send sales order"
+        recipientDefault={buyer?.phone ?? buyer?.email ?? ''}
+        messageDefault="Please review this sales order."
+        lineCount={diffLines.length}
+        grandTotal={totals.grand_total}
+        isPending={sendMut.isPending}
+        onConfirm={async (payload) => {
+          try {
+            await sendMut.mutateAsync(payload);
+            setSendOpen(false);
+            toast.success('Sales order sent');
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Failed to send sales order');
+          }
+        }}
+      />
+
       <ModalCancelOrder
         open={cancelOpen}
         onOpenChange={setCancelOpen}
@@ -403,6 +410,38 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
           });
         }}
       />
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm this order?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This updates the order status to confirmed. You can undo only by support if you make a mistake.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={confirmMut.isPending}>Back</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={confirmMut.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                confirmMut.mutate(undefined, {
+                    onSuccess: () => {
+                      setConfirmOpen(false);
+                      toast.success('Order confirmed');
+                    },
+                    onError: (err) => {
+                      toast.error(err instanceof Error ? err.message : 'Update failed');
+                    },
+                  },
+                );
+              }}
+            >
+              {confirmMut.isPending ? 'Saving…' : 'Confirm order'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={deliverOpen} onOpenChange={setDeliverOpen}>
         <AlertDialogContent>

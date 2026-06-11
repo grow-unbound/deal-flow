@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
     const tenantProductsQuery = db
       .schema('app')
       .from('tenant_products')
-      .select('id, internal_sku, name_override, base_selling_price, default_uom, pack_size, hsn_code, gst_rate, master_product_id, tenant_brand_id')
+      .select('id, internal_sku, name_override, base_selling_price, mrp, default_uom, pack_size, hsn_code, gst_rate, master_product_id, tenant_brand_id')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .is('deleted_at', null);
@@ -123,6 +123,7 @@ export async function GET(request: NextRequest) {
       internal_sku: string;
       name_override: string | null;
       base_selling_price: number | null;
+      mrp: number | null;
       default_uom: string | null;
       pack_size: number | null;
       hsn_code: string | null;
@@ -201,6 +202,8 @@ export async function GET(request: NextRequest) {
           || (tenantBrand?.master_brand_id ? masterBrandById.get(tenantBrand.master_brand_id) : undefined)
           || 'Brand';
         const productName = row.name_override?.trim() || master?.name || row.internal_sku;
+        const baseSelling = Number(row.base_selling_price ?? 0);
+        const mrpVal = Number(row.mrp ?? 0);
         return {
           tenant_product_id: row.id,
           product_name: productName,
@@ -211,7 +214,9 @@ export async function GET(request: NextRequest) {
           hsn_code: row.hsn_code ?? master?.hsn_code ?? null,
           tax_pct: Number(row.gst_rate ?? master?.gst_rate ?? 0),
           on_hand: onHandByProductId.get(row.id) ?? 0,
-          unit_price: Number(row.base_selling_price ?? 0),
+          unit_price: baseSelling,
+          mrp: mrpVal,
+          base_selling_price: baseSelling,
           default_uom: row.default_uom ?? master?.default_uom ?? null,
           pack_size: Number(row.pack_size ?? master?.pack_size ?? 0) || null,
         };

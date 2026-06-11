@@ -18,8 +18,10 @@ export interface DocumentComposerTotals {
   total_units: number;
 }
 
-export function defaultPaymentTerms(days: number): string {
-  return days > 0 ? `Net ${days}` : 'Due on receipt';
+export function defaultPaymentTerms(days: number | null | undefined): string {
+  const n = Number(days ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return 'Not defined';
+  return `${n} days`;
 }
 
 export function computeLineTotal(line: Pick<DocumentLineForTotals, 'qty' | 'unit_price' | 'disc_pct' | 'tax_pct'>): number {

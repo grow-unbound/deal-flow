@@ -136,9 +136,9 @@ export function ComposerBodyGrid({
 }) {
   return (
     <div className={cn(composerThreePanelGridClass, className)}>
-      {left}
-      {center}
-      {right}
+      <div className="flex h-full min-h-0 flex-col">{left}</div>
+      <div className="flex h-full min-h-0 min-w-0 flex-col">{center}</div>
+      <div className="flex h-full min-h-0 flex-col">{right}</div>
     </div>
   );
 }
@@ -150,7 +150,7 @@ export function ComposerSidebarCard({
   children: React.ReactNode;
   className?: string;
 }) {
-  return <aside className={cn('flex h-full flex-col rounded-[14px] border border-cream-300 bg-white p-4', className)}>{children}</aside>;
+  return <aside className={cn('flex h-full min-h-0 flex-col rounded-[14px] border border-cream-300 bg-white p-4', className)}>{children}</aside>;
 }
 
 export function ComposerMainCard({

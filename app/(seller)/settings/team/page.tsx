@@ -29,7 +29,7 @@ export default function TeamPage() {
     <>
       <PageWrap>
         <SellerTopbar
-          title="Users & Roles"
+          title="Team"
           subtitle="Manage seller access for this tenant and keep role assignments tidy."
           action={addUserAction}
         />

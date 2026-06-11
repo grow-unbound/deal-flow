@@ -27,7 +27,6 @@ export function DocumentComposerShell({
   subtitle,
   status,
   titleActions,
-  statusBand,
   basics,
   left,
   center,
@@ -41,7 +40,6 @@ export function DocumentComposerShell({
   subtitle: string;
   status?: { label: string; tone?: 'draft' | 'live'; chipClassName?: string };
   titleActions?: ReactNode;
-  statusBand?: ReactNode;
   basics: ReactNode;
   left: ReactNode;
   center: ReactNode;
@@ -61,8 +59,6 @@ export function DocumentComposerShell({
             actions={titleActions}
           />
 
-          {statusBand}
-
           {basics}
 
           <ComposerBodyGrid left={left} center={center} right={right} />
@@ -74,11 +70,7 @@ export function DocumentComposerShell({
   );
 }
 
-export function DocumentComposerLoadingSkeleton({
-  showStatusBand = false,
-}: {
-  showStatusBand?: boolean;
-}) {
+export function DocumentComposerLoadingSkeleton() {
   return (
     <div
       className={cn('mx-auto flex w-full max-w-[1920px] flex-col px-8 pt-7 pb-6', composerPageMinHeightClass)}
@@ -97,39 +89,13 @@ export function DocumentComposerLoadingSkeleton({
             <div className="h-9 w-24 animate-pulse rounded-[9px] bg-cream-200" />
           </div>
         </div>
-        {showStatusBand ? (
-          <div className="doc-status-band flex min-h-[120px] flex-col gap-4">
-            <div className="flex items-start justify-between gap-2">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-                  <div className="h-2 w-full animate-pulse rounded-full bg-cream-200" />
-                  <div className="h-7 w-7 shrink-0 animate-pulse rounded-full border border-cream-200 bg-cream-100" />
-                  <div className="h-3 w-16 animate-pulse rounded bg-cream-200" />
-                  <div className="h-3 w-20 animate-pulse rounded bg-cream-200" />
-                </div>
-              ))}
+        <div className="grid gap-0 overflow-hidden rounded-[14px] border border-cream-300 bg-white lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div key={index} className="border-b border-cream-300 px-4 py-3 last:border-b-0 lg:border-b-0 lg:border-r last:lg:border-r-0">
+              <div className="h-3 w-20 animate-pulse rounded bg-cream-200" />
+              <div className="mt-2 h-4 w-28 animate-pulse rounded bg-cream-100" />
             </div>
-            <div className="border-t border-dashed border-cream-200 pt-4">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0 flex-1 space-y-2">
-                  <div className="h-2.5 w-24 animate-pulse rounded bg-cream-200" />
-                  <div className="h-3 max-w-md animate-pulse rounded bg-cream-200" />
-                  <div className="h-3 w-full max-w-sm animate-pulse rounded bg-cream-200" />
-                </div>
-                <div className="h-9 w-36 shrink-0 animate-pulse rounded-[9px] bg-cream-200" />
-              </div>
-            </div>
-          </div>
-        ) : null}
-        <div className="doc-strip">
-          <div className="grid gap-0 overflow-hidden rounded-[14px] border border-cream-300 bg-white lg:grid-cols-5">
-            {Array.from({ length: 5 }).map((_, index) => (
-              <div key={index} className="border-b border-cream-300 px-4 py-3 last:border-b-0 lg:border-b-0 lg:border-r last:lg:border-r-0">
-                <div className="h-3 w-20 animate-pulse rounded bg-cream-200" />
-                <div className="mt-3 h-9 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-              </div>
-            ))}
-          </div>
+          ))}
         </div>
         <div className={composerThreePanelGridClass}>
           <div className="animate-pulse rounded-[14px] border border-cream-300 bg-white p-4" />

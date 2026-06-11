@@ -12,8 +12,6 @@ import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasics
 import { DocumentComposerLoadingSkeleton, DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
 import {
   BuyerCardFilled,
-  DocStatusBandInvoice,
-  InsightsCard,
   invoiceBandChipClass,
   LinesTable,
   resolveInvoiceBandStatus,
@@ -21,6 +19,7 @@ import {
   type EstimateComposerLineRow,
   type InvoiceViewBandStatus,
 } from '@/components/seller/document-composer';
+import { InvoicePaymentsCard } from '@/components/seller/invoices/detail/InvoicePaymentsCard';
 import { ModalMarkInvoicePaid, ModalSendInvoice, ModalVoidInvoice } from '@/components/seller/invoices/modals';
 import {
   AlertDialog,
@@ -103,22 +102,24 @@ export function InvoiceDetailPage({ id }: { id: string }) {
   const diffLines: EstimateComposerLineRow[] = useMemo(() => {
     if (!data) return [];
     return data.items.map((line, index) => ({
-      id: `inv-line-${index}`,
-      tenant_product_id: '',
+      id: line.tenant_product_id ? `inv-line-${line.tenant_product_id}` : `inv-line-${index}`,
+      tenant_product_id: line.tenant_product_id,
       product_name: line.product_name,
-      sku: '',
-      brand_name: '',
-      brand_initials: '',
-      brand_hue: 'cream',
+      sku: line.sku,
+      brand_name: line.brand_name,
+      brand_initials: line.brand_initials,
+      brand_hue: line.brand_hue,
       hsn_code: line.hsn,
       on_hand: 0,
       qty: line.qty,
       unit_price: line.rate,
+      mrp: line.mrp,
+      base_selling_price: line.rate,
       disc_pct: line.discount_pct,
       tax_pct: line.tax_pct ?? 0,
       line_total: line.line_total,
       scheme_tag: null,
-      diff: 'clean',
+      diff: 'clean' as const,
     }));
   }, [data]);
 
@@ -170,21 +171,17 @@ export function InvoiceDetailPage({ id }: { id: string }) {
   const paymentTermsLabel = buyerContext ? defaultPaymentTerms(buyerContext.payment_terms_days) : 'Due on receipt';
 
   const overLimitBy = buyerContext ? totals.grand_total - buyerContext.credit_available : 0;
-  const creditWarning = buyerContext && overLimitBy > 0 ? `Over limit by ${formatCompactInr(overLimitBy)}.` : null;
-
-  const expiringSoon = (() => {
-    if (!data?.due_date) return false;
-    const today = new Date();
-    const due = new Date(`${data.due_date}T12:00:00.000Z`);
-    return (due.getTime() - today.getTime()) / (24 * 60 * 60 * 1000) <= 3;
-  })();
+  const creditWarning =
+    buyerContext && overLimitBy > 0 && data?.status !== 'paid' && data?.status !== 'void'
+      ? `Over limit by ${formatCompactInr(overLimitBy)}.`
+      : null;
 
   if (orderManagement === false || invoicesFlag === false) {
     return <FeatureDisabledState />;
   }
 
   if (isLoading) {
-    return <DocumentComposerLoadingSkeleton showStatusBand />;
+    return <DocumentComposerLoadingSkeleton />;
   }
 
   if (isError) {
@@ -211,48 +208,12 @@ export function InvoiceDetailPage({ id }: { id: string }) {
   const invoiceChipTone: 'draft' | 'live' =
     invoiceBandStatus === 'paid' || invoiceBandStatus === 'void' || invoiceBandStatus === 'draft' ? 'draft' : 'live';
 
-  const invoiceWhatsNext = (() => {
-    if (invoiceBandStatus === 'draft') {
-      return {
-        description: 'Review lines and totals, then send — the buyer receives this as their formal invoice.',
-        action: (
-          <Button type="button" size="sm" className="gap-2" onClick={() => setSendOpen(true)} disabled={sendInvoiceMut.isPending}>
-            <Send className="h-4 w-4" />
-            Send invoice
-          </Button>
-        ),
-      };
-    }
-    if (invoiceBandStatus === 'sent' || invoiceBandStatus === 'overdue') {
-      return {
-        description:
-          invoiceBandStatus === 'overdue'
-            ? 'This invoice is past due. Record payment or follow up with the buyer.'
-            : 'Awaiting payment. Record when funds clear, or nudge the buyer with a reminder.',
-        action: (
-          <Button type="button" size="sm" className="gap-2" onClick={() => setPayOpen(true)}>
-            <IndianRupee className="h-4 w-4" />
-            Mark as paid
-          </Button>
-        ),
-      };
-    }
-    if (invoiceBandStatus === 'paid') {
-      return { description: 'This invoice is fully paid.', action: null };
-    }
-    if (invoiceBandStatus === 'void') {
-      return { description: 'This invoice is void and has no remaining balance.', action: null };
-    }
-    return null;
-  })();
-
   return (
     <>
       <DocumentComposerShell
         mode="view"
         kind="invoice"
         breadcrumbItems={[
-          { label: 'Sales' },
           { label: 'Invoices', href: '/invoices' },
           { label: data.doc_number, current: true },
         ]}
@@ -286,6 +247,18 @@ export function InvoiceDetailPage({ id }: { id: string }) {
                 {data.status === 'draft' ? 'Edit before send' : 'Edit invoice'}
               </Button>
             ) : null}
+            {invoiceBandStatus === 'draft' ? (
+              <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setSendOpen(true)} disabled={sendInvoiceMut.isPending}>
+                <Send className="h-4 w-4" />
+                Send invoice
+              </Button>
+            ) : null}
+            {invoiceBandStatus === 'sent' || invoiceBandStatus === 'overdue' ? (
+              <Button type="button" variant="secondary" size="sm" className="gap-2" onClick={() => setPayOpen(true)}>
+                <IndianRupee className="h-4 w-4" />
+                Mark as paid
+              </Button>
+            ) : null}
             {invoiceBandStatus === 'sent' || invoiceBandStatus === 'overdue' ? (
               <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setRemindOpen(true)}>
                 <Mail className="h-4 w-4" />
@@ -306,22 +279,6 @@ export function InvoiceDetailPage({ id }: { id: string }) {
               </Button>
             ) : null}
           </>
-        )}
-        statusBand={(
-          <DocStatusBandInvoice
-            dbStatus={data.db_status}
-            dueDate={data.due_date}
-            sentAt={data.sent_at}
-            viewedAt={data.viewed_at}
-            viewedByName={data.viewed_by_name}
-            paidAt={data.paid_at}
-            paymentMethod={data.payment_method}
-            paymentReference={data.payment_reference}
-            amountOutstanding={data.amount_outstanding}
-            grandTotal={data.totals.grand_total}
-            voidedAt={data.voided_at}
-            whatsNext={invoiceWhatsNext}
-          />
         )}
         basics={(
           <DocumentBasicsStrip
@@ -347,7 +304,7 @@ export function InvoiceDetailPage({ id }: { id: string }) {
                   paymentTermsValue={paymentTermsLabel}
                   readOnly
                   onPaymentTermsChange={noop}
-                  onSwap={noop}
+                  onChangeBuyer={noop}
                 />
               </ComposerSidebarCard>
             )
@@ -395,7 +352,7 @@ export function InvoiceDetailPage({ id }: { id: string }) {
               lineCount={diffLines.length}
               taxRows={taxRows}
             />
-            <InsightsCard buyer={buyerContext} expiringSoon={expiringSoon} readOnly />
+            <InvoicePaymentsCard payments={data.payments} amountOutstanding={data.amount_outstanding} />
           </div>
         )}
       />

@@ -44,6 +44,8 @@ export interface EstimateComposerProductSearchRow {
   tax_pct: number | null;
   on_hand: number;
   unit_price: number;
+  mrp: number;
+  base_selling_price: number;
   default_uom: string | null;
   pack_size: number | null;
 }
@@ -60,6 +62,8 @@ export interface EstimateComposerLineInput {
   on_hand: number;
   qty: number;
   unit_price: number;
+  mrp: number;
+  base_selling_price: number;
   disc_pct: number;
   tax_pct: number;
   line_total: number;
