@@ -15,11 +15,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const [orderMgmt, estimatesFlag] = await Promise.all([
+    const [orderMgmt, estimatesFlag, salesOrdersFlag, invoicesFlag] = await Promise.all([
       getFlag(FEATURE_FLAGS.ORDER_MANAGEMENT, claims.tenant_id),
       getFlag(FEATURE_FLAGS.ESTIMATES, claims.tenant_id),
+      getFlag(FEATURE_FLAGS.SALES_ORDERS, claims.tenant_id),
+      getFlag(FEATURE_FLAGS.INVOICES, claims.tenant_id),
     ]);
-    if (!orderMgmt || !estimatesFlag) {
+    if (!orderMgmt || (!estimatesFlag && !salesOrdersFlag && !invoicesFlag)) {
       return NextResponse.json({ error: 'Feature not enabled' }, { status: 403 });
     }
 
@@ -34,7 +36,7 @@ export async function GET(request: NextRequest) {
     let builder = db
       .schema('app')
       .from('buyers')
-      .select('id, business_name, geography, credit_limit')
+      .select('id, business_name, geography')
       .eq('tenant_id', claims.tenant_id)
       .eq('is_active', true)
       .is('deleted_at', null)
@@ -55,12 +57,12 @@ export async function GET(request: NextRequest) {
       id: string;
       business_name: string;
       geography: Record<string, unknown> | null;
-      credit_limit: number | null;
     }>).map((row) => ({
       id: row.id,
       business_name: row.business_name,
-      place_of_supply: typeof row.geography?.state === 'string' ? row.geography.state : 'Unknown',
-      credit_used: Number(row.credit_limit ?? 0),
+      place_of_supply: typeof row.geography?.state === 'string' && row.geography.state.trim()
+        ? row.geography.state.trim()
+        : 'Unknown',
     }));
 
     return NextResponse.json({ buyers });

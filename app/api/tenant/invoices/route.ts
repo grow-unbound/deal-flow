@@ -10,7 +10,6 @@ import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbClient = any;
 import type {
   InvoiceAvatarHue,

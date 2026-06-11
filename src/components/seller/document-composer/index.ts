@@ -1,17 +1,16 @@
 export {
-  DocStatusBand,
-  DocStatusBandInvoice,
   estimateBandChipClass,
   invoiceBandChipClass,
   resolveEstimateBandStatus,
   resolveInvoiceBandStatus,
   salesOrderBandChipClass,
-  SalesOrderDocStatusBand,
   resolveSalesOrderBandStatus,
-} from './DocStatusBand';
-export type { EstimateViewBandStatus, InvoiceViewBandStatus, SalesOrderViewBandStatus } from './DocStatusBand';
+} from './doc-status-resolve';
+export type { EstimateViewBandStatus, InvoiceViewBandStatus, SalesOrderViewBandStatus } from './doc-status-resolve';
 export { BuyerCardEmpty, BuyerCardFilled, BuyerCardLoading, CreditBar } from './BuyerCard';
+export { DocumentMetaCard } from './DocumentMetaCard';
 export { LinesTable } from './LinesTable';
 export type { EstimateComposerLineRow } from './LinesTable';
+export { ProductSearchDropdown } from './ProductSearchDropdown';
 export { TotalsCard } from './TotalsCard';
-export { InsightsCard } from './InsightsCard';
+export { ModalSendDocument } from './ModalSendDocument';

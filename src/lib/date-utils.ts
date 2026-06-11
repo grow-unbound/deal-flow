@@ -65,3 +65,28 @@ export function coerceDateValue(value: string | Date | null | undefined): Date |
   if (value instanceof Date) return value;
   return parseIsoDate(value) ?? parseInputDate(value);
 }
+
+/** First calendar day strictly after `isoDate` (YYYY-MM-DD), or null if invalid. */
+export function minDateAfterIso(isoDate: string): Date | null {
+  const base = parseIsoDate(isoDate);
+  if (!base) return null;
+  const next = new Date(base.getFullYear(), base.getMonth(), base.getDate() + 1);
+  return startOfDay(next);
+}
+
+/**
+ * When the primary date moves forward, ensure the secondary date is strictly after it.
+ * Returns the new secondary ISO string, or undefined if no change (including when second is empty — e.g. invoice due date cleared).
+ */
+export function bumpSecondDateAfterFirst(firstIso: string, secondIso: string | null | undefined): string | undefined {
+  const minNext = minDateAfterIso(firstIso);
+  if (!minNext) return undefined;
+  if (secondIso == null || secondIso === '') return undefined;
+  const first = parseIsoDate(firstIso);
+  const second = parseIsoDate(secondIso);
+  if (!first) return undefined;
+  if (!second || second.getTime() <= first.getTime()) {
+    return isoDateString(minNext);
+  }
+  return undefined;
+}

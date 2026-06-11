@@ -1,5 +1,7 @@
 'use client';
 
+import type { ReactNode } from 'react';
+
 import { cn, formatInr } from '@/lib/utils';
 import type { EstimateComposerTotals } from '@/types/estimate-composer';
 
@@ -11,6 +13,8 @@ export function TotalsCard({
   previousTotals,
   lineCount,
   taxRows,
+  stagedChanges,
+  stagedCallout,
 }: {
   title?: string;
   totals: EstimateComposerTotals;
@@ -19,6 +23,8 @@ export function TotalsCard({
   previousTotals?: EstimateComposerTotals | null;
   lineCount: number;
   taxRows?: Array<{ label: string; value: number; previous?: number | null; rowClassName?: string }>;
+  stagedChanges?: Array<{ label: string; value: string }>;
+  stagedCallout?: ReactNode;
 }) {
   const resolvedTaxRows = taxRows && taxRows.length > 0
     ? taxRows
@@ -59,6 +65,18 @@ export function TotalsCard({
           <div className="border-t border-cream-200 pt-3">
             <TotalRow label="Grand total" value={formatInr(totals.grand_total)} previous={previousTotals?.grand_total ?? null} strong />
           </div>
+          {stagedChanges && stagedChanges.length > 0 ? (
+            <div className="mt-4 space-y-2 rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3 text-[12px] text-amber-900">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-800">Staged changes</p>
+              {stagedChanges.map((row) => (
+                <div key={row.label} className="flex items-start justify-between gap-4">
+                  <span className="text-amber-800">{row.label}</span>
+                  <span className="max-w-[180px] text-right font-medium text-amber-950">{row.value}</span>
+                </div>
+              ))}
+              {stagedCallout ? <div className="pt-2 text-[12px] leading-[1.5] text-amber-900">{stagedCallout}</div> : null}
+            </div>
+          ) : null}
         </div>
       </section>
     </div>

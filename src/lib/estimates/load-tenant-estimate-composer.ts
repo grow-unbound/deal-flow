@@ -1,4 +1,5 @@
 import { computePlaceOfSupplyFromBuyer } from '@/lib/sales-orders/compute-place-of-supply';
+import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
 import type { EstimateComposerDocument } from '@/types/estimate-composer';
 import type { EstimateDetailActivity, EstimateDetailLineItem, EstimateDetailPayload } from '@/types/tenant-estimate-detail';
 import type { EstimateDbStatus, EstimateStatusTone } from '@/types/tenant-estimates';
@@ -69,7 +70,7 @@ export async function loadEstimateDocument(
     .schema('app')
     .from('estimates')
     .select(
-      'id, tenant_id, buyer_id, estimate_number, status, subtotal, tax_amount, total_amount, currency, notes, expires_at, created_at, sent_at, accepted_at, converted_to_order_id, converted_to_invoice_id, date_issued, valid_until, buyer_po_ref, discount_flat, freight, round_off, sent_channel, viewed_at, viewed_by_name, voided_at, estimate_version, place_of_supply',
+      'id, tenant_id, buyer_id, estimate_number, status, subtotal, tax_amount, total_amount, currency, notes, expires_at, created_at, sent_at, accepted_at, converted_to_order_id, converted_to_invoice_id, date_issued, valid_until, buyer_po_ref, discount_flat, freight, round_off, sent_channel, viewed_at, viewed_by_name, voided_at, estimate_version, place_of_supply, created_by',
     )
     .eq('id', id)
     .is('deleted_at', null)
@@ -111,7 +112,7 @@ export async function loadEstimateDocument(
 
   const { data: tenantProducts } = productIds.length > 0
     ? await d.schema('app').from('tenant_products')
-        .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom, pack_size, base_selling_price')
+        .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom, pack_size, base_selling_price, mrp')
         .in('id', productIds).eq('tenant_id', tenantId)
     : { data: [] as Array<Record<string, unknown>> };
 
@@ -193,6 +194,8 @@ export async function loadEstimateDocument(
       on_hand: inventoryMap.get(row.tenant_product_id as string) ?? 0,
       qty: Number(row.qty ?? 0),
       unit_price: Number(row.unit_price ?? 0),
+      mrp: Number(product?.mrp ?? 0),
+      base_selling_price: Number(product?.base_selling_price ?? 0),
       disc_pct: Number(row.disc_pct ?? row.discount_pct ?? 0),
       tax_pct: Number(row.tax_pct ?? row.tax_rate ?? (product as any)?.gst_rate ?? (master as any)?.gst_rate ?? 0),
       line_total: Number(row.line_total ?? 0),
@@ -246,6 +249,11 @@ export async function loadEstimateDocument(
       .eq('id', sortedAssignments[0].price_list_id).eq('tenant_id', tenantId).maybeSingle();
     if (data) activePricelist = { id: data.id as string, name: data.name as string };
   }
+
+  const createdById = typeof estimate.created_by === 'string' ? estimate.created_by : null;
+  const salesAgentName = createdById
+    ? ((await getAuthUserDisplayNameMap([createdById])).get(createdById) ?? null)
+    : null;
 
   const status = normalizeEstimateStatus(String(estimate.status ?? 'draft'));
   const statusMeta = statusPresentation(status);
@@ -315,7 +323,7 @@ export async function loadEstimateDocument(
         credit_used: creditUsed,
         credit_available: creditAvailable,
         active_pricelist: activePricelist,
-        sales_agent_name: null,
+        sales_agent_name: salesAgentName,
       }
     : null;
 
@@ -327,7 +335,7 @@ export async function loadEstimateDocument(
     date_issued: isoDateValue(estimate.date_issued as string | null | undefined, fallbackDate),
     valid_until: isoDateValue(estimate.valid_until as string | null | undefined, fallbackDate),
     buyer_po_ref: String(estimate.buyer_po_ref ?? ''),
-    place_of_supply: String(estimate.place_of_supply ?? buyerContext?.place_of_supply ?? 'Unknown'),
+    place_of_supply: String(estimate.place_of_supply ?? ''),
     seller_note: String(estimate.notes ?? ''),
     freight: Number(estimate.freight ?? 0),
     discount_flat: Number(estimate.discount_flat ?? 0),

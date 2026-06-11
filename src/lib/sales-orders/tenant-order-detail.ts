@@ -38,15 +38,21 @@ export function channelLabel(source: string | null): string {
   return '—';
 }
 
+function activityTimestamp(value: string | number | null | undefined): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  return new Date(value).toISOString();
+}
+
 export function buildActivityFromAudit(
   orderId: string,
   orderNumber: string,
-  placedAt: string | null,
+  placedAt: string | number | null,
   linesCount: number,
   units: number,
   catalogName: string | null,
   channel: string,
-  audits: Array<{ id: string; action: string; diff: unknown; ts: string; actor_user_id: string | null }>,
+  audits: Array<{ id: string | number; action: string; diff: unknown; ts: string; actor_user_id: string | null }>,
 ): SalesOrderActivityRow[] {
   const rows: SalesOrderActivityRow[] = [];
 
@@ -56,7 +62,7 @@ export function buildActivityFromAudit(
     title: 'Order placed',
     detail: `${linesCount} lines · ${units} units · via ${catalogName ?? '—'}`,
     who: channel,
-    at: placedAt ?? '',
+    at: activityTimestamp(placedAt),
     tone: 'neutral',
   });
 
@@ -68,7 +74,7 @@ export function buildActivityFromAudit(
 
     if (entry.action === 'status_change' && status === 'confirmed') {
       rows.push({
-        id: entry.id,
+        id: String(entry.id),
         kind: 'confirmed',
         title: 'Order confirmed',
         detail: `Stock reserved · order ${orderNumber}`,
@@ -80,7 +86,7 @@ export function buildActivityFromAudit(
     }
     if (entry.action === 'status_change' && status === 'dispatched') {
       rows.push({
-        id: entry.id,
+        id: String(entry.id),
         kind: 'dispatched',
         title: 'Dispatched',
         detail: 'Order marked dispatched',
@@ -91,7 +97,7 @@ export function buildActivityFromAudit(
     }
     if (entry.action === 'status_change' && status === 'delivered') {
       rows.push({
-        id: entry.id,
+        id: String(entry.id),
         kind: 'delivered',
         title: 'Delivered',
         detail: 'Order marked delivered',
@@ -103,7 +109,7 @@ export function buildActivityFromAudit(
     }
     if (entry.action === 'status_change' && status === 'cancelled') {
       rows.push({
-        id: entry.id,
+        id: String(entry.id),
         kind: 'cancelled',
         title: 'Order cancelled',
         detail: typeof diff?.notes === 'string' ? String(diff.notes) : 'Order was cancelled',
@@ -115,7 +121,7 @@ export function buildActivityFromAudit(
     }
     if (entry.action === 'update') {
       rows.push({
-        id: entry.id,
+        id: String(entry.id),
         kind: 'line_edited',
         title: 'Line edited',
         detail: 'Order lines were updated',
@@ -268,6 +274,8 @@ export function mapSalesOrderDetailToComposerLines(detail: SalesOrderDetail): Es
     on_hand: line.on_hand,
     qty: line.qty,
     unit_price: line.unit_price,
+    mrp: 0,
+    base_selling_price: line.unit_price,
     disc_pct: line.disc_pct,
     tax_pct: line.tax_pct ?? line.tax_rate ?? 0,
     line_total: line.line_total,

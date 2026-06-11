@@ -138,7 +138,17 @@ function defaultFromImpl(table: string) {
       })),
     };
   }
-  if (table === 'audit_log' || table === 'payments') {
+  if (table === 'payments') {
+    return {
+      insert: vi.fn().mockResolvedValue({ error: null }),
+      select: vi.fn(() => ({
+        eq: vi.fn().mockReturnThis(),
+        is: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({ data: [], error: null }),
+      })),
+    };
+  }
+  if (table === 'audit_log') {
     return { insert: vi.fn().mockResolvedValue({ error: null }) };
   }
   return {
@@ -229,6 +239,7 @@ describe('invoice detail API', () => {
     expect(json.totals?.grand_total).toBe(1180);
     expect(Array.isArray(json.items)).toBe(true);
     expect(json.viewer_role).toBe('seller_admin');
+    expect(Array.isArray(json.payments)).toBe(true);
   });
 });
 
@@ -269,7 +280,9 @@ describe('invoice pay / void / remind API', () => {
           })),
         };
       }
-      if (table === 'audit_log') return { insert: vi.fn().mockResolvedValue({ error: null }) };
+      if (table === 'audit_log' || table === 'payments') {
+        return { insert: vi.fn().mockResolvedValue({ error: null }) };
+      }
       return defaultFromImpl(table);
     });
     const { PATCH } = await import('../../app/api/tenant/invoices/[id]/pay/route');

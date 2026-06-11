@@ -92,11 +92,17 @@ function baseInvoice(overrides: Partial<InvoiceDetailResponse> = {}): InvoiceDet
     },
     items: [
       {
+        tenant_product_id: 'tp-1',
         product_name: 'Widget',
+        sku: 'WDG-01',
+        brand_name: 'Vinikus',
+        brand_initials: 'VI',
+        brand_hue: 'teal',
         hsn: '1234',
         qty: 2,
         unit: 'Nos',
         rate: 5000,
+        mrp: 5500,
         discount_pct: 0,
         line_total: 10_000,
         tax_pct: 18,
@@ -121,6 +127,7 @@ function baseInvoice(overrides: Partial<InvoiceDetailResponse> = {}): InvoiceDet
     linked_estimate_number: null,
     viewer_role: 'seller_admin',
     seller_note: '',
+    payments: [],
     ...overrides,
   };
 }
@@ -143,19 +150,14 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
     });
   });
 
-  it('draft shows timeline, send in what is next, and title chip', () => {
+  it('draft shows title chip and primary actions', () => {
     renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
-    const band = document.querySelector('.doc-status-band');
-    expect(band).toBeTruthy();
-    expect(band).toHaveTextContent(/What's next/i);
-    expect(band).toHaveTextContent(/formal invoice/i);
-    expect(screen.getByLabelText('Invoice progress')).toHaveTextContent('Draft');
     expect(document.querySelector('.doc-status-chip')).toHaveTextContent(/Draft/i);
     expect(screen.getByRole('button', { name: /^send invoice$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /edit before send/i })).toBeInTheDocument();
   });
 
-  it('sent shows Due in 5 days when due is 5 days ahead (IST)', () => {
+  it('sent shows Sent chip and payment actions', () => {
     useInvoiceDetailMock.mockReturnValue({
       data: baseInvoice({
         db_status: 'sent',
@@ -168,11 +170,12 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
       error: null,
     });
     renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
-    const band = document.querySelector('.doc-status-band');
-    expect(band).toHaveTextContent(/Due in 5 days/i);
+    expect(document.querySelector('.doc-status-chip')).toHaveTextContent(/Sent/i);
+    expect(screen.getByRole('button', { name: /mark as paid/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /send reminder/i })).toBeInTheDocument();
   });
 
-  it('overdue shows destructive overdue copy and Edit remains', () => {
+  it('overdue shows Overdue chip and Edit remains', () => {
     useInvoiceDetailMock.mockReturnValue({
       data: baseInvoice({
         db_status: 'sent',
@@ -186,9 +189,8 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
       error: null,
     });
     renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
-    const band = document.querySelector('.doc-status-band');
-    expect(band).toHaveTextContent(/Overdue/i);
-    expect(band).toHaveTextContent(/Overdue by/i);
+    expect(document.querySelector('.doc-status-chip')).toHaveTextContent(/Overdue/i);
+    expect(screen.getByRole('button', { name: /mark as paid/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /edit (before send|invoice)/i })).toBeInTheDocument();
   });
 
@@ -225,6 +227,11 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
     expect(screen.getByText('v2')).toBeInTheDocument();
   });
 
+  it('renders brand avatar initials on line rows', () => {
+    renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
+    expect(screen.getByLabelText('VI')).toBeInTheDocument();
+  });
+
   it('renders GST split rows with tax-row classes when gstin_locked', () => {
     useInvoiceDetailMock.mockReturnValue({
       data: baseInvoice({ db_status: 'sent', status: 'sent', sent_at: '2026-06-05T10:00:00.000Z' }),
@@ -245,6 +252,81 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
     expect(bad?.length ?? 0).toBe(0);
   });
 
+  it('shows payments card with due amount for sent invoices', () => {
+    useInvoiceDetailMock.mockReturnValue({
+      data: baseInvoice({
+        db_status: 'sent',
+        status: 'sent',
+        sent_at: '2026-06-05T10:00:00.000Z',
+        amount_outstanding: 11_800,
+        payments: [
+          {
+            id: 'pay-1',
+            amount: 5000,
+            paid_at: '2026-06-06T10:00:00.000Z',
+            payment_method: 'UPI',
+            payment_reference: 'ref-1',
+          },
+        ],
+      }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+    renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
+    expect(screen.getByText('Payments')).toBeInTheDocument();
+    expect(screen.getByText(/ref-1/i)).toBeInTheDocument();
+    expect(screen.getByText('Amount due')).toBeInTheDocument();
+  });
+
+  it('shows no dues when outstanding is zero', () => {
+    useInvoiceDetailMock.mockReturnValue({
+      data: baseInvoice({
+        db_status: 'paid',
+        status: 'paid',
+        paid_at: '2026-06-10T10:00:00.000Z',
+        amount_outstanding: 0,
+        amount_paid: 11_800,
+        payments: [
+          {
+            id: 'pay-1',
+            amount: 11_800,
+            paid_at: '2026-06-10T10:00:00.000Z',
+            payment_method: 'Bank transfer',
+            payment_reference: null,
+          },
+        ],
+      }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+    renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
+    expect(screen.getByText('No dues')).toBeInTheDocument();
+    expect(screen.queryByText('Over limit.')).toBeNull();
+  });
+
+  it('shows warning when payment exceeds amount due', async () => {
+    useInvoiceDetailMock.mockReturnValue({
+      data: baseInvoice({
+        db_status: 'sent',
+        status: 'sent',
+        sent_at: '2026-06-05T10:00:00.000Z',
+        amount_outstanding: 11_800,
+      }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+    renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
+    fireEvent.click(screen.getByRole('button', { name: /mark as paid/i }));
+    const dialog = await screen.findByRole('dialog');
+    const amt = within(dialog).getByLabelText(/^amount$/i);
+    fireEvent.change(amt, { target: { value: '15,000' } });
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(/exceeds amount due/i);
+    expect(within(dialog).getByRole('button', { name: /record payment/i })).toBeDisabled();
+  });
+
   it('opens mark paid modal with full amount shortcut', async () => {
     useInvoiceDetailMock.mockReturnValue({
       data: baseInvoice({ db_status: 'sent', status: 'sent', sent_at: '2026-06-05T10:00:00.000Z' }),
@@ -255,10 +337,10 @@ describe('InvoiceDetailPage (EP-17-006)', () => {
     renderWithQueryClient(<InvoiceDetailPage id="inv-1" />);
     fireEvent.click(screen.getByRole('button', { name: /mark as paid/i }));
     const dialog = await screen.findByRole('dialog', {}, { timeout: 10_000 });
-    const amt = within(dialog).getByDisplayValue('11800');
-    expect((amt as HTMLInputElement).value).toBe('11800');
+    const amt = within(dialog).getByDisplayValue('11,800');
+    expect((amt as HTMLInputElement).value).toBe('11,800');
     fireEvent.click(within(dialog).getByRole('button', { name: /full amount/i }));
-    expect((amt as HTMLInputElement).value).toBe('11800');
+    expect((amt as HTMLInputElement).value).toBe('11,800');
   }, 15_000);
 
   it('send reminder modal pre-fills message', async () => {

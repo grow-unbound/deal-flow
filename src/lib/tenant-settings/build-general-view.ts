@@ -1,0 +1,94 @@
+import { DEFAULT_TENANT_SETTINGS_STORED } from '@/lib/tenant-settings/defaults';
+import {
+  TenantSettingsBusinessSchema,
+  TenantSettingsNotificationsSchema,
+  TenantSettingsStoredSchema,
+  type GeneralSettingsView,
+} from '@/types/tenant-settings';
+
+function deepMergeObjects<T extends Record<string, unknown>>(base: T, patch: Record<string, unknown>): T {
+  const out = { ...base } as T;
+  for (const key of Object.keys(patch)) {
+    const pv = patch[key];
+    const existing = out[key as keyof T] as unknown;
+    if (
+      pv !== undefined &&
+      pv !== null &&
+      typeof pv === 'object' &&
+      !Array.isArray(pv) &&
+      typeof existing === 'object' &&
+      existing !== null &&
+      !Array.isArray(existing)
+    ) {
+      (out as Record<string, unknown>)[key] = deepMergeObjects(
+        existing as Record<string, unknown>,
+        pv as Record<string, unknown>,
+      );
+    } else if (pv !== undefined) {
+      (out as Record<string, unknown>)[key] = pv;
+    }
+  }
+  return out;
+}
+
+export interface TenantRowForSettings {
+  business_name: string;
+  gstin: string | null;
+  primary_state: string | null;
+  plan: string;
+}
+
+export function buildGeneralSettingsView(
+  rawSettings: unknown,
+  tenant: TenantRowForSettings,
+): GeneralSettingsView {
+  const parsed = TenantSettingsStoredSchema.safeParse(rawSettings ?? {});
+  const fromDb = parsed.success ? parsed.data : {};
+  const merged = deepMergeObjects(
+    DEFAULT_TENANT_SETTINGS_STORED as unknown as Record<string, unknown>,
+    fromDb as Record<string, unknown>,
+  ) as typeof DEFAULT_TENANT_SETTINGS_STORED;
+
+  const business = {
+    ...merged.business,
+    company_name: merged.business?.company_name?.trim()
+      ? merged.business.company_name
+      : tenant.business_name?.trim() || 'My Business',
+    gstin: merged.business?.gstin?.trim()
+      ? merged.business.gstin
+      : (tenant.gstin ?? ''),
+    address: {
+      ...DEFAULT_TENANT_SETTINGS_STORED.business.address,
+      ...merged.business?.address,
+    },
+  };
+
+  const notifications = {
+    whatsapp: {
+      ...DEFAULT_TENANT_SETTINGS_STORED.notifications.whatsapp,
+      ...merged.notifications?.whatsapp,
+    },
+  };
+
+  const businessParsed = TenantSettingsBusinessSchema.safeParse(business);
+  const notifParsed = TenantSettingsNotificationsSchema.safeParse(notifications);
+
+  const plan =
+    tenant.plan === 'growth' || tenant.plan === 'scale' || tenant.plan === 'starter'
+      ? tenant.plan
+      : 'starter';
+
+  return {
+    business: businessParsed.success
+      ? businessParsed.data
+      : TenantSettingsBusinessSchema.parse({
+          ...DEFAULT_TENANT_SETTINGS_STORED.business,
+          company_name: tenant.business_name,
+          gstin: tenant.gstin ?? '',
+        }),
+    notifications: notifParsed.success
+      ? notifParsed.data
+      : DEFAULT_TENANT_SETTINGS_STORED.notifications,
+    plan,
+  };
+}

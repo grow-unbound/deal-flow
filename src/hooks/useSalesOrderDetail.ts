@@ -141,3 +141,41 @@ export function useCancelSalesOrder(orderId: string) {
     },
   });
 }
+
+export function useSendSalesOrder(orderId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: { channel: 'whatsapp' | 'email' | 'download'; recipient: string; message: string }) => {
+      const res = await apiPatch(`/api/tenant/orders/${orderId}/send`, payload);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? 'Failed to send sales order');
+      }
+      return (await res.json()) as { data: { id: string } };
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['tenant-sales-order', orderId] });
+      await queryClient.invalidateQueries({ queryKey: ['tenant-orders'] });
+      await queryClient.invalidateQueries({ queryKey: ['tenant-sales-order-composer', orderId] });
+    },
+  });
+}
+
+export function useConfirmSalesOrder(orderId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiPatch(`/api/tenant/orders/${orderId}/confirm`, { has_backorder: false });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(typeof err === 'object' && err && 'error' in err ? String((err as { error: string }).error) : 'Confirm failed');
+      }
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['tenant-sales-order', orderId] });
+      await queryClient.invalidateQueries({ queryKey: ['tenant-orders'] });
+    },
+  });
+}

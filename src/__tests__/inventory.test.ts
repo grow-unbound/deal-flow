@@ -69,14 +69,14 @@ describe('GET /api/tenant/locations', () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: async () => ({ locations }),
+      json: async () => ({ data: { locations }, error: null }),
     });
 
     const res = await fetch('/api/tenant/locations');
     expect(res.ok).toBe(true);
     const data = await res.json();
-    expect(data.locations).toHaveLength(1);
-    expect(data.locations[0].name).toBe('Main Warehouse');
+    expect(data.data.locations).toHaveLength(1);
+    expect(data.data.locations[0].name).toBe('Main Warehouse');
   });
 
   it('unauthenticated request → 401', async () => {
@@ -115,7 +115,7 @@ describe('POST /api/tenant/locations', () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       status: 201,
-      json: async () => ({ location: created }),
+      json: async () => ({ data: { location: created }, error: null }),
     });
 
     const res = await fetch('/api/tenant/locations', {
@@ -127,14 +127,14 @@ describe('POST /api/tenant/locations', () => {
     expect(res.ok).toBe(true);
     expect(res.status).toBe(201);
     const data = await res.json();
-    expect(data.location.name).toBe('Secondary Store');
+    expect(data.data.location.name).toBe('Secondary Store');
   });
 
   it('seller_assistant cannot create location → 403', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: false,
       status: 403,
-      json: async () => ({ error: 'Forbidden: only seller_admin can create locations' }),
+      json: async () => ({ data: null, error: { message: 'Forbidden: only seller_admin can create locations' } }),
     });
 
     const res = await fetch('/api/tenant/locations', {
@@ -146,14 +146,14 @@ describe('POST /api/tenant/locations', () => {
     expect(res.ok).toBe(false);
     expect(res.status).toBe(403);
     const data = await res.json();
-    expect(data.error).toMatch(/seller_admin/);
+    expect(data.error?.message).toMatch(/seller_admin/);
   });
 
   it('missing name → 400', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: false,
       status: 400,
-      json: async () => ({ error: 'Invalid request body' }),
+      json: async () => ({ data: null, error: { message: 'Invalid request body' } }),
     });
 
     const res = await fetch('/api/tenant/locations', {

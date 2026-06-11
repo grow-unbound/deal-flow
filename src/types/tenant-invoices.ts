@@ -200,11 +200,17 @@ export interface InvoiceDetailTotalsDto {
 }
 
 export interface InvoiceDetailItemDto {
+  tenant_product_id: string;
   product_name: string;
+  sku: string;
+  brand_name: string;
+  brand_initials: string;
+  brand_hue: 'teal' | 'ember' | 'cream';
   hsn: string | null;
   qty: number;
   unit: string;
   rate: number;
+  mrp: number;
   discount_pct: number;
   line_total: number;
   tax_pct: number | null;
@@ -229,6 +235,14 @@ export interface InvoiceDetailBuyerDto {
   seller_state: string | null;
   active_pricelist: { id: string; name: string } | null;
   sales_agent_name: string | null;
+}
+
+export interface InvoicePaymentRecordDto {
+  id: string;
+  amount: number;
+  paid_at: string;
+  payment_method: string | null;
+  payment_reference: string | null;
 }
 
 export interface InvoiceDetailResponse {
@@ -264,6 +278,7 @@ export interface InvoiceDetailResponse {
   linked_estimate_number: string | null;
   viewer_role: InvoiceDetailViewerRole;
   seller_note: string;
+  payments: InvoicePaymentRecordDto[];
 }
 
 export interface InvoiceDetailPayload {

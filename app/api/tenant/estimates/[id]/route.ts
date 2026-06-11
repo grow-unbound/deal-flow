@@ -8,7 +8,6 @@ import { getFlag } from '@/lib/flags';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { EstimateComposerDocument } from '@/types/estimate-composer';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbClient = any;
 
 const EstimateSaveSchema = z.object({
@@ -157,7 +156,10 @@ export async function PATCH(
     if (payload.date_issued !== undefined) updatePayload.date_issued = payload.date_issued;
     if (payload.valid_until !== undefined) updatePayload.valid_until = payload.valid_until;
     if (payload.buyer_po_ref !== undefined) updatePayload.buyer_po_ref = payload.buyer_po_ref || null;
-    if (payload.place_of_supply !== undefined) updatePayload.place_of_supply = payload.place_of_supply || 'Unknown';
+    if (payload.place_of_supply !== undefined) {
+      const trimmed = typeof payload.place_of_supply === 'string' ? payload.place_of_supply.trim() : '';
+      updatePayload.place_of_supply = trimmed.length > 0 ? trimmed : '';
+    }
     if (payload.seller_note !== undefined) updatePayload.notes = payload.seller_note || null;
     if (payload.discount_flat !== undefined) updatePayload.discount_flat = payload.discount_flat;
     if (payload.freight !== undefined) updatePayload.freight = payload.freight;
