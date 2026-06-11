@@ -3,6 +3,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MailCheck, Pencil, UserPlus, UserX } from 'lucide-react';
+import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -119,10 +120,12 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
     onSuccess: () => {
       setDeactivateMember(null);
       setDeactivateError(null);
+      toast.success('Member deactivated');
       queryClient.invalidateQueries({ queryKey: ['team'] });
     },
     onError: (error: Error) => {
       setDeactivateError(error.message);
+      toast.error(error.message);
     },
   });
 
@@ -136,10 +139,12 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
     onSuccess: () => {
       setResendMember(null);
       setResendError(null);
+      toast.success('Invite resent');
       queryClient.invalidateQueries({ queryKey: ['team'] });
     },
     onError: (error: Error) => {
       setResendError(error.message);
+      toast.error(error.message);
     },
   });
 

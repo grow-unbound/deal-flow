@@ -5,6 +5,7 @@ import { useForm, type UseFormSetError } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
 import { Save, UserPlus } from 'lucide-react';
+import { toast } from 'sonner';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -172,11 +173,13 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
           body.details?.formErrors?.[0] ??
           'Something went wrong';
         setError('root', { type: 'server', message });
+        toast.error(String(message));
       }
       return;
     }
 
     await queryClient.invalidateQueries({ queryKey: ['team'] });
+    toast.success(isEdit ? 'User updated' : 'Invite sent');
     reset({
       full_name: '',
       email: '',

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DocComposerInvoice } from '@/components/seller/invoices/DocComposerInvoice';
@@ -15,9 +15,16 @@ const useSendInvoiceMock = vi.fn();
 const useNextInvoiceNumberMock = vi.fn();
 const apiPostMock = vi.fn();
 const apiPatchMock = vi.fn();
+const useEstimateProductSearchMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
+}));
+
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: { id: 'user-1', email: 'seller@example.com', displayName: 'Phani' },
+  }),
 }));
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
@@ -33,6 +40,16 @@ vi.mock('@/hooks/useInvoices', () => ({
 
 vi.mock('@/hooks/useEstimates', () => ({
   useBuyerEstimateContext: () => ({ data: null, isLoading: false }),
+  useEstimateProductSearch: (...args: unknown[]) => useEstimateProductSearchMock(...args),
+  useEstimateProductPricing: () => ({ data: {}, isLoading: false }),
+  useEstimatePriceListOptions: () => ({ data: [], isLoading: false }),
+}));
+
+vi.mock('@/hooks/useDocumentBuyerPicker', () => ({
+  useDocumentBuyerPicker: () => ({
+    data: [{ id: 'buyer-1', business_name: 'Acme Retail', place_of_supply: 'Delhi' }],
+    isLoading: false,
+  }),
 }));
 
 vi.mock('@/lib/api-fetch', () => ({
@@ -43,40 +60,6 @@ vi.mock('@/lib/api-fetch', () => ({
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() },
 }));
-
-vi.mock('@supabase/auth-helpers-nextjs', () => {
-  class QueryMock {
-    select() {
-      return this;
-    }
-    eq() {
-      return this;
-    }
-    limit() {
-      return this;
-    }
-    then(resolve: (value: { data: unknown; error: null }) => void) {
-      resolve({
-        data: [
-          {
-            id: 'buyer-1',
-            business_name: 'Acme Retail',
-            geography: { state: 'Delhi' },
-            credit_limit: 5000,
-          },
-        ],
-        error: null,
-      });
-    }
-  }
-  return {
-    createClientComponentClient: () => ({
-      schema: () => ({
-        from: () => new QueryMock(),
-      }),
-    }),
-  };
-});
 
 function baseBuyer(overrides: Partial<EstimateComposerBuyerContext> = {}): EstimateComposerBuyerContext {
   return {
@@ -111,7 +94,7 @@ function baseDocument(overrides: Partial<InvoiceComposerDocument> = {}): Invoice
     invoice_date: '2026-06-01',
     due_date: '2026-06-20',
     buyer_po_ref: '',
-    place_of_supply: 'Unknown',
+    place_of_supply: '',
     seller_note: '',
     freight: 0,
     discount_flat: 0,
@@ -141,6 +124,8 @@ const searchRow: InvoiceComposerProductSearchRow = {
   unit_price: 1180,
   default_uom: 'bottle',
   pack_size: 750,
+  mrp: 1500,
+  base_selling_price: 1200,
 };
 
 function renderComposer(props: React.ComponentProps<typeof DocComposerInvoice>) {
@@ -156,16 +141,7 @@ describe('DocComposerInvoice', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.sessionStorage.clear();
-    global.fetch = vi.fn(async (url: RequestInfo) => {
-      const u = String(url);
-      if (u.includes('/api/tenant/products/search')) {
-        return {
-          ok: true,
-          json: async () => ({ products: [searchRow] }),
-        } as Response;
-      }
-      return { ok: true, json: async () => ({ products: [] }) } as Response;
-    }) as typeof fetch;
+    useEstimateProductSearchMock.mockReturnValue({ data: [searchRow], isLoading: false });
 
     apiPostMock.mockResolvedValue({ ok: true, json: async () => ({ data: baseDocument() }) });
     apiPatchMock.mockResolvedValue({ ok: true, json: async () => ({ data: baseDocument() }) });
@@ -192,10 +168,8 @@ describe('DocComposerInvoice', () => {
     renderComposer({ mode: 'create' });
 
     expect(await screen.findByPlaceholderText(/Search buyer/i)).toBeInTheDocument();
-    const basicsStrip = document.querySelector('.doc-strip');
-    expect(basicsStrip).toBeTruthy();
-    expect(within(basicsStrip as HTMLElement).getByText('Invoice #')).toBeInTheDocument();
-    expect(within(basicsStrip as HTMLElement).getByText('INV-100')).toBeInTheDocument();
+    expect(screen.getByText('Invoice #')).toBeInTheDocument();
+    expect(screen.getByText('INV-100')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Send invoice/i })).toBeDisabled();
   });
 
@@ -212,6 +186,8 @@ describe('DocComposerInvoice', () => {
       on_hand: 24,
       qty: 1,
       unit_price: 1180,
+      mrp: 1500,
+      base_selling_price: 1200,
       disc_pct: 0,
       tax_pct: 18,
       line_total: 1392,
@@ -236,6 +212,8 @@ describe('DocComposerInvoice', () => {
             on_hand: 24,
             qty: 1,
             unit_price: 1180,
+            mrp: 1500,
+            base_selling_price: 1200,
             disc_pct: 0,
             tax_pct: 18,
             line_total: 1392,

@@ -15,6 +15,8 @@ export interface InvoiceComposerLineInput {
   on_hand: number;
   qty: number;
   unit_price: number;
+  mrp: number;
+  base_selling_price: number;
   disc_pct: number;
   tax_pct: number;
   line_total: number;

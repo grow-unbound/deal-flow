@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Settings · DealFlow</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="dialogs/colors_and_type.css" />
+  <link rel="stylesheet" href="dialogs/dialogs.css" />
+  <link rel="stylesheet" href="settings/settings.css" />
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; overflow: hidden; background: var(--bg-page); }
+    #root { height: 100vh; display: flex; flex-direction: column; }
+  </style>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Shared primitives first -->
+  <script type="text/babel" src="settings/SettingsShared.jsx"></script>
+  <!-- Individual pages -->
+  <script type="text/babel" src="settings/SettingsGeneral.jsx"></script>
+  <script type="text/babel" src="settings/SettingsTeam.jsx"></script>
+  <script type="text/babel" src="settings/SettingsFeatures.jsx"></script>
+  <script type="text/babel" src="settings/SettingsLocations.jsx"></script>
+  <script type="text/babel" src="settings/SettingsIntegrations.jsx"></script>
+  <script type="text/babel" src="settings/SettingsBilling.jsx"></script>
+
+  <script type="text/babel" data-presets="env,react">
+    const { useState } = React;
+
+    const MAIN_NAV = [
+      { id: 'dashboard', label: 'Dashboard', icon: 'barChart'    },
+      { id: 'brands',    label: 'Brands',    icon: 'layers'      },
+      { id: 'products',  label: 'Products',  icon: 'package'     },
+      { id: 'customers', label: 'Customers', icon: 'users'       },
+      { id: 'orders',    label: 'Orders',    icon: 'fileText'    },
+      { id: 'catalogs',  label: 'Catalogs',  icon: 'ticket'      },
+      { id: 'settings',  label: 'Settings',  icon: 'settings'    },
+    ];
+
+    const SUB_NAV = [
+      { id: 'general',      label: 'General',         icon: 'building'    },
+      { id: 'team',         label: 'Team',             icon: 'users'       },
+      { id: 'features',     label: 'Feature Modules',  icon: 'zap'         },
+      { id: 'locations',    label: 'Locations',        icon: 'mapPin'      },
+      { id: 'integrations', label: 'Integrations',     icon: 'link'        },
+      { id: 'billing',      label: 'Billing & Plan',   icon: 'creditCard'  },
+    ];
+
+    function App() {
+      const [page, setPage] = useState('general');
+      const [tier, setTier] = useState('starter');
+
+      // Restore last page from localStorage
+      React.useEffect(() => {
+        const saved = localStorage.getItem('df_settings_page');
+        if (saved && SUB_NAV.find(n => n.id === saved)) setPage(saved);
+        const savedTier = localStorage.getItem('df_settings_tier');
+        if (savedTier && ['starter','growth','scale'].includes(savedTier)) setTier(savedTier);
+      }, []);
+
+      function navigate(id) {
+        setPage(id);
+        localStorage.setItem('df_settings_page', id);
+      }
+      function changeTier(t) {
+        setTier(t);
+        localStorage.setItem('df_settings_tier', t);
+      }
+
+      const pages = {
+        general:      <SettingsGeneral tier={tier} />,
+        team:         <SettingsTeam tier={tier} />,
+        features:     <SettingsFeatures tier={tier} />,
+        locations:    <SettingsLocations tier={tier} />,
+        integrations: <SettingsIntegrations tier={tier} />,
+        billing:      <SettingsBilling tier={tier} />,
+      };
+
+      return (
+        <div style={{ height: '100vh', display: 'grid', gridTemplateColumns: '196px 1fr', overflow: 'hidden', fontFamily: 'var(--font-body)' }}>
+
+          {/* ── Main DealFlow sidebar ─────────────────────── */}
+          <div style={{ background: 'var(--cream-50)', borderRight: '1px solid var(--cream-300)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {/* Logo */}
+            <div style={{ padding: '16px 14px 13px', borderBottom: '1px solid var(--cream-300)', display: 'flex', alignItems: 'center', gap: 9 }}>
+              <div style={{ width: 27, height: 27, borderRadius: 7, background: 'var(--teal-500)', color: 'var(--cream-50)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 500, flexShrink: 0 }}>DF</div>
+              <span style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 500, color: 'var(--cream-900)' }}>DealFlow</span>
+            </div>
+
+            {/* Nav */}
+            <div style={{ flex: 1, padding: '10px 8px', display: 'flex', flexDirection: 'column', gap: 1, overflowY: 'auto' }}>
+              {MAIN_NAV.map(item => {
+                const active = item.id === 'settings';
+                return (
+                  <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 9px', borderRadius: 7, cursor: 'pointer', background: active ? 'var(--teal-500)' : 'transparent', color: active ? 'var(--cream-50)' : 'var(--cream-700)', fontSize: 13.5, fontWeight: active ? 600 : 400 }}>
+                    <SI name={item.icon} size={15} stroke={1.5} />
+                    {item.label}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* User badge */}
+            <div style={{ padding: '11px 12px', borderTop: '1px solid var(--cream-300)', display: 'flex', alignItems: 'center', gap: 9 }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--ember-100)', color: 'var(--ember-700)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, border: '1px solid var(--ember-200)', flexShrink: 0 }}>PR</div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--cream-900)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Phani Raju</div>
+                <div style={{ fontSize: 11, color: 'var(--cream-600)' }}>Admin</div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Settings area ─────────────────────────────── */}
+          <div style={{ display: 'grid', gridTemplateColumns: '216px 1fr', overflow: 'hidden' }}>
+
+            {/* Settings sub-nav */}
+            <div className="settings-subnav">
+              <div className="settings-subnav-label">Settings</div>
+              {SUB_NAV.map(item => (
+                <button key={item.id} onClick={() => navigate(item.id)}
+                  className={`settings-nav-item${page === item.id ? ' is-active' : ''}`}>
+                  <SI name={item.icon} size={15} stroke={1.5}
+                    color={page === item.id ? 'var(--cream-50)' : 'var(--cream-600)'} />
+                  {item.label}
+                </button>
+              ))}
+
+              {/* Demo: plan tier switcher */}
+              <div className="demo-tier-switcher">
+                <div className="demo-tier-label">Demo · Plan tier</div>
+                <div className="demo-tier-btns">
+                  {['starter','growth','scale'].map(t => (
+                    <button key={t} onClick={() => changeTier(t)}
+                      className={`demo-tier-btn${tier === t ? ' is-active' : ''}`}>
+                      {t.charAt(0).toUpperCase() + t.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Page content */}
+            <div className="settings-content">
+              {pages[page] || pages.general}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

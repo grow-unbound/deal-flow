@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, FormEvent, useRef, KeyboardEvent, ClipboardEvent } from 'react';
+import { Button } from '@/components/ui/button';
 
 interface OtpFormProps {
   phone: string;
@@ -83,13 +84,9 @@ export function OtpForm({ phone, onSubmit, loading = false, error }: OtpFormProp
         <p className="text-caption text-danger-500 bg-danger-50 px-3 py-2 rounded-md">{error}</p>
       )}
 
-      <button
-        type="submit"
-        disabled={loading || !isComplete}
-        className="w-full px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base disabled:opacity-50 disabled:cursor-not-allowed"
-      >
+      <Button type="submit" className="w-full" disabled={loading || !isComplete} haptic>
         {loading ? 'Verifying…' : 'Verify OTP'}
-      </button>
+      </Button>
     </form>
   );
 }

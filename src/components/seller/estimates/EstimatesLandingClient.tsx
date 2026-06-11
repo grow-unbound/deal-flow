@@ -1,8 +1,9 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Upload } from 'lucide-react';
+import { Upload, Plus, FileText } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { toast } from 'sonner';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
@@ -21,7 +22,8 @@ import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useTenantEstimates, type EstimateLandingRow, type TenantEstimatesResponse } from '@/hooks/useEstimates';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
-import { ErrorState } from '@/components/ui/empty-state';
+import { ErrorState, EmptyState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
 import { cn, formatCompactInr, formatDate } from '@/lib/utils';
 import { sellerLandingMetricSuffix, type SellerLandingPeriod } from '@/lib/seller-period';
 
@@ -331,6 +333,26 @@ function EstimatesLandingContent({
             />
 
             <LandingTable
+              showEmptyState={filteredRows.length === 0}
+              emptyState={
+                <EmptyState
+                  icon={<FileText size={28} strokeWidth={1.5} />}
+                  heading={search.trim() || activeChip !== 'All' ? 'No matching estimates' : 'No estimates yet'}
+                  description={
+                    search.trim() || activeChip !== 'All'
+                      ? 'Try a different search or status filter.'
+                      : 'Create an estimate to share pricing with a buyer.'
+                  }
+                  action={
+                    <Button variant="accent" asChild>
+                      <Link href="/estimates/new" className="inline-flex items-center gap-1.5">
+                        <Plus size={13} />
+                        Add an estimate
+                      </Link>
+                    </Button>
+                  }
+                />
+              }
               tableClassName="v2-table"
               columns={[
                 { label: 'Estimate Number', width: 160, className: 'px-5' },

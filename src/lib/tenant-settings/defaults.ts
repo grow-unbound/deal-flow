@@ -1,0 +1,56 @@
+import type { TenantSettingsNotifications } from '@/types/tenant-settings';
+
+/** Full JSONB defaults merged with DB row before view builders run. */
+export const DEFAULT_TENANT_SETTINGS_STORED = {
+  business: {
+    company_name: '',
+    gstin: '',
+    logo_url: null as string | null,
+    address: { line1: '', line2: '', city: '', state: '', pincode: '' },
+    phone: '',
+    email: '',
+  },
+  product_defaults: {
+    gst_rate: 18 as const,
+    uom: 'PCS',
+  },
+  orders: {
+    number_format: 'ORD-{YYYY}-{SEQ}',
+    inventory_lock_stage: 'sales_order' as const,
+    invoice_pdf_enabled: false,
+    features: {
+      enquiries: false,
+      sales_orders: false,
+      invoices: false,
+    },
+  },
+  buyer_app: {
+    enabled: false,
+    whatsapp_number: '',
+    share_link_expiry_enabled: false,
+    share_link_expiry_days: 90,
+    credit_limit_visible: true,
+    show_out_of_stock: true,
+  },
+  catalog: {
+    cohort_pricing_enabled: false,
+    price_visibility: 'discounted_only' as const,
+    catalog_publishing_enabled: false,
+    default_catalog_expiry_days: 0,
+  },
+  notifications: {
+    whatsapp: {
+      enquiry_received: true,
+      order_placed: true,
+      order_confirmed_to_buyer: true,
+      dispatch_to_buyer: true,
+      catalog_shared_to_buyer: true,
+    },
+  },
+};
+
+export function defaultNotifications(): TenantSettingsNotifications {
+  return {
+    whatsapp: { ...DEFAULT_TENANT_SETTINGS_STORED.notifications.whatsapp },
+  };
+}

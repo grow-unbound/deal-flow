@@ -1,17 +1,17 @@
 'use client';
 
-import { Search, Shuffle } from 'lucide-react';
+import { Search } from 'lucide-react';
+import { useRef, useState } from 'react';
 
 import { EntityAvatar } from '@/components/seller/layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { EstimateComposerBuyerContext } from '@/types/estimate-composer';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useOverlayPlacement } from '@/hooks/useOverlayPlacement';
+import type { EstimateComposerBuyerContext, EstimateComposerPriceListOption } from '@/types/estimate-composer';
 import { cn, formatCompactInr } from '@/lib/utils';
 
-type BuyerCardEmptyRow = Pick<
-  EstimateComposerBuyerContext,
-  'id' | 'business_name' | 'place_of_supply' | 'credit_used'
->;
+type BuyerCardEmptyRow = Pick<EstimateComposerBuyerContext, 'id' | 'business_name' | 'place_of_supply'>;
 
 export function BuyerCardEmpty({
   query,
@@ -33,12 +33,14 @@ export function BuyerCardEmpty({
   onSelectBuyer: (buyerId: string) => void;
 }) {
   const displayRows = results ?? recentBuyers ?? [];
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const placement = useOverlayPlacement(Boolean(searchOpen), anchorRef);
 
   return (
     <aside className="rounded-[14px] border border-cream-300 bg-white p-4">
       <p className="text-[13px] font-semibold text-cream-950">Buyer</p>
       <p className="mt-1 text-[12px] leading-[1.55] text-cream-700">Pick a buyer to start pricing and credit checks.</p>
-      <div className="relative mt-4">
+      <div ref={anchorRef} className="relative mt-4">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cream-500" />
         <Input
           autoFocus
@@ -52,11 +54,16 @@ export function BuyerCardEmpty({
           placeholder="Search buyer (Cmd+K)"
         />
         {searchOpen ? (
-          <div className="inline-search-overlay absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-[12px] border border-cream-300 bg-white shadow-[0_18px_40px_rgba(34,52,43,0.12)]">
+          <div
+            className={cn(
+              'inline-search-overlay absolute left-0 right-0 z-20 overflow-hidden rounded-[12px] border border-cream-300 bg-white shadow-[0_18px_40px_rgba(34,52,43,0.12)]',
+              placement === 'below' ? 'top-full mt-2' : 'bottom-full mb-2',
+            )}
+          >
             <div className="border-b border-cream-200 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-600">
               {query.trim().length > 0 ? 'Matching buyers' : 'Recent buyers'}
             </div>
-            <div className="max-h-72 overflow-auto p-2">
+            <div className="max-h-[220px] overflow-auto p-2">
               {searchLoading ? (
                 <div className="space-y-2">
                   {Array.from({ length: 3 }).map((_, index) => (
@@ -76,9 +83,7 @@ export function BuyerCardEmpty({
                       <EntityAvatar initials={initialsForBuyer(buyer.business_name)} hue="teal" size={32} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[13px] font-medium text-cream-950">{buyer.business_name}</p>
-                        <p className="truncate text-[11px] text-cream-600">
-                          {buyer.place_of_supply} · Outstanding {formatCompactInr(buyer.credit_used)}
-                        </p>
+                        <p className="truncate text-[11px] text-cream-600">{buyer.place_of_supply}</p>
                       </div>
                     </button>
                   ))}
@@ -100,16 +105,31 @@ export function BuyerCardFilled({
   previewTotal,
   paymentTermsValue,
   readOnly = false,
-  onPaymentTermsChange,
-  onSwap,
+  onPaymentTermsChange: _onPaymentTermsChange,
+  onChangeBuyer,
+  priceListOptions = [],
+  selectedPriceListId,
+  onPriceListChange,
 }: {
   buyer: EstimateComposerBuyerContext;
   previewTotal: number;
   paymentTermsValue: string;
   readOnly?: boolean;
   onPaymentTermsChange?: (value: string) => void;
-  onSwap: () => void;
+  onChangeBuyer: () => void;
+  priceListOptions?: EstimateComposerPriceListOption[];
+  selectedPriceListId?: string | null;
+  onPriceListChange?: (value: string | null) => void;
 }) {
+  void _onPaymentTermsChange;
+  const [pricelistChangeMode, setPricelistChangeMode] = useState(false);
+  const hasPricelistControl = Boolean(onPriceListChange);
+
+  const displayPricelistName =
+    selectedPriceListId == null
+      ? (buyer.active_pricelist?.name ?? 'Base selling price')
+      : priceListOptions.find((o) => o.id === selectedPriceListId)?.name ?? buyer.active_pricelist?.name ?? 'Pricelist';
+
   return (
     <aside className="buyer-card rounded-[14px] border border-cream-300 bg-white p-4">
       <div className="flex items-start gap-3">
@@ -119,9 +139,8 @@ export function BuyerCardFilled({
           <p className="mt-1 truncate font-mono text-[11px] text-cream-600">{buyer.gstin ?? 'GSTIN not available'}</p>
         </div>
         {!readOnly ? (
-          <Button type="button" variant="ghost" size="sm" className="swap gap-2" onClick={onSwap}>
-            <Shuffle className="h-4 w-4" />
-            Swap
+          <Button type="button" variant="ghost" size="sm" className="swap gap-2 shrink-0" onClick={onChangeBuyer} aria-label="Change buyer">
+            Change
           </Button>
         ) : null}
       </div>
@@ -132,26 +151,60 @@ export function BuyerCardFilled({
       </div>
 
       <div className="mt-4">
-        <CreditBar
-          used={buyer.credit_used}
-          limit={buyer.credit_limit}
-          preview={previewTotal}
-        />
+        <CreditBar used={buyer.credit_used} limit={buyer.credit_limit} preview={previewTotal} />
       </div>
 
-      <div className="mt-4 space-y-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-600">Pricelist</p>
-          <p className="mt-1 text-[12px] text-cream-800">{buyer.active_pricelist?.name ?? 'Base selling price'}</p>
+      <div className="mt-4">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-600">Payment terms</p>
+        <p className="mt-1 text-[12px] text-cream-800">{paymentTermsValue}</p>
+      </div>
+
+      <div className="mt-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-600">Pricelist</p>
+            {!readOnly && pricelistChangeMode && hasPricelistControl ? (
+              <Select
+                value={selectedPriceListId ?? '__base__'}
+                onValueChange={(value) => {
+                  onPriceListChange?.(value === '__base__' ? null : value);
+                  setPricelistChangeMode(false);
+                }}
+              >
+                <SelectTrigger className="mt-2 h-9">
+                  <SelectValue placeholder="Select a pricelist" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__base__">Base selling price</SelectItem>
+                  {priceListOptions.map((option) => (
+                    <SelectItem key={option.id} value={option.id}>
+                      {option.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <p className="mt-1 text-[12px] text-cream-800">{displayPricelistName}</p>
+            )}
+          </div>
+          {!readOnly && hasPricelistControl ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 gap-1 px-2 text-[11px]"
+              onClick={() => setPricelistChangeMode((current) => !current)}
+              aria-label={pricelistChangeMode ? 'Done changing pricelist' : 'Change pricelist'}
+            >
+              {pricelistChangeMode ? 'Done' : 'Change'}
+            </Button>
+          ) : null}
         </div>
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-600">Sales agent</p>
-          <p className="mt-1 text-[12px] text-cream-800">{buyer.sales_agent_name ?? 'Unassigned'}</p>
-        </div>
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-600">Payment terms</p>
-          <p className="mt-1 text-[12px] text-cream-800">{paymentTermsValue}</p>
-        </div>
+      </div>
+
+      <div className="mt-4">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-600">Sales agent</p>
+        <p className="mt-1 text-[12px] text-cream-800">{buyer.sales_agent_name ?? 'Unassigned'}</p>
       </div>
     </aside>
   );
@@ -190,10 +243,29 @@ export function CreditBar({
   limit: number;
   preview: number;
 }) {
-  const safeLimit = Math.max(limit, 1);
-  const usedPct = Math.min((used / safeLimit) * 100, 100);
-  const previewPctRaw = ((used + preview) / safeLimit) * 100;
-  const previewPct = Math.min(previewPctRaw, 100);
+  if (limit <= 0) {
+    const tone = used + preview > 0 ? 'danger' : 'success';
+    return (
+      <div>
+        <div className="flex items-center justify-between text-[12px] text-cream-700">
+          <span>Credit headroom</span>
+          <span className="font-mono">
+            {formatCompactInr(used)} / ₹0
+          </span>
+        </div>
+        <div className="credit-bar mt-2 h-2 overflow-hidden rounded-full bg-cream-200">
+          <div className={cn('h-full rounded-full credit-bar__used', `credit-bar__used--${tone}`)} style={{ width: '100%' }} />
+        </div>
+        <p className="mt-1 text-[11px] text-cream-600">Available ₹0</p>
+      </div>
+    );
+  }
+
+  const usedPct = Math.min((used / limit) * 100, 100);
+  const previewTotal = used + preview;
+  const previewPctRaw = (previewTotal / limit) * 100;
+  const barFull = previewPctRaw >= 100;
+  const previewPct = barFull ? 100 : Math.min(previewPctRaw, 100);
   const tone = previewPctRaw > 100 ? 'danger' : previewPctRaw >= 80 ? 'warning' : 'success';
 
   return (
@@ -206,11 +278,11 @@ export function CreditBar({
       </div>
       <div className="credit-bar mt-2 h-2 overflow-hidden rounded-full bg-cream-200">
         <div className="relative h-full">
-        <div className={cn('h-full rounded-full credit-bar__used', `credit-bar__used--${tone}`)} style={{ width: `${usedPct}%` }} />
-        <div
-          className={cn('credit-bar__preview absolute h-2 rounded-full', `credit-bar__preview--${tone}`)}
-          style={{ width: `${Math.max(previewPct - usedPct, 0)}%`, marginLeft: `${usedPct}%` }}
-        />
+          <div className={cn('h-full rounded-full credit-bar__used', `credit-bar__used--${tone}`)} style={{ width: `${usedPct}%` }} />
+          <div
+            className={cn('credit-bar__preview absolute h-2 rounded-full', `credit-bar__preview--${tone}`)}
+            style={{ width: `${Math.max(previewPct - usedPct, 0)}%`, marginLeft: `${usedPct}%` }}
+          />
         </div>
       </div>
       <p className="mt-1 text-[11px] text-cream-600">Available {formatCompactInr(Math.max(limit - used, 0))}</p>

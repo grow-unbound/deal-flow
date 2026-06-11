@@ -536,7 +536,7 @@ export async function POST(request: NextRequest) {
         valid_until: validUntil,
         expires_at: `${validUntil}T23:59:59.000Z`,
         buyer_po_ref: null,
-        place_of_supply: 'Unknown',
+        place_of_supply: '',
         notes: null,
         discount_flat: 0,
         freight: 0,

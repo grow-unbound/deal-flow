@@ -20,6 +20,7 @@ vi.mock('@/hooks/useEstimates', () => ({
   useConvertEstimateToOrder: (...args: unknown[]) => useConvertMock(...args),
   useVoidEstimate: (...args: unknown[]) => useVoidMock(...args),
   useDuplicateEstimate: (...args: unknown[]) => useDupMock(...args),
+  useSendEstimate: () => ({ mutateAsync: vi.fn(), isPending: false }),
   seedEstimateComposerCache: (...args: unknown[]) => seedEstimateComposerCacheMock(...args),
 }));
 
@@ -85,6 +86,8 @@ function basePayload(overrides: Partial<TenantEstimateDetailResponse> = {}): Ten
         on_hand: 100,
         qty: 2,
         unit_price: 5000,
+        mrp: 0,
+        base_selling_price: 5000,
         disc_pct: 0,
         tax_pct: 18,
         line_total: 11_800,
@@ -146,17 +149,13 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
     });
   });
 
-  it('draft shows timeline, what is next copy, and title chip', () => {
+  it('draft shows title status chip', () => {
     renderWithQueryClient(<EstimateDetailPage id="est-1" />);
-    const band = document.querySelector('.doc-status-band');
-    expect(band).toBeTruthy();
-    expect(band).toHaveTextContent(/What's next/i);
-    expect(band).toHaveTextContent(/buyer is notified only after send/i);
-    expect(screen.getByLabelText('Estimate progress')).toHaveTextContent('Draft');
     expect(document.querySelector('.doc-status-chip')).toHaveTextContent(/Draft/i);
+    expect(screen.queryByRole('button', { name: /convert to so/i })).toBeNull();
   });
 
-  it('sent shows Sent chip, sent timestamp, and viewed line when metadata present', () => {
+  it('sent shows Sent chip in title row', () => {
     useEstimateDetailMock.mockReturnValue({
       data: basePayload({
         status: 'sent',
@@ -171,9 +170,7 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
       error: null,
     });
     renderWithQueryClient(<EstimateDetailPage id="est-1" />);
-    const band = document.querySelector('.doc-status-band');
-    expect(band).toHaveTextContent(/Sent/i);
-    expect(band).toHaveTextContent(/Viewed by Priya/i);
+    expect(document.querySelector('.doc-status-chip')).toHaveTextContent(/Sent/i);
   });
 
   it('view frame keeps inputs disabled or read-only', () => {
@@ -226,9 +223,10 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
     expect(pushMock).toHaveBeenCalledWith('/estimates/est-1/edit');
   });
 
-  it('draft title action shows Edit & send', () => {
+  it('draft title action shows Send estimate outline button', () => {
     renderWithQueryClient(<EstimateDetailPage id="est-1" />);
-    expect(screen.getByRole('button', { name: /edit & send/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /send estimate/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /edit estimate/i })).toBeInTheDocument();
   });
 
   it('Convert appears only for sent and opens modal', async () => {

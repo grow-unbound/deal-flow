@@ -74,7 +74,7 @@ export function PageHeader({
         ) : (
           <button
             type="button"
-            className="inline-flex items-center gap-1 rounded-[8px] border border-cream-400 bg-white px-3 py-[7px] text-[12.5px] text-cream-800 hover:bg-cream-100"
+            className="inline-flex items-center gap-2 rounded-[8px] border border-cream-400 bg-white px-3 py-[7px] text-[12.5px] text-cream-800 hover:bg-cream-100"
           >
             <span className="text-cream-700">Showing</span>
             <span className="font-semibold">{horizon}</span>
@@ -82,12 +82,12 @@ export function PageHeader({
           </button>
         )}
         {secondary ? (
-          <Button variant="secondary" size="sm" onClick={secondary.onClick}>
+          <Button variant="secondary" onClick={secondary.onClick}>
             {secondary.icon}
             {secondary.label}
           </Button>
         ) : null}
-        <Button variant="accent" size="sm" onClick={onPrimaryClick}>
+        <Button variant="accent" onClick={onPrimaryClick}>
           <Plus size={13} />
           {primary}
         </Button>

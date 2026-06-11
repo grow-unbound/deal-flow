@@ -49,7 +49,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const { data: inv, error: invErr } = await db
       .schema('app')
       .from('invoices')
-      .select('id, tenant_id, status, due_date, total_amount, outstanding_balance, amount_paid, paid_at')
+      .select('id, tenant_id, buyer_id, status, due_date, total_amount, outstanding_balance, amount_paid, paid_at')
       .eq('id', id)
       .is('deleted_at', null)
       .maybeSingle();
@@ -118,6 +118,25 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       diff: { amount: payAmount, method: parsed.data.payment_method, reference: parsed.data.payment_reference },
       ts: new Date().toISOString(),
     });
+
+    const buyerId = inv.buyer_id as string | null | undefined;
+    if (buyerId) {
+      const ref = parsed.data.payment_reference?.trim();
+      const { error: payInsertErr } = await db.schema('app').from('payments').insert({
+        tenant_id: claims.tenant_id,
+        buyer_id: buyerId,
+        invoice_id: id,
+        amount: payAmount,
+        mode: parsed.data.payment_method,
+        paid_at: paidAtIso,
+        external_ref: ref || null,
+        created_by: claims.sub,
+        updated_by: claims.sub,
+      });
+      if (payInsertErr) {
+        console.error('[PATCH invoice pay] payments insert', payInsertErr);
+      }
+    }
 
     return NextResponse.json({ data: { id, amount_paid: nextPaid, outstanding_balance: nextOutstanding, status: nextStatus } });
   } catch (e) {

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { Upload } from 'lucide-react';
+import { Upload, Plus, Package } from 'lucide-react';
 
 import { FeatureGate } from '@/components/FeatureGate';
 import {
@@ -17,7 +17,8 @@ import {
   StatusTag,
   V3CalloutPanel,
 } from '@/components/seller/layout';
-import { ErrorState } from '@/components/ui/empty-state';
+import { ErrorState, EmptyState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
@@ -296,6 +297,24 @@ function ProductsLandingContent({
       )}
 
       <LandingTable
+        showEmptyState={filtered.length === 0}
+        emptyState={
+          <EmptyState
+            icon={<Package size={28} strokeWidth={1.5} />}
+            heading={search.trim() || activeChip !== 'All brands' ? 'No matching products' : 'No products in your catalog'}
+            description={
+              search.trim() || activeChip !== 'All brands'
+                ? 'Try a different search or brand filter.'
+                : 'Add products to start tracking inventory and revenue.'
+            }
+            action={
+              <Button variant="accent" onClick={() => setAddProductOpen(true)} className="gap-1.5">
+                <Plus size={13} />
+                Add a product
+              </Button>
+            }
+          />
+        }
         columns={[
           { label: 'Product', width: 340, className: 'px-5' },
           { label: 'Brand', className: 'px-5' },

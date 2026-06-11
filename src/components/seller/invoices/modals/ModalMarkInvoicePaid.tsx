@@ -1,7 +1,7 @@
 'use client';
 
 import { Banknote } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -16,9 +16,20 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { roundMoney } from '@/lib/currency-input';
 import { toDatetimeLocalValue } from '@/lib/date-utils';
+import { formatInrInput, parseInrInput } from '@/lib/utils';
 
 const METHODS = ['UPI', 'Bank transfer', 'Cheque', 'Cash', 'Other'] as const;
+
+function formatInrDecimals(amount: number): string {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(roundMoney(amount));
+}
 
 export function ModalMarkInvoicePaid({
   open,
@@ -40,27 +51,32 @@ export function ModalMarkInvoicePaid({
 }) {
   const [paidAtLocal, setPaidAtLocal] = useState('');
   const [reference, setReference] = useState('');
-  const [amount, setAmount] = useState(String(amountOutstanding));
+  const roundedOutstanding = roundMoney(amountOutstanding);
+  const [amount, setAmount] = useState(formatInrInput(String(roundedOutstanding)));
   const [method, setMethod] = useState<string>(METHODS[0]);
 
   useEffect(() => {
     if (open) {
       setPaidAtLocal(toDatetimeLocalValue(new Date()));
       setReference('');
-      setAmount(String(amountOutstanding));
+      setAmount(formatInrInput(String(roundMoney(amountOutstanding))));
       setMethod(METHODS[0]);
     }
   }, [open, amountOutstanding]);
 
+  const parsedAmount = useMemo(() => parseInrInput(amount), [amount]);
+  const exceedsDue = parsedAmount != null && parsedAmount > roundedOutstanding + 0.01;
+  const canSubmit = Boolean(paidAtLocal) && parsedAmount != null && parsedAmount > 0 && !exceedsDue;
+
   async function handleSubmit() {
     const parsed = new Date(paidAtLocal);
     if (Number.isNaN(parsed.getTime())) return;
-    const amt = Number(amount);
-    if (!Number.isFinite(amt) || amt <= 0) return;
-    if (amt > amountOutstanding + 0.01) return;
+    const amt = parseInrInput(amount);
+    if (amt == null || amt <= 0) return;
+    if (amt > roundedOutstanding + 0.01) return;
     try {
       await onConfirm({
-        amount: amt,
+        amount: roundMoney(amt),
         payment_method: method,
         payment_reference: reference.trim() || undefined,
         paid_at: parsed.toISOString(),
@@ -105,18 +121,42 @@ export function ModalMarkInvoicePaid({
               <Label htmlFor="inv-pay-amt" className="text-[13px]">
                 Amount
               </Label>
-              <Button type="button" variant="ghost" size="sm" className="h-7 text-[11px]" onClick={() => setAmount(String(amountOutstanding))}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-[11px]"
+                onClick={() => setAmount(formatInrInput(String(roundedOutstanding)))}
+              >
                 Full amount
               </Button>
             </div>
-            <Input id="inv-pay-amt" type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <div className="flex items-stretch">
+              <span className="inline-flex items-center rounded-l-[8px] border border-r-0 border-cream-400 bg-cream-200 px-3 text-[13.5px] text-cream-700 select-none">
+                ₹
+              </span>
+              <Input
+                id="inv-pay-amt"
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(formatInrInput(e.target.value))}
+                className="rounded-l-none font-mono tabular-nums tracking-wide"
+                aria-invalid={exceedsDue}
+                aria-describedby={exceedsDue ? 'inv-pay-amt-warning' : undefined}
+              />
+            </div>
+            {exceedsDue ? (
+              <div id="inv-pay-amt-warning" className="callout callout--warning text-[12px] leading-[1.5]" role="alert">
+                Payment exceeds amount due ({formatInrDecimals(roundedOutstanding)}). Use &ldquo;Full amount&rdquo; or enter up to the outstanding balance.
+              </div>
+            ) : null}
           </div>
         </DialogBody>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
             Cancel
           </Button>
-          <Button type="button" className="gap-2" onClick={() => void handleSubmit()} disabled={isPending || !paidAtLocal}>
+          <Button type="button" className="gap-2" onClick={() => void handleSubmit()} disabled={isPending || !canSubmit}>
             <Banknote className="h-4 w-4" />
             {isPending ? 'Saving…' : 'Record payment'}
           </Button>

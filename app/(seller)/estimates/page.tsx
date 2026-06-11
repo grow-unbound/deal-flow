@@ -1,6 +1,6 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-
+import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { EstimatesLandingClient } from '@/components/seller/estimates/EstimatesLandingClient';
 import type { TenantEstimatesResponse } from '@/types/tenant-estimates';
 import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
@@ -44,7 +44,7 @@ export default async function EstimatesPage({
     getFlag(FLAGS.ORDER_MANAGEMENT, tenantId),
     getFlag(FLAGS.ESTIMATES, tenantId),
   ]);
-  if (!orderMgmt || !estimates) redirect('/dashboard');
+  if (!orderMgmt || !estimates) return <FeatureForbiddenPage />;
 
   const period = await resolveSellerLandingPeriod(searchParams);
   const initialData = await getEstimatesInitialData(period);

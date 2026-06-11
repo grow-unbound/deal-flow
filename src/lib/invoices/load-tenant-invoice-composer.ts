@@ -1,4 +1,5 @@
 import { computePlaceOfSupplyFromBuyer } from '@/lib/sales-orders/compute-place-of-supply';
+import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
 import type { EstimateComposerBuyerContext } from '@/types/estimate-composer';
 import type { InvoiceComposerDocument, InvoiceComposerLineInput } from '@/types/invoice-composer';
 
@@ -24,7 +25,7 @@ export async function loadInvoiceDocument(
     .schema('app')
     .from('invoices')
     .select(
-      'id, tenant_id, buyer_id, order_id, estimate_id, invoice_number, status, invoice_date, due_date, sent_at, sent_channel, subtotal, tax_amount, total_amount, discount_flat, freight, round_off, buyer_po_ref, notes, created_at',
+      'id, tenant_id, buyer_id, order_id, estimate_id, invoice_number, status, invoice_date, due_date, sent_at, sent_channel, subtotal, tax_amount, total_amount, discount_flat, freight, round_off, buyer_po_ref, notes, created_at, created_by, place_of_supply',
     )
     .eq('id', id)
     .is('deleted_at', null)
@@ -76,7 +77,7 @@ export async function loadInvoiceDocument(
       ? await db
           .schema('app')
           .from('tenant_products')
-          .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom, pack_size, base_selling_price')
+          .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom, pack_size, base_selling_price, mrp')
           .in('id', productIds)
           .eq('tenant_id', tenantId)
       : { data: [] as Array<Record<string, unknown>> };
@@ -171,6 +172,8 @@ export async function loadInvoiceDocument(
       on_hand: inventoryMap.get(row.tenant_product_id as string) ?? 0,
       qty: Number(row.qty ?? 0),
       unit_price: Number(row.unit_price ?? 0),
+      mrp: Number(product?.mrp ?? 0),
+      base_selling_price: Number(product?.base_selling_price ?? 0),
       disc_pct: Number(row.disc_pct ?? 0),
       tax_pct: Number(row.tax_pct ?? product?.gst_rate ?? master?.gst_rate ?? 0),
       line_total: Number(row.line_total ?? 0),
@@ -240,6 +243,11 @@ export async function loadInvoiceDocument(
     linkedEstimateNumber = (est?.estimate_number as string | null | undefined) ?? null;
   }
 
+  const createdById = typeof inv.created_by === 'string' ? inv.created_by : null;
+  const salesAgentName = createdById
+    ? ((await getAuthUserDisplayNameMap([createdById])).get(createdById) ?? null)
+    : null;
+
   const geo = (buyer?.geography as Record<string, unknown> | null | undefined) ?? null;
   const buyerContext: EstimateComposerBuyerContext | null = buyer
     ? {
@@ -260,7 +268,7 @@ export async function loadInvoiceDocument(
         credit_used: creditUsed,
         credit_available: creditAvailable,
         active_pricelist: activePricelist,
-        sales_agent_name: null,
+        sales_agent_name: salesAgentName,
       }
     : null;
 
@@ -273,7 +281,7 @@ export async function loadInvoiceDocument(
     invoice_date: isoDateValue(inv.invoice_date as string | null | undefined, fallbackDate),
     due_date: isoDateValue(inv.due_date as string | null | undefined, null as unknown as string) || null,
     buyer_po_ref: String(inv.buyer_po_ref ?? ''),
-    place_of_supply: buyerContext?.place_of_supply ?? 'Unknown',
+    place_of_supply: String(inv.place_of_supply ?? ''),
     seller_note: String(inv.notes ?? ''),
     freight: Number(inv.freight ?? 0),
     discount_flat: Number(inv.discount_flat ?? 0),

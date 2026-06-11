@@ -1,5 +1,6 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { SalesOrdersLandingClient } from '@/components/seller/sales-orders/SalesOrdersLandingClient';
 import type { TenantOrdersResponse } from '@/hooks/useOrders';
 import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
@@ -43,7 +44,7 @@ export default async function SalesOrdersPage({
     getFlag(FLAGS.ORDER_MANAGEMENT, tenantId),
     getFlag(FLAGS.SALES_ORDERS, tenantId),
   ]);
-  if (!orderMgmt || !salesOrders) redirect('/dashboard');
+  if (!orderMgmt || !salesOrders) return <FeatureForbiddenPage />;
 
   const period = await resolveSellerLandingPeriod(searchParams);
   const initialData = await getSalesOrdersInitialData(period);

@@ -1,6 +1,8 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
@@ -248,8 +250,12 @@ export function useToggleCustomerStatusOptimistic(id: string) {
 
       return { snapshots };
     },
-    onError: (_error, _action, context) => {
+    onError: (error, _action, context) => {
       rollbackSnapshots(queryClient, context?.snapshots);
+      toast.error(error instanceof Error ? error.message : 'Failed to update status');
+    },
+    onSuccess: (_data, action) => {
+      toast.success(action === 'reactivate' ? 'Customer reactivated' : 'Customer deactivated');
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-customer-detail', id] });
@@ -307,8 +313,12 @@ export function useCreateCustomerOptimistic() {
 
       return { snapshots };
     },
-    onError: (_, __, context) => {
+    onError: (error, __, context) => {
       rollbackSnapshots(queryClient, context?.snapshots);
+      toast.error(error instanceof Error ? error.message : 'Failed to create customer');
+    },
+    onSuccess: () => {
+      toast.success('Customer created');
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-customers'] });

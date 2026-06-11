@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
 import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
@@ -92,9 +93,13 @@ export function useEstimateAction(estimateId: string) {
       return json.data;
     },
     onSuccess: () => {
+      toast.success('Estimate updated');
       void qc.invalidateQueries({ queryKey: ['tenant-estimate-detail', estimateId] });
       void qc.invalidateQueries({ queryKey: ['tenant-estimate-composer', estimateId] });
       void qc.invalidateQueries({ queryKey: ['tenant-estimates'] });
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : 'Action failed');
     },
   });
 }
@@ -111,9 +116,13 @@ export function useConvertEstimateToOrder(estimateId: string) {
       return (await res.json()) as { data: Record<string, unknown> };
     },
     onSuccess: () => {
+      toast.success('Converted to order');
       void qc.invalidateQueries({ queryKey: ['tenant-estimate-detail', estimateId] });
       void qc.invalidateQueries({ queryKey: ['tenant-estimate-composer', estimateId] });
       void qc.invalidateQueries({ queryKey: ['tenant-estimates'] });
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : 'Convert failed');
     },
   });
 }
@@ -150,6 +159,10 @@ export function useVoidEstimate(estimateId: string) {
       if (ctx?.prevComposer) {
         qc.setQueryData(['tenant-estimate-composer', estimateId], ctx.prevComposer);
       }
+      toast.error(_err instanceof Error ? _err.message : 'Void failed');
+    },
+    onSuccess: () => {
+      toast.success('Estimate voided');
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['tenant-estimate-detail', estimateId] });
@@ -171,7 +184,11 @@ export function useDuplicateEstimate(estimateId: string) {
       return (await res.json()) as { data: Record<string, unknown> };
     },
     onSuccess: () => {
+      toast.success('Estimate duplicated');
       void qc.invalidateQueries({ queryKey: ['tenant-estimates'] });
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : 'Duplicate failed');
     },
   });
 }
@@ -187,7 +204,11 @@ export function useEstimateSellerNote(estimateId: string) {
       }
     },
     onSuccess: () => {
+      toast.success('Note saved');
       void qc.invalidateQueries({ queryKey: ['tenant-estimate-detail', estimateId] });
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : 'Save failed');
     },
   });
 }
@@ -235,7 +256,29 @@ export function useSendEstimate(estimateId: string | null) {
       }
       return (await res.json()) as { data: { id: string } };
     },
-    onSuccess: (_payload) => {
+    onMutate: async (payload) => {
+      if (!estimateId) return {};
+      await qc.cancelQueries({ queryKey: ['tenant-estimate-composer', estimateId] });
+      const prev = qc.getQueryData<EstimateComposerDocument>(['tenant-estimate-composer', estimateId]);
+      const sentAt = new Date().toISOString();
+      if (prev) {
+        qc.setQueryData<EstimateComposerDocument>(['tenant-estimate-composer', estimateId], {
+          ...prev,
+          status: 'sent',
+          sent_at: sentAt,
+          sent_channel: payload.channel,
+        });
+      }
+      return { prev };
+    },
+    onError: (e, _p, ctx) => {
+      if (estimateId && ctx?.prev) {
+        qc.setQueryData(['tenant-estimate-composer', estimateId], ctx.prev);
+      }
+      toast.error(e instanceof Error ? e.message : 'Failed to send estimate');
+    },
+    onSuccess: () => {
+      toast.success('Estimate sent');
       if (!estimateId) return;
       void qc.invalidateQueries({ queryKey: ['tenant-estimate-composer', estimateId] });
       void qc.invalidateQueries({ queryKey: ['tenant-estimate-detail', estimateId] });
