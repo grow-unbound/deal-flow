@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
+import { PermissionDenied } from '@/components/auth/PermissionDenied';
 import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
 import {
   DocumentBasicsStrip,
@@ -453,7 +454,7 @@ export function DocComposerInvoice({
 
   if (isError) {
     if (error instanceof Error && error.message === 'forbidden') {
-      return <FeatureDisabledState />;
+      return <PermissionDenied />;
     }
     return (
       <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6">
@@ -588,9 +589,8 @@ export function DocComposerInvoice({
             setSendOpen(false);
             router.push(`/invoices/${targetId}`);
           },
-          onError: (mutationError) => {
+          onError: () => {
             resetLeaving();
-            toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to send invoice');
           },
         });
         return;

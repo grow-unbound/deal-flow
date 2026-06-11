@@ -110,6 +110,13 @@
     text-rendering: optimizeLegibility;
   }
 
+  button:not(:disabled),
+  a[href],
+  [role='button']:not([aria-disabled='true']) {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
   h1, h2, h3 {
     font-family: var(--font-display);
     font-weight: 400;
@@ -183,19 +190,19 @@
 
 @layer components {
   .cockpit-btn {
-    @apply inline-flex items-center gap-2 rounded-[8px] border px-3 py-[7px] text-[12.5px] font-medium transition-colors;
+    @apply inline-flex items-center gap-2 rounded-[8px] border px-3 py-[7px] text-[12.5px] font-medium touch-manipulation transition-all duration-fast ease-standard active:scale-[0.98];
   }
 
   .cockpit-btn-primary {
-    @apply border-teal-500 bg-teal-500 text-cream-50 hover:bg-teal-600 hover:border-teal-600;
+    @apply border-teal-500 bg-teal-500 text-cream-50 hover:bg-teal-600 hover:border-teal-600 active:bg-teal-700 active:border-teal-700;
   }
 
   .cockpit-btn-secondary {
-    @apply border-cream-400 bg-white text-teal-700 hover:border-cream-500 hover:bg-cream-100;
+    @apply border-cream-400 bg-white text-teal-700 hover:border-cream-500 hover:bg-cream-100 active:bg-cream-200;
   }
 
   .cockpit-btn-ghost {
-    @apply border-transparent bg-transparent text-cream-800 hover:bg-cream-200;
+    @apply border-transparent bg-transparent text-cream-800 hover:bg-cream-200 active:bg-cream-300;
   }
 
   .cockpit-btn-sm {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api-fetch';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
@@ -375,6 +376,10 @@ export function useSaveCohortComposer(cohortId?: string) {
           };
         });
       }
+      toast.success(cohortId ? 'Cohort saved' : 'Cohort created');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Could not save cohort');
     },
   });
 }
@@ -475,7 +480,13 @@ export function useUpdateCohortDetail(id: string) {
 
       return { snapshots };
     },
-    onError: (_error, _payload, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
+    onError: (error, _payload, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      toast.error(error instanceof Error ? error.message : 'Could not update cohort');
+    },
+    onSuccess: () => {
+      toast.success('Cohort updated');
+    },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['cohort-detail', id] });
       queryClient.invalidateQueries({ queryKey: ['cohorts-landing'] });
@@ -502,6 +513,10 @@ export function useArchiveCohortDetail(id: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cohorts-landing'] });
       queryClient.invalidateQueries({ queryKey: ['cohort-detail', id] });
+      toast.success('Cohort archived');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Could not archive cohort');
     },
   });
 }

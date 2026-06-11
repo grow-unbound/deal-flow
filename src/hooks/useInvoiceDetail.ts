@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
 import { apiFetch } from '@/lib/api-fetch';
 import { roundMoney } from '@/lib/currency-input';
@@ -53,8 +54,12 @@ export function useSendInvoice(id: string) {
       }
       return { prev };
     },
-    onError: (_e, _b, ctx) => {
+    onError: (e, _b, ctx) => {
       if (ctx?.prev) qc.setQueryData(['tenant-invoice', id], ctx.prev);
+      toast.error(e instanceof Error ? e.message : 'Failed to send invoice');
+    },
+    onSuccess: () => {
+      toast.success('Invoice sent');
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['tenant-invoice', id] });
@@ -117,8 +122,12 @@ export function useMarkInvoicePaid(id: string) {
       });
       return { prev };
     },
-    onError: (_e, _b, ctx) => {
+    onError: (e, _b, ctx) => {
       if (ctx?.prev) qc.setQueryData(['tenant-invoice', id], ctx.prev);
+      toast.error(e instanceof Error ? e.message : 'Failed to record payment');
+    },
+    onSuccess: () => {
+      toast.success('Payment recorded');
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['tenant-invoice', id] });
@@ -154,8 +163,12 @@ export function useVoidInvoice(id: string) {
       }
       return { prev };
     },
-    onError: (_e, _b, ctx) => {
+    onError: (e, _b, ctx) => {
       if (ctx?.prev) qc.setQueryData(['tenant-invoice', id], ctx.prev);
+      toast.error(e instanceof Error ? e.message : 'Failed to void invoice');
+    },
+    onSuccess: () => {
+      toast.success('Invoice voided');
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['tenant-invoice', id] });
@@ -177,6 +190,22 @@ export function useSendInvoiceReminder(id: string) {
       if (!res.ok) throw new Error((json as { error?: string }).error ?? 'Request failed');
       return json as { data: { last_reminder_at: string } };
     },
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: ['tenant-invoice', id] });
+      const prev = qc.getQueryData<InvoiceDetailResponse>(['tenant-invoice', id]);
+      const optimisticAt = new Date().toISOString();
+      if (prev) {
+        qc.setQueryData<InvoiceDetailResponse>(['tenant-invoice', id], {
+          ...prev,
+          last_reminder_at: optimisticAt,
+        });
+      }
+      return { prev };
+    },
+    onError: (e, _b, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['tenant-invoice', id], ctx.prev);
+      toast.error(e instanceof Error ? e.message : 'Failed to send reminder');
+    },
     onSuccess: (res) => {
       const prev = qc.getQueryData<InvoiceDetailResponse>(['tenant-invoice', id]);
       if (prev) {
@@ -185,6 +214,7 @@ export function useSendInvoiceReminder(id: string) {
           last_reminder_at: res.data.last_reminder_at,
         });
       }
+      toast.success('Reminder sent');
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['tenant-invoice', id] });

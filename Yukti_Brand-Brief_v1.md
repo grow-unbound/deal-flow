@@ -1,16 +1,16 @@
 # Yukti — Brand Brief & Design Handover
 
-*For: Claude Design / brand strategist / design lead. Purpose: develop the Yukti brand language — logo, design system, and verbal identity — from an agreed strategic foundation. This document gives direction and guardrails, not locked specifications; visual exploration is yours to originate.*
+*Yukti's brand foundation and locked visual identity — reverse-engineered from the final design (R10). §1–§6 are the strategy; §7–§15 record the identity as built and shipped. For the team, future hires, designers, and agencies building on the brand.*
 
-**Locked direction (from founder):** globally neutral but India-credible · guardrails + principles (explore freely) · bold-momentum aesthetic, disciplined.
+**Locked identity (final):** single **Charcoal + Copper** palette · **light mode canonical**, dark a supported variant · the **Voussoir keystone** mark (single-colour copper by default) · **Baloo 2** logotype + **Mukta** everywhere · India-first, globally credible. Tagline: **"The keystone of your business."** Positioning: **"Your unfair advantage to grow and win."**
 
 ---
 
 ## 0. How to read this doc
-- **§1–§7 are strategy** (positioning, audience, personality, voice). Treat as fixed inputs.
-- **§8–§12 are design direction** (guardrails, not specs). Explore within them.
-- **§13–§14 are non-negotiable constraints** (global architecture, accessibility). Build for these on day one.
-- **§15 is what we want back from you.**
+- **§1–§6 are strategy** (positioning, audience, personality, voice) — the fixed foundation.
+- **§7–§12 are the locked visual + verbal identity** as built in the final design (R10). These are now specifications, not exploration.
+- **§13–§14 are non-negotiable constraints** (global architecture, accessibility).
+- **§15 records final status and the open items still owed** (production exports, trademark, customer validation).
 
 **The brand idea in one breath:** *Yukti is the business owner's unfair advantage to grow and win — the operating layer that turns the right decisions into compounding growth, with the owner always calling the shots.*
 - **Meaning (the substance):** the right decisions, executed fast, compound into real growth.
@@ -122,60 +122,74 @@ That is word choice for an audience, not a different brand. If a decision (in pr
 | "You make the calls. Yukti turns them into growth." | "You're the operator. We're the edge." (abstract) |
 | "You decide. Yukti makes it pay off." | "Let Yukti run your business for you." (over-claim) |
 
-**Tagline territory (for exploration, not final):** *"Your unfair advantage." · "Make every move count." · "Decisions that grow your business." · "Grow. Win. Repeat."* — anchor to **growth, winning, and the owner's decisions**, in concrete language. Banned as lead words: "edge," "intelligence," "smart," "AI," "automate," and any word whose meaning depends on interpretation.
+**Tagline (locked):** **"The keystone of your business"** — the brand line that sits with the mark (the logo *is* a keystone, so it teaches the metaphor). On first-touch surfaces (site hero, packaging) always pair it with a plain-language **descriptor** stating the outcome — e.g. *"Run your whole business in one place — and grow it."* The tagline evokes; the descriptor explains. **Positioning line (locked):** *"Your unfair advantage to grow and win."* Banned as lead words: "edge," "intelligence," "smart," "AI," "automate," and any word whose meaning depends on interpretation. Never open a *sales* conversation with the tagline or the category term — lead with the outcome.
 
 ---
 
 ## 7. Naming, wordmark & trademark
 
-- **Spelling/case:** "Yukti" (title case in prose; wordmark casing is yours to design).
-- **Primary script:** **Latin** wordmark for global neutrality. **Devanagari (युक्ति)** available as an *optional secondary lockup / brand accent* — used as a confident nod to roots, never as the default mark, never as "ethnic decoration."
-- **Pronunciation aid** may be useful in early global markets ("YUK-tee").
-- **Trademark/domain reality (flag, founder to action):** "Yukti" is heavily used in India (government schemes, edtech, Ayurveda, etc.). Design should assume the wordmark + a distinctive mark must do heavy lifting for distinctiveness. Confirm trademark clearance in software classes and secure domains before brand spend. *Do not block design on this, but design for distinctiveness.*
+- **Wordmark:** "yukti", lowercase, set in **Baloo 2** (the logotype face — see §10). The mark seats square to the wordmark cap-height; in the stacked lockup the mark-to-wordmark gap is ~0.5–0.75× cap-height so it reads as one unit.
+- **The mark — the Voussoir keystone (frozen):** a flat arch of three voussoirs — a projecting keystone seated on two splayed haunches. *Architectural, never heraldic; never a crown.* Built from mass and seam to survive at favicon size and hold in a single colour. **Default mark = single-colour copper** (reversed on dark). The two-tone version (copper keystone + charcoal haunches) is an *optional expressive lockup* for hero/marketing only — never where one-colour reproduction is needed.
+- **Signature story (use in brand contexts):** *Every business is an arch under load. The owner lays the stones — what they buy, sell, price, and promise. An arch only stands when the keystone drops into place: the one piece that turns loose stones into a structure that bears weight and rises. Yukti is that keystone — put it in and the whole business locks together and holds, so you can build higher.*
+- **Script:** the **Latin** wordmark is the identity. Multi-script *type capability* is preserved (Mukta and Baloo 2 have Devanagari/Indic siblings), but **no Devanagari lockup ships now** — added later only if a Hindi-language surface or market needs it. Never decoration.
+- **Pronunciation aid** may help in early global markets ("YUK-tee").
+- **Trademark/domain reality (OPEN — founder to action before brand spend):** "Yukti" is heavily used in India (government schemes, edtech, Ayurveda, etc.). Clear the wordmark in software classes and secure domains. This is the one genuinely outstanding risk — and it is not a design fix.
 
 ---
 
-## 8. Aesthetic direction (guardrails)
+## 8. Aesthetic direction (locked)
 
-**Anchor:** **bold-momentum, disciplined** — in the spirit of Ramp / Monzo's confidence and energy, governed by the two-register rule (§5): **bold about growth and winning, precise about money and correctness.** Resolution principle: **energy through color and decisiveness, restraint through space and clarity.** Bold where it creates momentum (a hero color, a confident mark, decisive type); disciplined everywhere that would otherwise become clutter, hype, or an over-claim. Mastery shows up in the *finish* — premium and precise — so the boldness reads as serious, never cheap.
+**Anchor:** **grounded, material, structural** — warm and premium, governed by the two-register rule (§5): **bold about growth and winning, precise about money and correctness.** The visual world is masonry and material — the keystone, mass and seam, copper on warm light paper — not fintech gloss. Energy comes from the copper and decisive type; restraint comes from generous space and a light, airy ground. Mastery shows up in the *finish* — premium and precise — so the confidence reads as serious, never cheap.
 
 **Feel:** modern, global, premium-operator. Credible to a distributor in Hyderabad, a wholesaler in Dubai, and an operator in Europe — without belonging to any one of them visually.
 
-**Avoid:** trendy/dated effects, AI-gimmick visuals (neural nets, glowing orbs, gradients-as-magic), enterprise-blue corporate sterility, and anything that reads as accounting/government/paperwork.
+**Avoid:** trendy/dated effects, AI-gimmick visuals (neural nets, glowing orbs, gradients-as-magic), enterprise-blue corporate sterility, multicolour/gradient logos, and anything that reads as accounting/government/paperwork.
 
 ---
 
-## 9. Logo territory
+## 9. Logo system (locked)
 
-**Symbolize:** *the winning move — judgment translated into momentum and growth.* A sense of direction, decision, and rising progress — the owner's advantage made visible. Momentum, not just connection.
+**The mark:** the **Voussoir keystone** (full description + signature story in §7). It says *the one piece that makes the whole structure hold and rise* — the owner's advantage, made structural. Single-colour **copper** is the default everywhere; charcoal or reversed/paper where the surface demands.
 
-**Explore:** marks that suggest a decisive move, a chosen path, directed/ascending motion, or a junction resolved into one clear forward line (the *yuj* = "joining" root supports a "many things brought together into one winning direction" idea). Strong, ownable, works at 16px (favicon, PWA icon) and on a building sign.
+**Lockups:** horizontal (mark + wordmark), stacked (mark above wordmark, gap ~0.5–0.75× cap-height), symbol-only, and reversed (for dark). The two-tone mark is an *optional expressive lockup*, never the default.
 
-**Avoid (cliché traps):** the generic node/network/constellation mark, the swoosh, the abstract "connected dots," the upward-arrow-in-a-circle, anything that could belong to a fintech or a telco. If it looks like five other B2B logos, it's wrong.
+**Minimum size & clear space:** full mark down to **16px**; below that, ship the **simplified favicon** variant (don't shrink the full mark). Clear space = the width of the keystone crown on all four sides. App icon: mark seated in a charcoal rounded square with **tight interior padding** so the mark fills the tile.
 
-**Lockups needed:** horizontal, stacked, symbol-only, monochrome, and a Devanagari secondary. Plus PWA/app-icon treatment (the buyer app is mobile-first).
+**Don't:** use the two-tone mark where it must reproduce in one colour (the charcoal haunches vanish on dark); render the mark in copper as text; or let it read as a crown.
 
 ---
 
-## 10. Color, type, motion (philosophy, not spec)
+## 10. Colour & type (locked)
 
-- **Color:** a confident hero color that signals momentum, growth, and the owner's advantage, balanced by disciplined neutrals and generous space. Must pass accessibility contrast (§14) and remain credible across India/Gulf/Europe. Reserve a clear semantic system for "needs attention / on track / done" — clarity-of-status is a product-critical brand asset.
-- **Typography:** modern, legible, operator-grade. Must support **Latin + Devanagari + Arabic** in a coherent family or harmonious pairing (§13). Favor clarity and decisiveness over personality-quirk.
-- **Motion:** purposeful and quick — motion should communicate *progress and resolution* (a decision made, a thing moved forward), never decorative flourish. Momentum is a *behavior*, not just a look.
-- **Iconography & imagery:** themes of **flow, pathways, direction, junctions, progress, movement, the cleared path**. Avoid ledgers, calculators, books, stamps, files, coins, and compliance/paperwork imagery entirely. Prefer real operators and real operations over abstract stock or AI art.
+**Colour — one palette: Charcoal + Copper.** (Deep-navy + signal-orange was explored and *dropped* — there is no second identity palette.)
+- **Charcoal — ink/text:** `#221E1A` (warm near-black). All body text.
+- **Charcoal — large surfaces** (dark-mode ground, app-icon tile): lightened to `~#2B2825` so dark areas feel premium, not pure black.
+- **Copper — hero/accent:** `#B5642F` on light, lifts to `#D9894C` on dark. **Mark and accents only — never body text** (fails AA at small sizes).
+- **Paper — light ground:** `#F8F6F2` (airy, modern; replaced the earlier earthier `#F2ECE3`).
+- **Light mode is canonical/default; dark mode is a supported variant.**
+- **Status colours** (success/attention/error) are reserved, semantically distinct from copper, and **never communicated by colour alone** (§11).
+
+**Typography — two faces, airtight roles:**
+- **Baloo 2 — logotype/wordmark ONLY.** Its warmth lives in the mark (and, sparingly, marketing headlines); nowhere else.
+- **Mukta — everything else:** all product UI, headings, body, supporting text. The product reads as effectively single-font (no confusion), and Mukta is the more professional/neutral face — right for a money product.
+- **Numbers:** Mukta **tabular figures** for data/tables/money (optional mono — e.g. IBM Plex Mono — for IDs/SKUs/code). Numeral discipline, not a third personality font.
+
+**Iconography & imagery:** structural/material themes consistent with the keystone world. Avoid ledgers, calculators, books, stamps, coins, and compliance/paperwork imagery. Prefer real operators and real operations over abstract stock or AI art.
+
+**Motion:** purposeful and quick — communicate *progress and resolution* (a thing locked in, moved forward), never decorative flourish.
 
 ---
 
 ## 11. The clarity-of-status system (product-critical)
 
-Because the product's promise is "always know what matters and what to do next," the design system must treat **status, attention, and next-action** as first-class. Define a consistent visual grammar for: needs-attention vs. on-track vs. done; priority; and the single "do this next" affordance. This is where momentum becomes visible. It is as important as the logo.
+Because the product's promise is "always know what matters and what to do next," the design system treats **status, attention, and next-action** as first-class — a consistent visual grammar for needs-attention vs. on-track vs. done, priority, and the single "do this next" affordance. **Status is always carried by shape + label, never colour alone:** the founder and ~8% of users are colour-blind, and the status palette uses red/green — the exact pair they cannot distinguish. This is as important as the logo.
 
 ---
 
 ## 12. How the brand flexes: India-first, globally credible
 
 The brand has **one global core** and **localized expression**, never a separate "India brand" vs "global brand":
-- **Core (fixed):** logo, color, type, voice, the "unfair advantage to grow and win" idea — identical everywhere.
+- **Core (fixed):** the keystone mark, the Charcoal+Copper palette, Baloo 2 + Mukta, the voice, the "unfair advantage to grow and win" idea, and the "keystone of your business" line — identical everywhere.
 - **Flex (localized):** language and script, examples and currency in marketing, imagery featuring local operators, and density/formality of tone (slightly warmer in India, equally confident everywhere).
 - **Guardrail:** flexing must never make the brand feel *local-only* in India or *culturally-nowhere* globally. A confident point of view that happens to travel beats a neutral one that belongs nowhere.
 
@@ -183,8 +197,8 @@ The brand has **one global core** and **localized expression**, never a separate
 
 ## 13. Global architecture — non-negotiable (build day one)
 
-- **Multi-script:** Latin **and** Devanagari **and** Arabic must be first-class in the type system and logo lockups. Choose/pair fonts that cover all three with comparable quality.
-- **RTL:** full right-to-left layout support (Arabic / Gulf markets) — logo lockup, iconography directionality, and component mirroring designed in, not retrofitted.
+- **Multi-script (capability kept, not shipped):** the Latin wordmark is the identity today. The chosen faces (Mukta, Baloo 2) have Devanagari/Indic siblings, so Devanagari/Arabic can be added later without re-picking fonts — but no non-Latin lockup ships now. Add per market need.
+- **RTL:** plan for right-to-left layout (Arabic / Gulf markets) — keep iconography directionality and component mirroring in mind so it can be added without a rebuild.
 - **Numerals & formats:** support Indian numbering (lakh/crore) and international, plus multi-currency, in both the brand's data-display patterns and marketing.
 - **Localization-ready components:** allow for text expansion/contraction across languages without breaking layout.
 
@@ -196,13 +210,15 @@ The brand has **one global core** and **localized expression**, never a separate
 
 ---
 
-## 15. What we want back from you
+## 15. Final status & open items
 
-1. **2–3 distinct logo/identity territories** (not refinements of one) that each answer: *does this look like the winning move — judgment in motion — and unlike every other B2B mark?*
-2. A **color + type direction** per territory, with the multi-script and accessibility constraints demonstrated (show Devanagari and Arabic, not just Latin).
-3. The **clarity-of-status grammar** (§11) shown in a real product context (a distributor dashboard tile + a buyer-PWA screen).
-4. A **one-line rationale per territory** tying it to "your unfair advantage to grow and win."
-5. Flag anything in this brief that fights good design — push back; this is a starting point, not a cage.
+**Identity: locked and delivered (R10).** Mark, palette, type, lockups, favicon/app-icon, tagline, and the light/dark systems are final and recorded above.
+
+**Open items owed:**
+1. **Production exports** — favicon (test at true 16px on a real browser tab), app-icon PNGs, one-colour and reversed mark files, all lockup files.
+2. **Trademark + domains** — clear "Yukti" in software classes and secure domains *before* brand spend. The one genuinely outstanding risk.
+3. **Customer validation** — put the mark + tagline in front of 6–8 real target distributors; confirm it reads as "the tool that helps me win," and that "keystone" lands (pair with the plain descriptor regardless).
+4. **Accessibility verification** — confirm copper is never used as text, and every status carries shape + label (founder + ~8% of users are colour-blind).
 
 ---
 

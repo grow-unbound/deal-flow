@@ -1,5 +1,6 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { CustomersLandingClient } from '@/components/seller/customers/CustomersLandingClient';
 import type { CustomersLandingResponse } from '@/hooks/useCustomersLanding';
 import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
@@ -39,7 +40,7 @@ export default async function CustomersPage({
   const tenantId = h.get('x-verified-tenant-id');
   if (!tenantId) redirect('/dashboard');
 
-  if (!(await getFlag(FLAGS.CUSTOMER_MASTER, tenantId))) redirect('/dashboard');
+  if (!(await getFlag(FLAGS.CUSTOMER_MASTER, tenantId))) return <FeatureForbiddenPage />;
 
   const period = await resolveSellerLandingPeriod(searchParams);
   const initialData = await getCustomersInitialData(period);

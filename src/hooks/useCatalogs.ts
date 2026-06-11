@@ -1,6 +1,8 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+
 import { apiFetch } from '@/lib/api-fetch';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
@@ -327,6 +329,7 @@ export function useSaveCatalogComposer(catalogId?: string) {
       return res.json() as Promise<{ catalog: { id: string; status: 'draft' | 'published' | 'archived' } }>;
     },
     onSuccess: (_data, _payload) => {
+      toast.success('Catalog saved');
       queryClient.invalidateQueries({ queryKey: ['tenant-catalogs'] });
       queryClient.invalidateQueries({ queryKey: ['catalog-composer-bootstrap'] });
       if (catalogId) {
@@ -379,6 +382,10 @@ export function useExtendCatalogValidity(id: string) {
     },
     onError: (_err, _payload, context) => {
       rollbackSnapshots(queryClient, context?.snapshots);
+      toast.error(_err instanceof Error ? _err.message : 'Failed to extend validity');
+    },
+    onSuccess: () => {
+      toast.success('Validity extended');
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', id] });
@@ -430,6 +437,10 @@ export function usePublishCatalog(id: string) {
     },
     onError: (_err, _payload, context) => {
       rollbackSnapshots(queryClient, context?.snapshots);
+      toast.error(_err instanceof Error ? _err.message : 'Publish failed');
+    },
+    onSuccess: () => {
+      toast.success('Catalog published');
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', id] });

@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
+import { PermissionDenied } from '@/components/auth/PermissionDenied';
 import {
   ComposerSidebarCard,
 } from '@/components/seller/composer/ComposerLayout';
@@ -455,7 +456,7 @@ export function DocComposerEstimate({
 
   if (isError) {
     if (error instanceof Error && error.message === 'forbidden') {
-      return <FeatureDisabledState />;
+      return <PermissionDenied />;
     }
     return (
       <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6">
@@ -604,9 +605,8 @@ export function DocComposerEstimate({
             setSendOpen(false);
             router.push(`/estimates/${targetId}`);
           },
-          onError: (mutationError) => {
+          onError: () => {
             resetLeaving();
-            toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to send estimate');
           },
         });
         return;

@@ -150,6 +150,7 @@ describe('SellerSidebar', () => {
     const paths = prefetchSpy.mock.calls[0][0] as string[];
     expect(paths).not.toContain('/cohorts');
     expect(paths).not.toContain('/price-lists');
+    expect(paths).not.toContain('/exports');
     expect(paths).not.toContain('/settings');
     expect(paths).not.toContain('/settings/modules');
     expect(paths).not.toContain('/settings/billing');

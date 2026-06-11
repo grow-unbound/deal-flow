@@ -2,6 +2,8 @@
 
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { Plus, Receipt } from 'lucide-react';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
 import {
@@ -19,7 +21,8 @@ import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useTenantInvoices, type TenantInvoicesResponse } from '@/hooks/useInvoices';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
-import { ErrorState } from '@/components/ui/empty-state';
+import { ErrorState, EmptyState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
 import { formatCompactInr, formatDate, formatInr } from '@/lib/utils';
 import { sellerLandingMetricSuffix, type SellerLandingPeriod } from '@/lib/seller-period';
 
@@ -260,6 +263,26 @@ function InvoicesLandingContent({
           />
 
           <LandingTable
+            showEmptyState={filteredRows.length === 0}
+            emptyState={
+              <EmptyState
+                icon={<Receipt size={28} strokeWidth={1.5} />}
+                heading={search.trim() || activeChip !== 'All' ? 'No matching invoices' : 'No invoices yet'}
+                description={
+                  search.trim() || activeChip !== 'All'
+                    ? 'Try a different search or status filter.'
+                    : 'Create an invoice to bill a buyer.'
+                }
+                action={
+                  <Button variant="accent" asChild>
+                    <Link href="/invoices/new" className="inline-flex items-center gap-1.5">
+                      <Plus size={13} />
+                      Add an invoice
+                    </Link>
+                  </Button>
+                }
+              />
+            }
             tableClassName="v2-table"
             columns={[
               { label: 'Invoice #', width: 140, className: 'px-5' },

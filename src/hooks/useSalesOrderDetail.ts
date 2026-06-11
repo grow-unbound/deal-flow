@@ -1,6 +1,8 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+
 import { apiFetch, apiPatch } from '@/lib/api-fetch';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type {
@@ -54,10 +56,14 @@ export function useDispatchSalesOrder(orderId: string) {
       }
       return { previous };
     },
-    onError: (_e, _p, ctx) => {
+    onError: (e, _p, ctx) => {
       if (ctx?.previous) {
         queryClient.setQueryData(['tenant-sales-order', orderId], ctx.previous);
       }
+      toast.error(e instanceof Error ? e.message : 'Dispatch failed');
+    },
+    onSuccess: () => {
+      toast.success('Order dispatched');
     },
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: ['tenant-sales-order', orderId] });
@@ -91,10 +97,14 @@ export function useDeliverSalesOrder(orderId: string) {
       }
       return { previous };
     },
-    onError: (_e, _p, ctx) => {
+    onError: (e, _p, ctx) => {
       if (ctx?.previous) {
         queryClient.setQueryData(['tenant-sales-order', orderId], ctx.previous);
       }
+      toast.error(e instanceof Error ? e.message : 'Deliver failed');
+    },
+    onSuccess: () => {
+      toast.success('Marked delivered');
     },
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: ['tenant-sales-order', orderId] });
@@ -130,10 +140,14 @@ export function useCancelSalesOrder(orderId: string) {
       }
       return { previous };
     },
-    onError: (_e, _p, ctx) => {
+    onError: (e, _p, ctx) => {
       if (ctx?.previous) {
         queryClient.setQueryData(['tenant-sales-order', orderId], ctx.previous);
       }
+      toast.error(e instanceof Error ? e.message : 'Cancel failed');
+    },
+    onSuccess: () => {
+      toast.success('Order cancelled');
     },
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: ['tenant-sales-order', orderId] });
@@ -154,6 +168,12 @@ export function useSendSalesOrder(orderId: string) {
       }
       return (await res.json()) as { data: { id: string } };
     },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : 'Failed to send sales order');
+    },
+    onSuccess: () => {
+      toast.success('Sales order sent');
+    },
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: ['tenant-sales-order', orderId] });
       await queryClient.invalidateQueries({ queryKey: ['tenant-orders'] });
@@ -172,6 +192,29 @@ export function useConfirmSalesOrder(orderId: string) {
         const err = await res.json().catch(() => ({}));
         throw new Error(typeof err === 'object' && err && 'error' in err ? String((err as { error: string }).error) : 'Confirm failed');
       }
+    },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['tenant-sales-order', orderId] });
+      const previous = queryClient.getQueryData<SalesOrderDetail>(['tenant-sales-order', orderId]);
+      const nowIso = new Date().toISOString();
+      if (previous) {
+        queryClient.setQueryData<SalesOrderDetail>(['tenant-sales-order', orderId], {
+          ...previous,
+          db_status: 'confirmed',
+          ui_status: 'confirmed',
+          confirmed_at: nowIso,
+        });
+      }
+      return { previous };
+    },
+    onError: (e, _p, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData(['tenant-sales-order', orderId], ctx.previous);
+      }
+      toast.error(e instanceof Error ? e.message : 'Update failed');
+    },
+    onSuccess: () => {
+      toast.success('Order confirmed');
     },
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: ['tenant-sales-order', orderId] });

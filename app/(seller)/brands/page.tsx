@@ -1,5 +1,6 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { BrandsLandingClient } from '@/components/seller/brands/BrandsLandingClient';
 import type { TenantBrandsResponse } from '@/hooks/useBrands';
 import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
@@ -39,7 +40,7 @@ export default async function BrandsPage({
   const tenantId = h.get('x-verified-tenant-id');
   if (!tenantId) redirect('/dashboard');
 
-  if (!(await getFlag(FLAGS.BRAND_PRODUCT_MASTER, tenantId))) redirect('/dashboard');
+  if (!(await getFlag(FLAGS.BRAND_PRODUCT_MASTER, tenantId))) return <FeatureForbiddenPage />;
 
   const period = await resolveSellerLandingPeriod(searchParams);
   const initialData = await getBrandsInitialData(period);

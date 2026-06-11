@@ -19,6 +19,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { useIdleRoutePrefetch } from '@/hooks/useIdleRoutePrefetch';
+import { Pressable } from '@/components/ui/pressable';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useRole } from '@/hooks/useRole';
 export type NavFlagKey =
@@ -99,7 +100,7 @@ export const navGroups: NavGroup[] = [
   {
     label: 'ADMIN',
     items: [
-      { label: 'Exports', href: '/exports', icon: ExportsIcon, adminOnly: false, flagKey: 'df_tally_export' },
+      { label: 'Exports', href: '/exports', icon: ExportsIcon, adminOnly: true, flagKey: 'df_tally_export' },
       {
         label: 'Settings',
         href: '/settings',
@@ -254,18 +255,20 @@ export function SellerSidebar({
               parentActive ? 'bg-teal-500 text-cream-50' : 'text-cream-800',
             ].join(' ')}
           >
-            <Link
-              href={item.href}
-              className={[
-                'flex min-w-0 flex-1 items-center px-3 py-2.5 transition-colors duration-fast',
-                isCollapsed ? 'justify-center gap-0' : 'gap-3',
-                parentActive ? '' : 'hover:bg-cream-200 hover:text-cream-900',
-              ].join(' ')}
-              title={isCollapsed ? item.label : undefined}
-            >
-              <item.icon size={16} className={parentActive ? 'text-cream-50' : 'text-cream-600'} />
-              {!isCollapsed && <span className="truncate">{item.label}</span>}
-            </Link>
+            <Pressable asChild haptic>
+              <Link
+                href={item.href}
+                className={[
+                  'flex min-w-0 flex-1 items-center px-3 py-2.5 transition-colors duration-fast',
+                  isCollapsed ? 'justify-center gap-0' : 'gap-3',
+                  parentActive ? '' : 'hover:bg-cream-200 hover:text-cream-900',
+                ].join(' ')}
+                title={isCollapsed ? item.label : undefined}
+              >
+                <item.icon size={16} className={parentActive ? 'text-cream-50' : 'text-cream-600'} />
+                {!isCollapsed && <span className="truncate">{item.label}</span>}
+              </Link>
+            </Pressable>
             {!isCollapsed ? (
               <button
                 type="button"
@@ -300,17 +303,18 @@ export function SellerSidebar({
             ? visibleChildren.map(({ label: childLabel, href: childHref, icon: ChildIcon }) => {
                 const childIsActive = pathname === childHref;
                 return (
-                  <Link
-                    key={childHref}
-                    href={childHref}
-                    className={[
-                      'ml-6 flex items-center gap-3 rounded-[10px] px-3 py-2 text-body-sm font-medium transition-colors duration-fast',
-                      childIsActive ? 'bg-teal-500 text-cream-50' : 'text-cream-700 hover:bg-cream-200 hover:text-cream-900',
-                    ].join(' ')}
-                  >
-                    <ChildIcon size={15} className={childIsActive ? 'text-cream-50' : 'text-cream-500'} />
-                    {childLabel}
-                  </Link>
+                  <Pressable key={childHref} asChild haptic>
+                    <Link
+                      href={childHref}
+                      className={[
+                        'ml-6 flex items-center gap-3 rounded-[10px] px-3 py-2 text-body-sm font-medium transition-colors duration-fast',
+                        childIsActive ? 'bg-teal-500 text-cream-50' : 'text-cream-700 hover:bg-cream-200 hover:text-cream-900',
+                      ].join(' ')}
+                    >
+                      <ChildIcon size={15} className={childIsActive ? 'text-cream-50' : 'text-cream-500'} />
+                      {childLabel}
+                    </Link>
+                  </Pressable>
                 );
               })
             : null}
@@ -324,18 +328,20 @@ export function SellerSidebar({
       (pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(`${item.href}/`)));
     return (
       <div key={item.href} className="space-y-0.5">
-        <Link
-          href={item.href}
-          className={[
-            'flex items-center rounded-[12px] px-3 py-2.5 text-body-sm font-medium transition-colors duration-fast',
-            isCollapsed ? 'justify-center gap-0' : 'gap-3',
-            active ? 'bg-teal-500 text-cream-50' : 'text-cream-800 hover:bg-cream-200 hover:text-cream-900',
-          ].join(' ')}
-          title={isCollapsed ? item.label : undefined}
-        >
-          <item.icon size={16} className={active ? 'text-cream-50' : 'text-cream-600'} />
-          {!isCollapsed && item.label}
-        </Link>
+        <Pressable asChild haptic>
+          <Link
+            href={item.href}
+            className={[
+              'flex items-center rounded-[12px] px-3 py-2.5 text-body-sm font-medium transition-colors duration-fast',
+              isCollapsed ? 'justify-center gap-0' : 'gap-3',
+              active ? 'bg-teal-500 text-cream-50' : 'text-cream-800 hover:bg-cream-200 hover:text-cream-900',
+            ].join(' ')}
+            title={isCollapsed ? item.label : undefined}
+          >
+            <item.icon size={16} className={active ? 'text-cream-50' : 'text-cream-600'} />
+            {!isCollapsed && item.label}
+          </Link>
+        </Pressable>
 
         {!isCollapsed &&
           item.children
@@ -343,17 +349,18 @@ export function SellerSidebar({
             .map(({ label: childLabel, href: childHref, icon: ChildIcon }) => {
               const childIsActive = pathname === childHref;
               return (
-                <Link
-                  key={childHref}
-                  href={childHref}
-                  className={[
-                    'ml-6 flex items-center gap-3 rounded-[10px] px-3 py-2 text-body-sm font-medium transition-colors duration-fast',
-                    childIsActive ? 'bg-teal-500 text-cream-50' : 'text-cream-700 hover:bg-cream-200 hover:text-cream-900',
-                  ].join(' ')}
-                >
-                  <ChildIcon size={15} className={childIsActive ? 'text-cream-50' : 'text-cream-500'} />
-                  {childLabel}
-                </Link>
+                <Pressable key={childHref} asChild haptic>
+                  <Link
+                    href={childHref}
+                    className={[
+                      'ml-6 flex items-center gap-3 rounded-[10px] px-3 py-2 text-body-sm font-medium transition-colors duration-fast',
+                      childIsActive ? 'bg-teal-500 text-cream-50' : 'text-cream-700 hover:bg-cream-200 hover:text-cream-900',
+                    ].join(' ')}
+                  >
+                    <ChildIcon size={15} className={childIsActive ? 'text-cream-50' : 'text-cream-500'} />
+                    {childLabel}
+                  </Link>
+                </Pressable>
               );
             })}
       </div>

@@ -2,32 +2,15 @@
 
 import * as React from 'react';
 import { FileText } from 'lucide-react';
+
+import { BuyerEmptyState } from '@/components/buyer/BuyerEmptyState';
 import { EnquiryCard } from './EnquiryCard';
 import { OrderRowSkeleton } from './OrderRowSkeleton';
+import { ErrorState } from '@/components/ui/empty-state';
 import type { EstimateSummary } from './EnquiryCard';
 
 interface EstimatesApiResponse {
   estimates: EstimateSummary[];
-}
-
-function EmptyState() {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '40vh',
-        padding: '40px 16px',
-        textAlign: 'center',
-      }}
-    >
-      <FileText size={48} strokeWidth={1.5} style={{ marginBottom: 16, color: 'var(--fg-3)' }} />
-      <p style={{ fontSize: 16, fontWeight: 600, color: 'var(--fg-1)', margin: '0 0 6px' }}>No enquiries yet</p>
-      <p style={{ fontSize: 13, color: 'var(--fg-3)', margin: 0 }}>Submitted quotes will appear here.</p>
-    </div>
-  );
 }
 
 export function EnquiriesTab() {
@@ -35,55 +18,60 @@ export function EnquiriesTab() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    let cancelled = false;
-
-    async function fetchEstimates() {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch('/api/buyer/estimates');
-        if (!res.ok) {
-          // Graceful: treat 404/errors as empty list
-          if (!cancelled) {
-            setEstimates([]);
-          }
-          return;
-        }
-        const data = await res.json() as EstimatesApiResponse;
-        if (!cancelled) {
-          setEstimates(data.estimates ?? []);
-        }
-      } catch {
-        // Gracefully show empty on any error
-        if (!cancelled) {
-          setEstimates([]);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+  const fetchEstimates = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/buyer/estimates');
+      if (!res.ok) {
+        setError(res.status === 403 ? 'You do not have access to enquiries.' : 'Could not load enquiries.');
+        setEstimates([]);
+        return;
       }
+      const data = (await res.json()) as EstimatesApiResponse;
+      setEstimates(data.estimates ?? []);
+    } catch {
+      setError('Could not load enquiries.');
+      setEstimates([]);
+    } finally {
+      setLoading(false);
     }
-
-    void fetchEstimates();
-    return () => { cancelled = true; };
   }, []);
+
+  React.useEffect(() => {
+    void fetchEstimates();
+  }, [fetchEstimates]);
 
   if (loading) {
     return <OrderRowSkeleton count={3} />;
   }
 
   if (error) {
-    return <EmptyState />;
+    return (
+      <div className="px-4 py-4">
+        <ErrorState
+          heading="Couldn't load enquiries"
+          description={error}
+          onRetry={() => void fetchEstimates()}
+        />
+      </div>
+    );
   }
 
   if (estimates.length === 0) {
-    return <EmptyState />;
+    return (
+      <BuyerEmptyState
+        icon={<FileText size={28} strokeWidth={1.5} />}
+        heading="No enquiries yet"
+        description="Submitted quotes will appear here."
+      />
+    );
   }
 
   return (
-    <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {estimates.map((est) => (
-        <EnquiryCard key={est.id} estimate={est} />
+    <div className="flex flex-col gap-3 px-4 py-3">
+      {estimates.map((e) => (
+        <EnquiryCard key={e.id} estimate={e} />
       ))}
     </div>
   );

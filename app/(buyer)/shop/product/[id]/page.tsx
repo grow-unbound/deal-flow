@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 
 function inr(n: number): string {
   const s = Math.round(n).toString();
@@ -44,7 +45,8 @@ interface Props { params: Promise<{ id: string }> }
 
 export default async function ProductPage({ params }: Props) {
   const { id } = await params;
-  const p = products.find(x => x.id === id) ?? products[0];
+  const p = products.find((x) => x.id === id);
+  if (!p) notFound();
   const saved = p.mrp - p.price;
 
   const related = products.filter(x => x.brand === p.brand && x.id !== p.id).slice(0, 4);

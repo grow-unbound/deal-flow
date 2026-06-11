@@ -1,5 +1,6 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { CatalogsLandingClient } from '@/components/seller/catalogs/CatalogsLandingClient';
 import type { CatalogsLandingResponse } from '@/hooks/useCatalogs';
 import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
@@ -39,7 +40,7 @@ export default async function CatalogsPage({
   const tenantId = h.get('x-verified-tenant-id');
   if (!tenantId) redirect('/dashboard');
 
-  if (!(await getFlag(FLAGS.CATALOG_PUBLISHING, tenantId))) redirect('/dashboard');
+  if (!(await getFlag(FLAGS.CATALOG_PUBLISHING, tenantId))) return <FeatureForbiddenPage />;
 
   const period = await resolveSellerLandingPeriod(searchParams);
   const initialData = await getCatalogsInitialData(period);

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
 import { apiFetch, apiPatch } from '@/lib/api-fetch';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
@@ -92,7 +93,28 @@ export function useSendInvoice(invoiceId: string | null) {
       }
       return (await res.json()) as { ok: boolean };
     },
+    onMutate: async () => {
+      if (!invoiceId) return {};
+      await qc.cancelQueries({ queryKey: ['tenant-invoice-composer', invoiceId] });
+      const prev = qc.getQueryData<InvoiceComposerDocument>(['tenant-invoice-composer', invoiceId]);
+      const sentAt = new Date().toISOString();
+      if (prev) {
+        qc.setQueryData<InvoiceComposerDocument>(['tenant-invoice-composer', invoiceId], {
+          ...prev,
+          status: 'sent',
+          sent_at: sentAt,
+        });
+      }
+      return { prev };
+    },
+    onError: (e, _v, ctx) => {
+      if (invoiceId && ctx?.prev) {
+        qc.setQueryData(['tenant-invoice-composer', invoiceId], ctx.prev);
+      }
+      toast.error(e instanceof Error ? e.message : 'Failed to send invoice');
+    },
     onSuccess: () => {
+      toast.success('Invoice sent');
       if (!invoiceId) return;
       void qc.invalidateQueries({ queryKey: ['tenant-invoice-composer', invoiceId] });
       void qc.invalidateQueries({ queryKey: ['tenant-invoices'] });

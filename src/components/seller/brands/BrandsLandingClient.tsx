@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { UserPlus } from 'lucide-react';
+import { UserPlus, Plus, Layers } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 
 import { FeatureGate } from '@/components/FeatureGate';
 import {
@@ -17,7 +18,8 @@ import {
   StatusTag,
   V3CalloutPanel,
 } from '@/components/seller/layout';
-import { ErrorState } from '@/components/ui/empty-state';
+import { ErrorState, EmptyState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
@@ -365,6 +367,30 @@ function BrandLandingContent({
       />
 
       <LandingTable
+        showEmptyState={filtered.length === 0}
+        emptyState={
+          <EmptyState
+            icon={<Layers size={28} strokeWidth={1.5} />}
+            heading={
+              search.trim() || activeChip !== 'All categories'
+                ? 'No matching brands'
+                : 'No brands in your portfolio'
+            }
+            description={
+              search.trim() || activeChip !== 'All categories'
+                ? 'Try a different search or filter.'
+                : 'Add your first brand to start building your catalog and pricing.'
+            }
+            action={
+              <Button variant="accent" asChild>
+                <Link href="/brands/new" className="inline-flex items-center gap-1.5">
+                  <Plus size={13} />
+                  Add a brand
+                </Link>
+              </Button>
+            }
+          />
+        }
         columns={[
           { label: 'Brand', width: 320, className: 'px-5' },
           { label: `GMV · ${metricSuffix}`, className: 'px-5' },
