@@ -1,5 +1,6 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { EstimateDetailPage } from '@/components/seller/estimates/detail/EstimateDetailPage';
 import { getFlag, FLAGS } from '@/lib/flags';
 
@@ -16,7 +17,7 @@ export default async function EstimateDetailRoutePage({ params }: PageProps) {
     getFlag(FLAGS.ORDER_MANAGEMENT, tenantId),
     getFlag(FLAGS.ESTIMATES, tenantId),
   ]);
-  if (!orderMgmt || !estimates) redirect('/dashboard');
+  if (!orderMgmt || !estimates) return <FeatureForbiddenPage />;
 
   const { id } = await params;
   return <EstimateDetailPage id={id} />;

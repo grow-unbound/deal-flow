@@ -1,6 +1,8 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 
 export interface Location {
@@ -96,7 +98,11 @@ export function useUpsertInventory() {
       return res.json();
     },
     onSuccess: (_, { tenant_product_id }) => {
+      toast.success('Inventory updated');
       queryClient.invalidateQueries({ queryKey: ['inventory', tenant_product_id] });
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : 'Failed to update inventory');
     },
   });
 }
@@ -116,8 +122,12 @@ export function useCreateLocation() {
       return json.data.location;
     },
     onSuccess: () => {
+      toast.success('Location created');
       queryClient.invalidateQueries({ queryKey: ['locations'] });
       queryClient.invalidateQueries({ queryKey: ['tenant-locations'] });
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : 'Failed to create location');
     },
   });
 }

@@ -1,5 +1,6 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { CohortsLandingClient } from '@/components/seller/cohorts/CohortsLandingClient';
 import type { CohortsLandingResponse } from '@/hooks/useCohorts';
 import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
@@ -39,7 +40,7 @@ export default async function CohortsPage({
   const tenantId = h.get('x-verified-tenant-id');
   if (!tenantId) redirect('/dashboard');
 
-  if (!(await getFlag(FLAGS.COHORTS, tenantId))) redirect('/dashboard');
+  if (!(await getFlag(FLAGS.COHORTS, tenantId))) return <FeatureForbiddenPage />;
 
   const period = await resolveSellerLandingPeriod(searchParams);
   const initialData = await getCohortsInitialData(period);

@@ -6,6 +6,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Pressable } from '@/components/ui/pressable';
 
 interface CartSheetProps {
   open: boolean;
@@ -80,14 +81,16 @@ export function CartSheet({ open, onClose }: CartSheetProps) {
                 {formatCurrency(subtotal)}
               </span>
             </div>
-            <Link
-              href="/shop/checkout"
-              onClick={onClose}
-              className="flex items-center justify-center w-full h-12 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
-              style={{ background: 'var(--teal-500)' }}
-            >
-              Proceed to Checkout
-            </Link>
+            <Pressable asChild haptic>
+              <Link
+                href="/shop/checkout"
+                onClick={onClose}
+                className="flex h-12 w-full touch-manipulation items-center justify-center rounded-xl text-sm font-semibold text-white transition-transform duration-fast ease-standard hover:opacity-90 active:scale-[0.98]"
+                style={{ background: 'var(--teal-500)' }}
+              >
+                Proceed to Checkout
+              </Link>
+            </Pressable>
           </div>
         )}
       </SheetContent>

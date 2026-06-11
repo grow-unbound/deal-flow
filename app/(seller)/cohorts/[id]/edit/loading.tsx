@@ -16,18 +16,18 @@ export default function EditCohortLoading() {
           </div>
           <div className="h-9 w-24 animate-pulse rounded-[9px] bg-cream-200" />
         </div>
-        <div className="grid gap-0 overflow-hidden rounded-[14px] border border-cream-300 bg-white lg:grid-cols-4">
+        <div className="grid gap-0 overflow-hidden rounded-[14px] border border-cream-200 bg-cream-100 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="h-[82px] animate-pulse border-r border-cream-300 bg-white last:border-r-0" />
+            <div key={index} className="h-[82px] animate-pulse border-r border-cream-200 bg-cream-100 last:border-r-0" />
           ))}
         </div>
         <div className={composerThreePanelGridClass}>
-          <div className="animate-pulse rounded-[14px] border border-cream-300 bg-white" />
-          <div className="animate-pulse rounded-[14px] border border-cream-300 bg-white" />
-          <div className="animate-pulse rounded-[14px] border border-cream-300 bg-white" />
+          <div className="animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
+          <div className="animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
+          <div className="animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
         </div>
       </div>
-      <div className="sticky bottom-0 z-10 mt-4 h-20 shrink-0 animate-pulse rounded-[14px] border border-cream-300 bg-white" />
+      <div className="sticky bottom-0 z-10 mt-4 h-20 shrink-0 animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
+import { PermissionDenied } from '@/components/auth/PermissionDenied';
 import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
 import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasicsStrip';
 import { DocumentComposerLoadingSkeleton, DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
@@ -20,6 +21,7 @@ import {
   ModalSendDocument,
 } from '@/components/seller/document-composer';
 import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/empty-state';
 import {
   Dialog,
   DialogBody,
@@ -87,11 +89,15 @@ export function EstimateDetailPage({ id }: { id: string }) {
 
   if (isError) {
     if (error instanceof Error && error.message === 'forbidden') {
-      return <FeatureDisabledState />;
+      return <PermissionDenied />;
     }
     return (
-      <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6">
-        <p className="text-[13px] text-danger-700">{error instanceof Error ? error.message : 'Failed to load estimate.'}</p>
+      <div className="mx-auto w-full max-w-[1920px] px-8 pt-7 pb-6">
+        <ErrorState
+          heading="Couldn't load estimate"
+          description={error instanceof Error ? error.message : 'Failed to load estimate.'}
+          onRetry={() => void queryClient.invalidateQueries({ queryKey: ['tenant-estimate-detail', id] })}
+        />
       </div>
     );
   }

@@ -1,5 +1,6 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { PriceListsLandingClient } from '@/components/seller/price-lists/PriceListsLandingClient';
 import type { PriceListsLandingResponse } from '@/hooks/usePriceLists';
 import { getFlag, FLAGS } from '@/lib/flags';
@@ -33,7 +34,7 @@ export default async function PriceListsPage() {
   const tenantId = h.get('x-verified-tenant-id');
   if (!tenantId) redirect('/dashboard');
 
-  if (!(await getFlag(FLAGS.PRICING_ENGINE, tenantId))) redirect('/dashboard');
+  if (!(await getFlag(FLAGS.PRICING_ENGINE, tenantId))) return <FeatureForbiddenPage />;
 
   const initialData = await getPriceListsInitialData();
   return <PriceListsLandingClient initialData={initialData} />;

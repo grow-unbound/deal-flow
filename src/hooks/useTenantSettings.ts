@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiFetch, apiPatch } from '@/lib/api-fetch';
+import { applyTenantSettingsPatch } from '@/lib/tenant-settings/apply-settings-patch';
 import type { TenantSettingsApiPayload, TenantSettingsPatch } from '@/types/tenant-settings';
 
 async function parseSettingsResponse(res: Response): Promise<TenantSettingsApiPayload> {
@@ -38,9 +39,15 @@ export function useTenantSettings() {
       const res = await apiPatch('/api/settings', patch);
       return parseSettingsResponse(res);
     },
-    onMutate: async () => {
+    onMutate: async (patch) => {
       await queryClient.cancelQueries({ queryKey: ['tenant-settings', currentTenantId] });
       const previous = queryClient.getQueryData<TenantSettingsApiPayload>(['tenant-settings', currentTenantId]);
+      if (previous) {
+        queryClient.setQueryData<TenantSettingsApiPayload>(
+          ['tenant-settings', currentTenantId],
+          applyTenantSettingsPatch(previous, patch),
+        );
+      }
       return { previous };
     },
     onError: (err, _patch, ctx) => {

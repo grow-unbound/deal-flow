@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api-fetch';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { ErrorState } from '@/components/ui/empty-state';
 
 // INR formatter with Indian lakh grouping
 function inr(n: number): string {
@@ -144,6 +145,7 @@ export default function HomePage() {
   const ordersData = routeState.ordersData;
   const catalogsData = routeState.catalogsData;
   const [loading, setLoading] = useState(!meData && !ordersData && !catalogsData);
+  const [loadFailed, setLoadFailed] = useState(false);
   useRouteScrollRestoration({
     storageKey: 'buyer-home-page',
     ready: !loading,
@@ -154,6 +156,7 @@ export default function HomePage() {
 
     async function loadAll() {
       try {
+        setLoadFailed(false);
         const [meRes, ordersRes, catalogsRes] = await Promise.all([
           apiFetch('/api/buyer/me'),
           apiFetch('/api/buyer/orders'),
@@ -178,13 +181,55 @@ export default function HomePage() {
           setLoading(false);
         }
       } catch {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoadFailed(true);
+          setLoading(false);
+        }
       }
     }
 
     void loadAll();
     return () => { cancelled = true; };
   }, []);
+
+  if (loadFailed) {
+    return (
+      <div className="px-4 py-8">
+        <ErrorState
+          heading="Couldn't load home"
+          description="Check your connection and try again."
+          onRetry={() => {
+            setLoading(true);
+            void (async () => {
+              try {
+                setLoadFailed(false);
+                const [meRes, ordersRes, catalogsRes] = await Promise.all([
+                  apiFetch('/api/buyer/me'),
+                  apiFetch('/api/buyer/orders'),
+                  apiFetch('/api/buyer/catalogs'),
+                ]);
+                const [me, orders, catalogs] = await Promise.all([
+                  meRes.ok ? (meRes.json() as Promise<MeData>) : Promise.resolve(null),
+                  ordersRes.ok ? (ordersRes.json() as Promise<OrdersData>) : Promise.resolve({ orders: [] }),
+                  catalogsRes.ok ? (catalogsRes.json() as Promise<CatalogsData>) : Promise.resolve({ catalogs: [] }),
+                ]);
+                setRouteState((current) => ({
+                  ...current,
+                  meData: me,
+                  ordersData: orders,
+                  catalogsData: catalogs,
+                }));
+              } catch {
+                setLoadFailed(true);
+              } finally {
+                setLoading(false);
+              }
+            })();
+          }}
+        />
+      </div>
+    );
+  }
 
   const recentOrders = (ordersData?.orders ?? []).slice(0, 3);
   const catalogs = catalogsData?.catalogs ?? [];

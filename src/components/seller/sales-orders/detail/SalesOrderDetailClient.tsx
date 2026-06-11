@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Edit2, Loader2, PackageCheck, Send, Truck, X } from 'lucide-react';
-import { toast } from 'sonner';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
+import { PermissionDenied } from '@/components/auth/PermissionDenied';
 import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
 import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasicsStrip';
 import { DocumentComposerLoadingSkeleton, DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
@@ -31,6 +31,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/empty-state';
 import { ROLES } from '@/constants';
 import {
   useCancelSalesOrder,
@@ -142,11 +143,15 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
 
   if (isError) {
     if (error instanceof Error && error.message === 'Forbidden') {
-      return <FeatureDisabledState />;
+      return <PermissionDenied />;
     }
     return (
-      <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6">
-        <p className="text-[13px] text-danger-700">{error instanceof Error ? error.message : 'Failed to load sales order.'}</p>
+      <div className="mx-auto w-full max-w-[1920px] px-8 pt-7 pb-6">
+        <ErrorState
+          heading="Couldn't load sales order"
+          description={error instanceof Error ? error.message : 'Failed to load sales order.'}
+          onRetry={() => void queryClient.invalidateQueries({ queryKey: ['tenant-sales-order', id] })}
+        />
       </div>
     );
   }
@@ -358,18 +363,11 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
         orderNumber={data.order_number}
         isPending={dispatchMut.isPending}
         onConfirm={(payload) => {
-          dispatchMut.mutate(
-            { ...payload, notify_buyer: false },
-            {
-              onSuccess: () => {
-                setDispatchOpen(false);
-                toast.success('Order dispatched');
-              },
-              onError: (e) => {
-                toast.error(e instanceof Error ? e.message : 'Dispatch failed');
-              },
+          dispatchMut.mutate({ ...payload, notify_buyer: false }, {
+            onSuccess: () => {
+              setDispatchOpen(false);
             },
-          );
+          });
         }}
       />
 
@@ -383,13 +381,8 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
         grandTotal={totals.grand_total}
         isPending={sendMut.isPending}
         onConfirm={async (payload) => {
-          try {
-            await sendMut.mutateAsync(payload);
-            setSendOpen(false);
-            toast.success('Sales order sent');
-          } catch (error) {
-            toast.error(error instanceof Error ? error.message : 'Failed to send sales order');
-          }
+          await sendMut.mutateAsync(payload);
+          setSendOpen(false);
         }}
       />
 
@@ -402,10 +395,6 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
           cancelMut.mutate(payload, {
             onSuccess: () => {
               setCancelOpen(false);
-              toast.success('Order cancelled');
-            },
-            onError: (e) => {
-              toast.error(e instanceof Error ? e.message : 'Cancel failed');
             },
           });
         }}
@@ -426,15 +415,10 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
               onClick={(e) => {
                 e.preventDefault();
                 confirmMut.mutate(undefined, {
-                    onSuccess: () => {
-                      setConfirmOpen(false);
-                      toast.success('Order confirmed');
-                    },
-                    onError: (err) => {
-                      toast.error(err instanceof Error ? err.message : 'Update failed');
-                    },
+                  onSuccess: () => {
+                    setConfirmOpen(false);
                   },
-                );
+                });
               }}
             >
               {confirmMut.isPending ? 'Saving…' : 'Confirm order'}
@@ -457,18 +441,11 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
               disabled={deliverMut.isPending}
               onClick={(e) => {
                 e.preventDefault();
-                deliverMut.mutate(
-                  {},
-                  {
-                    onSuccess: () => {
-                      setDeliverOpen(false);
-                      toast.success('Marked delivered');
-                    },
-                    onError: (err) => {
-                      toast.error(err instanceof Error ? err.message : 'Update failed');
-                    },
+                deliverMut.mutate({}, {
+                  onSuccess: () => {
+                    setDeliverOpen(false);
                   },
-                );
+                });
               }}
             >
               {deliverMut.isPending ? 'Saving…' : 'Confirm delivered'}

@@ -307,6 +307,7 @@ export function useAddProductToTenant() {
       if (context?.prev) {
         queryClient.setQueryData(['tenant-products'], context.prev);
       }
+      toast.error(_err instanceof Error ? _err.message : 'Could not add product');
     },
 
     onSettled: () => {
@@ -378,7 +379,19 @@ export function useUpdateProduct() {
       );
       return { snapshots };
     },
-    onError: (_error, _vars, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
+    onError: (error, _vars, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      const msg =
+        error &&
+        typeof error === 'object' &&
+        'error' in error &&
+        typeof (error as { error?: unknown }).error === 'string'
+          ? (error as { error: string }).error
+          : error instanceof Error
+            ? error.message
+            : 'Could not update product';
+      toast.error(msg);
+    },
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['tenant-products'] });
       queryClient.invalidateQueries({ queryKey: ['tenant-product', id] });
@@ -413,7 +426,10 @@ export function useDeactivateProduct() {
       );
       return { snapshots };
     },
-    onError: (_error, _id, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
+    onError: (_error, _id, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      toast.error(_error instanceof Error ? _error.message : 'Could not deactivate product');
+    },
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['tenant-products'] });
       queryClient.invalidateQueries({ queryKey: ['tenant-product', id] });
@@ -455,7 +471,10 @@ export function useUpdateProductPriceOverride(productId: string) {
       });
       return { snapshots };
     },
-    onError: (_error, _vars, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
+    onError: (_error, _vars, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      toast.error(_error instanceof Error ? _error.message : 'Could not update override');
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-product-detail', productId] });
       toast.success('Override updated');
@@ -489,7 +508,10 @@ export function useReactivateProduct() {
       );
       return { snapshots };
     },
-    onError: (_error, _id, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
+    onError: (_error, _id, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      toast.error(_error instanceof Error ? _error.message : 'Could not reactivate product');
+    },
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['tenant-products'] });
       queryClient.invalidateQueries({ queryKey: ['tenant-product', id] });
@@ -521,6 +543,18 @@ export function useCreateCustomProduct() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-products'] });
       toast.success('Custom product created');
+    },
+    onError: (error) => {
+      const message =
+        error &&
+        typeof error === 'object' &&
+        'error' in error &&
+        typeof (error as { error?: unknown }).error === 'string'
+          ? (error as { error: string }).error
+          : error instanceof Error
+            ? error.message
+            : 'Could not create product';
+      toast.error(message);
     },
   });
 }

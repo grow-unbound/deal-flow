@@ -4,6 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Package } from 'lucide-react';
+import { Pressable } from '@/components/ui/pressable';
 import { cn, formatCurrency } from '@/lib/utils';
 import { StockBadge } from './StockBadge';
 import type { BuyerCatalogItem } from '@/types/buyer';
@@ -20,15 +21,16 @@ export function ProductCard({ item, className }: ProductCardProps) {
   const hasDiscount = item.mrp > 0 && item.price < item.mrp;
 
   return (
-    <Link
-      href={`/shop/product/${item.tenant_product_id}`}
-      className={cn(
-        'flex flex-col bg-[var(--bg-surface)] border border-[var(--border-1)] rounded-xl overflow-hidden',
-        'hover:border-[var(--border-2)] transition-colors no-underline',
-        isOos && 'opacity-60',
-        className,
-      )}
-    >
+    <Pressable asChild haptic>
+      <Link
+        href={`/shop/product/${item.tenant_product_id}`}
+        className={cn(
+          'flex flex-col bg-[var(--bg-surface)] border border-[var(--border-1)] rounded-xl overflow-hidden',
+          'hover:border-[var(--border-2)] transition-colors no-underline',
+          isOos && 'opacity-60',
+          className,
+        )}
+      >
       {/* Image */}
       <div className="relative aspect-square bg-[var(--bg-recessed)] flex items-center justify-center overflow-hidden">
         {firstImage ? (
@@ -72,5 +74,6 @@ export function ProductCard({ item, className }: ProductCardProps) {
         <StockBadge status={item.stock_status} />
       </div>
     </Link>
+    </Pressable>
   );
 }

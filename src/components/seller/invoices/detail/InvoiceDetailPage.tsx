@@ -3,10 +3,10 @@
 import { Ban, Edit2, IndianRupee, Mail, Send } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
+import { PermissionDenied } from '@/components/auth/PermissionDenied';
 import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
 import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasicsStrip';
 import { DocumentComposerLoadingSkeleton, DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/empty-state';
 import { ROLES } from '@/constants';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import {
@@ -186,11 +187,15 @@ export function InvoiceDetailPage({ id }: { id: string }) {
 
   if (isError) {
     if (error instanceof Error && error.message === 'forbidden') {
-      return <FeatureDisabledState />;
+      return <PermissionDenied />;
     }
     return (
-      <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6">
-        <p className="text-[13px] text-danger-700">{error instanceof Error ? error.message : 'Failed to load invoice.'}</p>
+      <div className="mx-auto w-full max-w-[1920px] px-8 pt-7 pb-6">
+        <ErrorState
+          heading="Couldn't load invoice"
+          description={error instanceof Error ? error.message : 'Failed to load invoice.'}
+          onRetry={() => void queryClient.invalidateQueries({ queryKey: ['tenant-invoice', id] })}
+        />
       </div>
     );
   }
@@ -364,7 +369,6 @@ export function InvoiceDetailPage({ id }: { id: string }) {
         isPending={payMut.isPending}
         onConfirm={async (payload) => {
           await payMut.mutateAsync(payload);
-          toast.success('Payment recorded');
         }}
       />
 
@@ -377,7 +381,6 @@ export function InvoiceDetailPage({ id }: { id: string }) {
         isPending={remindMut.isPending}
         onConfirm={async (payload) => {
           await remindMut.mutateAsync(payload);
-          toast.success('Reminder logged');
         }}
       />
 
@@ -388,7 +391,6 @@ export function InvoiceDetailPage({ id }: { id: string }) {
         isPending={voidMut.isPending}
         onConfirm={async () => {
           await voidMut.mutateAsync();
-          toast.success('Invoice voided');
         }}
       />
 
@@ -409,10 +411,6 @@ export function InvoiceDetailPage({ id }: { id: string }) {
                 sendInvoiceMut.mutate(undefined, {
                   onSuccess: () => {
                     setSendOpen(false);
-                    toast.success('Invoice sent');
-                  },
-                  onError: (err) => {
-                    toast.error(err instanceof Error ? err.message : 'Failed to send');
                   },
                 });
               }}

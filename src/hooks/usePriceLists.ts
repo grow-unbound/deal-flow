@@ -256,7 +256,10 @@ export function useCreatePriceList() {
       return { snapshots };
     },
 
-    onError: (_error, _data, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
+    onError: (_error, _data, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      toast.error(_error instanceof Error ? _error.message : 'Could not create price list');
+    },
 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['price-lists'] });
@@ -293,6 +296,9 @@ export function useSavePriceListComposer(priceListId?: string) {
         queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
       }
       toast.success(payload.save_mode === 'publish' ? 'Price list published' : 'Draft saved');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Could not save price list');
     },
   });
 }
@@ -364,7 +370,10 @@ export function useUpdatePriceListItem(priceListId: string) {
       }));
       return { snapshots };
     },
-    onError: (_error, _vars, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
+    onError: (_error, _vars, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      toast.error(_error instanceof Error ? _error.message : 'Could not update list price');
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
       queryClient.invalidateQueries({ queryKey: ['price-list-items', priceListId] });
@@ -388,6 +397,9 @@ export function usePriceListAction(priceListId: string) {
         throw new Error((body as { error?: string }).error ?? 'Failed to update price list');
       }
       return res.json() as Promise<{ price_list: PriceList }>;
+    },
+    onError: (_error, _vars) => {
+      toast.error(_error instanceof Error ? _error.message : 'Could not update price list');
     },
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['price-list', priceListId] });
@@ -460,7 +472,10 @@ export function useAddPriceListItem(priceListId: string) {
       return { snapshots };
     },
 
-    onError: (_error, _data, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
+    onError: (_error, _data, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      toast.error(_error instanceof Error ? _error.message : 'Could not add product');
+    },
 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['price-list-items', priceListId] });
@@ -505,7 +520,10 @@ export function useDeletePriceListItem(priceListId: string) {
       return { snapshots };
     },
 
-    onError: (_error, _itemId, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
+    onError: (_error, _itemId, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      toast.error(_error instanceof Error ? _error.message : 'Could not remove item');
+    },
 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['price-list-items', priceListId] });
@@ -573,7 +591,10 @@ export function useAddAssignment(priceListId: string) {
       return { snapshots };
     },
 
-    onError: (_error, _data, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
+    onError: (_error, _data, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      toast.error(_error instanceof Error ? _error.message : 'Could not add assignment');
+    },
 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['price-list-assignments', priceListId] });
@@ -636,7 +657,10 @@ export function useTogglePriceListActive() {
       });
       return { snapshots };
     },
-    onError: (_error, _vars, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots as OptimisticSnapshot[]),
+    onError: (_error, _vars, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots as OptimisticSnapshot[]);
+      toast.error(_error instanceof Error ? _error.message : 'Could not update price list');
+    },
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['price-lists'] });
       queryClient.invalidateQueries({ queryKey: ['price-list', id] });
@@ -681,7 +705,10 @@ export function useDeleteAssignment(priceListId: string) {
       return { snapshots };
     },
 
-    onError: (_error, _assignmentId, ctx) => rollbackSnapshots(queryClient, ctx?.snapshots),
+    onError: (_error, _assignmentId, ctx) => {
+      rollbackSnapshots(queryClient, ctx?.snapshots);
+      toast.error(_error instanceof Error ? _error.message : 'Could not remove assignment');
+    },
 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['price-list-assignments', priceListId] });
