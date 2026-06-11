@@ -2,6 +2,8 @@
 
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { Plus, Package } from 'lucide-react';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
 import {
@@ -15,7 +17,8 @@ import {
   V3CalloutPanel,
 } from '@/components/seller/layout';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
-import { ErrorState } from '@/components/ui/empty-state';
+import { ErrorState, EmptyState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useFlagState } from '@/hooks/useFeatureFlag';
@@ -277,6 +280,26 @@ function SalesOrdersLandingContent({
             />
 
             <LandingTable
+              showEmptyState={filteredRows.length === 0}
+              emptyState={
+                <EmptyState
+                  icon={<Package size={28} strokeWidth={1.5} />}
+                  heading={search.trim() || activeChip !== 'All' ? 'No matching sales orders' : 'No sales orders yet'}
+                  description={
+                    search.trim() || activeChip !== 'All'
+                      ? 'Try a different search or status filter.'
+                      : 'Create a sales order to track fulfilment.'
+                  }
+                  action={
+                    <Button variant="accent" asChild>
+                      <Link href="/sales-orders/new" className="inline-flex items-center gap-1.5">
+                        <Plus size={13} />
+                        Add a sales order
+                      </Link>
+                    </Button>
+                  }
+                />
+              }
               tableClassName="v2-table"
               columns={[
                 { label: 'Order', className: 'px-5' },

@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { Package, Minus, Plus } from 'lucide-react';
+import { triggerHaptic } from '@/lib/haptics';
 import { cn, formatCurrency } from '@/lib/utils';
 
 export interface ProductTileData {
@@ -27,10 +28,12 @@ function ProductTile({ product, quantity = 0, onQuantityChange, onClick, classNa
   const minQty = product.minQty ?? 1;
 
   function increment() {
+    triggerHaptic('light');
     onQuantityChange?.(product.id, quantity + minQty);
   }
 
   function decrement() {
+    triggerHaptic('light');
     const next = quantity - minQty;
     onQuantityChange?.(product.id, next <= 0 ? 0 : next);
   }
@@ -39,7 +42,8 @@ function ProductTile({ product, quantity = 0, onQuantityChange, onClick, classNa
     <div className={cn('bg-white rounded-lg border border-cream-200 shadow-xs overflow-hidden', className)}>
       {/* Image */}
       <button
-        className="w-full aspect-square bg-cream-100 flex items-center justify-center overflow-hidden"
+        type="button"
+        className="flex aspect-square w-full touch-manipulation items-center justify-center overflow-hidden bg-cream-100 transition-transform duration-fast ease-standard active:scale-[0.98]"
         onClick={() => onClick?.(product.id)}
         aria-label={`View ${product.name}`}
       >
@@ -74,16 +78,18 @@ function ProductTile({ product, quantity = 0, onQuantityChange, onClick, classNa
         {product.inStock ? (
           quantity === 0 ? (
             <button
+              type="button"
               onClick={increment}
-              className="mt-2 w-full h-9 rounded-md bg-teal-500 text-cream-50 text-body-sm font-medium transition-colors hover:bg-teal-400 active:bg-teal-600"
+              className="mt-2 flex h-9 w-full touch-manipulation items-center justify-center rounded-md bg-teal-500 text-body-sm font-medium text-cream-50 transition-transform duration-fast ease-standard hover:bg-teal-400 active:scale-[0.98] active:bg-teal-600"
             >
               Add
             </button>
           ) : (
             <div className="mt-2 flex items-center justify-between bg-cream-100 rounded-md overflow-hidden">
               <button
+                type="button"
                 onClick={decrement}
-                className="h-9 w-9 flex items-center justify-center text-teal-500 hover:bg-cream-200 active:bg-cream-300 transition-colors"
+                className="flex h-9 w-9 touch-manipulation items-center justify-center text-teal-500 transition-transform duration-fast ease-standard hover:bg-cream-200 active:scale-[0.98] active:bg-cream-300"
                 aria-label="Decrease quantity"
               >
                 <Minus className="h-3.5 w-3.5" />
@@ -92,8 +98,9 @@ function ProductTile({ product, quantity = 0, onQuantityChange, onClick, classNa
                 {quantity}
               </span>
               <button
+                type="button"
                 onClick={increment}
-                className="h-9 w-9 flex items-center justify-center text-teal-500 hover:bg-cream-200 active:bg-cream-300 transition-colors"
+                className="flex h-9 w-9 touch-manipulation items-center justify-center text-teal-500 transition-transform duration-fast ease-standard hover:bg-cream-200 active:scale-[0.98] active:bg-cream-300"
                 aria-label="Increase quantity"
               >
                 <Plus className="h-3.5 w-3.5" />

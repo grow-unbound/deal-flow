@@ -90,3 +90,15 @@ export async function apiPatch<T>(url: string, body: T, init?: RequestInit): Pro
     body: JSON.stringify(body),
   });
 }
+
+export async function apiDelete(url: string, init?: RequestInit): Promise<Response> {
+  const authHeaders = await getAuthHeaders();
+  return fetch(url, {
+    method: 'DELETE',
+    ...init,
+    headers: {
+      ...authHeaders,
+      ...init?.headers,
+    },
+  });
+}

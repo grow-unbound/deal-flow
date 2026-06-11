@@ -1,7 +1,7 @@
 // Mirrors the dashboard page layout: header + 4 KPI cards + 2 panels + tenant details strip
 export default function DashboardLoading() {
   return (
-    <div className="px-8 py-6" role="status" aria-label="Loading dashboard">
+    <div className="max-w-[1920px] mx-auto w-full px-8 py-6" role="status" aria-label="Loading dashboard">
       {/* Page header */}
       <div className="flex items-start justify-between mb-6">
         <div className="space-y-2">
@@ -18,13 +18,13 @@ export default function DashboardLoading() {
       {/* 4 KPI cards */}
       <div className="grid grid-cols-4 gap-[14px] mb-7">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-[104px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-50" />
+          <div key={i} className="h-[104px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
         ))}
       </div>
 
       {/* 2 panels: brand performance + latest orders */}
       <div className="grid grid-cols-2 gap-5 mb-5">
-        <div className="animate-pulse rounded-[14px] border border-cream-200 bg-cream-50 p-5 space-y-3">
+        <div className="animate-pulse rounded-[14px] border border-cream-200 bg-cream-100 p-5 space-y-3">
           <div className="flex justify-between">
             <div className="space-y-1">
               <div className="h-4 w-36 rounded bg-cream-200" />
@@ -43,7 +43,7 @@ export default function DashboardLoading() {
             </div>
           ))}
         </div>
-        <div className="animate-pulse rounded-[14px] border border-cream-200 bg-cream-50 p-5 space-y-3">
+        <div className="animate-pulse rounded-[14px] border border-cream-200 bg-cream-100 p-5 space-y-3">
           <div className="flex justify-between">
             <div className="space-y-1">
               <div className="h-4 w-28 rounded bg-cream-200" />
@@ -65,7 +65,7 @@ export default function DashboardLoading() {
       </div>
 
       {/* Tenant details strip */}
-      <div className="animate-pulse rounded-[14px] border border-cream-200 bg-cream-50">
+      <div className="animate-pulse rounded-[14px] border border-cream-200 bg-cream-100">
         <div className="px-[22px] py-4 border-b border-cream-200">
           <div className="h-4 w-28 rounded bg-cream-200" />
         </div>

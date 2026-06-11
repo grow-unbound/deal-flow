@@ -1,8 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Grid } from 'lucide-react';
+import { Grid, Plus, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 import { FeatureGate } from '@/components/FeatureGate';
 import {
@@ -14,7 +15,8 @@ import {
   StatusTag,
   V3CalloutPanel,
 } from '@/components/seller/layout';
-import { ErrorState } from '@/components/ui/empty-state';
+import { EmptyState, ErrorState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
@@ -267,6 +269,25 @@ function CohortsLandingContent({
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
 
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon={<Users size={28} strokeWidth={1.5} />}
+          heading={search.trim() || activeChip !== 'All' ? 'No matching cohorts' : 'No cohorts yet'}
+          description={
+            search.trim() || activeChip !== 'All'
+              ? 'Try a different search or type filter.'
+              : 'Create a cohort to segment buyers for catalogs and pricing.'
+          }
+          action={
+            <Button variant="accent" asChild>
+              <Link href="/cohorts/new" className="inline-flex items-center gap-1.5">
+                <Plus size={13} />
+                Add a cohort
+              </Link>
+            </Button>
+          }
+        />
+      ) : (
       <div className="v2-body overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
         <div className="v2-grid-body grid grid-cols-1 gap-[14px] bg-cream-50 p-4 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map((cohort) => (
@@ -274,6 +295,7 @@ function CohortsLandingContent({
           ))}
         </div>
       </div>
+      )}
         </>
       )}
     </PageWrap>

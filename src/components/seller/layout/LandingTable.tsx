@@ -14,9 +14,20 @@ interface LandingTableProps {
   className?: string;
   /** Merged onto `<table>` (e.g. `v2-table` from design system). */
   tableClassName?: string;
+  /** When true, render `emptyState` as the sole body row instead of `children`. */
+  showEmptyState?: boolean;
+  /** Shown when `showEmptyState` is true (e.g. `<EmptyState ... />`). */
+  emptyState?: ReactNode;
 }
 
-export function LandingTable({ columns, children, className, tableClassName }: LandingTableProps) {
+export function LandingTable({
+  columns,
+  children,
+  className,
+  tableClassName,
+  showEmptyState,
+  emptyState,
+}: LandingTableProps) {
   return (
     <div className={cn('overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white', className)}>
       <table className={cn('w-full border-collapse text-[13px]', tableClassName)}>
@@ -38,7 +49,17 @@ export function LandingTable({ columns, children, className, tableClassName }: L
             ))}
           </tr>
         </thead>
-        <tbody>{children}</tbody>
+        <tbody>
+          {showEmptyState && emptyState ? (
+            <tr>
+              <td colSpan={Math.max(columns.length, 1)} className="p-0">
+                {emptyState}
+              </td>
+            </tr>
+          ) : (
+            children
+          )}
+        </tbody>
       </table>
     </div>
   );

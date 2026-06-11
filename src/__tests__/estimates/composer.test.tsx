@@ -128,7 +128,7 @@ function baseDocument(overrides: Partial<EstimateComposerDocument> = {}): Estima
     date_issued: '2026-06-07',
     valid_until: '2026-06-21',
     buyer_po_ref: '',
-    place_of_supply: 'Unknown',
+    place_of_supply: '',
     seller_note: '',
     freight: 0,
     discount_flat: 0,
@@ -158,6 +158,8 @@ const searchRow: EstimateComposerProductSearchRow = {
   tax_pct: 18,
   on_hand: 24,
   unit_price: 1180,
+  mrp: 1500,
+  base_selling_price: 1180,
   default_uom: 'bottle',
   pack_size: 750,
 };
@@ -184,7 +186,6 @@ describe('DocComposerEstimate', () => {
                 id: 'buyer-1',
                 business_name: 'Acme Retail',
                 place_of_supply: 'Delhi',
-                credit_used: 5000,
               },
             ],
           }),
@@ -248,7 +249,7 @@ describe('DocComposerEstimate', () => {
     expect(screen.getByText(/North Delhi A-class/i)).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText(/Search product/i), { target: { value: 'Shiraz' } });
-    fireEvent.click(await screen.findByRole('button', { name: /Vinikus Shiraz Reserve/i }));
+    fireEvent.click(await screen.findByRole('option', { name: /Vinikus Shiraz Reserve/i }));
 
     await waitFor(
       () => {
@@ -280,6 +281,8 @@ describe('DocComposerEstimate', () => {
             on_hand: 24,
             qty: 1,
             unit_price: 1180,
+            mrp: 1500,
+            base_selling_price: 1180,
             disc_pct: 0,
             tax_pct: 18,
             line_total: 1392,

@@ -1,12 +1,13 @@
 'use client';
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   ClipboardList,
   PackageSearch,
+  Loader2,
   Save,
+  Trash2,
   Truck,
   X,
 } from 'lucide-react';
@@ -27,7 +28,8 @@ import {
 import {
   BuyerCardEmpty,
   BuyerCardFilled,
-  InsightsCard,
+  BuyerCardLoading,
+  DocumentMetaCard,
   LinesTable,
   TotalsCard,
   type EstimateComposerLineRow,
@@ -42,32 +44,43 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { useDebounce } from '@/hooks/useDebounce';
-import { useEstimateComposer } from '@/hooks/useEstimates';
+import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-overlay';
+import { useAuth } from '@/contexts/AuthContext';
+import { composerSubmitFooterLabel, useComposerLeaveGuard } from '@/hooks/useComposerLeaveGuard';
+import { useDocumentBuyerPicker } from '@/hooks/useDocumentBuyerPicker';
+import {
+  useEstimateComposer,
+  useEstimatePriceListOptions,
+  useEstimateProductPricing,
+  useEstimateProductSearch,
+} from '@/hooks/useEstimates';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import {
   useBuyerSalesOrderContext,
   useDebouncedSalesOrderStockCheck,
   useNextSalesOrderNumber,
   useSalesOrderComposer,
-  useSalesOrderProductSearch,
   useSaveSalesOrderComposer,
 } from '@/hooks/useSalesOrders';
 import { apiPatch, apiPost } from '@/lib/api-fetch';
+import { bumpSecondDateAfterFirst } from '@/lib/date-utils';
+import {
+  buildComposerStagedChanges,
+  stagedSliceFromSalesOrder,
+} from '@/lib/documents/composer-staged-changes';
 import { computeLineTotal, computeTotals, defaultPaymentTerms } from '@/lib/documents/composer-math';
 import { formatCompactInr } from '@/lib/utils';
-import type { Database } from '@/types/database';
+import type {
+  EstimateComposerBuyerContext,
+  EstimateComposerProductSearchRow,
+} from '@/types/estimate-composer';
 import type {
   SalesOrderComposerBuyerContext,
   SalesOrderComposerDocument,
-  SalesOrderComposerProductSearchRow,
   SalesOrderComposerSavePayload,
 } from '@/types/sales-order-composer';
 
-type BuyerPickerRow = Pick<
-  SalesOrderComposerBuyerContext,
-  'id' | 'business_name' | 'place_of_supply' | 'credit_used'
->;
+const BASE_PRICING_OPTION = '__base__';
 
 function isoToday() {
   return new Date().toISOString().slice(0, 10);
@@ -88,7 +101,7 @@ function buildNewSalesOrderDraft(orderNumber = 'Reserving next number...'): Sale
     order_date: isoToday(),
     expected_delivery: defaultExpectedDelivery(),
     buyer_po_ref: '',
-    place_of_supply: 'Unknown',
+    place_of_supply: '',
     seller_note: '',
     freight: 0,
     discount_flat: 0,
@@ -172,38 +185,6 @@ function toSavePayload(document: SalesOrderComposerDocument, lines: EstimateComp
   };
 }
 
-function useBuyerPicker(query: string) {
-  const debounced = useDebounce(query, 200);
-
-  return useQuery({
-    queryKey: ['sales-order-buyer-picker', debounced],
-    queryFn: async (): Promise<BuyerPickerRow[]> => {
-      const supabase = createClientComponentClient<Database>();
-      const { data, error } = await (supabase as typeof supabase & { schema: (schema: string) => typeof supabase })
-        .schema('app')
-        .from('buyers')
-        .select('id, business_name, geography, credit_limit')
-        .eq('is_active', true)
-        .limit(12);
-
-      if (error) throw error;
-
-      return ((data ?? []) as Array<{ id: string; business_name: string; geography: Record<string, unknown> | null; credit_limit: number | null }>)
-        .filter((row) => {
-          if (!debounced.trim()) return true;
-          return row.business_name.toLowerCase().includes(debounced.toLowerCase());
-        })
-        .map((row) => ({
-          id: row.id,
-          business_name: row.business_name,
-          place_of_supply: typeof row.geography?.state === 'string' ? row.geography.state : 'Unknown',
-          credit_used: Number(row.credit_limit ?? 0),
-        }));
-    },
-    staleTime: 30_000,
-  });
-}
-
 export function DocComposerSalesOrder({
   mode,
   orderId,
@@ -214,7 +195,10 @@ export function DocComposerSalesOrder({
   fromEstimateId?: string;
 }) {
   const router = useRouter();
+  const { user } = useAuth();
+  const closeTarget = mode === 'edit' && orderId ? `/sales-orders/${orderId}` : '/sales-orders';
   const qc = useQueryClient();
+  const { isLeavingRef, beginLeaving, resetLeaving, shouldBlockComposer, isSubmitting, submitAction } = useComposerLeaveGuard();
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const salesOrdersFlag = useFlagState('SALES_ORDERS');
 
@@ -234,28 +218,38 @@ export function DocComposerSalesOrder({
   const [buyerSearchOpen, setBuyerSearchOpen] = useState(false);
   const [productQuery, setProductQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
-  const [paymentTermsLabel, setPaymentTermsLabel] = useState('Due on receipt');
+  const [paymentTermsLabel, setPaymentTermsLabel] = useState('Not defined');
   const [autoSaveMeta, setAutoSaveMeta] = useState<{ label: string; tone: 'draft' | 'saved' | 'warning' }>({
     label: mode === 'create' ? 'Not saved yet' : 'Ready to save',
     tone: 'draft',
   });
-  const [notesExpanded, setNotesExpanded] = useState(false);
-  const [freightExpanded, setFreightExpanded] = useState(false);
-  const [internalExpanded, setInternalExpanded] = useState(false);
+  const [selectedPriceListId, setSelectedPriceListId] = useState<string | null>(null);
   const [backorderOpen, setBackorderOpen] = useState(false);
   const [pendingConfirmOrderId, setPendingConfirmOrderId] = useState<string | null>(null);
   const [notifyBuyer, setNotifyBuyer] = useState(true);
-  const [confirmPending, setConfirmPending] = useState(false);
 
   const originalDocumentRef = useRef<SalesOrderComposerDocument | null>(null);
   const originalLinesRef = useRef<EstimateComposerLineRow[]>([]);
   const initializedForIdRef = useRef<string | null>(null);
   const prefilledFromEstimateRef = useRef(false);
+  const lastAppliedPricingKeyRef = useRef<string | null>(null);
+  const salesAgentPinnedRef = useRef<string | null>(null);
 
   const saveMutation = useSaveSalesOrderComposer(workingId);
   const buyerContextQuery = useBuyerSalesOrderContext(documentState?.buyer_id ?? null);
-  const productSearchQuery = useSalesOrderProductSearch(productQuery, documentState?.buyer_id ?? null);
-  const buyerPickerQuery = useBuyerPicker(buyerQuery);
+  const buyerPickerQuery = useDocumentBuyerPicker(buyerQuery, buyerSearchOpen);
+  const priceListOptionsQuery = useEstimatePriceListOptions(Boolean(documentState));
+  const productSearchQuery = useEstimateProductSearch(
+    productQuery,
+    documentState?.buyer_id ?? null,
+    searchOpen,
+    selectedPriceListId,
+  );
+  const pricingQuery = useEstimateProductPricing(
+    documentState?.buyer_id ?? null,
+    lineState.filter((line) => line.diff !== 'removed').map((line) => line.tenant_product_id),
+    selectedPriceListId,
+  );
 
   const prevEditOrderIdRef = useRef<string | undefined>(undefined);
 
@@ -327,6 +321,7 @@ export function DocComposerSalesOrder({
     originalDocumentRef.current = doc;
     originalLinesRef.current = mappedLines;
     setPaymentTermsLabel(defaultPaymentTerms(est.buyer_context?.payment_terms_days ?? 0));
+    setSelectedPriceListId(est.buyer_context?.active_pricelist?.id ?? null);
   }, [estimateForPrefill.data, fromEstimateId, mode, nextOrderNumberQuery.data, orderId]);
 
   useEffect(() => {
@@ -341,6 +336,10 @@ export function DocComposerSalesOrder({
     if (!data) return;
     if (initializedForIdRef.current === data.id) return;
 
+    if (mode === 'edit') {
+      salesAgentPinnedRef.current = data.buyer_context?.sales_agent_name ?? null;
+    }
+
     setDocumentState(data);
     const mappedLines = (data.items ?? []).map((line) => ({
       ...line,
@@ -349,6 +348,7 @@ export function DocComposerSalesOrder({
     }));
     setLineState(mappedLines);
     setPaymentTermsLabel(defaultPaymentTerms(data.buyer_context?.payment_terms_days ?? 0));
+    setSelectedPriceListId(data.buyer_context?.active_pricelist?.id ?? null);
     originalDocumentRef.current = data;
     originalLinesRef.current = mappedLines;
     initializedForIdRef.current = data.id;
@@ -365,18 +365,45 @@ export function DocComposerSalesOrder({
     if (
       documentState.buyer_context?.id === nextContext.id
       && documentState.buyer_context?.credit_available === nextContext.credit_available
-      && documentState.place_of_supply === nextContext.place_of_supply
     ) {
       return;
     }
 
     setDocumentState((current) => current ? ({
       ...current,
-      place_of_supply: nextContext.place_of_supply,
-      buyer_context: nextContext,
+      buyer_context: {
+        ...nextContext,
+        sales_agent_name:
+          mode === 'edit'
+            ? (salesAgentPinnedRef.current ?? nextContext.sales_agent_name)
+            : (user?.displayName ?? nextContext.sales_agent_name),
+      },
     }) : current);
     setPaymentTermsLabel(defaultPaymentTerms(nextContext.payment_terms_days));
-  }, [buyerContextQuery.data, documentState]);
+    setSelectedPriceListId((current) => current ?? nextContext.active_pricelist?.id ?? null);
+  }, [buyerContextQuery.data, documentState, mode, user?.displayName]);
+
+  useEffect(() => {
+    if (!pricingQuery.data || lineState.length === 0) return;
+
+    const pricingKey = `${documentState?.buyer_id ?? ''}:${selectedPriceListId ?? BASE_PRICING_OPTION}:${Object.entries(pricingQuery.data)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([id, price]) => `${id}:${price}`)
+      .join('|')}`;
+
+    if (lastAppliedPricingKeyRef.current === pricingKey) return;
+
+    setLineState((current) =>
+      current.map((line) => {
+        if (line.diff === 'removed') return line;
+        const nextPrice = pricingQuery.data[line.tenant_product_id];
+        if (nextPrice == null || nextPrice === line.unit_price) return line;
+        const next = { ...line, unit_price: nextPrice };
+        return { ...next, line_total: computeLineTotal(next) };
+      }),
+    );
+    lastAppliedPricingKeyRef.current = pricingKey;
+  }, [documentState?.buyer_id, lineState.length, pricingQuery.data, selectedPriceListId]);
 
   useEffect(() => {
     if (!stockCheckQuery.data?.length) return;
@@ -390,20 +417,49 @@ export function DocComposerSalesOrder({
     () => computeTotals(diffLines, documentState?.discount_flat ?? 0, documentState?.freight ?? 0, documentState?.round_off ?? 0),
     [diffLines, documentState?.discount_flat, documentState?.freight, documentState?.round_off],
   );
-  const previousTotals = useMemo(() => {
-    if (!originalDocumentRef.current) return null;
-    return computeTotals(
-      originalLinesRef.current,
-      originalDocumentRef.current.discount_flat,
-      originalDocumentRef.current.freight,
-      originalDocumentRef.current.round_off,
-    );
-  }, [documentState?.id]);
-
   const dirty = useMemo(() => {
     if (!documentState) return false;
     return snapshotPayload(documentState, diffLines) !== snapshotPayload(originalDocumentRef.current ?? documentState, originalLinesRef.current);
   }, [diffLines, documentState]);
+  const originalTotalsSnapshot = useMemo(
+    () => {
+      if (!originalDocumentRef.current) return null;
+      return computeTotals(
+        originalLinesRef.current,
+        originalDocumentRef.current.discount_flat,
+        originalDocumentRef.current.freight,
+        originalDocumentRef.current.round_off,
+      );
+    },
+    [documentState?.id],
+  );
+  const stagedChangesRows = useMemo(() => {
+    if (!documentState) return undefined;
+    const orig = originalDocumentRef.current;
+    const origTotals = originalTotalsSnapshot;
+    if (!orig || !origTotals) return undefined;
+    return buildComposerStagedChanges({
+      mode,
+      dirty,
+      originalDoc: stagedSliceFromSalesOrder(orig),
+      currentDoc: stagedSliceFromSalesOrder(documentState),
+      diffLines,
+      originalTotals: origTotals,
+      currentTotals: totals,
+    });
+  }, [mode, dirty, documentState, diffLines, totals, originalTotalsSnapshot]);
+  const activeProductIds = useMemo(
+    () => new Set(diffLines.filter((line) => line.diff !== 'removed').map((line) => line.tenant_product_id)),
+    [diffLines],
+  );
+  const filteredProductSearchResults = useMemo(
+    () => (productSearchQuery.data ?? []).filter((row) => !activeProductIds.has(row.tenant_product_id)),
+    [productSearchQuery.data, activeProductIds],
+  );
+  const dirtyGuard = useDirtyCloseGuard({
+    isDirty: dirty,
+    onConfirmClose: () => router.push(closeTarget),
+  });
 
   useEffect(() => {
     setAutoSaveMeta(dirty
@@ -442,7 +498,9 @@ export function DocComposerSalesOrder({
     }
     const json = (await res.json()) as { data: SalesOrderComposerDocument };
     qc.setQueryData(['tenant-sales-order-composer', json.data.id], json.data);
-    setWorkingId(json.data.id);
+    if (!isLeavingRef.current) {
+      setWorkingId(json.data.id);
+    }
     return json.data;
   }
 
@@ -480,7 +538,9 @@ export function DocComposerSalesOrder({
   }
 
   async function runConfirm(orderIdForConfirm: string, hasBackorder: boolean) {
-    setConfirmPending(true);
+    if (!isLeavingRef.current) {
+      beginLeaving('confirm');
+    }
     try {
       const res = await apiPatch(`/api/tenant/orders/${orderIdForConfirm}/confirm`, {
         has_backorder: hasBackorder,
@@ -495,8 +555,9 @@ export function DocComposerSalesOrder({
       void qc.invalidateQueries({ queryKey: ['tenant-sales-order-composer', orderIdForConfirm] });
       void qc.invalidateQueries({ queryKey: ['tenant-orders'] });
       router.push(json.data.redirect_path);
-    } finally {
-      setConfirmPending(false);
+    } catch (mutationError) {
+      resetLeaving();
+      throw mutationError;
     }
   }
 
@@ -519,7 +580,7 @@ export function DocComposerSalesOrder({
   const waitingPrefill = mode === 'create' && Boolean(fromEstimateId) && !orderId
     && (estimateForPrefill.isLoading || !documentState);
 
-  if (waitingPrefill || (workingId && isLoading) || !documentState) {
+  if (waitingPrefill || shouldBlockComposer(workingId, isLoading, Boolean(documentState))) {
     return <DocumentComposerLoadingSkeleton />;
   }
 
@@ -531,7 +592,6 @@ export function DocComposerSalesOrder({
     );
   }
 
-  const recentBuyers = buyerPickerQuery.data ?? [];
   const buyer = documentState.buyer_context ?? buyerContextQuery.data ?? null;
   const shortLines = activeLines.filter((line) => line.qty > line.on_hand);
   const previousShortLines = stockCheckQuery.data?.filter((row) => row.is_short) ?? [];
@@ -552,7 +612,7 @@ export function DocComposerSalesOrder({
     : buyer
       ? `For ${buyer.business_name}`
       : 'Pick a buyer to begin composing this sales order.';
-  const primaryDisabled = !documentState.buyer_id || activeLines.length === 0 || confirmPending;
+  const primaryDisabled = !documentState.buyer_id || activeLines.length === 0;
   const warningText = effectiveShortLines.length > 0
     ? `${effectiveShortLines.length} line(s) over stock. ${effectiveShortLines[0]?.product_name ?? 'Line item'} — ordered ${effectiveShortLines[0]?.qty ?? 0}, only ${effectiveShortLines[0]?.on_hand ?? 0} on hand.`
     : null;
@@ -567,10 +627,10 @@ export function DocComposerSalesOrder({
   }
 
   function handleSelectBuyer(buyerId: string) {
+    setSelectedPriceListId(null);
     setDocumentPatch({
       buyer_id: buyerId,
       buyer_context: null,
-      place_of_supply: 'Unknown',
     });
     setBuyerQuery('');
     setProductQuery('');
@@ -578,43 +638,30 @@ export function DocComposerSalesOrder({
     setBuyerSearchOpen(false);
   }
 
-  function handleAddProduct(product: SalesOrderComposerProductSearchRow) {
-    setLineState((current) => {
-      const existing = current.find((line) => line.tenant_product_id === product.tenant_product_id && line.diff !== 'removed');
-      if (existing) {
-        return current.map((line) =>
-          line.id === existing.id
-            ? {
-                ...line,
-                qty: line.qty + 1,
-                line_total: computeLineTotal({ ...line, qty: line.qty + 1 }),
-              }
-            : line,
-        );
-      }
-
-      return [
-        ...current,
-        {
-          id: `draft-line-${Date.now()}-${product.tenant_product_id}`,
-          tenant_product_id: product.tenant_product_id,
-          product_name: product.product_name,
-          sku: product.sku,
-          brand_name: product.brand_name,
-          brand_initials: product.brand_initials,
-          brand_hue: product.brand_hue,
-          hsn_code: product.hsn_code,
-          on_hand: product.on_hand,
-          qty: 1,
-          unit_price: product.unit_price,
-          disc_pct: 0,
-          tax_pct: product.tax_pct ?? 0,
-          line_total: computeLineTotal({ qty: 1, unit_price: product.unit_price, disc_pct: 0, tax_pct: product.tax_pct ?? 0 }),
-          scheme_tag: null,
-          diff: 'added',
-        },
-      ];
-    });
+  function handleAddProduct(product: EstimateComposerProductSearchRow) {
+    setLineState((current) => [
+      ...current,
+      {
+        id: `draft-line-${Date.now()}-${product.tenant_product_id}`,
+        tenant_product_id: product.tenant_product_id,
+        product_name: product.product_name,
+        sku: product.sku,
+        brand_name: product.brand_name,
+        brand_initials: product.brand_initials,
+        brand_hue: product.brand_hue,
+        hsn_code: product.hsn_code,
+        on_hand: product.on_hand,
+        qty: 1,
+        unit_price: product.unit_price,
+        mrp: product.mrp,
+        base_selling_price: product.base_selling_price,
+        disc_pct: 0,
+        tax_pct: product.tax_pct ?? 0,
+        line_total: computeLineTotal({ qty: 1, unit_price: product.unit_price, disc_pct: 0, tax_pct: product.tax_pct ?? 0 }),
+        scheme_tag: null,
+        diff: 'added',
+      },
+    ]);
   }
 
   function handleLineChange(lineId: string, patch: Partial<EstimateComposerLineRow>) {
@@ -638,36 +685,51 @@ export function DocComposerSalesOrder({
     );
   }
 
+  function handleResetOverrides() {
+    setLineState((current) =>
+      current.map((line) => {
+        if (line.diff === 'removed') return line;
+        const original = originalLinesRef.current.find((item) => item.id === line.id);
+        const nextUnitPrice = original?.unit_price ?? pricingQuery.data?.[line.tenant_product_id] ?? line.unit_price;
+        const nextDiscPct = original?.disc_pct ?? 0;
+        const nextTaxPct = original?.tax_pct ?? line.tax_pct;
+        const next = {
+          ...line,
+          unit_price: nextUnitPrice,
+          disc_pct: nextDiscPct,
+          tax_pct: nextTaxPct,
+        };
+        return {
+          ...next,
+          line_total: computeLineTotal(next),
+        };
+      }),
+    );
+  }
+
   function handleDiscard() {
-    router.push('/sales-orders');
+    dirtyGuard.handleOpenChange(false);
   }
 
   async function handleSaveAndClose() {
-    if (!documentState) return;
+    if (!documentState || isLeavingRef.current) return;
+    beginLeaving('save');
     try {
       const saved = await saveDocumentNow(documentState, diffLines);
-      originalDocumentRef.current = saved;
-      originalLinesRef.current = saved.items.map((line) => ({
-        ...line,
-        diff: 'clean' as const,
-        line_total: computeLineTotal(line),
-      }));
-      setDocumentState(saved);
-      setLineState(originalLinesRef.current);
-      setWorkingId(saved.id);
-      setAutoSaveMeta({ label: 'Draft saved just now', tone: 'saved' });
-      router.push('/sales-orders');
+      router.push(`/sales-orders/${saved.id}`);
     } catch (mutationError) {
+      resetLeaving();
       toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to save sales order');
     }
   }
 
   async function handleConfirmClick() {
-    if (!documentState) return;
+    if (!documentState || isLeavingRef.current) return;
 
     const linesShort = (lines: EstimateComposerLineRow[]) =>
       lines.filter((line) => line.diff !== 'removed' && line.qty > line.on_hand);
 
+    beginLeaving('confirm');
     try {
       let doc = documentState;
       let lines = diffLines;
@@ -682,7 +744,9 @@ export function DocComposerSalesOrder({
         setLineState(savedLines);
         originalDocumentRef.current = doc;
         originalLinesRef.current = savedLines;
-        setWorkingId(doc.id);
+        if (!isLeavingRef.current) {
+          setWorkingId(doc.id);
+        }
         lines = savedLines;
       }
 
@@ -691,6 +755,7 @@ export function DocComposerSalesOrder({
       const hasShort = serverShort.length > 0 || clientShort.length > 0;
 
       if (hasShort) {
+        resetLeaving();
         setPendingConfirmOrderId(doc.id);
         setBackorderOpen(true);
         return;
@@ -698,9 +763,15 @@ export function DocComposerSalesOrder({
 
       await runConfirm(doc.id, false);
     } catch (mutationError) {
+      resetLeaving();
       toast.error(mutationError instanceof Error ? mutationError.message : 'Failed to confirm order');
     }
   }
+
+  const footerLabel = composerSubmitFooterLabel(submitAction)
+    ?? (effectiveShortLines.length > 0 ? 'Resolve the stock warning before confirming' : autoSaveMeta.label);
+  const footerTone = submitAction ? 'pending' as const : effectiveShortLines.length > 0 ? 'warning' as const : autoSaveMeta.tone;
+  const confirmPrimaryLabel = effectiveShortLines.length > 0 ? 'Confirm with backorder' : 'Confirm order';
 
   return (
     <>
@@ -720,11 +791,7 @@ export function DocComposerSalesOrder({
         status={{ label: modeChip, tone: mode === 'edit' ? 'live' : 'draft' }}
         titleActions={(
           <>
-            <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => toast.message('Stock report coming soon')}>
-              <PackageSearch className="h-4 w-4" />
-              Stock report
-            </Button>
-            <Button type="button" variant="ghost" className="gap-2" onClick={() => router.push('/sales-orders')}>
+            <Button type="button" variant="ghost" className="gap-2" disabled={isSubmitting} onClick={() => dirtyGuard.handleOpenChange(false)}>
               <X className="h-3.5 w-3.5" />
               Close
             </Button>
@@ -738,7 +805,15 @@ export function DocComposerSalesOrder({
             secondDate={documentState.expected_delivery}
             buyerPoRef={documentState.buyer_po_ref}
             placeOfSupply={documentState.place_of_supply}
-            onDateIssuedChange={(value) => setDocumentPatch({ order_date: value })}
+            onDateIssuedChange={(value) => {
+              setDocumentState((current) => {
+                if (!current) return current;
+                const bumped = bumpSecondDateAfterFirst(value, current.expected_delivery);
+                return bumped
+                  ? { ...current, order_date: value, expected_delivery: bumped }
+                  : { ...current, order_date: value };
+              });
+            }}
             onSecondDateChange={(value) => setDocumentPatch({ expected_delivery: value })}
             onBuyerPoRefChange={(value) => setDocumentPatch({ buyer_po_ref: value })}
             onPlaceOfSupplyChange={(value) => setDocumentPatch({ place_of_supply: value })}
@@ -746,26 +821,44 @@ export function DocComposerSalesOrder({
         )}
         left={(
           <ComposerSidebarCard>
-            {buyer ? (
-              <BuyerCardFilled
-                buyer={buyer}
-                previewTotal={totals.grand_total}
-                paymentTermsValue={paymentTermsLabel}
+            <div className="space-y-4">
+              {documentState.buyer_id && buyerContextQuery.isLoading && !buyer ? (
+                <BuyerCardLoading />
+              ) : buyer ? (
+                <BuyerCardFilled
+                  buyer={buyer as EstimateComposerBuyerContext}
+                  previewTotal={totals.grand_total}
+                  paymentTermsValue={paymentTermsLabel}
+                  readOnly={isConfirmedEdit}
+                  onPaymentTermsChange={setPaymentTermsLabel}
+                  priceListOptions={priceListOptionsQuery.data ?? []}
+                  selectedPriceListId={selectedPriceListId}
+                  onPriceListChange={isConfirmedEdit ? undefined : setSelectedPriceListId}
+                  onChangeBuyer={() => {
+                    if (isConfirmedEdit) return;
+                    setSelectedPriceListId(null);
+                    setDocumentPatch({ buyer_id: null, buyer_context: null });
+                  }}
+                />
+              ) : (
+                <BuyerCardEmpty
+                  query={buyerQuery}
+                  results={buyerPickerQuery.data ?? []}
+                  searchOpen={buyerSearchOpen}
+                  searchLoading={buyerPickerQuery.isLoading}
+                  onQueryChange={setBuyerQuery}
+                  onSearchOpenChange={setBuyerSearchOpen}
+                  onSelectBuyer={handleSelectBuyer}
+                />
+              )}
+              <DocumentMetaCard
                 readOnly={isConfirmedEdit}
-                onPaymentTermsChange={setPaymentTermsLabel}
-                onSwap={() => setDocumentPatch({ buyer_id: null, buyer_context: null })}
+                notesValue={documentState.seller_note}
+                freightValue={documentState.freight}
+                onNotesChange={(value) => setDocumentPatch({ seller_note: value })}
+                onFreightChange={(value) => setDocumentPatch({ freight: value })}
               />
-            ) : (
-              <BuyerCardEmpty
-                query={buyerQuery}
-                recentBuyers={recentBuyers}
-                searchOpen={buyerSearchOpen}
-                searchLoading={buyerPickerQuery.isLoading}
-                onQueryChange={setBuyerQuery}
-                onSearchOpenChange={setBuyerSearchOpen}
-                onSelectBuyer={handleSelectBuyer}
-              />
-            )}
+            </div>
           </ComposerSidebarCard>
         )}
         center={(
@@ -775,65 +868,86 @@ export function DocComposerSalesOrder({
             readOnly={false}
             lines={diffLines}
             productQuery={productQuery}
-            productResults={productSearchQuery.data ?? []}
+            productResults={filteredProductSearchResults}
             searchOpen={searchOpen}
-            notesExpanded={notesExpanded}
-            freightExpanded={freightExpanded}
-            internalExpanded={internalExpanded}
+            notesExpanded={false}
+            freightExpanded={false}
+            internalExpanded={false}
             singleNoteMode
+            title="Sales order lines"
+            description="Search by product, SKU, or brand. Pricelist pricing is applied automatically."
+            showNotesControls={false}
+            showFreightControls={false}
             notesValue={documentState.seller_note}
             freightValue={String(documentState.freight || '')}
             internalValue=""
             onProductQueryChange={setProductQuery}
             onSearchOpenChange={setSearchOpen}
             onAddProduct={handleAddProduct}
+            onResetOverrides={handleResetOverrides}
+            resetEnabled={mode === 'edit' || dirty}
             onLineChange={handleLineChange}
             onRemoveLine={handleRemoveLine}
             onNotesValueChange={(value) => setDocumentPatch({ seller_note: value })}
             onFreightValueChange={(value) => setDocumentPatch({ freight: Number(value || 0) })}
             onInternalValueChange={(value) => setDocumentPatch({ seller_note: value })}
-            onToggleNotes={() => setNotesExpanded((current) => !current)}
-            onToggleFreight={() => setFreightExpanded((current) => !current)}
-            onToggleInternal={() => setInternalExpanded((current) => !current)}
+            onToggleNotes={() => {}}
+            onToggleFreight={() => {}}
+            onToggleInternal={() => {}}
           />
         )}
         right={(
           <div className="space-y-4">
             <TotalsCard
               totals={totals}
-              previousTotals={mode === 'edit' ? previousTotals : null}
+              previousTotals={null}
               creditWarning={warningText ? `Stock warning. ${warningText}` : null}
               isInterState={isInterState}
               lineCount={activeLines.length}
+              stagedChanges={stagedChangesRows}
             />
-            <InsightsCard buyer={buyer} expiringSoon={false} readOnly={isConfirmedEdit} />
           </div>
         )}
         footer={(
-          <DocumentComposerFooterRow
-            autoSaveLabel={effectiveShortLines.length > 0 ? 'Resolve the stock warning before confirming' : autoSaveMeta.label}
-            autoSaveTone={effectiveShortLines.length > 0 ? 'warning' : autoSaveMeta.tone}
-          >
-            <Button type="button" variant="ghost" className="gap-2" onClick={handleDiscard}>
-              <X className="h-4 w-4" />
-              Discard
+          <DocumentComposerFooterRow autoSaveLabel={footerLabel} autoSaveTone={footerTone}>
+            <Button type="button" variant="ghost" className="gap-2" disabled={isSubmitting} onClick={handleDiscard}>
+              <Trash2 className="h-4 w-4" />
+              Discard draft
             </Button>
-            <Button type="button" variant="outline" className="gap-2" onClick={() => void handleSaveAndClose()}>
-              <Save className="h-4 w-4" />
-              Save &amp; close
+            <Button
+              type="button"
+              variant="accent"
+              className="gap-2"
+              disabled={isSubmitting && submitAction !== 'save'}
+              onClick={() => void handleSaveAndClose()}
+            >
+              {submitAction === 'save' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {submitAction === 'save' ? 'Saving…' : 'Save & close'}
             </Button>
             <Button
               type="button"
               variant={effectiveShortLines.length > 0 ? 'secondary' : 'primary'}
-              className={effectiveShortLines.length > 0 ? 'gap-2 border-amber-500 text-amber-700 hover:bg-amber-50' : primaryDisabled ? 'btn-disabled gap-2' : 'gap-2'}
-              disabled={primaryDisabled}
+              className={effectiveShortLines.length > 0 ? 'gap-2 border-amber-500 text-amber-700 hover:bg-amber-50' : primaryDisabled && submitAction !== 'confirm' ? 'btn-disabled gap-2' : 'gap-2'}
+              disabled={(primaryDisabled || isSubmitting) && submitAction !== 'confirm'}
               onClick={() => void handleConfirmClick()}
             >
-              {effectiveShortLines.length > 0 ? <AlertTriangle className="h-4 w-4" /> : <Truck className="h-4 w-4" />}
-              {effectiveShortLines.length > 0 ? 'Confirm with backorder' : 'Confirm order'}
+              {submitAction === 'confirm' ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : effectiveShortLines.length > 0 ? (
+                <AlertTriangle className="h-4 w-4" />
+              ) : (
+                <Truck className="h-4 w-4" />
+              )}
+              {submitAction === 'confirm' ? 'Confirming…' : confirmPrimaryLabel}
             </Button>
           </DocumentComposerFooterRow>
         )}
+      />
+
+      <DiscardChangesDialog
+        open={dirtyGuard.discardOpen}
+        onOpenChange={dirtyGuard.setDiscardOpen}
+        onDiscard={dirtyGuard.confirmDiscard}
       />
 
       <Dialog open={backorderOpen} onOpenChange={(open) => {
@@ -862,21 +976,21 @@ export function DocComposerSalesOrder({
             </div>
           </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setBackorderOpen(false)}>
+            <Button type="button" variant="ghost" disabled={isSubmitting} onClick={() => setBackorderOpen(false)}>
               Cancel
             </Button>
             <Button
               type="button"
               variant="secondary"
               className="gap-2 border-amber-500 text-amber-700 hover:bg-amber-50"
-              disabled={!pendingConfirmOrderId}
+              disabled={!pendingConfirmOrderId || isSubmitting}
               onClick={() => {
-                if (!pendingConfirmOrderId) return;
+                if (!pendingConfirmOrderId || isLeavingRef.current) return;
                 void runConfirm(pendingConfirmOrderId, true);
               }}
             >
-              <ClipboardList className="h-4 w-4" />
-              Confirm anyway
+              {submitAction === 'confirm' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardList className="h-4 w-4" />}
+              {submitAction === 'confirm' ? 'Confirming…' : 'Confirm anyway'}
             </Button>
           </DialogFooter>
         </DialogContent>

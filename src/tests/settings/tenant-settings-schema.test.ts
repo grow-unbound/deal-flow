@@ -1,0 +1,102 @@
+import { describe, expect, it } from 'vitest';
+import { GstinSchema, TenantSettingsBusinessSchema, TenantSettingsPatchSchema } from '@/types/tenant-settings';
+
+describe('GstinSchema', () => {
+  it('accepts empty string', () => {
+    expect(GstinSchema.safeParse('').success).toBe(true);
+  });
+
+  it('accepts valid 15-char GSTIN', () => {
+    expect(GstinSchema.safeParse('27AABCU9603R1ZM').success).toBe(true);
+  });
+
+  it('rejects wrong length', () => {
+    expect(GstinSchema.safeParse('27AABCU9603R1Z').success).toBe(false);
+  });
+
+  it('accepts lowercase letters (pattern is case-insensitive)', () => {
+    expect(GstinSchema.safeParse('27aabcu9603r1zm').success).toBe(true);
+  });
+});
+
+describe('TenantSettingsBusinessSchema', () => {
+  const valid = {
+    company_name: 'Acme',
+    gstin: '',
+    address: { line1: '1', line2: '', city: 'Mumbai', state: 'MH', pincode: '400001' },
+    phone: '',
+    email: 'a@b.co',
+  };
+
+  it('parses minimal business', () => {
+    const r = TenantSettingsBusinessSchema.safeParse(valid);
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects invalid email when non-empty', () => {
+    const r = TenantSettingsBusinessSchema.safeParse({ ...valid, email: 'not-an-email' });
+    expect(r.success).toBe(false);
+  });
+});
+
+describe('TenantSettingsPatchSchema', () => {
+  it('accepts whatsapp partial', () => {
+    const r = TenantSettingsPatchSchema.safeParse({
+      notifications: { whatsapp: { enquiry_received: false } },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('accepts business partial', () => {
+    const r = TenantSettingsPatchSchema.safeParse({
+      business: { company_name: 'X' },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('accepts product_defaults partial', () => {
+    const r = TenantSettingsPatchSchema.safeParse({
+      product_defaults: { gst_rate: 18 },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('accepts orders nested partial', () => {
+    const r = TenantSettingsPatchSchema.safeParse({
+      orders: {
+        number_format: 'SO-{YYYY}-{SEQ}',
+        features: { enquiries: true },
+      },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('accepts buyer_app and catalog partials', () => {
+    const r = TenantSettingsPatchSchema.safeParse({
+      buyer_app: { enabled: false },
+      catalog: { cohort_pricing_enabled: true, price_visibility: 'show_both' },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects invalid inventory_lock_stage', () => {
+    const r = TenantSettingsPatchSchema.safeParse({
+      orders: { inventory_lock_stage: 'bogus' },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects invalid price_visibility', () => {
+    const r = TenantSettingsPatchSchema.safeParse({
+      catalog: { price_visibility: 'invalid' },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects invalid gst_rate in product_defaults', () => {
+    const r = TenantSettingsPatchSchema.safeParse({
+      product_defaults: { gst_rate: 99 },
+    });
+    expect(r.success).toBe(false);
+  });
+});

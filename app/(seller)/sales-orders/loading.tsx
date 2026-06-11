@@ -18,8 +18,8 @@ export default function SalesOrdersLoading() {
         ))}
       </div>
       <div className="mt-5 h-[46px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-      <div className="overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
-        <div className="h-[420px] animate-pulse bg-cream-50" />
+      <div className="overflow-hidden rounded-b-[14px] border border-cream-200 border-t-0">
+        <div className="h-[420px] animate-pulse border-t border-cream-200 bg-cream-100" />
       </div>
     </div>
   );

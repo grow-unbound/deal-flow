@@ -10,6 +10,7 @@ import { CatalogPageHeader } from '@/components/buyer/catalog/CatalogPageHeader'
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { LoadingSkeleton } from '@/components/buyer/catalog/LoadingSkeleton';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { ErrorState } from '@/components/ui/empty-state';
 import type { BuyerCatalogItem, BuyerBrand, BuyerCategory } from '@/types/buyer';
 
 const PAGE_LIMIT = 40;
@@ -44,6 +45,11 @@ export default function CatalogPage() {
   const loadedShareToken = routeState.loadedShareToken;
   const [loading, setLoading] = React.useState(items.length === 0);
   const [loadingMore, setLoadingMore] = React.useState(false);
+  const [categoriesFetchError, setCategoriesFetchError] = React.useState(false);
+  const [listFetchError, setListFetchError] = React.useState(false);
+  const [loadMoreError, setLoadMoreError] = React.useState(false);
+  const [categoriesRetryNonce, setCategoriesRetryNonce] = React.useState(0);
+  const [catalogFetchNonce, setCatalogFetchNonce] = React.useState(0);
   useRouteScrollRestoration({
     storageKey: 'buyer-catalog-page',
     ready: !loading,
@@ -59,21 +65,25 @@ export default function CatalogPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  // Fetch categories once on mount
+  // Fetch categories once on mount (retry via categoriesRetryNonce)
   React.useEffect(() => {
+    setCategoriesFetchError(false);
     apiFetch('/api/buyer/categories')
       .then((r) => r.json())
       .then((data: { categories?: BuyerCategory[] }) => {
         setRouteState((current) => ({ ...current, categories: data.categories ?? [] }));
       })
-      .catch((err) => console.error('[CatalogPage] categories fetch error:', err));
-  }, []);
+      .catch(() => setCategoriesFetchError(true));
+  }, [categoriesRetryNonce, setRouteState]);
 
-  // Fetch products on filter change (reset)
+  const itemsLengthRef = React.useRef(items.length);
+  itemsLengthRef.current = items.length;
+
+  // Fetch products on filter change (reset); catalogFetchNonce forces retry after error
   React.useEffect(() => {
     let cancelled = false;
-    const hasCachedItems = routeState.items.length > 0;
-    setLoading(!hasCachedItems);
+    setListFetchError(false);
+    setLoading(itemsLengthRef.current === 0);
 
     if (shareToken) {
       apiFetch(`/api/buyer/catalog/${shareToken}`)
@@ -90,7 +100,9 @@ export default function CatalogPage() {
             loadedShareToken: shareToken,
           }));
         })
-        .catch((err) => console.error('[CatalogPage] share catalog fetch error:', err))
+        .catch(() => {
+          if (!cancelled) setListFetchError(true);
+        })
         .finally(() => {
           if (!cancelled) setLoading(false);
         });
@@ -122,7 +134,9 @@ export default function CatalogPage() {
           loadedShareToken: null,
         }));
       })
-      .catch((err) => console.error('[CatalogPage] initial fetch error:', err))
+      .catch(() => {
+        if (!cancelled) setListFetchError(true);
+      })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
@@ -130,11 +144,12 @@ export default function CatalogPage() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedSearch, selectedCategory, selectedBrand, shareToken]);
+  }, [debouncedSearch, selectedCategory, selectedBrand, shareToken, catalogFetchNonce, setRouteState]);
 
   // Load more (infinite scroll)
   const loadMore = React.useCallback(() => {
     if (shareToken || loadingMore || !hasMore) return;
+    setLoadMoreError(false);
     setLoadingMore(true);
 
     const offset = page * PAGE_LIMIT;
@@ -156,9 +171,9 @@ export default function CatalogPage() {
           page: current.page + 1,
         }));
       })
-      .catch((err) => console.error('[CatalogPage] load more error:', err))
+      .catch(() => setLoadMoreError(true))
       .finally(() => setLoadingMore(false));
-  }, [shareToken, loadingMore, hasMore, page, debouncedSearch, selectedCategory, selectedBrand]);
+  }, [shareToken, loadingMore, hasMore, page, debouncedSearch, selectedCategory, selectedBrand, setRouteState]);
 
   // Intersection observer for sentinel
   React.useEffect(() => {
@@ -225,6 +240,15 @@ export default function CatalogPage() {
 
       {/* Filters */}
       <div className="pt-3 pb-1 flex flex-col gap-2">
+        {categoriesFetchError && (
+          <div className="px-4">
+            <ErrorState
+              heading="Couldn't load categories"
+              description="Filters may be limited until this loads."
+              onRetry={() => setCategoriesRetryNonce((n) => n + 1)}
+            />
+          </div>
+        )}
         <CategoryFilter
           categories={categories}
           selected={selectedCategory}
@@ -252,29 +276,60 @@ export default function CatalogPage() {
       <div className="pt-3">
         {loading ? (
           <LoadingSkeleton count={6} />
-        ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center px-6 py-16 text-center gap-3">
-            <p className="text-3xl">&#x1F50D;</p>
-            <p className="text-base font-semibold text-[var(--fg-1)]">No products found</p>
-            <p className="text-sm text-[var(--fg-3)]">Try adjusting your search or filters</p>
-            {hasActiveFilters && (
-              <button
-                onClick={clearFilters}
-                className="mt-2 text-sm font-medium text-[var(--teal-500)] border border-[var(--teal-500)] rounded-full px-4 py-1.5 hover:bg-[var(--teal-500)] hover:text-white transition-colors"
-              >
-                Clear filters
-              </button>
-            )}
+        ) : listFetchError && items.length === 0 ? (
+          <div className="px-4">
+            <ErrorState
+              heading="Couldn't load catalog"
+              description="Check your connection and try again."
+              onRetry={() => setCatalogFetchNonce((n) => n + 1)}
+            />
           </div>
         ) : (
-          <ProductGrid items={items} />
-        )}
+          <>
+            {listFetchError && items.length > 0 && (
+              <div className="px-4 pb-3">
+                <ErrorState
+                  heading="Couldn't refresh results"
+                  description="Showing the previous list. Try again to update."
+                  onRetry={() => setCatalogFetchNonce((n) => n + 1)}
+                />
+              </div>
+            )}
+            {items.length === 0 ? (
+              <div className="flex flex-col items-center justify-center px-6 py-16 text-center gap-3">
+                <p className="text-3xl">&#x1F50D;</p>
+                <p className="text-base font-semibold text-[var(--fg-1)]">No products found</p>
+                <p className="text-sm text-[var(--fg-3)]">Try adjusting your search or filters</p>
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="mt-2 text-sm font-medium text-[var(--teal-500)] border border-[var(--teal-500)] rounded-full px-4 py-1.5 hover:bg-[var(--teal-500)] hover:text-white transition-colors"
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
+            ) : (
+              <ProductGrid items={items} />
+            )}
 
-        {/* Load more indicator */}
-        {loadingMore && (
-          <div className="flex justify-center py-6">
-            <div className="h-5 w-5 rounded-full border-2 border-[var(--teal-500)] border-t-transparent animate-spin" />
-          </div>
+            {/* Load more indicator */}
+            {loadMoreError && !shareToken && items.length > 0 && (
+              <div className="px-4 py-4">
+                <ErrorState
+                  heading="Couldn't load more"
+                  description="Scroll up and try again, or adjust filters."
+                  onRetry={() => loadMore()}
+                />
+              </div>
+            )}
+            {loadingMore && (
+              <div className="flex justify-center py-6">
+                <div className="h-5 w-5 rounded-full border-2 border-[var(--teal-500)] border-t-transparent animate-spin" />
+              </div>
+            )}
+          </>
         )}
 
         {/* Sentinel for infinite scroll */}

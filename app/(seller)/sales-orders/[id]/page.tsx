@@ -1,5 +1,6 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { SalesOrderDetailClient } from '@/components/seller/sales-orders/detail/SalesOrderDetailClient';
 import { getFlag, FLAGS } from '@/lib/flags';
 
@@ -16,7 +17,7 @@ export default async function SalesOrderDetailPage({ params }: SalesOrderDetailP
     getFlag(FLAGS.ORDER_MANAGEMENT, tenantId),
     getFlag(FLAGS.SALES_ORDERS, tenantId),
   ]);
-  if (!orderMgmt || !salesOrders) redirect('/dashboard');
+  if (!orderMgmt || !salesOrders) return <FeatureForbiddenPage />;
 
   const { id } = await params;
   return <SalesOrderDetailClient id={id} />;

@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { Plus, Library } from 'lucide-react';
 
 import { FeatureGate } from '@/components/FeatureGate';
 import {
@@ -13,7 +15,8 @@ import {
   FilterBar,
   GrowthPill,
 } from '@/components/seller/layout';
-import { ErrorState } from '@/components/ui/empty-state';
+import { ErrorState, EmptyState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
@@ -245,6 +248,25 @@ function CatalogsLandingContent({
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
 
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon={<Library size={28} strokeWidth={1.5} />}
+          heading={search.trim() || activeChip !== 'All' ? 'No matching catalogs' : 'No catalogs yet'}
+          description={
+            search.trim() || activeChip !== 'All'
+              ? 'Try a different search or status filter.'
+              : 'Publish a catalog to share products with a cohort.'
+          }
+          action={
+            <Button variant="accent" asChild>
+              <Link href="/catalogs/new" className="inline-flex items-center gap-1.5">
+                <Plus size={13} />
+                Add a catalog
+              </Link>
+            </Button>
+          }
+        />
+      ) : (
       <div className="mt-2 grid grid-cols-2 gap-4">
         {filtered.map((catalog) => {
           const badgeClass =
@@ -306,6 +328,7 @@ function CatalogsLandingContent({
           );
         })}
       </div>
+      )}
         </>
       )}
     </PageWrap>

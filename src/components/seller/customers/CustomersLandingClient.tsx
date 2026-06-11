@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { Send } from 'lucide-react';
+import { Send, Plus, Users } from 'lucide-react';
 
 import { FeatureGate } from '@/components/FeatureGate';
 import {
@@ -17,7 +17,8 @@ import {
   StatusTag,
   V3CalloutPanel,
 } from '@/components/seller/layout';
-import { ErrorState } from '@/components/ui/empty-state';
+import { ErrorState, EmptyState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn, formatCompactInr } from '@/lib/utils';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
@@ -326,6 +327,24 @@ function CustomersLandingContent({
       )}
 
       <LandingTable
+        showEmptyState={filtered.length === 0}
+        emptyState={
+          <EmptyState
+            icon={<Users size={28} strokeWidth={1.5} />}
+            heading={search.trim() || activeChip !== 'All tiers' ? 'No matching customers' : 'No customers yet'}
+            description={
+              search.trim() || activeChip !== 'All tiers'
+                ? 'Try a different search or tier filter.'
+                : 'Add your first customer to start cohorts and pricing.'
+            }
+            action={
+              <Button variant="accent" onClick={() => setAddOpen(true)} className="gap-1.5">
+                <Plus size={13} />
+                Add a customer
+              </Button>
+            }
+          />
+        }
         columns={[
           { label: 'Buyer', width: 320, className: 'px-5' },
           { label: 'Cohort', className: 'px-5' },

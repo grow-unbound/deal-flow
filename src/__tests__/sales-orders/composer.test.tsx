@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -13,7 +13,7 @@ const useFlagStateMock = vi.fn();
 const useSalesOrderComposerMock = vi.fn();
 const useSaveSalesOrderComposerMock = vi.fn();
 const useBuyerSalesOrderContextMock = vi.fn();
-const useSalesOrderProductSearchMock = vi.fn();
+const useEstimateProductSearchMock = vi.fn();
 const useDebouncedSalesOrderStockCheckMock = vi.fn();
 const useNextSalesOrderNumberMock = vi.fn();
 const useEstimateComposerSOMock = vi.fn();
@@ -24,19 +24,34 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock, replace: replaceMock }),
 }));
 
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: { id: 'user-1', email: 'seller@example.com', displayName: 'Phani' },
+  }),
+}));
+
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlagState: (...args: unknown[]) => useFlagStateMock(...args),
 }));
 
 vi.mock('@/hooks/useEstimates', () => ({
   useEstimateComposer: (...args: unknown[]) => useEstimateComposerSOMock(...args),
+  useEstimateProductSearch: (...args: unknown[]) => useEstimateProductSearchMock(...args),
+  useEstimateProductPricing: () => ({ data: {}, isLoading: false }),
+  useEstimatePriceListOptions: () => ({ data: [], isLoading: false }),
+}));
+
+vi.mock('@/hooks/useDocumentBuyerPicker', () => ({
+  useDocumentBuyerPicker: () => ({
+    data: [{ id: 'buyer-1', business_name: 'Acme Retail', place_of_supply: 'Delhi' }],
+    isLoading: false,
+  }),
 }));
 
 vi.mock('@/hooks/useSalesOrders', () => ({
   useSalesOrderComposer: (...args: unknown[]) => useSalesOrderComposerMock(...args),
   useSaveSalesOrderComposer: (...args: unknown[]) => useSaveSalesOrderComposerMock(...args),
   useBuyerSalesOrderContext: (...args: unknown[]) => useBuyerSalesOrderContextMock(...args),
-  useSalesOrderProductSearch: (...args: unknown[]) => useSalesOrderProductSearchMock(...args),
   useDebouncedSalesOrderStockCheck: (...args: unknown[]) => useDebouncedSalesOrderStockCheckMock(...args),
   useNextSalesOrderNumber: (...args: unknown[]) => useNextSalesOrderNumberMock(...args),
 }));
@@ -45,40 +60,6 @@ vi.mock('@/lib/api-fetch', () => ({
   apiPost: (...args: unknown[]) => apiPostMock(...args),
   apiPatch: (...args: unknown[]) => apiPatchMock(...args),
 }));
-
-vi.mock('@supabase/auth-helpers-nextjs', () => {
-  class QueryMock {
-    select() {
-      return this;
-    }
-    eq() {
-      return this;
-    }
-    limit() {
-      return this;
-    }
-    then(resolve: (value: { data: unknown; error: null }) => void) {
-      resolve({
-        data: [
-          {
-            id: 'buyer-1',
-            business_name: 'Acme Retail',
-            geography: { state: 'Delhi' },
-            credit_limit: 5000,
-          },
-        ],
-        error: null,
-      });
-    }
-  }
-  return {
-    createClientComponentClient: () => ({
-      schema: () => ({
-        from: () => new QueryMock(),
-      }),
-    }),
-  };
-});
 
 function baseBuyer(overrides: Partial<SalesOrderComposerBuyerContext> = {}): SalesOrderComposerBuyerContext {
   return {
@@ -113,7 +94,7 @@ function baseDocument(overrides: Partial<SalesOrderComposerDocument> = {}): Sale
     order_date: '2026-06-07',
     expected_delivery: '2026-06-14',
     buyer_po_ref: '',
-    place_of_supply: 'Unknown',
+    place_of_supply: '',
     seller_note: '',
     freight: 0,
     discount_flat: 0,
@@ -156,6 +137,8 @@ function estimateForSoPrefill(): TenantEstimateDetailResponse {
         on_hand: 10,
         qty: 1,
         unit_price: 1180,
+        mrp: 1500,
+        base_selling_price: 1180,
         disc_pct: 0,
         tax_pct: 18,
         line_total: 1392,
@@ -183,6 +166,8 @@ const searchRow: SalesOrderComposerProductSearchRow = {
   tax_pct: 18,
   on_hand: 2,
   unit_price: 1180,
+  mrp: 1500,
+  base_selling_price: 1180,
   default_uom: 'bottle',
   pack_size: 750,
 };
@@ -208,7 +193,7 @@ describe('DocComposerSalesOrder', () => {
 
     useFlagStateMock.mockReturnValue(true);
     useSaveSalesOrderComposerMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
-    useSalesOrderProductSearchMock.mockReturnValue({ data: [], isLoading: false });
+    useEstimateProductSearchMock.mockReturnValue({ data: [], isLoading: false });
     useBuyerSalesOrderContextMock.mockReturnValue({ data: null, isLoading: false });
     useDebouncedSalesOrderStockCheckMock.mockReturnValue({ data: [], isLoading: false });
     useNextSalesOrderNumberMock.mockReturnValue({ data: 'SO-2026-00001', isLoading: false });
@@ -236,10 +221,8 @@ describe('DocComposerSalesOrder', () => {
     renderComposer({ mode: 'create' });
 
     expect(await screen.findByPlaceholderText(/Search buyer/i)).toBeInTheDocument();
-    const basicsStrip = document.querySelector('.doc-strip');
-    expect(basicsStrip).toBeTruthy();
-    expect(within(basicsStrip as HTMLElement).getByText('Sales order #')).toBeInTheDocument();
-    expect(within(basicsStrip as HTMLElement).getByText('SO-2026-00001')).toBeInTheDocument();
+    expect(screen.getByText('Sales order #')).toBeInTheDocument();
+    expect(screen.getByText('SO-2026-00001')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Confirm order/i })).toBeDisabled();
   });
 
@@ -248,7 +231,7 @@ describe('DocComposerSalesOrder', () => {
       data: buyerId ? baseBuyer() : null,
       isLoading: false,
     }));
-    useSalesOrderProductSearchMock.mockImplementation((query: string) => ({
+    useEstimateProductSearchMock.mockImplementation((query: string) => ({
       data: query ? [searchRow] : [],
       isLoading: false,
     }));
@@ -259,7 +242,7 @@ describe('DocComposerSalesOrder', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Acme Retail/i }, { timeout: 8000 }));
     await screen.findByText(/Credit headroom/i);
     fireEvent.change(screen.getByPlaceholderText(/Search product/i), { target: { value: 'Shiraz' } });
-    fireEvent.click(await screen.findByRole('button', { name: /Vinikus Shiraz Reserve/i }));
+    fireEvent.click(await screen.findByRole('option', { name: /Vinikus Shiraz Reserve/i }));
     const qtyInput = await screen.findByDisplayValue('1');
     fireEvent.change(qtyInput, { target: { value: '3' } });
 
@@ -306,6 +289,8 @@ describe('DocComposerSalesOrder', () => {
             on_hand: 24,
             qty: 1,
             unit_price: 1180,
+            mrp: 1500,
+            base_selling_price: 1180,
             disc_pct: 0,
             tax_pct: 18,
             line_total: 1392,
@@ -321,7 +306,7 @@ describe('DocComposerSalesOrder', () => {
     renderComposer({ mode: 'edit', orderId: 'so-1' });
 
     expect(await screen.findByText(/Editing · confirmed/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Swap/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Change/i })).not.toBeInTheDocument();
     expect(screen.getByDisplayValue('1')).toBeInTheDocument();
   });
 });

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
+import { Pressable } from '@/components/ui/pressable';
 import { useIdleRoutePrefetch } from '@/hooks/useIdleRoutePrefetch';
 
 const tabs = [
@@ -34,11 +34,11 @@ export function BuyerTabBar() {
       {tabs.map(({ label, href, icon: Icon }) => {
         const active = pathname === href || (href !== '/' && pathname.startsWith(href));
         return (
-          <Link
-            key={href}
-            href={href}
-            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-colors duration-fast"
-          >
+          <Pressable key={href} asChild haptic>
+            <Link
+              href={href}
+              className="flex flex-1 flex-col items-center justify-center gap-0.5 py-2 transition-colors duration-fast"
+            >
             <Icon
               size={22}
               className={active ? 'text-teal-500' : 'text-cream-600'}
@@ -53,6 +53,7 @@ export function BuyerTabBar() {
               {label}
             </span>
           </Link>
+          </Pressable>
         );
       })}
     </nav>

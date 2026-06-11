@@ -1,5 +1,6 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { InvoicesLandingClient } from '@/components/seller/invoices/InvoicesLandingClient';
 import type { TenantInvoicesResponse } from '@/hooks/useInvoices';
 import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
@@ -43,7 +44,7 @@ export default async function InvoicesPage({
     getFlag(FLAGS.ORDER_MANAGEMENT, tenantId),
     getFlag(FLAGS.INVOICES, tenantId),
   ]);
-  if (!orderMgmt || !invoices) redirect('/dashboard');
+  if (!orderMgmt || !invoices) return <FeatureForbiddenPage />;
 
   const period = await resolveSellerLandingPeriod(searchParams);
   const initialData = await getInvoicesInitialData(period);

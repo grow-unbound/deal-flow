@@ -1,6 +1,7 @@
 import type { SalesOrderComposerDocument, SalesOrderComposerLineInput } from '@/types/sales-order-composer';
 
 import { computePlaceOfSupplyFromBuyer } from '@/lib/sales-orders/compute-place-of-supply';
+import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
 import { productDisplayName } from '@/lib/sales-orders/tenant-order-detail';
 
 type DbClient = {
@@ -49,6 +50,8 @@ export async function loadTenantSalesOrderComposer(
         'round_off',
         'has_backorder',
         'expected_delivery',
+        'created_by',
+        'placed_by',
       ].join(', '),
     )
     .eq('id', orderId)
@@ -85,7 +88,7 @@ export async function loadTenantSalesOrderComposer(
       ? await d
           .schema('app')
           .from('tenant_products')
-          .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom, pack_size')
+          .select('id, internal_sku, name_override, master_product_id, tenant_brand_id, hsn_code, gst_rate, default_uom, pack_size, base_selling_price, mrp')
           .in('id', productIds)
           .eq('tenant_id', tenantId)
           .is('deleted_at', null)
@@ -185,6 +188,8 @@ export async function loadTenantSalesOrderComposer(
       on_hand: onHand,
       qty: Number(row.qty ?? 0),
       unit_price: Number(row.unit_price ?? 0),
+      mrp: Number(product?.mrp ?? 0),
+      base_selling_price: Number(product?.base_selling_price ?? 0),
       disc_pct: Number(row.disc_pct ?? 0),
       tax_pct: taxPct,
       line_total: lineTotal,
@@ -259,6 +264,14 @@ export async function loadTenantSalesOrderComposer(
     }
   }
 
+  const authorId =
+    (typeof order.created_by === 'string' && order.created_by)
+      ? order.created_by
+      : (typeof order.placed_by === 'string' ? order.placed_by : null);
+  const salesAgentName = authorId
+    ? ((await getAuthUserDisplayNameMap([authorId])).get(authorId) ?? null)
+    : null;
+
   const buyerContext = buyer
     ? {
         id: String(buyer.id),
@@ -278,7 +291,7 @@ export async function loadTenantSalesOrderComposer(
         credit_used: creditUsed,
         credit_available: creditAvailable,
         active_pricelist: activePricelist,
-        sales_agent_name: null,
+        sales_agent_name: salesAgentName,
       }
     : null;
 
@@ -304,7 +317,7 @@ export async function loadTenantSalesOrderComposer(
     order_date: orderDate,
     expected_delivery: expectedDelivery,
     buyer_po_ref: String(order.buyer_po_ref ?? ''),
-    place_of_supply: buyerContext?.place_of_supply ?? 'Unknown',
+    place_of_supply: '',
     seller_note: notesText,
     freight: Number(order.freight ?? 0),
     discount_flat: Number(order.discount_flat ?? 0),

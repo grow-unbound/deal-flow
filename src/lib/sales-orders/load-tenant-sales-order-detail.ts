@@ -30,6 +30,14 @@ function defaultPaymentTermsLabel(days: number): string {
   return days > 0 ? `Net ${days}` : 'Due on receipt';
 }
 
+function coerceIsoTimestamp(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return new Date(value).toISOString();
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+}
+
 function mapUiStatus(db: string): NonNullable<ReturnType<typeof toSalesOrderUiStatus>> {
   return toSalesOrderUiStatus(db) ?? 'received';
 }
@@ -127,10 +135,11 @@ export async function loadTenantSalesOrderDetail(
   }
 
   const itemRows = (itemsRes.data ?? []) as Array<Record<string, unknown>>;
-  const rawAudits = (auditRes.data ?? []) as Array<{ id: string; action: string; diff: unknown; ts: string | number; actor_user_id: string | null }>;
+  const rawAudits = (auditRes.data ?? []) as Array<{ id: string | number; action: string; diff: unknown; ts: string | number; actor_user_id: string | null }>;
   const audits = rawAudits.map((row) => ({
     ...row,
-    ts: typeof row.ts === 'number' ? new Date(row.ts).toISOString() : row.ts,
+    id: row.id,
+    ts: coerceIsoTimestamp(row.ts) ?? '',
   }));
 
   const productIds = Array.from(
@@ -396,7 +405,7 @@ export async function loadTenantSalesOrderDetail(
 
   const catalogName = (catalogRes.data as { name: string } | null | undefined)?.name ?? null;
 
-  const placedAt = (order.placed_at as string | null | undefined) ?? null;
+  const placedAt = coerceIsoTimestamp(order.placed_at);
   const units = lines.reduce((s, l) => s + l.qty, 0);
   const activity = buildActivityFromAudit(
     String(order.id),
@@ -414,11 +423,11 @@ export async function loadTenantSalesOrderDetail(
   const lifecycleFromAudits = extractLifecycleIsoFromAudits(placedAt, auditChrono);
   const lifecycle = mergeLifecycleColumns(
     {
-      received_at: (order.received_at as string | null | undefined) ?? null,
-      confirmed_at: (order.confirmed_at as string | null | undefined) ?? null,
-      dispatched_at: (order.dispatched_at as string | null | undefined) ?? null,
-      delivered_at: (order.delivered_at as string | null | undefined) ?? null,
-      cancelled_at: (order.cancelled_at as string | null | undefined) ?? null,
+      received_at: coerceIsoTimestamp(order.received_at),
+      confirmed_at: coerceIsoTimestamp(order.confirmed_at),
+      dispatched_at: coerceIsoTimestamp(order.dispatched_at),
+      delivered_at: coerceIsoTimestamp(order.delivered_at),
+      cancelled_at: coerceIsoTimestamp(order.cancelled_at),
     },
     lifecycleFromAudits,
   );

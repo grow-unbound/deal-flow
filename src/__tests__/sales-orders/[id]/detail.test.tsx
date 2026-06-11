@@ -29,6 +29,7 @@ vi.mock('@/hooks/useSalesOrderDetail', () => ({
   useDispatchSalesOrder: (...args: unknown[]) => useDispatchMock(...args),
   useDeliverSalesOrder: (...args: unknown[]) => useDeliverMock(...args),
   useCancelSalesOrder: (...args: unknown[]) => useCancelMock(...args),
+  useSendSalesOrder: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
@@ -163,14 +164,12 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
     });
   });
 
-  it('received: status band shows Received chip', () => {
+  it('received: title shows Received chip', () => {
     const { container } = renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
-    const band = container.querySelector('.doc-status-band');
-    expect(band).toBeTruthy();
-    expect(band).toHaveTextContent(/Received/i);
+    expect(container.querySelector('.doc-status-chip')).toHaveTextContent(/Received/i);
   });
 
-  it('confirmed: band shows delivery expected when expected_delivery set', () => {
+  it('confirmed: title shows Confirmed chip and Dispatch CTA', () => {
     useSalesOrderDetailMock.mockReturnValue({
       data: baseDetail({
         ui_status: 'confirmed',
@@ -183,12 +182,11 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
       error: null,
     });
     const { container } = renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
-    const band = container.querySelector('.doc-status-band');
-    expect(band).toHaveTextContent(/Confirmed/i);
-    expect(band).toHaveTextContent(/Delivery expected/i);
+    expect(container.querySelector('.doc-status-chip')).toHaveTextContent(/Confirmed/i);
+    expect(screen.getByRole('button', { name: /Dispatch/i })).toBeInTheDocument();
   });
 
-  it('dispatched: band mentions carrier when present', () => {
+  it('dispatched: title shows Dispatched chip and Mark delivered', () => {
     useSalesOrderDetailMock.mockReturnValue({
       data: baseDetail({
         ui_status: 'dispatched',
@@ -201,8 +199,8 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
       error: null,
     });
     const { container } = renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
-    const band = container.querySelector('.doc-status-band');
-    expect(band).toHaveTextContent(/BlueDart/i);
+    expect(container.querySelector('.doc-status-chip')).toHaveTextContent(/Dispatched/i);
+    expect(screen.getByRole('button', { name: /Mark delivered/i })).toBeInTheDocument();
   });
 
   it('view frame keeps inputs disabled or read-only', () => {
@@ -295,11 +293,6 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
     renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
     const link = screen.getByRole('link', { name: /From: EST-88/i });
     expect(link).toHaveAttribute('href', '/estimates/est-1');
-  });
-
-  it('received shows sales order journey with Received step', () => {
-    renderWithQueryClient(<SalesOrderDetailClient id="ord-1" />);
-    expect(screen.getByLabelText('Sales order progress')).toHaveTextContent('Received');
   });
 
   it('Edit prefetches composer then navigates', () => {

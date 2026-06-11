@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { ShoppingCart } from 'lucide-react';
+import { Pressable } from '@/components/ui/pressable';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { formatCurrency } from '@/lib/utils';
 
@@ -47,14 +48,16 @@ export function CartBar() {
         </div>
 
         {/* View Cart button */}
-        <Link
-          href="/shop/cart"
-          className="flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shrink-0 transition-opacity hover:opacity-90 active:opacity-80"
-          style={{ background: 'var(--teal-500)' }}
-        >
-          <ShoppingCart className="w-4 h-4" />
-          View Cart
-        </Link>
+        <Pressable asChild haptic>
+          <Link
+            href="/shop/cart"
+            className="flex shrink-0 items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-transform duration-fast ease-standard hover:opacity-90 active:scale-[0.98] active:opacity-80"
+            style={{ background: 'var(--teal-500)' }}
+          >
+            <ShoppingCart className="h-4 w-4" />
+            View Cart
+          </Link>
+        </Pressable>
       </div>
     </div>
   );

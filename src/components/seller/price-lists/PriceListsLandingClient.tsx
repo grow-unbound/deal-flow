@@ -1,8 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Copy } from 'lucide-react';
+import { Copy, Plus, ListOrdered } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 import { FeatureGate } from '@/components/FeatureGate';
 import {
@@ -15,7 +16,8 @@ import {
   StatusTag,
   V3CalloutPanel,
 } from '@/components/seller/layout';
-import { ErrorState } from '@/components/ui/empty-state';
+import { ErrorState, EmptyState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { usePriceListsLanding, type PriceListLandingRow, type PriceListsLandingResponse } from '@/hooks/usePriceLists';
@@ -234,6 +236,26 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
         />
 
         <LandingTable
+          showEmptyState={filteredRows.length === 0}
+          emptyState={
+            <EmptyState
+              icon={<ListOrdered size={28} strokeWidth={1.5} />}
+              heading={search.trim() || activeChip !== 'All' ? 'No matching price lists' : 'No price lists yet'}
+              description={
+                search.trim() || activeChip !== 'All'
+                  ? 'Try a different search or status filter.'
+                  : 'Create a price list to set cohort pricing.'
+              }
+              action={
+                <Button variant="accent" asChild>
+                  <Link href="/price-lists/new" className="inline-flex items-center gap-1.5">
+                    <Plus size={13} />
+                    Add a price list
+                  </Link>
+                </Button>
+              }
+            />
+          }
           columns={[
             { label: 'Price list', width: 280, className: 'px-5' },
             { label: 'Cohort(s)', className: 'px-5' },

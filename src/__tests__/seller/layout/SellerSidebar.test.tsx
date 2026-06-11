@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, fireEvent } from '@testing-library/react';
 import React from 'react';
 
+const mockPathname = vi.fn(() => '/dashboard');
+
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/dashboard',
+  usePathname: () => mockPathname(),
   useRouter: () => ({ push: vi.fn() }),
 }));
 
@@ -59,8 +61,14 @@ import { SellerSidebar, collectPrefetchHrefs, navGroups } from '@/components/lay
 describe('SellerSidebar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPathname.mockReturnValue('/dashboard');
     mockUseAuth.mockReturnValue(makeAuth('seller_admin'));
     useFlagStateMock.mockReturnValue(true);
+    try {
+      localStorage.removeItem('df_sidebar_settings_expanded');
+    } catch {
+      // non-browser test env
+    }
   });
 
   it('renders four section headers in expanded mode', () => {
@@ -110,7 +118,29 @@ describe('SellerSidebar', () => {
     expect(paths).toContain('/dashboard');
     expect(paths).toContain('/estimates');
     expect(paths).toContain('/sales-orders');
+    expect(paths).toContain('/settings');
     expect(paths).toContain('/settings/team');
+    expect(paths).toContain('/settings/modules');
+    expect(paths).toContain('/settings/locations');
+    expect(paths).toContain('/settings/integrations');
+    expect(paths).toContain('/settings/billing');
+  });
+
+  it('shows settings children when pathname is under /settings', () => {
+    mockPathname.mockReturnValue('/settings/team');
+    render(<SellerSidebar />);
+    expect(screen.getByRole('link', { name: 'Team' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Billing & Plan' })).toBeInTheDocument();
+  });
+
+  it('toggles settings submenu via chevron on dashboard', () => {
+    mockPathname.mockReturnValue('/dashboard');
+    render(<SellerSidebar />);
+    expect(screen.getByRole('link', { name: 'Team' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Collapse settings sections/i }));
+    expect(screen.queryByRole('link', { name: 'Team' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Expand settings sections/i }));
+    expect(screen.getByRole('link', { name: 'Team' })).toBeInTheDocument();
   });
 
   it('excludes admin-only and flag-off routes from prefetch for assistant', () => {
@@ -120,8 +150,10 @@ describe('SellerSidebar', () => {
     const paths = prefetchSpy.mock.calls[0][0] as string[];
     expect(paths).not.toContain('/cohorts');
     expect(paths).not.toContain('/price-lists');
+    expect(paths).not.toContain('/exports');
     expect(paths).not.toContain('/settings');
-    expect(paths).not.toContain('/settings/team');
+    expect(paths).not.toContain('/settings/modules');
+    expect(paths).not.toContain('/settings/billing');
     expect(paths).not.toContain('/estimates');
     expect(paths).toContain('/dashboard');
   });
@@ -134,7 +166,9 @@ describe('collectPrefetchHrefs', () => {
       getFlag: () => true,
     });
     expect(hrefs).toContain('/estimates');
+    expect(hrefs).toContain('/settings');
     expect(hrefs).toContain('/settings/team');
+    expect(hrefs).toContain('/settings/billing');
   });
 
   it('excludes paths when getFlag returns false', () => {
