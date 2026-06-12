@@ -503,18 +503,26 @@ Browser/App
 - [ ] Error handling: invalid MIME, oversized file, R2 write failure
 
 ### Phase 4 — API routes (Next.js)
-- [ ] `POST /api/upload/catalog-product` → catalog.product_images
-- [ ] `POST /api/upload/catalog-brand` → catalog.brand_images
-- [ ] `POST /api/upload/catalog-category` → catalog.category_images
-- [ ] `POST /api/upload/tenant-product` → app.tenant_products R2 keys
-- [ ] `POST /api/upload/tenant-brand` → app.tenant_brands R2 keys
-- [ ] `POST /api/upload/tenant-category` → app.tenant_category_images
-- [ ] `POST /api/upload/catalog-hero` → app.published_catalogs R2 keys
-- [ ] `POST /api/upload/avatar` → app.user_profiles
+- [x] `POST /api/upload/catalog-product` → catalog.product_images
+- [x] `POST /api/upload/catalog-brand` → catalog.brand_images
+- [x] `POST /api/upload/catalog-category` → catalog.category_images
+- [x] `POST /api/upload/tenant-product` → app.tenant_products R2 keys
+- [x] `POST /api/upload/tenant-brand` → app.tenant_brands R2 keys
+- [x] `POST /api/upload/tenant-category` → app.tenant_category_images
+- [x] `POST /api/upload/catalog-hero` → app.published_catalogs R2 keys
+- [x] `POST /api/upload/avatar` → app.user_profiles
+- [x] Catalog uploads persist with `status = 'pending'`
+- [x] Tenant uploads persist with `status = 'approved'` where a moderation column exists
+- [x] API-layer validation rejects uploads over 5MB before worker handoff
+- [x] Catalog product uploads enforce a max of 5 images
 
 ### Phase 5 — Shared utility
-- [ ] `packages/shared/lib/r2.ts` — `r2Url()` helper
-- [ ] Type definitions for variant key sets
+- [x] `src/lib/r2-url.ts` — `r2Url()` helper
+- [x] Type definitions for product/media/hero/avatar variant key sets
+
+> Repository note: this codebase keeps the shared helper in `src/lib/r2-url.ts` instead of `packages/shared/lib/r2.ts`.
+>
+> Current exception: the tenant business-profile logo in settings still uses the generic presign uploader until a dedicated upload contract is defined for that asset. All product, brand, and image-entity flows listed above use the new entity-aware routes.
 
 ---
 
@@ -522,7 +530,7 @@ Browser/App
 
 | # | Question | Impact |
 |---|---|---|
-| 1 | Will tenant product images ever need galleries (multiple images)? | If yes, add `tenant_product_images` table instead of inline columns |
-| 2 | Should category/brand images bypass moderation (`status='approved'` immediately)? | Only tenant-contributed catalog product images need `pending` flow |
-| 3 | Signed URLs for tenant paths needed at v1? | If no — simplify to all-public R2 bucket with UUID-based obscurity |
-| 4 | Max images per catalog product? | Cap in Worker or API route — suggest 8 max |
+| 1 | Will tenant product images ever need galleries (multiple images)? | Resolved for v1: no, keep a single primary image on `app.tenant_products` |
+| 2 | Should category/brand images bypass moderation (`status='approved'` immediately)? | Resolved: catalog uploads default to `pending`; tenant uploads default to `approved` |
+| 3 | Signed URLs for tenant paths needed at v1? | Deferred: no, continue using the public asset domain |
+| 4 | Max images per catalog product? | Resolved: 5 images max per catalog product, 5MB max per original upload |
