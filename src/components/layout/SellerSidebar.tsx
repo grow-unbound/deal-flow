@@ -385,11 +385,11 @@ export function SellerSidebar({
         ) : null}
 
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[11px] bg-teal-500">
-          <span className="text-cream-50 font-display font-medium text-sm leading-none">DF</span>
+          <span className="text-cream-50 font-display font-medium text-sm leading-none">yk</span>
         </div>
         {!isCollapsed && (
           <div className="min-w-0 pl-2.5">
-            <p className="truncate font-display text-lg font-medium leading-[1.05] text-teal-500">DealFlow</p>
+            <p className="truncate font-display text-lg font-medium leading-[1.05] text-teal-500">yukti</p>
             <p className="mt-0.5 truncate text-caption text-cream-600">{currentTenant?.business_name ?? 'Tenant'}</p>
           </div>
         )}

@@ -197,7 +197,7 @@ UPLOAD_SECRET = "..."   # set via wrangler secret, not plaintext
 }
 ```
 
-> **Note for Cursor:** Sharp detects the Cloudflare Worker runtime and uses its WASM build automatically — no manual WASM configuration needed. Use `sharp` npm package directly.
+> **Note for Cursor/Codex:** Sharp detects the Cloudflare Worker runtime and uses its WASM build automatically — no manual WASM configuration needed. Use `sharp` npm package directly.
 
 ### 4.6 Multiple images (products)
 

@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<!-- @dsCard group="Brand" name="Yukti Brand Identity R9" subtitle="Voussoir locked — geometry, lockups, color, artifacts" -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yukti — Brand Identity (R9 · Voussoir, locked)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Mukta:wght@300;400;500;600;700;800&amp;family=Baloo+2:wght@500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#221E1A;        /* charcoal */
+    --copper:#B5642F;     /* copper */
+    --copper-lt:#D9894C;  /* copper on dark */
+    --paper:#F2ECE3;      /* page */
+    --card:#FBF8F3;       /* card */
+    --card-line:#E4DACE;  /* hairline */
+    --sub:#6E655B;        /* muted text */
+    --faint:#A99E90;      /* labels */
+    --navy:#0E2344;
+    --orange:#E85D14;
+    --orange-lt:#FF7A33;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Mukta",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{ max-width:1080px; margin:0 auto; padding:0 32px 120px; }
+  .mono{ font-family:"IBM Plex Mono",monospace; }
+
+  /* ---------- masthead ---------- */
+  .mast{ padding:72px 0 40px; border-bottom:1px solid var(--card-line); }
+  .mast .eyebrow{ font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:var(--copper); margin-bottom:22px; }
+  .mast h1{ margin:0; font-size:58px; font-weight:700; letter-spacing:-0.03em; line-height:1; }
+  .mast h1 em{ font-style:normal; color:var(--copper); }
+  .mast .lede{ margin:22px 0 0; max-width:680px; font-size:17px; line-height:1.6; color:var(--sub); font-weight:400; }
+  .mast .lede b{ color:var(--ink); font-weight:600; }
+  .mast .crumbs{ display:flex; flex-wrap:wrap; gap:8px; margin-top:30px; }
+  .crumb{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.04em; color:var(--sub); background:var(--card); border:1px solid var(--card-line); border-radius:6px; padding:6px 11px; }
+  .crumb b{ color:var(--ink); }
+
+  /* ---------- section scaffold ---------- */
+  section{ padding-top:84px; }
+  .shead{ display:flex; align-items:baseline; gap:16px; margin-bottom:30px; }
+  .shead .sno{ font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--copper); letter-spacing:.08em; padding-top:4px; }
+  .shead .stitle{ flex:1; }
+  .shead h2{ margin:0; font-size:27px; font-weight:700; letter-spacing:-0.02em; }
+  .shead p{ margin:7px 0 0; font-size:14px; line-height:1.55; color:var(--sub); max-width:640px; }
+  .rule{ height:1px; background:var(--card-line); margin-bottom:30px; }
+
+  /* ---------- generic cards ---------- */
+  .card{ background:var(--card); border:1px solid var(--card-line); border-radius:14px; }
+  .pad{ padding:30px; }
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .grid3{ display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
+  .label{ font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); }
+  .note{ font-size:13.5px; line-height:1.6; color:var(--sub); }
+  .note b{ color:var(--ink); font-weight:600; }
+
+  /* ---------- hero mark ---------- */
+  .hero{ display:grid; grid-template-columns:1.15fr .85fr; gap:18px; }
+  .hero .stage{ background:var(--ink); border-radius:14px; display:flex; align-items:center; justify-content:center; min-height:420px; position:relative; overflow:hidden; }
+  .hero .stage .tag{ position:absolute; left:24px; bottom:22px; font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:rgba(240,234,226,.5); }
+  .hero .meaning{ display:flex; flex-direction:column; gap:0; }
+  .hero .meaning .blk{ padding:26px 28px; border-bottom:1px solid var(--card-line); }
+  .hero .meaning .blk:last-child{ border-bottom:none; }
+  .hero .meaning .k{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--copper); margin-bottom:9px; }
+  .hero .meaning h3{ margin:0 0 6px; font-size:19px; font-weight:700; letter-spacing:-0.01em; }
+  .hero .meaning p{ margin:0; font-size:13.5px; line-height:1.6; color:var(--sub); }
+
+  /* ---------- construction ---------- */
+  .construct{ display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:stretch; }
+  .gridframe{ background:var(--card); border:1px solid var(--card-line); border-radius:14px; padding:24px; display:flex; align-items:center; justify-content:center; }
+  .anat-list{ display:flex; flex-direction:column; gap:2px; }
+  .anat{ display:flex; gap:16px; padding:16px 4px; border-bottom:1px solid var(--card-line); }
+  .anat:last-child{ border-bottom:none; }
+  .anat .n{ font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--copper); width:22px; flex:none; padding-top:2px; }
+  .anat h4{ margin:0 0 3px; font-size:14.5px; font-weight:600; }
+  .anat p{ margin:0; font-size:12.5px; line-height:1.55; color:var(--sub); }
+
+  /* ---------- clear space / min size ---------- */
+  .cs{ display:grid; grid-template-columns:1.3fr 1fr; gap:18px; }
+  .minrow{ display:flex; align-items:flex-end; gap:34px; flex-wrap:wrap; }
+  .minrow .m{ display:flex; flex-direction:column; align-items:center; gap:12px; }
+  .minrow .m .px{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--sub); }
+  .minrow .m .px b{ color:var(--ink); }
+  .minbox{ display:flex; align-items:center; justify-content:center; }
+
+  /* ---------- lockups ---------- */
+  .lockwrap{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .lockcard{ background:var(--card); border:1px solid var(--card-line); border-radius:14px; overflow:hidden; }
+  .lockcard .lhd{ display:flex; align-items:baseline; gap:10px; padding:18px 22px 14px; }
+  .lockcard .lhd h3{ margin:0; font-size:15px; font-weight:700; }
+  .lockcard .lhd .ftag{ margin-left:auto; font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--copper); }
+  .lockstage{ display:flex; align-items:center; justify-content:center; gap:20px; padding:40px 24px; border-top:1px solid var(--card-line); }
+  .lockstage.stacked{ flex-direction:column; gap:14px; }
+  .wm{ line-height:.84; letter-spacing:-0.02em; color:var(--ink); }
+  .wm.mukta{ font-family:"Mukta",sans-serif; font-weight:600; }
+  .wm.baloo{ font-family:"Baloo 2",sans-serif; font-weight:600; letter-spacing:-0.01em; }
+  .lcap{ font-size:12px; line-height:1.55; color:var(--sub); padding:0 22px 20px; }
+  .lcap b{ color:var(--ink); font-weight:600; }
+
+  /* ---------- color ---------- */
+  .swrow{ display:grid; gap:14px; }
+  .swrow.p{ grid-template-columns:1.4fr 1fr 1fr; }
+  .swrow.s{ grid-template-columns:1.4fr 1fr 1fr; }
+  .sw{ border-radius:12px; border:1px solid var(--card-line); overflow:hidden; display:flex; flex-direction:column; }
+  .sw .chip{ height:128px; }
+  .sw .meta{ padding:14px 16px; background:var(--card); }
+  .sw .meta .nm{ font-size:14.5px; font-weight:700; }
+  .sw .meta .role{ font-size:11.5px; color:var(--sub); margin-top:1px; }
+  .sw .meta .vals{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--faint); margin-top:9px; line-height:1.5; }
+  .palhead{ display:flex; align-items:baseline; gap:10px; margin:0 2px 14px; }
+  .palhead h3{ margin:0; font-size:16px; font-weight:700; }
+  .palhead .pl{ font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--copper); }
+  .palhead .pl.s{ color:var(--orange); }
+  .palhead .desc{ margin-left:auto; font-size:12px; color:var(--sub); }
+
+  /* ---------- mono / reversal ---------- */
+  .monorow{ display:grid; grid-template-columns:repeat(4,1fr); gap:18px; }
+  .monocell{ border-radius:12px; border:1px solid var(--card-line); overflow:hidden; }
+  .monocell .stg{ height:150px; display:flex; align-items:center; justify-content:center; }
+  .monocell .cap{ padding:11px 14px; background:var(--card); font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--sub); }
+
+  /* ---------- light/dark ---------- */
+  .ldrow{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .ldcell{ border-radius:14px; overflow:hidden; border:1px solid var(--card-line); }
+  .ldcell .stg{ height:200px; display:flex; align-items:center; justify-content:center; gap:20px; }
+  .ldcell .cap{ padding:13px 18px; font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--sub); background:var(--card); display:flex; gap:10px; }
+  .ldcell .cap b{ color:var(--ink); }
+
+  /* ---------- favicon / app icon ---------- */
+  .favrow{ display:grid; grid-template-columns:1.1fr 1fr; gap:18px; }
+  .appicons{ display:flex; align-items:flex-end; gap:26px; flex-wrap:wrap; }
+  .appicons .ai{ display:flex; flex-direction:column; align-items:center; gap:11px; }
+  .appicons .ai .px{ font-family:"IBM Plex Mono",monospace; font-size:10px; color:var(--sub); }
+  .appicon{ display:flex; align-items:center; justify-content:center; }
+  .tabmock{ background:var(--ink); border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:10px; }
+  .tabbar{ display:flex; gap:8px; }
+  .tabmock .tab{ background:rgba(255,255,255,.08); border-radius:8px 8px 0 0; padding:9px 14px; display:flex; align-items:center; gap:9px; font-size:13px; color:#F0EAE2; font-weight:500; }
+  .tabmock .tab.active{ background:rgba(255,255,255,.16); }
+  .tabmock .urlbar{ background:rgba(255,255,255,.1); border-radius:8px; height:30px; display:flex; align-items:center; padding:0 14px; gap:9px; }
+  .tabmock .urlbar .u{ font-family:"IBM Plex Mono",monospace; font-size:11px; color:rgba(240,234,226,.7); }
+
+  /* ---------- misuse ---------- */
+  .donts{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+  .dont{ border-radius:12px; border:1px solid var(--card-line); overflow:hidden; background:var(--card); }
+  .dont .stg{ height:158px; display:flex; align-items:center; justify-content:center; background:var(--card); position:relative; }
+  .dont .x{ position:absolute; top:10px; right:12px; width:22px; height:22px; border-radius:50%; background:#C0392B; color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; line-height:1; }
+  .dont .cap{ padding:13px 16px; border-top:1px solid var(--card-line); }
+  .dont .cap h4{ margin:0 0 3px; font-size:13.5px; font-weight:600; }
+  .dont .cap p{ margin:0; font-size:11.5px; line-height:1.5; color:var(--sub); }
+
+  /* ---------- artifacts ---------- */
+  .artgrid{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .art{ border-radius:14px; overflow:hidden; border:1px solid var(--card-line); }
+  .art .stg{ min-height:240px; display:flex; align-items:center; justify-content:center; padding:30px; }
+  .art .cap{ padding:13px 18px; background:var(--card); font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.07em; text-transform:uppercase; color:var(--sub); }
+  /* business card */
+  .bcard{ width:320px; height:188px; border-radius:12px; background:var(--ink); color:#F0EAE2; padding:22px; display:flex; flex-direction:column; justify-content:space-between; box-shadow:0 20px 40px -20px rgba(0,0,0,.5); }
+  .bcard .top{ display:flex; align-items:center; gap:12px; }
+  .bcard .top .nm{ font-weight:600; font-size:22px; letter-spacing:-0.02em; }
+  .bcard .who{ font-size:12.5px; line-height:1.5; }
+  .bcard .who .name{ font-weight:600; color:#fff; }
+  .bcard .who .role{ color:rgba(240,234,226,.6); }
+  .bcard .ft{ display:flex; justify-content:space-between; align-items:flex-end; font-family:"IBM Plex Mono",monospace; font-size:10px; color:rgba(240,234,226,.55); letter-spacing:.04em; }
+  /* signage */
+  .signpanel{ width:300px; height:200px; border-radius:8px; background:linear-gradient(150deg,#3a342d,#26221d); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; box-shadow:inset 0 1px 0 rgba(255,255,255,.06), 0 22px 44px -22px rgba(0,0,0,.55); }
+  .signpanel .wm{ color:#EDE6DC; }
+  /* phone */
+  .phone{ width:188px; height:300px; border-radius:30px; background:#1b1f27; padding:12px; box-shadow:0 24px 50px -24px rgba(0,0,0,.5); }
+  .phone .screen{ width:100%; height:100%; border-radius:21px; background:radial-gradient(120% 120% at 50% 0%, #34302a, #211d19); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; }
+  .phone .dock{ margin-top:18px; display:flex; gap:14px; }
+  .phone .dock .d{ width:30px; height:30px; border-radius:8px; background:rgba(255,255,255,.08); }
+  .phone .ilabel{ font-size:12px; color:#EDE6DC; font-weight:500; }
+
+  footer{ margin-top:96px; padding-top:30px; border-top:1px solid var(--card-line); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; }
+  footer .f{ font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--faint); letter-spacing:.04em; }
+
+  @media (max-width:900px){
+    .mast h1{ font-size:42px; }
+    .hero,.construct,.cs,.lockwrap,.ldrow,.favrow,.artgrid{ grid-template-columns:1fr; }
+    .monorow{ grid-template-columns:1fr 1fr; }
+    .donts{ grid-template-columns:1fr 1fr; }
+    .swrow.p,.swrow.s{ grid-template-columns:1fr; }
+  }
+</style>
+<template id="__bundler_thumbnail" data-bg-color="#221E1A">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#221E1A"></rect>
+    <path fill="#B5642F" d="M520 250H700L766 510H454Z"></path>
+    <path fill="#F0EAE2" d="M398 482L578 514L640 740H242Z"></path>
+    <path fill="#F0EAE2" d="M802 482L622 514L560 740H958Z"></path>
+  </svg>
+</template>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ MASTHEAD ============ -->
+  <header class="mast" data-screen-label="00 Cover">
+    <div class="eyebrow">Yukti · Brand Identity · Round 9 · The Voussoir, locked</div>
+    <h1>The <em>Voussoir</em>.<br>Refined, not reinvented.</h1>
+    <p class="lede">The eight-round exploration is closed. <b>R6 · 07 — The Voussoir</b> earned the strongest meaning-to-mark fit: three cut stones forming a flat arch, the keystone seating the structure that lets the rest hold. This book optimizes that exact mark and builds the system around it — geometry, wordmark, spacing, color, and the first artifacts.</p>
+    <div class="crumbs">
+      <span class="crumb"><b>Mark</b> · R6-07 Voussoir</span>
+      <span class="crumb"><b>Wordmark</b> · Mukta / Baloo 2</span>
+      <span class="crumb"><b>Primary</b> · Charcoal + Copper</span>
+      <span class="crumb"><b>Secondary</b> · Deep Navy + Signal Orange</span>
+    </div>
+  </header>
+
+  <!-- ============ 01 THE MARK ============ -->
+  <section id="s-mark" data-screen-label="01 The Mark">
+    <div class="shead">
+      <span class="sno">01</span>
+      <div class="stitle">
+        <h2>The mark</h2>
+        <p>A flat arch of three voussoirs. The projecting keystone is the piece Yukti supplies — the wedge that lets the two haunches bear and hold. Read it as masonry: cut, seated, structural.</p>
+      </div>
+    </div>
+    <div class="hero">
+      <div class="stage"><div id="hero-mark"></div><span class="tag">Primary mark · charcoal field · copper keystone</span></div>
+      <div class="meaning card">
+        <div class="blk"><div class="k">Meaning</div><h3>The keystone holds</h3><p>The one wedge cut to receive load and pass it on. Yukti is the part that makes the structure stand — not the ornament on top of it.</p></div>
+        <div class="blk"><div class="k">Register</div><h3>Structural, foundational</h3><p>Architectural, not heraldic. It is built from mass and seam, engineered to survive at favicon size and hold in a single color.</p></div>
+        <div class="blk"><div class="k">Accent law</div><h3>Copper marks the load</h3><p>Colour is structural only: the accent isolates the load-bearing keystone. It never decorates and never crowns.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 02 CONSTRUCTION ============ -->
+  <section id="s-construct" data-screen-label="02 Construction">
+    <div class="shead">
+      <span class="sno">02</span>
+      <div class="stitle">
+        <h2>Construction &amp; anatomy</h2>
+        <p>Three trapezoidal blocks radiating from a centre of curvature below the mark. Flat crown, radial seams, splayed haunches — the cues that keep it reading as an arch and never as a crown.</p>
+      </div>
+    </div>
+    <div class="construct">
+      <div class="gridframe"><div id="construct-svg"></div></div>
+      <div class="anat-list card pad">
+        <div class="anat"><span class="n">01</span><div><h4>Keystone (projecting)</h4><p>The central wedge sits proud of the haunches with a <b>flat, wide top</b> — a cut stone, never a point or finial.</p></div></div>
+        <div class="anat"><span class="n">02</span><div><h4>Haunches (springers)</h4><p>Two blocks splay down and outward, lower than the keystone, leaning on it like the springing stones of a flat arch.</p></div></div>
+        <div class="anat"><span class="n">03</span><div><h4>Radial seams</h4><p>The mortar joints align to one centre below the mark, so the three blocks read as a single jointed structure.</p></div></div>
+        <div class="anat"><span class="n">04</span><div><h4>Square aperture</h4><p>The mark occupies a 32-unit square, vertically centred. Bounds: keystone top at the crown, haunch base on the springing line.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 03 CLEAR SPACE / MIN SIZE ============ -->
+  <section id="s-space" data-screen-label="03 Clear Space">
+    <div class="shead">
+      <span class="sno">03</span>
+      <div class="stitle">
+        <h2>Clear space &amp; minimum size</h2>
+        <p>Protect the mark with breathing room equal to the keystone’s crown width (<span class="mono">X</span>). Never reproduce it below its floor sizes.</p>
+      </div>
+    </div>
+    <div class="cs">
+      <div class="card pad" style="display:flex;align-items:center;justify-content:center;"><div id="clearspace-svg"></div></div>
+      <div class="card pad">
+        <div class="label" style="margin-bottom:14px;">Minimum size</div>
+        <div class="minrow" id="minsize"></div>
+        <p class="note" style="margin-top:26px;border-top:1px solid var(--card-line);padding-top:18px;">
+          <b>Clear space = X</b>, the width of the keystone crown, held on all four sides.<br>
+          <b>Digital floor</b> · 16&nbsp;px for the mark, 20&nbsp;px cap-height for the horizontal lockup.<br>
+          <b>Print floor</b> · 8&nbsp;mm mark height; keep seams open at all sizes.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 04 WORDMARK & LOCKUPS ============ -->
+  <section id="s-lockup" data-screen-label="04 Wordmark">
+    <div class="shead">
+      <span class="sno">04</span>
+      <div class="stitle">
+        <h2>Wordmark &amp; lockups</h2>
+        <p><b>Mukta</b> is the primary wordmark — institutional, even, low-contrast, credible from body copy to signage. <b>Baloo&nbsp;2</b> is the secondary cut, a rounder register for app-forward and friendlier surfaces. The mark sits square to the cap height; the wordmark is always lowercase.</p>
+      </div>
+    </div>
+    <div class="lockwrap" id="lockups"></div>
+    <div class="lockwrap" id="lockups-stacked" style="margin-top:18px;"></div>
+  </section>
+
+  <!-- ============ 05 COLOR ============ -->
+  <section id="s-color" data-screen-label="05 Color">
+    <div class="shead">
+      <span class="sno">05</span>
+      <div class="stitle">
+        <h2>Colour system</h2>
+        <p>Two systems. <b>Charcoal + Copper</b> is the primary identity — grounded, material, structural. <b>Deep Navy + Signal Orange</b> is the secondary, for product surfaces and high-signal moments.</p>
+      </div>
+    </div>
+
+    <div class="palhead"><h3>Primary</h3><span class="pl">Charcoal + Copper</span><span class="desc">Identity, brand, print, environments</span></div>
+    <div class="swrow p" id="pal-primary"></div>
+
+    <div class="palhead" style="margin-top:30px;"><h3>Secondary</h3><span class="pl s">Deep Navy + Signal Orange</span><span class="desc">Product UI, alerts, signal moments</span></div>
+    <div class="swrow s" id="pal-secondary"></div>
+  </section>
+
+  <!-- ============ 06 MONOCHROME ============ -->
+  <section id="s-mono" data-screen-label="06 Monochrome">
+    <div class="shead">
+      <span class="sno">06</span>
+      <div class="stitle">
+        <h2>Monochrome &amp; reversal</h2>
+        <p>The mark holds in one colour. Positive on light, reversed on dark, and a single-weight knockout for stamping, etching, and fax-grade reproduction.</p>
+      </div>
+    </div>
+    <div class="monorow" id="mono"></div>
+  </section>
+
+  <!-- ============ 07 LIGHT / DARK ============ -->
+  <section id="s-ld" data-screen-label="07 Light / Dark">
+    <div class="shead">
+      <span class="sno">07</span>
+      <div class="stitle">
+        <h2>Light &amp; dark lockups</h2>
+        <p>The full lockup in both modes, each palette. On dark, copper lifts to <span class="mono">#D9894C</span> and orange to <span class="mono">#FF7A33</span> to hold contrast.</p>
+      </div>
+    </div>
+    <div class="ldrow" id="lightdark"></div>
+  </section>
+
+  <!-- ============ 08 FAVICON / APP ICON ============ -->
+  <section id="s-fav" data-screen-label="08 Favicon">
+    <div class="shead">
+      <span class="sno">08</span>
+      <div class="stitle">
+        <h2>Favicon &amp; app icon</h2>
+        <p>At icon scale the three blocks nearly touch and read as one seated arch. The app icon seats the mark in a charcoal rounded square; the favicon is the bare mark.</p>
+      </div>
+    </div>
+    <div class="favrow">
+      <div class="card pad">
+        <div class="label" style="margin-bottom:20px;">App icon · rounded square</div>
+        <div class="appicons" id="appicons"></div>
+      </div>
+      <div class="card pad">
+        <div class="label" style="margin-bottom:18px;">Favicon · browser tab</div>
+        <div class="tabmock">
+          <div class="tabbar">
+            <div class="tab active"><span id="tab-fav"></span>yukti</div>
+            <div class="tab" style="opacity:.5;">docs</div>
+          </div>
+          <div class="urlbar"><span id="url-fav"></span><span class="u">yukti.co</span></div>
+        </div>
+        <div class="minrow" id="fav-sizes" style="margin-top:26px;"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 09 MISUSE ============ -->
+  <section id="s-misuse" data-screen-label="09 Misuse">
+    <div class="shead">
+      <span class="sno">09</span>
+      <div class="stitle">
+        <h2>Misuse — hold the line</h2>
+        <p>The single biggest risk is drift into heraldry. The Voussoir is structure, not status. Never let it become any of these.</p>
+      </div>
+    </div>
+    <div class="donts" id="donts"></div>
+  </section>
+
+  <!-- ============ 10 ARTIFACTS ============ -->
+  <section id="s-art" data-screen-label="10 Artifacts">
+    <div class="shead">
+      <span class="sno">10</span>
+      <div class="stitle">
+        <h2>First artifacts</h2>
+        <p>The system in use — enough to brief production. Charcoal and copper carry the identity; the mark always seats square to the wordmark.</p>
+      </div>
+    </div>
+    <div class="artgrid">
+      <div class="art"><div class="stg" style="background:#EDE6DC;"><div class="bcard">
+        <div class="top"><span id="bc-mark"></span><span class="nm">yukti</span></div>
+        <div class="who"><div class="name">Asha Menon</div><div class="role">Head of Operations</div></div>
+        <div class="ft"><span>asha@yukti.co</span><span>yukti.co</span></div>
+      </div></div><div class="cap">Business card · charcoal + copper keystone</div></div>
+
+      <div class="art"><div class="stg" style="background:#EDE6DC;"><div class="phone"><div class="screen">
+        <span id="ph-icon"></span><span class="ilabel">yukti</span>
+        <div class="dock"><div class="d"></div><div class="d"></div><div class="d"></div></div>
+      </div></div></div><div class="cap">App icon on device · home screen</div></div>
+
+      <div class="art"><div class="stg" style="background:#EDE6DC;"><div class="signpanel">
+        <span id="sg-mark"></span><span class="wm mukta" style="font-size:30px;">yukti</span>
+      </div></div><div class="cap">Reception signage · etched charcoal panel</div></div>
+
+      <div class="art"><div class="stg" style="background:var(--ink);"><div style="display:flex;flex-direction:column;align-items:center;gap:18px;">
+        <span id="rev-lock"></span>
+        <span class="mono" style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:rgba(240,234,226,.45);">structure that holds</span>
+      </div></div><div class="cap">Reversed lockup + tagline · dark applications</div></div>
+    </div>
+  </section>
+
+  <footer>
+    <span class="f">Yukti — Brand Identity R9 · Voussoir locked</span>
+    <span class="f">Charcoal #221E1A · Copper #B5642F · Mukta + Baloo 2</span>
+  </footer>
+
+</div>
+
+<script>
+/* ============================================================
+   THE LOCKED MARK — R6 · 07 "The Voussoir"
+   Three discrete voussoirs of a flat arch: projecting keystone
+   + two splayed haunches. Coordinates micro-refined from R6-07
+   (recentred in the 32-unit square, seams cleaned), character
+   preserved. Built in a 0 0 32 32 viewBox.
+   ============================================================ */
+const CX = 16;
+/* refined R6-07 paths (recentred vertically) */
+const KEY = "M13 7.4L19 7.4L21.2 16.6L10.8 16.6Z";              /* projecting keystone, flat top */
+const HL  = "M4.2 15.9L10.6 17.0L12.5 25.1L6.4 25.1Z";          /* left haunch */
+const HR  = "M27.8 15.9L21.4 17.0L19.5 25.1L25.6 25.1Z";        /* right haunch */
+
+/* main = block fill, accent = keystone/haunch accent, on = 'key'|'haunch'|null */
+function vous(main, accent, on){
+  const a = accent || main;
+  const kc = on==='key'    ? a : main;
+  const hc = on==='haunch' ? a : main;
+  return `<path fill="${hc}" d="${HL}"/><path fill="${hc}" d="${HR}"/><path fill="${kc}" d="${KEY}"/>`;
+}
+function svgMark(size, inner, vb){
+  return `<svg width="${size}" height="${size}" viewBox="${vb||'0 0 32 32'}" fill="none" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+}
+
+/* palettes */
+const PAL = {
+  ink:"#221E1A", copper:"#B5642F", copperLt:"#D9894C", paper:"#F2ECE3", onDark:"#F0EAE2", mono:"#2A2520",
+  navy:"#0E2344", orange:"#E85D14", orangeLt:"#FF7A33", coolPaper:"#F2F5F9", onNavy:"#E9EFF6"
+};
+
+/* ---------- 01 hero ---------- */
+document.getElementById("hero-mark").innerHTML = svgMark(220, vous(PAL.onDark, PAL.copperLt, 'key'));
+
+/* ---------- 02 construction overlay ---------- */
+(function(){
+  const cu = PAL.copper, gl = "#D8CCBC", txt = "#8A8073";
+  const guides = `
+    <!-- baseline grid -->
+    <g stroke="${gl}" stroke-width="0.18">
+      ${[4,8,12,16,20,24,28].map(v=>`<line x1="${v}" y1="2" x2="${v}" y2="30"/>`).join("")}
+      ${[4,8,12,16,20,24,28].map(v=>`<line x1="2" y1="${v}" x2="30" y2="${v}"/>`).join("")}
+    </g>
+    <!-- the mark, light -->
+    ${vous("#C8BCAD", null, null)}
+    <!-- radial seams to centre of curvature -->
+    <g stroke="${cu}" stroke-width="0.22" stroke-dasharray="0.8 0.8" opacity=".9">
+      <line x1="16" y1="40" x2="11.8" y2="9"/>
+      <line x1="16" y1="40" x2="20.2" y2="9"/>
+      <line x1="16" y1="40" x2="5"  y2="16.7"/>
+      <line x1="16" y1="40" x2="27" y2="16.7"/>
+    </g>
+    <!-- crown line + springing line -->
+    <g stroke="${cu}" stroke-width="0.28">
+      <line x1="9" y1="7.4" x2="23" y2="7.4"/>
+      <line x1="2.5" y1="25.1" x2="29.5" y2="25.1"/>
+    </g>
+    <g stroke="${cu}" stroke-width="0.18" fill="${cu}" font-family="monospace">
+      <circle cx="16" cy="40" r="0.5"/>
+    </g>
+  `;
+  document.getElementById("construct-svg").innerHTML =
+    `<svg width="340" height="340" viewBox="0 0 32 42" fill="none" xmlns="http://www.w3.org/2000/svg">${guides}
+       <text x="23.4" y="7.9" font-family="IBM Plex Mono,monospace" font-size="1.5" fill="${txt}">crown</text>
+       <text x="2.5" y="27" font-family="IBM Plex Mono,monospace" font-size="1.5" fill="${txt}">springing line</text>
+       <text x="16.4" y="39.6" font-family="IBM Plex Mono,monospace" font-size="1.5" fill="${txt}">centre of curvature</text>
+     </svg>`;
+})();
+
+/* ---------- 03 clear space ---------- */
+(function(){
+  const cu = PAL.copper;
+  // X = keystone crown width = 6 units. Pad mark by X on all sides inside a frame.
+  // mark drawn at native 32 box, place inside 44x44 with 6 pad -> use viewBox -6 -6 44 44
+  const dash = `<rect x="0.3" y="0.3" width="31.4" height="31.4" fill="none" stroke="${cu}" stroke-width="0.25" stroke-dasharray="1 1"/>`;
+  const xbars = `
+    <g stroke="${cu}" stroke-width="0.25">
+      <line x1="-6" y1="-3" x2="0" y2="-3"/><line x1="-6" y1="-3.8" x2="-6" y2="-2.2"/><line x1="0" y1="-3.8" x2="0" y2="-2.2"/>
+      <line x1="-3" y1="-6" x2="-3" y2="0"/><line x1="-3.8" y1="-6" x2="-2.2" y2="-6"/><line x1="-3.8" y1="0" x2="-2.2" y2="0"/>
+    </g>
+    <text x="-9.4" y="-2.4" font-family="IBM Plex Mono,monospace" font-size="2.2" fill="${cu}">X</text>
+    <text x="-3.5" y="-7" font-family="IBM Plex Mono,monospace" font-size="2.2" fill="${cu}">X</text>`;
+  document.getElementById("clearspace-svg").innerHTML =
+    `<svg width="320" height="320" viewBox="-12 -12 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+       ${dash}${vous(PAL.ink, PAL.copper, 'key')}${xbars}
+     </svg>`;
+})();
+
+/* ---------- 03 / 08 min sizes ---------- */
+function minRow(elId, sizes, fill, accent){
+  document.getElementById(elId).innerHTML = sizes.map(s=>
+    `<div class="m"><div class="minbox" style="width:${Math.max(s,16)+8}px;height:${Math.max(s,16)+8}px;">${svgMark(s, vous(fill, accent, accent?'key':null))}</div><div class="px"><b>${s}px</b>${s===16?' · floor':''}</div></div>`
+  ).join("");
+}
+minRow("minsize", [16,24,32,48,72], PAL.ink, PAL.copper);
+minRow("fav-sizes", [16,32,48], PAL.ink, null);
+
+/* ---------- 04 lockups ---------- */
+function lockup(font, fname, stacked){
+  const mark = svgMark(stacked?64:54, vous(PAL.ink, PAL.copper, 'key'));
+  const ws = stacked?34:40;
+  return `<div class="lockcard">
+    <div class="lhd"><h3>${stacked?'Stacked':'Horizontal'} lockup</h3><span class="ftag">${fname}</span></div>
+    <div class="lockstage ${stacked?'stacked':''}">${mark}<span class="wm ${font}" style="font-size:${ws}px;">yukti</span></div>
+    <p class="lcap">Mark seated square to the cap height. Wordmark in <b>${fname}</b>, lowercase, optical kerning.</p>
+  </div>`;
+}
+document.getElementById("lockups").innerHTML = lockup("mukta","Mukta · Primary",false) + lockup("baloo","Baloo 2 · Secondary",false);
+document.getElementById("lockups-stacked").innerHTML = lockup("mukta","Mukta · Primary",true) + lockup("baloo","Baloo 2 · Secondary",true);
+
+/* ---------- 05 colour ---------- */
+function swatch(hex, nm, role, vals, dark){
+  return `<div class="sw"><div class="chip" style="background:${hex};"></div>
+    <div class="meta"><div class="nm">${nm}</div><div class="role">${role}</div><div class="vals">${vals}</div></div></div>`;
+}
+document.getElementById("pal-primary").innerHTML =
+  swatch(PAL.ink,"Charcoal","Primary ink · fields","HEX #221E1A<br>RGB 34 30 26") +
+  swatch(PAL.copper,"Copper","Accent · load-bearing","HEX #B5642F<br>on-dark #D9894C") +
+  swatch(PAL.paper,"Paper","Ground · light","HEX #F2ECE3<br>RGB 242 236 227");
+document.getElementById("pal-secondary").innerHTML =
+  swatch(PAL.navy,"Deep Navy","Primary ink · fields","HEX #0E2344<br>RGB 14 35 68") +
+  swatch(PAL.orange,"Signal Orange","Accent · signal","HEX #E85D14<br>on-dark #FF7A33") +
+  swatch(PAL.coolPaper,"Cool Paper","Ground · light","HEX #F2F5F9<br>RGB 242 245 249");
+
+/* ---------- 06 monochrome ---------- */
+document.getElementById("mono").innerHTML = [
+  {bg:PAL.paper, ink:PAL.mono, cap:"Positive · 1-colour"},
+  {bg:PAL.ink, ink:PAL.onDark, cap:"Reversed · knockout"},
+  {bg:"#FFFFFF", ink:"#000000", cap:"Pure black · stamp"},
+  {bg:PAL.copper, ink:"#FFFFFF", cap:"Knockout on copper"}
+].map(c=>`<div class="monocell"><div class="stg" style="background:${c.bg};">${svgMark(96, vous(c.ink,null,null))}</div><div class="cap">${c.cap}</div></div>`).join("");
+
+/* ---------- 07 light / dark ---------- */
+document.getElementById("lightdark").innerHTML = [
+  {bg:PAL.paper, ink:PAL.ink, acc:PAL.copper, wm:PAL.ink, cap:["Charcoal + Copper","Light"]},
+  {bg:PAL.ink, ink:PAL.onDark, acc:PAL.copperLt, wm:PAL.onDark, cap:["Charcoal + Copper","Dark"]},
+  {bg:PAL.coolPaper, ink:PAL.navy, acc:PAL.orange, wm:PAL.navy, cap:["Deep Navy + Orange","Light"]},
+  {bg:PAL.navy, ink:PAL.onNavy, acc:PAL.orangeLt, wm:PAL.onNavy, cap:["Deep Navy + Orange","Dark"]}
+].map(c=>`<div class="ldcell"><div class="stg" style="background:${c.bg};">${svgMark(72, vous(c.ink,c.acc,'key'))}<span class="wm mukta" style="font-size:48px;color:${c.wm};">yukti</span></div><div class="cap"><b>${c.cap[0]}</b> · ${c.cap[1]}</div></div>`).join("");
+
+/* ---------- 08 favicon / app icon ---------- */
+function appIcon(size, r){
+  // charcoal rounded square, mark seated with copper keystone
+  const pad = size*0.18;
+  const inner = svgMark(size-pad*2, vous(PAL.onDark, PAL.copperLt, 'key'));
+  return `<div class="appicon" style="width:${size}px;height:${size}px;border-radius:${r}px;background:${PAL.ink};box-shadow:0 6px 16px -8px rgba(0,0,0,.5);">${inner}</div>`;
+}
+document.getElementById("appicons").innerHTML = [
+  [120,27],[76,17],[48,11],[29,7]
+].map(([s,r])=>`<div class="ai">${appIcon(s,r)}<span class="px">${s}px</span></div>`).join("");
+document.getElementById("tab-fav").innerHTML = svgMark(16, vous(PAL.copperLt,null,null));
+document.getElementById("url-fav").innerHTML = svgMark(14, vous("rgba(240,234,226,.7)",null,null));
+
+/* ---------- 09 misuse ---------- */
+const crown = (c)=>`<path fill="${c}" d="M5 22L5 11L10 16L16 8L22 16L27 11L27 22Z"/><rect x="5" y="22" width="22" height="3" fill="${c}"/>`;
+const crest = (c)=>`<path fill="none" stroke="${c}" stroke-width="1.4" d="M6 5H26V18A10 10 0 0 1 16 28A10 10 0 0 1 6 18Z"/>`;
+document.getElementById("donts").innerHTML = [
+  {svg:svgMark(96, crown(PAL.ink)), h:"Not a crown", p:"No baseline, no tines, no points rising off a band. The crown reads as monarchy and loyalty programs."},
+  {svg:`<div style="position:relative;">${svgMark(96, vous(PAL.ink,null,null))}<svg width="0" height="0"></svg><div style="position:absolute;inset:-14px;border:1.4px solid ${PAL.ink};border-radius:50% 50% 50% 50%/60% 60% 40% 40%;"></div></div>`, h:"Not a crest", p:"Never enclose the mark in a shield, seal, or wreath. That signals heraldry and old-world banking."},
+  {svg:svgMark(96, vous(PAL.ink, PAL.copper, 'haunch')).replace('fill="none"',''), h:"Don’t accent the haunches", p:"Copper marks the load-bearing keystone only. Accenting the shoulders inverts the meaning."},
+  {svg:`<svg width="120" height="96" viewBox="0 0 40 32" fill="none">${vous(PAL.ink,null,null)}</svg>`, h:"Don’t distort", p:"Never stretch, condense, or rotate. The radial geometry only holds at its locked proportions."},
+  {svg:svgMark(96, vous("#7d7a76",null,null)), h:"Don’t weaken contrast", p:"No grey-on-grey, gradients, or tints under 60% contrast. The seams must stay legible."},
+  {svg:`<div style="filter:drop-shadow(2px 3px 0 rgba(181,100,47,.6));">${svgMark(96, vous(PAL.ink,null,null))}</div>`, h:"No effects", p:"No drop shadows, bevels, outlines, or 3-D. The mark is flat, cut stone — keep it flat."}
+].map(d=>`<div class="dont"><div class="stg"><span class="x">&times;</span>${d.svg}</div><div class="cap"><h4>${d.h}</h4><p>${d.p}</p></div></div>`).join("");
+
+/* ---------- 10 artifacts ---------- */
+document.getElementById("bc-mark").innerHTML = svgMark(30, vous(PAL.onDark, PAL.copperLt, 'key'));
+document.getElementById("ph-icon").innerHTML = appIcon(64,15);
+document.getElementById("sg-mark").innerHTML = svgMark(60, vous("#EDE6DC", PAL.copperLt, 'key'));
+document.getElementById("rev-lock").innerHTML = `<div style="display:flex;align-items:center;gap:16px;">${svgMark(56, vous(PAL.onDark, PAL.copperLt,'key'))}<span class="wm mukta" style="font-size:42px;color:${PAL.onDark};">yukti</span></div>`;
+</script>
+</body>
+</html>

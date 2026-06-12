@@ -107,7 +107,7 @@ describe('feature flag gate — /api/auth/signup', () => {
           tenant: {
             tenant_id: 'tenant-uuid',
             slug: 'test-co',
-            subdomain: 'test-co.dealflow.in',
+            subdomain: 'test-co.yukti.so',
           },
         }),
         { status: 201 }
@@ -128,17 +128,17 @@ describe('feature flag gate — /api/auth/signup', () => {
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.success).toBe(true);
-    expect(body.tenant.subdomain).toBe('test-co.dealflow.in');
+    expect(body.tenant.subdomain).toBe('test-co.yukti.so');
   });
 });
 
 // ─── payload shape ───────────────────────────────────────────────────────────
 
 describe('signup payload shape', () => {
-  it('derives subdomain from slug (slug + .dealflow.in)', () => {
+  it('derives subdomain from slug (slug + .yukti.so)', () => {
     const slug = 'wineyard';
-    const expectedSubdomain = `${slug}.dealflow.in`;
-    expect(expectedSubdomain).toBe('wineyard.dealflow.in');
+    const expectedSubdomain = `${slug}.yukti.so`;
+    expect(expectedSubdomain).toBe('wineyard.yukti.so');
   });
 
   it('sends only the four required fields to the API', () => {

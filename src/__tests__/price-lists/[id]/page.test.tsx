@@ -39,7 +39,7 @@ const detail = {
   status_label: 'Active',
   status_tone: 'success' as const,
   initials: 'SP',
-  created_by_label: 'owner@dealflow.in',
+  created_by_label: 'owner@yukti.so',
   filters: { brand_names: ['WineYard'], category_names: ['Red'] },
   items: [
     {

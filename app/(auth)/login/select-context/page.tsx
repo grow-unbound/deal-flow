@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-const SESSION_CONTEXTS_KEY = 'dealflow_auth_contexts';
+const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
 
 interface BuyerContext {
   tenant_id: string;
@@ -113,9 +113,9 @@ function SelectContextForm() {
       {/* Logo */}
       <div className="flex items-center gap-3 mb-7">
         <div className="w-9 h-9 bg-teal-500 rounded-md flex items-center justify-center shrink-0">
-          <span className="text-cream-50 font-display font-medium text-sm">DF</span>
+          <span className="text-cream-50 font-display font-medium text-sm">yk</span>
         </div>
-        <span className="font-display font-medium text-teal-500 text-xl">DealFlow</span>
+        <span className="font-display font-medium text-teal-500 text-xl">yukti</span>
       </div>
 
       <h1 className="text-h3 font-display text-cream-900 mb-1">Choose account</h1>

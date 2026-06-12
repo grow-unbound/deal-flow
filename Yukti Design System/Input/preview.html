@@ -1,0 +1,51 @@
+<!-- @dsCard group="Components" viewport="700x300" name="Input" subtitle="Default · focus · error · disabled · prefix/suffix" -->
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;600;700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;padding:24px 28px;background:#F8F6F2;font-family:'Mukta',sans-serif;-webkit-font-smoothing:antialiased;color:#221E1A;}
+  .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;}
+  .field{display:flex;flex-direction:column;gap:5px;}
+  .lbl{font-size:12px;font-weight:600;letter-spacing:.04em;color:#64594E;}
+  .inp{display:flex;align-items:center;gap:8px;background:#FCFBF8;border:1px solid #EAE3D9;border-radius:10px;padding:0 12px;height:40px;}
+  .inp.focused{border-color:#B5642F;box-shadow:0 0 0 3px rgba(181,100,47,.14);}
+  .inp.error{border-color:#9C3026;box-shadow:0 0 0 3px rgba(156,48,38,.10);}
+  .inp.disabled{opacity:.6;background:rgba(248,246,242,.6);}
+  .inp input{flex:1;border:none;outline:none;background:transparent;font-family:'Mukta',sans-serif;font-size:14px;color:#221E1A;letter-spacing:-.01em;}
+  .inp input::placeholder{color:#6F665C;}
+  .affix{font-size:13px;color:#6F665C;flex-shrink:0;}
+  .hint{font-size:12px;color:#6F665C;line-height:1.45;}
+  .hint.err{color:#9C3026;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px;}
+</style>
+</head>
+<body>
+<div class="grid">
+  <div class="field">
+    <span class="lbl">Business name</span>
+    <div class="inp"><input type="text" value="Mehta Distributors" readonly></div>
+    <span class="hint">Your registered business name</span>
+  </div>
+  <div class="field">
+    <span class="lbl">GSTIN <span style="color:#9C3026;margin-left:1px;">*</span></span>
+    <div class="inp focused"><input type="text" value="29AABCM1234A1Z5" readonly></div>
+    <span class="hint">15-digit GSTIN</span>
+  </div>
+  <div class="field">
+    <span class="lbl">Order number</span>
+    <div class="inp error"><input type="text" value="DF-2026-00" readonly></div>
+    <span class="hint err">Order number is incomplete</span>
+  </div>
+</div>
+<div class="row2">
+  <div class="field">
+    <span class="lbl">Base price</span>
+    <div class="inp"><span class="affix">₹</span><input type="text" value="1,850.00" readonly><span class="affix">/ unit</span></div>
+  </div>
+  <div class="field">
+    <span class="lbl">Buyer phone</span>
+    <div class="inp disabled"><span class="affix">+91</span><input type="text" placeholder="9876543210" disabled></div>
+    <span class="hint">Read-only in this context</span>
+  </div>
+</div>
+</body></html>

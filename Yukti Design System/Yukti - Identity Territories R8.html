@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<!-- @dsCard group="Brand" name="Yukti Identity R8" subtitle="Final convergence — Voussoir + Crescent, 20 refinements" -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yukti — Identity, Round 8 (Final Convergence)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700&amp;family=Baloo+2:wght@500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#1b1e24; --sub:#62666e; --line:#e4e6ea; --bg:#eef0f3; --card:#ffffff; }
+  html,body { margin:0; padding:0; }
+  body { background:var(--bg); font-family:"Mukta",sans-serif; color:var(--ink); }
+  .wrap { max-width:1180px; margin:0 auto; padding:44px 28px 84px; display:flex; flex-direction:column; gap:22px; }
+  .top { display:flex; flex-direction:column; gap:9px; }
+  .kicker { font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#9aa0a8; }
+  h1 { margin:0; font-size:27px; font-weight:700; letter-spacing:-0.02em; }
+  .flag { font-size:13.5px; line-height:1.62; color:var(--sub); max-width:940px; }
+  .flag strong { color:var(--ink); font-weight:600; }
+  .legend { display:flex; flex-wrap:wrap; gap:8px; }
+  .lg { display:flex; align-items:center; gap:9px; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:7px 12px; }
+  .lg .dots { display:flex; gap:4px; }
+  .lg i { width:13px; height:13px; border-radius:3px; display:inline-block; border:1px solid rgba(0,0,0,.08); }
+  .lg b { font-size:11.5px; font-weight:600; }
+  .lg span { font-family:"IBM Plex Mono",monospace; font-size:10px; color:#9aa0a8; }
+  .grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
+  .sect { grid-column:1/-1; display:flex; align-items:baseline; gap:12px; margin:16px 2px 0; flex-wrap:wrap; }
+  .sect .sno { font-family:"IBM Plex Mono",monospace; font-size:11px; color:#aeb3bb; }
+  .sect h2 { margin:0; font-size:17.5px; font-weight:700; letter-spacing:-0.01em; }
+  .sect .sd { font-size:12.5px; color:var(--sub); }
+  .sect .pal { margin-left:auto; font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--sub); display:flex; align-items:center; gap:7px; }
+  .sect .pal i { width:12px; height:12px; border-radius:3px; border:1px solid rgba(0,0,0,.08); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:15px 15px 14px; display:flex; flex-direction:column; gap:11px; }
+  .card h3 { margin:0; font-size:13.5px; font-weight:600; display:flex; align-items:baseline; gap:8px; letter-spacing:-0.01em; }
+  .card h3 .tno { font-family:"IBM Plex Mono",monospace; font-size:10.5px; font-weight:400; color:#aeb3bb; }
+  .card h3 .dt { margin-left:auto; align-self:center; white-space:nowrap; font-family:"IBM Plex Mono",monospace; font-size:8.5px; font-weight:500; letter-spacing:.06em; text-transform:uppercase; color:var(--sub); background:var(--bg); border:1px solid var(--line); border-radius:3px; padding:2px 6px; line-height:1.1; }
+  .chips { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .chip { border-radius:8px; height:96px; display:flex; align-items:center; justify-content:center; gap:11px; border:1px solid var(--line); }
+  .word { font-size:23px; line-height:1; font-weight:600; letter-spacing:-0.01em; }
+  .red { display:flex; align-items:center; gap:11px; background:var(--bg); border:1px solid var(--line); border-radius:7px; padding:6px 11px; }
+  .red .rlab { font-family:"IBM Plex Mono",monospace; font-size:9px; color:#a4a9b1; letter-spacing:.05em; text-transform:uppercase; }
+  .red .rgroup { display:flex; align-items:center; gap:7px; }
+  .why { font-size:11.5px; line-height:1.5; color:var(--sub); margin:0; border-top:1px solid var(--line); padding-top:9px; }
+  .why b { color:var(--ink); font-weight:600; }
+  /* type panel */
+  .typegrid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .tcard { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:20px 22px; display:flex; flex-direction:column; gap:16px; }
+  .tcard .thd { display:flex; align-items:baseline; gap:10px; }
+  .tcard .thd h3 { margin:0; font-size:14px; font-weight:700; }
+  .tcard .thd .pal { margin-left:auto; font-family:"IBM Plex Mono",monospace; font-size:10px; color:var(--sub); }
+  .lock { display:flex; align-items:center; gap:16px; padding:18px 20px; border-radius:9px; border:1px solid var(--line); }
+  .lock .lname { font-family:"IBM Plex Mono",monospace; font-size:9.5px; color:#a4a9b1; letter-spacing:.06em; text-transform:uppercase; margin-left:auto; align-self:flex-start; }
+  .lock .lw-mukta { font-family:"Mukta",sans-serif; font-weight:600; font-size:40px; line-height:.9; letter-spacing:-0.02em; }
+  .lock .lw-baloo { font-family:"Baloo 2",sans-serif; font-weight:600; font-size:38px; line-height:.9; letter-spacing:-0.01em; }
+  .tnote { font-size:11.5px; line-height:1.5; color:var(--sub); margin:0; }
+  .tnote b { color:var(--ink); font-weight:600; }
+  @media (max-width:980px){ .grid{grid-template-columns:1fr 1fr;} }
+  @media (max-width:720px){ .grid{grid-template-columns:1fr;} .typegrid{grid-template-columns:1fr;} }
+</style>
+<template id="__bundler_thumbnail" data-bg-color="#221E1A">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#221E1A"></rect>
+    <path fill="#B5642F" d="M520 230H680L735 470H465Z"></path>
+    <path fill="#B5642F" d="M455 500H560L490 640H400Z"></path>
+    <path fill="#B5642F" d="M745 500H640L710 640H800Z"></path>
+  </svg>
+</template>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <span class="kicker">Yukti · Identity, Round 8 · Final convergence · 2 marks · 20 refinements</span>
+    <h1>Refining the two marks that earned their meaning</h1>
+    <p class="flag"><strong>No new metaphors, territories, or symbols.</strong> Round 8 converges on the two directions that held up best — the <strong>Voussoir</strong> (the keystone that lets a structure stand) and the <strong>Loaded Mass / Crescent</strong> (weight wound up and stored). Every variant pushes toward <strong>more iconic, not more clever</strong>: heavier silhouette, cleaner negative space, stronger favicon read. Accent is structural only — it marks what bears load, never decorates. Wordmark set in <strong>Mukta</strong>, with <strong>Baloo&nbsp;2</strong> as a secondary cut.</p>
+  </div>
+  <div class="legend" id="legend"></div>
+  <div class="grid" id="grid"></div>
+  <div class="sect"><span class="sno">TYPE</span><h2>Wordmark — Mukta &amp; Baloo&nbsp;2</h2><span class="sd">Primary and secondary type cuts, locked to each lead mark.</span></div>
+  <div class="typegrid" id="typegrid"></div>
+</div>
+
+<script>
+/* ---------- palettes: one primary + one structural accent each ---------- */
+const PAL = {
+  T1:{lab:"Charcoal + Copper", bgL:"#F5F1EC", bgD:"#221E1A", ink:"#221E1A", light:"#F0EAE2", accent:"#B5642F", accentL:"#D9894C", mono:"#2A2520", eName:"Copper", eHex:"#B5642F", iName:"Charcoal", iHex:"#221E1A"},
+  T2:{lab:"Deep Navy + Signal Orange", bgL:"#F2F5F9", bgD:"#0E2344", ink:"#0E2344", light:"#E9EFF6", accent:"#E85D14", accentL:"#FF7A33", mono:"#0E2344", eName:"Signal Orange", eHex:"#E85D14", iName:"Deep Navy", iHex:"#0E2344"}
+};
+
+/* ---------- Voussoir builder: three-block keystone ---------- */
+function trap(thalf,bhalf,ty,by){return `M${16-thalf} ${ty}L${16+thalf} ${ty}L${16+bhalf} ${by}L${16-bhalf} ${by}Z`;}
+function vmark(p,c,a){
+  a=a||c;
+  if(p.special==='void') return vTile(c);
+  const kc=(p.accent==='key'||p.accent==='overlap')?a:c;
+  const hc=(p.accent==='haunch')?a:c;
+  const st=col=> p.round?` stroke="${col}" stroke-width="${p.round}" stroke-linejoin="round"`:'';
+  const key=trap(p.kt,p.kb,p.kTop,p.kBot);
+  const lh=`M${p.hOut} ${p.hTopY}L${p.hInTop} ${p.hTopY}L${p.hInBot} ${p.hBotY}L${p.hOutBot} ${p.hBotY}Z`;
+  const rh=`M${32-p.hOut} ${p.hTopY}L${32-p.hInTop} ${p.hTopY}L${32-p.hInBot} ${p.hBotY}L${32-p.hOutBot} ${p.hBotY}Z`;
+  return `<path fill="${hc}" d="${lh}"${st(hc)}/><path fill="${hc}" d="${rh}"${st(hc)}/><path fill="${kc}" d="${key}"${st(kc)}/>`;
+}
+function vTile(c){
+  const tile=`M8 3H24A5 5 0 0 1 29 8V24A5 5 0 0 1 24 29H8A5 5 0 0 1 3 24V8A5 5 0 0 1 8 3Z`;
+  const arch=`M12.8 13.6H19.2L22.4 24.6A2 2 0 0 1 20.5 27H11.5A2 2 0 0 1 9.6 24.6Z`;
+  const ls=`M12.55 13.6L13.55 13.6L12.45 6L11.55 6Z`;
+  const rs=`M19.45 13.6L18.45 13.6L19.55 6L20.45 6Z`;
+  return `<path fill-rule="evenodd" fill="${c}" d="${tile} ${arch} ${ls} ${rs}"/>`;
+}
+
+/* ---------- Crescent / Loaded Mass marks ---------- */
+const CR={
+  crCrescent:(c,a)=>`<path fill-rule="evenodd" fill="${c}" d="M16 3a13 13 0 1 0 .01 0Z M19 3.4a10 10 0 1 0 .01 0Z"/>`,
+  crHeavy:(c,a)=>`<path fill-rule="evenodd" fill="${c}" d="M16 3a13 13 0 1 0 .01 0Z M20.3 5.6a8.4 8.4 0 1 0 .01 0Z"/>`,
+  crWedge:(c,a)=>`<path fill-rule="evenodd" fill="${c}" d="M16 3a13 13 0 1 0 .01 0Z M16 16L16 3.2L24.6 5.6Z"/>`,
+  crBore:(c,a)=>`<path fill-rule="evenodd" fill="${c}" d="M16 3a13 13 0 1 0 .01 0Z M11.8 8.8a3.5 3.5 0 1 0 .01 0Z"/>`,
+  crShear:(c,a)=>`<path fill-rule="evenodd" fill="${c}" d="M16 3a13 13 0 1 0 .01 0Z M6.6 17.6L23.4 5.6L25.5 8.5L8.7 20.5Z"/>`,
+  crDual:(c,a)=>`<path fill="${c}" d="M16 3a13 13 0 1 0 .01 0Z"/><path fill-rule="evenodd" fill="${a}" d="M16 3a13 13 0 1 0 .01 0Z M13 3a10 10 0 1 0 .01 0Z"/>`,
+  crLayer:(c,a)=>`<path fill-rule="evenodd" fill="${c}" d="M16 3a13 13 0 1 0 .01 0Z M19 3.4a10 10 0 1 0 .01 0Z"/><path fill-rule="evenodd" fill="${a}" d="M14.6 11.4a7.4 7.4 0 1 0 .01 0Z M17.6 12.8a4.8 4.8 0 1 0 .01 0Z"/>`,
+  crQuarter:(c,a)=>`<path fill="${c}" d="M16 16L16 3A13 13 0 1 1 29 16Z"/>`
+};
+
+/* ---------- variant data ---------- */
+const VP=[
+  {no:"01", name:"The Voussoir",     why:"The mark at rest — keystone seated on two haunches, the arch carried as one clean void. The form everything else refines.", p:{kt:3.5,kb:6.5,kTop:4.5,kBot:14.5,hTopY:15.2,hBotY:26,hOut:5,hInTop:12.8,hInBot:9.4,hOutBot:5}},
+  {no:"02", name:"The Heavy Voussoir",why:"Maximum mass, minimum gap — thicker blocks and a tighter opening for unmistakable weight at the smallest sizes.", p:{kt:4,kb:7,kTop:4,kBot:15,hTopY:15.6,hBotY:27,hOut:4.5,hInTop:13.2,hInBot:11,hOutBot:4.5}},
+  {no:"03", name:"The Broad Keystone",why:"The keystone enlarged to dominate — the part Yukti supplies, given top billing in the silhouette.", p:{kt:5,kb:8,kTop:4.5,kBot:15,hTopY:15.6,hBotY:26.5,hOut:4.5,hInTop:13,hInBot:10,hOutBot:4.5}},
+  {no:"04", name:"The Tall Keystone", why:"A taller wedge over a narrower opening — more vertical authority, a sharper favicon read.", p:{kt:3,kb:5.5,kTop:3,kBot:16,hTopY:16.6,hBotY:27,hOut:6,hInTop:12.5,hInBot:10.5,hOutBot:6}},
+  {no:"05", name:"The Monolith",      why:"Seams pulled to hairlines so the three stones read as one block that happens to be jointed.", p:{kt:3.5,kb:6.8,kTop:4.5,kBot:15.4,hTopY:15.6,hBotY:26,hOut:5,hInTop:13.4,hInBot:9.6,hOutBot:5}},
+  {no:"06", name:"The Rounded",       why:"Softened corners across every block — same structure, warmer in the hand, friendlier as an app icon.", p:{kt:3.5,kb:6.5,kTop:4.8,kBot:14.5,hTopY:15.4,hBotY:25.6,hOut:5.4,hInTop:12.6,hInBot:9.8,hOutBot:5.4,round:2.4}},
+  {no:"07", name:"The Squared",       why:"Squared, near-rectilinear blocks and a flatter crown — the most architectural, least decorative cut.", p:{kt:5.4,kb:6.6,kTop:5,kBot:15,hTopY:15.6,hBotY:26,hOut:5,hInTop:12,hInBot:10.5,hOutBot:6}},
+  {no:"08", name:"The Wide Span",     why:"A wider stance and a broader arch — planted, load-bearing, confident at scale.", p:{kt:3.5,kb:7,kTop:5,kBot:14,hTopY:14.6,hBotY:26,hOut:3.5,hInTop:13.5,hInBot:8,hOutBot:3.5}},
+  {no:"09", name:"The Marked Key",    dual:true, why:"Copper isolates the keystone from charcoal haunches — accent used only to mark the load-bearing piece.", p:{kt:3.5,kb:6.5,kTop:4.5,kBot:14.5,hTopY:15.2,hBotY:26,hOut:5,hInTop:12.8,hInBot:9.4,hOutBot:5,accent:'key'}},
+  {no:"10", name:"The Marked Haunch", dual:true, why:"Inverse weighting — charcoal keystone, copper haunches — accent reinforcing what carries, not what crowns.", p:{kt:3.5,kb:6.5,kTop:4.5,kBot:14.5,hTopY:15.2,hBotY:26,hOut:5,hInTop:12.8,hInBot:9.4,hOutBot:5,accent:'haunch'}},
+  {no:"11", name:"The Overlap",       dual:true, why:"The keystone seated over the haunches in copper — a structural overlap that reads as one piece bearing on another.", p:{kt:4.5,kb:7.5,kTop:4,kBot:16.5,hTopY:15,hBotY:26,hOut:4.5,hInTop:13,hInBot:9.5,hOutBot:4.5,accent:'overlap'}},
+  {no:"12", name:"The Carved Void",   why:"The whole mark carved from a single charcoal badge — keystone and arch held entirely in negative space.", p:{special:'void'}}
+];
+
+const CRD=[
+  {no:"13", name:"The Crescent",     fn:CR.crCrescent, why:"A solid disc carved off-axis — weight banked to one side. Stored energy as a mass that has been wound up."},
+  {no:"14", name:"The Heavy Crescent",fn:CR.crHeavy,   why:"The same carve, thicker — more remaining mass, a smaller void. Presence over thinness; never a sliver."},
+  {no:"15", name:"The Notch",        fn:CR.crWedge,    why:"A heavy disc with one wedge released from the crown — tension stored in an otherwise unbroken weight."},
+  {no:"16", name:"The Bore",         fn:CR.crBore,     why:"A bore driven off-center — the load concentrated low, an object whose balance you feel before you name it."},
+  {no:"17", name:"The Fault",        fn:CR.crShear,    why:"The mass sheared along one diagonal — two weights held in offset, momentum frozen at the slip line."},
+  {no:"18", name:"The Lit Edge",     fn:CR.crDual, dual:true, why:"Signal orange banked across the navy mass — the lit edge of a carved form, depth without an outline."},
+  {no:"19", name:"The Layered Mass", fn:CR.crLayer, dual:true, why:"A carved mass set inside a carved mass — two weights layered, leverage drawn as depth."},
+  {no:"20", name:"The Quarter Load", fn:CR.crQuarter,  why:"Three-quarters of a mass with one quadrant released — a decisive, ownable silhouette built on what is removed."}
+];
+
+const svg=(s,inner)=>`<svg width="${s}" height="${s}" viewBox="0 0 32 32" fill="none">${inner}</svg>`;
+
+/* ---------- legend ---------- */
+document.getElementById("legend").innerHTML = Object.values(PAL).map(p=>
+  `<div class="lg"><span class="dots"><i style="background:${p.accent}"></i><i style="background:${p.iHex}"></i></span><b>${p.lab}</b><span>${p.accent} · ${p.iHex}</span></div>`
+).join("");
+
+/* ---------- render a card ---------- */
+function card(no,name,dual,rm,why,P){
+  const dt = dual? `<span class="dt">Dual-tone</span>`:'';
+  return `<div class="card" data-screen-label="${no} ${name}">
+    <h3><span class="tno">${no}</span>${name}${dt}</h3>
+    <div class="chips">
+      <div class="chip" style="background:${P.bgL};">${svg(40,rm(P.ink,P.accent))}<span class="word" style="color:${P.ink};">yukti</span></div>
+      <div class="chip" style="background:${P.bgD};border-color:${P.bgD};">${svg(40,rm(P.light,P.accentL))}<span class="word" style="color:${P.light};">yukti</span></div>
+    </div>
+    <div class="red">
+      <span class="rlab">1-color</span><span class="rgroup">${svg(26,rm(P.mono,P.mono))}</span>
+      <span class="rlab">favicon</span><span class="rgroup">${svg(16,rm(P.mono,P.mono))}</span>
+      <span class="rlab" style="margin-left:auto;">${P.eName}</span>
+    </div>
+    <p class="why">${why}</p>
+  </div>`;
+}
+
+/* ---------- build grid ---------- */
+let html="";
+html+=`<div class="sect"><span class="sno">T1</span><h2>Voussoir — Primary</h2><span class="sd">The three-block keystone. Heavier, simpler, more foundational.</span><span class="pal"><i style="background:${PAL.T1.accent}"></i><i style="background:${PAL.T1.iHex}"></i>${PAL.T1.lab}</span></div>`;
+VP.forEach(v=>{ html+=card(v.no,v.name,v.dual,(c,a)=>vmark(v.p,c,a),v.why,PAL.T1); });
+html+=`<div class="sect"><span class="sno">T2</span><h2>Loaded Mass / Crescent — Secondary</h2><span class="sd">Compressed mass, one decisive carve. Stored leverage, not movement.</span><span class="pal"><i style="background:${PAL.T2.accent}"></i><i style="background:${PAL.T2.iHex}"></i>${PAL.T2.lab}</span></div>`;
+CRD.forEach(v=>{ html+=card(v.no,v.name,v.dual,v.fn,v.why,PAL.T2); });
+document.getElementById("grid").innerHTML=html;
+
+/* ---------- type panel ---------- */
+function lock(P, markInner, fontClass, fontName){
+  return `<div class="lock" style="background:${P.bgL};">
+    ${svg(48,markInner)}
+    <span class="${fontClass}" style="color:${P.ink};">yukti</span>
+    <span class="lname">${fontName}</span>
+  </div>`;
+}
+const leadV = vmark(VP[0].p, PAL.T1.ink, PAL.T1.accent);
+const leadC = CR.crCrescent(PAL.T2.ink, PAL.T2.accent);
+document.getElementById("typegrid").innerHTML =
+  `<div class="tcard">
+     <div class="thd"><h3>Voussoir · Mukta &amp; Baloo&nbsp;2</h3><span class="pal">${PAL.T1.lab}</span></div>
+     ${lock(PAL.T1, leadV, "lw-mukta", "Mukta · Primary")}
+     ${lock(PAL.T1, leadV, "lw-baloo", "Baloo 2 · Secondary")}
+     <p class="tnote"><b>Mukta</b> reads institutional and even — open counters, low contrast, credible at body and signage scale. <b>Baloo 2</b> rounds the same skeleton for a warmer, app-forward register. Both sit square under the keystone.</p>
+   </div>
+   <div class="tcard">
+     <div class="thd"><h3>Crescent · Mukta &amp; Baloo&nbsp;2</h3><span class="pal">${PAL.T2.lab}</span></div>
+     ${lock(PAL.T2, leadC, "lw-mukta", "Mukta · Primary")}
+     ${lock(PAL.T2, leadC, "lw-baloo", "Baloo 2 · Secondary")}
+     <p class="tnote"><b>Mukta</b> keeps the wordmark quiet so the carved mass leads. <b>Baloo 2</b> matches the rounded crescent geometry for softer surfaces. Accent stays reserved for the symbol, never the type.</p>
+   </div>`;
+</script>
+</body>
+</html>

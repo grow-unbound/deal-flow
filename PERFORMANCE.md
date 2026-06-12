@@ -1,4 +1,4 @@
-# DealFlow Performance Playbook
+# yukti Performance Playbook
 
 ## What Was Slowing The App
 - Client-side auth/workspace bootstrapping blocked first paint, producing a blank/loading phase before meaningful skeletons.

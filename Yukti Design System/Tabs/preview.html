@@ -1,0 +1,38 @@
+<!-- @dsCard group="Components" viewport="700x180" name="Tabs" subtitle="Active · inactive · with count badge · disabled" -->
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;padding:24px 28px;background:#F8F6F2;font-family:'Mukta',sans-serif;-webkit-font-smoothing:antialiased;color:#221E1A;}
+  .tabs{display:flex;align-items:flex-end;border-bottom:1px solid #EAE3D9;}
+  .tab{padding:10px 16px;font-family:'Mukta',sans-serif;font-size:13.5px;border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;display:flex;align-items:center;gap:6px;letter-spacing:-.01em;white-space:nowrap;}
+  .tab.active{color:#B5642F;font-weight:600;border-bottom-color:#B5642F;}
+  .tab.inactive{color:#6F665C;font-weight:500;}
+  .tab.disabled{color:#C4B9AD;cursor:not-allowed;}
+  .cnt{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 6px;border-radius:99px;}
+  .wrap{margin-bottom:24px;}
+  .label{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.10em;text-transform:uppercase;color:#6F665C;margin-bottom:10px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="label">Order lifecycle tabs</div>
+  <div class="tabs">
+    <button class="tab active">All orders <span class="cnt" style="background:rgba(181,100,47,.18);color:#6a3d18;">247</span></button>
+    <button class="tab inactive">Received <span class="cnt" style="background:#EAE3D9;color:#64594E;">12</span></button>
+    <button class="tab inactive">Confirmed</button>
+    <button class="tab inactive">Dispatched</button>
+    <button class="tab inactive">Delivered</button>
+    <button class="tab disabled">Returns</button>
+  </div>
+</div>
+<div class="wrap">
+  <div class="label">Catalog tabs · sm size</div>
+  <div class="tabs">
+    <button class="tab active" style="font-size:13px;padding:8px 12px;">Products <span class="cnt" style="background:rgba(181,100,47,.18);color:#6a3d18;font-size:9.5px;">48</span></button>
+    <button class="tab inactive" style="font-size:13px;padding:8px 12px;">Cohorts <span class="cnt" style="background:#EAE3D9;color:#64594E;font-size:9.5px;">3</span></button>
+    <button class="tab inactive" style="font-size:13px;padding:8px 12px;">Pricing</button>
+    <button class="tab inactive" style="font-size:13px;padding:8px 12px;">Preview</button>
+  </div>
+</div>
+</body></html>
