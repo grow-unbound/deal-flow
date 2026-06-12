@@ -549,6 +549,14 @@ export async function PATCH(
       updated_at: new Date().toISOString(),
     };
 
+    if (Array.isArray(updateFields.image_urls) && updateFields.image_urls.length === 0) {
+      patchPayload.r2_original_key = null;
+      patchPayload.r2_large_key = null;
+      patchPayload.r2_medium_key = null;
+      patchPayload.r2_small_key = null;
+      patchPayload.r2_thumb_key = null;
+    }
+
     if (updateFields.archive) {
       patchPayload.deleted_at = new Date().toISOString();
       delete patchPayload.archive;

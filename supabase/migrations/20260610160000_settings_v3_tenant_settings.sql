@@ -217,7 +217,7 @@ DECLARE
   v_tenant_id uuid;
   v_subdomain  text;
 BEGIN
-  v_subdomain := p_slug || '.dealflow.in';
+  v_subdomain := p_slug || '.yukti.so';
 
   INSERT INTO app.tenants (
     slug, business_name, gstin, primary_state,

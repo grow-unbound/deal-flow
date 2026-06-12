@@ -1,0 +1,83 @@
+<!-- @dsCard group="Components" viewport="700x280" name="Product Card" subtitle="Buyer catalog · available · limited · out-of-stock · new badge" -->
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;padding:22px 28px;background:#F8F6F2;font-family:'Mukta',sans-serif;-webkit-font-smoothing:antialiased;color:#221E1A;}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+  .card{background:#FCFBF8;border:1px solid #EAE3D9;border-radius:12px;overflow:hidden;}
+  .img{height:108px;display:flex;align-items:center;justify-content:center;position:relative;}
+  .body{padding:10px 12px 12px;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  .badge{display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;padding:3px 7px;border-radius:99px;border:1px solid;}
+  .btn{width:100%;margin-top:8px;height:34px;border-radius:8px;font-family:'Mukta',sans-serif;font-size:13px;font-weight:600;cursor:pointer;letter-spacing:-.01em;border:none;}
+</style>
+</head>
+<body>
+<div class="grid">
+  <!-- Available + new -->
+  <div class="card">
+    <div class="img" style="background:rgba(181,100,47,.08);">
+      <svg width="44" height="44" viewBox="0 0 44 44" fill="none" opacity=".4"><rect x="10" y="6" width="24" height="32" rx="4" fill="#B5642F"/><rect x="14" y="12" width="16" height="10" rx="2" fill="#F8F6F2" opacity=".7"/></svg>
+      <span class="badge mono" style="position:absolute;top:8px;left:8px;color:#6a3d18;background:rgba(181,100,47,.14);border-color:rgba(181,100,47,.22);"><svg width="6" height="6" viewBox="0 0 6 6"><circle cx="3" cy="3" r="3" fill="#B5642F"/></svg>New</span>
+    </div>
+    <div class="body">
+      <div class="mono" style="font-size:10.5px;color:#6F665C;letter-spacing:.04em;">Amul · AMU-001</div>
+      <div style="font-size:13.5px;font-weight:600;color:#221E1A;line-height:1.3;letter-spacing:-.01em;margin-top:2px;">Amul Butter 500g</div>
+      <div style="display:flex;align-items:baseline;gap:5px;margin-top:6px;">
+        <span class="mono" style="font-size:15px;font-weight:500;color:#221E1A;font-variant-numeric:tabular-nums;">₹ 240</span>
+        <span class="mono" style="font-size:11px;color:#6F665C;text-decoration:line-through;">₹ 265</span>
+      </div>
+      <div style="font-size:11px;color:#64594E;">per pcs · MRP ₹ 285</div>
+      <button class="btn" style="background:#B5642F;color:#F8F6F2;">Add to cart</button>
+    </div>
+  </div>
+  <!-- Available -->
+  <div class="card">
+    <div class="img" style="background:rgba(31,107,58,.06);">
+      <svg width="44" height="44" viewBox="0 0 44 44" fill="none" opacity=".4"><rect x="10" y="6" width="24" height="32" rx="4" fill="#1F6B3A"/><rect x="14" y="12" width="16" height="10" rx="2" fill="#F8F6F2" opacity=".7"/></svg>
+    </div>
+    <div class="body">
+      <div class="mono" style="font-size:10.5px;color:#6F665C;letter-spacing:.04em;">Parle · PAR-014</div>
+      <div style="font-size:13.5px;font-weight:600;color:#221E1A;line-height:1.3;letter-spacing:-.01em;margin-top:2px;">Parle-G Gold 800g</div>
+      <div style="display:flex;align-items:baseline;gap:5px;margin-top:6px;">
+        <span class="mono" style="font-size:15px;font-weight:500;color:#221E1A;font-variant-numeric:tabular-nums;">₹ 58</span>
+      </div>
+      <div style="font-size:11px;color:#64594E;">per pcs · MRP ₹ 65</div>
+      <button class="btn" style="background:#B5642F;color:#F8F6F2;">Add to cart</button>
+    </div>
+  </div>
+  <!-- Limited -->
+  <div class="card">
+    <div class="img" style="background:rgba(138,87,0,.06);">
+      <svg width="44" height="44" viewBox="0 0 44 44" fill="none" opacity=".4"><rect x="10" y="6" width="24" height="32" rx="4" fill="#8A5700"/><rect x="14" y="12" width="16" height="10" rx="2" fill="#F8F6F2" opacity=".7"/></svg>
+      <span class="badge mono" style="position:absolute;bottom:8px;left:8px;color:#8A5700;background:rgba(138,87,0,.10);border-color:rgba(138,87,0,.22);"><svg width="6" height="6" viewBox="0 0 6 6" fill="none"><path d="M3 0.5L5.6 5H0.4Z" fill="#8A5700"/></svg>Low stock</span>
+    </div>
+    <div class="body">
+      <div class="mono" style="font-size:10.5px;color:#6F665C;letter-spacing:.04em;">Surf · SUR-009</div>
+      <div style="font-size:13.5px;font-weight:600;color:#221E1A;line-height:1.3;letter-spacing:-.01em;margin-top:2px;">Surf Excel 1kg</div>
+      <div style="display:flex;align-items:baseline;gap:5px;margin-top:6px;">
+        <span class="mono" style="font-size:15px;font-weight:500;color:#221E1A;font-variant-numeric:tabular-nums;">₹ 185</span>
+      </div>
+      <div style="font-size:11px;color:#64594E;">per pcs · MRP ₹ 220</div>
+      <button class="btn" style="background:#B5642F;color:#F8F6F2;">Add to cart</button>
+    </div>
+  </div>
+  <!-- Out of stock -->
+  <div class="card" style="opacity:.7;">
+    <div class="img" style="background:rgba(100,89,78,.06);">
+      <svg width="44" height="44" viewBox="0 0 44 44" fill="none" opacity=".25"><rect x="10" y="6" width="24" height="32" rx="4" fill="#64594E"/></svg>
+      <span class="badge mono" style="position:absolute;bottom:8px;left:8px;color:#64594E;background:rgba(100,89,78,.08);border-color:rgba(100,89,78,.18);white-space:nowrap;"><svg width="6" height="6" viewBox="0 0 6 6" fill="none"><rect x=".5" y=".5" width="5" height="5" rx="1" stroke="#64594E" stroke-width="1"/></svg>Out of stock</span>
+    </div>
+    <div class="body">
+      <div class="mono" style="font-size:10.5px;color:#6F665C;letter-spacing:.04em;">Maggi · MAG-004</div>
+      <div style="font-size:13.5px;font-weight:600;color:#221E1A;line-height:1.3;letter-spacing:-.01em;margin-top:2px;">Maggi 2-Min 12pk</div>
+      <div style="display:flex;align-items:baseline;gap:5px;margin-top:6px;">
+        <span class="mono" style="font-size:15px;font-weight:500;color:#6F665C;font-variant-numeric:tabular-nums;">₹ 132</span>
+      </div>
+      <div style="font-size:11px;color:#64594E;">per pack · MRP ₹ 156</div>
+      <button class="btn" style="background:#EAE3D9;color:#6F665C;cursor:not-allowed;" disabled>Out of stock</button>
+    </div>
+  </div>
+</div>
+</body></html>

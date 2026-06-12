@@ -1,0 +1,62 @@
+<!-- @dsCard group="Components" viewport="700x280" name="Data Table" subtitle="Orders view · tabular numerals · status chips · sticky header" -->
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;padding:24px 28px;background:#F8F6F2;font-family:'Mukta',sans-serif;-webkit-font-smoothing:antialiased;color:#221E1A;}
+  .wrap{border:1px solid #EAE3D9;border-radius:14px;overflow:hidden;background:#FCFBF8;}
+  table{width:100%;border-collapse:collapse;font-size:14px;}
+  th{padding:10px 16px;text-align:left;font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:500;letter-spacing:.10em;text-transform:uppercase;color:#6F665C;border-bottom:1px solid #EAE3D9;background:#FCFBF8;white-space:nowrap;}
+  th.r{text-align:right;}
+  td{padding:11px 16px;border-bottom:1px solid #EAE3D9;color:#221E1A;vertical-align:middle;line-height:1.35;}
+  tr:last-child td{border-bottom:none;}
+  .num{text-align:right;font-family:'IBM Plex Mono',monospace;font-size:13.5px;font-variant-numeric:tabular-nums;}
+  .sub{font-size:12px;color:#64594E;margin-top:1px;}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-family:'Mukta',sans-serif;font-size:12px;font-weight:600;letter-spacing:-.01em;padding:3px 9px;border-radius:7px;border:1px solid;white-space:nowrap;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<table>
+  <thead>
+    <tr>
+      <th>Order</th>
+      <th>Buyer</th>
+      <th>Status</th>
+      <th class="r">Amount</th>
+      <th>Placed</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><div style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:500;">YK-2026-0481</div><div class="sub">Buyer app</div></td>
+      <td><div style="font-weight:600;">Mehta Traders</div><div class="sub">North Delhi · Tier A</div></td>
+      <td><span class="chip" style="color:#6a3d18;background:rgba(181,100,47,.12);border-color:rgba(181,100,47,.22);"><svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5L3.5 6.5L7.5 2.5" stroke="#6a3d18" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Confirmed</span></td>
+      <td class="num">₹ 24,800</td>
+      <td style="color:#64594E;font-size:13px;">Today, 11:42 am</td>
+    </tr>
+    <tr>
+      <td><div style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:500;">YK-2026-0480</div><div class="sub">Cockpit manual</div></td>
+      <td><div style="font-weight:600;">Rajan Stores</div><div class="sub">Surat · Tier B</div></td>
+      <td><span class="chip" style="color:#2A5F8A;background:rgba(42,95,138,.12);border-color:rgba(42,95,138,.22);"><svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5H7.5M5 2L7.5 4.5L5 7" stroke="#2A5F8A" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Dispatched</span></td>
+      <td class="num">₹ 8,650</td>
+      <td style="color:#64594E;font-size:13px;">Yesterday</td>
+    </tr>
+    <tr>
+      <td><div style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:500;">YK-2026-0479</div><div class="sub">Buyer app</div></td>
+      <td><div style="font-weight:600;">Krishna Mart</div><div class="sub">Hyderabad · Tier A</div></td>
+      <td><span class="chip" style="color:#1F6B3A;background:rgba(31,107,58,.12);border-color:rgba(31,107,58,.22);"><svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5L3.5 6.5L7.5 2.5" stroke="#1F6B3A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Delivered</span></td>
+      <td class="num">₹ 1,12,400</td>
+      <td style="color:#64594E;font-size:13px;">Jun 9</td>
+    </tr>
+    <tr>
+      <td><div style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:500;">YK-2026-0478</div><div class="sub">Buyer app</div></td>
+      <td><div style="font-weight:600;">Sharma General</div><div class="sub">Jaipur · Tier C</div></td>
+      <td><span class="chip" style="color:#9C3026;background:rgba(156,48,38,.10);border-color:rgba(156,48,38,.20);"><svg width="9" height="9" viewBox="0 0 9 9" fill="none"><line x1="2" y1="2" x2="7" y2="7" stroke="#9C3026" stroke-width="1.5" stroke-linecap="round"/><line x1="7" y1="2" x2="2" y2="7" stroke="#9C3026" stroke-width="1.5" stroke-linecap="round"/></svg>Cancelled</span></td>
+      <td class="num" style="color:#64594E;">₹ 4,200</td>
+      <td style="color:#64594E;font-size:13px;">Jun 8</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</body></html>

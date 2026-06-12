@@ -40,7 +40,7 @@ describe('price-list-detail-page', () => {
           status_label: 'Active',
           status_tone: 'success',
           initials: 'ML',
-          created_by_label: 'owner@dealflow.in',
+          created_by_label: 'owner@yukti.so',
           filters: { brand_names: [], category_names: [] },
           items: [
             {

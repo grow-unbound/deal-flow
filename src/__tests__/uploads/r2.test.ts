@@ -55,7 +55,7 @@ describe('POST /api/uploads/r2', () => {
   it('returns uploadUrl, publicUrl, key for a valid request', async () => {
     const mockResponse = {
       uploadUrl: 'https://r2.cloudflarestorage.com/bucket/products/tenant/12345-image.jpg?sig=abc',
-      publicUrl: 'https://assets.dealflow.in/products/tenant/12345-image.jpg',
+      publicUrl: 'https://assets.yukti.so/products/tenant/12345-image.jpg',
       key: 'products/tenant/12345-image.jpg',
     };
 

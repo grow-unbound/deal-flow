@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useReducer, ReactNode } from 'react';
 
-const STORAGE_KEY = 'dealflow_buyer_cart';
+const STORAGE_KEY = 'yukti_buyer_cart';
 
 export interface BuyerCartItem {
   tenant_product_id: string;

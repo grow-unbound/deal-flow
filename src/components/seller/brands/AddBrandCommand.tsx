@@ -27,6 +27,7 @@ import { useTenantCohortOptions } from '@/hooks/useCohorts';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
+import { uploadEntityFile } from '@/lib/upload-client';
 
 const STACKED_PICKER_THRESHOLD = 8;
 const INLINE_COHORT_RESULTS = 5;
@@ -151,6 +152,8 @@ export function AddBrandCommand({
   const [inputValue, setInputValue] = useState('');
   const [customBrandNameSelected, setCustomBrandNameSelected] = useState<string | null>(null);
   const [isNameManuallyEdited, setIsNameManuallyEdited] = useState(false);
+  const [stagedLogo, setStagedLogo] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const debouncedSearch = useDebounce(inputValue, 300);
 
   const isControlled = typeof controlledOpen === 'boolean';
@@ -226,6 +229,14 @@ export function AddBrandCommand({
     setInputValue(selectedMasterBrand.name);
   }, [open, selectedMasterBrand]);
 
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
+
   function applyMasterBrand(brand: MasterBrand) {
     setSelectedMasterBrand(brand);
     setCustomBrandNameSelected(null);
@@ -256,36 +267,41 @@ export function AddBrandCommand({
 
   const onSubmit: SubmitHandler<BrandSlideOverValues> = async (values) => {
     try {
-      if (selectedMasterBrand) {
-        await createBrand.mutateAsync({
-          mode: 'import',
-          master_brand_id: selectedMasterBrand.id,
-          optimistic_master_brand: selectedMasterBrand,
-          display_name_override: values.name.trim() !== selectedMasterBrand.name ? values.name.trim() : '',
-          logo_url: values.logo_url,
-          margin_pct: values.margin_pct ?? null,
-          principal_name: values.principal_name,
-          principal_email: values.principal_email,
-          principal_phone: values.principal_phone,
-          principal_location: values.principal_location,
-          default_cohort_id: values.default_cohort_id ?? null,
-          exclusivity: false,
-          description: '',
-        });
-      } else {
-        await createBrand.mutateAsync({
-          mode: 'custom',
-          name: values.name.trim(),
-          slug: values.slug,
-          logo_url: values.logo_url,
-          margin_pct: values.margin_pct ?? null,
-          principal_name: values.principal_name,
-          principal_email: values.principal_email,
-          principal_phone: values.principal_phone,
-          principal_location: values.principal_location,
-          default_cohort_id: values.default_cohort_id ?? null,
-          exclusivity: false,
-          description: '',
+      const result = selectedMasterBrand
+        ? await createBrand.mutateAsync({
+            mode: 'import',
+            master_brand_id: selectedMasterBrand.id,
+            optimistic_master_brand: selectedMasterBrand,
+            display_name_override: values.name.trim() !== selectedMasterBrand.name ? values.name.trim() : '',
+            margin_pct: values.margin_pct ?? null,
+            principal_name: values.principal_name,
+            principal_email: values.principal_email,
+            principal_phone: values.principal_phone,
+            principal_location: values.principal_location,
+            default_cohort_id: values.default_cohort_id ?? null,
+            exclusivity: false,
+            description: '',
+          })
+        : await createBrand.mutateAsync({
+            mode: 'custom',
+            name: values.name.trim(),
+            slug: values.slug,
+            margin_pct: values.margin_pct ?? null,
+            principal_name: values.principal_name,
+            principal_email: values.principal_email,
+            principal_phone: values.principal_phone,
+            principal_location: values.principal_location,
+            default_cohort_id: values.default_cohort_id ?? null,
+            exclusivity: false,
+            description: '',
+          });
+
+      if (stagedLogo) {
+        await uploadEntityFile({
+          endpoint: '/api/upload/catalog-brand',
+          entityId: result.brand.master_brand_id,
+          file: stagedLogo,
+          imageType: 'logo',
         });
       }
 
@@ -294,6 +310,11 @@ export function AddBrandCommand({
       setInputValue('');
       setCustomBrandNameSelected(null);
       setIsNameManuallyEdited(false);
+      setStagedLogo(null);
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        setPreviewUrl(null);
+      }
       setOpen(false);
     } catch (error) {
       const err = error as { status?: number; error?: string; details?: { fieldErrors?: Record<string, string[]> } };
@@ -504,12 +525,34 @@ export function AddBrandCommand({
                           <FormControl>
                             <BrowseUploadField
                               value={field.value ? [field.value] : []}
-                              onChange={(urls) => field.onChange(urls[0] ?? '')}
+                              onChange={(urls) => {
+                                const nextUrl = urls[0] ?? null;
+                                if (!nextUrl) {
+                                  setStagedLogo(null);
+                                  if (previewUrl) {
+                                    URL.revokeObjectURL(previewUrl);
+                                    setPreviewUrl(null);
+                                  }
+                                  field.onChange('');
+                                  return;
+                                }
+                                setPreviewUrl(nextUrl);
+                                field.onChange(nextUrl);
+                              }}
                               maxFiles={1}
                               label="Upload logo"
                               emptyLabel="Click or drag to upload"
                               helperText="JPG, PNG, WebP · Max 5MB"
                               previewInline
+                              uploadFile={async (file) => {
+                                if (previewUrl) {
+                                  URL.revokeObjectURL(previewUrl);
+                                }
+                                const objectUrl = URL.createObjectURL(file);
+                                setPreviewUrl(objectUrl);
+                                setStagedLogo(file);
+                                return objectUrl;
+                              }}
                             />
                           </FormControl>
                           <FormMessage />

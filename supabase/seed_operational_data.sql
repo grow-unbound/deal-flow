@@ -1,5 +1,5 @@
 -- ============================================================
--- DealFlow Operational Seed — Cohorts, Price Lists, Catalogs,
+-- yukti Operational Seed — Cohorts, Price Lists, Catalogs,
 -- Estimates, Sales Orders (app.orders), Invoices, Payments
 --
 -- Rerunnable: truncates operational tables for tenant techwave,

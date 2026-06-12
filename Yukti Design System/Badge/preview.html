@@ -1,0 +1,38 @@
+<!-- @dsCard group="Components" viewport="700x160" name="Badge" subtitle="5 semantic variants · shape + label always · never colour alone" -->
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;padding:32px 28px;background:#F8F6F2;font-family:'Mukta',sans-serif;-webkit-font-smoothing:antialiased;color:#221E1A;}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:20px;}
+  .badge{display:inline-flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:500;letter-spacing:.09em;text-transform:uppercase;padding:4px 9px;border-radius:9999px;border:1px solid;white-space:nowrap;}
+  .lbl{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.10em;text-transform:uppercase;color:#6F665C;}
+</style>
+</head>
+<body>
+<div class="row">
+  <span class="badge" style="color:#6a3d18;background:rgba(181,100,47,.14);border-color:rgba(181,100,47,.22);">
+    <svg width="7" height="7" viewBox="0 0 7 7"><circle cx="3.5" cy="3.5" r="3.5" fill="#B5642F"/></svg>Copper
+  </span>
+  <span class="badge" style="color:#1F6B3A;background:rgba(31,107,58,.12);border-color:rgba(31,107,58,.22);">
+    <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5L3.5 6.5L7.5 2.5" stroke="#1F6B3A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Success
+  </span>
+  <span class="badge" style="color:#8A5700;background:rgba(138,87,0,.10);border-color:rgba(138,87,0,.20);">
+    <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M4.5 1.5L8.2 7.5H.8Z" stroke="#8A5700" stroke-width="1.4" stroke-linejoin="round"/><line x1="4.5" y1="3.8" x2="4.5" y2="5.6" stroke="#8A5700" stroke-width="1.4" stroke-linecap="round"/><circle cx="4.5" cy="6.6" r=".55" fill="#8A5700"/></svg>Warning
+  </span>
+  <span class="badge" style="color:#9C3026;background:rgba(156,48,38,.12);border-color:rgba(156,48,38,.22);">
+    <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><line x1="2" y1="2" x2="7" y2="7" stroke="#9C3026" stroke-width="1.5" stroke-linecap="round"/><line x1="7" y1="2" x2="2" y2="7" stroke="#9C3026" stroke-width="1.5" stroke-linecap="round"/></svg>Error
+  </span>
+  <span class="badge" style="color:#64594E;background:rgba(100,89,78,.08);border-color:rgba(100,89,78,.18);">
+    <svg width="7" height="7" viewBox="0 0 7 7" fill="none"><circle cx="3.5" cy="3.5" r="3" stroke="#6F665C" stroke-width="1.2" stroke-dasharray="2 1.4"/></svg>Neutral
+  </span>
+</div>
+<div class="row">
+  <span class="lbl">Used for:</span>
+  <span class="badge" style="color:#1F6B3A;background:rgba(31,107,58,.12);border-color:rgba(31,107,58,.22);"><svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5L3.5 6.5L7.5 2.5" stroke="#1F6B3A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Paid</span>
+  <span class="badge" style="color:#8A5700;background:rgba(138,87,0,.10);border-color:rgba(138,87,0,.20);"><svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M4.5 1.5L8.2 7.5H.8Z" stroke="#8A5700" stroke-width="1.4" stroke-linejoin="round"/><line x1="4.5" y1="3.8" x2="4.5" y2="5.6" stroke="#8A5700" stroke-width="1.4" stroke-linecap="round"/><circle cx="4.5" cy="6.6" r=".55" fill="#8A5700"/></svg>Due soon</span>
+  <span class="badge" style="color:#9C3026;background:rgba(156,48,38,.12);border-color:rgba(156,48,38,.22);"><svg width="9" height="9" viewBox="0 0 9 9" fill="none"><line x1="2" y1="2" x2="7" y2="7" stroke="#9C3026" stroke-width="1.5" stroke-linecap="round"/><line x1="7" y1="2" x2="2" y2="7" stroke="#9C3026" stroke-width="1.5" stroke-linecap="round"/></svg>Overdue</span>
+  <span class="badge" style="color:#64594E;background:rgba(100,89,78,.08);border-color:rgba(100,89,78,.18);"><svg width="7" height="7" viewBox="0 0 7 7" fill="none"><circle cx="3.5" cy="3.5" r="3" stroke="#6F665C" stroke-width="1.2" stroke-dasharray="2 1.4"/></svg>Draft</span>
+  <span class="badge" style="color:#6a3d18;background:rgba(181,100,47,.14);border-color:rgba(181,100,47,.22);"><svg width="7" height="7" viewBox="0 0 7 7"><circle cx="3.5" cy="3.5" r="3.5" fill="#B5642F"/></svg>New</span>
+</div>
+</body></html>

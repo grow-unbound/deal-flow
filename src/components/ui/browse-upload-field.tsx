@@ -27,18 +27,20 @@ interface UseBrowseUploadFieldOptions {
   value: string[];
   onChange: (urls: string[]) => void;
   maxFiles?: number;
+  uploadFile?: (file: File) => Promise<string>;
 }
 
 export function useBrowseUploadField({
   value,
   onChange,
   maxFiles = 1,
+  uploadFile,
 }: UseBrowseUploadFieldOptions) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploading, setUploading] = useState<UploadingFile[]>([]);
 
-  const uploadFile = useCallback(
+  const uploadOneFile = useCallback(
     async (file: File) => {
       const validationError = validateUploadImageFile(file);
       if (validationError) {
@@ -55,6 +57,12 @@ export function useBrowseUploadField({
       setUploading((prev) => [...prev, { tempId, name: file.name }]);
 
       try {
+        if (uploadFile) {
+          const uploadedUrl = await uploadFile(file);
+          onChange([...value, uploadedUrl]);
+          return;
+        }
+
         const presignRes = await fetch('/api/uploads/r2', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -105,10 +113,10 @@ export function useBrowseUploadField({
     (files: FileList | null) => {
       if (!files) return;
       Array.from(files).forEach((file) => {
-        void uploadFile(file);
+        void uploadOneFile(file);
       });
     },
-    [uploadFile],
+    [uploadOneFile],
   );
 
   const removeUrl = useCallback(
@@ -134,6 +142,7 @@ interface BrowseUploadFieldProps {
   value: string[];
   onChange: (urls: string[]) => void;
   maxFiles?: number;
+  uploadFile?: (file: File) => Promise<string>;
   label?: string;
   helperText?: string;
   emptyLabel?: string;
@@ -145,6 +154,7 @@ export function BrowseUploadField({
   value,
   onChange,
   maxFiles = 1,
+  uploadFile,
   label = 'Upload image',
   helperText = 'JPG, PNG, WebP • Max 5MB',
   emptyLabel = 'Drop an image here or browse from your computer',
@@ -160,7 +170,7 @@ export function BrowseUploadField({
     openPicker,
     handleFiles,
     removeUrl,
-  } = useBrowseUploadField({ value, onChange, maxFiles });
+  } = useBrowseUploadField({ value, onChange, maxFiles, uploadFile });
 
   return (
     <div className={cn('space-y-3', className)}>

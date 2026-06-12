@@ -71,7 +71,7 @@ describe('price list detail api', () => {
       sub: 'user-1',
     });
     getFlagMock.mockResolvedValue(true);
-    getAuthUserEmailMapMock.mockResolvedValue(new Map([['user-1', 'owner@dealflow.in']]));
+    getAuthUserEmailMapMock.mockResolvedValue(new Map([['user-1', 'owner@yukti.so']]));
 
     dbResponses['app.price_lists'] = {
       data: {
@@ -131,7 +131,7 @@ describe('price list detail api', () => {
     expect(body.price_list.items[0].tenant_product.master_product).toEqual({ name: 'Cabernet' });
     expect(body.price_list.items[0].tenant_product.tenant_brand.master_brand).toEqual({ name: 'WineYard' });
     expect(body.price_list.items[0].tenant_product.cost_price).toBe(550);
-    expect(body.price_list.created_by_label).toBe('owner@dealflow.in');
+    expect(body.price_list.created_by_label).toBe('owner@yukti.so');
   });
 
   it('strips cost_price for seller_assistant', async () => {
