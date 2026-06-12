@@ -11,7 +11,7 @@ const r2Client = new S3Client({
 });
 
 const R2_BUCKET = process.env.R2_BUCKET_NAME ?? 'yukti-assets';
-const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL ?? ''; // e.g., https://assets.yukti.so
+const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL ?? '';
 
 export async function getPresignedUploadUrl(key: string, contentType: string): Promise<string> {
   const command = new PutObjectCommand({

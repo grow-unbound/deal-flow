@@ -88,9 +88,15 @@ export interface ImageUploadZoneProps {
   value: string[];
   onChange: (urls: string[]) => void;
   maxImages?: number;
+  uploadFile?: (file: File) => Promise<string>;
 }
 
-export function ImageUploadZone({ value, onChange, maxImages = 5 }: ImageUploadZoneProps) {
+export function ImageUploadZone({
+  value,
+  onChange,
+  maxImages = 5,
+  uploadFile,
+}: ImageUploadZoneProps) {
   const {
     inputRef,
     isDragOver,
@@ -104,6 +110,7 @@ export function ImageUploadZone({ value, onChange, maxImages = 5 }: ImageUploadZ
     value,
     onChange,
     maxFiles: maxImages,
+    uploadFile,
   });
 
   const sensors = useSensors(

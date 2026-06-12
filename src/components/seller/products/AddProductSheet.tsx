@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, Loader2, Package, Plus, Search, Upload, X } from 'lucide-react';
+import { Check, Package, Plus, Search, X } from 'lucide-react';
 import { useForm, useFieldArray, useController, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -26,6 +26,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
+import { BrowseUploadField } from '@/components/ui/browse-upload-field';
 import { MutationButton } from '@/components/ui/mutation-button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -36,7 +37,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useBrowseUploadField } from '@/components/ui/browse-upload-field';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 
 import { useSearchMasterProducts, useCreateCustomProduct, useTenantProductCategories } from '@/hooks/useProducts';
@@ -48,6 +48,7 @@ import type { MasterProduct } from '@/hooks/useProducts';
 import { UNITS_OF_MEASURE } from '@/constants';
 import { cn, formatInrInput, parseInrInput } from '@/lib/utils';
 import { apiPost } from '@/lib/api-fetch';
+import { uploadEntityFile } from '@/lib/upload-client';
 
 const GST_RATES = ['0', '5', '12', '18', '28'] as const;
 const INLINE_RESULTS = 5;
@@ -76,91 +77,28 @@ type AddProductFormValues = z.infer<typeof AddProductFormSchema>;
 
 // ─── Image slot grid ─────────────────────────────────────────────────────────
 
-const MAX_IMAGES = 3;
+const MAX_IMAGES = 1;
 
 function ProductImageGrid({
   value,
   onChange,
+  uploadFile,
 }: {
   value: string[];
   onChange: (urls: string[]) => void;
+  uploadFile: (file: File) => Promise<string>;
 }) {
-  const { inputRef, uploading, canUploadMore, openPicker, handleFiles, removeUrl } =
-    useBrowseUploadField({ value, onChange, maxFiles: MAX_IMAGES });
-
-  const uploadingSlots = uploading.slice(0, MAX_IMAGES - value.length);
-
   return (
-    <div className="space-y-2">
-      <div className="flex gap-2">
-        {Array.from({ length: MAX_IMAGES }).map((_, idx) => {
-          const url = value[idx];
-          const isUploading = !url && uploadingSlots[idx - value.length];
-
-          if (url) {
-            return (
-              <div key={url} className="relative flex-1 aspect-square overflow-hidden rounded-xl border border-cream-200 bg-cream-50">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt={`Product image ${idx + 1}`} className="h-full w-full object-cover" />
-                <button
-                  type="button"
-                  onClick={() => removeUrl(url)}
-                  className="absolute right-1.5 top-1.5 rounded-full bg-white/90 p-1 text-cream-600 shadow-sm transition-colors hover:text-cream-900"
-                  aria-label="Remove image"
-                >
-                  <X size={12} />
-                </button>
-                {idx === 0 && (
-                  <span className="absolute bottom-1.5 left-1.5 rounded-[4px] bg-black/50 px-1.5 py-0.5 text-[9px] font-medium text-white">
-                    Primary
-                  </span>
-                )}
-              </div>
-            );
-          }
-
-          if (isUploading) {
-            return (
-              <div key={`uploading-${idx}`} className="flex-1 aspect-square flex items-center justify-center rounded-xl border border-dashed border-cream-300 bg-cream-50">
-                <Loader2 size={18} className="animate-spin text-cream-400" />
-              </div>
-            );
-          }
-
-          // Empty slot — only the next available slot is clickable to add
-          const isNextSlot = idx === value.length + uploadingSlots.length;
-          return (
-            <button
-              key={`empty-${idx}`}
-              type="button"
-              onClick={canUploadMore ? openPicker : undefined}
-              disabled={!canUploadMore}
-              className={cn(
-                'flex-1 aspect-square flex flex-col items-center justify-center gap-1 rounded-xl border border-dashed transition-colors',
-                isNextSlot && canUploadMore
-                  ? 'border-cream-400 bg-cream-50 hover:border-teal-400 hover:bg-teal-50 cursor-pointer'
-                  : 'border-cream-200 bg-cream-50/50 cursor-default opacity-50',
-              )}
-            >
-              <Upload size={16} className="text-cream-400" />
-              {isNextSlot && (
-                <span className="text-[10px] text-cream-500">Add image</span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        className="hidden"
-        onChange={(e) => handleFiles(e.target.files)}
-        onClick={(e) => ((e.target as HTMLInputElement).value = '')}
-      />
-      <p className="text-[11px] text-cream-500">JPG, PNG, WebP · Max 5 MB · Up to 3 images</p>
-    </div>
+    <BrowseUploadField
+      value={value}
+      onChange={(urls) => onChange(urls.slice(0, MAX_IMAGES))}
+      maxFiles={MAX_IMAGES}
+      label="Upload product image"
+      helperText="JPG, PNG, WebP • Max 5MB • 1 image"
+      emptyLabel="Drop a product image here or browse from your computer"
+      previewInline
+      uploadFile={uploadFile}
+    />
   );
 }
 
@@ -259,6 +197,8 @@ export function AddProductSheet({
   const [selectedMaster, setSelectedMaster] = useState<MasterProduct | null>(null);
   const [inputValue, setInputValue] = useState('');
   const [customProductNameSelected, setCustomProductNameSelected] = useState<string | null>(null);
+  const [stagedImage, setStagedImage] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [priceListAmounts, setPriceListAmounts] = useState<Record<string, string>>({});
   const [showCustomCategory, setShowCustomCategory] = useState(false);
   const debouncedSearch = useDebounce(inputValue, 300);
@@ -304,14 +244,27 @@ export function AddProductSheet({
 
   const { field: imageUrlsField } = useController({ control: form.control, name: 'image_urls' });
 
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
+
   const resetAll = useCallback(() => {
     form.reset();
     setSelectedMaster(null);
     setInputValue('');
     setCustomProductNameSelected(null);
+    setStagedImage(null);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
     setPriceListAmounts({});
     setShowCustomCategory(false);
-  }, [form]);
+  }, [form, previewUrl]);
 
   const dirtyGuard = useDirtyCloseGuard({
     isDirty: form.formState.isDirty,
@@ -357,6 +310,11 @@ export function AddProductSheet({
     form.setValue('image_urls', []);
     form.setValue('description', '');
     form.setValue('category_name', '');
+    setStagedImage(null);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
   }
 
   function selectCustomProductName(name: string) {
@@ -417,11 +375,20 @@ export function AddProductSheet({
         description: values.description || undefined,
         category_name: values.category_name || undefined,
         attributes: attributesObj,
-        image_urls: values.image_urls,
+        image_urls: [],
       });
 
       // Fan-out price list items
       const productId = result.product.id;
+      if (stagedImage) {
+        await uploadEntityFile({
+          endpoint: '/api/upload/tenant-product',
+          entityId: productId,
+          file: stagedImage,
+          isPrimary: true,
+        });
+      }
+
       const priceListEntries = Object.entries(priceListAmounts).filter(([, amt]) => amt.trim());
       if (priceListEntries.length > 0) {
         const results = await Promise.allSettled(
@@ -797,7 +764,28 @@ export function AddProductSheet({
                   <FormLabel>Product images</FormLabel>
                   <ProductImageGrid
                     value={imageUrlsField.value}
-                    onChange={imageUrlsField.onChange}
+                    onChange={(urls) => {
+                      const nextUrl = urls[0] ?? null;
+                      if (!nextUrl) {
+                        setStagedImage(null);
+                        if (previewUrl) {
+                          URL.revokeObjectURL(previewUrl);
+                          setPreviewUrl(null);
+                        }
+                        imageUrlsField.onChange([]);
+                        return;
+                      }
+                      imageUrlsField.onChange([nextUrl]);
+                    }}
+                    uploadFile={async (file) => {
+                      if (previewUrl) {
+                        URL.revokeObjectURL(previewUrl);
+                      }
+                      const objectUrl = URL.createObjectURL(file);
+                      setPreviewUrl(objectUrl);
+                      setStagedImage(file);
+                      return objectUrl;
+                    }}
                   />
                 </FormItem>
 
