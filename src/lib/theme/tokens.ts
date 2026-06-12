@@ -1,4 +1,4 @@
-// DealFlow Design System — Ember & Cream token definitions.
+// yukti Design System — Ember & Cream token definitions.
 // Source of truth for all color, typography, spacing, and shadow values.
 // These are consumed by tailwind.config.ts as the single authoritative reference.
 

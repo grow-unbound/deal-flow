@@ -173,7 +173,7 @@ export default async function DashboardPage() {
           <div style={{ padding: '16px 22px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px 32px' }}>
             {[
               { label: 'Tenant ID', value: tenantId ?? '-' },
-              { label: 'Subdomain', value: `${tenantSlug}.dealflow.in` },
+              { label: 'Subdomain', value: `${tenantSlug}.yukti.so` },
               { label: 'Plan', value: 'starter' },
             ].map(({ label, value }) => (
               <div key={label}>

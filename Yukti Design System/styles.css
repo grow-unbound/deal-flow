@@ -1,0 +1,149 @@
+/* ============================================================
+   YUKTI DESIGN SYSTEM — Global Tokens & Base Styles
+   Charcoal + Copper · Mukta · India-first, globally credible
+   R10 Final Identity — one palette, light mode canonical
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Mukta:wght@300;400;500;600;700;800&family=Baloo+2:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+/* ── COLOR TOKENS — the one palette ── */
+:root {
+  /* Charcoal + Copper */
+  --yk-ink:          #221E1A;   /* body text — 15.4:1 AAA on paper          */
+  --yk-surface:      #2B2825;   /* dark grounds, app icon tile               */
+  --yk-copper:       #B5642F;   /* mark & accents — on light only            */
+  --yk-copper-lt:    #D9894C;   /* mark & accents — on dark                  */
+  --yk-paper:        #F8F6F2;   /* canonical light ground                    */
+  --yk-card:         #FCFBF8;   /* card surface                              */
+  --yk-card-line:    #EAE3D9;   /* hairline border                           */
+  --yk-sub:          #64594E;   /* muted text — 6.4:1 AA on paper            */
+  --yk-faint:        #6F665C;   /* label text — 5.3:1 AA on paper            */
+  --yk-on-dark:      #F3EEE6;   /* text on charcoal surface — 12.6:1 AAA     */
+  --yk-sub-dark:     rgba(243,238,230,.62); /* muted on dark                 */
+
+  /* Status — semantic; ALWAYS shape + label, never color alone              */
+  --yk-success:        #1F6B3A;
+  --yk-success-bg:     rgba(31,107,58,.12);
+  --yk-success-border: rgba(31,107,58,.22);
+  --yk-warning:        #8A5700;
+  --yk-warning-bg:     rgba(138,87,0,.10);
+  --yk-warning-border: rgba(138,87,0,.20);
+  --yk-error:          #9C3026;
+  --yk-error-bg:       rgba(156,48,38,.12);
+  --yk-error-border:   rgba(156,48,38,.22);
+  --yk-info:           #2A5F8A;
+  --yk-info-bg:        rgba(42,95,138,.10);
+  --yk-info-border:    rgba(42,95,138,.20);
+
+  /* ── TYPOGRAPHY ── */
+  --yk-font-ui:       'Mukta', sans-serif;         /* everything — UI, headings, body       */
+  --yk-font-wordmark: 'Baloo 2', sans-serif;       /* logotype / wordmark ONLY              */
+  --yk-font-mono:     'IBM Plex Mono', monospace;  /* IDs, SKUs, codes — optional           */
+
+  /* Type scale */
+  --yk-text-xs:    11px;
+  --yk-text-sm:    12.5px;
+  --yk-text-base:  14px;
+  --yk-text-md:    16px;
+  --yk-text-lg:    19px;
+  --yk-text-xl:    24px;
+  --yk-text-2xl:   32px;
+  --yk-text-3xl:   46px;
+
+  /* Weights */
+  --yk-weight-light:     300;
+  --yk-weight-regular:   400;
+  --yk-weight-medium:    500;
+  --yk-weight-semibold:  600;
+  --yk-weight-bold:      700;
+  --yk-weight-extrabold: 800;
+
+  /* Line heights */
+  --yk-leading-tight:   1.18;
+  --yk-leading-snug:    1.35;
+  --yk-leading-normal:  1.55;
+  --yk-leading-relaxed: 1.65;
+
+  /* Letter spacing */
+  --yk-tracking-display: -0.03em;
+  --yk-tracking-heading: -0.02em;
+  --yk-tracking-body:    -0.01em;
+  --yk-tracking-label:    0.08em;
+  --yk-tracking-mono:     0.04em;
+
+  /* ── SPACING — 4px base grid ── */
+  --yk-space-1:   4px;
+  --yk-space-2:   8px;
+  --yk-space-3:   12px;
+  --yk-space-4:   16px;
+  --yk-space-5:   20px;
+  --yk-space-6:   24px;
+  --yk-space-8:   32px;
+  --yk-space-10:  40px;
+  --yk-space-12:  48px;
+  --yk-space-16:  64px;
+  --yk-space-20:  80px;
+
+  /* ── BORDER RADII ── */
+  --yk-radius-sm:   6px;
+  --yk-radius-md:   10px;
+  --yk-radius-lg:   14px;
+  --yk-radius-xl:   20px;
+  --yk-radius-full: 9999px;
+
+  /* ── SHADOWS — warm ink tint, never cool grey ── */
+  --yk-shadow-xs: 0 1px 3px rgba(34,30,26,.07);
+  --yk-shadow-sm: 0 2px 6px rgba(34,30,26,.08), 0 1px 2px rgba(34,30,26,.05);
+  --yk-shadow-md: 0 4px 14px rgba(34,30,26,.10), 0 2px 4px rgba(34,30,26,.06);
+  --yk-shadow-lg: 0 12px 32px rgba(34,30,26,.12), 0 4px 8px rgba(34,30,26,.06);
+  --yk-shadow-xl: 0 22px 44px -26px rgba(34,30,26,.40);
+
+  /* ── Z-INDEX ── */
+  --yk-z-base:    0;    /* @kind other */
+  --yk-z-raised:  10;   /* @kind other */
+  --yk-z-overlay: 100;  /* @kind other */
+  --yk-z-modal:   200;  /* @kind other */
+  --yk-z-toast:   300;  /* @kind other */
+
+  /* ── MOTION — purposeful & quick ── */
+  --yk-ease:           cubic-bezier(0.22,1,.36,1); /* @kind other */
+  --yk-duration-fast:  100ms; /* @kind other */
+  --yk-duration-base:  180ms; /* @kind other */
+  --yk-duration-slow:  280ms; /* @kind other */
+}
+
+/* ── BASE RESET ── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "kern" 1;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--yk-font-ui);
+  font-size: var(--yk-text-base);
+  font-weight: var(--yk-weight-regular);
+  line-height: var(--yk-leading-normal);
+  color: var(--yk-ink);
+  background: var(--yk-paper);
+}
+
+/* RTL support (Gulf markets) */
+[dir="rtl"] { direction: rtl; }
+
+/* ── Utilities ── */
+.yk-tnum     { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+.yk-mono     { font-family: var(--yk-font-mono); }
+.yk-wordmark { font-family: var(--yk-font-wordmark); font-weight: 600; letter-spacing: -0.01em; }
+
+/* ── Focus ring — copper, brand-consistent ── */
+:focus-visible {
+  outline: 2px solid var(--yk-copper);
+  outline-offset: 2px;
+  border-radius: var(--yk-radius-sm);
+}

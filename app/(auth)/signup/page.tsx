@@ -45,7 +45,7 @@ function ComingSoonPage() {
         href="/"
         className="mt-2 inline-flex items-center gap-2 px-5 py-2.5 rounded-md bg-teal-500 text-cream-50 font-sans font-semibold text-body-sm hover:bg-teal-600 transition-colors"
       >
-        Go to DealFlow home
+        Go to yukti home
       </Link>
     </div>
   );

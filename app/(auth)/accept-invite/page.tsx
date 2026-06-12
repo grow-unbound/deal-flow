@@ -33,7 +33,7 @@ export default function AcceptInvitePage() {
     <div className="min-h-screen bg-cream-50 flex items-center justify-center p-4">
       <div className="bg-cream-100 rounded-lg shadow-sm p-8 max-w-sm w-full text-center">
         <div className="w-10 h-10 bg-teal-500 rounded-md flex items-center justify-center mx-auto mb-4">
-          <span className="text-cream-50 font-display font-medium">DF</span>
+          <span className="text-cream-50 font-display font-medium">yk</span>
         </div>
 
         {status === 'loading' && (
@@ -48,7 +48,7 @@ export default function AcceptInvitePage() {
         {status === 'success' && (
           <>
             <h2 className="font-display text-h3 text-cream-900 mb-2">
-              Welcome to DealFlow!
+              Welcome to yukti!
             </h2>
             <p className="text-body-sm text-cream-600">
               Redirecting to your dashboard…

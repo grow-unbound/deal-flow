@@ -1,0 +1,37 @@
+<!-- @dsCard group="Components" viewport="700x180" name="Avatar" subtitle="Initials · image · 5 sizes · circle + square shapes" -->
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;600;700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;padding:30px 28px;background:#F8F6F2;font-family:'Mukta',sans-serif;-webkit-font-smoothing:antialiased;color:#221E1A;}
+  .row{display:flex;align-items:flex-end;gap:22px;margin-bottom:22px;}
+  .row:last-child{margin-bottom:0;}
+  .col{display:flex;flex-direction:column;align-items:center;gap:9px;}
+  .av{display:inline-flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;font-family:'Mukta',sans-serif;font-weight:700;}
+  .lbl{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#6F665C;text-align:center;}
+  .divider{width:1px;background:#EAE3D9;align-self:stretch;margin:0 4px;}
+</style>
+</head>
+<body>
+<div class="row">
+  <div class="col"><div class="av" style="width:24px;height:24px;border-radius:50%;background:rgba(181,100,47,.16);font-size:10px;color:#6a3d18;">AM</div><span class="lbl">xs · 24</span></div>
+  <div class="col"><div class="av" style="width:32px;height:32px;border-radius:50%;background:rgba(31,107,58,.14);font-size:12px;color:#1F6B3A;">RK</div><span class="lbl">sm · 32</span></div>
+  <div class="col"><div class="av" style="width:40px;height:40px;border-radius:50%;background:rgba(42,95,138,.14);font-size:14px;color:#1e4873;">SV</div><span class="lbl">md · 40</span></div>
+  <div class="col"><div class="av" style="width:52px;height:52px;border-radius:50%;background:rgba(100,89,78,.14);font-size:18px;color:#4a4038;">PM</div><span class="lbl">lg · 52</span></div>
+  <div class="col"><div class="av" style="width:72px;height:72px;border-radius:50%;background:rgba(138,87,0,.12);font-size:24px;color:#6b4300;">JD</div><span class="lbl">xl · 72</span></div>
+  <div class="divider"></div>
+  <div class="col"><div class="av" style="width:40px;height:40px;border-radius:10px;background:rgba(181,100,47,.16);font-size:14px;color:#6a3d18;">AM</div><span class="lbl">square</span></div>
+  <div class="col"><div class="av" style="width:40px;height:40px;border-radius:10px;background:rgba(31,107,58,.14);font-size:14px;color:#1F6B3A;">RK</div><span class="lbl">square</span></div>
+  <div class="divider"></div>
+  <div class="col">
+    <div style="display:flex;gap:6px;align-items:center;">
+      <div class="av" style="width:40px;height:40px;border-radius:50%;background:rgba(42,95,138,.14);font-size:14px;color:#1e4873;">SV</div>
+      <div>
+        <div style="font-size:14px;font-weight:600;line-height:1.2;">Suresh Verma</div>
+        <div style="font-size:12px;color:#64594E;">seller_admin</div>
+      </div>
+    </div>
+    <span class="lbl">with name + role</span>
+  </div>
+</div>
+</body></html>
