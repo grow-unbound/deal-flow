@@ -1,4 +1,4 @@
-# DealFlow — Image Upload & Storage Architecture
+# Yukti — Image Upload & Storage Architecture
 
 > **Audience:** Cursor agent implementing the image upload pipeline  
 > **Status:** Architecture spec — implement exactly as described, do not deviate without flagging  
@@ -41,6 +41,7 @@
 | `catalog.categories` | thumb + medium + original | Category nav chips, category landing |
 | `app.tenant_products` | thumb + small + medium + large + original | Same as catalog products (tenant override) |
 | `app.tenant_brands` | thumb + medium + original | Tenant-specific brand logo override |
+| `app.tenant_categories` | thumb + medium + original | Tenant-staged category icons and banners |
 | `app.published_catalogs` | medium + original | Hero image on catalog share link |
 | User avatars (`auth.users`) | thumb + small + original | Profile pic in nav, comment threads |
 
@@ -60,11 +61,11 @@ original →  source file retained as-is (JPEG/PNG/WebP)
 
 ## 3. R2 Bucket Structure
 
-**Bucket name:** `dealflow-assets`  
-**Public access:** Enabled for `catalog/` prefix only. Tenant paths use signed URLs.
+**Bucket name:** `yukti-assets`  
+**Public access:** Enabled for both `catalog/` and `tenants/` prefixes in v1. Signed URLs are deferred.
 
 ```
-dealflow-assets/
+yukti-assets/
 │
 ├── catalog/
 │   ├── products/{product_uuid}/
@@ -93,7 +94,12 @@ dealflow-assets/
         │   ├── small.webp
         │   └── thumb.webp
         │
-        ├── brands/{tenant_brand_uuid}/    ← logo_url_override source
+        ├── brands/{tenant_brand_uuid}/    ← logo_url source
+        │   ├── original.png
+        │   ├── medium.webp
+        │   └── thumb.webp
+        │
+        ├── categories/{tenant_category_uuid}/
         │   ├── original.png
         │   ├── medium.webp
         │   └── thumb.webp
@@ -116,7 +122,7 @@ dealflow-assets/
 
 ### 4.1 Worker entrypoint
 
-**Deploy at:** `images.dealflow.app` (custom domain on Cloudflare Worker)  
+**Deploy at:** `images.yukti.so` (custom domain on Cloudflare Worker)  
 **Auth:** Shared secret header `X-Upload-Secret` — set in Worker env var, matched in your API
 
 ### 4.2 Request contract
@@ -128,7 +134,8 @@ Content-Type: multipart/form-data
 Fields:
   file          → binary image file (required)
   entity_type   → "catalog_product" | "catalog_brand" | "catalog_category"
-                  | "tenant_product" | "tenant_brand" | "catalog_hero"
+                  | "tenant_product" | "tenant_brand" | "tenant_category"
+                  | "catalog_hero"
                   | "user_avatar"
   entity_id     → UUID of the entity (required)
   tenant_id     → UUID (required for tenant_* types, omit for catalog_*)
@@ -149,7 +156,7 @@ Fields:
     "small":    "catalog/products/uuid/small.webp",
     "thumb":    "catalog/products/uuid/thumb.webp"
   },
-  "public_base_url": "https://assets.dealflow.app"
+  "public_base_url": "https://assets.yukti.so"
 }
 ```
 
@@ -176,7 +183,7 @@ Your API receives this response and writes the keys to Supabase (see Section 6).
 
 ```toml
 # wrangler.toml
-name = "dealflow-image-worker"
+name = "yukti-image-worker"
 compatibility_date = "2024-01-01"
 
 [build]
@@ -184,7 +191,7 @@ command = "npm run build"
 
 [[r2_buckets]]
 binding = "ASSETS_BUCKET"
-bucket_name = "dealflow-assets"
+bucket_name = "yukti-assets"
 
 [vars]
 UPLOAD_SECRET = "..."   # set via wrangler secret, not plaintext
@@ -327,17 +334,62 @@ ALTER TABLE app.tenant_products
 
 ### 5.5 Tenant brand image override
 
-`app.tenant_brands` already has `logo_url_override TEXT`. Add R2 key columns alongside:
+`app.tenant_brands` already has `logo_url TEXT`. Add R2 key columns alongside:
 
 ```sql
 ALTER TABLE app.tenant_brands
   ADD COLUMN r2_logo_original_key TEXT,
   ADD COLUMN r2_logo_medium_key   TEXT,
   ADD COLUMN r2_logo_thumb_key    TEXT;
--- logo_url_override remains for legacy/external URLs
+-- logo_url remains for legacy/external URLs
 ```
 
-### 5.6 Published catalog hero image
+### 5.6 Tenant category staging + images
+
+Tenant categories support local staging, review, and later promotion into `catalog.categories`.
+
+```sql
+CREATE TABLE app.tenant_categories (
+  id                         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id                  UUID NOT NULL REFERENCES app.tenants(id) ON DELETE RESTRICT,
+  master_category_id         UUID REFERENCES catalog.categories(id) ON DELETE RESTRICT,
+  parent_tenant_category_id  UUID REFERENCES app.tenant_categories(id) ON DELETE RESTRICT,
+  promoted_catalog_category_id UUID REFERENCES catalog.categories(id) ON DELETE RESTRICT,
+  name                       TEXT NOT NULL,
+  slug                       TEXT NOT NULL,
+  description                TEXT,
+  external_ref               TEXT,
+  review_status              TEXT NOT NULL DEFAULT 'draft'
+                             CHECK (review_status IN ('draft', 'in_review', 'approved', 'rejected', 'promoted')),
+  is_active                  BOOLEAN NOT NULL DEFAULT true,
+  created_at                 TIMESTAMPTZ DEFAULT now(),
+  updated_at                 TIMESTAMPTZ DEFAULT now(),
+  created_by                 UUID REFERENCES auth.users(id),
+  updated_by                 UUID REFERENCES auth.users(id),
+  deleted_at                 TIMESTAMPTZ
+);
+
+CREATE TABLE app.tenant_category_images (
+  id                         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_category_id         UUID NOT NULL REFERENCES app.tenant_categories(id) ON DELETE RESTRICT,
+  image_type                 TEXT NOT NULL DEFAULT 'icon'
+                             CHECK (image_type IN ('icon', 'banner')),
+  is_primary                 BOOLEAN NOT NULL DEFAULT true,
+  sort_order                 INTEGER NOT NULL DEFAULT 0,
+  r2_original_key            TEXT,
+  r2_medium_key              TEXT,
+  r2_thumb_key               TEXT,
+  status                     TEXT NOT NULL DEFAULT 'approved'
+                             CHECK (status IN ('pending', 'approved', 'rejected')),
+  created_at                 TIMESTAMPTZ DEFAULT now(),
+  updated_at                 TIMESTAMPTZ DEFAULT now(),
+  created_by                 UUID REFERENCES auth.users(id),
+  updated_by                 UUID REFERENCES auth.users(id),
+  deleted_at                 TIMESTAMPTZ
+);
+```
+
+### 5.7 Published catalog hero image
 
 `app.published_catalogs` has `hero_image_url TEXT`. Add R2 keys:
 
@@ -347,7 +399,7 @@ ALTER TABLE app.published_catalogs
   ADD COLUMN r2_hero_medium_key   TEXT;
 ```
 
-### 5.7 User avatar
+### 5.8 User avatar
 
 ```sql
 ALTER TABLE auth.users ... -- cannot alter directly in Supabase
@@ -372,7 +424,7 @@ R2 keys are **relative paths** — never store full URLs in Supabase. Construct 
 // packages/shared/lib/r2.ts
 
 const R2_PUBLIC_BASE = process.env.NEXT_PUBLIC_R2_BASE_URL
-// e.g. "https://assets.dealflow.app"
+// e.g. "https://assets.yukti.so"
 // This is the public R2 custom domain — set in Cloudflare R2 bucket settings
 
 export function r2Url(key: string | null | undefined): string | null {
@@ -382,17 +434,10 @@ export function r2Url(key: string | null | undefined): string | null {
 
 // Usage:
 // r2Url(product.r2_medium_key)
-// → "https://assets.dealflow.app/catalog/products/uuid/medium.webp"
+// → "https://assets.yukti.so/catalog/products/uuid/medium.webp"
 ```
 
-**Signed URLs** (for tenant-private paths):
-
-```typescript
-// Only needed for tenants/{tenant_id}/... paths
-// Use Cloudflare R2 presigned URL API — 1hr TTL is fine for UI usage
-// Implement only when tenant privacy requirement is confirmed
-// For v1: all paths can be public-readable (obscurity via UUID is sufficient)
-```
+**Signed URLs:** Deferred. For v1, both `catalog/` and `tenants/` paths are public-readable through the custom asset domain.
 
 ---
 
@@ -410,7 +455,7 @@ Next.js API Route (apps/seller/app/api/upload/[entity]/route.ts)
   │  2. Validate entity ownership (tenant_id check)
   │  3. Forward to CF Worker with X-Upload-Secret
   ▼
-Cloudflare Worker (images.dealflow.app)
+Cloudflare Worker (images.yukti.so)
   │
   │  4. Resize into variants
   │  5. Write all variants to R2
@@ -433,16 +478,18 @@ Browser/App
 ## 8. Implementation Checklist for Cursor
 
 ### Phase 1 — Infrastructure
-- [ ] Create Cloudflare Worker project (`dealflow-image-worker`)
-- [ ] Configure R2 bucket `dealflow-assets` with public access on `catalog/` prefix
+- [ ] Create Cloudflare Worker project (`yukti-image-worker`)
+- [ ] Configure R2 bucket `yukti-assets` with public access for `catalog/` and `tenants/` prefixes in v1
 - [ ] Set `UPLOAD_SECRET` env var in Worker (wrangler secret)
 - [ ] Set `NEXT_PUBLIC_R2_BASE_URL` in Next.js env (custom domain for R2)
-- [ ] Deploy Worker to `images.dealflow.app`
+- [ ] Deploy Worker to `images.yukti.so`
 
 ### Phase 2 — Schema migrations (run in order)
 - [ ] Create `catalog.product_images` table
 - [ ] Create `catalog.brand_images` table  
 - [ ] Create `catalog.category_images` table
+- [ ] Create `app.tenant_categories` table
+- [ ] Create `app.tenant_category_images` table
 - [ ] Add R2 key columns to `app.tenant_products`
 - [ ] Add R2 key columns to `app.tenant_brands`
 - [ ] Add R2 key columns to `app.published_catalogs`
@@ -461,6 +508,7 @@ Browser/App
 - [ ] `POST /api/upload/catalog-category` → catalog.category_images
 - [ ] `POST /api/upload/tenant-product` → app.tenant_products R2 keys
 - [ ] `POST /api/upload/tenant-brand` → app.tenant_brands R2 keys
+- [ ] `POST /api/upload/tenant-category` → app.tenant_category_images
 - [ ] `POST /api/upload/catalog-hero` → app.published_catalogs R2 keys
 - [ ] `POST /api/upload/avatar` → app.user_profiles
 
@@ -478,4 +526,3 @@ Browser/App
 | 2 | Should category/brand images bypass moderation (`status='approved'` immediately)? | Only tenant-contributed catalog product images need `pending` flow |
 | 3 | Signed URLs for tenant paths needed at v1? | If no — simplify to all-public R2 bucket with UUID-based obscurity |
 | 4 | Max images per catalog product? | Cap in Worker or API route — suggest 8 max |
-
