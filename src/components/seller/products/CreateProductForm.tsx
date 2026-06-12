@@ -1,12 +1,12 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm, useFieldArray, Controller, useWatch, useController, type SubmitHandler } from 'react-hook-form';
+import { useForm, useFieldArray, Controller, useController, type SubmitHandler } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Plus, X, AlertTriangle } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { ImageUploadZone } from './ImageUploadZone';
 
 import { UNITS_OF_MEASURE } from '@/constants';
 import { useRole } from '@/hooks/useRole';
@@ -14,6 +14,7 @@ import { useTenantBrands } from '@/hooks/useBrands';
 import { useCreateCustomProduct, type CreateCustomProductError } from '@/hooks/useProducts';
 
 import { Button } from '@/components/ui/button';
+import { BrowseUploadField } from '@/components/ui/browse-upload-field';
 import { MutationButton } from '@/components/ui/mutation-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { uploadEntityFile } from '@/lib/upload-client';
 
 const GST_RATES = ['0', '5', '12', '18', '28'] as const;
 
@@ -57,6 +59,16 @@ export function CreateProductForm() {
   const { isSellerAdmin } = useRole();
   const { data: brandsData, isLoading: brandsLoading } = useTenantBrands();
   const createProduct = useCreateCustomProduct();
+  const [stagedImage, setStagedImage] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   const {
     register,
@@ -92,9 +104,6 @@ export function CreateProductForm() {
       }
     }
 
-    // image_urls is already string[] from ImageUploadZone
-    const imageUrls = formData.image_urls.filter((u) => u.trim().length > 0);
-
     const costPrice =
       formData.cost_price && formData.cost_price !== ''
         ? Number(formData.cost_price)
@@ -104,7 +113,7 @@ export function CreateProductForm() {
         ? Number(formData.pack_size)
         : undefined;
     try {
-      await createProduct.mutateAsync({
+      const result = await createProduct.mutateAsync({
         master_product_id: null,
         tenant_brand_id: formData.tenant_brand_id,
         internal_sku: formData.internal_sku,
@@ -118,8 +127,17 @@ export function CreateProductForm() {
         // gst_rate: gstRate,
         // description: formData.description,
         attributes: attributesObj,
-        image_urls: imageUrls,
+        image_urls: [],
       });
+
+      if (stagedImage) {
+        await uploadEntityFile({
+          endpoint: '/api/upload/tenant-product',
+          entityId: result.product.id,
+          file: stagedImage,
+          isPrimary: true,
+        });
+      }
       router.push('/products');
     } catch (err) {
       const e = err as CreateCustomProductError;
@@ -383,10 +401,36 @@ export function CreateProductForm() {
       {/* ── Section 6: Product Images ── */}
       <div>
         <p className="text-sm font-medium text-cream-900 mb-3">Product Images</p>
-        <ImageUploadZone
+        <BrowseUploadField
           value={imageUrlsField.value}
-          onChange={imageUrlsField.onChange}
-          maxImages={5}
+          onChange={(urls) => {
+            const nextUrl = urls[0] ?? null;
+            if (previewUrl) {
+              URL.revokeObjectURL(previewUrl);
+            }
+            if (!nextUrl) {
+              setStagedImage(null);
+              setPreviewUrl(null);
+              imageUrlsField.onChange([]);
+              return;
+            }
+            setPreviewUrl(nextUrl);
+            imageUrlsField.onChange(nextUrl ? [nextUrl] : []);
+          }}
+          maxFiles={1}
+          label="Upload product image"
+          helperText="JPG, PNG, WebP • Max 5MB • 1 image"
+          emptyLabel="Drop a product image here or browse from your computer"
+          previewInline
+          uploadFile={async (file) => {
+            if (previewUrl) {
+              URL.revokeObjectURL(previewUrl);
+            }
+            const objectUrl = URL.createObjectURL(file);
+            setStagedImage(file);
+            setPreviewUrl(objectUrl);
+            return objectUrl;
+          }}
         />
       </div>
 

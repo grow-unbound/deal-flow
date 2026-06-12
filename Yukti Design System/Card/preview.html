@@ -1,0 +1,45 @@
+<!-- @dsCard group="Components" viewport="700x220" name="Card" subtitle="Light · dark · elevated · interactive variants" -->
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;padding:24px 28px;background:#F8F6F2;font-family:'Mukta',sans-serif;-webkit-font-smoothing:antialiased;color:#221E1A;}
+  .row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+  .card{background:#FCFBF8;border:1px solid #EAE3D9;border-radius:14px;padding:20px 22px;}
+  .card.elevated{box-shadow:0 4px 14px rgba(34,30,26,.10),0 2px 4px rgba(34,30,26,.06);}
+  .card.dark{background:#2B2825;border-color:rgba(255,255,255,.08);color:#F3EEE6;}
+  .card.interactive{cursor:pointer;}
+  .card.sm{padding:14px 16px;}
+  .card-label{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:#6F665C;margin-bottom:8px;}
+  .card.dark .card-label{color:rgba(243,238,230,.55);}
+  .card-title{font-size:15px;font-weight:700;letter-spacing:-.01em;margin:0 0 4px;}
+  .card-body{font-size:13px;line-height:1.55;color:#64594E;margin:0;}
+  .card.dark .card-body{color:rgba(243,238,230,.62);}
+  .val{font-size:26px;font-weight:700;letter-spacing:-.03em;color:#221E1A;font-variant-numeric:tabular-nums;}
+  .card.dark .val{color:#F3EEE6;}
+</style>
+</head>
+<body>
+<div class="row">
+  <div class="card">
+    <div class="card-label">Default</div>
+    <div class="card-title">Mehta Distributors</div>
+    <div class="card-body">North Delhi · Tier A · 23 products</div>
+  </div>
+  <div class="card elevated">
+    <div class="card-label">Elevated</div>
+    <div class="val">₹ 4.2L</div>
+    <div class="card-body" style="margin-top:4px;">Orders this month</div>
+  </div>
+  <div class="card dark">
+    <div class="card-label">Dark variant</div>
+    <div class="card-title" style="color:#F3EEE6;">Your unfair advantage</div>
+    <div class="card-body">The keystone of your business.</div>
+  </div>
+  <div class="card interactive" style="border-color:rgba(181,100,47,.3);">
+    <div class="card-label">Interactive</div>
+    <div class="card-title">Summer Catalog 2026</div>
+    <div class="card-body">Published · 48 products · 3 cohorts</div>
+  </div>
+</div>
+</body></html>

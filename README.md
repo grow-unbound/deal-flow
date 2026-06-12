@@ -1,8 +1,8 @@
-# DealFlow — Distributor Command Center
+# yukti — Distributor Command Center
 
 **Status:** Project scaffolding (Week 0)
 
-DealFlow is a multibrand distributor's command center: manage catalogs from 5-15 brands, publish cohort-specific pricing to retailers, capture orders via a buyer PWA. Built for Indian SMB multibrand distributors.
+yukti is a multibrand distributor's command center: manage catalogs from 5-15 brands, publish cohort-specific pricing to retailers, capture orders via a buyer PWA. Built for Indian SMB multibrand distributors.
 
 ## Tech Stack
 
@@ -19,7 +19,7 @@ DealFlow is a multibrand distributor's command center: manage catalogs from 5-15
 ## Project Structure
 
 ```
-dealflow/
+yukti/
 ├── app/                          # Next.js App Router
 ├── src/
 │   ├── components/              # Reusable UI components
@@ -72,7 +72,7 @@ Open [http://localhost:3000](http://localhost:3000) to see the app.
 | `app` | Tenant business data (RLS-enforced per tenant) |
 
 ### Tenancy Model
-- **Tenant = Distributor.** One business = one tenant (`{slug}.dealflow.in`)
+- **Tenant = Distributor.** One business = one tenant (`{slug}.yukti.so`)
 - **Buyers belong inside a tenant** — not tenants themselves
 - One auth user can link to multiple buyers across multiple tenants
 

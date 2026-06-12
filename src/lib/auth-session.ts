@@ -1,6 +1,6 @@
-export const AUTH_CONTEXTS_STORAGE_KEY = 'dealflow_auth_contexts';
-export const AUTH_DRAFT_STORAGE_PREFIX = 'dealflow_draft_';
-export const BUYER_PREVIEW_STORAGE_KEY = 'dealflow_buyer_preview_token';
+export const AUTH_CONTEXTS_STORAGE_KEY = 'yukti_auth_contexts';
+export const AUTH_DRAFT_STORAGE_PREFIX = 'yukti_draft_';
+export const BUYER_PREVIEW_STORAGE_KEY = 'yukti_buyer_preview_token';
 
 function clearMatchingKeys(storage: Storage | undefined, keys: string[], prefixes: string[]) {
   if (!storage) return;

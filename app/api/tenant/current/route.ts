@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
     business_name: ((workspace.tenant_name as string | undefined) ??
       (tRow?.business_name as string | undefined) ??
       'My Business') as string,
-    subdomain: `${workspace.tenant_slug ?? tenantId}.dealflow.in`,
+    subdomain: `${workspace.tenant_slug ?? tenantId}.yukti.so`,
     plan: plan as 'starter' | 'growth' | 'scale',
     gstin: (tRow?.gstin as string | null | undefined) ?? null,
     primary_state: (tRow?.primary_state as string | null | undefined) ?? null,

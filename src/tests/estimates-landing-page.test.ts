@@ -137,7 +137,7 @@ vi.mock('@/lib/supabase', () => {
             data: {
               user: {
                 id: userId,
-                email: `${userId}@dealflow.in`,
+                email: `${userId}@yukti.so`,
                 user_metadata: { full_name: userId === 'u-seller' ? 'Priya Shah' : 'Team Member' },
               },
             },

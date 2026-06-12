@@ -76,7 +76,7 @@ async function updateAccount({ phone, email, password }) {
 }
 
 async function main() {
-  console.log('\n── DealFlow · test account setup ─────────────────────────\n');
+  console.log('\n── yukti · test account setup ───────────────────────────\n');
 
   // Show current users first
   const users = await listUsers();

@@ -13,7 +13,6 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus, X, AlertTriangle, Save, EyeOff, Eye } from 'lucide-react';
 import { toast } from 'sonner';
-import { ImageUploadZone } from './ImageUploadZone';
 
 import { UNITS_OF_MEASURE } from '@/constants';
 import { useRole } from '@/hooks/useRole';
@@ -26,6 +25,7 @@ import {
 } from '@/hooks/useProducts';
 
 import { Button } from '@/components/ui/button';
+import { BrowseUploadField } from '@/components/ui/browse-upload-field';
 import { MutationButton } from '@/components/ui/mutation-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -48,6 +48,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { uploadEntityFile } from '@/lib/upload-client';
 
 const GST_RATES = ['0', '5', '12', '18', '28'] as const;
 
@@ -455,10 +456,23 @@ export function EditProductForm({ product }: EditProductFormProps) {
       {/* ── Section 6: Product Images ── */}
       <div>
         <p className="text-sm font-medium text-cream-900 mb-3">Product Images</p>
-        <ImageUploadZone
+        <BrowseUploadField
           value={imageUrlsField.value}
-          onChange={imageUrlsField.onChange}
-          maxImages={5}
+          onChange={(urls) => imageUrlsField.onChange(urls.slice(0, 1))}
+          maxFiles={1}
+          label="Upload product image"
+          helperText="JPG, PNG, WebP • Max 5MB • 1 image"
+          emptyLabel="Drop a product image here or browse from your computer"
+          previewInline
+          uploadFile={async (file) => {
+            const uploaded = await uploadEntityFile({
+              endpoint: '/api/upload/tenant-product',
+              entityId: product.id,
+              file,
+              isPrimary: true,
+            });
+            return uploaded.urls.medium ?? uploaded.urls.original ?? '';
+          }}
         />
       </div>
 

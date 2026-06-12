@@ -1,0 +1,127 @@
+<!-- @dsCard group="Colors" viewport="700x420" name="Color palette" subtitle="Charcoal + Copper · one palette · light canonical · dark variant · status" -->
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;padding:24px 28px;background:#F8F6F2;font-family:'Mukta',sans-serif;-webkit-font-smoothing:antialiased;color:#221E1A;}
+  .section{margin-bottom:20px;}
+  .section:last-child{margin-bottom:0;}
+  .section-label{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:#6F665C;margin-bottom:10px;}
+  .swatches{display:flex;gap:8px;flex-wrap:wrap;}
+  .swatch{display:flex;flex-direction:column;gap:6px;align-items:flex-start;}
+  .color{width:64px;height:44px;border-radius:8px;border:1px solid rgba(34,30,26,.08);}
+  .color.large{width:100px;height:56px;border-radius:10px;}
+  .name{font-family:'IBM Plex Mono',monospace;font-size:9px;color:#64594E;letter-spacing:.04em;line-height:1.4;}
+  .hex{font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#221E1A;font-weight:500;}
+  .divider{height:1px;background:#EAE3D9;margin:16px 0;}
+  .status-row{display:flex;gap:8px;align-items:stretch;}
+  .status-cell{flex:1;border-radius:8px;padding:10px 12px;border:1px solid;}
+  .status-label{font-size:12px;font-weight:600;letter-spacing:-.01em;margin-bottom:2px;}
+  .status-hex{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.04em;opacity:.7;}
+</style>
+</head>
+<body>
+
+<div class="section">
+  <div class="section-label">Primary — Charcoal · Copper · Paper</div>
+  <div class="swatches">
+    <div class="swatch">
+      <div class="color large" style="background:#221E1A;border-color:transparent;"></div>
+      <div class="hex">#221E1A</div>
+      <div class="name">--yk-ink<br>Body text · 15.4:1 AAA</div>
+    </div>
+    <div class="swatch">
+      <div class="color large" style="background:#2B2825;border-color:transparent;"></div>
+      <div class="hex">#2B2825</div>
+      <div class="name">--yk-surface<br>Dark grounds · app icon</div>
+    </div>
+    <div class="swatch">
+      <div class="color large" style="background:#B5642F;border-color:transparent;"></div>
+      <div class="hex">#B5642F</div>
+      <div class="name">--yk-copper<br>Mark + accents · light</div>
+    </div>
+    <div class="swatch">
+      <div class="color large" style="background:#D9894C;border-color:transparent;"></div>
+      <div class="hex">#D9894C</div>
+      <div class="name">--yk-copper-lt<br>Mark + accents · dark</div>
+    </div>
+    <div class="swatch">
+      <div class="color large" style="background:#F8F6F2;"></div>
+      <div class="hex">#F8F6F2</div>
+      <div class="name">--yk-paper<br>Canonical light ground</div>
+    </div>
+    <div class="swatch">
+      <div class="color large" style="background:#FCFBF8;"></div>
+      <div class="hex">#FCFBF8</div>
+      <div class="name">--yk-card<br>Card surface</div>
+    </div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<div class="section">
+  <div class="section-label">Text · borders · on-dark</div>
+  <div class="swatches">
+    <div class="swatch">
+      <div class="color" style="background:#221E1A;border-color:transparent;"></div>
+      <div class="hex">#221E1A</div>
+      <div class="name">--yk-ink</div>
+    </div>
+    <div class="swatch">
+      <div class="color" style="background:#64594E;border-color:transparent;"></div>
+      <div class="hex">#64594E</div>
+      <div class="name">--yk-sub<br>6.4:1 AA</div>
+    </div>
+    <div class="swatch">
+      <div class="color" style="background:#6F665C;border-color:transparent;"></div>
+      <div class="hex">#6F665C</div>
+      <div class="name">--yk-faint<br>5.3:1 AA</div>
+    </div>
+    <div class="swatch">
+      <div class="color" style="background:#EAE3D9;"></div>
+      <div class="hex">#EAE3D9</div>
+      <div class="name">--yk-card-line<br>Hairline</div>
+    </div>
+    <div class="swatch">
+      <div class="color" style="background:#F3EEE6;"></div>
+      <div class="hex">#F3EEE6</div>
+      <div class="name">--yk-on-dark<br>12.6:1 AAA on surface</div>
+    </div>
+    <div class="swatch">
+      <div class="color" style="background:#2B2825;border:1px solid rgba(243,238,230,.15);position:relative;overflow:hidden;">
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:rgba(243,238,230,.62);letter-spacing:.04em;">62%</span>
+        </div>
+      </div>
+      <div class="hex" style="opacity:.7;">#F3EEE6 · 62%</div>
+      <div class="name">--yk-sub-dark</div>
+    </div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<div class="section">
+  <div class="section-label">Status — shape + label always · never colour alone</div>
+  <div class="status-row">
+    <div class="status-cell" style="background:rgba(31,107,58,.12);border-color:rgba(31,107,58,.22);">
+      <div class="status-label" style="color:#1F6B3A;">Success</div>
+      <div class="status-hex" style="color:#1F6B3A;">#1F6B3A · bg rgba(.12)</div>
+    </div>
+    <div class="status-cell" style="background:rgba(138,87,0,.10);border-color:rgba(138,87,0,.20);">
+      <div class="status-label" style="color:#8A5700;">Warning</div>
+      <div class="status-hex" style="color:#8A5700;">#8A5700 · bg rgba(.10)</div>
+    </div>
+    <div class="status-cell" style="background:rgba(156,48,38,.12);border-color:rgba(156,48,38,.22);">
+      <div class="status-label" style="color:#9C3026;">Error</div>
+      <div class="status-hex" style="color:#9C3026;">#9C3026 · bg rgba(.12)</div>
+    </div>
+    <div class="status-cell" style="background:rgba(42,95,138,.10);border-color:rgba(42,95,138,.20);">
+      <div class="status-label" style="color:#2A5F8A;">Info</div>
+      <div class="status-hex" style="color:#2A5F8A;">#2A5F8A · bg rgba(.10)</div>
+    </div>
+  </div>
+</div>
+
+</body></html>

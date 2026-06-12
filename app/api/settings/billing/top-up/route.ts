@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
         data: null,
         error: {
           code: 'NOT_IMPLEMENTED',
-          message: 'Self-serve credit top-up is not available yet. Contact DealFlow support to add credits.',
+          message: 'Self-serve credit top-up is not available yet. Contact yukti support to add credits.',
         },
       },
       { status: 501 },
