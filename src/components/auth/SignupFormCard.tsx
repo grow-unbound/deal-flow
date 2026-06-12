@@ -140,9 +140,9 @@ export function SignupFormCard() {
     <div className="bg-cream-50 border border-cream-300 rounded-lg shadow-md p-8">
       <div className="flex items-center gap-3 mb-7">
         <div className="w-9 h-9 bg-teal-500 rounded-md flex items-center justify-center shrink-0">
-          <span className="text-cream-50 font-display font-medium text-sm">DF</span>
+          <span className="text-cream-50 font-display font-medium text-sm">yk</span>
         </div>
-        <span className="font-display font-medium text-teal-500 text-xl">DealFlow</span>
+        <span className="font-display font-medium text-teal-500 text-xl">yukti</span>
       </div>
 
       <h1 className="font-display text-h2 text-cream-900 mb-1">Create your workspace</h1>
@@ -213,7 +213,7 @@ export function SignupFormCard() {
                     {...field}
                     onChange={(e) => field.onChange(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-'))}
                   />
-                  <span className="flex items-center px-3 text-cream-500 text-body-sm bg-cream-100 border-l border-cream-300 select-none whitespace-nowrap">.dealflow.in</span>
+                  <span className="flex items-center px-3 text-cream-500 text-body-sm bg-cream-100 border-l border-cream-300 select-none whitespace-nowrap">.yukti.so</span>
                 </div>
               </FormControl>
               <FormMessage className="text-danger-500" />

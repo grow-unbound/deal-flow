@@ -38,7 +38,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       id: tenantId,
       slug: tenantProfile?.tenant_slug ?? tenantId,
       business_name: tenantProfile?.tenant_name ?? 'My Business',
-      subdomain: `${tenantProfile?.tenant_slug ?? tenantId}.dealflow.in`,
+      subdomain: `${tenantProfile?.tenant_slug ?? tenantId}.yukti.so`,
       plan: 'starter',
       gstin: undefined,
       primary_state: undefined,

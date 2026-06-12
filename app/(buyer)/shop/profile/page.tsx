@@ -162,7 +162,7 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
-        <p style={{ textAlign: 'center', marginTop: 16, fontSize: 11, color: 'var(--cream-600)', fontFamily: 'var(--font-mono)' }}>DealFlow Buyer · v1.0.0</p>
+        <p style={{ textAlign: 'center', marginTop: 16, fontSize: 11, color: 'var(--cream-600)', fontFamily: 'var(--font-mono)' }}>yukti buyer · v1.0.0</p>
       </div>
     </div>
   );

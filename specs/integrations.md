@@ -30,8 +30,8 @@ Defines available integration types. Adding a new integration is a row insert + 
 
 ```sql
 CREATE TABLE catalog.integration_types (
-  id                text PRIMARY KEY,  -- 'zoho_books', 'zoho_inventory', 'tally_prime', 'busy'
-  display_name      text NOT NULL,
+  id                text PRIMARY KEY,
+  display_name      text NOT NULL,  -- 'zoho_books', 'zoho_inventory', 'tally_prime', 'busy'
   description       text,
   logo_url          text,
   -- Describes what credential fields to collect in the UI wizard

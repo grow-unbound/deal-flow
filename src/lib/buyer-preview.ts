@@ -20,7 +20,7 @@ function getBuyerPreviewSecret(): string {
     process.env.BUYER_PREVIEW_TOKEN_SECRET
     ?? process.env.SUPABASE_SERVICE_KEY
     ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    ?? 'dealflow-buyer-preview-dev-secret'
+    ?? 'yukti-buyer-preview-dev-secret'
   );
 }
 

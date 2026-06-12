@@ -2,7 +2,7 @@
 
 ## Overview
 
-The integrations system enables tenants to connect DealFlow to external tools (Zoho Books, Zoho Inventory, Tally Prime, Busy) for bidirectional data exchange. It has three layers:
+The integrations system enables tenants to connect yukti to external tools (Zoho Books, Zoho Inventory, Tally Prime, Busy) for bidirectional data exchange. It has three layers:
 
 1. **Credential management** — secure, per-tenant API token storage
 2. **Sync engine** — phased initial import + ongoing incremental sync
@@ -152,7 +152,7 @@ CREATE TABLE app.integration_sync_jobs (
 
 ### 1.5 `app.integration_entity_map` — External ↔ Internal ID Registry
 
-Maps every synced entity to its DealFlow internal ID. Essential for deduplication and for pushing updates back out.
+Maps every synced entity to its yukti internal ID. Essential for deduplication and for pushing updates back out.
 
 ```sql
 CREATE TABLE app.integration_entity_map (
@@ -162,7 +162,7 @@ CREATE TABLE app.integration_entity_map (
 
   entity_type   text NOT NULL,  -- 'brand' | 'product' | 'customer' | 'order' | 'invoice'
   external_id   text NOT NULL,  -- ID from the external system
-  internal_id   uuid NOT NULL,  -- DealFlow record UUID
+  internal_id   uuid NOT NULL,  -- yukti record UUID
 
   last_synced_at   timestamptz,
   sync_status      text,  -- 'synced' | 'pending_push' | 'conflict' | 'error'
@@ -345,10 +345,10 @@ interface IntegrationAdapter {
 Tally and Busy run **on-premise** and expose an XML/HTTP API on `localhost:9000` (Tally) or similar. They are **not cloud-reachable** by default.
 
 Two options:
-1. **DealFlow Bridge Agent** — a lightweight desktop app (Electron or Go binary) installed on the customer's machine that authenticates to DealFlow and forwards data. This is the recommended path for SMB customers.
+1. **yukti Bridge Agent** — a lightweight desktop app (Electron or Go binary) installed on the customer's machine that authenticates to yukti and forwards data. This is the recommended path for SMB customers.
 2. **Ngrok/Cloudflare Tunnel** — power users expose their local instance. Not recommended for production.
 
-Flag `connectivity_mode: 'local'` in `integration_types` drives the UI to show a "Download Bridge Agent" step in the setup wizard for these integrations. The bridge agent handles auth with DealFlow via a tenant-scoped API token, not raw Supabase credentials.
+Flag `connectivity_mode: 'local'` in `integration_types` drives the UI to show a "Download Bridge Agent" step in the setup wizard for these integrations. The bridge agent handles auth with yukti via a tenant-scoped API token, not raw Supabase credentials.
 
 ---
 
@@ -464,7 +464,7 @@ Users configure ongoing data sync after the initial import is done. Each flow is
 │  What data?         [Orders ▾]                                  │
 │  Direction?         (●) Push orders to Zoho                     │
 │                     ( ) Pull orders from Zoho                   │
-│  When?              (●) On status change in DealFlow            │
+│  When?              (●) On status change in yukti               │
 │                     ( ) Daily schedule  [2:00 AM ▾]             │
 │                     ( ) On webhook from Zoho                    │
 │  Which statuses?    [✓] Confirmed  [✓] Dispatched  [ ] Draft    │

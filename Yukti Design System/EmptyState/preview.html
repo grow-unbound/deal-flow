@@ -1,0 +1,46 @@
+<!-- @dsCard group="Components" viewport="700x280" name="Empty State" subtitle="Orders · catalog · buyers · search · generic arch" -->
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;600;700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;padding:20px 28px;background:#F8F6F2;font-family:'Mukta',sans-serif;-webkit-font-smoothing:antialiased;color:#221E1A;}
+  .row{display:grid;grid-template-columns:repeat(4,1fr);gap:0;}
+  .cell{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:22px 16px;border-right:1px solid #EAE3D9;text-align:center;gap:12px;}
+  .cell:last-child{border-right:none;}
+  .cell-title{font-size:14px;font-weight:700;letter-spacing:-.01em;color:#221E1A;line-height:1.3;}
+  .cell-body{font-size:12.5px;line-height:1.55;color:#64594E;max-width:140px;}
+  .cell-btn{display:inline-flex;align-items:center;justify-content:center;font-family:'Mukta',sans-serif;font-size:12.5px;font-weight:600;padding:0 14px;height:32px;border-radius:8px;background:#B5642F;color:#F8F6F2;border:none;cursor:pointer;letter-spacing:-.01em;}
+  .lbl{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.10em;text-transform:uppercase;color:#6F665C;}
+</style>
+</head>
+<body>
+<div class="row">
+  <div class="cell">
+    <svg width="100" height="76" viewBox="0 0 100 76" fill="none"><rect x="8" y="18" width="84" height="50" rx="5" fill="rgba(234,227,217,.35)" stroke="#EAE3D9"/><rect x="18" y="28" width="30" height="12" rx="3" fill="rgba(181,100,47,.18)" stroke="#EAE3D9"/><rect x="18" y="44" width="22" height="6" rx="2" fill="#EAE3D9"/><rect x="18" y="54" width="34" height="4" rx="2" fill="#EAE3D9"/><rect x="54" y="26" width="30" height="34" rx="3" fill="rgba(181,100,47,.18)" stroke="#EAE3D9"/><path d="M61 34L65.5 34L67 40.5L59 40.5Z" fill="#B5642F" opacity=".5"/><path d="M55 40L59.5 40.8L61 47L56 47Z" fill="#B5642F" opacity=".3"/><path d="M71 40L66.5 40.8L65 47L70 47Z" fill="#B5642F" opacity=".3"/></svg>
+    <div class="cell-title">No orders yet</div>
+    <div class="cell-body">Orders from buyers will appear here once they browse your catalog.</div>
+    <span class="cell-btn">Publish catalog</span>
+    <span class="lbl">orders</span>
+  </div>
+  <div class="cell">
+    <svg width="100" height="76" viewBox="0 0 100 76" fill="none"><rect x="10" y="10" width="36" height="52" rx="4" fill="rgba(234,227,217,.35)" stroke="#EAE3D9"/><rect x="16" y="18" width="24" height="18" rx="2" fill="rgba(181,100,47,.18)" stroke="#EAE3D9"/><rect x="16" y="40" width="16" height="4" rx="2" fill="#EAE3D9"/><rect x="16" y="48" width="22" height="4" rx="2" fill="#EAE3D9"/><rect x="54" y="16" width="34" height="46" rx="4" fill="rgba(234,227,217,.35)" stroke="#EAE3D9"/><rect x="60" y="24" width="22" height="18" rx="2" fill="rgba(181,100,47,.18)" stroke="#EAE3D9"/><path d="M68 26L72.5 26L73.8 32L66.2 32Z" fill="#B5642F" opacity=".6"/><rect x="60" y="46" width="14" height="4" rx="2" fill="#B5642F" opacity=".4"/><rect x="60" y="54" width="20" height="4" rx="2" fill="#EAE3D9"/></svg>
+    <div class="cell-title">No catalogs published</div>
+    <div class="cell-body">Create your first catalog and share it with buyers.</div>
+    <span class="cell-btn">New catalog</span>
+    <span class="lbl">catalog</span>
+  </div>
+  <div class="cell">
+    <svg width="100" height="76" viewBox="0 0 100 76" fill="none"><circle cx="36" cy="28" r="14" fill="rgba(181,100,47,.18)" stroke="#EAE3D9"/><circle cx="36" cy="23" r="7" fill="#B5642F" opacity=".35"/><path d="M16 60C16 49.5 25 42 36 42C47 42 56 49.5 56 60" stroke="#B5642F" stroke-width="2" stroke-linecap="round" opacity=".4"/><circle cx="68" cy="28" r="10" fill="rgba(234,227,217,.35)" stroke="#EAE3D9"/><circle cx="68" cy="24" r="5" fill="#B5642F" opacity=".2"/><path d="M54 56C54 48.3 60 43 68 43C76 43 82 48.3 82 56" stroke="#EAE3D9" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <div class="cell-title">No buyers added</div>
+    <div class="cell-body">Add buyers to your master list to start building cohorts.</div>
+    <span class="cell-btn">Add buyer</span>
+    <span class="lbl">buyers</span>
+  </div>
+  <div class="cell">
+    <svg width="100" height="76" viewBox="0 0 100 76" fill="none"><path d="M20 60L20 38C20 26 30 18 50 18C70 18 80 26 80 38L80 60" stroke="#EAE3D9" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="13" y="58" width="74" height="10" rx="4" fill="rgba(234,227,217,.35)" stroke="#EAE3D9"/><path d="M39 17.5L61 17.5L64.5 32L35.5 32Z" fill="#B5642F" opacity=".3"/><path d="M20 34L35.5 36.8L39 50L22 50Z" fill="#B5642F" opacity=".15"/><path d="M80 34L64.5 36.8L61 50L78 50Z" fill="#B5642F" opacity=".15"/></svg>
+    <div class="cell-title">Nothing here yet</div>
+    <div class="cell-body">This section is empty. Start by adding your first item.</div>
+    <span class="lbl">generic</span>
+  </div>
+</div>
+</body></html>

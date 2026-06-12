@@ -1,5 +1,5 @@
 -- ============================================================
--- DealFlow Seed — Electronics & Mobiles Distributor
+-- yukti Seed — Electronics & Mobiles Distributor
 --
 -- Idempotent: safe to re-run. Truncates all app + catalog data
 -- and resets the two test auth users on every run.

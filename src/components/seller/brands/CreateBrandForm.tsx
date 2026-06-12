@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -24,6 +24,7 @@ import { BrowseUploadField } from '@/components/ui/browse-upload-field';
 
 import { CreateBrandSchema, type CreateBrandInput } from '@/lib/zod';
 import { useCreateCustomBrand, type CreateCustomBrandError } from '@/hooks/useBrands';
+import { uploadEntityFile } from '@/lib/upload-client';
 
 function slugify(value: string): string {
   return value
@@ -35,9 +36,19 @@ function slugify(value: string): string {
 export function CreateBrandForm() {
   const router = useRouter();
   const { mutateAsync, isPending } = useCreateCustomBrand();
+  const [stagedLogo, setStagedLogo] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   // Track whether the user has manually edited the slug field
   const slugManuallyEdited = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   const form = useForm<CreateBrandInput>({
     resolver: zodResolver(CreateBrandSchema),
@@ -71,10 +82,17 @@ export function CreateBrandForm() {
         slug: data.slug,
         exclusivity: data.exclusivity ?? false,
         ...(data.description ? { description: data.description } : {}),
-        ...(data.logo_url ? { logo_url: data.logo_url } : {}),
       };
 
-      await mutateAsync(payload);
+      const result = await mutateAsync(payload);
+      if (stagedLogo) {
+        await uploadEntityFile({
+          endpoint: '/api/upload/catalog-brand',
+          entityId: result.brand.master_brand_id,
+          file: stagedLogo,
+          imageType: 'logo',
+        });
+      }
       toast.success('Brand created successfully');
       router.push('/brands');
     } catch (err) {
@@ -170,10 +188,32 @@ export function CreateBrandForm() {
                 <FormControl>
                   <BrowseUploadField
                     value={field.value ? [field.value] : []}
-                    onChange={(urls) => field.onChange(urls[0] ?? '')}
+                    onChange={(urls) => {
+                      const nextUrl = urls[0] ?? null;
+                      if (!nextUrl) {
+                        setStagedLogo(null);
+                        if (previewUrl) {
+                          URL.revokeObjectURL(previewUrl);
+                          setPreviewUrl(null);
+                        }
+                        field.onChange('');
+                        return;
+                      }
+                      setPreviewUrl(nextUrl);
+                      field.onChange(nextUrl);
+                    }}
                     maxFiles={1}
                     label="Upload logo"
                     emptyLabel="Drop a logo here or browse files"
+                    uploadFile={async (file) => {
+                      if (previewUrl) {
+                        URL.revokeObjectURL(previewUrl);
+                      }
+                      const objectUrl = URL.createObjectURL(file);
+                      setPreviewUrl(objectUrl);
+                      setStagedLogo(file);
+                      return objectUrl;
+                    }}
                   />
                 </FormControl>
                 <FormMessage />

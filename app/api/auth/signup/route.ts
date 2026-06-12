@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const tenantResult = rpcData ?? { tenant_id: '', slug, subdomain: `${slug}.dealflow.in` };
+  const tenantResult = rpcData ?? { tenant_id: '', slug, subdomain: `${slug}.yukti.so` };
 
   // Step 3 — fire PostHog server-side event for funnel analytics
   try {

@@ -26,7 +26,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'DealFlow — Distributor Command Center',
+  title: 'yukti — Distributor Command Center',
   description: 'Manage multibrand catalogs, publish cohort pricing, capture orders.',
 };
 
