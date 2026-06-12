@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<!-- @dsCard group="Brand" name="Yukti Identity R7" subtitle="Converge — Keystone, Loaded Mass, Weave · 10 each" -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yukti — Identity Territories, Round 7</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700&amp;family=Baloo+2:wght@500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#1b1e24; --sub:#62666e; --line:#e4e6ea; --bg:#eef0f3; --card:#ffffff; }
+  html,body { margin:0; padding:0; }
+  body { background:var(--bg); font-family:"Mukta",sans-serif; color:var(--ink); }
+  .wrap { max-width:1180px; margin:0 auto; padding:44px 28px 80px; display:flex; flex-direction:column; gap:22px; }
+  .top { display:flex; flex-direction:column; gap:8px; }
+  .kicker { font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#9aa0a8; }
+  h1 { margin:0; font-size:26px; font-weight:700; letter-spacing:-0.02em; }
+  .flag { font-size:13.5px; line-height:1.6; color:var(--sub); max-width:920px; }
+  .flag strong { color:var(--ink); font-weight:600; }
+  .legend { display:flex; flex-wrap:wrap; gap:8px; }
+  .lg { display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:6px 11px; }
+  .lg .dots { display:flex; gap:4px; }
+  .lg i { width:13px; height:13px; border-radius:3px; display:inline-block; border:1px solid rgba(0,0,0,.08); }
+  .lg b { font-size:11.5px; font-weight:600; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .sect { grid-column:1/-1; display:flex; align-items:baseline; gap:12px; margin:14px 2px 0; }
+  .sect .sno { font-family:"IBM Plex Mono",monospace; font-size:11px; color:#aeb3bb; }
+  .sect h2 { margin:0; font-size:17px; font-weight:700; letter-spacing:-0.01em; }
+  .sect .sd { font-size:12.5px; color:var(--sub); }
+  .sect .pal { margin-left:auto; font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--sub); display:flex; align-items:center; gap:7px; }
+  .sect .pal i { width:12px; height:12px; border-radius:3px; border:1px solid rgba(0,0,0,.08); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px 20px; display:flex; flex-direction:column; gap:13px; }
+  .card h3 { margin:0; font-size:14.5px; font-weight:600; display:flex; align-items:baseline; gap:9px; letter-spacing:-0.01em; }
+  .card h3 .tno { font-family:"IBM Plex Mono",monospace; font-size:11px; font-weight:400; color:#aeb3bb; }
+  .chips { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .chip { border-radius:9px; height:104px; display:flex; align-items:center; justify-content:center; gap:13px; border:1px solid var(--line); }
+  .word { font-size:26px; line-height:1; font-weight:600; letter-spacing:-0.01em; }
+  .red { display:flex; align-items:center; gap:13px; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:7px 13px; }
+  .red .rlab { font-family:"IBM Plex Mono",monospace; font-size:9.5px; color:#a4a9b1; letter-spacing:.06em; text-transform:uppercase; }
+  .red .rgroup { display:flex; align-items:center; gap:8px; }
+  .why { font-size:12px; line-height:1.5; color:var(--sub); margin:0; border-top:1px solid var(--line); padding-top:10px; }
+  .why b { color:var(--ink); font-weight:600; }
+  @media (max-width:880px){ .grid{grid-template-columns:1fr;} }
+</style>
+<template id="__bundler_thumbnail" data-bg-color="#eef0f3">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#eef0f3"></rect>
+    <path fill="#B5642F" d="M520 280H680L640 560H560Z"></path>
+  </svg>
+</template>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <span class="kicker">Yukti · Identity, Round 7 · Converge · 3 territories · 10 variants each</span>
+    <h1>Converging on the symbol — Keystone, Loaded Mass, Weave</h1>
+    <p class="flag"><strong>No new metaphors.</strong> R7 deepens only the three directions that earned their meaning: the seated wedge that lets a structure hold, the carved mass with weight and presence, and the planes that interlace into one fabric. Every mark is mass and silhouette first — built to survive at favicon size, hold in one color, and outlast its territory label. One primary + one accent per territory; the accent only ever reinforces overlap, seating, or leverage. Wordmark set in <strong>Mukta</strong>.</p>
+  </div>
+  <div class="legend" id="legend"></div>
+  <div class="grid" id="grid"></div>
+</div>
+
+<script>
+/* ---- one palette per territory: primary + structural accent ---- */
+const P = {
+  keystone:{lab:"Charcoal + Copper", bgL:"#F5F2EE", bgD:"#221F1B", aL:"#B5642F", aD:"#D8884A", mono:"#7E4A22", eName:"Copper", eHex:"#B5642F", iName:"Charcoal", iHex:"#221F1B"},
+  mass:{lab:"Deep Navy + Signal Orange", bgL:"#F3F5F8", bgD:"#0E2344", aL:"#E85D14", aD:"#FF7A33", mono:"#0E2344", eName:"Signal Orange", eHex:"#E85D14", iName:"Deep Navy", iHex:"#0E2344"},
+  weave:{lab:"Graphite + Cobalt", bgL:"#F1F3F7", bgD:"#1B1E24", aL:"#2D5BD6", aD:"#5E83E8", mono:"#1E40AF", eName:"Cobalt", eHex:"#2D5BD6", iName:"Graphite", iHex:"#1B1E24"}
+};
+
+/* ---- marks: each returns inner SVG for one fill color ---- */
+const M = {
+  /* === TERRITORY 1 — KEYSTONE / VOUSSOIR === */
+  ksSolid:c=>`<path fill="${c}" d="M9 6H23L19.5 26H12.5Z"/>`,
+  ksVoid:c=>`<path fill-rule="evenodd" fill="${c}" d="M9 4.5H23A4.5 4.5 0 0 1 27.5 9V23A4.5 4.5 0 0 1 23 27.5H9A4.5 4.5 0 0 1 4.5 23V9A4.5 4.5 0 0 1 9 4.5Z M12.5 9H19.5L17.7 23H14.3Z"/>`,
+  ksTriad:c=>`<path fill="${c}" d="M13.4 7H18.6L17.8 19H14.2Z"/><path fill="${c}" d="M5.6 9.3L12.6 8L13.4 19H7.4Z"/><path fill="${c}" d="M26.4 9.3L19.4 8L18.6 19H24.6Z"/>`,
+  ksNested:c=>`<path fill-rule="evenodd" fill="${c}" d="M9 6H23L19.5 26H12.5Z M13 11H19L17.4 21.5H14.6Z"/>`,
+  ksStacked:c=>`<path fill="${c}" d="M10 5H22L19 14.5H13Z"/><path fill="${c}" d="M13 17.5H19L22 27H10Z"/>`,
+  ksSplit:c=>`<path fill-rule="evenodd" fill="${c}" d="M9 6H23L19.5 26H12.5Z M15.25 6H16.75L16.55 26H15.45Z"/>`,
+  ksSeated:c=>`<path fill="${c}" d="M5 12.5H10.5V26H5Z"/><path fill="${c}" d="M21.5 12.5H27V26H21.5Z"/><path fill="${c}" d="M11 6H21L18.8 16.5H13.2Z"/>`,
+  ksJoint:c=>`<path fill-rule="evenodd" fill="${c}" d="M9 6H23L19.5 26H12.5Z M12.9 14.7H16V13H19.1V17.4H16V19.1H12.7Z"/>`,
+  ksSaddle:c=>`<path fill-rule="evenodd" fill="${c}" d="M7 7H25L23 27H9Z M13 7H19L17.5 13.5H14.5Z"/>`,
+  ksMonolith:c=>`<path fill-rule="evenodd" fill="${c}" d="M8.5 5H23.5L21.4 27H10.6Z M11.2 15.1H20.8V16.9H11.3Z"/>`,
+
+  /* === TERRITORY 2 — LOADED MASS === */
+  lmCrescent:c=>`<path fill-rule="evenodd" fill="${c}" d="M16 3a13 13 0 1 0 .01 0Z M20.2 7.2a10 10 0 1 0 .01 0Z"/>`,
+  lmNotch:c=>`<path fill-rule="evenodd" fill="${c}" d="M16 3a13 13 0 1 0 .01 0Z M10.5 4L18 4L13.8 12.5Z"/>`,
+  lmSplit:c=>`<path fill-rule="evenodd" fill="${c}" d="M16 3a13 13 0 1 0 .01 0Z M6.4 19.4L23.4 5.1L25.2 7.3L8.2 21.6Z"/>`,
+  lmCore:c=>`<path fill-rule="evenodd" fill="${c}" d="M16 3a13 13 0 1 0 .01 0Z M11.4 11a3 3 0 1 0 .01 0Z"/>`,
+  lmHalf:c=>`<path fill="${c}" d="M16 3 A13 13 0 0 1 16 29 Z"/><circle cx="8.6" cy="9.6" r="3.7" fill="${c}"/>`,
+  lmBar:c=>`<path fill-rule="evenodd" fill="${c}" d="M16 3a13 13 0 1 0 .01 0Z M4.6 13L27 8.4L28 13.6L5.6 18.2Z"/>`,
+  lmWedge:c=>`<path fill-rule="evenodd" fill="${c}" d="M16 3a13 13 0 1 0 .01 0Z M16 16L16 2.6L29.4 2.6L29.4 16Z"/>`,
+  lmLayered:c=>`<path fill-rule="evenodd" fill="${c}" d="M13.5 5a11 11 0 1 0 .01 0Z M22 5a7 7 0 1 0 .01 0Z"/>`,
+  lmGnomon:c=>`<path fill="${c}" d="M7 25.5V11A14.5 14.5 0 0 1 21.5 25.5Z"/>`,
+  lmDouble:c=>`<path fill-rule="evenodd" fill="${c}" d="M16 3a13 13 0 1 0 .01 0Z M12 10.6a2.3 2.3 0 1 0 .01 0Z M20.2 19a3.4 3.4 0 1 0 .01 0Z"/>`,
+
+  /* === TERRITORY 3 — INTERLACE / WEAVE === */
+  wvCross:c=>`<g transform="rotate(-45 16 16)"><rect x="-1" y="13" width="13.5" height="6" rx="1.4" fill="${c}"/><rect x="19.5" y="13" width="13.5" height="6" rx="1.4" fill="${c}"/></g><rect x="-2" y="13" width="36" height="6" rx="1.4" transform="rotate(45 16 16)" fill="${c}"/>`,
+  wvPlanes:c=>`<path fill-rule="evenodd" fill="${c}" d="M5 7H13L10 25H2Z M12 7H20L17 25H9Z M19 7H27L24 25H16Z"/>`,
+  wvInterlace:c=>`<path fill-rule="evenodd" fill="${c}" d="M3 8H17L29 18H15Z M3 18H15L29 8H17Z"/>`,
+  wvChevron:c=>`<path fill-rule="evenodd" fill="${c}" d="M5 10L16 5L27 10L24 12.6L16 8.6L8 12.6Z M5 15.5L16 10.5L27 15.5L24 18.1L16 14.1L8 18.1Z M5 21L16 16L27 21L24 23.6L16 19.6L8 23.6Z"/>`,
+  wvDiamonds:c=>`<g fill="none" stroke="${c}" stroke-width="3.4"><rect x="6.4" y="10.4" width="11.2" height="11.2" rx="1.6" transform="rotate(45 12 16)"/><rect x="14.4" y="10.4" width="11.2" height="11.2" rx="1.6" transform="rotate(45 20 16)"/></g>`,
+  wvLinks:c=>`<g fill="none" stroke="${c}" stroke-width="3.6"><rect x="4.2" y="10" width="14" height="12" rx="4.2"/><rect x="13.8" y="10" width="14" height="12" rx="4.2"/></g>`,
+  wvBraid:c=>`<g transform="rotate(45 16 16)"><rect x="4.5" y="13.2" width="23" height="5.6" rx="1.4" fill="${c}"/></g><g transform="rotate(-45 16 16)"><rect x="4.5" y="6.5" width="9.5" height="5.6" rx="1.4" fill="${c}"/><rect x="18" y="6.5" width="9.5" height="5.6" rx="1.4" fill="${c}"/><rect x="4.5" y="19.9" width="9.5" height="5.6" rx="1.4" fill="${c}"/><rect x="18" y="19.9" width="9.5" height="5.6" rx="1.4" fill="${c}"/></g>`,
+  wvTwist:c=>`<path fill="${c}" d="M7.5 5.5C16.5 11 16.5 21 25.5 26.5L22.5 28.2C13.2 22.2 13.2 9.8 4.5 7.2Z"/><path fill="${c}" d="M24.5 5.5C15.5 11 15.5 21 6.5 26.5L9.5 28.2C18.8 22.2 18.8 9.8 27.5 7.2Z"/>`,
+  wvBrackets:c=>`<path fill-rule="evenodd" fill="${c}" d="M5 5H13.5V13.5H22.5V21H13.5V13.5H5Z M27 27H18.5V18.5H9.5V11H18.5V18.5H27Z"/>`,
+  wvLattice:c=>`<path fill-rule="evenodd" fill="${c}" d="M9 3.5H23A5.5 5.5 0 0 1 28.5 9V23A5.5 5.5 0 0 1 23 28.5H9A5.5 5.5 0 0 1 3.5 23V9A5.5 5.5 0 0 1 9 3.5Z M10.5 6.6L14.4 10.5L10.5 14.4L6.6 10.5Z M21.5 6.6L25.4 10.5L21.5 14.4L17.6 10.5Z M10.5 17.6L14.4 21.5L10.5 25.4L6.6 21.5Z M21.5 17.6L25.4 21.5L21.5 25.4L17.6 21.5Z"/>`
+};
+
+/* ---- 30 variants, grouped by territory ---- */
+const T = [
+  // KEYSTONE
+  {pal:"keystone", terr:"Keystone", name:"The Voussoir",      mark:"ksSolid",   why:"The wedge itself, at maximum mass — one trapezoid block, no frame. The piece every structure is cut to receive."},
+  {pal:"keystone", terr:"Keystone", name:"The Seated Void",   mark:"ksVoid",    why:"A solid tile with the keystone carved clean out — the structure defined by the part only Yukti supplies. Reduces to a single confident void."},
+  {pal:"keystone", terr:"Keystone", name:"The Triad",         mark:"ksTriad",   why:"Three voussoirs of a flat span — the keystone seated between two haunches that lean on it. Masonry logic, not a building."},
+  {pal:"keystone", terr:"Keystone", name:"The Nested Wedge",  mark:"ksNested",  why:"A keystone holding a smaller keystone in its core — structure inside structure, the same form repeating at depth."},
+  {pal:"keystone", terr:"Keystone", name:"The Assembly",      mark:"ksStacked", why:"Two wedges meeting at a waist — apex block seated on its inverted base. Reads as an object <b>assembled</b>, balanced on one joint."},
+  {pal:"keystone", terr:"Keystone", name:"The Cleft",         mark:"ksSplit",   why:"One keystone split by a hairline of negative space — two halves under load, the seam that proves it bears weight."},
+  {pal:"keystone", terr:"Keystone", name:"The Clasp",         mark:"ksSeated",  why:"A keystone clamped between two jambs — the wedge held in working position. Leverage drawn as a part seated under tension."},
+  {pal:"keystone", terr:"Keystone", name:"The Joint",         mark:"ksJoint",   why:"A stepped seam carved through the wedge — two voussoirs interlocking, the mortise that lets the block transfer load. No part slips."},
+  {pal:"keystone", terr:"Keystone", name:"The Saddle",        mark:"ksSaddle",  why:"A heavy block with a keystone bitten from its crown — a distinctive silhouette that holds the wedge as absence at the apex."},
+  {pal:"keystone", terr:"Keystone", name:"The Monolith",      mark:"ksMonolith",why:"Maximum mass, minimal taper, one seam line — the keystone as a single enduring block. Built to read at favicon and outlast the metaphor."},
+
+  // LOADED MASS
+  {pal:"mass", terr:"Loaded Mass", name:"The Crescent",     mark:"lmCrescent",why:"A disc carved off-axis — weight banked hard to one side. Compounding advantage as a solid that has been <b>wound up</b>."},
+  {pal:"mass", terr:"Loaded Mass", name:"The Notch",        mark:"lmNotch",   why:"A heavy mass with one wedge cut from its crown — tension stored, a single clean release in an otherwise unbroken weight."},
+  {pal:"mass", terr:"Loaded Mass", name:"The Fault",        mark:"lmSplit",   why:"A mass sheared by one diagonal — two weights held in offset balance, momentum frozen at the slip line."},
+  {pal:"mass", terr:"Loaded Mass", name:"The Bore",         mark:"lmCore",    why:"A solid with its bore driven off-center — the load concentrated, an object whose balance you can feel without naming it."},
+  {pal:"mass", terr:"Loaded Mass", name:"The Counterweight",mark:"lmHalf",    why:"A heavy half against a small node — asymmetric balance, the big mass and the point it answers to. Presence over symmetry."},
+  {pal:"mass", terr:"Loaded Mass", name:"The Band",         mark:"lmBar",     why:"A disc with a thick band cut across off-axis — momentum captured as the channel carved through the mass."},
+  {pal:"mass", terr:"Loaded Mass", name:"The Quarter",      mark:"lmWedge",   why:"Three-quarters of a mass, one quadrant released — a sharp, decisive silhouette built on tension and release."},
+  {pal:"mass", terr:"Loaded Mass", name:"The Overlap",      mark:"lmLayered", why:"Two carved masses layered, the overlap cut to a lens — depth and weight in one object. Leverage as mass on mass."},
+  {pal:"mass", terr:"Loaded Mass", name:"The Gnomon",       mark:"lmGnomon",  why:"A quarter-disc with two true edges and one swept arc — a carved form between circle and wedge. Momentum given a body."},
+  {pal:"mass", terr:"Loaded Mass", name:"The Loaded Disc",  mark:"lmDouble",  why:"One solid, two bores of different weight on a diagonal — asymmetric tension that makes the mark difficult to imitate."},
+
+  // WEAVE
+  {pal:"weave", terr:"Weave", name:"The Cross",      mark:"wvCross",    why:"Two bands, one passing over, one under — the irreducible weave. Over-under carved as negative space, so the join is structural."},
+  {pal:"weave", terr:"Weave", name:"The Planes",     mark:"wvPlanes",   why:"Three diagonal planes overlapping into one body — many operational lines layered into a single fabric. Depth, not decoration."},
+  {pal:"weave", terr:"Weave", name:"The Interlace",  mark:"wvInterlace",why:"Two planes layered front-to-back, the seam between them cut clean through — two systems resolving into one shape with real depth."},
+  {pal:"weave", terr:"Weave", name:"The Strata",     mark:"wvChevron",  why:"Stacked chevrons under tension — diagonal threads bound in parallel. A woven block with mass, never a textile."},
+  {pal:"weave", terr:"Weave", name:"The Bind",       mark:"wvDiamonds", why:"Two diamond frames interlocked at the core — integration as two structures that cannot be pulled apart."},
+  {pal:"weave", terr:"Weave", name:"The Link",       mark:"wvLinks",    why:"Two rounded links meshed — the simplest proof of coordination: two parts that hold each other. Survives any size."},
+  {pal:"weave", terr:"Weave", name:"The Plait",      mark:"wvBraid",    why:"One strand crossing a split strand — a flat braid read as structure. Threads becoming fabric, drawn in compound mass."},
+  {pal:"weave", terr:"Weave", name:"The Twist",      mark:"wvTwist",    why:"Two swept bands twisting through center — woven tension captured as momentum. Diagonal, structural, alive."},
+  {pal:"weave", terr:"Weave", name:"The Mesh",       mark:"wvBrackets", why:"Two stepped brackets interlocking like a mortise — interlocking logic with no waste. Coordination as a single carved seam."},
+  {pal:"weave", terr:"Weave", name:"The Lattice",    mark:"wvLattice",  why:"A tile of interlocked diamonds collapsing to one core — many threads compressed into a structural fabric, favicon-safe."}
+];
+
+const svg=(s,inner)=>`<svg width="${s}" height="${s}" viewBox="0 0 32 32" fill="none">${inner}</svg>`;
+
+/* legend */
+document.getElementById("legend").innerHTML = Object.values(P).map(p=>
+  `<div class="lg"><span class="dots"><i style="background:${p.eHex}"></i><i style="background:${p.iHex}"></i></span><b>${p.lab}</b></div>`
+).join("");
+
+/* section meta */
+const SECT = {
+  keystone:{no:"T1", title:"Keystone / Voussoir", sd:"The wedge that lets the structure hold."},
+  mass:{no:"T2", title:"Loaded Mass", sd:"A carved object with weight and presence."},
+  weave:{no:"T3", title:"Interlace / Weave", sd:"Planes interlacing into one fabric."}
+};
+
+/* render */
+let html=""; let last=null; let n=0;
+T.forEach((t)=>{
+  if(t.pal!==last){
+    const s=SECT[t.pal], p=P[t.pal];
+    html+=`<div class="sect"><span class="sno">${s.no}</span><h2>${s.title}</h2><span class="sd">${s.sd}</span><span class="pal"><i style="background:${p.eHex}"></i><i style="background:${p.iHex}"></i>${p.lab}</span></div>`;
+    last=t.pal;
+  }
+  n++;
+  const p=P[t.pal], mk=M[t.mark];
+  html+=`<div class="card" data-screen-label="${String(n).padStart(2,'0')} ${t.name}">
+    <h3><span class="tno">${String(n).padStart(2,'0')}</span>${t.name}</h3>
+    <div class="chips">
+      <div class="chip" style="background:${p.bgL};">${svg(44,mk(p.aL))}<span class="word" style="color:#1b1e24;">yukti</span></div>
+      <div class="chip" style="background:${p.bgD}; border-color:${p.bgD};">${svg(44,mk(p.aD))}<span class="word" style="color:#F2F3F5;">yukti</span></div>
+    </div>
+    <div class="red">
+      <span class="rlab">1-color</span><span class="rgroup">${svg(26,mk(p.mono))}</span>
+      <span class="rlab">favicon</span><span class="rgroup">${svg(16,mk(p.mono))}</span>
+      <span class="rlab" style="margin-left:auto;">${p.eName}</span>
+    </div>
+    <p class="why">${t.why}</p>
+  </div>`;
+});
+document.getElementById("grid").innerHTML = html;
+</script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 <wizard-report>
 # PostHog post-wizard report
 
-The wizard has completed a deep integration of PostHog analytics into the DealFlow Next.js App Router project.
+The wizard has completed a deep integration of PostHog analytics into the yukti Next.js App Router project.
 
 ## Summary of changes
 

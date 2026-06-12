@@ -99,7 +99,7 @@ describe('AuthProvider', () => {
           access_token: 'token',
           user: {
             id: 'user-1',
-            email: 'owner@dealflow.in',
+            email: 'owner@yukti.so',
             phone: '+919999999999',
           },
         },
@@ -111,8 +111,8 @@ describe('AuthProvider', () => {
       data: [
         {
           tenant_id: 'tenant-1',
-          tenant_name: 'DealFlow Demo',
-          tenant_slug: 'dealflow-demo',
+          tenant_name: 'yukti demo',
+          tenant_slug: 'yukti-demo',
           role: 'seller_admin',
         },
       ],
@@ -142,8 +142,8 @@ describe('AuthProvider', () => {
 
   it('clears client auth storage and auth state when Supabase emits SIGNED_OUT', async () => {
     window.sessionStorage.setItem(AUTH_CONTEXTS_STORAGE_KEY, JSON.stringify([{ tenant_id: 'tenant-1' }]));
-    window.sessionStorage.setItem('dealflow_draft_customers', '{"field":"value"}');
-    window.localStorage.setItem('dealflow_draft_products', '{"field":"value"}');
+    window.sessionStorage.setItem('yukti_draft_customers', '{"field":"value"}');
+    window.localStorage.setItem('yukti_draft_products', '{"field":"value"}');
 
     render(
       <AuthProvider>
@@ -152,7 +152,7 @@ describe('AuthProvider', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('owner@dealflow.in')).toBeInTheDocument();
+      expect(screen.getByText('owner@yukti.so')).toBeInTheDocument();
     });
 
     await act(async () => {
@@ -164,8 +164,8 @@ describe('AuthProvider', () => {
     });
 
     expect(window.sessionStorage.getItem(AUTH_CONTEXTS_STORAGE_KEY)).toBeNull();
-    expect(window.sessionStorage.getItem('dealflow_draft_customers')).toBeNull();
-    expect(window.localStorage.getItem('dealflow_draft_products')).toBeNull();
+    expect(window.sessionStorage.getItem('yukti_draft_customers')).toBeNull();
+    expect(window.localStorage.getItem('yukti_draft_products')).toBeNull();
     expect(assignMock).toHaveBeenCalledWith('/login?reason=session_expired');
   });
 });

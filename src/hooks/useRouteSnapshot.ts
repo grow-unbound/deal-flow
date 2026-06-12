@@ -19,8 +19,8 @@ type SnapshotMeta = {
 
 type StateUpdater<T> = T | ((previous: T) => T);
 
-const ROUTE_SNAPSHOT_PREFIX = 'dealflow_route_snapshot:';
-const ROUTE_SCROLL_PREFIX = 'dealflow_route_scroll:';
+const ROUTE_SNAPSHOT_PREFIX = 'yukti_route_snapshot:';
+const ROUTE_SCROLL_PREFIX = 'yukti_route_scroll:';
 const DEFAULT_VERSION = 1;
 
 function getStorage(mode: StorageMode): Storage | null {

@@ -346,7 +346,7 @@ export default function HomePage() {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--cream-900)' }}>{meData.tenant.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--cream-600)', marginTop: 1 }}>{meData.tenant.slug}.dealflow.in</div>
+                  <div style={{ fontSize: 12, color: 'var(--cream-600)', marginTop: 1 }}>{meData.tenant.slug}.yukti.so</div>
                 </div>
               </div>
             ) : null}

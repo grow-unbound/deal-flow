@@ -1,0 +1,37 @@
+<!-- @dsCard group="Components" viewport="700x260" name="Alert" subtitle="Info · success · warning · error · with dismiss" -->
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;600;700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;padding:24px 28px;background:#F8F6F2;font-family:'Mukta',sans-serif;-webkit-font-smoothing:antialiased;color:#221E1A;}
+  .alerts{display:flex;flex-direction:column;gap:10px;}
+  .alert{display:flex;gap:12px;padding:13px 15px;border-radius:10px;border:1px solid;align-items:flex-start;}
+  .alert-body{flex:1;display:flex;flex-direction:column;gap:3px;}
+  .alert-title{font-size:14px;font-weight:700;letter-spacing:-.01em;line-height:1.3;margin:0;}
+  .alert-text{font-size:13.5px;line-height:1.55;margin:0;opacity:.85;}
+  .dismiss{background:none;border:none;cursor:pointer;opacity:.5;padding:1px;display:flex;align-items:center;flex-shrink:0;}
+  .ico{display:flex;align-items:center;flex-shrink:0;padding-top:1px;}
+</style>
+</head>
+<body>
+<div class="alerts">
+  <div class="alert" style="background:rgba(42,95,138,.09);border-color:rgba(42,95,138,.20);">
+    <span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="#2A5F8A" stroke-width="1.5"/><circle cx="8" cy="5.2" r=".8" fill="#2A5F8A"/><line x1="8" y1="7.5" x2="8" y2="11.2" stroke="#2A5F8A" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+    <div class="alert-body"><p class="alert-title" style="color:#2A5F8A;">Catalog published to 3 cohorts</p><p class="alert-text" style="color:#2A5F8A;">Your Summer 2026 catalog is now live for North Delhi A-class, Premium, and All buyers.</p></div>
+    <button class="dismiss" style="color:#2A5F8A;"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><line x1="3" y1="3" x2="11" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="11" y1="3" x2="3" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+  </div>
+  <div class="alert" style="background:rgba(31,107,58,.09);border-color:rgba(31,107,58,.20);">
+    <span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="#1F6B3A" stroke-width="1.5"/><path d="M5 8.2L7.2 10.4L11 6" stroke="#1F6B3A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    <div class="alert-body"><p class="alert-title" style="color:#1F6B3A;">Order YK-9F3A confirmed</p><p class="alert-text" style="color:#1F6B3A;">₹ 24,800 order from Rajan Traders has been confirmed and is ready to dispatch.</p></div>
+  </div>
+  <div class="alert" style="background:rgba(138,87,0,.08);border-color:rgba(138,87,0,.18);">
+    <span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2L14.7 13.5H1.3Z" stroke="#8A5700" stroke-width="1.5" stroke-linejoin="round" fill="none"/><line x1="8" y1="7" x2="8" y2="10.2" stroke="#8A5700" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11.8" r=".8" fill="#8A5700"/></svg></span>
+    <div class="alert-body"><p class="alert-title" style="color:#8A5700;">3 prices need review</p><p class="alert-text" style="color:#8A5700;">Base prices for Amul Butter 500g, Parle-G 800g, and Surf Excel 1kg are below cost.</p></div>
+  </div>
+  <div class="alert" style="background:rgba(156,48,38,.08);border-color:rgba(156,48,38,.18);">
+    <span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="#9C3026" stroke-width="1.5"/><line x1="5.5" y1="5.5" x2="10.5" y2="10.5" stroke="#9C3026" stroke-width="1.5" stroke-linecap="round"/><line x1="10.5" y1="5.5" x2="5.5" y2="10.5" stroke="#9C3026" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+    <div class="alert-body"><p class="alert-title" style="color:#9C3026;">That didn't save</p><p class="alert-text" style="color:#9C3026;">The product update failed. Check your connection and try again — no changes were made.</p></div>
+    <button class="dismiss" style="color:#9C3026;"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><line x1="3" y1="3" x2="11" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="11" y1="3" x2="3" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+  </div>
+</div>
+</body></html>

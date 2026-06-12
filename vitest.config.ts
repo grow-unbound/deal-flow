@@ -12,11 +12,13 @@ export default defineConfig({
     include: [
       'src/__tests__/**/*.test.{ts,tsx}',
       'src/tests/**/*.test.{ts,tsx}',
+      'workers/**/*.test.{ts,tsx}',
     ],
   },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      sharp: path.resolve(__dirname, './workers/yukti-image-worker/src/sharp-test-entry.ts'),
     },
   },
 });

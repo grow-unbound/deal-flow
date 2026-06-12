@@ -8,7 +8,7 @@ const DEFAULT_FLIP_THRESHOLD = 280;
 
 /**
  * Flip inline combobox overlays above the anchor when there is not enough
- * space below (DealFlow DS: SOPickerFlipUp — &lt; 280px below anchor).
+ * space below (yukti DS: SOPickerFlipUp — &lt; 280px below anchor).
  */
 export function useOverlayPlacement(
   open: boolean,
