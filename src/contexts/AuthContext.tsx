@@ -5,6 +5,7 @@ import { Session } from '@supabase/supabase-js';
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser';
 import { clearAuthClientStorage, getSessionExpiredRedirectPath } from '@/lib/auth-session';
 import { type Role } from '@/constants';
+import { clearClientAuthSnapshot, setClientAuthSnapshot } from '@/lib/auth-client-store';
 import posthog from 'posthog-js';
 import { resolveUserDisplayName } from '@/lib/user-display-name';
 
@@ -50,6 +51,12 @@ export interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+type SessionClaims = {
+  tenantId: string | null;
+  buyerId: string | null;
+  role: Role | null;
+};
+
 function decodeJwtPayloadClient(token: string): Record<string, unknown> | null {
   try {
     const payload = token.split('.')[1];
@@ -73,75 +80,145 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isError, setIsError] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const manualSignOutRef = React.useRef(false);
+  const claimsKeyRef = React.useRef<string | null>(null);
+  const tenantProfileRef = React.useRef<TenantProfile | null>(null);
 
   const resetAuthState = () => {
     clearAuthClientStorage();
+    clearClientAuthSnapshot();
     setSession(null);
     setUser(null);
     setTenantProfile(null);
+    tenantProfileRef.current = null;
     setBuyerProfiles([]);
     setCurrentTenantId(null);
     setCurrentBuyerId(null);
   };
 
-  const hydrateWorkspace = async (activeSession: Session) => {
-    const { data: wsRows, error: wsError } = await (supabase as any).rpc('get_user_workspace', {
-      p_user_id: activeSession.user.id,
+  const readSessionClaims = (activeSession: Session): SessionClaims => {
+    const claims = decodeJwtPayloadClient(activeSession.access_token);
+    const tenantId = typeof claims?.tenant_id === 'string' ? claims.tenant_id : null;
+    const buyerId = typeof claims?.buyer_id === 'string' ? claims.buyer_id : null;
+    const roleClaim = claims?.user_role ?? claims?.role;
+    const role = typeof roleClaim === 'string' ? (roleClaim as Role) : null;
+
+    return { tenantId, buyerId, role };
+  };
+
+  const identifyForAnalytics = (activeSession: Session, claims: SessionClaims) => {
+    if (!activeSession.user.id) return;
+
+    posthog.identify(activeSession.user.id, {
+      email: activeSession.user.email,
+      tenant_id: claims.tenantId,
+      role: claims.role,
+    });
+  };
+
+  const shouldHydrateWorkspace = (claims: SessionClaims) => {
+    if (!claims.tenantId) return false;
+    if (!claims.role) return false;
+    if (!tenantProfileRef.current) return true;
+    return tenantProfileRef.current.tenant_id !== claims.tenantId
+      || tenantProfileRef.current.role !== claims.role
+      || !tenantProfileRef.current.tenant_name
+      || !tenantProfileRef.current.tenant_slug;
+  };
+
+  const hydrateWorkspace = async (activeSession: Session, claims: SessionClaims) => {
+    const response = await fetch('/api/tenant/current', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${activeSession.access_token}`,
+      },
     });
 
-    if (wsError) {
-      throw wsError;
+    if (!response.ok) {
+      throw new Error(`Workspace initialization failed (${response.status})`);
     }
 
-    const ws = (wsRows as any[] | null)?.[0] ?? null;
-    if (!ws?.tenant_id) {
+    const payload = (await response.json()) as {
+      tenant?: {
+        id: string;
+        slug: string;
+        business_name: string;
+      };
+      role?: string;
+    };
+
+    const tenant = payload.tenant;
+    if (!tenant?.id) {
       setTenantProfile(null);
+      tenantProfileRef.current = null;
       setCurrentTenantId(null);
       return;
     }
 
-    setTenantProfile({
-      id: ws.tenant_id, // using tenant_id as profile id (row id not available from RPC)
-      tenant_id: ws.tenant_id,
+    const nextProfile = {
+      id: tenant.id,
+      tenant_id: tenant.id,
       user_id: activeSession.user.id,
-      role: ws.role as Role,
-      tenant_name: (ws.tenant_name as string | null) ?? null,
-      tenant_slug: (ws.tenant_slug as string | null) ?? null,
+      role: (payload.role as Role | undefined) ?? claims.role ?? 'seller_assistant',
+      tenant_name: tenant.business_name,
+      tenant_slug: tenant.slug,
       is_active: true,
-    });
-    setCurrentTenantId(ws.tenant_id);
-
-    if (activeSession.user.id) {
-      posthog.identify(activeSession.user.id, {
-        email: activeSession.user.email,
-        tenant_id: ws.tenant_id,
-        role: ws.role,
-      });
-      posthog.reloadFeatureFlags();
-    }
+    };
+    setTenantProfile(nextProfile);
+    tenantProfileRef.current = nextProfile;
+    setCurrentTenantId(tenant.id);
   };
 
   // Initialize auth session
   useEffect(() => {
-    const primeWorkspaceFromToken = (activeSession: Session) => {
-      const claims = decodeJwtPayloadClient(activeSession.access_token);
-      const claimTenantId = typeof claims?.tenant_id === 'string' ? claims.tenant_id : null;
-      const claimRole = typeof claims?.role === 'string' ? claims.role : null;
-
-      if (!claimTenantId) return;
-
-      setCurrentTenantId(claimTenantId);
-      if (claimRole) {
-        setTenantProfile((prev) => ({
-          id: prev?.id ?? claimTenantId,
-          tenant_id: claimTenantId,
-          user_id: activeSession.user.id,
-          role: claimRole as Role,
-          tenant_name: prev?.tenant_name ?? null,
-          tenant_slug: prev?.tenant_slug ?? null,
-          is_active: true,
-        }));
+    const syncClientSnapshot = (activeSession: Session | null) => {
+      if (!activeSession?.access_token) {
+        clearClientAuthSnapshot();
+        return;
       }
+
+      setClientAuthSnapshot({ accessToken: activeSession.access_token });
+    };
+
+    const primeWorkspaceFromToken = (activeSession: Session) => {
+      const claims = readSessionClaims(activeSession);
+
+      if (claims.tenantId) {
+        setCurrentTenantId(claims.tenantId);
+      } else {
+        setCurrentTenantId(null);
+      }
+
+      setCurrentBuyerId(claims.buyerId);
+
+      if (!claims.tenantId || !claims.role) {
+        setTenantProfile(null);
+        tenantProfileRef.current = null;
+        return claims;
+      }
+
+      const previous = tenantProfileRef.current;
+      const nextProfile = {
+        id: previous?.id ?? claims.tenantId!,
+        tenant_id: claims.tenantId!,
+        user_id: activeSession.user.id,
+        role: claims.role!,
+        tenant_name: previous?.tenant_name ?? null,
+        tenant_slug: previous?.tenant_slug ?? null,
+        is_active: true,
+      };
+      setTenantProfile(nextProfile);
+      tenantProfileRef.current = nextProfile;
+
+      return claims;
+    };
+
+    const maybeHydrateWorkspace = (activeSession: Session, claims: SessionClaims) => {
+      if (!shouldHydrateWorkspace(claims)) return;
+
+      void hydrateWorkspace(activeSession, claims).catch((err) => {
+        setIsError(true);
+        setError(err instanceof Error ? err : new Error('Workspace initialization failed'));
+      });
     };
 
     const initializeAuth = async () => {
@@ -155,25 +232,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (sessionError) throw sessionError;
 
         setSession(currentSession);
+        syncClientSnapshot(currentSession);
 
         if (currentSession?.user) {
-        setUser({
-          id: currentSession.user.id,
-          email: currentSession.user.email || '',
-          displayName: resolveUserDisplayName(
-            currentSession.user.user_metadata as Record<string, unknown> | undefined,
-            currentSession.user.email,
-            currentSession.user.email || 'Team member',
-          ),
-          phone: currentSession.user.phone,
-        });
-          primeWorkspaceFromToken(currentSession);
-
-          // Do not block first render on workspace hydration.
-          void hydrateWorkspace(currentSession).catch((err) => {
-            setIsError(true);
-            setError(err instanceof Error ? err : new Error('Workspace initialization failed'));
+          setUser({
+            id: currentSession.user.id,
+            email: currentSession.user.email || '',
+            displayName: resolveUserDisplayName(
+              currentSession.user.user_metadata as Record<string, unknown> | undefined,
+              currentSession.user.email,
+              currentSession.user.email || 'Team member',
+            ),
+            phone: currentSession.user.phone,
           });
+          const claims = primeWorkspaceFromToken(currentSession);
+          claimsKeyRef.current = `${claims.tenantId ?? ''}:${claims.role ?? ''}:${claims.buyerId ?? ''}`;
+          identifyForAnalytics(currentSession, claims);
+          maybeHydrateWorkspace(currentSession, claims);
         }
       } catch (err) {
         setIsError(true);
@@ -190,6 +265,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       setSession(newSession);
+      syncClientSnapshot(newSession);
       if (newSession?.user) {
         setUser({
           id: newSession.user.id,
@@ -201,14 +277,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           ),
           phone: newSession.user.phone,
         });
-        primeWorkspaceFromToken(newSession);
+        const previousClaimsKey = claimsKeyRef.current;
+        const claims = primeWorkspaceFromToken(newSession);
+        const nextClaimsKey = `${claims.tenantId ?? ''}:${claims.role ?? ''}:${claims.buyerId ?? ''}`;
+        claimsKeyRef.current = nextClaimsKey;
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
           setIsError(false);
           setError(null);
-          void hydrateWorkspace(newSession).catch((err) => {
-            setIsError(true);
-            setError(err instanceof Error ? err : new Error('Workspace initialization failed'));
-          });
+          identifyForAnalytics(newSession, claims);
+          if (event === 'SIGNED_IN' || previousClaimsKey !== nextClaimsKey || shouldHydrateWorkspace(claims)) {
+            maybeHydrateWorkspace(newSession, claims);
+          }
         }
       } else {
         resetAuthState();

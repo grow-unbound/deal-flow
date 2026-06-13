@@ -19,7 +19,7 @@ interface BrandDetailsTabProps {
 }
 
 export function BrandDetailsTab({ details, onSave, isSaving }: BrandDetailsTabProps) {
-  const [isEditing, setIsEditing] = useState(false);
+  const isEditing = false;
   const [form, setForm] = useState({
     display_name_override: details.display_name_override ?? '',
     margin_pct: details.margin_pct != null ? String(details.margin_pct) : '',
@@ -32,14 +32,6 @@ export function BrandDetailsTab({ details, onSave, isSaving }: BrandDetailsTabPr
     <section className="mt-5 overflow-hidden rounded-[14px] border border-cream-300 bg-white">
       <div className="flex items-center justify-between border-b border-cream-300 px-5 py-4">
         <h2 className="font-display text-[17px] text-cream-950">Details</h2>
-        <Button
-          type="button"
-          className="h-9 gap-1.5 border border-cream-400 bg-white px-4 text-[13px] font-medium text-teal-700 hover:bg-cream-100"
-          onClick={() => setIsEditing((prev) => !prev)}
-        >
-          <Pencil size={14} />
-          Edit Details
-        </Button>
       </div>
 
       <div className="p-5">

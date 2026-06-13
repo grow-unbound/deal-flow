@@ -4,32 +4,7 @@ import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { CohortsLandingClient } from '@/components/seller/cohorts/CohortsLandingClient';
 import type { CohortsLandingResponse } from '@/hooks/useCohorts';
 import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
-import type { SellerLandingPeriod } from '@/lib/seller-period';
-import { getFlag, FLAGS } from '@/lib/flags';
-
-async function getCohortsInitialData(period: SellerLandingPeriod): Promise<CohortsLandingResponse | null> {
-  const h = await headers();
-  const host = h.get('x-forwarded-host') ?? h.get('host');
-  if (!host) return null;
-
-  const proto = h.get('x-forwarded-proto') ?? (host.includes('localhost') ? 'http' : 'https');
-  const cookie = h.get('cookie') ?? '';
-
-  try {
-    const response = await fetch(`${proto}://${host}/api/tenant/cohorts?period=${period}`, {
-      method: 'GET',
-      cache: 'no-store',
-      headers: {
-        cookie,
-      },
-    });
-
-    if (!response.ok) return null;
-    return (await response.json()) as CohortsLandingResponse;
-  } catch {
-    return null;
-  }
-}
+import { fetchSellerPageBootstrap } from '@/lib/server/seller-page-bootstrap';
 
 export default async function CohortsPage({
   searchParams,
@@ -40,9 +15,8 @@ export default async function CohortsPage({
   const tenantId = h.get('x-verified-tenant-id');
   if (!tenantId) redirect('/dashboard');
 
-  if (!(await getFlag(FLAGS.COHORTS, tenantId))) return <FeatureForbiddenPage />;
-
   const period = await resolveSellerLandingPeriod(searchParams);
-  const initialData = await getCohortsInitialData(period);
+  const { data: initialData, status } = await fetchSellerPageBootstrap<CohortsLandingResponse>(`/api/tenant/cohorts?period=${period}`);
+  if (status === 403) return <FeatureForbiddenPage />;
   return <CohortsLandingClient initialData={initialData} initialPeriod={period} />;
 }

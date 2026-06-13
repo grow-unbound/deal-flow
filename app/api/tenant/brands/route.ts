@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { createTenantBrand } from '@/lib/server/tenant-brand-create';
+import { getPostHogClient } from '@/lib/posthog-server';
 
 type BrandAggregate = {
   brandId: string;
@@ -20,8 +21,10 @@ type BrandAggregate = {
 type TenantBrandLandingRow = {
   id: string;
   tenant_id: string;
-  master_brand_id: string;
+  master_brand_id: string | null;
   display_name_override: string | null;
+  slug: string | null;
+  description: string | null;
   logo_url: string | null;
   margin_pct: number | null;
   exclusivity: boolean | null;
@@ -81,6 +84,8 @@ export async function GET(req: NextRequest) {
         tenant_id,
         master_brand_id,
         display_name_override,
+        slug,
+        description,
         logo_url,
         margin_pct,
         exclusivity,
@@ -111,7 +116,9 @@ export async function GET(req: NextRequest) {
 
     const tenantBrands = tenantBrandsData ?? [];
     const brandIds = tenantBrands.map((b: { id: string }) => b.id);
-    const masterBrandIds = tenantBrands.map((b: { master_brand_id: string }) => b.master_brand_id);
+    const masterBrandIds = tenantBrands
+      .map((b: { master_brand_id: string | null }) => b.master_brand_id)
+      .filter(Boolean);
 
     let masterBrands: Record<string, { id: string; name: string; slug: string; logo_url: string | null; description: string | null }> = {};
     if (masterBrandIds.length > 0) {
@@ -445,8 +452,10 @@ export async function GET(req: NextRequest) {
       (row: {
         id: string;
         tenant_id: string;
-        master_brand_id: string;
+        master_brand_id: string | null;
         display_name_override: string | null;
+        slug: string | null;
+        description: string | null;
         margin_pct: number | null;
         exclusivity: boolean | null;
         is_active: boolean;
@@ -470,7 +479,7 @@ export async function GET(req: NextRequest) {
 
         return {
           ...row,
-          master_brand: masterBrands[row.master_brand_id] ?? null,
+          master_brand: row.master_brand_id ? masterBrands[row.master_brand_id] ?? null : null,
           gmv_mtd: gmvMtd,
           gmv_prev_mtd: gmvPrevMtd,
           growth_pct: growthPct,
@@ -507,9 +516,9 @@ export async function GET(req: NextRequest) {
       todays_read: {
         needs_attention: brands
           .filter((b) => b.alerts.length > 0)
-          .map((b) => ({ id: b.id, name: b.display_name_override ?? b.master_brand?.name ?? 'Unknown brand', growth_pct: b.growth_pct, alerts: b.alerts })),
-        top_performers: byGmv.slice(0, 3).map((b) => ({ id: b.id, name: b.display_name_override ?? b.master_brand?.name ?? 'Unknown brand', gmv_mtd: b.gmv_mtd })),
-        top_risers: byGrowth.slice(0, 3).map((b) => ({ id: b.id, name: b.display_name_override ?? b.master_brand?.name ?? 'Unknown brand', growth_pct: b.growth_pct, gmv_mtd: b.gmv_mtd, gmv_prev_mtd: b.gmv_prev_mtd })),
+          .map((b) => ({ id: b.id, name: b.display_name_override ?? 'Unknown brand', growth_pct: b.growth_pct, alerts: b.alerts })),
+        top_performers: byGmv.slice(0, 3).map((b) => ({ id: b.id, name: b.display_name_override ?? 'Unknown brand', gmv_mtd: b.gmv_mtd })),
+        top_risers: byGrowth.slice(0, 3).map((b) => ({ id: b.id, name: b.display_name_override ?? 'Unknown brand', growth_pct: b.growth_pct, gmv_mtd: b.gmv_mtd, gmv_prev_mtd: b.gmv_prev_mtd })),
       },
       categories,
       brands,
@@ -538,6 +547,22 @@ export async function POST(req: NextRequest) {
     const db = supabaseAdmin as any;
     const body = await req.json();
     const created = await createTenantBrand(db, claims, body);
+
+    try {
+      const ph = getPostHogClient();
+      ph.capture({
+        distinctId: claims.sub ?? claims.tenant_id,
+        event: 'brand_created',
+        properties: {
+          tenant_id: claims.tenant_id,
+          brand_id: (created as { id?: string })?.id,
+        },
+      });
+      await ph.flush();
+    } catch {
+      // non-blocking
+    }
+
     return NextResponse.json(created, { status: 201 });
   } catch (err) {
     if (err && typeof err === 'object' && 'status' in err && 'error' in err) {

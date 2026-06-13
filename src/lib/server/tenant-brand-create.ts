@@ -22,13 +22,20 @@ function nullableNumber(value?: number | null) {
 function buildTenantBrandInsert(
   input: BrandCreateInput,
   tenantId: string,
-  masterBrandId: string,
   actorId: string | null,
+  options: {
+    masterBrandId?: string | null;
+    displayName: string;
+    slug?: string | null;
+    description?: string | null;
+  },
 ) {
   return {
     tenant_id: tenantId,
-    master_brand_id: masterBrandId,
-    display_name_override: emptyToNull(input.display_name_override),
+    master_brand_id: options.masterBrandId ?? null,
+    display_name_override: emptyToNull(options.displayName),
+    slug: emptyToNull(options.slug),
+    description: emptyToNull(options.description),
     logo_url: emptyToNull(input.logo_url),
     margin_pct: nullableNumber(input.margin_pct),
     exclusivity: input.exclusivity ?? false,
@@ -93,6 +100,21 @@ export async function createTenantBrand(
   const actorId = claims.sub ?? claims.tenant_id;
 
   if (parsed.data.mode === 'import') {
+    const { data: masterBrand, error: masterBrandError } = await db
+      .schema('catalog')
+      .from('brands')
+      .select('id, name, slug, logo_url, description')
+      .eq('id', parsed.data.master_brand_id)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (masterBrandError || !masterBrand) {
+      throw {
+        status: 404,
+        error: 'Brand not found in master catalog',
+      } satisfies TenantBrandCreateError;
+    }
+
     const { data: existing } = await db
       .schema('app')
       .from('tenant_brands')
@@ -113,7 +135,17 @@ export async function createTenantBrand(
     const { data: inserted, error: insertError } = await db
       .schema('app')
       .from('tenant_brands')
-      .insert(buildTenantBrandInsert(parsed.data, claims.tenant_id, parsed.data.master_brand_id, actorId))
+      .insert(
+        buildTenantBrandInsert(parsed.data, claims.tenant_id, actorId, {
+          masterBrandId: parsed.data.master_brand_id,
+          displayName:
+            emptyToNull(parsed.data.display_name_override) ??
+            emptyToNull(parsed.data.name) ??
+            masterBrand.name,
+          slug: parsed.data.slug ?? masterBrand.slug,
+          description: parsed.data.description ?? masterBrand.description,
+        }),
+      )
       .select('*')
       .single();
 
@@ -132,13 +164,6 @@ export async function createTenantBrand(
       } satisfies TenantBrandCreateError;
     }
 
-    const { data: masterBrand } = await db
-      .schema('catalog')
-      .from('brands')
-      .select('id, name, slug, logo_url, description')
-      .eq('id', parsed.data.master_brand_id)
-      .maybeSingle();
-
     return {
       brand: {
         ...inserted,
@@ -147,24 +172,38 @@ export async function createTenantBrand(
     };
   }
 
-  const { data: newBrand, error: brandError } = await db
-    .schema('catalog')
-    .from('brands')
-    .insert({
-      name: parsed.data.name,
-      slug: parsed.data.slug,
-      description: emptyToNull(parsed.data.description),
-      logo_url: emptyToNull(parsed.data.logo_url),
-      is_public: false,
-      origin_tenant_id: claims.tenant_id,
-      created_by: actorId,
-      updated_by: actorId,
-    })
-    .select('id, name, slug, logo_url, description, is_public, origin_tenant_id')
+  const { data: existingCustomBrand } = await db
+    .schema('app')
+    .from('tenant_brands')
+    .select('id')
+    .eq('tenant_id', claims.tenant_id)
+    .eq('slug', parsed.data.slug)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (existingCustomBrand) {
+    throw {
+      status: 409,
+      error: 'A brand with this slug already exists.',
+    } satisfies TenantBrandCreateError;
+  }
+
+  const { data: tenantBrand, error: tenantBrandError } = await db
+    .schema('app')
+    .from('tenant_brands')
+    .insert(
+      buildTenantBrandInsert(parsed.data, claims.tenant_id, actorId, {
+        masterBrandId: null,
+        displayName: parsed.data.name,
+        slug: parsed.data.slug,
+        description: parsed.data.description,
+      }),
+    )
+    .select('*')
     .single();
 
-  if (brandError) {
-    if (brandError.code === '23505') {
+  if (tenantBrandError) {
+    if (tenantBrandError.code === '23505') {
       throw {
         status: 409,
         error: 'A brand with this slug already exists.',
@@ -174,21 +213,6 @@ export async function createTenantBrand(
     throw {
       status: 500,
       error: 'Failed to create brand',
-      details: brandError,
-    } satisfies TenantBrandCreateError;
-  }
-
-  const { data: tenantBrand, error: tenantBrandError } = await db
-    .schema('app')
-    .from('tenant_brands')
-    .insert(buildTenantBrandInsert(parsed.data, claims.tenant_id, newBrand.id, actorId))
-    .select('*')
-    .single();
-
-  if (tenantBrandError) {
-    throw {
-      status: 500,
-      error: 'Failed to link brand to tenant',
       details: tenantBrandError,
     } satisfies TenantBrandCreateError;
   }
@@ -196,7 +220,7 @@ export async function createTenantBrand(
   return {
     brand: {
       ...tenantBrand,
-      master_brand: newBrand,
+      master_brand: null,
     },
   };
 }

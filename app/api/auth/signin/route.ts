@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
     if (subdomain && supabaseAdmin) {
       const db = supabaseAdmin as any; // eslint-disable-line @typescript-eslint/no-explicit-any
       const { data: tenantRow } = await db
+        .schema('app')
         .from('tenants')
         .select('id')
         .eq('subdomain', subdomain)

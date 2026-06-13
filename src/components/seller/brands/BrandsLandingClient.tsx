@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { UserPlus, Plus, Layers } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import Link from 'next/link';
 
 import { FeatureGate } from '@/components/FeatureGate';
 import {
@@ -382,11 +381,9 @@ function BrandLandingContent({
                 : 'Add your first brand to start building your catalog and pricing.'
             }
             action={
-              <Button variant="accent" asChild>
-                <Link href="/brands/new" className="inline-flex items-center gap-1.5">
-                  <Plus size={13} />
-                  Add a brand
-                </Link>
+              <Button variant="accent" onClick={() => setAddBrandOpen(true)} className="inline-flex items-center gap-1.5">
+                <Plus size={13} />
+                Add a brand
               </Button>
             }
           />

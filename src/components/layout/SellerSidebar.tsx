@@ -20,8 +20,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { useIdleRoutePrefetch } from '@/hooks/useIdleRoutePrefetch';
 import { Pressable } from '@/components/ui/pressable';
-import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useRole } from '@/hooks/useRole';
+import type { SellerShellFeatureAvailability } from '@/lib/server/seller-features';
 export type NavFlagKey =
   | 'df_brand_product_master'
   | 'df_customer_master'
@@ -31,7 +31,8 @@ export type NavFlagKey =
   | 'df_estimates'
   | 'df_sales_orders'
   | 'df_invoices'
-  | 'df_tally_export';
+  | 'df_tally_export'
+  | 'df_integrations';
 
 type NavFlagConstant =
   | 'BRAND_PRODUCT_MASTER'
@@ -42,7 +43,8 @@ type NavFlagConstant =
   | 'ESTIMATES'
   | 'SALES_ORDERS'
   | 'INVOICES'
-  | 'TALLY_EXPORT';
+  | 'TALLY_EXPORT'
+  | 'INTEGRATIONS';
 
 export interface NavItem {
   label: string;
@@ -69,6 +71,7 @@ const FLAG_KEY_TO_FEATURE: Record<NavFlagKey, NavFlagConstant> = {
   df_sales_orders: 'SALES_ORDERS',
   df_invoices: 'INVOICES',
   df_tally_export: 'TALLY_EXPORT',
+  df_integrations: 'INTEGRATIONS',
 };
 
 export const navGroups: NavGroup[] = [
@@ -115,6 +118,7 @@ export const navGroups: NavGroup[] = [
             href: '/settings/integrations',
             icon: LinkIcon as FC<{ size?: number; className?: string }>,
             adminOnly: true,
+            flagKey: 'df_integrations',
           },
           {
             label: 'Billing & Plan',
@@ -152,7 +156,9 @@ export function collectPrefetchHrefs(
     .filter((item) => !item.adminOnly || isSellerAdmin)
     .flatMap((item) => [
       item.href,
-      ...(item.children?.filter((child) => !child.adminOnly || isSellerAdmin).map((child) => child.href) ?? []),
+      ...(item.children
+        ?.filter((child) => isNavItemVisible(child) && (!child.adminOnly || isSellerAdmin))
+        .map((child) => child.href) ?? []),
     ]);
 }
 
@@ -169,12 +175,14 @@ interface SellerSidebarProps {
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
   canCollapse?: boolean;
+  featureAvailability: SellerShellFeatureAvailability;
 }
 
 export function SellerSidebar({
   isCollapsed = false,
   onToggleCollapse = () => undefined,
   canCollapse = true,
+  featureAvailability,
 }: SellerSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -197,27 +205,19 @@ export function SellerSidebar({
       // ignore
     }
   }, [pathname, isUnderSettingsRoute]);
-  const brandProductFlag = useFlagState('BRAND_PRODUCT_MASTER');
-  const customerMasterFlag = useFlagState('CUSTOMER_MASTER');
-  const cohortsFlag = useFlagState('COHORTS');
-  const pricingEngineFlag = useFlagState('PRICING_ENGINE');
-  const catalogPublishingFlag = useFlagState('CATALOG_PUBLISHING');
-  const estimatesFlag = useFlagState('ESTIMATES');
-  const salesOrdersFlag = useFlagState('SALES_ORDERS');
-  const invoicesFlag = useFlagState('INVOICES');
-  const tallyExportFlag = useFlagState('TALLY_EXPORT');
 
   function getFlag(key: NavFlagKey): boolean | undefined {
     const map: Record<NavFlagKey, boolean | undefined> = {
-      df_brand_product_master: brandProductFlag,
-      df_customer_master: customerMasterFlag,
-      df_cohorts: cohortsFlag,
-      df_pricing_engine: pricingEngineFlag,
-      df_catalog_publishing: catalogPublishingFlag,
-      df_estimates: estimatesFlag,
-      df_sales_orders: salesOrdersFlag,
-      df_invoices: invoicesFlag,
-      df_tally_export: tallyExportFlag,
+      df_brand_product_master: featureAvailability.brandProductMaster,
+      df_customer_master: featureAvailability.customerMaster,
+      df_cohorts: featureAvailability.cohorts,
+      df_pricing_engine: featureAvailability.pricingEngine,
+      df_catalog_publishing: featureAvailability.catalogPublishing,
+      df_estimates: featureAvailability.estimates,
+      df_sales_orders: featureAvailability.salesOrders,
+      df_invoices: featureAvailability.invoices,
+      df_tally_export: featureAvailability.tallyExport,
+      df_integrations: featureAvailability.integrations,
     };
     return map[key];
   }
@@ -239,7 +239,7 @@ export function SellerSidebar({
   }
 
   function renderNavItem(item: NavItem) {
-    const visibleChildren = item.children?.filter((c) => !c.adminOnly || isSellerAdmin) ?? [];
+    const visibleChildren = item.children?.filter((c) => isNavItemVisible(c) && (!c.adminOnly || isSellerAdmin)) ?? [];
     const isSettingsGroup = item.href === '/settings' && visibleChildren.length > 0;
 
     if (isSettingsGroup) {
