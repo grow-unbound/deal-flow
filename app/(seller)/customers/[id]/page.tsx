@@ -1,7 +1,6 @@
 'use client';
 
-import { use, useMemo } from 'react';
-import Link from 'next/link';
+import { use, useMemo, useState } from 'react';
 import { Download, Share2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
@@ -11,6 +10,7 @@ import { ErrorState } from '@/components/ui/empty-state';
 import { PageWrap } from '@/components/seller/layout';
 import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
 import { CustomerActivityTab, CustomerDetailsTab, CustomerOrdersTab, CustomerPerformanceTab } from '@/components/seller/customers/detail';
+import { AddCustomerDialog } from '@/components/seller/customers/AddCustomerDialog';
 import { useRole } from '@/hooks/useRole';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useTenantCustomerDetail, useToggleCustomerStatusOptimistic } from '@/hooks/useCustomersLanding';
@@ -78,6 +78,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const { isSellerAdmin } = useRole();
   const { data, isLoading, isError, error } = useTenantCustomerDetail(id);
   const statusMutation = useToggleCustomerStatusOptimistic(id);
+  const [editOpen, setEditOpen] = useState(false);
 
   const tiles = useMemo(() => {
     if (!data) return [];
@@ -168,16 +169,14 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           onChange={(value) => setTab(value as TabId)}
         />
 
-        {tab === 'details' ? <CustomerDetailsTab id={id} details={data.details} /> : null}
+        {tab === 'details' ? <CustomerDetailsTab id={id} details={data.details} onEdit={() => setEditOpen(true)} /> : null}
         {tab === 'performance' ? <CustomerPerformanceTab performance={data.performance} performanceV2={data.performance_v2} /> : null}
         {tab === 'orders' ? <CustomerOrdersTab orders={data.orders.rows} /> : null}
         {tab === 'activity' ? <CustomerActivityTab activity={data.activity} /> : null}
 
         {isSellerAdmin && tab === 'details' ? (
           <div className="mt-4 flex items-center gap-2">
-            <Link href={`/customers/${id}/edit`}>
-              <Button type="button" variant="secondary" size="sm">Edit</Button>
-            </Link>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setEditOpen(true)}>Edit</Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button type="button" variant="destructive" size="sm">
@@ -206,6 +205,31 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             </AlertDialog>
           </div>
         ) : null}
+
+        <AddCustomerDialog
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          mode="edit"
+          customerId={id}
+          defaultValues={{
+            business_name: data.details.business_name,
+            contact_name: data.details.contact_name ?? '',
+            phone: data.details.phone ?? '',
+            email: data.details.email ?? '',
+            gstin: data.details.gstin ?? '',
+            external_ref: data.details.external_ref ?? '',
+            credit_limit: data.details.credit_limit ?? 0,
+            payment_terms_days: data.details.payment_terms_days ?? 0,
+            tier: data.details.tier ?? data.header.tier ?? undefined,
+            default_cohort_id: data.details.default_cohort_id ?? null,
+            geography: {
+              city: data.details.city ?? '',
+              state: data.details.state ?? '',
+              pincode: data.details.pincode ?? '',
+              zone: data.details.zone ?? '',
+            },
+          }}
+        />
       </PageWrap>
     </FeatureGate>
   );

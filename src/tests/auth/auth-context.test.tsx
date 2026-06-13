@@ -5,19 +5,17 @@ import { AUTH_CONTEXTS_STORAGE_KEY } from '@/lib/auth-session';
 
 const {
   assignMock,
+  fetchMock,
   getSessionMock,
   identifyMock,
   onAuthStateChangeMock,
-  reloadFeatureFlagsMock,
-  rpcMock,
   signOutMock,
 } = vi.hoisted(() => ({
   assignMock: vi.fn(),
+  fetchMock: vi.fn(),
   getSessionMock: vi.fn(),
   identifyMock: vi.fn(),
   onAuthStateChangeMock: vi.fn(),
-  reloadFeatureFlagsMock: vi.fn(),
-  rpcMock: vi.fn(),
   signOutMock: vi.fn(),
 }));
 
@@ -57,14 +55,12 @@ vi.mock('@/lib/supabase-browser', () => ({
       onAuthStateChange: onAuthStateChangeMock,
       signOut: signOutMock,
     },
-    rpc: rpcMock,
   },
 }));
 
 vi.mock('posthog-js', () => ({
   default: {
     identify: identifyMock,
-    reloadFeatureFlags: reloadFeatureFlagsMock,
   },
 }));
 
@@ -76,12 +72,11 @@ function AuthProbe() {
 describe('AuthProvider', () => {
   beforeEach(() => {
     authStateChangeHandler = null;
+    fetchMock.mockReset();
     getSessionMock.mockReset();
     onAuthStateChangeMock.mockReset();
     signOutMock.mockReset();
-    rpcMock.mockReset();
     identifyMock.mockReset();
-    reloadFeatureFlagsMock.mockReset();
     assignMock.mockReset();
 
     Object.defineProperty(window, 'sessionStorage', {
@@ -96,7 +91,7 @@ describe('AuthProvider', () => {
     getSessionMock.mockResolvedValue({
       data: {
         session: {
-          access_token: 'token',
+          access_token: `header.${btoa(JSON.stringify({ tenant_id: 'tenant-1', user_role: 'seller_admin' }))}.sig`,
           user: {
             id: 'user-1',
             email: 'owner@yukti.so',
@@ -107,17 +102,20 @@ describe('AuthProvider', () => {
       error: null,
     });
 
-    rpcMock.mockResolvedValue({
-      data: [
-        {
-          tenant_id: 'tenant-1',
-          tenant_name: 'yukti demo',
-          tenant_slug: 'yukti-demo',
-          role: 'seller_admin',
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue({
+        tenant: {
+          id: 'tenant-1',
+          slug: 'yukti-demo',
+          business_name: 'yukti demo',
         },
-      ],
-      error: null,
+        role: 'seller_admin',
+      }),
     });
+
+    vi.stubGlobal('fetch', fetchMock);
 
     onAuthStateChangeMock.mockImplementation((callback: typeof authStateChangeHandler) => {
       authStateChangeHandler = callback;

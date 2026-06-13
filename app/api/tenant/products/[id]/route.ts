@@ -4,6 +4,8 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { z } from 'zod';
 
 const UpdateProductSchema = z.object({
+  internal_sku: z.string().min(1, 'Internal SKU is required').optional(),
+  name: z.string().min(1, 'Product name is required').optional(),
   name_override: z.string().optional(),
   mrp: z.coerce.number().positive('MRP must be positive').optional(),
   base_selling_price: z.coerce.number().positive('Base selling price must be positive').optional(),
@@ -11,6 +13,11 @@ const UpdateProductSchema = z.object({
   tenant_brand_id: z.string().uuid().optional().nullable(),
   default_uom: z.string().optional().nullable(),
   pack_size: z.coerce.number().positive().optional().nullable(),
+  hsn_code: z.string().optional().nullable(),
+  gst_rate: z.coerce.number().min(0).max(100).optional().nullable(),
+  description: z.string().optional().nullable(),
+  category_name: z.string().optional().nullable(),
+  external_ref: z.string().optional().nullable(),
   attributes_override: z.record(z.string()).optional(),
   image_urls: z.array(z.string()).optional(),
   is_active: z.boolean().optional(),
@@ -105,6 +112,10 @@ export async function GET(
         cost_price,
         default_uom,
         pack_size,
+        category_name,
+        hsn_code,
+        gst_rate,
+        description,
         attributes_override,
         image_urls,
         is_active,
@@ -419,8 +430,8 @@ export async function GET(
         id: product.id,
         name: displayName,
         sku: product.internal_sku,
-        category: masterProduct?.categories?.name ?? 'Uncategorized',
-        pack_size: product.pack_size,
+        category: product.category_name ?? masterProduct?.categories?.name ?? 'Uncategorized',
+        pack_size: product.pack_size ?? masterProduct?.pack_size ?? null,
         default_uom: product.default_uom,
         mrp: product.mrp,
         name_override: product.name_override,
@@ -428,8 +439,9 @@ export async function GET(
         cost_price: claims.role === 'seller_admin' ? product.cost_price : null,
         external_ref: product.external_ref,
         is_active: product.is_active,
-        hsn_code: masterProduct?.hsn_code ?? null,
-        gst_rate: masterProduct?.gst_rate ?? null,
+        hsn_code: product.hsn_code ?? masterProduct?.hsn_code ?? null,
+        gst_rate: product.gst_rate ?? masterProduct?.gst_rate ?? null,
+        description: product.description ?? null,
         updated_at: product.updated_at,
       },
       performance: {
@@ -501,10 +513,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
 
-    const rawBody = await req.json();
-
-    const { internal_sku: _excluded, ...bodyWithoutSku } = rawBody as Record<string, unknown>;
-    void _excluded;
+    const bodyWithoutSku = await req.json() as Record<string, unknown>;
 
     if (claims.role === 'seller_assistant') {
       delete (bodyWithoutSku as Record<string, unknown>).cost_price;
@@ -544,10 +553,41 @@ export async function PATCH(
       return NextResponse.json({ error: 'Product not found' }, { status: 404 });
     }
 
+    if (
+      updateFields.internal_sku &&
+      updateFields.internal_sku !== current.internal_sku
+    ) {
+      const { data: skuMatch } = await db
+        .schema('app')
+        .from('tenant_products')
+        .select('id')
+        .eq('tenant_id', claims.tenant_id)
+        .eq('internal_sku', updateFields.internal_sku)
+        .is('deleted_at', null)
+        .neq('id', id)
+        .maybeSingle();
+
+      if (skuMatch) {
+        return NextResponse.json(
+          { error: 'This SKU already exists in your product list.' },
+          { status: 409 },
+        );
+      }
+    }
+
     const patchPayload: Record<string, unknown> = {
       ...updateFields,
       updated_at: new Date().toISOString(),
     };
+
+    if (updateFields.name !== undefined) {
+      patchPayload.name_override = updateFields.name?.trim() || null;
+      delete patchPayload.name;
+    }
+
+    if (updateFields.external_ref !== undefined) {
+      patchPayload.external_ref = updateFields.external_ref?.trim() || null;
+    }
 
     if (Array.isArray(updateFields.image_urls) && updateFields.image_urls.length === 0) {
       patchPayload.r2_original_key = null;

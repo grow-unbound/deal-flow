@@ -150,6 +150,24 @@ export async function PUT(
     }
   }
 
+  if (updateData.default_cohort_id) {
+    const { data: cohort } = await db
+      .schema('app')
+      .from('cohorts')
+      .select('id')
+      .eq('id', updateData.default_cohort_id)
+      .eq('tenant_id', claims.tenant_id)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (!cohort) {
+      return NextResponse.json(
+        { error: 'Selected cohort is invalid for this tenant.' },
+        { status: 400 },
+      );
+    }
+  }
+
   // Compute diff for audit log (field name → new value for changed fields only)
   const diff: Record<string, any> = {};
   for (const key of Object.keys(updateData)) {
@@ -176,6 +194,26 @@ export async function PUT(
 
   if (updateError) {
     return NextResponse.json({ error: 'Failed to update customer' }, { status: 500 });
+  }
+
+  if ('default_cohort_id' in updateData) {
+    const nextCohortId = updateData.default_cohort_id || null;
+
+    if (nextCohortId) {
+      await db
+        .schema('app')
+        .from('cohort_members')
+        .upsert({ cohort_id: nextCohortId, buyer_id: id }, { onConflict: 'cohort_id,buyer_id' });
+    }
+
+    if (existing.default_cohort_id && existing.default_cohort_id !== nextCohortId) {
+      await db
+        .schema('app')
+        .from('cohort_members')
+        .delete()
+        .eq('cohort_id', existing.default_cohort_id)
+        .eq('buyer_id', id);
+    }
   }
 
   // Extract actor_user_id from Bearer token

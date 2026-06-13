@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { BuyerCreateSchema } from '@/lib/zod';
+import { getPostHogClient } from '@/lib/posthog-server';
 
 export async function GET(request: NextRequest) {
   const claims = await getVerifiedClaims(request);
@@ -125,6 +126,24 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  if (data.default_cohort_id) {
+    const { data: cohort } = await db
+      .schema('app')
+      .from('cohorts')
+      .select('id')
+      .eq('id', data.default_cohort_id)
+      .eq('tenant_id', claims.tenant_id)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (!cohort) {
+      return NextResponse.json(
+        { error: 'Selected cohort is invalid for this tenant.' },
+        { status: 400 },
+      );
+    }
+  }
+
   const { data: buyer, error: insertError } = await db
     .schema('app')
     .from('buyers')
@@ -140,6 +159,7 @@ export async function POST(request: NextRequest) {
       payment_terms_days: data.payment_terms_days,
       tier: data.tier ?? null,
       external_ref: data.external_ref?.trim() || null,
+      default_cohort_id: data.default_cohort_id ?? null,
       is_active: true,
     })
     .select()
@@ -159,6 +179,24 @@ export async function POST(request: NextRequest) {
       .from('cohort_members')
       .insert({ cohort_id: data.default_cohort_id, buyer_id: buyer.id })
       .throwOnError();
+  }
+
+  try {
+    const ph = getPostHogClient();
+    ph.capture({
+      distinctId: claims.sub ?? claims.tenant_id,
+      event: 'customer_created',
+      properties: {
+        tenant_id: claims.tenant_id,
+        buyer_id: buyer?.id,
+        tier: data.tier ?? null,
+        has_credit_limit: (data.credit_limit ?? 0) > 0,
+        has_cohort: Boolean(data.default_cohort_id),
+      },
+    });
+    await ph.flush();
+  } catch {
+    // non-blocking
   }
 
   return NextResponse.json({ buyer }, { status: 201 });

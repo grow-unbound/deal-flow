@@ -2,6 +2,7 @@
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/database';
+import { clearClientAuthSnapshot, getClientAccessToken, setClientAuthSnapshot } from '@/lib/auth-client-store';
 import { BUYER_PREVIEW_HEADER } from '@/lib/buyer-preview';
 import { getStoredBuyerPreviewToken } from '@/lib/auth-session';
 
@@ -26,10 +27,20 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
     return withPreviewHeader({ Authorization: `Bearer ${authCache.token}` });
   }
 
+  const cachedToken = getClientAccessToken();
+  if (cachedToken) {
+    authCache = {
+      token: cachedToken,
+      expiresAtMs: now + 25_000,
+    };
+    return withPreviewHeader({ Authorization: `Bearer ${cachedToken}` });
+  }
+
   const supabase = getBrowserClient();
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) {
     authCache = null;
+    clearClientAuthSnapshot();
     return withPreviewHeader({});
   }
 
@@ -38,6 +49,7 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
     token: session.access_token,
     expiresAtMs,
   };
+  setClientAuthSnapshot({ accessToken: session.access_token });
 
   return withPreviewHeader({ Authorization: `Bearer ${session.access_token}` });
 }

@@ -3,6 +3,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
 import { SellerShell } from '@/components/layout/SellerShell';
+import { getSellerShellFeatureAvailability } from '@/lib/server/seller-features';
 
 export default async function SellerLayout({ children }: { children: ReactNode }) {
   const h = await headers();
@@ -13,9 +14,11 @@ export default async function SellerLayout({ children }: { children: ReactNode }
     redirect('/login');
   }
 
+  const featureAvailability = await getSellerShellFeatureAvailability(tenantId);
+
   return (
     <ThemeProvider surface="seller">
-      <SellerShell>{children}</SellerShell>
+      <SellerShell featureAvailability={featureAvailability}>{children}</SellerShell>
     </ThemeProvider>
   );
 }

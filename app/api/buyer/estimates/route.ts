@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getBuyerAppContext } from '@/lib/auth';
 import { supabaseAdmin, supabase } from '@/lib/supabase';
+import { getPostHogClient } from '@/lib/posthog-server';
 
 // Exported types consumed by checkout/page.tsx and EnquiriesTab
 export interface EstimateRequest {
@@ -156,6 +157,26 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     const { error: itemsError } = await (db as any).schema('app').from('estimate_items').insert(estimateItemRows);
     if (itemsError) {
       console.error('[buyer/estimates] Items insert error:', itemsError);
+    }
+
+    try {
+      const ph = getPostHogClient();
+      ph.capture({
+        distinctId: context.buyer_id,
+        event: 'inquiry_created',
+        properties: {
+          tenant_id: context.tenant_id,
+          buyer_id: context.buyer_id,
+          estimate_id: typed.id,
+          estimate_number: typed.estimate_number,
+          item_count: items.length,
+          total_amount,
+          source: 'buyer_app',
+        },
+      });
+      await ph.flush();
+    } catch {
+      // non-blocking
     }
 
     return NextResponse.json({ success: true, estimate_id: typed.id, estimate_number: typed.estimate_number, whatsapp_sent: false });

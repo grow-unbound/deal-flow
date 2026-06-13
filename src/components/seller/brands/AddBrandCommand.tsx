@@ -22,7 +22,14 @@ import {
   FormSectionGrid,
   useDirtyCloseGuard,
 } from '@/components/ui/form-overlay';
-import { useCreateTenantBrand, useSearchMasterBrands, useTenantBrands, type MasterBrand } from '@/hooks/useBrands';
+import {
+  useCreateTenantBrand,
+  useSearchMasterBrands,
+  useTenantBrands,
+  useUpdateTenantBrand,
+  type BrandDetailRow,
+  type MasterBrand,
+} from '@/hooks/useBrands';
 import { useTenantCohortOptions } from '@/hooks/useCohorts';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -40,11 +47,17 @@ const BrandSlideOverSchema = z.object({
     .min(1, 'Slug is required')
     .regex(/^[a-z0-9-]+$/, 'Slug may only contain lowercase letters and hyphens.'),
   logo_url: z.string().url('Must be a valid URL').optional().or(z.literal('')),
+  description: z.string().optional().or(z.literal('')),
   margin_pct: z.coerce.number().min(0, 'Margin must be 0 or more').max(100, 'Margin cannot exceed 100').nullable().optional(),
+  exclusivity: z.boolean().default(false),
+  external_ref: z.string().optional().or(z.literal('')),
   principal_name: z.string().optional().or(z.literal('')),
   principal_email: z.string().email('Invalid email address').optional().or(z.literal('')),
   principal_phone: z.string().regex(/^[0-9]{10}$/, 'Phone must be 10 digits').optional().or(z.literal('')),
   principal_location: z.string().optional().or(z.literal('')),
+  contact_name: z.string().optional().or(z.literal('')),
+  contact_email: z.string().email('Invalid email address').optional().or(z.literal('')),
+  contact_phone: z.string().regex(/^[0-9]{10}$/, 'Phone must be 10 digits').optional().or(z.literal('')),
   default_cohort_id: z.string().uuid('Invalid cohort').nullable().optional(),
 });
 
@@ -139,12 +152,16 @@ interface AddBrandCommandProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   hideTrigger?: boolean;
+  mode?: 'create' | 'edit';
+  brand?: BrandDetailRow | null;
 }
 
 export function AddBrandCommand({
   open: controlledOpen,
   onOpenChange,
   hideTrigger = false,
+  mode = 'create',
+  brand = null,
 }: AddBrandCommandProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const [selectedMasterBrand, setSelectedMasterBrand] = useState<MasterBrand | null>(null);
@@ -155,6 +172,7 @@ export function AddBrandCommand({
   const [stagedLogo, setStagedLogo] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const debouncedSearch = useDebounce(inputValue, 300);
+  const isEditMode = mode === 'edit' && !!brand;
 
   const isControlled = typeof controlledOpen === 'boolean';
   const open = isControlled ? controlledOpen : internalOpen;
@@ -169,16 +187,23 @@ export function AddBrandCommand({
       name: '',
       slug: '',
       logo_url: '',
+      description: '',
       margin_pct: null,
+      exclusivity: false,
+      external_ref: '',
       principal_name: '',
       principal_email: '',
       principal_phone: '',
       principal_location: '',
+      contact_name: '',
+      contact_email: '',
+      contact_phone: '',
       default_cohort_id: null,
     },
   });
 
   const createBrand = useCreateTenantBrand();
+  const updateBrand = useUpdateTenantBrand(brand?.id ?? '');
   const { data: tenantBrandsData } = useTenantBrands();
   const { data: searchData, isLoading: isSearching } = useSearchMasterBrands(debouncedSearch);
   const cohortsFlag = useFlagState('COHORTS');
@@ -193,6 +218,11 @@ export function AddBrandCommand({
       setInputValue('');
       setCustomBrandNameSelected(null);
       setIsNameManuallyEdited(false);
+      setStagedLogo(null);
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        setPreviewUrl(null);
+      }
       setOpen(false);
     },
   });
@@ -223,6 +253,32 @@ export function AddBrandCommand({
     if (selectedMasterBrand && !isNameManuallyEdited) return;
     form.setValue('slug', slugify(watchedName), { shouldDirty: false, shouldValidate: true });
   }, [form, isNameManuallyEdited, selectedMasterBrand, watchedName]);
+
+  useEffect(() => {
+    if (!open || !isEditMode || !brand) return;
+
+    setSelectedMasterBrand(null);
+    setCustomBrandNameSelected(brand.display_name_override ?? '');
+    setInputValue(brand.display_name_override ?? '');
+    setIsNameManuallyEdited(true);
+    form.reset({
+      name: brand.display_name_override ?? '',
+      slug: brand.slug ?? '',
+      logo_url: brand.logo_url ?? '',
+      description: brand.description ?? '',
+      margin_pct: brand.margin_pct ?? null,
+      exclusivity: brand.exclusivity ?? false,
+      external_ref: brand.external_ref ?? '',
+      principal_name: brand.principal_name ?? '',
+      principal_email: brand.principal_email ?? '',
+      principal_phone: brand.principal_phone ?? '',
+      principal_location: brand.principal_location ?? '',
+      contact_name: brand.contact_name ?? '',
+      contact_email: brand.contact_email ?? '',
+      contact_phone: brand.contact_phone ?? '',
+      default_cohort_id: brand.default_cohort_id ?? null,
+    });
+  }, [brand, form, isEditMode, open]);
 
   useEffect(() => {
     if (!open || !selectedMasterBrand) return;
@@ -267,43 +323,41 @@ export function AddBrandCommand({
 
   const onSubmit: SubmitHandler<BrandSlideOverValues> = async (values) => {
     try {
-      const result = selectedMasterBrand
-        ? await createBrand.mutateAsync({
-            mode: 'import',
-            master_brand_id: selectedMasterBrand.id,
-            optimistic_master_brand: selectedMasterBrand,
-            display_name_override: values.name.trim() !== selectedMasterBrand.name ? values.name.trim() : '',
-            margin_pct: values.margin_pct ?? null,
-            principal_name: values.principal_name,
-            principal_email: values.principal_email,
-            principal_phone: values.principal_phone,
-            principal_location: values.principal_location,
-            default_cohort_id: values.default_cohort_id ?? null,
-            exclusivity: false,
-            description: '',
-          })
-        : await createBrand.mutateAsync({
-            mode: 'custom',
-            name: values.name.trim(),
-            slug: values.slug,
-            margin_pct: values.margin_pct ?? null,
-            principal_name: values.principal_name,
-            principal_email: values.principal_email,
-            principal_phone: values.principal_phone,
-            principal_location: values.principal_location,
-            default_cohort_id: values.default_cohort_id ?? null,
-            exclusivity: false,
-            description: '',
-          });
+      const sharedPayload = {
+        display_name_override: values.name.trim(),
+        slug: values.slug,
+        description: values.description || '',
+        margin_pct: values.margin_pct ?? null,
+        exclusivity: values.exclusivity ?? false,
+        external_ref: values.external_ref || '',
+        principal_name: values.principal_name,
+        principal_email: values.principal_email,
+        principal_phone: values.principal_phone,
+        principal_location: values.principal_location,
+        contact_name: values.contact_name,
+        contact_email: values.contact_email,
+        contact_phone: values.contact_phone,
+        default_cohort_id: values.default_cohort_id ?? null,
+      };
 
-      if (stagedLogo) {
-        await uploadEntityFile({
-          endpoint: '/api/upload/catalog-brand',
-          entityId: result.brand.master_brand_id,
-          file: stagedLogo,
-          imageType: 'logo',
-        });
-      }
+      const result = isEditMode && brand
+        ? await updateBrand.mutateAsync({
+            ...sharedPayload,
+            logo_url: values.logo_url || null,
+          })
+        : selectedMasterBrand
+          ? await createBrand.mutateAsync({
+              mode: 'import',
+              master_brand_id: selectedMasterBrand.id,
+              optimistic_master_brand: selectedMasterBrand,
+              name: values.name.trim(),
+              ...sharedPayload,
+            })
+          : await createBrand.mutateAsync({
+              mode: 'custom',
+              name: values.name.trim(),
+              ...sharedPayload,
+            });
 
       form.reset();
       setSelectedMasterBrand(null);
@@ -316,10 +370,28 @@ export function AddBrandCommand({
         setPreviewUrl(null);
       }
       setOpen(false);
+
+      const savedBrandId = 'brand' in result ? result.brand.id : brand?.id;
+      if (savedBrandId && stagedLogo) {
+        void uploadEntityFile({
+          endpoint: '/api/upload/tenant-brand',
+          entityId: savedBrandId,
+          file: stagedLogo,
+          imageType: 'logo',
+        }).catch((uploadError) => {
+          toast.warning(
+            `${isEditMode ? 'Brand saved' : 'Brand added'}, but image upload failed. Edit and retry.`,
+            {
+              description:
+                uploadError instanceof Error ? uploadError.message : 'Image upload failed.',
+            },
+          );
+        });
+      }
     } catch (error) {
       const err = error as { status?: number; error?: string; details?: { fieldErrors?: Record<string, string[]> } };
-      if (err.status === 409 && selectedMasterBrand == null) {
-        form.setError('name', { message: 'A brand with this slug already exists.' });
+      if (err.status === 409) {
+        form.setError('slug', { message: err.error ?? 'A brand with this slug already exists.' });
         return;
       }
       if (err.status === 400 && err.details && 'fieldErrors' in err.details) {
@@ -334,22 +406,30 @@ export function AddBrandCommand({
   };
 
   // Show dropdown when typing and no master/custom entity has been selected yet
-  const showDropdown = inputValue.trim().length > 0 && !selectedMasterBrand && !customBrandNameSelected;
+  const showDropdown =
+    !isEditMode &&
+    inputValue.trim().length > 0 &&
+    !selectedMasterBrand &&
+    !customBrandNameSelected;
 
   return (
     <>
       {!hideTrigger ? (
         <Button onClick={() => setOpen(true)} variant="accent">
           <Plus size={16} />
-          Add a brand
+          {isEditMode ? 'Edit brand' : 'Add a brand'}
         </Button>
       ) : null}
 
       <FormOverlay open={open} onOpenChange={dirtyGuard.handleOpenChange}>
         <FormOverlayHeader
           eyebrow="Brands"
-          title="Add a brand"
-          description="Start with the name — we'll match it against the master directory."
+          title={isEditMode ? 'Edit brand' : 'Add a brand'}
+          description={
+            isEditMode
+              ? 'Update the tenant-facing brand details used in your workspace.'
+              : 'Start with the name — we\'ll match it against the master directory.'
+          }
         />
 
         <FormOverlayBody className="space-y-5">
@@ -417,8 +497,8 @@ export function AddBrandCommand({
                                   {...field}
                                   value={inputValue}
                                   className="pl-8"
-                                  placeholder="Search master brands or type a new name"
-                                  readOnly={!!selectedMasterBrand || !!customBrandNameSelected}
+                                placeholder={isEditMode ? 'Brand name' : 'Search master brands or type a new name'}
+                                readOnly={isEditMode || !!selectedMasterBrand || !!customBrandNameSelected}
                                   onChange={(e) => {
                                     const val = e.target.value;
                                     field.onChange(val);
@@ -518,6 +598,20 @@ export function AddBrandCommand({
                   <FormSectionGrid>
                     <FormField
                       control={form.control}
+                      name="description"
+                      render={({ field }) => (
+                        <FormItem className="space-y-2 md:col-span-2">
+                          <FormLabel>Description</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="Short brand note for your team" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
                       name="logo_url"
                       render={({ field }) => (
                         <FormItem className="space-y-2 md:col-span-2">
@@ -581,6 +675,20 @@ export function AddBrandCommand({
                         </FormItem>
                       )}
                     />
+
+                    <FormField
+                      control={form.control}
+                      name="external_ref"
+                      render={({ field }) => (
+                        <FormItem className="space-y-2">
+                          <FormLabel>ERP reference</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="Tally / Zoho code" className="font-mono" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                   </FormSectionGrid>
                 </FormBlock>
 
@@ -635,6 +743,68 @@ export function AddBrandCommand({
                   </FormSectionGrid>
                 </FormBlock>
 
+                <FormBlock title="Tenant contact">
+                  <FormSectionGrid>
+                    <FormField control={form.control} name="contact_name" render={({ field }) => (
+                      <FormItem className="space-y-2">
+                        <FormLabel>Name</FormLabel>
+                        <FormControl><Input {...field} placeholder="Internal owner" /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="contact_email" render={({ field }) => (
+                      <FormItem className="space-y-2">
+                        <FormLabel>Email</FormLabel>
+                        <FormControl><Input {...field} type="email" placeholder="owner@example.com" /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="contact_phone" render={({ field }) => (
+                      <FormItem className="space-y-2">
+                        <FormLabel>Phone</FormLabel>
+                        <FormControl>
+                          <div className="flex items-stretch">
+                            <span className="inline-flex items-center rounded-l-[8px] border border-r-0 border-cream-400 bg-cream-200 px-3 text-[13.5px] text-cream-700">
+                              +91
+                            </span>
+                            <Input
+                              {...field}
+                              value={field.value ?? ''}
+                              type="tel"
+                              inputMode="numeric"
+                              placeholder="9876543210"
+                              maxLength={10}
+                              className="rounded-l-none font-mono tracking-wide"
+                              onChange={(e) => {
+                                field.onChange(e.target.value.replace(/\D/g, '').slice(0, 10));
+                              }}
+                            />
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <FormField
+                      control={form.control}
+                      name="exclusivity"
+                      render={({ field }) => (
+                        <FormItem className="space-y-2">
+                          <FormLabel>Exclusivity</FormLabel>
+                          <label className="flex h-10 items-center gap-2 rounded-[8px] border border-cream-300 px-3 text-sm text-cream-900">
+                            <input
+                              type="checkbox"
+                              checked={field.value}
+                              onChange={(event) => field.onChange(event.target.checked)}
+                            />
+                            Exclusive principal
+                          </label>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </FormSectionGrid>
+                </FormBlock>
+
                 {cohortsEnabled ? (
                   <FormBlock title="Defaults">
                     <FormField
@@ -676,10 +846,10 @@ export function AddBrandCommand({
           </Button>
           <Button
             type="button"
-            disabled={createBrand.isPending || !formReady}
+            disabled={createBrand.isPending || updateBrand.isPending || !formReady}
             onClick={() => void form.handleSubmit(onSubmit)()}
           >
-            {createBrand.isPending ? 'Saving…' : 'Save brand'}
+            {createBrand.isPending || updateBrand.isPending ? 'Saving…' : isEditMode ? 'Save changes' : 'Save brand'}
           </Button>
         </FormOverlayFooter>
       </FormOverlay>

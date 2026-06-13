@@ -77,7 +77,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { data: tenantBrand, error: brandError } = await db
     .schema('app')
     .from('tenant_brands')
-    .select('id, tenant_id, master_brand_id, display_name_override, logo_url, margin_pct, exclusivity, is_active, external_ref, principal_name, principal_email, principal_phone, principal_location, contact_name, contact_email, contact_phone, default_cohort_id, created_at, updated_at, deleted_at')
+    .select('id, tenant_id, master_brand_id, display_name_override, slug, description, logo_url, margin_pct, exclusivity, is_active, external_ref, principal_name, principal_email, principal_phone, principal_location, contact_name, contact_email, contact_phone, default_cohort_id, created_at, updated_at, deleted_at')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .is('deleted_at', null)
@@ -85,12 +85,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   if (brandError || !tenantBrand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
 
-  const { data: masterBrand } = await db
-    .schema('catalog')
-    .from('brands')
-    .select('id, name, slug, description, logo_url')
-    .eq('id', tenantBrand.master_brand_id)
-    .maybeSingle();
+  const { data: masterBrand } = tenantBrand.master_brand_id
+    ? await db
+        .schema('catalog')
+        .from('brands')
+        .select('id, name, slug, description, logo_url')
+        .eq('id', tenantBrand.master_brand_id)
+        .maybeSingle()
+    : { data: null };
 
   const { data: tenantProducts } = await db
     .schema('app')
@@ -371,15 +373,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   return NextResponse.json({
     header: {
       id: tenantBrand.id,
-      brand_name: tenantBrand.display_name_override ?? masterBrand?.name ?? 'Unknown brand',
-      category: masterBrand?.description ? 'Brand principal' : 'Uncategorized',
+      brand_name: tenantBrand.display_name_override ?? 'Unknown brand',
+      category: tenantBrand.description ? 'Brand principal' : 'Uncategorized',
       region: 'Maharashtra',
       carried_since: tenantBrand.created_at,
       skus: tenantProducts?.length ?? 0,
       portfolio_share_pct: portfolioShare,
       status_label: tenantBrand.is_active ? 'ON PACE' : 'INACTIVE',
       status_tone: tenantBrand.is_active ? 'success' : 'neutral',
-      initials: (tenantBrand.display_name_override ?? masterBrand?.name ?? 'BR')
+      initials: (tenantBrand.display_name_override ?? 'BR')
         .split(' ')
         .map((token: string) => token[0] ?? '')
         .join('')
@@ -402,10 +404,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       tenant_id: tenantBrand.tenant_id,
       master_brand_id: tenantBrand.master_brand_id,
       display_name_override: tenantBrand.display_name_override,
+      slug: tenantBrand.slug,
+      description: tenantBrand.description,
+      logo_url: tenantBrand.logo_url,
       margin_pct: tenantBrand.margin_pct,
       exclusivity: tenantBrand.exclusivity,
       is_active: tenantBrand.is_active,
       external_ref: tenantBrand.external_ref,
+      principal_name: tenantBrand.principal_name,
+      principal_email: tenantBrand.principal_email,
+      principal_phone: tenantBrand.principal_phone,
+      principal_location: tenantBrand.principal_location,
+      contact_name: tenantBrand.contact_name,
+      contact_email: tenantBrand.contact_email,
+      contact_phone: tenantBrand.contact_phone,
+      default_cohort_id: tenantBrand.default_cohort_id,
       created_at: tenantBrand.created_at,
       updated_at: tenantBrand.updated_at,
       deleted_at: tenantBrand.deleted_at,
@@ -450,7 +463,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { data: existing } = await db
     .schema('app')
     .from('tenant_brands')
-    .select('id, tenant_id')
+    .select('id, tenant_id, slug')
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle();
@@ -463,6 +476,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   };
 
   if (parsed.data.display_name_override !== undefined) payload.display_name_override = toNullableText(parsed.data.display_name_override);
+  if (parsed.data.slug !== undefined) payload.slug = toNullableText(parsed.data.slug);
+  if (parsed.data.description !== undefined) payload.description = toNullableText(parsed.data.description);
   if (parsed.data.logo_url !== undefined) payload.logo_url = toNullableText(parsed.data.logo_url);
   if (parsed.data.margin_pct !== undefined) payload.margin_pct = parsed.data.margin_pct;
   if (parsed.data.exclusivity !== undefined) payload.exclusivity = parsed.data.exclusivity;
@@ -490,6 +505,22 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     if (!cohort) {
       return NextResponse.json({ error: 'Selected cohort is invalid for this tenant.' }, { status: 400 });
+    }
+  }
+
+  if (payload.slug && payload.slug !== existing.slug) {
+    const { data: slugMatch } = await db
+      .schema('app')
+      .from('tenant_brands')
+      .select('id')
+      .eq('tenant_id', claims.tenant_id)
+      .eq('slug', payload.slug)
+      .is('deleted_at', null)
+      .neq('id', id)
+      .maybeSingle();
+
+    if (slugMatch) {
+      return NextResponse.json({ error: 'A brand with this slug already exists.' }, { status: 409 });
     }
   }
 
