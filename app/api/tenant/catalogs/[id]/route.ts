@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
-import { getPostHogQueryClient } from '@/lib/posthog-server';
+import { getPostHogQueryClient, getPostHogClient } from '@/lib/posthog-server';
 import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
 import { getCatalogComposerPayload } from '@/lib/server/catalog-composer';
 import { CatalogComposerPayloadSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
@@ -774,6 +774,23 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       .is('deleted_at', null);
 
     if (error) return NextResponse.json({ error: 'Failed to publish catalog' }, { status: 500 });
+
+    try {
+      const ph = getPostHogClient();
+      ph.capture({
+        distinctId: claims.sub ?? claims.tenant_id,
+        event: 'catalog_published',
+        properties: {
+          catalog_id: id,
+          tenant_id: claims.tenant_id,
+          scope_type: globalCatalog.scope_type,
+          share_token: shareToken,
+        },
+      });
+      await ph.flush();
+    } catch {
+      // non-blocking
+    }
 
     revalidateSellerDashboardCache(claims.tenant_id);
     return NextResponse.json({

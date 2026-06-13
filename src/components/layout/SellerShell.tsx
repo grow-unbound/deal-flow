@@ -5,14 +5,16 @@ import { useEffect } from 'react';
 import { useState } from 'react';
 import { SellerSidebar } from './SellerSidebar';
 import { SellerGlobalHeader } from './SellerGlobalHeader';
+import type { SellerShellFeatureAvailability } from '@/lib/server/seller-features';
 
 interface SellerShellProps {
   children: ReactNode;
+  featureAvailability: SellerShellFeatureAvailability;
 }
 
 const LARGE_SCREEN_QUERY = '(min-width: 1536px)';
 
-export function SellerShell({ children }: SellerShellProps) {
+export function SellerShell({ children, featureAvailability }: SellerShellProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isLargeScreen, setIsLargeScreen] = useState(false);
 
@@ -38,6 +40,7 @@ export function SellerShell({ children }: SellerShellProps) {
         isCollapsed={effectiveSidebarCollapsed}
         canCollapse={canCollapseSidebar}
         onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
+        featureAvailability={featureAvailability}
       />
       <main
         className="min-h-screen pt-16 transition-[margin-left] duration-base"

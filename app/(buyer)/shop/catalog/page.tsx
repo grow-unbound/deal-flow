@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useSearchParams } from 'next/navigation';
+import posthog from 'posthog-js';
 import { apiFetch } from '@/lib/api-fetch';
 import { SearchBar } from '@/components/buyer/catalog/SearchBar';
 import { CategoryFilter } from '@/components/buyer/catalog/CategoryFilter';
@@ -88,7 +89,7 @@ export default function CatalogPage() {
     if (shareToken) {
       apiFetch(`/api/buyer/catalog/${shareToken}`)
         .then((r) => r.json())
-        .then((data: { name?: string; valid_until?: string | null; items?: BuyerCatalogItem[] }) => {
+        .then((data: { catalog_id?: string; name?: string; valid_until?: string | null; items?: BuyerCatalogItem[] }) => {
           if (cancelled) return;
           setRouteState((current) => ({
             ...current,
@@ -99,6 +100,12 @@ export default function CatalogPage() {
             shareCatalogValidUntil: data.valid_until ?? null,
             loadedShareToken: shareToken,
           }));
+          posthog.capture('catalog_viewed', {
+            share_token: shareToken,
+            catalog_id: data.catalog_id,
+            catalog_name: data.name,
+            product_count: data.items?.length ?? 0,
+          });
         })
         .catch(() => {
           if (!cancelled) setListFetchError(true);

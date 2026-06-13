@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
@@ -34,6 +35,7 @@ import {
 } from '@/components/ui/form';
 import { BuyerCreateSchema, type BuyerCreateInput } from '@/lib/zod';
 import { INDIAN_STATES } from '@/constants';
+import { apiFetch } from '@/lib/api-fetch';
 import { formatInrInput, parseInrInput } from '@/lib/utils';
 import { useCreateCustomerOptimistic } from '@/hooks/useCustomersLanding';
 import { useTenantCohortOptions } from '@/hooks/useCohorts';
@@ -48,11 +50,19 @@ const TIER_OPTIONS = [
 export function AddCustomerDialog({
   open,
   onOpenChange,
+  mode = 'create',
+  customerId,
+  defaultValues,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  mode?: 'create' | 'edit';
+  customerId?: string;
+  defaultValues?: Partial<BuyerCreateInput>;
 }) {
   const createMutation = useCreateCustomerOptimistic();
+  const queryClient = useQueryClient();
+  const isEditMode = mode === 'edit' && !!customerId;
 
   const cohortsFlag = useFlagState('COHORTS');
   const cohortsEnabled = cohortsFlag === true;
@@ -84,8 +94,27 @@ export function AddCustomerDialog({
       payment_terms_days: 0,
       default_cohort_id: null,
       geography: { city: '', state: '', pincode: '', zone: '' },
+      ...defaultValues,
     },
   });
+
+  useEffect(() => {
+    if (!open) return;
+    form.reset({
+      business_name: '',
+      contact_name: '',
+      phone: '',
+      email: '',
+      gstin: '',
+      external_ref: '',
+      tier: undefined,
+      credit_limit: 0,
+      payment_terms_days: 0,
+      default_cohort_id: null,
+      geography: { city: '', state: '', pincode: '', zone: '' },
+      ...defaultValues,
+    });
+  }, [defaultValues, form, open]);
 
   const dirtyGuard = useDirtyCloseGuard({
     isDirty: form.formState.isDirty,
@@ -97,13 +126,37 @@ export function AddCustomerDialog({
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
-      await createMutation.mutateAsync(values);
-      toast.success('Buyer added');
+      if (isEditMode && customerId) {
+        const res = await apiFetch(`/api/customers/${customerId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(values),
+        });
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error((body as { error?: string }).error ?? 'Failed to update buyer');
+        }
+
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['tenant-customers'] }),
+          queryClient.invalidateQueries({ queryKey: ['tenant-customer-detail', customerId] }),
+          queryClient.invalidateQueries({ queryKey: ['customer', customerId] }),
+        ]);
+        toast.success('Buyer updated');
+      } else {
+        await createMutation.mutateAsync(values);
+        toast.success('Buyer added');
+      }
       form.reset();
       onOpenChange(false);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : 'Failed to create buyer',
+        error instanceof Error
+          ? error.message
+          : isEditMode
+            ? 'Failed to update buyer'
+            : 'Failed to create buyer',
       );
     }
   });
@@ -113,8 +166,12 @@ export function AddCustomerDialog({
       <FormOverlay open={open} onOpenChange={dirtyGuard.handleOpenChange}>
         <FormOverlayHeader
           eyebrow="Customers"
-          title="Add a buyer"
-          description="You can add team members and shipping addresses after the buyer is created."
+          title={isEditMode ? 'Edit buyer' : 'Add a buyer'}
+          description={
+            isEditMode
+              ? 'Update the buyer details used in your workspace.'
+              : 'You can add team members and shipping addresses after the buyer is created.'
+          }
         />
 
         <FormOverlayBody className="space-y-5">
@@ -191,6 +248,20 @@ export function AddCustomerDialog({
                             maxLength={6}
                             className="font-mono"
                           />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="geography.zone"
+                    render={({ field }) => (
+                      <FormItem className="space-y-2">
+                        <FormLabel>Zone</FormLabel>
+                        <FormControl>
+                          <Input {...field} value={field.value ?? ''} placeholder="West / North / South" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -316,6 +387,25 @@ export function AddCustomerDialog({
 
                   <FormField
                     control={form.control}
+                    name="external_ref"
+                    render={({ field }) => (
+                      <FormItem className="space-y-2">
+                        <FormLabel>ERP reference</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            value={field.value ?? ''}
+                            placeholder="Tally / Zoho ledger code"
+                            className="font-mono"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
                     name="credit_limit"
                     render={({ field }) => (
                       <FormItem className="space-y-2">
@@ -413,7 +503,7 @@ export function AddCustomerDialog({
             form="add-buyer-form"
             disabled={createMutation.isPending}
           >
-            {createMutation.isPending ? 'Saving…' : 'Save buyer'}
+            {createMutation.isPending ? 'Saving…' : isEditMode ? 'Save changes' : 'Save buyer'}
           </Button>
         </FormOverlayFooter>
       </FormOverlay>

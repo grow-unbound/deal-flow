@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     const db = supabaseAdmin as any;
     const body = await req.json();
     const created = await createTenantBrand(db, claims, {
-      ...body,
+      ...(typeof body === 'object' && body ? body : {}),
       mode: 'custom',
     });
     return NextResponse.json(created, { status: 201 });
