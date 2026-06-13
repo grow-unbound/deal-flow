@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Archive, PencilLine } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { PageWrap } from '@/components/seller/layout';
@@ -15,6 +15,7 @@ import { ProductDetailsTab } from './ProductDetailsTab';
 import { ProductPerformanceTab } from './ProductPerformanceTab';
 import { ProductPricingTab } from './ProductPricingTab';
 import { ProductActivityTimeline } from './ProductActivityTimeline';
+import { AddProductSheet } from '../AddProductSheet';
 
 type TabId = 'details' | 'performance' | 'pricing' | 'activity';
 
@@ -73,6 +74,7 @@ function daysCoverClass(days: number): string {
 
 export function ProductDetailPage({ id }: ProductDetailPageProps) {
   const router = useRouter();
+  const [editOpen, setEditOpen] = useState(false);
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-product-detail-tab',
     scopeKey: id,
@@ -131,7 +133,7 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
         ]}
         actions={
           <div className="flex items-center gap-2 pt-1">
-            <Button type="button" className="cockpit-btn cockpit-btn-secondary h-9 px-4" onClick={() => router.push(`/products/${id}/edit`)}>
+            <Button type="button" className="cockpit-btn cockpit-btn-secondary h-9 px-4" onClick={() => setEditOpen(true)}>
               <PencilLine size={14} />
               Edit
             </Button>
@@ -190,6 +192,14 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
         />
       ) : null}
       {tab === 'activity' ? <ProductActivityTimeline activity={data.detail.activity} /> : null}
+
+      <AddProductSheet
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        hideTrigger
+        mode="edit"
+        product={data.product}
+      />
     </PageWrap>
   );
 }

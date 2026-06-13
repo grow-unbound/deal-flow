@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ShoppingBag } from 'lucide-react';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { apiFetch } from '@/lib/api-fetch';
+import posthog from 'posthog-js';
 
 function inr(n: number): string {
   const s = Math.round(n).toString();
@@ -49,8 +50,14 @@ export default function CheckoutPage() {
           notes: notes.trim() || undefined,
         }),
       });
-      const data: { success: boolean; estimate_id?: string; error?: string } = await res.json();
+      const data: { success: boolean; estimate_id?: string; estimate_number?: string | null; error?: string } = await res.json();
       if (data.success) {
+        posthog.capture('inquiry_submitted', {
+          estimate_id: data.estimate_id,
+          estimate_number: data.estimate_number,
+          item_count: items.length,
+          subtotal,
+        });
         clearCart();
         router.replace(`/shop/orders?tab=inquiries&highlight=${data.estimate_id}`);
       } else {

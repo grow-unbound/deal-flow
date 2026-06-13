@@ -32,7 +32,10 @@ export const FEATURE_FLAGS = {
   ESTIMATES: 'df_estimates',
   SEARCH: 'df_search',
   TALLY_EXPORT: 'df_tally_export',
+  INTEGRATIONS: 'df_integrations',
   ZOHO_INTEGRATION: 'df_zoho_integration',
+  TALLY_INTEGRATION: 'df_tally_integration',
+  BUSY_INTEGRATION: 'df_busy_integration',
   // Phase 2 (default off)
   AI_INTAKE: 'df_ai_intake',
   REPLENISHMENT: 'df_replenishment',

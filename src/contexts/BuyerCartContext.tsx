@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useReducer, ReactNode } from 'react';
+import posthog from 'posthog-js';
 
 const STORAGE_KEY = 'yukti_buyer_cart';
 
@@ -111,7 +112,16 @@ export function BuyerCartProvider({ children }: { children: ReactNode }) {
     items: state.items,
     itemCount,
     subtotal,
-    addItem: (item) => dispatch({ type: 'ADD_ITEM', item }),
+    addItem: (item) => {
+      dispatch({ type: 'ADD_ITEM', item });
+      posthog.capture('catalog_item_added_to_cart', {
+        tenant_product_id: item.tenant_product_id,
+        product_name: item.name,
+        brand: item.brand,
+        unit_price: item.unit_price,
+        quantity: item.quantity,
+      });
+    },
     removeItem: (tenant_product_id) => dispatch({ type: 'REMOVE_ITEM', tenant_product_id }),
     updateQty: (tenant_product_id, quantity) => dispatch({ type: 'UPDATE_QTY', tenant_product_id, quantity }),
     clearCart: () => dispatch({ type: 'CLEAR_CART' }),

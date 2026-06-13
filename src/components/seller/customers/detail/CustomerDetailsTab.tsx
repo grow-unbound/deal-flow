@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useRole } from '@/hooks/useRole';
 import type { TenantCustomerDetailResponse } from '@/hooks/useCustomersLanding';
 import { formatCurrency } from '@/lib/utils';
@@ -8,6 +7,7 @@ import { formatCurrency } from '@/lib/utils';
 interface CustomerDetailsTabProps {
   id: string;
   details: TenantCustomerDetailResponse['details'];
+  onEdit?: () => void;
 }
 
 function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
@@ -19,7 +19,7 @@ function Row({ label, value, mono = false }: { label: string; value: string; mon
   );
 }
 
-export function CustomerDetailsTab({ id, details }: CustomerDetailsTabProps) {
+export function CustomerDetailsTab({ id: _id, details, onEdit }: CustomerDetailsTabProps) {
   const { isSellerAdmin } = useRole();
 
   return (
@@ -28,9 +28,9 @@ export function CustomerDetailsTab({ id, details }: CustomerDetailsTabProps) {
         <div className="mb-4 flex items-center justify-between">
           <h3 className="font-display text-[17px] text-cream-950">Buyer details</h3>
           {isSellerAdmin ? (
-            <Link href={`/customers/${id}/edit`} className="text-[13px] font-medium text-teal-700 hover:text-teal-800">
+            <button type="button" onClick={onEdit} className="text-[13px] font-medium text-teal-700 hover:text-teal-800">
               Edit
-            </Link>
+            </button>
           ) : null}
         </div>
 

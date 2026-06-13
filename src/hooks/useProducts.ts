@@ -121,6 +121,7 @@ export interface ProductDetailResponse {
       is_active: boolean;
       hsn_code: string | null;
       gst_rate: number | null;
+      description?: string | null;
       updated_at: string;
     };
     performance: {
@@ -264,9 +265,8 @@ export function useAddProductToTenant() {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? 'Failed to add product');
       }
-
-      const data = await res.json();
-      return data.product as TenantProduct;
+      const data = await res.json() as { product: TenantProduct };
+      return data.product;
     },
 
     onMutate: async (payload) => {
@@ -353,7 +353,17 @@ export function useProductDetail(id: string) {
 export function useUpdateProduct() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<TenantProduct> & { archive?: boolean } }) => {
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: Partial<TenantProduct> & {
+        archive?: boolean;
+        name?: string | null;
+        category_name?: string | null;
+      };
+    }): Promise<{ product: TenantProduct }> => {
       const res = await apiFetch(`/api/tenant/products/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -361,9 +371,9 @@ export function useUpdateProduct() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw { status: res.status, ...err };
+        throw { status: res.status, ...(err as object) };
       }
-      return res.json();
+      return res.json() as Promise<{ product: TenantProduct }>;
     },
     onMutate: async ({ id, data }) => {
       const snapshots = await takeSnapshots(queryClient, [['tenant-products'], ['tenant-product', id]]);

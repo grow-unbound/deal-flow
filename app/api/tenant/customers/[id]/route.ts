@@ -161,7 +161,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { data: buyer, error: buyerError } = await db
     .schema('app')
     .from('buyers')
-    .select('id, tenant_id, business_name, contact_name, phone, email, gstin, tier, is_active, credit_limit, payment_terms_days, external_ref, geography, created_at, updated_at')
+    .select('id, tenant_id, business_name, contact_name, phone, email, gstin, tier, is_active, credit_limit, payment_terms_days, external_ref, default_cohort_id, geography, created_at, updated_at')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .is('deleted_at', null)
@@ -579,6 +579,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       payment_terms_days: buyer.payment_terms_days,
       credit_limit: buyer.credit_limit,
       external_ref: buyer.external_ref,
+      default_cohort_id: buyer.default_cohort_id,
+      tier: buyer.tier,
       cohorts: activeCohorts,
       is_active: buyer.is_active,
     },

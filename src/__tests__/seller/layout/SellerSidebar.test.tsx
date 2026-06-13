@@ -29,11 +29,6 @@ vi.mock('@/contexts/TenantContext', () => ({
   useTenant: () => ({ currentTenant: { business_name: 'Acme Dist' } }),
 }));
 
-const useFlagStateMock = vi.fn();
-vi.mock('@/hooks/useFeatureFlag', () => ({
-  useFlagState: (flag: string) => useFlagStateMock(flag),
-}));
-
 const prefetchSpy = vi.fn();
 vi.mock('@/hooks/useIdleRoutePrefetch', () => ({
   useIdleRoutePrefetch: (paths: string[]) => prefetchSpy(paths),
@@ -57,13 +52,29 @@ function makeAuth(role: string) {
 }
 
 import { SellerSidebar, collectPrefetchHrefs, navGroups } from '@/components/layout/SellerSidebar';
+import type { SellerShellFeatureAvailability } from '@/lib/server/seller-features';
+
+function makeFeatures(overrides: Partial<SellerShellFeatureAvailability> = {}): SellerShellFeatureAvailability {
+  return {
+    brandProductMaster: true,
+    customerMaster: true,
+    cohorts: true,
+    pricingEngine: true,
+    catalogPublishing: true,
+    estimates: true,
+    salesOrders: true,
+    invoices: true,
+    tallyExport: true,
+    integrations: true,
+    ...overrides,
+  };
+}
 
 describe('SellerSidebar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPathname.mockReturnValue('/dashboard');
     mockUseAuth.mockReturnValue(makeAuth('seller_admin'));
-    useFlagStateMock.mockReturnValue(true);
     try {
       localStorage.removeItem('df_sidebar_settings_expanded');
     } catch {
@@ -72,7 +83,7 @@ describe('SellerSidebar', () => {
   });
 
   it('renders four section headers in expanded mode', () => {
-    render(<SellerSidebar isCollapsed={false} />);
+    render(<SellerSidebar isCollapsed={false} featureAvailability={makeFeatures()} />);
     expect(screen.getByText('OPERATIONS')).toBeInTheDocument();
     expect(screen.getByText('CUSTOMERS')).toBeInTheDocument();
     expect(screen.getByText('CATALOG')).toBeInTheDocument();
@@ -80,7 +91,7 @@ describe('SellerSidebar', () => {
   });
 
   it('hides section headers when collapsed', () => {
-    render(<SellerSidebar isCollapsed />);
+    render(<SellerSidebar isCollapsed featureAvailability={makeFeatures()} />);
     expect(screen.queryByText('OPERATIONS')).not.toBeInTheDocument();
     expect(screen.queryByText('CUSTOMERS')).not.toBeInTheDocument();
     expect(screen.queryByText('CATALOG')).not.toBeInTheDocument();
@@ -88,21 +99,20 @@ describe('SellerSidebar', () => {
   });
 
   it('hides Estimates when df_estimates flag is off', () => {
-    useFlagStateMock.mockImplementation((key: string) => (key === 'ESTIMATES' ? false : true));
-    render(<SellerSidebar />);
+    render(<SellerSidebar featureAvailability={makeFeatures({ estimates: false })} />);
     expect(screen.queryByText('Estimates')).not.toBeInTheDocument();
     expect(screen.getByText('OPERATIONS')).toBeInTheDocument();
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
   });
 
   it('does not render notifications in the sidebar footer', () => {
-    render(<SellerSidebar />);
+    render(<SellerSidebar featureAvailability={makeFeatures()} />);
     expect(screen.queryByRole('link', { name: /notifications/i })).not.toBeInTheDocument();
     expect(screen.queryByText('Notifications')).not.toBeInTheDocument();
   });
 
   it('has Log out as the last interactive control before the avatar block', () => {
-    render(<SellerSidebar />);
+    render(<SellerSidebar featureAvailability={makeFeatures()} />);
     const footer = screen.getByRole('button', { name: /log out/i }).closest('.mt-auto');
     expect(footer).toBeTruthy();
     const buttons = within(footer as HTMLElement).queryAllByRole('button');
@@ -112,7 +122,7 @@ describe('SellerSidebar', () => {
   });
 
   it('derives idle prefetch hrefs from navGroups for admin with flags on', () => {
-    render(<SellerSidebar />);
+    render(<SellerSidebar featureAvailability={makeFeatures()} />);
     expect(prefetchSpy).toHaveBeenCalled();
     const paths = prefetchSpy.mock.calls[0][0] as string[];
     expect(paths).toContain('/dashboard');
@@ -126,16 +136,21 @@ describe('SellerSidebar', () => {
     expect(paths).toContain('/settings/billing');
   });
 
+  it('hides Integrations when df_integrations is off', () => {
+    render(<SellerSidebar featureAvailability={makeFeatures({ integrations: false })} />);
+    expect(screen.queryByRole('link', { name: 'Integrations' })).not.toBeInTheDocument();
+  });
+
   it('shows settings children when pathname is under /settings', () => {
     mockPathname.mockReturnValue('/settings/team');
-    render(<SellerSidebar />);
+    render(<SellerSidebar featureAvailability={makeFeatures()} />);
     expect(screen.getByRole('link', { name: 'Team' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Billing & Plan' })).toBeInTheDocument();
   });
 
   it('toggles settings submenu via chevron on dashboard', () => {
     mockPathname.mockReturnValue('/dashboard');
-    render(<SellerSidebar />);
+    render(<SellerSidebar featureAvailability={makeFeatures()} />);
     expect(screen.getByRole('link', { name: 'Team' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Collapse settings sections/i }));
     expect(screen.queryByRole('link', { name: 'Team' })).not.toBeInTheDocument();
@@ -145,14 +160,14 @@ describe('SellerSidebar', () => {
 
   it('excludes admin-only and flag-off routes from prefetch for assistant', () => {
     mockUseAuth.mockReturnValue(makeAuth('seller_assistant'));
-    useFlagStateMock.mockImplementation((key: string) => (key === 'ESTIMATES' ? false : true));
-    render(<SellerSidebar />);
+    render(<SellerSidebar featureAvailability={makeFeatures({ estimates: false })} />);
     const paths = prefetchSpy.mock.calls[0][0] as string[];
     expect(paths).not.toContain('/cohorts');
     expect(paths).not.toContain('/price-lists');
     expect(paths).not.toContain('/exports');
     expect(paths).not.toContain('/settings');
     expect(paths).not.toContain('/settings/modules');
+    expect(paths).not.toContain('/settings/integrations');
     expect(paths).not.toContain('/settings/billing');
     expect(paths).not.toContain('/estimates');
     expect(paths).toContain('/dashboard');
@@ -178,5 +193,13 @@ describe('collectPrefetchHrefs', () => {
     });
     expect(hrefs).not.toContain('/estimates');
     expect(hrefs).toContain('/sales-orders');
+  });
+
+  it('excludes integrations path when integrations flag is off', () => {
+    const hrefs = collectPrefetchHrefs(navGroups, {
+      isSellerAdmin: true,
+      getFlag: (k) => k !== 'df_integrations',
+    });
+    expect(hrefs).not.toContain('/settings/integrations');
   });
 });

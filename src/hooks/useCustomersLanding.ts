@@ -89,6 +89,8 @@ export interface TenantCustomerDetailResponse {
     payment_terms_days: number | null;
     credit_limit: number | null;
     external_ref: string | null;
+    default_cohort_id?: string | null;
+    tier?: 'A' | 'B' | 'C' | null;
     cohorts: string[];
     is_active: boolean;
   };
@@ -273,7 +275,7 @@ export function useCreateCustomerOptimistic() {
       const res = await apiPost('/api/customers', payload);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? 'Failed to create customer');
+        throw new Error((body as { error?: string }).error ?? 'Failed to create customer');
       }
       return res.json();
     },
