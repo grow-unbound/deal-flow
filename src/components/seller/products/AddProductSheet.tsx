@@ -39,7 +39,13 @@ import {
 } from '@/components/ui/select';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 
-import { useSearchMasterProducts, useCreateCustomProduct, useTenantProductCategories } from '@/hooks/useProducts';
+import {
+  useSearchMasterProducts,
+  useCreateCustomProduct,
+  useTenantProductCategories,
+  useUpdateProduct,
+  type TenantProduct,
+} from '@/hooks/useProducts';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useTenantBrands } from '@/hooks/useBrands';
 import { usePriceLists } from '@/hooks/usePriceLists';
@@ -74,6 +80,11 @@ const AddProductFormSchema = z.object({
 });
 
 type AddProductFormValues = z.infer<typeof AddProductFormSchema>;
+
+function attributesToRows(attributes: Record<string, string> | null | undefined) {
+  if (!attributes) return [];
+  return Object.entries(attributes).map(([key, value]) => ({ key, value }));
+}
 
 // ─── Image slot grid ─────────────────────────────────────────────────────────
 
@@ -176,12 +187,16 @@ interface AddProductSheetProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   hideTrigger?: boolean;
+  mode?: 'create' | 'edit';
+  product?: TenantProduct | null;
 }
 
 export function AddProductSheet({
   open: controlledOpen,
   onOpenChange,
   hideTrigger = false,
+  mode = 'create',
+  product = null,
 }: AddProductSheetProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const isControlled = typeof controlledOpen === 'boolean';
@@ -209,6 +224,8 @@ export function AddProductSheet({
   const { data: priceListsData } = usePriceLists();
   const { data: existingCategories = [] } = useTenantProductCategories();
   const createProduct = useCreateCustomProduct();
+  const updateProduct = useUpdateProduct();
+  const isEditMode = mode === 'edit' && !!product;
 
   const priceLists = useMemo(() => priceListsData?.price_lists ?? [], [priceListsData]);
   const masterResults = useMemo(
@@ -265,6 +282,33 @@ export function AddProductSheet({
     setPriceListAmounts({});
     setShowCustomCategory(false);
   }, [form, previewUrl]);
+
+  useEffect(() => {
+    if (!open || !isEditMode || !product) return;
+
+    setSelectedMaster(null);
+    setInputValue(product.display_name ?? '');
+    setCustomProductNameSelected(null);
+    setPriceListAmounts({});
+    setShowCustomCategory(false);
+    form.reset({
+      name: product.display_name ?? '',
+      tenant_brand_id: product.tenant_brand_id ?? '',
+      category_name: product.category_name ?? '',
+      internal_sku: product.internal_sku ?? '',
+      hsn_code: product.hsn_code ?? '',
+      gst_rate: product.gst_rate != null ? String(product.gst_rate) : '',
+      default_uom: product.default_uom ?? '',
+      pack_size: product.pack_size != null ? String(product.pack_size) : '',
+      image_urls: product.image_urls ?? [],
+      description: product.description ?? '',
+      mrp: product.mrp != null ? formatInrInput(String(product.mrp)) : '',
+      base_selling_price:
+        product.base_selling_price != null ? formatInrInput(String(product.base_selling_price)) : '',
+      cost_price: product.cost_price != null ? formatInrInput(String(product.cost_price)) : '',
+      attributes: attributesToRows(product.attributes_override),
+    });
+  }, [form, isEditMode, open, product]);
 
   const dirtyGuard = useDirtyCloseGuard({
     isDirty: form.formState.isDirty,
@@ -328,7 +372,8 @@ export function AddProductSheet({
     form.setValue('name', '');
   }
 
-  const showDropdown = inputValue.trim().length > 0 && !selectedMaster && !customProductNameSelected;
+  const showDropdown =
+    !isEditMode && inputValue.trim().length > 0 && !selectedMaster && !customProductNameSelected;
 
   // Sync search term to form name field when not imported
   useEffect(() => {
@@ -359,38 +404,48 @@ export function AddProductSheet({
     }
 
     try {
-      const result = await createProduct.mutateAsync({
-        master_product_id: selectedMaster?.id ?? null,
-        // For imported products the server auto-resolves tenant_brand_id from the master product's brand
-        ...(values.tenant_brand_id ? { tenant_brand_id: values.tenant_brand_id } : {}),
-        internal_sku: values.internal_sku,
-        name: values.name,
-        mrp,
-        base_selling_price: bsp,
-        cost_price: costPrice ?? undefined,
-        default_uom: values.default_uom || undefined,
-        pack_size: values.pack_size ? Number(values.pack_size) : undefined,
-        hsn_code: values.hsn_code || undefined,
-        gst_rate: values.gst_rate ? Number(values.gst_rate) : undefined,
-        description: values.description || undefined,
-        category_name: values.category_name || undefined,
-        attributes: attributesObj,
-        image_urls: [],
-      });
+      const result = isEditMode && product
+        ? await updateProduct.mutateAsync({
+            id: product.id,
+            data: {
+              internal_sku: values.internal_sku,
+              name: values.name,
+              tenant_brand_id: values.tenant_brand_id || null,
+              mrp,
+              base_selling_price: bsp,
+              ...(isSellerAdmin ? { cost_price: costPrice } : {}),
+              default_uom: values.default_uom || null,
+              pack_size: values.pack_size ? Number(values.pack_size) : null,
+              hsn_code: values.hsn_code || null,
+              gst_rate: values.gst_rate ? Number(values.gst_rate) : null,
+              description: values.description || null,
+              category_name: values.category_name || null,
+              attributes_override: attributesObj,
+              image_urls: imageUrlsField.value ?? [],
+            },
+          })
+        : await createProduct.mutateAsync({
+            master_product_id: selectedMaster?.id ?? null,
+            ...(values.tenant_brand_id ? { tenant_brand_id: values.tenant_brand_id } : {}),
+            internal_sku: values.internal_sku,
+            name: values.name,
+            mrp,
+            base_selling_price: bsp,
+            cost_price: costPrice ?? undefined,
+            default_uom: values.default_uom || undefined,
+            pack_size: values.pack_size ? Number(values.pack_size) : undefined,
+            hsn_code: values.hsn_code || undefined,
+            gst_rate: values.gst_rate ? Number(values.gst_rate) : undefined,
+            description: values.description || undefined,
+            category_name: values.category_name || undefined,
+            attributes: attributesObj,
+            image_urls: [],
+          });
 
-      // Fan-out price list items
       const productId = result.product.id;
-      if (stagedImage) {
-        await uploadEntityFile({
-          endpoint: '/api/upload/tenant-product',
-          entityId: productId,
-          file: stagedImage,
-          isPrimary: true,
-        });
-      }
 
       const priceListEntries = Object.entries(priceListAmounts).filter(([, amt]) => amt.trim());
-      if (priceListEntries.length > 0) {
+      if (!isEditMode && priceListEntries.length > 0) {
         const results = await Promise.allSettled(
           priceListEntries.map(([plId, amtStr]) => {
             const price = parseInrInput(amtStr);
@@ -409,6 +464,23 @@ export function AddProductSheet({
 
       resetAll();
       setOpen(false);
+
+      if (stagedImage) {
+        void uploadEntityFile({
+          endpoint: '/api/upload/tenant-product',
+          entityId: productId,
+          file: stagedImage,
+          isPrimary: true,
+        }).catch((uploadError) => {
+          toast.warning(
+            `${isEditMode ? 'Product saved' : 'Product added'}, but image upload failed. Edit and retry.`,
+            {
+              description:
+                uploadError instanceof Error ? uploadError.message : 'Image upload failed.',
+            },
+          );
+        });
+      }
     } catch (err) {
       const e = err as { status?: number; error?: string };
       if (e.status === 409) {
@@ -426,15 +498,19 @@ export function AddProductSheet({
       {!hideTrigger ? (
         <Button onClick={() => setOpen(true)} className="flex items-center gap-2">
           <Plus size={16} />
-          Add Product
+          {isEditMode ? 'Edit Product' : 'Add Product'}
         </Button>
       ) : null}
 
       <FormOverlay open={open} onOpenChange={dirtyGuard.handleOpenChange}>
         <FormOverlayHeader
           eyebrow="Products"
-          title="Add a product"
-          description="Start with the name — we'll match it against the master catalog."
+          title={isEditMode ? 'Edit product' : 'Add a product'}
+          description={
+            isEditMode
+              ? 'Update the tenant-facing product details used in your catalog.'
+              : 'Start with the name — we\'ll match it against the master catalog.'
+          }
         />
 
         <FormOverlayBody className="space-y-5">
@@ -500,7 +576,7 @@ export function AddProductSheet({
                               <Input
                                 {...field}
                                 className="pl-8"
-                                placeholder="Search master catalog or type a new name"
+                                placeholder={isEditMode ? 'Product name' : 'Search master catalog or type a new name'}
                                 value={inputValue}
                                 onChange={(e) => {
                                   const val = e.target.value;
@@ -508,7 +584,7 @@ export function AddProductSheet({
                                   setCustomProductNameSelected(null);
                                   field.onChange(val);
                                 }}
-                                readOnly={!!selectedMaster || !!customProductNameSelected}
+                                readOnly={isEditMode || !!selectedMaster || !!customProductNameSelected}
                               />
                             </div>
                           </PopoverAnchor>
@@ -947,17 +1023,17 @@ export function AddProductSheet({
             type="button"
             variant="ghost"
             onClick={() => dirtyGuard.handleOpenChange(false)}
-            disabled={createProduct.isPending}
+            disabled={createProduct.isPending || updateProduct.isPending}
           >
             Cancel
           </Button>
           <MutationButton
             type="button"
-            isPending={createProduct.isPending}
+            isPending={createProduct.isPending || updateProduct.isPending}
             pendingLabel="Saving…"
             onClick={() => void form.handleSubmit(onSubmit)()}
           >
-            Save product
+            {isEditMode ? 'Save changes' : 'Save product'}
           </MutationButton>
         </FormOverlayFooter>
       </FormOverlay>

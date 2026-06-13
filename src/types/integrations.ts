@@ -1,0 +1,337 @@
+import { z } from 'zod';
+
+export const INTEGRATION_TYPE_IDS = ['zoho_books', 'zoho_inventory', 'tally_prime', 'busy'] as const;
+export const IntegrationTypeIdSchema = z.enum(INTEGRATION_TYPE_IDS);
+export type IntegrationTypeId = z.infer<typeof IntegrationTypeIdSchema>;
+
+export const IntegrationConnectivityModeSchema = z.enum(['cloud', 'local']);
+export type IntegrationConnectivityMode = z.infer<typeof IntegrationConnectivityModeSchema>;
+
+export const TenantIntegrationStatusSchema = z.enum([
+  'pending_setup',
+  'connected',
+  'syncing',
+  'sync_failed',
+  'disconnected',
+]);
+export type TenantIntegrationStatus = z.infer<typeof TenantIntegrationStatusSchema>;
+
+export const TenantIntegrationHealthStatusSchema = z.enum(['ok', 'expired', 'invalid']);
+export type TenantIntegrationHealthStatus = z.infer<typeof TenantIntegrationHealthStatusSchema>;
+
+export const INTEGRATION_ENTITY_TYPES = ['brands', 'products', 'customers', 'estimates', 'orders', 'invoices'] as const;
+export const IntegrationEntityTypeSchema = z.enum(INTEGRATION_ENTITY_TYPES);
+export type IntegrationEntityType = z.infer<typeof IntegrationEntityTypeSchema>;
+
+export const INTEGRATION_CAPABILITY_ENTITY_TYPES = INTEGRATION_ENTITY_TYPES;
+export const IntegrationCapabilityEntityTypeSchema = z.enum(INTEGRATION_CAPABILITY_ENTITY_TYPES);
+export type IntegrationCapabilityEntityType = z.infer<typeof IntegrationCapabilityEntityTypeSchema>;
+
+export const IntegrationFlowDirectionSchema = z.enum(['inbound', 'outbound', 'bidirectional']);
+export type IntegrationFlowDirection = z.infer<typeof IntegrationFlowDirectionSchema>;
+
+export const IntegrationFlowTriggerSchema = z.enum(['webhook', 'scheduled', 'event']);
+export type IntegrationFlowTrigger = z.infer<typeof IntegrationFlowTriggerSchema>;
+
+export const IntegrationSyncJobTypeSchema = z.enum([
+  'initial_reference',
+  'initial_transactional',
+  'incremental',
+  'manual',
+]);
+export type IntegrationSyncJobType = z.infer<typeof IntegrationSyncJobTypeSchema>;
+
+export const IntegrationSyncJobStatusSchema = z.enum(['queued', 'running', 'completed', 'failed', 'cancelled']);
+export type IntegrationSyncJobStatus = z.infer<typeof IntegrationSyncJobStatusSchema>;
+
+export const IntegrationEntitySyncStatusSchema = z.enum(['synced', 'pending_push', 'conflict', 'error']);
+export type IntegrationEntitySyncStatus = z.infer<typeof IntegrationEntitySyncStatusSchema>;
+
+export const IntegrationAuthFieldTypeSchema = z.enum(['text', 'password', 'select', 'textarea', 'number', 'url']);
+export type IntegrationAuthFieldType = z.infer<typeof IntegrationAuthFieldTypeSchema>;
+
+export const IntegrationAuthFieldOptionSchema = z
+  .object({
+    label: z.string().trim().min(1).max(120),
+    value: z.string().trim().min(1).max(120),
+  })
+  .strict();
+export type IntegrationAuthFieldOption = z.infer<typeof IntegrationAuthFieldOptionSchema>;
+
+export const IntegrationAuthFieldSchema = z
+  .object({
+    key: z.string().trim().regex(/^[a-z][a-z0-9_]*$/, 'Field keys must be snake_case identifiers'),
+    label: z.string().trim().min(1).max(120),
+    type: IntegrationAuthFieldTypeSchema,
+    required: z.boolean().default(true),
+    help: z.string().trim().min(1).max(500).optional(),
+    placeholder: z.string().trim().min(1).max(160).optional(),
+    secret: z.boolean().optional(),
+    options: z.array(IntegrationAuthFieldOptionSchema).min(1).optional(),
+  })
+  .strict()
+  .superRefine((field, ctx) => {
+    if (field.type === 'select' && !field.options?.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['options'],
+        message: 'Select auth fields must declare at least one option',
+      });
+    }
+
+    if (field.type !== 'select' && field.options) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['options'],
+        message: 'Only select auth fields may define options',
+      });
+    }
+  });
+export type IntegrationAuthField = z.infer<typeof IntegrationAuthFieldSchema>;
+
+const ManualIntegrationAuthSchema = z
+  .object({
+    oauth: z.literal(false).default(false),
+    fields: z.array(IntegrationAuthFieldSchema).min(1),
+  })
+  .strict();
+
+const OAuthIntegrationAuthSchema = z
+  .object({
+    oauth: z.literal(true),
+    authorize_url: z.string().url().optional(),
+    token_url: z.string().url().optional(),
+    scopes: z.array(z.string().trim().min(1)).default([]),
+    fields: z.array(IntegrationAuthFieldSchema).default([]),
+  })
+  .strict()
+  .superRefine((schema, ctx) => {
+    if (!schema.authorize_url && !schema.token_url) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['authorize_url'],
+        message: 'OAuth auth schemas must declare an authorization or token endpoint',
+      });
+    }
+  });
+
+export const IntegrationAuthSchemaSchema = z.union([ManualIntegrationAuthSchema, OAuthIntegrationAuthSchema]);
+export type IntegrationAuthSchema = z.infer<typeof IntegrationAuthSchemaSchema>;
+
+const IntegrationCapabilityEntityListSchema = z.array(IntegrationCapabilityEntityTypeSchema);
+
+export const IntegrationCapabilitiesSchema = z
+  .object({
+    inbound_reference: IntegrationCapabilityEntityListSchema.default([]),
+    inbound_transactional: IntegrationCapabilityEntityListSchema.default([]),
+    outbound_reference: IntegrationCapabilityEntityListSchema.default([]),
+    outbound_transactional: IntegrationCapabilityEntityListSchema.default([]),
+    webhooks: z.boolean().default(false),
+    scheduled_sync: z.boolean().default(false),
+    manual_sync: z.boolean().default(true),
+    health_check: z.boolean().default(true),
+  })
+  .strict();
+export type IntegrationCapabilities = z.infer<typeof IntegrationCapabilitiesSchema>;
+
+export const IntegrationProgressPhaseSchema = z.union([
+  IntegrationCapabilityEntityTypeSchema,
+  z.literal('queued'),
+  z.literal('complete'),
+]);
+
+export const IntegrationJobProgressSchema = z
+  .object({
+    mode: z.enum(['initial_import', 'incremental', 'manual']).optional(),
+    phase: IntegrationProgressPhaseSchema.optional(),
+    phase_label: z.string().trim().min(1).max(200).optional(),
+    phases_total: z.number().int().min(1).optional(),
+    phase_current: z.number().int().min(0).optional(),
+    current_entity: IntegrationEntityTypeSchema.optional(),
+    current_page: z.number().int().min(1).optional(),
+    total_pages_estimate: z.number().int().min(1).optional(),
+    items_total: z.number().int().min(0).optional(),
+    items_processed: z.number().int().min(0).optional(),
+    items_failed: z.number().int().min(0).optional(),
+    last_batch_size: z.number().int().min(0).optional(),
+    cursor: z.string().trim().min(1).max(2000).nullable().optional(),
+    eta_seconds_remaining: z.number().int().min(0).nullable().optional(),
+    percent: z.number().min(0).max(100).optional(),
+    last_entity_type: IntegrationEntityTypeSchema.optional(),
+    last_external_id: z.string().trim().min(1).max(200).optional(),
+    message: z.string().trim().min(1).max(200).optional(),
+    started_at: z.string().datetime().optional(),
+    updated_at: z.string().datetime().optional(),
+    meta: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict()
+  .superRefine((progress, ctx) => {
+    if (
+      progress.phases_total !== undefined &&
+      progress.phase_current !== undefined &&
+      progress.phase_current > progress.phases_total
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['phase_current'],
+        message: 'phase_current cannot exceed phases_total',
+      });
+    }
+
+    if (
+      progress.items_total !== undefined &&
+      progress.items_processed !== undefined &&
+      progress.items_processed > progress.items_total
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['items_processed'],
+        message: 'items_processed cannot exceed items_total',
+      });
+    }
+
+    if (
+      progress.items_total !== undefined &&
+      progress.items_failed !== undefined &&
+      progress.items_failed > progress.items_total
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['items_failed'],
+        message: 'items_failed cannot exceed items_total',
+      });
+    }
+  });
+export type IntegrationJobProgress = z.infer<typeof IntegrationJobProgressSchema>;
+export const IntegrationProgressSchema = IntegrationJobProgressSchema;
+export type IntegrationProgress = IntegrationJobProgress;
+export const IntegrationStatusSchema = TenantIntegrationStatusSchema;
+export type IntegrationStatus = TenantIntegrationStatus;
+
+const IntegrationJobSummaryCountSchema = z.number().int().min(0);
+
+export const IntegrationJobSummarySchema = z
+  .object({
+    brands: IntegrationJobSummaryCountSchema.optional(),
+    products: IntegrationJobSummaryCountSchema.optional(),
+    customers: IntegrationJobSummaryCountSchema.optional(),
+    estimates: IntegrationJobSummaryCountSchema.optional(),
+    orders: IntegrationJobSummaryCountSchema.optional(),
+    invoices: IntegrationJobSummaryCountSchema.optional(),
+    total_processed: IntegrationJobSummaryCountSchema.optional(),
+    total_failed: IntegrationJobSummaryCountSchema.optional(),
+    duration_ms: z.number().int().min(0).optional(),
+    warnings: z.array(z.string().trim().min(1).max(200)).optional(),
+  })
+  .strict();
+export type IntegrationJobSummary = z.infer<typeof IntegrationJobSummarySchema>;
+
+export const IntegrationTypeRecordSchema = z
+  .object({
+    id: IntegrationTypeIdSchema,
+    display_name: z.string().trim().min(1).max(120),
+    description: z.string().nullable(),
+    logo_url: z.string().url().nullable(),
+    auth_schema: IntegrationAuthSchemaSchema,
+    capabilities: IntegrationCapabilitiesSchema,
+    connectivity_mode: IntegrationConnectivityModeSchema,
+    is_active: z.boolean(),
+  })
+  .strict();
+export type IntegrationTypeRecord = z.infer<typeof IntegrationTypeRecordSchema>;
+
+export const TenantIntegrationRecordSchema = z
+  .object({
+    id: z.string().uuid(),
+    tenant_id: z.string().uuid(),
+    integration_type_id: IntegrationTypeIdSchema,
+    status: TenantIntegrationStatusSchema,
+    config: z.record(z.string(), z.unknown()),
+    last_health_check_at: z.string().datetime().nullable(),
+    health_status: TenantIntegrationHealthStatusSchema.nullable(),
+    connected_at: z.string().datetime().nullable(),
+    connected_by: z.string().uuid().nullable(),
+    created_at: z.string().datetime(),
+    updated_at: z.string().datetime(),
+  })
+  .strict();
+export type TenantIntegrationRecord = z.infer<typeof TenantIntegrationRecordSchema>;
+
+export const IntegrationJobRecordSchema = z
+  .object({
+    id: z.string().uuid(),
+    tenant_integration_id: z.string().uuid(),
+    job_type: IntegrationSyncJobTypeSchema,
+    status: IntegrationSyncJobStatusSchema,
+    progress: IntegrationJobProgressSchema,
+    error_log: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
+    summary: IntegrationJobSummarySchema.nullable().optional(),
+    started_at: z.string().datetime().nullable(),
+    completed_at: z.string().datetime().nullable(),
+    created_at: z.string().datetime(),
+  })
+  .strict();
+export type IntegrationJobRecord = z.infer<typeof IntegrationJobRecordSchema>;
+
+export const IntegrationDataFlowRecordSchema = z
+  .object({
+    id: z.string().uuid(),
+    tenant_integration_id: z.string().uuid(),
+    entity_type: IntegrationEntityTypeSchema,
+    direction: IntegrationFlowDirectionSchema,
+    trigger_type: IntegrationFlowTriggerSchema,
+    schedule: z.string().trim().min(1).nullable(),
+    webhook_id: z.string().uuid().nullable(),
+    is_active: z.boolean(),
+    last_run_at: z.string().datetime().nullable(),
+  })
+  .strict();
+export type IntegrationDataFlowRecord = z.infer<typeof IntegrationDataFlowRecordSchema>;
+
+export const IntegrationCatalogItemSchema = z
+  .object({
+    type: IntegrationTypeRecordSchema,
+    integration: TenantIntegrationRecordSchema.nullable(),
+    latest_job: IntegrationJobRecordSchema.nullable(),
+    recent_jobs: z.array(IntegrationJobRecordSchema).default([]),
+    active_flows: z.array(IntegrationDataFlowRecordSchema).default([]),
+  })
+  .strict();
+export type IntegrationCatalogItem = z.infer<typeof IntegrationCatalogItemSchema>;
+
+export const IntegrationSettingsPayloadSchema = z
+  .object({
+    catalog: z.array(IntegrationCatalogItemSchema),
+  })
+  .strict();
+export type IntegrationSettingsPayload = z.infer<typeof IntegrationSettingsPayloadSchema>;
+
+export const IntegrationCredentialsInputSchema = z.record(z.string(), z.string().trim().min(1));
+export type IntegrationCredentialsInput = z.infer<typeof IntegrationCredentialsInputSchema>;
+
+export const IntegrationTestRequestSchema = z
+  .object({
+    integration_type_id: IntegrationTypeIdSchema,
+    credentials: IntegrationCredentialsInputSchema,
+  })
+  .strict();
+export type IntegrationTestRequest = z.infer<typeof IntegrationTestRequestSchema>;
+
+export const IntegrationConnectRequestSchema = z
+  .object({
+    integration_type_id: IntegrationTypeIdSchema,
+    credentials: IntegrationCredentialsInputSchema,
+    config: z.record(z.string(), z.unknown()).default({}),
+  })
+  .strict();
+export type IntegrationConnectRequest = z.infer<typeof IntegrationConnectRequestSchema>;
+
+export const IntegrationSyncRequestSchema = z
+  .object({
+    tenant_integration_id: z.string().uuid(),
+    job_type: IntegrationSyncJobTypeSchema.default('manual'),
+    mode: z.enum(['initial_import', 'incremental', 'manual']).default('initial_import'),
+    import_orders_since: z.string().date().optional(),
+  })
+  .strict();
+export type IntegrationSyncRequest = z.infer<typeof IntegrationSyncRequestSchema>;

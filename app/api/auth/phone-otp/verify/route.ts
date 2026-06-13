@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { otpStore } from '../send/route';
+import { getPostHogClient } from '@/lib/posthog-server';
 
 const MAX_ATTEMPTS = 5;
 
@@ -110,6 +111,23 @@ export async function POST(request: NextRequest) {
       expiresAt: Date.now() + 5 * 60 * 1000, // 5 min to pick context
       attempts: 0,
     });
+
+    try {
+      const ph = getPostHogClient();
+      const ctx = contexts[0];
+      ph.capture({
+        distinctId: ctx.buyer_id,
+        event: 'buyer_otp_verified',
+        properties: {
+          tenant_count: contexts.length,
+          tenant_id: ctx.tenant_id,
+          role: ctx.role,
+        },
+      });
+      await ph.flush();
+    } catch {
+      // non-blocking
+    }
 
     if (contexts.length === 1) {
       // Build redirect directly

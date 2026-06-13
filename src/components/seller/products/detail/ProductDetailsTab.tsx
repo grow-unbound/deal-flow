@@ -26,7 +26,7 @@ interface ProductDetailsTabProps {
 
 export function ProductDetailsTab({ details, role, isSaving, onSave }: ProductDetailsTabProps) {
   const isAdmin = role === 'seller_admin';
-  const [isEditing, setIsEditing] = useState(false);
+  const isEditing = false;
   const [form, setForm] = useState({
     name_override: details.name_override ?? '',
     mrp: details.mrp != null ? formatInrInput(String(details.mrp)) : '',
@@ -49,16 +49,6 @@ export function ProductDetailsTab({ details, role, isSaving, onSave }: ProductDe
     <section className="mt-5 overflow-hidden rounded-[14px] border border-cream-300 bg-white">
       <div className="flex items-center justify-between border-b border-cream-300 px-5 py-4">
         <h2 className="font-display text-[17px] text-cream-950">Details</h2>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          className="h-9 gap-1.5 px-4"
-          onClick={() => setIsEditing((prev) => !prev)}
-        >
-          <Pencil size={14} />
-          Edit Details
-        </Button>
       </div>
 
       <div className="p-5">

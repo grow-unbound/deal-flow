@@ -19,8 +19,10 @@ export interface MasterBrand {
 export interface TenantBrand {
   id: string;
   tenant_id: string;
-  master_brand_id: string;
+  master_brand_id: string | null;
   display_name_override: string | null;
+  slug?: string | null;
+  description?: string | null;
   logo_url: string | null;
   margin_pct: number | null;
   exclusivity: boolean | null;
@@ -139,8 +141,10 @@ export interface BrandDetailMetaStrip {
 export interface BrandDetailRow {
   id: string;
   tenant_id: string;
-  master_brand_id: string;
+  master_brand_id: string | null;
   display_name_override: string | null;
+  slug?: string | null;
+  description?: string | null;
   logo_url: string | null;
   margin_pct: number | null;
   exclusivity: boolean | null;
@@ -237,8 +241,13 @@ function optimisticBrandFromPayload(payload: CreateTenantBrandPayload): TenantBr
   return {
     id: `optimistic-${Date.now()}`,
     tenant_id: '',
-    master_brand_id: payload.mode === 'import' ? payload.master_brand_id : masterBrand?.id ?? '',
-    display_name_override: payload.display_name_override ?? (payload.mode === 'custom' ? payload.name : null),
+    master_brand_id: payload.mode === 'import' ? payload.master_brand_id : null,
+    display_name_override:
+      payload.display_name_override ??
+      payload.name ??
+      (payload.mode === 'custom' ? payload.name : masterBrand?.name ?? null),
+    slug: payload.slug ?? masterBrand?.slug ?? null,
+    description: payload.description ?? masterBrand?.description ?? null,
     logo_url: payload.logo_url ?? masterBrand?.logo_url ?? null,
     margin_pct: payload.margin_pct ?? null,
     exclusivity: payload.exclusivity ?? false,
@@ -373,6 +382,9 @@ export function useUpdateTenantBrand(id: string) {
                   payload.display_name_override === undefined
                     ? brand.display_name_override
                     : payload.display_name_override,
+                slug: payload.slug === undefined ? brand.slug : payload.slug,
+                description:
+                  payload.description === undefined ? brand.description : payload.description,
                 logo_url: payload.logo_url === undefined ? brand.logo_url : payload.logo_url,
                 margin_pct: payload.margin_pct === undefined ? brand.margin_pct : payload.margin_pct,
                 exclusivity:

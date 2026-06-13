@@ -42,26 +42,17 @@ function LoginForm() {
     let shouldResetLoading = true;
 
     try {
-      // Step 1: Authenticate with Supabase — sets session in browser automatically
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: identifier,
-        password,
-      });
+      type SignInResponse = {
+        error?: string;
+        redirect?: string;
+        user?: { id: string; email: string };
+        session?: {
+          access_token: string;
+          refresh_token: string;
+        };
+      };
 
-      if (authError || !authData.user) {
-        setError('Invalid email or password');
-        return;
-      }
-      if (authData.session) {
-        // Ensure cookie-backed session persistence is flushed before route guard checks.
-        await supabase.auth.setSession({
-          access_token: authData.session.access_token,
-          refresh_token: authData.session.refresh_token,
-        });
-      }
-
-      // Step 2: Get workspace + role from server (also fires PostHog)
-      const res = await fetch('/api/auth/workspace', {
+      const res = await fetch('/api/auth/signin', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -69,23 +60,34 @@ function LoginForm() {
           ...(posthog.get_session_id() && { 'X-POSTHOG-SESSION-ID': posthog.get_session_id() }),
         },
         body: JSON.stringify({
-          user_id: authData.user.id,
-          email: authData.user.email,
-          access_token: authData.session?.access_token,
+          identifier,
+          password,
         }),
       });
 
-      const wsData = await res.json();
+      const signInData = (await res.json()) as SignInResponse;
 
       if (!res.ok) {
-        // Workspace lookup failed — sign out to keep state clean
-        await supabase.auth.signOut();
-        setError(wsData.error || 'Login failed');
+        setError(signInData.error || 'Login failed');
         return;
       }
 
+      if (!signInData.session?.access_token || !signInData.session?.refresh_token) {
+        setError('Session was not created');
+        return;
+      }
+
+      await supabase.auth.setSession({
+        access_token: signInData.session.access_token,
+        refresh_token: signInData.session.refresh_token,
+      });
+
+      posthog.identify(signInData.user?.id ?? identifier, {
+        email: signInData.user?.email ?? identifier,
+      });
+
       shouldResetLoading = false;
-      router.replace(wsData.redirect ?? '/dashboard');
+      router.replace(signInData.redirect ?? '/dashboard');
       router.refresh();
     } catch {
       setError('An error occurred. Please try again.');

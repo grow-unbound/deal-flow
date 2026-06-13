@@ -45,12 +45,6 @@ vi.mock('@/contexts/TenantContext', () => ({
   useTenant: () => ({ currentTenant: { business_name: 'Test Tenant' } }),
 }));
 
-const useFlagStateMock = vi.fn();
-
-vi.mock('@/hooks/useFeatureFlag', () => ({
-  useFlagState: (flag: string) => useFlagStateMock(flag),
-}));
-
 function makeAuthValue(role: string) {
   return {
     session: null,
@@ -74,6 +68,23 @@ import { SellerSidebar } from '@/components/layout/SellerSidebar';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { useRole } from '@/hooks/useRole';
 import { renderHook } from '@testing-library/react';
+import type { SellerShellFeatureAvailability } from '@/lib/server/seller-features';
+
+function makeFeatures(overrides: Partial<SellerShellFeatureAvailability> = {}): SellerShellFeatureAvailability {
+  return {
+    brandProductMaster: true,
+    customerMaster: true,
+    cohorts: true,
+    pricingEngine: true,
+    catalogPublishing: true,
+    estimates: true,
+    salesOrders: true,
+    invoices: true,
+    tallyExport: true,
+    integrations: true,
+    ...overrides,
+  };
+}
 
 // ─── SellerSidebar nav gating ─────────────────────────────────────────────────
 
@@ -81,11 +92,10 @@ describe('SellerSidebar nav gating', () => {
   describe('seller_assistant', () => {
     beforeEach(() => {
       mockUseAuth.mockReturnValue(makeAuthValue('seller_assistant'));
-      useFlagStateMock.mockReturnValue(true);
     });
 
     it('renders non-admin nav items', () => {
-      render(<SellerSidebar />);
+      render(<SellerSidebar featureAvailability={makeFeatures()} />);
       expect(screen.getByText('Dashboard')).toBeInTheDocument();
       expect(screen.getByText('Brands')).toBeInTheDocument();
       expect(screen.getByText('Products')).toBeInTheDocument();
@@ -94,26 +104,26 @@ describe('SellerSidebar nav gating', () => {
       expect(screen.getByText('Estimates')).toBeInTheDocument();
       expect(screen.getByText('Sales Orders')).toBeInTheDocument();
       expect(screen.getByText('Invoices')).toBeInTheDocument();
-      expect(screen.getByText('Exports')).toBeInTheDocument();
+      expect(screen.queryByText('Exports')).not.toBeInTheDocument();
     });
 
     it('hides Cohorts nav item', () => {
-      render(<SellerSidebar />);
+      render(<SellerSidebar featureAvailability={makeFeatures()} />);
       expect(screen.queryByText('Cohorts')).not.toBeInTheDocument();
     });
 
     it('hides Price Lists nav item', () => {
-      render(<SellerSidebar />);
+      render(<SellerSidebar featureAvailability={makeFeatures()} />);
       expect(screen.queryByText('Price Lists')).not.toBeInTheDocument();
     });
 
     it('hides Settings nav item', () => {
-      render(<SellerSidebar />);
+      render(<SellerSidebar featureAvailability={makeFeatures()} />);
       expect(screen.queryByText('Settings')).not.toBeInTheDocument();
     });
 
     it('shows correct role label in footer', () => {
-      render(<SellerSidebar />);
+      render(<SellerSidebar featureAvailability={makeFeatures()} />);
       expect(screen.getByText('Seller assistant')).toBeInTheDocument();
     });
   });
@@ -121,18 +131,17 @@ describe('SellerSidebar nav gating', () => {
   describe('seller_admin', () => {
     beforeEach(() => {
       mockUseAuth.mockReturnValue(makeAuthValue('seller_admin'));
-      useFlagStateMock.mockReturnValue(true);
     });
 
     it('renders all nav items including admin-only ones', () => {
-      render(<SellerSidebar />);
+      render(<SellerSidebar featureAvailability={makeFeatures()} />);
       expect(screen.getByText('Cohorts')).toBeInTheDocument();
       expect(screen.getByText('Price Lists')).toBeInTheDocument();
       expect(screen.getByText('Settings')).toBeInTheDocument();
     });
 
     it('shows correct role label in footer', () => {
-      render(<SellerSidebar />);
+      render(<SellerSidebar featureAvailability={makeFeatures()} />);
       expect(screen.getByText('Seller admin')).toBeInTheDocument();
     });
   });

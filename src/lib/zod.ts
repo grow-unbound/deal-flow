@@ -40,6 +40,8 @@ const OptionalPhoneSchema = z
 
 export const TenantBrandMetaSchema = z.object({
   display_name_override: z.string().trim().optional().or(z.literal('')),
+  slug: z.string().trim().optional().or(z.literal('')),
+  description: z.string().trim().optional().or(z.literal('')),
   logo_url: z.string().url('Must be a valid URL').optional().or(z.literal('')),
   margin_pct: z.coerce.number().min(0, 'Margin must be 0 or more').max(100, 'Margin cannot exceed 100').optional().nullable(),
   exclusivity: z.boolean().nullable().optional(),
@@ -59,7 +61,7 @@ export const BrandSchema = z.object({
   name: z.string().min(1, 'Brand name is required'),
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric'),
   description: z.string().optional().or(z.literal('')),
-}).merge(TenantBrandMetaSchema);
+}).merge(TenantBrandMetaSchema.omit({ slug: true, description: true }));
 
 // Schema for creating a private custom brand (used in CreateBrandForm)
 export const CreateBrandSchema = z.object({
@@ -69,13 +71,19 @@ export const CreateBrandSchema = z.object({
     .min(1, 'Slug is required')
     .regex(/^[a-z0-9-]+$/, 'Slug may only contain lowercase letters and hyphens.'),
   description: z.string().optional().or(z.literal('')),
-}).merge(TenantBrandMetaSchema);
+}).merge(TenantBrandMetaSchema.omit({ slug: true, description: true }));
 
 export const ImportedBrandCreateSchema = z.object({
   mode: z.literal('import'),
   master_brand_id: z.string().uuid('Invalid brand ID'),
+  name: z.string().min(1, 'Brand name is required').optional(),
+  slug: z
+    .string()
+    .min(1, 'Slug is required')
+    .regex(/^[a-z0-9-]+$/, 'Slug may only contain lowercase letters and hyphens.')
+    .optional(),
   description: z.string().optional().or(z.literal('')),
-}).merge(TenantBrandMetaSchema);
+}).merge(TenantBrandMetaSchema.omit({ slug: true, description: true }));
 
 export const CustomBrandCreateSchema = z.object({
   mode: z.literal('custom'),
@@ -85,7 +93,7 @@ export const CustomBrandCreateSchema = z.object({
     .min(1, 'Slug is required')
     .regex(/^[a-z0-9-]+$/, 'Slug may only contain lowercase letters and hyphens.'),
   description: z.string().optional().or(z.literal('')),
-}).merge(TenantBrandMetaSchema);
+}).merge(TenantBrandMetaSchema.omit({ slug: true, description: true }));
 
 export const BrandCreateSchema = z.discriminatedUnion('mode', [
   ImportedBrandCreateSchema,
@@ -95,6 +103,14 @@ export type BrandCreateInput = z.infer<typeof BrandCreateSchema>;
 
 export const TenantBrandUpdateSchema = TenantBrandMetaSchema.partial().extend({
   display_name_override: z.string().trim().nullable().optional(),
+  slug: z
+    .string()
+    .trim()
+    .regex(/^[a-z0-9-]+$/, 'Slug may only contain lowercase letters and hyphens.')
+    .nullable()
+    .optional()
+    .or(z.literal('')),
+  description: z.string().trim().nullable().optional(),
   logo_url: z.string().trim().nullable().optional(),
   external_ref: z.string().trim().nullable().optional(),
   principal_name: z.string().trim().nullable().optional(),
