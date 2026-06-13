@@ -39,7 +39,7 @@ export async function getFlag(flagName: string, tenantId: string): Promise<boole
 
   try {
     const flags = await client.evaluateFlags(tenantId);
-    const value = flags.isEnabled(flagName);
+    const value = flags.isEnabled(flagName) === true;
     flagCache.set(cacheKey, {
       value,
       expiresAtMs: now + FLAG_TTL_MS,

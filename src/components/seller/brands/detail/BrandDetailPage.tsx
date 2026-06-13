@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Archive, Download, Share2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { PageWrap } from '@/components/seller/layout';
@@ -23,6 +23,7 @@ import { BrandProductsTab } from './BrandProductsTab';
 import { BrandBuyersTab } from './BrandBuyersTab';
 import { BrandCatalogsTab } from './BrandCatalogsTab';
 import { BrandActivityTimeline } from './BrandActivityTimeline';
+import { AddBrandCommand } from '../AddBrandCommand';
 
 type TabId = 'details' | 'performance' | 'products' | 'buyers' | 'catalogs' | 'activity';
 
@@ -86,6 +87,7 @@ function subtitle(header: BrandDetailResponse['header']) {
 
 export function BrandDetailPage({ id }: BrandDetailPageProps) {
   const router = useRouter();
+  const [editOpen, setEditOpen] = useState(false);
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-brand-detail-tab',
     scopeKey: id,
@@ -147,6 +149,9 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
         subtitle={subtitle(data.header)}
         actions={
           <div className="flex items-center gap-2 pt-1">
+            <Button type="button" className="cockpit-btn cockpit-btn-secondary h-9 px-4" onClick={() => setEditOpen(true)}>
+              Edit
+            </Button>
             <AlertDialog>
               <AlertDialogTrigger className="cockpit-btn cockpit-btn-secondary h-9 px-4 text-cream-800">
                 <Archive size={14} />
@@ -197,6 +202,14 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
       {tab === 'buyers' ? <BrandBuyersTab buyers={data.buyers} /> : null}
       {tab === 'catalogs' ? <BrandCatalogsTab catalogs={data.catalogs} /> : null}
       {tab === 'activity' ? <BrandActivityTimeline activity={data.activity} /> : null}
+
+      <AddBrandCommand
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        hideTrigger
+        mode="edit"
+        brand={data.details}
+      />
     </PageWrap>
   );
 }

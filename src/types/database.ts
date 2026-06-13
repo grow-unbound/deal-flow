@@ -25,6 +25,35 @@ export type Database = {
   };
   catalog: {
     Tables: {
+      integration_types: {
+        Row: {
+          id: string;
+          display_name: string;
+          description: string | null;
+          logo_url: string | null;
+          auth_schema: Record<string, unknown>;
+          capabilities: Record<string, unknown>;
+          connectivity_mode: 'cloud' | 'local';
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+          created_by: string | null;
+          updated_by: string | null;
+        };
+        Insert: {
+          id: string;
+          display_name: string;
+          description?: string | null;
+          logo_url?: string | null;
+          auth_schema?: Record<string, unknown>;
+          capabilities?: Record<string, unknown>;
+          connectivity_mode?: 'cloud' | 'local';
+          is_active?: boolean;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+        Update: Partial<Database['catalog']['Tables']['integration_types']['Insert']>;
+      };
       brands: {
         Row: {
           id: string;
@@ -130,6 +159,182 @@ export type Database = {
           updated_by?: string | null;
         };
       };
+      tenant_integrations: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          integration_type_id: string;
+          status: 'pending_setup' | 'connected' | 'syncing' | 'sync_failed' | 'disconnected';
+          vault_secret_id: string | null;
+          config: Record<string, unknown>;
+          last_health_check_at: string | null;
+          health_status: 'ok' | 'expired' | 'invalid' | null;
+          connected_at: string | null;
+          connected_by: string | null;
+          created_at: string;
+          updated_at: string;
+          created_by: string | null;
+          updated_by: string | null;
+          deleted_at: string | null;
+          external_ref: string | null;
+        };
+        Insert: {
+          tenant_id: string;
+          integration_type_id: string;
+          status?: 'pending_setup' | 'connected' | 'syncing' | 'sync_failed' | 'disconnected';
+          vault_secret_id?: string | null;
+          config?: Record<string, unknown>;
+          last_health_check_at?: string | null;
+          health_status?: 'ok' | 'expired' | 'invalid' | null;
+          connected_at?: string | null;
+          connected_by?: string | null;
+          created_by?: string | null;
+          updated_by?: string | null;
+          deleted_at?: string | null;
+          external_ref?: string | null;
+        };
+        Update: Partial<Database['app']['Tables']['tenant_integrations']['Insert']>;
+      };
+      integration_sync_jobs: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          tenant_integration_id: string;
+          job_type: 'initial_reference' | 'initial_transactional' | 'incremental' | 'manual';
+          status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+          progress: Record<string, unknown>;
+          error_log: Record<string, unknown> | null;
+          summary: Record<string, unknown> | null;
+          started_at: string | null;
+          completed_at: string | null;
+          triggered_by: string | null;
+          created_at: string;
+          updated_at: string;
+          created_by: string | null;
+          updated_by: string | null;
+          deleted_at: string | null;
+          external_ref: string | null;
+        };
+        Insert: {
+          tenant_id: string;
+          tenant_integration_id: string;
+          job_type: 'initial_reference' | 'initial_transactional' | 'incremental' | 'manual';
+          status?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+          progress?: Record<string, unknown>;
+          error_log?: Record<string, unknown> | null;
+          summary?: Record<string, unknown> | null;
+          started_at?: string | null;
+          completed_at?: string | null;
+          triggered_by?: string | null;
+          created_by?: string | null;
+          updated_by?: string | null;
+          deleted_at?: string | null;
+          external_ref?: string | null;
+        };
+        Update: Partial<Database['app']['Tables']['integration_sync_jobs']['Insert']>;
+      };
+      integration_entity_map: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          tenant_integration_id: string;
+          entity_type: string;
+          external_id: string;
+          internal_id: string;
+          last_synced_at: string | null;
+          sync_status: 'synced' | 'pending_push' | 'conflict' | 'error' | null;
+          external_hash: string | null;
+          created_at: string;
+          updated_at: string;
+          created_by: string | null;
+          updated_by: string | null;
+          deleted_at: string | null;
+          external_ref: string | null;
+        };
+        Insert: {
+          tenant_id: string;
+          tenant_integration_id: string;
+          entity_type: string;
+          external_id: string;
+          internal_id: string;
+          last_synced_at?: string | null;
+          sync_status?: 'synced' | 'pending_push' | 'conflict' | 'error' | null;
+          external_hash?: string | null;
+          created_by?: string | null;
+          updated_by?: string | null;
+          deleted_at?: string | null;
+          external_ref?: string | null;
+        };
+        Update: Partial<Database['app']['Tables']['integration_entity_map']['Insert']>;
+      };
+      integration_webhooks: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          tenant_integration_id: string;
+          endpoint_token: string;
+          event_types: string[];
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+          created_by: string | null;
+          updated_by: string | null;
+          deleted_at: string | null;
+          external_ref: string | null;
+        };
+        Insert: {
+          tenant_id: string;
+          tenant_integration_id: string;
+          endpoint_token?: string;
+          event_types: string[];
+          is_active?: boolean;
+          created_by?: string | null;
+          updated_by?: string | null;
+          deleted_at?: string | null;
+          external_ref?: string | null;
+        };
+        Update: Partial<Database['app']['Tables']['integration_webhooks']['Insert']>;
+      };
+      integration_data_flows: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          tenant_integration_id: string;
+          entity_type: string;
+          direction: 'inbound' | 'outbound' | 'bidirectional';
+          trigger_type: 'webhook' | 'scheduled' | 'event';
+          schedule: string | null;
+          webhook_id: string | null;
+          field_mappings: Record<string, unknown>;
+          filters: Record<string, unknown>;
+          is_active: boolean;
+          last_run_at: string | null;
+          created_at: string;
+          updated_at: string;
+          created_by: string | null;
+          updated_by: string | null;
+          deleted_at: string | null;
+          external_ref: string | null;
+        };
+        Insert: {
+          tenant_id: string;
+          tenant_integration_id: string;
+          entity_type: string;
+          direction: 'inbound' | 'outbound' | 'bidirectional';
+          trigger_type: 'webhook' | 'scheduled' | 'event';
+          schedule?: string | null;
+          webhook_id?: string | null;
+          field_mappings?: Record<string, unknown>;
+          filters?: Record<string, unknown>;
+          is_active?: boolean;
+          last_run_at?: string | null;
+          created_by?: string | null;
+          updated_by?: string | null;
+          deleted_at?: string | null;
+          external_ref?: string | null;
+        };
+        Update: Partial<Database['app']['Tables']['integration_data_flows']['Insert']>;
+      };
       tenant_users: {
         Row: {
           id: string;
@@ -215,6 +420,36 @@ export type Database = {
       custom_access_token_hook: {
         Args: { event: Record<string, unknown> };
         Returns: Record<string, unknown>;
+      };
+      upsert_tenant_integration_secret: {
+        Args: {
+          p_tenant_integration_id: string;
+          p_actor_user_id: string;
+          p_secret: Record<string, unknown>;
+          p_secret_name?: string | null;
+        };
+        Returns: string;
+      };
+      get_tenant_integration_secret: {
+        Args: {
+          p_tenant_integration_id: string;
+          p_actor_user_id: string;
+        };
+        Returns: Record<string, unknown> | null;
+      };
+      get_tenant_integration_runtime_secret: {
+        Args: {
+          p_tenant_integration_id: string;
+          p_expected_integration_type_id: string;
+        };
+        Returns: Record<string, unknown> | null;
+      };
+      delete_tenant_integration_secret: {
+        Args: {
+          p_tenant_integration_id: string;
+          p_actor_user_id: string;
+        };
+        Returns: void;
       };
     };
   };

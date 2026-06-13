@@ -21,7 +21,7 @@ import { DialogBody } from '@/components/ui/dialog';
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { InviteUserDialog } from './InviteUserDialog';
 import { FilterBar, LandingTable } from '@/components/seller/layout';
-import { supabaseBrowser } from '@/lib/supabase-browser';
+import { apiFetch } from '@/lib/api-fetch';
 import { cn } from '@/lib/utils';
 import type { TeamMember } from '@/types/team';
 
@@ -35,13 +35,6 @@ type TeamSort = 'Name (A → Z)' | 'Role' | 'Status';
 
 const TEAM_CHIPS: TeamChip[] = ['All users', 'Admin', 'Assistant', 'Active', 'Invited', 'Deactivated'];
 const TEAM_SORT_OPTIONS: TeamSort[] = ['Name (A → Z)', 'Role', 'Status'];
-
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const { data: { session } } = await supabaseBrowser.auth.getSession();
-  return session?.access_token
-    ? { Authorization: `Bearer ${session.access_token}` }
-    : {};
-}
 
 export function TeamMembersTable({ tenantId, isAdmin }: Props) {
   const queryClient = useQueryClient();
@@ -57,10 +50,9 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
   const { data: members = [], isLoading, isError } = useQuery({
     queryKey: ['team', tenantId],
     queryFn: async () => {
-      const headers = await getAuthHeaders();
-      const res = await fetch('/api/team/members', { headers });
+      const res = await apiFetch('/api/team/members');
       if (!res.ok) throw new Error('Failed to load team members');
-      const data = await res.json();
+      const data = (await res.json()) as { members?: TeamMember[] };
       return data.members as TeamMember[];
     },
   });
@@ -112,9 +104,8 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
 
   const removeMutation = useMutation({
     mutationFn: async (id: string) => {
-      const headers = await getAuthHeaders();
-      const r = await fetch(`/api/team/members/${id}`, { method: 'DELETE', headers });
-      const body = await r.json().catch(() => ({}));
+      const r = await apiFetch(`/api/team/members/${id}`, { method: 'DELETE' });
+      const body = (await r.json().catch(() => ({}))) as { error?: string; details?: { message?: string } };
       if (!r.ok) throw new Error(body.error ?? body.details?.message ?? 'Failed to deactivate member');
     },
     onSuccess: () => {
@@ -131,9 +122,8 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
 
   const resendMutation = useMutation({
     mutationFn: async (id: string) => {
-      const headers = await getAuthHeaders();
-      const r = await fetch(`/api/team/members/${id}/resend-invite`, { method: 'PUT', headers });
-      const body = await r.json().catch(() => ({}));
+      const r = await apiFetch(`/api/team/members/${id}/resend-invite`, { method: 'PUT' });
+      const body = (await r.json().catch(() => ({}))) as { error?: string; details?: { message?: string } };
       if (!r.ok) throw new Error(body.error ?? body.details?.message ?? 'Failed to resend invite');
     },
     onSuccess: () => {

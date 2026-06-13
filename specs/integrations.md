@@ -61,9 +61,9 @@ CREATE TABLE catalog.integration_types (
 ```json
 {
   "inbound_reference":     ["brands", "products", "customers"],
-  "inbound_transactional": ["orders", "invoices"],
+  "inbound_transactional": ["estimates", "orders", "invoices"],
   "outbound_reference":    ["products", "customers"],
-  "outbound_transactional":["orders"],
+  "outbound_transactional":["estimates", "orders", "invoices"],
   "webhooks":              true
 }
 ```
@@ -160,7 +160,7 @@ CREATE TABLE app.integration_entity_map (
   tenant_id             uuid NOT NULL REFERENCES app.tenants(id),
   tenant_integration_id uuid NOT NULL REFERENCES app.tenant_integrations(id),
 
-  entity_type   text NOT NULL,  -- 'brand' | 'product' | 'customer' | 'order' | 'invoice'
+  entity_type   text NOT NULL,  -- 'brand' | 'product' | 'customer' | 'order' | 'invoice' | 'estimate'
   external_id   text NOT NULL,  -- ID from the external system
   internal_id   uuid NOT NULL,  -- DealFlow record UUID
 
@@ -187,7 +187,7 @@ CREATE TABLE app.integration_data_flows (
   tenant_id             uuid NOT NULL REFERENCES app.tenants(id),
   tenant_integration_id uuid NOT NULL REFERENCES app.tenant_integrations(id),
 
-  entity_type   text NOT NULL,  -- 'products' | 'customers' | 'orders' | 'invoices'
+  entity_type   text NOT NULL,  -- 'products' | 'customers' | 'orders' | 'invoices' | 'estimates'
   direction     text NOT NULL,  -- 'inbound' | 'outbound' | 'bidirectional'
 
   trigger_type  text NOT NULL,  -- 'webhook' | 'scheduled' | 'event'
@@ -271,7 +271,8 @@ integrations-sync-worker
 
   Phase 2 — Transactional Data (last 90 days)
     → Adapter.fetchOrders(since: now()-90d)  → upsert orders + order_items
-    → Adapter.fetchInvoices(since: now()-90d)
+    → Adapter.fetchEstimates(since: now()-90d)  → upsert estimates + estimate_items
+    → Adapter.fetchInvoices(since: now()-90d)  → upsert invoices + invoice_items
     → Update progress JSONB after each page
 
   On completion → update status: 'completed', write summary JSONB
@@ -328,11 +329,14 @@ interface IntegrationAdapter {
   fetchCustomers(cursor?: string): Promise<PagedResult<Customer>>;
 
   // Transactional data
+  fetchEstiamtes(since: Date, cursor?: string): Promise<PagedResult<Estimate>>;
   fetchOrders(since: Date, cursor?: string): Promise<PagedResult<Order>>;
   fetchInvoices(since: Date, cursor?: string): Promise<PagedResult<Invoice>>;
 
   // Outbound push
+  pushEstimates(estimate: Estimate): Promise<{ external_id: string }>;
   pushOrder(order: Order): Promise<{ external_id: string }>;
+  pushInvoice(invoice: Invoice): Promise<{ external_id: string }>;
   pushCustomer(customer: Customer): Promise<{ external_id: string }>;
 
   // Webhook registration (if supported)
@@ -381,7 +385,7 @@ Flag `connectivity_mode: 'local'` in `integration_types` drives the UI to show a
 ### 3.3 Setup Wizard (Dialog — 4 steps)
 
 **Step 1: What you'll get**
-- List of data that will be imported (brands, products, customers, 90-day orders)
+- List of data that will be imported (brands, products, customers, 90-day orders, 90-day estimates, 90-day invoices)
 - Estimated time to complete initial sync
 
 **Step 2: Connect**
@@ -395,8 +399,8 @@ Flag `connectivity_mode: 'local'` in `integration_types` drives the UI to show a
 - Shows success (org name, item counts from external system) or specific error
 
 **Step 4: Start Import**
-- Shows what will be synced and in what order
-- Date picker: "Import orders since [date, default 90 days ago]"
+- Shows what will be synced and in what order 
+- Date picker: "Import orders/invoices/estimates since [date, default 90 days ago]"
 - "Start Import" button → triggers sync job → closes wizard, opens detail panel
 
 ### 3.4 Integration Detail Panel
@@ -421,6 +425,7 @@ Flag `connectivity_mode: 'local'` in `integration_types` drives the UI to show a
 │  │ Entity       Direction      Trigger          Status              │    │
 │  │ Products     ← Inbound      Daily at 2am     Active ●            │    │
 │  │ Customers    ← Inbound      Daily at 2am     Active ●            │    │
+│  │ Estimates    → Outbound     On status change Active ●            │    │
 │  │ Orders       → Outbound     On status change Active ●            │    │
 │  │ Invoices     ← Inbound      Webhook          Active ●            │    │
 │  │                                              [+ Add flow]        │    │
@@ -477,7 +482,7 @@ Users configure ongoing data sync after the initial import is done. Each flow is
 
 ## 4. Feature Flag Gating
 
-The integrations module is already scoped under `df_zoho_integration` in the feature flag list. Extend it:
+The integrations module is already scoped under `df_zoho_integration` in the feature flag list. Rename umbrella df_zoho_integration to df_integrations and use df_zoho_integration for a smaller zoho scope. Update it:
 
 | Flag | Scope |
 |---|---|
