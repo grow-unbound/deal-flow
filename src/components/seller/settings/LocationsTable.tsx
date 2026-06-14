@@ -64,7 +64,7 @@ export function LocationsTable({
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium text-cream-900">{loc.name}</span>
                         {loc.is_default && !inactive ? (
-                          <span className="rounded-full border border-ember-200 bg-ember-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-ember-800">
+                          <span className="rounded-full border border-ember-200 bg-ember-50 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-ember-800">
                             Default
                           </span>
                         ) : null}

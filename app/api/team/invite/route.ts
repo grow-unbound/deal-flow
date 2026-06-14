@@ -44,6 +44,9 @@ export async function POST(request: NextRequest) {
   }
 
   const { email, full_name, phone, role } = validation.data;
+  const locationIds = role === 'seller_assistant' ? (validation.data.location_ids ?? []) : null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabaseAdmin as any;
   const directory = await getTenantMemberDirectory(claims.tenant_id);
   const conflict = findDuplicateMember(directory, { email, phone });
 
@@ -65,6 +68,35 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (locationIds && locationIds.length > 0) {
+    const { data: locations, error: locationsError } = await db
+      .schema('app')
+      .from('locations')
+      .select('id')
+      .eq('tenant_id', claims.tenant_id)
+      .is('deleted_at', null)
+      .in('id', locationIds);
+
+    if (locationsError) {
+      return NextResponse.json(
+        { error: 'Failed to validate location access', details: locationsError.message },
+        { status: 500 },
+      );
+    }
+
+    if ((locations ?? []).length !== locationIds.length) {
+      return NextResponse.json(
+        {
+          error: 'Validation error',
+          fieldErrors: {
+            location_ids: ['Select valid active locations for this assistant.'],
+          },
+        },
+        { status: 400 },
+      );
+    }
+  }
+
   // Create/invite the Supabase Auth user
   const { data: inviteData, error: inviteError } =
     await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
@@ -74,6 +106,7 @@ export async function POST(request: NextRequest) {
         role,
         full_name,
         phone,
+        location_ids: locationIds,
       },
     });
 
@@ -85,8 +118,6 @@ export async function POST(request: NextRequest) {
   }
 
   // The auth user now exists or has been updated by Supabase; create the tenant link row.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabaseAdmin as any;
   const { error: insertError } = await db
     .schema('app')
     .from('tenant_users')
@@ -94,6 +125,7 @@ export async function POST(request: NextRequest) {
       tenant_id: claims.tenant_id,
       user_id: inviteData.user.id,
       role,
+      location_ids: locationIds,
       is_active: false,
       invited_at: new Date().toISOString(),
       created_by: claims.tenant_id,

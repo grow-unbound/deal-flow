@@ -27,8 +27,8 @@ export function FulfilmentAlert({ lines, onResolve }: FulfilmentAlertProps) {
     <div className="mt-3 flex items-start gap-3 rounded-[10px] border border-amber-200 bg-amber-50 p-4">
       <AlertTriangle size={20} className="mt-0.5 shrink-0 text-amber-600" aria-hidden />
       <div className="min-w-0 flex-1">
-        <div className="text-[13.5px] font-semibold text-amber-700">{title}</div>
-        <div className="mt-0.5 text-[12.5px] leading-[1.45] text-cream-800">
+        <div className="text-base font-semibold text-amber-700">{title}</div>
+        <div className="mt-0.5 text-sm leading-[1.45] text-cream-800">
           <span className="font-semibold text-cream-900">{first.name}</span>
           {' — '}
           {first.onHand} of {first.qty} in stock, <span className="font-semibold text-cream-900">{short} short</span>.

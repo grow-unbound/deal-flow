@@ -1,4 +1,4 @@
-export type SellerLandingPeriod = 'month' | 'quarter' | 'year';
+export type SellerLandingPeriod = 'today' | 'week' | 'month' | 'quarter' | 'year';
 
 export interface SellerLandingPeriodOption {
   value: SellerLandingPeriod;
@@ -18,13 +18,15 @@ export interface SellerLandingPeriodMeta {
 export const DEFAULT_SELLER_LANDING_PERIOD: SellerLandingPeriod = 'month';
 
 export const SELLER_LANDING_PERIOD_OPTIONS: SellerLandingPeriodOption[] = [
+  { value: 'today', label: 'Today' },
+  { value: 'week', label: 'This Week' },
   { value: 'month', label: 'This Month' },
   { value: 'quarter', label: 'This Quarter' },
   { value: 'year', label: 'This Year' },
 ];
 
 export function isSellerLandingPeriod(value: string | null | undefined): value is SellerLandingPeriod {
-  return value === 'month' || value === 'quarter' || value === 'year';
+  return value === 'today' || value === 'week' || value === 'month' || value === 'quarter' || value === 'year';
 }
 
 export function parseSellerLandingPeriod(value: string | null | undefined): SellerLandingPeriod {
@@ -44,10 +46,13 @@ export function sellerLandingPeriodLabel(period: SellerLandingPeriod): string {
 }
 
 export function sellerLandingPeriodLowerLabel(period: SellerLandingPeriod): string {
+  if (period === 'today') return 'today';
   return sellerLandingPeriodLabel(period).toLowerCase();
 }
 
-export function sellerLandingMetricSuffix(period: SellerLandingPeriod): 'MTD' | 'QTD' | 'YTD' {
+export function sellerLandingMetricSuffix(period: SellerLandingPeriod): 'TODAY' | 'WTD' | 'MTD' | 'QTD' | 'YTD' {
+  if (period === 'today') return 'TODAY';
+  if (period === 'week') return 'WTD';
   if (period === 'quarter') return 'QTD';
   if (period === 'year') return 'YTD';
   return 'MTD';

@@ -25,13 +25,13 @@ export function CustomerPerformanceTab({ performance, performanceV2 }: CustomerP
     <section className="mt-5 grid grid-cols-2 gap-4">
       <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
         <div className="border-b border-cream-300 px-5 py-4">
-          <h3 className="font-display text-[17px] text-cream-950">Spend trend</h3>
-          <p className="text-[13px] text-cream-700">Last 12 months</p>
+          <h3 className="font-display text-lg text-cream-950">Spend trend</h3>
+          <p className="text-base text-cream-700">Last 12 months</p>
         </div>
         <div className="px-5 pt-4">
           <div className="flex items-end gap-3">
-            <p className="font-display text-[48px] leading-none text-cream-950">{formatCompactInr(trendValue, 1)}</p>
-            <p className="pb-1 text-[14px] text-cream-700">
+            <p className="font-display text-3xl leading-none text-cream-950">{formatCompactInr(trendValue, 1)}</p>
+            <p className="pb-1 text-base text-cream-700">
               <span className={growth >= 0 ? 'text-success-500' : 'text-danger-500'}>
                 {growth >= 0 ? '↑ +' : '↓ '}
                 {Math.abs(growth).toFixed(1)}%
@@ -55,7 +55,7 @@ export function CustomerPerformanceTab({ performance, performanceV2 }: CustomerP
                 dataKey="month"
                 axisLine={false}
                 tickLine={false}
-                tick={{ fill: 'var(--cream-700)', fontSize: 12 }}
+                tick={{ fill: 'var(--cream-700)', fontSize: 'var(--yk-text-sm)' }}
                 tickFormatter={monthTick}
               />
               <Tooltip formatter={(value: number) => formatCompactInr(Number(value))} />
@@ -67,15 +67,15 @@ export function CustomerPerformanceTab({ performance, performanceV2 }: CustomerP
 
       <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
         <div className="border-b border-cream-300 px-5 py-4">
-          <h3 className="font-display text-[17px] text-cream-950">Brand mix</h3>
-          <p className="text-[13px] text-cream-700">This month</p>
+          <h3 className="font-display text-lg text-cream-950">Brand mix</h3>
+          <p className="text-base text-cream-700">This month</p>
         </div>
         <div className="px-5 py-4">
           <div className="flex h-5 overflow-hidden rounded-full border border-cream-300 bg-cream-100">
             {(performanceV2.brand_mix.rows.length ? performanceV2.brand_mix.rows : [{ brand: 'No data', spend: 0, pct: 100 }]).map((row, index) => (
               <div
                 key={row.brand}
-                className="flex items-center justify-center text-[10px] font-semibold text-cream-50"
+                className="flex items-center justify-center text-xs font-semibold text-cream-50"
                 style={{ width: `${Math.max(row.pct, 8)}%`, backgroundColor: MIX_COLORS[index % MIX_COLORS.length] }}
               >
                 {row.pct}%
@@ -84,7 +84,7 @@ export function CustomerPerformanceTab({ performance, performanceV2 }: CustomerP
           </div>
           <div className="mt-4 space-y-2.5">
             {(performanceV2.brand_mix.rows.length ? performanceV2.brand_mix.rows : [{ brand: 'No brand mix data yet', spend: 0, pct: 0 }]).map((row, index) => (
-              <div key={`${row.brand}-${index}`} className="flex items-center justify-between text-[14px]">
+              <div key={`${row.brand}-${index}`} className="flex items-center justify-between text-base">
                 <div className="flex items-center gap-2.5">
                   <span className="inline-block h-2.5 w-2.5 rounded-[3px]" style={{ backgroundColor: MIX_COLORS[index % MIX_COLORS.length] }} />
                   <span className="text-cream-900">{row.brand}</span>
@@ -98,20 +98,20 @@ export function CustomerPerformanceTab({ performance, performanceV2 }: CustomerP
 
       <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
         <div className="border-b border-cream-300 px-5 py-4">
-          <h3 className="font-display text-[17px] text-cream-950">Top SKUs</h3>
-          <p className="text-[13px] text-cream-700">What this buyer keeps reordering</p>
+          <h3 className="font-display text-lg text-cream-950">Top SKUs</h3>
+          <p className="text-base text-cream-700">What this buyer keeps reordering</p>
         </div>
         <div>
           {(performanceV2.top_skus.length ? performanceV2.top_skus : [{ name: 'No SKU activity yet', sku: '—', revenue: 0, units: 0 }]).map((sku, index) => (
             <div key={`${sku.sku}-${index}`} className="grid grid-cols-[24px_1fr_auto] items-center gap-3 border-b border-cream-300 px-5 py-3.5 last:border-b-0">
-              <p className="font-mono text-[12px] text-cream-600">{index + 1}</p>
+              <p className="font-mono text-sm text-cream-600">{index + 1}</p>
               <div>
-                <p className="text-[13.5px] font-medium text-cream-900">{sku.name}</p>
-                <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.08em] text-cream-700">{sku.sku}</p>
+                <p className="text-base font-medium text-cream-900">{sku.name}</p>
+                <p className="mt-1 font-mono text-xs uppercase tracking-[0.08em] text-cream-700">{sku.sku}</p>
               </div>
               <div className="text-right">
-                <p className="font-display text-[16px] leading-none text-cream-950">{formatCompactInr(sku.revenue, 1)}</p>
-                <p className="mt-1 font-mono text-[11px] text-cream-700">{sku.units} units</p>
+                <p className="font-display text-md leading-none text-cream-950">{formatCompactInr(sku.revenue, 1)}</p>
+                <p className="mt-1 font-mono text-xs text-cream-700">{sku.units} units</p>
               </div>
             </div>
           ))}
@@ -120,31 +120,31 @@ export function CustomerPerformanceTab({ performance, performanceV2 }: CustomerP
 
       <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
         <div className="border-b border-cream-300 px-5 py-4">
-          <h3 className="font-display text-[17px] text-cream-950">Credit & ops</h3>
+          <h3 className="font-display text-lg text-cream-950">Credit & ops</h3>
         </div>
         <div className="px-5 py-4">
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-cream-700">Last order</p>
-              <p className="mt-1 font-display text-[44px] leading-none text-cream-950">{performanceV2.credit_ops.last_order_days_ago}</p>
-              <p className="mt-1 text-[13px] text-cream-700">{formatCurrency(performanceV2.credit_ops.last_order_value)}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Last order</p>
+              <p className="mt-1 font-display text-3xl leading-none text-cream-950">{performanceV2.credit_ops.last_order_days_ago}</p>
+              <p className="mt-1 text-base text-cream-700">{formatCurrency(performanceV2.credit_ops.last_order_value)}</p>
             </div>
             <div>
-              <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-cream-700">Catalog opens</p>
-              <p className="mt-1 font-display text-[44px] leading-none text-cream-950">{performanceV2.credit_ops.catalog_opens_mtd}</p>
-              <p className="mt-1 text-[13px] text-cream-700">in PWA, this month</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Catalog opens</p>
+              <p className="mt-1 font-display text-3xl leading-none text-cream-950">{performanceV2.credit_ops.catalog_opens_mtd}</p>
+              <p className="mt-1 text-base text-cream-700">in PWA, this month</p>
             </div>
           </div>
 
           <div className="mt-5">
-            <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-cream-700">Credit utilization</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Credit utilization</p>
             <div className="mt-2 h-3 overflow-hidden rounded-full bg-cream-200">
               <div
                 className="h-full rounded-full bg-teal-700"
                 style={{ width: `${Math.min(100, Math.max(0, performanceV2.credit_ops.credit_util_pct))}%` }}
               />
             </div>
-            <div className="mt-2 flex items-center justify-between text-[12px] text-cream-700">
+            <div className="mt-2 flex items-center justify-between text-sm text-cream-700">
               <span>{formatCurrency(performanceV2.credit_ops.credit_used)} used</span>
               <span>
                 {performanceV2.credit_ops.credit_util_pct}% of {formatCurrency(performanceV2.credit_ops.credit_limit)}
@@ -152,7 +152,7 @@ export function CustomerPerformanceTab({ performance, performanceV2 }: CustomerP
             </div>
           </div>
 
-          <div className="mt-4 rounded-[10px] border border-success-200 bg-success-50 px-3 py-2 text-[13px] text-success-700">
+          <div className="mt-4 rounded-[10px] border border-success-200 bg-success-50 px-3 py-2 text-base text-success-700">
             {performanceV2.credit_ops.payment_behavior_summary}
           </div>
         </div>

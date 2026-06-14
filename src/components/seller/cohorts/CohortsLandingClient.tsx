@@ -317,16 +317,16 @@ function CohortTile({
       onClick={onClick}
     >
       <div className="flex items-start justify-between gap-3">
-        <h3 className="font-display text-[18px] font-medium leading-[1.2] tracking-[-0.005em] text-cream-900">{cohort.name}</h3>
+        <h3 className="font-display text-lg font-medium leading-[1.2] tracking-[-0.005em] text-cream-900">{cohort.name}</h3>
         <StatusTag tone={cohort.status_tone} label={cohort.status_label} />
       </div>
 
-      <p className="-mt-0.5 text-[12px] leading-[1.5] text-cream-700">{cohort.description ?? `${cohort.type} cohort`}</p>
+      <p className="-mt-0.5 text-sm leading-[1.5] text-cream-700">{cohort.description ?? `${cohort.type} cohort`}</p>
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
-        <span className="font-mono text-[11px] uppercase tracking-[0.06em] text-cream-500">FOCUS:</span>
+        <span className="font-mono text-xs uppercase tracking-[0.06em] text-cream-500">FOCUS:</span>
         {cohort.focus_chips.map((chip) => (
-          <span key={chip} className="rounded-[4px] border border-cream-300 bg-cream-100 px-1.5 py-0.5 font-mono text-[10px] text-cream-800">
+          <span key={chip} className="rounded-[4px] border border-cream-300 bg-cream-100 px-1.5 py-0.5 font-mono text-xs text-cream-800">
             {chip}
           </span>
         ))}
@@ -334,26 +334,26 @@ function CohortTile({
 
       <div className="v2-coh-stats mt-1 grid grid-cols-2 gap-x-3 gap-y-2.5 border-t border-cream-300 pt-3">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-cream-700">{`GMV · ${metricSuffix}`}</p>
-          <p className="mt-0.5 font-display text-[18px] font-medium tracking-[-0.005em] text-cream-900">{formatCompactInr(cohort.gmv_mtd)}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">{`GMV · ${metricSuffix}`}</p>
+          <p className="mt-0.5 font-display text-lg font-medium tracking-[-0.005em] text-cream-900">{formatCompactInr(cohort.gmv_mtd)}</p>
         </div>
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-cream-700">Growth</p>
-          <p className={`mt-0.5 font-display text-[18px] font-medium tracking-[-0.005em] ${cohort.growth_pct >= 10 ? 'text-success-500' : 'text-cream-900'}`}>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Growth</p>
+          <p className={`mt-0.5 font-display text-lg font-medium tracking-[-0.005em] ${cohort.growth_pct >= 10 ? 'text-success-500' : 'text-cream-900'}`}>
             {cohort.growth_pct >= 0 ? '+' : ''}
             {cohort.growth_pct}%
           </p>
         </div>
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-cream-700">Members</p>
-          <p className="mt-0.5 font-display text-[18px] font-medium tracking-[-0.005em] text-cream-900">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Members</p>
+          <p className="mt-0.5 font-display text-lg font-medium tracking-[-0.005em] text-cream-900">
             {cohort.active_members}
-            <span className="text-[13px] text-cream-600"> / {cohort.total_members}</span>
+            <span className="text-base text-cream-600"> / {cohort.total_members}</span>
           </p>
         </div>
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-cream-700">Conversion</p>
-          <p className="mt-0.5 font-display text-[18px] font-medium tracking-[-0.005em] text-cream-900">{cohort.conversion_pct.toFixed(1)}%</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Conversion</p>
+          <p className="mt-0.5 font-display text-lg font-medium tracking-[-0.005em] text-cream-900">{cohort.conversion_pct.toFixed(1)}%</p>
         </div>
       </div>
     </article>

@@ -11,6 +11,7 @@ import { PermissionDenied } from '@/components/auth/PermissionDenied';
 import {
   ComposerSidebarCard,
 } from '@/components/seller/composer/ComposerLayout';
+import { ResolvedPriceLookupCard } from '@/components/seller/pricing/ResolvedPriceLookupCard';
 import {
   DocumentBasicsStrip,
   DocumentComposerFooterRow,
@@ -86,6 +87,8 @@ function buildNewEstimateDraft(estimateNumber = 'Estimating next number...'): Es
     estimate_number: estimateNumber,
     status: 'draft',
     buyer_id: null,
+    location_id: null,
+    available_locations: [],
     date_issued: isoDateOffset(0),
     valid_until: isoDateOffset(14),
     buyer_po_ref: '',
@@ -111,6 +114,7 @@ function snapshotPayload(document: EstimateComposerDocument, lines: EstimateComp
   return JSON.stringify({
     estimate_number: document.estimate_number,
     buyer_id: document.buyer_id,
+    location_id: document.location_id,
     date_issued: document.date_issued,
     valid_until: document.valid_until,
     buyer_po_ref: document.buyer_po_ref,
@@ -153,6 +157,7 @@ function toSavePayload(document: EstimateComposerDocument, lines: EstimateCompos
   return {
     estimate_number: document.estimate_number,
     buyer_id: document.buyer_id,
+    location_id: document.location_id,
     date_issued: document.date_issued,
     valid_until: document.valid_until,
     buyer_po_ref: document.buyer_po_ref,
@@ -460,12 +465,16 @@ export function DocComposerEstimate({
     }
     return (
       <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6">
-        <p className="text-[13px] text-danger-700">{error instanceof Error ? error.message : 'Failed to load estimate composer.'}</p>
+        <p className="text-base text-danger-700">{error instanceof Error ? error.message : 'Failed to load estimate composer.'}</p>
       </div>
     );
   }
 
   if (shouldBlockComposer(workingId, isLoading, Boolean(documentState))) {
+    return <DocumentComposerLoadingSkeleton />;
+  }
+
+  if (!documentState) {
     return <DocumentComposerLoadingSkeleton />;
   }
 
@@ -668,10 +677,12 @@ export function DocComposerEstimate({
           <DocumentBasicsStrip
             kind="estimate"
             docNumber={documentState.estimate_number}
+            locationId={documentState.location_id}
+            availableLocations={documentState.available_locations}
             dateIssued={documentState.date_issued}
             secondDate={documentState.valid_until}
             buyerPoRef={documentState.buyer_po_ref}
-            placeOfSupply={documentState.place_of_supply}
+            locationReadOnly={documentState.available_locations.length <= 1}
             onDateIssuedChange={(value) => {
               setDocumentState((current) => {
                 if (!current) return current;
@@ -683,7 +694,7 @@ export function DocComposerEstimate({
             }}
             onSecondDateChange={(value) => setDocumentPatch({ valid_until: value })}
             onBuyerPoRefChange={(value) => setDocumentPatch({ buyer_po_ref: value })}
-            onPlaceOfSupplyChange={(value) => setDocumentPatch({ place_of_supply: value })}
+            onLocationChange={(value) => setDocumentPatch({ location_id: value })}
           />
         )}
         left={(
@@ -716,8 +727,10 @@ export function DocComposerEstimate({
                 />
               )}
               <DocumentMetaCard
+                placeOfSupplyValue={documentState.place_of_supply}
                 notesValue={documentState.seller_note}
                 freightValue={documentState.freight}
+                onPlaceOfSupplyChange={(value) => setDocumentPatch({ place_of_supply: value })}
                 onNotesChange={(value) => setDocumentPatch({ seller_note: value })}
                 onFreightChange={(value) => setDocumentPatch({ freight: value })}
               />
@@ -773,6 +786,16 @@ export function DocComposerEstimate({
                   <span>Saving these edits stages a new version before the estimate is re-sent.</span>
                 ) : undefined
               }
+            />
+            <ResolvedPriceLookupCard
+              buyerId={documentState.buyer_id}
+              productOptions={activeLines.map((line) => ({
+                id: line.tenant_product_id,
+                label: line.product_name,
+                meta: `${line.sku} · Qty ${line.qty}`,
+              }))}
+              title="Resolved price check"
+              description="Cross-check the buyer's resolved price before saving or sending this estimate."
             />
           </div>
         )}
@@ -840,18 +863,18 @@ export function DocComposerEstimate({
             </div>
             <div className="mt-4 space-y-4">
               <div>
-                <p className="mb-2 text-[12px] font-medium text-cream-800">Recipient</p>
+                <p className="mb-2 text-sm font-medium text-cream-800">Recipient</p>
                 <Input value={sendRecipient} onChange={(event) => setSendRecipient(event.target.value)} />
               </div>
               <div>
-                <p className="mb-2 text-[12px] font-medium text-cream-800">Message</p>
+                <p className="mb-2 text-sm font-medium text-cream-800">Message</p>
                 <textarea
                   value={sendMessage}
                   onChange={(event) => setSendMessage(event.target.value)}
-                  className="min-h-[120px] w-full rounded-[12px] border border-cream-300 px-3 py-2 text-[13px] outline-none"
+                  className="min-h-[120px] w-full rounded-[12px] border border-cream-300 px-3 py-2 text-base outline-none"
                 />
               </div>
-              <div className="rounded-[12px] border border-cream-200 bg-cream-50 p-3 text-[12px] text-cream-700">
+              <div className="rounded-[12px] border border-cream-200 bg-cream-50 p-3 text-sm text-cream-700">
                 Buyer sees {diffLines.filter((line) => line.diff !== 'removed').length} lines totaling {formatCompactInr(totals.grand_total)}.
               </div>
             </div>

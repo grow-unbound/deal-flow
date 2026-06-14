@@ -477,7 +477,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
   if (isError || !composerQuery.data) {
     return (
       <div className="max-w-[1920px] mx-auto w-full px-8 py-6">
-        <div className="rounded-[18px] border border-danger-200 bg-danger-50 p-5 text-[13px] text-danger-700">
+        <div className="rounded-[18px] border border-danger-200 bg-danger-50 p-5 text-base text-danger-700">
           We couldn&apos;t load this cohort composer right now.
         </div>
       </div>
@@ -530,7 +530,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                   setSubmitError(null);
                 }}
                 placeholder="Cohort name"
-                className="h-auto border-0 bg-transparent px-0 py-0 font-medium text-[14px] text-cream-950 shadow-none focus-visible:ring-0"
+                className="h-auto border-0 bg-transparent px-0 py-0 font-medium text-base text-cream-950 shadow-none focus-visible:ring-0"
               />
             </ComposerBasicsField>
 
@@ -539,13 +539,13 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
                 placeholder="Optional description"
-                className="h-auto border-0 bg-transparent px-0 py-0 text-[13px] text-cream-700 shadow-none focus-visible:ring-0"
+                className="h-auto border-0 bg-transparent px-0 py-0 text-base text-cream-700 shadow-none focus-visible:ring-0"
               />
             </ComposerBasicsField>
 
             <ComposerBasicsField label="Type">
               <Select value={selectionMode} onValueChange={(value) => setSelectionMode(value as CohortSelectionMode)}>
-                <SelectTrigger className="h-auto border-0 bg-transparent px-0 py-0 text-[14px] font-medium shadow-none focus:ring-0">
+                <SelectTrigger className="h-auto border-0 bg-transparent px-0 py-0 text-base font-medium shadow-none focus:ring-0">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -556,7 +556,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
             </ComposerBasicsField>
 
             <ComposerBasicsField label="Selection">
-              <div className="flex items-center gap-2 text-[14px] font-medium text-cream-950">
+              <div className="flex items-center gap-2 text-base font-medium text-cream-950">
                 <span>{summary.members} buyers</span>
                 <span className="text-cream-500">·</span>
                 <span>{summary.areasCovered} areas</span>
@@ -595,10 +595,10 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                 <div className="space-y-5">
                   <section>
                     <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Geography</h3>
+                      <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Geography</h3>
                       <button
                         type="button"
-                        className="text-[12px] font-medium text-teal-700 hover:text-teal-800"
+                        className="text-sm font-medium text-teal-700 hover:text-teal-800"
                         onClick={() =>
                           toggleMany(
                             selectedGeographies,
@@ -612,7 +612,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                     </div>
                     <div className="space-y-2">
                       {composerQuery.data.filters.geographies.map((option) => (
-                        <label key={option.value} className="flex items-center justify-between gap-3 text-[13px] text-cream-900">
+                        <label key={option.value} className="flex items-center justify-between gap-3 text-base text-cream-900">
                           <span className="flex items-center gap-2">
                             <input
                               type="checkbox"
@@ -628,7 +628,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                             />
                             <span>{option.label}</span>
                           </span>
-                          <span className="font-mono text-[11px] text-cream-700">{option.count}</span>
+                          <span className="font-mono text-xs text-cream-700">{option.count}</span>
                         </label>
                       ))}
                     </div>
@@ -636,10 +636,10 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
 
                   <section>
                     <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Tier</h3>
+                      <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Tier</h3>
                       <button
                         type="button"
-                        className="text-[12px] font-medium text-teal-700 hover:text-teal-800"
+                        className="text-sm font-medium text-teal-700 hover:text-teal-800"
                         onClick={() => toggleMany(selectedTiers, composerQuery.data.filters.tiers.map((option) => option.value), setSelectedTiers)}
                       >
                         {selectedTiers.length === composerQuery.data.filters.tiers.length ? 'Clear all' : 'Select all'}
@@ -647,7 +647,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                     </div>
                     <div className="space-y-2">
                       {composerQuery.data.filters.tiers.map((option) => (
-                        <label key={option.value} className="flex items-center justify-between gap-3 text-[13px] text-cream-900">
+                        <label key={option.value} className="flex items-center justify-between gap-3 text-base text-cream-900">
                           <span className="flex items-center gap-2">
                             <input
                               type="checkbox"
@@ -663,17 +663,17 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                             />
                             <span>{option.label}</span>
                           </span>
-                          <span className="font-mono text-[11px] text-cream-700">{option.count}</span>
+                          <span className="font-mono text-xs text-cream-700">{option.count}</span>
                         </label>
                       ))}
                     </div>
                   </section>
 
                   <section>
-                    <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Last ordered</h3>
+                    <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Last ordered</h3>
                     <div className="space-y-2">
                       {LAST_ORDER_OPTIONS.map((option) => (
-                        <label key={option.value} className="flex items-center justify-between gap-3 text-[13px] text-cream-900">
+                        <label key={option.value} className="flex items-center justify-between gap-3 text-base text-cream-900">
                           <span className="flex items-center gap-2">
                             <input
                               type="radio"
@@ -684,7 +684,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                             />
                             <span>{option.label}</span>
                           </span>
-                          <span className="font-mono text-[11px] text-cream-700">
+                          <span className="font-mono text-xs text-cream-700">
                             {composerQuery.data.filters.last_order_buckets.find((bucket) => bucket.value === option.value)?.count ?? 0}
                           </span>
                         </label>
@@ -694,10 +694,10 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
 
                   <section>
                     <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Last 90 days GMV</h3>
+                      <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Last 90 days GMV</h3>
                       <button
                         type="button"
-                        className="text-[12px] font-medium text-teal-700 hover:text-teal-800"
+                        className="text-sm font-medium text-teal-700 hover:text-teal-800"
                         onClick={() =>
                           toggleMany(
                             selectedGmvBuckets,
@@ -711,7 +711,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                     </div>
                     <div className="space-y-2">
                       {composerQuery.data.filters.gmv_90d_buckets.map((option) => (
-                        <label key={option.value} className="flex items-center justify-between gap-3 text-[13px] text-cream-900">
+                        <label key={option.value} className="flex items-center justify-between gap-3 text-base text-cream-900">
                           <span className="flex items-center gap-2">
                             <input
                               type="checkbox"
@@ -727,7 +727,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                             />
                             <span>{GMV_BUCKET_LABELS[option.value as GmvBucket] ?? option.label}</span>
                           </span>
-                          <span className="font-mono text-[11px] text-cream-700">{option.count}</span>
+                          <span className="font-mono text-xs text-cream-700">{option.count}</span>
                         </label>
                       ))}
                     </div>
@@ -739,19 +739,19 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
               <ComposerMainCard>
                 <div className="flex flex-wrap items-center gap-3 border-b border-cream-300 px-5 py-4">
                   <div className="min-w-0">
-                    <p className="text-[13px] font-semibold text-cream-950">
+                    <p className="text-base font-semibold text-cream-950">
                       {selectionMode === 'manual-selection'
                         ? `${selectedBuyerIds.length} buyers selected manually`
                         : `${effectiveSelectedIds.length} buyers match the rules above`}
                     </p>
-                    <p className="mt-1 max-w-[38rem] text-[12.5px] leading-[1.5] text-cream-700">
+                    <p className="mt-1 max-w-[38rem] text-sm leading-[1.5] text-cream-700">
                       {selectionMode === 'manual-selection'
                         ? 'Apply filters, then select buyers to include in this cohort.'
                         : 'Uncheck buyers you want to exclude from this cohort.'}
                     </p>
                   </div>
                   <div className="ml-auto flex flex-wrap items-center gap-2">
-                    <div className="flex min-w-[240px] items-center gap-2 rounded-[8px] border border-cream-300 bg-white px-3 py-2 text-[13px] text-cream-700">
+                    <div className="flex min-w-[240px] items-center gap-2 rounded-[8px] border border-cream-300 bg-white px-3 py-2 text-base text-cream-700">
                       <Search className="h-4 w-4 shrink-0 text-cream-600" />
                       <input
                         value={search}
@@ -777,20 +777,20 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                 {visibleRows.length === 0 ? (
                   <div className="flex flex-1 items-center justify-center px-8 py-16 text-center">
                     <div className="space-y-2">
-                      <h2 className="font-display text-[22px] font-medium tracking-[-0.01em] text-cream-900">
+                      <h2 className="font-display text-xl font-medium tracking-[-0.01em] text-cream-900">
                         No buyers match the current filters
                       </h2>
-                      <p className="text-[13px] leading-[1.55] text-cream-700">
+                      <p className="text-base leading-[1.55] text-cream-700">
                         Clear a few filters or search terms to bring buyers back into the cohort table.
                       </p>
                     </div>
                   </div>
                 ) : (
                   <div className="min-h-0 flex-1 overflow-auto">
-                    <table className="w-full border-collapse text-[13px]">
+                    <table className="w-full border-collapse text-base">
                     <thead className="sticky top-0 z-[1] bg-cream-50">
                       <tr>
-                        <th className="w-9 border-b border-cream-300 px-4 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">
+                        <th className="w-9 border-b border-cream-300 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">
                           <input
                             type="checkbox"
                             checked={visibleRows.length > 0 && visibleSelectedCount === visibleRows.length}
@@ -812,13 +812,13 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                             className="accent-teal-500"
                           />
                         </th>
-                        <th className="border-b border-cream-300 px-4 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Business name</th>
-                        <th className="border-b border-cream-300 px-4 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Geography</th>
-                        <th className="border-b border-cream-300 px-4 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Tier</th>
-                        <th className="border-b border-cream-300 px-4 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Last order</th>
-                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">MTD spend</th>
-                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Credit used</th>
-                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Payment terms</th>
+                        <th className="border-b border-cream-300 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Business name</th>
+                        <th className="border-b border-cream-300 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Geography</th>
+                        <th className="border-b border-cream-300 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Tier</th>
+                        <th className="border-b border-cream-300 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Last order</th>
+                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">MTD spend</th>
+                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Credit used</th>
+                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Payment terms</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -846,8 +846,8 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                               <div className="flex items-center gap-3">
                                 <EntityAvatar initials={buyer.initials} hue={buyer.hue} size={32} className="rounded-[8px]" />
                                 <div className="min-w-0">
-                                  <p className="truncate text-[13.5px] font-medium text-cream-900">{buyer.business_name}</p>
-                                  <p className="mt-0.5 truncate text-[11px] text-cream-700">
+                                  <p className="truncate text-base font-medium text-cream-900">{buyer.business_name}</p>
+                                  <p className="mt-0.5 truncate text-xs text-cream-700">
                                     {buyer.contact_name || buyer.external_ref || 'No buyer contact'}
                                   </p>
                                 </div>
@@ -874,12 +874,12 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
               <ComposerSidebarCard>
               <div className="flex h-full flex-col gap-4">
                 <div>
-                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Cohort profile</h3>
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Cohort profile</h3>
                   <div className="mt-4">
-                    <p className="font-display text-[18px] font-medium tracking-[-0.005em] text-cream-900">
+                    <p className="font-display text-lg font-medium tracking-[-0.005em] text-cream-900">
                       {name || 'Untitled cohort'}
                     </p>
-                    <p className="mt-1 text-[12px] text-cream-700">
+                    <p className="mt-1 text-sm text-cream-700">
                       {selectionMode === 'manual-selection'
                         ? 'Manual selection · fixed membership until you edit it again'
                         : 'Rule-based · buyer membership follows the current rules'}
@@ -890,23 +890,23 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                 <div className="h-px bg-cream-300" />
 
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between text-[13px]">
+                  <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">Members</span>
                     <span className="font-mono font-medium text-cream-900">{summary.members}</span>
                   </div>
-                  <div className="flex items-center justify-between text-[13px]">
+                  <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">Areas covered</span>
                     <span className="font-mono font-medium text-cream-900">{summary.areasCovered}</span>
                   </div>
-                  <div className="flex items-center justify-between text-[13px]">
+                  <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">MTD spend</span>
                     <span className="font-mono font-medium text-cream-900">{formatCompactInr(summary.mtdSpend)}</span>
                   </div>
-                  <div className="flex items-center justify-between text-[13px]">
+                  <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">Avg AOV</span>
                     <span className="font-mono font-medium text-cream-900">{summary.avgAov > 0 ? formatCompactInr(summary.avgAov) : '—'}</span>
                   </div>
-                  <div className="flex items-center justify-between text-[13px]">
+                  <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">Active · 30d</span>
                     <span className="font-mono font-medium text-cream-900">
                       {summary.active30d} / {summary.members}
@@ -918,9 +918,9 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                   <>
                     <div className="h-px bg-cream-300" />
                     <div className="space-y-2">
-                      <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Next save</h4>
+                      <h4 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Next save</h4>
                       <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3">
-                        <div className="space-y-2 text-[12px] leading-[1.5] text-amber-900">
+                        <div className="space-y-2 text-sm leading-[1.5] text-amber-900">
                           {pendingSaveSummary.map((item) => (
                             <div key={item.label} className="flex items-start justify-between gap-4">
                               <span className="text-amber-700">{item.label}</span>
@@ -935,7 +935,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
 
                 <div
                   className={cn(
-                    'mt-auto rounded-[10px] px-3 py-3 text-[12px] leading-[1.5]',
+                    'mt-auto rounded-[10px] px-3 py-3 text-sm leading-[1.5]',
                     isLiveEdit
                       ? 'border border-amber-200 bg-amber-50 text-amber-800'
                       : summary.members > 0
@@ -967,7 +967,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
 
           <ComposerFooterBar>
             <div className="flex items-center gap-3">
-              <div className={cn('inline-flex items-center gap-2 text-[12px]', isDirty ? 'text-ember-700' : 'text-cream-700')}>
+              <div className={cn('inline-flex items-center gap-2 text-sm', isDirty ? 'text-ember-700' : 'text-cream-700')}>
                 <span className={cn('h-1.5 w-1.5 rounded-full', isDirty ? 'bg-ember-400' : 'bg-success-500')} />
                 {footerStatusText}
               </div>
@@ -1006,7 +1006,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
               This updates membership and rules for the live cohort. Pricelists and catalogs targeting it will use the updated buyer set.
             </DialogDescription>
           </DialogHeader>
-          <DialogBody className="pt-4 text-[13px] leading-6 text-cream-700">
+          <DialogBody className="pt-4 text-base leading-6 text-cream-700">
             {summary.members} buyers across {summary.areasCovered} areas will be in this cohort once you confirm.
           </DialogBody>
           <DialogFooter>

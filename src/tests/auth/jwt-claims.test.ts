@@ -16,6 +16,7 @@ import {
   assertTenantClaim,
   AuthorizationError,
   getBuyerAppContext,
+  getVerifiedClaims,
   type JWTClaims,
 } from '@/lib/auth';
 import { createBuyerPreviewToken, verifyBuyerPreviewToken } from '@/lib/buyer-preview';
@@ -26,6 +27,7 @@ const FIXTURE_PAYLOAD = {
   tenant_id: 'tenant-abc',
   role: 'seller_admin',
   buyer_id: null,
+  location_ids: ['loc-1', 'loc-2'],
   exp: 9999999999,
 };
 
@@ -46,6 +48,7 @@ describe('decodeJWTPayload', () => {
     expect(decoded.tenant_id).toBe('tenant-abc');
     expect(decoded.role).toBe('seller_admin');
     expect(decoded.sub).toBe('user-123');
+    expect(decoded.location_ids).toEqual(['loc-1', 'loc-2']);
   });
 
   it('throws on a malformed JWT with no payload segment', () => {
@@ -67,6 +70,7 @@ describe('extractVerifiedClaims', () => {
       'x-verified-tenant-id': 'tenant-abc',
       'x-verified-role': 'seller_admin',
       'x-verified-buyer-id': 'buyer-xyz',
+      'x-verified-location-ids': JSON.stringify(['loc-1', 'loc-2']),
     });
     const claims = extractVerifiedClaims(req);
     expect(claims).toEqual<JWTClaims>({
@@ -74,6 +78,7 @@ describe('extractVerifiedClaims', () => {
       tenant_id: 'tenant-abc',
       role: 'seller_admin',
       buyer_id: 'buyer-xyz',
+      location_ids: ['loc-1', 'loc-2'],
     });
   });
 
@@ -83,6 +88,7 @@ describe('extractVerifiedClaims', () => {
     expect(claims.tenant_id).toBeNull();
     expect(claims.role).toBeNull();
     expect(claims.buyer_id).toBeNull();
+    expect(claims.location_ids).toBeNull();
   });
 });
 
@@ -154,5 +160,32 @@ describe('buyer preview tokens', () => {
     expect(context.role).toBe('buyer_admin');
     expect(context.share_token).toBe('cat-123');
     expect(context.buyer_id).toBeNull();
+  });
+});
+
+describe('getVerifiedClaims fallback', () => {
+  it('hydrates location_ids from the workspace RPC when verified headers are absent', async () => {
+    const req = new NextRequest('http://localhost/dashboard');
+    req.headers.set('authorization', 'Bearer token-123');
+
+    const { supabase, supabaseAdmin } = await import('@/lib/supabase');
+    vi.mocked(supabase.auth.getUser).mockResolvedValue({
+      data: { user: { id: 'user-123' } },
+      error: null,
+    } as never);
+    vi.mocked(supabaseAdmin!.rpc).mockResolvedValue({
+      data: [{
+        tenant_id: 'tenant-abc',
+        role: 'seller_assistant',
+        buyer_id: null,
+        location_ids: ['loc-1', 'loc-2'],
+      }],
+      error: null,
+    } as never);
+
+    const claims = await getVerifiedClaims(req);
+    expect(claims.tenant_id).toBe('tenant-abc');
+    expect(claims.role).toBe('seller_assistant');
+    expect(claims.location_ids).toEqual(['loc-1', 'loc-2']);
   });
 });

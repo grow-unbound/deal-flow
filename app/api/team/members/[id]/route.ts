@@ -49,13 +49,46 @@ export async function PUT(
   const { data: member, error: fetchError } = await db
     .schema('app')
     .from('tenant_users')
-    .select('id, user_id, role, is_active')
+    .select('id, user_id, role, location_ids, is_active')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .single();
 
   if (fetchError || !member) {
     return NextResponse.json({ error: 'Member not found' }, { status: 404 });
+  }
+
+  const locationIds = validation.data.role === 'seller_assistant'
+    ? (validation.data.location_ids ?? [])
+    : null;
+
+  if (locationIds && locationIds.length > 0) {
+    const { data: locations, error: locationsError } = await db
+      .schema('app')
+      .from('locations')
+      .select('id')
+      .eq('tenant_id', claims.tenant_id)
+      .is('deleted_at', null)
+      .in('id', locationIds);
+
+    if (locationsError) {
+      return NextResponse.json(
+        { error: 'Failed to validate location access', details: locationsError.message },
+        { status: 500 },
+      );
+    }
+
+    if ((locations ?? []).length !== locationIds.length) {
+      return NextResponse.json(
+        {
+          error: 'Validation error',
+          fieldErrors: {
+            location_ids: ['Select valid active locations for this assistant.'],
+          },
+        },
+        { status: 400 },
+      );
+    }
   }
 
   const directory = await getTenantMemberDirectory(claims.tenant_id);
@@ -100,6 +133,7 @@ export async function PUT(
     .from('tenant_users')
     .update({
       role: validation.data.role,
+      location_ids: locationIds,
       updated_by: claims.tenant_id,
     })
     .eq('id', id)

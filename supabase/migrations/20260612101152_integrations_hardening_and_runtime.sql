@@ -3,13 +3,26 @@
 -- contract for admin/runtime callers.
 
 -- ── Tenant consistency across integration child tables ─────────────────────
+-- Drop dependent constraints first
+ALTER TABLE app.integration_sync_jobs
+  DROP CONSTRAINT IF EXISTS integration_sync_jobs_tenant_integration_tenant_fkey;
+
+ALTER TABLE app.integration_entity_map
+  DROP CONSTRAINT IF EXISTS integration_entity_map_tenant_integration_tenant_fkey;
+
+ALTER TABLE app.integration_webhooks
+  DROP CONSTRAINT IF EXISTS integration_webhooks_tenant_integration_tenant_fkey;
+
+ALTER TABLE app.integration_data_flows
+  DROP CONSTRAINT IF EXISTS integration_data_flows_tenant_integration_tenant_fkey;
+
+-- Now drop and recreate parent constraint
 ALTER TABLE app.tenant_integrations
   DROP CONSTRAINT IF EXISTS tenant_integrations_id_tenant_unique;
 ALTER TABLE app.tenant_integrations
   ADD CONSTRAINT tenant_integrations_id_tenant_unique UNIQUE (id, tenant_id);
 
-ALTER TABLE app.integration_sync_jobs
-  DROP CONSTRAINT IF EXISTS integration_sync_jobs_tenant_integration_tenant_fkey;
+-- Recreate dependent constraints
 ALTER TABLE app.integration_sync_jobs
   ADD CONSTRAINT integration_sync_jobs_tenant_integration_tenant_fkey
   FOREIGN KEY (tenant_integration_id, tenant_id)
@@ -20,8 +33,6 @@ ALTER TABLE app.integration_sync_jobs
   VALIDATE CONSTRAINT integration_sync_jobs_tenant_integration_tenant_fkey;
 
 ALTER TABLE app.integration_entity_map
-  DROP CONSTRAINT IF EXISTS integration_entity_map_tenant_integration_tenant_fkey;
-ALTER TABLE app.integration_entity_map
   ADD CONSTRAINT integration_entity_map_tenant_integration_tenant_fkey
   FOREIGN KEY (tenant_integration_id, tenant_id)
   REFERENCES app.tenant_integrations (id, tenant_id)
@@ -31,8 +42,6 @@ ALTER TABLE app.integration_entity_map
   VALIDATE CONSTRAINT integration_entity_map_tenant_integration_tenant_fkey;
 
 ALTER TABLE app.integration_webhooks
-  DROP CONSTRAINT IF EXISTS integration_webhooks_tenant_integration_tenant_fkey;
-ALTER TABLE app.integration_webhooks
   ADD CONSTRAINT integration_webhooks_tenant_integration_tenant_fkey
   FOREIGN KEY (tenant_integration_id, tenant_id)
   REFERENCES app.tenant_integrations (id, tenant_id)
@@ -41,8 +50,6 @@ ALTER TABLE app.integration_webhooks
 ALTER TABLE app.integration_webhooks
   VALIDATE CONSTRAINT integration_webhooks_tenant_integration_tenant_fkey;
 
-ALTER TABLE app.integration_data_flows
-  DROP CONSTRAINT IF EXISTS integration_data_flows_tenant_integration_tenant_fkey;
 ALTER TABLE app.integration_data_flows
   ADD CONSTRAINT integration_data_flows_tenant_integration_tenant_fkey
   FOREIGN KEY (tenant_integration_id, tenant_id)
@@ -220,7 +227,7 @@ DECLARE
   v_tenant_integration app.tenant_integrations%ROWTYPE;
   v_secret jsonb;
 BEGIN
-  IF p_expected_integration_type_id IS NULL OR btrim(p_expected_integration_type_id) = '' THEN
+  IF p_expected_integration_type_id IS NULL OR trim(p_expected_integration_type_id) = '' THEN
     RAISE EXCEPTION 'expected integration type required' USING ERRCODE = '22023';
   END IF;
 

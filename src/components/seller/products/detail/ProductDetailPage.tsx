@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Archive, PencilLine } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { PageWrap } from '@/components/seller/layout';
@@ -8,6 +8,7 @@ import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ui/empty-state';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useRole } from '@/hooks/useRole';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { useProductDetail, useUpdateProduct } from '@/hooks/useProducts';
@@ -74,14 +75,31 @@ function daysCoverClass(days: number): string {
 
 export function ProductDetailPage({ id }: ProductDetailPageProps) {
   const router = useRouter();
+  const { isSellerAssistant } = useRole();
   const [editOpen, setEditOpen] = useState(false);
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-product-detail-tab',
     scopeKey: id,
-    initialState: 'performance',
+    initialState: isSellerAssistant ? 'details' : 'performance',
   });
   const { data, isLoading, isError } = useProductDetail(id);
   const updateProduct = useUpdateProduct();
+  const tabs = useMemo(
+    () => [
+      { id: 'details', label: 'Details' },
+      ...(isSellerAssistant ? [] : [{ id: 'performance', label: 'Performance' }]),
+      { id: 'pricing', label: 'Pricing & cohorts' },
+      { id: 'activity', label: 'Activity' },
+    ],
+    [isSellerAssistant],
+  );
+  const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0]?.id ?? 'details';
+
+  useEffect(() => {
+    if (activeTab !== tab) {
+      setTab(activeTab as TabId);
+    }
+  }, [activeTab, setTab, tab]);
 
   const tiles = useMemo(() => {
     if (!data) return [];
@@ -131,7 +149,7 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
           data.detail.header.pack,
           `MRP ₹${Math.round(data.detail.header.mrp).toLocaleString('en-IN')}`,
         ]}
-        actions={
+        actions={isSellerAssistant ? null : (
           <div className="flex items-center gap-2 pt-1">
             <Button type="button" className="cockpit-btn cockpit-btn-secondary h-9 px-4" onClick={() => setEditOpen(true)}>
               <PencilLine size={14} />
@@ -158,23 +176,22 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
               </AlertDialogContent>
             </AlertDialog>
           </div>
-        }
+        )}
       />
 
-      <MetaStrip4 tiles={tiles} />
+      <MetaStrip4
+        tiles={isSellerAssistant
+          ? tiles.filter((tile) => tile.label !== 'Units · MTD')
+          : tiles}
+      />
 
       <DetailTabs
-        tabs={[
-          { id: 'details', label: 'Details' },
-          { id: 'performance', label: 'Performance' },
-          { id: 'pricing', label: 'Pricing & cohorts' },
-          { id: 'activity', label: 'Activity' },
-        ]}
-        active={tab}
+        tabs={tabs}
+        active={activeTab}
         onChange={(value) => setTab(value as TabId)}
       />
 
-      {tab === 'details' ? (
+      {activeTab === 'details' ? (
         <ProductDetailsTab
           details={data.detail.details}
           role={data.detail.role}
@@ -182,8 +199,8 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
           onSave={(payload) => updateProduct.mutate({ id, data: payload })}
         />
       ) : null}
-      {tab === 'performance' ? <ProductPerformanceTab performance={data.detail.performance} /> : null}
-      {tab === 'pricing' ? (
+      {activeTab === 'performance' ? <ProductPerformanceTab performance={data.detail.performance} /> : null}
+      {activeTab === 'pricing' ? (
         <ProductPricingTab
           productId={id}
           role={data.detail.role}
@@ -191,15 +208,17 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
           pricing={data.detail.pricing}
         />
       ) : null}
-      {tab === 'activity' ? <ProductActivityTimeline activity={data.detail.activity} /> : null}
+      {activeTab === 'activity' ? <ProductActivityTimeline activity={data.detail.activity} /> : null}
 
-      <AddProductSheet
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        hideTrigger
-        mode="edit"
-        product={data.product}
-      />
+      {!isSellerAssistant ? (
+        <AddProductSheet
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          hideTrigger
+          mode="edit"
+          product={data.product}
+        />
+      ) : null}
     </PageWrap>
   );
 }

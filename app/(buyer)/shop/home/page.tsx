@@ -21,6 +21,7 @@ interface MeData {
   buyer_id: string;
   business_name: string;
   contact_name: string;
+  greeting_name?: string | null;
   credit_limit: number;
   credit_used: number;
   open_orders_count: number;
@@ -242,14 +243,14 @@ export default function HomePage() {
         {/* Page head */}
         <div className="flex items-start justify-between px-5 pt-4 pb-2">
           <div>
-            <p style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-700)', fontFamily: 'var(--font-mono)' }}>
-              {loading ? 'Loading…' : `Welcome back, ${meData?.contact_name || meData?.business_name || 'there'}`}
+            <p style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-700)', fontFamily: 'var(--font-body)', fontWeight: 500 }}>
+              {loading ? 'Loading…' : `Welcome back, ${meData?.greeting_name || meData?.contact_name || meData?.business_name || 'there'}`}
             </p>
-            <h1 style={{ fontSize: 26, fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--cream-900)', lineHeight: 1.2, marginTop: 2 }}>
+            <h1 style={{ fontSize: 'var(--yk-text-3xl)', fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--cream-900)', lineHeight: 1.08, letterSpacing: '-0.02em', marginTop: 2 }}>
               {loading ? 'Your shelf, this month.' : `${meData?.tenant.name ?? 'Your distributor'}`}
             </h1>
             {!loading && meData?.mode === 'preview' ? (
-              <p style={{ fontSize: 12, color: 'var(--cream-600)', marginTop: 6 }}>
+              <p style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)', marginTop: 6 }}>
                 Buyer app preview is using tenant-wide access. Buyer-specific numbers show as 0.
               </p>
             ) : null}
@@ -273,12 +274,12 @@ export default function HomePage() {
               </>
             ) : (
               <>
-                <p style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(253,251,247,0.7)', fontFamily: 'var(--font-mono)' }}>Credit limit</p>
-                <p style={{ fontSize: 28, fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--cream-50)', lineHeight: 1.1, marginTop: 4 }}>
+                <p style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(253,251,247,0.7)', fontFamily: 'var(--font-body)', fontWeight: 500 }}>Credit limit</p>
+                <p style={{ fontSize: 'var(--yk-text-2xl)', fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--cream-50)', lineHeight: 1.1, marginTop: 4 }}>
                   {inr(meData?.credit_limit ?? 0)}
                 </p>
-                <p style={{ fontSize: 12, color: 'rgba(253,251,247,0.6)', marginTop: 4 }}>
-                  {inr(availableCredit)} available · {inr(meData?.credit_used ?? 0)} used
+                <p style={{ fontSize: 'var(--yk-text-sm)', color: 'rgba(253,251,247,0.6)', marginTop: 4 }}>
+                  <span className="tabular-inline">{inr(availableCredit)}</span> available · <span className="tabular-inline">{inr(meData?.credit_used ?? 0)}</span> used
                 </p>
               </>
             )}
@@ -294,11 +295,11 @@ export default function HomePage() {
               </>
             ) : (
               <>
-                <p style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-mono)' }}>Open orders</p>
-                <p style={{ fontSize: 28, fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--cream-900)', lineHeight: 1.1, marginTop: 4 }}>
+                <p style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-body)', fontWeight: 500 }}>Open orders</p>
+                <p style={{ fontSize: 'var(--yk-text-2xl)', fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--cream-900)', lineHeight: 1.1, marginTop: 4 }}>
                   {meData?.open_orders_count ?? 0}
                 </p>
-                <p style={{ fontSize: 12, color: 'var(--cream-600)', marginTop: 4 }}>In progress</p>
+                <p style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)', marginTop: 4 }}>In progress</p>
               </>
             )}
           </div>
@@ -313,11 +314,11 @@ export default function HomePage() {
               </>
             ) : (
               <>
-                <p style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-mono)' }}>Available credit</p>
-                <p style={{ fontSize: 22, fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--cream-900)', lineHeight: 1.1, marginTop: 4 }}>
+                <p style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-body)', fontWeight: 500 }}>Available credit</p>
+                <p style={{ fontSize: 'var(--yk-text-xl)', fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--cream-900)', lineHeight: 1.1, marginTop: 4 }}>
                   {inr(availableCredit)}
                 </p>
-                <p style={{ fontSize: 12, color: 'var(--cream-600)', marginTop: 4 }}>of {inr(meData?.credit_limit ?? 0)} limit</p>
+                <p style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)', marginTop: 4 }}>of <span className="tabular-inline">{inr(meData?.credit_limit ?? 0)}</span> limit</p>
               </>
             )}
           </div>
@@ -326,7 +327,7 @@ export default function HomePage() {
         {/* Your distributors — single tenant shown */}
         <div style={{ padding: '16px 0 0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 18px 10px' }}>
-            <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--cream-900)' }}>Your distributor</h3>
+            <h3 style={{ fontSize: 'var(--yk-text-md)', fontWeight: 600, color: 'var(--cream-900)' }}>Your distributor</h3>
           </div>
           <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 1 }}>
             {loading ? (
@@ -341,12 +342,12 @@ export default function HomePage() {
               </div>
             ) : meData ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 12px', background: 'var(--cream-50)', borderRadius: 10, border: '1px solid var(--border-1)' }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--teal-100)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: 'var(--teal-700)', flexShrink: 0 }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--teal-100)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--yk-text-base)', fontWeight: 700, color: 'var(--teal-700)', flexShrink: 0 }}>
                   {meData.tenant.name.split(' ').map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase()}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--cream-900)' }}>{meData.tenant.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--cream-600)', marginTop: 1 }}>{meData.tenant.slug}.yukti.so</div>
+                  <div style={{ fontSize: 'var(--yk-text-base)', fontWeight: 500, color: 'var(--cream-900)' }}>{meData.tenant.name}</div>
+                  <div style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)', marginTop: 1 }}>{meData.tenant.slug}.yukti.so</div>
                 </div>
               </div>
             ) : null}
@@ -356,12 +357,12 @@ export default function HomePage() {
         {/* Order again — static placeholder */}
         <div style={{ padding: '20px 0 0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 18px 10px' }}>
-            <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--cream-900)' }}>Order again</h3>
-            <Link href="/shop/catalog" style={{ fontSize: 12, color: 'var(--teal-500)', fontWeight: 500 }}>Browse all</Link>
+            <h3 style={{ fontSize: 'var(--yk-text-md)', fontWeight: 600, color: 'var(--cream-900)' }}>Order again</h3>
+            <Link href="/shop/catalog" style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--teal-500)', fontWeight: 500 }}>Browse all</Link>
           </div>
           <div style={{ padding: '0 16px' }}>
             <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '14px 16px', textAlign: 'center' }}>
-              <p style={{ fontSize: 13, color: 'var(--cream-600)' }}>Coming soon — reorder from past purchases</p>
+              <p style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-600)' }}>Coming soon — reorder from past purchases</p>
             </div>
           </div>
         </div>
@@ -369,8 +370,8 @@ export default function HomePage() {
         {/* New catalogs */}
         <div style={{ padding: '20px 0 0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 18px 10px' }}>
-            <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--cream-900)' }}>New catalogs</h3>
-            <Link href="/shop/catalog" style={{ fontSize: 12, color: 'var(--teal-500)', fontWeight: 500 }}>See all</Link>
+            <h3 style={{ fontSize: 'var(--yk-text-md)', fontWeight: 600, color: 'var(--cream-900)' }}>New catalogs</h3>
+            <Link href="/shop/catalog" style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--teal-500)', fontWeight: 500 }}>See all</Link>
           </div>
           <div style={{ overflowX: 'auto', display: 'flex', gap: 10, padding: '0 16px 4px', scrollbarWidth: 'none' }}>
             {loading ? (
@@ -385,7 +386,7 @@ export default function HomePage() {
               ))
             ) : catalogs.length === 0 ? (
               <div style={{ padding: '0 2px' }}>
-                <p style={{ fontSize: 13, color: 'var(--cream-600)' }}>No published catalogs yet.</p>
+                <p style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-600)' }}>No published catalogs yet.</p>
               </div>
             ) : (
               catalogs.map((c, i) => {
@@ -397,14 +398,14 @@ export default function HomePage() {
                     style={{ flexShrink: 0, width: 160, borderRadius: 12, overflow: 'hidden', textDecoration: 'none', border: '1px solid var(--border-1)' }}
                   >
                     <div style={{ height: 90, background: hueGradients[hue], display: 'flex', alignItems: 'flex-end', padding: '12px 14px' }}>
-                      <h4 style={{ fontSize: 14, fontFamily: 'var(--font-display)', fontWeight: 600, color: '#fff', lineHeight: 1.2 }}>{c.name}</h4>
+                      <h4 style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-display)', fontWeight: 600, color: '#fff', lineHeight: 1.2 }}>{c.name}</h4>
                     </div>
                     <div style={{ background: 'var(--cream-50)', padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 12, color: 'var(--cream-700)' }}>
+                      <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-700)' }}>
                         <strong style={{ color: 'var(--cream-900)', fontWeight: 500 }}>{c.product_count}</strong> products
                       </span>
-                      <span style={{ fontSize: 11, color: 'var(--cream-600)', fontFamily: 'var(--font-mono)' }}>
-                        {formatValidUntil(c.valid_until)}
+                      <span style={{ fontSize: 'var(--yk-text-xs)', color: 'var(--cream-600)' }}>
+                        <span className="tabular-inline">{formatValidUntil(c.valid_until)}</span>
                       </span>
                     </div>
                   </Link>
@@ -417,8 +418,8 @@ export default function HomePage() {
         {/* Recent activity */}
         <div style={{ padding: '20px 16px 0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--cream-900)' }}>Recent activity</h3>
-            <Link href="/shop/orders" style={{ fontSize: 12, color: 'var(--teal-500)', fontWeight: 500 }}>See orders</Link>
+            <h3 style={{ fontSize: 'var(--yk-text-md)', fontWeight: 600, color: 'var(--cream-900)' }}>Recent activity</h3>
+            <Link href="/shop/orders" style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--teal-500)', fontWeight: 500 }}>See orders</Link>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {loading ? (
@@ -437,7 +438,7 @@ export default function HomePage() {
               ))
             ) : recentOrders.length === 0 ? (
               <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '16px 14px', textAlign: 'center' }}>
-                <p style={{ fontSize: 13, color: 'var(--cream-600)' }}>
+                <p style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-600)' }}>
                   {ordersData?.preview_message ?? 'No orders yet.'}
                 </p>
               </div>
@@ -451,19 +452,19 @@ export default function HomePage() {
                     style={{ display: 'block', background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '12px 14px', textDecoration: 'none' }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>{o.order_number}</span>
-                      <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.fg }}>
+                      <span style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>{o.order_number}</span>
+                      <span style={{ fontSize: 'var(--yk-text-xs)', fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.fg }}>
                         {statusLabels[o.status] ?? o.status}
                       </span>
                     </div>
                     {o.catalog_name && (
-                      <div style={{ fontSize: 13, color: 'var(--cream-800)', marginBottom: 6 }}>{o.catalog_name}</div>
+                      <div style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-800)', marginBottom: 6 }}>{o.catalog_name}</div>
                     )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 12, color: 'var(--cream-600)' }}>
-                        {o.items_count} {o.items_count === 1 ? 'product' : 'products'} · {formatRelativeTime(o.placed_at)}
+                      <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)' }}>
+                        <span className="tabular-inline">{o.items_count}</span> {o.items_count === 1 ? 'product' : 'products'} · <span className="tabular-inline">{formatRelativeTime(o.placed_at)}</span>
                       </span>
-                      <span style={{ fontSize: 14, fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)' }}>
+                      <span style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)' }}>
                         {inr(o.total_amount)}
                       </span>
                     </div>

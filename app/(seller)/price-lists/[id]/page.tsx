@@ -50,8 +50,8 @@ export default function PriceListDetailPage() {
 
   const tabs = useMemo(() => {
     const itemsCount = priceList?.items?.length ?? 0;
-    return [{ id: 'products', label: 'Products and pricing', badge: itemsCount }];
-  }, [priceList?.items?.length]);
+    return [{ id: 'products', label: isSellerAdmin ? 'Products and pricing' : 'Details', badge: itemsCount }];
+  }, [isSellerAdmin, priceList?.items?.length]);
 
   useEffect(() => {
     if (!priceList) return;
@@ -105,7 +105,7 @@ export default function PriceListDetailPage() {
               </div>
             </div>
           ) : isError || !priceList ? (
-            <div className="rounded-[14px] border border-danger-200 bg-danger-50 p-4 text-[13px] text-danger-700">
+            <div className="rounded-[14px] border border-danger-200 bg-danger-50 p-4 text-base text-danger-700">
               Price list not found.
             </div>
           ) : (
@@ -150,9 +150,9 @@ export default function PriceListDetailPage() {
                     sub: 'receiving this price list',
                   },
                   {
-                    label: 'Avg discount',
-                    value: `${(priceList.stats?.avg_discount_pct ?? 0).toFixed(1)}%`,
-                    sub: 'vs base price',
+                    label: isSellerAdmin ? 'Avg discount' : 'Pricing posture',
+                    value: isSellerAdmin ? `${(priceList.stats?.avg_discount_pct ?? 0).toFixed(1)}%` : `${priceList.stats?.products_covered ?? priceList.items.length} SKUs`,
+                    sub: isSellerAdmin ? 'vs base price' : 'read-only pricing reference',
                   },
                   {
                     label: 'Days left',
@@ -169,6 +169,7 @@ export default function PriceListDetailPage() {
                   filters={priceList.filters}
                   items={priceList.items}
                   brandsCovered={priceList.stats?.brands_covered ?? 0}
+                  canViewFinancials={isSellerAdmin}
                 />
               ) : null}
 

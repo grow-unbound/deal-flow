@@ -14,8 +14,8 @@ export function SectionCard({ title, sub, rightSlot, flush = false, children }: 
     <div className="overflow-hidden rounded-[14px] border border-cream-200 bg-white">
       <div className="flex items-center justify-between border-b border-cream-100 px-5 py-3.5">
         <div className="min-w-0">
-          <span className="text-[13.5px] font-semibold text-cream-900">{title}</span>
-          {sub ? <span className="ml-2 text-[11.5px] text-cream-600">{sub}</span> : null}
+          <span className="text-base font-semibold text-cream-900">{title}</span>
+          {sub ? <span className="ml-2 text-sm text-cream-600">{sub}</span> : null}
         </div>
         {rightSlot ? <div className="shrink-0">{rightSlot}</div> : null}
       </div>

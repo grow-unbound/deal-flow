@@ -292,29 +292,29 @@ function CatalogsLandingContent({
                 }`}
               >
                 <div>
-                  <h3 className="font-display text-[15px] font-semibold leading-[1.15] text-white">{catalog.name}</h3>
-                  <p className="mt-1 text-[11px] text-white/70">{catalog.products_count} products · {catalog.brands_count} brands</p>
+                  <h3 className="font-display text-md font-semibold leading-[1.15] text-white">{catalog.name}</h3>
+                  <p className="mt-1 text-xs text-white/70">{catalog.products_count} products · {catalog.brands_count} brands</p>
                 </div>
-                <span className={`absolute right-3 top-3 rounded-full px-[9px] py-[3px] text-[10px] font-semibold tracking-[0.04em] ${badgeClass}`}>
+                <span className={`absolute right-3 top-3 rounded-full px-[9px] py-[3px] text-xs font-semibold tracking-[0.04em] ${badgeClass}`}>
                   {catalog.status.label.toUpperCase()}
                 </span>
               </div>
 
               <div className="space-y-[10px] p-4">
-                <div className="flex items-center justify-between text-[12.5px]">
-                  <span className="text-[11px] text-cream-500">Cohort</span>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-xs text-cream-500">Cohort</span>
                   <span className="font-medium text-cream-900">{catalog.cohort_name}</span>
                 </div>
-                <div className="flex items-center justify-between text-[12.5px]">
-                  <span className="text-[11px] text-cream-500">GMV</span>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-xs text-cream-500">GMV</span>
                   <span className="font-medium text-cream-900">{catalog.gmv > 0 ? formatCompactInr(catalog.gmv) : '—'}</span>
                 </div>
-                <div className="flex items-center justify-between text-[12.5px]">
-                  <span className="text-[11px] text-cream-500">Orders</span>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-xs text-cream-500">Orders</span>
                   <span className="font-medium text-cream-900">{catalog.orders > 0 ? `${catalog.orders} (${catalog.conversion_pct}%)` : '—'}</span>
                 </div>
-                <div className="flex items-center justify-between border-t border-dashed border-cream-300 pt-2 text-[12.5px]">
-                  <span className="text-[11px] text-cream-500">
+                <div className="flex items-center justify-between border-t border-dashed border-cream-300 pt-2 text-sm">
+                  <span className="text-xs text-cream-500">
                     {catalog.status.label === 'Draft' ? 'Validity' : catalog.status.label === 'Ended' ? 'Ended' : 'Days left'}
                   </span>
                   <span className="font-medium text-cream-900">

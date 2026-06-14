@@ -47,7 +47,7 @@ export function BuyerPreviewBootstrap({ children }: { children: React.ReactNode 
 
   if (!ready) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-cream-100">
+      <div className="flex min-h-screen items-center justify-center bg-[var(--bg-surface)]">
         <div className="h-10 w-10 animate-spin rounded-full border-2 border-teal-500 border-t-transparent" />
       </div>
     );

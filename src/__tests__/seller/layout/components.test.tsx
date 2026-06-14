@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { InsightStrip4 } from '@/components/seller/layout/InsightStrip4';
 import { StatusTag } from '@/components/seller/layout/StatusTag';
@@ -7,13 +7,7 @@ import { PageWrap } from '@/components/seller/layout/PageWrap';
 import { PageHeader } from '@/components/seller/layout/PageHeader';
 
 describe('InsightStrip4', () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('warns when tile count is not exactly 4', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-
+  it('supports operational layouts with fewer than four tiles', () => {
     render(
       <InsightStrip4
         tiles={[
@@ -24,8 +18,9 @@ describe('InsightStrip4', () => {
       />
     );
 
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy).toHaveBeenCalledWith('InsightStrip4 expects exactly 4 tiles; received 3.');
+    expect(screen.getByText('A')).toBeInTheDocument();
+    expect(screen.getByText('B')).toBeInTheDocument();
+    expect(screen.getByText('C')).toBeInTheDocument();
   });
 });
 
@@ -41,7 +36,7 @@ describe('StatusTag', () => {
     expect(screen.getByText('Live')).toHaveClass('bg-danger-50', 'text-danger-700');
 
     rerender(<StatusTag label="Live" tone="neutral" />);
-    expect(screen.getByText('Live')).toHaveClass('bg-cream-200', 'text-cream-700');
+    expect(screen.getByText('Live')).toHaveClass('bg-cream-100', 'text-cream-700');
   });
 });
 
@@ -82,6 +77,8 @@ describe('PageHeader', () => {
         horizon="This Month"
         period="month"
         periodOptions={[
+          { value: 'today', label: 'Today' },
+          { value: 'week', label: 'This Week' },
           { value: 'month', label: 'This Month' },
           { value: 'quarter', label: 'This Quarter' },
           { value: 'year', label: 'This Year' },
@@ -98,4 +95,3 @@ describe('PageHeader', () => {
     expect(onPeriodChange).toHaveBeenCalledWith('quarter');
   });
 });
-

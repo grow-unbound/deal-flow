@@ -5,6 +5,11 @@ import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { loadEstimateDocument } from '@/lib/estimates/load-tenant-estimate-composer';
 import { getFlag } from '@/lib/flags';
+import {
+  isSellerLocationSelectionAllowed,
+  loadAccessibleSellerLocations,
+  resolveDefaultSellerLocationId,
+} from '@/lib/server/seller-location-access';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { EstimateComposerDocument } from '@/types/estimate-composer';
 
@@ -13,6 +18,7 @@ type DbClient = any;
 const EstimateSaveSchema = z.object({
   estimate_number: z.string().min(1).optional(),
   buyer_id: z.string().uuid().nullable().optional(),
+  location_id: z.string().uuid().nullable().optional(),
   date_issued: z.string().optional(),
   valid_until: z.string().optional(),
   buyer_po_ref: z.string().max(255).optional(),
@@ -61,7 +67,7 @@ export async function GET(
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
 
-    const result = await loadEstimateDocument(supabaseAdmin as DbClient, claims.tenant_id, id, claims.role);
+    const result = await loadEstimateDocument(supabaseAdmin as DbClient, claims.tenant_id, id, claims.role, claims);
     if (!result) {
       return NextResponse.json({ error: 'Estimate not found' }, { status: 404 });
     }
@@ -119,7 +125,7 @@ export async function PATCH(
     }
 
     const db = supabaseAdmin as DbClient;
-    const existing = await loadEstimateDocument(db, claims.tenant_id, id, claims.role);
+    const existing = await loadEstimateDocument(db, claims.tenant_id, id, claims.role, claims);
     if (!existing) {
       return NextResponse.json({ error: 'Estimate not found' }, { status: 404 });
     }
@@ -128,6 +134,11 @@ export async function PATCH(
     }
 
     const payload = parsed.data;
+    const allowedLocations = await loadAccessibleSellerLocations(db as any, claims.tenant_id, claims);
+    const nextLocationId = payload.location_id ?? existing.composerPayload.location_id ?? resolveDefaultSellerLocationId(claims, allowedLocations);
+    if (!nextLocationId || !isSellerLocationSelectionAllowed(claims, nextLocationId)) {
+      return NextResponse.json({ error: 'Select a valid accessible location' }, { status: 400 });
+    }
     const items = payload.items ?? existing.composerPayload.items;
     const subtotal = items.reduce((sum, row) => {
       const discounted = row.qty * row.unit_price * (1 - row.disc_pct / 100);
@@ -146,6 +157,7 @@ export async function PATCH(
     const updatePayload: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
       updated_by: claims.sub,
+      location_id: nextLocationId,
       subtotal,
       tax_amount: taxAmount,
       total_amount: grandTotal,
@@ -247,7 +259,7 @@ export async function PATCH(
       ts: new Date().toISOString(),
     });
 
-    const next = await loadEstimateDocument(db, claims.tenant_id, id, claims.role);
+    const next = await loadEstimateDocument(db, claims.tenant_id, id, claims.role, claims);
     if (!next || next === 'forbidden') {
       return NextResponse.json({ error: 'Failed to reload estimate' }, { status: 500 });
     }

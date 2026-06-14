@@ -63,9 +63,9 @@ export function BrandCatalogsTab({ catalogs }: BrandCatalogsTabProps) {
       >
         {filtered.map((catalog) => (
           <tr key={catalog.id} className="border-b border-cream-300 bg-white transition-colors hover:bg-cream-50">
-            <td className="px-5 py-3.5 text-[13.5px] font-medium text-cream-900">{catalog.name}</td>
+            <td className="px-5 py-3.5 text-base font-medium text-cream-900">{catalog.name}</td>
             <td className="px-5 py-3.5 text-cream-900">{catalog.cohort}</td>
-            <td className="px-5 py-3.5 font-display text-[15px] text-cream-950">{formatCompactInr(catalog.gmv)}</td>
+            <td className="px-5 py-3.5 font-display text-md text-cream-950">{formatCompactInr(catalog.gmv)}</td>
             <td className="px-5 py-3.5 text-cream-900">{catalog.orders}</td>
             <td className="px-5 py-3.5 text-cream-900">
               <StatusTag

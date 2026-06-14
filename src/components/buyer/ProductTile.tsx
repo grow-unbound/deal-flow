@@ -39,7 +39,7 @@ function ProductTile({ product, quantity = 0, onQuantityChange, onClick, classNa
   }
 
   return (
-    <div className={cn('bg-white rounded-lg border border-cream-200 shadow-xs overflow-hidden', className)}>
+    <div className={cn('overflow-hidden rounded-lg border border-cream-300 bg-[var(--bg-surface)] shadow-xs', className)}>
       {/* Image */}
       <button
         type="button"
@@ -80,16 +80,16 @@ function ProductTile({ product, quantity = 0, onQuantityChange, onClick, classNa
             <button
               type="button"
               onClick={increment}
-              className="mt-2 flex h-9 w-full touch-manipulation items-center justify-center rounded-md bg-teal-500 text-body-sm font-medium text-cream-50 transition-transform duration-fast ease-standard hover:bg-teal-400 active:scale-[0.98] active:bg-teal-600"
+            className="mt-2 flex h-9 w-full touch-manipulation items-center justify-center rounded-md bg-teal-500 text-body-sm font-medium text-cream-50 transition-transform duration-fast ease-standard hover:bg-teal-600 active:scale-[var(--yk-press-scale)] active:bg-teal-700"
             >
               Add
             </button>
           ) : (
-            <div className="mt-2 flex items-center justify-between bg-cream-100 rounded-md overflow-hidden">
+            <div className="mt-2 flex items-center justify-between overflow-hidden rounded-md bg-cream-100">
               <button
                 type="button"
                 onClick={decrement}
-                className="flex h-9 w-9 touch-manipulation items-center justify-center text-teal-500 transition-transform duration-fast ease-standard hover:bg-cream-200 active:scale-[0.98] active:bg-cream-300"
+                className="flex h-9 w-9 touch-manipulation items-center justify-center text-teal-500 transition-transform duration-fast ease-standard hover:bg-cream-200 active:scale-[var(--yk-press-scale)] active:bg-cream-300"
                 aria-label="Decrease quantity"
               >
                 <Minus className="h-3.5 w-3.5" />
@@ -100,7 +100,7 @@ function ProductTile({ product, quantity = 0, onQuantityChange, onClick, classNa
               <button
                 type="button"
                 onClick={increment}
-                className="flex h-9 w-9 touch-manipulation items-center justify-center text-teal-500 transition-transform duration-fast ease-standard hover:bg-cream-200 active:scale-[0.98] active:bg-cream-300"
+                className="flex h-9 w-9 touch-manipulation items-center justify-center text-teal-500 transition-transform duration-fast ease-standard hover:bg-cream-200 active:scale-[var(--yk-press-scale)] active:bg-cream-300"
                 aria-label="Increase quantity"
               >
                 <Plus className="h-3.5 w-3.5" />

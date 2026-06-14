@@ -1,12 +1,27 @@
-import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+vi.mock('react', async () => {
+  const actual = await vi.importActual<typeof import('react')>('react');
+  return {
+    ...actual,
+    use: <T,>(value: T) => value,
+  };
+});
+
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/customers/buyer-1',
+}));
 
 vi.mock('@/components/FeatureGate', () => ({
   FeatureGate: ({ children }: { children: import('react').ReactNode }) => <>{children}</>,
 }));
 
+const useRoleMock = vi.fn(() => ({ isSellerAdmin: true, isSellerAssistant: false }));
+
 vi.mock('@/hooks/useRole', () => ({
-  useRole: () => ({ isSellerAdmin: true }),
+  useRole: () => useRoleMock(),
 }));
 
 vi.mock('@/hooks/useCustomersLanding', () => ({
@@ -90,6 +105,35 @@ vi.mock('@/hooks/useCustomersLanding', () => ({
         badge_count_mtd: 4,
         rows: [],
       },
+      estimates: {
+        rows: [],
+      },
+      invoices: {
+        rows: [],
+      },
+      cohorts_summary: {
+        rows: [{ id: 'cohort-1', name: 'Premium', member_count: 1 }],
+      },
+      price_lists: {
+        assigned: [
+          {
+            id: 'pl-1',
+            name: 'North Premium Pricing',
+            target_type: 'cohort' as const,
+            target_label: 'Cohort · Premium',
+            valid_from: '2026-06-01T00:00:00Z',
+            valid_to: '2026-06-30T00:00:00Z',
+            status: 'active' as const,
+          },
+        ],
+        lookup_products: [
+          {
+            tenant_product_id: 'tp-1',
+            name: 'Cabernet Sauvignon 2021',
+            sku: 'VINO-CAB-750-2021',
+          },
+        ],
+      },
       activity: [],
       computed: {
         last_order_date_human: '24 Jun',
@@ -100,43 +144,90 @@ vi.mock('@/hooks/useCustomersLanding', () => ({
     mutate: vi.fn(),
     isPending: false,
   }),
+  useCreateCustomerOptimistic: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
 }));
 
 import CustomerDetailPage from '../../../app/(seller)/customers/[id]/page';
 
+const params = { id: 'buyer-1' } as unknown as Promise<{ id: string }>;
+
+function renderPage() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <CustomerDetailPage params={params} />
+    </QueryClientProvider>,
+  );
+}
+
 describe('customers/[id] detail shell', () => {
-  it('uses 4 tabs and does not show Invoices tab', () => {
-    render(<CustomerDetailPage params={Promise.resolve({ id: 'buyer-1' })} />);
+  beforeEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  it('renders the expanded admin tab set including estimates, invoices, cohorts, and price lists', () => {
+    useRoleMock.mockReturnValue({ isSellerAdmin: true, isSellerAssistant: false });
+    renderPage();
 
     expect(screen.getByRole('button', { name: /Details/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Performance/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Orders/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Estimates/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Invoices/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Cohorts/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Price Lists/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Activity/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Invoices/i })).not.toBeInTheDocument();
   });
 
   it('keeps buyer since in subtitle and not as a meta tile', () => {
-    render(<CustomerDetailPage params={Promise.resolve({ id: 'buyer-1' })} />);
+    renderPage();
 
     expect(screen.getByText(/Buyer since May 2021 · 5 yrs loyal/i)).toBeInTheDocument();
     expect(screen.queryByText(/Buyer since/i, { selector: 'p' })).not.toBeInTheDocument();
   });
 
   it('shows credit used tile with backend percentage and orders badge', () => {
-    render(<CustomerDetailPage params={Promise.resolve({ id: 'buyer-1' })} />);
+    renderPage();
 
     expect(screen.getByText('Credit used')).toBeInTheDocument();
     expect(screen.getByText(/of ₹1.00L · 64%/i)).toBeInTheDocument();
-    expect(screen.getByText('4')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Orders/i })).toBeInTheDocument();
+    const ordersTile = screen.getByText('Orders · MTD').closest('article');
+    expect(ordersTile).not.toBeNull();
+    expect(within(ordersTile as HTMLElement).getByText('4')).toBeInTheDocument();
   });
 
   it('defaults to performance tab active', () => {
-    render(<CustomerDetailPage params={Promise.resolve({ id: 'buyer-1' })} />);
+    useRoleMock.mockReturnValue({ isSellerAdmin: true, isSellerAssistant: false });
+    renderPage();
 
     expect(screen.getByRole('button', { name: /Performance/i })).toHaveClass('border-teal-500');
     expect(screen.getByText('Spend trend')).toBeInTheDocument();
     expect(screen.getByText('Brand mix')).toBeInTheDocument();
     expect(screen.getByText('Top SKUs')).toBeInTheDocument();
     expect(screen.getByText('Credit & ops')).toBeInTheDocument();
+  });
+
+  it('hides Performance tab for seller assistants', () => {
+    useRoleMock.mockReturnValue({ isSellerAdmin: false, isSellerAssistant: true });
+    renderPage();
+
+    expect(screen.queryByRole('button', { name: /Performance/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Details/i })).toHaveClass('border-teal-500');
+  });
+
+  it('renders assigned price list cards with source label and validity copy', () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: /Price Lists/i }));
+
+    expect(screen.getByText('Assigned price lists')).toBeInTheDocument();
+    expect(screen.getByText('North Premium Pricing')).toBeInTheDocument();
+    expect(screen.getByText(/Cohort · Premium/i)).toBeInTheDocument();
+    expect(screen.getByText(/Validity/i)).toBeInTheDocument();
+    expect(screen.getByText(/Resolved price lookup/i)).toBeInTheDocument();
   });
 });

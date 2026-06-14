@@ -1,19 +1,32 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useRef } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 
 export function useIdleRoutePrefetch(paths: string[], enabled = true) {
   const router = useRouter();
+  const pathname = usePathname();
+  const prefetchedKeyRef = useRef<string | null>(null);
+  const normalizedPaths = useMemo(() => {
+    const uniquePaths = Array.from(
+      new Set(
+        paths
+          .filter(Boolean)
+          .filter((path) => path !== pathname),
+      ),
+    );
+
+    return uniquePaths;
+  }, [pathname, paths]);
+  const pathsKey = normalizedPaths.join('\n');
 
   useEffect(() => {
-    if (!enabled || paths.length === 0) return;
-
-    const uniquePaths = Array.from(new Set(paths.filter(Boolean)));
-    if (uniquePaths.length === 0) return;
+    if (!enabled || normalizedPaths.length === 0) return;
+    if (prefetchedKeyRef.current === pathsKey) return;
 
     const run = () => {
-      uniquePaths.forEach((path) => router.prefetch(path));
+      prefetchedKeyRef.current = pathsKey;
+      normalizedPaths.forEach((path) => router.prefetch(path));
     };
 
     if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
@@ -23,5 +36,5 @@ export function useIdleRoutePrefetch(paths: string[], enabled = true) {
 
     const timeoutId = globalThis.setTimeout(run, 300);
     return () => globalThis.clearTimeout(timeoutId);
-  }, [enabled, paths, router]);
+  }, [enabled, normalizedPaths, pathsKey, router]);
 }

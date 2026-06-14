@@ -34,6 +34,7 @@ import {
   TotalsCard,
   type EstimateComposerLineRow,
 } from '@/components/seller/document-composer';
+import { ResolvedPriceLookupCard } from '@/components/seller/pricing/ResolvedPriceLookupCard';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -98,6 +99,8 @@ function buildNewSalesOrderDraft(orderNumber = 'Reserving next number...'): Sale
     order_number: orderNumber,
     status: 'draft',
     buyer_id: null,
+    location_id: null,
+    available_locations: [],
     order_date: isoToday(),
     expected_delivery: defaultExpectedDelivery(),
     buyer_po_ref: '',
@@ -118,6 +121,7 @@ function snapshotPayload(document: SalesOrderComposerDocument, lines: EstimateCo
   return JSON.stringify({
     order_number: document.order_number,
     buyer_id: document.buyer_id,
+    location_id: document.location_id,
     order_date: document.order_date,
     expected_delivery: document.expected_delivery,
     buyer_po_ref: document.buyer_po_ref,
@@ -162,6 +166,7 @@ function toSavePayload(document: SalesOrderComposerDocument, lines: EstimateComp
   return {
     order_number: document.order_number,
     buyer_id: document.buyer_id,
+    location_id: document.location_id,
     order_date: document.order_date,
     expected_delivery: document.expected_delivery,
     buyer_po_ref: document.buyer_po_ref,
@@ -302,6 +307,8 @@ export function DocComposerSalesOrder({
       order_number: orderNumber,
       status: 'draft',
       buyer_id: est.buyer_id,
+      location_id: est.location_id ?? null,
+      available_locations: est.available_locations ?? [],
       order_date: isoToday(),
       expected_delivery: defaultExpectedDelivery(),
       buyer_po_ref: est.buyer_po_ref ?? '',
@@ -568,7 +575,7 @@ export function DocComposerSalesOrder({
   if (mode === 'create' && fromEstimateId && !orderId && estimateForPrefill.isError) {
     return (
       <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6">
-        <p className="text-[13px] text-danger-700">
+        <p className="text-base text-danger-700">
           {estimateForPrefill.error instanceof Error
             ? estimateForPrefill.error.message
             : 'Could not load estimate to pre-fill this order.'}
@@ -587,9 +594,13 @@ export function DocComposerSalesOrder({
   if (isError) {
     return (
       <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6">
-        <p className="text-[13px] text-danger-700">{error instanceof Error ? error.message : 'Failed to load sales order composer.'}</p>
+        <p className="text-base text-danger-700">{error instanceof Error ? error.message : 'Failed to load sales order composer.'}</p>
       </div>
     );
+  }
+
+  if (!documentState) {
+    return <DocumentComposerLoadingSkeleton />;
   }
 
   const buyer = documentState.buyer_context ?? buyerContextQuery.data ?? null;
@@ -801,10 +812,12 @@ export function DocComposerSalesOrder({
           <DocumentBasicsStrip
             kind="so"
             docNumber={documentState.order_number}
+            locationId={documentState.location_id}
+            availableLocations={documentState.available_locations}
             dateIssued={documentState.order_date}
             secondDate={documentState.expected_delivery}
             buyerPoRef={documentState.buyer_po_ref}
-            placeOfSupply={documentState.place_of_supply}
+            locationReadOnly={documentState.available_locations.length <= 1 || isConfirmedEdit}
             onDateIssuedChange={(value) => {
               setDocumentState((current) => {
                 if (!current) return current;
@@ -816,7 +829,7 @@ export function DocComposerSalesOrder({
             }}
             onSecondDateChange={(value) => setDocumentPatch({ expected_delivery: value })}
             onBuyerPoRefChange={(value) => setDocumentPatch({ buyer_po_ref: value })}
-            onPlaceOfSupplyChange={(value) => setDocumentPatch({ place_of_supply: value })}
+            onLocationChange={(value) => setDocumentPatch({ location_id: value })}
           />
         )}
         left={(
@@ -853,8 +866,10 @@ export function DocComposerSalesOrder({
               )}
               <DocumentMetaCard
                 readOnly={isConfirmedEdit}
+                placeOfSupplyValue={documentState.place_of_supply}
                 notesValue={documentState.seller_note}
                 freightValue={documentState.freight}
+                onPlaceOfSupplyChange={(value) => setDocumentPatch({ place_of_supply: value })}
                 onNotesChange={(value) => setDocumentPatch({ seller_note: value })}
                 onFreightChange={(value) => setDocumentPatch({ freight: value })}
               />
@@ -905,6 +920,16 @@ export function DocComposerSalesOrder({
               isInterState={isInterState}
               lineCount={activeLines.length}
               stagedChanges={stagedChangesRows}
+            />
+            <ResolvedPriceLookupCard
+              buyerId={documentState.buyer_id}
+              productOptions={activeLines.map((line) => ({
+                id: line.tenant_product_id,
+                label: line.product_name,
+                meta: `${line.sku} · Qty ${line.qty}`,
+              }))}
+              title="Resolved price check"
+              description="Verify the buyer's resolved price while you build the order."
             />
           </div>
         )}
@@ -962,14 +987,14 @@ export function DocComposerSalesOrder({
           <DialogBody>
             <div className="space-y-3">
               {effectiveShortLines.map((line) => (
-                <div key={line.line_id} className="rounded-[12px] border border-amber-200 bg-amber-50 px-3 py-3 text-[12px] text-amber-800">
+                <div key={line.line_id} className="rounded-[12px] border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
                   <p className="font-medium text-amber-900">{line.product_name}</p>
                   <p className="mt-1">
                     Ordered {line.qty}, only {line.on_hand} on hand. Backorder {line.shortfall}.
                   </p>
                 </div>
               ))}
-              <label className="flex items-center gap-2 text-[12px] text-cream-800">
+              <label className="flex items-center gap-2 text-sm text-cream-800">
                 <input type="checkbox" checked={notifyBuyer} onChange={(event) => setNotifyBuyer(event.target.checked)} className="accent-teal-500" />
                 Notify buyer of backorder
               </label>

@@ -13,6 +13,7 @@ import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasics
 import { DocumentComposerLoadingSkeleton, DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
 import {
   BuyerCardFilled,
+  DocumentMetaCard,
   LinesTable,
   salesOrderBandChipClass,
   TotalsCard,
@@ -124,7 +125,7 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
         <Link
           key="est"
           href={`/estimates/${d.estimate.id}`}
-          className="inline-flex items-center rounded-full border border-cream-200 bg-cream-50 px-2 py-0.5 text-[12px] font-medium text-teal-800 hover:bg-cream-100"
+          className="inline-flex items-center rounded-full border border-cream-200 bg-cream-50 px-2 py-0.5 text-sm font-medium text-teal-800 hover:bg-cream-100"
         >
           From: {label}
         </Link>,
@@ -283,38 +284,51 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
             kind="so"
             readOnly
             docNumber={data.order_number}
+            locationId={null}
+            availableLocations={[]}
             dateIssued={orderDate}
             secondDate={expectedYmd}
             buyerPoRef={data.buyer_po_ref ?? ''}
-            placeOfSupply={data.place_of_supply ?? buyer?.place_of_supply ?? 'Unknown'}
+            locationLabel="—"
             onDateIssuedChange={noop}
             onSecondDateChange={noop}
             onBuyerPoRefChange={noop}
-            onPlaceOfSupplyChange={noop}
+            onLocationChange={noop}
           />
         )}
         left={(
           <ComposerSidebarCard>
             <div className="space-y-4">
               {buyer ? (
-                <BuyerCardFilled
-                  buyer={buyer}
-                  previewTotal={0}
-                  paymentTermsValue={paymentTermsLabel}
-                  readOnly
-                  onPaymentTermsChange={noop}
-                  onChangeBuyer={noop}
-                />
+                <div className="space-y-4">
+                  <BuyerCardFilled
+                    buyer={buyer}
+                    previewTotal={0}
+                    paymentTermsValue={paymentTermsLabel}
+                    readOnly
+                    onPaymentTermsChange={noop}
+                    onChangeBuyer={noop}
+                  />
+                  <DocumentMetaCard
+                    readOnly
+                    placeOfSupplyValue={data.place_of_supply ?? buyer.place_of_supply ?? 'Unknown'}
+                    notesValue={data.seller_note ?? data.notes ?? ''}
+                    freightValue={data.freight}
+                    onPlaceOfSupplyChange={noop}
+                    onNotesChange={noop}
+                    onFreightChange={noop}
+                  />
+                </div>
               ) : (
-                <p className="text-[13px] text-cream-700">No buyer on this order.</p>
+                <p className="text-base text-cream-700">No buyer on this order.</p>
               )}
               {orderMeta ? (
-                <div className="rounded-[10px] border border-cream-200 bg-cream-50 px-3 py-3 text-[12px] leading-[1.55] text-cream-800">
+                <div className="rounded-[10px] border border-cream-200 bg-cream-50 px-3 py-3 text-sm leading-[1.55] text-cream-800">
                   {orderMeta}
                 </div>
               ) : null}
               {data.has_backorder && (ui === 'confirmed' || ui === 'dispatched') ? (
-                <div className="callout callout--warning text-[12px] leading-[1.5]">
+                <div className="callout callout--warning text-sm leading-[1.5]">
                   <strong>Backorder.</strong> Some lines exceed available stock — buyer has been notified.
                 </div>
               ) : null}
