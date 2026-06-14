@@ -341,6 +341,7 @@ export type Database = {
           tenant_id: string;
           user_id: string;
           role: 'seller_admin' | 'seller_assistant';
+          location_ids: string[] | null;
           is_active: boolean;
           invited_at: string | null;
           joined_at: string | null;
@@ -367,6 +368,7 @@ export type Database = {
           tier: string | null;
           external_ref: string | null;
           is_active: boolean;
+          buyer_app_enabled: boolean;
           created_at: string;
           updated_at: string;
           created_by: string;
@@ -375,11 +377,28 @@ export type Database = {
         Insert: Omit<Database['app']['Tables']['buyers']['Row'], 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Database['app']['Tables']['buyers']['Insert']>;
       };
+      buyer_users: {
+        Row: {
+          id: string;
+          buyer_id: string;
+          user_id: string;
+          role: 'buyer_admin' | 'buyer_assistant';
+          phone: string | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+          created_by: string;
+          updated_by: string;
+        };
+        Insert: Omit<Database['app']['Tables']['buyer_users']['Row'], 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Database['app']['Tables']['buyer_users']['Insert']>;
+      };
       orders: {
         Row: {
           id: string;
           tenant_id: string;
           buyer_id: string;
+          location_id: string | null;
           placed_by: string;
           order_number: string;
           status: 'draft' | 'received' | 'confirmed' | 'partially_dispatched' | 'dispatched' | 'delivered' | 'cancelled';
@@ -415,6 +434,7 @@ export type Database = {
           tenant_slug: string | null;
           tenant_name: string | null;
           buyer_id: string | null;
+          location_ids: string[] | null;
         }>;
       };
       custom_access_token_hook: {

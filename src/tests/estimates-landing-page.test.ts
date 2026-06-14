@@ -4,6 +4,7 @@ const getVerifiedClaimsMock = vi.fn();
 
 interface EstimateRow {
   id: string;
+  location_id?: string | null;
   estimate_number: string | null;
   buyer_id: string;
   status: string;
@@ -162,6 +163,7 @@ describe('estimates landing API route', () => {
     queryState.estimates = [
       {
         id: 'e1',
+        location_id: 'loc-1',
         estimate_number: 'EST-2026-0001',
         buyer_id: 'b1',
         status: 'accepted',
@@ -176,6 +178,7 @@ describe('estimates landing API route', () => {
       },
       {
         id: 'e2',
+        location_id: 'loc-2',
         estimate_number: 'EST-2026-0002',
         buyer_id: 'b1',
         status: 'sent',
@@ -190,6 +193,7 @@ describe('estimates landing API route', () => {
       },
       {
         id: 'e3',
+        location_id: null,
         estimate_number: 'EST-2026-0003',
         buyer_id: 'b1',
         status: 'draft',
@@ -205,6 +209,7 @@ describe('estimates landing API route', () => {
       },
       {
         id: 'e4',
+        location_id: 'loc-1',
         estimate_number: 'EST-2026-0004',
         buyer_id: 'b1',
         status: 'converted',
@@ -266,5 +271,16 @@ describe('estimates landing API route', () => {
     getVerifiedClaimsMock.mockResolvedValue({ tenant_id: 'tenant-a', role: 'buyer_admin' });
     const res = await GET(new NextRequest('http://localhost/api/tenant/estimates'));
     expect(res.status).toBe(403);
+  });
+
+  it('filters estimates to the assistant location scope', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({ tenant_id: 'tenant-a', role: 'seller_assistant', location_ids: ['loc-1'] });
+
+    const res = await GET(new NextRequest('http://localhost/api/tenant/estimates?period=month'));
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.estimates).toHaveLength(2);
+    expect(body.estimates.every((row: { id: string }) => ['e1', 'e4'].includes(row.id))).toBe(true);
   });
 });

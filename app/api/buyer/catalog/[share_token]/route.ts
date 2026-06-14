@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerCatalogItem } from '@/types/buyer';
+import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 
 interface GuestCatalogItem {
   id: string;
@@ -24,7 +25,7 @@ interface GuestCatalogItem {
 }
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ share_token: string }> }
 ) {
   const { share_token } = await params;
@@ -34,6 +35,7 @@ export async function GET(
   }
 
   const db = supabaseAdmin;
+  const profile = await requireBuyerAccessProfile(request).catch(() => null);
 
   // Resolve catalog by share_token — must be published and not deleted
   const { data: catalog, error: catalogError } = await db
@@ -223,8 +225,7 @@ export async function GET(
 
   const productById = new Map(products.map((p) => [p.id, p]));
 
-  const guestItems: GuestCatalogItem[] = items
-    .map((item) => {
+  const guestItems = (await Promise.all(items.map(async (item) => {
       const product = productById.get(item.tenant_product_id);
       if (!product) return null;
 
@@ -236,9 +237,17 @@ export async function GET(
 
       const inv = inventoryByProductId.get(item.tenant_product_id);
       const onHand = Math.max(0, Number(inv?.qty_available ?? 0));
-      const price =
+      let price =
         priceOverrideByProductId.get(item.tenant_product_id) ??
         Number(product.base_selling_price ?? 0);
+      if (priceOverrideByProductId.get(item.tenant_product_id) == null && profile?.buyer?.id) {
+        const { data: resolvedPrice } = await db.schema('app').rpc('resolve_price', {
+          p_tenant_product_id: item.tenant_product_id,
+          p_buyer_id: profile.buyer.id,
+          p_qty: 1,
+        });
+        price = Number(resolvedPrice ?? price);
+      }
       const stockStatus: BuyerCatalogItem['stock_status'] =
         onHand === 0 ? 'out_of_stock' : onHand < 10 ? 'limited' : 'available';
 
@@ -262,8 +271,7 @@ export async function GET(
         stock_status: stockStatus,
         on_hand: onHand,
       };
-    })
-    .filter((item): item is GuestCatalogItem => item !== null);
+    }))).filter((item): item is GuestCatalogItem => item !== null);
 
   return NextResponse.json({
     catalog_id: catalog.id,

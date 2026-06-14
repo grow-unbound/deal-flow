@@ -76,7 +76,7 @@ export default async function ProductPage({ params }: Props) {
         <Link href="/shop/catalog" style={{ width: 36, height: 36, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--cream-100)', border: '1px solid var(--border-1)' }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--cream-800)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
         </Link>
-        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--cream-900)' }}>Product</span>
+        <span style={{ fontSize: 'var(--yk-text-base)', fontWeight: 600, color: 'var(--cream-900)' }}>Product</span>
         <button style={{ width: 36, height: 36, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--cream-100)', border: '1px solid var(--border-1)' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--cream-700)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
         </button>
@@ -95,38 +95,38 @@ export default async function ProductPage({ params }: Props) {
 
         {/* Content */}
         <div style={{ padding: '20px 20px 0' }}>
-          <div style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-mono)' }}>{p.brand}</div>
-          <h1 style={{ fontSize: 22, fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--cream-900)', lineHeight: 1.2, marginTop: 4 }}>
+          <div style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-mono)' }}>{p.brand}</div>
+          <h1 style={{ fontSize: 'var(--yk-text-xl)', fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--cream-900)', lineHeight: 1.2, marginTop: 4 }}>
             {p.name} {p.vintage && <em>{p.vintage}</em>}
           </h1>
-          <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--cream-600)', marginTop: 4 }}>{p.sku} · {p.pack}</div>
+          <div style={{ fontSize: 'var(--yk-text-sm)', fontFamily: 'var(--font-mono)', color: 'var(--cream-600)', marginTop: 4 }}>{p.sku} · {p.pack}</div>
 
           {/* Prices */}
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '14px 0 12px' }}>
-            <span style={{ fontSize: 24, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--cream-900)' }}>{inr(p.price)}</span>
-            <span style={{ fontSize: 14, fontFamily: 'var(--font-mono)', color: 'var(--cream-500)', textDecoration: 'line-through' }}>MRP {inr(p.mrp)}</span>
-            {saved > 0 && <span style={{ fontSize: 12, color: '#2F5733', background: '#ECF3EC', padding: '2px 8px', borderRadius: 100, fontWeight: 600 }}>Save {inr(saved)}</span>}
+            <span style={{ fontSize: 'var(--yk-text-2xl)', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--cream-900)' }}>{inr(p.price)}</span>
+            <span style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', color: 'var(--cream-500)', textDecoration: 'line-through' }}>MRP {inr(p.mrp)}</span>
+            {saved > 0 && <span style={{ fontSize: 'var(--yk-text-sm)', color: '#2F5733', background: '#ECF3EC', padding: '2px 8px', borderRadius: 100, fontWeight: 600 }}>Save {inr(saved)}</span>}
           </div>
 
-          <p style={{ fontSize: 14, color: 'var(--cream-700)', lineHeight: 1.6, marginBottom: 16 }}>{p.note}</p>
+          <p style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-700)', lineHeight: 1.6, marginBottom: 16 }}>{p.note}</p>
 
           {/* Attrs grid */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
             {attrs.map(a => (
               <div key={a.label} style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 10, padding: '10px 12px' }}>
-                <div style={{ fontSize: 11, color: 'var(--cream-600)', letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>{a.label}</div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--cream-900)', marginTop: 3 }}>{a.value}</div>
+                <div style={{ fontSize: 'var(--yk-text-xs)', color: 'var(--cream-600)', letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>{a.label}</div>
+                <div style={{ fontSize: 'var(--yk-text-base)', fontWeight: 600, color: 'var(--cream-900)', marginTop: 3 }}>{a.value}</div>
               </div>
             ))}
           </div>
 
           {/* Specs */}
-          <div style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-mono)', marginBottom: 10 }}>Product attributes</div>
+          <div style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-mono)', marginBottom: 10 }}>Product attributes</div>
           <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
             {specs.map((s, i) => (
               <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', borderBottom: i < specs.length - 1 ? '1px solid var(--border-1)' : 'none' }}>
-                <span style={{ fontSize: 13, color: 'var(--cream-700)' }}>{s.label}</span>
-                <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--cream-900)', fontFamily: s.label === 'Master SKU' ? 'var(--font-mono)' : undefined }}>{s.value}</span>
+                <span style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-700)' }}>{s.label}</span>
+                <span style={{ fontSize: 'var(--yk-text-base)', fontWeight: 500, color: 'var(--cream-900)', fontFamily: s.label === 'Master SKU' ? 'var(--font-mono)' : undefined }}>{s.value}</span>
               </div>
             ))}
           </div>
@@ -134,7 +134,7 @@ export default async function ProductPage({ params }: Props) {
           {/* More from brand */}
           {related.length > 0 && (
             <>
-              <div style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-mono)', marginBottom: 10 }}>More from {p.brand}</div>
+              <div style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-mono)', marginBottom: 10 }}>More from {p.brand}</div>
               <div style={{ overflowX: 'auto', display: 'flex', gap: 10, marginLeft: -20, marginRight: -20, paddingLeft: 20, paddingRight: 20, paddingBottom: 4, scrollbarWidth: 'none' }}>
                 {related.map(x => (
                   <Link key={x.id} href={`/shop/product/${x.id}`} style={{ flexShrink: 0, width: 120, background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, overflow: 'hidden', textDecoration: 'none' }}>
@@ -142,8 +142,8 @@ export default async function ProductPage({ params }: Props) {
                       <div style={{ width: 24, height: 60, background: bottleGradient[x.hue], borderRadius: 3 }} />
                     </div>
                     <div style={{ padding: '8px 10px' }}>
-                      <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--cream-900)', lineHeight: 1.3 }}>{x.name}{x.vintage ? ` ${x.vintage}` : ''}</div>
-                      <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--cream-700)', marginTop: 3 }}>{inr(x.price)}</div>
+                      <div style={{ fontSize: 'var(--yk-text-sm)', fontWeight: 500, color: 'var(--cream-900)', lineHeight: 1.3 }}>{x.name}{x.vintage ? ` ${x.vintage}` : ''}</div>
+                      <div style={{ fontSize: 'var(--yk-text-sm)', fontFamily: 'var(--font-mono)', color: 'var(--cream-700)', marginTop: 3 }}>{inr(x.price)}</div>
                     </div>
                   </Link>
                 ))}
@@ -156,11 +156,11 @@ export default async function ProductPage({ params }: Props) {
       {/* Sticky cart bar */}
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: '12px 16px', paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))', background: 'rgba(253,251,247,0.95)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderTop: '1px solid var(--border-1)', display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--border-2)', borderRadius: 10, background: 'var(--cream-50)', overflow: 'hidden' }}>
-          <button style={{ width: 40, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, color: 'var(--cream-700)' }}>−</button>
-          <span style={{ width: 40, textAlign: 'center', fontSize: 15, fontWeight: 600, color: 'var(--cream-900)', fontFamily: 'var(--font-mono)' }}>12</span>
-          <button style={{ width: 40, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, color: 'var(--cream-700)' }}>+</button>
+          <button style={{ width: 40, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--yk-text-lg)', color: 'var(--cream-700)' }}>−</button>
+          <span style={{ width: 40, textAlign: 'center', fontSize: 'var(--yk-text-md)', fontWeight: 600, color: 'var(--cream-900)', fontFamily: 'var(--font-mono)' }}>12</span>
+          <button style={{ width: 40, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--yk-text-lg)', color: 'var(--cream-700)' }}>+</button>
         </div>
-        <Link href="/shop/cart" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 44, background: 'var(--teal-500)', borderRadius: 10, textDecoration: 'none', color: '#fff', fontSize: 15, fontWeight: 600 }}>
+        <Link href="/shop/cart" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 44, background: 'var(--teal-500)', borderRadius: 10, textDecoration: 'none', color: '#fff', fontSize: 'var(--yk-text-md)', fontWeight: 600 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg>
           <span>Add · {inr(p.price * 12)}</span>
         </Link>

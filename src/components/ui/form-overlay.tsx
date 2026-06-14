@@ -59,13 +59,13 @@ export function FormOverlayHeader({
     <SheetHeader className="sticky top-0 z-10 flex-shrink-0 border-b border-cream-300 bg-white/95 px-[22px] pt-[18px] pb-4 backdrop-blur-sm">
       <div className="pr-8">
         {eyebrow ? (
-          <p className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-cream-700">{eyebrow}</p>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">{eyebrow}</p>
         ) : null}
-        <SheetTitle className="font-display text-[22px] font-medium leading-[1.15] tracking-[-0.01em] text-cream-900">
+        <SheetTitle className="font-display text-xl font-medium leading-[1.15] tracking-[-0.01em] text-cream-900">
           {title}
         </SheetTitle>
         {description ? (
-          <p className="mt-1.5 text-[12px] leading-[1.5] text-cream-700">{description}</p>
+          <p className="mt-1.5 text-sm leading-[1.5] text-cream-700">{description}</p>
         ) : null}
       </div>
       {children}
@@ -88,7 +88,7 @@ export function FormBlock({
   return (
     <section className={cn('flex flex-col gap-[10px]', className)}>
       {title ? (
-        <h3 className="text-[13px] font-semibold tracking-normal text-cream-900">{title}</h3>
+        <h3 className="text-base font-semibold tracking-normal text-cream-900">{title}</h3>
       ) : null}
       {children}
     </section>
@@ -161,7 +161,7 @@ export function DiscardChangesDialog({
       <AlertDialogContent className="border-cream-300 bg-white">
         <AlertDialogHeader>
           <AlertDialogTitle className="font-display text-cream-900">Discard changes?</AlertDialogTitle>
-          <AlertDialogDescription className="text-[13px] text-cream-700">
+          <AlertDialogDescription className="text-base text-cream-700">
             You have unsaved changes in this form. If you leave now, those edits will be lost.
           </AlertDialogDescription>
         </AlertDialogHeader>

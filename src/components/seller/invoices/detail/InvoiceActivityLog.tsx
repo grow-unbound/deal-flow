@@ -29,9 +29,9 @@ export function InvoiceActivityLog({ items }: InvoiceActivityLogProps) {
               <Icon className="h-4 w-4" aria-hidden />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-semibold text-cream-900">{ev.title}</div>
-              <p className="mt-0.5 text-[12px] text-cream-700">{ev.detail}</p>
-              <p className="mt-1 text-[11px] text-cream-500">
+              <div className="text-base font-semibold text-cream-900">{ev.title}</div>
+              <p className="mt-0.5 text-sm text-cream-700">{ev.detail}</p>
+              <p className="mt-1 text-xs text-cream-500">
                 {ev.who} · {formatShortDate(ev.at)}
               </p>
             </div>

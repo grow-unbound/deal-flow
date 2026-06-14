@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getBuyerAppContext } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerAppMode } from '@/types/buyer';
+import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 
 type OrderStatus =
   | 'draft'
@@ -48,9 +48,8 @@ export interface BuyerOrdersResponse {
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
-    const context = await getBuyerAppContext(request);
-
-    if (!context.tenant_id) {
+    const profile = await requireBuyerAccessProfile(request);
+    if (!profile?.context.tenant_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -58,6 +57,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
 
+    const context = profile.context;
     if (context.mode === 'preview') {
       const payload: BuyerOrdersResponse = {
         mode: 'preview',
@@ -67,12 +67,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json(payload);
     }
 
-    if (!context.buyer_id) {
+    if (!profile.buyer?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const db = supabaseAdmin;
-    const buyerId = context.buyer_id;
+    const buyerId = profile.buyer.id;
     const tenantId = context.tenant_id;
     const limit = Math.min(Number(request.nextUrl.searchParams.get('limit') ?? '20'), 100);
 

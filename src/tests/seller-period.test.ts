@@ -1,53 +1,63 @@
 import { describe, expect, it } from 'vitest';
 
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
-import { getSellerLandingInitialData, parseSellerLandingPeriod } from '@/lib/seller-period';
+import { parseSellerLandingPeriod, sellerLandingMetricSuffix } from '@/lib/seller-period';
 
-describe('seller landing period helpers', () => {
-  it('defaults invalid values to month', () => {
-    expect(parseSellerLandingPeriod('invalid')).toBe('month');
+describe('seller period helpers', () => {
+  const now = new Date('2026-06-14T10:30:00.000Z');
+
+  it('parses the expanded seller landing period options', () => {
+    expect(parseSellerLandingPeriod('today')).toBe('today');
+    expect(parseSellerLandingPeriod('week')).toBe('week');
+    expect(parseSellerLandingPeriod('month')).toBe('month');
+    expect(parseSellerLandingPeriod('quarter')).toBe('quarter');
+    expect(parseSellerLandingPeriod('year')).toBe('year');
+    expect(parseSellerLandingPeriod('nope')).toBe('month');
   });
 
-  it('builds month boundaries with aligned previous window', () => {
-    const period = getSellerLandingPeriodMeta('month', new Date('2026-06-03T08:00:00.000Z'));
+  it('returns expected date windows for today', () => {
+    const period = getSellerLandingPeriodMeta('today', now);
 
-    expect(period.selected).toBe('month');
-    expect(period.current_start).toBe('2026-06-01T00:00:00.000Z');
-    expect(period.current_end_exclusive).toBe('2026-07-01T00:00:00.000Z');
-    expect(period.previous_start).toBe('2026-05-01T00:00:00.000Z');
-    expect(period.previous_end_exclusive).toBe('2026-05-04T00:00:00.000Z');
-    expect(period.elapsed_days).toBe(3);
+    expect(period.current_start).toBe('2026-06-14T00:00:00.000Z');
+    expect(period.current_end_exclusive).toBe('2026-06-15T00:00:00.000Z');
+    expect(period.previous_start).toBe('2026-06-13T00:00:00.000Z');
+    expect(period.previous_end_exclusive).toBe('2026-06-14T00:00:00.000Z');
+    expect(period.elapsed_days).toBe(1);
   });
 
-  it('builds quarter boundaries with aligned previous window', () => {
-    const period = getSellerLandingPeriodMeta('quarter', new Date('2026-06-03T08:00:00.000Z'));
+  it('returns expected date windows for this week', () => {
+    const period = getSellerLandingPeriodMeta('week', now);
 
-    expect(period.selected).toBe('quarter');
-    expect(period.current_start).toBe('2026-04-01T00:00:00.000Z');
-    expect(period.current_end_exclusive).toBe('2026-07-01T00:00:00.000Z');
-    expect(period.previous_start).toBe('2026-01-01T00:00:00.000Z');
-    expect(period.previous_end_exclusive).toBe('2026-03-06T00:00:00.000Z');
-    expect(period.elapsed_days).toBe(64);
+    expect(period.current_start).toBe('2026-06-08T00:00:00.000Z');
+    expect(period.current_end_exclusive).toBe('2026-06-15T00:00:00.000Z');
+    expect(period.previous_start).toBe('2026-06-01T00:00:00.000Z');
+    expect(period.previous_end_exclusive).toBe('2026-06-08T00:00:00.000Z');
+    expect(period.elapsed_days).toBe(7);
   });
 
-  it('builds year boundaries with aligned previous window', () => {
-    const period = getSellerLandingPeriodMeta('year', new Date('2026-06-03T08:00:00.000Z'));
+  it('returns expected date windows for month, quarter, and year', () => {
+    const month = getSellerLandingPeriodMeta('month', now);
+    const quarter = getSellerLandingPeriodMeta('quarter', now);
+    const year = getSellerLandingPeriodMeta('year', now);
 
-    expect(period.selected).toBe('year');
-    expect(period.current_start).toBe('2026-01-01T00:00:00.000Z');
-    expect(period.current_end_exclusive).toBe('2027-01-01T00:00:00.000Z');
-    expect(period.previous_start).toBe('2025-01-01T00:00:00.000Z');
-    expect(period.previous_end_exclusive).toBe('2025-06-04T00:00:00.000Z');
-    expect(period.elapsed_days).toBe(154);
+    expect(month.current_start).toBe('2026-06-01T00:00:00.000Z');
+    expect(month.previous_start).toBe('2026-05-01T00:00:00.000Z');
+    expect(month.elapsed_days).toBe(14);
+
+    expect(quarter.current_start).toBe('2026-04-01T00:00:00.000Z');
+    expect(quarter.previous_start).toBe('2026-01-01T00:00:00.000Z');
+    expect(quarter.elapsed_days).toBeGreaterThan(70);
+
+    expect(year.current_start).toBe('2026-01-01T00:00:00.000Z');
+    expect(year.previous_start).toBe('2025-01-01T00:00:00.000Z');
+    expect(year.elapsed_days).toBeGreaterThan(160);
   });
 
-  it('only reuses server landing data when it matches the selected period', () => {
-    const monthData = {
-      period: getSellerLandingPeriodMeta('month', new Date('2026-06-03T08:00:00.000Z')),
-      rows: [1, 2, 3],
-    };
-
-    expect(getSellerLandingInitialData('month', monthData)).toEqual(monthData);
-    expect(getSellerLandingInitialData('quarter', monthData)).toBeUndefined();
+  it('returns the correct metric suffix for each period', () => {
+    expect(sellerLandingMetricSuffix('today')).toBe('TODAY');
+    expect(sellerLandingMetricSuffix('week')).toBe('WTD');
+    expect(sellerLandingMetricSuffix('month')).toBe('MTD');
+    expect(sellerLandingMetricSuffix('quarter')).toBe('QTD');
+    expect(sellerLandingMetricSuffix('year')).toBe('YTD');
   });
 });

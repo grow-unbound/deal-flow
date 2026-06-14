@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getBuyerAppContext } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getVisibleBuyerCatalogs, requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 
 interface CatalogItem {
   id: string;
@@ -14,22 +14,14 @@ interface BuyerCatalogsResponse {
   catalogs: CatalogItem[];
 }
 
-interface PublishedCatalogRow {
-  id: string;
-  name: string;
-  share_token: string;
-  valid_to: string | null;
-}
-
 interface CatalogItemCountRow {
   catalog_id: string;
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
-    const context = await getBuyerAppContext(request);
-
-    if (!context.tenant_id) {
+    const profile = await requireBuyerAccessProfile(request);
+    if (!profile?.context.tenant_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -37,29 +29,36 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
 
-    const db = supabaseAdmin;
-    const tenantId = context.tenant_id;
+    const context = profile.context;
+    const buyer = profile.buyer;
+    let catalogs = context.mode === 'preview' || !buyer
+      ? []
+      : await getVisibleBuyerCatalogs(context.tenant_id, buyer.id);
 
-    const catalogsRes = await db
-      .schema('app')
-      .from('published_catalogs')
-      .select('id, name, share_token, valid_to')
-      .eq('tenant_id', tenantId)
-      .eq('status', 'published')
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false });
+    if (context.mode === 'preview') {
+      const previewRes = await supabaseAdmin
+        .schema('app')
+        .from('published_catalogs')
+        .select('id, name, share_token, valid_to, created_at')
+        .eq('tenant_id', context.tenant_id)
+        .eq('status', 'published')
+        .is('deleted_at', null)
+        .or(`valid_to.is.null,valid_to.gt.${new Date().toISOString()}`)
+        .order('created_at', { ascending: false });
 
-    if (catalogsRes.error) {
-      console.error('[GET /api/buyer/catalogs] catalogs query error:', catalogsRes.error);
-      return NextResponse.json({ error: 'Failed to fetch catalogs' }, { status: 500 });
+      if (previewRes.error) {
+        console.error('[GET /api/buyer/catalogs] preview catalogs query error:', previewRes.error);
+        return NextResponse.json({ error: 'Failed to fetch catalogs' }, { status: 500 });
+      }
+
+      catalogs = (previewRes.data ?? []) as typeof catalogs;
     }
 
-    const catalogs = (catalogsRes.data ?? []) as PublishedCatalogRow[];
-    const catalogIds = catalogs.map((c) => c.id);
-
+    const catalogIds = catalogs.map((catalog) => catalog.id);
     let itemCounts: CatalogItemCountRow[] = [];
+
     if (catalogIds.length > 0) {
-      const itemsRes = await db
+      const itemsRes = await supabaseAdmin
         .schema('app')
         .from('published_catalog_items')
         .select('catalog_id')

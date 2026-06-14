@@ -141,6 +141,47 @@ export interface TenantCustomerDetailResponse {
       status: string;
     }>;
   };
+  estimates: {
+    rows: Array<{
+      id: string;
+      number: string | null;
+      issued_at: string | null;
+      total_amount: number;
+      status: string;
+    }>;
+  };
+  invoices: {
+    rows: Array<{
+      id: string;
+      number: string | null;
+      issued_at: string | null;
+      total_amount: number;
+      status: string;
+    }>;
+  };
+  cohorts_summary: {
+    rows: Array<{
+      id: string;
+      name: string;
+      member_count: number;
+    }>;
+  };
+  price_lists: {
+    assigned: Array<{
+      id: string;
+      name: string;
+      target_type: 'buyer' | 'cohort' | 'all_buyers';
+      target_label: string;
+      valid_from: string | null;
+      valid_to: string | null;
+      status: 'active' | 'draft' | 'expired';
+    }>;
+    lookup_products: Array<{
+      tenant_product_id: string;
+      name: string;
+      sku: string;
+    }>;
+  };
   activity: Array<{
     id: string;
     at: string;

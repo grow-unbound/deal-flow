@@ -97,13 +97,12 @@ describe('SellerSidebar nav gating', () => {
     it('renders non-admin nav items', () => {
       render(<SellerSidebar featureAvailability={makeFeatures()} />);
       expect(screen.getByText('Dashboard')).toBeInTheDocument();
-      expect(screen.getByText('Brands')).toBeInTheDocument();
-      expect(screen.getByText('Products')).toBeInTheDocument();
-      expect(screen.getByText('Customers')).toBeInTheDocument();
-      expect(screen.getByText('Catalogs')).toBeInTheDocument();
       expect(screen.getByText('Estimates')).toBeInTheDocument();
       expect(screen.getByText('Sales Orders')).toBeInTheDocument();
       expect(screen.getByText('Invoices')).toBeInTheDocument();
+      expect(screen.getByText('Customers')).toBeInTheDocument();
+      expect(screen.getByText('Products')).toBeInTheDocument();
+      expect(screen.getByText('Price Lists')).toBeInTheDocument();
       expect(screen.queryByText('Exports')).not.toBeInTheDocument();
     });
 
@@ -112,9 +111,19 @@ describe('SellerSidebar nav gating', () => {
       expect(screen.queryByText('Cohorts')).not.toBeInTheDocument();
     });
 
-    it('hides Price Lists nav item', () => {
+    it('shows Price Lists nav item', () => {
       render(<SellerSidebar featureAvailability={makeFeatures()} />);
-      expect(screen.queryByText('Price Lists')).not.toBeInTheDocument();
+      expect(screen.getByText('Price Lists')).toBeInTheDocument();
+    });
+
+    it('hides strategy modules and section headers', () => {
+      render(<SellerSidebar featureAvailability={makeFeatures()} />);
+      expect(screen.queryByText('Brands')).not.toBeInTheDocument();
+      expect(screen.queryByText('Catalogs')).not.toBeInTheDocument();
+      expect(screen.queryByText('OPERATIONS')).not.toBeInTheDocument();
+      expect(screen.queryByText('CUSTOMERS')).not.toBeInTheDocument();
+      expect(screen.queryByText('CATALOG')).not.toBeInTheDocument();
+      expect(screen.queryByText('ADMIN')).not.toBeInTheDocument();
     });
 
     it('hides Settings nav item', () => {
@@ -122,9 +131,10 @@ describe('SellerSidebar nav gating', () => {
       expect(screen.queryByText('Settings')).not.toBeInTheDocument();
     });
 
-    it('shows correct role label in footer', () => {
+    it('shows user identity in footer', () => {
       render(<SellerSidebar featureAvailability={makeFeatures()} />);
-      expect(screen.getByText('Seller assistant')).toBeInTheDocument();
+      expect(screen.getByText('test@example.com')).toBeInTheDocument();
+      expect(screen.getByText('Test Tenant')).toBeInTheDocument();
     });
   });
 
@@ -140,9 +150,10 @@ describe('SellerSidebar nav gating', () => {
       expect(screen.getByText('Settings')).toBeInTheDocument();
     });
 
-    it('shows correct role label in footer', () => {
+    it('shows user identity in footer', () => {
       render(<SellerSidebar featureAvailability={makeFeatures()} />);
-      expect(screen.getByText('Seller admin')).toBeInTheDocument();
+      expect(screen.getByText('test@example.com')).toBeInTheDocument();
+      expect(screen.getByText('Test Tenant')).toBeInTheDocument();
     });
   });
 });

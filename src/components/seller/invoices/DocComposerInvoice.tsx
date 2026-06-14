@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { FeatureDisabledState } from '@/components/FeatureGate';
 import { PermissionDenied } from '@/components/auth/PermissionDenied';
 import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
+import { ResolvedPriceLookupCard } from '@/components/seller/pricing/ResolvedPriceLookupCard';
 import {
   DocumentBasicsStrip,
   DocumentComposerFooterRow,
@@ -74,6 +75,8 @@ function buildNewInvoiceDraft(invoiceNumber = 'Reserving next number...'): Invoi
     invoice_number: invoiceNumber,
     status: 'draft',
     buyer_id: null,
+    location_id: null,
+    available_locations: [],
     invoice_date: isoToday(),
     due_date: null,
     buyer_po_ref: '',
@@ -97,6 +100,7 @@ function snapshotPayload(document: InvoiceComposerDocument, lines: EstimateCompo
   return JSON.stringify({
     invoice_number: document.invoice_number,
     buyer_id: document.buyer_id,
+    location_id: document.location_id,
     invoice_date: document.invoice_date,
     due_date: document.due_date,
     buyer_po_ref: document.buyer_po_ref,
@@ -139,6 +143,7 @@ function toSavePayload(document: InvoiceComposerDocument, lines: EstimateCompose
   return {
     invoice_number: document.invoice_number,
     buyer_id: document.buyer_id,
+    location_id: document.location_id,
     invoice_date: document.invoice_date,
     due_date: document.due_date,
     buyer_po_ref: document.buyer_po_ref,
@@ -458,12 +463,16 @@ export function DocComposerInvoice({
     }
     return (
       <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6">
-        <p className="text-[13px] text-danger-700">{error instanceof Error ? error.message : 'Failed to load invoice composer.'}</p>
+        <p className="text-base text-danger-700">{error instanceof Error ? error.message : 'Failed to load invoice composer.'}</p>
       </div>
     );
   }
 
   if (shouldBlockComposer(workingId, isLoading, Boolean(documentState))) {
+    return <DocumentComposerLoadingSkeleton />;
+  }
+
+  if (!documentState) {
     return <DocumentComposerLoadingSkeleton />;
   }
 
@@ -648,10 +657,12 @@ export function DocComposerInvoice({
           <DocumentBasicsStrip
             kind="invoice"
             docNumber={documentState.invoice_number}
+            locationId={documentState.location_id}
+            availableLocations={documentState.available_locations}
             dateIssued={documentState.invoice_date}
             secondDate={documentState.due_date ?? ''}
             buyerPoRef={documentState.buyer_po_ref}
-            placeOfSupply={documentState.place_of_supply}
+            locationReadOnly={documentState.available_locations.length <= 1}
             onDateIssuedChange={(value) => {
               setDocumentState((current) => {
                 if (!current) return current;
@@ -663,7 +674,7 @@ export function DocComposerInvoice({
             }}
             onSecondDateChange={(value) => setDocumentPatch({ due_date: value || null })}
             onBuyerPoRefChange={(value) => setDocumentPatch({ buyer_po_ref: value })}
-            onPlaceOfSupplyChange={(value) => setDocumentPatch({ place_of_supply: value })}
+            onLocationChange={(value) => setDocumentPatch({ location_id: value })}
           />
         )}
         left={(
@@ -697,8 +708,10 @@ export function DocComposerInvoice({
                 />
               )}
               <DocumentMetaCard
+                placeOfSupplyValue={documentState.place_of_supply}
                 notesValue={documentState.seller_note}
                 freightValue={documentState.freight}
+                onPlaceOfSupplyChange={(value) => setDocumentPatch({ place_of_supply: value })}
                 onNotesChange={(value) => setDocumentPatch({ seller_note: value })}
                 onFreightChange={(value) => setDocumentPatch({ freight: value })}
               />
@@ -749,6 +762,16 @@ export function DocComposerInvoice({
               isInterState={isInterState}
               lineCount={activeLines.length}
               stagedChanges={stagedChangesRows}
+            />
+            <ResolvedPriceLookupCard
+              buyerId={documentState.buyer_id}
+              productOptions={activeLines.map((line) => ({
+                id: line.tenant_product_id,
+                label: line.product_name,
+                meta: `${line.sku} · Qty ${line.qty}`,
+              }))}
+              title="Resolved price check"
+              description="Verify the resolved buyer price before finalizing this invoice."
             />
           </div>
         )}
@@ -816,18 +839,18 @@ export function DocComposerInvoice({
             </div>
             <div className="mt-4 space-y-4">
               <div>
-                <p className="mb-2 text-[12px] font-medium text-cream-800">Recipient</p>
+                <p className="mb-2 text-sm font-medium text-cream-800">Recipient</p>
                 <Input value={sendRecipient} onChange={(event) => setSendRecipient(event.target.value)} />
               </div>
               <div>
-                <p className="mb-2 text-[12px] font-medium text-cream-800">Message</p>
+                <p className="mb-2 text-sm font-medium text-cream-800">Message</p>
                 <textarea
                   value={sendMessage}
                   onChange={(event) => setSendMessage(event.target.value)}
-                  className="min-h-[120px] w-full rounded-[12px] border border-cream-300 px-3 py-2 text-[13px] outline-none"
+                  className="min-h-[120px] w-full rounded-[12px] border border-cream-300 px-3 py-2 text-base outline-none"
                 />
               </div>
-              <div className="rounded-[12px] border border-cream-200 bg-cream-50 p-3 text-[12px] text-cream-700">
+              <div className="rounded-[12px] border border-cream-200 bg-cream-50 p-3 text-sm text-cream-700">
                 Buyer sees {activeLines.length} lines totaling {formatCompactInr(totals.grand_total)}.
               </div>
             </div>

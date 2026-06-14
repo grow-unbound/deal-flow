@@ -10,15 +10,15 @@ interface StockBadgeProps {
 const CONFIG: Record<string, { label: string; className: string }> = {
   available: {
     label: 'In Stock',
-    className: 'bg-[var(--success-50)] text-[var(--success-500)]',
+    className: 'border-[var(--success-50)] bg-[var(--success-50)] text-[var(--success-500)]',
   },
   limited: {
     label: 'Limited',
-    className: 'bg-[var(--warning-50)] text-[var(--warning-500)]',
+    className: 'border-[var(--warning-50)] bg-[var(--warning-50)] text-[var(--warning-500)]',
   },
   out_of_stock: {
     label: 'Out of Stock',
-    className: 'bg-[var(--danger-50)] text-[var(--danger-500)]',
+    className: 'border-[var(--danger-50)] bg-[var(--danger-50)] text-[var(--danger-500)]',
   },
 };
 
@@ -28,10 +28,11 @@ export function StockBadge({ status }: StockBadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center text-xs rounded-full px-2 py-0.5 font-medium',
+        'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium uppercase tracking-[0.08em]',
         config.className,
       )}
     >
+      <span className="inline-block h-2 w-2 rounded-full bg-current" />
       {config.label}
     </span>
   );

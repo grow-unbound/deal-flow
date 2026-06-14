@@ -101,7 +101,7 @@ export function TransactionalStatusBand({ steps, whatsnext, primaryAction }: Tra
               <StepNode state={step.state} />
               <div
                 className={cn(
-                  'text-[12px] font-medium text-cream-900',
+                  'text-sm font-medium text-cream-900',
                   (step.state === 'future' || step.state === 'skipped') && 'text-cream-700 opacity-80',
                   step.state === 'cancelled' && 'font-semibold text-danger-700',
                   step.state === 'current_danger' && 'font-semibold text-danger-700'
@@ -110,7 +110,7 @@ export function TransactionalStatusBand({ steps, whatsnext, primaryAction }: Tra
                 {step.label}
               </div>
               {step.timestamp ? (
-                <div className="mt-0.5 font-mono text-[10.5px] text-cream-500">{step.timestamp}</div>
+                <div className="mt-0.5 text-xs text-cream-500"><span className="tabular-inline">{step.timestamp}</span></div>
               ) : (
                 <div className="mt-0.5 min-h-[12px]" />
               )}
@@ -130,8 +130,8 @@ export function TransactionalStatusBand({ steps, whatsnext, primaryAction }: Tra
 
       <div className="mt-4 flex items-start justify-between gap-4 border-t border-cream-100 pt-4">
         <div className="min-w-0">
-          <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-cream-500">What&apos;s next</div>
-          <p className="max-w-[480px] text-[13px] leading-[1.5] text-cream-800">{whatsnext}</p>
+          <div className="eyebrow mb-1 text-cream-500">What&apos;s next</div>
+          <p className="max-w-[480px] text-base leading-[1.5] text-cream-800">{whatsnext}</p>
         </div>
         {primaryAction ? (
           <div className="shrink-0">

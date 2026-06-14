@@ -9,6 +9,7 @@ type StatusTone = 'success' | 'warning' | 'danger' | 'neutral';
 type AvatarHue = 'teal' | 'ember' | 'cream';
 
 type ActivityKind = 'invoice' | 'payment' | 'credit_adjustment' | 'catalog_view' | 'order' | 'audit';
+type PriceListStatus = 'active' | 'draft' | 'expired';
 
 function getIstMonthBounds(now = new Date()) {
   const istNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
@@ -73,6 +74,16 @@ function yearsLoyalLabel(createdAt: string | null): string {
   return `${years} yrs loyal`;
 }
 
+function derivePriceListStatus(validFrom: string | null, validTo: string | null, isActive: boolean): PriceListStatus {
+  const now = Date.now();
+  const fromTs = validFrom ? new Date(validFrom).getTime() : Number.NEGATIVE_INFINITY;
+  const toTs = validTo ? new Date(validTo).getTime() : Number.POSITIVE_INFINITY;
+  if (toTs < now) return 'expired';
+  if (!isActive) return 'draft';
+  if (fromTs > now) return 'draft';
+  return 'active';
+}
+
 function isRecoverableOptionalError(error: { code?: string; message?: string } | null | undefined) {
   if (!error) return false;
   const message = (error.message ?? '').toLowerCase();
@@ -111,6 +122,12 @@ async function optionalSelect(
   }
 
   return res.data ?? [];
+}
+
+function scopeByAccessibleLocations(query: any, claims: { role: string | null; location_ids: string[] | null }) {
+  const locationIds = claims.role === 'seller_assistant' ? (claims.location_ids ?? []).filter(Boolean) : [];
+  if (locationIds.length === 0) return query;
+  return query.in('location_id', locationIds);
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -180,35 +197,35 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     cohortMembersRes,
     auditRes,
   ] = await Promise.all([
-    db
+    scopeByAccessibleLocations(db
       .schema('app')
       .from('orders')
-      .select('id, order_number, buyer_id, status, total_amount, placed_at, created_at')
+      .select('id, order_number, buyer_id, status, total_amount, placed_at, created_at, location_id')
       .eq('tenant_id', claims.tenant_id)
       .eq('buyer_id', id)
       .is('deleted_at', null)
       .neq('status', 'cancelled')
       .gte('placed_at', bounds.mtdStartIso)
       .lt('placed_at', bounds.nextMonthStartIso)
-      .order('placed_at', { ascending: false }),
-    db
+      .order('placed_at', { ascending: false }), claims),
+    scopeByAccessibleLocations(db
       .schema('app')
       .from('orders')
-      .select('id, total_amount, placed_at')
+      .select('id, total_amount, placed_at, location_id')
       .eq('tenant_id', claims.tenant_id)
       .eq('buyer_id', id)
       .is('deleted_at', null)
       .neq('status', 'cancelled')
       .gte('placed_at', bounds.prevMonthStartIso)
-      .lt('placed_at', bounds.prevMonthEndIso),
-    db
+      .lt('placed_at', bounds.prevMonthEndIso), claims),
+    scopeByAccessibleLocations(db
       .schema('app')
       .from('orders')
-      .select('id, order_number, buyer_id, status, total_amount, placed_at, created_at, catalog_id')
+      .select('id, order_number, buyer_id, status, total_amount, placed_at, created_at, catalog_id, location_id')
       .eq('tenant_id', claims.tenant_id)
       .eq('buyer_id', id)
       .is('deleted_at', null)
-      .order('placed_at', { ascending: false }),
+      .order('placed_at', { ascending: false }), claims),
     db
       .schema('app')
       .from('cohort_members')
@@ -336,10 +353,229 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const tenantBrandById = new Map<string, string>(tenantBrands.map((row: any) => [String(row.id), String(row.master_brand_id)]));
   const masterBrandById = new Map<string, string>(((masterBrandsRes.error ? [] : masterBrandsRes.data) ?? []).map((row: any) => [String(row.id), String(row.name)]));
 
-  const invoices = await optionalSelect(db, 'invoices', 'id, invoice_date, created_at, status, outstanding_balance, total_amount', claims.tenant_id, id);
+  const invoices = await optionalSelect(db, 'invoices', 'id, invoice_number, invoice_date, created_at, status, outstanding_balance, total_amount, location_id', claims.tenant_id, id);
   const payments = await optionalSelect(db, 'payments', 'id, paid_at, created_at, amount, status, mode', claims.tenant_id, id);
   const creditNotes = await optionalSelect(db, 'credit_notes', 'id, issued_at, created_at, amount, reason, status', claims.tenant_id, id);
   const catalogViews = await optionalSelect(db, 'catalog_views', 'id, viewed_at, created_at, catalog_id', claims.tenant_id, id);
+  const scopedInvoices = claims.role === 'seller_assistant' && (claims.location_ids?.length ?? 0) > 0
+    ? invoices.filter((invoice: any) => invoice.location_id && claims.location_ids?.includes(String(invoice.location_id)))
+    : invoices;
+  const estimatesRes = await scopeByAccessibleLocations(
+    db
+      .schema('app')
+      .from('estimates')
+      .select('id, estimate_number, date_issued, created_at, status, total_amount, location_id')
+      .eq('tenant_id', claims.tenant_id)
+      .eq('buyer_id', id)
+      .is('deleted_at', null)
+      .order('date_issued', { ascending: false }),
+    claims,
+  );
+  if (estimatesRes.error) {
+    return NextResponse.json({ error: 'Failed to fetch customer detail data' }, { status: 500 });
+  }
+  const estimateRows = estimatesRes.data ?? [];
+
+  const activeCohortRows = (cohortMembersRes.data ?? []).filter((row: any) => row.cohorts?.name && !row.cohorts?.deleted_at);
+  const activeCohortIds = activeCohortRows.map((row: any) => row.cohort_id);
+
+  const assignmentQuery = db
+    .schema('app')
+    .from('price_list_assignments')
+    .select('id, price_list_id, target_type, target_id, created_at')
+    .is('deleted_at', null);
+
+  const assignmentsRes = activeCohortIds.length > 0
+    ? await assignmentQuery.or(
+        `and(target_type.eq.buyer,target_id.eq.${id}),and(target_type.eq.cohort,target_id.in.(${activeCohortIds.join(',')})),target_type.eq.all_buyers`,
+      )
+    : await assignmentQuery.or(`and(target_type.eq.buyer,target_id.eq.${id}),target_type.eq.all_buyers`);
+
+  if (assignmentsRes.error) {
+    return NextResponse.json({ error: 'Failed to fetch customer detail data' }, { status: 500 });
+  }
+
+  const assignmentRows = assignmentsRes.data ?? [];
+  const applicablePriceListIds = Array.from(
+    new Set(
+      assignmentRows
+        .map((assignment: { price_list_id?: string | null }) => assignment.price_list_id)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  const [priceListsRes, assignmentBuyersRes, priceListItemsRes] = await Promise.all([
+    applicablePriceListIds.length > 0
+      ? db
+          .schema('app')
+          .from('price_lists')
+          .select('id, name, valid_from, valid_to, is_active, priority')
+          .eq('tenant_id', claims.tenant_id)
+          .in('id', applicablePriceListIds)
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [], error: null }),
+    assignmentRows.some((assignment: { target_type: string }) => assignment.target_type === 'buyer')
+      ? db
+          .schema('app')
+          .from('buyers')
+          .select('id, business_name')
+          .eq('tenant_id', claims.tenant_id)
+          .in(
+            'id',
+            assignmentRows
+              .filter((assignment: { target_type: string; target_id: string | null }) => assignment.target_type === 'buyer' && assignment.target_id)
+              .map((assignment: { target_id: string | null }) => assignment.target_id as string),
+          )
+      : Promise.resolve({ data: [], error: null }),
+    applicablePriceListIds.length > 0
+      ? db
+          .schema('app')
+          .from('price_list_items')
+          .select('price_list_id, tenant_product_id')
+          .in('price_list_id', applicablePriceListIds)
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (priceListsRes.error || assignmentBuyersRes.error || priceListItemsRes.error) {
+    return NextResponse.json({ error: 'Failed to fetch customer detail data' }, { status: 500 });
+  }
+
+  const assignmentBuyerMap = new Map(
+    ((assignmentBuyersRes.data ?? []) as Array<{ id: string; business_name: string }>).map((row) => [row.id, row.business_name]),
+  );
+  const assignmentCohortMap = new Map(
+    activeCohortRows.map((row: any) => [String(row.cohort_id), String(row.cohorts.name)]),
+  );
+  const priceListMap = new Map(
+    ((priceListsRes.data ?? []) as Array<{
+      id: string;
+      name: string;
+      valid_from: string | null;
+      valid_to: string | null;
+      is_active: boolean;
+      priority: number | null;
+    }>).map((row) => [row.id, row]),
+  );
+  const assignmentPriority = ['buyer', 'cohort', 'all_buyers'];
+  const assignmentGroups = new Map<string, Array<{
+    id: string;
+    price_list_id: string;
+    target_type: 'buyer' | 'cohort' | 'all_buyers';
+    target_id: string | null;
+    created_at: string;
+  }>>();
+
+  for (const assignment of assignmentRows as Array<{
+    id: string;
+    price_list_id: string;
+    target_type: 'buyer' | 'cohort' | 'all_buyers';
+    target_id: string | null;
+    created_at: string;
+  }>) {
+    if (!priceListMap.has(assignment.price_list_id)) continue;
+    const current = assignmentGroups.get(assignment.price_list_id) ?? [];
+    current.push(assignment);
+    assignmentGroups.set(assignment.price_list_id, current);
+  }
+
+  const assignedPriceLists = Array.from(assignmentGroups.entries())
+    .map(([priceListId, assignments]) => {
+      const priceList = priceListMap.get(priceListId);
+      if (!priceList) return null;
+
+      const sortedAssignments = assignments.slice().sort(
+        (left, right) => assignmentPriority.indexOf(left.target_type) - assignmentPriority.indexOf(right.target_type),
+      );
+      const primaryAssignment = sortedAssignments[0];
+      const labelParts = sortedAssignments.map((assignment) => {
+        if (assignment.target_type === 'buyer') {
+          return `Buyer specific${assignment.target_id ? ` · ${assignmentBuyerMap.get(assignment.target_id) ?? 'Buyer'}` : ''}`;
+        }
+        if (assignment.target_type === 'cohort') {
+          return `Cohort · ${assignment.target_id ? assignmentCohortMap.get(assignment.target_id) ?? 'Unknown cohort' : 'Unknown cohort'}`;
+        }
+        return 'All buyers';
+      });
+
+      return {
+        id: priceList.id,
+        name: priceList.name,
+        target_type: primaryAssignment.target_type,
+        target_label: labelParts.join(' • '),
+        valid_from: priceList.valid_from,
+        valid_to: priceList.valid_to,
+        status: derivePriceListStatus(priceList.valid_from, priceList.valid_to, Boolean(priceList.is_active)),
+        priority: Number(priceList.priority ?? 0),
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => {
+      const leftRow = left!;
+      const rightRow = right!;
+      const priorityDelta = assignmentPriority.indexOf(leftRow.target_type) - assignmentPriority.indexOf(rightRow.target_type);
+      if (priorityDelta !== 0) return priorityDelta;
+      return rightRow.priority - leftRow.priority;
+    })
+    .map(({ priority: _priority, ...row }) => row);
+
+  const applicableLookupProductIds = Array.from(
+    new Set(
+      ((priceListItemsRes.data ?? []) as Array<{ price_list_id: string; tenant_product_id: string | null }>)
+        .map((row) => row.tenant_product_id)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  let lookupProducts: Array<{ tenant_product_id: string; name: string; sku: string }> = [];
+
+  if (applicableLookupProductIds.length > 0) {
+    const applicableProductsRes = await db
+      .schema('app')
+      .from('tenant_products')
+      .select('id, internal_sku, name_override, master_product_id')
+      .in('id', applicableLookupProductIds)
+      .is('deleted_at', null);
+
+    if (!applicableProductsRes.error) {
+      const applicableProducts = applicableProductsRes.data ?? [];
+      const missingMasterProductIds = Array.from(
+        new Set(
+          applicableProducts
+            .map((product: any) => product.master_product_id)
+            .filter((value: string | null) => Boolean(value) && !masterProductById.has(String(value))),
+        ),
+      );
+
+      if (missingMasterProductIds.length > 0) {
+        const missingMasterProductsRes = await db
+          .schema('catalog')
+          .from('products')
+          .select('id, name')
+          .in('id', missingMasterProductIds);
+
+        if (!missingMasterProductsRes.error) {
+          for (const product of missingMasterProductsRes.data ?? []) {
+            masterProductById.set(String((product as any).id), String((product as any).name));
+          }
+        }
+      }
+
+      const productsFromLists = applicableProducts.map((product: any) => ({
+        tenant_product_id: String(product.id),
+        name:
+          product.name_override ||
+          (product.master_product_id ? masterProductById.get(product.master_product_id) : null) ||
+          product.internal_sku ||
+          'Product',
+        sku: String(product.internal_sku ?? '—'),
+      }));
+
+      if (productsFromLists.length > 0) {
+        lookupProducts = productsFromLists;
+      }
+    }
+  }
 
   const spendMtd = monthOrders.reduce((sum: number, order: any) => sum + Number(order.total_amount ?? 0), 0);
   const prevSpendMtd = prevOrders.reduce((sum: number, order: any) => sum + Number(order.total_amount ?? 0), 0);
@@ -373,7 +609,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return `${productName} ×${Number(top.qty ?? 0)}`;
   };
 
-  const creditUsed = invoices.reduce((sum: number, invoice: any) => sum + Number(invoice.outstanding_balance ?? 0), 0);
+  const creditUsed = scopedInvoices.reduce((sum: number, invoice: any) => sum + Number(invoice.outstanding_balance ?? 0), 0);
   const creditLimit = Number(buyer.credit_limit ?? 0);
   const creditUsedPct = safePct(creditUsed, creditLimit);
 
@@ -437,9 +673,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 3);
 
-  const activeCohorts = (cohortMembersRes.data ?? [])
-    .filter((row: any) => row.cohorts?.name && !row.cohorts?.deleted_at)
-    .map((row: any) => row.cohorts.name);
+  if (lookupProducts.length === 0) {
+    lookupProducts = topSkus.slice(0, 8).map((sku) => ({
+      tenant_product_id: String(
+        orderItems.find((item: any) => {
+          const product = tenantProductById.get(item.tenant_product_id);
+          const productName =
+            product?.name_override ||
+            (product?.master_product_id ? masterProductById.get(product.master_product_id) : null) ||
+            product?.internal_sku ||
+            'Product';
+          return productName === sku.name && (product?.internal_sku ?? '—') === sku.sku;
+        })?.tenant_product_id ?? '',
+      ),
+      name: sku.name,
+      sku: sku.sku,
+    })).filter((row) => row.tenant_product_id);
+  }
+
+  const activeCohorts = activeCohortRows.map((row: any) => row.cohorts.name);
 
   const statusLabel = buyer.is_active ? 'Active' : 'Inactive';
   const statusTone: StatusTone = buyer.is_active ? 'success' : 'neutral';
@@ -464,7 +716,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     });
   }
 
-  for (const invoice of invoices) {
+  for (const invoice of scopedInvoices) {
     activityEvents.push({
       id: `invoice-${invoice.id}`,
       at: invoice.invoice_date ?? invoice.created_at ?? new Date().toISOString(),
@@ -534,8 +786,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }).length;
 
   const lastOrderValue = latestOrder ? Number(latestOrder.total_amount ?? 0) : 0;
-  const issuedInvoiceCount = invoices.length;
-  const paidInvoiceCount = invoices.filter((invoice: any) => Number(invoice.outstanding_balance ?? 0) <= 0).length;
+  const issuedInvoiceCount = scopedInvoices.length;
+  const paidInvoiceCount = scopedInvoices.filter((invoice: any) => Number(invoice.outstanding_balance ?? 0) <= 0).length;
   const paymentBehaviorSummary =
     issuedInvoiceCount > 0
       ? `Payment behavior — On time · ${paidInvoiceCount} of ${issuedInvoiceCount} invoices`
@@ -621,6 +873,36 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         gmv: Number(order.total_amount ?? 0),
         status: order.status,
       })),
+    },
+    estimates: {
+      rows: estimateRows.map((estimate: any) => ({
+        id: estimate.id,
+        number: estimate.estimate_number,
+        issued_at: estimate.date_issued ?? estimate.created_at,
+        total_amount: Number(estimate.total_amount ?? 0),
+        status: estimate.status,
+      })),
+    },
+    invoices: {
+      rows: scopedInvoices.map((invoice: any) => ({
+        id: invoice.id,
+        number: invoice.invoice_number ?? null,
+        issued_at: invoice.invoice_date ?? invoice.created_at,
+        total_amount: Number(invoice.total_amount ?? 0),
+        status: invoice.status ?? 'issued',
+      })),
+    },
+    cohorts_summary: {
+      rows: activeCohortRows
+        .map((row: any) => ({
+          id: row.cohort_id,
+          name: row.cohorts.name,
+          member_count: 1,
+        })),
+    },
+    price_lists: {
+      assigned: assignedPriceLists,
+      lookup_products: lookupProducts,
     },
     activity: activityEvents.slice(0, 100).map((event) => ({
       id: event.id,

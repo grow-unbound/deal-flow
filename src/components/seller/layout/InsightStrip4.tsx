@@ -14,12 +14,17 @@ interface InsightStrip4Props {
 }
 
 export function InsightStrip4({ tiles }: InsightStrip4Props) {
-  if (tiles.length !== 4) {
-    console.warn(`InsightStrip4 expects exactly 4 tiles; received ${tiles.length}.`);
-  }
+  const columnClass =
+    tiles.length <= 1
+      ? 'grid-cols-1'
+      : tiles.length === 2
+        ? 'grid-cols-1 md:grid-cols-2'
+        : tiles.length === 3
+          ? 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3'
+          : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-4';
 
   return (
-    <section className="grid grid-cols-4 gap-3 mt-5 mb-0">
+    <section className={cn('mt-5 mb-0 grid gap-3', columnClass)}>
       {tiles.map((tile, index) => (
         <article
           key={`${tile.label}-${index}`}
@@ -31,7 +36,7 @@ export function InsightStrip4({ tiles }: InsightStrip4Props) {
         >
           <p
             className={cn(
-              'text-[10.5px] font-semibold tracking-[0.12em] uppercase text-cream-600',
+              'eyebrow text-cream-600',
               tile.tone === 'accent' && 'text-teal-100'
             )}
           >
@@ -39,7 +44,7 @@ export function InsightStrip4({ tiles }: InsightStrip4Props) {
           </p>
           <p
             className={cn(
-              'mt-2 font-display text-[30px] font-medium leading-[1.05] tracking-[-0.015em] text-cream-900 tabular-nums',
+              'mt-2 font-display text-2xl font-medium leading-[1.05] tracking-[-0.015em] text-[#4A3F35] tabular-nums',
               tile.tone === 'accent' && 'text-cream-50',
               tile.tone === 'warn' && 'text-ember-500'
             )}
@@ -49,7 +54,7 @@ export function InsightStrip4({ tiles }: InsightStrip4Props) {
           {(tile.sub || tile.delta) && (
             <p
               className={cn(
-                'mt-2 flex items-center gap-2 text-[12px] text-cream-700',
+                'mt-2 flex items-center gap-2 text-sm text-cream-700',
                 tile.tone === 'accent' && 'text-teal-100'
               )}
             >

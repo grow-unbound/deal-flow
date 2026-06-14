@@ -4,6 +4,7 @@ type TenantMemberRow = {
   id: string;
   user_id: string;
   role: 'seller_admin' | 'seller_assistant';
+  location_ids: string[] | null;
   is_active: boolean;
   invited_at: string | null;
   joined_at: string | null;
@@ -16,6 +17,7 @@ export type TenantMemberDirectoryRow = {
   full_name: string | null;
   phone: string | null;
   role: 'seller_admin' | 'seller_assistant';
+  location_ids: string[] | null;
   status: 'active' | 'pending' | 'inactive';
   invited_at: string | null;
   joined_at: string | null;
@@ -39,7 +41,7 @@ export async function getTenantMemberDirectory(tenantId: string): Promise<Tenant
   const { data: rows, error } = await db
     .schema('app')
     .from('tenant_users')
-    .select('id, user_id, role, is_active, invited_at, joined_at')
+    .select('id, user_id, role, location_ids, is_active, invited_at, joined_at')
     .eq('tenant_id', tenantId);
 
   if (error) {
@@ -68,6 +70,7 @@ export async function getTenantMemberDirectory(tenantId: string): Promise<Tenant
       full_name: auth?.full_name ?? null,
       phone: auth?.phone ?? null,
       role: row.role,
+      location_ids: row.location_ids ?? null,
       status: row.is_active ? 'active' : (row.joined_at ? 'inactive' : 'pending'),
       invited_at: row.invited_at,
       joined_at: row.joined_at,

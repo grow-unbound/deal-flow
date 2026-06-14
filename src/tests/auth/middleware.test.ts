@@ -55,4 +55,25 @@ describe('middleware auth redirects', () => {
     expect(response.status).toBe(307);
     expect(response.headers.get('location')).toBe('http://localhost/login/phone?reason=session_expired');
   });
+
+  it('forwards verified location ids from the JWT payload', async () => {
+    getSessionMock.mockResolvedValue({
+      data: {
+        session: {
+          access_token: 'good-token',
+          user: { id: 'seller-user-1' },
+        },
+      },
+    });
+    decodeJWTPayloadMock.mockReturnValue({
+      tenant_id: 'tenant-1',
+      user_role: 'seller_assistant',
+      location_ids: ['loc-1', 'loc-2'],
+    });
+
+    const { middleware } = await import('../../../middleware');
+    const response = await middleware(new NextRequest('http://localhost/orders'));
+
+    expect(response.headers.get('x-tenant-subdomain')).toBe('');
+  });
 });

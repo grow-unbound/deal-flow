@@ -1,52 +1,42 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import crypto from 'crypto';
-
-// Simple in-memory OTP store for development.
-// In production replace with Redis or a DB-backed table.
-// Key: ref_id → { otp, phone, expiresAt, attempts }
-export const otpStore = new Map<
-  string,
-  { otp: string; phone: string; expiresAt: number; attempts: number }
->();
+import { NextRequest, NextResponse } from 'next/server';
+import { isValidIndianMobile, normalizeIndianPhone } from '@/lib/phone';
+import { findBuyerLoginCandidates } from '@/lib/server/buyer-access';
+import { buyerOtpStore } from '@/lib/server/buyer-otp-store';
+import { sendLoginOtpWhatsapp } from '@/lib/server/whatsapp';
 
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 /**
  * POST /api/auth/phone-otp/send
  * Body: { phoneNumber: string }
+ *
+ * Logic:
+ * 1. Verify phone in app.buyers and app.buyer_users
+ * 2. Check buyer.buyer_app_enabled AND tenant.df_buyer_app flag
+ * 3. If both enabled: send OTP
+ * 4. If tenant flag disabled: explain distributor blocked access
+ * 5. If tenant flag enabled but buyer disabled: ask to request access
+ *
  * Returns:
- *   registered=true  → { ref_id: string; registered: true;  message: string }
- *   registered=false → { ref_id: null;   registered: false; message: string }
+ *   eligible     → { ref_id: string; registered: true;  message: 'OTP sent' }
+ *   tenant_block → { ref_id: null;   registered: false; message: 'Distributor <name> does not allow...' }
+ *   buyer_block  → { ref_id: null;   registered: false; message: 'Request distributor <name> to enable...' }
+ *   not_found    → { ref_id: null;   registered: false; message: 'This number isn't registered...' }
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = await request.json() as { phoneNumber?: string };
     const raw: string = (body?.phoneNumber ?? '').trim();
 
-    if (!raw || !/^\+?[0-9]{10,15}$/.test(raw)) {
+    if (!raw || !isValidIndianMobile(raw)) {
       return NextResponse.json({ error: 'Invalid phone number' }, { status: 400 });
     }
 
-    // Normalise: strip leading +91 or 0, keep 10-digit form
-    const phone = raw.replace(/^\+91/, '').replace(/^0/, '');
+    const phone = normalizeIndianPhone(raw);
+    const allCandidates = await findBuyerLoginCandidates(phone);
 
-    // Check if this phone is registered as a buyer
-    const { data: rows, error } = await supabase
-      .schema('app')
-      .from('buyer_users')
-      .select('id')
-      .eq('phone', phone)
-      .limit(1);
-
-    if (error) {
-      console.error('[phone-otp/send] buyer_users lookup error:', error);
-      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-    }
-
-    const registered = Array.isArray(rows) && rows.length > 0;
-
-    if (!registered) {
+    if (allCandidates.length === 0) {
       return NextResponse.json({
         ref_id: null,
         registered: false,
@@ -54,24 +44,56 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Generate a 6-digit OTP and a ref_id
-    const otp = String(crypto.randomInt(100000, 999999));
-    const ref_id = crypto.randomUUID();
+    // Separate candidates by eligibility
+    const eligible = allCandidates.filter((c) => c.buyer_app_enabled && c.tenant_app_enabled);
+    const tenantBlocked = allCandidates.filter((c) => !c.tenant_app_enabled);
+    const buyerBlocked = allCandidates.filter((c) => c.tenant_app_enabled && !c.buyer_app_enabled);
 
-    otpStore.set(ref_id, {
-      otp,
-      phone,
-      expiresAt: Date.now() + OTP_TTL_MS,
-      attempts: 0,
-    });
+    // If any are eligible, send OTP
+    if (eligible.length > 0) {
+      const otp = String(crypto.randomInt(100000, 999999));
+      const ref_id = crypto.randomUUID();
 
-    // TODO: deliver OTP via AiSensy / Meta WhatsApp Cloud API
-    // Development: log to console only
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[DEV OTP] phone=${phone} otp=${otp} ref_id=${ref_id}`);
+      buyerOtpStore.set(ref_id, {
+        kind: 'pending',
+        otp,
+        phone,
+        expiresAt: Date.now() + OTP_TTL_MS,
+        attempts: 0,
+        candidates: eligible,
+      });
+
+      await sendLoginOtpWhatsapp(phone, otp);
+
+      return NextResponse.json({ ref_id, registered: true, message: 'OTP sent' });
     }
 
-    return NextResponse.json({ ref_id, registered: true, message: 'OTP sent' });
+    // If tenant blocked access
+    if (tenantBlocked.length > 0) {
+      const tenantName = tenantBlocked[0].tenant_name;
+      return NextResponse.json({
+        ref_id: null,
+        registered: false,
+        message: `Distributor ${tenantName} does not allow buyer app access. Please check with them.`,
+      });
+    }
+
+    // If buyer blocked (tenant enabled but buyer disabled)
+    if (buyerBlocked.length > 0) {
+      const tenantName = buyerBlocked[0].tenant_name;
+      return NextResponse.json({
+        ref_id: null,
+        registered: false,
+        message: `Request distributor ${tenantName} to enable buyer app access for your account.`,
+      });
+    }
+
+    // Fallback (shouldn't reach here)
+    return NextResponse.json({
+      ref_id: null,
+      registered: false,
+      message: "This number isn't registered. Contact your distributor.",
+    });
   } catch (err) {
     console.error('[phone-otp/send] unexpected error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

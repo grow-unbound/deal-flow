@@ -99,6 +99,8 @@ function basePayload(overrides: Partial<TenantEstimateDetailResponse> = {}): Ten
     activity: [],
     viewer_role: ROLES.SELLER_ADMIN,
     buyer_id: 'buyer-1',
+    location_id: 'loc-1',
+    available_locations: [{ id: 'loc-1', name: 'Main warehouse', is_default: true }],
     date_issued: dateIssued,
     valid_until: validUntil,
     buyer_po_ref: '',
@@ -271,6 +273,6 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
       error: new Error('forbidden'),
     });
     renderWithQueryClient(<EstimateDetailPage id="est-1" />);
-    expect(screen.getByRole('heading', { name: /enabled yet/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /access restricted/i })).toBeInTheDocument();
   });
 });

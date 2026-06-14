@@ -1,4 +1,4 @@
-CREATE TABLE catalog.product_images (
+CREATE TABLE IF NOT EXISTS catalog.product_images (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   product_id uuid NOT NULL REFERENCES catalog.products(id) ON DELETE RESTRICT,
   is_primary boolean NOT NULL DEFAULT false,
@@ -17,14 +17,14 @@ CREATE TABLE catalog.product_images (
   deleted_at timestamptz
 );
 
-CREATE UNIQUE INDEX catalog_product_images_primary_idx
+CREATE UNIQUE INDEX IF NOT EXISTS catalog_product_images_primary_idx
   ON catalog.product_images(product_id)
   WHERE is_primary = true AND deleted_at IS NULL;
 
-CREATE INDEX idx_catalog_product_images_product_sort
+CREATE INDEX IF NOT EXISTS idx_catalog_product_images_product_sort
   ON catalog.product_images(product_id, deleted_at, sort_order);
 
-CREATE TABLE catalog.brand_images (
+CREATE TABLE IF NOT EXISTS catalog.brand_images (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   brand_id uuid NOT NULL REFERENCES catalog.brands(id) ON DELETE RESTRICT,
   image_type text NOT NULL DEFAULT 'logo' CHECK (image_type IN ('logo', 'banner')),
@@ -40,10 +40,10 @@ CREATE TABLE catalog.brand_images (
   deleted_at timestamptz
 );
 
-CREATE INDEX idx_catalog_brand_images_brand_deleted
+CREATE INDEX IF NOT EXISTS idx_catalog_brand_images_brand_deleted
   ON catalog.brand_images(brand_id, deleted_at);
 
-CREATE TABLE catalog.category_images (
+CREATE TABLE IF NOT EXISTS catalog.category_images (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   category_id uuid NOT NULL REFERENCES catalog.categories(id) ON DELETE RESTRICT,
   image_type text NOT NULL DEFAULT 'icon' CHECK (image_type IN ('icon', 'banner')),
@@ -58,10 +58,10 @@ CREATE TABLE catalog.category_images (
   deleted_at timestamptz
 );
 
-CREATE INDEX idx_catalog_category_images_category_deleted
+CREATE INDEX IF NOT EXISTS idx_catalog_category_images_category_deleted
   ON catalog.category_images(category_id, deleted_at);
 
-CREATE TABLE app.tenant_categories (
+CREATE TABLE IF NOT EXISTS app.tenant_categories (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES app.tenants(id) ON DELETE RESTRICT,
   master_category_id uuid REFERENCES catalog.categories(id) ON DELETE RESTRICT,
@@ -81,23 +81,23 @@ CREATE TABLE app.tenant_categories (
   deleted_at timestamptz
 );
 
-CREATE UNIQUE INDEX idx_tenant_categories_tenant_slug_unique
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tenant_categories_tenant_slug_unique
   ON app.tenant_categories(tenant_id, slug)
   WHERE deleted_at IS NULL;
 
-CREATE INDEX idx_tenant_categories_tenant_review_deleted
+CREATE INDEX IF NOT EXISTS idx_tenant_categories_tenant_review_deleted
   ON app.tenant_categories(tenant_id, review_status, deleted_at);
 
-CREATE INDEX idx_tenant_categories_master_category_id
+CREATE INDEX IF NOT EXISTS idx_tenant_categories_master_category_id
   ON app.tenant_categories(master_category_id);
 
-CREATE INDEX idx_tenant_categories_promoted_category_id
+CREATE INDEX IF NOT EXISTS idx_tenant_categories_promoted_category_id
   ON app.tenant_categories(promoted_catalog_category_id);
 
-CREATE INDEX idx_tenant_categories_parent_id
+CREATE INDEX IF NOT EXISTS idx_tenant_categories_parent_id
   ON app.tenant_categories(parent_tenant_category_id);
 
-CREATE TABLE app.tenant_category_images (
+CREATE TABLE IF NOT EXISTS app.tenant_category_images (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_category_id uuid NOT NULL REFERENCES app.tenant_categories(id) ON DELETE RESTRICT,
   image_type text NOT NULL DEFAULT 'icon' CHECK (image_type IN ('icon', 'banner')),
@@ -114,30 +114,30 @@ CREATE TABLE app.tenant_category_images (
   deleted_at timestamptz
 );
 
-CREATE UNIQUE INDEX idx_tenant_category_images_primary_per_type
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tenant_category_images_primary_per_type
   ON app.tenant_category_images(tenant_category_id, image_type)
   WHERE is_primary = true AND deleted_at IS NULL;
 
-CREATE INDEX idx_tenant_category_images_category_sort
+CREATE INDEX IF NOT EXISTS idx_tenant_category_images_category_sort
   ON app.tenant_category_images(tenant_category_id, deleted_at, sort_order);
 
 ALTER TABLE app.tenant_products
-  ADD COLUMN r2_original_key text,
-  ADD COLUMN r2_large_key text,
-  ADD COLUMN r2_medium_key text,
-  ADD COLUMN r2_small_key text,
-  ADD COLUMN r2_thumb_key text;
+  ADD COLUMN IF NOT EXISTS r2_original_key text,
+  ADD COLUMN IF NOT EXISTS r2_large_key text,
+  ADD COLUMN IF NOT EXISTS r2_medium_key text,
+  ADD COLUMN IF NOT EXISTS r2_small_key text,
+  ADD COLUMN IF NOT EXISTS r2_thumb_key text;
 
 ALTER TABLE app.tenant_brands
-  ADD COLUMN r2_logo_original_key text,
-  ADD COLUMN r2_logo_medium_key text,
-  ADD COLUMN r2_logo_thumb_key text;
+  ADD COLUMN IF NOT EXISTS r2_logo_original_key text,
+  ADD COLUMN IF NOT EXISTS r2_logo_medium_key text,
+  ADD COLUMN IF NOT EXISTS r2_logo_thumb_key text;
 
 ALTER TABLE app.published_catalogs
-  ADD COLUMN r2_hero_original_key text,
-  ADD COLUMN r2_hero_medium_key text;
+  ADD COLUMN IF NOT EXISTS r2_hero_original_key text,
+  ADD COLUMN IF NOT EXISTS r2_hero_medium_key text;
 
-CREATE TABLE app.user_profiles (
+CREATE TABLE IF NOT EXISTS app.user_profiles (
   user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE RESTRICT,
   r2_avatar_orig_key text,
   r2_avatar_small_key text,
@@ -149,7 +149,7 @@ CREATE TABLE app.user_profiles (
   deleted_at timestamptz
 );
 
-CREATE INDEX idx_user_profiles_deleted_at
+CREATE INDEX IF NOT EXISTS idx_user_profiles_deleted_at
   ON app.user_profiles(deleted_at);
 
 DROP TRIGGER IF EXISTS catalog_product_images_updated_at ON catalog.product_images;
@@ -185,6 +185,19 @@ CREATE TRIGGER user_profiles_updated_at
 ALTER TABLE app.tenant_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app.tenant_category_images ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app.user_profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_categories_select ON app.tenant_categories;
+DROP POLICY IF EXISTS tenant_categories_insert ON app.tenant_categories;
+DROP POLICY IF EXISTS tenant_categories_update ON app.tenant_categories;
+DROP POLICY IF EXISTS tenant_categories_delete ON app.tenant_categories;
+DROP POLICY IF EXISTS tenant_category_images_select ON app.tenant_category_images;
+DROP POLICY IF EXISTS tenant_category_images_insert ON app.tenant_category_images;
+DROP POLICY IF EXISTS tenant_category_images_update ON app.tenant_category_images;
+DROP POLICY IF EXISTS tenant_category_images_delete ON app.tenant_category_images;
+DROP POLICY IF EXISTS user_profiles_select ON app.user_profiles;
+DROP POLICY IF EXISTS user_profiles_insert ON app.user_profiles;
+DROP POLICY IF EXISTS user_profiles_update ON app.user_profiles;
+DROP POLICY IF EXISTS user_profiles_delete ON app.user_profiles;
 
 CREATE POLICY tenant_categories_select ON app.tenant_categories
   FOR SELECT USING (app.is_seller() AND tenant_id = app.jwt_tenant_id());

@@ -9,7 +9,7 @@ export function DataTable(props) {
     border: '1px solid #EAE3D9',
     borderRadius: '14px',
     overflow: 'hidden',
-    background: '#FCFBF8',
+    background: '#FFFFFF',
     width: '100%',
   };
 
@@ -17,7 +17,7 @@ export function DataTable(props) {
     width: '100%',
     borderCollapse: 'collapse',
     fontFamily: "'Mukta', sans-serif",
-    fontSize: '14px',
+    fontSize: '15px',
     WebkitFontSmoothing: 'antialiased',
   };
 
@@ -30,9 +30,9 @@ export function DataTable(props) {
     textTransform: 'uppercase',
     color: '#6F665C',
     whiteSpace: 'nowrap',
-    fontFamily: "'IBM Plex Mono', monospace",
+    fontFamily: "'JetBrains Mono', monospace",
     borderBottom: '1px solid #EAE3D9',
-    background: '#FCFBF8',
+    background: '#FFFFFF',
     position: stickyHeader ? 'sticky' : 'static',
     top: 0,
     zIndex: 1,
@@ -53,7 +53,7 @@ export function DataTable(props) {
     textAlign: 'right',
     fontVariantNumeric: 'tabular-nums',
     fontFeatureSettings: '"tnum" 1',
-    fontFamily: "'IBM Plex Mono', monospace",
+    fontFamily: "'JetBrains Mono', monospace",
     fontSize: '13.5px',
   });
 
@@ -77,22 +77,13 @@ export function DataTable(props) {
         </thead>
         <tbody>
           {rows.map(function(row, ri) {
-            var lastRow = ri === rows.length - 1;
             return (
-              <tr
-                key={ri}
-                onClick={onRowClick ? function() { onRowClick(row, ri); } : undefined}
-                style={{ cursor: onRowClick ? 'pointer' : 'default' }}
-              >
-                {columns.map(function(col, ci) {
-                  var cell = typeof col.render === 'function'
-                    ? col.render(row[col.key], row, ri)
-                    : row[col.key];
-                  var base = col.numeric ? tdNumStyle : tdStyle;
-                  var noLine = lastRow ? { borderBottom: 'none' } : {};
-                  return <td key={ci} style={Object.assign({}, base, noLine)}>{cell}</td>;
-                })}
-              </tr>
+              <TableRow
+                key={ri} row={row} ri={ri} columns={columns}
+                tdStyle={tdStyle} tdNumStyle={tdNumStyle}
+                lastRow={ri === rows.length - 1}
+                onRowClick={onRowClick}
+              />
             );
           })}
         </tbody>
@@ -101,4 +92,35 @@ export function DataTable(props) {
   );
 }
 
+/* Extracted so each row can own its own hover state. */
+function TableRow(props) {
+  var row = props.row, ri = props.ri, columns = props.columns;
+  var tdStyle = props.tdStyle, tdNumStyle = props.tdNumStyle;
+  var lastRow = props.lastRow, onRowClick = props.onRowClick;
+  var interactive = !!onRowClick;
 
+  var hState  = React.useState(false);
+  var hovered = hState[0], setHovered = hState[1];
+
+  return (
+    <tr
+      onClick={interactive ? function() { onRowClick(row, ri); } : undefined}
+      onMouseEnter={interactive ? function(){ setHovered(true); }  : undefined}
+      onMouseLeave={interactive ? function(){ setHovered(false); } : undefined}
+      style={{
+        cursor:     interactive ? 'pointer' : 'default',
+        background: (interactive && hovered) ? 'rgba(34,30,26,.035)' : 'transparent',
+        transition: 'background 110ms ease',
+      }}
+    >
+      {columns.map(function(col, ci) {
+        var cell = typeof col.render === 'function'
+          ? col.render(row[col.key], row, ri)
+          : row[col.key];
+        var base   = col.numeric ? tdNumStyle : tdStyle;
+        var noLine = lastRow ? { borderBottom: 'none' } : {};
+        return <td key={ci} style={Object.assign({}, base, noLine)}>{cell}</td>;
+      })}
+    </tr>
+  );
+}

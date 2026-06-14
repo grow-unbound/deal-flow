@@ -7,6 +7,7 @@ type TenantUsersRow = {
   id: string;
   user_id: string;
   role: 'seller_admin' | 'seller_assistant';
+  location_ids?: string[] | null;
   is_active: boolean;
   invited_at: string | null;
   joined_at: string | null;
@@ -100,6 +101,19 @@ function mockInsertChain() {
   mockInsert.mockResolvedValue({ error: null });
 }
 
+function mockLocationValidation(ids: string[]) {
+  mockSelect.mockImplementationOnce(() => ({
+    eq: jest.fn().mockReturnValue({
+      is: jest.fn().mockReturnValue({
+        in: jest.fn().mockResolvedValue({
+          data: ids.map((id) => ({ id })),
+          error: null,
+        }),
+      }),
+    }),
+  }));
+}
+
 describe('POST /api/team/invite', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -108,6 +122,7 @@ describe('POST /api/team/invite', () => {
   it('inserts a tenant_users row with invited metadata on successful invite', async () => {
     mockListUsers.mockResolvedValue({ data: { users: [] } });
     mockDirectoryQuery([]);
+    mockLocationValidation(['loc-1']);
     mockInsertChain();
     mockInviteUserByEmail.mockResolvedValue({
       data: { user: { id: 'new-user-id', email: 'newuser@example.com' } },
@@ -126,6 +141,7 @@ describe('POST /api/team/invite', () => {
       email: 'newuser@example.com',
       phone: '9876543210',
       role: 'seller_assistant',
+      location_ids: ['loc-1'],
     });
     const res = await POST(req as unknown as import('next/server').NextRequest);
 
@@ -138,6 +154,7 @@ describe('POST /api/team/invite', () => {
           role: 'seller_assistant',
           full_name: 'New User',
           phone: '9876543210',
+          location_ids: ['loc-1'],
         },
       }),
     );
@@ -145,6 +162,7 @@ describe('POST /api/team/invite', () => {
       tenant_id: 'tenant-abc',
       user_id: 'new-user-id',
       role: 'seller_assistant',
+      location_ids: ['loc-1'],
       is_active: false,
     });
     expect(insertedData).toHaveProperty('invited_at');
@@ -171,6 +189,7 @@ describe('POST /api/team/invite', () => {
       email: 'active@example.com',
       phone: '9123456780',
       role: 'seller_assistant',
+      location_ids: ['loc-1'],
     });
     const res = await POST(req as unknown as import('next/server').NextRequest);
 
@@ -204,6 +223,7 @@ describe('POST /api/team/invite', () => {
       email: 'another@company.com',
       phone: '9876543210',
       role: 'seller_assistant',
+      location_ids: ['loc-1'],
     });
     const res = await POST(req as unknown as import('next/server').NextRequest);
 
@@ -238,6 +258,7 @@ describe('POST /api/team/invite', () => {
         email: 'newuser@example.com',
         phone: '9876543210',
         role: 'seller_assistant',
+        location_ids: ['loc-1'],
       },
       { 'x-verified-role': 'seller_assistant' },
     );
@@ -256,12 +277,14 @@ describe('PUT /api/team/members/[id]', () => {
       id: 'row-id',
       user_id: 'user-xyz',
       role: 'seller_assistant',
+      location_ids: ['loc-1'],
       is_active: true,
       invited_at: null,
       joined_at: null,
     });
     mockListUsers.mockResolvedValue({ data: { users: [] } });
     mockDirectoryQuery([]);
+    mockLocationValidation(['loc-2']);
     mockUpdateUserById.mockResolvedValue({ error: null });
 
     let updatedData: unknown = null;
@@ -280,6 +303,7 @@ describe('PUT /api/team/members/[id]', () => {
       email: 'updated@example.com',
       phone: '9123456780',
       role: 'seller_admin',
+      location_ids: null,
     });
     const res = await PUT(req as unknown as import('next/server').NextRequest, {
       params: { id: 'row-id' },
@@ -296,7 +320,7 @@ describe('PUT /api/team/members/[id]', () => {
         },
       }),
     );
-    expect(updatedData).toMatchObject({ role: 'seller_admin' });
+    expect(updatedData).toMatchObject({ role: 'seller_admin', location_ids: null });
   });
 
   it('returns 409 on duplicate email or phone in the tenant', async () => {
@@ -304,6 +328,7 @@ describe('PUT /api/team/members/[id]', () => {
       id: 'row-id',
       user_id: 'user-xyz',
       role: 'seller_assistant',
+      location_ids: ['loc-1'],
       is_active: true,
       invited_at: null,
       joined_at: null,
@@ -333,6 +358,7 @@ describe('PUT /api/team/members/[id]', () => {
       email: 'updated@example.com',
       phone: '9123456780',
       role: 'seller_admin',
+      location_ids: null,
     });
     const res = await PUT(req as unknown as import('next/server').NextRequest, {
       params: { id: 'row-id' },
@@ -342,6 +368,32 @@ describe('PUT /api/team/members/[id]', () => {
     const body = await res.json();
     expect(body.fieldErrors.email).toBeDefined();
     expect(body.fieldErrors.phone).toBeDefined();
+  });
+
+  it('rejects assistant updates without locations', async () => {
+    mockMemberLookup({
+      id: 'row-id',
+      user_id: 'user-xyz',
+      role: 'seller_assistant',
+      location_ids: ['loc-1'],
+      is_active: true,
+      invited_at: null,
+      joined_at: null,
+    });
+
+    const { PUT } = await import('../../../app/api/team/members/[id]/route');
+    const req = makeRequest({
+      full_name: 'Updated Name',
+      email: 'updated@example.com',
+      phone: '9123456780',
+      role: 'seller_assistant',
+      location_ids: [],
+    });
+    const res = await PUT(req as unknown as import('next/server').NextRequest, {
+      params: { id: 'row-id' },
+    });
+
+    expect(res.status).toBe(400);
   });
 });
 

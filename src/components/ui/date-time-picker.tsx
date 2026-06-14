@@ -78,7 +78,7 @@ export function DateTimePicker({
   }
 
   const triggerClassName = cn(
-    'flex h-10 w-full items-center justify-between gap-2 rounded-[8px] border border-cream-400 bg-white px-3 text-left text-[13.5px] shadow-[inset_0_1px_0_rgba(20,40,35,0.02)]',
+    'flex h-10 w-full items-center justify-between gap-2 rounded-[8px] border border-cream-400 bg-white px-3 text-left text-base shadow-[inset_0_1px_0_rgba(20,40,35,0.02)]',
     'transition-colors focus-visible:outline-none focus-visible:border-ember-400 focus-visible:ring-2 focus-visible:ring-ember-400/20',
     'disabled:cursor-not-allowed disabled:bg-cream-100 disabled:opacity-50',
     inputValue ? 'font-medium text-cream-900' : 'text-cream-600',
@@ -88,7 +88,7 @@ export function DateTimePicker({
   return (
     <div className={cn('space-y-3', disabled && 'pointer-events-none opacity-60', className)}>
       <div className="flex flex-col gap-1.5">
-        <label htmlFor={inputId} className="text-[12px] font-medium text-cream-800">
+        <label htmlFor={inputId} className="text-sm font-medium text-cream-800">
           {label}
         </label>
         <Popover open={open} onOpenChange={setOpen}>
@@ -111,16 +111,16 @@ export function DateTimePicker({
               maxDate={maxDate}
               onChange={(date) => emit(date, timeValue, true)}
             />
-            <div className="min-h-9 rounded-[8px] border border-cream-300 bg-cream-50 px-4 py-2.5 font-display text-[13px] text-cream-900">
+            <div className="min-h-9 rounded-[8px] border border-cream-300 bg-cream-50 px-4 py-2.5 font-display text-base text-cream-900">
               {selectedDate ? formatSelectedSummary(selectedDate) : '—'}
             </div>
           </PopoverContent>
         </Popover>
-        {error ? <p className="text-[11.5px] text-danger-500">{error}</p> : null}
+        {error ? <p className="text-sm text-danger-500">{error}</p> : null}
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor={timeInputId} className="text-[12px] font-medium text-cream-800">
+        <label htmlFor={timeInputId} className="text-sm font-medium text-cream-800">
           {timeLabel}
         </label>
         <input
@@ -133,7 +133,7 @@ export function DateTimePicker({
             setTimeValue(next);
             if (selectedDate) emit(selectedDate, next);
           }}
-          className="h-10 w-full rounded-[8px] border border-cream-400 bg-white px-3 text-[13.5px] text-cream-900 focus:border-ember-400 focus:outline-none focus:ring-2 focus:ring-ember-400/20 disabled:cursor-not-allowed disabled:bg-cream-100 disabled:opacity-50"
+          className="h-10 w-full rounded-[8px] border border-cream-400 bg-white px-3 text-base text-cream-900 focus:border-ember-400 focus:outline-none focus:ring-2 focus:ring-ember-400/20 disabled:cursor-not-allowed disabled:bg-cream-100 disabled:opacity-50"
         />
       </div>
     </div>

@@ -137,8 +137,8 @@ function CartItemRow({
             {item.internal_sku}
           </p>
         )}
-        <p className="text-xs mt-0.5" style={{ color: 'var(--fg-3, var(--cream-700))', fontFamily: 'var(--font-mono)' }}>
-          {formatCurrency(item.unit_price)}{item.unit ? ` / ${item.unit}` : ''}
+        <p className="text-xs mt-0.5" style={{ color: 'var(--fg-3, var(--cream-700))' }}>
+          <span className="tabular-inline">{formatCurrency(item.unit_price)}</span>{item.unit ? ` / ${item.unit}` : ''}
         </p>
       </div>
 
