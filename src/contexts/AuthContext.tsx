@@ -21,6 +21,7 @@ export interface TenantProfile {
   tenant_id: string;
   user_id: string;
   role: Role;
+  location_ids?: string[] | null;
   tenant_name?: string | null;
   tenant_slug?: string | null;
   is_active: boolean;
@@ -55,6 +56,7 @@ type SessionClaims = {
   tenantId: string | null;
   buyerId: string | null;
   role: Role | null;
+  locationIds: string[] | null;
 };
 
 function decodeJwtPayloadClient(token: string): Record<string, unknown> | null {
@@ -101,8 +103,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const buyerId = typeof claims?.buyer_id === 'string' ? claims.buyer_id : null;
     const roleClaim = claims?.user_role ?? claims?.role;
     const role = typeof roleClaim === 'string' ? (roleClaim as Role) : null;
+    const locationIds = Array.isArray(claims?.location_ids)
+      ? claims.location_ids.filter((entry): entry is string => typeof entry === 'string')
+      : null;
 
-    return { tenantId, buyerId, role };
+    return { tenantId, buyerId, role, locationIds };
   };
 
   const identifyForAnalytics = (activeSession: Session, claims: SessionClaims) => {
@@ -112,6 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: activeSession.user.email,
       tenant_id: claims.tenantId,
       role: claims.role,
+      location_ids: claims.locationIds,
     });
   };
 
@@ -159,6 +165,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       tenant_id: tenant.id,
       user_id: activeSession.user.id,
       role: (payload.role as Role | undefined) ?? claims.role ?? 'seller_assistant',
+      location_ids: claims.locationIds,
       tenant_name: tenant.business_name,
       tenant_slug: tenant.slug,
       is_active: true,
@@ -202,6 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         tenant_id: claims.tenantId!,
         user_id: activeSession.user.id,
         role: claims.role!,
+        location_ids: claims.locationIds,
         tenant_name: previous?.tenant_name ?? null,
         tenant_slug: previous?.tenant_slug ?? null,
         is_active: true,

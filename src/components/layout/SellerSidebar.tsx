@@ -22,6 +22,7 @@ import { useIdleRoutePrefetch } from '@/hooks/useIdleRoutePrefetch';
 import { Pressable } from '@/components/ui/pressable';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { useRole } from '@/hooks/useRole';
+import { ROLES } from '@/constants';
 import type { SellerShellFeatureAvailability } from '@/lib/server/seller-features';
 export type NavFlagKey =
   | 'df_brand_product_master'
@@ -51,7 +52,7 @@ export interface NavItem {
   label: string;
   href: string;
   icon: FC<{ size?: number; className?: string }>;
-  adminOnly: boolean;
+  roles: Array<typeof ROLES.SELLER_ADMIN | typeof ROLES.SELLER_ASSISTANT>;
   /** PostHog flag key — item hidden when resolved flag is `false` */
   flagKey?: NavFlagKey;
   children?: NavItem[];
@@ -79,53 +80,53 @@ export const navGroups: NavGroup[] = [
   {
     label: 'OPERATIONS',
     items: [
-      { label: 'Dashboard', href: '/dashboard', icon: DashboardIcon, adminOnly: false },
-      { label: 'Estimates', href: '/estimates', icon: EstimatesIcon, adminOnly: false, flagKey: 'df_estimates' },
-      { label: 'Sales Orders', href: '/sales-orders', icon: SalesOrdersIcon, adminOnly: false, flagKey: 'df_sales_orders' },
-      { label: 'Invoices', href: '/invoices', icon: ReceiptIcon, adminOnly: false, flagKey: 'df_invoices' },
+      { label: 'Dashboard', href: '/dashboard', icon: DashboardIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT] },
+      { label: 'Estimates', href: '/estimates', icon: EstimatesIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_estimates' },
+      { label: 'Sales Orders', href: '/sales-orders', icon: SalesOrdersIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_sales_orders' },
+      { label: 'Invoices', href: '/invoices', icon: ReceiptIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_invoices' },
     ],
   },
   {
     label: 'CUSTOMERS',
     items: [
-      { label: 'Customers', href: '/customers', icon: BuyersIcon, adminOnly: false, flagKey: 'df_customer_master' },
-      { label: 'Cohorts', href: '/cohorts', icon: CohortsIcon, adminOnly: true, flagKey: 'df_cohorts' },
+      { label: 'Customers', href: '/customers', icon: BuyersIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_customer_master' },
+      { label: 'Cohorts', href: '/cohorts', icon: CohortsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_cohorts' },
     ],
   },
   {
     label: 'CATALOG',
     items: [
-      { label: 'Catalogs', href: '/catalogs', icon: CatalogsIcon, adminOnly: false, flagKey: 'df_catalog_publishing' },
-      { label: 'Price Lists', href: '/price-lists', icon: PriceListsIcon, adminOnly: true, flagKey: 'df_pricing_engine' },
-      { label: 'Products', href: '/products', icon: ProductsIcon, adminOnly: false, flagKey: 'df_brand_product_master' },
-      { label: 'Brands', href: '/brands', icon: BrandsIcon, adminOnly: false, flagKey: 'df_brand_product_master' },
+      { label: 'Catalogs', href: '/catalogs', icon: CatalogsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_catalog_publishing' },
+      { label: 'Price Lists', href: '/price-lists', icon: PriceListsIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_pricing_engine' },
+      { label: 'Products', href: '/products', icon: ProductsIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_brand_product_master' },
+      { label: 'Brands', href: '/brands', icon: BrandsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_brand_product_master' },
     ],
   },
   {
     label: 'ADMIN',
     items: [
-      { label: 'Exports', href: '/exports', icon: ExportsIcon, adminOnly: true, flagKey: 'df_tally_export' },
+      { label: 'Exports', href: '/exports', icon: ExportsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_tally_export' },
       {
         label: 'Settings',
         href: '/settings',
         icon: SettingsIcon,
-        adminOnly: true,
+        roles: [ROLES.SELLER_ADMIN],
         children: [
-          { label: 'Team', href: '/settings/team', icon: Users as FC<{ size?: number; className?: string }>, adminOnly: true },
-          { label: 'Modules', href: '/settings/modules', icon: Zap as FC<{ size?: number; className?: string }>, adminOnly: true },
-          { label: 'Locations', href: '/settings/locations', icon: MapPin as FC<{ size?: number; className?: string }>, adminOnly: true },
+          { label: 'Team', href: '/settings/team', icon: Users as FC<{ size?: number; className?: string }>, roles: [ROLES.SELLER_ADMIN] },
+          { label: 'Modules', href: '/settings/modules', icon: Zap as FC<{ size?: number; className?: string }>, roles: [ROLES.SELLER_ADMIN] },
+          { label: 'Locations', href: '/settings/locations', icon: MapPin as FC<{ size?: number; className?: string }>, roles: [ROLES.SELLER_ADMIN] },
           {
             label: 'Integrations',
             href: '/settings/integrations',
             icon: LinkIcon as FC<{ size?: number; className?: string }>,
-            adminOnly: true,
+            roles: [ROLES.SELLER_ADMIN],
             flagKey: 'df_integrations',
           },
           {
             label: 'Billing & Plan',
             href: '/settings/billing',
             icon: CreditCard as FC<{ size?: number; className?: string }>,
-            adminOnly: true,
+            roles: [ROLES.SELLER_ADMIN],
           },
         ],
       },
@@ -134,16 +135,30 @@ export const navGroups: NavGroup[] = [
 ];
 
 export interface CollectPrefetchHrefsInput {
-  isSellerAdmin: boolean;
+  role: typeof ROLES.SELLER_ADMIN | typeof ROLES.SELLER_ASSISTANT;
   /** Return `false` to hide flag-gated item; `undefined` / `true` keeps it */
   getFlag: (key: NavFlagKey) => boolean | undefined;
 }
 
+const ASSISTANT_NAV_ORDER = [
+  '/dashboard',
+  '/estimates',
+  '/sales-orders',
+  '/invoices',
+  '/customers',
+  '/products',
+  '/price-lists',
+] as const;
+
 /** Pure helper for tests — mirrors sidebar prefetch href derivation from `navGroups`. */
 export function collectPrefetchHrefs(
   groups: readonly NavGroup[],
-  { isSellerAdmin, getFlag }: CollectPrefetchHrefsInput
+  { role, getFlag }: CollectPrefetchHrefsInput
 ): string[] {
+  function canAccessNavItem(item: NavItem): boolean {
+    return item.roles.includes(role);
+  }
+
   function isNavItemVisible(item: NavItem): boolean {
     if (!item.flagKey) return true;
     const fk = item.flagKey as keyof typeof FLAG_KEY_TO_FEATURE;
@@ -154,11 +169,11 @@ export function collectPrefetchHrefs(
   return groups
     .flatMap((g) => g.items)
     .filter(isNavItemVisible)
-    .filter((item) => !item.adminOnly || isSellerAdmin)
+    .filter(canAccessNavItem)
     .flatMap((item) => [
       item.href,
       ...(item.children
-        ?.filter((child) => isNavItemVisible(child) && (!child.adminOnly || isSellerAdmin))
+        ?.filter((child) => isNavItemVisible(child) && canAccessNavItem(child))
         .map((child) => child.href) ?? []),
     ]);
 }
@@ -189,7 +204,8 @@ export function SellerSidebar({
   const router = useRouter();
   const { user, signOut } = useAuth();
   const { currentTenant } = useTenant();
-  const { isSellerAdmin, role } = useRole();
+  const { isSellerAssistant, role } = useRole();
+  const sellerRole = role === ROLES.SELLER_ADMIN || role === ROLES.SELLER_ASSISTANT ? role : null;
   const isUnderSettingsRoute = pathname === '/settings' || pathname.startsWith('/settings/');
   const [settingsSubmenuOpen, setSettingsSubmenuOpen] = useState(true);
 
@@ -230,7 +246,11 @@ export function SellerSidebar({
     return getFlag(fk) !== false;
   }
 
-  const prefetchHrefs = collectPrefetchHrefs(navGroups, { isSellerAdmin, getFlag });
+  function canAccessNavItem(item: NavItem): boolean {
+    return sellerRole != null && item.roles.includes(sellerRole);
+  }
+
+  const prefetchHrefs = sellerRole ? collectPrefetchHrefs(navGroups, { role: sellerRole, getFlag }) : [];
 
   useIdleRoutePrefetch(prefetchHrefs);
 
@@ -240,7 +260,7 @@ export function SellerSidebar({
   }
 
   function renderNavItem(item: NavItem) {
-    const visibleChildren = item.children?.filter((c) => isNavItemVisible(c) && (!c.adminOnly || isSellerAdmin)) ?? [];
+    const visibleChildren = item.children?.filter((c) => isNavItemVisible(c) && canAccessNavItem(c)) ?? [];
     const isSettingsGroup = item.href === '/settings' && visibleChildren.length > 0;
 
     if (isSettingsGroup) {
@@ -346,7 +366,7 @@ export function SellerSidebar({
 
         {!isCollapsed &&
           item.children
-            ?.filter((c) => !c.adminOnly || isSellerAdmin)
+            ?.filter((c) => canAccessNavItem(c))
             .map(({ label: childLabel, href: childHref, icon: ChildIcon }) => {
               const childIsActive = pathname === childHref;
               return (
@@ -394,22 +414,33 @@ export function SellerSidebar({
       </div>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
-        {navGroups.map((group) => {
-          const visibleItems = group.items
-            .filter(isNavItemVisible)
-            .filter((item) => !item.adminOnly || isSellerAdmin);
-          if (visibleItems.length === 0) return null;
-          return (
-            <div key={group.label}>
-              {!isCollapsed && (
-                <p className="px-3 pt-5 pb-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#8A7E74]">
-                  {group.label}
-                </p>
-              )}
-              <div className="space-y-0.5">{visibleItems.map((item) => renderNavItem(item))}</div>
-            </div>
-          );
-        })}
+        {isSellerAssistant ? (
+          <div className="space-y-0.5">
+            {ASSISTANT_NAV_ORDER
+              .map((href) => navGroups.flatMap((group) => group.items).find((item) => item.href === href) ?? null)
+              .filter((item): item is NavItem => item != null)
+              .filter(isNavItemVisible)
+              .filter(canAccessNavItem)
+              .map((item) => renderNavItem(item))}
+          </div>
+        ) : (
+          navGroups.map((group) => {
+            const visibleItems = group.items
+              .filter(isNavItemVisible)
+              .filter(canAccessNavItem);
+            if (visibleItems.length === 0) return null;
+            return (
+              <div key={group.label}>
+                {!isCollapsed && (
+                  <p className="px-3 pt-5 pb-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#8A7E74]">
+                    {group.label}
+                  </p>
+                )}
+                <div className="space-y-0.5">{visibleItems.map((item) => renderNavItem(item))}</div>
+              </div>
+            );
+          })
+        )}
       </nav>
 
       <div className="mt-auto shrink-0 px-4 py-4">

@@ -21,6 +21,7 @@ interface MeData {
   buyer_id: string;
   business_name: string;
   contact_name: string;
+  greeting_name?: string | null;
   credit_limit: number;
   credit_used: number;
   open_orders_count: number;
@@ -243,7 +244,7 @@ export default function HomePage() {
         <div className="flex items-start justify-between px-5 pt-4 pb-2">
           <div>
             <p style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-700)', fontFamily: 'var(--font-body)', fontWeight: 500 }}>
-              {loading ? 'Loading…' : `Welcome back, ${meData?.contact_name || meData?.business_name || 'there'}`}
+              {loading ? 'Loading…' : `Welcome back, ${meData?.greeting_name || meData?.contact_name || meData?.business_name || 'there'}`}
             </p>
             <h1 style={{ fontSize: 'var(--yk-text-3xl)', fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--cream-900)', lineHeight: 1.08, letterSpacing: '-0.02em', marginTop: 2 }}>
               {loading ? 'Your shelf, this month.' : `${meData?.tenant.name ?? 'Your distributor'}`}

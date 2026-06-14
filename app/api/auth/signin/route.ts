@@ -14,6 +14,7 @@ interface WorkspaceRow {
   tenant_slug: string | null;
   tenant_name: string | null;
   buyer_id: string | null;
+  location_ids?: string[] | null;
 }
 
 export async function POST(request: NextRequest) {

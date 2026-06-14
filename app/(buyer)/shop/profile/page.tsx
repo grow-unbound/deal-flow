@@ -29,6 +29,13 @@ const ChevR = () => (
 
 export default function ProfilePage() {
   const [isPreview, setIsPreview] = useState(false);
+  const [meData, setMeData] = useState<null | {
+    greeting_name?: string | null;
+    business_name: string;
+    contact_name: string;
+    credit_limit: number;
+    credit_used: number;
+  }>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,9 +48,23 @@ export default function ProfilePage() {
           return;
         }
 
-        const data = await response.json() as { mode?: 'buyer' | 'preview' };
+        const data = await response.json() as {
+          mode?: 'buyer' | 'preview';
+          greeting_name?: string | null;
+          business_name: string;
+          contact_name: string;
+          credit_limit: number;
+          credit_used: number;
+        };
         if (!cancelled) {
           setIsPreview(data.mode === 'preview');
+          setMeData({
+            greeting_name: data.greeting_name,
+            business_name: data.business_name,
+            contact_name: data.contact_name,
+            credit_limit: data.credit_limit,
+            credit_used: data.credit_used,
+          });
         }
       } catch {
         if (!cancelled) setIsPreview(Boolean(getStoredBuyerPreviewToken()));
@@ -57,14 +78,14 @@ export default function ProfilePage() {
   }, []);
 
   const profile = useMemo(() => ({
-    name: isPreview ? 'Buyer App Preview' : 'Rajan Mehta',
-    business: isPreview ? 'Preview access' : 'Rajan Wine Merchants',
+    name: isPreview ? 'Buyer App Preview' : (meData?.greeting_name || meData?.contact_name || meData?.business_name || 'Buyer'),
+    business: isPreview ? 'Preview access' : (meData?.business_name || 'Buyer business'),
     phone: isPreview ? 'Uses your seller session in a new tab' : '+91 98103 47281',
     gstin: isPreview ? 'No buyer GSTIN in preview mode' : '07AABCR1234M1Z5',
     tier: isPreview ? 'buyer_admin preview' : 'A-class',
-    credit: isPreview ? 0 : 250000,
-    used: isPreview ? 0 : 84200,
-  }), [isPreview]);
+    credit: isPreview ? 0 : (meData?.credit_limit ?? 0),
+    used: isPreview ? 0 : (meData?.credit_used ?? 0),
+  }), [isPreview, meData]);
 
   const initials = profile.name.split(' ').map((s) => s[0]).join('').slice(0, 2);
 

@@ -215,6 +215,35 @@ describe('invoice detail API', () => {
     expect(res.status).toBe(403);
   });
 
+  it('GET returns 403 when seller assistant is outside the invoice location scope', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      tenant_id: 'tenant-1',
+      role: 'seller_assistant',
+      sub: 'user-1',
+      location_ids: ['loc-1'],
+    });
+    const scopedRow = { ...invoiceRow, location_id: 'loc-2' };
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'invoices') {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              is: vi.fn(() => ({
+                maybeSingle: vi.fn().mockResolvedValue({ data: scopedRow, error: null }),
+              })),
+            })),
+          })),
+        };
+      }
+      return defaultFromImpl(table);
+    });
+    const { GET } = await import('../../app/api/tenant/invoices/[id]/route');
+    const res = await GET(new NextRequest('http://localhost/api/tenant/invoices/inv-1'), {
+      params: Promise.resolve({ id: 'inv-1' }),
+    });
+    expect(res.status).toBe(403);
+  });
+
   it('PATCH send calls reserve_inventory when hold point is invoice', async () => {
     const { PATCH } = await import('../../app/api/tenant/invoices/[id]/route');
     const res = await PATCH(

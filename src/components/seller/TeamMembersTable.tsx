@@ -36,6 +36,23 @@ type TeamSort = 'Name (A → Z)' | 'Role' | 'Status';
 const TEAM_CHIPS: TeamChip[] = ['All users', 'Admin', 'Assistant', 'Active', 'Invited', 'Deactivated'];
 const TEAM_SORT_OPTIONS: TeamSort[] = ['Name (A → Z)', 'Role', 'Status'];
 
+function formatLocationSummary(member: TeamMember) {
+  if (member.role === 'seller_admin') {
+    return 'All locations';
+  }
+
+  const visibleNames = member.locations.map((location) => location.name);
+  if (visibleNames.length === 0) {
+    return '—';
+  }
+
+  if (visibleNames.length <= 2) {
+    return visibleNames.join(', ');
+  }
+
+  return `${visibleNames.slice(0, 2).join(', ')} +${visibleNames.length - 2} more`;
+}
+
 export function TeamMembersTable({ tenantId, isAdmin }: Props) {
   const queryClient = useQueryClient();
   const [query, setQuery] = useState('');
@@ -157,7 +174,7 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
     );
   }
 
-  const columnCount = isAdmin ? 6 : 5;
+  const columnCount = isAdmin ? 7 : 6;
 
   return (
     <>
@@ -182,6 +199,7 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
             { label: 'Email', className: 'px-5' },
             { label: 'Phone', className: 'px-5' },
             { label: 'Role', className: 'px-5' },
+            { label: 'Locations', className: 'px-5' },
             { label: 'Status', className: 'px-5' },
             ...(isAdmin ? [{ label: 'Actions', align: 'right' as const, className: 'px-5' }] : []),
           ]}
@@ -214,6 +232,9 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
                 <td className="px-5 py-3.5">
                   <RoleChip role={member.role} />
                 </td>
+                <td className="px-5 py-3.5 text-base text-cream-700">
+                  {formatLocationSummary(member)}
+                </td>
                 <td className="px-5 py-3.5">
                   <StatusChip status={member.status} />
                 </td>
@@ -221,7 +242,7 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
                   <td className="px-5 py-3.5 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <RowActionButton
-                        label="Edit user"
+                        label="Edit access"
                         className="text-cream-600 hover:text-cream-900"
                         onClick={() => setEditMember(member)}
                       >

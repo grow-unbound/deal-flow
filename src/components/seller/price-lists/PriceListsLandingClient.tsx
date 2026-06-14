@@ -20,6 +20,7 @@ import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useRole } from '@/hooks/useRole';
 import { usePriceListsLanding, type PriceListLandingRow, type PriceListsLandingResponse } from '@/hooks/usePriceLists';
 import { cn, formatDate } from '@/lib/utils';
 import { formatStrategySummary } from '@/lib/price-list-strategy';
@@ -83,6 +84,7 @@ function entityHue(index: number): 'teal' | 'ember' | 'cream' {
 
 function PriceListsLandingContent({ initialData }: { initialData: PriceListsLandingResponse | null }) {
   const router = useRouter();
+  const { isSellerAssistant } = useRole();
   const { data, isLoading, isError, refetch } = usePriceListsLanding(initialData);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-price-lists-landing',
@@ -148,10 +150,14 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
         <PageHeader
           eyebrow="Pricing"
           title="Price Lists"
-          subtitle="Custom pricing per cohort. Each list sets prices on a window — once it lapses, buyers fall back to base. Keep them fresh."
+          subtitle={isSellerAssistant
+            ? 'Reference pricing by cohort and validity window. Use this view to verify what buyers should be seeing.'
+            : 'Custom pricing per cohort. Each list sets prices on a window — once it lapses, buyers fall back to base. Keep them fresh.'}
           horizon="This month"
-          primary="Add a price list"
-          onPrimaryClick={() => router.push('/price-lists/new')}
+          {...(isSellerAssistant ? {} : {
+            primary: 'Add a price list',
+            onPrimaryClick: () => router.push('/price-lists/new'),
+          })}
         />
 
         <InsightStrip4
@@ -173,9 +179,9 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
               tone: 'warn',
             },
             {
-              label: 'Products with overrides',
+              label: 'Products covered',
               value: `${data?.kpis.products_with_overrides ?? 0}`,
-              sub: 'custom priced SKUs',
+              sub: isSellerAssistant ? 'visible in these lists' : 'custom priced SKUs',
             },
           ]}
         />
@@ -214,7 +220,9 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
                 initials: row.initials,
                 hue: entityHue(index),
                 name: row.name,
-                reason: `${row.member_count} buyers · falling back to base price`,
+                reason: isSellerAssistant
+                  ? `${row.member_count} buyers · currently using base price`
+                  : `${row.member_count} buyers · falling back to base price`,
                 trailing: row.member_count,
               })),
             },
@@ -244,16 +252,18 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
               description={
                 search.trim() || activeChip !== 'All'
                   ? 'Try a different search or status filter.'
-                  : 'Create a price list to set cohort pricing.'
+                  : isSellerAssistant
+                    ? 'No price lists are available yet.'
+                    : 'Create a price list to set cohort pricing.'
               }
-              action={
+              action={!isSellerAssistant ? (
                 <Button variant="accent" asChild>
                   <Link href="/price-lists/new" className="inline-flex items-center gap-1.5">
                     <Plus size={13} />
                     Add a price list
                   </Link>
                 </Button>
-              }
+              ) : undefined}
             />
           }
           columns={[
@@ -263,7 +273,7 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
             { label: 'Products', align: 'center', className: 'px-5' },
             { label: 'Validity', className: 'px-5' },
             { label: 'Avg discount', align: 'right', className: 'px-5' },
-            { label: 'Avg margin', align: 'right', className: 'px-5' },
+            ...(isSellerAssistant ? [] : [{ label: 'Avg margin', align: 'right' as const, className: 'px-5' }]),
             { label: 'Status', className: 'px-5' },
             { width: 40, className: 'px-4' },
           ]}
@@ -320,15 +330,17 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
                     <span className="text-cream-400">—</span>
                   )}
                 </td>
-                <td className="px-5 py-3.5 text-right">
-                  {row.avg_margin_pct != null ? (
-                    <span className="font-mono text-base font-semibold tabular-nums text-cream-900">
-                      {row.avg_margin_pct.toFixed(1)}%
-                    </span>
-                  ) : (
-                    <span className="text-cream-400">—</span>
-                  )}
-                </td>
+                {!isSellerAssistant ? (
+                  <td className="px-5 py-3.5 text-right">
+                    {row.avg_margin_pct != null ? (
+                      <span className="font-mono text-base font-semibold tabular-nums text-cream-900">
+                        {row.avg_margin_pct.toFixed(1)}%
+                      </span>
+                    ) : (
+                      <span className="text-cream-400">—</span>
+                    )}
+                  </td>
+                ) : null}
                 <td className="px-5 py-3.5">
                   <StatusTag label={titleCaseStatus(row.status)} tone={toStatusTone(row.status)} />
                 </td>

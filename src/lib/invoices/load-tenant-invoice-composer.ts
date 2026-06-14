@@ -1,4 +1,10 @@
 import { computePlaceOfSupplyFromBuyer } from '@/lib/sales-orders/compute-place-of-supply';
+import type { JWTClaims } from '@/lib/auth';
+import {
+  canAccessDocumentLocation,
+  loadAccessibleSellerLocations,
+  resolveDefaultSellerLocationId,
+} from '@/lib/server/seller-location-access';
 import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
 import type { EstimateComposerBuyerContext } from '@/types/estimate-composer';
 import type { InvoiceComposerDocument, InvoiceComposerLineInput } from '@/types/invoice-composer';
@@ -20,12 +26,13 @@ export async function loadInvoiceDocument(
   tenantId: string,
   id: string,
   _viewerRole: string | null,
+  viewerClaims?: Pick<JWTClaims, 'role' | 'location_ids'> | null,
 ): Promise<null | 'forbidden' | LoadInvoiceResult> {
   const invoiceRes = await db
     .schema('app')
     .from('invoices')
     .select(
-      'id, tenant_id, buyer_id, order_id, estimate_id, invoice_number, status, invoice_date, due_date, sent_at, sent_channel, subtotal, tax_amount, total_amount, discount_flat, freight, round_off, buyer_po_ref, notes, created_at, created_by, place_of_supply',
+      'id, tenant_id, location_id, buyer_id, order_id, estimate_id, invoice_number, status, invoice_date, due_date, sent_at, sent_channel, subtotal, tax_amount, total_amount, discount_flat, freight, round_off, buyer_po_ref, notes, created_at, created_by, place_of_supply',
     )
     .eq('id', id)
     .is('deleted_at', null)
@@ -35,8 +42,12 @@ export async function loadInvoiceDocument(
   if (!invoiceRes.data) return null;
   const inv = invoiceRes.data as Record<string, unknown>;
   if (inv.tenant_id !== tenantId) return 'forbidden';
+  if (viewerClaims && !canAccessDocumentLocation(viewerClaims, inv.location_id)) return 'forbidden';
 
   const buyerId = typeof inv.buyer_id === 'string' ? inv.buyer_id : null;
+  const effectiveClaims = viewerClaims ?? { role: 'seller_admin', location_ids: null };
+  const availableLocations = await loadAccessibleSellerLocations(db, tenantId, effectiveClaims);
+  const defaultLocationId = resolveDefaultSellerLocationId(effectiveClaims, availableLocations);
 
   const [buyerRes, itemsRes, tenantRes] = await Promise.all([
     buyerId
@@ -278,6 +289,8 @@ export async function loadInvoiceDocument(
     invoice_number: String(inv.invoice_number ?? '—'),
     status: String(inv.status ?? 'draft'),
     buyer_id: buyerId,
+    location_id: (inv.location_id as string | null | undefined) ?? defaultLocationId,
+    available_locations: availableLocations,
     invoice_date: isoDateValue(inv.invoice_date as string | null | undefined, fallbackDate),
     due_date: isoDateValue(inv.due_date as string | null | undefined, null as unknown as string) || null,
     buyer_po_ref: String(inv.buyer_po_ref ?? ''),

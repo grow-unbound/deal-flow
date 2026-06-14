@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getBuyerAppContext } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerAppMode } from '@/types/buyer';
+import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 
 interface BuyerMeResponse {
   mode: BuyerAppMode;
@@ -16,15 +16,15 @@ interface BuyerMeResponse {
     name: string;
     slug: string;
   };
+  greeting_name?: string | null;
 }
 
 const OPEN_STATUSES = ['draft', 'received', 'confirmed', 'partially_dispatched', 'dispatched'];
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
-    const context = await getBuyerAppContext(request);
-
-    if (!context.tenant_id) {
+    const profile = await requireBuyerAccessProfile(request);
+    if (!profile?.context.tenant_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -32,24 +32,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
 
+    const context = profile.context;
     const db = supabaseAdmin;
-    const buyerId = context.buyer_id;
-    const tenantId = context.tenant_id;
+    const buyerId = profile.buyer?.id ?? context.buyer_id;
 
     if (context.mode === 'preview') {
-      const tenantRes = await db
-        .schema('app')
-        .from('tenants')
-        .select('id, business_name, slug')
-        .eq('id', tenantId)
-        .single();
-
-      if (tenantRes.error || !tenantRes.data) {
-        console.error('[GET /api/buyer/me] tenant query error:', tenantRes.error);
+      if (!profile.tenant) {
         return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
       }
 
-      const tenant = tenantRes.data;
+      const tenant = profile.tenant;
       const payload: BuyerMeResponse = {
         mode: 'preview',
         buyer_id: 'preview',
@@ -63,6 +55,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           name: tenant.business_name,
           slug: tenant.slug,
         },
+        greeting_name: 'Preview',
       };
 
       return NextResponse.json(payload);
@@ -72,20 +65,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const [buyerRes, tenantRes, ordersRes] = await Promise.all([
-      db
-        .schema('app')
-        .from('buyers')
-        .select('id, business_name, contact_name, credit_limit')
-        .eq('id', buyerId)
-        .is('deleted_at', null)
-        .single(),
-      db
-        .schema('app')
-        .from('tenants')
-        .select('id, business_name, slug')
-        .eq('id', tenantId)
-        .single(),
+    const [ordersRes] = await Promise.all([
       db
         .schema('app')
         .from('orders')
@@ -95,13 +75,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         .is('deleted_at', null),
     ]);
 
-    if (buyerRes.error || !buyerRes.data) {
-      console.error('[GET /api/buyer/me] buyer query error:', buyerRes.error);
+    if (!profile.buyer) {
       return NextResponse.json({ error: 'Buyer not found' }, { status: 404 });
     }
 
-    if (tenantRes.error || !tenantRes.data) {
-      console.error('[GET /api/buyer/me] tenant query error:', tenantRes.error);
+    if (!profile.tenant) {
       return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
     }
 
@@ -114,8 +92,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const creditUsed = openOrders.reduce((sum, o) => sum + Number(o.total_amount ?? 0), 0);
     const openOrdersCount = openOrders.length;
 
-    const buyer = buyerRes.data;
-    const tenant = tenantRes.data;
+    const buyer = profile.buyer;
+    const tenant = profile.tenant;
 
     const payload: BuyerMeResponse = {
       mode: 'buyer',
@@ -130,6 +108,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         name: tenant.business_name,
         slug: tenant.slug,
       },
+      greeting_name: profile.greeting_name,
     };
 
     return NextResponse.json(payload);
