@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
+import { supabaseBrowser } from '@/lib/supabase-browser';
 
 const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
 
@@ -14,6 +15,11 @@ interface BuyerContext {
   role: string;
 }
 
+interface SessionPayload {
+  access_token: string;
+  refresh_token: string;
+}
+
 const ROLE_LABELS: Record<string, string> = {
   buyer_admin: 'Admin',
   buyer_assistant: 'Team member',
@@ -21,6 +27,10 @@ const ROLE_LABELS: Record<string, string> = {
 
 function roleBadge(role: string) {
   return ROLE_LABELS[role] ?? role;
+}
+
+function contextKey(ctx: BuyerContext) {
+  return `${ctx.tenant_id}:${ctx.buyer_id}`;
 }
 
 function SelectContextForm() {
@@ -57,7 +67,7 @@ function SelectContextForm() {
   }, [ref_id, router]);
 
   async function handleSelect(ctx: BuyerContext) {
-    setSelected(ctx.tenant_id);
+    setSelected(contextKey(ctx));
     setError('');
     setLoading(true);
 
@@ -68,16 +78,29 @@ function SelectContextForm() {
         body: JSON.stringify({
           ref_id,
           tenant_id: ctx.tenant_id,
+          buyer_id: ctx.buyer_id,
           role: ctx.role,
         }),
       });
 
-      const data: { success?: boolean; redirect?: string; error?: string } = await res.json();
+      const data: {
+        success?: boolean;
+        redirect?: string;
+        session?: SessionPayload;
+        error?: string;
+      } = await res.json();
 
       if (!res.ok || !data.success) {
         setError(data.error ?? 'Selection failed. Please try again.');
         setSelected(null);
         return;
+      }
+
+      if (data.session?.access_token && data.session?.refresh_token) {
+        await supabaseBrowser.auth.setSession({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+        });
       }
 
       // Clean up sessionStorage
@@ -121,12 +144,13 @@ function SelectContextForm() {
 
       <div className="space-y-3">
         {contexts.map((ctx) => {
-          const isSelected = selected === ctx.tenant_id;
+          const key = contextKey(ctx);
+          const isSelected = selected === key;
           const isDisabled = loading;
 
           return (
             <button
-              key={ctx.tenant_id}
+              key={key}
               type="button"
               onClick={() => !isDisabled && handleSelect(ctx)}
               disabled={isDisabled}

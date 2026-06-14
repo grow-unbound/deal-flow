@@ -1,4 +1,10 @@
 import { computePlaceOfSupplyFromBuyer } from '@/lib/sales-orders/compute-place-of-supply';
+import type { JWTClaims } from '@/lib/auth';
+import {
+  canAccessDocumentLocation,
+  loadAccessibleSellerLocations,
+  resolveDefaultSellerLocationId,
+} from '@/lib/server/seller-location-access';
 import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
 import type { EstimateComposerDocument } from '@/types/estimate-composer';
 import type { EstimateDetailActivity, EstimateDetailLineItem, EstimateDetailPayload } from '@/types/tenant-estimate-detail';
@@ -63,6 +69,7 @@ export async function loadEstimateDocument(
   tenantId: string,
   id: string,
   viewerRole: string | null,
+  viewerClaims?: Pick<JWTClaims, 'role' | 'location_ids'> | null,
 ): Promise<null | 'forbidden' | LoadEstimateResult> {
   const d = db as any;
 
@@ -70,7 +77,7 @@ export async function loadEstimateDocument(
     .schema('app')
     .from('estimates')
     .select(
-      'id, tenant_id, buyer_id, estimate_number, status, subtotal, tax_amount, total_amount, currency, notes, expires_at, created_at, sent_at, accepted_at, converted_to_order_id, converted_to_invoice_id, date_issued, valid_until, buyer_po_ref, discount_flat, freight, round_off, sent_channel, viewed_at, viewed_by_name, voided_at, estimate_version, place_of_supply, created_by',
+      'id, tenant_id, location_id, buyer_id, estimate_number, status, subtotal, tax_amount, total_amount, currency, notes, expires_at, created_at, sent_at, accepted_at, converted_to_order_id, converted_to_invoice_id, date_issued, valid_until, buyer_po_ref, discount_flat, freight, round_off, sent_channel, viewed_at, viewed_by_name, voided_at, estimate_version, place_of_supply, created_by',
     )
     .eq('id', id)
     .is('deleted_at', null)
@@ -79,9 +86,13 @@ export async function loadEstimateDocument(
   if (estimateRes.error) throw estimateRes.error;
   if (!estimateRes.data) return null;
   if (estimateRes.data.tenant_id !== tenantId) return 'forbidden';
+  if (viewerClaims && !canAccessDocumentLocation(viewerClaims, estimateRes.data.location_id)) return 'forbidden';
 
   const estimate = estimateRes.data as Record<string, unknown>;
   const buyerId = typeof estimate.buyer_id === 'string' ? estimate.buyer_id : null;
+  const effectiveClaims = viewerClaims ?? { role: 'seller_admin', location_ids: null };
+  const availableLocations = await loadAccessibleSellerLocations(d, tenantId, effectiveClaims);
+  const defaultLocationId = resolveDefaultSellerLocationId(effectiveClaims, availableLocations);
 
   const [buyerRes, itemsRes, auditRes, tenantRes] = await Promise.all([
     buyerId
@@ -332,6 +343,8 @@ export async function loadEstimateDocument(
     estimate_number: String(estimate.estimate_number ?? '—'),
     status,
     buyer_id: buyerId,
+    location_id: (estimate.location_id as string | null | undefined) ?? defaultLocationId,
+    available_locations: availableLocations,
     date_issued: isoDateValue(estimate.date_issued as string | null | undefined, fallbackDate),
     valid_until: isoDateValue(estimate.valid_until as string | null | undefined, fallbackDate),
     buyer_po_ref: String(estimate.buyer_po_ref ?? ''),

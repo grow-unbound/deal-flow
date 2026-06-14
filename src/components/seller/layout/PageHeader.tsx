@@ -26,7 +26,7 @@ interface PageHeaderProps {
   periodOptions?: SellerLandingPeriodOption[];
   onPeriodChange?: (period: SellerLandingPeriod) => void;
   secondary?: HeaderAction;
-  primary: string;
+  primary?: string;
   onPrimaryClick?: () => void;
 }
 
@@ -87,10 +87,12 @@ export function PageHeader({
             {secondary.label}
           </Button>
         ) : null}
-        <Button variant="primary" onClick={onPrimaryClick}>
-          <Plus size={13} />
-          {primary}
-        </Button>
+        {primary ? (
+          <Button variant="primary" onClick={onPrimaryClick}>
+            <Plus size={13} />
+            {primary}
+          </Button>
+        ) : null}
       </div>
     </header>
   );

@@ -19,6 +19,14 @@ export interface BuyerCatalogItem {
   on_hand: number;
 }
 
+export interface BuyerCatalogSummary {
+  id: string;
+  name: string;
+  product_count: number;
+  share_token: string;
+  valid_until: string | null;
+}
+
 export interface BuyerCategory {
   id: string;
   name: string;
@@ -35,6 +43,10 @@ export interface BuyerCatalogResponse {
   items: BuyerCatalogItem[];
   total: number;
   has_more: boolean;
+  catalogs?: BuyerCatalogSummary[];
+  selected_catalog_id?: string | null;
+  selected_catalog_name?: string | null;
+  selected_catalog_valid_until?: string | null;
 }
 
 export interface BuyerCategoriesResponse {

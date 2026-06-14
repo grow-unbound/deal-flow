@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useMemo, useState } from 'react';
+import { use, useEffect, useMemo, useState } from 'react';
 import { Download, Share2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { FeatureGate } from '@/components/FeatureGate';
 import { ErrorState } from '@/components/ui/empty-state';
 import { PageWrap } from '@/components/seller/layout';
 import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
+import { ResolvedPriceLookupCard } from '@/components/seller/pricing/ResolvedPriceLookupCard';
 import { CustomerActivityTab, CustomerDetailsTab, CustomerOrdersTab, CustomerPerformanceTab } from '@/components/seller/customers/detail';
 import { AddCustomerDialog } from '@/components/seller/customers/AddCustomerDialog';
 import { useRole } from '@/hooks/useRole';
@@ -16,7 +17,7 @@ import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useTenantCustomerDetail, useToggleCustomerStatusOptimistic } from '@/hooks/useCustomersLanding';
 import { formatCompactInr } from '@/lib/utils';
 
-type TabId = 'details' | 'performance' | 'orders' | 'activity';
+type TabId = 'details' | 'performance' | 'orders' | 'estimates' | 'invoices' | 'cohorts' | 'price-lists' | 'activity';
 
 function CustomerDetailSkeleton() {
   return (
@@ -68,20 +69,85 @@ function TierPill({ tier }: { tier: 'A' | 'B' | 'C' | null }) {
   return <span className="rounded-full bg-ember-50 px-2 py-0.5 text-xs font-medium text-ember-700">Tier {tier}</span>;
 }
 
+function formatValidityWindow(validFrom: string | null, validTo: string | null) {
+  const formatDate = (value: string | null) =>
+    value ? new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Open';
+
+  return `${formatDate(validFrom)} → ${formatDate(validTo)}`;
+}
+
+function PriceListStatusPill({ status }: { status: 'active' | 'draft' | 'expired' }) {
+  const classes = status === 'active'
+    ? 'bg-teal-50 text-teal-700'
+    : status === 'expired'
+      ? 'bg-cream-200 text-cream-700'
+      : 'bg-amber-50 text-amber-700';
+
+  return (
+    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em] ${classes}`}>
+      {status}
+    </span>
+  );
+}
+
 export default function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const { isSellerAdmin, isSellerAssistant } = useRole();
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-customer-detail-tab',
     scopeKey: id,
-    initialState: 'performance',
+    initialState: isSellerAssistant ? 'details' : 'performance',
   });
-  const { isSellerAdmin } = useRole();
   const { data, isLoading, isError, error } = useTenantCustomerDetail(id);
   const statusMutation = useToggleCustomerStatusOptimistic(id);
   const [editOpen, setEditOpen] = useState(false);
+  const tabs = useMemo(
+    () => [
+      { id: 'details', label: 'Details' },
+      ...(isSellerAssistant ? [] : [{ id: 'performance', label: 'Performance' }]),
+      { id: 'orders', label: 'Orders', badge: data?.orders.badge_count_mtd ?? 0 },
+      { id: 'estimates', label: 'Estimates', badge: data?.estimates.rows.length ?? 0 },
+      { id: 'invoices', label: 'Invoices', badge: data?.invoices.rows.length ?? 0 },
+      { id: 'cohorts', label: 'Cohorts', badge: data?.cohorts_summary.rows.length ?? 0 },
+      { id: 'price-lists', label: 'Price Lists', badge: data?.price_lists.assigned.length ?? 0 },
+      { id: 'activity', label: 'Activity' },
+    ],
+    [data?.cohorts_summary.rows.length, data?.estimates.rows.length, data?.invoices.rows.length, data?.orders.badge_count_mtd, data?.price_lists.assigned.length, isSellerAssistant],
+  );
+  const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0]?.id ?? 'details';
+
+  useEffect(() => {
+    if (activeTab !== tab) {
+      setTab(activeTab as TabId);
+    }
+  }, [activeTab, setTab, tab]);
 
   const tiles = useMemo(() => {
     if (!data) return [];
+    if (isSellerAssistant) {
+      return [
+        {
+          label: 'Orders · MTD',
+          value: data.meta_strip_4.orders_mtd,
+          sub: `AOV ${formatCompactInr(data.meta_strip_4.aov_mtd)}`,
+        },
+        {
+          label: 'Last order',
+          value: data.meta_strip_4.last_order_label,
+          sub: data.meta_strip_4.last_order_primary_product_qty,
+        },
+        {
+          label: 'Credit used',
+          value: formatCompactInr(data.meta_strip_4.credit_used),
+          sub: `of ${formatCompactInr(data.meta_strip_4.credit_limit)} · ${data.meta_strip_4.credit_used_pct}%`,
+        },
+        {
+          label: 'Net terms',
+          value: `${data.header.net_terms_days} days`,
+          sub: 'Buyer payment terms',
+        },
+      ];
+    }
     return [
       {
         label: 'Spend · MTD',
@@ -112,7 +178,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         sub: `of ${formatCompactInr(data.meta_strip_4.credit_limit)} · ${data.meta_strip_4.credit_used_pct}%`,
       },
     ];
-  }, [data]);
+  }, [data, isSellerAssistant]);
 
   if (isLoading) return <CustomerDetailSkeleton />;
   if (isError || !data) {
@@ -159,22 +225,90 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         <MetaStrip4 tiles={tiles} />
 
         <DetailTabs
-          tabs={[
-            { id: 'details', label: 'Details' },
-            { id: 'performance', label: 'Performance' },
-            { id: 'orders', label: 'Orders', badge: data.orders.badge_count_mtd },
-            { id: 'activity', label: 'Activity' },
-          ]}
-          active={tab}
+          tabs={tabs}
+          active={activeTab}
           onChange={(value) => setTab(value as TabId)}
         />
 
-        {tab === 'details' ? <CustomerDetailsTab id={id} details={data.details} onEdit={() => setEditOpen(true)} /> : null}
-        {tab === 'performance' ? <CustomerPerformanceTab performance={data.performance} performanceV2={data.performance_v2} /> : null}
-        {tab === 'orders' ? <CustomerOrdersTab orders={data.orders.rows} /> : null}
-        {tab === 'activity' ? <CustomerActivityTab activity={data.activity} /> : null}
+        {activeTab === 'details' ? <CustomerDetailsTab id={id} details={data.details} onEdit={() => setEditOpen(true)} /> : null}
+        {activeTab === 'performance' ? <CustomerPerformanceTab performance={data.performance} performanceV2={data.performance_v2} /> : null}
+        {activeTab === 'orders' ? <CustomerOrdersTab orders={data.orders.rows} /> : null}
+        {activeTab === 'estimates' ? (
+          <CustomerOrdersTab
+            orders={data.estimates.rows}
+            title="Estimates"
+            description="Drafted and sent estimates visible to this role."
+            routeBase="/estimates"
+            amountLabel="Total"
+          />
+        ) : null}
+        {activeTab === 'invoices' ? (
+          <CustomerOrdersTab
+            orders={data.invoices.rows}
+            title="Invoices"
+            description="Issued invoices visible to this role."
+            routeBase="/invoices"
+            amountLabel="Total"
+          />
+        ) : null}
+        {activeTab === 'cohorts' ? (
+          <section className="mt-5 rounded-[14px] border border-cream-300 bg-white p-5">
+            <h3 className="font-display text-lg text-cream-950">Cohorts</h3>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {data.cohorts_summary.rows.length === 0 ? (
+                <p className="text-base text-cream-700">No cohort memberships found for this buyer.</p>
+              ) : data.cohorts_summary.rows.map((cohort) => (
+                <article key={cohort.id} className="rounded-[12px] border border-cream-200 bg-cream-50 px-4 py-3">
+                  <p className="font-medium text-cream-950">{cohort.name}</p>
+                  <p className="mt-1 text-sm text-cream-700">Buyer is assigned to this cohort.</p>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
+        {activeTab === 'price-lists' ? (
+          <section className="mt-5 space-y-4">
+            <article className="rounded-[14px] border border-cream-300 bg-white p-5">
+              <h3 className="font-display text-lg text-cream-950">Assigned price lists</h3>
+              {data.price_lists.assigned.length === 0 ? (
+                <p className="mt-3 text-base text-cream-700">No buyer-specific, cohort, or all-buyers price lists currently apply to this customer.</p>
+              ) : (
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {data.price_lists.assigned.map((priceList) => (
+                    <article key={`${priceList.id}-${priceList.target_type}`} className="rounded-[12px] border border-cream-200 bg-cream-50 px-4 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-cream-950">{priceList.name}</p>
+                          <p className="mt-1 text-sm text-cream-700">{priceList.target_label}</p>
+                        </div>
+                        <PriceListStatusPill status={priceList.status} />
+                      </div>
+                      <p className="mt-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-600">
+                        Validity
+                      </p>
+                      <p className="mt-1 text-sm text-cream-800">
+                        {formatValidityWindow(priceList.valid_from, priceList.valid_to)}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </article>
+            <ResolvedPriceLookupCard
+              buyerId={id}
+              productOptions={data.price_lists.lookup_products.map((product) => ({
+                id: product.tenant_product_id,
+                label: product.name,
+                meta: product.sku,
+              }))}
+              title="Resolved price lookup"
+              description="Check the live resolved price for this buyer across recently transacted products."
+            />
+          </section>
+        ) : null}
+        {activeTab === 'activity' ? <CustomerActivityTab activity={data.activity} /> : null}
 
-        {isSellerAdmin && tab === 'details' ? (
+        {isSellerAdmin && activeTab === 'details' ? (
           <div className="mt-4 flex items-center gap-2">
             <Button type="button" variant="secondary" size="sm" onClick={() => setEditOpen(true)}>Edit</Button>
             <AlertDialog>

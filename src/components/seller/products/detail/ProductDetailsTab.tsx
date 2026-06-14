@@ -26,7 +26,7 @@ interface ProductDetailsTabProps {
 
 export function ProductDetailsTab({ details, role, isSaving, onSave }: ProductDetailsTabProps) {
   const isAdmin = role === 'seller_admin';
-  const isEditing = false;
+  const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState({
     name_override: details.name_override ?? '',
     mrp: details.mrp != null ? formatInrInput(String(details.mrp)) : '',

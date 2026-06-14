@@ -11,6 +11,7 @@ import { PermissionDenied } from '@/components/auth/PermissionDenied';
 import {
   ComposerSidebarCard,
 } from '@/components/seller/composer/ComposerLayout';
+import { ResolvedPriceLookupCard } from '@/components/seller/pricing/ResolvedPriceLookupCard';
 import {
   DocumentBasicsStrip,
   DocumentComposerFooterRow,
@@ -86,6 +87,8 @@ function buildNewEstimateDraft(estimateNumber = 'Estimating next number...'): Es
     estimate_number: estimateNumber,
     status: 'draft',
     buyer_id: null,
+    location_id: null,
+    available_locations: [],
     date_issued: isoDateOffset(0),
     valid_until: isoDateOffset(14),
     buyer_po_ref: '',
@@ -111,6 +114,7 @@ function snapshotPayload(document: EstimateComposerDocument, lines: EstimateComp
   return JSON.stringify({
     estimate_number: document.estimate_number,
     buyer_id: document.buyer_id,
+    location_id: document.location_id,
     date_issued: document.date_issued,
     valid_until: document.valid_until,
     buyer_po_ref: document.buyer_po_ref,
@@ -153,6 +157,7 @@ function toSavePayload(document: EstimateComposerDocument, lines: EstimateCompos
   return {
     estimate_number: document.estimate_number,
     buyer_id: document.buyer_id,
+    location_id: document.location_id,
     date_issued: document.date_issued,
     valid_until: document.valid_until,
     buyer_po_ref: document.buyer_po_ref,
@@ -469,6 +474,10 @@ export function DocComposerEstimate({
     return <DocumentComposerLoadingSkeleton />;
   }
 
+  if (!documentState) {
+    return <DocumentComposerLoadingSkeleton />;
+  }
+
   const buyer = documentState.buyer_context ?? buyerContextQuery.data ?? null;
   const activeLines = diffLines.filter((line) => line.diff !== 'removed');
   const primaryDisabled = mode === 'edit' && documentState.status === 'sent'
@@ -668,10 +677,12 @@ export function DocComposerEstimate({
           <DocumentBasicsStrip
             kind="estimate"
             docNumber={documentState.estimate_number}
+            locationId={documentState.location_id}
+            availableLocations={documentState.available_locations}
             dateIssued={documentState.date_issued}
             secondDate={documentState.valid_until}
             buyerPoRef={documentState.buyer_po_ref}
-            placeOfSupply={documentState.place_of_supply}
+            locationReadOnly={documentState.available_locations.length <= 1}
             onDateIssuedChange={(value) => {
               setDocumentState((current) => {
                 if (!current) return current;
@@ -683,7 +694,7 @@ export function DocComposerEstimate({
             }}
             onSecondDateChange={(value) => setDocumentPatch({ valid_until: value })}
             onBuyerPoRefChange={(value) => setDocumentPatch({ buyer_po_ref: value })}
-            onPlaceOfSupplyChange={(value) => setDocumentPatch({ place_of_supply: value })}
+            onLocationChange={(value) => setDocumentPatch({ location_id: value })}
           />
         )}
         left={(
@@ -716,8 +727,10 @@ export function DocComposerEstimate({
                 />
               )}
               <DocumentMetaCard
+                placeOfSupplyValue={documentState.place_of_supply}
                 notesValue={documentState.seller_note}
                 freightValue={documentState.freight}
+                onPlaceOfSupplyChange={(value) => setDocumentPatch({ place_of_supply: value })}
                 onNotesChange={(value) => setDocumentPatch({ seller_note: value })}
                 onFreightChange={(value) => setDocumentPatch({ freight: value })}
               />
@@ -773,6 +786,16 @@ export function DocComposerEstimate({
                   <span>Saving these edits stages a new version before the estimate is re-sent.</span>
                 ) : undefined
               }
+            />
+            <ResolvedPriceLookupCard
+              buyerId={documentState.buyer_id}
+              productOptions={activeLines.map((line) => ({
+                id: line.tenant_product_id,
+                label: line.product_name,
+                meta: `${line.sku} · Qty ${line.qty}`,
+              }))}
+              title="Resolved price check"
+              description="Cross-check the buyer's resolved price before saving or sending this estimate."
             />
           </div>
         )}

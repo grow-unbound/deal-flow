@@ -9,13 +9,14 @@ describe('useSellerLandingPeriod', () => {
 
     expect(result.current.period).toBe('month');
     expect(result.current.horizonLabel).toBe('This Month');
+    expect(result.current.options.map((option) => option.value)).toEqual(['today', 'week', 'month', 'quarter', 'year']);
 
     act(() => {
-      result.current.setPeriod('quarter');
+      result.current.setPeriod('week');
     });
 
-    expect(result.current.period).toBe('quarter');
-    expect(result.current.horizonLabel).toBe('This Quarter');
-    expect(result.current.metricSuffix).toBe('QTD');
+    expect(result.current.period).toBe('week');
+    expect(result.current.horizonLabel).toBe('This Week');
+    expect(result.current.metricSuffix).toBe('WTD');
   });
 });

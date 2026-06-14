@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { OtpForm } from '@/components/buyer/auth/OtpForm';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
+import { supabaseBrowser } from '@/lib/supabase-browser';
 
 const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
 
@@ -14,6 +15,11 @@ interface BuyerContext {
   tenant_slug: string;
   buyer_id: string;
   role: string;
+}
+
+interface SessionPayload {
+  access_token: string;
+  refresh_token: string;
 }
 
 function VerifyOtpForm() {
@@ -48,6 +54,7 @@ function VerifyOtpForm() {
         redirect?: string;
         contexts?: BuyerContext[];
         ref_id?: string;
+        session?: SessionPayload;
         error?: string;
       } = await res.json();
 
@@ -67,7 +74,13 @@ function VerifyOtpForm() {
         return;
       }
 
-      // Single context — navigate directly
+      if (data.session?.access_token && data.session?.refresh_token) {
+        await supabaseBrowser.auth.setSession({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+        });
+      }
+
       router.replace(data.redirect ?? '/shop');
     } catch {
       setError('Network error. Please check your connection and try again.');

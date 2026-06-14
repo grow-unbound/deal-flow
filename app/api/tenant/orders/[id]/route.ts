@@ -4,6 +4,12 @@ import { z } from 'zod';
 import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import {
+  canAccessDocumentLocation,
+  isSellerLocationSelectionAllowed,
+  loadAccessibleSellerLocations,
+  resolveDefaultSellerLocationId,
+} from '@/lib/server/seller-location-access';
 import { loadTenantSalesOrderComposer } from '@/lib/sales-orders/load-tenant-sales-order-composer';
 import { loadTenantSalesOrderDetail } from '@/lib/sales-orders/load-tenant-sales-order-detail';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -12,6 +18,7 @@ export const dynamic = 'force-dynamic';
 const SalesOrderSaveSchema = z.object({
   order_number: z.string().min(1).optional(),
   buyer_id: z.string().uuid().nullable().optional(),
+  location_id: z.string().uuid().nullable().optional(),
   order_date: z.string().optional(),
   expected_delivery: z.string().optional(),
   buyer_po_ref: z.string().max(255).optional(),
@@ -57,13 +64,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const view = request.nextUrl.searchParams.get('view');
   if (view === 'composer') {
-    const composer = await loadTenantSalesOrderComposer(supabaseAdmin as any, claims.tenant_id, id);
+    const composer = await loadTenantSalesOrderComposer(supabaseAdmin as any, claims.tenant_id, id, claims);
     if (composer === 'forbidden') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     if (composer === 'notfound') return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json(composer);
   }
 
-  const detail = await loadTenantSalesOrderDetail(supabaseAdmin as any, claims.tenant_id, id, claims.role ?? null);
+  const detail = await loadTenantSalesOrderDetail(supabaseAdmin as any, claims.tenant_id, id, claims.role ?? null, claims);
   if (detail === 'forbidden') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   if (detail === 'notfound') return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
@@ -104,13 +111,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { data: orderRow, error: orderErr } = await db
     .schema('app')
     .from('orders')
-    .select('id, tenant_id, status')
+    .select('id, tenant_id, location_id, status')
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle();
 
   if (orderErr || !orderRow) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (orderRow.tenant_id !== claims.tenant_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!canAccessDocumentLocation(claims, orderRow.location_id)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const dbStatus = String(orderRow.status ?? '');
   if (NON_SAVEABLE_STATUSES.has(dbStatus)) {
@@ -118,9 +128,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   const payload = parsed.data;
-  const existing = await loadTenantSalesOrderComposer(db, claims.tenant_id, id);
+  const existing = await loadTenantSalesOrderComposer(db, claims.tenant_id, id, claims);
   if (existing === 'notfound' || existing === 'forbidden') {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+  const allowedLocations = await loadAccessibleSellerLocations(db as any, claims.tenant_id, claims);
+  const nextLocationId = payload.location_id ?? existing.location_id ?? resolveDefaultSellerLocationId(claims, allowedLocations);
+  if (!nextLocationId || !isSellerLocationSelectionAllowed(claims, nextLocationId)) {
+    return NextResponse.json({ error: 'Select a valid accessible location' }, { status: 400 });
   }
 
   const items = payload.items ?? existing.items;
@@ -140,6 +155,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const updatePayload: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
     updated_by: claims.sub,
+    location_id: nextLocationId,
     subtotal,
     tax_amount: taxAmount,
     total_amount: grandTotal,
@@ -238,7 +254,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     ts: new Date().toISOString(),
   });
 
-  const next = await loadTenantSalesOrderComposer(db, claims.tenant_id, id);
+  const next = await loadTenantSalesOrderComposer(db, claims.tenant_id, id, claims);
   if (next === 'notfound' || next === 'forbidden') {
     return NextResponse.json({ error: 'Failed to reload order' }, { status: 500 });
   }

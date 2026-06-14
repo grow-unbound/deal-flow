@@ -9,6 +9,7 @@ interface WorkspaceRow {
   tenant_slug: string | null;
   tenant_name: string | null;
   buyer_id: string | null;
+  location_ids?: string[] | null;
 }
 
 /**
@@ -19,7 +20,11 @@ interface WorkspaceRow {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user_id, email, access_token } = await request.json();
+    const { user_id, email, access_token } = await request.json() as {
+      user_id?: string;
+      email?: string;
+      access_token?: string;
+    };
 
     if (!user_id || !access_token) {
       return NextResponse.json({ error: 'Missing user_id or access_token' }, { status: 400 });

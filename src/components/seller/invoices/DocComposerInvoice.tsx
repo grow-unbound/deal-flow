@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { FeatureDisabledState } from '@/components/FeatureGate';
 import { PermissionDenied } from '@/components/auth/PermissionDenied';
 import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
+import { ResolvedPriceLookupCard } from '@/components/seller/pricing/ResolvedPriceLookupCard';
 import {
   DocumentBasicsStrip,
   DocumentComposerFooterRow,
@@ -74,6 +75,8 @@ function buildNewInvoiceDraft(invoiceNumber = 'Reserving next number...'): Invoi
     invoice_number: invoiceNumber,
     status: 'draft',
     buyer_id: null,
+    location_id: null,
+    available_locations: [],
     invoice_date: isoToday(),
     due_date: null,
     buyer_po_ref: '',
@@ -97,6 +100,7 @@ function snapshotPayload(document: InvoiceComposerDocument, lines: EstimateCompo
   return JSON.stringify({
     invoice_number: document.invoice_number,
     buyer_id: document.buyer_id,
+    location_id: document.location_id,
     invoice_date: document.invoice_date,
     due_date: document.due_date,
     buyer_po_ref: document.buyer_po_ref,
@@ -139,6 +143,7 @@ function toSavePayload(document: InvoiceComposerDocument, lines: EstimateCompose
   return {
     invoice_number: document.invoice_number,
     buyer_id: document.buyer_id,
+    location_id: document.location_id,
     invoice_date: document.invoice_date,
     due_date: document.due_date,
     buyer_po_ref: document.buyer_po_ref,
@@ -467,6 +472,10 @@ export function DocComposerInvoice({
     return <DocumentComposerLoadingSkeleton />;
   }
 
+  if (!documentState) {
+    return <DocumentComposerLoadingSkeleton />;
+  }
+
   const buyer = documentState.buyer_context ?? buyerContextQuery.data ?? null;
   const activeLines = diffLines.filter((line) => line.diff !== 'removed');
   const primaryDisabled = !documentState.buyer_id || activeLines.length === 0;
@@ -648,10 +657,12 @@ export function DocComposerInvoice({
           <DocumentBasicsStrip
             kind="invoice"
             docNumber={documentState.invoice_number}
+            locationId={documentState.location_id}
+            availableLocations={documentState.available_locations}
             dateIssued={documentState.invoice_date}
             secondDate={documentState.due_date ?? ''}
             buyerPoRef={documentState.buyer_po_ref}
-            placeOfSupply={documentState.place_of_supply}
+            locationReadOnly={documentState.available_locations.length <= 1}
             onDateIssuedChange={(value) => {
               setDocumentState((current) => {
                 if (!current) return current;
@@ -663,7 +674,7 @@ export function DocComposerInvoice({
             }}
             onSecondDateChange={(value) => setDocumentPatch({ due_date: value || null })}
             onBuyerPoRefChange={(value) => setDocumentPatch({ buyer_po_ref: value })}
-            onPlaceOfSupplyChange={(value) => setDocumentPatch({ place_of_supply: value })}
+            onLocationChange={(value) => setDocumentPatch({ location_id: value })}
           />
         )}
         left={(
@@ -697,8 +708,10 @@ export function DocComposerInvoice({
                 />
               )}
               <DocumentMetaCard
+                placeOfSupplyValue={documentState.place_of_supply}
                 notesValue={documentState.seller_note}
                 freightValue={documentState.freight}
+                onPlaceOfSupplyChange={(value) => setDocumentPatch({ place_of_supply: value })}
                 onNotesChange={(value) => setDocumentPatch({ seller_note: value })}
                 onFreightChange={(value) => setDocumentPatch({ freight: value })}
               />
@@ -749,6 +762,16 @@ export function DocComposerInvoice({
               isInterState={isInterState}
               lineCount={activeLines.length}
               stagedChanges={stagedChangesRows}
+            />
+            <ResolvedPriceLookupCard
+              buyerId={documentState.buyer_id}
+              productOptions={activeLines.map((line) => ({
+                id: line.tenant_product_id,
+                label: line.product_name,
+                meta: `${line.sku} · Qty ${line.qty}`,
+              }))}
+              title="Resolved price check"
+              description="Verify the resolved buyer price before finalizing this invoice."
             />
           </div>
         )}

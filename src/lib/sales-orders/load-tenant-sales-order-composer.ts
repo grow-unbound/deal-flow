@@ -1,5 +1,11 @@
 import type { SalesOrderComposerDocument, SalesOrderComposerLineInput } from '@/types/sales-order-composer';
 
+import type { JWTClaims } from '@/lib/auth';
+import {
+  canAccessDocumentLocation,
+  loadAccessibleSellerLocations,
+  resolveDefaultSellerLocationId,
+} from '@/lib/server/seller-location-access';
 import { computePlaceOfSupplyFromBuyer } from '@/lib/sales-orders/compute-place-of-supply';
 import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
 import { productDisplayName } from '@/lib/sales-orders/tenant-order-detail';
@@ -24,6 +30,7 @@ export async function loadTenantSalesOrderComposer(
   db: DbClient,
   tenantId: string,
   orderId: string,
+  viewerClaims?: Pick<JWTClaims, 'role' | 'location_ids'> | null,
 ): Promise<'notfound' | 'forbidden' | SalesOrderComposerDocument> {
   const d = db as any;
 
@@ -34,6 +41,7 @@ export async function loadTenantSalesOrderComposer(
       [
         'id',
         'tenant_id',
+        'location_id',
         'buyer_id',
         'order_number',
         'status',
@@ -45,6 +53,7 @@ export async function loadTenantSalesOrderComposer(
         'notes',
         'estimate_id',
         'buyer_po_ref',
+        'place_of_supply',
         'discount_flat',
         'freight',
         'round_off',
@@ -61,9 +70,13 @@ export async function loadTenantSalesOrderComposer(
   if (orderError || !orderRow) return 'notfound';
   const order = orderRow as Record<string, unknown>;
   if (order.tenant_id !== tenantId) return 'forbidden';
+  if (viewerClaims && !canAccessDocumentLocation(viewerClaims, order.location_id)) return 'forbidden';
 
   const buyerId = typeof order.buyer_id === 'string' ? order.buyer_id : null;
   const estimateId = typeof order.estimate_id === 'string' ? order.estimate_id : null;
+  const effectiveClaims = viewerClaims ?? { role: 'seller_admin', location_ids: null };
+  const availableLocations = await loadAccessibleSellerLocations(d, tenantId, effectiveClaims);
+  const defaultLocationId = resolveDefaultSellerLocationId(effectiveClaims, availableLocations);
 
   const { data: itemRowsRaw, error: itemsError } = await d
     .schema('app')
@@ -314,10 +327,12 @@ export async function loadTenantSalesOrderComposer(
     order_number: String(order.order_number ?? order.id),
     status: String(order.status ?? 'draft'),
     buyer_id: buyerId,
+    location_id: (order.location_id as string | null | undefined) ?? defaultLocationId,
+    available_locations: availableLocations,
     order_date: orderDate,
     expected_delivery: expectedDelivery,
     buyer_po_ref: String(order.buyer_po_ref ?? ''),
-    place_of_supply: '',
+    place_of_supply: String((order.place_of_supply as string | null | undefined) ?? buyerContext?.place_of_supply ?? ''),
     seller_note: notesText,
     freight: Number(order.freight ?? 0),
     discount_flat: Number(order.discount_flat ?? 0),

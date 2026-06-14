@@ -4,6 +4,12 @@ export type EstimateComposerKind = 'estimate' | 'so' | 'invoice';
 
 export type EstimateSendChannel = 'whatsapp' | 'email' | 'download';
 
+export interface ComposerLocationOption {
+  id: string;
+  name: string;
+  is_default: boolean;
+}
+
 export interface EstimateComposerBuyerContext {
   id: string;
   business_name: string;
@@ -75,6 +81,8 @@ export interface EstimateComposerDocument {
   estimate_number: string;
   status: string;
   buyer_id: string | null;
+  location_id: string | null;
+  available_locations: ComposerLocationOption[];
   date_issued: string;
   valid_until: string;
   buyer_po_ref: string;
@@ -109,6 +117,7 @@ export interface EstimateComposerTotals {
 export interface EstimateComposerSavePayload {
   estimate_number?: string;
   buyer_id?: string | null;
+  location_id?: string | null;
   date_issued?: string;
   valid_until?: string;
   buyer_po_ref?: string;

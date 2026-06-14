@@ -5,14 +5,18 @@ import { formatNumberForInput, parseCurrencyDigits } from '@/lib/currency-input'
 import { cn } from '@/lib/utils';
 
 export function DocumentMetaCard({
+  placeOfSupplyValue,
   notesValue,
   freightValue,
+  onPlaceOfSupplyChange,
   onNotesChange,
   onFreightChange,
   readOnly = false,
 }: {
+  placeOfSupplyValue: string;
   notesValue: string;
   freightValue: number;
+  onPlaceOfSupplyChange: (value: string) => void;
   onNotesChange: (value: string) => void;
   onFreightChange: (value: number) => void;
   readOnly?: boolean;
@@ -20,6 +24,18 @@ export function DocumentMetaCard({
   return (
     <aside className="rounded-[14px] border border-cream-300 bg-white p-4">
       <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">Place of supply</p>
+        <Input
+          className={cn('mt-2 h-10', readOnly && 'bg-cream-50')}
+          value={placeOfSupplyValue}
+          onChange={(event) => onPlaceOfSupplyChange(event.target.value)}
+          placeholder="Enter place of supply"
+          readOnly={readOnly}
+          disabled={readOnly}
+        />
+      </div>
+
+      <div className="mt-4">
         <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">Notes</p>
         <textarea
           className={cn(

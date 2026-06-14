@@ -6,8 +6,16 @@ import {
 } from '@/components/seller/composer/ComposerLayout';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { minDateAfterIso } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
+import type { ComposerLocationOption } from '@/types/estimate-composer';
 
 export type DocumentComposerKind = 'estimate' | 'so' | 'invoice';
 
@@ -38,28 +46,39 @@ const stripDateTriggerClass =
 export function DocumentBasicsStrip({
   kind,
   docNumber,
+  locationId,
+  availableLocations,
   dateIssued,
   secondDate,
   buyerPoRef,
-  placeOfSupply,
   readOnly = false,
+  locationReadOnly = false,
+  locationLabel,
   onDateIssuedChange,
   onSecondDateChange,
   onBuyerPoRefChange,
-  onPlaceOfSupplyChange,
+  onLocationChange,
 }: {
   kind: DocumentComposerKind;
   docNumber: string;
+  locationId: string | null;
+  availableLocations: ComposerLocationOption[];
   dateIssued: string;
   secondDate: string;
   buyerPoRef: string;
-  placeOfSupply: string;
   readOnly?: boolean;
+  locationReadOnly?: boolean;
+  locationLabel?: string;
   onDateIssuedChange: (value: string) => void;
   onSecondDateChange: (value: string) => void;
   onBuyerPoRefChange: (value: string) => void;
-  onPlaceOfSupplyChange: (value: string) => void;
+  onLocationChange: (value: string) => void;
 }) {
+  const resolvedLocationLabel =
+    locationLabel
+    ?? availableLocations.find((location) => location.id === locationId)?.name
+    ?? '—';
+
   return (
     <ComposerBasicsStrip columnsClassName="lg:grid-cols-5">
       <ComposerBasicsField label={DOC_NUMBER_LABELS[kind]}>
@@ -99,16 +118,22 @@ export function DocumentBasicsStrip({
         )}
       </ComposerBasicsField>
 
-      <ComposerBasicsField label="Place of supply">
-        {readOnly ? (
-          <span className="text-base text-cream-950">{placeOfSupply || '—'}</span>
+      <ComposerBasicsField label="Location">
+        {readOnly || locationReadOnly || availableLocations.length <= 1 ? (
+          <span className="text-base text-cream-950">{resolvedLocationLabel}</span>
         ) : (
-          <Input
-            value={placeOfSupply}
-            onChange={(event) => onPlaceOfSupplyChange(event.target.value)}
-            className={cn(borderlessInputClass, 'font-normal text-base text-cream-900')}
-            placeholder="Enter place of supply"
-          />
+          <Select value={locationId ?? undefined} onValueChange={onLocationChange}>
+            <SelectTrigger className={cn(borderlessInputClass, 'h-auto px-0 text-base font-medium')}>
+              <SelectValue placeholder="Select location" />
+            </SelectTrigger>
+            <SelectContent>
+              {availableLocations.map((location) => (
+                <SelectItem key={location.id} value={location.id}>
+                  {location.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
       </ComposerBasicsField>
     </ComposerBasicsStrip>

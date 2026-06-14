@@ -37,14 +37,29 @@ export function ProductPricingTab({ productId, role, pricingSummary, pricing }: 
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Base selling price</p>
             <p className="mt-2 font-display text-2xl leading-none text-cream-950">{pricingSummary.base_selling_price != null ? formatCurrency(pricingSummary.base_selling_price, 'INR') : '—'}</p>
           </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Cost price</p>
-            <p className="mt-2 font-display text-2xl leading-none text-cream-950">{pricingSummary.cost_price != null ? formatCurrency(pricingSummary.cost_price, 'INR') : '—'}</p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Margin</p>
-            <p className="mt-2 font-display text-2xl leading-none text-cream-950">{pricingSummary.margin_pct != null ? `${pricingSummary.margin_pct}%` : '—'}</p>
-          </div>
+          {isAdmin ? (
+            <>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Cost price</p>
+                <p className="mt-2 font-display text-2xl leading-none text-cream-950">{pricingSummary.cost_price != null ? formatCurrency(pricingSummary.cost_price, 'INR') : '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Margin</p>
+                <p className="mt-2 font-display text-2xl leading-none text-cream-950">{pricingSummary.margin_pct != null ? `${pricingSummary.margin_pct}%` : '—'}</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Pricing visibility</p>
+                <p className="mt-2 font-display text-2xl leading-none text-cream-950">Read only</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Override access</p>
+                <p className="mt-2 font-display text-2xl leading-none text-cream-950">Admin only</p>
+              </div>
+            </>
+          )}
         </div>
       </article>
 
@@ -61,7 +76,7 @@ export function ProductPricingTab({ productId, role, pricingSummary, pricing }: 
                 <th className="px-5 py-2.5">Effective price</th>
                 <th className="px-5 py-2.5">Validity</th>
                 <th className="px-5 py-2.5">Status</th>
-                <th className="px-5 py-2.5 text-right">Action</th>
+                {isAdmin ? <th className="px-5 py-2.5 text-right">Action</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -98,8 +113,8 @@ export function ProductPricingTab({ productId, role, pricingSummary, pricing }: 
                       {(row.valid_from ? new Date(row.valid_from).toLocaleDateString('en-IN') : 'Now') + ' → ' + (row.valid_to ? new Date(row.valid_to).toLocaleDateString('en-IN') : 'Open')}
                     </td>
                     <td className="px-5 py-3 text-sm text-cream-700">{row.is_active ? 'Active' : 'Inactive'}</td>
-                    <td className="px-5 py-3 text-right">
-                      {isAdmin ? (
+                    {isAdmin ? (
+                      <td className="px-5 py-3 text-right">
                         isEditing ? (
                           <div className="inline-flex items-center gap-2">
                             <Button
@@ -131,16 +146,14 @@ export function ProductPricingTab({ productId, role, pricingSummary, pricing }: 
                             <Pencil size={14} />
                           </Button>
                         )
-                      ) : (
-                        <span className="text-sm text-cream-600">—</span>
-                      )}
-                    </td>
+                      </td>
+                    ) : null}
                   </tr>
                 );
               })}
               {pricing.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-8 text-center text-base text-cream-700">No price-list overrides for this product yet.</td>
+                  <td colSpan={isAdmin ? 6 : 5} className="px-5 py-8 text-center text-base text-cream-700">No price-list overrides for this product yet.</td>
                 </tr>
               ) : null}
             </tbody>

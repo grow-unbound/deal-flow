@@ -19,6 +19,7 @@ export interface PriceListProductsTabProps {
   filters: PriceListFilterState | null | undefined;
   items: PriceListItem[];
   brandsCovered: number;
+  canViewFinancials?: boolean;
 }
 
 function getInitials(value: string) {
@@ -35,7 +36,7 @@ function renderFilterValues(values: string[]) {
   return values.length > 0 ? values.join(', ') : '—';
 }
 
-export function PriceListProductsTab({ filters, items, brandsCovered }: PriceListProductsTabProps) {
+export function PriceListProductsTab({ filters, items, brandsCovered, canViewFinancials = true }: PriceListProductsTabProps) {
   const [search, setSearch] = useState('');
   const [activeChip, setActiveChip] = useState<ActiveChip>('All products');
   const [sortBy, setSortBy] = useState<SortOption>('Product (A → Z)');
@@ -95,11 +96,11 @@ export function PriceListProductsTab({ filters, items, brandsCovered }: PriceLis
         if (sortBy === 'List price (high → low)') return b.list - a.list;
         if (sortBy === 'Discount % (high → low)')
           return (b.discountPct ?? -Infinity) - (a.discountPct ?? -Infinity);
-        if (sortBy === 'Margin % (high → low)')
+        if (canViewFinancials && sortBy === 'Margin % (high → low)')
           return (b.marginPct ?? -Infinity) - (a.marginPct ?? -Infinity);
         return a.productName.localeCompare(b.productName);
       });
-  }, [activeChip, rows, search, sortBy]);
+  }, [activeChip, canViewFinancials, rows, search, sortBy]);
 
   return (
     <section className="mt-5 space-y-4">
@@ -147,7 +148,7 @@ export function PriceListProductsTab({ filters, items, brandsCovered }: PriceLis
             'Brand (A → Z)',
             'List price (high → low)',
             'Discount % (high → low)',
-            'Margin % (high → low)',
+            ...(canViewFinancials ? ['Margin % (high → low)'] : []),
           ]}
           onSortChange={(value) => setSortBy(value as SortOption)}
         />
@@ -156,12 +157,14 @@ export function PriceListProductsTab({ filters, items, brandsCovered }: PriceLis
           columns={[
             { label: 'Product', width: 280, className: 'px-5' },
             { label: 'Brand', className: 'px-5' },
-            { label: 'Cost price', align: 'right', className: 'px-5' },
             { label: 'MRP', align: 'right', className: 'px-5' },
             { label: 'Base selling price', align: 'right', className: 'px-5' },
             { label: 'List price', align: 'right', className: 'px-5' },
             { label: 'Discount %', align: 'right', className: 'px-5' },
-            { label: 'Margin %', align: 'right', className: 'px-5' },
+            ...(canViewFinancials ? [
+              { label: 'Cost price', align: 'right' as const, className: 'px-5' },
+              { label: 'Margin %', align: 'right' as const, className: 'px-5' },
+            ] : []),
           ]}
           className="rounded-[14px] border-t"
         >
@@ -186,9 +189,6 @@ export function PriceListProductsTab({ filters, items, brandsCovered }: PriceLis
                   </div>
                 </td>
                 <td className="px-5 py-3 text-right font-mono text-sm text-cream-900">
-                  {row.cost != null && row.cost > 0 ? formatInr(row.cost) : '—'}
-                </td>
-                <td className="px-5 py-3 text-right font-mono text-sm text-cream-900">
                   {row.mrp != null ? formatInr(row.mrp) : '—'}
                 </td>
                 <td className="px-5 py-3 text-right font-mono text-sm text-cream-700">{formatInr(row.base)}</td>
@@ -203,9 +203,16 @@ export function PriceListProductsTab({ filters, items, brandsCovered }: PriceLis
                     ? '—'
                     : `${d >= 0 ? '-' : '+'}${Math.abs(d).toFixed(1)}%`}
                 </td>
-                <td className="px-5 py-3 text-right font-mono text-sm text-cream-900">
-                  {m == null ? '—' : `${m.toFixed(1)}%`}
-                </td>
+                {canViewFinancials ? (
+                  <>
+                    <td className="px-5 py-3 text-right font-mono text-sm text-cream-900">
+                      {row.cost != null && row.cost > 0 ? formatInr(row.cost) : '—'}
+                    </td>
+                    <td className="px-5 py-3 text-right font-mono text-sm text-cream-900">
+                      {m == null ? '—' : `${m.toFixed(1)}%`}
+                    </td>
+                  </>
+                ) : null}
               </tr>
             );
           })}

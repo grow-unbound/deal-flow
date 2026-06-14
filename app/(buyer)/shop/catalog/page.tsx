@@ -12,7 +12,7 @@ import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { LoadingSkeleton } from '@/components/buyer/catalog/LoadingSkeleton';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { ErrorState } from '@/components/ui/empty-state';
-import type { BuyerCatalogItem, BuyerBrand, BuyerCategory } from '@/types/buyer';
+import type { BuyerCatalogItem, BuyerBrand, BuyerCategory, BuyerCatalogSummary } from '@/types/buyer';
 
 const PAGE_LIMIT = 40;
 
@@ -27,10 +27,12 @@ export default function CatalogPage() {
       selectedBrand: null as string | null,
       items: [] as BuyerCatalogItem[],
       categories: [] as BuyerCategory[],
+      catalogs: [] as BuyerCatalogSummary[],
       page: 0,
       hasMore: false,
       shareCatalogName: null as string | null,
       shareCatalogValidUntil: null as string | null,
+      selectedCatalogId: null as string | null,
       loadedShareToken: null as string | null,
     },
   });
@@ -39,10 +41,12 @@ export default function CatalogPage() {
   const selectedBrand = routeState.selectedBrand;
   const items = routeState.items;
   const categories = routeState.categories;
+  const catalogs = routeState.catalogs;
   const page = routeState.page;
   const hasMore = routeState.hasMore;
   const shareCatalogName = routeState.shareCatalogName;
   const shareCatalogValidUntil = routeState.shareCatalogValidUntil;
+  const selectedCatalogId = routeState.selectedCatalogId;
   const loadedShareToken = routeState.loadedShareToken;
   const [loading, setLoading] = React.useState(items.length === 0);
   const [loadingMore, setLoadingMore] = React.useState(false);
@@ -69,13 +73,16 @@ export default function CatalogPage() {
   // Fetch categories once on mount (retry via categoriesRetryNonce)
   React.useEffect(() => {
     setCategoriesFetchError(false);
-    apiFetch('/api/buyer/categories')
-      .then((r) => r.json())
-      .then((data: { categories?: BuyerCategory[] }) => {
+    const params = new URLSearchParams();
+    if (shareToken) params.set('share_token', shareToken);
+    if (!shareToken && selectedCatalogId) params.set('catalog_id', selectedCatalogId);
+    apiFetch(`/api/buyer/categories${params.toString() ? `?${params.toString()}` : ''}`)
+      .then((r) => r.json() as Promise<{ categories?: BuyerCategory[] }>)
+      .then((data) => {
         setRouteState((current) => ({ ...current, categories: data.categories ?? [] }));
       })
       .catch(() => setCategoriesFetchError(true));
-  }, [categoriesRetryNonce, setRouteState]);
+  }, [categoriesRetryNonce, selectedCatalogId, setRouteState, shareToken]);
 
   const itemsLengthRef = React.useRef(items.length);
   itemsLengthRef.current = items.length;
@@ -88,8 +95,8 @@ export default function CatalogPage() {
 
     if (shareToken) {
       apiFetch(`/api/buyer/catalog/${shareToken}`)
-        .then((r) => r.json())
-        .then((data: { catalog_id?: string; name?: string; valid_until?: string | null; items?: BuyerCatalogItem[] }) => {
+        .then((r) => r.json() as Promise<{ catalog_id?: string; name?: string; valid_until?: string | null; items?: BuyerCatalogItem[] }>)
+        .then((data) => {
           if (cancelled) return;
           setRouteState((current) => ({
             ...current,
@@ -123,21 +130,31 @@ export default function CatalogPage() {
       limit: String(PAGE_LIMIT),
       offset: '0',
     });
+    if (selectedCatalogId) params.set('catalog_id', selectedCatalogId);
     if (debouncedSearch) params.set('search', debouncedSearch);
     if (selectedCategory) params.set('category_id', selectedCategory);
     if (selectedBrand) params.set('brand_id', selectedBrand);
 
     apiFetch(`/api/buyer/catalog?${params.toString()}`)
-      .then((r) => r.json())
-      .then((data: { items?: BuyerCatalogItem[]; has_more?: boolean }) => {
+      .then((r) => r.json() as Promise<{
+        items?: BuyerCatalogItem[];
+        has_more?: boolean;
+        catalogs?: BuyerCatalogSummary[];
+        selected_catalog_id?: string | null;
+        selected_catalog_name?: string | null;
+        selected_catalog_valid_until?: string | null;
+      }>)
+      .then((data) => {
         if (cancelled) return;
         setRouteState((current) => ({
           ...current,
           items: data.items ?? [],
+          catalogs: data.catalogs ?? current.catalogs,
           hasMore: data.has_more ?? false,
           page: 1,
-          shareCatalogName: null,
-          shareCatalogValidUntil: null,
+          shareCatalogName: data.selected_catalog_name ?? null,
+          shareCatalogValidUntil: data.selected_catalog_valid_until ?? null,
+          selectedCatalogId: data.selected_catalog_id ?? current.selectedCatalogId,
           loadedShareToken: null,
         }));
       })
@@ -151,7 +168,7 @@ export default function CatalogPage() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedSearch, selectedCategory, selectedBrand, shareToken, catalogFetchNonce, setRouteState]);
+  }, [debouncedSearch, selectedCategory, selectedBrand, selectedCatalogId, shareToken, catalogFetchNonce, setRouteState]);
 
   // Load more (infinite scroll)
   const loadMore = React.useCallback(() => {
@@ -164,13 +181,14 @@ export default function CatalogPage() {
       limit: String(PAGE_LIMIT),
       offset: String(offset),
     });
+    if (selectedCatalogId) params.set('catalog_id', selectedCatalogId);
     if (debouncedSearch) params.set('search', debouncedSearch);
     if (selectedCategory) params.set('category_id', selectedCategory);
     if (selectedBrand) params.set('brand_id', selectedBrand);
 
     apiFetch(`/api/buyer/catalog?${params.toString()}`)
-      .then((r) => r.json())
-      .then((data: { items?: BuyerCatalogItem[]; has_more?: boolean }) => {
+      .then((r) => r.json() as Promise<{ items?: BuyerCatalogItem[]; has_more?: boolean }>)
+      .then((data) => {
         setRouteState((current) => ({
           ...current,
           items: [...current.items, ...(data.items ?? [])],
@@ -180,7 +198,7 @@ export default function CatalogPage() {
       })
       .catch(() => setLoadMoreError(true))
       .finally(() => setLoadingMore(false));
-  }, [shareToken, loadingMore, hasMore, page, debouncedSearch, selectedCategory, selectedBrand, setRouteState]);
+  }, [shareToken, loadingMore, hasMore, page, debouncedSearch, selectedCategory, selectedBrand, selectedCatalogId, setRouteState]);
 
   // Intersection observer for sentinel
   React.useEffect(() => {
@@ -276,6 +294,19 @@ export default function CatalogPage() {
           name={catalogName}
           productCount={items.length}
           validUntil={catalogValidUntil}
+          catalogs={catalogs}
+          selectedCatalogId={selectedCatalogId}
+          onSelectCatalog={(catalogId) =>
+            setRouteState((current) => ({
+              ...current,
+              selectedCatalogId: catalogId,
+              selectedBrand: null,
+              selectedCategory: null,
+              items: [],
+              page: 0,
+              hasMore: false,
+            }))
+          }
         />
       )}
 

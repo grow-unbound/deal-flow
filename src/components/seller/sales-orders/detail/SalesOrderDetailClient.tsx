@@ -13,6 +13,7 @@ import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasics
 import { DocumentComposerLoadingSkeleton, DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
 import {
   BuyerCardFilled,
+  DocumentMetaCard,
   LinesTable,
   salesOrderBandChipClass,
   TotalsCard,
@@ -283,28 +284,41 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
             kind="so"
             readOnly
             docNumber={data.order_number}
+            locationId={null}
+            availableLocations={[]}
             dateIssued={orderDate}
             secondDate={expectedYmd}
             buyerPoRef={data.buyer_po_ref ?? ''}
-            placeOfSupply={data.place_of_supply ?? buyer?.place_of_supply ?? 'Unknown'}
+            locationLabel="—"
             onDateIssuedChange={noop}
             onSecondDateChange={noop}
             onBuyerPoRefChange={noop}
-            onPlaceOfSupplyChange={noop}
+            onLocationChange={noop}
           />
         )}
         left={(
           <ComposerSidebarCard>
             <div className="space-y-4">
               {buyer ? (
-                <BuyerCardFilled
-                  buyer={buyer}
-                  previewTotal={0}
-                  paymentTermsValue={paymentTermsLabel}
-                  readOnly
-                  onPaymentTermsChange={noop}
-                  onChangeBuyer={noop}
-                />
+                <div className="space-y-4">
+                  <BuyerCardFilled
+                    buyer={buyer}
+                    previewTotal={0}
+                    paymentTermsValue={paymentTermsLabel}
+                    readOnly
+                    onPaymentTermsChange={noop}
+                    onChangeBuyer={noop}
+                  />
+                  <DocumentMetaCard
+                    readOnly
+                    placeOfSupplyValue={data.place_of_supply ?? buyer.place_of_supply ?? 'Unknown'}
+                    notesValue={data.seller_note ?? data.notes ?? ''}
+                    freightValue={data.freight}
+                    onPlaceOfSupplyChange={noop}
+                    onNotesChange={noop}
+                    onFreightChange={noop}
+                  />
+                </div>
               ) : (
                 <p className="text-base text-cream-700">No buyer on this order.</p>
               )}

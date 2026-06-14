@@ -40,6 +40,7 @@ import { formatInrInput, parseInrInput } from '@/lib/utils';
 import { useCreateCustomerOptimistic } from '@/hooks/useCustomersLanding';
 import { useTenantCohortOptions } from '@/hooks/useCohorts';
 import { useFlagState } from '@/hooks/useFeatureFlag';
+import { useRole } from '@/hooks/useRole';
 
 const TIER_OPTIONS = [
   { value: 'A' as const, label: 'Tier A' },
@@ -63,6 +64,7 @@ export function AddCustomerDialog({
   const createMutation = useCreateCustomerOptimistic();
   const queryClient = useQueryClient();
   const isEditMode = mode === 'edit' && !!customerId;
+  const { isSellerAssistant } = useRole();
 
   const cohortsFlag = useFlagState('COHORTS');
   const cohortsEnabled = cohortsFlag === true;
@@ -268,28 +270,30 @@ export function AddCustomerDialog({
                     )}
                   />
 
-                  <FormField
-                    control={form.control}
-                    name="tier"
-                    render={({ field }) => (
-                      <FormItem className="space-y-2">
-                        <FormLabel>Tier</FormLabel>
-                        <Select value={field.value ?? ''} onValueChange={field.onChange}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select tier" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {TIER_OPTIONS.map((t) => (
-                              <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {!isSellerAssistant ? (
+                    <FormField
+                      control={form.control}
+                      name="tier"
+                      render={({ field }) => (
+                        <FormItem className="space-y-2">
+                          <FormLabel>Tier</FormLabel>
+                          <Select value={field.value ?? ''} onValueChange={field.onChange}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select tier" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {TIER_OPTIONS.map((t) => (
+                                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  ) : null}
                 </FormSectionGrid>
               </FormBlock>
 
@@ -404,29 +408,31 @@ export function AddCustomerDialog({
                     )}
                   />
 
-                  <FormField
-                    control={form.control}
-                    name="credit_limit"
-                    render={({ field }) => (
-                      <FormItem className="space-y-2">
-                        <FormLabel>Credit limit</FormLabel>
-                        <FormControl>
-                          <div className="flex items-stretch">
-                            <span className="inline-flex items-center rounded-l-[8px] border border-r-0 border-cream-400 bg-cream-200 px-3 text-base text-cream-700 select-none">
-                              ₹
-                            </span>
-                            <Input
-                              value={field.value ? formatInrInput(String(field.value)) : ''}
-                              onChange={(e) => field.onChange(parseInrInput(formatInrInput(e.target.value)) ?? 0)}
-                              placeholder="0"
-                              className="rounded-l-none font-mono tabular-nums tracking-wide"
-                            />
-                          </div>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {!isSellerAssistant ? (
+                    <FormField
+                      control={form.control}
+                      name="credit_limit"
+                      render={({ field }) => (
+                        <FormItem className="space-y-2">
+                          <FormLabel>Credit limit</FormLabel>
+                          <FormControl>
+                            <div className="flex items-stretch">
+                              <span className="inline-flex items-center rounded-l-[8px] border border-r-0 border-cream-400 bg-cream-200 px-3 text-base text-cream-700 select-none">
+                                ₹
+                              </span>
+                              <Input
+                                value={field.value ? formatInrInput(String(field.value)) : ''}
+                                onChange={(e) => field.onChange(parseInrInput(formatInrInput(e.target.value)) ?? 0)}
+                                placeholder="0"
+                                className="rounded-l-none font-mono tabular-nums tracking-wide"
+                              />
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  ) : null}
 
                   <FormField
                     control={form.control}
@@ -455,7 +461,7 @@ export function AddCustomerDialog({
               </FormBlock>
 
               {/* Cohort */}
-              {cohortsEnabled ? (
+              {cohortsEnabled && !isSellerAssistant ? (
                 <FormBlock title="Cohort">
                   <FormField
                     control={form.control}
