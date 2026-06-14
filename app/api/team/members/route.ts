@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   const { data: rows, error } = await db
     .schema('app')
     .from('tenant_users')
-    .select('id, user_id, role, is_active, invited_at, joined_at')
+    .select('id, user_id, role, location_ids, is_active, invited_at, joined_at')
     .eq('tenant_id', claims.tenant_id)
     .order('invited_at', { ascending: false });
 
@@ -41,6 +41,16 @@ export async function GET(request: NextRequest) {
 
   // Fetch auth user details for all user_ids
   const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers();
+  const { data: locationRows, error: locationsError } = await db
+    .schema('app')
+    .from('locations')
+    .select('id, name, deleted_at')
+    .eq('tenant_id', claims.tenant_id);
+
+  if (locationsError) {
+    return NextResponse.json({ error: 'Failed to fetch location assignments' }, { status: 500 });
+  }
+
   const authMap = new Map(
     (authUsers?.users ?? []).map((u) => [
       u.id,
@@ -51,18 +61,29 @@ export async function GET(request: NextRequest) {
       },
     ]),
   );
+  const locationMap = new Map(
+    ((locationRows ?? []) as Array<{ id: string; name: string; deleted_at: string | null }>).map((location) => [
+      location.id,
+      location,
+    ]),
+  );
 
   const members: TeamMember[] = (rows ?? []).map(
     (row: {
       id: string;
       user_id: string;
       role: 'seller_admin' | 'seller_assistant';
+      location_ids: string[] | null;
       is_active: boolean;
       invited_at: string | null;
       joined_at: string | null;
     }) => {
       const auth = authMap.get(row.user_id);
       const status = row.is_active ? 'active' : (row.joined_at ? 'inactive' : 'pending');
+      const resolvedLocations = (row.location_ids ?? [])
+        .map((id) => locationMap.get(id))
+        .filter((location): location is { id: string; name: string; deleted_at: string | null } => Boolean(location));
+
       return {
         id: row.id,
         user_id: row.user_id,
@@ -70,6 +91,8 @@ export async function GET(request: NextRequest) {
         full_name: auth?.full_name ?? null,
         phone: auth?.phone ?? null,
         role: row.role,
+        location_ids: row.location_ids ?? null,
+        locations: resolvedLocations,
         status,
         invited_at: row.invited_at,
         joined_at: row.joined_at,

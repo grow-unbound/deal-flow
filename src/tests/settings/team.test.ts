@@ -11,6 +11,7 @@ describe('InviteUserSchema', () => {
       email: 'colleague@company.com',
       phone: '9876543210',
       role: 'seller_assistant',
+      location_ids: ['loc-1'],
     });
     expect(result.success).toBe(true);
   });
@@ -21,8 +22,23 @@ describe('InviteUserSchema', () => {
       email: 'admin@company.com',
       phone: '9876543210',
       role: 'seller_admin',
+      location_ids: null,
     });
     expect(result.success).toBe(true);
+  });
+
+  it('rejects seller_assistant without locations', () => {
+    const result = InviteUserSchema.safeParse({
+      full_name: 'Phani K',
+      email: 'colleague@company.com',
+      phone: '9876543210',
+      role: 'seller_assistant',
+      location_ids: [],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.flatten().fieldErrors.location_ids).toBeDefined();
+    }
   });
 
   it('rejects invalid email', () => {
@@ -85,8 +101,21 @@ describe('UpdateMemberSchema', () => {
         email: 'phani@example.com',
         phone: '9876543210',
         role: 'seller_admin',
+        location_ids: null,
       }).success,
     ).toBe(true);
+  });
+
+  it('rejects assistant updates without locations', () => {
+    expect(
+      UpdateMemberSchema.safeParse({
+        full_name: 'Phani K',
+        email: 'phani@example.com',
+        phone: '9876543210',
+        role: 'seller_assistant',
+        location_ids: [],
+      }).success,
+    ).toBe(false);
   });
 
   it('rejects buyer roles', () => {

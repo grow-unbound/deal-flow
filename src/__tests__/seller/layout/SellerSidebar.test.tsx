@@ -163,7 +163,7 @@ describe('SellerSidebar', () => {
     render(<SellerSidebar featureAvailability={makeFeatures({ estimates: false })} />);
     const paths = prefetchSpy.mock.calls[0][0] as string[];
     expect(paths).not.toContain('/cohorts');
-    expect(paths).not.toContain('/price-lists');
+    expect(paths).toContain('/price-lists');
     expect(paths).not.toContain('/exports');
     expect(paths).not.toContain('/settings');
     expect(paths).not.toContain('/settings/modules');
@@ -172,12 +172,30 @@ describe('SellerSidebar', () => {
     expect(paths).not.toContain('/estimates');
     expect(paths).toContain('/dashboard');
   });
+
+  it('renders assistant nav as a flat ordered list with no section headings', () => {
+    mockUseAuth.mockReturnValue(makeAuth('seller_assistant'));
+    render(<SellerSidebar featureAvailability={makeFeatures()} />);
+
+    expect(screen.queryByText('OPERATIONS')).not.toBeInTheDocument();
+    expect(screen.queryByText('CUSTOMERS')).not.toBeInTheDocument();
+    expect(screen.queryByText('CATALOG')).not.toBeInTheDocument();
+    expect(screen.queryByText('ADMIN')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Invoices/i })).toBeInTheDocument();
+    const orderedItems = ['Dashboard', 'Estimates', 'Sales Orders', 'Customers', 'Products', 'Price Lists'];
+    orderedItems.forEach((label) => {
+      expect(screen.getByRole('link', { name: label })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('link', { name: 'Brands' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Catalogs' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument();
+  });
 });
 
 describe('collectPrefetchHrefs', () => {
   it('matches navGroups flattening with flag and admin gates', () => {
     const hrefs = collectPrefetchHrefs(navGroups, {
-      isSellerAdmin: true,
+      role: 'seller_admin',
       getFlag: () => true,
     });
     expect(hrefs).toContain('/estimates');
@@ -188,7 +206,7 @@ describe('collectPrefetchHrefs', () => {
 
   it('excludes paths when getFlag returns false', () => {
     const hrefs = collectPrefetchHrefs(navGroups, {
-      isSellerAdmin: true,
+      role: 'seller_admin',
       getFlag: (k) => k !== 'df_estimates',
     });
     expect(hrefs).not.toContain('/estimates');
@@ -197,9 +215,20 @@ describe('collectPrefetchHrefs', () => {
 
   it('excludes integrations path when integrations flag is off', () => {
     const hrefs = collectPrefetchHrefs(navGroups, {
-      isSellerAdmin: true,
+      role: 'seller_admin',
       getFlag: (k) => k !== 'df_integrations',
     });
     expect(hrefs).not.toContain('/settings/integrations');
+  });
+
+  it('includes price lists but excludes admin-only routes for assistants', () => {
+    const hrefs = collectPrefetchHrefs(navGroups, {
+      role: 'seller_assistant',
+      getFlag: () => true,
+    });
+    expect(hrefs).toContain('/price-lists');
+    expect(hrefs).not.toContain('/brands');
+    expect(hrefs).not.toContain('/catalogs');
+    expect(hrefs).not.toContain('/settings');
   });
 });

@@ -13,6 +13,7 @@ import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasics
 import { DocumentComposerLoadingSkeleton, DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
 import {
   BuyerCardFilled,
+  DocumentMetaCard,
   LinesTable,
   estimateBandChipClass,
   resolveEstimateBandStatus,
@@ -250,32 +251,44 @@ export function EstimateDetailPage({ id }: { id: string }) {
             kind="estimate"
             readOnly
             docNumber={data.estimate_number}
+            locationId={data.location_id}
+            availableLocations={data.available_locations}
             dateIssued={data.date_issued}
             secondDate={data.valid_until}
             buyerPoRef={data.buyer_po_ref}
-            placeOfSupply={data.place_of_supply}
             onDateIssuedChange={noop}
             onSecondDateChange={noop}
             onBuyerPoRefChange={noop}
-            onPlaceOfSupplyChange={noop}
+            onLocationChange={noop}
           />
         )}
         left={buyer
           ? (
               <ComposerSidebarCard>
-                <BuyerCardFilled
-                  buyer={buyer}
-                  previewTotal={0}
-                  paymentTermsValue={paymentTermsLabel}
-                  readOnly
-                  onPaymentTermsChange={noop}
-                  onChangeBuyer={noop}
-                />
+                <div className="space-y-4">
+                  <BuyerCardFilled
+                    buyer={buyer}
+                    previewTotal={0}
+                    paymentTermsValue={paymentTermsLabel}
+                    readOnly
+                    onPaymentTermsChange={noop}
+                    onChangeBuyer={noop}
+                  />
+                  <DocumentMetaCard
+                    readOnly
+                    placeOfSupplyValue={data.place_of_supply}
+                    notesValue={data.seller_note ?? data.notes ?? ''}
+                    freightValue={data.freight}
+                    onPlaceOfSupplyChange={noop}
+                    onNotesChange={noop}
+                    onFreightChange={noop}
+                  />
+                </div>
               </ComposerSidebarCard>
             )
           : (
               <ComposerSidebarCard>
-                <p className="text-[13px] text-cream-700">No buyer on this estimate.</p>
+                <p className="text-base text-cream-700">No buyer on this estimate.</p>
               </ComposerSidebarCard>
             )}
         center={(
@@ -350,7 +363,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
             <DialogTitle>Void this estimate?</DialogTitle>
           </DialogHeader>
           <DialogBody>
-            <p className="text-[13px] text-cream-700">This cannot be undone. The estimate will be marked void.</p>
+            <p className="text-base text-cream-700">This cannot be undone. The estimate will be marked void.</p>
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setVoidOpen(false)} disabled={voidMut.isPending}>

@@ -25,8 +25,8 @@ export function ProductCard({ item, className }: ProductCardProps) {
       <Link
         href={`/shop/product/${item.tenant_product_id}`}
         className={cn(
-          'flex flex-col bg-[var(--bg-surface)] border border-[var(--border-1)] rounded-xl overflow-hidden',
-          'hover:border-[var(--border-2)] transition-colors no-underline',
+          'flex flex-col overflow-hidden rounded-xl border border-[var(--border-1)] bg-[var(--bg-surface)] shadow-xs',
+          'transition-all no-underline hover:-translate-y-px hover:border-[var(--border-2)] hover:shadow-md',
           isOos && 'opacity-60',
           className,
         )}
@@ -51,7 +51,7 @@ export function ProductCard({ item, className }: ProductCardProps) {
       {/* Info */}
       <div className="p-3 flex flex-col gap-1 flex-1">
         {item.brand_name && (
-          <p className="text-[10px] uppercase tracking-wider text-[var(--fg-3)] font-medium truncate">
+          <p className="text-xs uppercase tracking-wider text-[var(--fg-3)] font-medium truncate">
             {item.brand_name}
           </p>
         )}
@@ -62,7 +62,7 @@ export function ProductCard({ item, className }: ProductCardProps) {
           <p className="text-xs text-[var(--fg-3)]">{item.default_uom}</p>
         )}
         <div className="flex items-baseline gap-1.5 mt-auto pt-1">
-          <span className="text-sm font-bold font-mono text-[var(--fg-1)]">
+          <span className="text-sm font-medium font-mono text-[var(--fg-1)] tabular">
             {formatCurrency(item.price)}
           </span>
           {hasDiscount && (

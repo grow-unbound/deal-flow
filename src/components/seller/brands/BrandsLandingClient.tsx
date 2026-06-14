@@ -404,45 +404,45 @@ function BrandLandingContent({
             className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
             onClick={() => router.push(`/brands/${brand.id}`)}
           >
-            <td className="px-5 py-3.5 text-[13px] text-cream-900">
+            <td className="px-5 py-3.5 text-base text-cream-900">
               <div className="ent flex items-center gap-3">
                 <EntityAvatar initials={brand.initials} hue={brand.hue} size={38} />
                 <div className="min-w-0">
-                  <p className="truncate text-[13.5px] font-medium text-cream-900">{brand.name}</p>
-                  <p className="mt-0.5 font-mono text-[10.5px] uppercase tracking-[0.04em] text-cream-700">
+                  <p className="truncate text-base font-medium text-cream-900">{brand.name}</p>
+                  <p className="mt-0.5 font-mono text-xs uppercase tracking-[0.04em] text-cream-700">
                     {brand.category.toUpperCase()} · {brand.region.toUpperCase()} · {brand.skus} SKUs
                   </p>
                 </div>
               </div>
             </td>
-            <td className="px-5 py-3.5 text-[13px] text-cream-900">
-              <span className="font-display text-[15px] font-medium text-cream-900 tabular-nums">{formatCompactInr(brand.gmv)}</span>
+            <td className="px-5 py-3.5 text-base text-cream-900">
+              <span className="font-display text-md font-medium text-cream-900 tabular-nums">{formatCompactInr(brand.gmv)}</span>
             </td>
-            <td className="px-5 py-3.5 text-[13px] text-cream-900">
+            <td className="px-5 py-3.5 text-base text-cream-900">
               <GrowthPill value={brand.growth} />
             </td>
-            <td className="px-5 py-3.5 text-[13px] text-cream-900">
+            <td className="px-5 py-3.5 text-base text-cream-900">
               <div className="mb-1 h-[5px] w-[184px] overflow-hidden rounded-full bg-cream-200">
                 <div
                   className={`h-[5px] rounded-full ${brand.hue === 'ember' ? 'bg-ember-400' : brand.hue === 'cream' ? 'bg-cream-600' : 'bg-teal-500'}`}
                   style={{ width: `${Math.max(0, Math.min(100, brand.share))}%` }}
                 />
               </div>
-              <p className="font-mono text-[11px] text-cream-700">{brand.share}% of {formatCompactInr(portfolioGmv)}</p>
+              <p className="font-mono text-xs text-cream-700">{brand.share}% of {formatCompactInr(portfolioGmv)}</p>
             </td>
-            <td className="px-5 py-3.5 text-right font-mono text-[13px] text-cream-900 tabular-nums">
+            <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900 tabular-nums">
               {brand.activeBuyers}<span className="text-cream-600"> / {brand.totalBuyers}</span>
             </td>
-            <td className="px-5 py-3.5 text-[13px] text-cream-900">
+            <td className="px-5 py-3.5 text-base text-cream-900">
               <div className="space-y-1">
-                <p className="truncate text-[12px] text-cream-900">{brand.catalogName ?? 'No published catalog'}</p>
+                <p className="truncate text-sm text-cream-900">{brand.catalogName ?? 'No published catalog'}</p>
                 <StatusTag
                   tone={brand.daysSinceCatalog <= 14 ? 'success' : 'warning'}
                   label={brand.daysSinceCatalog < 999 ? `${brand.daysSinceCatalog}d ago` : 'n/a'}
                 />
               </div>
             </td>
-            <td className="chev px-4 py-3.5 pr-4 text-right text-[16px] text-cream-500">›</td>
+            <td className="chev px-4 py-3.5 pr-4 text-right text-md text-cream-500">›</td>
           </tr>
         ))}
       </LandingTable>

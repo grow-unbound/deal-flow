@@ -125,6 +125,8 @@ function baseDocument(overrides: Partial<EstimateComposerDocument> = {}): Estima
     estimate_number: 'EST-2026-00001',
     status: 'draft',
     buyer_id: null,
+    location_id: null,
+    available_locations: [],
     date_issued: '2026-06-07',
     valid_until: '2026-06-21',
     buyer_po_ref: '',

@@ -24,7 +24,7 @@ export function ViewReasonDialog({ open, onOpenChange, reason }: ViewReasonDialo
           <DialogTitle>Cancellation reason</DialogTitle>
         </DialogHeader>
         <DialogBody>
-          <p className="whitespace-pre-wrap text-[13px] text-cream-800">{reason?.trim() || 'No reason recorded.'}</p>
+          <p className="whitespace-pre-wrap text-base text-cream-800">{reason?.trim() || 'No reason recorded.'}</p>
         </DialogBody>
         <DialogFooter>
           <Button type="button" onClick={() => onOpenChange(false)}>

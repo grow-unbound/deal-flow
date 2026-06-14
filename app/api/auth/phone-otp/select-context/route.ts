@@ -1,25 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { otpStore } from '../send/route';
+import { mintBuyerSession } from '@/lib/server/buyer-access';
+import { buyerOtpStore } from '@/lib/server/buyer-otp-store';
 
 /**
  * POST /api/auth/phone-otp/select-context
- * Body: { ref_id: string; tenant_id: string; role: string }
- * Returns: { success: true; redirect: string }
- *
- * ref_id here is the verified_ref returned by /verify when multiple contexts exist.
- * It starts with "v_" to differentiate from raw OTP ref_ids.
+ * Body: { ref_id: string; tenant_id: string; buyer_id: string; role: string }
+ * Returns: { success: true; redirect: string; session }
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = await request.json() as {
+      ref_id?: string;
+      tenant_id?: string;
+      buyer_id?: string;
+      role?: string;
+    };
     const ref_id: string = (body?.ref_id ?? '').trim();
     const tenant_id: string = (body?.tenant_id ?? '').trim();
+    const buyer_id: string = (body?.buyer_id ?? '').trim();
     const role: string = (body?.role ?? '').trim();
 
-    if (!ref_id || !tenant_id || !role) {
+    if (!ref_id || !tenant_id || !buyer_id || !role) {
       return NextResponse.json(
-        { error: 'ref_id, tenant_id, and role are required' },
-        { status: 400 }
+        { error: 'ref_id, tenant_id, buyer_id, and role are required' },
+        { status: 400 },
       );
     }
 
@@ -27,31 +31,39 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid context selection token' }, { status: 400 });
     }
 
-    const record = otpStore.get(ref_id);
+    const record = buyerOtpStore.get(ref_id);
 
-    if (!record || record.otp !== 'VERIFIED') {
+    if (!record || record.kind !== 'verified') {
       return NextResponse.json(
         { error: 'Context selection session expired. Please log in again.' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (Date.now() > record.expiresAt) {
-      otpStore.delete(ref_id);
+      buyerOtpStore.delete(ref_id);
       return NextResponse.json(
         { error: 'Session expired. Please log in again.' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // Consume the token
-    otpStore.delete(ref_id);
+    const candidate = record.candidates.find((ctx) =>
+      ctx.tenant_id === tenant_id && ctx.buyer_id === buyer_id && ctx.role === role,
+    );
 
-    // TODO: mint a session token or set a cookie for the buyer session here.
-    // For now return a redirect to the buyer shop for the selected tenant.
-    const redirect = `/shop?tenant=${tenant_id}`;
+    if (!candidate) {
+      return NextResponse.json(
+        { error: 'Selected account is no longer available. Please log in again.' },
+        { status: 400 },
+      );
+    }
 
-    return NextResponse.json({ success: true, redirect });
+    buyerOtpStore.delete(ref_id);
+
+    const { session } = await mintBuyerSession(candidate);
+
+    return NextResponse.json({ success: true, redirect: '/shop/home', session });
   } catch (err) {
     console.error('[phone-otp/select-context] unexpected error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

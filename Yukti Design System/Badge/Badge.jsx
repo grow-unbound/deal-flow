@@ -50,7 +50,7 @@ export function Badge(props) {
     display: 'inline-flex',
     alignItems: 'center',
     gap: '5px',
-    fontFamily: "'IBM Plex Mono', monospace",
+    fontFamily: "'JetBrains Mono', monospace",
     fontSize: '10px',
     fontWeight: 500,
     letterSpacing: '.09em',

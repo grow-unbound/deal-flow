@@ -75,30 +75,30 @@ export function CohortBuyersTab({ buyers, rules_summary, activeMembersMtd }: Coh
       <article className="rounded-[14px] border border-cream-300 bg-white p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="font-display text-[17px] text-cream-950">{rulesTitle}</h3>
-            <p className="mt-1 text-[13px] text-cream-700">{rulesSub}</p>
+            <h3 className="font-display text-lg text-cream-950">{rulesTitle}</h3>
+            <p className="mt-1 text-base text-cream-700">{rulesSub}</p>
           </div>
           <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-2 text-right">
-            <p className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-cream-700">Active this month</p>
-            <p className="mt-1 font-display text-[24px] leading-none text-cream-950">{activeMembersMtd}</p>
+            <p className="font-mono text-xs uppercase tracking-[0.08em] text-cream-700">Active this month</p>
+            <p className="mt-1 font-display text-2xl leading-none text-cream-950">{activeMembersMtd}</p>
           </div>
         </div>
 
         {rules_summary.is_static ? (
-          <div className="mt-4 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-[13px] text-cream-700">
+          <div className="mt-4 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-base text-cream-700">
             This is a static cohort. Membership is managed manually; rule filters do not apply.
           </div>
         ) : hasFilters ? (
           <div className="mt-4 grid grid-cols-2 gap-3">
             {rules_summary.filters.map((row: CohortRulesSummary['filters'][number], idx: number) => (
               <div key={`${row.label}-${idx}`} className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3">
-                <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-cream-700">{row.label}</p>
-                <p className="mt-1 text-[13px] text-cream-900">{row.value_text}</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">{row.label}</p>
+                <p className="mt-1 text-base text-cream-900">{row.value_text}</p>
               </div>
             ))}
           </div>
         ) : (
-          <div className="mt-4 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-[13px] text-cream-700">
+          <div className="mt-4 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-base text-cream-700">
             No saved filters. This cohort uses its manually curated member list only.
           </div>
         )}
@@ -145,24 +145,24 @@ export function CohortBuyersTab({ buyers, rules_summary, activeMembersMtd }: Coh
                   <div className="flex items-center gap-3">
                     <EntityAvatar initials={buyer.initials} hue={buyer.hue} size={32} className="rounded-[8px]" />
                     <div className="min-w-0">
-                      <p className="truncate text-[13.5px] font-medium">{buyer.business_name}</p>
-                      <p className="mt-0.5 truncate text-[11px] text-cream-700">{subline}</p>
+                      <p className="truncate text-base font-medium">{buyer.business_name}</p>
+                      <p className="mt-0.5 truncate text-xs text-cream-700">{subline}</p>
                     </div>
                   </div>
                 </td>
-                <td className="px-5 py-3.5 text-[13px] text-cream-900">{buyer.geography_label}</td>
+                <td className="px-5 py-3.5 text-base text-cream-900">{buyer.geography_label}</td>
                 <td className="px-5 py-3.5">
-                  <span className="inline-flex rounded-full border border-ember-200 bg-ember-50 px-2.5 py-1 text-[12px] font-medium text-ember-700">
+                  <span className="inline-flex rounded-full border border-ember-200 bg-ember-50 px-2.5 py-1 text-sm font-medium text-ember-700">
                     {buyer.tier ? `${buyer.tier}-class` : 'Unsorted'}
                   </span>
                 </td>
-                <td className="px-5 py-3.5 text-right font-display text-[15px] text-cream-950">{formatCompactInr(buyer.mtd_spend, 1)}</td>
-                <td className="px-5 py-3.5 text-right font-mono text-[13px] text-cream-900">{buyer.orders_mtd}</td>
-                <td className="px-5 py-3.5 text-right font-mono text-[13px] text-cream-900">
+                <td className="px-5 py-3.5 text-right font-display text-md text-cream-950">{formatCompactInr(buyer.mtd_spend, 1)}</td>
+                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{buyer.orders_mtd}</td>
+                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">
                   {buyer.orders_mtd > 0 ? formatCompactInr(buyer.aov, 1) : '—'}
                 </td>
-                <td className="px-5 py-3.5 text-right font-mono text-[13px] text-cream-900">{formatCompactInr(buyer.credit_used, 1)}</td>
-                <td className="px-5 py-3.5 text-[13px] text-cream-700">{buyer.last_order_at ? formatDate(buyer.last_order_at) : '—'}</td>
+                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{formatCompactInr(buyer.credit_used, 1)}</td>
+                <td className="px-5 py-3.5 text-base text-cream-700">{buyer.last_order_at ? formatDate(buyer.last_order_at) : '—'}</td>
               </tr>
             );
           })}

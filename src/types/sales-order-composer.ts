@@ -1,5 +1,7 @@
 export type SalesOrderComposerMode = 'create' | 'edit';
 
+import type { ComposerLocationOption } from './estimate-composer';
+
 export interface SalesOrderComposerBuyerContext {
   id: string;
   business_name: string;
@@ -66,6 +68,8 @@ export interface SalesOrderComposerDocument {
   order_number: string;
   status: string;
   buyer_id: string | null;
+  location_id: string | null;
+  available_locations: ComposerLocationOption[];
   order_date: string;
   expected_delivery: string;
   buyer_po_ref: string;
@@ -95,6 +99,7 @@ export interface SalesOrderComposerTotals {
 export interface SalesOrderComposerSavePayload {
   order_number?: string;
   buyer_id?: string | null;
+  location_id?: string | null;
   order_date?: string;
   expected_delivery?: string;
   buyer_po_ref?: string;

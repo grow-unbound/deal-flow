@@ -25,9 +25,7 @@ export function BuyerTabBar() {
       className="sticky bottom-0 z-20 flex w-full items-stretch pb-safe"
       style={{
         height: 'calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px))',
-        background: 'rgba(253, 251, 247, 0.92)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
+        background: 'var(--cream-100)',
         borderTop: '1px solid var(--border-1)',
       }}
     >

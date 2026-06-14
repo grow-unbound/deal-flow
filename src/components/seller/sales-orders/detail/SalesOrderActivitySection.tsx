@@ -49,9 +49,9 @@ export function SalesOrderActivitySection({ rows }: SalesOrderActivitySectionPro
             <ActivityIcon row={row} />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-semibold text-cream-900">{row.title}</div>
-            <div className="mt-0.5 text-[12px] text-cream-700">{row.detail}</div>
-            <div className="mt-1 text-[11px] text-cream-500">
+            <div className="text-base font-semibold text-cream-900">{row.title}</div>
+            <div className="mt-0.5 text-sm text-cream-700">{row.detail}</div>
+            <div className="mt-1 text-xs text-cream-500">
               {row.who} · {row.at}
             </div>
           </div>

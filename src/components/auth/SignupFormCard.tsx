@@ -8,6 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Plus } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
+import { YuktiLogo } from '@/components/brand/YuktiLogo';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -46,6 +47,19 @@ const SignupFormSchema = z
   });
 
 type SignupFormValues = z.infer<typeof SignupFormSchema>;
+
+interface SignupResponse {
+  code?: string;
+  error?: string;
+  user: {
+    id: string;
+    email: string;
+  };
+  tenant?: {
+    slug?: string;
+    business_name?: string;
+  };
+}
 
 function slugify(name: string): string {
   return name
@@ -107,7 +121,7 @@ export function SignupFormCard() {
         }),
       });
 
-      const data = await res.json();
+      const data = (await res.json()) as SignupResponse;
 
       if (!res.ok) {
         if (res.status === 409 || data.code === 'SLUG_TAKEN') {
@@ -138,11 +152,8 @@ export function SignupFormCard() {
 
   return (
     <div className="bg-cream-50 border border-cream-300 rounded-lg shadow-md p-8">
-      <div className="flex items-center gap-3 mb-7">
-        <div className="w-9 h-9 bg-teal-500 rounded-md flex items-center justify-center shrink-0">
-          <span className="text-cream-50 font-display font-medium text-sm">yk</span>
-        </div>
-        <span className="font-display font-medium text-teal-500 text-xl">yukti</span>
+      <div className="mb-7 flex justify-center">
+        <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
       </div>
 
       <h1 className="font-display text-h2 text-cream-900 mb-1">Create your workspace</h1>
@@ -150,7 +161,7 @@ export function SignupFormCard() {
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 max-h-[calc(100vh-280px)] overflow-y-auto pr-1" noValidate>
-          <p className="text-caption font-semibold text-cream-500 uppercase tracking-widest" style={{ fontSize: '10px' }}>Account</p>
+          <p className="text-caption font-semibold text-cream-500 uppercase tracking-widest" style={{ fontSize: 'var(--yk-text-xs)' }}>Account</p>
 
           <FormField control={form.control} name="email" render={({ field }) => (
             <FormItem>
@@ -190,7 +201,7 @@ export function SignupFormCard() {
             )} />
           </div>
 
-          <p className="text-caption font-semibold text-cream-500 uppercase tracking-widest pt-2" style={{ fontSize: '10px' }}>Business</p>
+          <p className="text-caption font-semibold text-cream-500 uppercase tracking-widest pt-2" style={{ fontSize: 'var(--yk-text-xs)' }}>Business</p>
 
           <FormField control={form.control} name="business_name" render={({ field }) => (
             <FormItem>

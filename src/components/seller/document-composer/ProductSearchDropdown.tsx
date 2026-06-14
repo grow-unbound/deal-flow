@@ -64,7 +64,7 @@ export function ProductSearchDropdown({
           <EntityAvatar initials={row.brand_initials} hue={row.brand_hue} size={28} />
           <div className="min-w-0 flex-1">
             <p className="truncate font-medium text-cream-900">{row.product_name}</p>
-            <p className="truncate text-[11px] text-cream-600">
+            <p className="truncate text-xs text-cream-600">
               {row.brand_name} · {row.sku} · MRP {formatInr(row.mrp)} · Base {formatInr(row.base_selling_price)}
               {row.unit_price !== row.base_selling_price ? ` · Price ${formatInr(row.unit_price)}` : ''}
             </p>

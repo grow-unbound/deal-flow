@@ -3,6 +3,11 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { FEATURE_FLAGS } from '@/constants';
 import { loadEstimateDocument } from '@/lib/estimates/load-tenant-estimate-composer';
 import { getFlag } from '@/lib/flags';
+import {
+  applySellerLocationScope,
+  loadAccessibleSellerLocations,
+  resolveDefaultSellerLocationId,
+} from '@/lib/server/seller-location-access';
 import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
@@ -31,6 +36,7 @@ interface BuyerRow {
 
 interface EstimateDbRow {
   id: string;
+  location_id: string | null;
   estimate_number: string | null;
   buyer_id: string;
   status: string;
@@ -150,23 +156,20 @@ export async function GET(req: NextRequest) {
     const db = supabaseAdmin;
     const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? '500'), 500);
 
-    const [buyersRes, estimatesRes, currentPeriodRes, previousPeriodRes, convertedPeriodRes] = await Promise.all([
-      db
-        .schema('app')
-        .from('buyers')
-        .select('id, business_name, geography')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null),
+    const scopedEstimatesQuery = applySellerLocationScope(
       db
         .schema('app')
         .from('estimates')
         .select(
-          'id, estimate_number, buyer_id, status, total_amount, created_at, sent_at, accepted_at, expires_at, source, catalog_id, created_by, updated_at',
+          'id, location_id, estimate_number, buyer_id, status, total_amount, created_at, sent_at, accepted_at, expires_at, source, catalog_id, created_by, updated_at',
         )
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
-        .limit(limit),
+        .limit(limit) as any,
+      claims,
+    );
+    const scopedCurrentPeriodQuery = applySellerLocationScope(
       db
         .schema('app')
         .from('estimates')
@@ -174,7 +177,10 @@ export async function GET(req: NextRequest) {
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .gte('created_at', period.current_start)
-        .lt('created_at', period.current_end_exclusive),
+        .lt('created_at', period.current_end_exclusive) as any,
+      claims,
+    );
+    const scopedPreviousPeriodQuery = applySellerLocationScope(
       db
         .schema('app')
         .from('estimates')
@@ -182,14 +188,31 @@ export async function GET(req: NextRequest) {
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .gte('created_at', period.previous_start)
-        .lt('created_at', period.previous_end_exclusive),
+        .lt('created_at', period.previous_end_exclusive) as any,
+      claims,
+    );
+    const scopedConvertedQuery = applySellerLocationScope(
       db
         .schema('app')
         .from('estimates')
         .select('status, total_amount, created_at, accepted_at, updated_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
-        .in('status', ['converted', 'invoiced']),
+        .in('status', ['converted', 'invoiced']) as any,
+      claims,
+    );
+
+    const [buyersRes, estimatesRes, currentPeriodRes, previousPeriodRes, convertedPeriodRes] = await Promise.all([
+      db
+        .schema('app')
+        .from('buyers')
+        .select('id, business_name, geography')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null),
+      scopedEstimatesQuery,
+      scopedCurrentPeriodQuery,
+      scopedPreviousPeriodQuery,
+      scopedConvertedQuery,
     ]);
 
     if (buyersRes.error || estimatesRes.error || currentPeriodRes.error || previousPeriodRes.error || convertedPeriodRes.error) {
@@ -520,11 +543,17 @@ export async function POST(request: NextRequest) {
     }).format(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000));
 
     const estimateNumber = formatEstimateNumber((estimateCountRes.count ?? 0) + 1);
+    const availableLocations = await loadAccessibleSellerLocations(db as any, claims.tenant_id, claims);
+    const locationId = resolveDefaultSellerLocationId(claims, availableLocations);
+    if (!locationId) {
+      return NextResponse.json({ error: 'No accessible location available for this user' }, { status: 400 });
+    }
     const { data: inserted, error: insertError } = await db
       .schema('app')
       .from('estimates')
       .insert({
         tenant_id: claims.tenant_id,
+        location_id: locationId,
         buyer_id: null,
         estimate_number: estimateNumber,
         status: 'draft',
@@ -552,7 +581,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create estimate draft' }, { status: 500 });
     }
 
-    const composerDoc = await loadEstimateDocument(supabaseAdmin as DbClient, claims.tenant_id, inserted.id, claims.role ?? null);
+    const composerDoc = await loadEstimateDocument(supabaseAdmin as DbClient, claims.tenant_id, inserted.id, claims.role ?? null, claims);
     if (!composerDoc || composerDoc === 'forbidden') {
       return NextResponse.json({ error: 'Draft created but could not be loaded' }, { status: 500 });
     }

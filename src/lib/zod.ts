@@ -456,6 +456,16 @@ export const TeamMemberFormSchema = z.object({
   email: z.string().trim().email('Valid email required'),
   phone: IndianPhoneSchema,
   role: TeamMemberRoleSchema,
+  location_ids: z.array(z.string().trim().min(1, 'Location is required')).nullable().optional(),
+}).superRefine((data, ctx) => {
+  const locationIds = data.location_ids ?? [];
+  if (data.role === 'seller_assistant' && locationIds.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['location_ids'],
+      message: 'Assign at least one location to a seller assistant.',
+    });
+  }
 });
 
 export const InviteUserSchema = TeamMemberFormSchema;

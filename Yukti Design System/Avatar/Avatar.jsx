@@ -52,6 +52,7 @@ export function Avatar(props) {
     userSelect: 'none',
     fontFamily: "'Mukta', sans-serif",
     WebkitFontSmoothing: 'antialiased',
+    border: '1px solid rgba(34,30,26,.10)',  /* R11.1 — subtle ring reads cleaner than borderless */
   };
 
   if (src) {

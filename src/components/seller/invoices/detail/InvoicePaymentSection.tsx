@@ -28,23 +28,23 @@ export function InvoicePaymentSection({ data }: InvoicePaymentSectionProps) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <StatusTag label={badge.label} tone={badge.tone} />
         <div className="text-right">
-          <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-cream-500">Amount</div>
-          <div className="font-mono text-[18px] font-semibold text-cream-950">{formatCompactInr(invoice.total_amount)}</div>
+          <div className="text-xs font-medium uppercase tracking-[0.08em] text-cream-500">Amount</div>
+          <div className="font-mono text-lg font-semibold text-cream-950">{formatCompactInr(invoice.total_amount)}</div>
         </div>
       </div>
       {invoice.paid_at ? (
-        <p className="text-[12px] text-cream-700">
+        <p className="text-sm text-cream-700">
           Paid on {formatShortDate(invoice.paid_at)}
           {invoice.payment_reference ? ` · Ref ${invoice.payment_reference}` : ''}
         </p>
       ) : (
-        <p className="text-[12px] text-cream-700">
+        <p className="text-sm text-cream-700">
           Due {formatShortDate(invoice.due_date)} · Terms Net {data.buyer.payment_terms_days || '—'}
         </p>
       )}
 
       <div>
-        <div className="mb-1 flex justify-between text-[11px] font-medium text-cream-600">
+        <div className="mb-1 flex justify-between text-xs font-medium text-cream-600">
           <span>Credit used</span>
           <span>
             {formatCompactInr(credit.used)} / {formatCompactInr(credit.limit)}
@@ -60,7 +60,7 @@ export function InvoicePaymentSection({ data }: InvoicePaymentSectionProps) {
             role="progressbar"
           />
         </div>
-        <p className="mt-1 text-[11px] text-cream-600">Available {formatCompactInr(credit.available)}</p>
+        <p className="mt-1 text-xs text-cream-600">Available {formatCompactInr(credit.available)}</p>
       </div>
     </div>
   );

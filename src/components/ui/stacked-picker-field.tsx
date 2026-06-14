@@ -43,14 +43,14 @@ function PickerList({
         )}
       >
         <div>
-          <p className="text-[13.5px] font-medium text-cream-900">{nullOptionLabel}</p>
-          <p className="text-[11.5px] text-cream-700">{nullOptionDescription}</p>
+          <p className="text-base font-medium text-cream-900">{nullOptionLabel}</p>
+          <p className="text-sm text-cream-700">{nullOptionDescription}</p>
         </div>
         {selectedId == null ? <Check size={14} className="shrink-0 text-ember-500" /> : null}
       </button>
 
       {items.length === 0 ? (
-        <div className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-[13px] text-cream-500">
+        <div className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-base text-cream-500">
           {emptyLabel}
         </div>
       ) : (
@@ -65,12 +65,12 @@ function PickerList({
             )}
           >
             <div className="min-w-0">
-              <p className="text-[13.5px] font-medium text-cream-900">{item.title}</p>
+              <p className="text-base font-medium text-cream-900">{item.title}</p>
               {item.description ? (
-                <p className="mt-0.5 text-[11.5px] text-cream-700">{item.description}</p>
+                <p className="mt-0.5 text-sm text-cream-700">{item.description}</p>
               ) : null}
               {item.meta ? (
-                <p className="mt-0.5 text-[11.5px] text-cream-700">{item.meta}</p>
+                <p className="mt-0.5 text-sm text-cream-700">{item.meta}</p>
               ) : null}
             </div>
             {selectedId === item.id ? <Check size={14} className="mt-0.5 shrink-0 text-ember-500" /> : null}
@@ -164,7 +164,7 @@ export function StackedPickerField({
               <Search size={14} className="shrink-0 text-cream-700" />
               <span
                 className={cn(
-                  'truncate text-[13.5px]',
+                  'truncate text-base',
                   isNullSelected ? 'text-cream-500' : 'font-medium text-cream-900',
                 )}
               >
@@ -192,12 +192,12 @@ export function StackedPickerField({
               <Input
                 value={inputQuery}
                 onChange={(e) => setInputQuery(e.target.value)}
-                className="pl-8 pr-16 text-[13px]"
+                className="pl-8 pr-16 text-base"
                 placeholder={searchPlaceholder}
                 autoFocus
               />
               {inputQuery.trim() && !isFiltering ? (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium tabular-nums text-cream-500">
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium tabular-nums text-cream-500">
                   {filtered.length} {filtered.length === 1 ? 'match' : 'matches'}
                 </span>
               ) : null}
@@ -241,10 +241,10 @@ export function StackedPickerField({
         <div className="flex min-w-0 items-center gap-3">
           <Search size={14} className="shrink-0 text-cream-700" />
           <div className="min-w-0">
-            <p className="truncate text-[13.5px] font-medium text-cream-900">
+            <p className="truncate text-base font-medium text-cream-900">
               {selectedItem?.title ?? 'Search cohorts'}
             </p>
-            <p className="mt-0.5 text-[11.5px] text-cream-700">
+            <p className="mt-0.5 text-sm text-cream-700">
               {selectedItem?.meta ?? 'Browse all cohorts in a stacked picker'}
             </p>
           </div>
@@ -255,7 +255,7 @@ export function StackedPickerField({
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="flex h-full w-full max-w-[540px] flex-col border-l border-cream-300 bg-white">
           <SheetHeader className="flex-shrink-0 border-b border-cream-300 bg-white px-[22px] py-[18px]">
-            <SheetTitle className="font-display text-[22px] font-medium leading-[1.15] tracking-[-0.01em] text-cream-900">
+            <SheetTitle className="font-display text-xl font-medium leading-[1.15] tracking-[-0.01em] text-cream-900">
               {title}
             </SheetTitle>
           </SheetHeader>

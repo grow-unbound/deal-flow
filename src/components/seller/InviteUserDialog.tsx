@@ -7,8 +7,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Save, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabaseBrowser } from '@/lib/supabase-browser';
+import { useTenantLocations } from '@/hooks/useTenantLocations';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogBody,
@@ -98,6 +100,8 @@ function RoleToggle({
 export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialogProps) {
   const queryClient = useQueryClient();
   const isEdit = Boolean(member);
+  const { data: locationsResponse } = useTenantLocations();
+  const availableLocations = (locationsResponse?.locations ?? []).filter((location) => location.deleted_at == null);
   const form = useForm<InviteUserInput>({
     resolver: zodResolver(InviteUserSchema),
     defaultValues: {
@@ -105,6 +109,7 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
       email: member?.email ?? '',
       phone: normalizePhone(member?.phone),
       role: member?.role ?? 'seller_assistant',
+      location_ids: member?.location_ids ?? [],
     },
     mode: 'onBlur',
   });
@@ -115,10 +120,12 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
     reset,
     clearErrors,
     setError,
+    setValue,
     formState: { errors, isSubmitting },
   } = form;
 
   const roleValue = watch('role');
+  const selectedLocationIds = watch('location_ids') ?? [];
 
   useEffect(() => {
     if (!open) {
@@ -127,6 +134,7 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
         email: member?.email ?? '',
         phone: normalizePhone(member?.phone),
         role: member?.role ?? 'seller_assistant',
+        location_ids: member?.location_ids ?? [],
       });
       return;
     }
@@ -136,8 +144,37 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
       email: member?.email ?? '',
       phone: normalizePhone(member?.phone),
       role: member?.role ?? 'seller_assistant',
+      location_ids: member?.location_ids ?? [],
     });
   }, [member, open, reset]);
+
+  useEffect(() => {
+    if (roleValue === 'seller_admin' && selectedLocationIds.length > 0) {
+      setValue('location_ids', [], { shouldValidate: true, shouldDirty: true });
+      return;
+    }
+
+    if (
+      roleValue === 'seller_assistant'
+      && member?.role === 'seller_admin'
+      && selectedLocationIds.length === 0
+      && availableLocations.length > 0
+    ) {
+      setValue('location_ids', [availableLocations[0].id], { shouldValidate: true });
+    }
+  }, [availableLocations, member?.role, roleValue, selectedLocationIds.length, setValue]);
+
+  function toggleLocation(locationId: string, checked: boolean) {
+    const next = checked
+      ? [...selectedLocationIds, locationId]
+      : selectedLocationIds.filter((id) => id !== locationId);
+
+    setValue('location_ids', next, {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    });
+  }
 
   async function onSubmit(values: InviteUserInput) {
     clearErrors();
@@ -155,10 +192,21 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
     const res = await fetch(url, {
       method,
       headers,
-      body: JSON.stringify(values),
+      body: JSON.stringify({
+        ...values,
+        location_ids: values.role === 'seller_assistant' ? (values.location_ids ?? []) : null,
+      }),
     });
 
-    const body = await res.json().catch(() => ({}));
+    const body = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      fieldErrors?: Record<string, unknown>;
+      details?: {
+        message?: string;
+        fieldErrors?: Record<string, unknown>;
+        formErrors?: string[];
+      };
+    };
 
     if (!res.ok) {
       const fieldErrors = body.fieldErrors ?? body.details?.fieldErrors;
@@ -185,6 +233,7 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
       email: '',
       phone: '',
       role: 'seller_assistant',
+      location_ids: availableLocations[0] ? [availableLocations[0].id] : [],
     });
     onOpenChange(false);
   }
@@ -200,6 +249,7 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
             email: member?.email ?? '',
             phone: normalizePhone(member?.phone),
             role: member?.role ?? 'seller_assistant',
+            location_ids: member?.location_ids ?? [],
           });
         }
         onOpenChange(nextOpen);
@@ -327,6 +377,59 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
                   </FormItem>
                 )}
               />
+
+              {roleValue === 'seller_assistant' ? (
+                <FormField
+                  control={form.control}
+                  name="location_ids"
+                  render={() => (
+                    <FormItem>
+                      <FormLabel className="text-caption font-medium text-cream-800">
+                        Locations <span className="text-danger-500">*</span>
+                      </FormLabel>
+                      <div className="rounded-sm border border-cream-300 bg-white">
+                        {availableLocations.length > 0 ? (
+                          <div className="space-y-0 border-cream-200 p-3">
+                            {availableLocations.map((location, index) => (
+                              <div
+                                key={location.id}
+                                className={cn(
+                                  'flex items-start justify-between gap-3 py-2',
+                                  index > 0 && 'border-t border-cream-200',
+                                )}
+                              >
+                                <div className="min-w-0">
+                                  <p className="text-body-sm font-medium text-cream-900">{location.name}</p>
+                                  <p className="text-caption text-cream-600">
+                                    {location.address.city
+                                      ? `${location.address.city}${location.address.state ? `, ${location.address.state}` : ''}`
+                                      : location.type.replace(/_/g, ' ')}
+                                  </p>
+                                </div>
+                                <FormControl>
+                                  <Checkbox
+                                    checked={selectedLocationIds.includes(location.id)}
+                                    onCheckedChange={(checked) => toggleLocation(location.id, checked === true)}
+                                    aria-label={`Assign ${location.name}`}
+                                  />
+                                </FormControl>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-3 text-body-sm text-cream-600">
+                            Add at least one location in Settings before inviting a seller assistant.
+                          </div>
+                        )}
+                      </div>
+                      <FormDescription className="text-caption text-cream-600">
+                        Seller assistants can only work within their assigned locations.
+                      </FormDescription>
+                      <FormMessage className="text-caption text-danger-500" />
+                    </FormItem>
+                  )}
+                />
+              ) : null}
             </DialogBody>
             <DialogFooter className="justify-end gap-2">
               <Button
@@ -339,6 +442,7 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
                     email: member?.email ?? '',
                     phone: normalizePhone(member?.phone),
                     role: member?.role ?? 'seller_assistant',
+                    location_ids: member?.location_ids ?? [],
                   });
                   onOpenChange(false);
                 }}

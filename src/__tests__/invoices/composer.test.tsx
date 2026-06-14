@@ -91,6 +91,8 @@ function baseDocument(overrides: Partial<InvoiceComposerDocument> = {}): Invoice
     invoice_number: 'INV-100',
     status: 'draft',
     buyer_id: null,
+    location_id: null,
+    available_locations: [],
     invoice_date: '2026-06-01',
     due_date: '2026-06-20',
     buyer_po_ref: '',
@@ -232,6 +234,6 @@ describe('DocComposerInvoice', () => {
     expect(screen.getByRole('button', { name: /Preview PDF/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Save & close/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Send invoice/i })).toBeEnabled();
-    expect(screen.getByDisplayValue(String(line.qty))).toBeInTheDocument();
+    expect(screen.getAllByDisplayValue(String(line.qty))[0]).toBeInTheDocument();
   });
 });

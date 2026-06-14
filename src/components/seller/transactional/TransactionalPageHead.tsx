@@ -50,16 +50,16 @@ export function TransactionalPageHead({
     <div className="mb-5 flex items-start justify-between gap-6 border-b border-cream-300 pb-5">
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-baseline justify-between gap-4">
-          <span className="font-mono text-[12px] text-cream-600">{idLine}</span>
-          <span className={cn('shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em]', docTypeLabelClassName)}>
+          <span className="font-mono text-base text-cream-600">{idLine}</span>
+          <span className={cn('eyebrow shrink-0', docTypeLabelClassName)}>
             {docTypeLabel}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="font-display text-[28px] font-semibold tracking-[-0.01em] text-cream-950">{title}</h1>
+          <h1 className="font-display text-3xl font-extrabold tracking-[-0.02em] text-cream-950 leading-[1.05]">{title}</h1>
           <StatusTag label={statusPill.label} tone={statusPill.tone} />
         </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-[13px] text-cream-700">
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-base text-cream-700">
           {subtitle.flatMap((item, index) => {
             const nodes = [
               <span key={`sub-${index}`} className="inline-flex items-center">

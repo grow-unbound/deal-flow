@@ -1,4 +1,8 @@
-import type { EstimateComposerBuyerContext, EstimateComposerProductSearchRow } from './estimate-composer';
+import type {
+  ComposerLocationOption,
+  EstimateComposerBuyerContext,
+  EstimateComposerProductSearchRow,
+} from './estimate-composer';
 
 export type { EstimateComposerBuyerContext as InvoiceComposerBuyerContext };
 export type { EstimateComposerProductSearchRow as InvoiceComposerProductSearchRow };
@@ -28,6 +32,8 @@ export interface InvoiceComposerDocument {
   invoice_number: string;
   status: string;
   buyer_id: string | null;
+  location_id: string | null;
+  available_locations: ComposerLocationOption[];
   invoice_date: string;
   due_date: string | null;
   buyer_po_ref: string;
@@ -60,6 +66,7 @@ export interface InvoiceComposerTotals {
 export interface InvoiceComposerSavePayload {
   invoice_number?: string;
   buyer_id?: string | null;
+  location_id?: string | null;
   invoice_date?: string;
   due_date?: string | null;
   buyer_po_ref?: string;

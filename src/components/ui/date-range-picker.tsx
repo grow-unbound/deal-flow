@@ -41,7 +41,7 @@ export function DateRangePicker({
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="flex w-full items-center justify-between gap-2 text-left text-[14px] font-medium text-cream-950"
+            className="flex w-full items-center justify-between gap-2 text-left text-base font-medium text-cream-950"
           >
             <span className="truncate">{summary}</span>
             {validFrom ? (
@@ -59,14 +59,14 @@ export function DateRangePicker({
           className={cn('w-[320px] space-y-4 border-cream-300 bg-white p-4 shadow-md', popoverMotion)}
         >
           <div className="space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-700">From date</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">From date</p>
             <Calendar
               value={parseIsoDate(validFrom)}
               onChange={(date) => onValidFromChange(isoDateString(date))}
             />
           </div>
           <div className="space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-700">To date</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">To date</p>
             <Calendar
               value={parseIsoDate(validTo)}
               minDate={parseIsoDate(validFrom) ?? undefined}
@@ -78,7 +78,7 @@ export function DateRangePicker({
           </div>
         </PopoverContent>
       </Popover>
-      {error ? <p className="text-[11.5px] text-danger-500">{error}</p> : null}
+      {error ? <p className="text-sm text-danger-500">{error}</p> : null}
     </div>
   );
 }

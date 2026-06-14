@@ -6,6 +6,7 @@ const getAuthUserDisplayNameMapMock = vi.fn();
 
 interface InvoiceDbRow {
   id: string;
+  location_id: string | null;
   invoice_number: string;
   buyer_id: string;
   order_id: string | null;
@@ -51,6 +52,7 @@ vi.mock('@/lib/server/auth-user-directory', () => ({
 vi.mock('@/lib/supabase', () => {
   class QueryMock {
     private table: string;
+    private conditions: Array<{ kind: 'in'; column: string; value: unknown }> = [];
 
     constructor(table: string) {
       this.table = table;
@@ -66,6 +68,7 @@ vi.mock('@/lib/supabase', () => {
       return this;
     }
     in() {
+      this.conditions.push({ kind: 'in', column: arguments[0] as string, value: arguments[1] });
       return this;
     }
     order() {
@@ -76,9 +79,18 @@ vi.mock('@/lib/supabase', () => {
     }
 
     then(resolve: (value: { data: unknown; error: null }) => void) {
+      const applyFilters = (rows: Array<Record<string, unknown>>) => {
+        let result = [...rows];
+        for (const condition of this.conditions) {
+          const values = Array.isArray(condition.value) ? condition.value : [];
+          result = result.filter((row) => values.includes(row[condition.column]));
+        }
+        return result;
+      };
+
       if (this.table === 'buyers') return resolve({ data: queryState.buyers, error: null });
-      if (this.table === 'invoices') return resolve({ data: queryState.invoices, error: null });
-      if (this.table === 'invoice_items') return resolve({ data: queryState.invoiceItems, error: null });
+      if (this.table === 'invoices') return resolve({ data: applyFilters(queryState.invoices as Array<Record<string, unknown>>), error: null });
+      if (this.table === 'invoice_items') return resolve({ data: applyFilters(queryState.invoiceItems as Array<Record<string, unknown>>), error: null });
       if (this.table === 'orders') return resolve({ data: queryState.orders, error: null });
       if (this.table === 'estimates') return resolve({ data: queryState.estimates, error: null });
       return resolve({ data: [], error: null });
@@ -125,6 +137,7 @@ describe('invoices landing API route', () => {
     queryState.invoices = [
       {
         id: 'i1',
+        location_id: 'loc-1',
         invoice_number: 'INV-2026-0001',
         buyer_id: 'buyer-1',
         order_id: 'o1',
@@ -140,6 +153,7 @@ describe('invoices landing API route', () => {
       },
       {
         id: 'i2',
+        location_id: 'loc-2',
         invoice_number: 'INV-2026-0002',
         buyer_id: 'buyer-2',
         order_id: null,
@@ -155,6 +169,7 @@ describe('invoices landing API route', () => {
       },
       {
         id: 'i3',
+        location_id: null,
         invoice_number: 'INV-2026-0003',
         buyer_id: 'buyer-1',
         order_id: null,
@@ -214,5 +229,16 @@ describe('invoices landing API route', () => {
 
     const res = await GET(new NextRequest('http://localhost/api/tenant/invoices'));
     expect(res.status).toBe(403);
+  });
+
+  it('filters invoices to the assistant location scope', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({ tenant_id: 'tenant-a', role: 'seller_assistant', sub: 'user-1', location_ids: ['loc-1'] });
+
+    const res = await GET(new NextRequest('http://localhost/api/tenant/invoices?period=month'));
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.invoices).toHaveLength(1);
+    expect(body.invoices[0].id).toBe('i1');
   });
 });

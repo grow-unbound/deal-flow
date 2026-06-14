@@ -84,14 +84,14 @@ export function SalesOrderPaymentSection({ uiStatus, invoice, orderTotal, buyer 
       </div>
       <div className="px-5 pb-3.5 pt-2">
         {p.amount != null ? (
-          <div className="font-display text-[26px] font-semibold text-cream-950">{formatCurrency(p.amount)}</div>
+          <div className="font-display text-2xl font-semibold text-cream-950">{formatCurrency(p.amount)}</div>
         ) : (
-          <div className="font-display text-[26px] font-semibold text-cream-500">—</div>
+          <div className="font-display text-2xl font-semibold text-cream-500">—</div>
         )}
-        <div className="mt-1 text-[12.5px] text-cream-700">{p.detail}</div>
+        <div className="mt-1 text-sm text-cream-700">{p.detail}</div>
       </div>
       <div className="border-t border-cream-100 px-5 py-4">
-        <div className="flex items-center justify-between text-[11px] text-cream-800">
+        <div className="flex items-center justify-between text-xs text-cream-800">
           <span>Credit used</span>
           <span>
             <span className="font-semibold">{pct}%</span> of {formatCurrency(limit)}
@@ -100,7 +100,7 @@ export function SalesOrderPaymentSection({ uiStatus, invoice, orderTotal, buyer 
         <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-cream-100">
           <div className={cn('h-full rounded-full transition-all', barClass)} style={{ width: `${Math.min(100, pct)}%` }} />
         </div>
-        <div className="mt-2 flex justify-between text-[11px] text-cream-600">
+        <div className="mt-2 flex justify-between text-xs text-cream-600">
           <span>{formatCurrency(used)} used</span>
           <span>{formatCurrency(available)} available</span>
         </div>

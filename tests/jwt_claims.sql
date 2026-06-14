@@ -3,7 +3,7 @@
 
 BEGIN;
 
-SELECT plan(5);
+SELECT plan(7);
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- Fixtures
@@ -27,8 +27,8 @@ BEGIN
     (v_tenant_id,  'acme',   'Acme Dist.',   now(), now()),
     (v_tenant2_id, 'globex', 'Globex Dist.', now(), now());
 
-  INSERT INTO app.tenant_users (id, tenant_id, user_id, role, is_active, created_at, updated_at)
-  VALUES (gen_random_uuid(), v_tenant_id, v_seller_uid, 'seller_admin', true, now(), now());
+  INSERT INTO app.tenant_users (id, tenant_id, user_id, role, location_ids, is_active, created_at, updated_at)
+  VALUES (gen_random_uuid(), v_tenant_id, v_seller_uid, 'seller_admin', NULL, true, now(), now());
 
   INSERT INTO app.buyers (id, tenant_id, business_name, created_at, updated_at)
   VALUES (v_buyer_id, v_tenant2_id, 'RetailerCo', now(), now());
@@ -87,6 +87,18 @@ SELECT ok(
   'seller user: buyer_id claim is absent'
 );
 
+SELECT ok(
+  NOT (
+    public.custom_access_token_hook(
+      jsonb_build_object(
+        'user_id', (SELECT val FROM _fixture WHERE key = 'seller_uid'),
+        'claims',  jsonb_build_object('app_metadata', '{}'::jsonb)
+      )
+    ) -> 'claims'
+  ) ? 'location_ids',
+  'seller admin: location_ids claim is absent'
+);
+
 -- ────────────────────────────────────────────────────────────────────────────
 -- Test 2: buyer user gets buyer_id and tenant_id derived from buyer record
 -- ────────────────────────────────────────────────────────────────────────────
@@ -112,8 +124,20 @@ DECLARE
   v_tenant2_id uuid := (SELECT val FROM _fixture WHERE key = 'tenant2_id');
 BEGIN
   -- Give the seller a second tenant membership
-  INSERT INTO app.tenant_users (id, tenant_id, user_id, role, is_active, created_at, updated_at)
-  VALUES (gen_random_uuid(), v_tenant2_id, v_seller_uid, 'seller_assistant', true, now() + interval '1 second', now());
+  INSERT INTO app.locations (id, tenant_id, name, created_at, updated_at, created_by, updated_by)
+  VALUES (gen_random_uuid(), v_tenant2_id, 'Warehouse A', now(), now(), v_seller_uid, v_seller_uid);
+
+  INSERT INTO app.tenant_users (id, tenant_id, user_id, role, location_ids, is_active, created_at, updated_at)
+  VALUES (
+    gen_random_uuid(),
+    v_tenant2_id,
+    v_seller_uid,
+    'seller_assistant',
+    ARRAY[(SELECT id FROM app.locations WHERE tenant_id = v_tenant2_id LIMIT 1)],
+    true,
+    now() + interval '1 second',
+    now()
+  );
 END $$;
 
 SELECT is(
@@ -131,6 +155,27 @@ SELECT is(
   ),
   (SELECT val FROM _fixture WHERE key = 'tenant2_id'),
   'current_tenant_id in app_metadata overrides default tenant selection'
+);
+
+SELECT is(
+  (
+    public.custom_access_token_hook(
+      jsonb_build_object(
+        'user_id', (SELECT val FROM _fixture WHERE key = 'seller_uid'),
+        'claims',  jsonb_build_object(
+          'app_metadata', jsonb_build_object(
+            'current_tenant_id', (SELECT val FROM _fixture WHERE key = 'tenant2_id')
+          )
+        )
+      )
+    ) -> 'claims' -> 'location_ids' ->> 0
+  ),
+  (
+    SELECT (id)::text FROM app.locations
+    WHERE tenant_id = (SELECT val FROM _fixture WHERE key = 'tenant2_id')
+    LIMIT 1
+  ),
+  'seller assistant: location_ids claim matches tenant_users row'
 );
 
 SELECT * FROM finish();

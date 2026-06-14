@@ -7,6 +7,12 @@ import { getFlag } from '@/lib/flags';
 import { buildInvoiceGstRows } from '@/lib/invoice-detail-gst-rows';
 import { effectiveInvoiceStatus } from '@/lib/invoice-status';
 import { loadInvoiceDocument } from '@/lib/invoices/load-tenant-invoice-composer';
+import {
+  canAccessDocumentLocation,
+  isSellerLocationSelectionAllowed,
+  loadAccessibleSellerLocations,
+  resolveDefaultSellerLocationId,
+} from '@/lib/server/seller-location-access';
 import { computePlaceOfSupplyFromBuyer } from '@/lib/sales-orders/compute-place-of-supply';
 import { productDisplayName } from '@/lib/sales-orders/tenant-order-detail';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -31,6 +37,7 @@ const PatchBodySchema = z.object({
 const ComposerSaveSchema = z.object({
   invoice_number: z.string().min(1).optional(),
   buyer_id: z.string().uuid().nullable().optional(),
+  location_id: z.string().uuid().nullable().optional(),
   invoice_date: z.string().optional(),
   due_date: z.string().nullable().optional(),
   buyer_po_ref: z.string().max(255).optional(),
@@ -84,7 +91,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const { searchParams } = new URL(request.url);
   if (searchParams.get('view') === 'composer') {
-    const result = await loadInvoiceDocument(supabaseAdmin as DbClient, claims.tenant_id, id, claims.role ?? null);
+    const result = await loadInvoiceDocument(supabaseAdmin as DbClient, claims.tenant_id, id, claims.role ?? null, claims);
     if (!result) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
     if (result === 'forbidden') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     return NextResponse.json({ data: result.composerPayload });
@@ -98,6 +105,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       [
         'id',
         'tenant_id',
+        'location_id',
         'buyer_id',
         'order_id',
         'estimate_id',
@@ -139,6 +147,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (error || !invoiceRow) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const inv = invoiceRow as unknown as Record<string, unknown>;
   if (inv.tenant_id !== claims.tenant_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!canAccessDocumentLocation(claims, inv.location_id)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const buyerId = inv.buyer_id as string | null;
   const { data: buyer } = buyerId
@@ -448,11 +459,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: savePayload.error.issues[0]?.message ?? 'Invalid payload' }, { status: 400 });
     }
 
-    const existing = await loadInvoiceDocument(db, claims.tenant_id, id, claims.role ?? null);
+    const existing = await loadInvoiceDocument(db, claims.tenant_id, id, claims.role ?? null, claims);
     if (!existing) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
     if (existing === 'forbidden') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const p = savePayload.data;
+    const allowedLocations = await loadAccessibleSellerLocations(db as any, claims.tenant_id, claims);
+    const nextLocationId = p.location_id ?? existing.composerPayload.location_id ?? resolveDefaultSellerLocationId(claims, allowedLocations);
+    if (!nextLocationId || !isSellerLocationSelectionAllowed(claims, nextLocationId)) {
+      return NextResponse.json({ error: 'Select a valid accessible location' }, { status: 400 });
+    }
     const items = p.items ?? existing.composerPayload.items;
     const subtotal = items.reduce((sum, row) => {
       return sum + row.qty * row.unit_price * (1 - row.disc_pct / 100);
@@ -469,6 +485,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const updatePayload: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
       updated_by: claims.sub,
+      location_id: nextLocationId,
       subtotal,
       tax_amount: taxAmount,
       total_amount: grandTotal,
@@ -539,7 +556,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       }
     }
 
-    const next = await loadInvoiceDocument(db, claims.tenant_id, id, claims.role ?? null);
+    const next = await loadInvoiceDocument(db, claims.tenant_id, id, claims.role ?? null, claims);
     if (!next || next === 'forbidden') {
       return NextResponse.json({ error: 'Failed to reload invoice' }, { status: 500 });
     }

@@ -35,7 +35,7 @@ export function SellerShell({ children, featureAvailability }: SellerShellProps)
   const sidebarWidth = effectiveSidebarCollapsed ? '88px' : '248px';
 
   return (
-    <div className="min-h-screen bg-cream-100" style={{ ['--sidebar-w' as string]: sidebarWidth }}>
+    <div className="min-h-screen bg-[var(--bg-surface)]" style={{ ['--sidebar-w' as string]: sidebarWidth }}>
       <SellerSidebar
         isCollapsed={effectiveSidebarCollapsed}
         canCollapse={canCollapseSidebar}

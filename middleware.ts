@@ -57,6 +57,7 @@ export async function middleware(request: NextRequest) {
   let tenantId: string | null = null;
   let role: string | null = null;
   let buyerId: string | null = null;
+  let locationIds: string[] | null = null;
 
   try {
     const payload = decodeJWTPayload(session.access_token);
@@ -66,6 +67,9 @@ export async function middleware(request: NextRequest) {
     // (fix_jwt_role_claim_collision migration); they auto-heal on token refresh.
     role = (payload.user_role as string) ?? (payload.role as string) ?? null;
     buyerId = (payload.buyer_id as string) ?? null;
+    locationIds = Array.isArray(payload.location_ids)
+      ? payload.location_ids.filter((value): value is string => typeof value === 'string')
+      : null;
   } catch {
     // Malformed token — treat as expired
     const loginUrl = new URL(getSessionExpiredRedirectPath(pathname), request.url);
@@ -77,6 +81,7 @@ export async function middleware(request: NextRequest) {
   if (tenantId) requestHeaders.set('x-verified-tenant-id', tenantId);
   if (role) requestHeaders.set('x-verified-role', role);
   if (buyerId) requestHeaders.set('x-verified-buyer-id', buyerId);
+  if (locationIds) requestHeaders.set('x-verified-location-ids', JSON.stringify(locationIds));
   if (session.user?.id) requestHeaders.set('x-verified-user-id', session.user.id);
 
   // Recreate response so updated request headers propagate downstream, then
