@@ -1,6 +1,8 @@
 import type { SalesOrderDetail, SalesOrderLine } from '@/types/tenant-sales-orders';
 import { SalesOrderDetailSchema } from '@/types/tenant-sales-orders';
 
+import type { JWTClaims } from '@/lib/auth';
+import { canAccessDocumentLocation } from '@/lib/server/seller-location-access';
 import { computePlaceOfSupplyFromBuyer } from '@/lib/sales-orders/compute-place-of-supply';
 import {
   buildActivityFromAudit,
@@ -47,6 +49,7 @@ export async function loadTenantSalesOrderDetail(
   tenantId: string,
   orderId: string,
   viewerRole: string | null,
+  viewerClaims?: Pick<JWTClaims, 'role' | 'location_ids'> | null,
 ): Promise<'notfound' | 'forbidden' | SalesOrderDetail> {
   const d = db as any;
 
@@ -57,6 +60,7 @@ export async function loadTenantSalesOrderDetail(
       [
         'id',
         'tenant_id',
+        'location_id',
         'buyer_id',
         'order_number',
         'status',
@@ -92,6 +96,7 @@ export async function loadTenantSalesOrderDetail(
   if (orderError || !orderRow) return 'notfound';
   const order = orderRow as Record<string, unknown>;
   if (order.tenant_id !== tenantId) return 'forbidden';
+  if (viewerClaims && !canAccessDocumentLocation(viewerClaims, order.location_id)) return 'forbidden';
   if (order.status === 'draft') return 'notfound';
 
   const buyerId = typeof order.buyer_id === 'string' ? order.buyer_id : null;

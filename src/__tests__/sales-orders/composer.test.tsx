@@ -91,6 +91,8 @@ function baseDocument(overrides: Partial<SalesOrderComposerDocument> = {}): Sale
     order_number: 'SO-2026-00001',
     status: 'draft',
     buyer_id: null,
+    location_id: null,
+    available_locations: [],
     order_date: '2026-06-07',
     expected_delivery: '2026-06-14',
     buyer_po_ref: '',
@@ -114,6 +116,8 @@ function estimateForSoPrefill(): TenantEstimateDetailResponse {
     estimate_number: 'EST-2026-00021',
     status: 'draft',
     buyer_id: 'buyer-1',
+    location_id: 'loc-1',
+    available_locations: [{ id: 'loc-1', name: 'Main warehouse', is_default: true }],
     date_issued: '2026-06-01',
     valid_until: '2026-06-15',
     buyer_po_ref: 'PO-1',
@@ -152,7 +156,7 @@ function estimateForSoPrefill(): TenantEstimateDetailResponse {
     voided_at: null,
     converted_to_order_id: null,
     linked_order_number: null,
-  } as TenantEstimateDetailResponse;
+  } as unknown as TenantEstimateDetailResponse;
 }
 
 const searchRow: SalesOrderComposerProductSearchRow = {
@@ -243,7 +247,7 @@ describe('DocComposerSalesOrder', () => {
     await screen.findByText(/Credit headroom/i);
     fireEvent.change(screen.getByPlaceholderText(/Search product/i), { target: { value: 'Shiraz' } });
     fireEvent.click(await screen.findByRole('option', { name: /Vinikus Shiraz Reserve/i }));
-    const qtyInput = await screen.findByDisplayValue('1');
+    const qtyInput = (await screen.findAllByDisplayValue('1'))[0];
     fireEvent.change(qtyInput, { target: { value: '3' } });
 
     await waitFor(
@@ -307,6 +311,6 @@ describe('DocComposerSalesOrder', () => {
 
     expect(await screen.findByText(/Editing · confirmed/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Change/i })).not.toBeInTheDocument();
-    expect(screen.getByDisplayValue('1')).toBeInTheDocument();
+    expect(screen.getAllByDisplayValue('1')[0]).toBeInTheDocument();
   });
 });

@@ -54,24 +54,24 @@ export function CatalogBuyersTab({ buyers, selectedCohort }: CatalogBuyersTabPro
       <article className="rounded-[14px] border border-cream-300 bg-white p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="font-display text-[17px] text-cream-950">Selected cohort</h3>
-            <p className="mt-1 text-[14px] text-cream-900">{selectedCohort.display_label}</p>
-            <p className="mt-1 text-[13px] text-cream-700">
+            <h3 className="font-display text-lg text-cream-950">Selected cohort</h3>
+            <p className="mt-1 text-base text-cream-900">{selectedCohort.display_label}</p>
+            <p className="mt-1 text-base text-cream-700">
               {selectedCohort.member_count} buyers · scope {selectedCohort.scope_type === 'all' ? 'all buyers' : selectedCohort.scope_type}
             </p>
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-2 text-right">
-              <p className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-cream-700">Opens</p>
-              <p className="mt-1 font-display text-[24px] leading-none text-cream-950">{totals.opens}</p>
+              <p className="font-mono text-xs uppercase tracking-[0.08em] text-cream-700">Opens</p>
+              <p className="mt-1 font-display text-2xl leading-none text-cream-950">{totals.opens}</p>
             </div>
             <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-2 text-right">
-              <p className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-cream-700">Purchasers</p>
-              <p className="mt-1 font-display text-[24px] leading-none text-cream-950">{totals.purchasers}</p>
+              <p className="font-mono text-xs uppercase tracking-[0.08em] text-cream-700">Purchasers</p>
+              <p className="mt-1 font-display text-2xl leading-none text-cream-950">{totals.purchasers}</p>
             </div>
             <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-2 text-right">
-              <p className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-cream-700">Attributed GMV</p>
-              <p className="mt-1 font-display text-[24px] leading-none text-cream-950">{formatCompactInr(totals.gmv, 1)}</p>
+              <p className="font-mono text-xs uppercase tracking-[0.08em] text-cream-700">Attributed GMV</p>
+              <p className="mt-1 font-display text-2xl leading-none text-cream-950">{formatCompactInr(totals.gmv, 1)}</p>
             </div>
           </div>
         </div>
@@ -106,17 +106,17 @@ export function CatalogBuyersTab({ buyers, selectedCohort }: CatalogBuyersTabPro
           {filtered.map((buyer) => (
             <tr key={buyer.buyer_id} className="border-b border-cream-300 bg-white transition-colors hover:bg-cream-50">
               <td className="px-5 py-3.5 text-cream-900">
-                <p className="text-[13.5px] font-medium">{buyer.buyer_name}</p>
-                <p className="mt-0.5 font-mono text-[10.5px] uppercase tracking-[0.04em] text-cream-700">{buyer.city}</p>
+                <p className="text-base font-medium">{buyer.buyer_name}</p>
+                <p className="mt-0.5 font-mono text-xs uppercase tracking-[0.04em] text-cream-700">{buyer.city}</p>
               </td>
-              <td className="px-5 py-3.5 text-[13px] text-cream-900">{buyer.cohort_label}</td>
+              <td className="px-5 py-3.5 text-base text-cream-900">{buyer.cohort_label}</td>
               <td className="px-5 py-3.5">
                 <StatusTag label={buyer.opened_status} tone={statusTone(buyer.opened_status)} />
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-[13px] text-cream-900">{buyer.orders}</td>
-              <td className="px-5 py-3.5 text-right font-display text-[15px] text-cream-950">{buyer.spend > 0 ? formatCompactInr(buyer.spend, 1) : '—'}</td>
-              <td className="px-5 py-3.5 text-[13px] text-cream-700">{buyer.last_opened_at ? formatDate(buyer.last_opened_at) : '—'}</td>
-              <td className="px-5 py-3.5 text-[13px] text-cream-700">{buyer.last_order_at ? formatDate(buyer.last_order_at) : '—'}</td>
+              <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{buyer.orders}</td>
+              <td className="px-5 py-3.5 text-right font-display text-md text-cream-950">{buyer.spend > 0 ? formatCompactInr(buyer.spend, 1) : '—'}</td>
+              <td className="px-5 py-3.5 text-base text-cream-700">{buyer.last_opened_at ? formatDate(buyer.last_opened_at) : '—'}</td>
+              <td className="px-5 py-3.5 text-base text-cream-700">{buyer.last_order_at ? formatDate(buyer.last_order_at) : '—'}</td>
             </tr>
           ))}
         </LandingTable>

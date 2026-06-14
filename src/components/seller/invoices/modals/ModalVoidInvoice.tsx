@@ -54,11 +54,11 @@ export function ModalVoidInvoice({
           <DialogTitle>Void invoice</DialogTitle>
         </DialogHeader>
         <DialogBody className="space-y-4">
-          <p className="text-[13px] text-cream-700">
+          <p className="text-base text-cream-700">
             This cannot be undone. Type <span className="font-mono font-semibold text-cream-900">{confirmToken}</span> to confirm.
           </p>
           <div className="space-y-2">
-            <Label htmlFor="void-confirm" className="text-[13px]">
+            <Label htmlFor="void-confirm" className="text-base">
               Confirmation
             </Label>
             <Input id="void-confirm" value={typed} onChange={(e) => setTyped(e.target.value)} className="font-mono" autoComplete="off" />

@@ -6,12 +6,14 @@ import {
   verifyBuyerPreviewToken,
 } from './buyer-preview';
 import { SELLER_ROLES } from '@/constants';
+import { normalizeLocationIds } from '@/lib/server/seller-location-access';
 
 export interface JWTClaims {
   sub: string | null;
   tenant_id: string | null;
   role: string | null;
   buyer_id: string | null;
+  location_ids: string[] | null;
 }
 
 export interface BuyerAppContext extends JWTClaims {
@@ -55,11 +57,22 @@ export function decodeJWTPayload(token: string): Record<string, unknown> {
  * Never call this with raw client-supplied headers — only headers set by middleware.ts.
  */
 export function extractVerifiedClaims(request: NextRequest): JWTClaims {
+  const rawLocationIds = request.headers.get('x-verified-location-ids');
+  const locationIds = (() => {
+    if (!rawLocationIds) return null;
+    try {
+      return normalizeLocationIds(JSON.parse(rawLocationIds) as unknown);
+    } catch {
+      return null;
+    }
+  })();
+
   return {
     sub: request.headers.get('x-verified-user-id'),
     tenant_id: request.headers.get('x-verified-tenant-id'),
     role: request.headers.get('x-verified-role'),
     buyer_id: request.headers.get('x-verified-buyer-id'),
+    location_ids: locationIds,
   };
 }
 
@@ -90,6 +103,7 @@ export async function getVerifiedClaims(request: NextRequest): Promise<JWTClaims
     tenant_id: (ws?.tenant_id as string) ?? null,
     role: (ws?.role as string) ?? null,
     buyer_id: (ws?.buyer_id as string) ?? null,
+    location_ids: normalizeLocationIds(ws?.location_ids),
   };
 }
 

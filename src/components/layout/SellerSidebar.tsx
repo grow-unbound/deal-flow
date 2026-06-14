@@ -20,7 +20,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { useIdleRoutePrefetch } from '@/hooks/useIdleRoutePrefetch';
 import { Pressable } from '@/components/ui/pressable';
+import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { useRole } from '@/hooks/useRole';
+import { ROLES } from '@/constants';
 import type { SellerShellFeatureAvailability } from '@/lib/server/seller-features';
 export type NavFlagKey =
   | 'df_brand_product_master'
@@ -50,7 +52,7 @@ export interface NavItem {
   label: string;
   href: string;
   icon: FC<{ size?: number; className?: string }>;
-  adminOnly: boolean;
+  roles: Array<typeof ROLES.SELLER_ADMIN | typeof ROLES.SELLER_ASSISTANT>;
   /** PostHog flag key — item hidden when resolved flag is `false` */
   flagKey?: NavFlagKey;
   children?: NavItem[];
@@ -78,53 +80,53 @@ export const navGroups: NavGroup[] = [
   {
     label: 'OPERATIONS',
     items: [
-      { label: 'Dashboard', href: '/dashboard', icon: DashboardIcon, adminOnly: false },
-      { label: 'Estimates', href: '/estimates', icon: EstimatesIcon, adminOnly: false, flagKey: 'df_estimates' },
-      { label: 'Sales Orders', href: '/sales-orders', icon: SalesOrdersIcon, adminOnly: false, flagKey: 'df_sales_orders' },
-      { label: 'Invoices', href: '/invoices', icon: ReceiptIcon, adminOnly: false, flagKey: 'df_invoices' },
+      { label: 'Dashboard', href: '/dashboard', icon: DashboardIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT] },
+      { label: 'Estimates', href: '/estimates', icon: EstimatesIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_estimates' },
+      { label: 'Sales Orders', href: '/sales-orders', icon: SalesOrdersIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_sales_orders' },
+      { label: 'Invoices', href: '/invoices', icon: ReceiptIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_invoices' },
     ],
   },
   {
     label: 'CUSTOMERS',
     items: [
-      { label: 'Customers', href: '/customers', icon: BuyersIcon, adminOnly: false, flagKey: 'df_customer_master' },
-      { label: 'Cohorts', href: '/cohorts', icon: CohortsIcon, adminOnly: true, flagKey: 'df_cohorts' },
+      { label: 'Customers', href: '/customers', icon: BuyersIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_customer_master' },
+      { label: 'Cohorts', href: '/cohorts', icon: CohortsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_cohorts' },
     ],
   },
   {
     label: 'CATALOG',
     items: [
-      { label: 'Catalogs', href: '/catalogs', icon: CatalogsIcon, adminOnly: false, flagKey: 'df_catalog_publishing' },
-      { label: 'Price Lists', href: '/price-lists', icon: PriceListsIcon, adminOnly: true, flagKey: 'df_pricing_engine' },
-      { label: 'Products', href: '/products', icon: ProductsIcon, adminOnly: false, flagKey: 'df_brand_product_master' },
-      { label: 'Brands', href: '/brands', icon: BrandsIcon, adminOnly: false, flagKey: 'df_brand_product_master' },
+      { label: 'Catalogs', href: '/catalogs', icon: CatalogsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_catalog_publishing' },
+      { label: 'Price Lists', href: '/price-lists', icon: PriceListsIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_pricing_engine' },
+      { label: 'Products', href: '/products', icon: ProductsIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_brand_product_master' },
+      { label: 'Brands', href: '/brands', icon: BrandsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_brand_product_master' },
     ],
   },
   {
     label: 'ADMIN',
     items: [
-      { label: 'Exports', href: '/exports', icon: ExportsIcon, adminOnly: true, flagKey: 'df_tally_export' },
+      { label: 'Exports', href: '/exports', icon: ExportsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_tally_export' },
       {
         label: 'Settings',
         href: '/settings',
         icon: SettingsIcon,
-        adminOnly: true,
+        roles: [ROLES.SELLER_ADMIN],
         children: [
-          { label: 'Team', href: '/settings/team', icon: Users as FC<{ size?: number; className?: string }>, adminOnly: true },
-          { label: 'Modules', href: '/settings/modules', icon: Zap as FC<{ size?: number; className?: string }>, adminOnly: true },
-          { label: 'Locations', href: '/settings/locations', icon: MapPin as FC<{ size?: number; className?: string }>, adminOnly: true },
+          { label: 'Team', href: '/settings/team', icon: Users as FC<{ size?: number; className?: string }>, roles: [ROLES.SELLER_ADMIN] },
+          { label: 'Modules', href: '/settings/modules', icon: Zap as FC<{ size?: number; className?: string }>, roles: [ROLES.SELLER_ADMIN] },
+          { label: 'Locations', href: '/settings/locations', icon: MapPin as FC<{ size?: number; className?: string }>, roles: [ROLES.SELLER_ADMIN] },
           {
             label: 'Integrations',
             href: '/settings/integrations',
             icon: LinkIcon as FC<{ size?: number; className?: string }>,
-            adminOnly: true,
+            roles: [ROLES.SELLER_ADMIN],
             flagKey: 'df_integrations',
           },
           {
             label: 'Billing & Plan',
             href: '/settings/billing',
             icon: CreditCard as FC<{ size?: number; className?: string }>,
-            adminOnly: true,
+            roles: [ROLES.SELLER_ADMIN],
           },
         ],
       },
@@ -133,16 +135,30 @@ export const navGroups: NavGroup[] = [
 ];
 
 export interface CollectPrefetchHrefsInput {
-  isSellerAdmin: boolean;
+  role: typeof ROLES.SELLER_ADMIN | typeof ROLES.SELLER_ASSISTANT;
   /** Return `false` to hide flag-gated item; `undefined` / `true` keeps it */
   getFlag: (key: NavFlagKey) => boolean | undefined;
 }
 
+const ASSISTANT_NAV_ORDER = [
+  '/dashboard',
+  '/estimates',
+  '/sales-orders',
+  '/invoices',
+  '/customers',
+  '/products',
+  '/price-lists',
+] as const;
+
 /** Pure helper for tests — mirrors sidebar prefetch href derivation from `navGroups`. */
 export function collectPrefetchHrefs(
   groups: readonly NavGroup[],
-  { isSellerAdmin, getFlag }: CollectPrefetchHrefsInput
+  { role, getFlag }: CollectPrefetchHrefsInput
 ): string[] {
+  function canAccessNavItem(item: NavItem): boolean {
+    return item.roles.includes(role);
+  }
+
   function isNavItemVisible(item: NavItem): boolean {
     if (!item.flagKey) return true;
     const fk = item.flagKey as keyof typeof FLAG_KEY_TO_FEATURE;
@@ -153,11 +169,11 @@ export function collectPrefetchHrefs(
   return groups
     .flatMap((g) => g.items)
     .filter(isNavItemVisible)
-    .filter((item) => !item.adminOnly || isSellerAdmin)
+    .filter(canAccessNavItem)
     .flatMap((item) => [
       item.href,
       ...(item.children
-        ?.filter((child) => isNavItemVisible(child) && (!child.adminOnly || isSellerAdmin))
+        ?.filter((child) => isNavItemVisible(child) && canAccessNavItem(child))
         .map((child) => child.href) ?? []),
     ]);
 }
@@ -188,7 +204,8 @@ export function SellerSidebar({
   const router = useRouter();
   const { user, signOut } = useAuth();
   const { currentTenant } = useTenant();
-  const { isSellerAdmin, role } = useRole();
+  const { isSellerAssistant, role } = useRole();
+  const sellerRole = role === ROLES.SELLER_ADMIN || role === ROLES.SELLER_ASSISTANT ? role : null;
   const isUnderSettingsRoute = pathname === '/settings' || pathname.startsWith('/settings/');
   const [settingsSubmenuOpen, setSettingsSubmenuOpen] = useState(true);
 
@@ -229,7 +246,11 @@ export function SellerSidebar({
     return getFlag(fk) !== false;
   }
 
-  const prefetchHrefs = collectPrefetchHrefs(navGroups, { isSellerAdmin, getFlag });
+  function canAccessNavItem(item: NavItem): boolean {
+    return sellerRole != null && item.roles.includes(sellerRole);
+  }
+
+  const prefetchHrefs = sellerRole ? collectPrefetchHrefs(navGroups, { role: sellerRole, getFlag }) : [];
 
   useIdleRoutePrefetch(prefetchHrefs);
 
@@ -239,7 +260,7 @@ export function SellerSidebar({
   }
 
   function renderNavItem(item: NavItem) {
-    const visibleChildren = item.children?.filter((c) => isNavItemVisible(c) && (!c.adminOnly || isSellerAdmin)) ?? [];
+    const visibleChildren = item.children?.filter((c) => isNavItemVisible(c) && canAccessNavItem(c)) ?? [];
     const isSettingsGroup = item.href === '/settings' && visibleChildren.length > 0;
 
     if (isSettingsGroup) {
@@ -251,8 +272,8 @@ export function SellerSidebar({
         <div key={item.href} className="space-y-0.5">
           <div
             className={[
-              'flex items-center rounded-[12px] text-body-sm font-medium transition-colors duration-fast',
-              parentActive ? 'bg-teal-500 text-cream-50' : 'text-cream-800',
+              'flex items-center rounded-[12px] text-base font-medium transition-colors duration-fast',
+              parentActive ? 'bg-[rgba(181,100,47,0.09)] text-[#221E1A]' : 'text-[#3D3630]',
             ].join(' ')}
           >
             <Pressable asChild haptic>
@@ -261,11 +282,11 @@ export function SellerSidebar({
                 className={[
                   'flex min-w-0 flex-1 items-center px-3 py-2.5 transition-colors duration-fast',
                   isCollapsed ? 'justify-center gap-0' : 'gap-3',
-                  parentActive ? '' : 'hover:bg-cream-200 hover:text-cream-900',
+                  parentActive ? '' : 'hover:bg-[var(--yk-hover-tint)] hover:text-[#221E1A]',
                 ].join(' ')}
                 title={isCollapsed ? item.label : undefined}
               >
-                <item.icon size={16} className={parentActive ? 'text-cream-50' : 'text-cream-600'} />
+                <item.icon size={17} className={parentActive ? 'text-[#221E1A]' : 'text-[#3D3630]'} />
                 {!isCollapsed && <span className="truncate">{item.label}</span>}
               </Link>
             </Pressable>
@@ -275,8 +296,8 @@ export function SellerSidebar({
                 className={[
                   'mr-1 shrink-0 rounded-md p-1.5 transition-colors duration-fast',
                   parentActive
-                    ? 'text-cream-50 hover:bg-teal-600/80'
-                    : 'text-cream-600 hover:bg-cream-200 hover:text-cream-900',
+                    ? 'text-[#221E1A] hover:bg-[var(--yk-hover-tint)]'
+                    : 'text-[#3D3630] hover:bg-[var(--yk-hover-tint)] hover:text-[#221E1A]',
                 ].join(' ')}
                 aria-expanded={settingsSubmenuOpen}
                 aria-label={settingsSubmenuOpen ? 'Collapse settings sections' : 'Expand settings sections'}
@@ -307,11 +328,11 @@ export function SellerSidebar({
                     <Link
                       href={childHref}
                       className={[
-                        'ml-6 flex items-center gap-3 rounded-[10px] px-3 py-2 text-body-sm font-medium transition-colors duration-fast',
-                        childIsActive ? 'bg-teal-500 text-cream-50' : 'text-cream-700 hover:bg-cream-200 hover:text-cream-900',
+                        'ml-6 flex items-center gap-3 rounded-[10px] px-3 py-2 text-base font-medium transition-colors duration-fast',
+                        childIsActive ? 'bg-[rgba(181,100,47,0.09)] text-[#221E1A]' : 'text-[#3D3630] hover:bg-[var(--yk-hover-tint)] hover:text-[#221E1A]',
                       ].join(' ')}
                     >
-                      <ChildIcon size={15} className={childIsActive ? 'text-cream-50' : 'text-cream-500'} />
+                      <ChildIcon size={15} className={childIsActive ? 'text-[#221E1A]' : 'text-[#3D3630]'} />
                       {childLabel}
                     </Link>
                   </Pressable>
@@ -332,20 +353,20 @@ export function SellerSidebar({
           <Link
             href={item.href}
             className={[
-              'flex items-center rounded-[12px] px-3 py-2.5 text-body-sm font-medium transition-colors duration-fast',
+              'flex items-center rounded-[12px] px-3 py-2.5 text-base font-medium transition-colors duration-fast',
               isCollapsed ? 'justify-center gap-0' : 'gap-3',
-              active ? 'bg-teal-500 text-cream-50' : 'text-cream-800 hover:bg-cream-200 hover:text-cream-900',
+              active ? 'bg-[rgba(181,100,47,0.09)] text-[#221E1A]' : 'text-[#3D3630] hover:bg-[var(--yk-hover-tint)] hover:text-[#221E1A]',
             ].join(' ')}
             title={isCollapsed ? item.label : undefined}
           >
-            <item.icon size={16} className={active ? 'text-cream-50' : 'text-cream-600'} />
+            <item.icon size={17} className={active ? 'text-[#221E1A]' : 'text-[#3D3630]'} />
             {!isCollapsed && item.label}
           </Link>
         </Pressable>
 
         {!isCollapsed &&
           item.children
-            ?.filter((c) => !c.adminOnly || isSellerAdmin)
+            ?.filter((c) => canAccessNavItem(c))
             .map(({ label: childLabel, href: childHref, icon: ChildIcon }) => {
               const childIsActive = pathname === childHref;
               return (
@@ -353,11 +374,11 @@ export function SellerSidebar({
                   <Link
                     href={childHref}
                     className={[
-                      'ml-6 flex items-center gap-3 rounded-[10px] px-3 py-2 text-body-sm font-medium transition-colors duration-fast',
-                      childIsActive ? 'bg-teal-500 text-cream-50' : 'text-cream-700 hover:bg-cream-200 hover:text-cream-900',
+                      'ml-6 flex items-center gap-3 rounded-[10px] px-3 py-2 text-base font-medium transition-colors duration-fast',
+                      childIsActive ? 'bg-[rgba(181,100,47,0.09)] text-[#221E1A]' : 'text-[#3D3630] hover:bg-[var(--yk-hover-tint)] hover:text-[#221E1A]',
                     ].join(' ')}
                   >
-                    <ChildIcon size={15} className={childIsActive ? 'text-cream-50' : 'text-cream-500'} />
+                    <ChildIcon size={15} className={childIsActive ? 'text-[#221E1A]' : 'text-[#3D3630]'} />
                     {childLabel}
                   </Link>
                 </Pressable>
@@ -372,53 +393,61 @@ export function SellerSidebar({
       className="fixed left-0 top-0 flex h-screen flex-col border-r border-cream-300 bg-cream-100 transition-[width] duration-base"
       style={{ width: 'var(--sidebar-w)' }}
     >
-      <div className="relative flex h-16 shrink-0 items-center border-b border-cream-300 px-4">
+      <div className="relative flex h-16 shrink-0 items-center border-b border-cream-300 px-3">
         {canCollapse ? (
           <button
             type="button"
             onClick={onToggleCollapse}
-            className="absolute right-2 top-2 rounded-md p-1 text-cream-600 transition-colors duration-fast hover:bg-cream-200 hover:text-cream-900"
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-cream-600 transition-colors duration-fast hover:bg-[var(--yk-hover-tint)] hover:text-cream-900"
             aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
         ) : null}
 
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[11px] bg-teal-500">
-          <span className="text-cream-50 font-display font-medium text-sm leading-none">yk</span>
-        </div>
+        {isCollapsed ? <YuktiLogo variant="app-icon" className="h-11 w-11" priority /> : null}
         {!isCollapsed && (
-          <div className="min-w-0 pl-2.5">
-            <p className="truncate font-display text-lg font-medium leading-[1.05] text-teal-500">yukti</p>
-            <p className="mt-0.5 truncate text-caption text-cream-600">{currentTenant?.business_name ?? 'Tenant'}</p>
+          <div className="min-w-0">
+            <YuktiLogo variant="lockup" className="h-8 w-[138px]" priority />
           </div>
         )}
       </div>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
-        {navGroups.map((group) => {
-          const visibleItems = group.items
-            .filter(isNavItemVisible)
-            .filter((item) => !item.adminOnly || isSellerAdmin);
-          if (visibleItems.length === 0) return null;
-          return (
-            <div key={group.label}>
-              {!isCollapsed && (
-                <p className="px-3 pt-5 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-cream-500">
-                  {group.label}
-                </p>
-              )}
-              <div className="space-y-0.5">{visibleItems.map((item) => renderNavItem(item))}</div>
-            </div>
-          );
-        })}
+        {isSellerAssistant ? (
+          <div className="space-y-0.5">
+            {ASSISTANT_NAV_ORDER
+              .map((href) => navGroups.flatMap((group) => group.items).find((item) => item.href === href) ?? null)
+              .filter((item): item is NavItem => item != null)
+              .filter(isNavItemVisible)
+              .filter(canAccessNavItem)
+              .map((item) => renderNavItem(item))}
+          </div>
+        ) : (
+          navGroups.map((group) => {
+            const visibleItems = group.items
+              .filter(isNavItemVisible)
+              .filter(canAccessNavItem);
+            if (visibleItems.length === 0) return null;
+            return (
+              <div key={group.label}>
+                {!isCollapsed && (
+                  <p className="px-3 pt-5 pb-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#8A7E74]">
+                    {group.label}
+                  </p>
+                )}
+                <div className="space-y-0.5">{visibleItems.map((item) => renderNavItem(item))}</div>
+              </div>
+            );
+          })
+        )}
       </nav>
 
       <div className="mt-auto shrink-0 px-4 py-4">
         <button
           type="button"
           onClick={handleLogout}
-          className="mb-3 flex w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left text-body-sm font-medium text-cream-800 transition-colors duration-fast hover:bg-cream-200 hover:text-cream-900"
+          className="mb-3 flex w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left text-body-sm font-medium text-cream-800 transition-colors duration-fast hover:bg-[var(--yk-hover-tint)] hover:text-cream-900"
           title={isCollapsed ? 'Log out' : undefined}
         >
           <LogOut size={16} className="text-cream-600" />
@@ -433,7 +462,7 @@ export function SellerSidebar({
           {!isCollapsed && (
             <div className="min-w-0">
               <p className="truncate text-body-sm font-medium text-cream-900">{user?.displayName ?? user?.email ?? '—'}</p>
-              <p className="text-caption text-cream-600">{role ? ROLE_LABELS[role] : '—'}</p>
+              <p className="mt-0.5 truncate text-caption text-cream-600">{currentTenant?.business_name ?? 'Tenant'}</p>
             </div>
           )}
         </div>

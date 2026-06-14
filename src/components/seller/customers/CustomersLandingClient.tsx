@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
@@ -50,6 +51,10 @@ const CHIPS: Chip[] = ['All tiers', 'Tier A', 'Tier B', 'Dormant', 'Has dues'];
 function formatDate(value: string | null) {
   if (!value) return 'Never';
   return new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function tabularInline(value: string): ReactNode {
+  return <span className="tabular-inline">{value}</span>;
 }
 
 function CustomersLoadingSkeleton() {
@@ -278,8 +283,8 @@ function CustomersLandingContent({
               name: buyer.business_name,
               reason:
                 buyer.dues > 0
-                  ? `Last order ${buyer.last_order_label} · ${formatCompactInr(buyer.dues)} dues`
-                  : `Last order ${buyer.last_order_label} · spend ${buyer.growth_pct}% MoM`,
+                  ? <>Last order {tabularInline(buyer.last_order_label)} · {tabularInline(formatCompactInr(buyer.dues))} dues</>
+                  : <>Last order {tabularInline(buyer.last_order_label)} · spend {tabularInline(`${buyer.growth_pct}%`)} MoM</>,
               trailing: <GrowthPill value={buyer.growth_pct} />,
             })),
           },
@@ -292,7 +297,7 @@ function CustomersLandingContent({
               hue: buyer.avatar.hue,
               name: buyer.business_name,
               reason: `${buyer.orders_mtd} orders · ${buyer.city}`,
-              trailing: formatCompactInr(buyer.spend_mtd),
+              trailing: <span className="font-mono text-base tabular">{formatCompactInr(buyer.spend_mtd)}</span>,
             })),
           },
           {
@@ -303,7 +308,7 @@ function CustomersLandingContent({
               initials: buyer.avatar.initials,
               hue: buyer.avatar.hue,
               name: buyer.business_name,
-              reason: `${buyer.city} · ${formatCompactInr(buyer.spend_mtd)} ${lowerLabel}`,
+              reason: <>{buyer.city} · {tabularInline(formatCompactInr(buyer.spend_mtd))} {lowerLabel}</>,
               trailing: <GrowthPill value={buyer.growth_pct} />,
             })),
           },
@@ -338,7 +343,7 @@ function CustomersLandingContent({
                 : 'Add your first customer to start cohorts and pricing.'
             }
             action={
-              <Button variant="accent" onClick={() => setAddOpen(true)} className="gap-1.5">
+              <Button variant="primary" onClick={() => setAddOpen(true)} className="gap-1.5">
                 <Plus size={13} />
                 Add a customer
               </Button>
@@ -370,21 +375,21 @@ function CustomersLandingContent({
                 <div className="ent flex items-center gap-3">
                   <EntityAvatar initials={buyer.avatar.initials} hue={buyer.avatar.hue} size={38} />
                   <div className="min-w-0">
-                    <p className="truncate text-[13.5px] font-medium text-cream-900">
+                    <p className="truncate text-base font-medium text-cream-900">
                       {buyer.business_name}
                       {tier ? (
-                        <span className="ml-2 rounded bg-ember-50 px-1.5 text-[10px] font-mono font-semibold text-ember-700">{tier}</span>
+                        <span className="ml-2 rounded bg-ember-50 px-1.5 text-xs font-medium uppercase tracking-[0.06em] text-ember-700">{tier}</span>
                       ) : null}
                     </p>
-                    <p className="ent-sub mt-0.5 truncate text-[11px] uppercase tracking-[0.05em] text-cream-500">{buyer.city}</p>
+                    <p className="ent-sub mt-0.5 truncate text-xs uppercase tracking-[0.05em] text-cream-500">{buyer.city}</p>
                   </div>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-[12.5px] text-cream-800">{buyer.cohort}</td>
-              <td className="px-5 py-3.5"><span className="font-display text-[15px] font-medium tabular-nums text-cream-900">{formatCompactInr(buyer.spend_mtd)}</span></td>
+              <td className="px-5 py-3.5 text-sm text-cream-800">{buyer.cohort}</td>
+              <td className="px-5 py-3.5"><span className="font-display text-md font-medium tabular-nums text-cream-900">{formatCompactInr(buyer.spend_mtd)}</span></td>
               <td className="px-5 py-3.5"><GrowthPill value={buyer.growth_pct} /></td>
-              <td className="px-5 py-3.5 font-mono text-[13px] tabular-nums text-cream-900">{buyer.orders_mtd}</td>
-              <td className="px-5 py-3.5 font-mono text-[12px] text-cream-800">{formatDate(buyer.last_order_at)}</td>
+              <td className="px-5 py-3.5 font-mono text-base tabular-nums text-cream-900">{buyer.orders_mtd}</td>
+              <td className="px-5 py-3.5 text-sm text-cream-800"><span className="tabular-inline">{formatDate(buyer.last_order_at)}</span></td>
               <td className="px-5 py-3.5">
                 <div className="flex flex-col gap-1">
                   <div className="h-[5px] w-[140px] overflow-hidden rounded-full bg-cream-200">
@@ -393,15 +398,15 @@ function CustomersLandingContent({
                       style={{ width: `${Math.min(100, Math.round(creditRatio * 100))}%` }}
                     />
                   </div>
-                  <span className="font-mono text-[11px] text-cream-700">
-                    {formatCompactInr(buyer.credit_used)} / {formatCompactInr(buyer.credit_limit)}
+                  <span className="text-xs text-cream-700">
+                    <span className="tabular-inline">{formatCompactInr(buyer.credit_used)}</span> / <span className="tabular-inline">{formatCompactInr(buyer.credit_limit)}</span>
                   </span>
                 </div>
               </td>
               <td className="px-5 py-3.5">
                 <StatusTag label={buyer.status.label} tone={buyer.status.tone} />
               </td>
-              <td className="chev px-4 py-3.5 pr-4 text-right text-[16px] text-cream-500">›</td>
+              <td className="chev px-4 py-3.5 pr-4 text-right text-md text-cream-500">›</td>
             </tr>
           );
         })}

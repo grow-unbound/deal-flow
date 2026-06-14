@@ -22,6 +22,13 @@ function addMonths(year: number, month: number, delta: number) {
   };
 }
 
+function startOfIstWeek(year: number, month: number, day: number) {
+  const current = new Date(Date.UTC(year, month, day, 0, 0, 0));
+  const weekday = current.getUTCDay();
+  const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
+  return new Date(Date.UTC(year, month, day + mondayOffset, 0, 0, 0));
+}
+
 function toIstCalendar(now = new Date()) {
   const istNow = new Date(now.toLocaleString('en-US', { timeZone: TIMEZONE }));
   return {
@@ -44,7 +51,17 @@ export function getSellerLandingPeriodMeta(
   let previousStart: Date;
   let previousPeriodEndExclusive: Date;
 
-  if (selected === 'quarter') {
+  if (selected === 'today') {
+    currentStart = new Date(Date.UTC(year, month, day, 0, 0, 0));
+    currentEndExclusive = new Date(Date.UTC(year, month, day + 1, 0, 0, 0));
+    previousStart = new Date(Date.UTC(year, month, day - 1, 0, 0, 0));
+    previousPeriodEndExclusive = currentStart;
+  } else if (selected === 'week') {
+    currentStart = startOfIstWeek(year, month, day);
+    currentEndExclusive = new Date(currentStart.getTime() + 7 * DAY_MS);
+    previousStart = new Date(currentStart.getTime() - 7 * DAY_MS);
+    previousPeriodEndExclusive = currentStart;
+  } else if (selected === 'quarter') {
     const quarterStartMonth = Math.floor(month / 3) * 3;
     currentStart = new Date(Date.UTC(year, quarterStartMonth, 1, 0, 0, 0));
     currentEndExclusive = new Date(Date.UTC(year, quarterStartMonth + 3, 1, 0, 0, 0));
@@ -63,7 +80,9 @@ export function getSellerLandingPeriodMeta(
     previousPeriodEndExclusive = new Date(Date.UTC(year, month, 1, 0, 0, 0));
   }
 
-  const currentElapsedDays = Math.max(1, Math.floor((Date.UTC(year, month, day + 1, 0, 0, 0) - currentStart.getTime()) / DAY_MS));
+  const nowBoundary = new Date(Date.UTC(year, month, day + 1, 0, 0, 0));
+  const effectiveCurrentEnd = Math.min(nowBoundary.getTime(), currentEndExclusive.getTime());
+  const currentElapsedDays = Math.max(1, Math.floor((effectiveCurrentEnd - currentStart.getTime()) / DAY_MS));
   const rawPreviousEnd = new Date(previousStart.getTime() + currentElapsedDays * DAY_MS);
   const previousEndExclusive = clampDate(rawPreviousEnd, previousStart, previousPeriodEndExclusive);
 

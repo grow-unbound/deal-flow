@@ -82,13 +82,13 @@ function EnquiryCard({ enquiry, highlighted }: EnquiryCardProps) {
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-        <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>{enquiry.id}</span>
-        <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.fg }}>
+        <span style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>{enquiry.id}</span>
+        <span style={{ fontSize: 'var(--yk-text-xs)', fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.fg }}>
           {statusLabels[enquiry.status]}
         </span>
       </div>
-      <div style={{ fontSize: 14, color: 'var(--cream-900)', fontWeight: 500, marginBottom: 4 }}>{enquiry.subject}</div>
-      <div style={{ fontSize: 12, color: 'var(--cream-600)' }}>{enquiry.distributor} · {enquiry.placed}</div>
+      <div style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-900)', fontWeight: 500, marginBottom: 4 }}>{enquiry.subject}</div>
+      <div style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)' }}>{enquiry.distributor} · {enquiry.placed}</div>
     </div>
   );
 }
@@ -203,8 +203,8 @@ function OrdersPageInner() {
         {/* Page head */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '16px 18px 0' }}>
           <div>
-            <p style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-700)', fontFamily: 'var(--font-mono)' }}>Activity</p>
-            <h1 style={{ fontSize: 26, fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--cream-900)', lineHeight: 1.2, marginTop: 2 }}>Your orders</h1>
+            <p style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-700)', fontFamily: 'var(--font-body)', fontWeight: 500 }}>Activity</p>
+            <h1 style={{ fontSize: 'var(--yk-text-3xl)', fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--cream-900)', lineHeight: 1.08, letterSpacing: '-0.02em', marginTop: 2 }}>Your orders</h1>
           </div>
           <button style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--cream-200)', border: '1px solid var(--border-1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 4 }}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--cream-700)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
@@ -227,10 +227,10 @@ function OrdersPageInner() {
                 cursor: 'pointer',
               }}
             >
-              <span style={{ fontSize: 14, fontWeight: activeTab === t.id ? 600 : 400, color: activeTab === t.id ? 'var(--teal-500)' : 'var(--cream-700)' }}>
+              <span style={{ fontSize: 'var(--yk-text-base)', fontWeight: activeTab === t.id ? 600 : 400, color: activeTab === t.id ? 'var(--teal-500)' : 'var(--cream-700)' }}>
                 {t.label}
               </span>
-              <span style={{ marginLeft: 6, fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--cream-600)', background: 'var(--cream-200)', padding: '1px 6px', borderRadius: 100 }}>
+              <span style={{ marginLeft: 6, fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', color: 'var(--cream-600)', background: 'var(--cream-200)', padding: '1px 6px', borderRadius: 100 }}>
                 {t.count}
               </span>
             </button>
@@ -241,7 +241,7 @@ function OrdersPageInner() {
         <div style={{ padding: '12px 16px 0' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--cream-50)', border: '1px solid var(--border-2)', borderRadius: 10, padding: '10px 14px' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--cream-600)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-            <span style={{ fontSize: 14, color: 'var(--cream-500)' }}>
+            <span style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-500)' }}>
               {activeTab === 'orders' ? 'Search orders…' : activeTab === 'enquiries' ? 'Search enquiries…' : 'Search invoices…'}
             </span>
           </div>
@@ -253,7 +253,7 @@ function OrdersPageInner() {
             {/* Status filter chips */}
             <div style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '12px 16px 0', scrollbarWidth: 'none' }}>
               {['All', 'Received', 'Confirmed', 'Dispatched', 'Delivered'].map((f, i) => (
-                <button key={f} style={{ flexShrink: 0, padding: '6px 14px', borderRadius: 100, fontSize: 13, fontWeight: 500, border: '1px solid', background: i === 0 ? 'var(--teal-500)' : 'var(--cream-50)', color: i === 0 ? '#fff' : 'var(--cream-800)', borderColor: i === 0 ? 'var(--teal-500)' : 'var(--border-2)', cursor: 'pointer' }}>
+                <button key={f} style={{ flexShrink: 0, padding: '6px 14px', borderRadius: 100, fontSize: 'var(--yk-text-base)', fontWeight: 500, border: '1px solid', background: i === 0 ? 'var(--teal-500)' : 'var(--cream-50)', color: i === 0 ? '#fff' : 'var(--cream-800)', borderColor: i === 0 ? 'var(--teal-500)' : 'var(--border-2)', cursor: 'pointer' }}>
                   {f}
                 </button>
               ))}
@@ -263,11 +263,11 @@ function OrdersPageInner() {
             <div style={{ padding: '12px 16px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {ordersState.loading ? (
                 <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '16px 14px', textAlign: 'center' }}>
-                  <p style={{ fontSize: 13, color: 'var(--cream-600)' }}>Loading orders…</p>
+                  <p style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-600)' }}>Loading orders…</p>
                 </div>
               ) : ordersState.orders.length === 0 ? (
                 <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '16px 14px', textAlign: 'center' }}>
-                  <p style={{ fontSize: 13, color: 'var(--cream-600)' }}>
+                  <p style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-600)' }}>
                     {ordersState.previewMessage ?? 'No orders yet.'}
                   </p>
                 </div>
@@ -276,13 +276,13 @@ function OrdersPageInner() {
                 return (
                   <div key={o.id} style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '12px 14px', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>{o.order_number}</span>
-                      <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.fg }}>{statusLabels[o.status]}</span>
+                      <span style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>{o.order_number}</span>
+                      <span style={{ fontSize: 'var(--yk-text-xs)', fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.fg }}>{statusLabels[o.status]}</span>
                     </div>
-                    <div style={{ fontSize: 13, color: 'var(--cream-800)', marginBottom: 6 }}>{o.catalog_name ?? 'Order'}</div>
+                    <div style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-800)', marginBottom: 6 }}>{o.catalog_name ?? 'Order'}</div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 12, color: 'var(--cream-600)' }}>{o.items_count} products · {new Date(o.placed_at).toLocaleDateString('en-IN')}</span>
-                      <span style={{ fontSize: 14, fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)' }}>{inr(o.total_amount)}</span>
+                      <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)' }}><span className="tabular-inline">{o.items_count}</span> products · <span className="tabular-inline">{new Date(o.placed_at).toLocaleDateString('en-IN')}</span></span>
+                      <span style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)' }}>{inr(o.total_amount)}</span>
                     </div>
                   </div>
                 );
@@ -302,12 +302,12 @@ function OrdersPageInner() {
               return (
                 <div key={inv.id} style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '12px 14px', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>{inv.id}</span>
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.fg }}>{statusLabels[inv.status]}</span>
+                    <span style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>{inv.id}</span>
+                    <span style={{ fontSize: 'var(--yk-text-xs)', fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.fg }}>{statusLabels[inv.status]}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 12, color: 'var(--cream-600)' }}>Issued {inv.issued} · Due: {inv.due}</span>
-                    <span style={{ fontSize: 14, fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)' }}>{inr(inv.amount)}</span>
+                    <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)' }}>Issued <span className="tabular-inline">{inv.issued}</span> · Due: <span className="tabular-inline">{inv.due}</span></span>
+                    <span style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)' }}>{inr(inv.amount)}</span>
                   </div>
                 </div>
               );

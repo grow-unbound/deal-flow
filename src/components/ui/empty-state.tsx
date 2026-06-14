@@ -17,7 +17,7 @@ export function EmptyState({ icon, heading, description, action }: EmptyStatePro
       <span className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-cream-200 text-cream-500">
         {icon}
       </span>
-      <p className="mb-2 font-display text-[22px] font-medium tracking-[-0.01em] text-cream-900">{heading}</p>
+      <p className="mb-2 font-display text-xl font-medium tracking-[-0.01em] text-cream-900">{heading}</p>
       <p className="max-w-[40ch] text-sm leading-6 text-cream-700">{description}</p>
       {action && <div className="mt-6">{action}</div>}
       </div>
@@ -42,7 +42,7 @@ export function ErrorState({
       <span className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-ember-50 text-danger-500">
         <AlertTriangle size={28} strokeWidth={1.5} />
       </span>
-      <p className="mb-2 font-display text-[22px] font-medium tracking-[-0.01em] text-cream-900">{heading}</p>
+      <p className="mb-2 font-display text-xl font-medium tracking-[-0.01em] text-cream-900">{heading}</p>
       <p className="max-w-[40ch] text-sm leading-6 text-cream-700">{description}</p>
       {onRetry && (
         <Button

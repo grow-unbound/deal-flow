@@ -6,38 +6,72 @@
 
 @layer base {
   :root {
-    /* Raw palette — consumed by tailwind tokens and CSS components */
-    --cream-50:  #FDFBF7;
-    --cream-100: #FAF7F2;
-    --cream-200: #F4EFE6;
-    --cream-300: #EFE9DF;
-    --cream-400: #E2D9C9;
-    --cream-500: #C9BFAC;
-    --cream-600: #A89E89;
-    --cream-700: #6B6760;
-    --cream-800: #3D3A35;
-    --cream-900: #1A1A1A;
+    --yk-ink: #221E1A;
+    --yk-surface: #2B2825;
+    --yk-copper: #B5642F;
+    --yk-copper-lt: #D9894C;
+    --yk-paper: #F8F6F2;
+    --yk-card: #FCFBF8;
+    --yk-card-line: #EAE3D9;
+    --yk-sub: #64594E;
+    --yk-faint: #6F665C;
+    --yk-on-dark: #F3EEE6;
+    --yk-hover-tint: rgba(34, 30, 26, 0.05);
+    --yk-active-tint: rgba(34, 30, 26, 0.08);
+    --yk-press-scale: 0.97;
+    --yk-text-xs: calc(var(--yk-text-base) * 0.786);
+    --yk-text-sm: calc(var(--yk-text-base) * 0.857);
+    --yk-text-base: 14px;
+    --yk-text-md: calc(var(--yk-text-base) * 1.071);
+    --yk-text-lg: calc(var(--yk-text-base) * 1.286);
+    --yk-text-xl: calc(var(--yk-text-base) * 1.571);
+    --yk-text-2xl: calc(var(--yk-text-base) * 2);
+    --yk-text-3xl: calc(var(--yk-text-base) * 2.571);
 
-    --teal-50:  #EAF1EE;
-    --teal-100: #C6DAD3;
-    --teal-200: #95B9AE;
-    --teal-300: #5D8E81;
-    --teal-400: #346A5C;
-    --teal-500: #1F3A34;
-    --teal-600: #1A322D;
-    --teal-700: #142823;
+    /* Compatibility aliases for existing app classes */
+    --cream-50:  #FCFBF8;
+    --cream-100: #F8F6F2;
+    --cream-200: #F3EEE6;
+    --cream-300: #EAE3D9;
+    --cream-400: #DDD2C4;
+    --cream-500: #B7A999;
+    --cream-600: #8E7E6E;
+    --cream-700: #64594E;
+    --cream-800: #2B2825;
+    --cream-900: #221E1A;
+    --cream-950: #181512;
 
-    --ember-50:  #FBEFE3;
-    --ember-100: #F5DAB8;
-    --ember-200: #ECBC85;
-    --ember-300: #DC9655;
-    --ember-400: #C26E3A;
-    --ember-500: #A55A2B;
+    --teal-50:  #F2EEEA;
+    --teal-100: #E6DDD2;
+    --teal-200: #D4C6B6;
+    --teal-300: #B59E87;
+    --teal-400: #7E6B59;
+    --teal-500: #221E1A;
+    --teal-600: #1C1916;
+    --teal-700: #2B2825;
+    --teal-800: #171411;
 
-    --success-500: #4A7C4E;
-    --warning-500: #B07D2C;
-    --danger-500:  #9C3A22;
-    --info-500:    #3F6A7C;
+    --ember-50:  #F7EEE6;
+    --ember-100: #ECD6C2;
+    --ember-200: #DEB48B;
+    --ember-300: #D9894C;
+    --ember-400: #B5642F;
+    --ember-500: #9B5428;
+    --ember-600: #834620;
+    --ember-700: #6A3D18;
+
+    --success-50: #EAF4EC;
+    --success-500: #1F6B3A;
+    --success-700: #17512B;
+    --warning-50: #FBF1DE;
+    --warning-500: #8A5700;
+    --warning-700: #6D4500;
+    --danger-50: #F8E9E7;
+    --danger-500: #9C3026;
+    --danger-700: #7A241D;
+    --info-50: #EAF0F5;
+    --info-500: #2A5F8A;
+    --info-700: #214A6B;
 
     /* Semantic text tokens */
     --fg-1: var(--cream-900);
@@ -49,8 +83,8 @@
     --fg-accent: var(--ember-400);
 
     /* Semantic surface tokens */
-    --bg-page: var(--cream-100);
-    --bg-surface: #FFFFFF;
+    --bg-page: var(--yk-paper);
+    --bg-surface: var(--yk-card);
     --bg-recessed: var(--cream-200);
     --bg-overlay: rgba(26, 26, 26, 0.42);
     --bg-brand: var(--teal-500);
@@ -67,25 +101,27 @@
     --border-focus: var(--ember-400);
 
     /* Typography */
-    --font-display: 'Fraunces', 'Instrument Serif', Georgia, serif;
-    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-sans: 'Inter', sans-serif;
+    --yk-font-ui: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-display: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-body: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
     /* Shadows */
-    --shadow-xs: 0 1px 2px rgba(31, 58, 52, 0.04);
-    --shadow-sm: 0 1px 2px rgba(31, 58, 52, 0.05), 0 1px 3px rgba(31, 58, 52, 0.04);
-    --shadow-md: 0 2px 4px rgba(31, 58, 52, 0.04), 0 4px 12px rgba(31, 58, 52, 0.06);
-    --shadow-lg: 0 6px 16px rgba(31, 58, 52, 0.06), 0 12px 32px rgba(31, 58, 52, 0.08);
-    --shadow-xl: 0 16px 40px rgba(31, 58, 52, 0.12), 0 4px 12px rgba(31, 58, 52, 0.06);
-    --ring-focus: 0 0 0 3px rgba(194, 110, 58, 0.25);
-    --ring-brand: 0 0 0 3px rgba(31, 58, 52, 0.18);
+    --shadow-xs: 0 1px 2px rgba(34, 30, 26, 0.05);
+    --shadow-sm: 0 1px 2px rgba(34, 30, 26, 0.06), 0 2px 8px rgba(34, 30, 26, 0.04);
+    --shadow-md: 0 4px 14px rgba(34, 30, 26, 0.06), 0 2px 4px rgba(34, 30, 26, 0.04);
+    --shadow-lg: 0 10px 24px rgba(34, 30, 26, 0.08), 0 4px 10px rgba(34, 30, 26, 0.04);
+    --shadow-xl: 0 18px 44px rgba(34, 30, 26, 0.12), 0 8px 18px rgba(34, 30, 26, 0.06);
+    --ring-focus: 0 0 0 3px rgba(181, 100, 47, 0.22);
+    --ring-brand: 0 0 0 3px rgba(34, 30, 26, 0.12);
 
     /* Motion */
-    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
-    --ease-emphasis: cubic-bezier(0.3, 0, 0, 1);
-    --duration-fast: 120ms;
-    --duration-base: 200ms;
-    --duration-slow: 320ms;
+    --ease-standard: cubic-bezier(.22,1,.36,1);
+    --ease-emphasis: cubic-bezier(.22,1,.36,1);
+    --duration-fast: 100ms;
+    --duration-base: 180ms;
+    --duration-slow: 280ms;
 
     /* Layout */
     --sidebar-w: 248px;
@@ -103,8 +139,9 @@
     background-color: var(--bg-page);
     color: var(--fg-1);
     font-family: var(--font-body);
-    font-size: 15px;
+    font-size: var(--yk-text-base);
     line-height: 1.45;
+    font-weight: 500;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
@@ -119,21 +156,21 @@
 
   h1, h2, h3 {
     font-family: var(--font-display);
-    font-weight: 400;
-    letter-spacing: -0.01em;
+    font-weight: 700;
     color: var(--fg-1);
     text-wrap: balance;
   }
 
-  h1 { font-size: 30px; line-height: 1.1; font-weight: 500; }
-  h2 { font-size: 24px; line-height: 1.1; }
-  h3 { font-size: 20px; line-height: 1.25; }
+  h1 { font-size: var(--yk-text-3xl); line-height: 1.08; font-weight: 800; letter-spacing: -0.02em; }
+  h2 { font-size: var(--yk-text-lg); line-height: 1.15; font-weight: 700; letter-spacing: -0.02em; }
+  h3 { font-size: var(--yk-text-md); line-height: 1.2; font-weight: 600; letter-spacing: -0.015em; }
 
   h4 {
-    font-size: 17px;
+    font-size: var(--yk-text-base);
     line-height: 1.25;
     font-family: var(--font-body);
     font-weight: 600;
+    letter-spacing: -0.015em;
     color: var(--fg-1);
   }
 
@@ -145,7 +182,7 @@
 
   code, kbd {
     font-family: var(--font-mono);
-    font-size: 0.92em;
+    font-size: var(--yk-text-sm);
     font-feature-settings: 'tnum' 1, 'ss01' 1;
     color: var(--fg-2);
   }
@@ -166,15 +203,30 @@
   /* Eyebrow text — uppercase, tracked, muted */
   .eyebrow {
     font-family: var(--font-body);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.14em;
+    font-size: var(--yk-text-xs);
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+  }
+
+  .table-label {
+    font-family: var(--font-body);
+    font-size: var(--yk-text-xs);
+    font-weight: 500;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--fg-3);
   }
 
   /* Tabular numerals for prices, SKUs, IDs */
   .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  .tabular-inline {
+    display: inline-block;
     font-variant-numeric: tabular-nums;
     font-feature-settings: 'tnum' 1;
   }
@@ -190,7 +242,7 @@
 
 @layer components {
   .cockpit-btn {
-    @apply inline-flex items-center gap-2 rounded-[8px] border px-3 py-[7px] text-[12.5px] font-medium touch-manipulation transition-all duration-fast ease-standard active:scale-[0.98];
+    @apply inline-flex items-center gap-2 rounded-[8px] border px-3 py-[7px] text-sm font-medium touch-manipulation transition-all duration-fast ease-standard active:scale-[0.98];
   }
 
   .cockpit-btn-primary {
@@ -206,7 +258,7 @@
   }
 
   .cockpit-btn-sm {
-    @apply rounded-[7px] px-2.5 py-1.5 text-[12px];
+    @apply rounded-[7px] px-2.5 py-1.5 text-sm;
   }
 
   /* design-system v2 table — EP-13 landing tables (e.g. Estimates) */
@@ -217,7 +269,7 @@
   }
   .v2-table .num-display {
     font-family: var(--font-display);
-    font-size: 15px;
+    font-size: var(--yk-text-md);
     font-variant-numeric: tabular-nums;
     font-weight: 500;
   }
@@ -230,13 +282,13 @@
     min-width: 0;
   }
   .v2-table .ent-name {
-    font-size: 13.5px;
+    font-size: var(--yk-text-base);
     font-weight: 500;
     color: var(--cream-900);
   }
   .v2-table .ent-sub {
     font-family: var(--font-mono);
-    font-size: 10.5px;
+    font-size: var(--yk-text-xs);
     color: var(--cream-700);
     margin-top: 2px;
   }
@@ -252,7 +304,7 @@
     border-radius: 999px;
     border: 1px solid var(--border-1);
     padding: 6px 10px;
-    font-size: 11px;
+    font-size: var(--yk-text-xs);
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -303,7 +355,7 @@
     align-items: center;
     border-radius: 999px;
     padding: 6px 10px;
-    font-size: 11px;
+    font-size: var(--yk-text-xs);
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -327,7 +379,7 @@
     border-radius: 999px;
     border: 1px solid var(--cream-300);
     padding: 6px 10px;
-    font-size: 11px;
+    font-size: var(--yk-text-xs);
     font-weight: 600;
     letter-spacing: 0.02em;
   }
@@ -476,13 +528,13 @@
   .tax-row--cgst,
   .tax-row--sgst,
   .tax-row--igst {
-    font-size: 0.75rem;
+    font-size: var(--yk-text-xs);
     line-height: 1.25rem;
     color: var(--cream-700);
   }
 
   .text-secondary {
-    font-size: 0.875rem;
+    font-size: var(--yk-text-sm);
     line-height: 1.25rem;
     color: var(--cream-600);
   }
@@ -490,7 +542,7 @@
   .empty-table-row td {
     padding: 20px 16px;
     text-align: center;
-    font-size: 13px;
+    font-size: var(--yk-text-base);
     color: var(--cream-600);
     border-top: 1px solid var(--cream-200);
   }
@@ -501,7 +553,7 @@
     color: var(--danger-500);
     border-radius: 12px;
     padding: 12px 14px;
-    font-size: 12px;
+    font-size: var(--yk-text-sm);
     line-height: 1.5;
   }
 
@@ -515,7 +567,7 @@
     color: var(--amber-700);
     border-radius: 12px;
     padding: 12px 14px;
-    font-size: 12px;
+    font-size: var(--yk-text-sm);
     line-height: 1.5;
   }
 
@@ -525,7 +577,7 @@
     color: var(--cream-800);
     border-radius: 12px;
     padding: 12px 14px;
-    font-size: 12px;
+    font-size: var(--yk-text-sm);
     line-height: 1.5;
   }
 
@@ -540,7 +592,7 @@
     min-height: 36px;
     align-items: center;
     color: var(--fg-1);
-    font-size: 13px;
+    font-size: var(--yk-text-base);
   }
 
   .credit-bar {
@@ -585,7 +637,7 @@
     background: var(--cream-100);
     padding: 10px 14px;
     color: var(--cream-700);
-    font-size: 12px;
+    font-size: var(--yk-text-sm);
     line-height: 1.4;
   }
 

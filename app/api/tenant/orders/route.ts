@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import {
+  applySellerLocationScope,
+  isSellerLocationSelectionAllowed,
+  loadAccessibleSellerLocations,
+  locationScopeCacheKey,
+  resolveDefaultSellerLocationId,
+} from '@/lib/server/seller-location-access';
 import { loadTenantSalesOrderComposer } from '@/lib/sales-orders/load-tenant-sales-order-composer';
 import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -36,6 +43,7 @@ interface BuyerRow {
 
 interface OrderRow {
   id: string;
+  location_id: string | null;
   order_number: string;
   buyer_id: string;
   status: string;
@@ -144,6 +152,8 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? '200'), 500);
     const cacheKey = [
       tenantId,
+      claims.role ?? 'unknown',
+      locationScopeCacheKey(claims),
       limit,
       period.selected,
       period.current_start.slice(0, 10),
@@ -157,23 +167,21 @@ export async function GET(req: NextRequest) {
       return timedJson(cached.payload);
     }
 
-    const [buyersRes, mtdOrdersRes, prevOrdersRes, kpiCurrentRes, kpiPrevRes] = await Promise.all([
-      db
-        .schema('app')
-        .from('buyers')
-        .select('id, business_name, geography')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null),
+    const scopedCurrentOrdersQuery = applySellerLocationScope(
       db
         .schema('app')
         .from('orders')
-        .select('id, order_number, buyer_id, status, source, catalog_id, estimate_id, placed_by, subtotal, tax_amount, total_amount, placed_at, created_at')
+        .select('id, order_number, buyer_id, location_id, status, source, catalog_id, estimate_id, placed_by, subtotal, tax_amount, total_amount, placed_at, created_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .gte('placed_at', period.current_start)
         .lt('placed_at', period.current_end_exclusive)
         .order('placed_at', { ascending: false })
         .limit(limit),
+      claims,
+    );
+
+    const scopedPreviousOrdersQuery = applySellerLocationScope(
       db
         .schema('app')
         .from('orders')
@@ -182,22 +190,38 @@ export async function GET(req: NextRequest) {
         .is('deleted_at', null)
         .gte('placed_at', period.previous_start)
         .lt('placed_at', period.previous_end_exclusive),
+      claims,
+    );
+
+    const [buyersRes, mtdOrdersRes, prevOrdersRes, kpiCurrentRes, kpiPrevRes] = await Promise.all([
       db
         .schema('app')
-        .from('kpi_tenant_daily')
-        .select('orders_count, buyers_count, gmv')
+        .from('buyers')
+        .select('id, business_name, geography')
         .eq('tenant_id', tenantId)
-        .gte('day', period.current_start.slice(0, 10))
-        .lt('day', period.current_end_exclusive.slice(0, 10))
         .is('deleted_at', null),
-      db
-        .schema('app')
-        .from('kpi_tenant_daily')
-        .select('orders_count, gmv')
-        .eq('tenant_id', tenantId)
-        .gte('day', period.previous_start.slice(0, 10))
-        .lt('day', period.previous_end_exclusive.slice(0, 10))
-        .is('deleted_at', null),
+      scopedCurrentOrdersQuery,
+      scopedPreviousOrdersQuery,
+      claims.role === 'seller_admin'
+        ? db
+            .schema('app')
+            .from('kpi_tenant_daily')
+            .select('orders_count, buyers_count, gmv')
+            .eq('tenant_id', tenantId)
+            .gte('day', period.current_start.slice(0, 10))
+            .lt('day', period.current_end_exclusive.slice(0, 10))
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [], error: null }),
+      claims.role === 'seller_admin'
+        ? db
+            .schema('app')
+            .from('kpi_tenant_daily')
+            .select('orders_count, gmv')
+            .eq('tenant_id', tenantId)
+            .gte('day', period.previous_start.slice(0, 10))
+            .lt('day', period.previous_end_exclusive.slice(0, 10))
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
     if (buyersRes.error || mtdOrdersRes.error || prevOrdersRes.error) {
@@ -421,6 +445,7 @@ export async function POST(request: NextRequest) {
     const expectedDelivery = plusDays(7);
 
     let buyerId: string | null = null;
+    let locationId: string | null = null;
     let notes = '';
     let buyerPoRef = '';
     let discountFlat = 0;
@@ -432,7 +457,7 @@ export async function POST(request: NextRequest) {
       const { data: estimate, error: estimateError } = await db
         .schema('app')
         .from('estimates')
-        .select('id, tenant_id, buyer_id, estimate_number, notes, buyer_po_ref, discount_flat, freight, round_off')
+        .select('id, tenant_id, buyer_id, location_id, estimate_number, notes, buyer_po_ref, discount_flat, freight, round_off')
         .eq('id', fromEstimateId)
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
@@ -454,6 +479,7 @@ export async function POST(request: NextRequest) {
       }
 
       buyerId = estimate.buyer_id;
+      locationId = (estimate.location_id as string | null | undefined) ?? null;
       notes = estimate.notes ?? '';
       buyerPoRef = estimate.buyer_po_ref ?? '';
       discountFlat = Number(estimate.discount_flat ?? 0);
@@ -476,12 +502,18 @@ export async function POST(request: NextRequest) {
       return sum + taxable * (Number(row.tax_pct ?? row.tax_rate ?? 0) / 100);
     }, 0);
     const totalAmount = Math.max(subtotal - discountFlat, 0) + taxAmount + freight + roundOff;
+    const availableLocations = await loadAccessibleSellerLocations(db as any, tenantId, claims);
+    const resolvedLocationId = locationId ?? resolveDefaultSellerLocationId(claims, availableLocations);
+    if (!resolvedLocationId || !isSellerLocationSelectionAllowed(claims, resolvedLocationId)) {
+      return NextResponse.json({ error: 'No accessible location available for this user' }, { status: 400 });
+    }
 
     const { data: order, error: orderError } = await db
       .schema('app')
       .from('orders')
       .insert({
         tenant_id: tenantId,
+        location_id: resolvedLocationId,
         buyer_id: buyerId,
         placed_by: claims.sub,
         order_number: orderNumber,
@@ -552,7 +584,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const composer = await loadTenantSalesOrderComposer(db, tenantId, order.id as string);
+    const composer = await loadTenantSalesOrderComposer(db, tenantId, order.id as string, claims);
     if (composer === 'notfound' || composer === 'forbidden') {
       return NextResponse.json({ error: 'Failed to load draft' }, { status: 500 });
     }

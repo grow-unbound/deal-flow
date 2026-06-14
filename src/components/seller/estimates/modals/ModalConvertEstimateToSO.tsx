@@ -82,13 +82,13 @@ export function ModalConvertEstimateToSO({
               <ArrowRightCircle className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-600">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">
                 From estimate · {estimateNumber}
               </p>
-              <DialogTitle className="mt-1 text-left text-[19px] font-semibold text-cream-950">
+              <DialogTitle className="mt-1 text-left text-lg font-semibold text-cream-950">
                 Convert to sales order
               </DialogTitle>
-              <p className="mt-2 text-[13px] leading-relaxed text-cream-700">
+              <p className="mt-2 text-base leading-relaxed text-cream-700">
                 Confirms the order with <strong className="font-medium text-cream-900">{buyerName}</strong> from the
                 selected lines. Lines not selected remain on the estimate until you convert or edit them.
               </p>
@@ -98,7 +98,7 @@ export function ModalConvertEstimateToSO({
 
         <DialogBody className="space-y-4 px-6 py-5">
           <div className="overflow-hidden rounded-[12px] border border-cream-300">
-            <div className="grid grid-cols-[40px_minmax(0,1fr)_72px_96px] gap-2 border-b border-cream-200 bg-cream-50 px-3 py-2 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">
+            <div className="grid grid-cols-[40px_minmax(0,1fr)_72px_96px] gap-2 border-b border-cream-200 bg-cream-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">
               <span />
               <span>Product</span>
               <span className="text-right">Qty</span>
@@ -113,11 +113,11 @@ export function ModalConvertEstimateToSO({
                 >
                   <Checkbox checked={on} onCheckedChange={(v) => toggle(line.id, v === true)} aria-label={`Include ${line.product_name}`} />
                   <div className="min-w-0">
-                    <p className="truncate text-[13px] font-medium text-cream-900">{line.product_name}</p>
-                    <p className="truncate font-mono text-[11px] text-cream-600">{line.sku}</p>
+                    <p className="truncate text-base font-medium text-cream-900">{line.product_name}</p>
+                    <p className="truncate font-mono text-xs text-cream-600">{line.sku}</p>
                   </div>
-                  <p className="text-right text-[13px] tabular-nums text-cream-800">{line.qty}</p>
-                  <p className="text-right font-mono text-[13px] tabular-nums text-cream-900">{formatCompactInr(lineAmount(line))}</p>
+                  <p className="text-right text-base tabular-nums text-cream-800">{line.qty}</p>
+                  <p className="text-right font-mono text-base tabular-nums text-cream-900">{formatCompactInr(lineAmount(line))}</p>
                 </div>
               );
             })}
@@ -125,21 +125,21 @@ export function ModalConvertEstimateToSO({
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <p className="mb-1.5 text-[12px] font-medium text-cream-800">Expected delivery</p>
+              <p className="mb-1.5 text-sm font-medium text-cream-800">Expected delivery</p>
               <Input type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} className="h-10" />
             </div>
             <div>
-              <p className="mb-1.5 text-[12px] font-medium text-cream-800">SO number (optional)</p>
+              <p className="mb-1.5 text-sm font-medium text-cream-800">SO number (optional)</p>
               <Input
                 value={orderNumber}
                 onChange={(e) => setOrderNumber(e.target.value)}
-                className="h-10 font-mono text-[13px]"
+                className="h-10 font-mono text-base"
                 placeholder="Auto-generate if empty"
               />
             </div>
           </div>
 
-          <div className="flex items-baseline justify-between rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-2.5 text-[13px]">
+          <div className="flex items-baseline justify-between rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-2.5 text-base">
             <span className="text-cream-700">
               {included.length} of {lines.length} lines
             </span>

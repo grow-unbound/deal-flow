@@ -85,38 +85,38 @@ export function CatalogCompositionTab({ summary, rows }: CatalogCompositionTabPr
       <article className="rounded-[14px] border border-cream-300 bg-white p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="font-display text-[17px] text-cream-950">Filters applied</h3>
-            <p className="mt-1 text-[13px] text-cream-700">
+            <h3 className="font-display text-lg text-cream-950">Filters applied</h3>
+            <p className="mt-1 text-base text-cream-700">
               {summary.included_count} products selected across {summary.brands_covered} brands.
             </p>
           </div>
           <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-2 text-right">
-            <p className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-cream-700">In stock</p>
-            <p className="mt-1 font-display text-[24px] leading-none text-cream-950">{summary.in_stock_count}</p>
+            <p className="font-mono text-xs uppercase tracking-[0.08em] text-cream-700">In stock</p>
+            <p className="mt-1 font-display text-2xl leading-none text-cream-950">{summary.in_stock_count}</p>
           </div>
         </div>
 
         {hasNoSavedFilters ? (
-          <div className="mt-4 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-[13px] text-cream-700">
+          <div className="mt-4 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-base text-cream-700">
             No saved filters. This catalog uses its manually selected product mix.
           </div>
         ) : (
           <div className="mt-4 grid grid-cols-2 gap-3">
             <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3">
-              <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-cream-700">Brands</p>
-              <p className="mt-1 text-[13px] text-cream-900">{renderFilterValue(summary.filters.brand_names)}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Brands</p>
+              <p className="mt-1 text-base text-cream-900">{renderFilterValue(summary.filters.brand_names)}</p>
             </div>
             <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3">
-              <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-cream-700">Categories</p>
-              <p className="mt-1 text-[13px] text-cream-900">{renderFilterValue(summary.filters.category_names)}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Categories</p>
+              <p className="mt-1 text-base text-cream-900">{renderFilterValue(summary.filters.category_names)}</p>
             </div>
             <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3">
-              <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-cream-700">Availability</p>
-              <p className="mt-1 text-[13px] text-cream-900">{AVAILABILITY_LABELS[summary.filters.availability]}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Availability</p>
+              <p className="mt-1 text-base text-cream-900">{AVAILABILITY_LABELS[summary.filters.availability]}</p>
             </div>
             <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3">
-              <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-cream-700">Tag overrides</p>
-              <p className="mt-1 text-[13px] text-cream-900">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Tag overrides</p>
+              <p className="mt-1 text-base text-cream-900">
                 {summary.tag_overrides_count > 0 ? `${summary.tag_overrides_count} product tags customised` : 'No saved overrides'}
               </p>
             </div>
@@ -164,25 +164,25 @@ export function CatalogCompositionTab({ summary, rows }: CatalogCompositionTabPr
                       size={32}
                     />
                     <div className="min-w-0">
-                      <p className="truncate text-[13.5px] font-medium">{row.product_name}</p>
-                      <p className="mt-0.5 font-mono text-[11px] text-cream-700">{row.internal_sku}</p>
+                      <p className="truncate text-base font-medium">{row.product_name}</p>
+                      <p className="mt-0.5 font-mono text-xs text-cream-700">{row.internal_sku}</p>
                     </div>
                   </div>
                 </td>
-                <td className="px-5 py-3.5 text-[13px] text-cream-900">{row.brand_name}</td>
-                <td className="px-5 py-3.5 text-right font-display text-[15px] text-cream-950">{row.catalog_gmv > 0 ? formatSalesInr(row.catalog_gmv, 1) : '—'}</td>
-                <td className="px-5 py-3.5 text-right font-mono text-[13px] text-cream-900">{row.catalog_units_sold}</td>
-                <td className="px-5 py-3.5 text-right font-mono text-[13px] text-cream-900">{row.mrp != null ? formatInr(row.mrp) : '—'}</td>
-                <td className="px-5 py-3.5 text-right font-mono text-[13px] text-cream-900">
+                <td className="px-5 py-3.5 text-base text-cream-900">{row.brand_name}</td>
+                <td className="px-5 py-3.5 text-right font-display text-md text-cream-950">{row.catalog_gmv > 0 ? formatSalesInr(row.catalog_gmv, 1) : '—'}</td>
+                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{row.catalog_units_sold}</td>
+                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{row.mrp != null ? formatInr(row.mrp) : '—'}</td>
+                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">
                   {catalogPrice != null ? formatInr(catalogPrice) : '—'}
                 </td>
                 <td className="px-5 py-3.5 text-right">
                   {label ? (
-                    <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]', tagPillClasses(row.tag))}>
+                    <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em]', tagPillClasses(row.tag))}>
                       {label}
                     </span>
                   ) : (
-                    <span className="text-[13px] text-cream-500">—</span>
+                    <span className="text-base text-cream-500">—</span>
                   )}
                 </td>
               </tr>

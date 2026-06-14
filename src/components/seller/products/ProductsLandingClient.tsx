@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useRole } from '@/hooks/useRole';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useTenantProducts, type TenantProduct, type TenantProductsResponse } from '@/hooks/useProducts';
 import { formatCompactInr } from '@/lib/utils';
@@ -106,6 +107,7 @@ function ProductsLandingContent({
   initialPeriod: SellerLandingPeriod;
 }) {
   const router = useRouter();
+  const { isSellerAssistant } = useRole();
   const { period, setPeriod, horizonLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
   const { data, isLoading, isError, refetch } = useTenantProducts(period, initialData);
   const retainedData = useRetainedValue(data);
@@ -154,12 +156,12 @@ function ProductsLandingContent({
         );
       })
       .sort((a, b) => {
-        if (sortBy === 'GMV (high → low)') return Number(b.gmv_mtd ?? 0) - Number(a.gmv_mtd ?? 0);
-        if (sortBy === 'GMV (low → high)') return Number(a.gmv_mtd ?? 0) - Number(b.gmv_mtd ?? 0);
-        if (sortBy === 'Growth (high → low)') return Number(b.growth_pct ?? 0) - Number(a.growth_pct ?? 0);
+        if (!isSellerAssistant && sortBy === 'GMV (high → low)') return Number(b.gmv_mtd ?? 0) - Number(a.gmv_mtd ?? 0);
+        if (!isSellerAssistant && sortBy === 'GMV (low → high)') return Number(a.gmv_mtd ?? 0) - Number(b.gmv_mtd ?? 0);
+        if (!isSellerAssistant && sortBy === 'Growth (high → low)') return Number(b.growth_pct ?? 0) - Number(a.growth_pct ?? 0);
         return Number(a.on_hand ?? 0) - Number(b.on_hand ?? 0);
       });
-  }, [activeChip, products, search, sortBy]);
+  }, [activeChip, isSellerAssistant, products, search, sortBy]);
 
   if (isLoading && !landingData) return <ProductLandingSkeleton />;
 
@@ -199,8 +201,10 @@ function ProductsLandingContent({
           icon: <Upload size={13} />,
           onClick: () => router.push('/products/import'),
         }}
-        primary="Add a product"
-        onPrimaryClick={() => setAddProductOpen(true)}
+        {...(isSellerAssistant ? {} : {
+          primary: 'Add a product',
+          onPrimaryClick: () => setAddProductOpen(true),
+        })}
       />
 
       {showRefreshingState ? (
@@ -231,18 +235,24 @@ function ProductsLandingContent({
             value: `${lowStock}`,
             sub: '< 14 days of cover',
           },
-          {
-            label: `Revenue · ${metricSuffix}`,
-            value: formatCompactInr(kpis?.revenue_mtd ?? 0),
-            sub: `${growth >= 0 ? '↑ +' : '↓ '}${Math.abs(growth)}% vs last month`,
-          },
+          ...(isSellerAssistant
+            ? [{
+                label: `Units moved · ${metricSuffix}`,
+                value: `${products.reduce((sum, product) => sum + Number(product.units_mtd ?? 0), 0)}`,
+                sub: 'Operational volume this period',
+              }]
+            : [{
+                label: `Revenue · ${metricSuffix}`,
+                value: formatCompactInr(kpis?.revenue_mtd ?? 0),
+                sub: `${growth >= 0 ? '↑ +' : '↓ '}${Math.abs(growth)}% vs last month`,
+              }]),
         ]}
       />
 
       <V3CalloutPanel
         items={[
           {
-            kind: 'risk',
+            kind: 'risk' as const,
             eyebrow: 'Needs attention',
             hint: `${landingData.todays_read?.needs_attention?.length ?? 0}`,
             rows: (landingData.todays_read?.needs_attention ?? []).map((row) => ({
@@ -253,8 +263,8 @@ function ProductsLandingContent({
               trailing: <GrowthPill value={row.growth_pct} />,
             })),
           },
-          {
-            kind: 'info',
+          ...(isSellerAssistant ? [] : [{
+            kind: 'info' as const,
             eyebrow: 'Top performers',
             hint: 'by GMV',
             rows: (landingData.todays_read?.top_performers ?? []).map((row) => ({
@@ -266,7 +276,7 @@ function ProductsLandingContent({
             })),
           },
           {
-            kind: 'opportunity',
+            kind: 'opportunity' as const,
             eyebrow: 'Top risers',
             hint: 'fastest growth',
             rows: (landingData.todays_read?.top_risers ?? []).map((row) => ({
@@ -276,7 +286,7 @@ function ProductsLandingContent({
               reason: `${row.brand} · ${formatCompactInr(row.gmv_mtd)} ${metricSuffix}`,
               trailing: <GrowthPill value={row.growth_pct} />,
             })),
-          },
+          }]),
         ]}
       />
 
@@ -290,7 +300,7 @@ function ProductsLandingContent({
         searchValue={search}
         onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
         onChipChange={(value) => setRouteState((current) => ({ ...current, activeChip: value }))}
-        sortOptions={[...SORT_OPTIONS]}
+        sortOptions={isSellerAssistant ? ['On hand (low → high)'] : [...SORT_OPTIONS]}
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
         </>
@@ -305,10 +315,12 @@ function ProductsLandingContent({
             description={
               search.trim() || activeChip !== 'All brands'
                 ? 'Try a different search or brand filter.'
-                : 'Add products to start tracking inventory and revenue.'
+                : isSellerAssistant
+                  ? 'Products will appear here once your team adds them to the catalog.'
+                  : 'Add products to start tracking inventory and revenue.'
             }
             action={
-              <Button variant="accent" onClick={() => setAddProductOpen(true)} className="gap-1.5">
+              <Button variant="accent" onClick={() => setAddProductOpen(true)} className="gap-1.5" disabled={isSellerAssistant}>
                 <Plus size={13} />
                 Add a product
               </Button>
@@ -321,8 +333,10 @@ function ProductsLandingContent({
           { label: 'On hand', align: 'right', className: 'px-5' },
           { label: 'Days cover', align: 'right', className: 'px-5' },
           { label: `Units · ${metricSuffix}`, align: 'right', className: 'px-5' },
-          { label: 'Revenue', align: 'right', className: 'px-5' },
-          { label: 'Growth', className: 'px-5' },
+          ...(isSellerAssistant ? [] : [
+            { label: 'Revenue', align: 'right' as const, className: 'px-5' },
+            { label: 'Growth', className: 'px-5' },
+          ]),
           { label: 'Status', className: 'px-5' },
           { width: 40, className: 'px-4' },
         ]}
@@ -345,27 +359,27 @@ function ProductsLandingContent({
               className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
               onClick={() => router.push(`/products/${product.id}`)}
             >
-              <td className="px-5 py-3.5 text-[13px] text-cream-900">
+              <td className="px-5 py-3.5 text-base text-cream-900">
                 <div className="ent flex items-center gap-3">
                   <div className="flex h-[38px] w-[38px] shrink-0 items-end justify-center rounded-[10px] bg-[linear-gradient(180deg,#EAF1EE_0%,#C6DAD3_100%)] pb-1">
                     <div className="h-[26px] w-[10px] rounded-[20%_20%_8%_8%/8%_8%_4%_4%] bg-[linear-gradient(180deg,#1F3A34,#142823)]" />
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate text-[13.5px] font-medium text-cream-900">{product.display_name}</p>
-                    <p className="mt-0.5 text-[11.5px] text-cream-700">
+                    <p className="truncate text-base font-medium text-cream-900">{product.display_name}</p>
+                    <p className="mt-0.5 text-sm text-cream-700">
                       {sku} · {toLabelCase(category)}
                     </p>
                   </div>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-[13px] text-cream-900">
+              <td className="px-5 py-3.5 text-base text-cream-900">
                 <div className="inline-flex items-center gap-2">
                   <EntityAvatar initials={getInitials(brandName)} hue={getBrandHue(index)} size={22} />
-                  <span className="text-[12.5px] text-cream-900">{brandName}</span>
+                  <span className="text-sm text-cream-900">{brandName}</span>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-[13px] tabular-nums text-cream-900">{onHand}</td>
-              <td className="px-5 py-3.5 text-right font-mono text-[13px] tabular-nums text-cream-900">
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{onHand}</td>
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                 {daysCover === 0 ? (
                   <span className="font-semibold text-danger-700">0d</span>
                 ) : daysCover < 7 ? (
@@ -374,23 +388,27 @@ function ProductsLandingContent({
                   <span>{daysCover}d</span>
                 )}
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-[13px] tabular-nums text-cream-900">{unitsMtd}</td>
-              <td className="px-5 py-3.5 text-right text-[13px] text-cream-900">
-                <span className="font-display text-[15px] font-medium tabular-nums text-cream-900">{formatCompactInr(gmvMtd)}</span>
-              </td>
-              <td className="px-5 py-3.5 text-[13px] text-cream-900">
-                <GrowthPill value={growthPct} />
-              </td>
-              <td className="px-5 py-3.5 text-[13px] text-cream-900">
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{unitsMtd}</td>
+              {!isSellerAssistant ? (
+                <>
+                  <td className="px-5 py-3.5 text-right text-base text-cream-900">
+                    <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatCompactInr(gmvMtd)}</span>
+                  </td>
+                  <td className="px-5 py-3.5 text-base text-cream-900">
+                    <GrowthPill value={growthPct} />
+                  </td>
+                </>
+              ) : null}
+              <td className="px-5 py-3.5 text-base text-cream-900">
                 <StatusTag tone={tone} label={label} />
               </td>
-              <td className="px-4 py-3.5 text-right text-[16px] text-cream-500">›</td>
+              <td className="px-4 py-3.5 text-right text-md text-cream-500">›</td>
             </tr>
           );
         })}
       </LandingTable>
 
-      <AddProductSheet open={addProductOpen} onOpenChange={setAddProductOpen} hideTrigger />
+      {!isSellerAssistant ? <AddProductSheet open={addProductOpen} onOpenChange={setAddProductOpen} hideTrigger /> : null}
     </PageWrap>
   );
 }

@@ -35,7 +35,7 @@ export function DashboardOnboardingBanner({ tenantId }: DashboardOnboardingBanne
     >
       <Sparkles className="h-4 w-4 shrink-0" />
       <p className="font-sans text-body-sm flex-1">
-        <span className="font-semibold">Welcome to yukti!</span>{' '}
+        <span className="font-semibold">Welcome to Yukti.</span>{' '}
         Complete your setup to start selling - add your first brand and invite your team.
       </p>
       <Link

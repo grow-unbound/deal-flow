@@ -109,7 +109,7 @@ function BrandAvatar({ brand }: { brand: MasterBrand }) {
   return (
     <div
       className={cn(
-        'flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] border font-display text-[12px] font-medium',
+        'flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] border font-display text-sm font-medium',
         bg, text, border,
       )}
     >
@@ -446,15 +446,15 @@ export function AddBrandCommand({
                       <Check size={16} strokeWidth={1.75} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13.5px] font-medium text-cream-900">
+                      <p className="truncate text-base font-medium text-cream-900">
                         Imported from master · {selectedMasterBrand.name}
                       </p>
-                      <p className="text-[11.5px] text-cream-700">Adjust anything below before saving.</p>
+                      <p className="text-sm text-cream-700">Adjust anything below before saving.</p>
                     </div>
                     <button
                       type="button"
                       onClick={switchToCustomBrand}
-                      className="shrink-0 rounded-[6px] px-[6px] py-1 text-[12px] text-cream-700 hover:bg-teal-100 hover:text-teal-900"
+                      className="shrink-0 rounded-[6px] px-[6px] py-1 text-sm text-cream-700 hover:bg-teal-100 hover:text-teal-900"
                     >
                       Clear
                     </button>
@@ -465,15 +465,15 @@ export function AddBrandCommand({
                       <Plus size={16} strokeWidth={1.75} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13.5px] font-medium text-cream-900">
+                      <p className="truncate text-base font-medium text-cream-900">
                         Creating new · {customBrandNameSelected}
                       </p>
-                      <p className="text-[11.5px] text-cream-700">This brand will be added to your account.</p>
+                      <p className="text-sm text-cream-700">This brand will be added to your account.</p>
                     </div>
                     <button
                       type="button"
                       onClick={clearCustomBrandName}
-                      className="shrink-0 rounded-[6px] px-[6px] py-1 text-[12px] text-cream-700 hover:bg-ember-100 hover:text-ember-900"
+                      className="shrink-0 rounded-[6px] px-[6px] py-1 text-sm text-cream-700 hover:bg-ember-100 hover:text-ember-900"
                     >
                       Clear
                     </button>
@@ -528,7 +528,7 @@ export function AddBrandCommand({
                                 </div>
                               ) : brandResults.length > 0 ? (
                                 <>
-                                  <div className="px-[14px] pb-[6px] pt-[10px] text-[10px] font-semibold uppercase tracking-[0.14em] text-cream-700">
+                                  <div className="px-[14px] pb-[6px] pt-[10px] text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">
                                     Master directory · import &amp; prefill
                                   </div>
                                   <div className="pb-1">
@@ -547,13 +547,13 @@ export function AddBrandCommand({
                                         >
                                           <BrandAvatar brand={brand} />
                                           <div className="min-w-0 flex-1">
-                                            <p className="truncate text-[13.5px] font-medium text-cream-900">{brand.name}</p>
-                                            <p className="truncate text-[11.5px] text-cream-700">
+                                            <p className="truncate text-base font-medium text-cream-900">{brand.name}</p>
+                                            <p className="truncate text-sm text-cream-700">
                                               {brand.slug}{brand.description ? ` · ${brand.description}` : ''}
                                             </p>
                                           </div>
                                           {alreadyLinked ? (
-                                            <span className="shrink-0 rounded-full bg-cream-200 px-[7px] py-[2px] text-[10px] font-semibold uppercase tracking-[0.06em] text-cream-600">
+                                            <span className="shrink-0 rounded-full bg-cream-200 px-[7px] py-[2px] text-xs font-semibold uppercase tracking-[0.06em] text-cream-600">
                                               Imported
                                             </span>
                                           ) : null}
@@ -564,7 +564,7 @@ export function AddBrandCommand({
                                   <button
                                     type="button"
                                     onClick={() => selectCustomBrandName(inputValue)}
-                                    className="flex w-full items-center gap-1.5 border-t border-cream-300 bg-cream-50 px-4 py-[10px] text-left text-[12.5px] text-cream-700 transition-colors hover:bg-cream-100"
+                                    className="flex w-full items-center gap-1.5 border-t border-cream-300 bg-cream-50 px-4 py-[10px] text-left text-sm text-cream-700 transition-colors hover:bg-cream-100"
                                   >
                                     <Plus size={13} className="shrink-0 text-cream-700" />
                                     <span>
@@ -577,7 +577,7 @@ export function AddBrandCommand({
                                 <button
                                   type="button"
                                   onClick={() => selectCustomBrandName(inputValue)}
-                                  className="flex w-full items-center gap-1.5 px-4 py-[10px] text-left text-[12.5px] text-cream-700 transition-colors hover:bg-cream-100"
+                                  className="flex w-full items-center gap-1.5 px-4 py-[10px] text-left text-sm text-cream-700 transition-colors hover:bg-cream-100"
                                 >
                                   <Plus size={13} className="shrink-0 text-cream-700" />
                                   <span>
@@ -720,7 +720,7 @@ export function AddBrandCommand({
                         <FormLabel>Phone</FormLabel>
                         <FormControl>
                           <div className="flex items-stretch">
-                            <span className="inline-flex items-center rounded-l-[8px] border border-r-0 border-cream-400 bg-cream-200 px-3 text-[13.5px] text-cream-700">
+                            <span className="inline-flex items-center rounded-l-[8px] border border-r-0 border-cream-400 bg-cream-200 px-3 text-base text-cream-700">
                               +91
                             </span>
                             <Input
@@ -764,7 +764,7 @@ export function AddBrandCommand({
                         <FormLabel>Phone</FormLabel>
                         <FormControl>
                           <div className="flex items-stretch">
-                            <span className="inline-flex items-center rounded-l-[8px] border border-r-0 border-cream-400 bg-cream-200 px-3 text-[13.5px] text-cream-700">
+                            <span className="inline-flex items-center rounded-l-[8px] border border-r-0 border-cream-400 bg-cream-200 px-3 text-base text-cream-700">
                               +91
                             </span>
                             <Input

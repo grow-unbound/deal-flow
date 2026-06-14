@@ -12,6 +12,7 @@ import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasics
 import { DocumentComposerLoadingSkeleton, DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
 import {
   BuyerCardFilled,
+  DocumentMetaCard,
   invoiceBandChipClass,
   LinesTable,
   resolveInvoiceBandStatus,
@@ -290,32 +291,45 @@ export function InvoiceDetailPage({ id }: { id: string }) {
             kind="invoice"
             readOnly
             docNumber={data.doc_number}
+            locationId={null}
+            availableLocations={[]}
             dateIssued={data.invoice_date}
             secondDate={data.due_date ?? ''}
             buyerPoRef={data.buyer_po_ref ?? ''}
-            placeOfSupply={data.place_of_supply}
+            locationLabel="—"
             onDateIssuedChange={noop}
             onSecondDateChange={noop}
             onBuyerPoRefChange={noop}
-            onPlaceOfSupplyChange={noop}
+            onLocationChange={noop}
           />
         )}
         left={buyerContext
           ? (
               <ComposerSidebarCard>
-                <BuyerCardFilled
-                  buyer={buyerContext}
-                  previewTotal={totals.grand_total}
-                  paymentTermsValue={paymentTermsLabel}
-                  readOnly
-                  onPaymentTermsChange={noop}
-                  onChangeBuyer={noop}
-                />
+                <div className="space-y-4">
+                  <BuyerCardFilled
+                    buyer={buyerContext}
+                    previewTotal={totals.grand_total}
+                    paymentTermsValue={paymentTermsLabel}
+                    readOnly
+                    onPaymentTermsChange={noop}
+                    onChangeBuyer={noop}
+                  />
+                  <DocumentMetaCard
+                    readOnly
+                    placeOfSupplyValue={data.place_of_supply}
+                    notesValue={data.seller_note}
+                    freightValue={data.totals.freight}
+                    onPlaceOfSupplyChange={noop}
+                    onNotesChange={noop}
+                    onFreightChange={noop}
+                  />
+                </div>
               </ComposerSidebarCard>
             )
           : (
               <ComposerSidebarCard>
-                <p className="text-[13px] text-cream-700">No buyer on this invoice.</p>
+                <p className="text-base text-cream-700">No buyer on this invoice.</p>
               </ComposerSidebarCard>
             )}
         center={(

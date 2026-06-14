@@ -58,27 +58,27 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
         <article className="col-span-2 overflow-hidden rounded-[14px] border border-cream-300 bg-white">
           <div className="flex items-start justify-between border-b border-cream-300 px-5 py-4">
             <div>
-              <h3 className="font-display text-[17px] text-cream-950">GMV trend</h3>
-              <p className="text-[13px] text-cream-700">{periodLabel(period)} · this brand</p>
+              <h3 className="font-display text-lg text-cream-950">GMV trend</h3>
+              <p className="text-base text-cream-700">{periodLabel(period)} · this brand</p>
             </div>
             <div className="inline-flex rounded-[10px] bg-cream-200 p-1">
               <button
                 type="button"
-                className={`rounded-[8px] px-3 py-1.5 text-[13px] ${period === '12m' ? 'bg-white text-cream-950 shadow-sm' : 'text-cream-700'}`}
+                className={`rounded-[8px] px-3 py-1.5 text-base ${period === '12m' ? 'bg-white text-cream-950 shadow-sm' : 'text-cream-700'}`}
                 onClick={() => setPeriod('12m')}
               >
                 12 mo
               </button>
               <button
                 type="button"
-                className={`rounded-[8px] px-3 py-1.5 text-[13px] ${period === 'ytd' ? 'bg-white text-cream-950 shadow-sm' : 'text-cream-700'}`}
+                className={`rounded-[8px] px-3 py-1.5 text-base ${period === 'ytd' ? 'bg-white text-cream-950 shadow-sm' : 'text-cream-700'}`}
                 onClick={() => setPeriod('ytd')}
               >
                 YTD
               </button>
               <button
                 type="button"
-                className={`rounded-[8px] px-3 py-1.5 text-[13px] ${period === '3m' ? 'bg-white text-cream-950 shadow-sm' : 'text-cream-700'}`}
+                className={`rounded-[8px] px-3 py-1.5 text-base ${period === '3m' ? 'bg-white text-cream-950 shadow-sm' : 'text-cream-700'}`}
                 onClick={() => setPeriod('3m')}
               >
                 3 mo
@@ -87,8 +87,8 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
           </div>
           <div className="px-5 pt-3">
             <div className="flex items-end gap-3">
-              <p className="font-display text-[34px] leading-none text-cream-950">{formatCompactInr(trendCurrent)}</p>
-              <p className="pb-0.5 text-[13px] text-cream-700">
+              <p className="font-display text-3xl leading-none text-cream-950">{formatCompactInr(trendCurrent)}</p>
+              <p className="pb-0.5 text-base text-cream-700">
                 <span className={trendGrowth >= 0 ? 'text-success-500' : 'text-danger-500'}>
                   {trendGrowth >= 0 ? '↑ +' : '↓ '}
                   {Math.abs(trendGrowth).toFixed(1)}%
@@ -105,7 +105,7 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
                   dataKey="month"
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fill: 'var(--cream-700)', fontSize: 12 }}
+                  tick={{ fill: 'var(--cream-700)', fontSize: 'var(--yk-text-sm)' }}
                   tickFormatter={formatMonthTick}
                 />
                 <Tooltip formatter={(value: number) => formatCompactInr(Number(value))} />
@@ -117,8 +117,8 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
 
         <div className="space-y-4">
           <article className="rounded-[14px] border border-cream-300 bg-white p-5">
-            <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-700">This brand</h3>
-            <p className="mt-3 text-[14px] leading-[1.55] text-cream-900">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">This brand</h3>
+            <p className="mt-3 text-base leading-[1.55] text-cream-900">
               Margin is holding steady at <strong>{performance.insights.margin_avg_pct.toFixed(1)}%</strong>. Buyer reach this month is{' '}
               <strong>{performance.insights.buyer_reach}</strong>.
             </p>
@@ -127,24 +127,24 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
           <article className="rounded-[14px] border border-cream-300 bg-white p-5">
             <div className="grid grid-cols-2 gap-y-4">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-700">Margin (avg)</p>
-                <p className="mt-1 font-display text-[26px] leading-none text-cream-950">{performance.insights.margin_avg_pct.toFixed(1)}%</p>
-                <p className="mt-1 text-[11px] text-cream-700">across SKUs</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Margin (avg)</p>
+                <p className="mt-1 font-display text-2xl leading-none text-cream-950">{performance.insights.margin_avg_pct.toFixed(1)}%</p>
+                <p className="mt-1 text-xs text-cream-700">across SKUs</p>
               </div>
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-700">Sell-through</p>
-                <p className="mt-1 font-display text-[26px] leading-none text-cream-950">{performance.insights.sell_through_pct}%</p>
-                <p className="mt-1 text-[11px] text-cream-700">last 30 days</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Sell-through</p>
+                <p className="mt-1 font-display text-2xl leading-none text-cream-950">{performance.insights.sell_through_pct}%</p>
+                <p className="mt-1 text-xs text-cream-700">last 30 days</p>
               </div>
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-700">Repeat rate</p>
-                <p className="mt-1 font-display text-[26px] leading-none text-cream-950">{performance.insights.repeat_rate_pct}%</p>
-                <p className="mt-1 text-[11px] text-cream-700">buyers re-ordering</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Repeat rate</p>
+                <p className="mt-1 font-display text-2xl leading-none text-cream-950">{performance.insights.repeat_rate_pct}%</p>
+                <p className="mt-1 text-xs text-cream-700">buyers re-ordering</p>
               </div>
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-700">Buyer reach</p>
-                <p className="mt-1 font-display text-[26px] leading-none text-cream-950">{performance.insights.buyer_reach}</p>
-                <p className="mt-1 text-[11px] text-cream-700">bought this month</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Buyer reach</p>
+                <p className="mt-1 font-display text-2xl leading-none text-cream-950">{performance.insights.buyer_reach}</p>
+                <p className="mt-1 text-xs text-cream-700">bought this month</p>
               </div>
             </div>
           </article>
@@ -155,25 +155,25 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
         <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
           <div className="flex items-center justify-between border-b border-cream-300 px-5 py-4">
             <div>
-              <h3 className="font-display text-[16px] text-cream-950">Top buyers</h3>
-              <p className="text-[13px] text-cream-700">By GMV · this month</p>
+              <h3 className="font-display text-md text-cream-950">Top buyers</h3>
+              <p className="text-base text-cream-700">By GMV · this month</p>
             </div>
-            <button type="button" className="text-[13px] font-medium text-teal-700 hover:text-teal-800" onClick={() => setBuyersSheetOpen(true)}>See all →</button>
+            <button type="button" className="text-base font-medium text-teal-700 hover:text-teal-800" onClick={() => setBuyersSheetOpen(true)}>See all →</button>
           </div>
           <div>
             {visibleTopBuyers.map((buyer, index) => (
               <div key={buyer.id} className="grid grid-cols-[30px_1fr_auto] items-center gap-3 border-b border-cream-300 px-5 py-3.5">
-                <p className="font-mono text-[14px] text-cream-600">{index + 1}</p>
+                <p className="font-mono text-base text-cream-600">{index + 1}</p>
                 <div className="flex items-center gap-3">
                   <EntityAvatar initials={buyer.name.slice(0, 2).toUpperCase()} hue={index % 2 === 0 ? 'teal' : 'ember'} size={34} />
                   <div>
-                    <p className="text-[13.5px] font-medium text-cream-900">{buyer.name}</p>
-                    <p className="font-mono text-[10.5px] uppercase tracking-[0.04em] text-cream-700">{buyer.city}</p>
+                    <p className="text-base font-medium text-cream-900">{buyer.name}</p>
+                    <p className="font-mono text-xs uppercase tracking-[0.04em] text-cream-700">{buyer.city}</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="font-display text-[16px] leading-none text-cream-950">{formatCompactInr(buyer.spend)}</p>
-                  <p className="font-mono text-[11px] text-cream-700">{buyer.orders_label}</p>
+                  <p className="font-display text-md leading-none text-cream-950">{formatCompactInr(buyer.spend)}</p>
+                  <p className="font-mono text-xs text-cream-700">{buyer.orders_label}</p>
                 </div>
               </div>
             ))}
@@ -183,22 +183,22 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
         <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
           <div className="flex items-center justify-between border-b border-cream-300 px-5 py-4">
             <div>
-              <h3 className="font-display text-[16px] text-cream-950">Top SKUs</h3>
-              <p className="text-[13px] text-cream-700">By units · this month</p>
+              <h3 className="font-display text-md text-cream-950">Top SKUs</h3>
+              <p className="text-base text-cream-700">By units · this month</p>
             </div>
-            <button type="button" className="text-[13px] font-medium text-teal-700 hover:text-teal-800" onClick={() => setSkusSheetOpen(true)}>See all →</button>
+            <button type="button" className="text-base font-medium text-teal-700 hover:text-teal-800" onClick={() => setSkusSheetOpen(true)}>See all →</button>
           </div>
           <div>
             {visibleTopSkus.map((sku, index) => (
               <div key={sku.product_id} className="grid grid-cols-[30px_1fr_auto] items-center gap-3 border-b border-cream-300 px-5 py-3.5">
-                <p className="font-mono text-[14px] text-cream-600">{index + 1}</p>
+                <p className="font-mono text-base text-cream-600">{index + 1}</p>
                 <div>
-                  <p className="text-[13.5px] font-medium text-cream-900">{sku.product}</p>
-                  <p className="font-mono text-[10.5px] uppercase tracking-[0.04em] text-cream-700">{sku.sku ?? sku.product_id}</p>
+                  <p className="text-base font-medium text-cream-900">{sku.product}</p>
+                  <p className="font-mono text-xs uppercase tracking-[0.04em] text-cream-700">{sku.sku ?? sku.product_id}</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-display text-[16px] leading-none text-cream-950">{formatCompactInr(sku.revenue)}</p>
-                  <p className="font-mono text-[11px] text-cream-700">{Math.round(sku.units)} units</p>
+                  <p className="font-display text-md leading-none text-cream-950">{formatCompactInr(sku.revenue)}</p>
+                  <p className="font-mono text-xs text-cream-700">{Math.round(sku.units)} units</p>
                 </div>
               </div>
             ))}
@@ -208,8 +208,8 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
 
       <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
         <div className="border-b border-cream-300 px-5 py-4">
-          <h3 className="font-display text-[17px] text-cream-950">Catalog history</h3>
-          <p className="text-[13px] text-cream-700">What you sent · how it landed</p>
+          <h3 className="font-display text-lg text-cream-950">Catalog history</h3>
+          <p className="text-base text-cream-700">What you sent · how it landed</p>
         </div>
         <LandingTable
           columns={[
@@ -224,10 +224,10 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
           {performance.catalog_history.map((catalog) => (
             <tr key={catalog.id} className="border-b border-cream-300 bg-white">
               <td className="px-5 py-3.5 text-cream-900">{catalog.name}</td>
-              <td className="px-5 py-3.5 font-mono text-[12px] text-cream-700">{formatSent(catalog.sent_at)}</td>
+              <td className="px-5 py-3.5 font-mono text-sm text-cream-700">{formatSent(catalog.sent_at)}</td>
               <td className="px-5 py-3.5 text-cream-900">{catalog.cohort}</td>
-              <td className="px-5 py-3.5 text-right font-mono text-[14px] text-cream-900">{catalog.orders}</td>
-              <td className="px-5 py-3.5 text-right font-display text-[16px] leading-none text-cream-950">{formatCompactInr(catalog.gmv)}</td>
+              <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{catalog.orders}</td>
+              <td className="px-5 py-3.5 text-right font-display text-md leading-none text-cream-950">{formatCompactInr(catalog.gmv)}</td>
             </tr>
           ))}
         </LandingTable>
@@ -247,13 +247,13 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
         ]}
         renderRow={(buyer, index) => (
           <tr key={buyer.id} className="border-b border-cream-300 bg-white">
-            <td className="px-5 py-3.5 font-mono text-[13px] text-cream-700">{index + 1}</td>
+            <td className="px-5 py-3.5 font-mono text-base text-cream-700">{index + 1}</td>
             <td className="px-5 py-3.5 text-cream-900">
               <p className="font-medium">{buyer.name}</p>
-              <p className="font-mono text-[10.5px] uppercase tracking-[0.04em] text-cream-700">{buyer.city}</p>
+              <p className="font-mono text-xs uppercase tracking-[0.04em] text-cream-700">{buyer.city}</p>
             </td>
-            <td className="px-5 py-3.5 text-right font-display text-[15px] text-cream-950">{formatCompactInr(buyer.spend)}</td>
-            <td className="px-5 py-3.5 text-right font-mono text-[12px] text-cream-700">{buyer.orders_label}</td>
+            <td className="px-5 py-3.5 text-right font-display text-md text-cream-950">{formatCompactInr(buyer.spend)}</td>
+            <td className="px-5 py-3.5 text-right font-mono text-sm text-cream-700">{buyer.orders_label}</td>
           </tr>
         )}
       />
@@ -272,12 +272,12 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
         ]}
         renderRow={(sku, index) => (
           <tr key={sku.product_id} className="border-b border-cream-300 bg-white">
-            <td className="px-5 py-3.5 font-mono text-[13px] text-cream-700">{index + 1}</td>
+            <td className="px-5 py-3.5 font-mono text-base text-cream-700">{index + 1}</td>
             <td className="px-5 py-3.5 text-cream-900">
               <p className="font-medium">{sku.product || 'Unnamed product'}</p>
-              <p className="font-mono text-[10.5px] uppercase tracking-[0.04em] text-cream-700">{sku.sku ?? sku.product_id}</p>
+              <p className="font-mono text-xs uppercase tracking-[0.04em] text-cream-700">{sku.sku ?? sku.product_id}</p>
             </td>
-            <td className="px-5 py-3.5 text-right font-display text-[15px] text-cream-950">{formatCompactInr(sku.revenue)}</td>
+            <td className="px-5 py-3.5 text-right font-display text-md text-cream-950">{formatCompactInr(sku.revenue)}</td>
             <td className="px-5 py-3.5 text-right text-cream-700">{Math.round(sku.units)}</td>
           </tr>
         )}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
 type StorageMode = 'session' | 'local';
@@ -114,6 +114,9 @@ export function useRouteSnapshot<T>({
   const [state, setState] = useState<T>(initialRead.value);
   const [restoreMeta, setRestoreMeta] = useState<SnapshotMeta>(initialRead.meta);
   const previousKeyRef = useRef(resolvedStorageKey);
+  const initialStateRef = useRef(initialState);
+
+  initialStateRef.current = initialState;
 
   useEffect(() => {
     if (!enabled) return;
@@ -129,18 +132,18 @@ export function useRouteSnapshot<T>({
     setRestoreMeta(next.meta);
   }, [enabled, initialState, mode, resolvedStorageKey, version]);
 
-  const clearState = () => {
+  const clearState = useCallback(() => {
     const storage = getStorage(mode);
     storage?.removeItem(resolvedStorageKey);
-    setState(initialState);
+    setState(initialStateRef.current);
     setRestoreMeta({ restored: false, savedAt: null });
-  };
+  }, [mode, resolvedStorageKey]);
 
-  const updateState = (next: StateUpdater<T>) => {
+  const updateState = useCallback((next: StateUpdater<T>) => {
     setState((previous) =>
       typeof next === 'function' ? (next as (current: T) => T)(previous) : next,
     );
-  };
+  }, []);
 
   return {
     state,

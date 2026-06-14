@@ -118,7 +118,8 @@ export async function PUT(
   // seller_assistant cannot update financial fields — strip them silently
   if (claims.role === 'seller_assistant') {
     delete updateData.credit_limit;
-    delete updateData.payment_terms_days;
+    delete updateData.tier;
+    delete updateData.default_cohort_id;
   }
 
   // external_ref is immutable once set (non-null, non-empty) — remove from update

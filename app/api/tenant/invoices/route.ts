@@ -7,6 +7,11 @@ import { effectiveInvoiceStatus } from '@/lib/invoice-status';
 import { loadInvoiceDocument } from '@/lib/invoices/load-tenant-invoice-composer';
 import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
+import {
+  applySellerLocationScope,
+  loadAccessibleSellerLocations,
+  resolveDefaultSellerLocationId,
+} from '@/lib/server/seller-location-access';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
 
@@ -28,6 +33,7 @@ export const dynamic = 'force-dynamic';
 
 interface InvoiceDbRow {
   id: string;
+  location_id: string | null;
   invoice_number: string;
   buyer_id: string;
   order_id: string | null;
@@ -172,15 +178,18 @@ export async function GET(request: NextRequest) {
 
     const [{ data: invoiceRows, error: invErr }, { data: buyerRows }, { data: orderRows }, { data: estimateRows }] =
       await Promise.all([
-        db
-          .schema('app')
-          .from('invoices')
-          .select(
-            'id, invoice_number, buyer_id, order_id, estimate_id, status, total_amount, outstanding_balance, invoice_date, due_date, paid_at, created_by, created_at',
-          )
-          .eq('tenant_id', tenantId)
-          .is('deleted_at', null)
-          .order('created_at', { ascending: false }),
+        applySellerLocationScope(
+          db
+            .schema('app')
+            .from('invoices')
+            .select(
+              'id, location_id, invoice_number, buyer_id, order_id, estimate_id, status, total_amount, outstanding_balance, invoice_date, due_date, paid_at, created_by, created_at',
+            )
+            .eq('tenant_id', tenantId)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false }),
+          claims,
+        ),
         db.schema('app').from('buyers').select('id, business_name, geography').eq('tenant_id', tenantId).is('deleted_at', null),
         db.schema('app').from('orders').select('id, order_number').eq('tenant_id', tenantId).is('deleted_at', null),
         db
@@ -438,12 +447,18 @@ export async function POST(request: NextRequest) {
     })();
     const nextNum = String(lastNum + 1).padStart(4, '0');
     const invoice_number = `INV-${nextNum}`;
+    const availableLocations = await loadAccessibleSellerLocations(db as any, claims.tenant_id, claims);
+    const locationId = resolveDefaultSellerLocationId(claims, availableLocations);
+    if (!locationId) {
+      return NextResponse.json({ error: 'No accessible location available for this user' }, { status: 400 });
+    }
 
     const { data: inserted, error: insertError } = await db
       .schema('app')
       .from('invoices')
       .insert({
         tenant_id: claims.tenant_id,
+        location_id: locationId,
         invoice_number,
         status: 'draft',
         invoice_date: today,
@@ -466,7 +481,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create invoice draft' }, { status: 500 });
     }
 
-    const result = await loadInvoiceDocument(db, claims.tenant_id, inserted.id, claims.role ?? null);
+    const result = await loadInvoiceDocument(db, claims.tenant_id, inserted.id, claims.role ?? null, claims);
     if (!result || result === 'forbidden') {
       return NextResponse.json({ error: 'Draft created but could not be loaded' }, { status: 500 });
     }

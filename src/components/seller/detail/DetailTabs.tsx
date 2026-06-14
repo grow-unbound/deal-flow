@@ -23,13 +23,13 @@ export function DetailTabs({ tabs, active, onChange }: DetailTabsProps) {
             type="button"
             onClick={() => onChange?.(tab.id)}
             className={cn(
-              'inline-flex items-center border-b-2 border-transparent px-5 py-3.5 text-[13px] font-medium text-cream-700 transition-colors hover:text-cream-900',
+              'inline-flex items-center border-b-2 border-transparent px-5 py-3.5 text-base font-medium text-cream-700 transition-colors hover:text-cream-900',
               isActive && 'border-teal-500 text-cream-950'
             )}
           >
             <span>{tab.label}</span>
             {tab.badge != null ? (
-              <span className="ml-2 rounded-full bg-cream-200 px-2 py-0.5 text-[10px] font-semibold text-cream-700">
+              <span className="ml-2 rounded-full bg-cream-200 px-2 py-0.5 text-xs font-semibold text-cream-700">
                 {tab.badge}
               </span>
             ) : null}

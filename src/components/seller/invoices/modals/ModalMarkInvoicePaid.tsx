@@ -96,7 +96,7 @@ export function ModalMarkInvoicePaid({
         <DialogBody className="space-y-4">
           <DateTimePicker id="inv-paid-at" label="Paid at" value={paidAtLocal} onChange={setPaidAtLocal} />
           <div className="space-y-2">
-            <Label className="text-[13px]">Payment method</Label>
+            <Label className="text-base">Payment method</Label>
             <Select value={method} onValueChange={setMethod}>
               <SelectTrigger className="h-9">
                 <SelectValue />
@@ -111,28 +111,28 @@ export function ModalMarkInvoicePaid({
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="inv-pay-ref" className="text-[13px]">
+            <Label htmlFor="inv-pay-ref" className="text-base">
               Payment reference <span className="text-cream-500">(optional)</span>
             </Label>
             <Input id="inv-pay-ref" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="UPI / NEFT ref" />
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <Label htmlFor="inv-pay-amt" className="text-[13px]">
+              <Label htmlFor="inv-pay-amt" className="text-base">
                 Amount
               </Label>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-7 text-[11px]"
+                className="h-7 text-xs"
                 onClick={() => setAmount(formatInrInput(String(roundedOutstanding)))}
               >
                 Full amount
               </Button>
             </div>
             <div className="flex items-stretch">
-              <span className="inline-flex items-center rounded-l-[8px] border border-r-0 border-cream-400 bg-cream-200 px-3 text-[13.5px] text-cream-700 select-none">
+              <span className="inline-flex items-center rounded-l-[8px] border border-r-0 border-cream-400 bg-cream-200 px-3 text-base text-cream-700 select-none">
                 ₹
               </span>
               <Input
@@ -146,7 +146,7 @@ export function ModalMarkInvoicePaid({
               />
             </div>
             {exceedsDue ? (
-              <div id="inv-pay-amt-warning" className="callout callout--warning text-[12px] leading-[1.5]" role="alert">
+              <div id="inv-pay-amt-warning" className="callout callout--warning text-sm leading-[1.5]" role="alert">
                 Payment exceeds amount due ({formatInrDecimals(roundedOutstanding)}). Use &ldquo;Full amount&rdquo; or enter up to the outstanding balance.
               </div>
             ) : null}

@@ -62,10 +62,10 @@ export function ModalSendInvoice({
           <DialogTitle>Send payment reminder</DialogTitle>
         </DialogHeader>
         <DialogBody className="space-y-3">
-          <Label htmlFor="remind-msg" className="text-[13px]">
+          <Label htmlFor="remind-msg" className="text-base">
             Message
           </Label>
-          <Textarea id="remind-msg" rows={5} value={message} onChange={(e) => setMessage(e.target.value)} className="text-[13px]" />
+          <Textarea id="remind-msg" rows={5} value={message} onChange={(e) => setMessage(e.target.value)} className="text-base" />
         </DialogBody>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>

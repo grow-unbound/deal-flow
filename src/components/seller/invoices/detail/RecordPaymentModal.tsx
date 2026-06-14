@@ -72,7 +72,7 @@ export function RecordPaymentModal({
             onChange={setPaidAtLocal}
           />
           <div className="space-y-2">
-            <Label htmlFor="pay-ref" className="text-[13px]">
+            <Label htmlFor="pay-ref" className="text-base">
               Payment reference <span className="text-cream-500">(optional)</span>
             </Label>
             <Input
@@ -83,7 +83,7 @@ export function RecordPaymentModal({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="pay-amt" className="text-[13px]">
+            <Label htmlFor="pay-amt" className="text-base">
               Amount
             </Label>
             <Input id="pay-amt" type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />

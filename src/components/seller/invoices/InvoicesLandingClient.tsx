@@ -302,33 +302,33 @@ function InvoicesLandingContent({
                 className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
                 onClick={() => router.push(`/invoices/${row.id}`)}
               >
-                <td className="px-5 py-3.5 font-mono text-[12px] text-cream-800">{row.invoice_number}</td>
-                <td className="px-5 py-3.5 text-[13px] text-cream-900">
+                <td className="px-5 py-3.5 font-mono text-sm text-cream-800">{row.invoice_number}</td>
+                <td className="px-5 py-3.5 text-base text-cream-900">
                   <div className="ent flex items-center gap-3">
                     <EntityAvatar initials={row.buyer_initials} hue={row.buyer_hue} size={30} />
                     <div className="min-w-0">
-                      <p className="truncate text-[13px] font-medium text-cream-900">{row.buyer_name}</p>
-                      <p className="mt-0.5 truncate text-[11px] text-cream-600">{buyerGeographyLabel(row)}</p>
+                      <p className="truncate text-base font-medium text-cream-900">{row.buyer_name}</p>
+                      <p className="mt-0.5 truncate text-xs text-cream-600">{buyerGeographyLabel(row)}</p>
                     </div>
                   </div>
                 </td>
                 <td className="px-5 py-3.5">
-                  <p className="truncate text-[12px] text-cream-900">{row.source_label}</p>
-                  <p className="mt-0.5 truncate text-[11px] text-cream-600">{row.source_detail}</p>
+                  <p className="truncate text-sm text-cream-900">{row.source_label}</p>
+                  <p className="mt-0.5 truncate text-xs text-cream-600">{row.source_detail}</p>
                 </td>
-                <td className="px-5 py-3.5 text-right font-mono text-[13px] text-cream-900">{row.items_count}</td>
+                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{row.items_count}</td>
                 <td className="num num-display px-5 py-3.5 text-right text-cream-900">
-                  <p className="font-mono text-[12px] text-cream-900">{formatInr(row.total_amount)}</p>
-                  {row.outstanding_amount > 0 ? <p className="mt-0.5 text-[11px] text-cream-600">{formatInr(row.outstanding_amount)} due</p> : null}
+                  <p className="font-mono text-sm text-cream-900">{formatInr(row.total_amount)}</p>
+                  {row.outstanding_amount > 0 ? <p className="mt-0.5 text-xs text-cream-600">{formatInr(row.outstanding_amount)} due</p> : null}
                 </td>
                 <td className="px-5 py-3.5">
                   <StatusTag label={row.status.label} tone={row.status.tone} />
                 </td>
-                <td className="px-5 py-3.5 font-mono text-[12px] text-cream-700">{formatDate(row.created_at)}</td>
-                <td className="px-5 py-3.5 font-mono text-[12px] text-cream-700">
+                <td className="px-5 py-3.5 font-mono text-sm text-cream-700">{formatDate(row.created_at)}</td>
+                <td className="px-5 py-3.5 font-mono text-sm text-cream-700">
                   {row.due_date ? formatDate(row.due_date) : '—'}
                 </td>
-                <td className="chev px-4 py-3.5 pr-4 text-right text-[16px] text-cream-500">›</td>
+                <td className="chev px-4 py-3.5 pr-4 text-right text-md text-cream-500">›</td>
               </tr>
             ))}
           </LandingTable>

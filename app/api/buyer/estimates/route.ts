@@ -1,8 +1,8 @@
 import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { getBuyerAppContext } from '@/lib/auth';
 import { supabaseAdmin, supabase } from '@/lib/supabase';
 import { getPostHogClient } from '@/lib/posthog-server';
+import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 
 // Exported types consumed by checkout/page.tsx and EnquiriesTab
 export interface EstimateRequest {
@@ -35,10 +35,11 @@ interface EstimateRow {
 
 export async function POST(request: NextRequest): Promise<NextResponse<EstimateResponse>> {
   try {
-    const context = await getBuyerAppContext(request);
-    if (!context.tenant_id) {
+    const profile = await requireBuyerAccessProfile(request);
+    if (!profile?.context.tenant_id) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+    const context = profile.context;
 
     let body: EstimateRequest;
     try {
@@ -76,11 +77,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
       });
     }
 
-    if (!context.buyer_id) {
+    if (!profile.buyer?.id) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { tenant_id, buyer_id, sub } = context;
+    const tenant_id = context.tenant_id;
+    const buyer_id = profile.buyer.id;
+    const { sub } = context;
     const db = supabaseAdmin ?? supabase;
 
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -162,11 +165,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     try {
       const ph = getPostHogClient();
       ph.capture({
-        distinctId: context.buyer_id,
+        distinctId: buyer_id,
         event: 'inquiry_created',
         properties: {
           tenant_id: context.tenant_id,
-          buyer_id: context.buyer_id,
+          buyer_id,
           estimate_id: typed.id,
           estimate_number: typed.estimate_number,
           item_count: items.length,
@@ -188,20 +191,22 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
 
 export async function GET(request: NextRequest) {
   try {
-    const context = await getBuyerAppContext(request);
-    if (!context.tenant_id) {
+    const profile = await requireBuyerAccessProfile(request);
+    if (!profile?.context.tenant_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const context = profile.context;
 
     if (context.mode === 'preview') {
       return NextResponse.json({ estimates: [] });
     }
 
-    if (!context.buyer_id) {
+    if (!profile.buyer?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { tenant_id, buyer_id } = context;
+    const tenant_id = context.tenant_id;
+    const buyer_id = profile.buyer.id;
     const db = supabaseAdmin ?? supabase;
     const limit = Math.min(Number(request.nextUrl.searchParams.get('limit') ?? '50'), 200);
 
