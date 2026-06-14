@@ -47,14 +47,14 @@ export function PageHeader({
   return (
     <header className="mb-7 flex items-end justify-between gap-6">
       <div>
-        <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-cream-700">{eyebrow}</p>
-        <h1 className="font-display text-[34px] font-medium leading-[1.05] tracking-[-0.018em] text-cream-900">{title}</h1>
-        <p className="mt-[10px] max-w-[64ch] text-[14px] leading-[1.55] text-cream-700">{subtitle}</p>
+        <p className="eyebrow text-cream-700">{eyebrow}</p>
+        <h1 className="font-display text-3xl font-extrabold leading-[1.05] tracking-[-0.02em] text-cream-900">{title}</h1>
+        <p className="mt-[10px] max-w-[64ch] text-md leading-[1.55] text-cream-700">{subtitle}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2 pb-0.5">
         {showPeriodMenu ? (
           <DropdownMenu>
-            <DropdownMenuTrigger className="inline-flex items-center gap-1 rounded-[8px] border border-cream-400 bg-white px-3 py-[7px] text-[12.5px] text-cream-800 hover:bg-cream-100">
+            <DropdownMenuTrigger className="inline-flex items-center gap-1 rounded-[10px] border border-cream-400 bg-white px-3 py-[7px] text-sm text-cream-800 hover:bg-cream-100">
               <span className="text-cream-700">Showing</span>
               <span className="font-semibold">{horizon}</span>
               <ChevronDown size={14} />
@@ -74,7 +74,7 @@ export function PageHeader({
         ) : (
           <button
             type="button"
-            className="inline-flex items-center gap-2 rounded-[8px] border border-cream-400 bg-white px-3 py-[7px] text-[12.5px] text-cream-800 hover:bg-cream-100"
+            className="inline-flex items-center gap-2 rounded-[10px] border border-cream-400 bg-white px-3 py-[7px] text-sm text-cream-800 hover:bg-cream-100"
           >
             <span className="text-cream-700">Showing</span>
             <span className="font-semibold">{horizon}</span>
@@ -87,7 +87,7 @@ export function PageHeader({
             {secondary.label}
           </Button>
         ) : null}
-        <Button variant="accent" onClick={onPrimaryClick}>
+        <Button variant="primary" onClick={onPrimaryClick}>
           <Plus size={13} />
           {primary}
         </Button>

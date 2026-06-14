@@ -47,8 +47,8 @@ export function TotalsCard({
       ) : null}
 
       <section className="rounded-[14px] border border-cream-300 bg-white p-4">
-        <p className="text-[13px] font-semibold text-cream-950">{title}</p>
-        <div className="mt-4 space-y-3 text-[12px] text-cream-700">
+        <p className="text-base font-semibold text-cream-950">{title}</p>
+        <div className="mt-4 space-y-3 text-sm text-cream-700">
           <TotalRow label={`Subtotal (${lineCount} line${lineCount === 1 ? '' : 's'})`} value={formatInr(totals.subtotal)} previous={previousTotals?.subtotal ?? null} />
           <TotalRow label="Document discount" value={formatInr(totals.discount_flat)} previous={previousTotals?.discount_flat ?? null} />
           {resolvedTaxRows.map((row) => (
@@ -66,15 +66,15 @@ export function TotalsCard({
             <TotalRow label="Grand total" value={formatInr(totals.grand_total)} previous={previousTotals?.grand_total ?? null} strong />
           </div>
           {stagedChanges && stagedChanges.length > 0 ? (
-            <div className="mt-4 space-y-2 rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3 text-[12px] text-amber-900">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-800">Staged changes</p>
+            <div className="mt-4 space-y-2 rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-800">Staged changes</p>
               {stagedChanges.map((row) => (
                 <div key={row.label} className="flex items-start justify-between gap-4">
                   <span className="text-amber-800">{row.label}</span>
                   <span className="max-w-[180px] text-right font-medium text-amber-950">{row.value}</span>
                 </div>
               ))}
-              {stagedCallout ? <div className="pt-2 text-[12px] leading-[1.5] text-amber-900">{stagedCallout}</div> : null}
+              {stagedCallout ? <div className="pt-2 text-sm leading-[1.5] text-amber-900">{stagedCallout}</div> : null}
             </div>
           ) : null}
         </div>
@@ -100,8 +100,8 @@ function TotalRow({
     <div className={cn('flex items-center justify-between gap-4', rowClassName)}>
       <span className={cn(strong ? 'font-semibold text-cream-950' : '')}>{label}</span>
       <div className="flex items-center gap-2">
-        {previous != null ? <span className="text-[11px] text-cream-500 line-through">{formatInr(previous)}</span> : null}
-        <span className={cn('font-mono text-[12px] text-cream-900', strong && 'text-[14px] font-semibold')}>{value}</span>
+        {previous != null ? <span className="text-xs text-cream-500 line-through">{formatInr(previous)}</span> : null}
+        <span className={cn('font-mono text-sm text-cream-900', strong && 'text-base font-semibold')}>{value}</span>
       </div>
     </div>
   );

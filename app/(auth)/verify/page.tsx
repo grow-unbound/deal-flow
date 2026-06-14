@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { OtpForm } from '@/components/buyer/auth/OtpForm';
+import { YuktiLogo } from '@/components/brand/YuktiLogo';
 
 const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
 
@@ -79,12 +80,8 @@ function VerifyOtpForm() {
 
   return (
     <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
-      {/* Logo */}
-      <div className="flex items-center gap-3 mb-7">
-        <div className="w-9 h-9 bg-teal-500 rounded-md flex items-center justify-center shrink-0">
-          <span className="text-cream-50 font-display font-medium text-sm">yk</span>
-        </div>
-        <span className="font-display font-medium text-teal-500 text-xl">yukti</span>
+      <div className="mb-7 flex justify-center">
+        <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
       </div>
 
       <h1 className="text-h3 font-display text-cream-900 mb-1">Enter OTP</h1>
@@ -121,9 +118,8 @@ function VerifyOtpForm() {
 function VerifyOtpFallback() {
   return (
     <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
-      <div className="flex items-center gap-3 mb-7">
-        <div className="w-9 h-9 bg-teal-300 rounded-md animate-pulse" />
-        <div className="h-6 w-28 rounded bg-cream-200 animate-pulse" />
+      <div className="mb-7 flex justify-center">
+        <div className="h-14 w-[76px] rounded-xl bg-cream-200 animate-pulse" />
       </div>
       <div className="space-y-3 mb-6">
         <div className="h-4 w-32 rounded bg-cream-200 animate-pulse" />

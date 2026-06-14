@@ -12,11 +12,11 @@ export function SellerTopbar({ title, subtitle, eyebrow, action }: SellerTopbarP
     <div className="mb-7 flex items-end justify-between gap-6 px-8 pt-6">
       <div>
         {eyebrow ? (
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">
             {eyebrow}
           </p>
         ) : null}
-        <h1 className="font-display text-[2rem] font-medium leading-none tracking-[-0.015em] text-cream-900">
+        <h1 className="font-display text-2xl font-extrabold leading-[1.05] tracking-[-0.025em] text-cream-900">
           {title}
         </h1>
         {subtitle ? (

@@ -169,7 +169,7 @@ export function GeneralSettingsForm() {
         </div>
 
         <div className="space-y-3">
-          <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-cream-600">Registered Address</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">Registered Address</p>
           <div className="space-y-2">
             <Label htmlFor="addr1">Address line 1</Label>
             <Input id="addr1" value={draft.business.address.line1} onChange={(e) => updateAddress({ line1: e.target.value })} />

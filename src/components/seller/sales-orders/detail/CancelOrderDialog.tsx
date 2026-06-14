@@ -42,11 +42,11 @@ export function CancelOrderDialog({ open, onOpenChange, onConfirm, isPending }: 
           <DialogTitle>Cancel order</DialogTitle>
         </DialogHeader>
         <DialogBody className="space-y-3">
-          <p className="text-[13px] text-cream-700">
+          <p className="text-base text-cream-700">
             This will cancel the order before dispatch. Please provide a reason for your records.
           </p>
           <div className="space-y-2">
-            <Label htmlFor="cancel-reason" className="text-[13px]">
+            <Label htmlFor="cancel-reason" className="text-base">
               Reason <span className="text-danger-600">*</span>
             </Label>
             <Textarea

@@ -31,14 +31,14 @@ export function BrandDetailsTab({ details, onSave, isSaving }: BrandDetailsTabPr
   return (
     <section className="mt-5 overflow-hidden rounded-[14px] border border-cream-300 bg-white">
       <div className="flex items-center justify-between border-b border-cream-300 px-5 py-4">
-        <h2 className="font-display text-[17px] text-cream-950">Details</h2>
+        <h2 className="font-display text-lg text-cream-950">Details</h2>
       </div>
 
       <div className="p-5">
-        <table className="w-full text-[13px]">
+        <table className="w-full text-base">
           <tbody>
             <tr className="border-b border-cream-200">
-              <td className="w-64 py-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-cream-700">Display Name</td>
+              <td className="w-64 py-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Display Name</td>
               <td className="py-3 text-cream-900">
                 {isEditing ? (
                   <Input
@@ -51,7 +51,7 @@ export function BrandDetailsTab({ details, onSave, isSaving }: BrandDetailsTabPr
               </td>
             </tr>
             <tr className="border-b border-cream-200">
-              <td className="py-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-cream-700">Margin %</td>
+              <td className="py-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Margin %</td>
               <td className="py-3 text-cream-900">
                 {isEditing ? (
                   <Input value={form.margin_pct} onChange={(event) => setForm((prev) => ({ ...prev, margin_pct: event.target.value }))} />
@@ -61,7 +61,7 @@ export function BrandDetailsTab({ details, onSave, isSaving }: BrandDetailsTabPr
               </td>
             </tr>
             <tr className="border-b border-cream-200">
-              <td className="py-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-cream-700">Exclusivity</td>
+              <td className="py-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Exclusivity</td>
               <td className="py-3 text-cream-900">
                 {isEditing ? (
                   <label className="inline-flex items-center gap-2">
@@ -80,7 +80,7 @@ export function BrandDetailsTab({ details, onSave, isSaving }: BrandDetailsTabPr
               </td>
             </tr>
             <tr className="border-b border-cream-200">
-              <td className="py-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-cream-700">External Ref</td>
+              <td className="py-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">External Ref</td>
               <td className="py-3 text-cream-900">
                 {isEditing ? (
                   <Input
@@ -93,7 +93,7 @@ export function BrandDetailsTab({ details, onSave, isSaving }: BrandDetailsTabPr
               </td>
             </tr>
             <tr className="border-b border-cream-200">
-              <td className="py-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-cream-700">Status</td>
+              <td className="py-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Status</td>
               <td className="py-3 text-cream-900">
                 {isEditing ? (
                   <label className="inline-flex items-center gap-2">
@@ -112,8 +112,8 @@ export function BrandDetailsTab({ details, onSave, isSaving }: BrandDetailsTabPr
               </td>
             </tr>
             <tr>
-              <td className="py-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-cream-700">Last Updated</td>
-              <td className="py-3 font-mono text-[12px] text-cream-900">{new Date(details.updated_at).toLocaleString('en-IN')}</td>
+              <td className="py-3 text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Last Updated</td>
+              <td className="py-3 font-mono text-sm text-cream-900">{new Date(details.updated_at).toLocaleString('en-IN')}</td>
             </tr>
           </tbody>
         </table>

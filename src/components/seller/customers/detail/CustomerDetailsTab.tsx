@@ -13,8 +13,8 @@ interface CustomerDetailsTabProps {
 function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="space-y-1">
-      <p className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">{label}</p>
-      <p className={mono ? 'font-mono text-[13px] text-cream-900' : 'text-[13px] text-cream-900'}>{value}</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">{label}</p>
+      <p className={mono ? 'font-mono text-base text-cream-900' : 'text-base text-cream-900'}>{value}</p>
     </div>
   );
 }
@@ -26,9 +26,9 @@ export function CustomerDetailsTab({ id: _id, details, onEdit }: CustomerDetails
     <section className="mt-5 space-y-4">
       <article className="rounded-[14px] border border-cream-300 bg-white p-5">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-display text-[17px] text-cream-950">Buyer details</h3>
+          <h3 className="font-display text-lg text-cream-950">Buyer details</h3>
           {isSellerAdmin ? (
-            <button type="button" onClick={onEdit} className="text-[13px] font-medium text-teal-700 hover:text-teal-800">
+            <button type="button" onClick={onEdit} className="text-base font-medium text-teal-700 hover:text-teal-800">
               Edit
             </button>
           ) : null}
@@ -46,7 +46,7 @@ export function CustomerDetailsTab({ id: _id, details, onEdit }: CustomerDetails
 
       <div className="grid grid-cols-2 gap-4">
         <article className="rounded-[14px] border border-cream-300 bg-white p-5">
-          <h3 className="font-display text-[15px] text-cream-950">Location</h3>
+          <h3 className="font-display text-md text-cream-950">Location</h3>
           <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4">
             <Row label="City" value={details.city ?? '—'} />
             <Row label="State" value={details.state ?? '—'} />
@@ -56,7 +56,7 @@ export function CustomerDetailsTab({ id: _id, details, onEdit }: CustomerDetails
         </article>
 
         <article className="rounded-[14px] border border-cream-300 bg-white p-5">
-          <h3 className="font-display text-[15px] text-cream-950">Commercials</h3>
+          <h3 className="font-display text-md text-cream-950">Commercials</h3>
           <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4">
             <Row
               label="Credit limit"

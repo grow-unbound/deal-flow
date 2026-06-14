@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { YuktiLogo } from '@/components/brand/YuktiLogo';
 
 export default function AcceptInvitePage() {
   const router = useRouter();
@@ -17,7 +18,7 @@ export default function AcceptInvitePage() {
           setStatus('success');
           setTimeout(() => router.push('/dashboard'), 1500);
         } else {
-          const body = await res.json().catch(() => ({}));
+          const body = (await res.json().catch(() => ({}))) as { error?: string };
           setErrorMsg(body.error ?? 'Invite link invalid or expired.');
           setStatus('error');
         }
@@ -32,9 +33,7 @@ export default function AcceptInvitePage() {
   return (
     <div className="min-h-screen bg-cream-50 flex items-center justify-center p-4">
       <div className="bg-cream-100 rounded-lg shadow-sm p-8 max-w-sm w-full text-center">
-        <div className="w-10 h-10 bg-teal-500 rounded-md flex items-center justify-center mx-auto mb-4">
-          <span className="text-cream-50 font-display font-medium">yk</span>
-        </div>
+        <YuktiLogo variant="stacked-lockup" className="mx-auto mb-5 h-14 w-[76px]" priority />
 
         {status === 'loading' && (
           <>
@@ -48,7 +47,7 @@ export default function AcceptInvitePage() {
         {status === 'success' && (
           <>
             <h2 className="font-display text-h3 text-cream-900 mb-2">
-              Welcome to yukti!
+              Welcome to Yukti
             </h2>
             <p className="text-body-sm text-cream-600">
               Redirecting to your dashboard…

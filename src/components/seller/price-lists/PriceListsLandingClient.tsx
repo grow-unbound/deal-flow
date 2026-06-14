@@ -282,34 +282,34 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
                 className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
                 onClick={() => router.push(`/price-lists/${row.id}`)}
               >
-                <td className="px-5 py-3.5 text-[13px] text-cream-900">
+                <td className="px-5 py-3.5 text-base text-cream-900">
                   <div className="ent flex items-center gap-3">
                     <EntityAvatar initials={getInitials(row.name)} hue="teal" size={38} />
                     <div className="min-w-0">
-                      <p className="ent-name truncate text-[13.5px] font-medium text-cream-900">{row.name}</p>
-                      <p className="ent-sub mt-0.5 font-mono text-[11px] text-cream-500">
+                      <p className="ent-name truncate text-base font-medium text-cream-900">{row.name}</p>
+                      <p className="ent-sub mt-0.5 font-mono text-xs text-cream-500">
                         {strategySub}
                       </p>
                     </div>
                   </div>
                 </td>
-                <td className="px-5 py-3.5 text-[12.5px] text-cream-800">
+                <td className="px-5 py-3.5 text-sm text-cream-800">
                   {cohortText}
                 </td>
-                <td className="px-5 py-3.5 text-center font-mono text-[13px] font-semibold text-cream-900 tabular-nums">
+                <td className="px-5 py-3.5 text-center font-mono text-base font-semibold text-cream-900 tabular-nums">
                   {row.priority}
                 </td>
-                <td className="px-5 py-3.5 text-center font-mono text-[13px] font-semibold text-cream-900 tabular-nums">
+                <td className="px-5 py-3.5 text-center font-mono text-base font-semibold text-cream-900 tabular-nums">
                   {row.product_count}
                 </td>
-                <td className={`px-5 py-3.5 font-mono text-[12px] ${isExpired ? 'text-cream-500 line-through' : 'text-cream-900'}`}>
+                <td className={`px-5 py-3.5 font-mono text-sm ${isExpired ? 'text-cream-500 line-through' : 'text-cream-900'}`}>
                   {validity}
                 </td>
                 <td className="px-5 py-3.5 text-right">
                   {row.avg_discount_pct != null ? (
                     <span
                       className={cn(
-                        'font-mono text-[13px] font-semibold tabular-nums',
+                        'font-mono text-base font-semibold tabular-nums',
                         row.avg_discount_pct >= 0 ? 'text-teal-700' : 'text-danger-700',
                       )}
                     >
@@ -322,7 +322,7 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
                 </td>
                 <td className="px-5 py-3.5 text-right">
                   {row.avg_margin_pct != null ? (
-                    <span className="font-mono text-[13px] font-semibold tabular-nums text-cream-900">
+                    <span className="font-mono text-base font-semibold tabular-nums text-cream-900">
                       {row.avg_margin_pct.toFixed(1)}%
                     </span>
                   ) : (
@@ -332,7 +332,7 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
                 <td className="px-5 py-3.5">
                   <StatusTag label={titleCaseStatus(row.status)} tone={toStatusTone(row.status)} />
                 </td>
-                <td className="chev px-4 py-3.5 pr-4 text-right text-[16px] text-cream-500">›</td>
+                <td className="chev px-4 py-3.5 pr-4 text-right text-md text-cream-500">›</td>
               </tr>
             );
           })}

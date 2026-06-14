@@ -53,8 +53,8 @@ export function SeeAllSheet<T>({
     >
       <SheetContent side="right" className="max-w-[760px] p-0">
         <SheetHeader>
-          <SheetTitle className="font-display text-[22px] font-semibold text-cream-950">{title}</SheetTitle>
-          {subtitle ? <p className="mt-1 text-[13px] text-cream-700">{subtitle}</p> : null}
+          <SheetTitle className="font-display text-xl font-semibold text-cream-950">{title}</SheetTitle>
+          {subtitle ? <p className="mt-1 text-base text-cream-700">{subtitle}</p> : null}
         </SheetHeader>
         <SheetBody className="px-0 py-0">
           <LandingTable columns={columns} className="rounded-none border-0">

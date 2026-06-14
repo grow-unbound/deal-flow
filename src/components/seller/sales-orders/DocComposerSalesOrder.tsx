@@ -568,7 +568,7 @@ export function DocComposerSalesOrder({
   if (mode === 'create' && fromEstimateId && !orderId && estimateForPrefill.isError) {
     return (
       <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6">
-        <p className="text-[13px] text-danger-700">
+        <p className="text-base text-danger-700">
           {estimateForPrefill.error instanceof Error
             ? estimateForPrefill.error.message
             : 'Could not load estimate to pre-fill this order.'}
@@ -587,7 +587,7 @@ export function DocComposerSalesOrder({
   if (isError) {
     return (
       <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6">
-        <p className="text-[13px] text-danger-700">{error instanceof Error ? error.message : 'Failed to load sales order composer.'}</p>
+        <p className="text-base text-danger-700">{error instanceof Error ? error.message : 'Failed to load sales order composer.'}</p>
       </div>
     );
   }
@@ -962,14 +962,14 @@ export function DocComposerSalesOrder({
           <DialogBody>
             <div className="space-y-3">
               {effectiveShortLines.map((line) => (
-                <div key={line.line_id} className="rounded-[12px] border border-amber-200 bg-amber-50 px-3 py-3 text-[12px] text-amber-800">
+                <div key={line.line_id} className="rounded-[12px] border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
                   <p className="font-medium text-amber-900">{line.product_name}</p>
                   <p className="mt-1">
                     Ordered {line.qty}, only {line.on_hand} on hand. Backorder {line.shortfall}.
                   </p>
                 </div>
               ))}
-              <label className="flex items-center gap-2 text-[12px] text-cream-800">
+              <label className="flex items-center gap-2 text-sm text-cream-800">
                 <input type="checkbox" checked={notifyBuyer} onChange={(event) => setNotifyBuyer(event.target.checked)} className="accent-teal-500" />
                 Notify buyer of backorder
               </label>

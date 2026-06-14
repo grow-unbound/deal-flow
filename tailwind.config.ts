@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss';
+import defaultTheme from 'tailwindcss/defaultTheme';
 import { colors, fontFamily, fontSize, borderRadius, boxShadow, transitionTimingFunction, transitionDuration } from './src/lib/theme/tokens';
 
 const config: Config = {
@@ -45,7 +46,7 @@ const config: Config = {
 
       fontFamily: {
         display: [...fontFamily.display],
-        sans:    [...fontFamily.body],
+        sans: ['Inter', ...defaultTheme.fontFamily.sans],
         mono:    [...fontFamily.mono],
       },
 

@@ -105,7 +105,7 @@ export default function PriceListDetailPage() {
               </div>
             </div>
           ) : isError || !priceList ? (
-            <div className="rounded-[14px] border border-danger-200 bg-danger-50 p-4 text-[13px] text-danger-700">
+            <div className="rounded-[14px] border border-danger-200 bg-danger-50 p-4 text-base text-danger-700">
               Price list not found.
             </div>
           ) : (

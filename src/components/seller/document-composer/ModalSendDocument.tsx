@@ -89,19 +89,19 @@ export function ModalSendDocument({
           </div>
           <div className="mt-4 space-y-4">
             <div>
-              <p className="mb-2 text-[12px] font-medium text-cream-800">Recipient</p>
+              <p className="mb-2 text-sm font-medium text-cream-800">Recipient</p>
               <Input value={sendRecipient} onChange={(event) => setSendRecipient(event.target.value)} disabled={isPending} />
             </div>
             <div>
-              <p className="mb-2 text-[12px] font-medium text-cream-800">Message</p>
+              <p className="mb-2 text-sm font-medium text-cream-800">Message</p>
               <textarea
                 value={sendMessage}
                 onChange={(event) => setSendMessage(event.target.value)}
                 disabled={isPending}
-                className="min-h-[120px] w-full rounded-[12px] border border-cream-300 px-3 py-2 text-[13px] outline-none disabled:opacity-60"
+                className="min-h-[120px] w-full rounded-[12px] border border-cream-300 px-3 py-2 text-base outline-none disabled:opacity-60"
               />
             </div>
-            <div className="rounded-[12px] border border-cream-200 bg-cream-50 p-3 text-[12px] text-cream-700">
+            <div className="rounded-[12px] border border-cream-200 bg-cream-50 p-3 text-sm text-cream-700">
               Buyer sees {lineCount} lines totaling {formatCompactInr(grandTotal)}.
             </div>
           </div>

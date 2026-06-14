@@ -489,7 +489,7 @@ export function PriceListComposer({
   if (isError || (mode === 'edit' && !detail)) {
     return (
       <div className="max-w-[1920px] mx-auto w-full px-8 py-6">
-        <div className="rounded-[18px] border border-danger-200 bg-danger-50 p-5 text-[13px] text-danger-700">
+        <div className="rounded-[18px] border border-danger-200 bg-danger-50 p-5 text-base text-danger-700">
           We couldn't load this pricelist composer right now.
         </div>
       </div>
@@ -549,7 +549,7 @@ export function PriceListComposer({
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder="e.g. North Delhi A-class · Summer '26"
-                className="h-auto border-0 bg-transparent px-0 py-0 font-medium text-[14px] text-cream-950 shadow-none focus-visible:ring-0"
+                className="h-auto border-0 bg-transparent px-0 py-0 font-medium text-base text-cream-950 shadow-none focus-visible:ring-0"
               />
             </ComposerBasicsField>
 
@@ -568,12 +568,12 @@ export function PriceListComposer({
                 min={0}
                 value={priority}
                 onChange={(event) => setPriority(event.target.value)}
-                className="h-auto border-0 bg-transparent px-0 py-0 font-mono text-[14px] font-medium text-cream-950 shadow-none focus-visible:ring-0"
+                className="h-auto border-0 bg-transparent px-0 py-0 font-mono text-base font-medium text-cream-950 shadow-none focus-visible:ring-0"
               />
             </ComposerBasicsField>
 
             <ComposerBasicsField label="Pricing strategy" className="px-4 py-3">
-              <div className="mt-2 text-[13px] font-medium leading-snug text-cream-950">
+              <div className="mt-2 text-base font-medium leading-snug text-cream-950">
                 {formatStrategySummary(
                   pricingStrategy,
                   pricingStrategy === 'edit_each' ? null : Number(strategyValue || 0),
@@ -588,10 +588,10 @@ export function PriceListComposer({
               <div className="space-y-5">
                 <section>
                   <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Brands</h3>
+                    <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Brands</h3>
                     <button
                       type="button"
-                      className="text-[12px] font-medium text-teal-700 hover:text-teal-800"
+                      className="text-sm font-medium text-teal-700 hover:text-teal-800"
                       onClick={() => toggleMany(selectedBrands, allBrandNames, setSelectedBrands)}
                     >
                       {selectedBrands.length === allBrandNames.length ? 'Clear all' : 'Select all'}
@@ -599,7 +599,7 @@ export function PriceListComposer({
                   </div>
                   <div className="space-y-2">
                     {brandOptions.map((brand) => (
-                      <label key={brand.name} className="flex items-center justify-between gap-3 text-[13px] text-cream-900">
+                      <label key={brand.name} className="flex items-center justify-between gap-3 text-base text-cream-900">
                         <span className="flex items-center gap-2">
                           <input
                             type="checkbox"
@@ -615,7 +615,7 @@ export function PriceListComposer({
                           />
                           <span>{brand.name}</span>
                         </span>
-                        <span className="font-mono text-[11px] text-cream-700">{brand.count}</span>
+                        <span className="font-mono text-xs text-cream-700">{brand.count}</span>
                       </label>
                     ))}
                   </div>
@@ -623,10 +623,10 @@ export function PriceListComposer({
 
                 <section>
                   <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Category</h3>
+                    <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Category</h3>
                     <button
                       type="button"
-                      className="text-[12px] font-medium text-teal-700 hover:text-teal-800"
+                      className="text-sm font-medium text-teal-700 hover:text-teal-800"
                       onClick={() => toggleMany(selectedCategories, allCategoryNames, setSelectedCategories)}
                     >
                       {selectedCategories.length === allCategoryNames.length ? 'Clear all' : 'Select all'}
@@ -634,7 +634,7 @@ export function PriceListComposer({
                   </div>
                   <div className="space-y-2">
                     {categoryOptions.map((category) => (
-                      <label key={category.name} className="flex items-center justify-between gap-3 text-[13px] text-cream-900">
+                      <label key={category.name} className="flex items-center justify-between gap-3 text-base text-cream-900">
                         <span className="flex items-center gap-2">
                           <input
                             type="checkbox"
@@ -650,17 +650,17 @@ export function PriceListComposer({
                           />
                           <span>{category.name}</span>
                         </span>
-                        <span className="font-mono text-[11px] text-cream-700">{category.count}</span>
+                        <span className="font-mono text-xs text-cream-700">{category.count}</span>
                       </label>
                     ))}
                   </div>
                 </section>
 
                 <section>
-                  <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Pricing strategy</h3>
+                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Pricing strategy</h3>
                   <div className="space-y-3">
                     <label className="block space-y-2">
-                      <span className="flex items-center gap-2 text-[13px] text-cream-900">
+                      <span className="flex items-center gap-2 text-base text-cream-900">
                         <input
                           type="radio"
                           name="pricing-strategy"
@@ -673,7 +673,7 @@ export function PriceListComposer({
                     </label>
 
                     <label className="block space-y-2">
-                      <span className="flex items-center gap-2 text-[13px] text-cream-900">
+                      <span className="flex items-center gap-2 text-base text-cream-900">
                         <input
                           type="radio"
                           name="pricing-strategy"
@@ -685,7 +685,7 @@ export function PriceListComposer({
                       </span>
                       <div
                         className={cn(
-                          'ml-6 flex items-center gap-2 rounded-[8px] border px-3 py-2 font-mono text-[12px]',
+                          'ml-6 flex items-center gap-2 rounded-[8px] border px-3 py-2 font-mono text-sm',
                           pricingStrategy === 'margin_from_mrp'
                             ? 'border-ember-400 bg-white shadow-[0_0_0_3px_rgba(194,110,58,0.20)]'
                             : 'border-cream-300 bg-cream-100 text-cream-600',
@@ -704,7 +704,7 @@ export function PriceListComposer({
                     </label>
 
                     <label className="block space-y-2">
-                      <span className="flex items-center gap-2 text-[13px] text-cream-900">
+                      <span className="flex items-center gap-2 text-base text-cream-900">
                         <input
                           type="radio"
                           name="pricing-strategy"
@@ -716,7 +716,7 @@ export function PriceListComposer({
                       </span>
                       <div
                         className={cn(
-                          'ml-6 flex items-center gap-2 rounded-[8px] border px-3 py-2 font-mono text-[12px]',
+                          'ml-6 flex items-center gap-2 rounded-[8px] border px-3 py-2 font-mono text-sm',
                           pricingStrategy === 'flat_off_base'
                             ? 'border-ember-400 bg-white shadow-[0_0_0_3px_rgba(194,110,58,0.20)]'
                             : 'border-cream-300 bg-cream-100 text-cream-600',
@@ -733,7 +733,7 @@ export function PriceListComposer({
                       </div>
                     </label>
 
-                    <div className="rounded-[8px] border border-dashed border-cream-400 bg-cream-50 px-3 py-2 text-[11.5px] leading-[1.45] text-cream-700">
+                    <div className="rounded-[8px] border border-dashed border-cream-400 bg-cream-50 px-3 py-2 text-sm leading-[1.45] text-cream-700">
                       {pricingStrategy === 'edit_each' ? (
                         <>
                           <strong className="font-medium text-cream-900">Edit each price inline.</strong> No global rule is applied.
@@ -757,17 +757,17 @@ export function PriceListComposer({
               <ComposerMainCard>
               <div className="flex flex-wrap items-center gap-3 border-b border-cream-300 bg-cream-50 px-4 py-3">
                 <div>
-                  <div className="text-[13px] font-semibold text-cream-900">
+                  <div className="text-base font-semibold text-cream-900">
                     {mode === 'edit'
                       ? `${currentMetrics.productCount} products · ${modifiedRows} modified`
                       : `${filteredProducts.length} products match`}
                   </div>
-                  <div className="text-[12px] text-cream-700">
+                  <div className="text-sm text-cream-700">
                     {centerPanelSubtitle}
                   </div>
                 </div>
                 <div className="ml-auto flex flex-wrap items-center gap-2">
-                  <div className="flex min-w-[240px] items-center gap-2 rounded-[8px] border border-cream-300 bg-white px-3 py-2 text-[13px] text-cream-700">
+                  <div className="flex min-w-[240px] items-center gap-2 rounded-[8px] border border-cream-300 bg-white px-3 py-2 text-base text-cream-700">
                     <Search className="h-4 w-4 text-cream-600" />
                     <input
                       value={search}
@@ -796,24 +796,24 @@ export function PriceListComposer({
                     <SlidersHorizontal className="h-9 w-9 text-cream-600" />
                   </div>
                   <div className="space-y-2">
-                    <h2 className="font-display text-[22px] font-medium tracking-[-0.01em] text-cream-900">
+                    <h2 className="font-display text-xl font-medium tracking-[-0.01em] text-cream-900">
                       No products selected yet
                     </h2>
-                    <p className="max-w-[42ch] text-[13.5px] leading-[1.55] text-cream-700">
+                    <p className="max-w-[42ch] text-base leading-[1.55] text-cream-700">
                       Pick a brand and category on the left to bring matching SKUs into this table. You can then apply a pricing rule or edit row prices one by one.
                     </p>
                   </div>
                 </div>
               ) : filteredProducts.length === 0 ? (
-                <div className="flex flex-1 items-center justify-center px-8 py-16 text-[13px] text-cream-700">
+                <div className="flex flex-1 items-center justify-center px-8 py-16 text-base text-cream-700">
                   No products match the current filters and search.
                 </div>
               ) : (
                 <div className="min-h-0 flex-1 overflow-auto">
-                  <table className="w-full border-collapse text-[13px]">
+                  <table className="w-full border-collapse text-base">
                     <thead className="sticky top-0 z-[1] bg-cream-50">
                       <tr>
-                        <th className="w-9 border-b border-cream-300 px-4 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">
+                        <th className="w-9 border-b border-cream-300 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">
                           <input
                             type="checkbox"
                             checked={filteredProducts.length > 0 && visibleSelectedProducts.length === filteredProducts.length}
@@ -832,13 +832,13 @@ export function PriceListComposer({
                             className="accent-teal-500"
                           />
                         </th>
-                        <th className="border-b border-cream-300 px-4 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Product</th>
-                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Cost</th>
-                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">MRP</th>
-                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Base</th>
-                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">New price</th>
-                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Discount</th>
-                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Margin</th>
+                        <th className="border-b border-cream-300 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Product</th>
+                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Cost</th>
+                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">MRP</th>
+                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Base</th>
+                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">New price</th>
+                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Discount</th>
+                        <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Margin</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -895,8 +895,8 @@ export function PriceListComposer({
                                   />
                                 )}
                                 <div className="min-w-0">
-                                  <p className="truncate text-[13.5px] font-medium text-cream-900">{product.display_name}</p>
-                                  <p className="mt-0.5 truncate font-mono text-[11px] text-cream-700">{product.internal_sku}</p>
+                                  <p className="truncate text-base font-medium text-cream-900">{product.display_name}</p>
+                                  <p className="mt-0.5 truncate font-mono text-xs text-cream-700">{product.internal_sku}</p>
                                 </div>
                               </div>
                             </td>
@@ -906,7 +906,7 @@ export function PriceListComposer({
                             <td className="px-4 py-3 text-right">
                               <div
                                 className={cn(
-                                  'ml-auto inline-flex h-9 w-[108px] items-center justify-end gap-1 rounded-[6px] border bg-white px-2.5 font-mono text-[12px]',
+                                  'ml-auto inline-flex h-9 w-[108px] items-center justify-end gap-1 rounded-[6px] border bg-white px-2.5 font-mono text-sm',
                                   isSelected
                                     ? 'border-cream-400'
                                     : 'border-cream-300 bg-cream-100 text-cream-600',
@@ -931,7 +931,7 @@ export function PriceListComposer({
                               </div>
                             </td>
                             <td className={cn(
-                              'px-4 py-3 text-right font-mono text-[11px] font-medium',
+                              'px-4 py-3 text-right font-mono text-xs font-medium',
                               discountVsBase == null ? 'text-cream-500' : discountVsBase >= 0 ? 'text-teal-700' : 'text-danger-700',
                             )}>
                               {discountVsBase == null
@@ -939,7 +939,7 @@ export function PriceListComposer({
                                 : `${discountVsBase >= 0 ? '-' : '+'}${Math.abs(discountVsBase).toFixed(1)}%`}
                             </td>
                             <td className={cn(
-                              'px-4 py-3 text-right font-mono text-[11px] font-medium',
+                              'px-4 py-3 text-right font-mono text-xs font-medium',
                               marginPct == null ? 'text-cream-500' : 'text-cream-900',
                             )}>
                               {marginPct == null ? '—' : `${marginPct.toFixed(1)}%`}
@@ -957,12 +957,12 @@ export function PriceListComposer({
               <ComposerSidebarCard>
               <div className="flex h-full flex-col gap-4">
                 <div>
-                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Pricelist summary</h3>
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Pricelist summary</h3>
                   <div className="mt-4">
-                    <p className="font-display text-[18px] font-medium tracking-[-0.005em] text-cream-900">
+                    <p className="font-display text-lg font-medium tracking-[-0.005em] text-cream-900">
                       {name || 'Untitled pricelist'}
                     </p>
-                    <p className="mt-1 text-[12px] text-cream-700">
+                    <p className="mt-1 text-sm text-cream-700">
                       {hasActiveFilters
                         ? `Applies to ${currentMetrics.productCount} selected products`
                         : 'Set filters and pricing rules to see the impact here.'}
@@ -973,21 +973,21 @@ export function PriceListComposer({
                 <div className="h-px bg-cream-300" />
 
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between text-[13px]">
+                  <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">Products</span>
                     <span className="font-mono font-medium text-cream-900">{currentMetrics.productCount}</span>
                   </div>
-                  <div className="flex items-center justify-between text-[13px]">
+                  <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">Brands</span>
                     <span className="font-mono font-medium text-cream-900">{currentMetrics.brandCount}</span>
                   </div>
-                  <div className="flex items-center justify-between text-[13px]">
+                  <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">Avg discount vs base</span>
                     <span className="font-mono font-medium text-cream-900">
                       {currentMetrics.avgDiscount == null ? '—' : `-${Math.abs(currentMetrics.avgDiscount).toFixed(1)}%`}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between text-[13px]">
+                  <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">Avg margin retained</span>
                     <span className="font-mono font-medium text-cream-900">
                       {currentMetrics.avgMargin == null ? '—' : `${currentMetrics.avgMargin.toFixed(1)}%`}
@@ -998,15 +998,15 @@ export function PriceListComposer({
                 <div className="h-px bg-cream-300" />
 
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between text-[13px]">
+                  <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">Valid from</span>
                     <span className="font-mono font-medium text-cream-900">{validFrom ? formatDate(validFrom) : '—'}</span>
                   </div>
-                  <div className="flex items-center justify-between text-[13px]">
+                  <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">Valid until</span>
                     <span className="font-mono font-medium text-cream-900">{validTo ? formatDate(validTo) : 'Open ended'}</span>
                   </div>
-                  <div className="flex items-center justify-between text-[13px]">
+                  <div className="flex items-center justify-between text-base">
                     <span className="text-cream-700">Priority</span>
                     <span className="font-mono font-medium text-cream-900">{priority || '0'}</span>
                   </div>
@@ -1016,9 +1016,9 @@ export function PriceListComposer({
                   <>
                     <div className="h-px bg-cream-300" />
                     <div className="space-y-2">
-                      <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Staged changes</h4>
+                      <h4 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Staged changes</h4>
                       <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3">
-                        <div className="space-y-2 text-[12px] leading-[1.5] text-amber-900">
+                        <div className="space-y-2 text-sm leading-[1.5] text-amber-900">
                           {pendingStagedSummary.map((item) => (
                             <div key={item.label} className="flex items-start justify-between gap-4">
                               <span className="text-amber-700">{item.label}</span>
@@ -1033,7 +1033,7 @@ export function PriceListComposer({
 
                 <div
                   className={cn(
-                    'mt-auto rounded-[10px] border px-3 py-3 text-[12px] leading-[1.5]',
+                    'mt-auto rounded-[10px] border px-3 py-3 text-sm leading-[1.5]',
                     isLiveEdit && detail?.status === 'active'
                       ? 'border-amber-200 bg-amber-50 text-amber-800'
                       : 'border-teal-200 bg-teal-50 text-teal-700',
@@ -1067,7 +1067,7 @@ export function PriceListComposer({
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  'h-8 gap-2 px-2 text-[12px] pointer-events-none hover:bg-transparent',
+                  'h-8 gap-2 px-2 text-sm pointer-events-none hover:bg-transparent',
                   isDirty ? 'text-ember-700' : 'text-cream-700',
                 )}
               >

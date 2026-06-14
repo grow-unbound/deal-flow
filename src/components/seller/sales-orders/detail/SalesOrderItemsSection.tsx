@@ -26,20 +26,20 @@ export function SalesOrderItemsSection({ lines, showStock }: SalesOrderItemsSect
               className={cn('flex items-start justify-between gap-3 px-5 py-3', short && 'bg-amber-50/60')}
             >
               <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-medium text-cream-900">{l.name}</div>
-                <div className="text-[11.5px] text-cream-600">
+                <div className="text-base font-medium text-cream-900">{l.name}</div>
+                <div className="text-sm text-cream-600">
                   {l.brand} · {l.sku}
                 </div>
                 {short ? (
-                  <div className="mt-1 text-[11px] text-amber-800">
+                  <div className="mt-1 text-xs text-amber-800">
                     {l.on_hand} of {l.qty} in stock · {l.qty - l.on_hand} short
                   </div>
                 ) : null}
               </div>
-              <div className="shrink-0 text-right font-mono text-[13px] text-cream-800">
+              <div className="shrink-0 text-right font-mono text-base text-cream-800">
                 {l.qty} × {formatCurrency(l.unit_price)}
               </div>
-              <div className="shrink-0 text-right font-display text-[14px] font-semibold text-cream-950">
+              <div className="shrink-0 text-right font-display text-base font-semibold text-cream-950">
                 {formatCurrency(l.line_total)}
               </div>
             </div>
@@ -47,15 +47,15 @@ export function SalesOrderItemsSection({ lines, showStock }: SalesOrderItemsSect
         })}
       </div>
       <div className="border-t border-cream-100 px-5 pb-5 pt-4">
-        <div className="flex justify-between text-[13px] text-cream-800">
+        <div className="flex justify-between text-base text-cream-800">
           <span>Taxable value</span>
           <span className="font-mono">{formatCurrency(taxable)}</span>
         </div>
-        <div className="mt-1 flex justify-between text-[13px] text-cream-800">
+        <div className="mt-1 flex justify-between text-base text-cream-800">
           <span>IGST @ 18%</span>
           <span className="font-mono">{formatCurrency(igst)}</span>
         </div>
-        <div className="mt-2 flex justify-between border-t border-cream-100 pt-2 font-display text-[17px] font-semibold text-cream-950">
+        <div className="mt-2 flex justify-between border-t border-cream-100 pt-2 font-display text-lg font-semibold text-cream-950">
           <span>Order total</span>
           <span>{formatCurrency(total)}</span>
         </div>

@@ -320,7 +320,7 @@ export function AddCustomerDialog({
                         </FormLabel>
                         <FormControl>
                           <div className="flex items-stretch">
-                            <span className="inline-flex items-center rounded-l-[8px] border border-r-0 border-cream-400 bg-cream-200 px-3 text-[13.5px] text-cream-700">
+                            <span className="inline-flex items-center rounded-l-[8px] border border-r-0 border-cream-400 bg-cream-200 px-3 text-base text-cream-700">
                               +91
                             </span>
                             <Input
@@ -412,7 +412,7 @@ export function AddCustomerDialog({
                         <FormLabel>Credit limit</FormLabel>
                         <FormControl>
                           <div className="flex items-stretch">
-                            <span className="inline-flex items-center rounded-l-[8px] border border-r-0 border-cream-400 bg-cream-200 px-3 text-[13.5px] text-cream-700 select-none">
+                            <span className="inline-flex items-center rounded-l-[8px] border border-r-0 border-cream-400 bg-cream-200 px-3 text-base text-cream-700 select-none">
                               ₹
                             </span>
                             <Input

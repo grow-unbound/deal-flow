@@ -3,10 +3,10 @@
 
 var STATUS_MAP = {
   draft:      { label: 'Draft',       color: '#64594E', bg: 'rgba(100,89,78,.08)',  border: 'rgba(100,89,78,.18)',  glyph: 'dashed'  },
-  published:  { label: 'Published',   color: '#6a3d18', bg: 'rgba(181,100,47,.14)', border: 'rgba(181,100,47,.24)', glyph: 'dot'     },
+  published:  { label: 'Published',   color: '#1A1714', bg: 'rgba(34,30,26,.10)',  border: 'rgba(34,30,26,.20)',  glyph: 'dot'     },
   archived:   { label: 'Archived',    color: '#64594E', bg: 'rgba(100,89,78,.06)',  border: 'rgba(100,89,78,.14)',  glyph: 'square'  },
   received:   { label: 'Received',    color: '#2A5F8A', bg: 'rgba(42,95,138,.10)',  border: 'rgba(42,95,138,.20)',  glyph: 'ring'    },
-  confirmed:  { label: 'Confirmed',   color: '#6a3d18', bg: 'rgba(181,100,47,.12)', border: 'rgba(181,100,47,.22)', glyph: 'check'   },
+  confirmed:  { label: 'Confirmed',   color: '#1E4D72', bg: 'rgba(42,95,138,.10)',  border: 'rgba(42,95,138,.20)',  glyph: 'check'   },
   dispatched: { label: 'Dispatched',  color: '#2A5F8A', bg: 'rgba(42,95,138,.12)',  border: 'rgba(42,95,138,.22)',  glyph: 'arrow'   },
   delivered:  { label: 'Delivered',   color: '#1F6B3A', bg: 'rgba(31,107,58,.12)',  border: 'rgba(31,107,58,.22)',  glyph: 'check'   },
   cancelled:  { label: 'Cancelled',   color: '#9C3026', bg: 'rgba(156,48,38,.10)',  border: 'rgba(156,48,38,.20)',  glyph: 'cross'   },

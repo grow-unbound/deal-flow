@@ -275,7 +275,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
             )
           : (
               <ComposerSidebarCard>
-                <p className="text-[13px] text-cream-700">No buyer on this estimate.</p>
+                <p className="text-base text-cream-700">No buyer on this estimate.</p>
               </ComposerSidebarCard>
             )}
         center={(
@@ -350,7 +350,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
             <DialogTitle>Void this estimate?</DialogTitle>
           </DialogHeader>
           <DialogBody>
-            <p className="text-[13px] text-cream-700">This cannot be undone. The estimate will be marked void.</p>
+            <p className="text-base text-cream-700">This cannot be undone. The estimate will be marked void.</p>
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setVoidOpen(false)} disabled={voidMut.isPending}>

@@ -82,7 +82,7 @@ export function UpgradePlanDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md border-cream-200 p-0">
         <DialogHeader>
-          <p className="px-6 pt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-600">Upgrade plan</p>
+          <p className="px-6 pt-1 text-xs font-semibold uppercase tracking-[0.14em] text-cream-600">Upgrade plan</p>
           <DialogTitle>Upgrade to {tierLabel}</DialogTitle>
           <DialogDescription>
             Our team will reach out to complete your upgrade — usually within one business day.

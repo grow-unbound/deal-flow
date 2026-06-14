@@ -30,10 +30,10 @@ const DOC_NUMBER_LABELS: Record<DocumentComposerKind, string> = {
 };
 
 const borderlessInputClass =
-  'h-auto border-0 bg-transparent px-0 py-0 text-[14px] font-medium text-cream-950 shadow-none placeholder:text-cream-600 focus-visible:ring-0';
+  'h-auto border-0 bg-transparent px-0 py-0 text-base font-medium text-cream-950 shadow-none placeholder:text-cream-600 focus-visible:ring-0';
 
 const stripDateTriggerClass =
-  'h-auto min-h-0 border-0 bg-transparent px-0 py-0 text-left text-[14px] font-medium text-cream-900 shadow-none focus-visible:border-transparent focus-visible:ring-0';
+  'h-auto min-h-0 border-0 bg-transparent px-0 py-0 text-left text-base font-medium text-cream-900 shadow-none focus-visible:border-transparent focus-visible:ring-0';
 
 export function DocumentBasicsStrip({
   kind,
@@ -63,12 +63,12 @@ export function DocumentBasicsStrip({
   return (
     <ComposerBasicsStrip columnsClassName="lg:grid-cols-5">
       <ComposerBasicsField label={DOC_NUMBER_LABELS[kind]}>
-        <span className="font-mono text-[12px] text-cream-950">{docNumber}</span>
+        <span className="font-mono text-sm text-cream-950">{docNumber}</span>
       </ComposerBasicsField>
 
       <ComposerBasicsField label={DATE_LABELS[kind]}>
         {readOnly ? (
-          <span className="text-[13px] text-cream-950">{dateIssued}</span>
+          <span className="text-base text-cream-950">{dateIssued}</span>
         ) : (
           <CompactDateField value={dateIssued} onChange={onDateIssuedChange} />
         )}
@@ -76,7 +76,7 @@ export function DocumentBasicsStrip({
 
       <ComposerBasicsField label={SECOND_LABELS[kind]}>
         {readOnly ? (
-          <span className="text-[13px] text-cream-950">{secondDate}</span>
+          <span className="text-base text-cream-950">{secondDate}</span>
         ) : (
           <CompactDateField
             value={secondDate}
@@ -88,7 +88,7 @@ export function DocumentBasicsStrip({
 
       <ComposerBasicsField label="Buyer PO ref">
         {readOnly ? (
-          <span className="text-[13px] text-cream-950">{buyerPoRef || '—'}</span>
+          <span className="text-base text-cream-950">{buyerPoRef || '—'}</span>
         ) : (
           <Input
             value={buyerPoRef}
@@ -101,12 +101,12 @@ export function DocumentBasicsStrip({
 
       <ComposerBasicsField label="Place of supply">
         {readOnly ? (
-          <span className="text-[13px] text-cream-950">{placeOfSupply || '—'}</span>
+          <span className="text-base text-cream-950">{placeOfSupply || '—'}</span>
         ) : (
           <Input
             value={placeOfSupply}
             onChange={(event) => onPlaceOfSupplyChange(event.target.value)}
-            className={cn(borderlessInputClass, 'font-normal text-[13px] text-cream-900')}
+            className={cn(borderlessInputClass, 'font-normal text-base text-cream-900')}
             placeholder="Enter place of supply"
           />
         )}
@@ -150,7 +150,7 @@ export function DocumentComposerFooterRow({
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="inline-flex items-center gap-2 text-[12px] text-cream-700">
+      <div className="inline-flex items-center gap-2 text-sm text-cream-700">
         <span
           className={cn(
             'h-2 w-2 rounded-full',

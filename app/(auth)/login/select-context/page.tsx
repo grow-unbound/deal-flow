@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { YuktiLogo } from '@/components/brand/YuktiLogo';
 
 const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
 
@@ -95,9 +96,8 @@ function SelectContextForm() {
     // Loading/redirecting state
     return (
       <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-9 h-9 bg-teal-300 rounded-md animate-pulse" />
-          <div className="h-6 w-28 rounded bg-cream-200 animate-pulse" />
+        <div className="mb-6 flex justify-center">
+          <div className="h-14 w-[76px] rounded-xl bg-cream-200 animate-pulse" />
         </div>
         <div className="space-y-3">
           {[1, 2].map((i) => (
@@ -110,12 +110,8 @@ function SelectContextForm() {
 
   return (
     <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
-      {/* Logo */}
-      <div className="flex items-center gap-3 mb-7">
-        <div className="w-9 h-9 bg-teal-500 rounded-md flex items-center justify-center shrink-0">
-          <span className="text-cream-50 font-display font-medium text-sm">yk</span>
-        </div>
-        <span className="font-display font-medium text-teal-500 text-xl">yukti</span>
+      <div className="mb-7 flex justify-center">
+        <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
       </div>
 
       <h1 className="text-h3 font-display text-cream-900 mb-1">Choose account</h1>
@@ -150,7 +146,7 @@ function SelectContextForm() {
                   </p>
                   <p className="text-caption text-cream-600 mt-0.5">{ctx.tenant_slug}</p>
                 </div>
-                <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-teal-50 text-teal-700 border border-teal-200">
+                <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200">
                   {roleBadge(ctx.role)}
                 </span>
               </div>
@@ -184,9 +180,8 @@ function SelectContextForm() {
 function SelectContextFallback() {
   return (
     <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
-      <div className="flex items-center gap-3 mb-7">
-        <div className="w-9 h-9 bg-teal-300 rounded-md animate-pulse" />
-        <div className="h-6 w-28 rounded bg-cream-200 animate-pulse" />
+      <div className="mb-7 flex justify-center">
+        <div className="h-14 w-[76px] rounded-xl bg-cream-200 animate-pulse" />
       </div>
       <div className="space-y-3">
         {[1, 2].map((i) => (

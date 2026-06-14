@@ -20,6 +20,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { useIdleRoutePrefetch } from '@/hooks/useIdleRoutePrefetch';
 import { Pressable } from '@/components/ui/pressable';
+import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { useRole } from '@/hooks/useRole';
 import type { SellerShellFeatureAvailability } from '@/lib/server/seller-features';
 export type NavFlagKey =
@@ -251,8 +252,8 @@ export function SellerSidebar({
         <div key={item.href} className="space-y-0.5">
           <div
             className={[
-              'flex items-center rounded-[12px] text-body-sm font-medium transition-colors duration-fast',
-              parentActive ? 'bg-teal-500 text-cream-50' : 'text-cream-800',
+              'flex items-center rounded-[12px] text-base font-medium transition-colors duration-fast',
+              parentActive ? 'bg-[rgba(181,100,47,0.09)] text-[#221E1A]' : 'text-[#3D3630]',
             ].join(' ')}
           >
             <Pressable asChild haptic>
@@ -261,11 +262,11 @@ export function SellerSidebar({
                 className={[
                   'flex min-w-0 flex-1 items-center px-3 py-2.5 transition-colors duration-fast',
                   isCollapsed ? 'justify-center gap-0' : 'gap-3',
-                  parentActive ? '' : 'hover:bg-cream-200 hover:text-cream-900',
+                  parentActive ? '' : 'hover:bg-[var(--yk-hover-tint)] hover:text-[#221E1A]',
                 ].join(' ')}
                 title={isCollapsed ? item.label : undefined}
               >
-                <item.icon size={16} className={parentActive ? 'text-cream-50' : 'text-cream-600'} />
+                <item.icon size={17} className={parentActive ? 'text-[#221E1A]' : 'text-[#3D3630]'} />
                 {!isCollapsed && <span className="truncate">{item.label}</span>}
               </Link>
             </Pressable>
@@ -275,8 +276,8 @@ export function SellerSidebar({
                 className={[
                   'mr-1 shrink-0 rounded-md p-1.5 transition-colors duration-fast',
                   parentActive
-                    ? 'text-cream-50 hover:bg-teal-600/80'
-                    : 'text-cream-600 hover:bg-cream-200 hover:text-cream-900',
+                    ? 'text-[#221E1A] hover:bg-[var(--yk-hover-tint)]'
+                    : 'text-[#3D3630] hover:bg-[var(--yk-hover-tint)] hover:text-[#221E1A]',
                 ].join(' ')}
                 aria-expanded={settingsSubmenuOpen}
                 aria-label={settingsSubmenuOpen ? 'Collapse settings sections' : 'Expand settings sections'}
@@ -307,11 +308,11 @@ export function SellerSidebar({
                     <Link
                       href={childHref}
                       className={[
-                        'ml-6 flex items-center gap-3 rounded-[10px] px-3 py-2 text-body-sm font-medium transition-colors duration-fast',
-                        childIsActive ? 'bg-teal-500 text-cream-50' : 'text-cream-700 hover:bg-cream-200 hover:text-cream-900',
+                        'ml-6 flex items-center gap-3 rounded-[10px] px-3 py-2 text-base font-medium transition-colors duration-fast',
+                        childIsActive ? 'bg-[rgba(181,100,47,0.09)] text-[#221E1A]' : 'text-[#3D3630] hover:bg-[var(--yk-hover-tint)] hover:text-[#221E1A]',
                       ].join(' ')}
                     >
-                      <ChildIcon size={15} className={childIsActive ? 'text-cream-50' : 'text-cream-500'} />
+                      <ChildIcon size={15} className={childIsActive ? 'text-[#221E1A]' : 'text-[#3D3630]'} />
                       {childLabel}
                     </Link>
                   </Pressable>
@@ -332,13 +333,13 @@ export function SellerSidebar({
           <Link
             href={item.href}
             className={[
-              'flex items-center rounded-[12px] px-3 py-2.5 text-body-sm font-medium transition-colors duration-fast',
+              'flex items-center rounded-[12px] px-3 py-2.5 text-base font-medium transition-colors duration-fast',
               isCollapsed ? 'justify-center gap-0' : 'gap-3',
-              active ? 'bg-teal-500 text-cream-50' : 'text-cream-800 hover:bg-cream-200 hover:text-cream-900',
+              active ? 'bg-[rgba(181,100,47,0.09)] text-[#221E1A]' : 'text-[#3D3630] hover:bg-[var(--yk-hover-tint)] hover:text-[#221E1A]',
             ].join(' ')}
             title={isCollapsed ? item.label : undefined}
           >
-            <item.icon size={16} className={active ? 'text-cream-50' : 'text-cream-600'} />
+            <item.icon size={17} className={active ? 'text-[#221E1A]' : 'text-[#3D3630]'} />
             {!isCollapsed && item.label}
           </Link>
         </Pressable>
@@ -353,11 +354,11 @@ export function SellerSidebar({
                   <Link
                     href={childHref}
                     className={[
-                      'ml-6 flex items-center gap-3 rounded-[10px] px-3 py-2 text-body-sm font-medium transition-colors duration-fast',
-                      childIsActive ? 'bg-teal-500 text-cream-50' : 'text-cream-700 hover:bg-cream-200 hover:text-cream-900',
+                      'ml-6 flex items-center gap-3 rounded-[10px] px-3 py-2 text-base font-medium transition-colors duration-fast',
+                      childIsActive ? 'bg-[rgba(181,100,47,0.09)] text-[#221E1A]' : 'text-[#3D3630] hover:bg-[var(--yk-hover-tint)] hover:text-[#221E1A]',
                     ].join(' ')}
                   >
-                    <ChildIcon size={15} className={childIsActive ? 'text-cream-50' : 'text-cream-500'} />
+                    <ChildIcon size={15} className={childIsActive ? 'text-[#221E1A]' : 'text-[#3D3630]'} />
                     {childLabel}
                   </Link>
                 </Pressable>
@@ -372,25 +373,22 @@ export function SellerSidebar({
       className="fixed left-0 top-0 flex h-screen flex-col border-r border-cream-300 bg-cream-100 transition-[width] duration-base"
       style={{ width: 'var(--sidebar-w)' }}
     >
-      <div className="relative flex h-16 shrink-0 items-center border-b border-cream-300 px-4">
+      <div className="relative flex h-16 shrink-0 items-center border-b border-cream-300 px-3">
         {canCollapse ? (
           <button
             type="button"
             onClick={onToggleCollapse}
-            className="absolute right-2 top-2 rounded-md p-1 text-cream-600 transition-colors duration-fast hover:bg-cream-200 hover:text-cream-900"
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-cream-600 transition-colors duration-fast hover:bg-[var(--yk-hover-tint)] hover:text-cream-900"
             aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
         ) : null}
 
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[11px] bg-teal-500">
-          <span className="text-cream-50 font-display font-medium text-sm leading-none">yk</span>
-        </div>
+        {isCollapsed ? <YuktiLogo variant="app-icon" className="h-11 w-11" priority /> : null}
         {!isCollapsed && (
-          <div className="min-w-0 pl-2.5">
-            <p className="truncate font-display text-lg font-medium leading-[1.05] text-teal-500">yukti</p>
-            <p className="mt-0.5 truncate text-caption text-cream-600">{currentTenant?.business_name ?? 'Tenant'}</p>
+          <div className="min-w-0">
+            <YuktiLogo variant="lockup" className="h-8 w-[138px]" priority />
           </div>
         )}
       </div>
@@ -404,7 +402,7 @@ export function SellerSidebar({
           return (
             <div key={group.label}>
               {!isCollapsed && (
-                <p className="px-3 pt-5 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-cream-500">
+                <p className="px-3 pt-5 pb-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#8A7E74]">
                   {group.label}
                 </p>
               )}
@@ -418,7 +416,7 @@ export function SellerSidebar({
         <button
           type="button"
           onClick={handleLogout}
-          className="mb-3 flex w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left text-body-sm font-medium text-cream-800 transition-colors duration-fast hover:bg-cream-200 hover:text-cream-900"
+          className="mb-3 flex w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left text-body-sm font-medium text-cream-800 transition-colors duration-fast hover:bg-[var(--yk-hover-tint)] hover:text-cream-900"
           title={isCollapsed ? 'Log out' : undefined}
         >
           <LogOut size={16} className="text-cream-600" />
@@ -433,7 +431,7 @@ export function SellerSidebar({
           {!isCollapsed && (
             <div className="min-w-0">
               <p className="truncate text-body-sm font-medium text-cream-900">{user?.displayName ?? user?.email ?? '—'}</p>
-              <p className="text-caption text-cream-600">{role ? ROLE_LABELS[role] : '—'}</p>
+              <p className="mt-0.5 truncate text-caption text-cream-600">{currentTenant?.business_name ?? 'Tenant'}</p>
             </div>
           )}
         </div>
