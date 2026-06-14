@@ -229,7 +229,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
                       Buyers will immediately be able to open this catalog with its share link.
                     </DialogDescription>
                   </DialogHeader>
-                  <DialogBody className="pt-4 text-[13px] leading-6 text-cream-700">
+                  <DialogBody className="pt-4 text-base leading-6 text-cream-700">
                     {data.header.products_count} products will go live for {data.header.selected_cohort.member_count} buyers in {data.header.selected_cohort.display_label}.
                   </DialogBody>
                   <DialogFooter>

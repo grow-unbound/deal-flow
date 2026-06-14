@@ -17,9 +17,9 @@ export function BuyerShell({ children }: BuyerShellProps) {
   const isDeep = DEEP_SCREENS.some(p => pathname.startsWith(p));
 
   return (
-    <div className="min-h-screen bg-cream-100 md:px-4 md:py-6">
+    <div className="min-h-screen bg-[var(--bg-surface)] md:px-4 md:py-6">
       <div
-        className="mx-auto flex min-h-screen w-full flex-col bg-cream-100 md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[28px] md:border md:border-cream-300 md:bg-white md:shadow-[0_20px_60px_rgba(20,40,35,0.08)]"
+        className="mx-auto flex min-h-screen w-full flex-col bg-[var(--bg-surface)] md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[28px] md:border md:border-cream-300 md:bg-[var(--bg-surface)] md:shadow-[0_20px_60px_rgba(20,40,35,0.08)]"
         style={{ maxWidth: `${BUYER_PREVIEW_MAX_WIDTH}px` }}
       >
         <BuyerPreviewBootstrap>

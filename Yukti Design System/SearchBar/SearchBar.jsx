@@ -15,21 +15,33 @@ export function SearchBar(props) {
   var radii = { sm: '8px', md: '10px', lg: '11px' };
   var pads = { sm: '0 10px', md: '0 12px', lg: '0 14px' };
 
+  var focState  = React.useState(false);
+  var focused    = focState[0], setFocused = focState[1];
+  var hovState   = React.useState(false);
+  var hovered    = hovState[0], setHovered = hovState[1];
+
   var hasValue = value != null ? value.length > 0 : false;
+
+  var borderColor = focused ? '#B5642F' : (hovered ? '#DBD1C2' : '#EAE3D9');
+  var ringStyle   = focused ? '0 0 0 3px rgba(181,100,47,.14)' : undefined;
 
   function handleKeyDown(e) {
     if (e.key === 'Enter' && onSubmit) onSubmit(e.target.value);
   }
 
   return (
-    <div style={{
+    <div
+      onMouseEnter={function(){ if (!disabled) setHovered(true); }}
+      onMouseLeave={function(){ setHovered(false); }}
+      style={{
       display: 'flex', alignItems: 'center', gap: '8px',
-      background: disabled ? 'rgba(248,246,242,.6)' : '#FCFBF8',
-      border: '1px solid #EAE3D9', borderRadius: radii[size] || radii.md,
+      background: disabled ? 'rgba(248,246,242,.6)' : '#FFFFFF',
+      border: '1px solid ' + borderColor, borderRadius: radii[size] || radii.md,
       padding: pads[size] || pads.md, height: heights[size] || heights.md,
       opacity: disabled ? 0.6 : 1,
       width: fullWidth ? '100%' : undefined,
-      transition: 'border-color 120ms ease, box-shadow 120ms ease',
+      boxShadow: ringStyle,
+      transition: 'border-color 140ms ease, box-shadow 140ms ease',
       fontFamily: "'Mukta', sans-serif",
     }}>
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, color: '#6F665C' }}>
@@ -43,6 +55,8 @@ export function SearchBar(props) {
         defaultValue={defaultValue}
         disabled={disabled}
         onChange={onChange}
+        onFocus={function(){ setFocused(true); }}
+        onBlur={function(){ setFocused(false); }}
         onKeyDown={handleKeyDown}
         style={{
           flex: 1, border: 'none', outline: 'none', background: 'transparent',
@@ -57,7 +71,7 @@ export function SearchBar(props) {
         </button>
       )}
       {shortcut && !hasValue && (
-        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '10px', color: '#6F665C', background: '#EAE3D9', padding: '2px 6px', borderRadius: '4px', flexShrink: 0, letterSpacing: '.04em' }}>
+        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', color: '#6F665C', background: '#EAE3D9', padding: '2px 6px', borderRadius: '4px', flexShrink: 0, letterSpacing: '.04em' }}>
           {shortcut}
         </span>
       )}

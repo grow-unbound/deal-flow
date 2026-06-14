@@ -106,7 +106,7 @@ export function Calendar({ value, onChange, minDate, maxDate, className }: Calen
         >
           <ChevronLeft size={16} />
         </button>
-        <div className="flex-1 text-center font-display text-[14px] font-semibold tracking-[-0.01em] text-cream-900">
+        <div className="flex-1 text-center font-display text-base font-semibold tracking-[-0.01em] text-cream-900">
           {monthYear}
         </div>
         <button
@@ -123,7 +123,7 @@ export function Calendar({ value, onChange, minDate, maxDate, className }: Calen
         {WEEKDAYS.map((day) => (
           <div
             key={day}
-            className="px-1 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-cream-700"
+            className="px-1 py-2 text-center text-xs font-semibold uppercase tracking-[0.08em] text-cream-700"
           >
             {day}
           </div>
@@ -143,7 +143,7 @@ export function Calendar({ value, onChange, minDate, maxDate, className }: Calen
               disabled={isDisabled}
               onClick={() => handleDaySelect(dayObj)}
               className={cn(
-                'flex aspect-square w-full items-center justify-center rounded-[8px] border text-[13px] font-medium transition-colors',
+                'flex aspect-square w-full items-center justify-center rounded-[8px] border text-base font-medium transition-colors',
                 dayObj.isCurrentMonth ? 'text-cream-900' : 'border-transparent bg-transparent text-cream-300',
                 isDisabled && dayObj.isCurrentMonth && 'cursor-not-allowed bg-cream-50 text-cream-400',
                 !isDisabled && dayObj.isCurrentMonth && 'border-transparent bg-white hover:bg-cream-50',

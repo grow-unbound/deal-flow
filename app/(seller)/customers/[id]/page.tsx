@@ -64,8 +64,8 @@ function buyerSinceLabel(value: string | null, yearsLabel: string) {
 }
 
 function TierPill({ tier }: { tier: 'A' | 'B' | 'C' | null }) {
-  if (!tier) return <span className="text-[11px] text-cream-700">Tier —</span>;
-  return <span className="rounded-full bg-ember-50 px-2 py-0.5 text-[11px] font-medium text-ember-700">Tier {tier}</span>;
+  if (!tier) return <span className="text-xs text-cream-700">Tier —</span>;
+  return <span className="rounded-full bg-ember-50 px-2 py-0.5 text-xs font-medium text-ember-700">Tier {tier}</span>;
 }
 
 export default function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -145,7 +145,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               >
                 <Share2 size={14} />
               </button>
-              <Button type="button" className="h-9 gap-1.5 border border-cream-400 bg-white px-4 text-[13px] font-medium text-teal-700 hover:bg-cream-100">
+              <Button type="button" className="h-9 gap-1.5 border border-cream-400 bg-white px-4 text-base font-medium text-teal-700 hover:bg-cream-100">
                 <Download size={14} />
                 Export
               </Button>

@@ -40,12 +40,12 @@ function StatCard({ stat }: { stat: StatItem }) {
   const isNegative = trend !== undefined && trend < 0;
 
   return (
-    <div className="bg-white border border-cream-300 rounded-lg p-5 shadow-xs">
+    <div className="rounded-lg border border-cream-300 bg-[var(--bg-surface)] p-5 shadow-xs">
       <div className="flex items-start justify-between">
         <p className="eyebrow text-cream-600 mb-2">{stat.label}</p>
         {stat.icon && <span className="text-cream-400">{stat.icon}</span>}
       </div>
-      <p className="text-h2 font-display font-medium text-cream-900 tabular-nums">{stat.value}</p>
+      <p className="font-mono text-2xl font-medium leading-none text-[#4A3F35] tabular">{stat.value}</p>
       <div className="flex items-center gap-1.5 mt-1.5">
         {trend !== undefined && (
           <span

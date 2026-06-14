@@ -43,7 +43,7 @@ export function ComposerShell({
   return (
     <div className="flex min-h-[calc(100vh-5rem)] flex-col rounded-[22px] border border-cream-300 bg-white shadow-[0_20px_45px_rgba(34,52,43,0.08)]">
       <div className="flex items-center gap-3 border-b border-cream-200 px-6 py-4">
-        <div className="flex min-w-0 items-center gap-2 text-[12px] text-cream-700">
+        <div className="flex min-w-0 items-center gap-2 text-sm text-cream-700">
           {crumbs.map((crumb, index) => (
             <div key={`${crumb.label}-${index}`} className="flex min-w-0 items-center gap-2">
               <span className={cn('truncate', crumb.current ? 'font-medium text-cream-950' : '')}>{crumb.label}</span>
@@ -54,7 +54,7 @@ export function ComposerShell({
         {modeChip ? (
           <span
             className={cn(
-              'rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]',
+              'rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em]',
               modeChip.tone === 'live'
                 ? 'border-teal-200 bg-teal-50 text-teal-700'
                 : 'border-cream-300 bg-cream-100 text-cream-700',
@@ -65,7 +65,7 @@ export function ComposerShell({
         ) : null}
         <div className="ml-auto flex items-center gap-3">
           {draftState ? (
-            <span className="inline-flex items-center gap-2 text-[12px] text-cream-600">
+            <span className="inline-flex items-center gap-2 text-sm text-cream-600">
               <span className="h-2 w-2 rounded-full bg-teal-400" />
               {draftState}
             </span>
@@ -82,10 +82,10 @@ export function ComposerShell({
       <div className="border-b border-cream-200 px-6 py-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-1">
-            <h1 className="font-display text-[34px] font-medium leading-none tracking-[-0.02em] text-cream-950">
+            <h1 className="font-display text-2xl font-extrabold tracking-[-0.025em] text-cream-950 leading-[1.05]">
               {title}
             </h1>
-            <div className="max-w-[68ch] text-[13px] leading-[1.6] text-cream-700">{subtitle}</div>
+            <div className="max-w-[68ch] text-base leading-[1.6] text-cream-700">{subtitle}</div>
           </div>
           {topActions ? <div className="flex items-center gap-2">{topActions}</div> : null}
         </div>
@@ -128,7 +128,7 @@ export function ComposerBasicField({
 }) {
   return (
     <div className={cn('rounded-[16px] border border-cream-300 bg-cream-50 p-4', className)}>
-      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-700">{label}</p>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">{label}</p>
       {children}
     </div>
   );
@@ -146,8 +146,8 @@ export function ComposerPanelTitle({
   return (
     <div className="flex items-start justify-between gap-4 border-b border-cream-200 px-5 py-4">
       <div>
-        <h2 className="text-[16px] font-semibold text-cream-950">{title}</h2>
-        {subtitle ? <p className="mt-1 text-[12px] leading-[1.55] text-cream-700">{subtitle}</p> : null}
+        <h2 className="text-md font-semibold text-cream-950">{title}</h2>
+        {subtitle ? <p className="mt-1 text-sm leading-[1.55] text-cream-700">{subtitle}</p> : null}
       </div>
       {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
     </div>

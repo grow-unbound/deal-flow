@@ -31,7 +31,7 @@ export function InsightStrip4({ tiles }: InsightStrip4Props) {
         >
           <p
             className={cn(
-              'text-[10.5px] font-semibold tracking-[0.12em] uppercase text-cream-600',
+              'eyebrow text-cream-600',
               tile.tone === 'accent' && 'text-teal-100'
             )}
           >
@@ -39,7 +39,7 @@ export function InsightStrip4({ tiles }: InsightStrip4Props) {
           </p>
           <p
             className={cn(
-              'mt-2 font-display text-[30px] font-medium leading-[1.05] tracking-[-0.015em] text-cream-900 tabular-nums',
+              'mt-2 font-display text-2xl font-medium leading-[1.05] tracking-[-0.015em] text-[#4A3F35] tabular-nums',
               tile.tone === 'accent' && 'text-cream-50',
               tile.tone === 'warn' && 'text-ember-500'
             )}
@@ -49,7 +49,7 @@ export function InsightStrip4({ tiles }: InsightStrip4Props) {
           {(tile.sub || tile.delta) && (
             <p
               className={cn(
-                'mt-2 flex items-center gap-2 text-[12px] text-cream-700',
+                'mt-2 flex items-center gap-2 text-sm text-cream-700',
                 tile.tone === 'accent' && 'text-teal-100'
               )}
             >

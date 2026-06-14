@@ -18,6 +18,11 @@ export function Input(props) {
   var hasError = !!error;
   var inputId  = id || (label ? 'yk-' + label.toLowerCase().replace(/\s+/g, '-') : undefined);
 
+  var fState = React.useState(false);
+  var focused = fState[0], setFocused = fState[1];
+  var hState = React.useState(false);
+  var hovered = hState[0], setHovered = hState[1];
+
   var wrapStyle = {
     display: 'flex',
     flexDirection: 'column',
@@ -35,17 +40,19 @@ export function Input(props) {
     lineHeight: 1.3,
   };
 
+  var fieldBorder = hasError ? '#9C3026' : (focused ? '#B5642F' : (hovered ? '#DBD1C2' : '#EAE3D9'));
+  var fieldRing   = hasError ? '0 0 0 3px rgba(156,48,38,.10)' : (focused ? '0 0 0 3px rgba(181,100,47,.14)' : undefined);
   var fieldWrapStyle = {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    background: disabled ? 'rgba(248,246,242,.6)' : '#FCFBF8',
-    border: '1px solid ' + (hasError ? '#9C3026' : '#EAE3D9'),
+    background: disabled ? 'rgba(248,246,242,.6)' : '#FFFFFF',
+    border: '1px solid ' + fieldBorder,
     borderRadius: '10px',
     padding: '0 12px',
-    height: '40px',
-    transition: 'border-color 120ms ease, box-shadow 120ms ease',
-    boxShadow: hasError ? '0 0 0 3px rgba(156,48,38,.10)' : undefined,
+    height: '42px',
+    transition: 'border-color 140ms ease, box-shadow 140ms ease',
+    boxShadow: fieldRing,
     opacity: disabled ? 0.6 : 1,
   };
 
@@ -55,7 +62,7 @@ export function Input(props) {
     outline: 'none',
     background: 'transparent',
     fontFamily: "'Mukta', sans-serif",
-    fontSize: '14px',
+    fontSize: '15px',
     fontWeight: 400,
     color: '#221E1A',
     letterSpacing: '-0.01em',
@@ -65,7 +72,7 @@ export function Input(props) {
   };
 
   var affixStyle = {
-    fontSize: '13px',
+    fontSize: '14px',
     color: '#6F665C',
     userSelect: 'none',
     flexShrink: 0,
@@ -87,7 +94,9 @@ export function Input(props) {
           {required && <span style={{ color: '#9C3026', marginLeft: '2px' }}>*</span>}
         </label>
       )}
-      <div style={fieldWrapStyle}>
+      <div style={fieldWrapStyle}
+        onMouseEnter={function(){ setHovered(true); }}
+        onMouseLeave={function(){ setHovered(false); }}>
         {prefix && <span style={affixStyle}>{prefix}</span>}
         <input
           id={inputId}
@@ -98,7 +107,8 @@ export function Input(props) {
           value={value}
           defaultValue={defaultValue}
           onChange={onChange}
-          onBlur={onBlur}
+          onBlur={function(e){ setFocused(false); if (onBlur) onBlur(e); }}
+          onFocus={function(){ setFocused(true); }}
           required={required}
           style={inputStyle}
         />

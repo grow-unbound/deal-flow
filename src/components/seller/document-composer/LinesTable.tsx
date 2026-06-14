@@ -156,13 +156,13 @@ export function LinesTable({
     <section className="doc-lines flex h-full min-h-0 flex-col overflow-visible rounded-[14px] border border-cream-300 bg-white">
       <div className="doc-lines-head flex flex-wrap items-start justify-between gap-3 border-b border-cream-200 px-5 py-4">
         <div>
-          <p className="title text-[13px] font-semibold text-cream-950">
+          <p className="title text-base font-semibold text-cream-950">
             {readOnly
               ? `${activeLines.length} line${activeLines.length === 1 ? '' : 's'}`
               : title ??
                 (activeLines.length === 0 ? 'Add your first product' : `${activeLines.length} line${activeLines.length === 1 ? '' : 's'}`)}
           </p>
-          <p className="sub mt-1 text-[12px] text-cream-600">
+          <p className="sub mt-1 text-sm text-cream-600">
             {readOnly ? 'View only — duplicate or edit to make changes.' : description ?? 'Pricelist auto-applies. Adjust qty, price, or discount as needed.'}
           </p>
         </div>
@@ -173,7 +173,7 @@ export function LinesTable({
               <Input
                 value={lineFilterQuery}
                 onChange={(e) => setLineFilterQuery(e.target.value)}
-                className="h-9 pl-9 text-[13px]"
+                className="h-9 pl-9 text-base"
                 placeholder="Filter lines…"
                 aria-label="Filter lines by product, SKU, or brand"
               />
@@ -182,7 +182,7 @@ export function LinesTable({
               type="button"
               variant="ghost"
               size="sm"
-              className="gap-2 text-[12px]"
+              className="gap-2 text-sm"
               disabled={!resetEnabled}
               onClick={onResetOverrides}
             >
@@ -190,17 +190,17 @@ export function LinesTable({
               Reset overrides
             </Button>
             {showNotesControls ? (
-              <Button type="button" variant="ghost" size="sm" className="gap-2 text-[12px]" onClick={onToggleNotes}>
+              <Button type="button" variant="ghost" size="sm" className="gap-2 text-sm" onClick={onToggleNotes}>
                 {notesExpanded ? 'Hide notes' : 'Notes'}
               </Button>
             ) : null}
             {showFreightControls ? (
-              <Button type="button" variant="ghost" size="sm" className="gap-2 text-[12px]" onClick={onToggleFreight}>
+              <Button type="button" variant="ghost" size="sm" className="gap-2 text-sm" onClick={onToggleFreight}>
                 {freightExpanded ? 'Hide freight' : 'Freight charges'}
               </Button>
             ) : null}
             {showDualNotes ? (
-              <Button type="button" variant="ghost" size="sm" className="gap-2 text-[12px]" onClick={onToggleInternal}>
+              <Button type="button" variant="ghost" size="sm" className="gap-2 text-sm" onClick={onToggleInternal}>
                 {internalExpanded ? 'Hide internal note' : 'Internal note'}
               </Button>
             ) : null}
@@ -209,9 +209,9 @@ export function LinesTable({
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto">
-        <table className="lines-table w-full min-w-[960px] text-left text-[13px]">
+        <table className="lines-table w-full min-w-[960px] text-left text-base">
           <thead>
-            <tr className="sticky top-0 z-[1] border-b border-cream-200 bg-white text-[11px] font-semibold uppercase tracking-[0.06em] text-cream-500">
+            <tr className="sticky top-0 z-[1] border-b border-cream-200 bg-white text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">
               <th className="w-10 px-3 py-2">#</th>
               <th className="px-3 py-2">Product</th>
               <th className="num w-24 px-2 py-2 text-right">Qty</th>
@@ -267,7 +267,7 @@ export function LinesTable({
 
             {visibleLines.length === 0 ? (
               <tr className="empty-table-row">
-                <td colSpan={colCount} className="px-5 py-8 text-center text-[13px] text-cream-600">
+                <td colSpan={colCount} className="px-5 py-8 text-center text-base text-cream-600">
                   {lineFilterQuery.trim()
                     ? 'No lines match your filter.'
                     : buyerSelected
@@ -297,7 +297,7 @@ export function LinesTable({
                       <EntityAvatar initials={line.brand_initials} hue={line.brand_hue} size={32} />
                       <div className="min-w-0">
                         <p className="font-medium text-cream-900">{line.product_name}</p>
-                        <p className="text-[11px] text-cream-600">
+                        <p className="text-xs text-cream-600">
                           {line.sku}
                           {(line.mrp ?? 0) > 0 ? ` · MRP ${formatInr(line.mrp)}` : ''}
                           {kind === 'estimate' ? ` · Stock ${line.on_hand}` : ''}
@@ -324,7 +324,7 @@ export function LinesTable({
                       </div>
                     )}
                   </td>
-                  <td className="num px-2 py-3 text-right font-mono text-[12px] tabular-nums text-cream-700">
+                  <td className="num px-2 py-3 text-right font-mono text-sm tabular-nums text-cream-700">
                     {formatInr(line.base_selling_price ?? 0)}
                   </td>
                   <td className="num px-2 py-3 text-right">
@@ -332,11 +332,11 @@ export function LinesTable({
                       <span className="field-value font-mono tabular-nums">{formatInr(line.unit_price)}</span>
                     ) : (
                       <div className="editable relative w-full min-w-[5.5rem]">
-                        <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 font-mono text-[11px] text-cream-500">
+                        <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 font-mono text-xs text-cream-500">
                           ₹
                         </span>
                         <Input
-                          className="h-8 w-full pl-6 text-right font-mono text-[12px] tabular-nums"
+                          className="h-8 w-full pl-6 text-right font-mono text-sm tabular-nums"
                           inputMode="numeric"
                           value={formatNumberForInput(line.unit_price)}
                           onChange={(event) => {
@@ -362,7 +362,7 @@ export function LinesTable({
                       />
                     )}
                   </td>
-                  <td className="num-display px-2 py-3 text-right font-mono text-[12.5px] tabular-nums text-cream-900">
+                  <td className="num-display px-2 py-3 text-right font-mono text-sm tabular-nums text-cream-900">
                     {formatInr(line.line_total)}
                   </td>
                   {!readOnly ? (
@@ -382,11 +382,11 @@ export function LinesTable({
 
       {!readOnly && showNotesControls && notesExpanded ? (
         <div className="border-t border-cream-100 px-5 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-600">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">
             {singleNoteMode ? 'Notes' : 'Notes for buyer'}
           </p>
           <textarea
-            className="mt-2 w-full rounded-[10px] border border-cream-300 p-3 text-[13px]"
+            className="mt-2 w-full rounded-[10px] border border-cream-300 p-3 text-base"
             rows={3}
             value={notesValue}
             onChange={(event) => onNotesValueChange(event.target.value)}
@@ -395,15 +395,15 @@ export function LinesTable({
       ) : null}
       {!readOnly && showFreightControls && freightExpanded ? (
         <div className="border-t border-cream-100 px-5 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-600">Freight & packing (₹)</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">Freight & packing (₹)</p>
           <Input className="mt-2 h-9 max-w-xs" value={freightValue} onChange={(event) => onFreightValueChange(event.target.value)} type="number" />
         </div>
       ) : null}
       {!readOnly && showDualNotes && internalExpanded ? (
         <div className="border-t border-cream-100 px-5 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-600">Internal note</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">Internal note</p>
           <textarea
-            className="mt-2 w-full rounded-[10px] border border-cream-300 p-3 text-[13px]"
+            className="mt-2 w-full rounded-[10px] border border-cream-300 p-3 text-base"
             rows={2}
             value={internalValue}
             onChange={(event) => onInternalValueChange(event.target.value)}

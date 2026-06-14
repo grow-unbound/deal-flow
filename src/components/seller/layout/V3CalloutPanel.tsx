@@ -8,7 +8,7 @@ interface CalloutRow {
   initials: string;
   hue: EntityAvatarHue;
   name: string;
-  reason: string;
+  reason: ReactNode;
   trailing: ReactNode;
 }
 
@@ -28,8 +28,8 @@ export function V3CalloutPanel({ items, stalenessHint = 'Updated moments ago' }:
   return (
     <section className="mt-5">
       <header className="mb-2 flex items-center justify-between">
-        <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-cream-700">Today&apos;s read</p>
-        <p className="font-mono text-[11px] text-cream-600">{stalenessHint}</p>
+        <p className="eyebrow text-cream-700">Today&apos;s read</p>
+        <p className="text-xs text-cream-600">{stalenessHint}</p>
       </header>
       <div className="grid grid-cols-3 gap-3">
         {items.map((item, index) => (
@@ -54,7 +54,7 @@ export function V3CalloutPanel({ items, stalenessHint = 'Updated moments ago' }:
                 />
                 <p
                   className={cn(
-                    'text-[10.5px] font-semibold uppercase tracking-[0.12em] text-cream-700',
+                    'eyebrow text-cream-700',
                     item.kind === 'risk' && 'text-danger-700',
                     item.kind === 'info' && 'text-teal-700',
                     item.kind === 'opportunity' && 'text-ember-700'
@@ -63,20 +63,20 @@ export function V3CalloutPanel({ items, stalenessHint = 'Updated moments ago' }:
                   {item.eyebrow}
                 </p>
               </div>
-              <p className="font-mono text-[11px] text-cream-700">{item.hint}</p>
+              <p className="text-xs text-cream-700">{item.hint}</p>
             </div>
             {item.rows.length === 0 ? (
-              <p className="py-1 text-[12px] text-cream-700 italic">None right now. Within thresholds.</p>
+              <p className="py-1 text-sm text-cream-700 italic">None right now. Within thresholds.</p>
             ) : (
               <div className="space-y-[10px]">
                 {item.rows.map((row, rowIndex) => (
                   <div key={`${row.name}-${rowIndex}`} className="flex items-start gap-[10px]">
                     <EntityAvatar initials={row.initials} hue={row.hue} size={32} />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-medium leading-[1.25] text-cream-900">{row.name}</p>
-                      <p className="mt-0.5 truncate text-[11.5px] leading-[1.4] text-cream-700">{row.reason}</p>
+                      <p className="truncate text-base font-medium leading-[1.25] text-cream-900">{row.name}</p>
+                      <p className="mt-0.5 truncate text-sm leading-[1.4] text-cream-700">{row.reason}</p>
                     </div>
-                    <div className="shrink-0 text-right font-mono text-[11.5px] font-medium text-cream-800">{row.trailing}</div>
+                    <div className="shrink-0 text-right text-sm font-medium text-cream-800">{row.trailing}</div>
                   </div>
                 ))}
               </div>

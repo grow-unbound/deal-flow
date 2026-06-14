@@ -124,7 +124,7 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
         <Link
           key="est"
           href={`/estimates/${d.estimate.id}`}
-          className="inline-flex items-center rounded-full border border-cream-200 bg-cream-50 px-2 py-0.5 text-[12px] font-medium text-teal-800 hover:bg-cream-100"
+          className="inline-flex items-center rounded-full border border-cream-200 bg-cream-50 px-2 py-0.5 text-sm font-medium text-teal-800 hover:bg-cream-100"
         >
           From: {label}
         </Link>,
@@ -306,15 +306,15 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
                   onChangeBuyer={noop}
                 />
               ) : (
-                <p className="text-[13px] text-cream-700">No buyer on this order.</p>
+                <p className="text-base text-cream-700">No buyer on this order.</p>
               )}
               {orderMeta ? (
-                <div className="rounded-[10px] border border-cream-200 bg-cream-50 px-3 py-3 text-[12px] leading-[1.55] text-cream-800">
+                <div className="rounded-[10px] border border-cream-200 bg-cream-50 px-3 py-3 text-sm leading-[1.55] text-cream-800">
                   {orderMeta}
                 </div>
               ) : null}
               {data.has_backorder && (ui === 'confirmed' || ui === 'dispatched') ? (
-                <div className="callout callout--warning text-[12px] leading-[1.5]">
+                <div className="callout callout--warning text-sm leading-[1.5]">
                   <strong>Backorder.</strong> Some lines exceed available stock — buyer has been notified.
                 </div>
               ) : null}

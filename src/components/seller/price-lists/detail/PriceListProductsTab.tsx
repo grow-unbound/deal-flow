@@ -106,8 +106,8 @@ export function PriceListProductsTab({ filters, items, brandsCovered }: PriceLis
       <article className="rounded-[14px] border border-cream-300 bg-white p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="font-display text-[17px] text-cream-950">Filters applied</h3>
-            <p className="mt-1 text-[13px] text-cream-700">
+            <h3 className="font-display text-lg text-cream-950">Filters applied</h3>
+            <p className="mt-1 text-base text-cream-700">
               {items.length} products across {brandsCovered} brands.
             </p>
           </div>
@@ -116,16 +116,16 @@ export function PriceListProductsTab({ filters, items, brandsCovered }: PriceLis
         {hasSavedFilters ? (
           <div className="mt-4 grid grid-cols-2 gap-3">
             <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3">
-              <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-cream-700">Brands</p>
-              <p className="mt-1 text-[13px] text-cream-900">{renderFilterValues(brandNames)}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Brands</p>
+              <p className="mt-1 text-base text-cream-900">{renderFilterValues(brandNames)}</p>
             </div>
             <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3">
-              <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-cream-700">Categories</p>
-              <p className="mt-1 text-[13px] text-cream-900">{renderFilterValues(categoryNames)}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Categories</p>
+              <p className="mt-1 text-base text-cream-900">{renderFilterValues(categoryNames)}</p>
             </div>
           </div>
         ) : (
-          <div className="mt-4 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-[13px] text-cream-700">
+          <div className="mt-4 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-base text-cream-700">
             No saved filters. This price list was built from its saved line items only.
           </div>
         )}
@@ -169,13 +169,13 @@ export function PriceListProductsTab({ filters, items, brandsCovered }: PriceLis
             const d = row.discountPct;
             const m = row.marginPct;
             return (
-              <tr key={row.item.id} className="border-b border-cream-200 text-[13px]">
+              <tr key={row.item.id} className="border-b border-cream-200 text-base">
                 <td className="px-5 py-3">
                   <div className="flex items-center gap-2.5">
                     <EntityAvatar initials={getInitials(row.productName)} hue="teal" size={32} className="rounded-[8px]" />
                     <div className="min-w-0">
                       <p className="ent-name truncate font-medium text-cream-950">{row.productName}</p>
-                      <p className="mt-0.5 font-mono text-[11px] text-cream-600">{row.sku}</p>
+                      <p className="mt-0.5 font-mono text-xs text-cream-600">{row.sku}</p>
                     </div>
                   </div>
                 </td>
@@ -185,17 +185,17 @@ export function PriceListProductsTab({ filters, items, brandsCovered }: PriceLis
                     <span className="truncate">{row.brandName}</span>
                   </div>
                 </td>
-                <td className="px-5 py-3 text-right font-mono text-[12.5px] text-cream-900">
+                <td className="px-5 py-3 text-right font-mono text-sm text-cream-900">
                   {row.cost != null && row.cost > 0 ? formatInr(row.cost) : '—'}
                 </td>
-                <td className="px-5 py-3 text-right font-mono text-[12.5px] text-cream-900">
+                <td className="px-5 py-3 text-right font-mono text-sm text-cream-900">
                   {row.mrp != null ? formatInr(row.mrp) : '—'}
                 </td>
-                <td className="px-5 py-3 text-right font-mono text-[12.5px] text-cream-700">{formatInr(row.base)}</td>
+                <td className="px-5 py-3 text-right font-mono text-sm text-cream-700">{formatInr(row.base)}</td>
                 <td className="px-5 py-3 text-right font-mono font-semibold text-cream-950">{formatInr(row.list)}</td>
                 <td
                   className={cn(
-                    'px-5 py-3 text-right font-mono text-[12px]',
+                    'px-5 py-3 text-right font-mono text-sm',
                     d == null ? 'text-cream-500' : d >= 0 ? 'text-teal-700' : 'text-danger-700',
                   )}
                 >
@@ -203,7 +203,7 @@ export function PriceListProductsTab({ filters, items, brandsCovered }: PriceLis
                     ? '—'
                     : `${d >= 0 ? '-' : '+'}${Math.abs(d).toFixed(1)}%`}
                 </td>
-                <td className="px-5 py-3 text-right font-mono text-[12px] text-cream-900">
+                <td className="px-5 py-3 text-right font-mono text-sm text-cream-900">
                   {m == null ? '—' : `${m.toFixed(1)}%`}
                 </td>
               </tr>

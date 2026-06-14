@@ -4,7 +4,7 @@
    R10 Final Identity — one palette, light mode canonical
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Mukta:wght@300;400;500;600;700;800&family=Baloo+2:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Mukta:wght@300;400;500;600;700;800&family=Baloo+2:wght@500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500&display=swap');
 
 /* ── COLOR TOKENS — the one palette ── */
 :root {
@@ -13,8 +13,8 @@
   --yk-surface:      #2B2825;   /* dark grounds, app icon tile               */
   --yk-copper:       #B5642F;   /* mark & accents — on light only            */
   --yk-copper-lt:    #D9894C;   /* mark & accents — on dark                  */
-  --yk-paper:        #F8F6F2;   /* canonical light ground                    */
-  --yk-card:         #FCFBF8;   /* card surface                              */
+  --yk-paper:        #F8F7F3;   /* canonical light ground — barely warm, not yellowed */
+  --yk-card:         #FFFFFF;   /* card surface — pure white, copper pops clean */
   --yk-card-line:    #EAE3D9;   /* hairline border                           */
   --yk-sub:          #64594E;   /* muted text — 6.4:1 AA on paper            */
   --yk-faint:        #6F665C;   /* label text — 5.3:1 AA on paper            */
@@ -38,14 +38,14 @@
   /* ── TYPOGRAPHY ── */
   --yk-font-ui:       'Mukta', sans-serif;         /* everything — UI, headings, body       */
   --yk-font-wordmark: 'Baloo 2', sans-serif;       /* logotype / wordmark ONLY              */
-  --yk-font-mono:     'IBM Plex Mono', monospace;  /* IDs, SKUs, codes — optional           */
+  --yk-font-mono:     'JetBrains Mono', monospace; /* IDs, SKUs, prices — legible at 11–13px */
 
-  /* Type scale */
-  --yk-text-xs:    11px;
-  --yk-text-sm:    12.5px;
-  --yk-text-base:  14px;
-  --yk-text-md:    16px;
-  --yk-text-lg:    19px;
+  /* Type scale — R11.1: base bumped 15→16 for a more confident, readable body */
+  --yk-text-xs:    11.5px;
+  --yk-text-sm:    13px;
+  --yk-text-base:  16px;
+  --yk-text-md:    17px;
+  --yk-text-lg:    20px;
   --yk-text-xl:    24px;
   --yk-text-2xl:   32px;
   --yk-text-3xl:   46px;
@@ -66,6 +66,7 @@
 
   /* Letter spacing */
   --yk-tracking-display: -0.03em;
+  --yk-tracking-title:   -0.025em; /* Page title hero — Mukta 800, 22–24px    */
   --yk-tracking-heading: -0.02em;
   --yk-tracking-body:    -0.01em;
   --yk-tracking-label:    0.08em;
@@ -110,6 +111,15 @@
   --yk-duration-fast:  100ms; /* @kind other */
   --yk-duration-base:  180ms; /* @kind other */
   --yk-duration-slow:  280ms; /* @kind other */
+
+  /* ── INTERACTION — hover / press feedback (R11.1) ──
+     Every interactive element responds. Hover = barely-there warm tint;
+     press = a small scale “haptic” nudge. Felt, not seen. */
+  --yk-hover-tint:     rgba(34,30,26,.05);  /* sub-5% warm wash on hover        */
+  --yk-active-tint:    rgba(34,30,26,.08);  /* slightly stronger when pressed    */
+  --yk-hover-tint-dark: rgba(243,238,230,.08);
+  --yk-press-scale:    0.97; /* @kind other */                 /* tactile press feedback */
+  --yk-lift:           0 6px 18px rgba(34,30,26,.10), 0 2px 5px rgba(34,30,26,.06); /* card hover lift */
 }
 
 /* ── BASE RESET ── */

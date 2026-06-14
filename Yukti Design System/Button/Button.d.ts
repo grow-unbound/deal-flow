@@ -1,8 +1,16 @@
 import * as React from 'react';
 
 export interface ButtonProps {
-  /** Visual style. Default: 'primary' */
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+  /**
+   * Visual style. Default: 'primary'
+   * - `primary`   — charcoal #221E1A fill (the confident default action)
+   * - `accent`    — copper #B5642F fill. RESERVED: max one per screen, for the single
+   *                 most important / terminal action (e.g. "Publish catalog", "Place order").
+   * - `secondary` — paper surface, charcoal text, hairline border
+   * - `ghost`     — transparent, charcoal text
+   * - `danger`    — destructive (error-tinted)
+   */
+  variant?: 'primary' | 'accent' | 'secondary' | 'ghost' | 'danger';
   /** Size. Default: 'md' */
   size?: 'sm' | 'md' | 'lg';
   /** Button label text */

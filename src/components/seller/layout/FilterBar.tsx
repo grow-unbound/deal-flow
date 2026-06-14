@@ -39,7 +39,7 @@ export function FilterBar({
       <div className="relative inline-flex flex-[0_0_280px] items-center gap-2 rounded-[8px] border border-cream-300 bg-white px-[10px] py-[6px] text-cream-700">
         <Search size={14} className="pointer-events-none text-cream-600" />
         <input
-          className="min-w-0 flex-1 border-0 bg-transparent p-0 text-[12.5px] text-cream-900 placeholder:text-cream-600 focus:outline-none focus:ring-0"
+          className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-cream-900 placeholder:text-cream-600 focus:outline-none focus:ring-0"
           placeholder={searchPlaceholder}
           aria-label={searchPlaceholder}
           value={searchValue}
@@ -53,8 +53,8 @@ export function FilterBar({
             type="button"
             onClick={() => onChipChange?.(chip)}
             className={cn(
-              'whitespace-nowrap rounded-full border border-cream-400 bg-white px-[11px] py-1 text-[12px] text-cream-800 transition-colors hover:bg-cream-100',
-              chip === activeChip && 'border-teal-500 bg-teal-500 text-cream-50 hover:bg-teal-500'
+              'whitespace-nowrap rounded-full border border-cream-400 bg-white px-[11px] py-1 text-sm text-cream-800 transition-colors hover:bg-cream-100',
+              chip === activeChip && 'border-ember-200 bg-ember-50 text-cream-900 hover:bg-ember-50'
             )}
           >
             {chip}
@@ -62,10 +62,10 @@ export function FilterBar({
         ))}
       </div>
       <div className="flex flex-1 justify-center">
-        <p className="font-mono text-[11.5px] text-cream-700">{count}</p>
+        <p className="text-sm text-cream-700">{count}</p>
       </div>
       <DropdownMenu>
-        <DropdownMenuTrigger className="inline-flex items-center gap-1 rounded-[8px] border border-cream-400 bg-white px-[10px] py-[5px] text-[12.5px] text-cream-800 hover:bg-cream-100">
+        <DropdownMenuTrigger className="inline-flex items-center gap-1 rounded-[8px] border border-cream-400 bg-white px-[10px] py-[5px] text-sm text-cream-800 hover:bg-cream-100">
           <span className="text-cream-700">Sort</span>
           <span>{sortBy}</span>
           <ChevronDown size={14} />
@@ -83,7 +83,7 @@ export function FilterBar({
         </DropdownMenuContent>
       </DropdownMenu>
       {!hideViewToggle ? (
-        <button type="button" className="rounded-md border border-cream-200 px-2 py-1 text-[12px] text-cream-700">
+        <button type="button" className="rounded-md border border-cream-200 px-2 py-1 text-sm text-cream-700">
           View
         </button>
       ) : null}

@@ -77,20 +77,20 @@ export default async function DashboardPage() {
       <div style={{ padding: '24px 32px 40px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
           <div>
-            <div style={{ fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-mono)', marginBottom: 4 }}>This week</div>
-            <h1 style={{ fontSize: 28, fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--cream-900)', lineHeight: 1.15 }}>
+            <div style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-body)', fontWeight: 500, marginBottom: 4 }}>This week</div>
+            <h1 style={{ fontSize: 'var(--yk-text-3xl)', fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--cream-900)', lineHeight: 1.05, letterSpacing: '-0.02em' }}>
               Good morning.
             </h1>
-            <p style={{ fontSize: 14, color: 'var(--cream-700)', marginTop: 6, maxWidth: 520, lineHeight: 1.5 }}>
+            <p style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-700)', marginTop: 6, maxWidth: 520, lineHeight: 1.5 }}>
               Live KPI summaries are now served from aggregate tables for faster load.
             </p>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
-            <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'var(--cream-50)', border: '1px solid var(--border-2)', borderRadius: 8, fontSize: 13, fontWeight: 500, color: 'var(--cream-800)', cursor: 'pointer' }}>
+            <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'var(--cream-50)', border: '1px solid var(--border-2)', borderRadius: 8, fontSize: 'var(--yk-text-base)', fontWeight: 500, color: 'var(--cream-800)', cursor: 'pointer' }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
               Last 7 days
             </button>
-            <Link href="/catalogs" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'var(--teal-500)', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer', textDecoration: 'none' }}>
+            <Link href="/catalogs" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'var(--teal-500)', borderRadius: 8, fontSize: 'var(--yk-text-base)', fontWeight: 600, color: '#fff', cursor: 'pointer', textDecoration: 'none' }}>
               Go to catalogs
             </Link>
           </div>
@@ -99,11 +99,11 @@ export default async function DashboardPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 28 }}>
           {kpis.map((k) => (
             <div key={k.label} style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '18px 20px', boxShadow: '0 1px 3px rgba(31,58,52,0.06)' }}>
-              <div style={{ fontSize: 11, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-mono)', marginBottom: 8 }}>{k.label}</div>
-              <div style={{ fontSize: 26, fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--cream-900)', lineHeight: 1 }}>{k.value}</div>
+              <div style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-body)', fontWeight: 500, marginBottom: 8 }}>{k.label}</div>
+              <div style={{ fontSize: 'var(--yk-text-2xl)', fontFamily: 'var(--font-display)', fontWeight: 700, color: '#4A3F35', lineHeight: 1 }}>{k.value}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 8 }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 12, fontWeight: 600, color: k.up ? '#2F5733' : '#9C3A22' }}>{k.delta}</span>
-                {k.hint && <span style={{ fontSize: 12, color: 'var(--cream-600)' }}>{k.hint}</span>}
+                <span style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 'var(--yk-text-sm)', fontWeight: 600, color: k.up ? '#2F5733' : '#9C3A22' }}>{k.delta}</span>
+                {k.hint && <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)' }}>{k.hint}</span>}
               </div>
             </div>
           ))}
@@ -113,10 +113,10 @@ export default async function DashboardPage() {
           <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 14, padding: '20px 22px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cream-900)' }}>Brand performance</div>
-                <div style={{ fontSize: 12, color: 'var(--cream-600)', marginTop: 2 }}>MTD revenue share</div>
+                <div style={{ fontSize: 'var(--yk-text-md)', fontWeight: 700, color: 'var(--cream-900)' }}>Brand performance</div>
+                <div style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)', marginTop: 2 }}>MTD revenue share</div>
               </div>
-              <Link href="/brands" style={{ fontSize: 12, color: 'var(--teal-500)', fontWeight: 600, textDecoration: 'none' }}>All brands</Link>
+              <Link href="/brands" style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--teal-500)', fontWeight: 600, textDecoration: 'none' }}>All brands</Link>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {topBrands.map((b) => {
@@ -124,28 +124,28 @@ export default async function DashboardPage() {
                 const isDown = b.trend.startsWith('-');
                 return (
                   <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 8, background: av.bg, border: `1px solid ${av.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: av.fg, flexShrink: 0 }}>{b.initials}</div>
+                    <div style={{ width: 36, height: 36, borderRadius: 8, background: av.bg, border: `1px solid ${av.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--yk-text-base)', fontWeight: 700, color: av.fg, flexShrink: 0 }}>{b.initials}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--cream-900)', marginBottom: 4 }}>{b.name}</div>
+                      <div style={{ fontSize: 'var(--yk-text-base)', fontWeight: 500, color: 'var(--cream-900)', marginBottom: 4 }}>{b.name}</div>
                       <div style={{ height: 6, background: 'var(--cream-200)', borderRadius: 100, overflow: 'hidden' }}>
                         <div style={{ height: '100%', width: `${b.pct}%`, background: 'var(--teal-500)', borderRadius: 100 }} />
                       </div>
                     </div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: isDown ? '#9C3A22' : '#2F5733', flexShrink: 0, width: 42, textAlign: 'right' }}>{b.trend}</div>
+                    <div style={{ fontSize: 'var(--yk-text-sm)', fontWeight: 600, color: isDown ? '#9C3A22' : '#2F5733', flexShrink: 0, width: 42, textAlign: 'right' }}>{b.trend}</div>
                   </div>
                 );
               })}
-              {topBrands.length === 0 && <p style={{ fontSize: 13, color: 'var(--cream-600)' }}>No brand data yet.</p>}
+              {topBrands.length === 0 && <p style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-600)' }}>No brand data yet.</p>}
             </div>
           </div>
 
           <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 14, padding: '20px 22px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cream-900)' }}>Latest orders</div>
-                <div style={{ fontSize: 12, color: 'var(--cream-600)', marginTop: 2 }}>Across all buyers</div>
+                <div style={{ fontSize: 'var(--yk-text-md)', fontWeight: 700, color: 'var(--cream-900)' }}>Latest orders</div>
+                <div style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)', marginTop: 2 }}>Across all buyers</div>
               </div>
-              <Link href="/sales-orders" style={{ fontSize: 12, color: 'var(--teal-500)', fontWeight: 600, textDecoration: 'none' }}>All orders</Link>
+              <Link href="/sales-orders" style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--teal-500)', fontWeight: 600, textDecoration: 'none' }}>All orders</Link>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
               {recentOrders.map((o) => {
@@ -153,22 +153,22 @@ export default async function DashboardPage() {
                 return (
                   <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--border-1)' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>{o.id}</div>
-                      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--cream-900)', marginTop: 1 }}>{o.buyer}</div>
+                      <div style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>{o.id}</div>
+                      <div style={{ fontSize: 'var(--yk-text-base)', fontWeight: 500, color: 'var(--cream-900)', marginTop: 1 }}>{o.buyer}</div>
                     </div>
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sm.bg, color: sm.fg, flexShrink: 0 }}>{sm.label}</span>
-                    <div style={{ fontSize: 13, fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)', flexShrink: 0, minWidth: 80, textAlign: 'right' }}>{inr(o.total)}</div>
+                    <span style={{ fontSize: 'var(--yk-text-xs)', fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sm.bg, color: sm.fg, flexShrink: 0 }}>{sm.label}</span>
+                    <div style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)', flexShrink: 0, minWidth: 80, textAlign: 'right' }}>{inr(o.total)}</div>
                   </div>
                 );
               })}
-              {recentOrders.length === 0 && <p style={{ fontSize: 13, color: 'var(--cream-600)' }}>No recent orders.</p>}
+              {recentOrders.length === 0 && <p style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-600)' }}>No recent orders.</p>}
             </div>
           </div>
         </div>
 
         <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 14, marginTop: 20 }}>
           <div style={{ padding: '16px 22px', borderBottom: '1px solid var(--border-1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--cream-900)' }}>Tenant details</h2>
+            <h2 style={{ fontSize: 'var(--yk-text-md)', fontWeight: 700, color: 'var(--cream-900)' }}>Tenant details</h2>
           </div>
           <div style={{ padding: '16px 22px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px 32px' }}>
             {[
@@ -177,8 +177,8 @@ export default async function DashboardPage() {
               { label: 'Plan', value: 'starter' },
             ].map(({ label, value }) => (
               <div key={label}>
-                <p style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-mono)', marginBottom: 4 }}>{label}</p>
-                <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--cream-900)' }}>{value}</p>
+                <p style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-body)', fontWeight: 500, marginBottom: 4 }}>{label}</p>
+                <p style={{ fontSize: 'var(--yk-text-base)', fontWeight: 500, color: 'var(--cream-900)', fontFamily: label === 'Tenant ID' ? 'var(--font-mono)' : 'var(--font-body)' }}>{value}</p>
               </div>
             ))}
           </div>

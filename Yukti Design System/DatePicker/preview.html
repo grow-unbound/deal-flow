@@ -1,0 +1,63 @@
+<!-- @dsCard group="Components" viewport="700x340" name="DatePicker" subtitle="Date field — styled calendar popover · copper selection · today dot · tabular-nums" -->
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;padding:24px 28px;background:#F8F6F2;font-family:'Mukta',sans-serif;-webkit-font-smoothing:antialiased;color:#221E1A;}
+  .wrap{display:flex;gap:40px;align-items:flex-start;}
+  .field{display:flex;flex-direction:column;gap:5px;width:240px;}
+  .lbl{font-size:12.5px;font-weight:600;letter-spacing:.04em;color:#64594E;}
+  .trigger{display:flex;align-items:center;justify-content:space-between;gap:8px;height:42px;background:#FCFBF8;border:1px solid #EAE3D9;border-radius:10px;padding:0 12px;font-size:15px;letter-spacing:-.01em;}
+  .trigger.open{border-color:#B5642F;box-shadow:0 0 0 3px rgba(181,100,47,.14);}
+  .trigger .val{font-variant-numeric:tabular-nums;}
+  .trigger .ph{color:#6F665C;}
+  .ico{color:#6F665C;display:flex;}
+  .hint{font-size:12.5px;color:#6F665C;}
+  .cal{width:278px;background:#FCFBF8;border:1px solid #EAE3D9;border-radius:14px;box-shadow:0 12px 32px rgba(34,30,26,.12),0 4px 8px rgba(34,30,26,.06);padding:12px;}
+  .calhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .calhead .m{font-size:14px;font-weight:700;letter-spacing:-.015em;}
+  .nav{width:28px;height:28px;border-radius:8px;border:none;background:transparent;color:#64594E;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .dow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:4px;}
+  .dow span{text-align:center;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:500;color:#6F665C;letter-spacing:.04em;padding:2px 0;}
+  .days{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
+  .day{position:relative;height:32px;border-radius:8px;border:none;background:transparent;color:#221E1A;font-family:'JetBrains Mono',monospace;font-size:12.5px;font-variant-numeric:tabular-nums;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .day.mut{color:#bcb3a8;}
+  .day.today{position:relative;}
+  .day.today::after{content:"";position:absolute;bottom:4px;left:50%;transform:translateX(-50%);width:3px;height:3px;border-radius:50%;background:#B5642F;}
+  .day.sel{background:#B5642F;color:#F8F6F2;font-weight:600;box-shadow:0 1px 3px rgba(181,100,47,.30);}
+  .day.hov{background:rgba(34,30,26,.05);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div style="display:flex;flex-direction:column;gap:18px;">
+    <div class="field">
+      <span class="lbl">Valid from</span>
+      <div class="trigger"><span class="val">12 Jun 2026</span><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="12" height="11" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M2 6.5H14M5 1.5V4M11 1.5V4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span></div>
+      <span class="hint">Schedules the price list activation</span>
+    </div>
+    <div class="field">
+      <span class="lbl">Delivery date <span style="color:#9C3026;">*</span></span>
+      <div class="trigger open"><span class="ph">DD MMM YYYY</span><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="12" height="11" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M2 6.5H14M5 1.5V4M11 1.5V4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span></div>
+      <span class="hint">Open state — copper ring</span>
+    </div>
+  </div>
+
+  <div class="cal">
+    <div class="calhead">
+      <button class="nav"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M9 3.5L5 7.5L9 11.5" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <span class="m">June 2026</span>
+      <button class="nav"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M6 3.5L10 7.5L6 11.5" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    </div>
+    <div class="dow"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+    <div class="days">
+      <span></span><span></span><span></span><span></span><span></span>
+      <button class="day">1</button><button class="day">2</button>
+      <button class="day">3</button><button class="day">4</button><button class="day">5</button><button class="day">6</button><button class="day">7</button><button class="day">8</button><button class="day">9</button>
+      <button class="day">10</button><button class="day">11</button><button class="day today">12</button><button class="day hov">13</button><button class="day">14</button><button class="day">15</button><button class="day">16</button>
+      <button class="day">17</button><button class="day sel">18</button><button class="day">19</button><button class="day">20</button><button class="day">21</button><button class="day">22</button><button class="day">23</button>
+      <button class="day">24</button><button class="day">25</button><button class="day">26</button><button class="day">27</button><button class="day">28</button><button class="day">29</button><button class="day">30</button>
+    </div>
+  </div>
+</div>
+</body></html>

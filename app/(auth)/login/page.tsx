@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser';
 import posthog from 'posthog-js';
 
@@ -103,12 +104,8 @@ function LoginForm() {
 
   return (
     <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
-      {/* Logo */}
-      <div className="flex items-center gap-3 mb-7">
-        <div className="w-9 h-9 bg-teal-500 rounded-md flex items-center justify-center shrink-0">
-          <span className="text-cream-50 font-display font-medium text-sm">yk</span>
-        </div>
-        <span className="font-display font-medium text-teal-500 text-xl">yukti</span>
+      <div className="mb-7 flex justify-center">
+        <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
       </div>
 
       <h1 className="text-h3 font-display text-cream-900 mb-1">Welcome back</h1>
@@ -116,7 +113,7 @@ function LoginForm() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className={labelCls} style={{ fontSize: '11px', letterSpacing: '0.08em' }}>
+          <label className={labelCls} style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em' }}>
             Email or phone
           </label>
           <input
@@ -133,7 +130,7 @@ function LoginForm() {
 
         {!phoneEntered && (
           <div>
-            <label className={labelCls} style={{ fontSize: '11px', letterSpacing: '0.08em' }}>
+            <label className={labelCls} style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em' }}>
               Password
             </label>
             <input
@@ -195,9 +192,8 @@ function LoginForm() {
 function LoginFallback() {
   return (
     <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
-      <div className="flex items-center gap-3 mb-7">
-        <div className="w-9 h-9 bg-teal-300 rounded-md animate-pulse" />
-        <div className="h-6 w-28 rounded bg-cream-200 animate-pulse" />
+      <div className="mb-7 flex justify-center">
+        <div className="h-14 w-[76px] rounded-xl bg-cream-200 animate-pulse" />
       </div>
       <div className="space-y-3">
         <div className="h-4 w-40 rounded bg-cream-200 animate-pulse" />

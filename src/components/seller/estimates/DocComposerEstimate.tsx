@@ -460,7 +460,7 @@ export function DocComposerEstimate({
     }
     return (
       <div className="max-w-[1920px] mx-auto w-full px-8 pt-7 pb-6">
-        <p className="text-[13px] text-danger-700">{error instanceof Error ? error.message : 'Failed to load estimate composer.'}</p>
+        <p className="text-base text-danger-700">{error instanceof Error ? error.message : 'Failed to load estimate composer.'}</p>
       </div>
     );
   }
@@ -840,18 +840,18 @@ export function DocComposerEstimate({
             </div>
             <div className="mt-4 space-y-4">
               <div>
-                <p className="mb-2 text-[12px] font-medium text-cream-800">Recipient</p>
+                <p className="mb-2 text-sm font-medium text-cream-800">Recipient</p>
                 <Input value={sendRecipient} onChange={(event) => setSendRecipient(event.target.value)} />
               </div>
               <div>
-                <p className="mb-2 text-[12px] font-medium text-cream-800">Message</p>
+                <p className="mb-2 text-sm font-medium text-cream-800">Message</p>
                 <textarea
                   value={sendMessage}
                   onChange={(event) => setSendMessage(event.target.value)}
-                  className="min-h-[120px] w-full rounded-[12px] border border-cream-300 px-3 py-2 text-[13px] outline-none"
+                  className="min-h-[120px] w-full rounded-[12px] border border-cream-300 px-3 py-2 text-base outline-none"
                 />
               </div>
-              <div className="rounded-[12px] border border-cream-200 bg-cream-50 p-3 text-[12px] text-cream-700">
+              <div className="rounded-[12px] border border-cream-200 bg-cream-50 p-3 text-sm text-cream-700">
                 Buyer sees {diffLines.filter((line) => line.diff !== 'removed').length} lines totaling {formatCompactInr(totals.grand_total)}.
               </div>
             </div>

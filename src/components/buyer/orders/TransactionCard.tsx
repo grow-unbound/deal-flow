@@ -63,7 +63,7 @@ export function TransactionCard({ order }: TransactionCardProps) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <span
           style={{
-            fontSize: 13,
+            fontSize: 'var(--yk-text-base)',
             fontFamily: 'var(--font-mono)',
             color: 'var(--fg-1)',
             letterSpacing: '0.02em',
@@ -73,7 +73,7 @@ export function TransactionCard({ order }: TransactionCardProps) {
         </span>
         <span
           style={{
-            fontSize: 11,
+            fontSize: 'var(--yk-text-xs)',
             fontWeight: 600,
             padding: '2px 8px',
             borderRadius: 100,
@@ -87,19 +87,19 @@ export function TransactionCard({ order }: TransactionCardProps) {
 
       {/* Row 2: item count + date */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>
+        <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--fg-3)' }}>
           {order.item_count != null && order.item_count > 0
-            ? `${order.item_count} item${order.item_count !== 1 ? 's' : ''}`
+            ? <><span className="tabular-inline">{order.item_count}</span> item{order.item_count !== 1 ? 's' : ''}</>
             : '—'}
         </span>
-        <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>{formatDate(order.placed_at)}</span>
+        <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--fg-3)' }}><span className="tabular-inline">{formatDate(order.placed_at)}</span></span>
       </div>
 
       {/* Row 3: total */}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <span
           style={{
-            fontSize: 15,
+            fontSize: 'var(--yk-text-md)',
             fontFamily: 'var(--font-mono)',
             fontWeight: 600,
             color: 'var(--fg-1)',

@@ -103,30 +103,30 @@ export function BrandProductsTab({ brandId }: BrandProductsTabProps) {
               key={product.id}
               className="border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
             >
-              <td className="px-5 py-3.5 text-[13px] text-cream-900">
+              <td className="px-5 py-3.5 text-base text-cream-900">
                 <div className="ent flex items-center gap-3">
                   <div className="flex h-[38px] w-[38px] shrink-0 items-end justify-center rounded-[10px] bg-[linear-gradient(180deg,#EAF1EE_0%,#C6DAD3_100%)] pb-1">
                     <div className="h-[26px] w-[10px] rounded-[20%_20%_8%_8%/8%_8%_4%_4%] bg-[linear-gradient(180deg,#1F3A34,#142823)]" />
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate text-[13.5px] font-medium text-cream-900">{product.display_name}</p>
-                    <p className="mt-0.5 text-[11.5px] text-cream-700">
+                    <p className="truncate text-base font-medium text-cream-900">{product.display_name}</p>
+                    <p className="mt-0.5 text-sm text-cream-700">
                       {sku} · {toLabelCase(category)}
                     </p>
                   </div>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-[13px] tabular-nums text-cream-900">
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                 {product.mrp != null ? formatCompactInr(product.mrp) : '—'}
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-[13px] tabular-nums text-cream-900">
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                 {product.base_selling_price != null ? formatCompactInr(product.base_selling_price) : '—'}
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-[13px] tabular-nums text-cream-900">
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                 {product.cost_price != null ? formatCompactInr(product.cost_price) : '—'}
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-[13px] tabular-nums text-cream-900">{onHand}</td>
-              <td className="px-5 py-3.5 text-right font-mono text-[13px] tabular-nums text-cream-900">
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{onHand}</td>
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                 {daysCover === 0 ? (
                   <span className="font-semibold text-danger-700">0d</span>
                 ) : daysCover < 7 ? (
@@ -135,14 +135,14 @@ export function BrandProductsTab({ brandId }: BrandProductsTabProps) {
                   <span>{daysCover}d</span>
                 )}
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-[13px] tabular-nums text-cream-900">{unitsMtd}</td>
-              <td className="px-5 py-3.5 text-right text-[13px] text-cream-900">
-                <span className="font-display text-[15px] font-medium tabular-nums text-cream-900">{formatCompactInr(gmvMtd)}</span>
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{unitsMtd}</td>
+              <td className="px-5 py-3.5 text-right text-base text-cream-900">
+                <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatCompactInr(gmvMtd)}</span>
               </td>
-              <td className="px-5 py-3.5 text-[13px] text-cream-900">
+              <td className="px-5 py-3.5 text-base text-cream-900">
                 <GrowthPill value={growthPct} />
               </td>
-              <td className="px-5 py-3.5 text-[13px] text-cream-900">
+              <td className="px-5 py-3.5 text-base text-cream-900">
                 <StatusTag tone={tone} label={label} />
               </td>
             </tr>

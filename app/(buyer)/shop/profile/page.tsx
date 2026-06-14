@@ -71,20 +71,20 @@ export default function ProfilePage() {
   return (
     <div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px 18px 20px' }}>
-        <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--teal-500)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 700, color: '#fff', marginBottom: 12 }}>
+        <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--teal-500)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--yk-text-xl)', fontWeight: 700, color: '#fff', marginBottom: 12 }}>
           {initials}
         </div>
-        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--cream-900)', fontFamily: 'var(--font-display)' }}>{profile.name}</div>
-        <div style={{ fontSize: 13, color: 'var(--cream-600)', marginTop: 4 }}>{profile.business} · {profile.tier}</div>
+        <div style={{ fontSize: 'var(--yk-text-lg)', fontWeight: 700, color: 'var(--cream-900)', fontFamily: 'var(--font-display)' }}>{profile.name}</div>
+        <div style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-600)', marginTop: 4 }}>{profile.business} · {profile.tier}</div>
         {isPreview ? (
-          <div style={{ marginTop: 12, borderRadius: 999, background: 'var(--cream-50)', border: '1px solid var(--border-1)', padding: '6px 10px', fontSize: 12, color: 'var(--cream-700)' }}>
+          <div style={{ marginTop: 12, borderRadius: 999, background: 'var(--cream-50)', border: '1px solid var(--border-1)', padding: '6px 10px', fontSize: 'var(--yk-text-sm)', color: 'var(--cream-700)' }}>
             Preview mode is active. Buyer-specific values are shown as placeholders.
           </div>
         ) : null}
       </div>
 
       <div style={{ padding: '0 16px' }}>
-        <p style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-mono)', padding: '0 4px 8px' }}>Account</p>
+        <p style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-body)', fontWeight: 500, padding: '0 4px 8px' }}>Account</p>
         <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 14, overflow: 'hidden' }}>
           {[
             {
@@ -108,8 +108,17 @@ export default function ProfilePage() {
             <div key={row.label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px', borderBottom: i < arr.length - 1 ? '1px solid var(--border-1)' : 'none', cursor: 'pointer' }}>
               <RowIcon variant={row.variant}>{row.icon}</RowIcon>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--cream-900)' }}>{row.label}</div>
-                <div style={{ fontSize: 12, color: 'var(--cream-600)', marginTop: 1, fontFamily: row.mono ? 'var(--font-mono)' : undefined }}>{row.sub}</div>
+                <div style={{ fontSize: 'var(--yk-text-base)', fontWeight: 500, color: 'var(--cream-900)' }}>{row.label}</div>
+                <div
+                  style={{
+                    fontSize: row.mono ? 'var(--yk-text-base)' : 'var(--yk-text-sm)',
+                    color: 'var(--cream-600)',
+                    marginTop: 1,
+                    fontFamily: row.mono ? 'var(--font-mono)' : 'var(--font-body)',
+                  }}
+                >
+                  {row.sub}
+                </div>
               </div>
               {row.right}
             </div>
@@ -118,20 +127,20 @@ export default function ProfilePage() {
       </div>
 
       <div style={{ padding: '20px 16px 0' }}>
-        <p style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-mono)', padding: '0 4px 8px' }}>Preferences</p>
+        <p style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-body)', fontWeight: 500, padding: '0 4px 8px' }}>Preferences</p>
         <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 14, overflow: 'hidden' }}>
           {[
             {
               icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>,
-              label: 'Notifications', sub: 'WhatsApp + push', right: <span style={{ fontSize: 12, color: 'var(--teal-600)', fontWeight: 600 }}>On</span>,
+              label: 'Notifications', sub: 'WhatsApp + push', right: <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--teal-600)', fontWeight: 600 }}>On</span>,
             },
             {
               icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>,
-              label: 'Catalog view', sub: 'Lookbook or grid', right: <span style={{ fontSize: 12, color: 'var(--cream-700)' }}>Lookbook</span>,
+              label: 'Catalog view', sub: 'Lookbook or grid', right: <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-700)' }}>Lookbook</span>,
             },
             {
               icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>,
-              label: 'Language', sub: 'Display language', right: <span style={{ fontSize: 12, color: 'var(--cream-700)' }}>English</span>,
+              label: 'Language', sub: 'Display language', right: <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-700)' }}>English</span>,
             },
             {
               icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>,
@@ -141,8 +150,8 @@ export default function ProfilePage() {
             <div key={row.label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px', borderBottom: i < arr.length - 1 ? '1px solid var(--border-1)' : 'none', cursor: 'pointer' }}>
               <RowIcon>{row.icon}</RowIcon>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--cream-900)' }}>{row.label}</div>
-                <div style={{ fontSize: 12, color: 'var(--cream-600)', marginTop: 1 }}>{row.sub}</div>
+                <div style={{ fontSize: 'var(--yk-text-base)', fontWeight: 500, color: 'var(--cream-900)' }}>{row.label}</div>
+                <div style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)', marginTop: 1 }}>{row.sub}</div>
               </div>
               {row.right}
             </div>
@@ -157,12 +166,12 @@ export default function ProfilePage() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
             </RowIcon>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 500, color: '#9C3A22' }}>Log out</div>
-              <div style={{ fontSize: 12, color: 'var(--cream-600)', marginTop: 1 }}>You'll need a fresh OTP next time.</div>
+              <div style={{ fontSize: 'var(--yk-text-base)', fontWeight: 500, color: '#9C3A22' }}>Log out</div>
+              <div style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)', marginTop: 1 }}>You'll need a fresh OTP next time.</div>
             </div>
           </div>
         </div>
-        <p style={{ textAlign: 'center', marginTop: 16, fontSize: 11, color: 'var(--cream-600)', fontFamily: 'var(--font-mono)' }}>yukti buyer · v1.0.0</p>
+        <p style={{ textAlign: 'center', marginTop: 16, fontSize: 'var(--yk-text-xs)', color: 'var(--cream-600)', fontFamily: 'var(--font-body)' }}>Yukti buyer · <span className="tabular-inline">v1.0.0</span></p>
       </div>
     </div>
   );

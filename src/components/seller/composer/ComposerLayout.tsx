@@ -26,7 +26,7 @@ export function ComposerBreadcrumbs({
   items: ComposerCrumb[];
 }) {
   return (
-    <nav className="flex flex-wrap items-center gap-1.5 text-[12px] text-cream-600">
+    <nav className="flex flex-wrap items-center gap-1.5 text-sm text-cream-600">
       {items.map((item, index) => (
         <div key={`${item.label}-${index}`} className="flex items-center gap-1.5">
           {item.href && !item.current ? (
@@ -63,17 +63,17 @@ export function ComposerTitleRow({
     <div className="flex items-start justify-between gap-8">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="font-display text-[28px] font-semibold tracking-[-0.01em] text-cream-950">{title}</h1>
+          <h1 className="font-display text-2xl font-extrabold tracking-[-0.025em] text-cream-950 leading-[1.05]">{title}</h1>
           {status ? (
             status.chipClassName ? (
-              <span className={cn('doc-status-chip inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.1em]', status.chipClassName)}>
+              <span className={cn('doc-status-chip inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.1em]', status.chipClassName)}>
                 <span className="dot" aria-hidden />
                 {status.label}
               </span>
             ) : (
               <span
                 className={cn(
-                  'inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]',
+                  'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em]',
                   status.tone === 'live'
                     ? 'border-teal-200 bg-teal-50 text-teal-700'
                     : 'border-cream-300 bg-cream-100 text-cream-700',
@@ -84,7 +84,7 @@ export function ComposerTitleRow({
             )
           ) : null}
         </div>
-        <p className="mt-1.5 max-w-[72ch] text-[13px] leading-[1.55] text-cream-700">{subtitle}</p>
+        <p className="mt-1.5 max-w-[72ch] text-base leading-[1.55] text-cream-700">{subtitle}</p>
       </div>
 
       {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
@@ -117,7 +117,7 @@ export function ComposerBasicsField({
 }) {
   return (
     <div className={cn('border-b border-cream-300 px-4 py-3 last:border-b-0 lg:border-b-0 lg:border-r last:lg:border-r-0', className)}>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cream-700">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">{label}</p>
       <div className="mt-2">{children}</div>
     </div>
   );
@@ -179,8 +179,8 @@ export function ComposerPanelTitle({
   return (
     <div className="flex flex-wrap items-start justify-between gap-4 border-b border-cream-300 px-5 py-4">
       <div className="min-w-0">
-        <p className="text-[13px] font-semibold text-cream-950">{title}</p>
-        {subtitle ? <p className="mt-1 max-w-[38rem] text-[12.5px] leading-[1.5] text-cream-700">{subtitle}</p> : null}
+        <p className="text-base font-semibold text-cream-950">{title}</p>
+        {subtitle ? <p className="mt-1 max-w-[38rem] text-sm leading-[1.5] text-cream-700">{subtitle}</p> : null}
       </div>
       {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
     </div>

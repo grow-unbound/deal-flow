@@ -24,7 +24,7 @@ export function SalesOrderDeliverySection({ buyer }: SalesOrderDeliverySectionPr
     [buyer.contact_name, buyer.phone].filter(Boolean).join(' · ') || '—';
 
   return (
-    <div className="space-y-3 px-5 py-4 text-[13px]">
+    <div className="space-y-3 px-5 py-4 text-base">
       <div className="flex gap-3">
         <span className="w-24 shrink-0 text-cream-600">Address</span>
         <span className="min-w-0 text-cream-900">{address}</span>

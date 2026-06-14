@@ -315,7 +315,7 @@ export function InvoiceDetailPage({ id }: { id: string }) {
             )
           : (
               <ComposerSidebarCard>
-                <p className="text-[13px] text-cream-700">No buyer on this invoice.</p>
+                <p className="text-base text-cream-700">No buyer on this invoice.</p>
               </ComposerSidebarCard>
             )}
         center={(

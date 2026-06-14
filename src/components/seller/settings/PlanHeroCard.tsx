@@ -63,7 +63,7 @@ function Meter({
 export function PlanHeroCard({ plan, usage, limits }: { plan: PlanTier; usage: BillingUsage; limits: BillingLimits }) {
   return (
     <section className="rounded-xl bg-gradient-to-br from-teal-700 via-teal-800 to-teal-950 p-6 text-white shadow-lg">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-teal-200/90">Current plan</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal-200/90">Current plan</p>
       <h2 className="mt-1 font-display text-3xl font-medium tracking-tight">{TIER_LABEL[plan]}</h2>
       <p className="mt-1 max-w-prose text-sm text-teal-100/90">{TIER_SUB[plan]}</p>
       <div className="mt-6 grid gap-6 sm:grid-cols-3">

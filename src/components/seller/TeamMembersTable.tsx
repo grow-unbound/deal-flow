@@ -196,7 +196,7 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
             ))
           ) : filteredMembers.length === 0 ? (
             <tr>
-              <td colSpan={columnCount} className="px-5 py-16 text-center text-[13px] text-cream-500">
+              <td colSpan={columnCount} className="px-5 py-16 text-center text-base text-cream-500">
                 No users match your filters.
               </td>
             </tr>
@@ -206,11 +206,11 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
                 key={member.id}
                 className="border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
               >
-                <td className="px-5 py-3.5 text-[13px] text-cream-900">
+                <td className="px-5 py-3.5 text-base text-cream-900">
                   {member.full_name ?? <span className="text-cream-400">—</span>}
                 </td>
-                <td className="px-5 py-3.5 text-[13px] text-cream-700">{member.email}</td>
-                <td className="px-5 py-3.5 text-[13px] text-cream-700">{member.phone ?? '—'}</td>
+                <td className="px-5 py-3.5 text-base text-cream-700">{member.email}</td>
+                <td className="px-5 py-3.5 text-base text-cream-700">{member.phone ?? '—'}</td>
                 <td className="px-5 py-3.5">
                   <RoleChip role={member.role} />
                 </td>
@@ -469,7 +469,7 @@ function RowActionButton({ label, className, disabled, onClick, children }: RowA
       </Button>
       <span
         role="tooltip"
-        className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-md bg-cream-900 px-2 py-1 text-[11px] font-medium text-cream-50 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+        className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-md bg-cream-900 px-2 py-1 text-xs font-medium text-cream-50 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
       >
         {label}
       </span>

@@ -56,7 +56,7 @@ function SortableImageItem({ id, url, index, onRemove }: SortableImageItemProps)
 
       {/* Primary badge */}
       {index === 0 && (
-        <span className="absolute bottom-0 left-0 right-0 text-center text-[9px] font-semibold bg-teal-500 text-white py-0.5 leading-tight">
+        <span className="absolute bottom-0 left-0 right-0 text-center text-xs font-semibold bg-teal-500 text-white py-0.5 leading-tight">
           Primary
         </span>
       )}

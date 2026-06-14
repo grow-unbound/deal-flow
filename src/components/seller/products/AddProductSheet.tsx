@@ -130,7 +130,7 @@ function InrInput({
 }) {
   return (
     <div className="flex items-stretch">
-      <span className="inline-flex items-center rounded-l-[8px] border border-r-0 border-cream-400 bg-cream-200 px-3 text-[13.5px] text-cream-700 select-none">
+      <span className="inline-flex items-center rounded-l-[8px] border border-r-0 border-cream-400 bg-cream-200 px-3 text-base text-cream-700 select-none">
         ₹
       </span>
       <Input
@@ -159,12 +159,12 @@ function MasterProductRow({ product }: { product: MasterProduct }) {
         </div>
       )}
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13.5px] font-medium text-cream-900">{product.name}</p>
-        <p className="truncate text-[11.5px] text-cream-700">
+        <p className="truncate text-base font-medium text-cream-900">{product.name}</p>
+        <p className="truncate text-sm text-cream-700">
           {product.brand_name}{product.category_name ? ` · ${product.category_name}` : ''} · <span className="font-mono">{product.master_sku}</span>
         </p>
       </div>
-      <span className="shrink-0 rounded-full bg-teal-50 px-[7px] py-[2px] text-[10px] font-semibold uppercase tracking-[0.06em] text-teal-700">
+      <span className="shrink-0 rounded-full bg-teal-50 px-[7px] py-[2px] text-xs font-semibold uppercase tracking-[0.06em] text-teal-700">
         Verified
       </span>
     </div>
@@ -175,7 +175,7 @@ function MasterProductRow({ product }: { product: MasterProduct }) {
 
 function ReadOnlyChip({ label }: { label: string }) {
   return (
-    <div className="flex h-10 items-center rounded-[8px] border border-cream-200 bg-cream-100 px-3 text-[13.5px] text-cream-700">
+    <div className="flex h-10 items-center rounded-[8px] border border-cream-200 bg-cream-100 px-3 text-base text-cream-700">
       {label}
     </div>
   );
@@ -524,15 +524,15 @@ export function AddProductSheet({
                     <Check size={16} strokeWidth={1.75} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13.5px] font-medium text-cream-900">
+                    <p className="truncate text-base font-medium text-cream-900">
                       Imported from master · {selectedMaster.name}
                     </p>
-                    <p className="text-[11.5px] text-cream-700">Fields auto-filled — adjust anything before saving.</p>
+                    <p className="text-sm text-cream-700">Fields auto-filled — adjust anything before saving.</p>
                   </div>
                   <button
                     type="button"
                     onClick={clearMasterProduct}
-                    className="shrink-0 rounded-[6px] px-[6px] py-1 text-[12px] text-cream-700 hover:bg-teal-100 hover:text-teal-900"
+                    className="shrink-0 rounded-[6px] px-[6px] py-1 text-sm text-cream-700 hover:bg-teal-100 hover:text-teal-900"
                   >
                     Clear
                   </button>
@@ -543,15 +543,15 @@ export function AddProductSheet({
                     <Plus size={16} strokeWidth={1.75} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13.5px] font-medium text-cream-900">
+                    <p className="truncate text-base font-medium text-cream-900">
                       Creating new · {customProductNameSelected}
                     </p>
-                    <p className="text-[11.5px] text-cream-700">This product will be added to your catalog.</p>
+                    <p className="text-sm text-cream-700">This product will be added to your catalog.</p>
                   </div>
                   <button
                     type="button"
                     onClick={clearCustomProductName}
-                    className="shrink-0 rounded-[6px] px-[6px] py-1 text-[12px] text-cream-700 hover:bg-ember-100 hover:text-ember-900"
+                    className="shrink-0 rounded-[6px] px-[6px] py-1 text-sm text-cream-700 hover:bg-ember-100 hover:text-ember-900"
                   >
                     Clear
                   </button>
@@ -605,7 +605,7 @@ export function AddProductSheet({
                               </div>
                             ) : masterResults.length > 0 ? (
                               <>
-                                <div className="px-[14px] pb-[6px] pt-[10px] text-[10px] font-semibold uppercase tracking-[0.14em] text-cream-700">
+                                <div className="px-[14px] pb-[6px] pt-[10px] text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">
                                   Master catalog · import &amp; prefill
                                 </div>
                                 <div className="pb-1">
@@ -623,7 +623,7 @@ export function AddProductSheet({
                                 <button
                                   type="button"
                                   onClick={() => selectCustomProductName(inputValue)}
-                                  className="flex w-full items-center gap-1.5 border-t border-cream-300 bg-cream-50 px-4 py-[10px] text-left text-[12.5px] text-cream-700 transition-colors hover:bg-cream-100"
+                                  className="flex w-full items-center gap-1.5 border-t border-cream-300 bg-cream-50 px-4 py-[10px] text-left text-sm text-cream-700 transition-colors hover:bg-cream-100"
                                 >
                                   <Plus size={13} className="shrink-0 text-cream-700" />
                                   <span>
@@ -636,7 +636,7 @@ export function AddProductSheet({
                               <button
                                 type="button"
                                 onClick={() => selectCustomProductName(inputValue)}
-                                className="flex w-full items-center gap-1.5 px-4 py-[10px] text-left text-[12.5px] text-cream-700 transition-colors hover:bg-cream-100"
+                                className="flex w-full items-center gap-1.5 px-4 py-[10px] text-left text-sm text-cream-700 transition-colors hover:bg-cream-100"
                               >
                                 <Plus size={13} className="shrink-0 text-cream-700" />
                                 <span>

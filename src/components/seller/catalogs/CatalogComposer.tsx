@@ -132,7 +132,7 @@ function tagPillClasses(tag: CatalogComposerProduct['tag']) {
 
 function BuyerCountPill({ count }: { count: number }) {
   return (
-    <span className="inline-flex shrink-0 items-center rounded-full border border-cream-300 bg-cream-100 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-cream-700">
+    <span className="inline-flex shrink-0 items-center rounded-full border border-cream-300 bg-cream-100 px-2.5 py-1 font-mono text-xs font-semibold uppercase tracking-[0.06em] text-cream-700">
       {count} buyers
     </span>
   );
@@ -455,7 +455,7 @@ export function CatalogComposer({
   if (isError || (mode === 'edit' && !detail?.composer)) {
     return (
       <div className="max-w-[1920px] mx-auto w-full px-8 py-6">
-        <div className="rounded-[18px] border border-danger-200 bg-danger-50 p-5 text-[13px] text-danger-700">
+        <div className="rounded-[18px] border border-danger-200 bg-danger-50 p-5 text-base text-danger-700">
           We couldn&apos;t load this catalog composer right now.
         </div>
       </div>
@@ -520,7 +520,7 @@ export function CatalogComposer({
                 }}
                 placeholder="e.g. Summer ’26 · New Arrivals"
                 error={fieldErrors.name}
-                className="h-auto border-0 bg-transparent px-0 py-0 font-medium text-[14px] text-cream-950 shadow-none focus-visible:ring-0"
+                className="h-auto border-0 bg-transparent px-0 py-0 font-medium text-base text-cream-950 shadow-none focus-visible:ring-0"
               />
             </ComposerBasicsField>
 
@@ -535,7 +535,7 @@ export function CatalogComposer({
               >
                 <SelectTrigger
                   error={fieldErrors.cohortId}
-                  className="h-auto border-0 bg-transparent px-0 py-0 text-[14px] font-medium text-cream-950 shadow-none focus:ring-0"
+                  className="h-auto border-0 bg-transparent px-0 py-0 text-base font-medium text-cream-950 shadow-none focus:ring-0"
                 >
                   {cohortId ? (
                     <div className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left">
@@ -582,7 +582,7 @@ export function CatalogComposer({
                   setSubmitError(null);
                 }}
               />
-              {fieldErrors.validTo ? <p className="mt-1 text-[11.5px] text-danger-500">{fieldErrors.validTo}</p> : null}
+              {fieldErrors.validTo ? <p className="mt-1 text-sm text-danger-500">{fieldErrors.validTo}</p> : null}
             </ComposerBasicsField>
           </ComposerBasicsStrip>
 
@@ -617,10 +617,10 @@ export function CatalogComposer({
                 <div className="space-y-5">
                   <section>
                     <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Brand</h3>
+                      <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Brand</h3>
                       <button
                         type="button"
-                        className="text-[12px] font-medium text-teal-700 hover:text-teal-800"
+                        className="text-sm font-medium text-teal-700 hover:text-teal-800"
                         onClick={() => toggleMany(selectedBrands, allBrandNames, setSelectedBrands)}
                       >
                         {selectedBrands.length === allBrandNames.length ? 'Clear all' : 'Select all'}
@@ -628,7 +628,7 @@ export function CatalogComposer({
                     </div>
                     <div className="space-y-2">
                       {brandOptions.map((brand) => (
-                        <label key={brand.name} className="flex items-center justify-between gap-3 text-[13px] text-cream-900">
+                        <label key={brand.name} className="flex items-center justify-between gap-3 text-base text-cream-900">
                           <span className="flex items-center gap-2">
                             <input
                               type="checkbox"
@@ -644,7 +644,7 @@ export function CatalogComposer({
                             />
                             <span>{brand.name}</span>
                           </span>
-                          <span className="font-mono text-[11px] text-cream-700">{brand.count}</span>
+                          <span className="font-mono text-xs text-cream-700">{brand.count}</span>
                         </label>
                       ))}
                     </div>
@@ -652,10 +652,10 @@ export function CatalogComposer({
 
                   <section>
                     <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Product Category</h3>
+                      <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Product Category</h3>
                       <button
                         type="button"
-                        className="text-[12px] font-medium text-teal-700 hover:text-teal-800"
+                        className="text-sm font-medium text-teal-700 hover:text-teal-800"
                         onClick={() => toggleMany(selectedCategories, allCategoryNames, setSelectedCategories)}
                       >
                         {selectedCategories.length === allCategoryNames.length ? 'Clear all' : 'Select all'}
@@ -663,7 +663,7 @@ export function CatalogComposer({
                     </div>
                     <div className="space-y-2">
                       {categoryOptions.map((category) => (
-                        <label key={category.name} className="flex items-center justify-between gap-3 text-[13px] text-cream-900">
+                        <label key={category.name} className="flex items-center justify-between gap-3 text-base text-cream-900">
                           <span className="flex items-center gap-2">
                             <input
                               type="checkbox"
@@ -679,17 +679,17 @@ export function CatalogComposer({
                             />
                             <span>{category.name}</span>
                           </span>
-                          <span className="font-mono text-[11px] text-cream-700">{category.count}</span>
+                          <span className="font-mono text-xs text-cream-700">{category.count}</span>
                         </label>
                       ))}
                     </div>
                   </section>
 
                   <section>
-                    <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Availability</h3>
+                    <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Availability</h3>
                     <div className="space-y-2">
                       {AVAILABILITY_OPTIONS.map((option) => (
-                        <label key={option.value} className="flex items-center gap-2 text-[13px] text-cream-900">
+                        <label key={option.value} className="flex items-center gap-2 text-base text-cream-900">
                           <input
                             type="radio"
                             name="catalog-availability"
@@ -709,15 +709,15 @@ export function CatalogComposer({
               <ComposerMainCard>
                 <div className="flex flex-wrap items-center gap-3 border-b border-cream-300 bg-cream-50 px-4 py-3">
                   <div>
-                    <div className="text-[13px] font-semibold text-cream-900">
+                    <div className="text-base font-semibold text-cream-900">
                       {filteredProducts.length} products match the filters
                     </div>
-                    <div className="text-[12px] text-cream-700">
+                    <div className="text-sm text-cream-700">
                       Uncheck products to exclude.
                     </div>
                   </div>
                   <div className="ml-auto flex flex-wrap items-center gap-2">
-                    <div className="flex min-w-[240px] items-center gap-2 rounded-[8px] border border-cream-300 bg-white px-3 py-2 text-[13px] text-cream-700">
+                    <div className="flex min-w-[240px] items-center gap-2 rounded-[8px] border border-cream-300 bg-white px-3 py-2 text-base text-cream-700">
                       <Search className="h-4 w-4 text-cream-600" />
                       <input
                         value={search}
@@ -734,7 +734,7 @@ export function CatalogComposer({
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent align="end" className="w-56 border-cream-300 bg-white p-2">
-                        <div className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-700">
+                        <div className="mb-2 px-2 text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">
                           Apply to {selectedProducts.length} selected rows
                         </div>
                         <div className="space-y-1">
@@ -742,7 +742,7 @@ export function CatalogComposer({
                             <button
                               key={option.value}
                               type="button"
-                              className="flex w-full items-center justify-between rounded-[8px] px-2 py-2 text-left text-[13px] text-cream-900 hover:bg-cream-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              className="flex w-full items-center justify-between rounded-[8px] px-2 py-2 text-left text-base text-cream-900 hover:bg-cream-100 disabled:cursor-not-allowed disabled:opacity-50"
                               onClick={() => applyTagOverride(Array.from(selectedIds), option.value)}
                               disabled={selectedProducts.length === 0}
                             >
@@ -767,15 +767,15 @@ export function CatalogComposer({
                 ) : null}
 
                 {filteredProducts.length === 0 ? (
-                  <div className="flex flex-1 items-center justify-center px-8 py-16 text-[13px] text-cream-700">
+                  <div className="flex flex-1 items-center justify-center px-8 py-16 text-base text-cream-700">
                     No products match the current filters and search.
                   </div>
                 ) : (
                   <div className="min-h-0 flex-1 overflow-auto">
-                    <table className="w-full border-collapse text-[13px]">
+                    <table className="w-full border-collapse text-base">
                       <thead className="sticky top-0 z-[1] bg-cream-50">
                         <tr>
-                          <th className="w-9 border-b border-cream-300 px-4 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">
+                          <th className="w-9 border-b border-cream-300 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">
                             <input
                               type="checkbox"
                               checked={filteredProducts.length > 0 && selectedVisibleCount === filteredProducts.length}
@@ -783,14 +783,14 @@ export function CatalogComposer({
                               className="accent-teal-500"
                             />
                           </th>
-                          <th className="border-b border-cream-300 px-4 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Product Name</th>
-                          <th className="border-b border-cream-300 px-4 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Brand</th>
-                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Stock</th>
-                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">MRP</th>
-                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Selling Base Price</th>
-                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Units Sold MTD</th>
-                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Days Cover</th>
-                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.1em] text-cream-700">Tag</th>
+                          <th className="border-b border-cream-300 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Product Name</th>
+                          <th className="border-b border-cream-300 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Brand</th>
+                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Stock</th>
+                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">MRP</th>
+                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Selling Base Price</th>
+                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Units Sold MTD</th>
+                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Days Cover</th>
+                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Tag</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -833,8 +833,8 @@ export function CatalogComposer({
                                     className="rounded-[8px]"
                                   />
                                   <div className="min-w-0">
-                                    <p className="truncate text-[13.5px] font-medium text-cream-900">{product.display_name}</p>
-                                    <p className="mt-0.5 truncate font-mono text-[11px] text-cream-700">{product.internal_sku}</p>
+                                    <p className="truncate text-base font-medium text-cream-900">{product.display_name}</p>
+                                    <p className="mt-0.5 truncate font-mono text-xs text-cream-700">{product.internal_sku}</p>
                                   </div>
                                 </div>
                               </td>
@@ -857,7 +857,7 @@ export function CatalogComposer({
                                   >
                                     <span>
                                       {tag ? (
-                                        <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]', tagPillClasses(currentTag))}>
+                                        <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em]', tagPillClasses(currentTag))}>
                                           {tag}
                                         </span>
                                       ) : (
@@ -887,12 +887,12 @@ export function CatalogComposer({
               <ComposerSidebarCard>
                 <div className="flex h-full flex-col gap-4">
                   <div>
-                    <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Catalog summary</h3>
+                    <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Catalog summary</h3>
                     <div className="mt-4">
-                      <p className="font-display text-[18px] font-medium tracking-[-0.005em] text-cream-900">
+                      <p className="font-display text-lg font-medium tracking-[-0.005em] text-cream-900">
                         {name || 'Untitled catalog'}
                       </p>
-                      <p className="mt-1 text-[12px] text-cream-700">
+                      <p className="mt-1 text-sm text-cream-700">
                         Publishes to {selectedAudienceName} ({selectedAudienceCount} buyers)
                       </p>
                     </div>
@@ -901,38 +901,38 @@ export function CatalogComposer({
                   <div className="h-px bg-cream-300" />
 
                   <div className="space-y-3">
-                    <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-[12px] leading-[1.5] text-cream-700">
+                    <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3 text-sm leading-[1.5] text-cream-700">
                       <div className="font-medium text-cream-900">{selectedAudienceName}</div>
                       <div className="mt-1">
                         will see: {selectedVisibleCount} products across {selectedBrandCount} brands.
                       </div>
                       {hiddenSelectedCount > 0 ? <div className="mt-1">{hiddenSelectedCount} products are outside the current filters.</div> : null}
                     </div>
-                    <div className="flex items-center justify-between text-[13px]">
+                    <div className="flex items-center justify-between text-base">
                       <span className="text-cream-700">Products</span>
                       <span className="font-mono font-medium text-cream-900">{selectedVisibleCount}</span>
                     </div>
-                    <div className="flex items-center justify-between text-[13px]">
+                    <div className="flex items-center justify-between text-base">
                       <span className="text-cream-700">Brands</span>
                       <span className="font-mono font-medium text-cream-900">{selectedBrandCount}</span>
                     </div>
-                    <div className="flex items-center justify-between text-[13px]">
+                    <div className="flex items-center justify-between text-base">
                       <span className="text-cream-700">In stock</span>
                       <span className="font-mono font-medium text-cream-900">{inStockCount}</span>
                     </div>
-                    <div className="flex items-center justify-between text-[13px]">
+                    <div className="flex items-center justify-between text-base">
                       <span className="text-cream-700">New</span>
                       <span className="font-mono font-medium text-cream-900">{newCount}</span>
                     </div>
-                    <div className="flex items-center justify-between text-[13px]">
+                    <div className="flex items-center justify-between text-base">
                       <span className="text-cream-700">New Stock</span>
                       <span className="font-mono font-medium text-cream-900">{newStockCount}</span>
                     </div>
-                    <div className="flex items-center justify-between text-[13px]">
+                    <div className="flex items-center justify-between text-base">
                       <span className="text-cream-700">Old Stock</span>
                       <span className="font-mono font-medium text-cream-900">{oldStockCount}</span>
                     </div>
-                    <div className="flex items-center justify-between text-[13px]">
+                    <div className="flex items-center justify-between text-base">
                       <span className="text-cream-700">Manual tag overrides</span>
                       <span className="font-mono font-medium text-cream-900">{overriddenTagCount}</span>
                     </div>
@@ -941,15 +941,15 @@ export function CatalogComposer({
                   <div className="h-px bg-cream-300" />
 
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between text-[13px]">
+                    <div className="flex items-center justify-between text-base">
                       <span className="text-cream-700">Reach</span>
                       <span className="font-mono font-medium text-cream-900">{selectedAudienceCount} buyers</span>
                     </div>
-                    <div className="flex items-center justify-between text-[13px]">
+                    <div className="flex items-center justify-between text-base">
                       <span className="text-cream-700">Valid from</span>
                       <span className="font-mono font-medium text-cream-900">{validFrom ? formatDate(validFrom) : '—'}</span>
                     </div>
-                    <div className="flex items-center justify-between text-[13px]">
+                    <div className="flex items-center justify-between text-base">
                       <span className="text-cream-700">Valid until</span>
                       <span className="font-mono font-medium text-cream-900">{validTo ? formatDate(validTo) : 'Open ended'}</span>
                     </div>
@@ -959,9 +959,9 @@ export function CatalogComposer({
                     <>
                       <div className="h-px bg-cream-300" />
                       <div className="space-y-2">
-                        <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cream-700">Next publish</h4>
+                        <h4 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Next publish</h4>
                         <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3">
-                          <div className="space-y-2 text-[12px] leading-[1.5] text-amber-900">
+                          <div className="space-y-2 text-sm leading-[1.5] text-amber-900">
                             {pendingPublishSummary.map((item) => (
                               <div key={item.label} className="flex items-start justify-between gap-4">
                                 <span className="text-amber-700">{item.label}</span>
@@ -975,7 +975,7 @@ export function CatalogComposer({
                   ) : null}
 
                   <div className={cn(
-                    'mt-auto rounded-[10px] px-3 py-3 text-[12px] leading-[1.5]',
+                    'mt-auto rounded-[10px] px-3 py-3 text-sm leading-[1.5]',
                     isPublishedEdit ? 'border border-amber-200 bg-amber-50 text-amber-800' : 'border border-teal-200 bg-teal-50 text-teal-700',
                   )}>
                     <div className="flex gap-2">
@@ -1001,7 +1001,7 @@ export function CatalogComposer({
 
           <ComposerFooterBar>
             <div className="flex items-center gap-3">
-              <div className={cn('inline-flex items-center gap-2 text-[12px]', isDirty ? 'text-ember-700' : 'text-cream-700')}>
+              <div className={cn('inline-flex items-center gap-2 text-sm', isDirty ? 'text-ember-700' : 'text-cream-700')}>
                 <span className={cn('h-1.5 w-1.5 rounded-full', isDirty ? 'bg-ember-400' : 'bg-success-500')} />
                 {isDirty
                   ? 'Unsaved changes'
@@ -1058,7 +1058,7 @@ export function CatalogComposer({
                 : 'This replaces the live catalog for the currently mapped buyers or cohort. Publish only when the updated assortment is ready to go live.'}
             </DialogDescription>
           </DialogHeader>
-          <DialogBody className="pt-4 text-[13px] leading-6 text-cream-700">
+          <DialogBody className="pt-4 text-base leading-6 text-cream-700">
             {confirmAction === 'draft'
               ? 'You can come back later, review these staged changes, and publish when ready.'
               : `${selectedAudienceCount} buyers in ${selectedAudienceName} will see this updated catalog once you confirm.`}
