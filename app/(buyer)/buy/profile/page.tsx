@@ -29,6 +29,7 @@ const ChevR = () => (
 
 export default function ProfilePage() {
   const [isPreview, setIsPreview] = useState(false);
+  const [creditEnabled, setCreditEnabled] = useState(true);
   const [meData, setMeData] = useState<null | {
     greeting_name?: string | null;
     business_name: string;
@@ -55,9 +56,11 @@ export default function ProfilePage() {
           contact_name: string;
           credit_limit: number;
           credit_used: number;
+          business_policy?: { credit_enabled: boolean; gst_inclusive: boolean };
         };
         if (!cancelled) {
           setIsPreview(data.mode === 'preview');
+          setCreditEnabled(data.business_policy?.credit_enabled ?? true);
           setMeData({
             greeting_name: data.greeting_name,
             business_name: data.business_name,
@@ -116,11 +119,11 @@ export default function ProfilePage() {
               icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>,
               label: 'GSTIN', sub: profile.gstin, right: <ChevR />, mono: true,
             },
-            {
+            ...(creditEnabled ? [{
               icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg>,
               variant: 'ember' as const,
               label: 'Credit limit', sub: `${inr(profile.used)} used of ${inr(profile.credit)}`, right: <ChevR />,
-            },
+            }] : []),
             {
               icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>,
               label: 'Delivery locations', sub: isPreview ? 'No buyer delivery profile in preview mode' : '2 saved · Delhi, Gurugram', right: <ChevR />,

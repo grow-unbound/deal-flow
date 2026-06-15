@@ -41,6 +41,7 @@ import { useCreateCustomerOptimistic } from '@/hooks/useCustomersLanding';
 import { useTenantCohortOptions } from '@/hooks/useCohorts';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useRole } from '@/hooks/useRole';
+import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
 
 const TIER_OPTIONS = [
   { value: 'A' as const, label: 'Tier A' },
@@ -65,6 +66,7 @@ export function AddCustomerDialog({
   const queryClient = useQueryClient();
   const isEditMode = mode === 'edit' && !!customerId;
   const { isSellerAssistant } = useRole();
+  const { creditEnabled } = useBusinessPolicy();
 
   const cohortsFlag = useFlagState('COHORTS');
   const cohortsEnabled = cohortsFlag === true;
@@ -408,7 +410,7 @@ export function AddCustomerDialog({
                     )}
                   />
 
-                  {!isSellerAssistant ? (
+                  {creditEnabled && !isSellerAssistant ? (
                     <FormField
                       control={form.control}
                       name="credit_limit"

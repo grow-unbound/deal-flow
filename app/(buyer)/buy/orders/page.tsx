@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api-fetch';
+import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 
 function inr(n: number): string {
@@ -138,6 +139,9 @@ function OrdersPageInner() {
   const searchParams = useSearchParams();
   const tabParamRaw = searchParams.get('tab');
   const tabParam = tabParamRaw === 'inquiries' ? 'enquiries' : (tabParamRaw as TabId | null);
+  const { data: buyerMe } = useBuyerMe();
+  // Fail open while loading — show all tabs until settings resolve
+  const orderFeatures = buyerMe?.order_features ?? { enquiries: true, sales_orders: true, invoices: true };
   const highlightId = searchParams.get('highlight');
   const { state: ordersState, setState: setOrdersState } = useRouteSnapshot({
     storageKey: 'buyer-orders-page-data',
@@ -191,11 +195,12 @@ function OrdersPageInner() {
     };
   }, [setOrdersState]);
 
-  const tabs: Array<{ id: TabId; label: string; count: number }> = [
-    { id: 'orders',    label: 'Orders',    count: ordersState.orders.length },
-    { id: 'enquiries', label: 'Enquiries', count: enquiries.length },
-    { id: 'invoices',  label: 'Invoices',  count: invoices.length },
+  const allTabs: Array<{ id: TabId; label: string; count: number; enabled: boolean }> = [
+    { id: 'orders',    label: 'Orders',    count: ordersState.orders.length, enabled: true },
+    { id: 'enquiries', label: 'Enquiries', count: enquiries.length,          enabled: orderFeatures.enquiries },
+    { id: 'invoices',  label: 'Invoices',  count: invoices.length,           enabled: orderFeatures.invoices },
   ];
+  const tabs = allTabs.filter((t) => t.enabled);
 
   return (
     <>

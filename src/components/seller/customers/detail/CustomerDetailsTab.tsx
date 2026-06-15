@@ -1,6 +1,7 @@
 'use client';
 
 import { useRole } from '@/hooks/useRole';
+import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
 import type { TenantCustomerDetailResponse } from '@/hooks/useCustomersLanding';
 import { formatCurrency } from '@/lib/utils';
 
@@ -21,6 +22,7 @@ function Row({ label, value, mono = false }: { label: string; value: string; mon
 
 export function CustomerDetailsTab({ id: _id, details, onEdit }: CustomerDetailsTabProps) {
   const { isSellerAdmin } = useRole();
+  const { creditEnabled } = useBusinessPolicy();
 
   return (
     <section className="mt-5 space-y-4">
@@ -58,11 +60,13 @@ export function CustomerDetailsTab({ id: _id, details, onEdit }: CustomerDetails
         <article className="rounded-[14px] border border-cream-300 bg-white p-5">
           <h3 className="font-display text-md text-cream-950">Commercials</h3>
           <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4">
-            <Row
-              label="Credit limit"
-              value={details.credit_limit != null ? formatCurrency(Number(details.credit_limit)) : '—'}
-              mono
-            />
+            {creditEnabled ? (
+              <Row
+                label="Credit limit"
+                value={details.credit_limit != null ? formatCurrency(Number(details.credit_limit)) : '—'}
+                mono
+              />
+            ) : null}
             <Row
               label="Payment terms"
               value={details.payment_terms_days != null ? `Net ${details.payment_terms_days} days` : '—'}
