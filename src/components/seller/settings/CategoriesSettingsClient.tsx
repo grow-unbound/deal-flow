@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { MapPin, Plus, Search } from 'lucide-react';
+import { Plus, Search, Tag } from 'lucide-react';
 
 import {
   AlertDialog,
@@ -16,62 +16,58 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
-import { useTenantLocations } from '@/hooks/useTenantLocations';
+import { useTenantCategories } from '@/hooks/useTenantCategories';
 import { useRole } from '@/hooks/useRole';
-import type { TenantLocation } from '@/types/tenant-locations';
+import type { TenantCategory } from '@/types/tenant-categories';
 
-import { LocationFormSheet } from './LocationFormSheet';
-import { LocationsTable } from './LocationsTable';
+import { CategoryFormSheet } from './CategoryFormSheet';
+import { CategoriesTable } from './CategoriesTable';
 import { SettingsSectionCard } from './SettingsSectionCard';
 
-export function LocationsSettingsClient() {
+export function CategoriesSettingsClient() {
   const { isSellerAdmin } = useRole();
-  const { data, isLoading, isError, error, refetch, deactivateLocation, updateLocation, isDeactivating } =
-    useTenantLocations();
+  const { data, isLoading, isError, error, refetch, deactivateCategory, updateCategory, isDeactivating } =
+    useTenantCategories();
 
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [editing, setEditing] = useState<TenantLocation | null>(null);
-  const [deactivateTarget, setDeactivateTarget] = useState<TenantLocation | null>(null);
+  const [editing, setEditing] = useState<TenantCategory | null>(null);
+  const [deactivateTarget, setDeactivateTarget] = useState<TenantCategory | null>(null);
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState<string>('All');
   const [statusFilter, setStatusFilter] = useState<string>('All');
 
-  const allLocations = data?.locations ?? [];
+  const allCategories = data?.categories ?? [];
   const busy = isDeactivating;
 
-  const locations = useMemo(() => {
+  const categories = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return allLocations.filter((loc) => {
-      if (typeFilter === 'Warehouse' && loc.type !== 'warehouse') return false;
-      if (typeFilter === 'Dispatch Point' && loc.type !== 'dispatch_point') return false;
-      if (typeFilter === 'Branch' && loc.type !== 'branch') return false;
-      if (statusFilter === 'Active' && loc.deleted_at) return false;
-      if (statusFilter === 'Inactive' && !loc.deleted_at) return false;
-      if (q && !loc.name.toLowerCase().includes(q) && !loc.address?.city?.toLowerCase().includes(q)) return false;
+    return allCategories.filter((cat) => {
+      if (statusFilter === 'Active' && cat.deleted_at) return false;
+      if (statusFilter === 'Inactive' && !cat.deleted_at) return false;
+      if (q && !cat.name.toLowerCase().includes(q) && !cat.slug?.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [allLocations, search, typeFilter, statusFilter]);
+  }, [allCategories, search, statusFilter]);
 
   function openAdd() {
     setEditing(null);
     setSheetOpen(true);
   }
 
-  function openEdit(loc: TenantLocation) {
-    setEditing(loc);
+  function openEdit(cat: TenantCategory) {
+    setEditing(cat);
     setSheetOpen(true);
   }
 
-  async function handleReactivate(loc: TenantLocation) {
-    await updateLocation({ id: loc.id, patch: { reactivate: true } });
+  async function handleReactivate(cat: TenantCategory) {
+    await updateCategory({ id: cat.id, patch: { reactivate: true } });
   }
 
   return (
     <>
       <SettingsSectionCard
-        title="Locations"
-        subtitle="Warehouses, dispatch points, and branches. Inventory is tracked per location where enabled."
-        icon={MapPin}
+        title="Categories"
+        subtitle="Product categories define the purchase journey for your buyers. Set display order to control the sequence shown in the buyer app."
+        icon={Tag}
       >
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -80,21 +76,9 @@ export function LocationsSettingsClient() {
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search locations…"
+                placeholder="Search categories…"
                 className="pl-9 h-9"
               />
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {(['All', 'Warehouse', 'Dispatch Point', 'Branch'] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setTypeFilter(t)}
-                  className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${typeFilter === t ? 'bg-teal-600 text-white' : 'border border-cream-300 bg-white text-cream-700 hover:bg-cream-50'}`}
-                >
-                  {t}
-                </button>
-              ))}
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
               {(['All', 'Active', 'Inactive'] as const).map((s) => (
@@ -111,51 +95,51 @@ export function LocationsSettingsClient() {
             {isSellerAdmin ? (
               <Button type="button" size="sm" onClick={openAdd} className="ml-auto">
                 <Plus className="mr-2 h-4 w-4" />
-                Add location
+                Add category
               </Button>
             ) : null}
           </div>
 
           {isLoading ? (
             <div className="space-y-2" aria-busy>
-              {Array.from({ length: 5 }).map((_, i) => (
+              {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="h-12 animate-pulse rounded-md border border-cream-100 bg-cream-50" />
               ))}
             </div>
           ) : isError ? (
             <ErrorState
-              heading="Could not load locations"
+              heading="Could not load categories"
               description={error instanceof Error ? error.message : 'Something went wrong.'}
               onRetry={() => void refetch()}
             />
-          ) : locations.length === 0 ? (
+          ) : categories.length === 0 ? (
             <EmptyState
-              icon={<MapPin className="h-7 w-7" strokeWidth={1.5} />}
-              heading="No locations yet"
-              description="Add your first warehouse or branch to start tracking stock by location."
+              icon={<Tag className="h-7 w-7" strokeWidth={1.5} />}
+              heading="No categories yet"
+              description="Add categories to organise your products and create a guided purchase journey for buyers."
               action={
                 isSellerAdmin ? (
                   <Button type="button" onClick={openAdd}>
                     <Plus className="mr-2 h-4 w-4" />
-                    Add location
+                    Add category
                   </Button>
                 ) : undefined
               }
             />
           ) : (
-            <LocationsTable
-              locations={locations}
+            <CategoriesTable
+              categories={categories}
               isAdmin={isSellerAdmin}
               isBusy={busy}
               onEdit={openEdit}
-              onDeactivate={(loc) => setDeactivateTarget(loc)}
-              onReactivate={(loc) => void handleReactivate(loc)}
+              onDeactivate={(cat) => setDeactivateTarget(cat)}
+              onReactivate={(cat) => void handleReactivate(cat)}
             />
           )}
         </div>
       </SettingsSectionCard>
 
-      <LocationFormSheet open={sheetOpen} onOpenChange={setSheetOpen} editingLocation={editing} />
+      <CategoryFormSheet open={sheetOpen} onOpenChange={setSheetOpen} editingCategory={editing} />
 
       <AlertDialog
         open={Boolean(deactivateTarget)}
@@ -165,17 +149,17 @@ export function LocationsSettingsClient() {
       >
         <AlertDialogContent className="border-cream-200 bg-cream-50">
           <AlertDialogHeader>
-            <AlertDialogTitle className="font-display text-cream-900">Deactivate location?</AlertDialogTitle>
+            <AlertDialogTitle className="font-display text-cream-900">Deactivate category?</AlertDialogTitle>
             <AlertDialogDescription className="text-cream-700">
-              The location will be hidden from day-to-day flows. You cannot deactivate while stock remains here, or
-              while it is the only inventory-tracked location with inventory rows.
+              The category will be hidden from products and the buyer app. You cannot deactivate a category while
+              products are still assigned to it — reassign those products first.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {deactivateTarget ? (
             <div className="rounded-md border border-warning-500/30 bg-warning-50 px-4 py-3 text-body-sm text-warning-800">
               <span className="font-medium text-warning-900">{deactivateTarget.name}</span>
-              {deactivateTarget.address?.city ? (
-                <span className="text-warning-700/90"> — {deactivateTarget.address.city}</span>
+              {deactivateTarget.slug ? (
+                <span className="ml-2 font-mono text-xs text-warning-700/90">{deactivateTarget.slug}</span>
               ) : null}
             </div>
           ) : null}
@@ -187,7 +171,7 @@ export function LocationsSettingsClient() {
               onClick={(e) => {
                 e.preventDefault();
                 if (!deactivateTarget) return;
-                void deactivateLocation(deactivateTarget.id).then(() => setDeactivateTarget(null));
+                void deactivateCategory(deactivateTarget.id).then(() => setDeactivateTarget(null));
               }}
             >
               Deactivate
