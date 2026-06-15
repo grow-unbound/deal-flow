@@ -1,5 +1,6 @@
 import { DEFAULT_TENANT_SETTINGS_STORED } from '@/lib/tenant-settings/defaults';
 import {
+  BusinessPolicySchema,
   TenantSettingsBusinessSchema,
   TenantSettingsNotificationsSchema,
   TenantSettingsStoredSchema,
@@ -70,8 +71,14 @@ export function buildGeneralSettingsView(
     },
   };
 
+  const businessPolicyRaw = {
+    ...DEFAULT_TENANT_SETTINGS_STORED.business_policy,
+    ...(merged as { business_policy?: Record<string, unknown> }).business_policy,
+  };
+
   const businessParsed = TenantSettingsBusinessSchema.safeParse(business);
   const notifParsed = TenantSettingsNotificationsSchema.safeParse(notifications);
+  const policyParsed = BusinessPolicySchema.safeParse(businessPolicyRaw);
 
   const plan =
     tenant.plan === 'growth' || tenant.plan === 'scale' || tenant.plan === 'starter'
@@ -89,6 +96,9 @@ export function buildGeneralSettingsView(
     notifications: notifParsed.success
       ? notifParsed.data
       : DEFAULT_TENANT_SETTINGS_STORED.notifications,
+    business_policy: policyParsed.success
+      ? policyParsed.data
+      : DEFAULT_TENANT_SETTINGS_STORED.business_policy,
     plan,
   };
 }

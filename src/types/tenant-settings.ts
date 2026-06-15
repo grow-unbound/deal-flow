@@ -52,6 +52,12 @@ export const ProductDefaultsSchema = z.object({
   uom: z.string().min(1).max(32),
 });
 
+export const BusinessPolicySchema = z.object({
+  credit_enabled: z.boolean().default(true),
+  gst_inclusive: z.boolean().default(false),
+});
+export type BusinessPolicy = z.infer<typeof BusinessPolicySchema>;
+
 export const InventoryLockStageSchema = z.enum(['enquiry', 'sales_order', 'invoice']);
 
 export const OrdersFeaturesSchema = z.object({
@@ -61,7 +67,9 @@ export const OrdersFeaturesSchema = z.object({
 });
 
 export const OrdersSettingsSchema = z.object({
-  number_format: z.string().min(1).max(120),
+  enquiry_number_format: z.string().min(1).max(120).default('EST-{YYYY}-{SEQ}'),
+  sales_order_number_format: z.string().min(1).max(120).default('SO-{YYYY}-{SEQ}'),
+  invoice_number_format: z.string().min(1).max(120).default('INV-{YYYY}-{SEQ}'),
   inventory_lock_stage: InventoryLockStageSchema,
   invoice_pdf_enabled: z.boolean(),
   features: OrdersFeaturesSchema,
@@ -90,9 +98,20 @@ export const TenantSettingsStoredSchema = z
     business: TenantSettingsBusinessSchema.partial().optional(),
     product_defaults: ProductDefaultsSchema.optional(),
     notifications: TenantSettingsNotificationsSchema.partial().optional(),
-    orders: OrdersSettingsSchema.partial().optional(),
+    orders: z
+      .object({
+        number_format: z.string().optional(), // legacy — used for backward-compat derivation only
+        enquiry_number_format: z.string().min(1).max(120).optional(),
+        sales_order_number_format: z.string().min(1).max(120).optional(),
+        invoice_number_format: z.string().min(1).max(120).optional(),
+        inventory_lock_stage: InventoryLockStageSchema.optional(),
+        invoice_pdf_enabled: z.boolean().optional(),
+        features: OrdersFeaturesSchema.partial().optional(),
+      })
+      .optional(),
     buyer_app: BuyerAppSettingsSchema.partial().optional(),
     catalog: CatalogSettingsSchema.partial().optional(),
+    business_policy: BusinessPolicySchema.partial().optional(),
   })
   .passthrough();
 
@@ -115,7 +134,9 @@ export const TenantSettingsPatchSchema = z.object({
   product_defaults: ProductDefaultsSchema.partial().optional(),
   orders: z
     .object({
-      number_format: z.string().min(1).max(120).optional(),
+      enquiry_number_format: z.string().min(1).max(120).optional(),
+      sales_order_number_format: z.string().min(1).max(120).optional(),
+      invoice_number_format: z.string().min(1).max(120).optional(),
       inventory_lock_stage: InventoryLockStageSchema.optional(),
       invoice_pdf_enabled: z.boolean().optional(),
       features: OrdersFeaturesSchema.partial().optional(),
@@ -130,6 +151,7 @@ export const TenantSettingsPatchSchema = z.object({
       default_catalog_expiry_days: z.number().int().min(0).max(3650).optional(),
     })
     .optional(),
+  business_policy: BusinessPolicySchema.partial().optional(),
 });
 
 export type TenantSettingsPatch = z.infer<typeof TenantSettingsPatchSchema>;
@@ -137,6 +159,7 @@ export type TenantSettingsPatch = z.infer<typeof TenantSettingsPatchSchema>;
 export interface GeneralSettingsView {
   business: TenantSettingsBusiness;
   notifications: TenantSettingsNotifications;
+  business_policy: BusinessPolicy;
   plan: 'starter' | 'growth' | 'scale';
 }
 
@@ -145,6 +168,7 @@ export interface ModuleSettingsView {
   orders: OrdersSettings;
   buyer_app: BuyerAppSettings;
   catalog: CatalogSettings;
+  business_policy: BusinessPolicy;
   plan: 'starter' | 'growth' | 'scale';
   usage: {
     cohorts: number;

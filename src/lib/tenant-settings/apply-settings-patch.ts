@@ -14,6 +14,9 @@ export function applyTenantSettingsPatch(prev: TenantSettingsApiPayload, patch: 
             },
           }
         : prev.general.notifications,
+      business_policy: patch.business_policy
+        ? { ...prev.general.business_policy, ...patch.business_policy }
+        : prev.general.business_policy,
       plan: prev.general.plan,
     },
     modules: {
@@ -35,6 +38,9 @@ export function applyTenantSettingsPatch(prev: TenantSettingsApiPayload, patch: 
           : prev.modules.orders,
       buyer_app: patch.buyer_app != null ? { ...prev.modules.buyer_app, ...patch.buyer_app } : prev.modules.buyer_app,
       catalog: patch.catalog != null ? { ...prev.modules.catalog, ...patch.catalog } : prev.modules.catalog,
+      business_policy: patch.business_policy != null
+        ? { ...prev.modules.business_policy, ...patch.business_policy }
+        : prev.modules.business_policy,
       plan: prev.modules.plan,
       usage: prev.modules.usage,
       open_counts: prev.modules.open_counts,
