@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Package, Search } from 'lucide-react';
 
@@ -149,9 +149,9 @@ function ProductCard({ item }: { item: GuestCatalogItem }) {
 export default function GuestCatalogPage({
   params,
 }: {
-  params: { share_token: string };
+  params: Promise<{ share_token: string }>;
 }) {
-  const { share_token } = params;
+  const { share_token } = use(params);
 
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<GuestCatalogResponse | null>(null);
@@ -335,7 +335,7 @@ export default function GuestCatalogPage({
       <div className="fixed bottom-0 left-0 right-0 z-50 flex justify-center">
         <div className="w-full max-w-lg px-4 pb-4 pt-2" style={{ background: 'var(--bg-page)' }}>
           <Link
-            href={`/login/phone?next=/c/${share_token}`}
+            href={`/login`}
             className="flex items-center justify-center w-full h-[52px] rounded-xl text-sm font-semibold tracking-wide transition-opacity active:opacity-80"
             style={{
               background: 'var(--teal-500)',

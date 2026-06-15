@@ -31,7 +31,7 @@ function PublishPreview({ open, onOpenChange, catalog, onPublish, publishing }: 
 
   if (!catalog) return null;
 
-  const shareUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/shop/${catalog.shareToken}`;
+  const shareUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/buy/${catalog.shareToken}`;
 
   async function handleCopy() {
     await navigator.clipboard.writeText(shareUrl);

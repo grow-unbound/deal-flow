@@ -49,6 +49,7 @@ export interface TenantProduct {
   display_name: string;
   brand_name: string | null;
   category_name?: string | null;
+  tenant_category_id?: string | null;
   on_hand?: number;
   days_cover?: number;
   units_mtd?: number;
@@ -362,6 +363,7 @@ export function useUpdateProduct() {
         archive?: boolean;
         name?: string | null;
         category_name?: string | null;
+        tenant_category_id?: string | null;
       };
     }): Promise<{ product: TenantProduct }> => {
       const res = await apiFetch(`/api/tenant/products/${id}`, {
@@ -552,7 +554,6 @@ export function useCreateCustomProduct() {
 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-products'] });
-      toast.success('Custom product created');
     },
     onError: (error) => {
       const message =

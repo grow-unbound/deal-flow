@@ -181,6 +181,7 @@ export async function GET(req: NextRequest) {
       claims,
     );
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const scopedPreviousOrdersQuery = applySellerLocationScope(
       db
         .schema('app')
@@ -189,7 +190,7 @@ export async function GET(req: NextRequest) {
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .gte('placed_at', period.previous_start)
-        .lt('placed_at', period.previous_end_exclusive),
+        .lt('placed_at', period.previous_end_exclusive) as any,
       claims,
     );
 

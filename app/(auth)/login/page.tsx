@@ -1,45 +1,67 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, Suspense } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { PhoneInput } from '@/components/buyer/auth/PhoneInput';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser';
 import posthog from 'posthog-js';
 
-function isPhone(value: string) {
-  return /^[0-9]{10}$/.test(value.trim());
-}
-
 function LoginForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+
+  // Phone OTP state (primary flow)
+  const [phoneLoading, setPhoneLoading] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
+  const [unregistered, setUnregistered] = useState(false);
+
+  // Email/password toggle state (secondary flow)
+  const [showEmailForm, setShowEmailForm] = useState(false);
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [info, setInfo] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const [emailLoading, setEmailLoading] = useState(false);
 
-  useEffect(() => {
-    if (searchParams.get('registered') === '1') {
-      setInfo('Account created! Check your email to confirm, then sign in.');
-      return;
+  async function handlePhoneSubmit(phoneNumber: string) {
+    setPhoneError('');
+    setUnregistered(false);
+    setPhoneLoading(true);
+
+    try {
+      const res = await fetch('/api/auth/phone-otp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber }),
+      });
+
+      const data: { ref_id: string | null; registered: boolean; message: string; error?: string } =
+        await res.json();
+
+      if (!res.ok) {
+        setPhoneError(data.error ?? 'Something went wrong. Please try again.');
+        return;
+      }
+
+      if (!data.registered) {
+        setUnregistered(true);
+        return;
+      }
+
+      router.push(
+        `/verify?ref_id=${encodeURIComponent(data.ref_id!)}&phone=${encodeURIComponent(phoneNumber)}`,
+      );
+    } catch {
+      setPhoneError('Network error. Please check your connection and try again.');
+    } finally {
+      setPhoneLoading(false);
     }
-    if (searchParams.get('reason') === 'session_expired') {
-      setInfo('Your session has expired. Please log in again.');
-    }
-  }, [searchParams]);
+  }
 
-  const phoneEntered = isPhone(identifier);
-
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (phoneEntered) {
-      setError('Phone login requires OTP. Use "Login with OTP" below.');
-      return;
-    }
-    setError('');
-    setLoading(true);
+    setEmailError('');
+    setEmailLoading(true);
     let shouldResetLoading = true;
 
     try {
@@ -47,10 +69,7 @@ function LoginForm() {
         error?: string;
         redirect?: string;
         user?: { id: string; email: string };
-        session?: {
-          access_token: string;
-          refresh_token: string;
-        };
+        session?: { access_token: string; refresh_token: string };
       };
 
       const res = await fetch('/api/auth/signin', {
@@ -60,40 +79,35 @@ function LoginForm() {
           ...(posthog.get_distinct_id() && { 'X-POSTHOG-DISTINCT-ID': posthog.get_distinct_id() }),
           ...(posthog.get_session_id() && { 'X-POSTHOG-SESSION-ID': posthog.get_session_id() }),
         },
-        body: JSON.stringify({
-          identifier,
-          password,
-        }),
+        body: JSON.stringify({ identifier, password }),
       });
 
-      const signInData = (await res.json()) as SignInResponse;
+      const data = (await res.json()) as SignInResponse;
 
       if (!res.ok) {
-        setError(signInData.error || 'Login failed');
+        setEmailError(data.error || 'Login failed');
         return;
       }
 
-      if (!signInData.session?.access_token || !signInData.session?.refresh_token) {
-        setError('Session was not created');
+      if (!data.session?.access_token || !data.session?.refresh_token) {
+        setEmailError('Session was not created');
         return;
       }
 
       await supabase.auth.setSession({
-        access_token: signInData.session.access_token,
-        refresh_token: signInData.session.refresh_token,
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
       });
 
-      posthog.identify(signInData.user?.id ?? identifier, {
-        email: signInData.user?.email ?? identifier,
-      });
+      posthog.identify(data.user?.id ?? identifier, { email: data.user?.email ?? identifier });
 
       shouldResetLoading = false;
-      router.replace(signInData.redirect ?? '/dashboard');
+      router.replace(data.redirect ?? '/dashboard');
       router.refresh();
     } catch {
-      setError('An error occurred. Please try again.');
+      setEmailError('An error occurred. Please try again.');
     } finally {
-      if (shouldResetLoading) setLoading(false);
+      if (shouldResetLoading) setEmailLoading(false);
     }
   }
 
@@ -109,75 +123,90 @@ function LoginForm() {
       </div>
 
       <h1 className="text-h3 font-display text-cream-900 mb-1">Welcome back</h1>
-      <p className="text-body-sm text-cream-600 mb-6">Sign in to your account</p>
+      <p className="text-body-sm text-cream-600 mb-6">
+        Enter your mobile number to receive an OTP on WhatsApp.
+      </p>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className={labelCls} style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em' }}>
-            Email or phone
-          </label>
-          <input
-            type="text"
-            placeholder="you@company.com or 9876543210"
-            value={identifier}
-            onChange={(e) => { setIdentifier(e.target.value); setError(''); }}
-            disabled={loading}
-            required
-            autoComplete="username"
-            className={inputCls}
-          />
-        </div>
-
-        {!phoneEntered && (
-          <div>
-            <label className={labelCls} style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em' }}>
-              Password
-            </label>
-            <input
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={loading}
-              required
-              autoComplete="current-password"
-              className={inputCls}
-            />
+      {/* Primary: Phone OTP */}
+      {unregistered ? (
+        <div className="space-y-4">
+          <div className="rounded-md bg-warning-50 border border-warning-200 px-4 py-3">
+            <p className="text-body-sm text-warning-700 font-medium">
+              This number isn&apos;t registered. Contact your distributor.
+            </p>
           </div>
-        )}
-
-        {info && (
-          <p className="text-caption text-teal-700 bg-teal-50 px-3 py-2 rounded-md">{info}</p>
-        )}
-        {error && (
-          <p className="text-caption text-danger-500 bg-danger-50 px-3 py-2 rounded-md">{error}</p>
-        )}
-
-        {phoneEntered ? (
-          <Link
-            href="/login/otp"
-            className="flex items-center justify-center w-full px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base"
-          >
-            Continue with OTP
-          </Link>
-        ) : (
           <button
-            type="submit"
-            disabled={loading}
-            className="w-full px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => setUnregistered(false)}
+            className="w-full px-4 py-2.5 rounded-md border border-cream-300 bg-white text-cream-800 text-body-sm font-semibold hover:bg-cream-50 transition-colors"
           >
-            {loading ? 'Signing in…' : 'Sign in'}
+            Try a different number
           </button>
-        )}
-      </form>
+        </div>
+      ) : (
+        <PhoneInput onSubmit={handlePhoneSubmit} loading={phoneLoading} error={phoneError} />
+      )}
 
-      <div className="mt-4 pt-4 border-t border-cream-200 flex items-center justify-between">
-        <Link
-          href="/login/otp"
+      {/* Secondary: Email + password toggle */}
+      <div className="mt-6 pt-4 border-t border-cream-200">
+        <button
+          type="button"
+          onClick={() => { setShowEmailForm((v) => !v); setEmailError(''); }}
           className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
         >
-          Login with OTP →
-        </Link>
+          {showEmailForm ? 'Hide email login' : 'Login with email instead →'}
+        </button>
+
+        {showEmailForm && (
+          <form onSubmit={handleEmailSubmit} className="mt-4 space-y-4">
+            <div>
+              <label className={labelCls} style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em' }}>
+                Email
+              </label>
+              <input
+                type="email"
+                placeholder="you@company.com"
+                value={identifier}
+                onChange={(e) => { setIdentifier(e.target.value); setEmailError(''); }}
+                disabled={emailLoading}
+                required
+                autoComplete="username"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls} style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em' }}>
+                Password
+              </label>
+              <input
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={emailLoading}
+                required
+                autoComplete="current-password"
+                className={inputCls}
+              />
+            </div>
+
+            {emailError && (
+              <p className="text-caption text-danger-500 bg-danger-50 px-3 py-2 rounded-md">
+                {emailError}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={emailLoading}
+              className="w-full px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {emailLoading ? 'Signing in…' : 'Sign in'}
+            </button>
+          </form>
+        )}
+      </div>
+
+      <div className="mt-4 text-right">
         <p className="text-caption text-cream-600">
           No account?{' '}
           <Link href="/signup" className="text-ember-400 hover:text-ember-500 font-medium transition-colors">
@@ -202,13 +231,11 @@ function LoginFallback() {
       <div className="mt-6 space-y-4">
         <div className="h-10 w-full rounded bg-cream-200 animate-pulse" />
         <div className="h-10 w-full rounded bg-cream-200 animate-pulse" />
-        <div className="h-10 w-full rounded bg-cream-200 animate-pulse" />
       </div>
     </div>
   );
 }
 
-// Wrap in Suspense — useSearchParams() requires it in Next.js App Router
 export default function LoginPage() {
   return (
     <Suspense fallback={<LoginFallback />}>

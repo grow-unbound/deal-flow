@@ -20,7 +20,7 @@ export default function ShopSegmentError({
       />
       <div className="mt-4 flex justify-center">
         <Button variant="ghost" size="sm" asChild>
-          <Link href="/shop">Back to home</Link>
+          <Link href="/buy">Back to home</Link>
         </Button>
       </div>
     </div>

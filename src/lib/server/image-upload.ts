@@ -9,17 +9,7 @@ import {
   type ProductVariantKeySet,
 } from '@/lib/r2-url';
 
-const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const UUID_SCHEMA = z.string().uuid('Invalid entity ID');
-
-const WORKER_RESPONSE_SCHEMA = z.object({
-  success: z.literal(true),
-  entity_type: z.string(),
-  entity_id: z.string().uuid(),
-  variants: z.record(z.string(), z.string()),
-  public_base_url: z.string(),
-});
 
 export type UploadEntityType =
   | 'catalog_product'
@@ -36,14 +26,22 @@ export type UploadRouteContext = {
   actorId: string;
 };
 
-export type UploadFormPayload = {
+export type VariantKeysPayload = {
   entityId: string;
-  file: File;
+  variants: Record<string, string>;
   isPrimary: boolean;
   imageType: 'icon' | 'banner' | 'logo';
 };
 
-export type WorkerUploadResponse = z.infer<typeof WORKER_RESPONSE_SCHEMA>;
+export function validateUploadImageFile(file: { size: number; type: string }): void {
+  if (file.size > 5 * 1024 * 1024) {
+    throw new UploadRouteError(413, 'Image must be under 5MB.');
+  }
+  const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+  if (!allowed.includes(file.type)) {
+    throw new UploadRouteError(415, 'Only JPG, PNG, and WebP images are allowed.');
+  }
+}
 
 export class UploadRouteError extends Error {
   status: number;
@@ -52,16 +50,6 @@ export class UploadRouteError extends Error {
     super(message);
     this.name = 'UploadRouteError';
     this.status = status;
-  }
-}
-
-export function validateUploadImageFile(file: { size: number; type: string }) {
-  if (!ALLOWED_MIME_TYPES.has(file.type)) {
-    throw new UploadRouteError(415, 'Only JPG, PNG, and WebP images are allowed.');
-  }
-
-  if (file.size > MAX_IMAGE_SIZE_BYTES) {
-    throw new UploadRouteError(413, 'Image must be under 5MB.');
   }
 }
 
@@ -86,110 +74,52 @@ export async function requireSellerUploadContext(req: NextRequest): Promise<Uplo
   };
 }
 
-function parseBoolean(value: FormDataEntryValue | null) {
-  if (value == null) return false;
-  if (typeof value !== 'string') {
-    throw new UploadRouteError(400, 'is_primary must be "true" or "false".');
+export async function parseVariantKeysPayload(req: NextRequest): Promise<VariantKeysPayload> {
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    throw new UploadRouteError(400, 'Invalid JSON body.');
   }
 
-  const normalized = value.trim().toLowerCase();
-  if (normalized === '' || normalized === 'false') return false;
-  if (normalized === 'true') return true;
-
-  throw new UploadRouteError(400, 'is_primary must be "true" or "false".');
-}
-
-function parseImageType(value: FormDataEntryValue | null): 'icon' | 'banner' | 'logo' {
-  if (typeof value !== 'string' || value.trim() === '') {
-    return 'icon';
+  if (!body || typeof body !== 'object') {
+    throw new UploadRouteError(400, 'Request body must be a JSON object.');
   }
 
-  const normalized = value.trim().toLowerCase();
-  if (normalized === 'icon' || normalized === 'banner' || normalized === 'logo') {
-    return normalized;
-  }
+  const { entity_id, variants, is_primary, image_type } = body as Record<string, unknown>;
 
-  throw new UploadRouteError(400, 'image_type must be icon, banner, or logo.');
-}
-
-export async function parseUploadFormPayload(req: NextRequest): Promise<UploadFormPayload> {
-  const formData = await req.formData();
-  const entityIdValue = formData.get('entity_id');
-  const fileValue = formData.get('file');
-
-  if (typeof entityIdValue !== 'string' || entityIdValue.trim() === '') {
-    throw new UploadRouteError(400, 'entity_id is required.');
-  }
-
-  if (!(fileValue instanceof File)) {
-    throw new UploadRouteError(400, 'file is required.');
-  }
-
-  validateUploadImageFile(fileValue);
-
-  const parsedEntityId = UUID_SCHEMA.safeParse(entityIdValue);
-  if (!parsedEntityId.success) {
+  const parsedId = UUID_SCHEMA.safeParse(entity_id);
+  if (!parsedId.success) {
     throw new UploadRouteError(400, 'entity_id must be a valid UUID.');
   }
 
+  if (!variants || typeof variants !== 'object' || Array.isArray(variants)) {
+    throw new UploadRouteError(400, 'variants must be a key→R2-key map.');
+  }
+
+  const variantMap = variants as Record<string, unknown>;
+  if (!('original' in variantMap)) {
+    throw new UploadRouteError(400, 'variants must include "original".');
+  }
+
+  for (const [k, v] of Object.entries(variantMap)) {
+    if (typeof v !== 'string' || !v) {
+      throw new UploadRouteError(400, `variants.${k} must be a non-empty string.`);
+    }
+  }
+
+  const normalizedImageType = ((): 'icon' | 'banner' | 'logo' => {
+    if (image_type === 'banner') return 'banner';
+    if (image_type === 'logo') return 'logo';
+    return 'icon';
+  })();
+
   return {
-    entityId: parsedEntityId.data,
-    file: fileValue,
-    isPrimary: parseBoolean(formData.get('is_primary')),
-    imageType: parseImageType(formData.get('image_type')),
+    entityId: parsedId.data,
+    variants: variantMap as Record<string, string>,
+    isPrimary: is_primary === true,
+    imageType: normalizedImageType,
   };
-}
-
-export async function forwardUploadToWorker(input: {
-  file: File;
-  entityType: UploadEntityType;
-  entityId: string;
-  tenantId?: string;
-  isPrimary?: boolean;
-}): Promise<WorkerUploadResponse> {
-  const workerUrl = process.env.IMAGE_UPLOAD_WORKER_URL;
-  const sharedSecret = process.env.IMAGE_UPLOAD_SHARED_SECRET;
-
-  if (!workerUrl || !sharedSecret) {
-    throw new UploadRouteError(500, 'Image upload service is not configured.');
-  }
-
-  const formData = new FormData();
-  formData.append('file', input.file);
-  formData.append('entity_type', input.entityType);
-  formData.append('entity_id', input.entityId);
-  if (input.tenantId) {
-    formData.append('tenant_id', input.tenantId);
-  }
-  formData.append('is_primary', input.isPrimary ? 'true' : 'false');
-
-  const response = await fetch(new URL('/upload', workerUrl), {
-    method: 'POST',
-    headers: {
-      'X-Upload-Secret': sharedSecret,
-    },
-    body: formData,
-  });
-
-  const json = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    const message =
-      json &&
-      typeof json === 'object' &&
-      'error' in json &&
-      typeof (json as { error?: unknown }).error === 'string'
-        ? (json as { error: string }).error
-        : 'Image processing failed.';
-    throw new UploadRouteError(response.status, message);
-  }
-
-  const parsed = WORKER_RESPONSE_SCHEMA.safeParse(json);
-  if (!parsed.success) {
-    throw new UploadRouteError(502, 'Image upload service returned an invalid response.');
-  }
-
-  return parsed.data;
 }
 
 export async function requireTenantOwnedRow(

@@ -73,7 +73,7 @@ export default async function ProductPage({ params }: Props) {
 
       {/* Header */}
       <header style={{ position: 'sticky', top: 0, zIndex: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', height: 50, background: 'rgba(253,251,247,0.92)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderBottom: '1px solid var(--border-1)' }}>
-        <Link href="/shop/catalog" style={{ width: 36, height: 36, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--cream-100)', border: '1px solid var(--border-1)' }}>
+        <Link href="/buy/catalog" style={{ width: 36, height: 36, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--cream-100)', border: '1px solid var(--border-1)' }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--cream-800)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
         </Link>
         <span style={{ fontSize: 'var(--yk-text-base)', fontWeight: 600, color: 'var(--cream-900)' }}>Product</span>
@@ -137,7 +137,7 @@ export default async function ProductPage({ params }: Props) {
               <div style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-mono)', marginBottom: 10 }}>More from {p.brand}</div>
               <div style={{ overflowX: 'auto', display: 'flex', gap: 10, marginLeft: -20, marginRight: -20, paddingLeft: 20, paddingRight: 20, paddingBottom: 4, scrollbarWidth: 'none' }}>
                 {related.map(x => (
-                  <Link key={x.id} href={`/shop/product/${x.id}`} style={{ flexShrink: 0, width: 120, background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, overflow: 'hidden', textDecoration: 'none' }}>
+                  <Link key={x.id} href={`/buy/product/${x.id}`} style={{ flexShrink: 0, width: 120, background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, overflow: 'hidden', textDecoration: 'none' }}>
                     <div style={{ height: 80, background: productBg[x.hue], display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <div style={{ width: 24, height: 60, background: bottleGradient[x.hue], borderRadius: 3 }} />
                     </div>
@@ -160,7 +160,7 @@ export default async function ProductPage({ params }: Props) {
           <span style={{ width: 40, textAlign: 'center', fontSize: 'var(--yk-text-md)', fontWeight: 600, color: 'var(--cream-900)', fontFamily: 'var(--font-mono)' }}>12</span>
           <button style={{ width: 40, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--yk-text-lg)', color: 'var(--cream-700)' }}>+</button>
         </div>
-        <Link href="/shop/cart" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 44, background: 'var(--teal-500)', borderRadius: 10, textDecoration: 'none', color: '#fff', fontSize: 'var(--yk-text-md)', fontWeight: 600 }}>
+        <Link href="/buy/cart" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 44, background: 'var(--teal-500)', borderRadius: 10, textDecoration: 'none', color: '#fff', fontSize: 'var(--yk-text-md)', fontWeight: 600 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg>
           <span>Add · {inr(p.price * 12)}</span>
         </Link>

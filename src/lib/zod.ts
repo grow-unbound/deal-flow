@@ -509,6 +509,7 @@ export const CustomProductSchema = z.object({
   gst_rate: z.coerce.number().min(0).max(100).optional().nullable(),
   description: z.string().optional(),
   category_name: z.string().optional(),
+  tenant_category_id: z.string().uuid().optional().nullable(),
   attributes: z.record(z.string()).optional().default({}),
   image_urls: z.array(z.string().url()).optional().default([]),
 });

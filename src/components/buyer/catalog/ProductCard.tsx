@@ -23,7 +23,7 @@ export function ProductCard({ item, className }: ProductCardProps) {
   return (
     <Pressable asChild haptic>
       <Link
-        href={`/shop/product/${item.tenant_product_id}`}
+        href={`/buy/product/${item.tenant_product_id}`}
         className={cn(
           'flex flex-col overflow-hidden rounded-xl border border-[var(--border-1)] bg-[var(--bg-surface)] shadow-xs',
           'transition-all no-underline hover:-translate-y-px hover:border-[var(--border-2)] hover:shadow-md',

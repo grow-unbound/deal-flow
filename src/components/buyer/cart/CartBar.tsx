@@ -50,7 +50,7 @@ export function CartBar() {
         {/* View Cart button */}
         <Pressable asChild haptic>
           <Link
-            href="/shop/cart"
+            href="/buy/cart"
             className="flex shrink-0 items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-transform duration-fast ease-standard hover:opacity-90 active:scale-[0.98] active:opacity-80"
             style={{ background: 'var(--teal-500)' }}
           >

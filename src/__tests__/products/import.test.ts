@@ -251,7 +251,7 @@ describe('POST /api/tenant/products/import', () => {
     });
 
     expect(res.ok).toBe(true);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.imported).toBe(2);
     expect(data.skipped).toBe(0);
   });
@@ -277,7 +277,7 @@ describe('POST /api/tenant/products/import', () => {
       body: JSON.stringify({ products: [{ internal_sku: 'SKU001' }, { internal_sku: 'SKU002' }] }),
     });
 
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.imported).toBe(1);
     expect(data.skipped).toBe(1);
     expect(data.results[1].error).toBe('SKU already exists in your catalog');

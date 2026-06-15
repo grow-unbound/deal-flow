@@ -1,7 +1,6 @@
 import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 import { NextRequest, NextResponse } from 'next/server';
 import { decodeJWTPayload } from '@/lib/auth';
-import { getSessionExpiredRedirectPath } from '@/lib/auth-session';
 import type { Database } from '@/types/database';
 
 // Routes that don't require an authenticated session
@@ -48,8 +47,7 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getSession();
 
   if (!session) {
-    const loginUrl = new URL(getSessionExpiredRedirectPath(pathname), request.url);
-    return NextResponse.redirect(loginUrl);
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
   // Decode JWT payload to extract custom claims set by custom_access_token_hook.
@@ -72,8 +70,7 @@ export async function middleware(request: NextRequest) {
       : null;
   } catch {
     // Malformed token — treat as expired
-    const loginUrl = new URL(getSessionExpiredRedirectPath(pathname), request.url);
-    return NextResponse.redirect(loginUrl);
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
   // Forward verified claims as headers; server components read these instead
@@ -83,6 +80,17 @@ export async function middleware(request: NextRequest) {
   if (buyerId) requestHeaders.set('x-verified-buyer-id', buyerId);
   if (locationIds) requestHeaders.set('x-verified-location-ids', JSON.stringify(locationIds));
   if (session.user?.id) requestHeaders.set('x-verified-user-id', session.user.id);
+
+  // Role-based zone guards
+  // Guard 2: buyers must stay in /buy — redirect them away from seller/root pages
+  const isBuyerSafeZone =
+    pathname.startsWith('/buy') ||
+    pathname.startsWith('/api') ||
+    pathname.startsWith('/auth') ||
+    isPublicRoute(pathname);
+  if (!isBuyerSafeZone && role?.startsWith('buyer_')) {
+    return NextResponse.redirect(new URL('/buy/home', request.url));
+  }
 
   // Recreate response so updated request headers propagate downstream, then
   // re-attach any cookies that Supabase may have refreshed on the earlier response.

@@ -470,6 +470,7 @@ export function AddProductSheet({
       if (stagedImage) {
         void uploadEntityFile({
           endpoint: '/api/upload/tenant-product',
+          entityType: 'tenant_product',
           entityId: productId,
           file: stagedImage,
           isPrimary: true,

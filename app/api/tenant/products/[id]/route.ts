@@ -17,6 +17,7 @@ const UpdateProductSchema = z.object({
   gst_rate: z.coerce.number().min(0).max(100).optional().nullable(),
   description: z.string().optional().nullable(),
   category_name: z.string().optional().nullable(),
+  tenant_category_id: z.string().uuid().optional().nullable(),
   external_ref: z.string().optional().nullable(),
   attributes_override: z.record(z.string()).optional(),
   image_urls: z.array(z.string()).optional(),

@@ -6,7 +6,7 @@ import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { BuyerPreviewBootstrap } from './BuyerPreviewBootstrap';
 import { BuyerTabBar } from './BuyerTabBar';
 
-const DEEP_SCREENS = ['/shop/product/', '/shop/cart', '/shop/checkout'];
+const DEEP_SCREENS = ['/buy/product/', '/buy/cart', '/buy/checkout'];
 
 interface BuyerShellProps {
   children: ReactNode;

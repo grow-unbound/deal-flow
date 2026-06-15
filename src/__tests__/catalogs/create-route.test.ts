@@ -121,7 +121,7 @@ describe('POST /api/tenant/catalogs', () => {
     });
 
     const response = await POST(request as any);
-    const body = await response.json();
+    const body = await response.json() as any;
 
     expect(response.status).toBe(200);
     expect(body.catalog).toEqual({ id: 'cat-1', status: 'draft' });

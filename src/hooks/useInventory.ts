@@ -98,7 +98,6 @@ export function useUpsertInventory() {
       return res.json();
     },
     onSuccess: (_, { tenant_product_id }) => {
-      toast.success('Inventory updated');
       queryClient.invalidateQueries({ queryKey: ['inventory', tenant_product_id] });
     },
     onError: (e) => {
@@ -122,7 +121,6 @@ export function useCreateLocation() {
       return json.data.location;
     },
     onSuccess: () => {
-      toast.success('Location created');
       queryClient.invalidateQueries({ queryKey: ['locations'] });
       queryClient.invalidateQueries({ queryKey: ['tenant-locations'] });
     },

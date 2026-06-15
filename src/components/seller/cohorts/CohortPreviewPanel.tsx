@@ -38,7 +38,7 @@ export function CohortPreviewPanel({ filters }: CohortPreviewPanelProps) {
         });
 
         if (!res.ok) {
-          const body = await res.json();
+          const body = await res.json() as Record<string, string>;
           setError(body.error ?? 'Preview failed');
           return;
         }

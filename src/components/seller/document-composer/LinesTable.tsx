@@ -213,7 +213,7 @@ export function LinesTable({
           <thead>
             <tr className="sticky top-0 z-[1] border-b border-cream-200 bg-white text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">
               <th className="w-10 px-3 py-2">#</th>
-              <th className="px-3 py-2">Product</th>
+              <th className="w-[240px] px-3 py-2">Product</th>
               <th className="num w-24 px-2 py-2 text-right">Qty</th>
               <th className="num w-24 px-2 py-2 text-right">Base</th>
               <th className="num w-28 px-2 py-2 text-right">Pricelist</th>
@@ -295,9 +295,9 @@ export function LinesTable({
                   <td className="px-3 py-3">
                     <div className="flex items-start gap-3">
                       <EntityAvatar initials={line.brand_initials} hue={line.brand_hue} size={32} />
-                      <div className="min-w-0">
-                        <p className="font-medium text-cream-900">{line.product_name}</p>
-                        <p className="text-xs text-cream-600">
+                      <div className="min-w-0 max-w-[192px]">
+                        <p className="truncate font-medium text-cream-900" title={line.product_name}>{line.product_name}</p>
+                        <p className="truncate text-xs text-cream-600">
                           {line.sku}
                           {(line.mrp ?? 0) > 0 ? ` · MRP ${formatInr(line.mrp)}` : ''}
                           {kind === 'estimate' ? ` · Stock ${line.on_hand}` : ''}

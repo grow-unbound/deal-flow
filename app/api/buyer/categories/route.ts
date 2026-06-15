@@ -55,7 +55,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
       catalogIds = ((catalogs ?? []) as Array<{ id: string }>).map((catalog) => catalog.id);
     } else if (profile.buyer) {
-      const catalogs = await getVisibleBuyerCatalogs(context.tenant_id, profile.buyer.id);
+      const catalogs = await getVisibleBuyerCatalogs(context.tenant_id!, profile.buyer.id!);
       catalogIds = selectedCatalogId
         ? catalogs.filter((catalog) => catalog.id === selectedCatalogId).map((catalog) => catalog.id)
         : catalogs.slice(0, 1).map((catalog) => catalog.id);

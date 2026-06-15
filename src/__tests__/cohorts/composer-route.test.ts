@@ -62,7 +62,7 @@ describe('cohort composer route', () => {
     });
 
     const res = await GET(new Request('http://localhost/api/cohorts/composer') as any);
-    const body = await res.json();
+    const body = await res.json() as any;
 
     expect(res.status).toBe(200);
     expect(body.buyers[0]).toMatchObject({

@@ -47,7 +47,7 @@ const baseData = {
     valid_until_iso: '2026-06-30T00:00:00.000Z',
     published_by: 'User 1234abcd',
     share_token: 'tok',
-    share_url: 'https://example.com/shop/tok',
+    share_url: 'https://example.com/buy/tok',
     scope_type: 'cohort' as const,
     status_value: 'draft' as const,
     selected_cohort: {
@@ -193,13 +193,13 @@ describe('catalog detail page', () => {
     usePublishCatalogMock.mockReturnValue({
       mutateAsync: vi.fn().mockResolvedValue({
         ok: true,
-        share_link: { share_token: 'tok', share_url: 'https://example.com/shop/catalog?share_token=tok' },
+        share_link: { share_token: 'tok', share_url: 'https://example.com/buy/catalog?share_token=tok' },
       }),
       isPending: false,
     });
     useEnsureCatalogShareLinkMock.mockReturnValue({
       mutateAsync: vi.fn().mockResolvedValue({
-        share_link: { share_token: 'tok', share_url: 'https://example.com/shop/catalog?share_token=tok' },
+        share_link: { share_token: 'tok', share_url: 'https://example.com/buy/catalog?share_token=tok' },
       }),
       isPending: false,
     });
@@ -282,7 +282,7 @@ describe('catalog detail page', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Copy link/i }));
     await waitFor(() => {
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('https://example.com/shop/catalog?share_token=tok');
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('https://example.com/buy/catalog?share_token=tok');
     });
   });
 });
