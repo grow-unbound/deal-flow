@@ -17,6 +17,15 @@ interface BuyerMeResponse {
     slug: string;
   };
   greeting_name?: string | null;
+  order_features: {
+    enquiries: boolean;
+    sales_orders: boolean;
+    invoices: boolean;
+  };
+  business_policy: {
+    credit_enabled: boolean;
+    gst_inclusive: boolean;
+  };
 }
 
 const OPEN_STATUSES = ['draft', 'received', 'confirmed', 'partially_dispatched', 'dispatched'];
@@ -35,6 +44,29 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const context = profile.context;
     const db = supabaseAdmin;
     const buyerId = profile.buyer?.id ?? context.buyer_id;
+
+    // Fetch tenant settings to surface order features and business policy
+    const { data: tsRow } = await db
+      .schema('app')
+      .from('tenant_settings')
+      .select('settings')
+      .eq('tenant_id', context.tenant_id)
+      .maybeSingle();
+
+    const rawSettings = (tsRow as { settings?: Record<string, unknown> } | null)?.settings ?? {};
+    const rawOrders = (rawSettings.orders ?? {}) as Record<string, unknown>;
+    const rawFeatures = (rawOrders.features ?? {}) as Record<string, unknown>;
+    const rawPolicy = (rawSettings.business_policy ?? {}) as Record<string, unknown>;
+
+    const orderFeatures = {
+      enquiries: rawFeatures.enquiries === true,
+      sales_orders: rawFeatures.sales_orders === true,
+      invoices: rawFeatures.invoices === true,
+    };
+    const businessPolicy = {
+      credit_enabled: rawPolicy.credit_enabled !== false,
+      gst_inclusive: rawPolicy.gst_inclusive === true,
+    };
 
     if (context.mode === 'preview') {
       if (!profile.tenant) {
@@ -56,6 +88,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           slug: tenant.slug,
         },
         greeting_name: 'Preview',
+        order_features: orderFeatures,
+        business_policy: businessPolicy,
       };
 
       return NextResponse.json(payload);
@@ -109,6 +143,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         slug: tenant.slug,
       },
       greeting_name: profile.greeting_name,
+      order_features: orderFeatures,
+      business_policy: businessPolicy,
     };
 
     return NextResponse.json(payload);

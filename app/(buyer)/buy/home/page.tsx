@@ -30,6 +30,10 @@ interface MeData {
     name: string;
     slug: string;
   };
+  business_policy?: {
+    credit_enabled: boolean;
+    gst_inclusive: boolean;
+  };
 }
 
 type OrderStatus =
@@ -235,6 +239,7 @@ export default function HomePage() {
   const recentOrders = (ordersData?.orders ?? []).slice(0, 3);
   const catalogs = catalogsData?.catalogs ?? [];
   const availableCredit = (meData?.credit_limit ?? 0) - (meData?.credit_used ?? 0);
+  const creditEnabled = meData?.business_policy?.credit_enabled ?? true;
 
   return (
     <>
@@ -264,29 +269,31 @@ export default function HomePage() {
 
         {/* KPI grid */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '12px 16px' }}>
-          {/* Credit limit card */}
-          <div style={{ gridColumn: '1 / -1', background: 'var(--teal-500)', borderRadius: 14, padding: '16px 18px' }}>
-            {loading ? (
-              <>
-                <SkeletonBox h={11} w="50%" radius={4} />
-                <div style={{ marginTop: 4 }}><SkeletonBox h={28} w="60%" radius={6} /></div>
-                <div style={{ marginTop: 4 }}><SkeletonBox h={12} w="80%" radius={4} /></div>
-              </>
-            ) : (
-              <>
-                <p style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(253,251,247,0.7)', fontFamily: 'var(--font-body)', fontWeight: 500 }}>Credit limit</p>
-                <p style={{ fontSize: 'var(--yk-text-2xl)', fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--cream-50)', lineHeight: 1.1, marginTop: 4 }}>
-                  {inr(meData?.credit_limit ?? 0)}
-                </p>
-                <p style={{ fontSize: 'var(--yk-text-sm)', color: 'rgba(253,251,247,0.6)', marginTop: 4 }}>
-                  <span className="tabular-inline">{inr(availableCredit)}</span> available · <span className="tabular-inline">{inr(meData?.credit_used ?? 0)}</span> used
-                </p>
-              </>
-            )}
-          </div>
+          {/* Credit limit card — hidden when credit is disabled */}
+          {creditEnabled ? (
+            <div style={{ gridColumn: '1 / -1', background: 'var(--teal-500)', borderRadius: 14, padding: '16px 18px' }}>
+              {loading ? (
+                <>
+                  <SkeletonBox h={11} w="50%" radius={4} />
+                  <div style={{ marginTop: 4 }}><SkeletonBox h={28} w="60%" radius={6} /></div>
+                  <div style={{ marginTop: 4 }}><SkeletonBox h={12} w="80%" radius={4} /></div>
+                </>
+              ) : (
+                <>
+                  <p style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(253,251,247,0.7)', fontFamily: 'var(--font-body)', fontWeight: 500 }}>Credit limit</p>
+                  <p style={{ fontSize: 'var(--yk-text-2xl)', fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--cream-50)', lineHeight: 1.1, marginTop: 4 }}>
+                    {inr(meData?.credit_limit ?? 0)}
+                  </p>
+                  <p style={{ fontSize: 'var(--yk-text-sm)', color: 'rgba(253,251,247,0.6)', marginTop: 4 }}>
+                    <span className="tabular-inline">{inr(availableCredit)}</span> available · <span className="tabular-inline">{inr(meData?.credit_used ?? 0)}</span> used
+                  </p>
+                </>
+              )}
+            </div>
+          ) : null}
 
           {/* Open orders */}
-          <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 14, padding: '14px 16px' }}>
+          <div style={{ gridColumn: creditEnabled ? undefined : '1 / -1', background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 14, padding: '14px 16px' }}>
             {loading ? (
               <>
                 <SkeletonBox h={11} w="70%" radius={4} />
@@ -304,24 +311,26 @@ export default function HomePage() {
             )}
           </div>
 
-          {/* Available credit */}
-          <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 14, padding: '14px 16px' }}>
-            {loading ? (
-              <>
-                <SkeletonBox h={11} w="70%" radius={4} />
-                <div style={{ marginTop: 4 }}><SkeletonBox h={22} w="80%" radius={6} /></div>
-                <div style={{ marginTop: 4 }}><SkeletonBox h={12} w="90%" radius={4} /></div>
-              </>
-            ) : (
-              <>
-                <p style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-body)', fontWeight: 500 }}>Available credit</p>
-                <p style={{ fontSize: 'var(--yk-text-xl)', fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--cream-900)', lineHeight: 1.1, marginTop: 4 }}>
-                  {inr(availableCredit)}
-                </p>
-                <p style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)', marginTop: 4 }}>of <span className="tabular-inline">{inr(meData?.credit_limit ?? 0)}</span> limit</p>
-              </>
-            )}
-          </div>
+          {/* Available credit — hidden when credit is disabled */}
+          {creditEnabled ? (
+            <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 14, padding: '14px 16px' }}>
+              {loading ? (
+                <>
+                  <SkeletonBox h={11} w="70%" radius={4} />
+                  <div style={{ marginTop: 4 }}><SkeletonBox h={22} w="80%" radius={6} /></div>
+                  <div style={{ marginTop: 4 }}><SkeletonBox h={12} w="90%" radius={4} /></div>
+                </>
+              ) : (
+                <>
+                  <p style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-body)', fontWeight: 500 }}>Available credit</p>
+                  <p style={{ fontSize: 'var(--yk-text-xl)', fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--cream-900)', lineHeight: 1.1, marginTop: 4 }}>
+                    {inr(availableCredit)}
+                  </p>
+                  <p style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)', marginTop: 4 }}>of <span className="tabular-inline">{inr(meData?.credit_limit ?? 0)}</span> limit</p>
+                </>
+              )}
+            </div>
+          ) : null}
         </div>
 
         {/* Your distributors — single tenant shown */}
@@ -358,7 +367,7 @@ export default function HomePage() {
         <div style={{ padding: '20px 0 0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 18px 10px' }}>
             <h3 style={{ fontSize: 'var(--yk-text-md)', fontWeight: 600, color: 'var(--cream-900)' }}>Order again</h3>
-            <Link href="/shop/catalog" style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--teal-500)', fontWeight: 500 }}>Browse all</Link>
+            <Link href="/buy/catalog" style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--teal-500)', fontWeight: 500 }}>Browse all</Link>
           </div>
           <div style={{ padding: '0 16px' }}>
             <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '14px 16px', textAlign: 'center' }}>
@@ -371,7 +380,7 @@ export default function HomePage() {
         <div style={{ padding: '20px 0 0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 18px 10px' }}>
             <h3 style={{ fontSize: 'var(--yk-text-md)', fontWeight: 600, color: 'var(--cream-900)' }}>New catalogs</h3>
-            <Link href="/shop/catalog" style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--teal-500)', fontWeight: 500 }}>See all</Link>
+            <Link href="/buy/catalog" style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--teal-500)', fontWeight: 500 }}>See all</Link>
           </div>
           <div style={{ overflowX: 'auto', display: 'flex', gap: 10, padding: '0 16px 4px', scrollbarWidth: 'none' }}>
             {loading ? (
@@ -394,7 +403,7 @@ export default function HomePage() {
                 return (
                   <Link
                     key={c.id}
-                    href={`/shop/catalog?share_token=${encodeURIComponent(c.share_token)}`}
+                    href={`/buy/catalog?share_token=${encodeURIComponent(c.share_token)}`}
                     style={{ flexShrink: 0, width: 160, borderRadius: 12, overflow: 'hidden', textDecoration: 'none', border: '1px solid var(--border-1)' }}
                   >
                     <div style={{ height: 90, background: hueGradients[hue], display: 'flex', alignItems: 'flex-end', padding: '12px 14px' }}>
@@ -419,7 +428,7 @@ export default function HomePage() {
         <div style={{ padding: '20px 16px 0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <h3 style={{ fontSize: 'var(--yk-text-md)', fontWeight: 600, color: 'var(--cream-900)' }}>Recent activity</h3>
-            <Link href="/shop/orders" style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--teal-500)', fontWeight: 500 }}>See orders</Link>
+            <Link href="/buy/orders" style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--teal-500)', fontWeight: 500 }}>See orders</Link>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {loading ? (
@@ -448,7 +457,7 @@ export default function HomePage() {
                 return (
                   <Link
                     key={o.id}
-                    href="/shop/orders"
+                    href="/buy/orders"
                     style={{ display: 'block', background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '12px 14px', textDecoration: 'none' }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
