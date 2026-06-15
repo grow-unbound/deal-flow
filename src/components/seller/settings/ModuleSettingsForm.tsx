@@ -26,6 +26,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { FeatureModuleCard } from '@/components/seller/settings/FeatureModuleCard';
 import { FeatureToggleRow } from '@/components/seller/settings/FeatureToggleRow';
+import { NumberFormatBuilder } from '@/components/seller/settings/NumberFormatBuilder';
 import { ProductDefaultsSection } from '@/components/seller/settings/ProductDefaultsSection';
 import { TierLimitWarningBanner } from '@/components/seller/settings/TierLimitWarningBanner';
 import { useTenantSettings } from '@/hooks/useTenantSettings';
@@ -43,7 +44,7 @@ function cloneModules(m: ModuleSettingsView): ModuleSettingsView {
 function orderStageLabels(key: OrderStageKey): { title: string; plural: string } {
   switch (key) {
     case 'enquiries':
-      return { title: 'Enquiries', plural: 'enquiries' };
+      return { title: 'Estimates', plural: 'estimates' };
     case 'sales_orders':
       return { title: 'Sales orders', plural: 'sales orders' };
     case 'invoices':
@@ -58,7 +59,9 @@ function buildModulesPatch(base: ModuleSettingsView, next: ModuleSettingsView): 
   }
   if (JSON.stringify(base.orders) !== JSON.stringify(next.orders)) {
     patch.orders = {
-      number_format: next.orders.number_format,
+      enquiry_number_format: next.orders.enquiry_number_format,
+      sales_order_number_format: next.orders.sales_order_number_format,
+      invoice_number_format: next.orders.invoice_number_format,
       inventory_lock_stage: next.orders.inventory_lock_stage,
       invoice_pdf_enabled: next.orders.invoice_pdf_enabled,
       features: next.orders.features,
@@ -102,7 +105,27 @@ export function ModuleSettingsForm() {
 
   async function handleSave() {
     if (!data || !draft) return;
-    const patch = buildModulesPatch(data.modules, draft);
+
+    // Auto-reset inventory lock stage if the selected stage is being disabled
+    let finalDraft = draft;
+    if (
+      draft.orders.inventory_lock_stage === 'enquiry' &&
+      !draft.orders.features.enquiries
+    ) {
+      const resetTo = draft.orders.features.sales_orders
+        ? 'sales_order'
+        : draft.orders.features.invoices
+          ? 'invoice'
+          : 'sales_order';
+      finalDraft = {
+        ...draft,
+        orders: { ...draft.orders, inventory_lock_stage: resetTo },
+      };
+      setDraft(finalDraft);
+      toast.warning('Inventory lock stage reset to Sales Order because Estimates was disabled.');
+    }
+
+    const patch = buildModulesPatch(data.modules, finalDraft);
     if (Object.keys(patch).length === 0) return;
     const parsed = TenantSettingsPatchSchema.safeParse(patch);
     if (!parsed.success) {
@@ -202,103 +225,121 @@ export function ModuleSettingsForm() {
       <ProductDefaultsSection
         value={draft.product_defaults}
         onChange={(product_defaults) => setDraft((d) => (d ? { ...d, product_defaults } : d))}
+        gstInclusive={draft.business_policy?.gst_inclusive}
       />
 
       <FeatureModuleCard
         title="Order Workflows"
-        description="Configure how orders flow through your system — from enquiry to invoice."
+        description="Configure how orders flow through your system — from estimate to invoice."
         icon={FileText}
         headerActive
         headerRight={
           <span className="rounded-md bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800">Always on</span>
         }
       >
-        <div className="border-t border-cream-200 bg-cream-50 px-5 py-4 space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="order-number-format">Order number format</Label>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-              <Input
-                id="order-number-format"
-                className="font-mono text-sm"
-                value={draft.orders.number_format}
-                onChange={(e) =>
-                  setDraft((d) =>
-                    d ? { ...d, orders: { ...d.orders, number_format: e.target.value } } : d,
-                  )
-                }
-                maxLength={120}
-                spellCheck={false}
-              />
-              <div className="flex shrink-0 items-center gap-2 rounded-md border border-cream-200 bg-white px-3 py-2 text-sm">
-                <span className="text-cream-500">Preview</span>
-                <span className="font-mono font-medium text-teal-800">
-                  {previewOrderNumberFormat(draft.orders.number_format)}
-                </span>
-              </div>
-            </div>
-            <p className="text-xs text-cream-600">
-              Tokens: <code className="text-cream-800">{'{YYYY}'}</code>, <code className="text-cream-800">{'{MM}'}</code>,{' '}
-              <code className="text-cream-800">{'{DD}'}</code>, <code className="text-cream-800">{'{SEQ}'}</code>
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label>Inventory lock stage</Label>
-            <Select
-              value={draft.orders.inventory_lock_stage}
-              onValueChange={(v) =>
-                setDraft((d) =>
-                  d
-                    ? {
-                        ...d,
-                        orders: {
-                          ...d.orders,
-                          inventory_lock_stage: v as ModuleSettingsView['orders']['inventory_lock_stage'],
-                        },
-                      }
-                    : d,
-                )
-              }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {INVENTORY_LOCK_STAGE_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-cream-600">When stock is reserved against demand in your workflow.</p>
-          </div>
-          <FeatureToggleRow
-            label="Invoice PDF"
-            description="Generate a PDF when an invoice is created or updated."
-            checked={draft.orders.invoice_pdf_enabled}
-            onCheckedChange={(invoice_pdf_enabled) =>
-              setDraft((d) => (d ? { ...d, orders: { ...d.orders, invoice_pdf_enabled } } : d))
+        {/* Inventory lock stage — always visible */}
+        <div className="border-t border-cream-200 bg-cream-50 px-5 py-4 space-y-2">
+          <Label className="text-sm font-medium">Inventory lock stage</Label>
+          <Select
+            value={draft.orders.inventory_lock_stage}
+            onValueChange={(v) =>
+              setDraft((d) =>
+                d
+                  ? {
+                      ...d,
+                      orders: {
+                        ...d.orders,
+                        inventory_lock_stage: v as ModuleSettingsView['orders']['inventory_lock_stage'],
+                      },
+                    }
+                  : d,
+              )
             }
-          />
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {INVENTORY_LOCK_STAGE_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-cream-600">When stock is reserved against demand in your workflow.</p>
         </div>
+
+        {/* Estimates */}
         <FeatureToggleRow
-          label="Enquiries"
+          label="Enable Estimates"
           description="Let buyers request quotes before committing to an order."
           checked={draft.orders.features.enquiries}
           onCheckedChange={(v) => handleOrderFeatureChange('enquiries', v)}
         />
+        {draft.orders.features.enquiries && (
+          <div className="border-b border-cream-200 bg-cream-50 px-5 py-4 space-y-4">
+            <NumberFormatBuilder
+              label="Estimate number format"
+              value={draft.orders.enquiry_number_format}
+              onChange={(enquiry_number_format) =>
+                setDraft((d) => (d ? { ...d, orders: { ...d.orders, enquiry_number_format } } : d))
+              }
+              preview={previewOrderNumberFormat(draft.orders.enquiry_number_format)}
+              defaultValue="EST-{YYYY}-{SEQ}"
+            />
+          </div>
+        )}
+
+        {/* Sales Orders */}
         <FeatureToggleRow
-          label="Sales orders"
+          label="Enable Sales Orders"
           description="Formal order documents after a quote is accepted."
           checked={draft.orders.features.sales_orders}
           onCheckedChange={(v) => handleOrderFeatureChange('sales_orders', v)}
         />
+        {draft.orders.features.sales_orders && (
+          <div className="border-b border-cream-200 bg-cream-50 px-5 py-4 space-y-4">
+            <NumberFormatBuilder
+              label="Sales order number format"
+              value={draft.orders.sales_order_number_format}
+              onChange={(sales_order_number_format) =>
+                setDraft((d) => (d ? { ...d, orders: { ...d.orders, sales_order_number_format } } : d))
+              }
+              preview={previewOrderNumberFormat(draft.orders.sales_order_number_format)}
+              defaultValue="SO-{YYYY}-{SEQ}"
+            />
+          </div>
+        )}
+
+        {/* Invoices */}
         <FeatureToggleRow
-          label="Invoices"
+          label="Enable Invoices"
           description="Bill buyers and track payment status."
           checked={draft.orders.features.invoices}
           onCheckedChange={(v) => handleOrderFeatureChange('invoices', v)}
         />
+        {draft.orders.features.invoices && (
+          <div className="border-b border-cream-200 bg-cream-50 px-5 py-4 space-y-4">
+            <NumberFormatBuilder
+              label="Invoice number format"
+              value={draft.orders.invoice_number_format}
+              onChange={(invoice_number_format) =>
+                setDraft((d) => (d ? { ...d, orders: { ...d.orders, invoice_number_format } } : d))
+              }
+              preview={previewOrderNumberFormat(draft.orders.invoice_number_format)}
+              defaultValue="INV-{YYYY}-{SEQ}"
+            />
+            <FeatureToggleRow
+              label="Invoice PDF"
+              description="Generate a PDF when an invoice is created or updated."
+              checked={draft.orders.invoice_pdf_enabled}
+              onCheckedChange={(invoice_pdf_enabled) =>
+                setDraft((d) => (d ? { ...d, orders: { ...d.orders, invoice_pdf_enabled } } : d))
+              }
+            />
+          </div>
+        )}
       </FeatureModuleCard>
 
       <FeatureModuleCard
@@ -324,7 +365,7 @@ export function ModuleSettingsForm() {
         ) : (
           <div className="border-t border-cream-200 bg-cream-50 px-5 py-4 space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="buyer-whatsapp">WhatsApp number</Label>
+              <Label className="text-sm font-medium" htmlFor="buyer-whatsapp">WhatsApp number</Label>
               <Input
                 id="buyer-whatsapp"
                 value={draft.buyer_app.whatsapp_number}
@@ -348,7 +389,7 @@ export function ModuleSettingsForm() {
             />
             {draft.buyer_app.share_link_expiry_enabled ? (
               <div className="space-y-2 border-t border-cream-200 pt-4">
-                <Label htmlFor="share-expiry-days">Expiry (days)</Label>
+                <Label className="text-sm font-medium" htmlFor="share-expiry-days">Expiry (days)</Label>
                 <Input
                   id="share-expiry-days"
                   type="number"
@@ -407,7 +448,7 @@ export function ModuleSettingsForm() {
           <div className="border-b border-cream-200 bg-cream-50 px-5 py-4 space-y-3">
             <TierLimitWarningBanner plan={draft.plan} resource="cohorts" used={draft.usage.cohorts} />
             <div className="space-y-2">
-              <Label>Price visibility</Label>
+              <Label className="text-sm font-medium">Price visibility</Label>
               <Select
                 value={draft.catalog.price_visibility}
                 onValueChange={(v) =>
@@ -452,7 +493,7 @@ export function ModuleSettingsForm() {
         />
         {draft.catalog.catalog_publishing_enabled ? (
           <div className="border-b border-cream-200 bg-cream-50 px-5 py-4 space-y-2">
-            <Label htmlFor="catalog-expiry-days">Default catalog expiry (days)</Label>
+            <Label className="text-sm font-medium" htmlFor="catalog-expiry-days">Default catalog expiry (days)</Label>
             <Input
               id="catalog-expiry-days"
               type="number"

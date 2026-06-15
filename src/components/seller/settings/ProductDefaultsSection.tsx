@@ -17,9 +17,10 @@ import type { ProductDefaults } from '@/types/tenant-settings';
 export interface ProductDefaultsSectionProps {
   value: ProductDefaults;
   onChange: (next: ProductDefaults) => void;
+  gstInclusive?: boolean;
 }
 
-export function ProductDefaultsSection({ value, onChange }: ProductDefaultsSectionProps) {
+export function ProductDefaultsSection({ value, onChange, gstInclusive = false }: ProductDefaultsSectionProps) {
   return (
     <SettingsSectionCard
       title="Product Defaults"
@@ -39,25 +40,27 @@ export function ProductDefaultsSection({ value, onChange }: ProductDefaultsSecti
       }
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label>Default GST rate</Label>
-          <Select
-            value={String(value.gst_rate)}
-            onValueChange={(v) => onChange({ ...value, gst_rate: Number(v) as ProductDefaults['gst_rate'] })}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="GST rate" />
-            </SelectTrigger>
-            <SelectContent>
-              {GST_RATE_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={String(o.value)}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-cream-600">Most of your products are likely in one slab — set it here to save time.</p>
-        </div>
+        {!gstInclusive && (
+          <div className="space-y-2">
+            <Label>Default GST rate</Label>
+            <Select
+              value={String(value.gst_rate)}
+              onValueChange={(v) => onChange({ ...value, gst_rate: Number(v) as ProductDefaults['gst_rate'] })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="GST rate" />
+              </SelectTrigger>
+              <SelectContent>
+                {GST_RATE_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={String(o.value)}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-cream-600">Most of your products are likely in one slab — set it here to save time.</p>
+          </div>
+        )}
         <div className="space-y-2">
           <Label>Default unit of measurement</Label>
           <Select value={value.uom} onValueChange={(uom) => onChange({ ...value, uom })}>

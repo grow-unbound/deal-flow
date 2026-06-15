@@ -8,11 +8,12 @@ import { Button } from '@/components/ui/button';
 import { BrowseUploadField } from '@/components/ui/browse-upload-field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { BusinessPolicySection } from '@/components/seller/settings/BusinessPolicySection';
 import { NotificationToggleRow } from '@/components/seller/settings/NotificationToggleRow';
 import { SettingsSectionCard } from '@/components/seller/settings/SettingsSectionCard';
 import { useTenantSettings } from '@/hooks/useTenantSettings';
 import { TenantSettingsPatchSchema } from '@/types/tenant-settings';
-import type { GeneralSettingsView, TenantSettingsPatch } from '@/types/tenant-settings';
+import type { BusinessPolicy, GeneralSettingsView, TenantSettingsPatch } from '@/types/tenant-settings';
 
 function cloneView(v: GeneralSettingsView): GeneralSettingsView {
   return structuredClone(v);
@@ -67,6 +68,10 @@ export function GeneralSettingsForm() {
     });
   }
 
+  function updateBusinessPolicy(business_policy: BusinessPolicy) {
+    setDraft((prev) => (prev ? { ...prev, business_policy } : prev));
+  }
+
   function handleDiscard() {
     if (data) setDraft(cloneView(data.general));
   }
@@ -76,6 +81,7 @@ export function GeneralSettingsForm() {
     const patch: TenantSettingsPatch = {
       business: draft.business,
       notifications: { whatsapp: draft.notifications.whatsapp },
+      business_policy: draft.business_policy,
     };
     const parsed = TenantSettingsPatchSchema.safeParse(patch);
     if (!parsed.success) {
@@ -235,6 +241,11 @@ export function GeneralSettingsForm() {
           </div>
         </div>
       </SettingsSectionCard>
+
+      <BusinessPolicySection
+        value={draft.business_policy}
+        onChange={updateBusinessPolicy}
+      />
 
       <SettingsSectionCard
         title="WhatsApp Notifications"
