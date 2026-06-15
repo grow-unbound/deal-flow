@@ -81,7 +81,7 @@ describe('Custom brand creation API - POST /api/brands/custom', () => {
     expect(res.ok).toBe(true);
     expect(res.status).toBe(201);
 
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.brand.master_brand.is_public).toBe(false);
     expect(data.brand.master_brand.origin_tenant_id).toBe('tenant-uuid-001');
     expect(data.brand.master_brand.slug).toBe('sunrise-electronics');
@@ -114,7 +114,7 @@ describe('Custom brand creation API - POST /api/brands/custom', () => {
     expect(res.ok).toBe(false);
     expect(res.status).toBe(400);
 
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.error).toBe('Invalid request body');
     expect(data.details.fieldErrors.slug[0]).toMatch(/lowercase letters and hyphens/i);
   });
@@ -164,7 +164,7 @@ describe('Custom brand creation API - POST /api/brands/custom', () => {
     expect(res.ok).toBe(false);
     expect(res.status).toBe(409);
 
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.error).toMatch(/slug already exists/i);
   });
 
@@ -229,7 +229,7 @@ describe('Custom brand creation API - POST /api/brands/custom', () => {
     });
 
     expect(res.ok).toBe(true);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.brand.master_brand.description).toBe('A consumer electronics brand');
     expect(data.brand.master_brand.logo_url).toBe('https://example.com/logo.png');
   });

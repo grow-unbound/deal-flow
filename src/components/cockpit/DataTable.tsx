@@ -71,7 +71,7 @@ function DataTable<T extends { id: string }>({
   return (
     <div className={cn('w-full', className)}>
       <div className="overflow-x-auto rounded-lg border border-cream-200 shadow-xs">
-        <table className="w-full text-body-sm text-cream-900 border-collapse">
+        <table className="min-w-max text-body-sm text-cream-900 border-collapse">
           <thead>
             <tr className="bg-cream-100 border-b border-cream-200">
               {selectable && (

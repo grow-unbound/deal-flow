@@ -6,16 +6,9 @@ import Link from 'next/link';
 import { OtpForm } from '@/components/buyer/auth/OtpForm';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { supabaseBrowser } from '@/lib/supabase-browser';
+import type { LoginOtpContext } from '@/lib/server/buyer-otp-store';
 
 const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
-
-interface BuyerContext {
-  tenant_id: string;
-  tenant_name: string;
-  tenant_slug: string;
-  buyer_id: string;
-  role: string;
-}
 
 interface SessionPayload {
   access_token: string;
@@ -31,10 +24,10 @@ function VerifyOtpForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Guard: if no ref_id, redirect back to phone entry
+  // Guard: if no ref_id, redirect back to login
   useEffect(() => {
     if (!ref_id) {
-      router.replace('/login/phone');
+      router.replace('/login');
     }
   }, [ref_id, router]);
 
@@ -52,7 +45,7 @@ function VerifyOtpForm() {
       const data: {
         success?: boolean;
         redirect?: string;
-        contexts?: BuyerContext[];
+        contexts?: LoginOtpContext[];
         ref_id?: string;
         session?: SessionPayload;
         error?: string;
@@ -64,7 +57,7 @@ function VerifyOtpForm() {
       }
 
       if (data.contexts && data.contexts.length > 1 && data.ref_id) {
-        // Multiple tenants — let user pick
+        // Multiple accounts — let user pick
         try {
           sessionStorage.setItem(SESSION_CONTEXTS_KEY, JSON.stringify(data.contexts));
         } catch {
@@ -81,7 +74,7 @@ function VerifyOtpForm() {
         });
       }
 
-      router.replace(data.redirect ?? '/shop');
+      router.replace(data.redirect ?? '/login');
     } catch {
       setError('Network error. Please check your connection and try again.');
     } finally {
@@ -111,14 +104,14 @@ function VerifyOtpForm() {
 
       <div className="mt-6 pt-4 border-t border-cream-200 flex items-center justify-between">
         <Link
-          href="/login/phone"
+          href="/login"
           className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
         >
           ← Change number
         </Link>
         <button
           type="button"
-          onClick={() => router.push(`/login/phone`)}
+          onClick={() => router.push('/login')}
           className="text-caption text-cream-600 hover:text-cream-800 transition-colors"
         >
           Resend OTP

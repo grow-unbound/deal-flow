@@ -9,6 +9,7 @@
     "check": "wrangler deploy --dry-run"
   },
   "dependencies": {
+    "@img/sharp-wasm32": "^0.35.1",
     "sharp": "^0.34.2"
   },
   "devDependencies": {

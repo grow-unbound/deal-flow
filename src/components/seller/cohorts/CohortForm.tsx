@@ -70,7 +70,7 @@ export function CohortForm({ mode = 'create', cohortId, defaultValues }: CohortF
       const method = mode === 'edit' ? 'PATCH' : 'POST';
 
       const res = await fetch(url, { method, headers, body: JSON.stringify(payload) });
-      const body = await res.json();
+      const body = await res.json() as { error?: string; cohort?: { id: string } };
 
       if (!res.ok) {
         setSubmitError(body.error ?? 'Something went wrong');
@@ -85,7 +85,7 @@ export function CohortForm({ mode = 'create', cohortId, defaultValues }: CohortF
           body: JSON.stringify({ buyer_ids: selectedBuyers }),
         });
         if (!membersRes.ok) {
-          const membersBody = await membersRes.json();
+          const membersBody = await membersRes.json() as { error?: string };
           setSubmitError(membersBody.error ?? 'Cohort created but failed to add members');
           return;
         }

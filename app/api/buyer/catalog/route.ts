@@ -102,7 +102,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
       visibleCatalogs = (data ?? []) as BuyerVisibleCatalog[];
     } else {
-      visibleCatalogs = await getVisibleBuyerCatalogs(context.tenant_id, buyer.id);
+      visibleCatalogs = await getVisibleBuyerCatalogs(context.tenant_id!, buyer.id!);
     }
 
     const countByCatalog = await getCatalogCounts(visibleCatalogs.map((catalog) => catalog.id));

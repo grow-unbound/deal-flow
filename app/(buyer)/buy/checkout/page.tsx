@@ -24,7 +24,7 @@ export default function CheckoutPage() {
   // Redirect to cart if empty
   useEffect(() => {
     if (items.length === 0) {
-      router.replace('/shop/cart');
+      router.replace('/buy/cart');
     }
   }, [items.length, router]);
 
@@ -59,7 +59,7 @@ export default function CheckoutPage() {
           subtotal,
         });
         clearCart();
-        router.replace(`/shop/orders?tab=inquiries&highlight=${data.estimate_id}`);
+        router.replace(`/buy/orders?tab=inquiries&highlight=${data.estimate_id}`);
       } else {
         setError(data.error ?? 'Something went wrong. Please try again.');
       }

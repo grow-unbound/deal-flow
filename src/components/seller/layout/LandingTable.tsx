@@ -29,8 +29,8 @@ export function LandingTable({
   emptyState,
 }: LandingTableProps) {
   return (
-    <div className={cn('overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white', className)}>
-      <table className={cn('w-full border-collapse text-base', tableClassName)}>
+    <div className={cn('overflow-x-auto rounded-b-[14px] border border-cream-300 border-t-0 bg-white', className)}>
+      <table className={cn('min-w-max border-collapse text-base', tableClassName)}>
         <thead>
           <tr className="border-y border-cream-300 bg-white">
             {columns.map((column, index) => (

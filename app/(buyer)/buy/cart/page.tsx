@@ -54,7 +54,7 @@ export default function CartPage() {
             </p>
           </div>
           <Link
-            href="/shop/catalog"
+            href="/buy/catalog"
             className="mt-2 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
             style={{ background: 'var(--teal-500)' }}
           >
@@ -129,7 +129,7 @@ export default function CartPage() {
           </span>
         </div>
         <Link
-          href="/shop/checkout"
+          href="/buy/checkout"
           className="flex items-center justify-center gap-2 w-full h-12 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
           style={{ background: 'var(--teal-500)' }}
         >

@@ -439,9 +439,6 @@ export function usePublishCatalog(id: string) {
       rollbackSnapshots(queryClient, context?.snapshots);
       toast.error(_err instanceof Error ? _err.message : 'Publish failed');
     },
-    onSuccess: () => {
-      toast.success('Catalog published');
-    },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-catalog-detail', id] });
       queryClient.invalidateQueries({ queryKey: ['tenant-catalogs'] });

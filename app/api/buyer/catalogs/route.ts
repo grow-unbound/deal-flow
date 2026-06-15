@@ -33,7 +33,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const buyer = profile.buyer;
     let catalogs = context.mode === 'preview' || !buyer
       ? []
-      : await getVisibleBuyerCatalogs(context.tenant_id, buyer.id);
+      : await getVisibleBuyerCatalogs(context.tenant_id!, buyer.id!);
 
     if (context.mode === 'preview') {
       const previewRes = await supabaseAdmin

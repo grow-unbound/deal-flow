@@ -6,13 +6,13 @@ import { Pressable } from '@/components/ui/pressable';
 import { useIdleRoutePrefetch } from '@/hooks/useIdleRoutePrefetch';
 
 const tabs = [
-  { label: 'Home',    href: '/shop/home',    icon: HomeIcon },
-  { label: 'Catalog', href: '/shop/catalog', icon: CatalogIcon },
-  { label: 'Orders',  href: '/shop/orders',  icon: OrdersIcon },
-  { label: 'Profile', href: '/shop/profile', icon: ProfileIcon },
+  { label: 'Home',    href: '/buy/home',    icon: HomeIcon },
+  { label: 'Catalog', href: '/buy/catalog', icon: CatalogIcon },
+  { label: 'Orders',  href: '/buy/orders',  icon: OrdersIcon },
+  { label: 'Profile', href: '/buy/profile', icon: ProfileIcon },
 ];
 
-const DEEP_SCREENS = ['/shop/product/', '/shop/cart', '/shop/checkout'];
+const DEEP_SCREENS = ['/buy/product/', '/buy/cart', '/buy/checkout'];
 
 export function BuyerTabBar() {
   const pathname = usePathname();

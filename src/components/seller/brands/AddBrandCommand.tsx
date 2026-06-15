@@ -375,18 +375,25 @@ export function AddBrandCommand({
       if (savedBrandId && stagedLogo) {
         void uploadEntityFile({
           endpoint: '/api/upload/tenant-brand',
+          entityType: 'tenant_brand',
           entityId: savedBrandId,
           file: stagedLogo,
           imageType: 'logo',
-        }).catch((uploadError) => {
-          toast.warning(
-            `${isEditMode ? 'Brand saved' : 'Brand added'}, but image upload failed. Edit and retry.`,
-            {
-              description:
-                uploadError instanceof Error ? uploadError.message : 'Image upload failed.',
-            },
-          );
-        });
+        })
+          .then(() => {
+            toast.success(isEditMode ? 'Brand updated' : 'Brand added');
+          })
+          .catch((uploadError) => {
+            toast.warning(
+              `${isEditMode ? 'Brand saved' : 'Brand added'}, but image upload failed. Edit and retry.`,
+              {
+                description:
+                  uploadError instanceof Error ? uploadError.message : 'Image upload failed.',
+              },
+            );
+          });
+      } else {
+        toast.success(isEditMode ? 'Brand updated' : 'Brand added');
       }
     } catch (error) {
       const err = error as { status?: number; error?: string; details?: { fieldErrors?: Record<string, string[]> } };

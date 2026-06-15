@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
       success: true,
       role: workspace.role,
       workspace_type: workspace.workspace_type,
-      redirect: workspace.workspace_type === 'seller' ? '/dashboard' : '/shop',
+      redirect: workspace.workspace_type === 'seller' ? '/dashboard' : '/buy',
       tenant: workspace.tenant_id
         ? { id: workspace.tenant_id, slug: workspace.tenant_slug, name: workspace.tenant_name }
         : null,

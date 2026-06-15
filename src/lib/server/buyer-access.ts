@@ -6,6 +6,7 @@ import { getBuyerAppContext, type BuyerAppContext } from '@/lib/auth';
 import { DEFAULT_TENANT_SETTINGS_STORED } from '@/lib/tenant-settings/defaults';
 import { firstNameFromValue, normalizeIndianPhone } from '@/lib/phone';
 import { supabaseAdmin } from '@/lib/supabase';
+import type { LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
 
 export interface BuyerLoginCandidate {
   tenant_id: string;
@@ -525,6 +526,165 @@ function buyerMatchesCatalog(
 
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// Seller phone lookup + session minting
+// ---------------------------------------------------------------------------
+
+export async function findSellerLoginCandidates(phone: string): Promise<LoginOtpCandidate[]> {
+  if (!supabaseAdmin) throw new Error('Server configuration error');
+
+  const normalizedPhone = normalizeIndianPhone(phone);
+
+  // The RPC is not yet in the generated DB types, so we cast through unknown
+  const { data, error } = await (supabaseAdmin as unknown as {
+    rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
+  }).rpc('find_seller_candidates_by_phone', { p_phone: normalizedPhone });
+
+  if (error) throw new Error(`Seller lookup failed: ${error.message}`);
+
+  return ((data ?? []) as Array<{
+    user_id: string;
+    tenant_id: string;
+    tenant_name: string;
+    tenant_slug: string;
+    role: string;
+    location_ids: string[] | null;
+  }>).map((row) => ({
+    kind: 'seller' as const,
+    tenant_id: row.tenant_id,
+    tenant_name: row.tenant_name,
+    tenant_slug: row.tenant_slug,
+    role: row.role,
+    buyer_id: null,
+    principal_type: 'seller' as const,
+    user_id: row.user_id,
+    buyer_user_id: null,
+    phone: normalizedPhone,
+    business_name: '',
+    contact_name: null,
+  }));
+}
+
+export async function findAllLoginCandidates(phone: string): Promise<LoginOtpCandidate[]> {
+  const [sellers, buyers] = await Promise.all([
+    findSellerLoginCandidates(phone),
+    findBuyerLoginCandidates(phone),
+  ]);
+
+  // Map buyer candidates to the unified LoginOtpCandidate shape (filtering for eligible only)
+  const eligibleBuyers: LoginOtpCandidate[] = buyers
+    .filter((c) => c.buyer_app_enabled && c.tenant_app_enabled)
+    .map((c) => ({
+      kind: 'buyer' as const,
+      tenant_id: c.tenant_id,
+      tenant_name: c.tenant_name,
+      tenant_slug: c.tenant_slug,
+      role: c.role,
+      buyer_id: c.buyer_id,
+      principal_type: c.principal_type as 'buyer' | 'delegate',
+      user_id: c.user_id,
+      buyer_user_id: c.buyer_user_id,
+      phone: c.phone,
+      business_name: c.business_name,
+      contact_name: c.contact_name,
+    }));
+
+  // Remove buyer entries where the same auth user already appears as a seller
+  const sellerUserIds = new Set(sellers.map((s) => s.user_id).filter(Boolean));
+  const filteredBuyers = eligibleBuyers.filter(
+    (b) => !b.user_id || !sellerUserIds.has(b.user_id),
+  );
+
+  // Sellers first
+  return [...sellers, ...filteredBuyers];
+}
+
+export function toBuyerLoginCandidate(c: LoginOtpCandidate): BuyerLoginCandidate {
+  if (c.kind !== 'buyer' || !c.buyer_id) throw new Error('Not a buyer candidate');
+  return {
+    tenant_id: c.tenant_id,
+    tenant_name: c.tenant_name,
+    tenant_slug: c.tenant_slug,
+    buyer_id: c.buyer_id,
+    role: c.role as 'buyer_admin' | 'buyer_assistant',
+    principal_type: c.principal_type as 'buyer' | 'delegate',
+    user_id: c.user_id,
+    buyer_user_id: c.buyer_user_id,
+    phone: c.phone,
+    business_name: c.business_name,
+    contact_name: c.contact_name,
+    buyer_app_enabled: true,
+    tenant_app_enabled: true,
+  };
+}
+
+export async function mintSellerSession(
+  candidate: LoginOtpCandidate & { kind: 'seller' },
+): Promise<{ session: Session; user: User }> {
+  if (!supabaseAdmin || !candidate.user_id) {
+    throw new Error('Server configuration error or missing user_id for seller');
+  }
+
+  // Fetch the seller's email from auth.users
+  const { data: userData, error: userError } =
+    await supabaseAdmin.auth.admin.getUserById(candidate.user_id);
+  if (userError || !userData.user?.email) {
+    throw new Error(userError?.message ?? 'Seller auth user not found');
+  }
+
+  const sellerUser = userData.user;
+  const email = sellerUser.email!; // guarded above
+
+  // Set app_metadata so the JWT hook embeds the correct tenant claim
+  await supabaseAdmin.auth.admin.updateUserById(candidate.user_id, {
+    app_metadata: {
+      current_tenant_id: candidate.tenant_id,
+      current_buyer_id: null,
+    },
+  });
+
+  // Generate a recovery link server-side — does NOT send any email
+  const { data: linkData, error: linkError } =
+    await supabaseAdmin.auth.admin.generateLink({ type: 'recovery', email });
+
+  if (linkError || !linkData?.properties?.hashed_token) {
+    throw new Error(linkError?.message ?? 'Failed to generate seller recovery link');
+  }
+
+  const { hashed_token: hashedToken } = linkData.properties;
+
+  // Exchange the hashed_token for a live session using an anon client
+  const anonClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  );
+
+  const { data: verifyData, error: verifyError } = await anonClient.auth.verifyOtp({
+    token_hash: hashedToken,
+    type: 'recovery',
+  });
+
+  if (verifyError || !verifyData.session) {
+    throw new Error(verifyError?.message ?? 'Failed to exchange recovery token for session');
+  }
+
+  // Refresh so the custom_access_token_hook re-runs and embeds tenant_id + role claims
+  const { data: refreshData, error: refreshError } = await anonClient.auth.refreshSession({
+    refresh_token: verifyData.session.refresh_token,
+  });
+
+  if (refreshError || !refreshData.session) {
+    throw new Error(refreshError?.message ?? 'Failed to refresh seller session');
+  }
+
+  return {
+    session: refreshData.session,
+    user: verifyData.user ?? sellerUser,
+  };
+}
+
+// ---------------------------------------------------------------------------
 
 export async function getVisibleBuyerCatalogs(tenantId: string, buyerId: string): Promise<BuyerVisibleCatalog[]> {
   if (!supabaseAdmin) {

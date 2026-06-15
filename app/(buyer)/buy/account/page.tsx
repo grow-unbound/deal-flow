@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 
-// Redirect legacy /shop/account → /shop/profile
+// Redirect legacy /buy/account → /buy/profile
 export default function AccountRedirectPage() {
-  redirect('/shop/profile');
+  redirect('/buy/profile');
 }

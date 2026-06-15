@@ -75,7 +75,7 @@ describe('POST /api/uploads/r2', () => {
     });
 
     expect(res.ok).toBe(true);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data).toHaveProperty('uploadUrl');
     expect(data).toHaveProperty('publicUrl');
     expect(data).toHaveProperty('key');
@@ -100,7 +100,7 @@ describe('POST /api/uploads/r2', () => {
 
     expect(res.ok).toBe(false);
     expect(res.status).toBe(400);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.error).toBe('Image must be under 5MB.');
   });
 
@@ -123,7 +123,7 @@ describe('POST /api/uploads/r2', () => {
 
     expect(res.ok).toBe(false);
     expect(res.status).toBe(400);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.error).toMatch(/JPG|PNG|WebP/);
   });
 
@@ -146,7 +146,7 @@ describe('POST /api/uploads/r2', () => {
 
     expect(res.ok).toBe(false);
     expect(res.status).toBe(401);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.error).toBe('Unauthorized');
   });
 });

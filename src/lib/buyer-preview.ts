@@ -143,5 +143,5 @@ export function buildBuyerPreviewRedirectPath(input: {
     params.set('share_token', input.shareToken);
   }
 
-  return `/shop/catalog?${params.toString()}`;
+  return `/buy/catalog?${params.toString()}`;
 }

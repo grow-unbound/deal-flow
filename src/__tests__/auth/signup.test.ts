@@ -94,7 +94,7 @@ describe('feature flag gate — /api/auth/signup', () => {
     });
 
     expect(res.status).toBe(403);
-    const body = await res.json();
+    const body = await res.json() as any;
     expect(body.error).toBe('This feature is not yet available.');
   });
 
@@ -126,7 +126,7 @@ describe('feature flag gate — /api/auth/signup', () => {
     });
 
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await res.json() as any;
     expect(body.success).toBe(true);
     expect(body.tenant.subdomain).toBe('test-co.yukti.so');
   });
