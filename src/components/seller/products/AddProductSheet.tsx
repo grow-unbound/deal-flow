@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Package, Plus, Search, X } from 'lucide-react';
 import { useForm, useFieldArray, useController, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -219,7 +219,7 @@ export function AddProductSheet({
   const debouncedSearch = useDebounce(inputValue, 300);
 
   const { isSellerAdmin } = useRole();
-  const { gstInclusive } = useBusinessPolicy();
+  const { gstInclusive, gstRate } = useBusinessPolicy();
   const { data: searchData, isLoading: isSearching } = useSearchMasterProducts(debouncedSearch);
   const { data: brandsData, isLoading: brandsLoading } = useTenantBrands();
   const { data: priceListsData } = usePriceLists();
@@ -276,6 +276,9 @@ export function AddProductSheet({
 
   const resetAll = useCallback(() => {
     form.reset();
+    if (!gstInclusive) {
+      form.setValue('gst_rate', String(gstRate), { shouldDirty: false });
+    }
     setSelectedMaster(null);
     setInputValue('');
     setCustomProductNameSelected(null);
@@ -285,7 +288,19 @@ export function AddProductSheet({
       setPreviewUrl(null);
     }
     setPriceListAmounts({});
-  }, [form, previewUrl]);
+  }, [form, previewUrl, gstInclusive, gstRate]);
+
+  const sheetWasOpenRef = useRef(false);
+  useEffect(() => {
+    if (open && !sheetWasOpenRef.current && !isEditMode) {
+      if (gstInclusive) {
+        form.setValue('gst_rate', '', { shouldDirty: false });
+      } else {
+        form.setValue('gst_rate', String(gstRate), { shouldDirty: false });
+      }
+    }
+    sheetWasOpenRef.current = open;
+  }, [open, isEditMode, gstInclusive, gstRate, form]);
 
   useEffect(() => {
     if (!open || !isEditMode || !product) return;
@@ -332,7 +347,7 @@ export function AddProductSheet({
         name: product.name,
         internal_sku: product.master_sku,
         hsn_code: product.hsn_code ?? '',
-        gst_rate: product.gst_rate != null ? String(product.gst_rate) : '',
+        gst_rate: product.gst_rate != null ? String(product.gst_rate) : gstInclusive ? '' : String(gstRate),
         default_uom: product.default_uom ?? '',
         pack_size: product.pack_size != null ? String(product.pack_size) : '',
         image_urls: product.image_urls ?? [],
@@ -348,7 +363,7 @@ export function AddProductSheet({
     form.setValue('name', '', { shouldDirty: true });
     form.setValue('internal_sku', '');
     form.setValue('hsn_code', '');
-    form.setValue('gst_rate', '');
+    form.setValue('gst_rate', gstInclusive ? '' : String(gstRate));
     form.setValue('default_uom', '');
     form.setValue('pack_size', '');
     form.setValue('image_urls', []);

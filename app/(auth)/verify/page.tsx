@@ -34,6 +34,7 @@ function VerifyOtpForm() {
   async function handleSubmit(otp: string) {
     setError('');
     setLoading(true);
+    let shouldResetLoading = true;
 
     try {
       const res = await fetch('/api/auth/phone-otp/verify', {
@@ -63,6 +64,7 @@ function VerifyOtpForm() {
         } catch {
           // sessionStorage may be unavailable in some environments
         }
+        shouldResetLoading = false;
         router.push(`/login/select-context?ref_id=${encodeURIComponent(data.ref_id)}`);
         return;
       }
@@ -74,11 +76,13 @@ function VerifyOtpForm() {
         });
       }
 
-      router.replace(data.redirect ?? '/login');
+      shouldResetLoading = false;
+      router.replace(data.redirect ?? '/dashboard');
+      router.refresh();
     } catch {
       setError('Network error. Please check your connection and try again.');
     } finally {
-      setLoading(false);
+      if (shouldResetLoading) setLoading(false);
     }
   }
 

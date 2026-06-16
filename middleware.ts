@@ -8,9 +8,14 @@ const PUBLIC_PREFIXES = [
   '/api/auth',
   '/auth',
   '/login',
+  '/verify',
   '/signup',
+  '/forgot-password',
+  '/reset-password',
+  '/setup-password',
   '/_next',
   '/favicon.ico',
+  '/brand', // Static brand assets (logo SVGs etc) — must be public for auth pages
   '/ingest', // PostHog analytics proxy — must be public so rewrites can forward it
   '/api/debug', // Diagnostic endpoint — remove from PUBLIC_PREFIXES before going to production
 ];

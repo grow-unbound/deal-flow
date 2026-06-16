@@ -6,6 +6,7 @@ export default function SettingsModulesPage() {
   return (
     <PageWrap>
       <SellerTopbar
+        eyebrow="Settings"
         title="Feature Modules"
         subtitle="Turn features on or off and configure how they work for your business."
       />

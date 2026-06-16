@@ -78,6 +78,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const categoryId = searchParams.get('category_id')?.trim() ?? '';
     const brandId = searchParams.get('brand_id')?.trim() ?? '';
     const requestedCatalogId = searchParams.get('catalog_id')?.trim() ?? '';
+    const tenantProductId = searchParams.get('tenant_product_id')?.trim() ?? '';
     const limit = Math.min(Math.max(1, Number(searchParams.get('limit') ?? PAGE_LIMIT)), 100);
     const offset = Math.max(0, Number(searchParams.get('offset') ?? 0));
 
@@ -88,7 +89,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       const { data, error } = await supabaseAdmin
         .schema('app')
         .from('published_catalogs')
-        .select('id, tenant_id, name, share_token, valid_to, created_at, scope_type, scope_value')
+        .select('id, tenant_id, name, share_token, valid_to, created_at, scope_type, scope_value, hero_image_url')
         .eq('tenant_id', context.tenant_id)
         .eq('status', 'published')
         .is('deleted_at', null)
@@ -112,6 +113,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       product_count: countByCatalog.get(catalog.id) ?? 0,
       share_token: catalog.share_token,
       valid_until: catalog.valid_to,
+      hero_image_url: catalog.hero_image_url ?? null,
     }));
 
     const selectedCatalog = requestedCatalogId
@@ -134,7 +136,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const { data: catalogItems, error: catalogItemsError } = await supabaseAdmin
       .schema('app')
       .from('published_catalog_items')
-      .select('tenant_product_id, price_override')
+      .select('tenant_product_id, price_override, is_featured')
       .eq('catalog_id', selectedCatalog.id)
       .is('deleted_at', null);
 
@@ -146,6 +148,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const itemRows = (catalogItems ?? []) as Array<{
       tenant_product_id: string;
       price_override: number | null;
+      is_featured: boolean | null;
     }>;
     const productIds = itemRows.map((row) => row.tenant_product_id);
 
@@ -213,14 +216,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         ? supabaseAdmin
             .schema('catalog')
             .from('products')
-            .select('id, name, image_urls, category_id, brand_id, categories(id, name, slug)')
+            .select('id, name, image_urls, category_id, brand_id, categories(id, name, slug, image_url)')
             .in('id', masterProductIds)
         : Promise.resolve({ data: [], error: null }),
       tenantBrandIds.length > 0
         ? supabaseAdmin
             .schema('app')
             .from('tenant_brands')
-            .select('id, display_name_override, master_brand_id')
+            .select('id, display_name_override, master_brand_id, logo_url')
             .in('id', tenantBrandIds)
             .is('deleted_at', null)
         : Promise.resolve({ data: [], error: null }),
@@ -235,6 +238,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       id: string;
       display_name_override: string | null;
       master_brand_id: string | null;
+      logo_url: string | null;
     }>;
     const tenantBrandMap = new Map(tenantBrandsList.map((brand) => [brand.id, brand]));
     const masterProductMap = new Map(
@@ -243,19 +247,19 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         name: string;
         image_urls: string[] | null;
         brand_id: string;
-        categories: { id: string; name: string; slug: string } | null;
+        categories: { id: string; name: string; slug: string; image_url?: string | null } | null;
       }>).map((product) => [product.id, product]),
     );
 
     const masterBrandIds = Array.from(
       new Set(tenantBrandsList.map((brand) => brand.master_brand_id).filter(Boolean) as string[]),
     );
-    let masterBrandMap = new Map<string, string>();
+    let masterBrandMap = new Map<string, { name: string; logo_url: string | null }>();
     if (masterBrandIds.length > 0) {
       const { data: masterBrands, error: masterBrandsError } = await supabaseAdmin
         .schema('catalog')
         .from('brands')
-        .select('id, name')
+        .select('id, name, logo_url')
         .in('id', masterBrandIds);
 
       if (masterBrandsError) {
@@ -264,7 +268,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       }
 
       masterBrandMap = new Map(
-        ((masterBrands ?? []) as Array<{ id: string; name: string }>).map((brand) => [brand.id, brand.name]),
+        ((masterBrands ?? []) as Array<{ id: string; name: string; logo_url: string | null }>).map((brand) => [brand.id, { name: brand.name, logo_url: brand.logo_url }]),
       );
     }
 
@@ -291,6 +295,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const priceOverrideByProductId = new Map(
       itemRows.map((row) => [row.tenant_product_id, row.price_override]),
     );
+    const featuredByProductId = new Map(
+      itemRows.map((row) => [row.tenant_product_id, Boolean(row.is_featured)]),
+    );
 
     const itemsWithPrices = await Promise.all(products.map(async (product) => {
       const master = product.master_product_id
@@ -299,10 +306,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       const tenantBrand = product.tenant_brand_id
         ? tenantBrandMap.get(product.tenant_brand_id) ?? null
         : null;
+      const masterBrandEntry = tenantBrand?.master_brand_id ? masterBrandMap.get(tenantBrand.master_brand_id) ?? null : null;
       const brandName =
         tenantBrand?.display_name_override
-        ?? (tenantBrand?.master_brand_id ? masterBrandMap.get(tenantBrand.master_brand_id) ?? null : null)
+        ?? masterBrandEntry?.name
         ?? null;
+      const brandLogoUrl = tenantBrand?.logo_url ?? masterBrandEntry?.logo_url ?? null;
       const onHand = Math.max(0, inventoryMap.get(product.id) ?? 0);
       const stockStatus: 'available' | 'limited' | 'out_of_stock' =
         onHand === 0 ? 'out_of_stock' : onHand < 10 ? 'limited' : 'available';
@@ -329,8 +338,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         default_uom: product.default_uom,
         pack_size: product.pack_size,
         image_urls: (product.image_urls?.length ? product.image_urls : (master?.image_urls ?? [])) as string[],
+        brand_logo_url: brandLogoUrl,
+        category_image_url: master?.categories?.image_url ?? null,
         stock_status: stockStatus,
         on_hand: onHand,
+        is_featured: featuredByProductId.get(product.id) ?? false,
       } satisfies BuyerCatalogItem;
     }));
 
@@ -349,9 +361,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     if (brandId) {
       filteredItems = filteredItems.filter((item) => item.brand_id === brandId);
     }
-
-    const total = filteredItems.length;
+    if (tenantProductId) {
+      filteredItems = filteredItems.filter((item) => item.tenant_product_id === tenantProductId);
+    }
     const pageItems = filteredItems.slice(offset, offset + limit);
+    const total = filteredItems.length;
     const hasMore = offset + limit < total;
 
     const response: BuyerCatalogResponse = {

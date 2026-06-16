@@ -21,6 +21,8 @@ export const CreateLocationInputSchema = z.object({
   inventory_tracking: z.boolean().optional().default(true),
   is_default: z.boolean().optional().default(false),
   external_ref: z.string().max(200).optional(),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
 });
 
 export type CreateLocationInput = z.infer<typeof CreateLocationInputSchema>;
@@ -33,6 +35,8 @@ export const UpdateLocationInputSchema = z
     inventory_tracking: z.boolean().optional(),
     is_default: z.boolean().optional(),
     external_ref: z.string().max(200).nullable().optional(),
+    lat: z.number().nullable().optional(),
+    lng: z.number().nullable().optional(),
     /** When true, clears deleted_at (seller_admin only). */
     reactivate: z.boolean().optional(),
   })
@@ -49,6 +53,8 @@ export interface TenantLocation {
   inventory_tracking: boolean;
   is_default: boolean;
   external_ref: string | null;
+  lat: number | null;
+  lng: number | null;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;

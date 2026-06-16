@@ -8,9 +8,12 @@ interface BuyerMeResponse {
   buyer_id: string;
   business_name: string;
   contact_name: string;
+  phone: string;
+  gstin: string | null;
   credit_limit: number;
   credit_used: number;
   open_orders_count: number;
+  seller_preview: boolean;
   tenant: {
     id: string;
     name: string;
@@ -68,7 +71,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       gst_inclusive: rawPolicy.gst_inclusive === true,
     };
 
-    if (context.mode === 'preview') {
+    // Pure seller preview (no linked buyer account)
+    if (context.mode === 'preview' && !context.buyer_id) {
       if (!profile.tenant) {
         return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
       }
@@ -79,9 +83,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         buyer_id: 'preview',
         business_name: 'Buyer app preview',
         contact_name: 'Preview user',
+        phone: '—',
+        gstin: null,
         credit_limit: 0,
         credit_used: 0,
         open_orders_count: 0,
+        seller_preview: true,
         tenant: {
           id: tenant.id,
           name: tenant.business_name,
@@ -130,13 +137,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const tenant = profile.tenant;
 
     const payload: BuyerMeResponse = {
-      mode: 'buyer',
+      mode: context.mode,
       buyer_id: buyer.id,
       business_name: buyer.business_name,
       contact_name: buyer.contact_name ?? '',
+      phone: buyer.phone ?? '—',
+      gstin: buyer.gstin ?? null,
       credit_limit: Number(buyer.credit_limit ?? 0),
       credit_used: creditUsed,
       open_orders_count: openOrdersCount,
+      seller_preview: false,
       tenant: {
         id: tenant.id,
         name: tenant.business_name,

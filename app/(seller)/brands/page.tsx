@@ -1,19 +1,21 @@
-import { headers } from 'next/headers';
-import { redirect } from 'next/navigation';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { BrandsLandingClient } from '@/components/seller/brands/BrandsLandingClient';
 import type { TenantBrandsResponse } from '@/hooks/useBrands';
-import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
+import { FLAGS, getFlag } from '@/lib/flags';
 import { fetchSellerPageBootstrap } from '@/lib/server/seller-page-bootstrap';
+import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
+import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 
 export default async function BrandsPage({
   searchParams,
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const h = await headers();
-  const tenantId = h.get('x-verified-tenant-id');
-  if (!tenantId) redirect('/dashboard');
+  const tenantId = await requireSellerServerTenantId();
+
+  if (!(await getFlag(FLAGS.BRAND_PRODUCT_MASTER, tenantId))) {
+    return <FeatureForbiddenPage />;
+  }
 
   const period = await resolveSellerLandingPeriod(searchParams);
   const { data: initialData, status } = await fetchSellerPageBootstrap<TenantBrandsResponse>(`/api/tenant/brands?period=${period}`);

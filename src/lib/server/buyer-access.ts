@@ -36,6 +36,7 @@ interface BuyerRow {
   contact_name: string | null;
   credit_limit: number | null;
   phone: string | null;
+  gstin: string | null;
   buyer_app_enabled: boolean | null;
 }
 
@@ -62,6 +63,7 @@ export interface BuyerVisibleCatalog {
   created_at: string;
   scope_type: 'cohort' | 'buyer' | 'geography' | 'all';
   scope_value: Record<string, unknown> | null;
+  hero_image_url: string | null;
 }
 
 const BUYER_SESSION_PASSWORD_LENGTH = 32;
@@ -420,7 +422,8 @@ export async function requireBuyerAccessProfile(request: NextRequest): Promise<B
     .eq('id', context.tenant_id)
     .maybeSingle();
 
-  if (context.mode === 'preview') {
+  // Pure seller preview — no linked buyer account
+  if (context.mode === 'preview' && !context.buyer_id) {
     const { data: tenant, error } = await tenantPromise;
     if (error) throw new Error(error.message);
 
@@ -446,7 +449,7 @@ export async function requireBuyerAccessProfile(request: NextRequest): Promise<B
     db
       .schema('app')
       .from('buyers')
-      .select('id, tenant_id, business_name, contact_name, credit_limit, phone, buyer_app_enabled')
+      .select('id, tenant_id, business_name, contact_name, credit_limit, phone, gstin, buyer_app_enabled')
       .eq('id', context.buyer_id)
       .eq('tenant_id', context.tenant_id)
       .eq('is_active', true)
@@ -696,7 +699,7 @@ export async function getVisibleBuyerCatalogs(tenantId: string, buyerId: string)
     db
       .schema('app')
       .from('published_catalogs')
-      .select('id, tenant_id, name, share_token, valid_to, created_at, scope_type, scope_value')
+      .select('id, tenant_id, name, share_token, valid_to, created_at, scope_type, scope_value, hero_image_url')
       .eq('tenant_id', tenantId)
       .eq('status', 'published')
       .is('deleted_at', null)

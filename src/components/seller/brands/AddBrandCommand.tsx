@@ -285,14 +285,6 @@ export function AddBrandCommand({
     setInputValue(selectedMasterBrand.name);
   }, [open, selectedMasterBrand]);
 
-  useEffect(() => {
-    return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-    };
-  }, [previewUrl]);
-
   function applyMasterBrand(brand: MasterBrand) {
     setSelectedMasterBrand(brand);
     setCustomBrandNameSelected(null);
