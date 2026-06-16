@@ -24,7 +24,7 @@ describe('middleware auth redirects', () => {
     getSessionMock.mockReset();
   });
 
-  it('redirects seller routes to /login when the session is missing', async () => {
+  it('redirects to /login when the session is missing', async () => {
     getSessionMock.mockResolvedValue({
       data: { session: null },
     });
@@ -33,15 +33,15 @@ describe('middleware auth redirects', () => {
     const response = await middleware(new NextRequest('http://localhost/dashboard'));
 
     expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('http://localhost/login?reason=session_expired');
+    expect(response.headers.get('location')).toBe('http://localhost/login');
   });
 
-  it('redirects buyer routes to /login/phone when the session is malformed or expired', async () => {
+  it('redirects to /login when the session token is malformed or expired', async () => {
     getSessionMock.mockResolvedValue({
       data: {
         session: {
           access_token: 'bad-token',
-          user: { id: 'buyer-user-1' },
+          user: { id: 'user-1' },
         },
       },
     });
@@ -50,10 +50,10 @@ describe('middleware auth redirects', () => {
     });
 
     const { middleware } = await import('../../../middleware');
-    const response = await middleware(new NextRequest('http://localhost/shop/catalog'));
+    const response = await middleware(new NextRequest('http://localhost/buy/catalog'));
 
     expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('http://localhost/login/phone?reason=session_expired');
+    expect(response.headers.get('location')).toBe('http://localhost/login');
   });
 
   it('forwards verified location ids from the JWT payload', async () => {

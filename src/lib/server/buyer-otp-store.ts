@@ -1,13 +1,16 @@
-export interface BuyerOtpContext {
+export type CandidateKind = 'seller' | 'buyer';
+
+export interface LoginOtpContext {
+  kind: CandidateKind;
   tenant_id: string;
   tenant_name: string;
   tenant_slug: string;
-  buyer_id: string;
-  role: 'buyer_admin' | 'buyer_assistant';
+  role: string;
+  buyer_id: string | null;
 }
 
-export interface BuyerOtpCandidate extends BuyerOtpContext {
-  principal_type: 'buyer' | 'delegate';
+export interface LoginOtpCandidate extends LoginOtpContext {
+  principal_type: 'buyer' | 'delegate' | 'seller';
   user_id: string | null;
   buyer_user_id: string | null;
   phone: string;
@@ -15,20 +18,24 @@ export interface BuyerOtpCandidate extends BuyerOtpContext {
   contact_name: string | null;
 }
 
+// Legacy aliases — kept for callers that haven't been migrated yet
+export type BuyerOtpContext = LoginOtpContext;
+export type BuyerOtpCandidate = LoginOtpCandidate;
+
 type OtpPendingRecord = {
   kind: 'pending';
   otp: string;
   phone: string;
   expiresAt: number;
   attempts: number;
-  candidates: BuyerOtpCandidate[];
+  candidates: LoginOtpCandidate[];
 };
 
 type OtpVerifiedRecord = {
   kind: 'verified';
   phone: string;
   expiresAt: number;
-  candidates: BuyerOtpCandidate[];
+  candidates: LoginOtpCandidate[];
 };
 
 export type BuyerOtpRecord = OtpPendingRecord | OtpVerifiedRecord;

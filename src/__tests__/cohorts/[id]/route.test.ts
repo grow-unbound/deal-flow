@@ -95,7 +95,7 @@ describe('cohort detail route security and conversion', () => {
       params: Promise.resolve({ id: 'c1' }),
     });
 
-    const body = await res.json();
+    const body = await res.json() as any;
     const opens = Number(
       (body.performance.catalogs ?? []).reduce((sum: number, catalog: { opens?: number }) => sum + Number(catalog.opens ?? 0), 0),
     );
@@ -118,7 +118,7 @@ describe('cohort detail route security and conversion', () => {
       const res = await GET(new Request('http://localhost/api/cohorts/c1') as any, {
         params: Promise.resolve({ id: 'c1' }),
       });
-      const body = await res.json();
+      const body = await res.json() as any;
       const opens = (body.performance.catalogs ?? []).map((catalog: { opens?: number }) => Number(catalog.opens ?? 0));
       expect(opens.every((value: number) => value === 0)).toBe(true);
     } finally {

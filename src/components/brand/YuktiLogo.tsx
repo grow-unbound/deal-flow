@@ -40,6 +40,7 @@ export function YuktiLogo({
             src={sources['mark-copper'][theme]}
             alt=""
             fill
+            unoptimized
             className="object-contain"
             priority={priority}
             aria-hidden="true"
@@ -69,6 +70,7 @@ export function YuktiLogo({
             src={sources['mark-copper'][theme]}
             alt=""
             fill
+            unoptimized
             className="object-contain"
             priority={priority}
             aria-hidden="true"
@@ -102,6 +104,7 @@ export function YuktiLogo({
         src={src}
         alt="Yukti"
         fill
+        unoptimized
         className="object-contain object-left"
         priority={priority}
       />

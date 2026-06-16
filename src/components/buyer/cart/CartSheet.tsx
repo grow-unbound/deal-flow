@@ -83,7 +83,7 @@ export function CartSheet({ open, onClose }: CartSheetProps) {
             </div>
             <Pressable asChild haptic>
               <Link
-                href="/shop/checkout"
+                href="/buy/checkout"
                 onClick={onClose}
                 className="flex h-12 w-full touch-manipulation items-center justify-center rounded-xl text-sm font-semibold text-white transition-transform duration-fast ease-standard hover:opacity-90 active:scale-[0.98]"
                 style={{ background: 'var(--teal-500)' }}

@@ -1263,18 +1263,27 @@ export async function handleIntegrationsWebhook(request: Request): Promise<Respo
       ?? asString(request.headers.get('x-integration-endpoint-token'));
     const tenantIntegrationId = asString(payload.tenant_integration_id);
 
-    const integration = endpointToken
-      ? await loadTenantIntegration(admin, (await loadWebhook(admin, endpointToken)).tenant_integration_id)
-      : tenantIntegrationId
-        ? await loadTenantIntegration(admin, tenantIntegrationId)
-        : null;
+    // When an endpoint_token is present the token itself IS the authentication —
+    // it's an opaque secret that only Zoho knows because we registered it.
+    // Fall back to standard actor auth only when no endpoint_token is provided.
+    let webhook: IntegrationWebhookRow | null = null;
+    let integration = null;
+
+    if (endpointToken) {
+      webhook = await loadWebhook(admin, endpointToken);
+      integration = await loadTenantIntegration(admin, webhook.tenant_integration_id);
+    } else if (tenantIntegrationId) {
+      integration = await loadTenantIntegration(admin, tenantIntegrationId);
+    }
 
     if (!integration) {
       throw new HttpError(400, 'Provide endpoint_token or tenant_integration_id.');
     }
 
-    const actor = await authorizeTenantActor(request, admin, integration.tenant_id);
-    const webhook = endpointToken ? await loadWebhook(admin, endpointToken) : null;
+    // Only require actor auth when the call doesn't carry a valid endpoint_token
+    const actor = endpointToken
+      ? { userId: 'webhook-endpoint-token', authHeader: null, internal: true } as ActorContext
+      : await authorizeTenantActor(request, admin, integration.tenant_id);
 
     if (webhook) {
       await touchWebhookFlows(admin, webhook.id);

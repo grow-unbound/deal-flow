@@ -7,6 +7,7 @@ const useFlagMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
+  usePathname: () => '/brands',
 }));
 
 vi.mock('@/hooks/useBrands', () => ({
@@ -15,6 +16,18 @@ vi.mock('@/hooks/useBrands', () => ({
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlag: (...args: unknown[]) => useFlagMock(...args),
+  useFlagState: (...args: unknown[]) => useFlagMock(...args),
+}));
+
+vi.mock('@/hooks/useSellerLandingPeriod', () => ({
+  useSellerLandingPeriod: () => ({
+    period: 'month' as const,
+    setPeriod: vi.fn(),
+    horizonLabel: 'This month',
+    lowerLabel: 'this month',
+    metricSuffix: 'MTD',
+    options: [{ value: 'month' as const, label: 'This Month' }],
+  }),
 }));
 
 vi.mock('@/components/seller/brands/AddBrandCommand', () => ({
@@ -25,7 +38,7 @@ vi.mock('@/components/seller/InviteUserDialog', () => ({
   InviteUserDialog: () => null,
 }));
 
-import BrandsPage from '../../../app/(seller)/brands/page';
+import { BrandsLandingClient } from '@/components/seller/brands/BrandsLandingClient';
 
 describe('brands landing page', () => {
   beforeEach(() => {
@@ -58,7 +71,7 @@ describe('brands landing page', () => {
       },
     });
 
-    render(<BrandsPage />);
+    render(<BrandsLandingClient initialData={null} initialPeriod="month" />);
 
     expect(screen.getByText('Portfolio GMV')).toBeInTheDocument();
     expect(screen.getByText('₹3,50,000')).toBeInTheDocument();
@@ -77,7 +90,7 @@ describe('brands landing page', () => {
       },
     });
 
-    render(<BrandsPage />);
+    render(<BrandsLandingClient initialData={null} initialPeriod="month" />);
     fireEvent.click(screen.getByRole('button', { name: 'At risk' }));
 
     expect(screen.getByText('Risky Brand')).toBeInTheDocument();
@@ -94,7 +107,7 @@ describe('brands landing page', () => {
       },
     });
 
-    render(<BrandsPage />);
+    render(<BrandsLandingClient initialData={null} initialPeriod="month" />);
     fireEvent.click(screen.getByText('Alpha'));
 
     expect(pushMock).toHaveBeenCalledWith('/brands/brand-123');
@@ -113,7 +126,7 @@ describe('brands landing page', () => {
       },
     });
 
-    render(<BrandsPage />);
+    render(<BrandsLandingClient initialData={null} initialPeriod="month" />);
     fireEvent.click(screen.getByRole('button', { name: 'Audio' }));
     expect(screen.getByText('AudioMax')).toBeInTheDocument();
     expect(screen.queryByText('WearX')).not.toBeInTheDocument();
@@ -142,7 +155,7 @@ describe('brands landing page', () => {
       },
     });
 
-    render(<BrandsPage />);
+    render(<BrandsLandingClient initialData={null} initialPeriod="month" />);
     expect(screen.getByText('7')).toBeInTheDocument();
     expect(screen.getByText('/ 11')).toBeInTheDocument();
     expect(screen.getByText('4d ago')).toBeInTheDocument();

@@ -400,7 +400,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     new Set(
       assignmentRows
         .map((assignment: { price_list_id?: string | null }) => assignment.price_list_id)
-        .filter((value): value is string => Boolean(value)),
+        .filter((value: string | null | undefined): value is string => typeof value === 'string'),
     ),
   );
 
@@ -509,13 +509,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         priority: Number(priceList.priority ?? 0),
       };
     })
-    .filter(Boolean)
+    .filter((row): row is NonNullable<typeof row> => row !== null)
     .sort((left, right) => {
-      const leftRow = left!;
-      const rightRow = right!;
-      const priorityDelta = assignmentPriority.indexOf(leftRow.target_type) - assignmentPriority.indexOf(rightRow.target_type);
+      const priorityDelta = assignmentPriority.indexOf(left.target_type) - assignmentPriority.indexOf(right.target_type);
       if (priorityDelta !== 0) return priorityDelta;
-      return rightRow.priority - leftRow.priority;
+      return right.priority - left.priority;
     })
     .map(({ priority: _priority, ...row }) => row);
 

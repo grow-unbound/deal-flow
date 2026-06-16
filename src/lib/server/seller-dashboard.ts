@@ -441,14 +441,14 @@ async function fetchSellerDashboardData(
         label: `Orders · ${sellerLandingPeriodLabel(period.selected)}`,
         value: currentOrdersCount,
         delta: currentOrdersCount - previousOrdersCount,
-        delta_label: 'vs previous period',
+        delta_label: `vs previous ${period.selected === 'today' ? 'day' : period.selected}`,
       },
       {
         label: `GMV · ${sellerLandingPeriodLabel(period.selected)}`,
         value: currentGmv,
         delta: growthDelta(currentGmv, previousGmv),
-        delta_label: 'vs previous period',
-        tone: 'accent',
+        delta_label: `vs previous ${period.selected === 'today' ? 'day' : period.selected}`,
+        // tone: 'accent',
       },
       {
         label: 'Active catalogs',

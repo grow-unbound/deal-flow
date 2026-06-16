@@ -4,16 +4,9 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { supabaseBrowser } from '@/lib/supabase-browser';
+import type { LoginOtpContext } from '@/lib/server/buyer-otp-store';
 
 const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
-
-interface BuyerContext {
-  tenant_id: string;
-  tenant_name: string;
-  tenant_slug: string;
-  buyer_id: string;
-  role: string;
-}
 
 interface SessionPayload {
   access_token: string;
@@ -23,14 +16,16 @@ interface SessionPayload {
 const ROLE_LABELS: Record<string, string> = {
   buyer_admin: 'Admin',
   buyer_assistant: 'Team member',
+  seller_admin: 'Admin',
+  seller_assistant: 'Assistant',
 };
 
 function roleBadge(role: string) {
   return ROLE_LABELS[role] ?? role;
 }
 
-function contextKey(ctx: BuyerContext) {
-  return `${ctx.tenant_id}:${ctx.buyer_id}`;
+function contextKey(ctx: LoginOtpContext) {
+  return `${ctx.kind}:${ctx.tenant_id}:${ctx.buyer_id ?? 'no-buyer'}`;
 }
 
 function SelectContextForm() {
@@ -38,7 +33,7 @@ function SelectContextForm() {
   const searchParams = useSearchParams();
   const ref_id = searchParams.get('ref_id') ?? '';
 
-  const [contexts, setContexts] = useState<BuyerContext[] | null>(null);
+  const [contexts, setContexts] = useState<LoginOtpContext[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -46,27 +41,27 @@ function SelectContextForm() {
   // Load contexts from sessionStorage
   useEffect(() => {
     if (!ref_id) {
-      router.replace('/login/phone');
+      router.replace('/login');
       return;
     }
     try {
       const raw = sessionStorage.getItem(SESSION_CONTEXTS_KEY);
       if (!raw) {
-        router.replace('/login/phone');
+        router.replace('/login');
         return;
       }
-      const parsed: BuyerContext[] = JSON.parse(raw);
+      const parsed: LoginOtpContext[] = JSON.parse(raw);
       if (!Array.isArray(parsed) || parsed.length === 0) {
-        router.replace('/login/phone');
+        router.replace('/login');
         return;
       }
       setContexts(parsed);
     } catch {
-      router.replace('/login/phone');
+      router.replace('/login');
     }
   }, [ref_id, router]);
 
-  async function handleSelect(ctx: BuyerContext) {
+  async function handleSelect(ctx: LoginOtpContext) {
     setSelected(contextKey(ctx));
     setError('');
     setLoading(true);
@@ -77,6 +72,7 @@ function SelectContextForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ref_id,
+          kind: ctx.kind,
           tenant_id: ctx.tenant_id,
           buyer_id: ctx.buyer_id,
           role: ctx.role,
@@ -103,10 +99,9 @@ function SelectContextForm() {
         });
       }
 
-      // Clean up sessionStorage
       try { sessionStorage.removeItem(SESSION_CONTEXTS_KEY); } catch { /* ignore */ }
 
-      router.replace(data.redirect ?? '/shop');
+      router.replace(data.redirect ?? '/login');
     } catch {
       setError('Network error. Please check your connection and try again.');
       setSelected(null);
@@ -116,7 +111,6 @@ function SelectContextForm() {
   }
 
   if (!contexts) {
-    // Loading/redirecting state
     return (
       <div className="bg-white border border-cream-300 rounded-xl shadow-md p-8">
         <div className="mb-6 flex justify-center">
@@ -139,7 +133,7 @@ function SelectContextForm() {
 
       <h1 className="text-h3 font-display text-cream-900 mb-1">Choose account</h1>
       <p className="text-body-sm text-cream-600 mb-6">
-        Your number is linked to multiple businesses. Select one to continue.
+        Your number is linked to multiple accounts. Select one to continue.
       </p>
 
       <div className="space-y-3">
@@ -191,7 +185,7 @@ function SelectContextForm() {
       <div className="mt-6 pt-4 border-t border-cream-200 text-center">
         <button
           type="button"
-          onClick={() => router.replace('/login/phone')}
+          onClick={() => router.replace('/login')}
           className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
         >
           ← Back to login

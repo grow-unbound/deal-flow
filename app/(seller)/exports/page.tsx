@@ -1,14 +1,11 @@
-import { headers } from 'next/headers';
-import { redirect } from 'next/navigation';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { SellerTopbar } from '@/components/layout/SellerTopbar';
 import { PageWrap } from '@/components/seller/layout';
 import { getFlag, FLAGS } from '@/lib/flags';
+import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 
 export default async function ExportsPage() {
-  const h = await headers();
-  const tenantId = h.get('x-verified-tenant-id');
-  if (!tenantId) redirect('/dashboard');
+  const tenantId = await requireSellerServerTenantId();
 
   if (!(await getFlag(FLAGS.TALLY_EXPORT, tenantId))) return <FeatureForbiddenPage />;
 

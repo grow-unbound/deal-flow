@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import {
   UploadRouteError,
-  forwardUploadToWorker,
   mediaVariantUrls,
-  parseUploadFormPayload,
+  parseVariantKeysPayload,
   requireCatalogRow,
   requireSellerUploadContext,
 } from '@/lib/server/image-upload';
@@ -13,7 +12,7 @@ import type { MediaVariantKeySet } from '@/lib/r2-url';
 export async function POST(req: NextRequest) {
   try {
     const { actorId } = await requireSellerUploadContext(req);
-    const { entityId, file, imageType } = await parseUploadFormPayload(req);
+    const { entityId, variants, imageType } = await parseVariantKeysPayload(req);
 
     if (!supabaseAdmin) {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
@@ -22,19 +21,13 @@ export async function POST(req: NextRequest) {
     const db = supabaseAdmin as any;
     await requireCatalogRow(db, { table: 'categories', id: entityId });
 
-    const worker = await forwardUploadToWorker({
-      file,
-      entityType: 'catalog_category',
-      entityId,
-    });
-
-    const variants = worker.variants as unknown as MediaVariantKeySet;
+    const keys = variants as unknown as MediaVariantKeySet;
     const payload = {
       category_id: entityId,
       image_type: imageType === 'banner' ? 'banner' : 'icon',
-      r2_original_key: variants.original,
-      r2_medium_key: variants.medium,
-      r2_thumb_key: variants.thumb,
+      r2_original_key: keys.original,
+      r2_medium_key: keys.medium,
+      r2_thumb_key: keys.thumb,
       status: 'pending',
       created_by: actorId,
       updated_by: actorId,
@@ -56,8 +49,8 @@ export async function POST(req: NextRequest) {
       entity_type: 'catalog_category',
       entity_id: entityId,
       image: data,
-      variants,
-      urls: mediaVariantUrls(variants),
+      variants: keys,
+      urls: mediaVariantUrls(keys),
     });
   } catch (error) {
     if (error instanceof UploadRouteError) {

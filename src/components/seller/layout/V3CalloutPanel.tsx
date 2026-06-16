@@ -7,6 +7,7 @@ type CalloutKind = 'risk' | 'info' | 'opportunity';
 interface CalloutRow {
   initials: string;
   hue: EntityAvatarHue;
+  imageUrl?: string | null;
   name: string;
   reason: ReactNode;
   trailing: ReactNode;
@@ -71,7 +72,7 @@ export function V3CalloutPanel({ items, stalenessHint = 'Updated moments ago' }:
               <div className="space-y-[10px]">
                 {item.rows.map((row, rowIndex) => (
                   <div key={`${row.name}-${rowIndex}`} className="flex items-start gap-[10px]">
-                    <EntityAvatar initials={row.initials} hue={row.hue} size={32} />
+                    <EntityAvatar initials={row.initials} hue={row.hue} imageUrl={row.imageUrl} size={32} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-base font-medium leading-[1.25] text-cream-900">{row.name}</p>
                       <p className="mt-0.5 truncate text-sm leading-[1.4] text-cream-700">{row.reason}</p>

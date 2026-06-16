@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { ScrollableTableShell } from '@/components/seller/layout/ScrollableTableShell';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Pagination } from '@/components/ui/pagination';
@@ -76,8 +77,8 @@ function DataTable<T extends { id: string }>({
 
   return (
     <div className={cn('w-full', className)}>
-      <div className="overflow-x-auto rounded-[14px] border border-cream-300 bg-white shadow-xs">
-        <table className="w-full border-collapse bg-white text-base text-cream-900">
+      <ScrollableTableShell className="rounded-[14px] border border-cream-300 bg-white shadow-xs">
+        <table className="w-full min-w-max border-collapse bg-white text-base text-cream-900">
           <thead>
             <tr className="border-b border-cream-400 bg-cream-50">
               {selectable && (
@@ -95,7 +96,7 @@ function DataTable<T extends { id: string }>({
                   key={String(col.key)}
                   style={{ width: col.width }}
                   className={cn(
-                    'px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.08em] text-cream-700 whitespace-nowrap',
+                    'table-label px-4 py-3 text-left whitespace-nowrap',
                     col.align === 'center' && 'text-center',
                     col.align === 'right' && 'text-right',
                     col.sortable && 'cursor-pointer select-none hover:text-cream-900 transition-colors'
@@ -176,7 +177,7 @@ function DataTable<T extends { id: string }>({
             )}
           </tbody>
         </table>
-      </div>
+      </ScrollableTableShell>
 
       {totalPages && totalPages > 1 && onPageChange && currentPage && (
         <div className="mt-4 flex items-center justify-between">

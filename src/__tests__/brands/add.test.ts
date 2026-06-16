@@ -83,7 +83,7 @@ describe('Brand search API', () => {
 
     const res = await fetch('/api/brands/search?q=acme');
     expect(res.ok).toBe(true);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.brands).toHaveLength(1);
     expect(data.brands[0].name).toBe('Acme Corp');
     expect(fetchMock).toHaveBeenCalledWith('/api/brands/search?q=acme');
@@ -96,7 +96,7 @@ describe('Brand search API', () => {
     });
 
     const res = await fetch('/api/brands/search?q=nonexistent');
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.brands).toHaveLength(0);
   });
 });
@@ -134,7 +134,7 @@ describe('Tenant brands API - add brand', () => {
 
     expect(res.ok).toBe(true);
     expect(res.status).toBe(201);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.brand.master_brand_id).toBe(mockMasterBrand.id);
     expect(data.brand.is_active).toBe(true);
   });
@@ -147,7 +147,7 @@ describe('Tenant brands API - add brand', () => {
     });
 
     const listRes = await fetch('/api/tenant/brands');
-    const listData = await listRes.json();
+    const listData = await listRes.json() as any;
     expect(listData.brands).toHaveLength(0);
 
     // Second call: POST to add brand
@@ -169,7 +169,7 @@ describe('Tenant brands API - add brand', () => {
     });
 
     const updatedRes = await fetch('/api/tenant/brands');
-    const updatedData = await updatedRes.json();
+    const updatedData = await updatedRes.json() as any;
     expect(updatedData.brands).toHaveLength(1);
     expect(updatedData.brands[0].master_brand_id).toBe(mockMasterBrand.id);
   });
@@ -189,7 +189,7 @@ describe('Tenant brands API - add brand', () => {
 
     expect(res.ok).toBe(false);
     expect(res.status).toBe(409);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.error).toBe('Brand already in your catalog');
   });
 

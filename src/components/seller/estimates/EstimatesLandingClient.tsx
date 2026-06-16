@@ -5,6 +5,8 @@ import { Upload, Plus, FileText } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { useSellerRealtimeContext } from '@/contexts/SellerRealtimeContext';
+import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
 import {
@@ -143,6 +145,7 @@ function EstimatesLandingContent({
   initialPeriod: SellerLandingPeriod;
 }) {
   const router = useRouter();
+  const { newEntityIds, markSeen } = useSellerRealtimeContext();
   const { period, setPeriod, horizonLabel, lowerLabel, options } = useSellerLandingPeriod(initialPeriod);
   const { data, isLoading, isError } = useTenantEstimates(period, initialData);
   const retainedData = useRetainedValue(data);
@@ -272,7 +275,7 @@ function EstimatesLandingContent({
                   sub: `${landingData.kpis.open_drafts} draft · ${landingData.kpis.open_sent} sent · ${landingData.kpis.open_accepted} accepted`,
                 },
                 {
-                  label: 'Converted this month',
+                  label: `Converted · ${metricSuffix}`,
                   value: `${landingData.kpis.converted_this_period}`,
                   sub: 'converted to SO or invoice',
                 },
@@ -376,10 +379,13 @@ function EstimatesLandingContent({
                   <tr
                     key={row.id}
                     className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
-                    onClick={() => router.push(`/estimates/${row.id}`)}
+                    onClick={() => { markSeen(row.id); router.push(`/estimates/${row.id}`); }}
                   >
                     <td className="px-5 py-3.5">
-                      <p className="font-mono text-sm font-medium text-cream-900">{row.estimate_number}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-mono text-sm font-medium text-cream-900">{row.estimate_number}</p>
+                        {newEntityIds.has(row.id) && <RealtimeBadge type="new" />}
+                      </div>
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="ent flex items-center gap-3">

@@ -47,6 +47,7 @@ interface BrandVm {
   alerts: string[];
   initials: string;
   hue: 'teal' | 'ember' | 'cream';
+  logoUrl: string | null;
 }
 
 const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'GMV (low → high)', 'Growth (high → low)', 'Catalog age (most recent)'];
@@ -136,6 +137,7 @@ function toBrandVm(brand: TenantBrand, index: number): BrandVm {
     alerts,
     initials: getInitials(name),
     hue: index % 3 === 0 ? 'teal' : index % 3 === 1 ? 'ember' : 'cream',
+    logoUrl: brand.logo_url ?? null,
   };
 }
 
@@ -319,6 +321,7 @@ function BrandLandingContent({
             rows: attention.slice(0, 2).map((brand) => ({
               initials: brand.initials,
               hue: brand.hue,
+              imageUrl: brand.logoUrl,
               name: brand.name,
               reason: attentionReason(brand.alerts),
               trailing: brand.growth > 0 ? `↑ +${brand.growth}%` : brand.growth < 0 ? `↓ ${Math.abs(brand.growth)}%` : '· flat',
@@ -331,6 +334,7 @@ function BrandLandingContent({
             rows: topPerformers.map((brand) => ({
               initials: brand.initials,
               hue: brand.hue,
+              imageUrl: brand.logoUrl,
               name: brand.name,
               reason: `${brand.share}% of portfolio · ${brand.activeBuyers} buyers`,
               trailing: formatCompactInr(brand.gmv),
@@ -343,6 +347,7 @@ function BrandLandingContent({
             rows: topRisers.map((brand) => ({
               initials: brand.initials,
               hue: brand.hue,
+              imageUrl: brand.logoUrl,
               name: brand.name,
               reason: `from ${formatCompactInr(brand.gmvPrior)} → ${formatCompactInr(brand.gmv)} ${lowerLabel}`,
               trailing: brand.growth > 0 ? `↑ +${brand.growth}%` : brand.growth < 0 ? `↓ ${Math.abs(brand.growth)}%` : '· flat',
@@ -406,7 +411,7 @@ function BrandLandingContent({
           >
             <td className="px-5 py-3.5 text-base text-cream-900">
               <div className="ent flex items-center gap-3">
-                <EntityAvatar initials={brand.initials} hue={brand.hue} size={38} />
+                <EntityAvatar initials={brand.initials} hue={brand.hue} imageUrl={brand.logoUrl} size={38} />
                 <div className="min-w-0">
                   <p className="truncate text-base font-medium text-cream-900">{brand.name}</p>
                   <p className="mt-0.5 font-mono text-xs uppercase tracking-[0.04em] text-cream-700">

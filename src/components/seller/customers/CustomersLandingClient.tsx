@@ -22,6 +22,7 @@ import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn, formatCompactInr } from '@/lib/utils';
+import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
@@ -160,6 +161,7 @@ function CustomersLandingContent({
   initialPeriod: SellerLandingPeriod;
 }) {
   const router = useRouter();
+  const { creditEnabled } = useBusinessPolicy();
   const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
   const { data, isLoading, isError } = useCustomersLanding(period, initialData);
   const retainedData = useRetainedValue(data);
@@ -357,7 +359,7 @@ function CustomersLandingContent({
           { label: 'Growth', className: 'px-5' },
           { label: 'Orders', className: 'px-5' },
           { label: 'Last order', className: 'px-5' },
-          { label: 'Credit', className: 'px-5' },
+          ...(creditEnabled ? [{ label: 'Credit', className: 'px-5' }] : []),
           { label: 'Status', className: 'px-5' },
           { width: 40, className: 'px-4' },
         ]}
@@ -390,19 +392,21 @@ function CustomersLandingContent({
               <td className="px-5 py-3.5"><GrowthPill value={buyer.growth_pct} /></td>
               <td className="px-5 py-3.5 font-mono text-base tabular-nums text-cream-900">{buyer.orders_mtd}</td>
               <td className="px-5 py-3.5 text-sm text-cream-800"><span className="tabular-inline">{formatDate(buyer.last_order_at)}</span></td>
-              <td className="px-5 py-3.5">
-                <div className="flex flex-col gap-1">
-                  <div className="h-[5px] w-[140px] overflow-hidden rounded-full bg-cream-200">
-                    <div
-                      className={cn('h-[5px] rounded-full', creditRatio > 0.75 ? 'bg-warning-500' : 'bg-teal-500')}
-                      style={{ width: `${Math.min(100, Math.round(creditRatio * 100))}%` }}
-                    />
+              {creditEnabled ? (
+                <td className="px-5 py-3.5">
+                  <div className="flex flex-col gap-1">
+                    <div className="h-[5px] w-[140px] overflow-hidden rounded-full bg-cream-200">
+                      <div
+                        className={cn('h-[5px] rounded-full', creditRatio > 0.75 ? 'bg-warning-500' : 'bg-teal-500')}
+                        style={{ width: `${Math.min(100, Math.round(creditRatio * 100))}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-cream-700">
+                      <span className="tabular-inline">{formatCompactInr(buyer.credit_used)}</span> / <span className="tabular-inline">{formatCompactInr(buyer.credit_limit)}</span>
+                    </span>
                   </div>
-                  <span className="text-xs text-cream-700">
-                    <span className="tabular-inline">{formatCompactInr(buyer.credit_used)}</span> / <span className="tabular-inline">{formatCompactInr(buyer.credit_limit)}</span>
-                  </span>
-                </div>
-              </td>
+                </td>
+              ) : null}
               <td className="px-5 py-3.5">
                 <StatusTag label={buyer.status.label} tone={buyer.status.tone} />
               </td>

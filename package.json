@@ -41,6 +41,7 @@
     "cmdk": "^1.1.1",
     "lucide-react": "^0.365.0",
     "next": "^15.0.0",
+    "pica": "^10.0.1",
     "posthog-js": "^1.143.0",
     "posthog-node": "^5.35.1",
     "react": "^18.3.1",

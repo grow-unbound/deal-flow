@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useSellerDashboard } from '@/hooks/useSellerDashboard';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
+import { useSellerRealtimeContext } from '@/contexts/SellerRealtimeContext';
+import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
 import {
   EntityAvatar,
   InsightStrip4,
@@ -53,7 +55,7 @@ function formatMetricDelta(delta?: number, deltaLabel?: string) {
   return `${prefix}${delta}${deltaLabel ? ` ${deltaLabel}` : ''}`.trim();
 }
 
-function FeedCard({ feed }: { feed: SellerDashboardFeed }) {
+function FeedCard({ feed, newEntityIds, markSeen }: { feed: SellerDashboardFeed; newEntityIds: Map<string, 'new'>; markSeen: (id: string) => void }) {
   return (
     <section className="rounded-[14px] border border-cream-300 bg-white">
       <div className="flex items-center justify-between border-b border-cream-200 px-5 py-4">
@@ -74,12 +76,14 @@ function FeedCard({ feed }: { feed: SellerDashboardFeed }) {
               <Link
                 key={row.id}
                 href={row.href}
+                onClick={() => markSeen(row.id)}
                 className="flex items-start justify-between gap-4 rounded-[12px] border border-cream-200 px-4 py-3 text-left no-underline transition hover:border-cream-300 hover:bg-cream-50"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <p className="font-mono text-sm text-cream-700">{row.document_number}</p>
                     <StatusTag label={row.status.label} tone={row.status.tone} className="shrink-0" />
+                    {newEntityIds.has(row.id) && <RealtimeBadge type="new" />}
                   </div>
                   <p className="mt-1 truncate text-base font-medium text-cream-900">{row.customer_name}</p>
                   <p className="mt-1 text-sm text-cream-600">{formatTimeAgoLabel(row.updated_at)}</p>
@@ -106,7 +110,7 @@ function formatTimeAgoLabel(iso: string) {
   return `Updated ${new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`;
 }
 
-function AdminSection({ data }: { data: SellerDashboardResponse }) {
+function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardResponse; newEntityIds: Map<string, 'new'>; markSeen: (id: string) => void }) {
   const admin = data.admin;
   if (!admin) return null;
 
@@ -181,12 +185,14 @@ function AdminSection({ data }: { data: SellerDashboardResponse }) {
                 <Link
                   key={row.id}
                   href={row.href}
+                  onClick={() => markSeen(row.id)}
                   className="flex items-start justify-between gap-4 rounded-[12px] border border-cream-200 px-4 py-3 no-underline transition hover:border-cream-300 hover:bg-cream-50"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="font-mono text-sm text-cream-700">{row.document_number}</p>
                       <StatusTag label={row.status.label} tone={row.status.tone} />
+                      {newEntityIds.has(row.id) && <RealtimeBadge type="new" />}
                     </div>
                     <p className="mt-1 truncate text-base font-medium text-cream-900">{row.customer_name}</p>
                     <p className="mt-1 text-sm text-cream-600">{formatTimeAgoLabel(row.updated_at)}</p>
@@ -202,7 +208,7 @@ function AdminSection({ data }: { data: SellerDashboardResponse }) {
   );
 }
 
-function AssistantSection({ data }: { data: SellerDashboardResponse }) {
+function AssistantSection({ data, newEntityIds, markSeen }: { data: SellerDashboardResponse; newEntityIds: Map<string, 'new'>; markSeen: (id: string) => void }) {
   const assistant = data.assistant;
   if (!assistant) return null;
 
@@ -230,7 +236,7 @@ function AssistantSection({ data }: { data: SellerDashboardResponse }) {
       />
       <div className={cn('mt-5 grid gap-5', assistant.feeds.length >= 3 ? 'grid-cols-1 xl:grid-cols-3' : assistant.feeds.length === 2 ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1')}>
         {assistant.feeds.map((feed) => (
-          <FeedCard key={feed.id} feed={feed} />
+          <FeedCard key={feed.id} feed={feed} newEntityIds={newEntityIds} markSeen={markSeen} />
         ))}
       </div>
     </>
@@ -248,6 +254,7 @@ export function SellerDashboardClient({
   const { data, isLoading, isError } = useSellerDashboard(period, initialData);
   const retainedData = useRetainedValue(data);
   const dashboard = data ?? retainedData;
+  const { newEntityIds, markSeen } = useSellerRealtimeContext();
 
   if (!dashboard && isLoading) {
     return (
@@ -281,28 +288,11 @@ export function SellerDashboardClient({
         onPeriodChange={setPeriod}
       />
 
-      {isLoading && !data ? <DashboardDataSkeleton /> : null}
-      {dashboard.role === 'seller_admin' ? <AdminSection data={dashboard} /> : <AssistantSection data={dashboard} />}
-
-      <section className="mt-5 rounded-[14px] border border-cream-300 bg-white">
-        <div className="border-b border-cream-200 px-5 py-4">
-          <h2 className="text-md font-semibold text-cream-900">Tenant details</h2>
-        </div>
-        <div className="grid grid-cols-1 gap-5 px-5 py-4 md:grid-cols-3">
-          <div>
-            <p className="eyebrow text-cream-600">Tenant</p>
-            <p className="mt-1 text-base font-medium text-cream-900">{dashboard.tenant.business_name}</p>
-          </div>
-          <div>
-            <p className="eyebrow text-cream-600">Subdomain</p>
-            <p className="mt-1 text-base font-medium text-cream-900">{dashboard.tenant.subdomain ?? '—'}</p>
-          </div>
-          <div>
-            <p className="eyebrow text-cream-600">Plan</p>
-            <p className="mt-1 text-base font-medium capitalize text-cream-900">{dashboard.tenant.plan ?? '—'}</p>
-          </div>
-        </div>
-      </section>
+      {isLoading && !data ? <DashboardDataSkeleton /> : (
+        <>
+          {dashboard.role === 'seller_admin' ? <AdminSection data={dashboard} newEntityIds={newEntityIds} markSeen={markSeen} /> : <AssistantSection data={dashboard} newEntityIds={newEntityIds} markSeen={markSeen} />}
+        </>
+      )}
     </PageWrap>
   );
 }

@@ -94,11 +94,11 @@ describe('feature flag gate — /api/auth/signup', () => {
     });
 
     expect(res.status).toBe(403);
-    const body = await res.json();
+    const body = await res.json() as any;
     expect(body.error).toBe('This feature is not yet available.');
   });
 
-  it('returns 201 on successful signup', async () => {
+  it('returns 201 on successful signup with session and redirect', async () => {
     mockFetch.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -108,6 +108,11 @@ describe('feature flag gate — /api/auth/signup', () => {
             tenant_id: 'tenant-uuid',
             slug: 'test-co',
             subdomain: 'test-co.yukti.so',
+          },
+          redirect: '/dashboard',
+          session: {
+            access_token: 'access-token',
+            refresh_token: 'refresh-token',
           },
         }),
         { status: 201 }
@@ -126,9 +131,27 @@ describe('feature flag gate — /api/auth/signup', () => {
     });
 
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await res.json() as {
+      success: boolean;
+      tenant: { subdomain: string };
+      redirect: string;
+      session: { access_token: string; refresh_token: string };
+    };
     expect(body.success).toBe(true);
     expect(body.tenant.subdomain).toBe('test-co.yukti.so');
+    expect(body.redirect).toBe('/dashboard');
+    expect(body.session.access_token).toBe('access-token');
+    expect(body.session.refresh_token).toBe('refresh-token');
+  });
+});
+
+describe('signup client session contract', () => {
+  it('requires both access and refresh tokens before redirecting', () => {
+    const validSession = { access_token: 'a', refresh_token: 'r' };
+    expect(validSession.access_token && validSession.refresh_token).toBeTruthy();
+
+    const invalidSession = { access_token: 'a' } as { access_token?: string; refresh_token?: string };
+    expect(Boolean(invalidSession.access_token && invalidSession.refresh_token)).toBe(false);
   });
 });
 

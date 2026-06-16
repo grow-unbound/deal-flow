@@ -11,11 +11,12 @@ export const DEFAULT_TENANT_SETTINGS_STORED = {
     email: '',
   },
   product_defaults: {
-    gst_rate: 18 as const,
     uom: 'PCS',
   },
   orders: {
-    number_format: 'ORD-{YYYY}-{SEQ}',
+    enquiry_number_format: 'EST-{YYYY}-{SEQ}',
+    sales_order_number_format: 'SO-{YYYY}-{SEQ}',
+    invoice_number_format: 'INV-{YYYY}-{SEQ}',
     inventory_lock_stage: 'sales_order' as const,
     invoice_pdf_enabled: false,
     features: {
@@ -46,6 +47,11 @@ export const DEFAULT_TENANT_SETTINGS_STORED = {
       dispatch_to_buyer: true,
       catalog_shared_to_buyer: true,
     },
+  },
+  business_policy: {
+    credit_enabled: true,
+    gst_inclusive: false,
+    gst_rate: 18 as const,
   },
 };
 

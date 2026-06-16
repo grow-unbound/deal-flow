@@ -275,15 +275,15 @@ function Step2Preview({ parsedRows, onBack, onConfirm, brandSlugToId, isImportin
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-12">#</TableHead>
-              <TableHead>SKU</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Brand</TableHead>
-              <TableHead className="text-right">MRP</TableHead>
-              <TableHead className="text-right">Price</TableHead>
-              <TableHead className="text-right">GST</TableHead>
-              <TableHead>HSN</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead className="table-label w-12">#</TableHead>
+              <TableHead className="table-label">SKU</TableHead>
+              <TableHead className="table-label">Name</TableHead>
+              <TableHead className="table-label">Brand</TableHead>
+              <TableHead className="table-label text-right">MRP</TableHead>
+              <TableHead className="table-label text-right">Price</TableHead>
+              <TableHead className="table-label text-right">GST</TableHead>
+              <TableHead className="table-label">HSN</TableHead>
+              <TableHead className="table-label">Status</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -294,28 +294,28 @@ function Step2Preview({ parsedRows, onBack, onConfirm, brandSlugToId, isImportin
                   row.isValid ? 'bg-cream-50' : 'bg-red-50 border-l-2 border-red-500'
                 )}
               >
-                <TableCell className="text-xs text-cream-500">{row.rowIndex}</TableCell>
-                <TableCell className="font-mono text-sm">{row.raw.internal_sku || '—'}</TableCell>
-                <TableCell className="text-sm max-w-[180px] truncate">{row.raw.name || '—'}</TableCell>
-                <TableCell className="text-sm text-cream-700">{row.raw.brand_slug || '—'}</TableCell>
-                <TableCell className="font-mono text-sm text-right">
+                <TableCell className="text-base text-cream-500">{row.rowIndex}</TableCell>
+                <TableCell className="text-base">{row.raw.internal_sku || '—'}</TableCell>
+                <TableCell className="max-w-[180px] truncate text-base">{row.raw.name || '—'}</TableCell>
+                <TableCell className="text-base text-cream-700">{row.raw.brand_slug || '—'}</TableCell>
+                <TableCell className="text-right font-mono text-sm tabular-nums">
                   {row.raw.mrp ? `₹${row.raw.mrp}` : '—'}
                 </TableCell>
-                <TableCell className="font-mono text-sm text-right">
+                <TableCell className="text-right font-mono text-sm tabular-nums">
                   {row.raw.base_selling_price ? `₹${row.raw.base_selling_price}` : '—'}
                 </TableCell>
-                <TableCell className="font-mono text-sm text-right">
+                <TableCell className="text-right font-mono text-sm tabular-nums">
                   {row.raw.gst_rate ? `${row.raw.gst_rate}%` : '—'}
                 </TableCell>
-                <TableCell className="font-mono text-sm">{row.raw.hsn_code || '—'}</TableCell>
-                <TableCell>
+                <TableCell className="text-base">{row.raw.hsn_code || '—'}</TableCell>
+                <TableCell className="text-base">
                   {row.isValid ? (
-                    <span className="inline-flex items-center gap-1 text-xs text-teal-700 font-medium">
+                    <span className="inline-flex items-center gap-1 text-sm text-teal-700 font-medium">
                       <CheckCircle2 size={12} /> Valid
                     </span>
                   ) : (
                     <span
-                      className="inline-flex items-center gap-1 text-xs text-red-600 font-medium cursor-help"
+                      className="inline-flex items-center gap-1 text-sm text-red-600 font-medium cursor-help"
                       title={(row.errors ?? []).join('\n')}
                     >
                       <AlertCircle size={12} />

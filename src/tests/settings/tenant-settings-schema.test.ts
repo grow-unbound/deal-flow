@@ -54,9 +54,9 @@ describe('TenantSettingsPatchSchema', () => {
     expect(r.success).toBe(true);
   });
 
-  it('accepts product_defaults partial', () => {
+  it('accepts product_defaults partial (UOM)', () => {
     const r = TenantSettingsPatchSchema.safeParse({
-      product_defaults: { gst_rate: 18 },
+      product_defaults: { uom: 'PCS' },
     });
     expect(r.success).toBe(true);
   });
@@ -93,9 +93,16 @@ describe('TenantSettingsPatchSchema', () => {
     expect(r.success).toBe(false);
   });
 
-  it('rejects invalid gst_rate in product_defaults', () => {
+  it('accepts business_policy gst_rate partial', () => {
     const r = TenantSettingsPatchSchema.safeParse({
-      product_defaults: { gst_rate: 99 },
+      business_policy: { gst_rate: 12 },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects invalid gst_rate in business_policy', () => {
+    const r = TenantSettingsPatchSchema.safeParse({
+      business_policy: { gst_rate: 99 },
     });
     expect(r.success).toBe(false);
   });
