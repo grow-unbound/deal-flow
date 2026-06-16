@@ -116,7 +116,6 @@ export function useConvertEstimateToOrder(estimateId: string) {
       return (await res.json()) as { data: Record<string, unknown> };
     },
     onSuccess: () => {
-      toast.success('Converted to order');
       void qc.invalidateQueries({ queryKey: ['tenant-estimate-detail', estimateId] });
       void qc.invalidateQueries({ queryKey: ['tenant-estimate-composer', estimateId] });
       void qc.invalidateQueries({ queryKey: ['tenant-estimates'] });
@@ -160,9 +159,6 @@ export function useVoidEstimate(estimateId: string) {
         qc.setQueryData(['tenant-estimate-composer', estimateId], ctx.prevComposer);
       }
       toast.error(_err instanceof Error ? _err.message : 'Void failed');
-    },
-    onSuccess: () => {
-      toast.success('Estimate voided');
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['tenant-estimate-detail', estimateId] });

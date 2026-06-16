@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowRight,
   BookCheck,
@@ -17,6 +18,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  Zap,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -263,6 +265,8 @@ function IntegrationCard({
 }
 
 export function IntegrationsSettingsClient() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { isSellerAdmin } = useRole();
   const {
     data,
@@ -278,6 +282,7 @@ export function IntegrationsSettingsClient() {
     isStartingSync,
   } =
     useIntegrationsSettings();
+  const [isOAuthRedirecting, setIsOAuthRedirecting] = useState(false);
 
   const zohoEnabled = useFlagState('ZOHO_INTEGRATION');
   const tallyEnabled = useFlagState('TALLY_INTEGRATION');
@@ -293,6 +298,51 @@ export function IntegrationsSettingsClient() {
   const [selectedIntegrationId, setSelectedIntegrationId] = useState<string | null>(null);
   const [detailTab, setDetailTab] = useState<DetailTab>('overview');
   const [wizard, setWizard] = useState<WizardState>(buildWizardState(null));
+
+  // Auto-open start-import step when returning from Zoho OAuth consent screen
+  useEffect(() => {
+    const connectedTypeId = searchParams.get('connected');
+    const oauthError = searchParams.get('oauth_error');
+
+    if (oauthError) {
+      console.error('[Zoho OAuth] Error returned from consent screen:', oauthError);
+      // Clear the param so refresh doesn't re-show the error
+      router.replace('/settings/integrations');
+      return;
+    }
+
+    if (connectedTypeId && integrations.length > 0) {
+      const target = integrations.find((integration) => integration.id === connectedTypeId);
+      if (target) {
+        setSelectedIntegrationId(target.id);
+        setWizard({ ...buildWizardState(target), open: true, integrationId: target.id, step: 3 });
+        router.replace('/settings/integrations');
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, integrations]);
+
+  async function startZohoOAuth() {
+    if (!wizardIntegration) return;
+    const orgId = wizard.credentials['org_id'] ?? '';
+    if (!orgId.trim()) return;
+
+    setIsOAuthRedirecting(true);
+    try {
+      const response = await fetch('/api/settings/integrations/zoho/oauth/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ integration_type_id: wizardIntegration.id, org_id: orgId }),
+      });
+      const json = await response.json() as { data?: { redirect_url?: string }; error?: { message?: string } };
+      if (!response.ok || !json.data?.redirect_url) {
+        throw new Error(json.error?.message ?? 'Failed to start OAuth flow');
+      }
+      window.location.href = json.data.redirect_url;
+    } catch {
+      setIsOAuthRedirecting(false);
+    }
+  }
 
   useEffect(() => {
     if (integrations.length === 0) {
@@ -344,22 +394,29 @@ export function IntegrationsSettingsClient() {
   async function runStartImport() {
     if (!wizardIntegration) return;
 
-    const connectedView = await connectIntegration({
-      integration_type_id: wizardIntegration.id,
-      credentials: wizard.credentials,
-      config: { connectivity_mode: wizardIntegration.connectivity_mode },
-    });
+    let tenantIntegrationId = wizardIntegration.tenant_integration?.id ?? null;
 
-    const connectedIntegration =
-      connectedView.integrations.find((integration) => integration.id === wizardIntegration.id)?.tenant_integration ?? null;
+    // OAuth-connected integrations are already stored in the DB via the callback route.
+    // Only call connectIntegration for manual credential flows or when not yet connected.
+    if (!tenantIntegrationId || wizardIntegration.tenant_integration?.status !== 'connected') {
+      const connectedView = await connectIntegration({
+        integration_type_id: wizardIntegration.id,
+        credentials: wizard.credentials,
+        config: { connectivity_mode: wizardIntegration.connectivity_mode },
+      });
 
-    if (!connectedIntegration?.id) {
-      throw new Error('Integration connected, but no tenant integration record was returned.');
+      const connectedIntegration =
+        connectedView.integrations.find((integration) => integration.id === wizardIntegration.id)?.tenant_integration ?? null;
+
+      if (!connectedIntegration?.id) {
+        throw new Error('Integration connected, but no tenant integration record was returned.');
+      }
+      tenantIntegrationId = connectedIntegration.id;
     }
 
     await startSync({
       integration_type_id: wizardIntegration.id,
-      tenant_integration_id: connectedIntegration.id,
+      tenant_integration_id: tenantIntegrationId,
       credentials: wizard.credentials,
       import_start_date: wizard.importStartDate,
     });
@@ -765,6 +822,18 @@ export function IntegrationsSettingsClient() {
                       </div>
                     ) : null}
 
+                    {wizardIntegration.auth_schema?.oauth === true ? (
+                      <div className="rounded-2xl border border-teal-100 bg-teal-50 px-4 py-4">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-cream-900">
+                          <Zap className="h-4 w-4 text-teal-600" />
+                          One-click Zoho login
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-cream-700">
+                          Enter your Organization ID, then click the button below to log in with your Zoho account. You&apos;ll be redirected back here automatically.
+                        </p>
+                      </div>
+                    ) : null}
+
                     <div className="grid gap-4 sm:grid-cols-2">
                       {wizardFields.map((field) => (
                         <Input
@@ -779,6 +848,19 @@ export function IntegrationsSettingsClient() {
                         />
                       ))}
                     </div>
+
+                    {wizardIntegration.auth_schema?.oauth === true ? (
+                      <Button
+                        type="button"
+                        variant="primary"
+                        disabled={!isSellerAdmin || missingRequired.length > 0 || isOAuthRedirecting}
+                        onClick={() => void startZohoOAuth()}
+                        className="w-full"
+                      >
+                        <Zap className="h-4 w-4" />
+                        {isOAuthRedirecting ? 'Redirecting to Zoho...' : 'Connect to Zoho'}
+                      </Button>
+                    ) : null}
 
                     {!isSellerAdmin ? (
                       <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-4 py-3 text-sm text-warning-800">
@@ -887,7 +969,7 @@ export function IntegrationsSettingsClient() {
                   >
                     {isTestingConnection ? 'Testing...' : 'Test connection'}
                   </Button>
-                ) : (
+                ) : wizard.step === 1 && wizardIntegration?.auth_schema?.oauth === true ? null : (
                   <Button
                     type="button"
                     onClick={() => setWizard((current) => ({ ...current, step: Math.min(WIZARD_STEPS.length - 1, current.step + 1) }))}

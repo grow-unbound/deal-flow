@@ -3,9 +3,8 @@ import { supabaseAdmin } from '@/lib/supabase';
 import {
   UploadRouteError,
   clearCatalogProductPrimary,
-  forwardUploadToWorker,
   getCatalogProductImageState,
-  parseUploadFormPayload,
+  parseVariantKeysPayload,
   productVariantUrls,
   requireCatalogRow,
   requireSellerUploadContext,
@@ -15,14 +14,13 @@ import type { ProductVariantKeySet } from '@/lib/r2-url';
 export async function POST(req: NextRequest) {
   try {
     const { claims, actorId } = await requireSellerUploadContext(req);
-    const { entityId, file, isPrimary } = await parseUploadFormPayload(req);
+    const { entityId, variants, isPrimary } = await parseVariantKeysPayload(req);
 
     if (!supabaseAdmin) {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
 
     const db = supabaseAdmin as any;
-
     await requireCatalogRow(db, { table: 'products', id: entityId });
 
     const state = await getCatalogProductImageState(db, entityId);
@@ -35,23 +33,16 @@ export async function POST(req: NextRequest) {
       await clearCatalogProductPrimary(db, entityId);
     }
 
-    const worker = await forwardUploadToWorker({
-      file,
-      entityType: 'catalog_product',
-      entityId,
-      isPrimary: effectivePrimary,
-    });
-
-    const variants = worker.variants as unknown as ProductVariantKeySet;
+    const keys = variants as unknown as ProductVariantKeySet;
     const payload = {
       product_id: entityId,
       is_primary: effectivePrimary,
       sort_order: state.nextSortOrder,
-      r2_original_key: variants.original,
-      r2_large_key: variants.large,
-      r2_medium_key: variants.medium,
-      r2_small_key: variants.small,
-      r2_thumb_key: variants.thumb,
+      r2_original_key: keys.original,
+      r2_large_key: keys.large,
+      r2_medium_key: keys.medium,
+      r2_small_key: keys.small,
+      r2_thumb_key: keys.thumb,
       contributed_by_tenant_id: claims.tenant_id,
       status: 'pending',
       created_by: actorId,
@@ -74,8 +65,8 @@ export async function POST(req: NextRequest) {
       entity_type: 'catalog_product',
       entity_id: entityId,
       image: data,
-      variants,
-      urls: productVariantUrls(variants),
+      variants: keys,
+      urls: productVariantUrls(keys),
     });
   } catch (error) {
     if (error instanceof UploadRouteError) {

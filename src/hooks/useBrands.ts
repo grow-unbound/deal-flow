@@ -468,7 +468,6 @@ export function useCreateTenantBrand() {
     onError: (_error, _data, ctx) => restoreQuerySnapshots(queryClient, ctx?.snapshots),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-brands'] });
-      toast.success('Brand saved');
     },
   });
 }

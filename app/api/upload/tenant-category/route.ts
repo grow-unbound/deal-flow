@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import {
   UploadRouteError,
-  forwardUploadToWorker,
   mediaVariantUrls,
-  parseUploadFormPayload,
+  parseVariantKeysPayload,
   requireSellerUploadContext,
   requireTenantOwnedRow,
 } from '@/lib/server/image-upload';
@@ -13,7 +12,7 @@ import type { MediaVariantKeySet } from '@/lib/r2-url';
 export async function POST(req: NextRequest) {
   try {
     const { claims, actorId } = await requireSellerUploadContext(req);
-    const { entityId, file, imageType } = await parseUploadFormPayload(req);
+    const { entityId, variants, imageType } = await parseVariantKeysPayload(req);
 
     if (!supabaseAdmin) {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
@@ -27,16 +26,10 @@ export async function POST(req: NextRequest) {
       id: entityId,
     });
 
+    const keys = variants as unknown as MediaVariantKeySet;
     const normalizedType = imageType === 'banner' ? 'banner' : 'icon';
-    const worker = await forwardUploadToWorker({
-      file,
-      entityType: 'tenant_category',
-      entityId,
-      tenantId: claims.tenant_id,
-    });
 
-    const variants = worker.variants as unknown as MediaVariantKeySet;
-    const { data: existing, error: existingError } = await db
+    const { data: existing } = await db
       .schema('app')
       .from('tenant_category_images')
       .select('id')
@@ -46,18 +39,14 @@ export async function POST(req: NextRequest) {
       .is('deleted_at', null)
       .maybeSingle();
 
-    if (existingError) {
-      return NextResponse.json({ error: 'Failed to inspect existing images.' }, { status: 500 });
-    }
-
     const payload = {
       tenant_category_id: entityId,
       image_type: normalizedType,
       is_primary: true,
       sort_order: 0,
-      r2_original_key: variants.original,
-      r2_medium_key: variants.medium,
-      r2_thumb_key: variants.thumb,
+      r2_original_key: keys.original,
+      r2_medium_key: keys.medium,
+      r2_thumb_key: keys.thumb,
       status: 'approved',
       created_by: actorId,
       updated_by: actorId,
@@ -68,9 +57,9 @@ export async function POST(req: NextRequest) {
           .schema('app')
           .from('tenant_category_images')
           .update({
-            r2_original_key: variants.original,
-            r2_medium_key: variants.medium,
-            r2_thumb_key: variants.thumb,
+            r2_original_key: keys.original,
+            r2_medium_key: keys.medium,
+            r2_thumb_key: keys.thumb,
             status: 'approved',
             updated_by: actorId,
           })
@@ -88,8 +77,8 @@ export async function POST(req: NextRequest) {
       entity_type: 'tenant_category',
       entity_id: entityId,
       image: data,
-      variants,
-      urls: mediaVariantUrls(variants),
+      variants: keys,
+      urls: mediaVariantUrls(keys),
     });
   } catch (error) {
     if (error instanceof UploadRouteError) {

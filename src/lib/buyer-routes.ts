@@ -1,0 +1,72 @@
+/**
+ * Single source of truth for buyer PWA route taxonomy (tab bar vs deep screens).
+ */
+
+export const BUYER_LANDING_ROUTES = [
+  '/buy/home',
+  '/buy/catalog',
+  '/buy/orders',
+  '/buy/profile',
+] as const;
+
+export type BuyerLandingRoute = (typeof BUYER_LANDING_ROUTES)[number];
+
+/** Prefixes: hide tab bar when pathname starts with one of these. */
+export const BUYER_DEEP_PREFIXES = [
+  '/buy/product/',
+  '/buy/catalog/category/',
+  '/buy/catalog/brand/',
+  '/buy/catalog/list/',
+  '/buy/search',
+  '/buy/location',
+] as const;
+
+/** Exact deep roots (and optional deeper paths under them). */
+export const BUYER_DEEP_EXACT_ROOTS = ['/buy/cart', '/buy/checkout', '/buy/order-placed'] as const;
+
+
+export function isBuyerDeepRoute(pathname: string): boolean {
+  for (const root of BUYER_DEEP_EXACT_ROOTS) {
+    if (pathname === root || pathname.startsWith(`${root}/`)) return true;
+  }
+  return BUYER_DEEP_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+export function isBuyerLandingRoute(pathname: string): boolean {
+  return (BUYER_LANDING_ROUTES as readonly string[]).includes(pathname);
+}
+
+const BUYER_CART_PILL_EXACT = ['/buy/home', '/buy/catalog'] as const;
+
+const BUYER_CART_PILL_PREFIXES = [
+  '/buy/catalog/category/',
+  '/buy/catalog/brand/',
+  '/buy/catalog/list/',
+  '/buy/product/',
+] as const;
+
+/** Home + catalog tree: show floating View Cart pill when cart is non-empty. */
+export function isBuyerCartPillRoute(pathname: string): boolean {
+  if ((BUYER_CART_PILL_EXACT as readonly string[]).includes(pathname)) return true;
+  return BUYER_CART_PILL_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+export interface BuyerSearchHrefParams {
+  scope?: string;
+  q?: string;
+  category_id?: string;
+  brand_id?: string;
+  catalog_id?: string;
+}
+
+/** Build `/buy/search` URL with query params for overlay search. */
+export function buildBuyerSearchHref(params: BuyerSearchHrefParams): string {
+  const sp = new URLSearchParams();
+  if (params.scope) sp.set('scope', params.scope);
+  if (params.q?.trim()) sp.set('q', params.q.trim());
+  if (params.category_id) sp.set('category_id', params.category_id);
+  if (params.brand_id) sp.set('brand_id', params.brand_id);
+  if (params.catalog_id) sp.set('catalog_id', params.catalog_id);
+  const qs = sp.toString();
+  return qs ? `/buy/search?${qs}` : '/buy/search';
+}

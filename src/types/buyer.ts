@@ -15,8 +15,12 @@ export interface BuyerCatalogItem {
   default_uom: string | null;
   pack_size: number | null;
   image_urls: string[];
+  brand_logo_url?: string | null;
+  category_image_url?: string | null;
   stock_status: 'available' | 'limited' | 'out_of_stock';
   on_hand: number;
+  /** From published_catalog_items when product appears in a catalog. */
+  is_featured?: boolean;
 }
 
 export interface BuyerCatalogSummary {
@@ -25,6 +29,7 @@ export interface BuyerCatalogSummary {
   product_count: number;
   share_token: string;
   valid_until: string | null;
+  hero_image_url?: string | null;
 }
 
 export interface BuyerCategory {
@@ -32,11 +37,18 @@ export interface BuyerCategory {
   name: string;
   slug: string;
   product_count: number;
+  image_url?: string | null;
 }
 
 export interface BuyerBrand {
   id: string;
   name: string;
+  product_count?: number;
+  logo_url?: string | null;
+}
+
+export interface BuyerBrandsResponse {
+  brands: BuyerBrand[];
 }
 
 export interface BuyerCatalogResponse {

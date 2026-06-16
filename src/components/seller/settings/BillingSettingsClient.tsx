@@ -48,17 +48,19 @@ export function BillingSettingsClient() {
   }
 
   return (
-    <div className="space-y-6">
-      <PlanHeroCard plan={data.plan} usage={data.usage} limits={data.limits} />
+    <div className="w-full space-y-6">
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+        <PlanHeroCard plan={data.plan} usage={data.usage} limits={data.limits} />
+
+        <WhatsAppCreditsCard
+          balance={data.whatsapp.balance}
+          purchased={data.whatsapp.purchased}
+          onTopUp={() => void requestTopUp()}
+          isTopUpPending={isRequestingTopUp}
+        />
+      </div>
 
       <UsageWarningBanner warnings={data.warnings} />
-
-      <WhatsAppCreditsCard
-        balance={data.whatsapp.balance}
-        purchased={data.whatsapp.purchased}
-        onTopUp={() => void requestTopUp()}
-        isTopUpPending={isRequestingTopUp}
-      />
 
       <UpgradePlanCard
         currentPlan={data.plan}

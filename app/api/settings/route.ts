@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { assertTenantClaim, AuthorizationError, getVerifiedClaims } from '@/lib/auth';
 import { assembleTenantSettingsPayload } from '@/lib/tenant-settings/assemble-tenant-settings-payload';
+import { syncTenantFeatureFlags } from '@/lib/posthog-server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { TenantSettingsPatchSchema } from '@/types/tenant-settings';
 
@@ -111,6 +112,21 @@ export async function PATCH(request: NextRequest) {
         { data: null, error: { code: forbidden ? 'FORBIDDEN' : 'SAVE_FAILED', message: rpcError.message } },
         { status: forbidden ? 403 : 500 },
       );
+    }
+
+    // Sync relevant feature flags to PostHog group properties for sidebar/nav gating
+    if (parsed.data.orders?.features || parsed.data.catalog) {
+      void syncTenantFeatureFlags(claims.tenant_id, {
+        ...(parsed.data.orders?.features && {
+          df_order_enquiries: parsed.data.orders.features.enquiries,
+          df_order_sales_orders: parsed.data.orders.features.sales_orders,
+          df_order_invoices: parsed.data.orders.features.invoices,
+        }),
+        ...(parsed.data.catalog && {
+          df_cohorts: parsed.data.catalog.cohort_pricing_enabled,
+          df_catalog_publishing: parsed.data.catalog.catalog_publishing_enabled,
+        }),
+      });
     }
 
     const b = parsed.data.business;

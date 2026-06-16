@@ -8,11 +8,13 @@ import { Button } from '@/components/ui/button';
 import { BrowseUploadField } from '@/components/ui/browse-upload-field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { BusinessPolicySection } from '@/components/seller/settings/BusinessPolicySection';
 import { NotificationToggleRow } from '@/components/seller/settings/NotificationToggleRow';
 import { SettingsSectionCard } from '@/components/seller/settings/SettingsSectionCard';
 import { useTenantSettings } from '@/hooks/useTenantSettings';
 import { TenantSettingsPatchSchema } from '@/types/tenant-settings';
-import type { GeneralSettingsView, TenantSettingsPatch } from '@/types/tenant-settings';
+import type { BusinessPolicy, GeneralSettingsView, TenantSettingsPatch } from '@/types/tenant-settings';
+import { Navigation2 } from 'lucide-react';
 
 function cloneView(v: GeneralSettingsView): GeneralSettingsView {
   return structuredClone(v);
@@ -67,6 +69,14 @@ export function GeneralSettingsForm() {
     });
   }
 
+  function updateBusinessPolicy(business_policy: BusinessPolicy) {
+    setDraft((prev) => (prev ? { ...prev, business_policy } : prev));
+  }
+
+  function updateRoutingThreshold(km: number) {
+    setDraft((prev) => (prev ? { ...prev, delivery_routing_threshold_km: km } : prev));
+  }
+
   function handleDiscard() {
     if (data) setDraft(cloneView(data.general));
   }
@@ -76,6 +86,8 @@ export function GeneralSettingsForm() {
     const patch: TenantSettingsPatch = {
       business: draft.business,
       notifications: { whatsapp: draft.notifications.whatsapp },
+      business_policy: draft.business_policy,
+      delivery_routing_threshold_km: draft.delivery_routing_threshold_km,
     };
     const parsed = TenantSettingsPatchSchema.safeParse(patch);
     if (!parsed.success) {
@@ -87,17 +99,19 @@ export function GeneralSettingsForm() {
 
   if (isLoading || !draft) {
     return (
-      <div className="max-w-[740px] space-y-6" aria-busy="true">
-        <div className="h-8 w-48 animate-pulse rounded bg-cream-100" />
-        <div className="h-64 animate-pulse rounded-xl border border-cream-100 bg-cream-50" />
-        <div className="h-64 animate-pulse rounded-xl border border-cream-100 bg-cream-50" />
+      <div className="w-full space-y-6" aria-busy="true">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="h-64 animate-pulse rounded-xl border border-cream-100 bg-cream-50" />
+          <div className="h-64 animate-pulse rounded-xl border border-cream-100 bg-cream-50" />
+        </div>
+        <div className="h-72 animate-pulse rounded-xl border border-cream-100 bg-cream-50" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="max-w-[740px] rounded-lg border border-ember-200 bg-ember-50 px-4 py-3 text-sm text-ember-900">
+      <div className="w-full rounded-lg border border-ember-200 bg-ember-50 px-4 py-3 text-base text-ember-900">
         <p className="font-medium">Could not load settings.</p>
         <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void refetch()}>
           Retry
@@ -109,12 +123,14 @@ export function GeneralSettingsForm() {
   const logoUrls = draft.business.logo_url ? [draft.business.logo_url] : [];
 
   return (
-    <div className="max-w-[740px] space-y-2">
-      <SettingsSectionCard
-        title="Business Profile"
-        subtitle="Appears on buyer-facing documents, invoices, and the buyer app."
-        icon={Building2}
-      >
+    <div className="w-full space-y-6">
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+        <SettingsSectionCard
+          className="mb-0"
+          title="Business Profile"
+          subtitle="Appears on buyer-facing documents, invoices, and the buyer app."
+          icon={Building2}
+        >
         <div className="flex flex-col gap-4 border-b border-cream-200 pb-5 sm:flex-row sm:items-start">
           <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-[14px] border-2 border-dashed border-cream-400 bg-cream-50">
             {logoUrls[0] ? (
@@ -122,13 +138,13 @@ export function GeneralSettingsForm() {
               <img src={logoUrls[0]} alt="Company logo" className="h-full w-full object-cover" />
             ) : (
               <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-cream-500">
-                <span className="text-xs">No logo</span>
+                <span className="text-sm">No logo</span>
               </div>
             )}
           </div>
           <div className="min-w-0 flex-1 space-y-2">
-            <p className="text-sm font-medium text-cream-900">Company logo</p>
-            <p className="text-sm text-cream-700">PNG, JPG or WebP, up to 5 MB. Used on invoices and in the buyer app.</p>
+            <p className="text-base font-medium text-cream-900">Company logo</p>
+            <p className="text-sm text-cream-600">PNG, JPG or WebP, up to 5 MB. Used on invoices and in the buyer app.</p>
             <BrowseUploadField
               value={logoUrls}
               onChange={(urls) => updateBusiness({ logo_url: urls[0] ?? null })}
@@ -164,12 +180,12 @@ export function GeneralSettingsForm() {
               className="font-mono text-sm"
               placeholder="15-character GSTIN"
             />
-            <p className="text-xs text-cream-600">Your 15-character GST Identification Number</p>
+            <p className="text-sm text-cream-600">Your 15-character GST Identification Number</p>
           </div>
         </div>
 
         <div className="space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">Registered Address</p>
+          <p className="eyebrow text-cream-600">Registered Address</p>
           <div className="space-y-2">
             <Label htmlFor="addr1">Address line 1</Label>
             <Input id="addr1" value={draft.business.address.line1} onChange={(e) => updateAddress({ line1: e.target.value })} />
@@ -220,7 +236,7 @@ export function GeneralSettingsForm() {
               onChange={(e) => updateBusiness({ phone: e.target.value })}
               className="font-mono text-sm"
             />
-            <p className="text-xs text-cream-600">WhatsApp sender number for OTP messages to buyers</p>
+            <p className="text-sm text-cream-600">WhatsApp sender number for OTP messages to buyers</p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="email">Business email</Label>
@@ -231,8 +247,44 @@ export function GeneralSettingsForm() {
               onChange={(e) => updateBusiness({ email: e.target.value })}
               autoComplete="email"
             />
-            <p className="text-xs text-cream-600">Reply-to address on order confirmation emails</p>
+            <p className="text-sm text-cream-600">Reply-to address on order confirmation emails</p>
           </div>
+        </div>
+        </SettingsSectionCard>
+
+        <BusinessPolicySection
+          className="mb-0"
+          value={draft.business_policy}
+          onChange={updateBusinessPolicy}
+        />
+      </div>
+
+      <SettingsSectionCard
+        title="Order Routing"
+        subtitle="Controls how buyer orders and enquiries are assigned to your warehouses."
+        icon={Navigation2}
+      >
+        <div className="space-y-2">
+          <Label htmlFor="routing_threshold">Nearest warehouse threshold (km)</Label>
+          <div className="flex items-center gap-3">
+            <Input
+              id="routing_threshold"
+              type="number"
+              min={1}
+              max={5000}
+              step={10}
+              value={draft.delivery_routing_threshold_km}
+              onChange={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (!isNaN(v) && v >= 1 && v <= 5000) updateRoutingThreshold(v);
+              }}
+              className="w-32 font-mono text-sm"
+            />
+            <span className="text-sm text-cream-600">km</span>
+          </div>
+          <p className="text-sm text-cream-600">
+            Orders and enquiries are assigned to the nearest warehouse within this radius. If no warehouse is within range, the default warehouse is used instead.
+          </p>
         </div>
       </SettingsSectionCard>
 
@@ -241,7 +293,7 @@ export function GeneralSettingsForm() {
         subtitle="Each message uses one WhatsApp credit. Turn off anything that is not useful for your workflow."
         icon={Bell}
         footer={
-          <div className="flex items-start gap-2 text-sm text-cream-700">
+          <div className="flex items-start gap-2 text-base text-cream-700">
             <Info size={14} className="mt-0.5 shrink-0 text-cream-500" aria-hidden />
             <span>
               Requires Buyer App to be enabled. Credits are managed in{' '}

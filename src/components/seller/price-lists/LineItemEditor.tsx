@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Trash2, Plus } from 'lucide-react';
+import { ScrollableTableShell } from '@/components/seller/layout/ScrollableTableShell';
 import { Button } from '@/components/ui/button';
 import { MutationButton } from '@/components/ui/mutation-button';
 import { Input } from '@/components/ui/input';
@@ -13,14 +14,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { usePriceListItems, useAddPriceListItem, useDeletePriceListItem } from '@/hooks/usePriceLists';
 import { useTenantProducts } from '@/hooks/useProducts';
 
@@ -174,19 +167,19 @@ export function LineItemEditor({ priceListId }: LineItemEditorProps) {
       ) : items.length === 0 ? (
         <p className="text-cream-500 text-sm">No line items yet. Add a product above.</p>
       ) : (
-        <div className="rounded-lg border border-cream-200 overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-cream-100">
-                <TableHead className="text-cream-700">Product</TableHead>
-                <TableHead className="text-cream-700">SKU</TableHead>
-                <TableHead className="text-cream-700 font-mono">Price</TableHead>
-                <TableHead className="text-cream-700 font-mono">Min Qty</TableHead>
-                <TableHead className="text-cream-700 font-mono">Max Qty</TableHead>
-                <TableHead className="text-cream-700 w-12"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+        <ScrollableTableShell className="rounded-lg border border-cream-200 bg-white">
+          <table className="w-full min-w-max border-collapse text-base">
+            <thead>
+              <tr className="border-b border-cream-200 bg-cream-100">
+                <th className="table-label px-4 py-3 text-left">Product</th>
+                <th className="table-label px-4 py-3 text-left">SKU</th>
+                <th className="table-label px-4 py-3 text-right">Price</th>
+                <th className="table-label px-4 py-3 text-right">Min Qty</th>
+                <th className="table-label px-4 py-3 text-right">Max Qty</th>
+                <th className="table-label w-12 px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody>
               {items.map((item) => {
                 const productName =
                   item.tenant_product?.name_override ??
@@ -195,32 +188,36 @@ export function LineItemEditor({ priceListId }: LineItemEditorProps) {
                 const sku = item.tenant_product?.internal_sku ?? '—';
 
                 return (
-                  <TableRow key={item.id} className="bg-white hover:bg-cream-50 transition-colors">
-                    <TableCell className="text-cream-900 font-medium">{productName}</TableCell>
-                    <TableCell className="text-cream-600 font-mono text-sm">{sku}</TableCell>
-                    <TableCell className="text-cream-900 font-mono">{item.price.toFixed(2)}</TableCell>
-                    <TableCell className="text-cream-700 font-mono">{item.min_qty}</TableCell>
-                    <TableCell className="text-cream-700 font-mono">
+                  <tr key={item.id} className="border-b border-cream-100 bg-white transition-colors hover:bg-cream-50">
+                    <td className="px-4 py-3 font-medium text-cream-900">{productName}</td>
+                    <td className="px-4 py-3 text-base text-cream-600">{sku}</td>
+                    <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-cream-900">
+                      {item.price.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-cream-700">
+                      {item.min_qty}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-cream-700">
                       {item.max_qty != null ? item.max_qty : '—'}
-                    </TableCell>
-                    <TableCell>
+                    </td>
+                    <td className="px-4 py-3 text-right align-middle">
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1 h-auto"
+                        className="h-auto p-1 text-red-500 hover:bg-red-50 hover:text-red-700"
                         onClick={() => deleteItem.mutate(item.id)}
                         disabled={deleteItem.isPending}
                         aria-label="Remove item"
                       >
                         <Trash2 size={14} />
                       </Button>
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 );
               })}
-            </TableBody>
-          </Table>
-        </div>
+            </tbody>
+          </table>
+        </ScrollableTableShell>
       )}
     </div>
   );

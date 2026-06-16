@@ -26,7 +26,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
   }
 
-  const body = await request.json().catch(() => ({}));
+  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   const listPrice = Number(body.price);
   if (!Number.isFinite(listPrice) || listPrice <= 0) {
     return NextResponse.json({ error: 'price must be a positive number' }, { status: 422 });

@@ -1,18 +1,15 @@
-import { headers } from 'next/headers';
-import { redirect } from 'next/navigation';
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 
 import { InvoiceDetailPage } from '@/components/seller/invoices/detail/InvoiceDetailPage';
 import { getFlag, FLAGS } from '@/lib/flags';
+import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 
 interface PageProps {
   params: Promise<{ id: string }>;
 }
 
 export default async function InvoiceDetailRoutePage({ params }: PageProps) {
-  const h = await headers();
-  const tenantId = h.get('x-verified-tenant-id');
-  if (!tenantId) redirect('/dashboard');
+  const tenantId = await requireSellerServerTenantId();
 
   const [orderMgmt, invoices] = await Promise.all([
     getFlag(FLAGS.ORDER_MANAGEMENT, tenantId),

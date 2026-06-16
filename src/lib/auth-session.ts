@@ -43,17 +43,10 @@ export function clearStoredBuyerPreviewToken() {
   window.sessionStorage.removeItem(BUYER_PREVIEW_STORAGE_KEY);
 }
 
-export function getSessionExpiredRedirectPath(pathname: string) {
-  const params = new URLSearchParams({ reason: 'session_expired' });
-  if (pathname.startsWith('/shop')) {
-    return `/login/phone?${params.toString()}`;
-  }
-  return `/login?${params.toString()}`;
+export function getSessionExpiredRedirectPath(_pathname: string) {
+  return '/login';
 }
 
-export function getPostLogoutRedirectPath(pathname: string) {
-  if (pathname.startsWith('/shop')) {
-    return '/login/phone';
-  }
+export function getPostLogoutRedirectPath(_pathname: string) {
   return '/login';
 }

@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { ScrollableTableShell } from '@/components/seller/layout/ScrollableTableShell';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Pagination } from '@/components/ui/pagination';
@@ -70,10 +71,10 @@ function DataTable<T extends { id: string }>({
 
   return (
     <div className={cn('w-full', className)}>
-      <div className="overflow-x-auto rounded-lg border border-cream-200 shadow-xs">
-        <table className="w-full text-body-sm text-cream-900 border-collapse">
+      <ScrollableTableShell className="rounded-lg border border-cream-200 shadow-xs">
+        <table className="w-full min-w-max border-collapse text-base text-cream-900">
           <thead>
-            <tr className="bg-cream-100 border-b border-cream-200">
+            <tr className="border-b border-cream-200 bg-cream-100">
               {selectable && (
                 <th className="w-10 pl-4 pr-2 py-3">
                   <Checkbox
@@ -89,7 +90,7 @@ function DataTable<T extends { id: string }>({
                   key={String(col.key)}
                   style={{ width: col.width }}
                   className={cn(
-                    'px-4 py-3 text-eyebrow text-cream-600 font-medium text-left whitespace-nowrap',
+                    'table-label px-4 py-3 text-left whitespace-nowrap text-cream-700',
                     col.align === 'center' && 'text-center',
                     col.align === 'right' && 'text-right',
                     col.sortable && 'cursor-pointer select-none hover:text-cream-900 transition-colors'
@@ -167,7 +168,7 @@ function DataTable<T extends { id: string }>({
             )}
           </tbody>
         </table>
-      </div>
+      </ScrollableTableShell>
 
       {totalPages && totalPages > 1 && onPageChange && currentPage && (
         <div className="mt-4 flex items-center justify-between">

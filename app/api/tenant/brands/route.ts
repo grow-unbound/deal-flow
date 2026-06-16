@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
+import { getFlag } from '@/lib/flags';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { createTenantBrand } from '@/lib/server/tenant-brand-create';
 import { getPostHogClient } from '@/lib/posthog-server';
@@ -64,6 +65,11 @@ export async function GET(req: NextRequest) {
 
     if (!claims.role?.startsWith('seller_')) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const flagEnabled = await getFlag('df_brand_product_master', claims.tenant_id);
+    if (!flagEnabled) {
+      return NextResponse.json({ error: 'Feature not enabled' }, { status: 403 });
     }
 
     if (!supabaseAdmin) {

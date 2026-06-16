@@ -114,7 +114,7 @@ describe('PATCH /api/tenant/catalogs/[id]', () => {
     const response = await PATCH(request as any, {
       params: Promise.resolve({ id: 'cat-1' }),
     });
-    const body = await response.json();
+    const body = await response.json() as any;
 
     expect(body.error).not.toMatch(/draft catalogs/i);
   });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Package, Plus, Search, X } from 'lucide-react';
 import { useForm, useFieldArray, useController, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -42,14 +42,15 @@ import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import {
   useSearchMasterProducts,
   useCreateCustomProduct,
-  useTenantProductCategories,
   useUpdateProduct,
   type TenantProduct,
 } from '@/hooks/useProducts';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useTenantBrands } from '@/hooks/useBrands';
 import { usePriceLists } from '@/hooks/usePriceLists';
+import { useTenantCategories } from '@/hooks/useTenantCategories';
 import { useRole } from '@/hooks/useRole';
+import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
 import type { MasterProduct } from '@/hooks/useProducts';
 import { UNITS_OF_MEASURE } from '@/constants';
 import { cn, formatInrInput, parseInrInput } from '@/lib/utils';
@@ -65,7 +66,7 @@ const AddProductFormSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
   // optional at schema level — required for custom products, auto-resolved for imported
   tenant_brand_id: z.string().optional(),
-  category_name: z.string().optional(),
+  tenant_category_id: z.string().uuid().optional(),
   internal_sku: z.string().min(1, 'Internal SKU is required'),
   hsn_code: z.string().optional(),
   gst_rate: z.string().optional(),
@@ -215,19 +216,23 @@ export function AddProductSheet({
   const [stagedImage, setStagedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [priceListAmounts, setPriceListAmounts] = useState<Record<string, string>>({});
-  const [showCustomCategory, setShowCustomCategory] = useState(false);
   const debouncedSearch = useDebounce(inputValue, 300);
 
   const { isSellerAdmin } = useRole();
+  const { gstInclusive, gstRate } = useBusinessPolicy();
   const { data: searchData, isLoading: isSearching } = useSearchMasterProducts(debouncedSearch);
   const { data: brandsData, isLoading: brandsLoading } = useTenantBrands();
   const { data: priceListsData } = usePriceLists();
-  const { data: existingCategories = [] } = useTenantProductCategories();
+  const { data: categoriesData } = useTenantCategories();
   const createProduct = useCreateCustomProduct();
   const updateProduct = useUpdateProduct();
   const isEditMode = mode === 'edit' && !!product;
 
   const priceLists = useMemo(() => priceListsData?.price_lists ?? [], [priceListsData]);
+  const activeCategories = useMemo(
+    () => (categoriesData?.categories ?? []).filter((c) => !c.deleted_at && c.is_active),
+    [categoriesData],
+  );
   const masterResults = useMemo(
     () => (searchData?.products ?? []).slice(0, INLINE_RESULTS),
     [searchData],
@@ -239,7 +244,7 @@ export function AddProductSheet({
     defaultValues: {
       name: '',
       tenant_brand_id: '',
-      category_name: '',
+      tenant_category_id: undefined,
       internal_sku: '',
       hsn_code: '',
       gst_rate: '',
@@ -271,6 +276,9 @@ export function AddProductSheet({
 
   const resetAll = useCallback(() => {
     form.reset();
+    if (!gstInclusive) {
+      form.setValue('gst_rate', String(gstRate), { shouldDirty: false });
+    }
     setSelectedMaster(null);
     setInputValue('');
     setCustomProductNameSelected(null);
@@ -280,8 +288,19 @@ export function AddProductSheet({
       setPreviewUrl(null);
     }
     setPriceListAmounts({});
-    setShowCustomCategory(false);
-  }, [form, previewUrl]);
+  }, [form, previewUrl, gstInclusive, gstRate]);
+
+  const sheetWasOpenRef = useRef(false);
+  useEffect(() => {
+    if (open && !sheetWasOpenRef.current && !isEditMode) {
+      if (gstInclusive) {
+        form.setValue('gst_rate', '', { shouldDirty: false });
+      } else {
+        form.setValue('gst_rate', String(gstRate), { shouldDirty: false });
+      }
+    }
+    sheetWasOpenRef.current = open;
+  }, [open, isEditMode, gstInclusive, gstRate, form]);
 
   useEffect(() => {
     if (!open || !isEditMode || !product) return;
@@ -290,11 +309,10 @@ export function AddProductSheet({
     setInputValue(product.display_name ?? '');
     setCustomProductNameSelected(null);
     setPriceListAmounts({});
-    setShowCustomCategory(false);
     form.reset({
       name: product.display_name ?? '',
       tenant_brand_id: product.tenant_brand_id ?? '',
-      category_name: product.category_name ?? '',
+      tenant_category_id: (product as any).tenant_category_id ?? undefined,
       internal_sku: product.internal_sku ?? '',
       hsn_code: product.hsn_code ?? '',
       gst_rate: product.gst_rate != null ? String(product.gst_rate) : '',
@@ -323,19 +341,17 @@ export function AddProductSheet({
     setSelectedMaster(product);
     setCustomProductNameSelected(null);
     setInputValue(product.name);
-    setShowCustomCategory(false);
     form.reset(
       {
         ...form.getValues(),
         name: product.name,
         internal_sku: product.master_sku,
         hsn_code: product.hsn_code ?? '',
-        gst_rate: product.gst_rate != null ? String(product.gst_rate) : '',
+        gst_rate: product.gst_rate != null ? String(product.gst_rate) : gstInclusive ? '' : String(gstRate),
         default_uom: product.default_uom ?? '',
         pack_size: product.pack_size != null ? String(product.pack_size) : '',
         image_urls: product.image_urls ?? [],
         description: product.description ?? '',
-        category_name: product.category_name ?? '',
       },
       { keepDirty: true },
     );
@@ -344,16 +360,14 @@ export function AddProductSheet({
   function clearMasterProduct() {
     setSelectedMaster(null);
     setInputValue('');
-    setShowCustomCategory(false);
     form.setValue('name', '', { shouldDirty: true });
     form.setValue('internal_sku', '');
     form.setValue('hsn_code', '');
-    form.setValue('gst_rate', '');
+    form.setValue('gst_rate', gstInclusive ? '' : String(gstRate));
     form.setValue('default_uom', '');
     form.setValue('pack_size', '');
     form.setValue('image_urls', []);
     form.setValue('description', '');
-    form.setValue('category_name', '');
     setStagedImage(null);
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
@@ -419,7 +433,7 @@ export function AddProductSheet({
               hsn_code: values.hsn_code || null,
               gst_rate: values.gst_rate ? Number(values.gst_rate) : null,
               description: values.description || null,
-              category_name: values.category_name || null,
+              tenant_category_id: values.tenant_category_id || null,
               attributes_override: attributesObj,
               image_urls: imageUrlsField.value ?? [],
             },
@@ -437,13 +451,14 @@ export function AddProductSheet({
             hsn_code: values.hsn_code || undefined,
             gst_rate: values.gst_rate ? Number(values.gst_rate) : undefined,
             description: values.description || undefined,
-            category_name: values.category_name || undefined,
+            tenant_category_id: values.tenant_category_id || undefined,
             attributes: attributesObj,
             image_urls: [],
           });
 
       const productId = result.product.id;
 
+      let priceListFailures = 0;
       const priceListEntries = Object.entries(priceListAmounts).filter(([, amt]) => amt.trim());
       if (!isEditMode && priceListEntries.length > 0) {
         const results = await Promise.allSettled(
@@ -456,30 +471,44 @@ export function AddProductSheet({
             });
           }),
         );
-        const failures = results.filter((r) => r.status === 'rejected').length;
-        if (failures > 0) {
-          toast.error(`Product saved, but ${failures} price list(s) failed to update.`);
-        }
+        priceListFailures = results.filter((r) => r.status === 'rejected').length;
       }
 
       resetAll();
       setOpen(false);
 
+      const label = isEditMode ? 'Product updated' : 'Product added';
+      const plWarning = priceListFailures > 0
+        ? `, but ${priceListFailures} price list(s) failed to update.`
+        : null;
+
       if (stagedImage) {
         void uploadEntityFile({
           endpoint: '/api/upload/tenant-product',
+          entityType: 'tenant_product',
           entityId: productId,
           file: stagedImage,
           isPrimary: true,
-        }).catch((uploadError) => {
-          toast.warning(
-            `${isEditMode ? 'Product saved' : 'Product added'}, but image upload failed. Edit and retry.`,
-            {
-              description:
-                uploadError instanceof Error ? uploadError.message : 'Image upload failed.',
-            },
-          );
-        });
+        })
+          .then(() => {
+            if (plWarning) {
+              toast.warning(`${isEditMode ? 'Product saved' : 'Product added'}${plWarning}`);
+            } else {
+              toast.success(label);
+            }
+          })
+          .catch((uploadError) => {
+            const suffix = plWarning ?? ', but image upload failed. Edit and retry.';
+            toast.warning(`${isEditMode ? 'Product saved' : 'Product added'}${suffix}`, {
+              description: uploadError instanceof Error ? uploadError.message : 'Image upload failed.',
+            });
+          });
+      } else {
+        if (plWarning) {
+          toast.warning(`${isEditMode ? 'Product saved' : 'Product added'}${plWarning}`);
+        } else {
+          toast.success(label);
+        }
       }
     } catch (err) {
       const e = err as { status?: number; error?: string };
@@ -691,48 +720,30 @@ export function AddProductSheet({
                 {/* Category */}
                 <FormField
                   control={form.control}
-                  name="category_name"
+                  name="tenant_category_id"
                   render={({ field }) => (
                     <FormItem className="space-y-2">
                       <FormLabel>Category</FormLabel>
                       <FormControl>
                         {selectedMaster ? (
                           <ReadOnlyChip label={selectedMaster.category_name ?? 'Uncategorized'} />
-                        ) : existingCategories.length > 0 ? (
-                          <div className="space-y-2">
-                            <Select
-                              value={showCustomCategory ? '__custom__' : (field.value || '')}
-                              onValueChange={(val) => {
-                                if (val === '__custom__') {
-                                  setShowCustomCategory(true);
-                                  field.onChange('');
-                                } else {
-                                  setShowCustomCategory(false);
-                                  field.onChange(val);
-                                }
-                              }}
-                            >
-                              <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Select a category" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {existingCategories.map((cat) => (
-                                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                                ))}
-                                <SelectItem value="__custom__">+ New category…</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            {showCustomCategory ? (
-                              <Input
-                                value={field.value || ''}
-                                onChange={(e) => field.onChange(e.target.value)}
-                                placeholder="Type a new category name"
-                                autoFocus
-                              />
-                            ) : null}
-                          </div>
                         ) : (
-                          <Input {...field} placeholder="e.g. Wines, Spirits, FMCG" />
+                          <Select
+                            onValueChange={(val) => field.onChange(val === '__none__' ? undefined : val)}
+                            value={field.value ?? '__none__'}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select a category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__">— No category —</SelectItem>
+                              {activeCategories.map((cat) => (
+                                <SelectItem key={cat.id} value={cat.id}>
+                                  {cat.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         )}
                       </FormControl>
                       <FormMessage />
@@ -786,29 +797,31 @@ export function AddProductSheet({
                     )}
                   />
 
-                  {/* GST Rate */}
-                  <FormField
-                    control={form.control}
-                    name="gst_rate"
-                    render={({ field }) => (
-                      <FormItem className="space-y-2">
-                        <FormLabel>GST Rate (%)</FormLabel>
-                        <FormControl>
-                          <Select onValueChange={field.onChange} value={field.value ?? ''}>
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select rate" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {GST_RATES.map((rate) => (
-                                <SelectItem key={rate} value={rate}>{rate}%</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {/* GST Rate — hidden when GST is inclusive in prices */}
+                  {!gstInclusive ? (
+                    <FormField
+                      control={form.control}
+                      name="gst_rate"
+                      render={({ field }) => (
+                        <FormItem className="space-y-2">
+                          <FormLabel>GST Rate (%)</FormLabel>
+                          <FormControl>
+                            <Select onValueChange={field.onChange} value={field.value ?? ''}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select rate" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {GST_RATES.map((rate) => (
+                                  <SelectItem key={rate} value={rate}>{rate}%</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  ) : null}
 
                   {/* Unit of Measure */}
                   <FormField

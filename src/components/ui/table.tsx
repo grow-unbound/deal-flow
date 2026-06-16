@@ -3,10 +3,10 @@ import { cn } from '@/lib/utils';
 
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
   ({ className, ...props }, ref) => (
-    <div className="relative w-full overflow-auto">
+    <div className="relative w-full overflow-x-auto">
       <table
         ref={ref}
-        className={cn('w-full caption-bottom text-md', className)}
+        className={cn('w-full min-w-max caption-bottom text-base', className)}
         {...props}
       />
     </div>
@@ -63,7 +63,7 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     className={cn(
-      'h-10 px-4 text-left align-middle font-mono text-xs font-medium uppercase tracking-[0.1em] text-cream-600 [&:has([role=checkbox])]:pr-0',
+      'h-10 px-4 text-left align-middle table-label text-cream-700 [&:has([role=checkbox])]:pr-0',
       className
     )}
     {...props}

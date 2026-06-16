@@ -3,8 +3,10 @@
 import { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { useState } from 'react';
+import { Toaster } from 'sonner';
 import { SellerSidebar } from './SellerSidebar';
 import { SellerGlobalHeader } from './SellerGlobalHeader';
+import { SellerRealtimeProvider } from '@/contexts/SellerRealtimeContext';
 import type { SellerShellFeatureAvailability } from '@/lib/server/seller-features';
 
 interface SellerShellProps {
@@ -35,20 +37,23 @@ export function SellerShell({ children, featureAvailability }: SellerShellProps)
   const sidebarWidth = effectiveSidebarCollapsed ? '88px' : '248px';
 
   return (
-    <div className="min-h-screen bg-[var(--bg-surface)]" style={{ ['--sidebar-w' as string]: sidebarWidth }}>
-      <SellerSidebar
-        isCollapsed={effectiveSidebarCollapsed}
-        canCollapse={canCollapseSidebar}
-        onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
-        featureAvailability={featureAvailability}
-      />
-      <main
-        className="min-h-screen pt-16 transition-[margin-left] duration-base"
-        style={{ marginLeft: 'var(--sidebar-w)' }}
-      >
-        <SellerGlobalHeader />
-        {children}
-      </main>
-    </div>
+    <SellerRealtimeProvider>
+      <div className="min-h-screen bg-[var(--bg-surface)]" style={{ ['--sidebar-w' as string]: sidebarWidth }}>
+        <SellerSidebar
+          isCollapsed={effectiveSidebarCollapsed}
+          canCollapse={canCollapseSidebar}
+          onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
+          featureAvailability={featureAvailability}
+        />
+        <main
+          className="min-h-screen pt-16 transition-[margin-left] duration-base"
+          style={{ marginLeft: 'var(--sidebar-w)' }}
+        >
+          <SellerGlobalHeader />
+          {children}
+        </main>
+      </div>
+      <Toaster position="top-right" richColors />
+    </SellerRealtimeProvider>
   );
 }

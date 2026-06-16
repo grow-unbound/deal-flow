@@ -8,6 +8,7 @@ interface CatalogItem {
   product_count: number;
   share_token: string;
   valid_until: string | null;
+  hero_image_url?: string | null;
 }
 
 interface BuyerCatalogsResponse {
@@ -33,13 +34,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const buyer = profile.buyer;
     let catalogs = context.mode === 'preview' || !buyer
       ? []
-      : await getVisibleBuyerCatalogs(context.tenant_id, buyer.id);
+      : await getVisibleBuyerCatalogs(context.tenant_id!, buyer.id!);
 
     if (context.mode === 'preview') {
       const previewRes = await supabaseAdmin
         .schema('app')
         .from('published_catalogs')
-        .select('id, name, share_token, valid_to, created_at')
+        .select('id, name, share_token, valid_to, created_at, hero_image_url')
         .eq('tenant_id', context.tenant_id)
         .eq('status', 'published')
         .is('deleted_at', null)
@@ -85,6 +86,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         product_count: countByCatalog.get(catalog.id) ?? 0,
         share_token: catalog.share_token,
         valid_until: catalog.valid_to,
+        hero_image_url: (catalog as { hero_image_url?: string | null }).hero_image_url ?? null,
       })),
     };
 
