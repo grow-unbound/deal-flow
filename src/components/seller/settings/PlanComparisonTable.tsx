@@ -2,7 +2,7 @@
 
 import { Check } from 'lucide-react';
 
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { ScrollableTableShell } from '@/components/seller/layout/ScrollableTableShell';
 import { cn } from '@/lib/utils';
 import type { PlanTier } from '@/constants/tier-limits';
 
@@ -18,74 +18,88 @@ const ROWS: { feature: string; starter: CellVal; growth: CellVal; scale: CellVal
   { feature: 'Published catalog limit', starter: '3', growth: '15', scale: 'Unlimited' },
 ];
 
-function Cell({ val, current }: { val: CellVal; current: boolean }) {
+function Cell({
+  val,
+  current,
+}: {
+  val: CellVal;
+  current: boolean;
+}) {
   if (val === true) {
     return (
-      <TableCell className={cn('text-center', current && 'bg-teal-50/80')}>
+      <td className={cn('border-b border-cream-100 px-4 py-3 text-center align-middle', current && 'bg-teal-50/80')}>
         <Check className="mx-auto h-4 w-4 text-success-600" strokeWidth={2.5} aria-label="Included" />
-      </TableCell>
+      </td>
     );
   }
   if (val === false) {
     return (
-      <TableCell className={cn('text-center text-cream-400', current && 'bg-teal-50/80')}>
+      <td
+        className={cn(
+          'border-b border-cream-100 px-4 py-3 text-center align-middle text-base text-cream-400',
+          current && 'bg-teal-50/80',
+        )}
+      >
         —
-      </TableCell>
+      </td>
     );
   }
   return (
-    <TableCell className={cn('text-center font-mono text-caption font-medium text-cream-800', current && 'bg-teal-50/80')}>
+    <td
+      className={cn(
+        'border-b border-cream-100 px-4 py-3 text-center align-middle font-mono text-sm tabular-nums font-medium text-cream-800',
+        current && 'bg-teal-50/80',
+      )}
+    >
       {val}
-    </TableCell>
+    </td>
   );
 }
 
 export function PlanComparisonTable({ currentPlan }: { currentPlan: PlanTier }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-cream-200">
-      <Table>
-        <TableHeader>
-          <TableRow className="bg-cream-50 hover:bg-cream-50">
-            <TableHead className="w-[40%] pl-4 text-caption font-semibold uppercase tracking-wide text-cream-600">
-              Feature
-            </TableHead>
-            <TableHead
+    <ScrollableTableShell className="rounded-lg border border-cream-200 bg-white">
+      <table className="w-full min-w-max border-collapse text-base">
+        <thead>
+          <tr className="border-b border-cream-200 bg-cream-50">
+            <th className="table-label w-[40%] px-4 py-3 text-left">Feature</th>
+            <th
               className={cn(
-                'text-center text-caption font-semibold uppercase tracking-wide text-cream-600',
+                'table-label px-4 py-3 text-center',
                 currentPlan === 'starter' && 'bg-teal-50/60 text-teal-900',
               )}
             >
               Starter
-            </TableHead>
-            <TableHead
+            </th>
+            <th
               className={cn(
-                'text-center text-caption font-semibold uppercase tracking-wide text-cream-600',
+                'table-label px-4 py-3 text-center',
                 currentPlan === 'growth' && 'bg-teal-50/60 text-teal-900',
               )}
             >
               Growth
-            </TableHead>
-            <TableHead
+            </th>
+            <th
               className={cn(
-                'text-center text-caption font-semibold uppercase tracking-wide text-cream-600',
+                'table-label px-4 py-3 text-center',
                 currentPlan === 'scale' && 'bg-teal-50/60 text-teal-900',
               )}
             >
               Scale
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
           {ROWS.map((row) => (
-            <TableRow key={row.feature}>
-              <TableCell className="pl-4 font-medium text-cream-900">{row.feature}</TableCell>
+            <tr key={row.feature} className="bg-white">
+              <td className="border-b border-cream-100 px-4 py-3 font-medium text-cream-900">{row.feature}</td>
               <Cell val={row.starter} current={currentPlan === 'starter'} />
               <Cell val={row.growth} current={currentPlan === 'growth'} />
               <Cell val={row.scale} current={currentPlan === 'scale'} />
-            </TableRow>
+            </tr>
           ))}
-        </TableBody>
-      </Table>
-    </div>
+        </tbody>
+      </table>
+    </ScrollableTableShell>
   );
 }

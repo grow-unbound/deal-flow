@@ -408,7 +408,7 @@ export function CatalogComposer({
         availability,
       },
       tag_overrides: tagOverrides,
-      items: selectedProducts.map((product, index) => ({
+      items: filteredSelectedProducts.map((product, index) => ({
         tenant_product_id: product.id,
         display_order: index,
       })),

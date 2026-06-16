@@ -189,9 +189,11 @@ export function ModuleSettingsForm() {
 
   if (isLoading || !draft) {
     return (
-      <div className="max-w-[740px] space-y-6" aria-busy="true">
-        <div className="h-8 w-56 animate-pulse rounded bg-cream-100" />
-        <div className="h-40 animate-pulse rounded-xl border border-cream-100 bg-cream-50" />
+      <div className="w-full space-y-6" aria-busy="true">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="h-40 animate-pulse rounded-xl border border-cream-100 bg-cream-50" />
+          <div className="h-52 animate-pulse rounded-xl border border-cream-100 bg-cream-50" />
+        </div>
         <div className="h-52 animate-pulse rounded-xl border border-cream-100 bg-cream-50" />
         <div className="h-52 animate-pulse rounded-xl border border-cream-100 bg-cream-50" />
         <div className="h-52 animate-pulse rounded-xl border border-cream-100 bg-cream-50" />
@@ -201,7 +203,7 @@ export function ModuleSettingsForm() {
 
   if (error) {
     return (
-      <div className="max-w-[740px] rounded-lg border border-ember-200 bg-ember-50 px-4 py-3 text-sm text-ember-900">
+      <div className="w-full rounded-lg border border-ember-200 bg-ember-50 px-4 py-3 text-base text-ember-900">
         <p className="font-medium">Could not load settings.</p>
         <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void refetch()}>
           Retry
@@ -221,25 +223,27 @@ export function ModuleSettingsForm() {
   const pendingLabels = pendingOff ? orderStageLabels(pendingOff) : { title: '', plural: '' };
 
   return (
-    <div className="max-w-[740px] space-y-2">
-      <ProductDefaultsSection
-        value={draft.product_defaults}
-        onChange={(product_defaults) => setDraft((d) => (d ? { ...d, product_defaults } : d))}
-        gstInclusive={draft.business_policy?.gst_inclusive}
-      />
+    <div className="w-full space-y-6">
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+        <ProductDefaultsSection
+          className="mb-0"
+          value={draft.product_defaults}
+          onChange={(product_defaults) => setDraft((d) => (d ? { ...d, product_defaults } : d))}
+        />
 
-      <FeatureModuleCard
-        title="Order Workflows"
-        description="Configure how orders flow through your system — from estimate to invoice."
-        icon={FileText}
-        headerActive
-        headerRight={
-          <span className="rounded-md bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800">Always on</span>
-        }
-      >
+        <FeatureModuleCard
+          className="mb-0"
+          title="Order Workflows"
+          description="Configure how orders flow through your system — from estimate to invoice."
+          icon={FileText}
+          headerActive
+          headerRight={
+            <span className="rounded-md bg-teal-100 px-2 py-0.5 text-sm font-medium text-teal-800">Always on</span>
+          }
+        >
         {/* Inventory lock stage — always visible */}
         <div className="border-t border-cream-200 bg-cream-50 px-5 py-4 space-y-2">
-          <Label className="text-sm font-medium">Inventory lock stage</Label>
+          <Label className="text-base font-medium">Inventory lock stage</Label>
           <Select
             value={draft.orders.inventory_lock_stage}
             onValueChange={(v) =>
@@ -267,7 +271,7 @@ export function ModuleSettingsForm() {
               ))}
             </SelectContent>
           </Select>
-          <p className="text-xs text-cream-600">When stock is reserved against demand in your workflow.</p>
+          <p className="text-sm text-cream-600">When stock is reserved against demand in your workflow.</p>
         </div>
 
         {/* Estimates */}
@@ -341,6 +345,7 @@ export function ModuleSettingsForm() {
           </div>
         )}
       </FeatureModuleCard>
+      </div>
 
       <FeatureModuleCard
         title="Buyer App"
@@ -349,7 +354,7 @@ export function ModuleSettingsForm() {
         headerActive={draft.buyer_app.enabled}
         headerRight={
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-cream-700">Enable</span>
+            <span className="text-sm font-medium text-cream-700">Enable</span>
             <Switch
               checked={draft.buyer_app.enabled}
               onCheckedChange={(enabled) => setDraft((d) => (d ? { ...d, buyer_app: { ...d.buyer_app, enabled } } : d))}
@@ -359,13 +364,13 @@ export function ModuleSettingsForm() {
         }
       >
         {!draft.buyer_app.enabled ? (
-          <div className="border-t border-cream-200 px-5 py-4 text-sm text-cream-600">
+          <div className="border-t border-cream-200 px-5 py-4 text-base text-cream-600">
             Turn on the buyer app to share catalogs and let customers place orders from their phone.
           </div>
         ) : (
           <div className="border-t border-cream-200 bg-cream-50 px-5 py-4 space-y-4">
             <div className="space-y-2">
-              <Label className="text-sm font-medium" htmlFor="buyer-whatsapp">WhatsApp number</Label>
+              <Label className="text-base font-medium" htmlFor="buyer-whatsapp">WhatsApp number</Label>
               <Input
                 id="buyer-whatsapp"
                 value={draft.buyer_app.whatsapp_number}
@@ -377,7 +382,7 @@ export function ModuleSettingsForm() {
                 placeholder="+91 …"
                 maxLength={40}
               />
-              <p className="text-xs text-cream-600">Shown to buyers for support and OTP delivery where applicable.</p>
+              <p className="text-sm text-cream-600">Shown to buyers for support and OTP delivery where applicable.</p>
             </div>
             <FeatureToggleRow
               label="Share link expiry"
@@ -389,7 +394,7 @@ export function ModuleSettingsForm() {
             />
             {draft.buyer_app.share_link_expiry_enabled ? (
               <div className="space-y-2 border-t border-cream-200 pt-4">
-                <Label className="text-sm font-medium" htmlFor="share-expiry-days">Expiry (days)</Label>
+                <Label className="text-base font-medium" htmlFor="share-expiry-days">Expiry (days)</Label>
                 <Input
                   id="share-expiry-days"
                   type="number"
@@ -433,7 +438,7 @@ export function ModuleSettingsForm() {
         icon={LayoutGrid}
         headerActive={draft.catalog.cohort_pricing_enabled || draft.catalog.catalog_publishing_enabled}
       >
-        <div className="border-t border-cream-200 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-cream-600">
+        <div className="border-t border-cream-200 px-5 py-3 text-sm font-semibold uppercase tracking-wide text-cream-600">
           Cohort pricing
         </div>
         <FeatureToggleRow
@@ -448,7 +453,7 @@ export function ModuleSettingsForm() {
           <div className="border-b border-cream-200 bg-cream-50 px-5 py-4 space-y-3">
             <TierLimitWarningBanner plan={draft.plan} resource="cohorts" used={draft.usage.cohorts} />
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Price visibility</Label>
+              <Label className="text-base font-medium">Price visibility</Label>
               <Select
                 value={draft.catalog.price_visibility}
                 onValueChange={(v) =>
@@ -480,7 +485,7 @@ export function ModuleSettingsForm() {
           </div>
         ) : null}
 
-        <div className="border-t border-cream-200 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-cream-600">
+        <div className="border-t border-cream-200 px-5 py-3 text-sm font-semibold uppercase tracking-wide text-cream-600">
           Catalog publishing
         </div>
         <FeatureToggleRow
@@ -493,7 +498,7 @@ export function ModuleSettingsForm() {
         />
         {draft.catalog.catalog_publishing_enabled ? (
           <div className="border-b border-cream-200 bg-cream-50 px-5 py-4 space-y-2">
-            <Label className="text-sm font-medium" htmlFor="catalog-expiry-days">Default catalog expiry (days)</Label>
+            <Label className="text-base font-medium" htmlFor="catalog-expiry-days">Default catalog expiry (days)</Label>
             <Input
               id="catalog-expiry-days"
               type="number"
@@ -509,7 +514,7 @@ export function ModuleSettingsForm() {
                 );
               }}
             />
-            <p className="text-xs text-cream-600">Use 0 for no default expiry when publishing.</p>
+            <p className="text-sm text-cream-600">Use 0 for no default expiry when publishing.</p>
           </div>
         ) : null}
       </FeatureModuleCard>

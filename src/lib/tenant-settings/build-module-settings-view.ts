@@ -60,9 +60,12 @@ export function buildModuleSettingsView(
     fromDb as Record<string, unknown>,
   ) as typeof DEFAULT_TENANT_SETTINGS_STORED & { orders?: Record<string, unknown>; business_policy?: Record<string, unknown> };
 
+  const rawPd = (merged.product_defaults ?? {}) as Record<string, unknown>;
   const productDefaultsRaw = {
-    ...DEFAULT_TENANT_SETTINGS_STORED.product_defaults,
-    ...merged.product_defaults,
+    uom:
+      typeof rawPd.uom === 'string' && rawPd.uom.length > 0
+        ? rawPd.uom
+        : DEFAULT_TENANT_SETTINGS_STORED.product_defaults.uom,
   };
 
   // Backward-compat: derive per-type number formats from legacy number_format if new fields absent
@@ -97,9 +100,15 @@ export function buildModuleSettingsView(
     ...DEFAULT_TENANT_SETTINGS_STORED.catalog,
     ...merged.catalog,
   };
+  const fromDbBp = (merged.business_policy ?? {}) as Record<string, unknown>;
+  const legacyGst = (merged.product_defaults as { gst_rate?: number } | undefined)?.gst_rate;
   const businessPolicyRaw = {
     ...DEFAULT_TENANT_SETTINGS_STORED.business_policy,
-    ...(merged.business_policy ?? {}),
+    ...fromDbBp,
+    gst_rate:
+      typeof fromDbBp.gst_rate === 'number'
+        ? fromDbBp.gst_rate
+        : legacyGst ?? DEFAULT_TENANT_SETTINGS_STORED.business_policy.gst_rate,
   };
 
   const plan =

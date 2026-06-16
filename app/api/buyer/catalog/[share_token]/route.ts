@@ -20,8 +20,11 @@ interface GuestCatalogItem {
   default_uom: string | null;
   pack_size: number | null;
   image_urls: string[];
+  brand_logo_url: string | null;
+  category_image_url: string | null;
   stock_status: 'available' | 'limited' | 'out_of_stock';
   on_hand: number;
+  is_featured: boolean;
 }
 
 export async function GET(
@@ -65,7 +68,7 @@ export async function GET(
   const { data: catalogItems, error: itemsError } = await db
     .schema('app')
     .from('published_catalog_items')
-    .select('tenant_product_id, price_override, display_order')
+    .select('tenant_product_id, price_override, display_order, is_featured')
     .eq('catalog_id', catalog.id)
     .is('deleted_at', null)
     .order('display_order', { ascending: true });
@@ -75,8 +78,17 @@ export async function GET(
     return NextResponse.json({ error: 'Failed to load catalog items' }, { status: 500 });
   }
 
-  const items = catalogItems ?? [];
+  const items = (catalogItems ?? []) as Array<{
+    tenant_product_id: string;
+    price_override: number | null;
+    display_order: number | null;
+    is_featured: boolean | null;
+  }>;
   const tenantProductIds = items.map((item) => item.tenant_product_id);
+
+  const featuredByProductId = new Map(
+    items.map((row) => [row.tenant_product_id, Boolean(row.is_featured)]),
+  );
 
   if (tenantProductIds.length === 0) {
     return NextResponse.json({
@@ -117,13 +129,14 @@ export async function GET(
   const tenantBrandIds = Array.from(new Set(products.map((p) => p.tenant_brand_id).filter(Boolean))) as string[];
 
   let brandNameById = new Map<string, string>();
+  let brandLogoById = new Map<string, string | null>();
   let brandIdByTenantBrandId = new Map<string, string | null>();
 
   if (tenantBrandIds.length > 0) {
     const { data: tenantBrands, error: brandsError } = await db
       .schema('app')
       .from('tenant_brands')
-      .select('id, display_name_override, master_brand_id')
+      .select('id, display_name_override, master_brand_id, logo_url')
       .in('id', tenantBrandIds)
       .is('deleted_at', null);
 
@@ -134,28 +147,35 @@ export async function GET(
         id: string;
         display_name_override: string | null;
         master_brand_id: string;
+        logo_url: string | null;
       }>;
 
       const masterBrandIds = Array.from(new Set(tenantBrandRows.map((b) => b.master_brand_id)));
-      let masterBrandById = new Map<string, string>();
+      let masterBrandById = new Map<string, { name: string; logo_url: string | null }>();
 
       if (masterBrandIds.length > 0) {
         const { data: masterBrands } = await db
           .schema('catalog')
           .from('brands')
-          .select('id, name')
+          .select('id, name, logo_url')
           .in('id', masterBrandIds)
           .is('deleted_at', null);
 
         masterBrandById = new Map(
-          ((masterBrands ?? []) as Array<{ id: string; name: string }>).map((b) => [b.id, b.name])
+          ((masterBrands ?? []) as Array<{ id: string; name: string; logo_url: string | null }>).map((b) => [b.id, { name: b.name, logo_url: b.logo_url }])
         );
       }
 
       brandNameById = new Map(
         tenantBrandRows.map((b) => [
           b.id,
-          b.display_name_override ?? masterBrandById.get(b.master_brand_id) ?? 'Unknown brand',
+          b.display_name_override ?? masterBrandById.get(b.master_brand_id)?.name ?? 'Unknown brand',
+        ])
+      );
+      brandLogoById = new Map(
+        tenantBrandRows.map((b) => [
+          b.id,
+          b.logo_url ?? masterBrandById.get(b.master_brand_id)?.logo_url ?? null,
         ])
       );
       brandIdByTenantBrandId = new Map(tenantBrandRows.map((b) => [b.id, b.master_brand_id ?? null]));
@@ -163,7 +183,7 @@ export async function GET(
   }
 
   const masterProductIds = Array.from(new Set(products.map((p) => p.master_product_id).filter(Boolean))) as string[];
-  let masterProductById = new Map<string, { category_id: string | null; category_name: string | null; image_urls: string[] | null }>();
+  let masterProductById = new Map<string, { category_id: string | null; category_name: string | null; category_image_url: string | null; image_urls: string[] | null }>();
 
   if (masterProductIds.length > 0) {
     const { data: masterProducts } = await db
@@ -177,16 +197,16 @@ export async function GET(
       new Set(((masterProducts ?? []) as Array<{ category_id: string | null }>).map((product) => product.category_id).filter(Boolean))
     ) as string[];
 
-    let categoryNameById = new Map<string, string>();
+    let categoryInfoById = new Map<string, { name: string; image_url: string | null }>();
     if (categoryIds.length > 0) {
       const { data: categories } = await db
         .schema('catalog')
         .from('categories')
-        .select('id, name')
+        .select('id, name, image_url')
         .in('id', categoryIds)
         .is('deleted_at', null);
 
-      categoryNameById = new Map(((categories ?? []) as Array<{ id: string; name: string }>).map((category) => [category.id, category.name]));
+      categoryInfoById = new Map(((categories ?? []) as Array<{ id: string; name: string; image_url: string | null }>).map((category) => [category.id, { name: category.name, image_url: category.image_url }]));
     }
 
     masterProductById = new Map(
@@ -194,7 +214,8 @@ export async function GET(
         product.id,
         {
           category_id: product.category_id,
-          category_name: product.category_id ? (categoryNameById.get(product.category_id) ?? null) : null,
+          category_name: product.category_id ? (categoryInfoById.get(product.category_id)?.name ?? null) : null,
+          category_image_url: product.category_id ? (categoryInfoById.get(product.category_id)?.image_url ?? null) : null,
           image_urls: product.image_urls ?? [],
         },
       ])
@@ -232,6 +253,7 @@ export async function GET(
       const brandName = product.tenant_brand_id
         ? (brandNameById.get(product.tenant_brand_id) ?? 'Unknown brand')
         : 'Unknown brand';
+      const brandLogoUrl = product.tenant_brand_id ? (brandLogoById.get(product.tenant_brand_id) ?? null) : null;
       const brandId = product.tenant_brand_id ? (brandIdByTenantBrandId.get(product.tenant_brand_id) ?? null) : null;
       const masterProduct = product.master_product_id ? (masterProductById.get(product.master_product_id) ?? null) : null;
 
@@ -268,8 +290,11 @@ export async function GET(
         default_uom: product.default_uom,
         pack_size: product.pack_size,
         image_urls: product.image_urls?.length ? product.image_urls : (masterProduct?.image_urls ?? []),
+        brand_logo_url: brandLogoUrl,
+        category_image_url: masterProduct?.category_image_url ?? null,
         stock_status: stockStatus,
         on_hand: onHand,
+        is_featured: featuredByProductId.get(item.tenant_product_id) ?? false,
       };
     }))).filter((item): item is GuestCatalogItem => item !== null);
 

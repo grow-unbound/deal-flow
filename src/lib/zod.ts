@@ -515,6 +515,24 @@ export const CustomProductSchema = z.object({
 });
 export type CustomProductInput = z.infer<typeof CustomProductSchema>;
 
+// Password flow schemas
+export const ForgotPasswordSchema = z.object({
+  email: z.string().email('Enter a valid email address'),
+});
+
+export const SetPasswordSchema = z
+  .object({
+    password: z.string().min(8, 'Password must be at least 8 characters'),
+    confirm_password: z.string(),
+  })
+  .refine((d) => d.password === d.confirm_password, {
+    message: 'Passwords do not match',
+    path: ['confirm_password'],
+  });
+
+export type ForgotPasswordInput = z.infer<typeof ForgotPasswordSchema>;
+export type SetPasswordInput = z.infer<typeof SetPasswordSchema>;
+
 // Export types
 export type InviteUserInput = z.infer<typeof InviteUserSchema>;
 export type UpdateMemberInput = z.infer<typeof UpdateMemberSchema>;

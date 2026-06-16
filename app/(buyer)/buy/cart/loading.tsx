@@ -29,7 +29,10 @@ export default function CartLoading() {
           <div className="h-4 w-16 animate-pulse rounded bg-cream-200" />
           <div className="h-4 w-24 animate-pulse rounded bg-cream-200" />
         </div>
-        <div className="h-12 w-full animate-pulse rounded-xl bg-cream-200" />
+        <div className="flex gap-2">
+          <div className="h-12 flex-1 animate-pulse rounded-xl bg-cream-200" />
+          <div className="h-12 flex-[1.4] animate-pulse rounded-xl bg-cream-200" />
+        </div>
       </div>
     </div>
   );

@@ -14,6 +14,8 @@ export interface EstimateRequest {
   }>;
   notes?: string;
   catalog_id?: string | null;
+  location_id?: string | null;
+  delivery_address?: Record<string, unknown> | null;
 }
 
 export interface EstimateResponse {
@@ -48,7 +50,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
       return NextResponse.json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const { items, notes, catalog_id } = body;
+    const { items, notes, catalog_id, location_id, delivery_address } = body;
 
     if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ success: false, error: 'Cart must have at least one item' }, { status: 400 });
@@ -136,6 +138,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
         cart_hash,
         notes: notes ?? null,
         catalog_id: catalog_id ?? null,
+        location_id: location_id ?? null,
+        delivery_address: delivery_address ?? null,
         created_by: sub,
       })
       .select('id, estimate_number')

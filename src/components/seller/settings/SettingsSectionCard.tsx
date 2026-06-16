@@ -27,7 +27,7 @@ export function SettingsSectionCard({ title, subtitle, icon: Icon, children, foo
           </div>
           <div className="min-w-0">
             <h2 className="font-display text-base font-semibold text-cream-900">{title}</h2>
-            {subtitle ? <p className="mt-1 text-sm text-cream-600">{subtitle}</p> : null}
+            {subtitle ? <p className="mt-1 text-base text-cream-700">{subtitle}</p> : null}
           </div>
         </div>
       </header>

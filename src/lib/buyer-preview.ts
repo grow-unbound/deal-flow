@@ -11,6 +11,7 @@ export interface BuyerPreviewTokenPayload {
   tenant_id: string;
   role: typeof ROLES.BUYER_ADMIN;
   share_token: string | null;
+  buyer_id?: string | null;
   iat: number;
   exp: number;
 }
@@ -90,6 +91,7 @@ function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
 export async function createBuyerPreviewToken(input: {
   tenantId: string;
   shareToken?: string | null;
+  buyerId?: string | null;
   now?: number;
 }): Promise<string> {
   const now = input.now ?? Math.floor(Date.now() / 1000);
@@ -98,6 +100,7 @@ export async function createBuyerPreviewToken(input: {
     tenant_id: input.tenantId,
     role: ROLES.BUYER_ADMIN,
     share_token: input.shareToken ?? null,
+    buyer_id: input.buyerId ?? null,
     iat: now,
     exp: now + BUYER_PREVIEW_TTL_SECONDS,
   };
@@ -134,6 +137,7 @@ export async function verifyBuyerPreviewToken(
 export function buildBuyerPreviewRedirectPath(input: {
   previewToken: string;
   shareToken?: string | null;
+  buyerId?: string | null;
 }): string {
   const params = new URLSearchParams({
     [BUYER_PREVIEW_QUERY_PARAM]: input.previewToken,
@@ -143,5 +147,6 @@ export function buildBuyerPreviewRedirectPath(input: {
     params.set('share_token', input.shareToken);
   }
 
-  return `/buy/catalog?${params.toString()}`;
+  const basePath = input.buyerId ? '/buy/home' : '/buy/catalog';
+  return `${basePath}?${params.toString()}`;
 }

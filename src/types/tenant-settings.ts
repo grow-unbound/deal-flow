@@ -48,13 +48,13 @@ export const GstRateSchema = z.union([
 ]);
 
 export const ProductDefaultsSchema = z.object({
-  gst_rate: GstRateSchema,
   uom: z.string().min(1).max(32),
 });
 
 export const BusinessPolicySchema = z.object({
   credit_enabled: z.boolean().default(true),
   gst_inclusive: z.boolean().default(false),
+  gst_rate: GstRateSchema.default(18),
 });
 export type BusinessPolicy = z.infer<typeof BusinessPolicySchema>;
 
@@ -93,6 +93,11 @@ export const CatalogSettingsSchema = z.object({
   default_catalog_expiry_days: z.number().int().min(0).max(3650),
 });
 
+export const DeliveryRoutingSchema = z.object({
+  threshold_km: z.number().int().min(1).max(5000).default(300),
+});
+export type DeliveryRouting = z.infer<typeof DeliveryRoutingSchema>;
+
 export const TenantSettingsStoredSchema = z
   .object({
     business: TenantSettingsBusinessSchema.partial().optional(),
@@ -112,6 +117,7 @@ export const TenantSettingsStoredSchema = z
     buyer_app: BuyerAppSettingsSchema.partial().optional(),
     catalog: CatalogSettingsSchema.partial().optional(),
     business_policy: BusinessPolicySchema.partial().optional(),
+    delivery_routing_threshold_km: z.number().int().min(1).max(5000).optional(),
   })
   .passthrough();
 
@@ -152,6 +158,7 @@ export const TenantSettingsPatchSchema = z.object({
     })
     .optional(),
   business_policy: BusinessPolicySchema.partial().optional(),
+  delivery_routing_threshold_km: z.number().int().min(1).max(5000).optional(),
 });
 
 export type TenantSettingsPatch = z.infer<typeof TenantSettingsPatchSchema>;
@@ -160,6 +167,7 @@ export interface GeneralSettingsView {
   business: TenantSettingsBusiness;
   notifications: TenantSettingsNotifications;
   business_policy: BusinessPolicy;
+  delivery_routing_threshold_km: number;
   plan: 'starter' | 'growth' | 'scale';
 }
 

@@ -6,40 +6,18 @@ import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Plus } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
-
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
-import { INDIAN_STATES } from '@/constants';
+import { supabaseBrowser } from '@/lib/supabase-browser';
 
 const SignupFormSchema = z
   .object({
+    full_name: z.string().min(1, 'Full name is required'),
+    business_name: z.string().min(1, 'Business name is required'),
     email: z.string().email('Enter a valid email address'),
-    phone: z
-      .string()
-      .regex(/^[0-9]{10}$/, 'Phone must be 10 digits')
-      .optional()
-      .or(z.literal('')),
+    phone: z.string().regex(/^[0-9]{10}$/, 'Enter a valid 10-digit mobile number'),
     password: z.string().min(8, 'Password must be at least 8 characters'),
     confirm_password: z.string(),
-    business_name: z.string().min(1, 'Business name is required'),
-    slug: z
-      .string()
-      .min(3, 'Business URL must be at least 3 characters')
-      .max(50, 'Business URL must be 50 characters or less')
-      .regex(/^[a-z0-9-]+$/, 'Business URL may only contain lowercase letters, numbers, and hyphens'),
-    primary_state: z.string().optional(),
-    gstin: z.string().optional(),
   })
   .refine((d) => d.password === d.confirm_password, {
     message: 'Passwords do not match',
@@ -51,14 +29,10 @@ type SignupFormValues = z.infer<typeof SignupFormSchema>;
 interface SignupResponse {
   code?: string;
   error?: string;
-  user: {
-    id: string;
-    email: string;
-  };
-  tenant?: {
-    slug?: string;
-    business_name?: string;
-  };
+  user?: { id: string; email: string };
+  tenant?: { slug?: string; business_name?: string };
+  redirect?: string;
+  session?: { access_token: string; refresh_token: string };
 }
 
 function slugify(name: string): string {
@@ -69,34 +43,35 @@ function slugify(name: string): string {
     .slice(0, 50);
 }
 
+const inputCls =
+  'w-full px-3 py-2.5 rounded-md bg-cream-50 border border-cream-300 text-cream-900 placeholder:text-cream-500 text-body-sm focus:outline-none focus:border-ember-400 focus:ring-2 focus:ring-ember-400/20 transition-colors disabled:opacity-50';
+
+const labelCls =
+  'block text-cream-700 font-semibold mb-1.5 text-xs uppercase tracking-[0.08em]';
+
 export function SignupFormCard() {
   const router = useRouter();
   const posthog = usePostHog();
   const [apiError, setApiError] = useState('');
 
-  const form = useForm<SignupFormValues>({
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    formState: { errors, isSubmitting },
+  } = useForm<SignupFormValues>({
     resolver: zodResolver(SignupFormSchema),
     defaultValues: {
+      full_name: '',
+      business_name: '',
       email: '',
       phone: '',
       password: '',
       confirm_password: '',
-      business_name: '',
-      slug: '',
-      primary_state: 'Karnataka',
-      gstin: '',
     },
     mode: 'onBlur',
   });
-
-  const { isSubmitting } = form.formState;
-
-  function handleBusinessNameChange(value: string) {
-    form.setValue('business_name', value);
-    if (!form.getFieldState('slug').isDirty) {
-      form.setValue('slug', slugify(value), { shouldDirty: false });
-    }
-  }
 
   async function onSubmit(values: SignupFormValues) {
     setApiError('');
@@ -111,13 +86,12 @@ export function SignupFormCard() {
           ...(sessionId && { 'X-POSTHOG-SESSION-ID': sessionId }),
         },
         body: JSON.stringify({
+          full_name: values.full_name,
           email: values.email,
           password: values.password,
           business_name: values.business_name,
-          slug: values.slug,
-          phone: values.phone || undefined,
-          gstin: values.gstin || undefined,
-          primary_state: values.primary_state || undefined,
+          slug: slugify(values.business_name),
+          phone: values.phone,
         }),
       });
 
@@ -125,9 +99,7 @@ export function SignupFormCard() {
 
       if (!res.ok) {
         if (res.status === 409 || data.code === 'SLUG_TAKEN') {
-          form.setError('slug', {
-            message: 'This business URL is already in use. Try a different one.',
-          });
+          setApiError('A workspace with that business name already exists. Try a slightly different name.');
         } else {
           setApiError(data.error ?? 'Signup failed. Please try again.');
           posthog?.capture('signup_failed', { reason: data.error });
@@ -135,15 +107,25 @@ export function SignupFormCard() {
         return;
       }
 
-      posthog?.identify(data.user.id, { email: data.user.email });
+      if (!data.session?.access_token || !data.session?.refresh_token) {
+        setApiError('Account was created but session was not established. Please sign in.');
+        return;
+      }
+
+      await supabaseBrowser.auth.setSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      });
+
+      posthog?.identify(data.user!.id, { email: data.user!.email });
       posthog?.capture('user_signed_up', {
         tenant_slug: data.tenant?.slug,
         business_name: data.tenant?.business_name,
-        primary_state: values.primary_state,
         plan: 'starter',
       });
 
-      router.push('/dashboard?first_run=1');
+      router.replace(`${data.redirect ?? '/dashboard'}?first_run=1`);
+      router.refresh();
     } catch (err) {
       posthog?.captureException(err);
       setApiError('An unexpected error occurred. Please try again.');
@@ -156,113 +138,111 @@ export function SignupFormCard() {
         <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
       </div>
 
-      <h1 className="font-display text-h2 text-cream-900 mb-1">Create your workspace</h1>
-      <p className="font-sans text-body-sm text-cream-600 mb-6">Set up your distributor account in under a minute.</p>
+      <h1 className="font-display text-h2 text-cream-900 mb-1">Create your account</h1>
+      <p className="text-body-sm text-cream-600 mb-6">Set up your distributor workspace in under a minute.</p>
 
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 max-h-[calc(100vh-280px)] overflow-y-auto pr-1" noValidate>
-          <p className="text-caption font-semibold text-cream-500 uppercase tracking-widest" style={{ fontSize: 'var(--yk-text-xs)' }}>Account</p>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 max-h-[calc(100vh-280px)] overflow-y-auto pr-1" noValidate>
 
-          <FormField control={form.control} name="email" render={({ field }) => (
-            <FormItem>
-              <FormLabel className="font-sans text-cream-700">Email</FormLabel>
-              <FormControl><Input type="email" placeholder="you@company.com" autoComplete="email" className="border-cream-300 focus-visible:ring-ember-400" {...field} /></FormControl>
-              <FormMessage className="text-danger-500" />
-            </FormItem>
-          )} />
+        <div>
+          <label className={labelCls}>Business name</label>
+          <input
+            type="text"
+            placeholder="Your Business Ltd."
+            className={inputCls}
+            {...register('business_name')}
+          />
+          {errors.business_name && <p className="mt-1 text-caption text-danger-500">{errors.business_name.message}</p>}
+        </div>
 
-          <FormField control={form.control} name="phone" render={({ field }) => (
-            <FormItem>
-              <FormLabel className="font-sans text-cream-700">Phone <span className="text-cream-400 font-normal normal-case">(optional)</span></FormLabel>
-              <FormControl>
-                <div className="flex gap-2">
-                  <span className="flex items-center px-3 rounded-md bg-cream-100 border border-cream-300 text-cream-600 text-body-sm select-none">+91</span>
-                  <Input type="tel" placeholder="9876543210" maxLength={10} autoComplete="tel" className="border-cream-300 focus-visible:ring-ember-400" {...field} />
-                </div>
-              </FormControl>
-              <FormMessage className="text-danger-500" />
-            </FormItem>
-          )} />
+        <div>
+          <label className={labelCls}>Your full name</label>
+          <input
+            type="text"
+            placeholder="Ravi Kumar"
+            autoComplete="name"
+            className={inputCls}
+            {...register('full_name')}
+          />
+          {errors.full_name && <p className="mt-1 text-caption text-danger-500">{errors.full_name.message}</p>}
+        </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <FormField control={form.control} name="password" render={({ field }) => (
-              <FormItem>
-                <FormLabel className="font-sans text-cream-700">Password</FormLabel>
-                <FormControl><Input type="password" placeholder="Min 8 characters" autoComplete="new-password" className="border-cream-300 focus-visible:ring-ember-400" {...field} /></FormControl>
-                <FormMessage className="text-danger-500" />
-              </FormItem>
-            )} />
-            <FormField control={form.control} name="confirm_password" render={({ field }) => (
-              <FormItem>
-                <FormLabel className="font-sans text-cream-700">Confirm</FormLabel>
-                <FormControl><Input type="password" placeholder="••••••••" autoComplete="new-password" className="border-cream-300 focus-visible:ring-ember-400" {...field} /></FormControl>
-                <FormMessage className="text-danger-500" />
-              </FormItem>
-            )} />
+        <div>
+          <label className={labelCls}>Email</label>
+          <input
+            type="email"
+            placeholder="you@company.com"
+            autoComplete="email"
+            className={inputCls}
+            {...register('email')}
+          />
+          {errors.email && <p className="mt-1 text-caption text-danger-500">{errors.email.message}</p>}
+        </div>
+
+        <div>
+          <label className={labelCls}>Mobile number</label>
+          <div className="flex items-stretch">
+            <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-cream-300 bg-cream-100 text-cream-600 text-body-sm select-none">
+              +91
+            </span>
+            <input
+              type="tel"
+              inputMode="numeric"
+              pattern="[0-9]{10}"
+              maxLength={10}
+              placeholder="9876543210"
+              autoComplete="tel-national"
+              className={`${inputCls} rounded-l-none`}
+              {...register('phone', {
+                onChange: (e) => {
+                  e.target.value = e.target.value.replace(/\D/g, '');
+                  setValue('phone', e.target.value);
+                },
+              })}
+            />
           </div>
+          {errors.phone && <p className="mt-1 text-caption text-danger-500">{errors.phone.message}</p>}
+        </div>
 
-          <p className="text-caption font-semibold text-cream-500 uppercase tracking-widest pt-2" style={{ fontSize: 'var(--yk-text-xs)' }}>Business</p>
+        <div>
+          <label className={labelCls}>Password</label>
+          <input
+            type="password"
+            placeholder="Min. 8 characters"
+            autoComplete="new-password"
+            className={inputCls}
+            {...register('password')}
+          />
+          {errors.password && <p className="mt-1 text-caption text-danger-500">{errors.password.message}</p>}
+        </div>
 
-          <FormField control={form.control} name="business_name" render={({ field }) => (
-            <FormItem>
-              <FormLabel className="font-sans text-cream-700">Business name</FormLabel>
-              <FormControl>
-                <Input placeholder="Your Business Ltd." className="border-cream-300 focus-visible:ring-ember-400" {...field} onChange={(e) => handleBusinessNameChange(e.target.value)} />
-              </FormControl>
-              <FormMessage className="text-danger-500" />
-            </FormItem>
-          )} />
+        <div>
+          <label className={labelCls}>Confirm password</label>
+          <input
+            type="password"
+            placeholder="Repeat your password"
+            autoComplete="new-password"
+            className={inputCls}
+            {...register('confirm_password')}
+          />
+          {errors.confirm_password && <p className="mt-1 text-caption text-danger-500">{errors.confirm_password.message}</p>}
+        </div>
 
-          <FormField control={form.control} name="slug" render={({ field }) => (
-            <FormItem>
-              <FormLabel className="font-sans text-cream-700">Business URL</FormLabel>
-              <FormControl>
-                <div className="flex rounded-md overflow-hidden border border-cream-300 focus-within:border-ember-400 focus-within:ring-2 focus-within:ring-ember-400/20 transition-colors bg-cream-50">
-                  <Input
-                    placeholder="your-business"
-                    className="flex-1 border-0 shadow-none focus-visible:ring-0 rounded-none bg-transparent"
-                    {...field}
-                    onChange={(e) => field.onChange(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-'))}
-                  />
-                  <span className="flex items-center px-3 text-cream-500 text-body-sm bg-cream-100 border-l border-cream-300 select-none whitespace-nowrap">.yukti.so</span>
-                </div>
-              </FormControl>
-              <FormMessage className="text-danger-500" />
-            </FormItem>
-          )} />
+        {apiError && <p className="text-caption text-danger-500 bg-danger-50 px-3 py-2 rounded-md">{apiError}</p>}
 
-          <div className="grid grid-cols-2 gap-3">
-            <FormField control={form.control} name="primary_state" render={({ field }) => (
-              <FormItem>
-                <FormLabel className="font-sans text-cream-700">State</FormLabel>
-                <FormControl>
-                  <select {...field} className="w-full px-3 py-2.5 rounded-md bg-cream-50 border border-cream-300 text-cream-900 text-body-sm focus:outline-none focus:border-ember-400 focus:ring-2 focus:ring-ember-400/20 transition-colors">
-                    {INDIAN_STATES.map((s) => (<option key={s} value={s}>{s}</option>))}
-                  </select>
-                </FormControl>
-                <FormMessage className="text-danger-500" />
-              </FormItem>
-            )} />
-            <FormField control={form.control} name="gstin" render={({ field }) => (
-              <FormItem>
-                <FormLabel className="font-sans text-cream-700">GSTIN <span className="text-cream-400 font-normal normal-case">(optional)</span></FormLabel>
-                <FormControl><Input placeholder="18AABCT1234H1Z0" className="border-cream-300 focus-visible:ring-ember-400" {...field} /></FormControl>
-                <FormMessage className="text-danger-500" />
-              </FormItem>
-            )} />
-          </div>
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="w-full px-4 py-2.5 rounded-md bg-[#221E1A] hover:bg-[#3D3630] active:bg-[#2E2A26] active:scale-[0.97] text-cream-50 text-body-sm font-semibold transition-all duration-base disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isSubmitting ? 'Creating account…' : 'Create Account'}
+        </button>
+      </form>
 
-          {apiError && <p className="text-caption text-danger-500 bg-danger-50 px-3 py-2 rounded-md">{apiError}</p>}
-
-          <Button type="submit" disabled={isSubmitting} className="w-full bg-teal-500 hover:bg-teal-600 text-cream-50">
-            <Plus className="h-4 w-4 mr-2" />
-            {isSubmitting ? 'Creating workspace…' : 'Create my workspace'}
-          </Button>
-        </form>
-      </Form>
-
-      <p className="mt-5 text-center font-sans text-body-sm text-cream-600">
-        Already have an account? <Link href="/login" className="text-teal-600 hover:underline font-medium">Sign in</Link>
+      <p className="mt-5 text-center text-body-sm text-cream-600">
+        Already have an account?{' '}
+        <Link href="/login" className="text-ember-400 hover:text-ember-500 font-medium transition-colors">
+          Sign in
+        </Link>
       </p>
     </div>
   );

@@ -4,25 +4,30 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Pressable } from '@/components/ui/pressable';
 import { useIdleRoutePrefetch } from '@/hooks/useIdleRoutePrefetch';
+import { useBuyerScrollChromeState } from '@/contexts/BuyerScrollChromeContext';
+import { isBuyerDeepRoute } from '@/lib/buyer-routes';
+import { cn } from '@/lib/utils';
 
 const tabs = [
-  { label: 'Home',    href: '/buy/home',    icon: HomeIcon },
+  { label: 'Home', href: '/buy/home', icon: HomeIcon },
   { label: 'Catalog', href: '/buy/catalog', icon: CatalogIcon },
-  { label: 'Orders',  href: '/buy/orders',  icon: OrdersIcon },
+  { label: 'Orders', href: '/buy/orders', icon: OrdersIcon },
   { label: 'Profile', href: '/buy/profile', icon: ProfileIcon },
 ];
 
-const DEEP_SCREENS = ['/buy/product/', '/buy/cart', '/buy/checkout'];
-
 export function BuyerTabBar() {
   const pathname = usePathname();
-  useIdleRoutePrefetch(tabs.map((tab) => tab.href));
+  const { tabBarVisible } = useBuyerScrollChromeState();
+  useIdleRoutePrefetch(['/buy/home', '/buy/catalog', '/buy/orders', '/buy/profile', '/buy/search', '/buy/location']);
 
-  if (DEEP_SCREENS.some(p => pathname.startsWith(p))) return null;
+  if (isBuyerDeepRoute(pathname)) return null;
 
   return (
     <nav
-      className="sticky bottom-0 z-20 flex w-full items-stretch pb-safe"
+      className={cn(
+        'sticky bottom-0 z-20 flex w-full items-stretch pb-safe transition-transform duration-300 ease-out',
+        !tabBarVisible && 'translate-y-full',
+      )}
       style={{
         height: 'calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px))',
         background: 'var(--cream-100)',

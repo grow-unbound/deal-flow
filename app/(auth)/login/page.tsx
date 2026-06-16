@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { PhoneInput } from '@/components/buyer/auth/PhoneInput';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
@@ -10,14 +10,18 @@ import posthog from 'posthog-js';
 
 function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const resetSuccess = searchParams.get('reset') === 'success';
 
-  // Phone OTP state (primary flow)
+  // 'otp' | 'email'
+  const [view, setView] = useState<'otp' | 'email'>('otp');
+
+  // Phone OTP state
   const [phoneLoading, setPhoneLoading] = useState(false);
   const [phoneError, setPhoneError] = useState('');
   const [unregistered, setUnregistered] = useState(false);
 
-  // Email/password toggle state (secondary flow)
-  const [showEmailForm, setShowEmailForm] = useState(false);
+  // Email/password state
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [emailError, setEmailError] = useState('');
@@ -27,6 +31,7 @@ function LoginForm() {
     setPhoneError('');
     setUnregistered(false);
     setPhoneLoading(true);
+    let shouldResetLoading = true;
 
     try {
       const res = await fetch('/api/auth/phone-otp/send', {
@@ -48,13 +53,14 @@ function LoginForm() {
         return;
       }
 
+      shouldResetLoading = false;
       router.push(
         `/verify?ref_id=${encodeURIComponent(data.ref_id!)}&phone=${encodeURIComponent(phoneNumber)}`,
       );
     } catch {
       setPhoneError('Network error. Please check your connection and try again.');
     } finally {
-      setPhoneLoading(false);
+      if (shouldResetLoading) setPhoneLoading(false);
     }
   }
 
@@ -122,42 +128,55 @@ function LoginForm() {
         <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
       </div>
 
-      <h1 className="text-h3 font-display text-cream-900 mb-1">Welcome back</h1>
-      <p className="text-body-sm text-cream-600 mb-6">
-        Enter your mobile number to receive an OTP on WhatsApp.
-      </p>
-
-      {/* Primary: Phone OTP */}
-      {unregistered ? (
-        <div className="space-y-4">
-          <div className="rounded-md bg-warning-50 border border-warning-200 px-4 py-3">
-            <p className="text-body-sm text-warning-700 font-medium">
-              This number isn&apos;t registered. Contact your distributor.
-            </p>
-          </div>
-          <button
-            onClick={() => setUnregistered(false)}
-            className="w-full px-4 py-2.5 rounded-md border border-cream-300 bg-white text-cream-800 text-body-sm font-semibold hover:bg-cream-50 transition-colors"
-          >
-            Try a different number
-          </button>
+      {resetSuccess && (
+        <div className="mb-4 rounded-md bg-green-50 border border-green-200 px-4 py-3">
+          <p className="text-body-sm text-green-800 font-medium">
+            Password updated. Sign in with your new password.
+          </p>
         </div>
-      ) : (
-        <PhoneInput onSubmit={handlePhoneSubmit} loading={phoneLoading} error={phoneError} />
       )}
 
-      {/* Secondary: Email + password toggle */}
-      <div className="mt-6 pt-4 border-t border-cream-200">
-        <button
-          type="button"
-          onClick={() => { setShowEmailForm((v) => !v); setEmailError(''); }}
-          className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
-        >
-          {showEmailForm ? 'Hide email login' : 'Login with email instead →'}
-        </button>
+      {view === 'otp' ? (
+        <>
+          <p className="text-body-sm text-cream-600 mb-6">
+            Enter your mobile number to get a WhatsApp OTP.
+          </p>
 
-        {showEmailForm && (
-          <form onSubmit={handleEmailSubmit} className="mt-4 space-y-4">
+          {unregistered ? (
+            <div className="space-y-4">
+              <div className="rounded-md bg-warning-50 border border-warning-200 px-4 py-3">
+                <p className="text-body-sm text-warning-700 font-medium">
+                  This number isn&apos;t registered. Contact your distributor.
+                </p>
+              </div>
+              <button
+                onClick={() => setUnregistered(false)}
+                className="w-full px-4 py-2.5 rounded-md border border-cream-300 bg-white text-cream-800 text-body-sm font-semibold hover:bg-cream-50 transition-colors"
+              >
+                Try a different number
+              </button>
+            </div>
+          ) : (
+            <PhoneInput onSubmit={handlePhoneSubmit} loading={phoneLoading} error={phoneError} />
+          )}
+
+          <div className="mt-6 pt-4 border-t border-cream-200">
+            <button
+              type="button"
+              onClick={() => { setView('email'); setPhoneError(''); setUnregistered(false); }}
+              className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
+            >
+              Login with email
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-body-sm text-cream-600 mb-6">
+            Sign in with your email and password.
+          </p>
+
+          <form onSubmit={handleEmailSubmit} className="space-y-4">
             <div>
               <label className={labelCls} style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em' }}>
                 Email
@@ -174,9 +193,18 @@ function LoginForm() {
               />
             </div>
             <div>
-              <label className={labelCls} style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em' }}>
-                Password
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className={labelCls} style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', marginBottom: 0 }}>
+                  Password
+                </label>
+                <Link
+                  href="/forgot-password"
+                  className="text-caption font-medium transition-colors"
+                  style={{ color: 'var(--ember-400)', fontSize: 'var(--yk-text-xs)' }}
+                >
+                  Forgot password?
+                </Link>
+              </div>
               <input
                 type="password"
                 placeholder="••••••••"
@@ -203,14 +231,24 @@ function LoginForm() {
               {emailLoading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
-        )}
-      </div>
+
+          <div className="mt-6 pt-4 border-t border-cream-200">
+            <button
+              type="button"
+              onClick={() => { setView('otp'); setEmailError(''); }}
+              className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
+            >
+              Login with mobile OTP
+            </button>
+          </div>
+        </>
+      )}
 
       <div className="mt-4 text-right">
         <p className="text-caption text-cream-600">
-          No account?{' '}
+          New here?{' '}
           <Link href="/signup" className="text-ember-400 hover:text-ember-500 font-medium transition-colors">
-            Sign up
+            Create account
           </Link>
         </p>
       </div>
@@ -225,7 +263,6 @@ function LoginFallback() {
         <div className="h-14 w-[76px] rounded-xl bg-cream-200 animate-pulse" />
       </div>
       <div className="space-y-3">
-        <div className="h-4 w-40 rounded bg-cream-200 animate-pulse" />
         <div className="h-4 w-56 rounded bg-cream-200 animate-pulse" />
       </div>
       <div className="mt-6 space-y-4">

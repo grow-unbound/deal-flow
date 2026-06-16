@@ -11,7 +11,6 @@ export const DEFAULT_TENANT_SETTINGS_STORED = {
     email: '',
   },
   product_defaults: {
-    gst_rate: 18 as const,
     uom: 'PCS',
   },
   orders: {
@@ -52,6 +51,7 @@ export const DEFAULT_TENANT_SETTINGS_STORED = {
   business_policy: {
     credit_enabled: true,
     gst_inclusive: false,
+    gst_rate: 18 as const,
   },
 };
 

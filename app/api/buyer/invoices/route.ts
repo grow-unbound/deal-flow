@@ -1,0 +1,70 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { supabaseAdmin, supabase } from '@/lib/supabase';
+import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+
+export interface BuyerInvoice {
+  id: string;
+  invoice_number: string;
+  status: string;
+  total_amount: number;
+  outstanding_balance: number | null;
+  invoice_date: string;
+  due_date: string | null;
+}
+
+export interface BuyerInvoicesResponse {
+  invoices: BuyerInvoice[];
+}
+
+export async function GET(request: NextRequest): Promise<NextResponse<BuyerInvoicesResponse>> {
+  try {
+    const profile = await requireBuyerAccessProfile(request);
+    if (!profile?.context.tenant_id) {
+      return NextResponse.json({ invoices: [] }, { status: 401 });
+    }
+
+    if (profile.context.mode === 'preview') {
+      return NextResponse.json({ invoices: [] });
+    }
+
+    if (!profile.buyer?.id) {
+      return NextResponse.json({ invoices: [] }, { status: 401 });
+    }
+
+    const { tenant_id } = profile.context;
+    const buyer_id = profile.buyer.id;
+    const db = supabaseAdmin ?? supabase;
+    const limit = Math.min(Number(request.nextUrl.searchParams.get('limit') ?? '50'), 200);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (db as any)
+      .schema('app')
+      .from('invoices')
+      .select('id, invoice_number, status, total_amount, outstanding_balance, invoice_date, due_date')
+      .eq('tenant_id', tenant_id)
+      .eq('buyer_id', buyer_id)
+      .is('deleted_at', null)
+      .order('invoice_date', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.warn('[buyer/invoices] GET error:', error.message);
+      return NextResponse.json({ invoices: [] });
+    }
+
+    const invoices: BuyerInvoice[] = ((data ?? []) as BuyerInvoice[]).map((inv) => ({
+      id: inv.id,
+      invoice_number: inv.invoice_number,
+      status: inv.status,
+      total_amount: Number(inv.total_amount ?? 0),
+      outstanding_balance: inv.outstanding_balance != null ? Number(inv.outstanding_balance) : null,
+      invoice_date: inv.invoice_date,
+      due_date: inv.due_date ?? null,
+    }));
+
+    return NextResponse.json({ invoices });
+  } catch (err) {
+    console.error('[buyer/invoices] Unexpected error:', err);
+    return NextResponse.json({ invoices: [] });
+  }
+}
