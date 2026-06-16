@@ -3,7 +3,7 @@
 
 BEGIN;
 
-SELECT plan(7);
+SELECT plan(10);
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- Fixtures
@@ -69,10 +69,10 @@ SELECT is(
         'user_id', (SELECT val FROM _fixture WHERE key = 'seller_uid'),
         'claims',  jsonb_build_object('app_metadata', '{}'::jsonb)
       )
-    ) -> 'claims' ->> 'role'
+    ) -> 'claims' ->> 'user_role'
   ),
   'seller_admin',
-  'seller user: role claim is seller_admin'
+  'seller user: user_role claim is seller_admin'
 );
 
 SELECT ok(
@@ -176,6 +176,60 @@ SELECT is(
     LIMIT 1
   ),
   'seller assistant: location_ids claim matches tenant_users row'
+);
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Test 4: null/missing claims input still returns an object
+-- ────────────────────────────────────────────────────────────────────────────
+SELECT is(
+  jsonb_typeof(
+    public.custom_access_token_hook(
+      jsonb_build_object(
+        'user_id', (SELECT val FROM _fixture WHERE key = 'seller_uid'),
+        'claims',  'null'::jsonb
+      )
+    ) -> 'claims'
+  ),
+  'object',
+  'null claims input: output claims is still a JSON object'
+);
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Test 5: user with no workspace membership returns object without tenant_id
+-- ────────────────────────────────────────────────────────────────────────────
+DO $$
+DECLARE
+  v_orphan_uid uuid := gen_random_uuid();
+BEGIN
+  INSERT INTO auth.users (id, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
+  VALUES (v_orphan_uid, 'orphan@test.local', 'x', now(), now(), now(), '{}', '{}');
+
+  INSERT INTO _fixture VALUES ('orphan_uid', v_orphan_uid);
+END $$;
+
+SELECT is(
+  jsonb_typeof(
+    public.custom_access_token_hook(
+      jsonb_build_object(
+        'user_id', (SELECT val FROM _fixture WHERE key = 'orphan_uid'),
+        'claims',  jsonb_build_object('app_metadata', '{}'::jsonb)
+      )
+    ) -> 'claims'
+  ),
+  'object',
+  'orphan user: output claims is a JSON object'
+);
+
+SELECT ok(
+  NOT (
+    public.custom_access_token_hook(
+      jsonb_build_object(
+        'user_id', (SELECT val FROM _fixture WHERE key = 'orphan_uid'),
+        'claims',  jsonb_build_object('app_metadata', '{}'::jsonb)
+      )
+    ) -> 'claims'
+  ) ? 'tenant_id',
+  'orphan user: tenant_id claim is absent'
 );
 
 SELECT * FROM finish();

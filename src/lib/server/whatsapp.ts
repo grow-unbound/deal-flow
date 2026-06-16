@@ -5,7 +5,7 @@ const WHATSAPP_TEMPLATE_LOCALE = 'en_US';
 const WHATSAPP_LOGIN_PRODUCT_NAME = 'Login to Yukti';
 
 export async function sendLoginOtpWhatsapp(phone: string, otp: string) {
-  const token = process.env.AISEMSY_AUTH_TOKEN;
+  const token = process.env.WHATSAPP_TOKEN;
   const phoneNumberId = process.env.NEXT_PUBLIC_WHATSAPP_PHONE_NUMBER_ID;
   const adminNumber = process.env.WHATSAPP_ADMIN_NUMBER;
 
@@ -37,6 +37,14 @@ export async function sendLoginOtpWhatsapp(phone: string, otp: string) {
                 { type: 'text', text: otp },
                 { type: 'text', text: WHATSAPP_LOGIN_PRODUCT_NAME },
                 { type: 'text', text: adminNumber },
+              ],
+            },
+            {
+              type: 'button',
+              sub_type: 'url',
+              index: '0',
+              parameters: [
+                { type: 'text', text: otp },
               ],
             },
           ],

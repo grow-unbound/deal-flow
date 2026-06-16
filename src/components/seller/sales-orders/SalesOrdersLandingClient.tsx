@@ -4,6 +4,8 @@ import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, Package } from 'lucide-react';
+import { useSellerRealtimeContext } from '@/contexts/SellerRealtimeContext';
+import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
 import {
@@ -103,6 +105,7 @@ function SalesOrdersLandingContent({
   initialPeriod: SellerLandingPeriod;
 }) {
   const router = useRouter();
+  const { newEntityIds, markSeen } = useSellerRealtimeContext();
   const { period, setPeriod, horizonLabel, lowerLabel, options } = useSellerLandingPeriod(initialPeriod);
   const { data, isLoading, isError } = useTenantOrders(period, initialData);
   const retainedData = useRetainedValue(data);
@@ -318,9 +321,14 @@ function SalesOrdersLandingContent({
                 <tr
                   key={row.id}
                   className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
-                  onClick={() => router.push(`/sales-orders/${row.id}`)}
+                  onClick={() => { markSeen(row.id); router.push(`/sales-orders/${row.id}`); }}
                 >
-                  <td className="px-5 py-3.5 font-mono text-sm text-cream-800">{row.order_id}</td>
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm text-cream-800">{row.order_id}</span>
+                      {newEntityIds.has(row.id) && <RealtimeBadge type="new" />}
+                    </div>
+                  </td>
                   <td className="px-5 py-3.5 text-base text-cream-900">
                     <div className="ent flex items-center gap-3">
                       <EntityAvatar initials={row.buyer_initials} hue={row.buyer_hue} size={30} />

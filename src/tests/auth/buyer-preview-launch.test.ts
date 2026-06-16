@@ -11,7 +11,7 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/lib/buyer-preview', () => ({
   createBuyerPreviewToken: (...args: unknown[]) => createBuyerPreviewTokenMock(...args),
   buildBuyerPreviewRedirectPath: ({ previewToken, shareToken }: { previewToken: string; shareToken?: string | null }) => (
-    `/shop/catalog?buyer_preview=${previewToken}${shareToken ? `&share_token=${shareToken}` : ''}`
+    `/buy/catalog?buyer_preview=${previewToken}${shareToken ? `&share_token=${shareToken}` : ''}`
   ),
 }));
 
@@ -35,7 +35,7 @@ describe('buyer preview launch route', () => {
     const response = await GET(new NextRequest('http://localhost/api/buyer/preview/launch'));
 
     expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('http://localhost/shop/catalog?buyer_preview=preview-token');
+    expect(response.headers.get('location')).toBe('http://localhost/buy/catalog?buyer_preview=preview-token');
   });
 
   it('deep links catalog launches with the catalog share token', async () => {
@@ -53,6 +53,6 @@ describe('buyer preview launch route', () => {
       tenantId: 'tenant-1',
       shareToken: 'tok',
     });
-    expect(response.headers.get('location')).toBe('http://localhost/shop/catalog?buyer_preview=preview-token&share_token=tok');
+    expect(response.headers.get('location')).toBe('http://localhost/buy/catalog?buyer_preview=preview-token&share_token=tok');
   });
 });

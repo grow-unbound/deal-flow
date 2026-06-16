@@ -1,3 +1,6 @@
+'use client';
+
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
 export type EntityAvatarHue = 'teal' | 'ember' | 'cream';
@@ -6,6 +9,7 @@ interface EntityAvatarProps {
   initials: string;
   hue: EntityAvatarHue;
   size?: number;
+  imageUrl?: string | null;
   className?: string;
 }
 
@@ -15,7 +19,22 @@ const hueClasses: Record<EntityAvatarHue, string> = {
   cream: 'border-cream-300 bg-cream-100 text-cream-700',
 };
 
-export function EntityAvatar({ initials, hue, size = 38, className }: EntityAvatarProps) {
+export function EntityAvatar({ initials, hue, size = 38, imageUrl, className }: EntityAvatarProps) {
+  const [imgError, setImgError] = useState(false);
+  const showImage = imageUrl && !imgError;
+
+  if (showImage) {
+    return (
+      <img
+        src={imageUrl}
+        alt={initials}
+        onError={() => setImgError(true)}
+        className={cn('shrink-0 rounded-[10px] border border-cream-200 object-contain bg-white', className)}
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+
   return (
     <div
       className={cn(

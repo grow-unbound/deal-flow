@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import { supabase, supabaseAdmin } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { getFlag } from '@/lib/flags';
 import { getPostHogClient } from '@/lib/posthog-server';
 
 const SignupBodySchema = z.object({
+  full_name: z.string().min(1).optional(),
   email: z.string().email(),
   password: z.string().min(8),
   business_name: z.string().min(1),
@@ -22,13 +24,31 @@ const SignupBodySchema = z.object({
 // Postgres unique-violation error code
 const PG_UNIQUE_VIOLATION = '23505';
 
-export async function POST(request: NextRequest) {
+interface TenantRpcResult {
+  tenant_id: string;
+  slug: string;
+  subdomain: string;
+}
+
+async function deleteAuthUser(userId: string): Promise<void> {
+  if (!supabaseAdmin) return;
+  await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => {});
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
   // Gate: df_tenant_onboarding must be enabled
   const flagOn = await getFlag('df_tenant_onboarding', 'anonymous-signup');
   if (!flagOn) {
     return NextResponse.json(
       { error: 'This feature is not yet available.' },
       { status: 403 }
+    );
+  }
+
+  if (!supabaseAdmin) {
+    return NextResponse.json(
+      { error: 'Server misconfiguration: service key missing' },
+      { status: 500 }
     );
   }
 
@@ -47,50 +67,39 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { email, password, business_name, slug, phone, gstin, primary_state, plan } = parsed.data;
+  const { full_name, email, password, business_name, slug, phone, gstin, primary_state, plan } = parsed.data;
 
-  // Step 1 — create the Supabase Auth user
-  const { data: authData, error: authError } = await supabase.auth.signUp({
+  // Step 1 — create auth user without minting a JWT (avoids hook before tenant exists)
+  const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
     email,
     password,
-    options: {
-      data: { phone: phone ?? null },
-    },
+    email_confirm: true,
+    user_metadata: { phone: phone ?? null, full_name: full_name ?? null },
   });
 
-  if (authError || !authData.user) {
+  if (createError || !created.user) {
     return NextResponse.json(
-      { error: authError?.message ?? 'Failed to create user' },
+      { error: createError?.message ?? 'Failed to create user' },
       { status: 400 }
     );
   }
 
-  const userId = authData.user.id;
+  const userId = created.user.id;
 
-  // Step 2 — atomically create tenant + seller_admin link via SECURITY DEFINER RPC.
-  // supabaseAdmin uses the service-role key and bypasses RLS.
-  if (!supabaseAdmin) {
-    await supabase.auth.admin?.deleteUser(userId).catch(() => {});
-    return NextResponse.json(
-      { error: 'Server misconfiguration: service key missing' },
-      { status: 500 }
-    );
-  }
-
-  type TenantRpcResult = { tenant_id: string; slug: string; subdomain: string };
-  const { data: rpcData, error: rpcError } = await (supabaseAdmin as unknown as {
-    rpc: (fn: string, args: Record<string, string | undefined>) => Promise<{ data: TenantRpcResult | null; error: { code?: string; message?: string } | null }>;
-  }).rpc('create_tenant_and_admin', {
-    p_user_id: userId,
-    p_slug: slug,
-    p_business_name: business_name,
-    p_primary_state: primary_state,
-    p_gstin: gstin,
-  });
+  // Step 2 — atomically create tenant + seller_admin link via SECURITY DEFINER RPC
+  const { data: rpcData, error: rpcError } = await supabaseAdmin
+    .schema('app')
+    .rpc('create_tenant_and_admin', {
+      p_user_id: userId,
+      p_slug: slug,
+      p_business_name: business_name,
+      p_primary_state: primary_state ?? null,
+      p_gstin: gstin ?? null,
+    });
 
   if (rpcError) {
-    if ((rpcError as { code?: string }).code === PG_UNIQUE_VIOLATION) {
-      await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => {});
+    if (rpcError.code === PG_UNIQUE_VIOLATION) {
+      await deleteAuthUser(userId);
       return NextResponse.json(
         {
           error: 'This business URL is already in use. Try a different one.',
@@ -100,16 +109,66 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => {});
+    await deleteAuthUser(userId);
     return NextResponse.json(
       { error: 'Failed to create workspace. Please try again.' },
       { status: 500 }
     );
   }
 
-  const tenantResult = rpcData ?? { tenant_id: '', slug, subdomain: `${slug}.yukti.so` };
+  const tenantResult = (rpcData as TenantRpcResult | null) ?? {
+    tenant_id: '',
+    slug,
+    subdomain: `${slug}.yukti.so`,
+  };
 
-  // Step 3 — fire PostHog server-side event for funnel analytics
+  // Step 3 — pin workspace so custom_access_token_hook resolves the new tenant
+  const { error: metadataError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+    app_metadata: { current_tenant_id: tenantResult.tenant_id },
+  });
+
+  if (metadataError) {
+    await deleteAuthUser(userId);
+    return NextResponse.json(
+      { error: 'Failed to finalize account setup. Please try again.' },
+      { status: 500 }
+    );
+  }
+
+  // Step 4 — mint session after tenant_users row exists
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseAnonKey) {
+    await deleteAuthUser(userId);
+    return NextResponse.json(
+      { error: 'Server misconfiguration: Supabase credentials missing' },
+      { status: 500 }
+    );
+  }
+
+  const anonClient = createClient(supabaseUrl, supabaseAnonKey);
+  const { data: signInData, error: signInError } = await anonClient.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (signInError || !signInData.session) {
+    await deleteAuthUser(userId);
+    return NextResponse.json(
+      { error: signInError?.message ?? 'Failed to create session' },
+      { status: 500 }
+    );
+  }
+
+  let finalSession = signInData.session;
+  const { data: refreshData } = await anonClient.auth.refreshSession({
+    refresh_token: signInData.session.refresh_token,
+  });
+  if (refreshData.session) {
+    finalSession = refreshData.session;
+  }
+
+  // Step 5 — fire PostHog server-side event for funnel analytics
   try {
     const distinctId = request.headers.get('X-POSTHOG-DISTINCT-ID') ?? userId;
     const ph = getPostHogClient();
@@ -145,6 +204,8 @@ export async function POST(request: NextRequest) {
         slug: tenantResult.slug,
         subdomain: tenantResult.subdomain,
       },
+      redirect: '/dashboard',
+      session: finalSession,
     },
     { status: 201 }
   );

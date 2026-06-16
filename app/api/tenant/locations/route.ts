@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { name, address, is_default, type, inventory_tracking, external_ref } = parsed.data;
+    const { name, address, is_default, type, inventory_tracking, external_ref, lat, lng } = parsed.data;
 
     const db = supabaseAdmin as any;
 
@@ -136,6 +136,8 @@ export async function POST(req: NextRequest) {
         type: type ?? 'warehouse',
         inventory_tracking: inventory_tracking ?? true,
         external_ref: external_ref?.trim() ? external_ref.trim() : null,
+        lat: lat ?? null,
+        lng: lng ?? null,
         created_by: claims.sub,
         updated_by: claims.sub,
       })

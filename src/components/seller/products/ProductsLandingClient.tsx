@@ -361,9 +361,12 @@ function ProductsLandingContent({
             >
               <td className="px-5 py-3.5 text-base text-cream-900">
                 <div className="ent flex items-center gap-3">
-                  <div className="flex h-[38px] w-[38px] shrink-0 items-end justify-center rounded-[10px] bg-[linear-gradient(180deg,#EAF1EE_0%,#C6DAD3_100%)] pb-1">
-                    <div className="h-[26px] w-[10px] rounded-[20%_20%_8%_8%/8%_8%_4%_4%] bg-[linear-gradient(180deg,#1F3A34,#142823)]" />
-                  </div>
+                  <EntityAvatar
+                    initials={getInitials(product.display_name)}
+                    hue={getBrandHue(index)}
+                    imageUrl={product.image_urls?.[0] ?? null}
+                    size={38}
+                  />
                   <div className="min-w-0">
                     <p className="truncate text-base font-medium text-cream-900">{product.display_name}</p>
                     <p className="mt-0.5 text-sm text-cream-700">
@@ -374,7 +377,7 @@ function ProductsLandingContent({
               </td>
               <td className="px-5 py-3.5 text-base text-cream-900">
                 <div className="inline-flex items-center gap-2">
-                  <EntityAvatar initials={getInitials(brandName)} hue={getBrandHue(index)} size={22} />
+                  <EntityAvatar initials={getInitials(brandName)} hue={getBrandHue(index)} imageUrl={product.master_product?.brand_logo_url ?? null} size={22} />
                   <span className="text-sm text-cream-900">{brandName}</span>
                 </div>
               </td>

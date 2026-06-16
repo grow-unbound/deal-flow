@@ -19,7 +19,7 @@ interface BrandDetailsTabProps {
 }
 
 export function BrandDetailsTab({ details, onSave, isSaving }: BrandDetailsTabProps) {
-  const isEditing = false;
+  const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState({
     display_name_override: details.display_name_override ?? '',
     margin_pct: details.margin_pct != null ? String(details.margin_pct) : '',

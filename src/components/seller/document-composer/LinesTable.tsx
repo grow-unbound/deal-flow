@@ -4,6 +4,7 @@ import { RotateCcw, Search, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { EntityAvatar } from '@/components/seller/layout';
+import { ScrollableTableShell } from '@/components/seller/layout/ScrollableTableShell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatNumberForInput, parseCurrencyDigits } from '@/lib/currency-input';
@@ -208,20 +209,31 @@ export function LinesTable({
         ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto">
-        <table className="lines-table w-full min-w-[960px] text-left text-base">
-          <thead>
-            <tr className="sticky top-0 z-[1] border-b border-cream-200 bg-white text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">
-              <th className="w-10 px-3 py-2">#</th>
-              <th className="px-3 py-2">Product</th>
-              <th className="num w-24 px-2 py-2 text-right">Qty</th>
-              <th className="num w-24 px-2 py-2 text-right">Base</th>
-              <th className="num w-28 px-2 py-2 text-right">Pricelist</th>
-              <th className="num w-20 px-2 py-2 text-right">Disc %</th>
-              <th className="num w-28 px-2 py-2 text-right">Amount</th>
-              {!readOnly ? <th className="w-10 px-2 py-2" /> : null}
-            </tr>
-          </thead>
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+        <ScrollableTableShell>
+          <table className="lines-table w-full table-fixed text-left text-base">
+            <colgroup>
+              <col className="w-10" />
+              <col />
+              <col className="w-[4.5rem]" />
+              <col className="w-[5.5rem]" />
+              <col className="w-[6.5rem]" />
+              <col className="w-[4.5rem]" />
+              <col className="w-[6.5rem]" />
+              {!readOnly ? <col className="w-10" /> : null}
+            </colgroup>
+            <thead>
+              <tr className="sticky top-0 z-[1] border-b border-cream-200 bg-white">
+                <th className="table-label px-3 py-2 text-cream-700">#</th>
+                <th className="table-label px-3 py-2 text-cream-700">Product</th>
+                <th className="table-label num px-2 py-2 text-right text-cream-700">Qty</th>
+                <th className="table-label num px-2 py-2 text-right text-cream-700">Base</th>
+                <th className="table-label num px-2 py-2 text-right text-cream-700">Pricelist</th>
+                <th className="table-label num px-2 py-2 text-right text-cream-700">Disc %</th>
+                <th className="table-label num px-2 py-2 text-right text-cream-700">Amount</th>
+                {!readOnly ? <th className="table-label px-2 py-2 text-cream-700" /> : null}
+              </tr>
+            </thead>
           <tbody>
             {showBottomProductSearch ? (
               <tr className="sticky top-[41px] z-[2] border-b border-cream-200 bg-white shadow-[0_4px_12px_rgba(0,0,0,0.04)]">
@@ -295,9 +307,9 @@ export function LinesTable({
                   <td className="px-3 py-3">
                     <div className="flex items-start gap-3">
                       <EntityAvatar initials={line.brand_initials} hue={line.brand_hue} size={32} />
-                      <div className="min-w-0">
-                        <p className="font-medium text-cream-900">{line.product_name}</p>
-                        <p className="text-xs text-cream-600">
+                      <div className="min-w-0 w-full">
+                        <p className="truncate font-medium text-cream-900" title={line.product_name}>{line.product_name}</p>
+                        <p className="truncate text-xs text-cream-600">
                           {line.sku}
                           {(line.mrp ?? 0) > 0 ? ` · MRP ${formatInr(line.mrp)}` : ''}
                           {kind === 'estimate' ? ` · Stock ${line.on_hand}` : ''}
@@ -378,6 +390,7 @@ export function LinesTable({
 
           </tbody>
         </table>
+        </ScrollableTableShell>
       </div>
 
       {!readOnly && showNotesControls && notesExpanded ? (

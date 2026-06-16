@@ -4,8 +4,19 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-06-12",
   "compatibility_flags": ["nodejs_compat"],
+  "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "images.yukti.so",
+      "zone_name": "yukti.so",
+      "custom_domain": true
+    }
+  ],
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "logs": {
+      "enabled": true
+    }
   },
   "r2_buckets": [
     {

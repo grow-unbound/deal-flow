@@ -7,7 +7,7 @@ const apiFetchMock = vi.fn();
 const posthogCaptureMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/shop/catalog',
+  usePathname: () => '/buy/catalog',
   useSearchParams: () => useSearchParamsMock(),
 }));
 
@@ -21,8 +21,8 @@ vi.mock('@/lib/api-fetch', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
 
-import CatalogPage from '../../app/(buyer)/shop/catalog/page';
-import OrdersPage from '../../app/(buyer)/shop/orders/page';
+import CatalogPage from '../../app/(buyer)/buy/catalog/page';
+import OrdersPage from '../../app/(buyer)/buy/orders/page';
 
 function jsonResponse(data: unknown) {
   return Promise.resolve({

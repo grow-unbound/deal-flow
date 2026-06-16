@@ -2,6 +2,7 @@ import { DEFAULT_TENANT_SETTINGS_STORED } from '@/lib/tenant-settings/defaults';
 import type { TenantRowForSettings } from '@/lib/tenant-settings/build-general-view';
 import {
   BuyerAppSettingsSchema,
+  BusinessPolicySchema,
   CatalogSettingsSchema,
   OrdersSettingsSchema,
   ProductDefaultsSchema,
@@ -57,20 +58,40 @@ export function buildModuleSettingsView(
   const merged = deepMergeObjects(
     DEFAULT_TENANT_SETTINGS_STORED as unknown as Record<string, unknown>,
     fromDb as Record<string, unknown>,
-  ) as typeof DEFAULT_TENANT_SETTINGS_STORED;
+  ) as typeof DEFAULT_TENANT_SETTINGS_STORED & { orders?: Record<string, unknown>; business_policy?: Record<string, unknown> };
 
+  const rawPd = (merged.product_defaults ?? {}) as Record<string, unknown>;
   const productDefaultsRaw = {
-    ...DEFAULT_TENANT_SETTINGS_STORED.product_defaults,
-    ...merged.product_defaults,
+    uom:
+      typeof rawPd.uom === 'string' && rawPd.uom.length > 0
+        ? rawPd.uom
+        : DEFAULT_TENANT_SETTINGS_STORED.product_defaults.uom,
   };
+
+  // Backward-compat: derive per-type number formats from legacy number_format if new fields absent
+  const dbOrders = (fromDb as { orders?: Record<string, unknown> }).orders ?? {};
+  const legacyFormat = typeof dbOrders.number_format === 'string' ? dbOrders.number_format : null;
   const ordersRaw = {
     ...DEFAULT_TENANT_SETTINGS_STORED.orders,
     ...merged.orders,
+    enquiry_number_format:
+      typeof dbOrders.enquiry_number_format === 'string'
+        ? dbOrders.enquiry_number_format
+        : legacyFormat ?? DEFAULT_TENANT_SETTINGS_STORED.orders.enquiry_number_format,
+    sales_order_number_format:
+      typeof dbOrders.sales_order_number_format === 'string'
+        ? dbOrders.sales_order_number_format
+        : legacyFormat ?? DEFAULT_TENANT_SETTINGS_STORED.orders.sales_order_number_format,
+    invoice_number_format:
+      typeof dbOrders.invoice_number_format === 'string'
+        ? dbOrders.invoice_number_format
+        : legacyFormat ?? DEFAULT_TENANT_SETTINGS_STORED.orders.invoice_number_format,
     features: {
       ...DEFAULT_TENANT_SETTINGS_STORED.orders.features,
       ...merged.orders?.features,
     },
   };
+
   const buyerAppRaw = {
     ...DEFAULT_TENANT_SETTINGS_STORED.buyer_app,
     ...merged.buyer_app,
@@ -78,6 +99,16 @@ export function buildModuleSettingsView(
   const catalogRaw = {
     ...DEFAULT_TENANT_SETTINGS_STORED.catalog,
     ...merged.catalog,
+  };
+  const fromDbBp = (merged.business_policy ?? {}) as Record<string, unknown>;
+  const legacyGst = (merged.product_defaults as { gst_rate?: number } | undefined)?.gst_rate;
+  const businessPolicyRaw = {
+    ...DEFAULT_TENANT_SETTINGS_STORED.business_policy,
+    ...fromDbBp,
+    gst_rate:
+      typeof fromDbBp.gst_rate === 'number'
+        ? fromDbBp.gst_rate
+        : legacyGst ?? DEFAULT_TENANT_SETTINGS_STORED.business_policy.gst_rate,
   };
 
   const plan =
@@ -89,6 +120,7 @@ export function buildModuleSettingsView(
   const ordersParsed = OrdersSettingsSchema.safeParse(ordersRaw);
   const buyerParsed = BuyerAppSettingsSchema.safeParse(buyerAppRaw);
   const catalogParsed = CatalogSettingsSchema.safeParse(catalogRaw);
+  const policyParsed = BusinessPolicySchema.safeParse(businessPolicyRaw);
 
   return {
     product_defaults: productParsed.success
@@ -97,6 +129,9 @@ export function buildModuleSettingsView(
     orders: ordersParsed.success ? ordersParsed.data : DEFAULT_TENANT_SETTINGS_STORED.orders,
     buyer_app: buyerParsed.success ? buyerParsed.data : DEFAULT_TENANT_SETTINGS_STORED.buyer_app,
     catalog: catalogParsed.success ? catalogParsed.data : DEFAULT_TENANT_SETTINGS_STORED.catalog,
+    business_policy: policyParsed.success
+      ? policyParsed.data
+      : DEFAULT_TENANT_SETTINGS_STORED.business_policy,
     plan,
     usage,
     open_counts: openCounts,

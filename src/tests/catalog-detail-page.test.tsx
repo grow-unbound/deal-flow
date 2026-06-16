@@ -56,7 +56,7 @@ describe('catalog-detail-page integration', () => {
           valid_until_iso: '2026-06-30T00:00:00.000Z',
           published_by: 'User 1234abcd',
           share_token: 'abc',
-          share_url: 'https://example.com/shop/abc',
+          share_url: 'https://example.com/buy/abc',
           scope_type: 'cohort',
           status_value: 'published',
           selected_cohort: {

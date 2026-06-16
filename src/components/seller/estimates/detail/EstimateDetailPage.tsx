@@ -140,9 +140,6 @@ export function EstimateDetailPage({ id }: { id: string }) {
         }
         router.push(`/estimates/${newIdStr}/edit`);
       },
-      onError: (e) => {
-        toast.error(e instanceof Error ? e.message : 'Duplicate failed');
-      },
     });
   }
 
@@ -158,9 +155,6 @@ export function EstimateDetailPage({ id }: { id: string }) {
           router.push(`/estimates/${id}`);
         }
       },
-      onError: (e) => {
-        toast.error(e instanceof Error ? e.message : 'Convert failed');
-      },
     });
   }
 
@@ -168,10 +162,6 @@ export function EstimateDetailPage({ id }: { id: string }) {
     voidMut.mutate(undefined, {
       onSuccess: () => {
         setVoidOpen(false);
-        toast.success('Estimate voided');
-      },
-      onError: (e) => {
-        toast.error(e instanceof Error ? e.message : 'Void failed');
       },
     });
   }
@@ -350,9 +340,8 @@ export function EstimateDetailPage({ id }: { id: string }) {
           try {
             await sendMut.mutateAsync(payload);
             setSendOpen(false);
-            toast.success('Estimate sent');
-          } catch (error) {
-            toast.error(error instanceof Error ? error.message : 'Failed to send estimate');
+          } catch {
+            // toast handled by useSendEstimate.onError
           }
         }}
       />

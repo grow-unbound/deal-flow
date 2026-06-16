@@ -133,7 +133,7 @@ export async function getBuyerAppContext(request: NextRequest): Promise<BuyerApp
     return {
       ...claims,
       role: preview.role,
-      buyer_id: null,
+      buyer_id: preview.buyer_id ?? null,
       mode: 'preview',
       share_token: preview.share_token,
       preview,

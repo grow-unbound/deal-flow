@@ -164,6 +164,6 @@ describe('AuthProvider', () => {
     expect(window.sessionStorage.getItem(AUTH_CONTEXTS_STORAGE_KEY)).toBeNull();
     expect(window.sessionStorage.getItem('yukti_draft_customers')).toBeNull();
     expect(window.localStorage.getItem('yukti_draft_products')).toBeNull();
-    expect(assignMock).toHaveBeenCalledWith('/login?reason=session_expired');
+    expect(assignMock).toHaveBeenCalledWith('/login');
   });
 });

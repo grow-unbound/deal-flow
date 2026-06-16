@@ -13,6 +13,7 @@ import {
   Link as LinkIcon,
   LogOut,
   MapPin,
+  Tag,
   Users,
   Zap,
 } from 'lucide-react';
@@ -115,6 +116,7 @@ export const navGroups: NavGroup[] = [
           { label: 'Team', href: '/settings/team', icon: Users as FC<{ size?: number; className?: string }>, roles: [ROLES.SELLER_ADMIN] },
           { label: 'Modules', href: '/settings/modules', icon: Zap as FC<{ size?: number; className?: string }>, roles: [ROLES.SELLER_ADMIN] },
           { label: 'Locations', href: '/settings/locations', icon: MapPin as FC<{ size?: number; className?: string }>, roles: [ROLES.SELLER_ADMIN] },
+          { label: 'Categories', href: '/settings/categories', icon: Tag as FC<{ size?: number; className?: string }>, roles: [ROLES.SELLER_ADMIN] },
           {
             label: 'Integrations',
             href: '/settings/integrations',

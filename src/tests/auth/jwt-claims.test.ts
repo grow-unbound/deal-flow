@@ -138,7 +138,7 @@ describe('buyer preview tokens', () => {
   });
 
   it('prefers real buyer claims over preview mode', async () => {
-    const req = new NextRequest('http://localhost/shop/home');
+    const req = new NextRequest('http://localhost/buy/home');
     req.headers.set('x-verified-tenant-id', 'tenant-abc');
     req.headers.set('x-verified-role', 'buyer_admin');
     req.headers.set('x-verified-buyer-id', 'buyer-123');
@@ -150,7 +150,7 @@ describe('buyer preview tokens', () => {
   });
 
   it('allows seller-authenticated preview mode for matching tenant tokens', async () => {
-    const req = new NextRequest('http://localhost/shop/home');
+    const req = new NextRequest('http://localhost/buy/home');
     req.headers.set('x-verified-tenant-id', 'tenant-abc');
     req.headers.set('x-verified-role', 'seller_admin');
     req.headers.set('x-buyer-preview', await createBuyerPreviewToken({ tenantId: 'tenant-abc', shareToken: 'cat-123' }));

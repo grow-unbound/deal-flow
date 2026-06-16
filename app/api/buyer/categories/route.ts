@@ -55,7 +55,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
       catalogIds = ((catalogs ?? []) as Array<{ id: string }>).map((catalog) => catalog.id);
     } else if (profile.buyer) {
-      const catalogs = await getVisibleBuyerCatalogs(context.tenant_id, profile.buyer.id);
+      const catalogs = await getVisibleBuyerCatalogs(context.tenant_id!, profile.buyer.id!);
       catalogIds = selectedCatalogId
         ? catalogs.filter((catalog) => catalog.id === selectedCatalogId).map((catalog) => catalog.id)
         : catalogs.slice(0, 1).map((catalog) => catalog.id);
@@ -114,7 +114,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const { data: catalogProducts, error: catError } = await supabaseAdmin
       .schema('catalog')
       .from('products')
-      .select('category_id, categories(id, name, slug)')
+      .select('category_id, categories(id, name, slug, image_url)')
       .in('id', masterProductIds)
       .not('category_id', 'is', null);
 
@@ -124,10 +124,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
 
     const countMap = new Map<string, number>();
-    const categoryMeta = new Map<string, { id: string; name: string; slug: string }>();
+    const categoryMeta = new Map<string, { id: string; name: string; slug: string; image_url: string | null }>();
 
     for (const row of catalogProducts ?? []) {
-      const cat = row.categories as unknown as { id: string; name: string; slug: string } | null;
+      const cat = row.categories as unknown as { id: string; name: string; slug: string; image_url: string | null } | null;
       if (!cat) continue;
       countMap.set(cat.id, (countMap.get(cat.id) ?? 0) + 1);
       if (!categoryMeta.has(cat.id)) {
@@ -141,6 +141,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         name: cat.name,
         slug: cat.slug,
         product_count: countMap.get(cat.id) ?? 0,
+        image_url: cat.image_url,
       }))
       .sort((a, b) => b.product_count - a.product_count);
 

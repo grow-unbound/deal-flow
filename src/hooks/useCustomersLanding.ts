@@ -360,9 +360,6 @@ export function useCreateCustomerOptimistic() {
       rollbackSnapshots(queryClient, context?.snapshots);
       toast.error(error instanceof Error ? error.message : 'Failed to create customer');
     },
-    onSuccess: () => {
-      toast.success('Customer created');
-    },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-customers'] });
       queryClient.invalidateQueries({ queryKey: ['customers'] });

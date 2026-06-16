@@ -1,5 +1,6 @@
 import { DEFAULT_TENANT_SETTINGS_STORED } from '@/lib/tenant-settings/defaults';
 import {
+  BusinessPolicySchema,
   TenantSettingsBusinessSchema,
   TenantSettingsNotificationsSchema,
   TenantSettingsStoredSchema,
@@ -70,13 +71,32 @@ export function buildGeneralSettingsView(
     },
   };
 
+  const fromDbBp = ((merged as { business_policy?: Record<string, unknown> }).business_policy ??
+    {}) as Record<string, unknown>;
+  const legacyGst = (merged as { product_defaults?: { gst_rate?: number } }).product_defaults?.gst_rate;
+  const businessPolicyRaw = {
+    ...DEFAULT_TENANT_SETTINGS_STORED.business_policy,
+    ...fromDbBp,
+    gst_rate:
+      typeof fromDbBp.gst_rate === 'number'
+        ? fromDbBp.gst_rate
+        : legacyGst ?? DEFAULT_TENANT_SETTINGS_STORED.business_policy.gst_rate,
+  };
+
   const businessParsed = TenantSettingsBusinessSchema.safeParse(business);
   const notifParsed = TenantSettingsNotificationsSchema.safeParse(notifications);
+  const policyParsed = BusinessPolicySchema.safeParse(businessPolicyRaw);
 
   const plan =
     tenant.plan === 'growth' || tenant.plan === 'scale' || tenant.plan === 'starter'
       ? tenant.plan
       : 'starter';
+
+  const rawThreshold = (fromDb as { delivery_routing_threshold_km?: unknown }).delivery_routing_threshold_km;
+  const delivery_routing_threshold_km =
+    typeof rawThreshold === 'number' && rawThreshold >= 1 && rawThreshold <= 5000
+      ? rawThreshold
+      : 300;
 
   return {
     business: businessParsed.success
@@ -89,6 +109,10 @@ export function buildGeneralSettingsView(
     notifications: notifParsed.success
       ? notifParsed.data
       : DEFAULT_TENANT_SETTINGS_STORED.notifications,
+    business_policy: policyParsed.success
+      ? policyParsed.data
+      : DEFAULT_TENANT_SETTINGS_STORED.business_policy,
+    delivery_routing_threshold_km,
     plan,
   };
 }

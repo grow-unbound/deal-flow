@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
+import { ScrollableTableShell } from '@/components/seller/layout/ScrollableTableShell';
+
 interface LandingTableColumn {
   label?: string;
   align?: 'left' | 'right' | 'center';
@@ -29,8 +31,10 @@ export function LandingTable({
   emptyState,
 }: LandingTableProps) {
   return (
-    <div className={cn('overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white', className)}>
-      <table className={cn('w-full border-collapse text-base', tableClassName)}>
+    <ScrollableTableShell
+      className={cn('rounded-b-[14px] border border-cream-300 border-t-0 bg-white', className)}
+    >
+      <table className={cn('w-full min-w-max border-collapse text-base', tableClassName)}>
         <thead>
           <tr className="border-y border-cream-300 bg-white">
             {columns.map((column, index) => (
@@ -61,6 +65,6 @@ export function LandingTable({
           )}
         </tbody>
       </table>
-    </div>
+    </ScrollableTableShell>
   );
 }

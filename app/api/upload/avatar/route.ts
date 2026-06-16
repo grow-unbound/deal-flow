@@ -3,23 +3,15 @@ import { supabaseAdmin } from '@/lib/supabase';
 import {
   UploadRouteError,
   avatarVariantUrls,
-  forwardUploadToWorker,
+  parseVariantKeysPayload,
   requireSellerUploadContext,
-  validateUploadImageFile,
 } from '@/lib/server/image-upload';
 import type { AvatarVariantKeySet } from '@/lib/r2-url';
 
 export async function POST(req: NextRequest) {
   try {
     const { claims, actorId } = await requireSellerUploadContext(req);
-    const formData = await req.formData();
-    const file = formData.get('file');
-
-    if (!(file instanceof File)) {
-      return NextResponse.json({ error: 'file is required.' }, { status: 400 });
-    }
-
-    validateUploadImageFile(file);
+    const { variants } = await parseVariantKeysPayload(req);
 
     if (!supabaseAdmin) {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
@@ -28,19 +20,12 @@ export async function POST(req: NextRequest) {
     const db = supabaseAdmin as any;
     const entityId = claims.sub ?? actorId;
 
-    const worker = await forwardUploadToWorker({
-      file,
-      entityType: 'user_avatar',
-      entityId,
-      tenantId: claims.tenant_id,
-    });
-
-    const variants = worker.variants as unknown as AvatarVariantKeySet;
+    const keys = variants as unknown as AvatarVariantKeySet;
     const payload = {
       user_id: entityId,
-      r2_avatar_orig_key: variants.original,
-      r2_avatar_small_key: variants.small,
-      r2_avatar_thumb_key: variants.thumb,
+      r2_avatar_orig_key: keys.original,
+      r2_avatar_small_key: keys.small,
+      r2_avatar_thumb_key: keys.thumb,
       created_by: actorId,
       updated_by: actorId,
       deleted_at: null,
@@ -62,8 +47,8 @@ export async function POST(req: NextRequest) {
       entity_type: 'user_avatar',
       entity_id: entityId,
       profile: data,
-      variants,
-      urls: avatarVariantUrls(variants),
+      variants: keys,
+      urls: avatarVariantUrls(keys),
     });
   } catch (error) {
     if (error instanceof UploadRouteError) {

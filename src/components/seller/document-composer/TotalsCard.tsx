@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 
+import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
 import { cn, formatInr } from '@/lib/utils';
 import type { EstimateComposerTotals } from '@/types/estimate-composer';
 
@@ -26,6 +27,8 @@ export function TotalsCard({
   stagedChanges?: Array<{ label: string; value: string }>;
   stagedCallout?: ReactNode;
 }) {
+  const { creditEnabled, gstInclusive } = useBusinessPolicy();
+
   const resolvedTaxRows = taxRows && taxRows.length > 0
     ? taxRows
     : [
@@ -40,7 +43,7 @@ export function TotalsCard({
 
   return (
     <div className="space-y-3">
-      {creditWarning ? (
+      {creditEnabled && creditWarning ? (
         <div className="callout callout--danger">
           <strong>Over limit.</strong> {creditWarning}
         </div>
@@ -51,15 +54,21 @@ export function TotalsCard({
         <div className="mt-4 space-y-3 text-sm text-cream-700">
           <TotalRow label={`Subtotal (${lineCount} line${lineCount === 1 ? '' : 's'})`} value={formatInr(totals.subtotal)} previous={previousTotals?.subtotal ?? null} />
           <TotalRow label="Document discount" value={formatInr(totals.discount_flat)} previous={previousTotals?.discount_flat ?? null} />
-          {resolvedTaxRows.map((row) => (
-            <TotalRow
-              key={row.label}
-              label={row.label}
-              value={formatInr(row.value)}
-              previous={row.previous ?? null}
-              rowClassName={row.rowClassName}
-            />
-          ))}
+          {gstInclusive ? (
+            <div className="flex items-center justify-between gap-4 text-xs text-cream-500 italic">
+              <span>All prices inclusive of GST</span>
+            </div>
+          ) : (
+            resolvedTaxRows.map((row) => (
+              <TotalRow
+                key={row.label}
+                label={row.label}
+                value={formatInr(row.value)}
+                previous={row.previous ?? null}
+                rowClassName={row.rowClassName}
+              />
+            ))
+          )}
           <TotalRow label="Freight & packing" value={formatInr(totals.freight)} previous={previousTotals?.freight ?? null} />
           <TotalRow label="Round-off" value={formatInr(totals.round_off)} previous={previousTotals?.round_off ?? null} />
           <div className="border-t border-cream-200 pt-3">

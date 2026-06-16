@@ -34,7 +34,7 @@ async function loadBuyers(): Promise<Buyer[]> {
   if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
   const res = await fetch('/api/customers', { headers });
   if (!res.ok) return [];
-  const body = await res.json();
+  const body = await res.json() as { buyers?: Buyer[] };
   return (body.buyers ?? []).filter((b: Buyer) => b.is_active);
 }
 
