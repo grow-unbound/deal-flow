@@ -51,10 +51,10 @@ export interface IntegrationSyncProgress {
 }
 
 export interface IntegrationSyncError {
-  timestamp?: string | null;
-  entity_type?: string | null;
-  external_id?: string | null;
-  error?: string | null;
+  timestamp: string | null;
+  entity_type: string | null;
+  external_id: string | null;
+  error: string | null;
 }
 
 export interface IntegrationSyncJob {
@@ -202,7 +202,7 @@ function parseSyncJob(value: unknown): IntegrationSyncJob | null {
     summary: isRecord(value.summary)
       ? Object.fromEntries(
           Object.entries(value.summary).filter(([, count]) => typeof count === 'number' && Number.isFinite(count)),
-        )
+        ) as Record<string, number>
       : null,
     started_at: asNullableString(value.started_at),
     completed_at: asNullableString(value.completed_at),
@@ -337,7 +337,7 @@ async function postTest(body: TestConnectionInput): Promise<IntegrationTestResul
     metadata: meta,
     sample_counts: Object.fromEntries(
       Object.entries(counts).filter(([, count]) => typeof count === 'number' && Number.isFinite(count)),
-    ),
+    ) as Record<string, number>,
     warnings: null,
   };
 }
@@ -377,7 +377,7 @@ function hasActiveJob(view?: IntegrationsSettingsView | null) {
   );
 }
 
-function createOptimisticView(current: IntegrationsSettingsView | undefined, input: StartImportInput) {
+function createOptimisticView(current: IntegrationsSettingsView | undefined, input: StartImportInput): IntegrationsSettingsView | undefined {
   if (!current) return current;
   const now = new Date().toISOString();
   const optimisticJob: IntegrationSyncJob = {
@@ -410,7 +410,7 @@ function createOptimisticView(current: IntegrationsSettingsView | undefined, inp
         ...integration,
         tenant_integration: {
           id: existing?.id ?? `optimistic-${integration.id}`,
-          status: 'syncing',
+          status: 'syncing' as TenantIntegrationStatus,
           health_status: existing?.health_status ?? 'ok',
           connected_at: existing?.connected_at ?? now,
           last_health_check_at: existing?.last_health_check_at ?? now,

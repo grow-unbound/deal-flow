@@ -128,7 +128,7 @@ describe('image upload routes', () => {
 
   it('writes catalog uploads with pending moderation status', async () => {
     const response = await postCatalogProduct(new NextRequest('http://localhost/api/upload/catalog-product', { method: 'POST' }));
-    const body = await response.json();
+    const body = await response.json() as any;
 
     expect(response.status).toBe(200);
     expect(state.insertedProductImage).toMatchObject({

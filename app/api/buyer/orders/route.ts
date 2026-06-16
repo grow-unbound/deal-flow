@@ -1,7 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { supabaseAdmin, supabase } from '@/lib/supabase';
+import { getPostHogClient } from '@/lib/posthog-server';
 import type { BuyerAppMode } from '@/types/buyer';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+
+export interface BuyerOrderPlaceRequest {
+  items: Array<{
+    tenant_product_id: string;
+    qty: number;
+    unit_price: number;
+    product_name?: string;
+  }>;
+  notes?: string;
+  catalog_id?: string | null;
+  location_id?: string | null;
+  delivery_address?: Record<string, unknown> | null;
+}
+
+export interface BuyerOrderPlaceResponse {
+  success: boolean;
+  order_id?: string;
+  order_number?: string | null;
+  error?: string;
+}
 
 type OrderStatus =
   | 'draft'
@@ -43,7 +64,153 @@ export interface BuyerOrder {
 export interface BuyerOrdersResponse {
   mode: BuyerAppMode;
   orders: BuyerOrder[];
+  seller_preview?: boolean;
   preview_message?: string;
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrderPlaceResponse>> {
+  try {
+    const profile = await requireBuyerAccessProfile(request);
+    if (!profile?.context.tenant_id) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const context = profile.context;
+
+    let body: BuyerOrderPlaceRequest;
+    try {
+      body = (await request.json()) as BuyerOrderPlaceRequest;
+    } catch {
+      return NextResponse.json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
+    }
+
+    const { items, notes, catalog_id, location_id, delivery_address } = body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ success: false, error: 'Cart must have at least one item' }, { status: 400 });
+    }
+    for (const item of items) {
+      if (!item.tenant_product_id) {
+        return NextResponse.json({ success: false, error: 'Each item must have a valid tenant_product_id' }, { status: 400 });
+      }
+      if (typeof item.qty !== 'number' || item.qty <= 0) {
+        return NextResponse.json({ success: false, error: 'Each item must have qty > 0' }, { status: 400 });
+      }
+      if (typeof item.unit_price !== 'number' || item.unit_price <= 0) {
+        return NextResponse.json({ success: false, error: 'Each item must have unit_price > 0' }, { status: 400 });
+      }
+    }
+
+    const subtotal = items.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
+    const tax_amount = Math.round(subtotal * 0.18);
+    const total_amount = subtotal + tax_amount;
+
+    if (context.mode === 'preview') {
+      return NextResponse.json({
+        success: true,
+        order_id: `preview-order-${Date.now()}`,
+        order_number: 'PREVIEW-ORDER',
+      });
+    }
+
+    if (!profile.buyer?.id || !context.sub) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const tenant_id = context.tenant_id;
+    const buyer_id = profile.buyer.id;
+    const placed_by = context.sub;
+    const db = supabaseAdmin ?? supabase;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { count: orderCount } = await (db as any)
+      .schema('app')
+      .from('orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenant_id);
+
+    const year = new Date().getFullYear();
+    const paddedCount = String((orderCount ?? 0) + 1).padStart(4, '0');
+    const order_number = `ORD-${year}-${paddedCount}`;
+    const placed_at = new Date().toISOString();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: newOrder, error: insertError } = await (db as any)
+      .schema('app')
+      .from('orders')
+      .insert({
+        tenant_id,
+        buyer_id,
+        placed_by,
+        order_number,
+        status: 'received',
+        source: 'buyer_app',
+        catalog_id: catalog_id ?? null,
+        location_id: location_id ?? null,
+        delivery_address: delivery_address ?? null,
+        subtotal,
+        tax_amount,
+        total_amount,
+        notes: notes ?? null,
+        placed_at,
+        created_by: placed_by,
+      })
+      .select('id, order_number')
+      .single();
+
+    if (insertError || !newOrder) {
+      console.error('[POST /api/buyer/orders] Insert error:', insertError);
+      return NextResponse.json({ success: false, error: 'Failed to create order' }, { status: 500 });
+    }
+
+    const typed = newOrder as { id: string; order_number: string };
+
+    const orderItemRows = items.map((item) => ({
+      order_id: typed.id,
+      tenant_product_id: item.tenant_product_id,
+      qty: item.qty,
+      unit_price: item.unit_price,
+      tax_rate: 18,
+      line_total: item.qty * item.unit_price,
+      created_by: placed_by,
+    }));
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: itemsError } = await (db as any).schema('app').from('order_items').insert(orderItemRows);
+    if (itemsError) {
+      console.error('[POST /api/buyer/orders] Items insert error:', itemsError);
+      return NextResponse.json({ success: false, error: 'Failed to create order items' }, { status: 500 });
+    }
+
+    try {
+      const ph = getPostHogClient();
+      ph.capture({
+        distinctId: buyer_id,
+        event: 'order_placed',
+        properties: {
+          tenant_id,
+          buyer_id,
+          order_id: typed.id,
+          order_number: typed.order_number,
+          item_count: items.length,
+          total_amount,
+          source: 'buyer_app',
+        },
+      });
+      await ph.flush();
+    } catch {
+      // non-blocking
+    }
+
+    return NextResponse.json({
+      success: true,
+      order_id: typed.id,
+      order_number: typed.order_number,
+    });
+  } catch (error) {
+    console.error('[POST /api/buyer/orders] unexpected error:', error);
+    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
+  }
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -58,21 +225,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const context = profile.context;
-    if (context.mode === 'preview') {
+
+    // Pure seller preview — no linked buyer account
+    if (context.mode === 'preview' && !context.buyer_id) {
       const payload: BuyerOrdersResponse = {
         mode: 'preview',
         orders: [],
-        preview_message: 'Order history for a logged-in buyer will appear here.',
+        seller_preview: true,
       };
       return NextResponse.json(payload);
     }
 
-    if (!profile.buyer?.id) {
+    // Real buyer or seller with linked buyer account — fetch real orders
+    const buyerId = profile.buyer?.id ?? context.buyer_id;
+    if (!buyerId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const db = supabaseAdmin;
-    const buyerId = profile.buyer.id;
     const tenantId = context.tenant_id;
     const limit = Math.min(Number(request.nextUrl.searchParams.get('limit') ?? '20'), 100);
 
@@ -127,7 +297,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const catalogNameById = new Map(catalogNames.map((c) => [c.id, c.name]));
 
     const payload: BuyerOrdersResponse = {
-      mode: 'buyer',
+      mode: context.mode,
+      seller_preview: false,
       orders: orders.map((order) => ({
         id: order.id,
         order_number: order.order_number,

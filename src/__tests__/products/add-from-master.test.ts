@@ -89,7 +89,7 @@ describe('Product search API', () => {
 
     const res = await fetch('/api/products/search?q=wine');
     expect(res.ok).toBe(true);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.products).toHaveLength(1);
     expect(data.products[0].name).toBe('Premium Red Wine 750ml');
     expect(data.products[0].master_sku).toBe('PRW-750');
@@ -105,7 +105,7 @@ describe('Product search API', () => {
     });
 
     const res = await fetch('/api/products/search?q=nonexistent-item-xyz');
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.products).toHaveLength(0);
   });
 
@@ -116,7 +116,7 @@ describe('Product search API', () => {
     });
 
     const res = await fetch('/api/products/search?q=PRW-750');
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.products[0].master_sku).toBe('PRW-750');
   });
 });
@@ -153,7 +153,7 @@ describe('Tenant products API - add product from master', () => {
 
     expect(res.ok).toBe(true);
     expect(res.status).toBe(201);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.product.master_product_id).toBe(mockMasterProduct.id);
     expect(data.product.internal_sku).toBe('PRW-750-INT');
     expect(data.product.mrp).toBe(1500);
@@ -169,7 +169,7 @@ describe('Tenant products API - add product from master', () => {
     });
 
     const listRes = await fetch('/api/tenant/products');
-    const listData = await listRes.json();
+    const listData = await listRes.json() as any;
     expect(listData.products).toHaveLength(0);
 
     // Second call: POST to add product
@@ -197,7 +197,7 @@ describe('Tenant products API - add product from master', () => {
     });
 
     const updatedRes = await fetch('/api/tenant/products');
-    const updatedData = await updatedRes.json();
+    const updatedData = await updatedRes.json() as any;
     expect(updatedData.products).toHaveLength(1);
     expect(updatedData.products[0].master_product_id).toBe(mockMasterProduct.id);
   });
@@ -222,7 +222,7 @@ describe('Tenant products API - add product from master', () => {
 
     expect(res.ok).toBe(false);
     expect(res.status).toBe(409);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.error).toBe('This SKU already exists in your product list.');
   });
 
@@ -265,7 +265,7 @@ describe('Tenant products API - add product from master', () => {
       }),
     });
     expect(secondRes.status).toBe(409);
-    const errData = await secondRes.json();
+    const errData = await secondRes.json() as any;
     expect(errData.error).toBe('This SKU already exists in your product list.');
   });
 

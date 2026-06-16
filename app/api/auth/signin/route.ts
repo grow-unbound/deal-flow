@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
       success: true,
       user: { id: authData.user.id, email: authData.user.email },
       role: workspace.role,
-      redirect: '/shop',
+      redirect: '/buy',
       session: finalSession,
     });
   } catch (error) {

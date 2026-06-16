@@ -26,8 +26,8 @@ export function FeatureToggleRow({
       )}
     >
       <div className="min-w-0">
-        <p className="text-sm font-medium text-cream-900">{label}</p>
-        <p className="mt-1 text-sm text-cream-600">{description}</p>
+        <p className="text-base font-medium text-cream-900">{label}</p>
+        <p className="mt-1 text-base text-cream-600">{description}</p>
       </div>
       <Switch checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} className="shrink-0" />
     </div>

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useOverlayPlacement } from '@/hooks/useOverlayPlacement';
+import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
 import type { EstimateComposerBuyerContext, EstimateComposerPriceListOption } from '@/types/estimate-composer';
 import { cn, formatCompactInr } from '@/lib/utils';
 
@@ -124,6 +125,7 @@ export function BuyerCardFilled({
   void _onPaymentTermsChange;
   const [pricelistChangeMode, setPricelistChangeMode] = useState(false);
   const hasPricelistControl = Boolean(onPriceListChange);
+  const { creditEnabled } = useBusinessPolicy();
 
   const displayPricelistName =
     selectedPriceListId == null
@@ -150,9 +152,11 @@ export function BuyerCardFilled({
         <p className="mt-2 text-sm leading-[1.55] text-cream-800">{buyer.bill_address}</p>
       </div>
 
-      <div className="mt-4">
-        <CreditBar used={buyer.credit_used} limit={buyer.credit_limit} preview={previewTotal} />
-      </div>
+      {creditEnabled ? (
+        <div className="mt-4">
+          <CreditBar used={buyer.credit_used} limit={buyer.credit_limit} preview={previewTotal} />
+        </div>
+      ) : null}
 
       <div className="mt-4">
         <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">Payment terms</p>

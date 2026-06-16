@@ -80,7 +80,7 @@ function generateShareToken() {
 }
 
 function buildBuyerCatalogUrl(origin: string, shareToken: string) {
-  return `${origin}/shop/catalog?share_token=${shareToken}`;
+  return `${origin}/buy/catalog?share_token=${shareToken}`;
 }
 
 function buildCatalogDraftSnapshot(payload: z.infer<typeof CatalogComposerPayloadSchema>): CatalogDraftSnapshot {

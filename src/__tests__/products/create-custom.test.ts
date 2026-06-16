@@ -73,7 +73,7 @@ describe('Custom product creation — POST /api/tenant/products', () => {
     expect(res.ok).toBe(true);
     expect(res.status).toBe(201);
 
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.product.master_product_id).toBeNull();
     expect(data.product.name_override).toBe('My Custom Product');
     expect(data.product.internal_sku).toBe('CUSTOM-001');
@@ -103,7 +103,7 @@ describe('Custom product creation — POST /api/tenant/products', () => {
 
     expect(res.ok).toBe(false);
     expect(res.status).toBe(409);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.error).toBe('This SKU already exists in your product list.');
   });
 
@@ -124,7 +124,7 @@ describe('Custom product creation — POST /api/tenant/products', () => {
     });
 
     expect(res.status).toBe(400);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.error).toMatch(/tenant_brand_id/);
   });
 
@@ -146,7 +146,7 @@ describe('Custom product creation — POST /api/tenant/products', () => {
     const res = await fetch('/api/tenant/products');
     expect(res.ok).toBe(true);
 
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.products).toHaveLength(1);
     // cost_price should not be present in the response for seller_assistant
     expect('cost_price' in data.products[0]).toBe(false);
@@ -163,7 +163,7 @@ describe('Custom product creation — POST /api/tenant/products', () => {
     });
 
     const res = await fetch('/api/tenant/products');
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.products[0].cost_price).toBe(300);
   });
 

@@ -3,9 +3,8 @@ import { r2Url, type MediaVariantKeySet } from '@/lib/r2-url';
 import { supabaseAdmin } from '@/lib/supabase';
 import {
   UploadRouteError,
-  forwardUploadToWorker,
   mediaVariantUrls,
-  parseUploadFormPayload,
+  parseVariantKeysPayload,
   requireSellerUploadContext,
   requireTenantOwnedRow,
 } from '@/lib/server/image-upload';
@@ -13,7 +12,7 @@ import {
 export async function POST(req: NextRequest) {
   try {
     const { claims, actorId } = await requireSellerUploadContext(req);
-    const { entityId, file } = await parseUploadFormPayload(req);
+    const { entityId, variants } = await parseVariantKeysPayload(req);
 
     if (!supabaseAdmin) {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
@@ -27,23 +26,16 @@ export async function POST(req: NextRequest) {
       id: entityId,
     });
 
-    const worker = await forwardUploadToWorker({
-      file,
-      entityType: 'tenant_brand',
-      entityId,
-      tenantId: claims.tenant_id,
-    });
-
-    const variants = worker.variants as unknown as MediaVariantKeySet;
-    const logoUrl = r2Url(variants.medium) ?? r2Url(variants.original);
+    const keys = variants as unknown as MediaVariantKeySet;
+    const logoUrl = r2Url(keys.medium) ?? r2Url(keys.original);
 
     const { data, error } = await db
       .schema('app')
       .from('tenant_brands')
       .update({
-        r2_logo_original_key: variants.original,
-        r2_logo_medium_key: variants.medium,
-        r2_logo_thumb_key: variants.thumb,
+        r2_logo_original_key: keys.original,
+        r2_logo_medium_key: keys.medium,
+        r2_logo_thumb_key: keys.thumb,
         logo_url: logoUrl,
         updated_by: actorId,
       })
@@ -61,8 +53,8 @@ export async function POST(req: NextRequest) {
       entity_type: 'tenant_brand',
       entity_id: entityId,
       brand: data,
-      variants,
-      urls: mediaVariantUrls(variants),
+      variants: keys,
+      urls: mediaVariantUrls(keys),
     });
   } catch (error) {
     if (error instanceof UploadRouteError) {

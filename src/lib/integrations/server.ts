@@ -318,7 +318,7 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
             }))
           : [],
         active_flows: activeFlows,
-      } satisfies IntegrationCatalogItem;
+      } as unknown as IntegrationCatalogItem;
     }),
   });
 
@@ -406,7 +406,7 @@ export async function connectTenantIntegration(tenantId: string, actorUserId: st
   }
 
   const { error: secretError } = await db.rpc('upsert_tenant_integration_secret', {
-    p_tenant_integration_id: integrationId,
+    p_tenant_integration_id: integrationId!,
     p_actor_user_id: actorUserId,
     p_secret: parsed.credentials,
     p_secret_name: `${parsed.integration_type_id}_${tenantId}`,
@@ -587,8 +587,8 @@ export async function runIntegrationSyncJob(jobId: string, tenantId: string, act
       current_entity: entities[entities.length - 1] ?? 'products',
       current_page: 1,
       total_pages_estimate: 1,
-      items_total: Object.values(summary).reduce((acc, value) => acc + (typeof value === 'number' ? value : 0), 0),
-      items_processed: Object.values(summary).reduce((acc, value) => acc + (typeof value === 'number' ? value : 0), 0),
+      items_total: Object.values(summary).reduce<number>((acc, value) => acc + (typeof value === 'number' ? value : 0), 0),
+      items_processed: Object.values(summary).reduce<number>((acc, value) => acc + (typeof value === 'number' ? value : 0), 0),
       items_failed: errors.length,
       eta_seconds_remaining: 0,
       started_at: startedAt,

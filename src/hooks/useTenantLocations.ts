@@ -66,6 +66,8 @@ export function useTenantLocations() {
         inventory_tracking: input.inventory_tracking ?? true,
         is_default: input.is_default ?? false,
         external_ref: input.external_ref?.trim() ? input.external_ref.trim() : null,
+        lat: input.lat ?? null,
+        lng: input.lng ?? null,
         deleted_at: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

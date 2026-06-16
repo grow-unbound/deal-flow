@@ -42,6 +42,7 @@
     "node_modules",
     "archived",
     "src/tests",
-    "supabase/functions"
+    "supabase/functions",
+    "workers"
   ]
 }

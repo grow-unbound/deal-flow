@@ -178,6 +178,7 @@ export async function GET(request: NextRequest) {
 
     const [{ data: invoiceRows, error: invErr }, { data: buyerRows }, { data: orderRows }, { data: estimateRows }] =
       await Promise.all([
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         applySellerLocationScope(
           db
             .schema('app')
@@ -189,7 +190,7 @@ export async function GET(request: NextRequest) {
             .is('deleted_at', null)
             .order('created_at', { ascending: false }),
           claims,
-        ),
+        ) as any,
         db.schema('app').from('buyers').select('id, business_name, geography').eq('tenant_id', tenantId).is('deleted_at', null),
         db.schema('app').from('orders').select('id, order_number').eq('tenant_id', tenantId).is('deleted_at', null),
         db

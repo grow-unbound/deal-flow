@@ -74,7 +74,7 @@ describe('GET /api/tenant/locations', () => {
 
     const res = await fetch('/api/tenant/locations');
     expect(res.ok).toBe(true);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.data.locations).toHaveLength(1);
     expect(data.data.locations[0].name).toBe('Main Warehouse');
   });
@@ -126,7 +126,7 @@ describe('POST /api/tenant/locations', () => {
 
     expect(res.ok).toBe(true);
     expect(res.status).toBe(201);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.data.location.name).toBe('Secondary Store');
   });
 
@@ -145,7 +145,7 @@ describe('POST /api/tenant/locations', () => {
 
     expect(res.ok).toBe(false);
     expect(res.status).toBe(403);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.error?.message).toMatch(/seller_admin/);
   });
 
@@ -202,7 +202,7 @@ describe('GET /api/tenant/inventory', () => {
 
     const res = await fetch(`/api/tenant/inventory?product_id=${PRODUCT_ID}`);
     expect(res.ok).toBe(true);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.inventory).toHaveLength(1);
     expect(data.inventory[0].qty_available).toBe(20);
     expect(data.inventory[0].locations.name).toBe('Main Warehouse');
@@ -262,7 +262,7 @@ describe('POST /api/tenant/inventory', () => {
     });
 
     expect(res.ok).toBe(true);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.inventory.qty_available).toBe(50);
     expect(data.inventory.qty_reserved).toBe(5);
   });

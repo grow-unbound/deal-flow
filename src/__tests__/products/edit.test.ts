@@ -54,7 +54,7 @@ describe('Product edit — PATCH /api/tenant/products/[id]', () => {
 
     expect(res.ok).toBe(true);
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.product.name_override).toBe('Updated Name');
     expect(data.product.mrp).toBe(550);
     expect(data.product.internal_sku).toBe('CUSTOM-001'); // unchanged
@@ -76,7 +76,7 @@ describe('Product edit — PATCH /api/tenant/products/[id]', () => {
     });
 
     expect(res.ok).toBe(true);
-    const data = await res.json();
+    const data = await res.json() as any;
     // internal_sku should NOT have changed
     expect(data.product.internal_sku).toBe('CUSTOM-001');
   });
@@ -96,7 +96,7 @@ describe('Product edit — PATCH /api/tenant/products/[id]', () => {
     });
 
     expect(res.ok).toBe(true);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.product.is_active).toBe(false);
   });
 
@@ -115,7 +115,7 @@ describe('Product edit — PATCH /api/tenant/products/[id]', () => {
     });
 
     expect(res.ok).toBe(true);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.product.is_active).toBe(true);
   });
 
@@ -134,7 +134,7 @@ describe('Product edit — PATCH /api/tenant/products/[id]', () => {
 
     expect(res.ok).toBe(false);
     expect(res.status).toBe(404);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.error).toBe('Product not found');
   });
 
@@ -154,7 +154,7 @@ describe('Product edit — PATCH /api/tenant/products/[id]', () => {
     });
 
     expect(res.ok).toBe(true);
-    const data = await res.json();
+    const data = await res.json() as any;
     // cost_price was NOT updated (server ignored it for seller_assistant)
     expect(data.product.cost_price).toBe(300);
   });
@@ -168,7 +168,7 @@ describe('Product edit — PATCH /api/tenant/products/[id]', () => {
 
     const res = await fetch(`/api/tenant/products/${PRODUCT_ID}`);
     expect(res.ok).toBe(true);
-    const data = await res.json();
+    const data = await res.json() as any;
     expect(data.product.id).toBe(PRODUCT_ID);
     expect(data.product.internal_sku).toBe('CUSTOM-001');
     expect(data.product.is_active).toBe(true);

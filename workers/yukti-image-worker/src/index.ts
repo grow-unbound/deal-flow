@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
-import sharp from 'sharp';
+import sharp from '@img/sharp-wasm32';
 
 type WorkerEnv = Env & {
   UPLOAD_SECRET: string;

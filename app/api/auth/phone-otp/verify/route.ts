@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPostHogClient } from '@/lib/posthog-server';
-import { mintBuyerSession } from '@/lib/server/buyer-access';
-import { buyerOtpStore, type BuyerOtpContext } from '@/lib/server/buyer-otp-store';
+import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate } from '@/lib/server/buyer-access';
+import { buyerOtpStore, type LoginOtpContext, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
 
 const MAX_ATTEMPTS = 5;
 
@@ -10,7 +10,7 @@ const MAX_ATTEMPTS = 5;
  * Body: { ref_id: string; otp: string }
  * Returns:
  *   single context  → { success: true; redirect: string; session }
- *   multi  contexts → { success: true; contexts: BuyerOtpContext[]; ref_id: string }
+ *   multi  contexts → { success: true; contexts: LoginOtpContext[]; ref_id: string }
  *   error           → { error: string } with appropriate status
  */
 export async function POST(request: NextRequest) {
@@ -55,12 +55,13 @@ export async function POST(request: NextRequest) {
 
     if (record.candidates.length === 0) {
       return NextResponse.json(
-        { error: 'No buyer account found for this number.' },
+        { error: 'No account found for this number.' },
         { status: 403 },
       );
     }
 
-    const contexts: BuyerOtpContext[] = record.candidates.map((candidate) => ({
+    const contexts: LoginOtpContext[] = record.candidates.map((candidate) => ({
+      kind: candidate.kind,
       tenant_id: candidate.tenant_id,
       tenant_name: candidate.tenant_name,
       tenant_slug: candidate.tenant_slug,
@@ -80,9 +81,10 @@ export async function POST(request: NextRequest) {
       const ph = getPostHogClient();
       const ctx = contexts[0];
       ph.capture({
-        distinctId: ctx.buyer_id,
-        event: 'buyer_otp_verified',
+        distinctId: ctx.buyer_id ?? ctx.tenant_id,
+        event: 'otp_verified',
         properties: {
+          candidate_kind: ctx.kind,
           tenant_count: contexts.length,
           tenant_id: ctx.tenant_id,
           role: ctx.role,
@@ -95,12 +97,9 @@ export async function POST(request: NextRequest) {
 
     if (record.candidates.length === 1) {
       buyerOtpStore.delete(verified_ref);
-      const { session } = await mintBuyerSession(record.candidates[0]);
-      return NextResponse.json({
-        success: true,
-        redirect: '/shop/home',
-        session,
-      });
+      const candidate = record.candidates[0];
+      const { session, redirect } = await mintCandidateSession(candidate);
+      return NextResponse.json({ success: true, redirect, session });
     }
 
     return NextResponse.json({
@@ -112,4 +111,18 @@ export async function POST(request: NextRequest) {
     console.error('[phone-otp/verify] unexpected error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
+}
+
+async function mintCandidateSession(
+  candidate: LoginOtpCandidate,
+): Promise<{ session: unknown; redirect: string }> {
+  if (candidate.kind === 'seller') {
+    const { session } = await mintSellerSession(
+      candidate as LoginOtpCandidate & { kind: 'seller' },
+    );
+    return { session, redirect: '/dashboard' };
+  }
+
+  const { session } = await mintBuyerSession(toBuyerLoginCandidate(candidate));
+  return { session, redirect: '/buy/home' };
 }

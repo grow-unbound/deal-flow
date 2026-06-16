@@ -1,28 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { mintBuyerSession } from '@/lib/server/buyer-access';
-import { buyerOtpStore } from '@/lib/server/buyer-otp-store';
+import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate } from '@/lib/server/buyer-access';
+import { buyerOtpStore, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
 
 /**
  * POST /api/auth/phone-otp/select-context
- * Body: { ref_id: string; tenant_id: string; buyer_id: string; role: string }
+ * Body: { ref_id: string; kind: 'seller'|'buyer'; tenant_id: string; buyer_id: string|null; role: string }
  * Returns: { success: true; redirect: string; session }
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as {
       ref_id?: string;
+      kind?: string;
       tenant_id?: string;
-      buyer_id?: string;
+      buyer_id?: string | null;
       role?: string;
     };
     const ref_id: string = (body?.ref_id ?? '').trim();
+    const kind: string = (body?.kind ?? '').trim();
     const tenant_id: string = (body?.tenant_id ?? '').trim();
-    const buyer_id: string = (body?.buyer_id ?? '').trim();
+    const buyer_id: string | null = body?.buyer_id ?? null;
     const role: string = (body?.role ?? '').trim();
 
-    if (!ref_id || !tenant_id || !buyer_id || !role) {
+    if (!ref_id || !kind || !tenant_id || !role) {
       return NextResponse.json(
-        { error: 'ref_id, tenant_id, buyer_id, and role are required' },
+        { error: 'ref_id, kind, tenant_id, and role are required' },
         { status: 400 },
       );
     }
@@ -49,7 +51,10 @@ export async function POST(request: NextRequest) {
     }
 
     const candidate = record.candidates.find((ctx) =>
-      ctx.tenant_id === tenant_id && ctx.buyer_id === buyer_id && ctx.role === role,
+      ctx.kind === kind
+      && ctx.tenant_id === tenant_id
+      && ctx.role === role
+      && (kind === 'seller' ? ctx.buyer_id === null : ctx.buyer_id === buyer_id),
     );
 
     if (!candidate) {
@@ -61,9 +66,15 @@ export async function POST(request: NextRequest) {
 
     buyerOtpStore.delete(ref_id);
 
-    const { session } = await mintBuyerSession(candidate);
+    if (candidate.kind === 'seller') {
+      const { session } = await mintSellerSession(
+        candidate as LoginOtpCandidate & { kind: 'seller' },
+      );
+      return NextResponse.json({ success: true, redirect: '/dashboard', session });
+    }
 
-    return NextResponse.json({ success: true, redirect: '/shop/home', session });
+    const { session } = await mintBuyerSession(toBuyerLoginCandidate(candidate));
+    return NextResponse.json({ success: true, redirect: '/buy/home', session });
   } catch (err) {
     console.error('[phone-otp/select-context] unexpected error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

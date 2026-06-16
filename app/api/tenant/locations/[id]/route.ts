@@ -213,6 +213,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       updatePayload.external_ref =
         patch.external_ref === null || patch.external_ref.trim() === '' ? null : patch.external_ref.trim();
     }
+    if (patch.lat !== undefined) updatePayload.lat = patch.lat ?? null;
+    if (patch.lng !== undefined) updatePayload.lng = patch.lng ?? null;
 
     const { data: updated, error: upErr } = await db
       .schema('app')
