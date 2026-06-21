@@ -41,6 +41,15 @@ export async function middleware(request: NextRequest) {
   let res = NextResponse.next({ request: { headers: requestHeaders } });
   res.headers.set('x-tenant-subdomain', subdomain ?? '');
 
+  // When Supabase can't match the full redirectTo URL against its allowlist it strips
+  // the path and appends ?code= to the site root. Forward those codes to the real
+  // callback handler so the PKCE exchange still completes correctly.
+  if (pathname === '/' && request.nextUrl.searchParams.has('code')) {
+    const callbackUrl = new URL('/api/auth/callback', request.url);
+    callbackUrl.searchParams.set('code', request.nextUrl.searchParams.get('code')!);
+    return NextResponse.redirect(callbackUrl);
+  }
+
   if (isPublicRoute(pathname)) {
     return res;
   }
