@@ -23,7 +23,13 @@ export async function POST(request: NextRequest) {
     const jobId = await startIntegrationSync(claims.tenant_id, claims.sub, body);
     return NextResponse.json({ data: { job_id: jobId }, error: null }, { status: 202 });
   } catch (error) {
+    const msg =
+      error instanceof Error
+        ? error.message
+        : typeof (error as { message?: unknown }).message === 'string'
+          ? (error as { message: string }).message
+          : JSON.stringify(error);
     console.error('[POST /api/settings/integrations/sync]', error);
-    return jsonError(400, error instanceof Error ? error.message : 'Failed to start sync', 'SYNC_FAILED');
+    return jsonError(400, msg, 'SYNC_FAILED');
   }
 }

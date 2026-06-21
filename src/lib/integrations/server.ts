@@ -431,7 +431,7 @@ async function getTenantIntegrationWithSecret(db: DbClient, tenantIntegrationId:
     p_tenant_integration_id: tenantIntegrationId,
     p_expected_integration_type_id: integration.integration_type_id,
   });
-  if (secretError) throw secretError;
+  if (secretError) throw new Error(secretError.message ?? 'Failed to load integration secret');
   return { integration, secret: secret as Record<string, unknown> | null };
 }
 
@@ -459,7 +459,8 @@ export async function startIntegrationSync(tenantId: string, actorUserId: string
     })
     .select('id')
     .single();
-  if (error || !job) throw error ?? new Error('Failed to enqueue sync job');
+  if (error) throw new Error(error.message ?? 'Failed to enqueue sync job');
+  if (!job) throw new Error('Sync job was not created');
 
   void runIntegrationSyncJob(job.id, tenantId, actorUserId);
 
