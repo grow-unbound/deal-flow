@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
         ? error.message
         : typeof (error as { message?: unknown }).message === 'string'
           ? (error as { message: string }).message
-          : JSON.stringify(error);
+          : 'Failed to start sync';
     console.error('[POST /api/settings/integrations/sync]', error);
     return jsonError(400, msg, 'SYNC_FAILED');
   }
