@@ -315,7 +315,7 @@ export function IntegrationsSettingsClient() {
     if (!target) return;
     setPendingOAuthConnectedId(null);
     setSelectedIntegrationId(target.id);
-    setWizard({ ...buildWizardState(target), open: true, integrationId: target.id, step: 3 });
+    setWizard({ ...buildWizardState(target), open: true, integrationId: target.id, step: 2 });
   }, [pendingOAuthConnectedId, integrations]);
 
   // Auto-open start-import step when returning from Zoho OAuth consent screen
@@ -402,6 +402,13 @@ export function IntegrationsSettingsClient() {
     () => integrations.find((integration) => integration.id === wizard.integrationId) ?? selectedIntegration ?? null,
     [integrations, selectedIntegration, wizard.integrationId],
   );
+
+  // Auto-run test connection when wizard opens on step 2 with no result yet
+  useEffect(() => {
+    if (!wizard.open || wizard.step !== 2 || wizard.testResult !== null || !wizardIntegration) return;
+    void runTestConnection();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wizard.open, wizard.step, wizard.testResult, wizardIntegration?.id]);
 
   function openWizard(integration: IntegrationCatalogItem) {
     setSelectedIntegrationId(integration.id);
