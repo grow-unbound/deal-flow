@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate } from '@/lib/server/buyer-access';
-import { buyerOtpStore, type LoginOtpContext, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
+import { buyerOtpStore, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
 
 const MAX_ATTEMPTS = 5;
 
@@ -9,9 +9,11 @@ const MAX_ATTEMPTS = 5;
  * POST /api/auth/phone-otp/verify
  * Body: { ref_id: string; otp: string }
  * Returns:
- *   single context  → { success: true; redirect: string; session }
- *   multi  contexts → { success: true; contexts: LoginOtpContext[]; ref_id: string }
- *   error           → { error: string } with appropriate status
+ *   success → { success: true; redirect: string; session }
+ *   error   → { error: string } with appropriate status
+ *
+ * Seller accounts are always preferred over buyer accounts for the same phone number.
+ * The first effective candidate is auto-minted — no context selection screen is shown.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -60,34 +62,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const contexts: LoginOtpContext[] = record.candidates.map((candidate) => ({
-      kind: candidate.kind,
-      tenant_id: candidate.tenant_id,
-      tenant_name: candidate.tenant_name,
-      tenant_slug: candidate.tenant_slug,
-      buyer_id: candidate.buyer_id,
-      role: candidate.role,
-    }));
-
-    const verified_ref = `v_${ref_id}`;
-    buyerOtpStore.set(verified_ref, {
-      kind: 'verified',
-      phone: record.phone,
-      expiresAt: Date.now() + 5 * 60 * 1000,
-      candidates: record.candidates,
-    });
-
     try {
       const ph = getPostHogClient();
-      const ctx = contexts[0];
+      const first = record.candidates[0];
       ph.capture({
-        distinctId: ctx.buyer_id ?? ctx.tenant_id,
+        distinctId: first.buyer_id ?? first.tenant_id,
         event: 'otp_verified',
         properties: {
-          candidate_kind: ctx.kind,
-          tenant_count: contexts.length,
-          tenant_id: ctx.tenant_id,
-          role: ctx.role,
+          candidate_kind: first.kind,
+          tenant_count: record.candidates.length,
+          tenant_id: first.tenant_id,
+          role: first.role,
         },
       });
       await ph.flush();
@@ -95,18 +80,13 @@ export async function POST(request: NextRequest) {
       // non-blocking
     }
 
-    if (record.candidates.length === 1) {
-      buyerOtpStore.delete(verified_ref);
-      const candidate = record.candidates[0];
-      const { session, redirect } = await mintCandidateSession(candidate);
-      return NextResponse.json({ success: true, redirect, session });
-    }
-
-    return NextResponse.json({
-      success: true,
-      contexts,
-      ref_id: verified_ref,
-    });
+    // Seller wins: if any seller candidates exist, prefer them over buyer candidates.
+    // Always auto-mint the first effective candidate — no context selection screen.
+    const sellerCandidates = record.candidates.filter((c) => c.kind === 'seller');
+    const effectiveCandidates = sellerCandidates.length > 0 ? sellerCandidates : record.candidates;
+    const candidate = effectiveCandidates[0];
+    const { session, redirect } = await mintCandidateSession(candidate);
+    return NextResponse.json({ success: true, redirect, session });
   } catch (err) {
     console.error('[phone-otp/verify] unexpected error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
