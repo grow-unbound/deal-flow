@@ -62,10 +62,17 @@ type WizardState = {
 
 const WIZARD_STEPS = ['What you get', 'Connect', 'Test connection', 'Start import'] as const;
 
-function defaultImportStartDate() {
+function defaultImportStartDate(): string {
   const now = new Date();
-  now.setDate(now.getDate() - 90);
-  return now.toISOString().slice(0, 10);
+  const month = now.getMonth(); // 0=Jan … 3=Apr … 5=Jun … 11=Dec
+  if (month >= 3 && month <= 5) {
+    // Q1 of Indian FY (Apr–Jun): go back to Jan 1 of this calendar year
+    return `${now.getFullYear()}-01-01`;
+  }
+  // Outside Q1: use Apr 1 of the current Indian FY
+  // FY started Apr 1 of this year if month >= 3, otherwise Apr 1 of last year
+  const fyStartYear = month >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  return `${fyStartYear}-04-01`;
 }
 
 function labelize(value: string) {
@@ -991,7 +998,7 @@ export function IntegrationsSettingsClient() {
                       label="Import transactional history since"
                       value={wizard.importStartDate}
                       onChange={(value) => setWizard((current) => ({ ...current, importStartDate: value }))}
-                      hint="Default window is the last 90 days."
+                      hint="Defaults to the start of the current financial year."
                     />
 
                     <div className="rounded-2xl border border-cream-200 bg-white px-4 py-4 text-sm text-cream-700">
