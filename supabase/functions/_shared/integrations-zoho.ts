@@ -70,6 +70,27 @@ interface NormalizedZohoCredentials {
 const DEFAULT_PER_PAGE = 200;
 const DEFAULT_REGION = 'com';
 
+const TRANSACTIONAL_ENTITY_TYPES = new Set(['estimates', 'orders', 'invoices']);
+
+// Indian Financial Year starts April 1. For transactional data we load from:
+//   Apr–Jun (early in FY)  → Jan 1 of this calendar year (extra context quarter)
+//   Jul–Dec (mid/late FY)  → Apr 1 of this calendar year (FY start)
+//   Jan–Mar (FY Q4)        → Apr 1 of previous calendar year (FY start)
+function financialYearStart(): string {
+  const now = new Date();
+  const month = now.getMonth() + 1; // 1-based
+  const year = now.getFullYear();
+
+  if (month >= 4 && month <= 6) {
+    return `${year}-01-01`;
+  }
+  if (month >= 7) {
+    return `${year}-04-01`;
+  }
+  // January–March: FY started April of last year
+  return `${year - 1}-04-01`;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -203,10 +224,13 @@ export function getZohoPhasePlan(
 ): IntegrationSyncPhaseDefinition[] {
   const referencePhases: Record<ZohoIntegrationTypeId, IntegrationSyncPhaseDefinition[]> = {
     zoho_books: [
+      { id: 'locations', label: 'Importing locations from Zoho Books', entityType: 'locations', path: '/locations', itemKey: 'locations' },
       { id: 'customers', label: 'Importing customers from Zoho Books', entityType: 'customers', path: '/contacts', itemKey: 'contacts' },
       { id: 'products', label: 'Importing products from Zoho Books', entityType: 'products', path: '/items', itemKey: 'items' },
     ],
     zoho_inventory: [
+      { id: 'locations', label: 'Importing warehouses from Zoho Inventory', entityType: 'locations', path: '/warehouses', itemKey: 'warehouses' },
+      { id: 'customers', label: 'Importing customers from Zoho Inventory', entityType: 'customers', path: '/contacts', itemKey: 'contacts' },
       { id: 'products', label: 'Importing products from Zoho Inventory', entityType: 'products', path: '/items', itemKey: 'items' },
     ],
   };
@@ -217,7 +241,11 @@ export function getZohoPhasePlan(
       { id: 'orders', label: 'Importing sales orders from Zoho Books', entityType: 'orders', path: '/salesorders', itemKey: 'salesorders' },
       { id: 'invoices', label: 'Importing invoices from Zoho Books', entityType: 'invoices', path: '/invoices', itemKey: 'invoices' },
     ],
-    zoho_inventory: [],
+    zoho_inventory: [
+      { id: 'estimates', label: 'Importing estimates from Zoho Inventory', entityType: 'estimates', path: '/estimates', itemKey: 'estimates' },
+      { id: 'orders', label: 'Importing sales orders from Zoho Inventory', entityType: 'orders', path: '/salesorders', itemKey: 'salesorders' },
+      { id: 'invoices', label: 'Importing invoices from Zoho Inventory', entityType: 'invoices', path: '/invoices', itemKey: 'invoices' },
+    ],
   };
 
   if (scope === 'reference') return referencePhases[integrationTypeId];
@@ -226,7 +254,13 @@ export function getZohoPhasePlan(
 }
 
 export function sampleExternalIds(records: Record<string, unknown>[]): string[] {
-  const keys = ['contact_id', 'item_id', 'invoice_id', 'estimate_id', 'salesorder_id', 'organization_id', 'id'];
+  const keys = [
+    'location_id', 'warehouse_id',
+    'contact_id', 'contact_person_id',
+    'item_id',
+    'estimate_id', 'salesorder_id', 'invoice_id',
+    'organization_id', 'id',
+  ];
   const samples: string[] = [];
 
   for (const record of records) {
@@ -329,11 +363,20 @@ export function createZohoAdapter(
   ): Promise<ZohoPhasePage> {
     const page = cursor?.page ?? 1;
     const perPage = cursor?.per_page ?? phase.perPage ?? DEFAULT_PER_PAGE;
+
+    // For transactional entities apply a date_start filter so we only load
+    // from the beginning of the current Indian Financial Year.
+    // `since` (from incremental re-syncs) takes precedence when set.
+    const dateStart = TRANSACTIONAL_ENTITY_TYPES.has(phase.entityType)
+      ? (since ?? financialYearStart())
+      : undefined;
+
     const payload = await request({
       path: phase.path,
       query: {
         page,
         per_page: perPage,
+        ...(dateStart ? { date_start: dateStart } : {}),
       },
     });
 
@@ -350,12 +393,20 @@ export function createZohoAdapter(
     };
   }
 
+  async function fetchContactPersons(contactId: string): Promise<Record<string, unknown>[]> {
+    const payload = await request({
+      path: `/contacts/${contactId}/contactpersons`,
+    });
+    return getRecordArray(payload, 'contact_persons');
+  }
+
   return {
     provider: 'zoho' as const,
     integrationTypeId,
     credentials,
     testConnection,
     fetchPhasePage,
+    fetchContactPersons,
   };
 }
 

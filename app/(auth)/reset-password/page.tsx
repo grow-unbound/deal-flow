@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
@@ -13,10 +13,21 @@ const labelCls =
 
 export default function ResetPasswordPage() {
   const router = useRouter();
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    supabaseBrowser.auth.getUser().then(({ data }) => {
+      const name =
+        (data.user?.user_metadata?.full_name as string | undefined) ??
+        data.user?.email ??
+        null;
+      setDisplayName(name);
+    });
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -54,15 +65,17 @@ export default function ResetPasswordPage() {
         <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
       </div>
 
-      <h1 className="text-h3 font-display text-cream-900 mb-1">Set a new password</h1>
+      <h1 className="text-h3 font-display text-cream-900 mb-1">
+        {displayName ? `Hi ${displayName.split(' ')[0]}, set a new password` : 'Set a new password'}
+      </h1>
       <p className="text-body-sm text-cream-600 mb-6">
-        Choose a strong password for your Yukti account.
+        Choose a strong password for your account.
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className={labelCls} style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em' }}>
-            New password
+            Password
           </label>
           <input
             type="password"
@@ -103,17 +116,17 @@ export default function ResetPasswordPage() {
           disabled={loading}
           className="w-full px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? 'Saving…' : 'Reset password'}
+          {loading ? 'Saving…' : 'Set new password & continue'}
         </button>
       </form>
 
       <div className="mt-4 text-right">
-        <Link
-          href="/login"
-          className="text-caption text-cream-500 hover:text-cream-700 transition-colors"
-        >
-          ← Back to login
-        </Link>
+        <p className="text-caption text-cream-600">
+          Already remembered it?{' '}
+          <Link href="/login" className="text-ember-400 hover:text-ember-500 font-medium transition-colors">
+            Sign in
+          </Link>
+        </p>
       </div>
     </div>
   );

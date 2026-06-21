@@ -23,6 +23,7 @@ import {
   type IntegrationSyncPhaseDefinition,
   ZohoApiError,
 } from './integrations-zoho.ts';
+import { persistZohoEntityPage } from './integrations-persist.ts';
 
 declare const Deno: {
   env: {
@@ -921,6 +922,30 @@ async function runWorkerJob(
       };
 
     const page = await adapter.fetchPhasePage(currentPhase, cursor, progress.since);
+
+    if (page.records.length > 0) {
+      try {
+        await persistZohoEntityPage(
+          admin,
+          integration.tenant_id,
+          actor.internal ? null : (actor.userId ?? null),
+          integration.id,
+          currentPhase.entityType,
+          integration.integration_type_id as ZohoIntegrationTypeId,
+          page.records,
+          adapter,
+        );
+      } catch (persistError) {
+        progress = {
+          ...progress,
+          note: persistError instanceof Error
+            ? `Persist error (${currentPhase.entityType}): ${persistError.message}`
+            : `Persist error (${currentPhase.entityType}): unknown`,
+          updated_at: nowIso(),
+        };
+      }
+    }
+
     progress = applyPhasePage(progress, plan, {
       phase: currentPhase,
       records: page.records,

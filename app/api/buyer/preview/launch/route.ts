@@ -15,6 +15,7 @@ function isSellerRole(role: string | null): boolean {
 async function findLinkedBuyerId(userId: string, tenantId: string): Promise<string | null> {
   if (!supabaseAdmin) return null;
   try {
+    // Try tenant_users.phone first (may be null if seller never stored their phone there)
     const { data } = await supabaseAdmin
       .schema('app')
       .from('tenant_users')
@@ -26,12 +27,27 @@ async function findLinkedBuyerId(userId: string, tenantId: string): Promise<stri
       .limit(1)
       .maybeSingle();
 
-    const phone = (data as { phone?: string | null } | null)?.phone;
+    let phone = (data as { phone?: string | null } | null)?.phone ?? null;
+
+    // Fallback: phone is stored in user_metadata (set by find_seller_candidates_by_phone RPC path;
+    // raw_user_meta_data ->> 'phone' is the authoritative seller phone field, surfaced by the JS
+    // SDK as user.user_metadata.phone — NOT user.phone which is the Supabase native OTP field).
+    if (!phone) {
+      const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
+      const userMeta = authUser?.user?.user_metadata as Record<string, unknown> | null | undefined;
+      phone = (typeof userMeta?.phone === 'string' && userMeta.phone ? userMeta.phone : null)
+        ?? authUser?.user?.phone  // native Supabase phone (OTP-linked accounts)
+        ?? null;
+    }
+
     if (!phone) return null;
 
     const candidates = await findBuyerLoginCandidates(phone);
-    const match = candidates.find((c) => c.tenant_id === tenantId && c.buyer_app_enabled);
-    return match?.buyer_id ?? null;
+    // Only consider buyers under this seller's tenant with buyer app enabled
+    const sameTenantBuyers = candidates.filter((c) => c.tenant_id === tenantId && c.buyer_app_enabled);
+    if (sameTenantBuyers.length === 0) return null;
+    // Return first match; multi-buyer picker will be added when needed
+    return sameTenantBuyers[0].buyer_id ?? null;
   } catch {
     return null;
   }
