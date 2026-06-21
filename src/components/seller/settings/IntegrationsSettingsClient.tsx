@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowRight,
@@ -298,6 +298,25 @@ export function IntegrationsSettingsClient() {
   const [selectedIntegrationId, setSelectedIntegrationId] = useState<string | null>(null);
   const [detailTab, setDetailTab] = useState<DetailTab>('overview');
   const [wizard, setWizard] = useState<WizardState>(buildWizardState(null));
+  const [pendingOAuthConnectedId, setPendingOAuthConnectedId] = useState<string | null>(null);
+  const oauthStorageListenerRef = useRef<((e: StorageEvent) => void) | null>(null);
+  useEffect(() => {
+    return () => {
+      if (oauthStorageListenerRef.current) {
+        window.removeEventListener('storage', oauthStorageListenerRef.current);
+      }
+    };
+  }, []);
+
+  // Advance wizard when fresh integration data arrives after OAuth cross-tab signal
+  useEffect(() => {
+    if (!pendingOAuthConnectedId || integrations.length === 0) return;
+    const target = integrations.find((i) => i.id === pendingOAuthConnectedId);
+    if (!target) return;
+    setPendingOAuthConnectedId(null);
+    setSelectedIntegrationId(target.id);
+    setWizard({ ...buildWizardState(target), open: true, integrationId: target.id, step: 3 });
+  }, [pendingOAuthConnectedId, integrations]);
 
   // Auto-open start-import step when returning from Zoho OAuth consent screen
   useEffect(() => {
@@ -311,16 +330,16 @@ export function IntegrationsSettingsClient() {
       return;
     }
 
-    if (connectedTypeId && integrations.length > 0) {
-      const target = integrations.find((integration) => integration.id === connectedTypeId);
-      if (target) {
-        setSelectedIntegrationId(target.id);
-        setWizard({ ...buildWizardState(target), open: true, integrationId: target.id, step: 3 });
-        router.replace('/settings/integrations');
-      }
+    if (connectedTypeId) {
+      // Signal immediately — don't gate on integrations data loading
+      localStorage.setItem('df_zoho_oauth_complete', connectedTypeId);
+      // Try to close this OAuth tab; may fail if COOP headers severed window.opener
+      window.close();
+      // Clear the param — if tab didn't close, page stays clean on next render
+      router.replace('/settings/integrations');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, integrations]);
+  }, [searchParams]);
 
   async function startZohoOAuth() {
     if (!wizardIntegration) return;
@@ -338,7 +357,25 @@ export function IntegrationsSettingsClient() {
       if (!response.ok || !json.data?.redirect_url) {
         throw new Error(json.error?.message ?? 'Failed to start OAuth flow');
       }
-      window.location.href = json.data.redirect_url;
+      window.open(json.data.redirect_url, '_blank');
+      // Listen for the OAuth tab to signal completion via localStorage
+      if (oauthStorageListenerRef.current) {
+        window.removeEventListener('storage', oauthStorageListenerRef.current);
+      }
+      const handleStorage = (e: StorageEvent) => {
+        if (e.key !== 'df_zoho_oauth_complete' || !e.newValue) return;
+        window.removeEventListener('storage', handleStorage);
+        oauthStorageListenerRef.current = null;
+        const connectedId = e.newValue;
+        localStorage.removeItem('df_zoho_oauth_complete');
+        setIsOAuthRedirecting(false);
+        // Store the connected id and refetch — the pendingOAuthConnectedId effect
+        // will advance the wizard once fresh data arrives (avoids stale closure)
+        setPendingOAuthConnectedId(connectedId);
+        void refetch();
+      };
+      oauthStorageListenerRef.current = handleStorage;
+      window.addEventListener('storage', handleStorage);
     } catch {
       setIsOAuthRedirecting(false);
     }
@@ -368,7 +405,8 @@ export function IntegrationsSettingsClient() {
 
   function openWizard(integration: IntegrationCatalogItem) {
     setSelectedIntegrationId(integration.id);
-    setWizard({ ...buildWizardState(integration), open: true, integrationId: integration.id });
+    const isConnected = integration.tenant_integration?.status === 'connected';
+    setWizard({ ...buildWizardState(integration), open: true, integrationId: integration.id, step: isConnected ? 3 : 0 });
   }
 
   function updateCredential(key: string, value: string) {
@@ -773,11 +811,30 @@ export function IntegrationsSettingsClient() {
                   key={stepLabel}
                   className={cn(
                     'rounded-2xl border px-3 py-3',
-                    wizard.step === index ? 'border-teal-200 bg-teal-50' : index < wizard.step ? 'border-cream-200 bg-cream-50' : 'border-cream-200 bg-white',
+                    wizard.step === index
+                      ? 'border-teal-200 bg-teal-50'
+                      : index < wizard.step
+                        ? 'border-success-200 bg-success-50'
+                        : 'border-cream-200 bg-white',
                   )}
                 >
-                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">Step {index + 1}</div>
-                  <div className="mt-1 text-sm font-medium text-cream-900">{stepLabel}</div>
+                  <div className="flex items-center gap-1.5">
+                    {index < wizard.step ? (
+                      <CheckCircle2 className="h-3.5 w-3.5 text-success-600" />
+                    ) : null}
+                    <div className={cn(
+                      'text-xs font-semibold uppercase tracking-[0.12em]',
+                      index < wizard.step ? 'text-success-700' : 'text-cream-600',
+                    )}>
+                      Step {index + 1}
+                    </div>
+                  </div>
+                  <div className={cn(
+                    'mt-1 text-sm font-medium',
+                    index < wizard.step ? 'text-success-900' : 'text-cream-900',
+                  )}>
+                    {stepLabel}
+                  </div>
                 </div>
               ))}
             </div>
