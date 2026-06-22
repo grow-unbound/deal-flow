@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { loadBuyerCreditSnapshots } from '@/lib/server/buyer-credit';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 
@@ -194,7 +195,6 @@ export async function GET(req: NextRequest) {
     const spendPrevByBuyer = new Map<string, number>();
     const ordersMtdByBuyer = new Map<string, number>();
     const lastOrderByBuyer = new Map<string, string>();
-    const duesByBuyer = new Map<string, number>();
 
     for (const order of mtdOrders) {
       spendMtdByBuyer.set(order.buyer_id, (spendMtdByBuyer.get(order.buyer_id) ?? 0) + Number(order.total_amount ?? 0));
@@ -211,9 +211,13 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    for (const invoice of invoices) {
-      duesByBuyer.set(invoice.buyer_id, (duesByBuyer.get(invoice.buyer_id) ?? 0) + Number(invoice.outstanding_balance ?? 0));
-    }
+    const creditSnapshots = await loadBuyerCreditSnapshots(supabaseAdmin as any, {
+      tenantId,
+      buyerIds: buyerRows.map((buyer: any) => buyer.id),
+      creditLimitByBuyerId: new Map(
+        buyerRows.map((buyer: any) => [buyer.id, Number(buyer.credit_limit ?? 0)]),
+      ),
+    });
 
     const cohortMap = new Map<string, string>();
     const cohortSet = new Set<string>();
@@ -235,7 +239,7 @@ export async function GET(req: NextRequest) {
       const orders_mtd = ordersMtdByBuyer.get(buyer.id) ?? 0;
       const last_order_at = lastOrderByBuyer.get(buyer.id) ?? null;
       const credit_limit = Number(buyer.credit_limit ?? 0);
-      const dues = duesByBuyer.get(buyer.id) ?? 0;
+      const dues = creditSnapshots.get(buyer.id)?.outstanding_dues ?? 0;
       const credit_used = dues;
       const dormant = !last_order_at || last_order_at < dormantCutoffIso;
 

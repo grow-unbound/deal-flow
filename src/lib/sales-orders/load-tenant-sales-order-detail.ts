@@ -2,6 +2,7 @@ import type { SalesOrderDetail, SalesOrderLine } from '@/types/tenant-sales-orde
 import { SalesOrderDetailSchema } from '@/types/tenant-sales-orders';
 
 import type { JWTClaims } from '@/lib/auth';
+import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import { canAccessDocumentLocation } from '@/lib/server/seller-location-access';
 import { computePlaceOfSupplyFromBuyer } from '@/lib/sales-orders/compute-place-of-supply';
 import {
@@ -277,22 +278,12 @@ export async function loadTenantSalesOrderDetail(
 
   const buyer = buyerRes.data as Record<string, unknown> | null;
 
-  const outstandingInvoices = buyerId
-    ? await d
-        .schema('app')
-        .from('invoices')
-        .select('outstanding_balance')
-        .eq('tenant_id', tenantId)
-        .eq('buyer_id', buyerId)
-        .is('deleted_at', null)
-    : { data: [] as Array<Record<string, unknown>> };
-
-  const creditUsed = ((outstandingInvoices.data ?? []) as Array<Record<string, unknown>>).reduce(
-    (sum, row) => sum + Number(row.outstanding_balance ?? 0),
-    0,
-  );
   const creditLimit = Number(buyer?.credit_limit ?? 0);
-  const creditAvailable = Math.max(creditLimit - creditUsed, 0);
+  const creditSnapshot = buyerId
+    ? await loadBuyerCreditSnapshot(d as any, { tenantId, buyerId, creditLimit })
+    : null;
+  const creditUsed = creditSnapshot?.credit_used ?? 0;
+  const creditAvailable = creditSnapshot?.available_credit ?? creditLimit;
 
   const cohortRows = buyerId
     ? await d.schema('app').from('cohort_members').select('cohort_id').eq('buyer_id', buyerId)

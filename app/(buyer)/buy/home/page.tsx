@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Bell } from 'lucide-react';
+import { Bell, ChevronRight } from 'lucide-react';
+
+import type { BuyerActivityFeedResponse, BuyerActivityItem, BuyerHomeResponse } from '@/lib/buyer-home-types';
 import { apiFetch } from '@/lib/api-fetch';
-import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { ErrorState } from '@/components/ui/empty-state';
 import { BuyerHomeLandingHeader } from '@/components/buyer/layout/BuyerHomeLandingHeader';
 import { BuyerNotificationDrawer } from '@/components/buyer/layout/BuyerNotificationDrawer';
-import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 import { useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
 
@@ -18,74 +20,6 @@ function inr(n: number): string {
   const rest = s.slice(0, -3);
   return '₹' + (rest ? rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' : '') + last3;
 }
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface MeData {
-  mode?: 'buyer' | 'preview';
-  buyer_id: string;
-  business_name: string;
-  contact_name: string;
-  greeting_name?: string | null;
-  credit_limit: number;
-  credit_used: number;
-  open_orders_count: number;
-  tenant: { id: string; name: string; slug: string };
-  business_policy?: { credit_enabled: boolean; gst_inclusive: boolean };
-}
-
-type OrderStatus = 'draft' | 'received' | 'confirmed' | 'partially_dispatched' | 'dispatched' | 'delivered' | 'cancelled';
-
-interface BuyerOrder {
-  id: string;
-  order_number: string;
-  status: OrderStatus;
-  total_amount: number;
-  placed_at: string;
-  catalog_name: string | null;
-  items_count: number;
-}
-
-interface ReorderItem {
-  tenant_product_id: string;
-  display_name: string;
-  brand_name?: string | null;
-  image_urls: string[];
-  price: number;
-  default_uom?: string | null;
-}
-
-interface CatalogItem {
-  id: string;
-  name: string;
-  product_count: number;
-  share_token: string;
-  valid_until: string | null;
-}
-
-// ─── Display constants ────────────────────────────────────────────────────────
-
-const statusColors: Record<string, { bg: string; fg: string }> = {
-  draft:                { bg: '#EAF1EE', fg: '#142823' },
-  received:             { bg: '#E7EEF1', fg: '#2A4B59' },
-  confirmed:            { bg: '#FBEFE3', fg: '#6B3818' },
-  partially_dispatched: { bg: '#FBF1DC', fg: '#7A5519' },
-  dispatched:           { bg: '#FBF1DC', fg: '#7A5519' },
-  delivered:            { bg: '#ECF3EC', fg: '#2F5733' },
-  cancelled:            { bg: '#F6E5DF', fg: '#6B2615' },
-};
-
-const statusLabels: Record<string, string> = {
-  draft: 'Draft', received: 'Received', confirmed: 'Confirmed',
-  partially_dispatched: 'In Transit', dispatched: 'Dispatched',
-  delivered: 'Delivered', cancelled: 'Cancelled',
-};
-
-const catalogHues = [
-  'linear-gradient(135deg, #1F3A34 0%, #2D5549 100%)',
-  'linear-gradient(135deg, #874720 0%, #C26E3A 100%)',
-  'linear-gradient(135deg, #6B6760 0%, #3D3A35 100%)',
-];
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -97,7 +31,7 @@ function getGreeting(): string {
 function formatRelativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const diffMins = Math.floor(diffMs / 60_000);
-  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffMins < 60) return `${Math.max(diffMins, 1)}m ago`;
   const diffHrs = Math.floor(diffMins / 60);
   if (diffHrs < 24) return `${diffHrs}h ago`;
   const diffDays = Math.floor(diffHrs / 24);
@@ -110,348 +44,410 @@ function formatValidUntil(iso: string | null): string {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-function Skel({ w, h, r = 8 }: { w?: string | number; h: number; r?: number }) {
-  return (
-    <div
-      className="animate-pulse"
-      style={{ width: w ?? '100%', height: h, borderRadius: r, background: 'var(--bg-recessed, #e5e0d8)' }}
-    />
-  );
+function formatDueSummary(daysUntilDue: number | null, invoiceCount: number, outstandingDues: number): string {
+  if (outstandingDues <= 0 || invoiceCount === 0) return 'No unpaid invoices';
+  if (daysUntilDue == null) return `for ${invoiceCount} invoice${invoiceCount === 1 ? '' : 's'}`;
+  if (daysUntilDue < 0) return `${Math.abs(daysUntilDue)}d overdue · ${invoiceCount} invoice${invoiceCount === 1 ? '' : 's'}`;
+  if (daysUntilDue === 0) return `due today · ${invoiceCount} invoice${invoiceCount === 1 ? '' : 's'}`;
+  return `due in ${daysUntilDue}d · ${invoiceCount} invoice${invoiceCount === 1 ? '' : 's'}`;
 }
 
-// ─── Section header ───────────────────────────────────────────────────────────
+function trendLabel(value: number): string {
+  if (value > 0) return `+${value}% vs last month`;
+  if (value < 0) return `${value}% vs last month`;
+  return 'Flat vs last month';
+}
 
 function SectionRow({ title, href, linkLabel }: { title: string; href?: string; linkLabel?: string }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 18px 10px' }}>
-      <h3 style={{ fontSize: 'var(--yk-text-md)', fontWeight: 600, color: 'var(--cream-900)' }}>{title}</h3>
-      {href && (
-        <Link href={href} style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--teal-500)', fontWeight: 500, textDecoration: 'none' }}>
+    <div className="flex items-center justify-between px-4 pb-3">
+      <h2
+        className="text-[var(--yk-text-xl)] font-bold leading-none tracking-[-0.02em] text-[var(--cream-900)]"
+        style={{ fontFamily: 'var(--font-display)' }}
+      >
+        {title}
+      </h2>
+      {href ? (
+        <Link
+          href={href}
+          onClick={() => markBuyerNavigationForward()}
+          className="inline-flex items-center gap-1.5 text-[var(--yk-text-md)] font-medium tracking-[-0.01em] text-[var(--teal-800)] no-underline"
+        >
           {linkLabel ?? 'See all'}
+          <ChevronRight className="h-4 w-4" />
         </Link>
-      )}
+      ) : null}
     </div>
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+function SkeletonBlock({ className }: { className: string }) {
+  return <div className={`animate-pulse rounded-xl border border-cream-200 bg-cream-100 ${className}`} />;
+}
+
+const promotionHues = [
+  'linear-gradient(135deg, #1F3A34 0%, #2D5549 100%)',
+  'linear-gradient(135deg, #874720 0%, #C26E3A 100%)',
+  'linear-gradient(135deg, #6B6760 0%, #3D3A35 100%)',
+];
 
 export default function HomePage() {
   const [notifOpen, setNotifOpen] = useState(false);
-  const { unreadCount, updatedEntityIds, markSeen, setRefreshFn } = useBuyerRealtimeContext();
-  const { state: routeState, setState: setRouteState } = useRouteSnapshot({
+  const { unreadCount, setRefreshFn } = useBuyerRealtimeContext();
+  const { state, setState } = useRouteSnapshot({
     storageKey: 'buyer-home-page',
     initialState: {
-      meData: null as MeData | null,
-      ordersData: null as { orders: BuyerOrder[]; preview_message?: string } | null,
-      catalogsData: null as { catalogs: CatalogItem[] } | null,
-      reorderData: null as { items: ReorderItem[] } | null,
+      homeData: null as BuyerHomeResponse | null,
+      activityItems: [] as BuyerActivityItem[],
+      nextCursor: null as string | null,
     },
   });
-  const meData = routeState.meData;
-  const ordersData = routeState.ordersData;
-  const catalogsData = routeState.catalogsData;
-  const reorderData = routeState.reorderData;
-  const [loading, setLoading] = useState(!meData && !ordersData && !catalogsData);
+  const homeData = state.homeData;
+  const activityItems = state.activityItems;
+  const nextCursor = state.nextCursor;
+  const [loading, setLoading] = useState(!homeData);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   useRouteScrollRestoration({ storageKey: 'buyer-home-page', ready: !loading });
 
-  async function loadAll() {
+  async function loadHome() {
+    const response = await apiFetch('/api/buyer/home');
+    if (!response.ok) throw new Error('Failed to fetch buyer home');
+    const payload = await response.json() as BuyerHomeResponse;
+    setState((current) => ({
+      ...current,
+      homeData: payload,
+      activityItems: payload.recent_activity.items,
+      nextCursor: payload.recent_activity.next_cursor,
+    }));
+  }
+
+  async function loadMoreActivity() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
     try {
-      setLoadFailed(false);
-      const [meRes, ordersRes, catalogsRes, reorderRes] = await Promise.all([
-        apiFetch('/api/buyer/me'),
-        apiFetch('/api/buyer/orders'),
-        apiFetch('/api/buyer/catalogs'),
-        apiFetch('/api/buyer/reorder'),
-      ]);
-      const [me, orders, catalogs, reorder] = await Promise.all([
-        meRes.ok ? (meRes.json() as Promise<MeData>) : Promise.resolve(null),
-        ordersRes.ok ? (ordersRes.json() as Promise<{ orders: BuyerOrder[] }>) : Promise.resolve({ orders: [] }),
-        catalogsRes.ok ? (catalogsRes.json() as Promise<{ catalogs: CatalogItem[] }>) : Promise.resolve({ catalogs: [] }),
-        reorderRes.ok ? (reorderRes.json() as Promise<{ items: ReorderItem[] }>) : Promise.resolve({ items: [] }),
-      ]);
-      setRouteState((c) => ({ ...c, meData: me, ordersData: orders, catalogsData: catalogs, reorderData: reorder }));
-    } catch {
-      setLoadFailed(true);
+      const response = await apiFetch(`/api/buyer/activity?limit=10&cursor=${encodeURIComponent(nextCursor)}`);
+      if (!response.ok) throw new Error('Failed to fetch activity');
+      const payload = await response.json() as BuyerActivityFeedResponse;
+      setState((current) => ({
+        ...current,
+        activityItems: [...current.activityItems, ...payload.items],
+        nextCursor: payload.next_cursor,
+      }));
     } finally {
-      setLoading(false);
+      setLoadingMore(false);
     }
   }
 
   useEffect(() => {
-    setRefreshFn(() => loadAll);
+    setRefreshFn(() => async () => {
+      await loadHome();
+    });
     return () => setRefreshFn(null);
   }, [setRefreshFn]);
 
   useEffect(() => {
     let cancelled = false;
-    async function go() {
-      try {
-        setLoadFailed(false);
-        const [meRes, ordersRes, catalogsRes, reorderRes] = await Promise.all([
-          apiFetch('/api/buyer/me'),
-          apiFetch('/api/buyer/orders'),
-          apiFetch('/api/buyer/catalogs'),
-          apiFetch('/api/buyer/reorder'),
-        ]);
-        if (cancelled) return;
-        const [me, orders, catalogs, reorder] = await Promise.all([
-          meRes.ok ? (meRes.json() as Promise<MeData>) : Promise.resolve(null),
-          ordersRes.ok ? (ordersRes.json() as Promise<{ orders: BuyerOrder[] }>) : Promise.resolve({ orders: [] }),
-          catalogsRes.ok ? (catalogsRes.json() as Promise<{ catalogs: CatalogItem[] }>) : Promise.resolve({ catalogs: [] }),
-          reorderRes.ok ? (reorderRes.json() as Promise<{ items: ReorderItem[] }>) : Promise.resolve({ items: [] }),
-        ]);
-        if (!cancelled) {
-          setRouteState((c) => ({ ...c, meData: me, ordersData: orders, catalogsData: catalogs, reorderData: reorder }));
-          setLoading(false);
-        }
-      } catch {
-        if (!cancelled) { setLoadFailed(true); setLoading(false); }
-      }
+    if (homeData) {
+      setLoading(false);
+      return;
     }
-    void go();
-    return () => { cancelled = true; };
-  }, []);
+    setLoadFailed(false);
+    loadHome()
+      .catch(() => {
+        if (!cancelled) setLoadFailed(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [homeData]);
+
+  const { sentinelRef } = useInfiniteScroll({
+    hasMore: Boolean(nextCursor),
+    isLoading: loadingMore,
+    onLoadMore: () => { void loadMoreActivity(); },
+  });
+
+  const greetingName = useMemo(() => {
+    const raw = homeData?.greeting_name?.trim();
+    if (raw) return raw.split(' ')[0];
+    if (homeData?.preview_message) return 'Preview';
+    return 'there';
+  }, [homeData?.greeting_name, homeData?.preview_message]);
 
   if (loadFailed) {
     return (
       <div className="px-4 py-8">
-        <ErrorState heading="Couldn't load home" description="Check your connection and try again." onRetry={() => { setLoading(true); void loadAll(); }} />
+        <ErrorState
+          heading="Couldn't load home"
+          description="Check your connection and try again."
+          onRetry={() => {
+            setLoading(true);
+            setLoadFailed(false);
+            void loadHome().finally(() => setLoading(false));
+          }}
+        />
       </div>
     );
   }
 
-  const recentOrders = (ordersData?.orders ?? []).slice(0, 3);
-  const catalogs = catalogsData?.catalogs ?? [];
-  const reorderItems = reorderData?.items ?? [];
-  const availableCredit = (meData?.credit_limit ?? 0) - (meData?.credit_used ?? 0);
-  const creditEnabled = meData?.business_policy?.credit_enabled ?? true;
-  const firstName = meData?.greeting_name || meData?.contact_name?.split(' ')[0] || meData?.business_name || 'there';
+  const summary = homeData?.summary_card;
+  const dues = homeData?.dues_card;
+  const credit = homeData?.credit_card;
+  const reorderItems = homeData?.order_again_preview ?? [];
+  const promotions = homeData?.latest_promotions_preview ?? [];
 
   return (
-    <div style={{ paddingBottom: 24 }}>
-
+    <div className="pb-8">
       <BuyerHomeLandingHeader
-        greetingLine={loading ? 'Welcome' : `${getGreeting()}, ${firstName}`}
+        greetingLine={loading ? 'Welcome' : `${getGreeting()}, ${greetingName}`}
         title="Your shelf, this month."
-        previewNote={meData?.mode === 'preview' ? 'Preview mode — buyer-specific numbers show as 0.' : null}
-        rightSlot={
+        previewNote={homeData?.preview_message ?? null}
+        rightSlot={(
           <button
             type="button"
             onClick={() => setNotifOpen(true)}
-            style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--cream-100)', border: '1px solid var(--border-1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative' }}
+            className="relative mt-2 flex h-16 w-16 items-center justify-center rounded-full border border-[var(--border-1)] bg-[var(--cream-50)] shadow-[0_1px_0_rgba(34,30,26,0.02)]"
             aria-label="Notifications"
           >
-            <Bell size={17} strokeWidth={1.75} style={{ color: 'var(--cream-700)' }} />
-            {unreadCount > 0 && (
-              <span style={{ position: 'absolute', top: 2, right: 2, width: 8, height: 8, borderRadius: '50%', background: 'var(--ember-500, #B5642F)' }} />
-            )}
+            <Bell size={24} strokeWidth={1.55} className="text-[var(--cream-700)]" />
+            {unreadCount > 0 ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[var(--ember-500)]" /> : null}
           </button>
-        }
+        )}
       />
 
-      {/* ── KPI grid ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '14px 16px 0' }}>
-        {creditEnabled ? (
-          <div style={{ gridColumn: '1 / -1', background: 'var(--teal-500)', borderRadius: 14, padding: '16px 18px' }}>
-            {loading ? (
-              <>
-                <Skel h={11} w="50%" r={4} />
-                <div style={{ marginTop: 4 }}><Skel h={28} w="60%" r={6} /></div>
-                <div style={{ marginTop: 4 }}><Skel h={12} w="80%" r={4} /></div>
-              </>
-            ) : (
-              <>
-                <p style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(253,251,247,0.7)', fontFamily: 'var(--font-body)', fontWeight: 500 }}>Credit limit</p>
-                <p style={{ fontSize: 'var(--yk-text-2xl)', fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--cream-50)', lineHeight: 1.1, marginTop: 4 }}>{inr(meData?.credit_limit ?? 0)}</p>
-                <p style={{ fontSize: 'var(--yk-text-sm)', color: 'rgba(253,251,247,0.6)', marginTop: 4 }}>
-                  <span className="tabular-inline">{inr(availableCredit)}</span> available · <span className="tabular-inline">{inr(meData?.credit_used ?? 0)}</span> used
-                </p>
-              </>
-            )}
-          </div>
-        ) : null}
-
-        <div style={{ gridColumn: creditEnabled ? undefined : '1 / -1', background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 14, padding: '14px 16px' }}>
-          {loading ? (<><Skel h={11} w="70%" r={4} /><div style={{ marginTop: 4 }}><Skel h={28} w="40%" r={6} /></div><div style={{ marginTop: 4 }}><Skel h={12} w="90%" r={4} /></div></>) : (
+      <div className="grid grid-cols-2 gap-3 px-4 pt-4">
+        <div className="col-span-2 rounded-[28px] bg-[#1f3a33] px-6 py-7 text-[var(--cream-50)] shadow-[0_18px_40px_rgba(31,58,51,0.14)]">
+          {loading ? (
             <>
-              <p style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-body)', fontWeight: 500 }}>Open orders</p>
-              <p style={{ fontSize: 'var(--yk-text-2xl)', fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--cream-900)', lineHeight: 1.1, marginTop: 4 }}>{meData?.open_orders_count ?? 0}</p>
-              <p style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)', marginTop: 4 }}>In progress</p>
+              <div className="h-3 w-28 animate-pulse rounded bg-white/20" />
+              <div className="mt-4 h-14 w-56 animate-pulse rounded bg-white/20" />
+              <div className="mt-4 h-4 w-48 animate-pulse rounded bg-white/20" />
+            </>
+          ) : (
+            <>
+              <p className="text-[var(--yk-text-xs)] font-semibold uppercase tracking-[0.1em] text-white/60">Spend this year</p>
+              <p
+                className="mt-4 text-[36px] font-semibold leading-none tracking-[-0.03em] tabular-nums text-white"
+                style={{ fontFamily: 'var(--font-mono)' }}
+              >
+                {inr(summary?.gmv_mtd ?? 0)}
+              </p>
+              <p className="mt-4 text-[var(--yk-text-sm)] font-medium leading-5 tracking-[-0.005em] text-white/70">
+                {trendLabel(summary?.trend_vs_last_month_pct ?? 0)} · {summary?.invoice_count_ytd ?? 0} invoices this year
+              </p>
             </>
           )}
         </div>
 
-        {creditEnabled ? (
-          <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 14, padding: '14px 16px' }}>
-            {loading ? (<><Skel h={11} w="70%" r={4} /><div style={{ marginTop: 4 }}><Skel h={22} w="80%" r={6} /></div><div style={{ marginTop: 4 }}><Skel h={12} w="90%" r={4} /></div></>) : (
-              <>
-                <p style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-body)', fontWeight: 500 }}>Available</p>
-                <p style={{ fontSize: 'var(--yk-text-xl)', fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--cream-900)', lineHeight: 1.1, marginTop: 4 }}>{inr(availableCredit)}</p>
-                <p style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)', marginTop: 4 }}>of <span className="tabular-inline">{inr(meData?.credit_limit ?? 0)}</span></p>
-              </>
-            )}
-          </div>
-        ) : null}
+        <div className="rounded-[24px] border border-[var(--border-1)] bg-[var(--cream-50)] px-5 py-6 shadow-[0_1px_0_rgba(34,30,26,0.03)]">
+          {loading ? (
+            <>
+              <div className="h-3 w-24 animate-pulse rounded bg-cream-200" />
+              <div className="mt-4 h-9 w-28 animate-pulse rounded bg-cream-200" />
+              <div className="mt-4 h-4 w-36 animate-pulse rounded bg-cream-200" />
+            </>
+          ) : (
+            <>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--cream-500)]">Outstanding dues</p>
+              <p
+                className="mt-4 text-[30px] font-semibold leading-none tracking-[-0.025em] tabular-nums text-[var(--cream-900)]"
+                style={{ fontFamily: 'var(--font-mono)' }}
+              >
+                {inr(dues?.outstanding_dues ?? 0)}
+              </p>
+              <p className="mt-4 text-[var(--yk-text-sm)] font-medium leading-5 tracking-[-0.005em] text-[var(--cream-500)]">
+                {formatDueSummary(dues?.days_until_earliest_due ?? null, dues?.open_invoice_count ?? 0, dues?.outstanding_dues ?? 0)}
+              </p>
+            </>
+          )}
+        </div>
+
+        <div className="rounded-[24px] border border-[var(--border-1)] bg-[var(--cream-50)] px-5 py-6 shadow-[0_1px_0_rgba(34,30,26,0.03)]">
+          {loading ? (
+            <>
+              <div className="h-3 w-24 animate-pulse rounded bg-cream-200" />
+              <div className="mt-4 h-9 w-28 animate-pulse rounded bg-cream-200" />
+              <div className="mt-4 h-4 w-36 animate-pulse rounded bg-cream-200" />
+            </>
+          ) : (
+            <>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--cream-500)]">Available credit</p>
+              <p
+                className="mt-4 text-[30px] font-semibold leading-none tracking-[-0.025em] tabular-nums text-[var(--cream-900)]"
+                style={{ fontFamily: 'var(--font-mono)' }}
+              >
+                {inr(credit?.available_credit ?? 0)}
+              </p>
+              <p className="mt-4 text-[var(--yk-text-sm)] font-medium leading-5 tracking-[-0.005em] text-[var(--cream-500)]">
+                of {inr(credit?.credit_limit ?? 0)} limit
+              </p>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* ── Distributor list ── */}
-      {(loading || meData?.tenant) ? (
-        <div style={{ padding: '20px 0 0' }}>
-          <SectionRow title="Your distributor" />
-          <div style={{ padding: '0 16px' }}>
-            <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 14, overflow: 'hidden' }}>
-              {loading ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px' }}>
-                  <Skel w={40} h={40} r={999} />
-                  <div style={{ flex: 1 }}><Skel h={13} w="60%" r={4} /><div style={{ marginTop: 4 }}><Skel h={11} w="40%" r={4} /></div></div>
-                  <Skel w={60} h={18} r={4} />
-                </div>
-              ) : meData?.tenant ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px' }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 999, background: 'var(--teal-500)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <span style={{ fontSize: 'var(--yk-text-sm)', fontWeight: 700, color: '#fff' }}>
-                      {meData.tenant.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
-                    </span>
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 'var(--yk-text-base)', fontWeight: 600, color: 'var(--cream-900)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{meData.tenant.name}</div>
-                    <div style={{ fontSize: 'var(--yk-text-xs)', color: 'var(--cream-600)', marginTop: 1 }}>{meData.open_orders_count} open order{meData.open_orders_count !== 1 ? 's' : ''}</div>
-                  </div>
-                  {creditEnabled && (
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontSize: 'var(--yk-text-sm)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)' }}>{inr(meData.credit_used)}</div>
-                      <div style={{ fontSize: 'var(--yk-text-xs)', color: 'var(--cream-500)', marginTop: 1 }}>spent</div>
-                    </div>
-                  )}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {/* ── Order again carousel ── */}
-      <div style={{ padding: '20px 0 0' }}>
-        <SectionRow title="Order again" href="/buy/catalog" linkLabel="Browse catalog" />
-        <div style={{ overflowX: 'auto', display: 'flex', gap: 10, padding: '0 16px 4px', scrollbarWidth: 'none' }}>
+      <div className="pt-10">
+        <SectionRow title="Order again" href="/buy/buy-again" linkLabel="Browse all" />
+        <div className="flex gap-3 overflow-x-auto px-4 pb-1">
           {loading ? (
-            [0, 1, 2].map((i) => (
-              <div key={i} style={{ flexShrink: 0, width: 144, borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border-1)' }}>
-                <Skel h={160} r={0} />
-                <div style={{ background: 'var(--cream-50)', padding: '8px 10px' }}>
-                  <Skel h={12} w="80%" r={4} /><div style={{ marginTop: 4 }}><Skel h={13} w="50%" r={4} /></div>
+            Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="w-[178px] shrink-0 overflow-hidden rounded-[28px] border border-cream-200 bg-cream-50">
+                <div className="h-[220px] animate-pulse bg-cream-100" />
+                <div className="space-y-2 px-4 py-4">
+                  <div className="h-4 w-3/4 animate-pulse rounded bg-cream-200" />
+                  <div className="h-4 w-1/2 animate-pulse rounded bg-cream-200" />
                 </div>
               </div>
             ))
-          ) : reorderItems.length === 0 ? (
-            <div style={{ padding: '0 2px' }}>
-              <p style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)' }}>No previous orders yet.</p>
-            </div>
-          ) : (
-            reorderItems.slice(0, 8).map((item) => (
+          ) : reorderItems.length > 0 ? (
+            reorderItems.map((item) => (
               <Link
                 key={item.tenant_product_id}
                 href={`/buy/product/${item.tenant_product_id}`}
                 onClick={() => markBuyerNavigationForward()}
-                style={{ flexShrink: 0, width: 144, borderRadius: 12, overflow: 'hidden', textDecoration: 'none', border: '1px solid var(--border-1)' }}
+                className="w-[178px] shrink-0 overflow-hidden rounded-[28px] border border-[var(--border-1)] bg-[var(--bg-surface)] no-underline shadow-[0_1px_0_rgba(34,30,26,0.03)]"
               >
-                <div style={{ height: 160, background: 'var(--cream-100)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                <div
+                  className="flex h-[220px] items-center justify-center p-5"
+                  style={{
+                    background: item.brand_name?.toLowerCase().includes('chenin')
+                      ? 'linear-gradient(180deg, #e8f0ec 0%, #dfece8 100%)'
+                      : item.brand_name?.toLowerCase().includes('pale')
+                        ? 'linear-gradient(180deg, #f7e2c2 0%, #f4d6ab 100%)'
+                        : 'linear-gradient(180deg, #f7f3ea 0%, #f3ece0 100%)',
+                  }}
+                >
                   {item.image_urls[0] ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={item.image_urls[0]} alt={item.display_name} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 12 }} />
+                    <img src={item.image_urls[0]} alt={item.display_name} className="h-full w-full object-contain" />
                   ) : (
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--cream-400)" strokeWidth="1.5"><path d="M20 7H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM16 3H8v4h8V3z" /></svg>
+                    <div className="h-40 w-20 rounded-[14px] bg-[var(--teal-900)]" />
                   )}
                 </div>
-                <div style={{ background: 'var(--cream-50)', padding: '8px 10px' }}>
-                  {item.brand_name && <p style={{ fontSize: 'var(--yk-text-xs)', color: 'var(--cream-500)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>{item.brand_name}</p>}
-                  <p style={{ fontSize: 'var(--yk-text-sm)', fontWeight: 600, color: 'var(--cream-900)', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.display_name}</p>
-                  <p style={{ fontSize: 'var(--yk-text-sm)', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--teal-600)', marginTop: 4 }}>{inr(item.price)}</p>
+                <div className="bg-white px-4 py-4">
+                  <p className="line-clamp-2 text-[var(--yk-text-lg)] font-semibold leading-7 tracking-[-0.015em] text-[var(--cream-900)]">
+                    {item.display_name}
+                  </p>
+                  <p className="mt-2 font-mono text-[var(--yk-text-md)] font-medium tabular-nums text-[var(--cream-900)]">
+                    {inr(item.price)} <span className="font-sans text-[var(--cream-700)]">/ unit</span>
+                  </p>
                 </div>
               </Link>
             ))
+          ) : (
+            <p className="px-1 text-[var(--yk-text-base)] font-medium tracking-[-0.01em] text-[var(--cream-600)]">No previous orders yet.</p>
           )}
         </div>
       </div>
 
-      {/* ── New catalogs ── */}
-      <div style={{ padding: '20px 0 0' }}>
-        <SectionRow title="New catalogs" href="/buy/catalog" linkLabel="See all" />
-        <div style={{ overflowX: 'auto', display: 'flex', gap: 10, padding: '0 16px 4px', scrollbarWidth: 'none' }}>
+      <div className="pt-10">
+        <SectionRow title="Latest promotions" href="/buy/promotions" linkLabel="See all" />
+        <div className="flex gap-3 overflow-x-auto px-4 pb-1">
           {loading ? (
-            [0, 1, 2].map((i) => (
-              <div key={i} style={{ flexShrink: 0, width: 160, borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border-1)' }}>
-                <Skel h={90} r={0} /><div style={{ background: 'var(--cream-50)', padding: '8px 12px' }}><Skel h={12} w="70%" r={4} /><div style={{ marginTop: 4 }}><Skel h={11} w="50%" r={4} /></div></div>
+            Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="w-[280px] shrink-0 overflow-hidden rounded-[28px] border border-cream-200 bg-cream-50">
+                <div className="h-[170px] animate-pulse bg-cream-100" />
+                <div className="space-y-2 px-4 py-4">
+                  <div className="h-4 w-3/4 animate-pulse rounded bg-cream-200" />
+                  <div className="h-4 w-1/2 animate-pulse rounded bg-cream-200" />
+                </div>
               </div>
             ))
-          ) : catalogs.length === 0 ? (
-            <p style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)', padding: '0 2px' }}>No published catalogs yet.</p>
-          ) : (
-            catalogs.map((c, i) => (
+          ) : promotions.length > 0 ? (
+            promotions.map((promotion, index) => (
               <Link
-                key={c.id}
-                href={`/buy/catalog?share_token=${encodeURIComponent(c.share_token)}`}
-                onClick={() => { markBuyerNavigationForward(); markSeen(c.id); }}
-                style={{ flexShrink: 0, width: 200, borderRadius: 12, overflow: 'hidden', textDecoration: 'none', border: '1px solid var(--border-1)' }}
+                key={promotion.id}
+                href={`/buy/catalog/list/${promotion.id}`}
+                onClick={() => markBuyerNavigationForward()}
+                className="w-[280px] shrink-0 overflow-hidden rounded-[28px] border border-[var(--border-1)] bg-[var(--bg-surface)] no-underline shadow-[0_1px_0_rgba(34,30,26,0.03)]"
               >
-                <div style={{ height: 90, background: catalogHues[i % catalogHues.length], display: 'flex', alignItems: 'flex-end', padding: '12px 14px', position: 'relative' }}>
-                  {updatedEntityIds.has(c.id) && (
-                    <span style={{ position: 'absolute', top: 8, right: 8 }}>
-                      <RealtimeBadge type="new" />
-                    </span>
-                  )}
-                  <h4 style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-display)', fontWeight: 600, color: '#fff', lineHeight: 1.2 }}>{c.name}</h4>
+                <div className="flex h-[170px] items-end px-6 py-5" style={{ background: promotionHues[index % promotionHues.length] }}>
+                  <h3
+                    className="text-[var(--yk-text-xl)] font-bold leading-none tracking-[-0.02em] text-white"
+                    style={{ fontFamily: 'var(--font-display)' }}
+                  >
+                    {promotion.name}
+                  </h3>
                 </div>
-                <div style={{ background: 'var(--cream-50)', padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-700)' }}><strong style={{ color: 'var(--cream-900)', fontWeight: 500 }}>{c.product_count}</strong> products</span>
-                  <span style={{ fontSize: 'var(--yk-text-xs)', color: 'var(--cream-500)' }}>{formatValidUntil(c.valid_until)}</span>
+                <div className="flex items-center justify-between bg-white px-6 py-4 text-[var(--yk-text-md)] font-medium tracking-[-0.01em] text-[var(--cream-700)]">
+                  <span><strong className="font-medium text-[var(--cream-900)]">{promotion.product_count}</strong> products</span>
+                  <span>{formatValidUntil(promotion.valid_until)}</span>
                 </div>
               </Link>
             ))
+          ) : (
+            <p className="px-1 text-[var(--yk-text-base)] font-medium tracking-[-0.01em] text-[var(--cream-600)]">No promotions are live right now.</p>
           )}
         </div>
       </div>
 
-      {/* ── Recent activity ── */}
-      <div style={{ padding: '20px 16px 0' }}>
-        <SectionRow title="Recent activity" href="/buy/orders" linkLabel="See orders" />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className="pt-10">
+        <SectionRow title="Recent activity" href="/buy/orders?tab=orders" linkLabel="See orders" />
+        <div className="space-y-2 px-4">
           {loading ? (
-            [0, 1].map((i) => (
-              <div key={i} style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '12px 14px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}><Skel h={13} w="45%" r={4} /><Skel h={13} w="20%" r={100} /></div>
-                <Skel h={13} w="55%" r={4} />
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}><Skel h={12} w="40%" r={4} /><Skel h={14} w="25%" r={4} /></div>
-              </div>
-            ))
-          ) : recentOrders.length === 0 ? (
-            <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '16px 14px', textAlign: 'center' }}>
-              <p style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)' }}>{ordersData?.preview_message ?? 'No orders yet.'}</p>
-            </div>
-          ) : (
-            recentOrders.map((o) => {
-              const sc = statusColors[o.status] ?? statusColors.received;
-              const orderTag = updatedEntityIds.get(o.id);
-              return (
-                <Link key={o.id} href="/buy/orders" onClick={() => markSeen(o.id)} style={{ display: 'block', background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '12px 14px', textDecoration: 'none' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <span style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>{o.order_number}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {orderTag && <RealtimeBadge type={orderTag} />}
-                      <span style={{ fontSize: 'var(--yk-text-xs)', fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.fg }}>{statusLabels[o.status] ?? o.status}</span>
+            <>
+              <SkeletonBlock className="h-24" />
+              <SkeletonBlock className="h-24" />
+              <SkeletonBlock className="h-24" />
+            </>
+          ) : activityItems.length > 0 ? (
+            activityItems.map((item) => (
+              <Link
+                key={item.id}
+                href={item.href}
+                onClick={() => markBuyerNavigationForward()}
+                className="block rounded-[26px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-5 py-5 no-underline shadow-[0_1px_0_rgba(34,30,26,0.03)]"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="truncate font-mono text-[13px] tracking-[0.08em] text-[var(--cream-600)]">{item.title}</p>
+                      <span
+                        className="rounded-full px-4 py-1 text-[var(--yk-text-xs)] font-semibold uppercase tracking-[0.08em]"
+                        style={{
+                          background:
+                            item.status === 'delivered' ? '#e7efe8'
+                              : item.status === 'dispatched' ? '#f4e5bf'
+                                : item.status === 'paid' ? '#e4eee6'
+                                  : 'var(--cream-100)',
+                          color:
+                            item.status === 'delivered' ? '#41654a'
+                              : item.status === 'dispatched' ? '#8a6a26'
+                                : item.status === 'paid' ? '#41654a'
+                                  : 'var(--cream-600)',
+                        }}
+                      >
+                        {String(item.status).replace(/_/g, ' ')}
+                      </span>
                     </div>
+                    <p
+                      className="mt-3 text-[var(--yk-text-lg)] font-semibold leading-none tracking-[-0.015em] text-[var(--cream-900)]"
+                      style={{ fontFamily: 'var(--font-display)' }}
+                    >
+                      {item.meta ?? item.status}
+                    </p>
+                    <p className="mt-4 text-[var(--yk-text-base)] font-medium tracking-[-0.01em] text-[var(--cream-600)]">
+                      {item.secondary_label ? `${item.secondary_label} · ` : ''}
+                      {formatRelativeTime(item.timestamp)}
+                    </p>
                   </div>
-                  {o.catalog_name && <div style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-800)', marginBottom: 6 }}>{o.catalog_name}</div>}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)' }}><span className="tabular-inline">{o.items_count}</span> {o.items_count === 1 ? 'product' : 'products'} · <span className="tabular-inline">{formatRelativeTime(o.placed_at)}</span></span>
-                    <span style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)' }}>{inr(o.total_amount)}</span>
+                  <div className="pt-11 text-right">
+                    <p className="font-mono text-[var(--yk-text-md)] font-medium tabular-nums text-[var(--cream-900)]">{inr(item.amount)}</p>
                   </div>
-                </Link>
-              );
-            })
+                </div>
+              </Link>
+            ))
+          ) : (
+            <div className="rounded-[26px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-6 text-center text-[var(--yk-text-base)] font-medium tracking-[-0.01em] text-[var(--cream-600)]">
+              No recent activity yet.
+            </div>
           )}
+          {loadingMore ? <p className="py-2 text-center text-sm text-[var(--cream-500)]">Loading more…</p> : null}
+          <div ref={sentinelRef} className="h-2" aria-hidden />
         </div>
       </div>
 

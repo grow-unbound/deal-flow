@@ -434,7 +434,8 @@ export function useIntegrationsSettings() {
     enabled: Boolean(currentTenantId),
     queryFn: fetchSettings,
     retry: transientQueryRetry,
-    refetchInterval: (queryInfo) => (hasActiveJob(queryInfo.state.data as IntegrationsSettingsView | undefined) ? 3000 : false),
+    refetchInterval: (queryInfo) => (hasActiveJob(queryInfo.state.data as IntegrationsSettingsView | undefined) ? 30000 : false),
+    refetchIntervalInBackground: true,
   });
 
   const testMutation = useMutation({

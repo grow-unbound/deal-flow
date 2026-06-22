@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
 
@@ -607,8 +608,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return `${productName} ×${Number(top.qty ?? 0)}`;
   };
 
-  const creditUsed = scopedInvoices.reduce((sum: number, invoice: any) => sum + Number(invoice.outstanding_balance ?? 0), 0);
+  const tenantId = claims.tenant_id!;
   const creditLimit = Number(buyer.credit_limit ?? 0);
+  const creditSnapshot = await loadBuyerCreditSnapshot(db as any, {
+    tenantId,
+    buyerId: buyer.id,
+    creditLimit,
+  });
+  const creditUsed = creditSnapshot.credit_used;
   const creditUsedPct = safePct(creditUsed, creditLimit);
 
   const monthlyMap = new Map<string, number>();

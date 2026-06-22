@@ -10,6 +10,7 @@ import {
   loadAccessibleSellerLocations,
   locationScopeCacheKey,
 } from '@/lib/server/seller-location-access';
+import { loadBuyerCreditSnapshots } from '@/lib/server/buyer-credit';
 import { getSellerShellFeatureAvailability } from '@/lib/server/seller-features';
 import { supabaseAdmin } from '@/lib/supabase';
 import type {
@@ -583,12 +584,13 @@ async function fetchSellerDashboardData(
     return (Date.now() - new Date(invoice.due_date).getTime()) / DAY_MS > 15;
   });
 
-  const duesByBuyer = new Map<string, number>();
-  for (const invoice of invoices) {
-    if (invoicePresentation(invoice).label === 'Overdue' || invoicePresentation(invoice).label === 'Sent') {
-      duesByBuyer.set(invoice.buyer_id, (duesByBuyer.get(invoice.buyer_id) ?? 0) + Number(invoice.outstanding_balance ?? 0));
-    }
-  }
+  const creditSnapshots = await loadBuyerCreditSnapshots(supabaseAdmin as any, {
+    tenantId,
+    buyerIds: buyers.map((buyer) => buyer.id),
+    creditLimitByBuyerId: new Map(
+      buyers.map((buyer) => [buyer.id, Number(buyer.credit_limit ?? 0)]),
+    ),
+  });
 
   const operationalMetrics: SellerDashboardMetric[] = [];
   if (featureAvailability.estimates) {
@@ -665,7 +667,7 @@ async function fetchSellerDashboardData(
   const needsActionRows = buyers
     .map((buyer) => {
       const creditLimit = Number(buyer.credit_limit ?? 0);
-      const dues = duesByBuyer.get(buyer.id) ?? 0;
+      const dues = creditSnapshots.get(buyer.id)?.outstanding_dues ?? 0;
       const utilization = creditLimit > 0 ? Math.round((dues / creditLimit) * 100) : 0;
       const lastOrder = lastOrderByBuyer.get(buyer.id);
       return {
