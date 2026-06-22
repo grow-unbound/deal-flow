@@ -21,7 +21,7 @@ ALTER TABLE app.estimates_snapshot ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "tenant members can read estimates_snapshot"
   ON app.estimates_snapshot FOR SELECT
-  USING (app.current_tenant_id() = tenant_id);
+  USING (app.jwt_tenant_id() = tenant_id);
 
 CREATE OR REPLACE FUNCTION app.refresh_estimates_snapshot(p_tenant_id uuid)
 RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = app AS $$
@@ -89,7 +89,7 @@ ALTER TABLE app.invoices_snapshot ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "tenant members can read invoices_snapshot"
   ON app.invoices_snapshot FOR SELECT
-  USING (app.current_tenant_id() = tenant_id);
+  USING (app.jwt_tenant_id() = tenant_id);
 
 CREATE OR REPLACE FUNCTION app.refresh_invoices_snapshot(p_tenant_id uuid)
 RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = app AS $$
@@ -148,7 +148,7 @@ ALTER TABLE app.customers_snapshot ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "tenant members can read customers_snapshot"
   ON app.customers_snapshot FOR SELECT
-  USING (app.current_tenant_id() = tenant_id);
+  USING (app.jwt_tenant_id() = tenant_id);
 
 CREATE OR REPLACE FUNCTION app.refresh_customers_snapshot(p_tenant_id uuid)
 RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = app AS $$
@@ -204,7 +204,7 @@ ALTER TABLE app.products_snapshot ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "tenant members can read products_snapshot"
   ON app.products_snapshot FOR SELECT
-  USING (app.current_tenant_id() = tenant_id);
+  USING (app.jwt_tenant_id() = tenant_id);
 
 CREATE OR REPLACE FUNCTION app.refresh_products_snapshot(p_tenant_id uuid)
 RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = app AS $$
