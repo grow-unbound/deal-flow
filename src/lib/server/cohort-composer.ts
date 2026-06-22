@@ -335,6 +335,7 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
       .in('buyer_id', buyerIds)
       .is('deleted_at', null)
       .neq('status', 'cancelled')
+      .gte('placed_at', ninetyDaysAgoIso) // limit to 90-day window (only gmv_90d is shown)
       .order('placed_at', { ascending: false }),
     db
       .schema('app')
@@ -471,6 +472,7 @@ export async function buildCohortMemberBuyerRows(db: DbClient, tenantId: string,
       .in('buyer_id', buyerIds)
       .is('deleted_at', null)
       .neq('status', 'cancelled')
+      .gte('placed_at', ninetyDaysAgoIso) // limit to 90-day window (only gmv_90d is shown)
       .order('placed_at', { ascending: false }),
     db
       .schema('app')
