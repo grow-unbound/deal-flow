@@ -24,7 +24,9 @@ import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
-import { useTenantProducts, type TenantProduct, type TenantProductsResponse } from '@/hooks/useProducts';
+import { useDebounce } from '@/hooks/useDebounce';
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { useTenantProductsInfinite, type TenantProduct, type TenantProductsResponse } from '@/hooks/useProducts';
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 
@@ -100,7 +102,6 @@ function ProductLandingDataSkeleton() {
 }
 
 function ProductsLandingContent({
-  initialData,
   initialPeriod,
 }: {
   initialData: TenantProductsResponse | null;
@@ -109,9 +110,6 @@ function ProductsLandingContent({
   const router = useRouter();
   const { isSellerAssistant } = useRole();
   const { period, setPeriod, horizonLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
-  const { data, isLoading, isError, refetch } = useTenantProducts(period, initialData);
-  const retainedData = useRetainedValue(data);
-  const landingData = data ?? retainedData;
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-products-landing',
     scopeKey: period,
@@ -121,22 +119,41 @@ function ProductsLandingContent({
       activeChip: 'All brands',
     },
   });
-  useRouteScrollRestoration({
-    storageKey: 'seller-products-landing',
-    scopeKey: period,
-    ready: !isLoading,
-  });
   const search = routeState.search;
   const sortBy = routeState.sortBy;
   const activeChip = routeState.activeChip;
   const [addProductOpen, setAddProductOpen] = useState(false);
 
-  const brandChips = useMemo(() => ['All brands', ...(landingData?.brands ?? []), 'Low stock'], [landingData?.brands]);
-  const products = useMemo(() => landingData?.products ?? [], [landingData?.products]);
+  const debouncedSearch = useDebounce(search, 300);
+  const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantProductsInfinite(
+    period,
+    { search: debouncedSearch },
+  );
+  const { sentinelRef } = useInfiniteScroll({
+    hasMore: hasNextPage ?? false,
+    isLoading: isFetchingNextPage,
+    rootMargin: '400px', // proactively fetch before user reaches end
+    onLoadMore: fetchNextPage,
+  });
+  useRouteScrollRestoration({
+    storageKey: 'seller-products-landing',
+    scopeKey: period,
+    ready: !isLoading,
+  });
+
+  // Flatten all pages into a single products list
+  const allProducts = useMemo(() => data?.pages.flatMap((p) => p.products) ?? [], [data?.pages]);
+  // Total count from snapshot (O(1)); falls back to loaded count
+  const firstPage = data?.pages[0];
+  const total = (firstPage as { total?: number | null } | undefined)?.total ?? firstPage?.kpis?.total_skus ?? allProducts.length;
+
+  const brandChips = useMemo(() => {
+    const brands = firstPage?.brands ?? [];
+    return ['All brands', ...brands, 'Low stock'];
+  }, [firstPage?.brands]);
 
   const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return products
+    return allProducts
       .filter((product) => {
         if (activeChip === 'Low stock') {
           return Number(product.on_hand ?? 0) > 0 && Number(product.days_cover ?? 0) < 14;
@@ -146,44 +163,35 @@ function ProductsLandingContent({
         }
         return true;
       })
-      .filter((product) => {
-        if (!query) return true;
-        const sku = product.master_product?.master_sku ?? product.internal_sku;
-        return (
-          product.display_name.toLowerCase().includes(query) ||
-          sku.toLowerCase().includes(query) ||
-          (product.brand_name ?? '').toLowerCase().includes(query)
-        );
-      })
       .sort((a, b) => {
         if (!isSellerAssistant && sortBy === 'GMV (high → low)') return Number(b.gmv_mtd ?? 0) - Number(a.gmv_mtd ?? 0);
         if (!isSellerAssistant && sortBy === 'GMV (low → high)') return Number(a.gmv_mtd ?? 0) - Number(b.gmv_mtd ?? 0);
         if (!isSellerAssistant && sortBy === 'Growth (high → low)') return Number(b.growth_pct ?? 0) - Number(a.growth_pct ?? 0);
         return Number(a.on_hand ?? 0) - Number(b.on_hand ?? 0);
       });
-  }, [activeChip, isSellerAssistant, products, search, sortBy]);
+  }, [activeChip, isSellerAssistant, allProducts, sortBy]);
 
-  if (isLoading && !landingData) return <ProductLandingSkeleton />;
+  const retainedFiltered = useRetainedValue(filtered.length > 0 ? filtered : null);
+  const displayRows = filtered.length > 0 ? filtered : (retainedFiltered ?? []);
 
-  if (isError && !landingData) {
+  if (isLoading && !data) return <ProductLandingSkeleton />;
+
+  if (isError && !data) {
     return (
       <PageWrap>
         <ErrorState
           heading="Couldn't load products"
           description="There was a problem fetching your products. Please try again."
-          onRetry={() => refetch()}
         />
       </PageWrap>
     );
   }
-  if (!landingData) return <ProductLandingSkeleton />;
+  if (!data) return <ProductLandingSkeleton />;
   const showRefreshingState = isLoading && !data;
 
-  const kpis = landingData.kpis;
-  const total = kpis?.total_skus ?? products.length;
-  const outOfStock = kpis?.out_of_stock ?? products.filter((p) => Number(p.on_hand ?? 0) === 0).length;
-  const lowStock =
-    kpis?.low_stock ?? products.filter((p) => Number(p.on_hand ?? 0) > 0 && Number(p.days_cover ?? 0) < 14).length;
+  const kpis = firstPage?.kpis;
+  const outOfStock = kpis?.out_of_stock ?? allProducts.filter((p) => Number(p.on_hand ?? 0) === 0).length;
+  const lowStock = kpis?.low_stock ?? allProducts.filter((p) => Number(p.on_hand ?? 0) > 0 && Number(p.days_cover ?? 0) < 14).length;
   const growth = kpis?.revenue_growth_pct ?? 0;
 
   return (
@@ -191,7 +199,7 @@ function ProductsLandingContent({
       <PageHeader
         eyebrow="Catalog"
         title="Products"
-        subtitle={`${total} SKUs across ${(landingData.brands ?? []).length} brands. ${outOfStock} out of stock, ${lowStock} running low — those are the ones to chase this week.`}
+        subtitle={`${total} SKUs across ${(firstPage?.brands ?? []).length} brands. ${outOfStock} out of stock, ${lowStock} running low — those are the ones to chase this week.`}
         horizon={horizonLabel}
         period={period}
         periodOptions={options}
@@ -213,7 +221,6 @@ function ProductsLandingContent({
         <ErrorState
           heading="Couldn't load products"
           description="There was a problem fetching your products. Please try again."
-          onRetry={() => refetch()}
         />
       ) : (
         <>
@@ -221,8 +228,8 @@ function ProductsLandingContent({
         tiles={[
           {
             label: 'Active SKUs',
-            value: `${kpis?.active_skus ?? products.length}`,
-            sub: `${kpis?.total_skus ?? products.length} total · ${kpis?.archived_skus ?? 0} archived`,
+            value: `${kpis?.active_skus ?? allProducts.length}`,
+            sub: `${kpis?.total_skus ?? allProducts.length} total · ${kpis?.archived_skus ?? 0} archived`,
           },
           {
             label: 'Out of stock',
@@ -238,7 +245,7 @@ function ProductsLandingContent({
           ...(isSellerAssistant
             ? [{
                 label: `Units moved · ${metricSuffix}`,
-                value: `${products.reduce((sum, product) => sum + Number(product.units_mtd ?? 0), 0)}`,
+                value: `${allProducts.reduce((sum: number, product: TenantProduct) => sum + Number(product.units_mtd ?? 0), 0)}`,
                 sub: 'Operational volume this period',
               }]
             : [{
@@ -254,8 +261,8 @@ function ProductsLandingContent({
           {
             kind: 'risk' as const,
             eyebrow: 'Needs attention',
-            hint: `${landingData.todays_read?.needs_attention?.length ?? 0}`,
-            rows: (landingData.todays_read?.needs_attention ?? []).map((row) => ({
+            hint: `${firstPage?.todays_read?.needs_attention?.length ?? 0}`,
+            rows: (firstPage?.todays_read?.needs_attention ?? []).map((row) => ({
               initials: row.brand_initials,
               hue: row.brand_hue,
               name: row.name,
@@ -267,7 +274,7 @@ function ProductsLandingContent({
             kind: 'info' as const,
             eyebrow: 'Top performers',
             hint: 'by GMV',
-            rows: (landingData.todays_read?.top_performers ?? []).map((row) => ({
+            rows: (firstPage?.todays_read?.top_performers ?? []).map((row) => ({
               initials: row.brand_initials,
               hue: row.brand_hue,
               name: row.name,
@@ -279,7 +286,7 @@ function ProductsLandingContent({
             kind: 'opportunity' as const,
             eyebrow: 'Top risers',
             hint: 'fastest growth',
-            rows: (landingData.todays_read?.top_risers ?? []).map((row) => ({
+            rows: (firstPage?.todays_read?.top_risers ?? []).map((row) => ({
               initials: row.brand_initials,
               hue: row.brand_hue,
               name: row.name,
@@ -291,7 +298,7 @@ function ProductsLandingContent({
       />
 
       <FilterBar
-        count={`Showing ${filtered.length} of ${total}`}
+        count={`${filtered.length} of ${total} products`}
         searchPlaceholder="Search product, SKU, brand…"
         chips={brandChips}
         activeChip={activeChip}
@@ -307,7 +314,7 @@ function ProductsLandingContent({
       )}
 
       <LandingTable
-        showEmptyState={filtered.length === 0}
+        showEmptyState={displayRows.length === 0 && !isLoading}
         emptyState={
           <EmptyState
             icon={<Package size={28} strokeWidth={1.5} />}
@@ -341,7 +348,7 @@ function ProductsLandingContent({
           { width: 40, className: 'px-4' },
         ]}
       >
-        {filtered.map((product: TenantProduct, index: number) => {
+        {displayRows.map((product: TenantProduct, index: number) => {
           const brandName = product.brand_name ?? 'Unknown brand';
           const onHand = Number(product.on_hand ?? 0);
           const daysCover = Number(product.days_cover ?? 0);
@@ -410,6 +417,14 @@ function ProductsLandingContent({
           );
         })}
       </LandingTable>
+
+      {/* Scroll sentinel — triggers next-page fetch when within 400px of viewport */}
+      <div ref={sentinelRef} className="h-px" aria-hidden />
+      {isFetchingNextPage && (
+        <div className="flex justify-center py-4">
+          <Skeleton className="h-8 w-48 rounded-full" />
+        </div>
+      )}
 
       {!isSellerAssistant ? <AddProductSheet open={addProductOpen} onOpenChange={setAddProductOpen} hideTrigger /> : null}
     </PageWrap>
