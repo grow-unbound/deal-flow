@@ -18,11 +18,14 @@ import {
 } from '@/components/seller/layout';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useFlagState } from '@/hooks/useFeatureFlag';
-import { useTenantInvoices, type TenantInvoicesResponse } from '@/hooks/useInvoices';
+import { useTenantInvoicesInfinite, type TenantInvoicesResponse } from '@/hooks/useInvoices';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
+import { useDebounce } from '@/hooks/useDebounce';
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { formatCompactInr, formatDate, formatInr } from '@/lib/utils';
 import { sellerLandingMetricSuffix, type SellerLandingPeriod } from '@/lib/seller-period';
 
@@ -88,7 +91,6 @@ function InvoicesDataSkeleton() {
 }
 
 function InvoicesLandingContent({
-  initialData,
   initialPeriod,
 }: {
   initialData: TenantInvoicesResponse | null;
@@ -96,9 +98,6 @@ function InvoicesLandingContent({
 }) {
   const router = useRouter();
   const { period, setPeriod, horizonLabel, lowerLabel, options } = useSellerLandingPeriod(initialPeriod);
-  const { data, isLoading, isError } = useTenantInvoices(period, initialData);
-  const retainedData = useRetainedValue(data);
-  const landingData = data ?? retainedData;
   const metricSuffix = sellerLandingMetricSuffix(period);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-invoices-landing',
@@ -110,47 +109,51 @@ function InvoicesLandingContent({
       sortBy: 'Recent first' as SortOption,
     },
   });
+  const search = routeState.search;
+  const activeChip = routeState.activeChip;
+  const sortBy = routeState.sortBy;
+
+  const debouncedSearch = useDebounce(search, 300);
+  const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantInvoicesInfinite(
+    period,
+    { search: debouncedSearch, status: activeChip },
+  );
+  const { sentinelRef } = useInfiniteScroll({
+    hasMore: hasNextPage ?? false,
+    isLoading: isFetchingNextPage,
+    rootMargin: '400px',
+    onLoadMore: fetchNextPage,
+  });
   useRouteScrollRestoration({
     storageKey: 'seller-invoices-landing',
     scopeKey: period,
     ready: !isLoading,
   });
-  const search = routeState.search;
-  const activeChip = routeState.activeChip;
-  const sortBy = routeState.sortBy;
 
-  const invoices = landingData?.invoices ?? [];
+  const firstPage = data?.pages[0];
+  const allInvoices = useMemo(() => data?.pages.flatMap((p) => p.invoices) ?? [], [data?.pages]);
+  const total = (firstPage as { total?: number | null } | undefined)?.total ?? firstPage?.kpis?.invoices_this_period ?? allInvoices.length;
 
+  // Client-side sort only (server returns DESC by invoice_date)
   const filteredRows = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    const byChip = invoices.filter((row) => {
-      if (activeChip === 'All') return true;
-      return row.status.filter_chip === activeChip;
-    });
-    const bySearch = byChip.filter((row) => {
-      if (!query) return true;
-      return (
-        row.invoice_number.toLowerCase().includes(query) ||
-        row.buyer_name.toLowerCase().includes(query) ||
-        buyerGeographyLabel(row).toLowerCase().includes(query) ||
-        row.source_label.toLowerCase().includes(query) ||
-        row.source_detail.toLowerCase().includes(query)
-      );
-    });
-    return bySearch.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  }, [activeChip, invoices, search, sortBy]);
+    void sortBy; // acknowledged — only one sort option currently
+    return allInvoices.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [allInvoices, sortBy]);
+
+  const retainedRows = useRetainedValue(filteredRows.length > 0 ? filteredRows : null);
+  const displayRows = filteredRows.length > 0 ? filteredRows : (retainedRows ?? []);
 
   const subtitle = useMemo(() => {
-    const kpis = landingData?.kpis;
+    const kpis = firstPage?.kpis;
     if (!kpis) {
       return `Track receivables and collections ${lowerLabel}.`;
     }
     return `${kpis.invoices_this_period} invoices ${lowerLabel} with ${formatCompactInr(kpis.gmv_this_period)} GMV. ${kpis.outstanding_count} still due and ${kpis.overdue_count} overdue.`;
-  }, [landingData?.kpis, lowerLabel]);
+  }, [firstPage?.kpis, lowerLabel]);
 
-  if (isLoading && !landingData) return <InvoicesLoadingSkeleton />;
+  if (isLoading && !data) return <InvoicesLoadingSkeleton />;
 
-  if (isError && !landingData) {
+  if (isError && !data) {
     return (
       <ErrorState
         heading="Couldn't load invoices"
@@ -158,9 +161,9 @@ function InvoicesLandingContent({
       />
     );
   }
-  if (!landingData) return <InvoicesLoadingSkeleton />;
+  if (!data) return <InvoicesLoadingSkeleton />;
   const showRefreshingState = isLoading && !data;
-  const kpis = landingData.kpis;
+  const kpis = firstPage?.kpis;
 
   return (
     <PageWrap className="max-w-[1920px]">
@@ -184,25 +187,25 @@ function InvoicesLandingContent({
             tiles={[
               {
                 label: `Invoices · ${metricSuffix}`,
-                value: `${kpis.invoices_this_period}`,
-                sub: `${kpis.invoices_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis.invoices_growth_pct)}% vs last period`,
+                value: `${kpis?.invoices_this_period ?? '—'}`,
+                sub: kpis ? `${kpis.invoices_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis.invoices_growth_pct)}% vs last period` : '',
               },
               {
                 label: 'GMV',
-                value: formatCompactInr(kpis.gmv_this_period),
-                sub: `AOV ${formatCompactInr(kpis.aov)}`,
+                value: formatCompactInr(kpis?.gmv_this_period ?? 0),
+                sub: `AOV ${formatCompactInr(kpis?.aov ?? 0)}`,
                 tone: 'accent',
               },
               {
                 label: 'Outstanding',
-                value: formatCompactInr(kpis.outstanding_sum),
-                sub: `${kpis.outstanding_count} invoice${kpis.outstanding_count === 1 ? '' : 's'} due`,
+                value: formatCompactInr(kpis?.outstanding_sum ?? 0),
+                sub: `${kpis?.outstanding_count ?? 0} invoice${(kpis?.outstanding_count ?? 0) === 1 ? '' : 's'} due`,
               },
               {
                 label: 'Overdue',
-                value: formatCompactInr(kpis.overdue_sum),
-                sub: `${kpis.overdue_count} invoice${kpis.overdue_count === 1 ? '' : 's'} overdue`,
-                tone: kpis.overdue_count > 0 ? 'warn' : undefined,
+                value: formatCompactInr(kpis?.overdue_sum ?? 0),
+                sub: `${kpis?.overdue_count ?? 0} invoice${(kpis?.overdue_count ?? 0) === 1 ? '' : 's'} overdue`,
+                tone: (kpis?.overdue_count ?? 0) > 0 ? 'warn' : undefined,
               },
             ]}
           />
@@ -212,8 +215,8 @@ function InvoicesLandingContent({
               {
                 kind: 'risk',
                 eyebrow: 'Needs Attention',
-                hint: `${landingData.todays_read.needs_attention.length}`,
-                rows: landingData.todays_read.needs_attention.map((row) => ({
+                hint: `${firstPage?.todays_read?.needs_attention?.length ?? 0}`,
+                rows: (firstPage?.todays_read?.needs_attention ?? []).map((row) => ({
                   ...mapRowToCallout(row),
                   reason: `${row.invoice_number} · Due ${row.due_date ? formatDate(row.due_date) : '—'}`,
                   trailing: (
@@ -226,8 +229,8 @@ function InvoicesLandingContent({
               {
                 kind: 'info',
                 eyebrow: 'Top Spenders',
-                hint: `${landingData.todays_read.top_spenders.length}`,
-                rows: landingData.todays_read.top_spenders.map((row) => ({
+                hint: `${firstPage?.todays_read?.top_spenders?.length ?? 0}`,
+                rows: (firstPage?.todays_read?.top_spenders ?? []).map((row) => ({
                   ...mapRowToCallout(row),
                   reason: `${row.invoice_number} · ${row.items_count} items`,
                   trailing: formatCompactInr(row.total_amount),
@@ -236,8 +239,8 @@ function InvoicesLandingContent({
               {
                 kind: 'opportunity',
                 eyebrow: 'Top Risers',
-                hint: `${landingData.todays_read.top_risers.length}`,
-                rows: landingData.todays_read.top_risers.map((row) => ({
+                hint: `${firstPage?.todays_read?.top_risers?.length ?? 0}`,
+                rows: (firstPage?.todays_read?.top_risers ?? []).map((row) => ({
                   initials: row.buyer_initials,
                   hue: row.buyer_hue,
                   name: row.buyer_name,
@@ -249,7 +252,7 @@ function InvoicesLandingContent({
           />
 
           <FilterBar
-            count={`Showing ${filteredRows.length} of ${invoices.length}`}
+            count={`${displayRows.length} of ${total} invoices`}
             searchPlaceholder="Search invoice number, buyer, geography…"
             chips={FILTER_CHIPS}
             activeChip={activeChip}
@@ -263,7 +266,7 @@ function InvoicesLandingContent({
           />
 
           <LandingTable
-            showEmptyState={filteredRows.length === 0}
+            showEmptyState={displayRows.length === 0 && !isLoading}
             emptyState={
               <EmptyState
                 icon={<Receipt size={28} strokeWidth={1.5} />}
@@ -296,7 +299,7 @@ function InvoicesLandingContent({
               { width: 40, className: 'px-4' },
             ]}
           >
-            {filteredRows.map((row) => (
+            {displayRows.map((row) => (
               <tr
                 key={row.id}
                 className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
@@ -332,6 +335,14 @@ function InvoicesLandingContent({
               </tr>
             ))}
           </LandingTable>
+
+          {/* Scroll sentinel — triggers next-page fetch when within 400px of viewport */}
+          <div ref={sentinelRef} className="h-px" aria-hidden />
+          {isFetchingNextPage && (
+            <div className="flex justify-center py-4">
+              <Skeleton className="h-8 w-48 rounded-full" />
+            </div>
+          )}
         </>
       )}
     </PageWrap>
