@@ -15,8 +15,8 @@ function isSellerRole(role: string | null): boolean {
 async function findLinkedBuyerId(userId: string, tenantId: string): Promise<string | null> {
   if (!supabaseAdmin) return null;
   try {
-    // Try tenant_users.phone first (may be null if seller never stored their phone there)
-    const { data } = await supabaseAdmin
+    // Primary: read phone from tenant_users (written on every login, backfilled by migration).
+    const { data: tuRow } = await supabaseAdmin
       .schema('app')
       .from('tenant_users')
       .select('phone')
@@ -24,31 +24,37 @@ async function findLinkedBuyerId(userId: string, tenantId: string): Promise<stri
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .is('deleted_at', null)
-      .limit(1)
       .maybeSingle();
 
-    let phone = (data as { phone?: string | null } | null)?.phone ?? null;
+    let phone = (tuRow as { phone?: string | null } | null)?.phone ?? null;
 
-    // Fallback: phone is stored in user_metadata (set by find_seller_candidates_by_phone RPC path;
-    // raw_user_meta_data ->> 'phone' is the authoritative seller phone field, surfaced by the JS
-    // SDK as user.user_metadata.phone — NOT user.phone which is the Supabase native OTP field).
+    // Fallback: read from auth.users.user_metadata (covers first login before the
+    // tenant_users.phone write lands, or legacy accounts not yet migrated).
     if (!phone) {
       const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
-      const userMeta = authUser?.user?.user_metadata as Record<string, unknown> | null | undefined;
-      phone = (typeof userMeta?.phone === 'string' && userMeta.phone ? userMeta.phone : null)
-        ?? authUser?.user?.phone  // native Supabase phone (OTP-linked accounts)
-        ?? null;
+      const meta = authUser?.user?.user_metadata as Record<string, unknown> | null | undefined;
+      phone = (typeof meta?.phone === 'string' && meta.phone ? meta.phone : null)
+        ?? authUser?.user?.phone ?? null;
+
+      // Back-fill so the next request is fast.
+      if (phone) {
+        void supabaseAdmin
+          .schema('app')
+          .from('tenant_users')
+          .update({ phone })
+          .eq('user_id', userId)
+          .eq('tenant_id', tenantId);
+      }
     }
 
     if (!phone) return null;
 
     const candidates = await findBuyerLoginCandidates(phone);
-    // Only consider buyers under this seller's tenant with buyer app enabled
     const sameTenantBuyers = candidates.filter((c) => c.tenant_id === tenantId && c.buyer_app_enabled);
     if (sameTenantBuyers.length === 0) return null;
-    // Return first match; multi-buyer picker will be added when needed
     return sameTenantBuyers[0].buyer_id ?? null;
-  } catch {
+  } catch (err) {
+    console.error('[findLinkedBuyerId] error:', err);
     return null;
   }
 }

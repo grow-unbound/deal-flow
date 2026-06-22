@@ -70,6 +70,18 @@ export async function POST(request: NextRequest) {
         await supabaseAdmin.auth.admin.updateUserById(authData.user.id, {
           app_metadata: { current_tenant_id: currentTenantId },
         });
+
+        // Persist the seller's phone in tenant_users for buyer-app linking.
+        // user_metadata.phone is the canonical field set during signup/invite.
+        const sellerPhone = (authData.user.user_metadata?.phone as string | null | undefined) ?? null;
+        if (sellerPhone) {
+          await (supabaseAdmin as any)
+            .schema('app')
+            .from('tenant_users')
+            .update({ phone: sellerPhone })
+            .eq('user_id', authData.user.id)
+            .eq('tenant_id', currentTenantId);
+        }
       }
     }
 

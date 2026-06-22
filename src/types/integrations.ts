@@ -160,8 +160,8 @@ export const IntegrationJobProgressSchema = z
     last_entity_type: IntegrationEntityTypeSchema.optional(),
     last_external_id: z.string().trim().min(1).max(200).optional(),
     message: z.string().trim().min(1).max(200).optional(),
-    started_at: z.string().datetime().optional(),
-    updated_at: z.string().datetime().optional(),
+    started_at: z.string().datetime({ offset: true }).optional(),
+    updated_at: z.string().datetime({ offset: true }).optional(),
     meta: z.record(z.string(), z.unknown()).optional(),
   })
   .strict()
@@ -247,12 +247,12 @@ export const TenantIntegrationRecordSchema = z
     integration_type_id: IntegrationTypeIdSchema,
     status: TenantIntegrationStatusSchema,
     config: z.record(z.string(), z.unknown()),
-    last_health_check_at: z.string().datetime().nullable(),
+    last_health_check_at: z.string().datetime({ offset: true }).nullable(),
     health_status: TenantIntegrationHealthStatusSchema.nullable(),
-    connected_at: z.string().datetime().nullable(),
+    connected_at: z.string().datetime({ offset: true }).nullable(),
     connected_by: z.string().uuid().nullable(),
-    created_at: z.string().datetime(),
-    updated_at: z.string().datetime(),
+    created_at: z.string().datetime({ offset: true }),
+    updated_at: z.string().datetime({ offset: true }),
   })
   .strict();
 export type TenantIntegrationRecord = z.infer<typeof TenantIntegrationRecordSchema>;
@@ -266,9 +266,9 @@ export const IntegrationJobRecordSchema = z
     progress: IntegrationJobProgressSchema,
     error_log: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
     summary: IntegrationJobSummarySchema.nullable().optional(),
-    started_at: z.string().datetime().nullable(),
-    completed_at: z.string().datetime().nullable(),
-    created_at: z.string().datetime(),
+    started_at: z.string().datetime({ offset: true }).nullable(),
+    completed_at: z.string().datetime({ offset: true }).nullable(),
+    created_at: z.string().datetime({ offset: true }),
   })
   .strict();
 export type IntegrationJobRecord = z.infer<typeof IntegrationJobRecordSchema>;
@@ -283,7 +283,7 @@ export const IntegrationDataFlowRecordSchema = z
     schedule: z.string().trim().min(1).nullable(),
     webhook_id: z.string().uuid().nullable(),
     is_active: z.boolean(),
-    last_run_at: z.string().datetime().nullable(),
+    last_run_at: z.string().datetime({ offset: true }).nullable(),
   })
   .strict();
 export type IntegrationDataFlowRecord = z.infer<typeof IntegrationDataFlowRecordSchema>;

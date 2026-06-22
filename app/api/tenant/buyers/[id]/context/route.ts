@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import { supabaseAdmin } from '@/lib/supabase';
 
 function formatAddress(geography: Record<string, unknown> | null | undefined) {
@@ -46,7 +47,7 @@ export async function GET(
     const db = supabaseAdmin as any;
     const tenantId = claims.tenant_id;
 
-    const [buyerRes, tenantRes, invoicesRes, cohortRes] = await Promise.all([
+    const [buyerRes, tenantRes, cohortRes] = await Promise.all([
       db
         .schema('app')
         .from('buyers')
@@ -61,13 +62,6 @@ export async function GET(
         .select('id, primary_state')
         .eq('id', tenantId)
         .maybeSingle(),
-      db
-        .schema('app')
-        .from('invoices')
-        .select('outstanding_balance')
-        .eq('tenant_id', tenantId)
-        .eq('buyer_id', id)
-        .is('deleted_at', null),
       db
         .schema('app')
         .from('cohort_members')
@@ -134,11 +128,12 @@ export async function GET(
       }
     }
 
-    const creditUsed = (invoicesRes.data ?? []).reduce(
-      (sum: number, row: { outstanding_balance: number | null }) => sum + Number(row.outstanding_balance ?? 0),
-      0,
-    );
     const creditLimit = Number(buyer.credit_limit ?? 0);
+    const creditSnapshot = await loadBuyerCreditSnapshot(db as any, {
+      tenantId,
+      buyerId: buyer.id,
+      creditLimit,
+    });
     const state = typeof buyer.geography?.state === 'string' && buyer.geography.state.trim()
       ? buyer.geography.state.trim()
       : buyer.gstin?.slice(0, 2) ?? '';
@@ -159,8 +154,8 @@ export async function GET(
         seller_state: (tenantRes.data?.primary_state as string | null | undefined) ?? null,
         payment_terms_days: Number(buyer.payment_terms_days ?? 0),
         credit_limit: creditLimit,
-        credit_used: creditUsed,
-        credit_available: Math.max(creditLimit - creditUsed, 0),
+        credit_used: creditSnapshot.credit_used,
+        credit_available: creditSnapshot.available_credit,
         active_pricelist: activePriceList,
         sales_agent_name: null,
       },

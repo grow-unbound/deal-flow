@@ -1,325 +1,604 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { getStoredBuyerPreviewToken } from '@/lib/auth-session';
-import { apiFetch } from '@/lib/api-fetch';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { BriefcaseBusiness, Check, ChevronRight, HelpCircle, LogOut, Phone, Wallet } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { apiFetch, apiPatch } from '@/lib/api-fetch';
+import { formatWhatsappDestination } from '@/lib/phone';
+import { useBuyerMe, type BuyerMeData } from '@/hooks/useBuyerMe';
+import { useBuyerSession } from '@/hooks/useBuyerSession';
+import { useAuth } from '@/contexts/AuthContext';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Spinner } from '@/components/ui/spinner';
 
-function inr(n: number): string {
-  const s = Math.round(n).toString();
-  if (s.length <= 3) return '₹' + s;
-  const last3 = s.slice(-3);
-  const rest = s.slice(0, -3);
-  return '₹' + rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + last3;
+interface BuyerInvoice {
+  id: string;
+  invoice_number: string;
+  status: string;
+  total_amount: number;
+  outstanding_balance: number | null;
+  invoice_date: string;
+  due_date: string | null;
 }
 
-const ChevR = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--cream-400)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="9 18 15 12 9 6" />
-  </svg>
-);
+interface BuyerInvoicesResponse {
+  invoices: BuyerInvoice[];
+}
 
-function RowIcon({ children, variant = 'default' }: { children: React.ReactNode; variant?: 'default' | 'ember' | 'danger' }) {
-  const bg = variant === 'ember' ? '#FBEFE3' : variant === 'danger' ? '#F6E5DF' : 'var(--cream-100)';
-  const fg = variant === 'ember' ? '#874720' : variant === 'danger' ? '#9C3A22' : 'var(--cream-700)';
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+function formatShortDate(value: string | null): string {
+  if (!value) return '—';
+  return new Date(value).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function normalizePhoneInput(value: string): string {
+  return value.replace(/\D/g, '').slice(0, 10);
+}
+
+function RowIcon({
+  icon,
+  tone = 'default',
+}: {
+  icon: React.ReactNode;
+  tone?: 'default' | 'accent' | 'danger';
+}) {
+  const toneClasses = tone === 'accent'
+    ? 'bg-amber-50 text-amber-800'
+    : tone === 'danger'
+      ? 'bg-red-50 text-red-700'
+      : 'bg-cream-100 text-cream-700';
+
   return (
-    <div style={{ width: 36, height: 36, borderRadius: 10, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: fg, flexShrink: 0 }}>
-      {children}
+    <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${toneClasses}`}>
+      {icon}
     </div>
   );
 }
 
-// ─── BusinessEditSheet ────────────────────────────────────────────────────────
-
-function BusinessEditSheet({
-  open,
-  onClose,
-  businessName,
-  contactName,
-  phone,
-  tier,
+function AccountRow({
+  icon,
+  title,
+  subtitle,
+  onClick,
+  action,
+  tone,
+  mono = false,
 }: {
-  open: boolean;
-  onClose: () => void;
-  businessName: string;
-  contactName: string;
-  phone: string;
-  tier: string;
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  onClick?: () => void;
+  action?: React.ReactNode;
+  tone?: 'default' | 'accent' | 'danger';
+  mono?: boolean;
 }) {
-  const [name, setName] = useState(businessName);
-  const [owner, setOwner] = useState(contactName);
-
-  useEffect(() => {
-    if (open) { setName(businessName); setOwner(contactName); }
-  }, [open, businessName, contactName]);
-
-  if (!open) return null;
-
-  const inputCls = 'w-full rounded-lg px-3 py-2.5 text-sm border focus:outline-none focus:ring-2 transition-colors';
+  const interactive = Boolean(onClick);
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        onClick={onClose}
-        style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(2px)' }}
-      />
-      {/* Sheet */}
-      <div
-        style={{
-          position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
-          width: '100%', maxWidth: 468, zIndex: 50,
-          background: '#fff', borderRadius: '20px 20px 0 0',
-          padding: '0 20px 32px',
-          boxShadow: '0 -8px 32px rgba(0,0,0,0.14)',
-        }}
-      >
-        {/* Handle */}
-        <div style={{ width: 40, height: 4, borderRadius: 2, background: 'var(--cream-300)', margin: '12px auto 0' }} />
-        {/* Header */}
-        <div style={{ padding: '18px 0 16px' }}>
-          <h2 style={{ fontSize: 'var(--yk-text-md)', fontWeight: 700, color: 'var(--cream-900)' }}>Business details</h2>
-          <p style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)', marginTop: 2 }}>Update your business information.</p>
-        </div>
-        {/* Fields */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <label style={{ display: 'block', fontSize: 'var(--yk-text-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--cream-600)', marginBottom: 6 }}>Business name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} style={{ borderColor: 'var(--border-1)', background: 'var(--cream-50)', color: 'var(--cream-900)' }} />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 'var(--yk-text-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--cream-600)', marginBottom: 6 }}>Owner name</label>
-            <input value={owner} onChange={(e) => setOwner(e.target.value)} className={inputCls} style={{ borderColor: 'var(--border-1)', background: 'var(--cream-50)', color: 'var(--cream-900)' }} />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 'var(--yk-text-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--cream-600)', marginBottom: 6 }}>Phone</label>
-            <input value={phone} readOnly className={inputCls} style={{ borderColor: 'var(--border-2)', background: 'var(--cream-100)', color: 'var(--cream-600)', cursor: 'not-allowed' }} />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 'var(--yk-text-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--cream-600)', marginBottom: 6 }}>Tier</label>
-            <input value={tier} readOnly className={inputCls} style={{ borderColor: 'var(--border-2)', background: 'var(--cream-100)', color: 'var(--cream-600)', cursor: 'not-allowed' }} />
-          </div>
-        </div>
-        {/* Actions */}
-        <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: '12px 0', borderRadius: 12, border: '1px solid var(--border-1)', background: 'var(--cream-50)', fontSize: 'var(--yk-text-base)', fontWeight: 600, color: 'var(--cream-800)', cursor: 'pointer' }}>
-            Cancel
-          </button>
-          <button
-            onClick={onClose}
-            style={{ flex: 1, padding: '12px 0', borderRadius: 12, background: 'var(--teal-500)', border: 'none', fontSize: 'var(--yk-text-base)', fontWeight: 600, color: '#fff', cursor: 'pointer' }}
-          >
-            Save
-          </button>
-        </div>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!interactive}
+      className={`flex w-full items-center gap-4 px-4 py-4 text-left transition-colors ${
+        interactive ? 'hover:bg-cream-100/70 active:bg-cream-100' : 'cursor-default'
+      } disabled:opacity-100`}
+    >
+      <RowIcon icon={icon} tone={tone} />
+      <div className="min-w-0 flex-1">
+        <div className="text-[1.05rem] font-semibold leading-tight text-cream-900">{title}</div>
+        <div className={`mt-1 text-sm leading-5 text-cream-600 ${mono ? 'font-mono' : ''}`}>{subtitle}</div>
       </div>
-    </>
+      {action}
+    </button>
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+function SheetField({
+  label,
+  children,
+  hint,
+}: {
+  label: string;
+  children: React.ReactNode;
+  hint?: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">{label}</p>
+      {children}
+      {hint ? <p className="text-sm text-cream-600">{hint}</p> : null}
+    </div>
+  );
+}
 
-export default function ProfilePage() {
-  const [sellerPreview, setSellerPreview] = useState(false);
-  const [creditEnabled, setCreditEnabled] = useState(true);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [meData, setMeData] = useState<null | {
-    greeting_name?: string | null;
-    business_name: string;
-    contact_name: string;
-    phone: string;
-    gstin: string | null;
-    credit_limit: number;
-    credit_used: number;
-  }>(null);
+function ProfileSheetFrame({
+  open,
+  onOpenChange,
+  children,
+  className,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="bottom"
+        showCloseButton={false}
+        className={`flex max-h-[calc(100vh-20px)] flex-col overflow-hidden rounded-t-[32px] border-0 bg-[#fcf8f2] p-0 shadow-[0_-24px_60px_rgba(23,36,31,0.18)] ${className ?? ''}`}
+      >
+        <div className="flex justify-center px-5 pb-4 pt-4">
+          <div className="h-1.5 w-16 rounded-full bg-[#ddd2c1]" />
+        </div>
+        {children}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function BuyerSheetPhoneInput({
+  value,
+  onChange,
+  placeholder = '9876543210',
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="flex h-14 items-stretch overflow-hidden rounded-[18px] border border-cream-300 bg-white transition-colors duration-fast ease-standard focus-within:border-ember-400 focus-within:ring-2 focus-within:ring-ember-400/20">
+      <span className="inline-flex items-center border-r border-cream-300 bg-[#f6efe4] px-4 text-lg font-medium text-cream-700">
+        +91
+      </span>
+      <input
+        inputMode="numeric"
+        type="tel"
+        value={value}
+        onChange={(e) => onChange(normalizePhoneInput(e.target.value))}
+        maxLength={10}
+        placeholder={placeholder}
+        className="w-full border-0 bg-transparent px-4 font-sans text-lg text-cream-900 placeholder:text-cream-500 focus:outline-none focus:ring-0"
+      />
+    </div>
+  );
+}
+
+function BusinessDetailsSheet({
+  open,
+  onOpenChange,
+  data,
+  pending,
+  onSave,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  data: BuyerMeData;
+  pending: boolean;
+  onSave: (payload: { business_name: string; contact_name: string; gstin: string }) => void;
+}) {
+  const [businessName, setBusinessName] = useState(data.business_name);
+  const [contactName, setContactName] = useState(data.contact_name);
+  const [gstin, setGstin] = useState(data.gstin ?? '');
 
   useEffect(() => {
-    let cancelled = false;
-    async function resolveMode() {
-      try {
-        const response = await apiFetch('/api/buyer/me');
-        if (!response.ok) {
-          if (!cancelled) setSellerPreview(Boolean(getStoredBuyerPreviewToken()));
-          return;
-        }
-        const data = await response.json() as {
-          mode?: 'buyer' | 'preview';
-          seller_preview?: boolean;
-          greeting_name?: string | null;
-          business_name: string;
-          contact_name: string;
-          phone: string;
-          gstin: string | null;
-          credit_limit: number;
-          credit_used: number;
-          business_policy?: { credit_enabled: boolean };
-        };
-        if (!cancelled) {
-          setSellerPreview(data.seller_preview === true);
-          setCreditEnabled(data.business_policy?.credit_enabled ?? true);
-          setMeData({
-            greeting_name: data.greeting_name,
-            business_name: data.business_name,
-            contact_name: data.contact_name,
-            phone: data.phone ?? '—',
-            gstin: data.gstin ?? null,
-            credit_limit: data.credit_limit,
-            credit_used: data.credit_used,
-          });
-        }
-      } catch {
-        if (!cancelled) setSellerPreview(Boolean(getStoredBuyerPreviewToken()));
-      }
+    if (open) {
+      setBusinessName(data.business_name);
+      setContactName(data.contact_name);
+      setGstin(data.gstin ?? '');
     }
-    void resolveMode();
-    return () => { cancelled = true; };
-  }, []);
-
-  const profile = useMemo(() => ({
-    name: sellerPreview ? 'Buyer App Preview' : (meData?.greeting_name || meData?.contact_name || meData?.business_name || 'Buyer'),
-    business: sellerPreview ? 'Preview access' : (meData?.business_name || 'Buyer business'),
-    phone: meData?.phone ?? '—',
-    gstin: meData?.gstin ?? (sellerPreview ? 'Not registered' : '—'),
-    tier: sellerPreview ? 'preview' : 'A-class',
-    credit: meData?.credit_limit ?? 0,
-    used: meData?.credit_used ?? 0,
-  }), [sellerPreview, meData]);
-
-  const initials = profile.name.split(' ').map((s) => s[0]).join('').slice(0, 2).toUpperCase();
+  }, [open, data.business_name, data.contact_name, data.gstin]);
 
   return (
-    <div>
-      {/* ── Hero ── */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg, #1F3A34 0%, #2D5549 100%)',
-          padding: '32px 20px 28px',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 10,
-        }}
-      >
-        {/* Initials circle */}
-        <div style={{
-          width: 64, height: 64, borderRadius: 999,
-          background: 'rgba(255,255,255,0.18)',
-          border: '2px solid rgba(255,255,255,0.28)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <span style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: '#fff' }}>{initials}</span>
-        </div>
-        {/* Name */}
-        <div style={{ textAlign: 'center' }}>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>{profile.name}</h1>
-          <p style={{ fontSize: 'var(--yk-text-sm)', color: 'rgba(253,251,247,0.65)', marginTop: 4 }}>{profile.business}</p>
-        </div>
-        {/* Tier badge */}
-        <div style={{ borderRadius: 999, background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 12px' }}>
-          <span style={{ fontSize: 'var(--yk-text-xs)', fontWeight: 600, color: 'rgba(253,251,247,0.8)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{profile.tier}</span>
-        </div>
-        {sellerPreview && (
-          <div style={{ borderRadius: 999, background: 'rgba(251,239,227,0.18)', border: '1px solid rgba(251,239,227,0.3)', padding: '4px 12px', marginTop: 4 }}>
-            <span style={{ fontSize: 'var(--yk-text-xs)', color: 'rgba(253,251,247,0.7)' }}>Preview mode</span>
+    <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[44vh]">
+      <SheetHeader className="border-b-0 px-5 pb-2 pt-0">
+        <SheetTitle className="font-display text-[2rem] font-semibold leading-[1.02] tracking-[-0.03em] text-cream-950">
+          Edit business details
+        </SheetTitle>
+        <p className="mt-3 max-w-[32rem] text-[15px] leading-7 text-cream-700">
+          These details appear on every order placed and on invoices issued by your distributors.
+        </p>
+      </SheetHeader>
+      <SheetBody className="space-y-5 px-5 py-5">
+        <SheetField label="Business name">
+          <Input
+            value={businessName}
+            onChange={(e) => setBusinessName(e.target.value)}
+            maxLength={200}
+            className="h-14 rounded-[18px] border-cream-300 bg-white px-4 text-lg"
+          />
+        </SheetField>
+        <SheetField label="Contact name">
+          <Input
+            value={contactName}
+            onChange={(e) => setContactName(e.target.value)}
+            maxLength={200}
+            className="h-14 rounded-[18px] border-cream-300 bg-white px-4 text-lg"
+          />
+        </SheetField>
+        <SheetField label="GSTIN" hint="Leave blank if your business is not GST registered.">
+          <Input
+            value={gstin}
+            onChange={(e) => setGstin(e.target.value.toUpperCase())}
+            maxLength={15}
+            className="h-14 rounded-[18px] border-cream-300 bg-white px-4 text-lg"
+          />
+        </SheetField>
+      </SheetBody>
+      <SheetFooter className="gap-3 border-t-0 bg-transparent px-5 pb-[calc(20px+env(safe-area-inset-bottom,0px))] pt-2">
+        <Button
+          variant="secondary"
+          size="lg"
+          className="h-14 flex-1 rounded-[18px] border-cream-300 bg-white text-lg"
+          onClick={() => onOpenChange(false)}
+          disabled={pending}
+        >
+          Cancel
+        </Button>
+        <Button
+          size="lg"
+          className="h-14 flex-1 rounded-[18px] text-lg"
+          onClick={() => onSave({ business_name: businessName, contact_name: contactName, gstin })}
+          disabled={pending}
+        >
+          {pending ? <Spinner size="sm" className="text-current" /> : <Check className="h-5 w-5" />}
+          Save changes
+        </Button>
+      </SheetFooter>
+    </ProfileSheetFrame>
+  );
+}
+
+function PhoneSheet({
+  open,
+  onOpenChange,
+  data,
+  pending,
+  onSave,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  data: BuyerMeData;
+  pending: boolean;
+  onSave: (payload: { phone: string }) => void;
+}) {
+  const [phone, setPhone] = useState(data.phone);
+
+  useEffect(() => {
+    if (open) {
+      setPhone(data.phone);
+    }
+  }, [open, data.phone]);
+
+  return (
+    <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[32vh]">
+      <SheetHeader className="border-b-0 px-5 pb-2 pt-0">
+        <SheetTitle className="font-display text-[2rem] font-semibold leading-[1.02] tracking-[-0.03em] text-cream-950">
+          Phone number
+        </SheetTitle>
+        <p className="mt-2 text-[15px] leading-7 text-cream-700">
+          OTP will be sent to this new number from your next login.
+        </p>
+      </SheetHeader>
+      <SheetBody className="px-5 py-5">
+        <SheetField label="Phone number">
+          <BuyerSheetPhoneInput value={phone} onChange={setPhone} />
+        </SheetField>
+      </SheetBody>
+      <SheetFooter className="gap-3 border-t-0 bg-transparent px-5 pb-[calc(20px+env(safe-area-inset-bottom,0px))] pt-2">
+        <Button
+          variant="secondary"
+          size="lg"
+          className="h-14 flex-1 rounded-[18px] border-cream-300 bg-white text-lg"
+          onClick={() => onOpenChange(false)}
+          disabled={pending}
+        >
+          Cancel
+        </Button>
+        <Button
+          size="lg"
+          className="h-14 flex-1 rounded-[18px] text-lg"
+          onClick={() => onSave({ phone })}
+          disabled={pending}
+        >
+          {pending ? <Spinner size="sm" className="text-current" /> : <Check className="h-5 w-5" />}
+          Save changes
+        </Button>
+      </SheetFooter>
+    </ProfileSheetFrame>
+  );
+}
+
+function CreditLimitSheet({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const invoicesQuery = useQuery({
+    queryKey: ['buyer-unpaid-invoices'],
+    enabled: open,
+    queryFn: async () => {
+      const response = await apiFetch('/api/buyer/invoices?unpaid_only=true&limit=200');
+      if (!response.ok) {
+        throw new Error('Failed to load unpaid invoices');
+      }
+      return response.json() as Promise<BuyerInvoicesResponse>;
+    },
+  });
+
+  const invoices = invoicesQuery.data?.invoices ?? [];
+
+  return (
+    <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[42vh]">
+      <SheetHeader className="border-b-0 px-5 pb-2 pt-0">
+        <SheetTitle className="font-display text-[2rem] font-semibold leading-[1.02] tracking-[-0.03em] text-cream-950">
+          Credit used
+        </SheetTitle>
+        <p className="mt-2 text-[15px] leading-7 text-cream-700">
+          These unpaid invoices add up to your current credit usage.
+        </p>
+      </SheetHeader>
+      <SheetBody className="space-y-3 px-5 py-5">
+        {invoicesQuery.isLoading ? (
+          <div className="flex min-h-[180px] items-center justify-center">
+            <Spinner size="lg" />
           </div>
+        ) : invoicesQuery.isError ? (
+          <div className="rounded-[22px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-700">
+            Couldn&apos;t load unpaid invoices right now.
+          </div>
+        ) : invoices.length === 0 ? (
+          <div className="rounded-[22px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-700">
+            No unpaid invoices are contributing to your credit usage right now.
+          </div>
+        ) : (
+          invoices.map((invoice) => (
+            <div key={invoice.id} className="rounded-[22px] border border-cream-200 bg-white px-4 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-base font-semibold text-cream-900">{invoice.invoice_number}</p>
+                  <p className="mt-1 text-sm text-cream-600">
+                    Invoice {formatShortDate(invoice.invoice_date)} · Due {formatShortDate(invoice.due_date)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-base font-semibold text-cream-900">
+                    {formatCurrency(invoice.outstanding_balance ?? 0)}
+                  </p>
+                  <p className="mt-1 text-xs uppercase tracking-[0.12em] text-cream-500">{invoice.status}</p>
+                </div>
+              </div>
+            </div>
+          ))
         )}
-      </div>
+      </SheetBody>
+    </ProfileSheetFrame>
+  );
+}
 
-      {/* ── Seller preview banner ── */}
-      {sellerPreview && (
-        <div style={{ margin: '12px 16px 0', background: '#FBF1DC', border: '1px solid #E8D8A0', borderRadius: 12, padding: '10px 14px' }}>
-          <p style={{ fontSize: 'var(--yk-text-sm)', color: '#7A5519', lineHeight: 1.5 }}>
-            Previewing as seller — buyers see their business details, GSTIN, credit limit, and delivery locations here.
-          </p>
+export default function ProfilePage() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const { data, isLoading, isError } = useBuyerMe();
+  const { effectiveBuyerRole } = useBuyerSession();
+  const { signOut } = useAuth();
+  const [businessSheetOpen, setBusinessSheetOpen] = useState(false);
+  const [phoneSheetOpen, setPhoneSheetOpen] = useState(false);
+  const [creditSheetOpen, setCreditSheetOpen] = useState(false);
+  const [logoutPending, setLogoutPending] = useState(false);
+
+  const canEditBusiness = effectiveBuyerRole === 'buyer_admin';
+  const sellerPreview = data?.seller_preview === true;
+
+  const initials = useMemo(() => {
+    const source = data?.contact_name || data?.business_name || 'Buyer';
+    return source
+      .split(' ')
+      .map((part) => part[0] ?? '')
+      .join('')
+      .slice(0, 2)
+      .toUpperCase();
+  }, [data?.contact_name, data?.business_name]);
+
+  const updateProfileMutation = useMutation({
+    mutationFn: async (payload: Record<string, string>) => {
+      const response = await apiPatch('/api/buyer/me', payload);
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof body.error === 'string' ? body.error : 'Failed to update profile');
+      }
+      return body as BuyerMeData;
+    },
+    onMutate: async (payload) => {
+      await queryClient.cancelQueries({ queryKey: ['buyer-me'] });
+      const previous = queryClient.getQueryData<BuyerMeData>(['buyer-me']);
+
+      if (previous) {
+        queryClient.setQueryData<BuyerMeData>(['buyer-me'], {
+          ...previous,
+          business_name: payload.business_name ?? previous.business_name,
+          contact_name: payload.contact_name ?? previous.contact_name,
+          phone: payload.phone ?? previous.phone,
+          gstin: payload.gstin !== undefined ? (payload.gstin || null) : previous.gstin,
+        });
+      }
+
+      return { previous };
+    },
+    onError: (error, _payload, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['buyer-me'], context.previous);
+      }
+      toast.error(error instanceof Error ? error.message : 'Failed to update profile');
+    },
+    onSuccess: (nextData) => {
+      queryClient.setQueryData(['buyer-me'], nextData);
+      toast.success('Profile updated');
+      setBusinessSheetOpen(false);
+      setPhoneSheetOpen(false);
+    },
+  });
+
+  const handleBusinessSave = (payload: { business_name: string; contact_name: string; gstin: string }) => {
+    updateProfileMutation.mutate(payload);
+  };
+
+  const handlePhoneSave = (payload: { phone: string }) => {
+    updateProfileMutation.mutate(payload);
+  };
+
+  const handleHelpSupport = () => {
+    if (!data?.support_whatsapp_number) {
+      toast.error('Support WhatsApp number is not configured yet.');
+      return;
+    }
+
+    const message = encodeURIComponent('Hi, I need help with my buyer account.');
+    const destination = formatWhatsappDestination(data.support_whatsapp_number);
+    window.open(`https://wa.me/${destination}?text=${message}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleLogout = async () => {
+    try {
+      setLogoutPending(true);
+      await signOut();
+      router.replace('/login');
+    } catch {
+      toast.error('Failed to log out. Please try again.');
+    } finally {
+      setLogoutPending(false);
+    }
+  };
+
+  if (isError) {
+    return (
+      <div className="p-4">
+        <div className="rounded-2xl border border-cream-200 bg-cream-50 px-4 py-5 text-sm text-cream-700">
+          Couldn&apos;t load your profile right now.
         </div>
-      )}
-
-      {/* ── Account ── */}
-      <div style={{ padding: '20px 16px 0' }}>
-        <p style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-body)', fontWeight: 500, padding: '0 4px 8px' }}>Account</p>
-        <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 14, overflow: 'hidden' }}>
-          {[
-            {
-              icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>,
-              label: 'Business details', sub: profile.business, right: <ChevR />, onClick: () => setSheetOpen(true),
-            },
-            {
-              icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>,
-              label: 'GSTIN', sub: profile.gstin, right: <ChevR />, mono: true,
-            },
-            ...(creditEnabled ? [{
-              icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg>,
-              variant: 'ember' as const,
-              label: 'Credit limit', sub: `${inr(profile.used)} used of ${inr(profile.credit)}`, right: <ChevR />,
-            }] : []),
-            {
-              icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>,
-              label: 'Delivery locations', sub: sellerPreview ? '—' : 'Manage delivery locations', right: <ChevR />,
-            },
-          ].map((row, i, arr) => (
-            <button
-              key={row.label}
-              type="button"
-              onClick={row.onClick}
-              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px', borderBottom: i < arr.length - 1 ? '1px solid var(--border-1)' : 'none', background: 'none', cursor: 'pointer', textAlign: 'left' }}
-            >
-              <RowIcon variant={row.variant}>{row.icon}</RowIcon>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 'var(--yk-text-base)', fontWeight: 500, color: 'var(--cream-900)' }}>{row.label}</div>
-                <div style={{ fontSize: row.mono ? 'var(--yk-text-base)' : 'var(--yk-text-sm)', color: 'var(--cream-600)', marginTop: 1, fontFamily: row.mono ? 'var(--font-mono)' : 'var(--font-body)' }}>{row.sub}</div>
-              </div>
-              {row.right}
-            </button>
-          ))}
-        </div>
       </div>
+    );
+  }
 
-      {/* ── Preferences ── */}
-      <div style={{ padding: '20px 16px 0' }}>
-        <p style={{ fontSize: 'var(--yk-text-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--cream-600)', fontFamily: 'var(--font-body)', fontWeight: 500, padding: '0 4px 8px' }}>Preferences</p>
-        <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 14, overflow: 'hidden' }}>
-          {[
-            { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>, label: 'Notifications', sub: 'WhatsApp + push', right: <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--teal-600)', fontWeight: 600 }}>On</span> },
-            { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>, label: 'Catalog view', sub: 'Lookbook or grid', right: <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-700)' }}>Lookbook</span> },
-            { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>, label: 'Language', sub: 'Display language', right: <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-700)' }}>English</span> },
-            { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>, label: 'Help & support', sub: 'Chat with us on WhatsApp', right: <ChevR /> },
-          ].map((row, i, arr) => (
-            <div key={row.label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px', borderBottom: i < arr.length - 1 ? '1px solid var(--border-1)' : 'none', cursor: 'pointer' }}>
-              <RowIcon>{row.icon}</RowIcon>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 'var(--yk-text-base)', fontWeight: 500, color: 'var(--cream-900)' }}>{row.label}</div>
-                <div style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)', marginTop: 1 }}>{row.sub}</div>
-              </div>
-              {row.right}
-            </div>
-          ))}
-        </div>
-      </div>
+  if (isLoading || !data) {
+    return null;
+  }
 
-      {/* ── Log out ── */}
-      <div style={{ padding: '16px 16px 0' }}>
-        <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px', cursor: 'pointer' }}>
-            <RowIcon variant="danger">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
-            </RowIcon>
-            <div>
-              <div style={{ fontSize: 'var(--yk-text-base)', fontWeight: 500, color: '#9C3A22' }}>Log out</div>
-              <div style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)', marginTop: 1 }}>You&apos;ll need a fresh OTP next time.</div>
-            </div>
+  return (
+    <div className="min-h-screen bg-[#f8f4ed] pb-8">
+      <div className="bg-[linear-gradient(135deg,#21433B_0%,#17372F_100%)] px-4 pb-8 pt-8">
+        <div className="flex items-center gap-4">
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-[3px] border-[#efc58d] bg-[#c97539] text-[2rem] font-semibold tracking-tight text-white">
+            {initials}
+          </div>
+          <div className="min-w-0">
+            <h1 className="font-display text-[2rem] font-semibold leading-none tracking-[-0.02em] text-white">
+              {data.greeting_name || data.contact_name || data.business_name}
+            </h1>
+            <p className="mt-3 text-base font-normal text-white/80">{data.business_name}</p>
           </div>
         </div>
-        <p style={{ textAlign: 'center', marginTop: 16, marginBottom: 8, fontSize: 'var(--yk-text-xs)', color: 'var(--cream-500)' }}>Yukti buyer · <span className="tabular-inline">v1.0.0</span></p>
       </div>
 
-      {/* ── Business edit sheet ── */}
-      <BusinessEditSheet
-        open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        businessName={profile.business}
-        contactName={profile.name}
-        phone={profile.phone}
-        tier={profile.tier}
+      {sellerPreview ? (
+        <div className="px-4 pt-3">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Previewing as seller. Buyers see their account details and credit summary here.
+          </div>
+        </div>
+      ) : null}
+
+      <div className="px-4 pt-5">
+        <p className="px-2 text-xs font-semibold uppercase tracking-[0.16em] text-cream-600">Account</p>
+        <div className="mt-3 overflow-hidden rounded-[24px] border border-cream-200 bg-white">
+          <div className="border-b border-cream-200">
+            <AccountRow
+              icon={<BriefcaseBusiness className="h-5 w-5" />}
+              title="Business details"
+              subtitle={data.business_name}
+              onClick={canEditBusiness ? () => setBusinessSheetOpen(true) : undefined}
+              action={canEditBusiness ? <ChevronRight className="h-5 w-5 text-cream-500" /> : null}
+            />
+          </div>
+          <div className="border-b border-cream-200">
+            <AccountRow
+              icon={<Phone className="h-5 w-5" />}
+              title="Phone number"
+              subtitle={data.phone}
+              onClick={() => setPhoneSheetOpen(true)}
+              action={<ChevronRight className="h-5 w-5 text-cream-500" />}
+              mono
+            />
+          </div>
+          {data.business_policy.credit_enabled ? (
+            <AccountRow
+              icon={<Wallet className="h-5 w-5" />}
+              tone="accent"
+              title="Credit limit"
+              subtitle={`${formatCurrency(data.credit_used)} used of ${formatCurrency(data.credit_limit)}`}
+              onClick={() => setCreditSheetOpen(true)}
+              action={<ChevronRight className="h-5 w-5 text-cream-500" />}
+            />
+          ) : null}
+        </div>
+      </div>
+
+      <div className="space-y-3 px-4 pt-5">
+        <div className="overflow-hidden rounded-[24px] border border-cream-200 bg-white">
+          <AccountRow
+            icon={<HelpCircle className="h-5 w-5" />}
+            title="Help & Support"
+            subtitle="Chat with us on WhatsApp"
+            onClick={handleHelpSupport}
+            action={<ChevronRight className="h-5 w-5 text-cream-500" />}
+          />
+        </div>
+
+        <div className="overflow-hidden rounded-[24px] border border-cream-200 bg-white">
+          <AccountRow
+            icon={<LogOut className="h-5 w-5" />}
+            tone="danger"
+            title="Logout"
+            subtitle="You’ll need a fresh OTP next time."
+            onClick={() => { void handleLogout(); }}
+            action={logoutPending ? <Spinner size="sm" /> : null}
+          />
+        </div>
+      </div>
+
+      <BusinessDetailsSheet
+        open={businessSheetOpen}
+        onOpenChange={setBusinessSheetOpen}
+        data={data}
+        pending={updateProfileMutation.isPending}
+        onSave={handleBusinessSave}
       />
+      <PhoneSheet
+        open={phoneSheetOpen}
+        onOpenChange={setPhoneSheetOpen}
+        data={data}
+        pending={updateProfileMutation.isPending}
+        onSave={handlePhoneSave}
+      />
+      <CreditLimitSheet open={creditSheetOpen} onOpenChange={setCreditSheetOpen} />
     </div>
   );
 }

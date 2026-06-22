@@ -1,15 +1,12 @@
 export default function BuyAgainLoading() {
   return (
-    <div className="flex flex-col pb-[var(--tab-bar)]">
-      <div className="border-b border-cream-200 bg-cream-50">
-        <div className="h-11 animate-pulse border-b border-cream-200 bg-cream-100" />
-        <div className="p-4">
-          <div className="h-10 w-full animate-pulse rounded-xl bg-cream-100" />
-        </div>
-      </div>
-      <div className="space-y-4 p-4">
-        <div className="h-28 animate-pulse rounded-xl bg-cream-100 border border-cream-200" />
-        <div className="h-40 animate-pulse rounded-xl bg-cream-100 border border-cream-200" />
+    <div className="space-y-4 p-4" role="status" aria-label="Loading order again">
+      <div className="h-10 w-full animate-pulse rounded-xl border border-cream-200 bg-cream-100" />
+      <div className="h-5 w-28 animate-pulse rounded bg-cream-200" />
+      <div className="grid grid-cols-2 gap-3">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div key={index} className="aspect-[4/5] animate-pulse rounded-xl border border-cream-200 bg-cream-100" />
+        ))}
       </div>
     </div>
   );

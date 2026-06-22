@@ -405,12 +405,14 @@ export async function connectTenantIntegration(tenantId: string, actorUserId: st
     if (error) throw error;
   }
 
-  const { error: secretError } = await db.rpc('upsert_tenant_integration_secret', {
-    p_tenant_integration_id: integrationId!,
-    p_actor_user_id: actorUserId,
-    p_secret: parsed.credentials,
-    p_secret_name: `${parsed.integration_type_id}_${tenantId}`,
-  });
+  const { error: secretError } = await db
+    .schema('app')
+    .rpc('upsert_tenant_integration_secret', {
+      p_tenant_integration_id: integrationId!,
+      p_actor_user_id: actorUserId,
+      p_secret: parsed.credentials,
+      p_secret_name: `${parsed.integration_type_id}_${tenantId}`,
+    });
   if (secretError) throw secretError;
 
   return loadIntegrationsSettingsPayload(tenantId);
@@ -427,10 +429,12 @@ async function getTenantIntegrationWithSecret(db: DbClient, tenantIntegrationId:
     .single();
   if (error || !integration) throw error ?? new Error('Integration not found');
 
-  const { data: secret, error: secretError } = await db.rpc('get_tenant_integration_runtime_secret', {
-    p_tenant_integration_id: tenantIntegrationId,
-    p_expected_integration_type_id: integration.integration_type_id,
-  });
+  const { data: secret, error: secretError } = await db
+    .schema('app')
+    .rpc('get_tenant_integration_runtime_secret', {
+      p_tenant_integration_id: tenantIntegrationId,
+      p_expected_integration_type_id: integration.integration_type_id,
+    });
   if (secretError) throw new Error(secretError.message ?? 'Failed to load integration secret');
   return { integration, secret: secret as Record<string, unknown> | null };
 }
