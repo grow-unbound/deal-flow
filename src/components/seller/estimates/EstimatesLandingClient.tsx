@@ -21,10 +21,13 @@ import {
 } from '@/components/seller/layout';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useFlagState } from '@/hooks/useFeatureFlag';
-import { useTenantEstimates, type EstimateLandingRow, type TenantEstimatesResponse } from '@/hooks/useEstimates';
+import { useTenantEstimatesInfinite, type EstimateLandingRow, type TenantEstimatesResponse } from '@/hooks/useEstimates';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
+import { useDebounce } from '@/hooks/useDebounce';
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { cn, formatCompactInr, formatDate } from '@/lib/utils';
 import { sellerLandingMetricSuffix, type SellerLandingPeriod } from '@/lib/seller-period';
@@ -147,9 +150,6 @@ function EstimatesLandingContent({
   const router = useRouter();
   const { newEntityIds, markSeen } = useSellerRealtimeContext();
   const { period, setPeriod, horizonLabel, lowerLabel, options } = useSellerLandingPeriod(initialPeriod);
-  const { data, isLoading, isError } = useTenantEstimates(period, initialData);
-  const retainedData = useRetainedValue(data);
-  const landingData = data ?? retainedData;
   const metricSuffix = sellerLandingMetricSuffix(period);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-estimates-landing',
@@ -161,20 +161,34 @@ function EstimatesLandingContent({
       sortBy: 'Recent first' as SortOption,
     },
   });
+  const search = routeState.search;
+  const activeChip = routeState.activeChip;
+  const sortBy = (routeState.sortBy ?? 'Recent first') as SortOption;
+
+  const debouncedSearch = useDebounce(search, 300);
+  const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantEstimatesInfinite(
+    period,
+    { search: debouncedSearch },
+  );
+  const { sentinelRef } = useInfiniteScroll({
+    hasMore: hasNextPage ?? false,
+    isLoading: isFetchingNextPage,
+    rootMargin: '400px',
+    onLoadMore: fetchNextPage,
+  });
   useRouteScrollRestoration({
     storageKey: 'seller-estimates-landing',
     scopeKey: period,
     ready: !isLoading,
   });
-  const search = routeState.search;
-  const activeChip = routeState.activeChip;
-  const sortBy = (routeState.sortBy ?? 'Recent first') as SortOption;
 
-  const estimates = landingData?.estimates ?? [];
+  const firstPage = data?.pages[0];
+  const allEstimates = useMemo(() => data?.pages.flatMap((p) => p.estimates) ?? [], [data?.pages]);
+  const total = (firstPage as { total?: number | null } | undefined)?.total ?? firstPage?.kpis?.total_estimates_this_period ?? allEstimates.length;
 
   const filteredRows = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    const byChip = estimates.filter((row) => {
+    const query = debouncedSearch.trim().toLowerCase();
+    const byChip = allEstimates.filter((row) => {
       if (activeChip === 'All') return true;
       if (activeChip === 'Buyer App') return row.source === 'buyer_app';
       if (activeChip === 'Converted') {
@@ -204,22 +218,22 @@ function EstimatesLandingContent({
       }
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
-  }, [activeChip, estimates, search, sortBy]);
+  }, [activeChip, allEstimates, debouncedSearch, sortBy]);
 
   const subtitle = useMemo(() => {
-    const kpis = landingData?.kpis;
+    const kpis = firstPage?.kpis;
     if (!kpis) {
       return `Track buyer enquiries and seller quotes ${lowerLabel}.`;
     }
     return `${kpis.total_estimates_this_period} estimates ${lowerLabel} with ${formatCompactInr(kpis.total_gmv_this_period)} GMV. ${kpis.open_estimates_this_period} open and ${kpis.converted_this_period} converted ${lowerLabel}.`;
-  }, [landingData?.kpis, lowerLabel]);
+  }, [firstPage?.kpis, lowerLabel]);
 
-  const followUpHint = useMemo(() => `${countFollowUpCandidates(estimates)}`, [estimates]);
-  const expiringHint = useMemo(() => `${countExpiringSoonOpen(estimates)}`, [estimates]);
+  const followUpHint = useMemo(() => `${countFollowUpCandidates(allEstimates)}`, [allEstimates]);
+  const expiringHint = useMemo(() => `${countExpiringSoonOpen(allEstimates)}`, [allEstimates]);
 
-  if (isLoading && !landingData) return <EstimatesLoadingSkeleton />;
+  if (isLoading && !data) return <EstimatesLoadingSkeleton />;
 
-  if (isError && !landingData) {
+  if (isError && !data) {
     return (
       <ErrorState
         heading="Couldn't load estimates"
@@ -227,10 +241,11 @@ function EstimatesLandingContent({
       />
     );
   }
-  if (!landingData) return <EstimatesLoadingSkeleton />;
+  if (!data) return <EstimatesLoadingSkeleton />;
   const showRefreshingState = isLoading && !data;
 
-  const read = landingData.todays_read;
+  const kpis = firstPage?.kpis;
+  const read = firstPage?.todays_read;
 
   return (
     <>
@@ -260,23 +275,23 @@ function EstimatesLandingContent({
               tiles={[
                 {
                   label: `Estimates · ${metricSuffix}`,
-                  value: `${landingData.kpis.total_estimates_this_period}`,
-                  sub: `${landingData.kpis.total_estimates_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(landingData.kpis.total_estimates_growth_pct)}% vs last period`,
+                  value: `${kpis?.total_estimates_this_period}`,
+                  sub: `${(kpis?.total_estimates_growth_pct ?? 0) >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis?.total_estimates_growth_pct ?? 0)}% vs last period`,
                 },
                 {
                   label: 'GMV',
-                  value: formatCompactInr(landingData.kpis.total_gmv_this_period),
-                  sub: `AOV ${formatCompactInr(landingData.kpis.aov)}`,
+                  value: formatCompactInr(kpis?.total_gmv_this_period ?? 0),
+                  sub: `AOV ${formatCompactInr(kpis?.aov ?? 0)}`,
                   tone: 'accent',
                 },
                 {
                   label: 'Open estimates',
-                  value: `${landingData.kpis.open_estimates_this_period}`,
-                  sub: `${landingData.kpis.open_drafts} draft · ${landingData.kpis.open_sent} sent · ${landingData.kpis.open_accepted} accepted`,
+                  value: `${kpis?.open_estimates_this_period}`,
+                  sub: `${kpis?.open_drafts} draft · ${kpis?.open_sent} sent · ${kpis?.open_accepted} accepted`,
                 },
                 {
                   label: `Converted · ${metricSuffix}`,
-                  value: `${landingData.kpis.converted_this_period}`,
+                  value: `${kpis?.converted_this_period}`,
                   sub: 'converted to SO or invoice',
                 },
               ]}
@@ -288,7 +303,7 @@ function EstimatesLandingContent({
                   kind: 'risk',
                   eyebrow: 'Needs a follow-up',
                   hint: followUpHint,
-                  rows: read.needs_follow_up.map((row) => ({
+                  rows: (read?.needs_follow_up ?? []).map((row) => ({
                     ...mapRowToCallout(row),
                     reason: `${row.estimate_number} · Sent ${row.sent_at ? formatDate(row.sent_at) : '—'}`,
                     trailing: formatCompactInr(row.total_amount),
@@ -297,8 +312,8 @@ function EstimatesLandingContent({
                 {
                   kind: 'info',
                   eyebrow: 'Ready to convert',
-                  hint: `${landingData.kpis.ready_to_convert}`,
-                  rows: read.ready_to_convert.map((row) => ({
+                  hint: `${kpis?.ready_to_convert}`,
+                  rows: (read?.ready_to_convert ?? []).map((row) => ({
                     ...mapRowToCallout(row),
                     reason: `${row.estimate_number} · ${row.items_count} items`,
                     trailing: formatCompactInr(row.total_amount),
@@ -308,7 +323,7 @@ function EstimatesLandingContent({
                   kind: 'opportunity',
                   eyebrow: 'Expiring soon',
                   hint: expiringHint,
-                  rows: read.expiring_soon.map((row) => ({
+                  rows: (read?.expiring_soon ?? []).map((row) => ({
                     ...mapRowToCallout(row),
                     reason: `${row.estimate_number} · expires in ${daysUntil(row.expires_at)}d`,
                     trailing: (
@@ -322,7 +337,7 @@ function EstimatesLandingContent({
             />
 
             <FilterBar
-              count={`Showing ${filteredRows.length} of ${estimates.length}`}
+              count={`Showing ${filteredRows.length} of ${total}`}
               searchPlaceholder="Search estimate number, buyer, geography, catalog…"
               chips={FILTER_CHIPS}
               activeChip={activeChip}
@@ -426,6 +441,14 @@ function EstimatesLandingContent({
                 );
               })}
             </LandingTable>
+
+            {/* Scroll sentinel — triggers next-page fetch 400px before list end */}
+            <div ref={sentinelRef} className="h-px" aria-hidden />
+            {isFetchingNextPage && (
+              <div className="flex justify-center py-4">
+                <Skeleton className="h-8 w-48 rounded-full" />
+              </div>
+            )}
           </>
         )}
       </PageWrap>

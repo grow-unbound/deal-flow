@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, useInfiniteQuery, keepPreviousData } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { apiFetch, apiPost } from '@/lib/api-fetch';
@@ -204,6 +204,39 @@ export function useCustomersLanding(period: SellerLandingPeriod = 'month', initi
       return res.json();
     },
     initialData: getSellerLandingInitialData(period, initialData),
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+  });
+}
+
+export interface CustomersInfiniteFilters {
+  search?: string;
+  tier?: string;
+}
+
+export interface CustomersLandingPage extends CustomersLandingResponse {
+  nextCursor: string | null;
+  total: number | null;
+}
+
+export function useCustomersLandingInfinite(
+  period: SellerLandingPeriod = 'month',
+  filters: CustomersInfiniteFilters = {},
+) {
+  return useInfiniteQuery({
+    queryKey: ['tenant-customers-infinite', period, filters],
+    queryFn: async ({ pageParam }): Promise<CustomersLandingPage> => {
+      const params = new URLSearchParams({ period });
+      if (pageParam) params.set('cursor', pageParam as string);
+      if (filters.search?.trim()) params.set('search', filters.search.trim());
+      if (filters.tier && filters.tier !== 'All') params.set('tier', filters.tier);
+      const res = await apiFetch(`/api/tenant/customers?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to fetch customers landing');
+      return res.json() as Promise<CustomersLandingPage>;
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
   });
