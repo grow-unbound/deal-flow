@@ -5,6 +5,7 @@ import { getPostHogClient } from '@/lib/posthog-server';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { fetchWhatsappNotificationContext } from '@/lib/server/notification-context';
 import { sendRequestReceivedBuyer, sendRequestReceivedSeller } from '@/lib/server/whatsapp';
+import { PAGE_SIZE, encodeCursor, decodeCursor } from '@/lib/pagination';
 
 // Exported types consumed by checkout/page.tsx and EnquiriesTab
 export interface EstimateRequest {
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     const subtotal = items.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
     const total_amount = subtotal;
 
-    if (context.mode === 'preview') {
+    if (context.mode === 'preview' && !context.buyer_id) {
       return NextResponse.json({
         success: true,
         estimate_id: `preview-${Date.now()}`,
@@ -223,7 +224,7 @@ export async function GET(request: NextRequest) {
     }
     const context = profile.context;
 
-    if (context.mode === 'preview') {
+    if (context.mode === 'preview' && !context.buyer_id) {
       return NextResponse.json({ estimates: [] });
     }
 
@@ -234,10 +235,12 @@ export async function GET(request: NextRequest) {
     const tenant_id = context.tenant_id;
     const buyer_id = profile.buyer.id;
     const db = supabaseAdmin ?? supabase;
-    const limit = Math.min(Number(request.nextUrl.searchParams.get('limit') ?? '50'), 200);
+    const { searchParams } = request.nextUrl;
+    const reqLimit = Math.min(Number(searchParams.get('limit') ?? PAGE_SIZE.BUYER), PAGE_SIZE.MAX);
+    const cursorParam = searchParams.get('cursor');
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (db as any)
+    let query = (db as any)
       .schema('app')
       .from('estimates')
       .select('id, estimate_number, status, total_amount, created_at, notes')
@@ -245,14 +248,41 @@ export async function GET(request: NextRequest) {
       .eq('buyer_id', buyer_id)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
-      .limit(limit);
+      .order('id', { ascending: false })
+      .limit(reqLimit + 1);
+
+    if (cursorParam) {
+      const { created_at, id } = decodeCursor(cursorParam);
+      query = query.or(`created_at.lt.${created_at},and(created_at.eq.${created_at},id.lt.${id})`);
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [{ data, error }, countRes] = await Promise.all([
+      query,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (db as any)
+        .schema('app')
+        .from('estimates')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenant_id)
+        .eq('buyer_id', buyer_id)
+        .is('deleted_at', null),
+    ]);
 
     if (error) {
       console.warn('[buyer/estimates] GET error (table may not exist yet):', error.message);
-      return NextResponse.json({ estimates: [] });
+      return NextResponse.json({ estimates: [], nextCursor: null, total: null });
     }
 
-    const estimates = ((data ?? []) as EstimateRow[]).map((e) => ({
+    const rawRows = ((data ?? []) as EstimateRow[]);
+    const hasNextPage = rawRows.length > reqLimit;
+    const rows = hasNextPage ? rawRows.slice(0, reqLimit) : rawRows;
+    const lastRow = rows.at(-1);
+    const nextCursor = hasNextPage && lastRow
+      ? encodeCursor({ created_at: lastRow.created_at, id: lastRow.id })
+      : null;
+
+    const estimates = rows.map((e) => ({
       id: e.id,
       estimate_number: e.estimate_number,
       status: e.status,
@@ -261,9 +291,9 @@ export async function GET(request: NextRequest) {
       notes: e.notes ?? null,
     }));
 
-    return NextResponse.json({ estimates });
+    return NextResponse.json({ estimates, nextCursor, total: (countRes as { count: number | null }).count ?? null });
   } catch (err) {
     console.error('[buyer/estimates] GET unexpected error:', err);
-    return NextResponse.json({ estimates: [] });
+    return NextResponse.json({ estimates: [], nextCursor: null, total: null });
   }
 }

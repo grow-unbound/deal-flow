@@ -130,6 +130,7 @@ export function IntegrationsSettingsClient() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [disconnectDialogIntegration, setDisconnectDialogIntegration] = useState<IntegrationCatalogItem | null>(null);
   const [stopSyncDialogIntegration, setStopSyncDialogIntegration] = useState<IntegrationCatalogItem | null>(null);
+  const [syncingPhaseTarget, setSyncingPhaseTarget] = useState<string | null>(null);
 
   const zohoEnabled = useFlagState('ZOHO_INTEGRATION');
   const tallyEnabled = useFlagState('TALLY_INTEGRATION');
@@ -278,9 +279,28 @@ export function IntegrationsSettingsClient() {
   async function runSyncNowIntegration(integration: IntegrationCatalogItem) {
     const tenantIntegrationId = integration.tenant_integration?.id;
     if (!tenantIntegrationId) return;
-    await syncNowIntegration({
-      tenant_integration_id: tenantIntegrationId,
-    });
+    setSyncingPhaseTarget(null);
+    try {
+      await syncNowIntegration({
+        tenant_integration_id: tenantIntegrationId,
+      });
+    } finally {
+      setSyncingPhaseTarget((current) => (current === null ? null : current));
+    }
+  }
+
+  async function runSyncPhaseIntegration(integration: IntegrationCatalogItem, phase: string) {
+    const tenantIntegrationId = integration.tenant_integration?.id;
+    if (!tenantIntegrationId) return;
+    setSyncingPhaseTarget(phase);
+    try {
+      await syncNowIntegration({
+        tenant_integration_id: tenantIntegrationId,
+        phase,
+      });
+    } finally {
+      setSyncingPhaseTarget((current) => (current === phase ? null : current));
+    }
   }
 
   async function runRetryWebhooks(integration: IntegrationCatalogItem) {
@@ -478,10 +498,12 @@ export function IntegrationsSettingsClient() {
                 onOpenWizard={() => openWizard(integration)}
                 onDisconnect={() => void runDisconnectIntegration(integration)}
                 onSyncNow={() => void runSyncNowIntegration(integration)}
+                onSyncPhase={(phase) => void runSyncPhaseIntegration(integration, phase)}
                 onStopSync={() => void runStopSyncIntegration(integration)}
                 onRefresh={() => void refetch()}
                 onRetryWebhooks={() => void runRetryWebhooks(integration)}
                 isSyncingNow={isSyncingNow}
+                syncTargetPhase={syncingPhaseTarget}
                 isStoppingSync={isStoppingSync}
                 isRetryingWebhooks={isRetryingWebhookSetup}
               />

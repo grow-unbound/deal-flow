@@ -439,3 +439,41 @@ export function useEstimatePriceListOptions(enabled: boolean) {
     placeholderData: (previous) => previous,
   });
 }
+
+// ─── Buyer app ───────────────────────────────────────────────────────────────
+
+interface BuyerEstimateRow {
+  id: string;
+  estimate_number: string | null;
+  status: string;
+  total_amount: number;
+  created_at: string;
+  notes: string | null;
+}
+
+export interface BuyerEstimatesPage {
+  estimates: BuyerEstimateRow[];
+  nextCursor: string | null;
+  total: number | null;
+}
+
+const BUYER_QUERY_STALE_TIME = 30_000;
+const BUYER_QUERY_GC_TIME = 2 * 60_000;
+
+export function useBuyerEstimatesInfinite() {
+  return useInfiniteQuery({
+    queryKey: ['buyer-estimates-infinite'],
+    queryFn: async ({ pageParam }): Promise<BuyerEstimatesPage> => {
+      const params = new URLSearchParams();
+      if (pageParam) params.set('cursor', pageParam as string);
+      const res = await fetch(`/api/buyer/estimates?${params.toString()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json() as Promise<BuyerEstimatesPage>;
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
+    staleTime: BUYER_QUERY_STALE_TIME,
+    gcTime: BUYER_QUERY_GC_TIME,
+  });
+}

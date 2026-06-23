@@ -38,7 +38,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       catalogIds = catalog?.id ? [catalog.id] : [];
     } else if (selectedCatalogId) {
       catalogIds = [selectedCatalogId];
-    } else if (context.mode === 'preview' || !profile.buyer) {
+    } else if (!profile.buyer) {
       const { data: catalogs, error } = await supabaseAdmin
         .schema('app')
         .from('published_catalogs')

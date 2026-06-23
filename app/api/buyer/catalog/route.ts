@@ -85,7 +85,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     let visibleCatalogs: BuyerVisibleCatalog[] = [];
     const buyer = profile.buyer;
 
-    if (context.mode === 'preview' || !buyer) {
+    if (!buyer) {
       const { data, error } = await supabaseAdmin
         .schema('app')
         .from('published_catalogs')

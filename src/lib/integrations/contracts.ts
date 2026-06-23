@@ -111,6 +111,7 @@ export interface IntegrationSyncRequest {
   tenant_integration_id: string;
   job_type?: IntegrationJobType;
   scope?: IntegrationSyncScope;
+  phase?: string | null;
   since?: string | null;
   page_limit?: number | null;
   max_pages?: number | null;

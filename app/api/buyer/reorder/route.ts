@@ -41,7 +41,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerReord
       by_category: [],
     };
 
-    if (context.mode === 'preview' || !profile.buyer?.id) {
+    if (!profile.buyer?.id) {
       return NextResponse.json(empty);
     }
 

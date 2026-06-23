@@ -37,7 +37,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
 
     const context = profile.context;
     const buyer = profile.buyer;
-    if (context.mode === 'preview' || !buyer) {
+    if (!buyer) {
       const previewPayload: BuyerHomeResponse = {
         greeting_name: 'Preview',
         open_orders_count: 0,
