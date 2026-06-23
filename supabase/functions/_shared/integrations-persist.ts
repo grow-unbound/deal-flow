@@ -55,6 +55,13 @@ function asBool(v: unknown, defaultVal = false): boolean {
   return defaultVal;
 }
 
+export function sanitizeZohoPhone(value: unknown): string | null {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  const digits = String(value).replace(/\D/g, '');
+  if (digits.length < 10) return null;
+  return digits.slice(-10);
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -210,14 +217,14 @@ async function upsertImportedPriceList(
   return priceListId;
 }
 
-async function persistLineItemRows(
-  admin: AdminClient,
-  entityType: 'estimate_items' | 'order_items' | 'invoice_items',
-  items: Array<{ externalId: string; row: Record<string, unknown> }>,
-): Promise<void> {
-  if (items.length === 0) return;
-
-  await bulkPersistJsonbRecords(admin, entityType, items.map((item) => item.row));
+function mapPersistedRowsByExternalRef(rows: Record<string, unknown>[]): Array<{ externalId: string; internalId: string }> {
+  return rows
+    .map((row) => {
+      const externalId = asStr(row.external_ref);
+      const internalId = asStr(row.id);
+      return externalId && internalId ? { externalId, internalId } : null;
+    })
+    .filter((row): row is { externalId: string; internalId: string } => row !== null);
 }
 
 // ── Locations ────────────────────────────────────────────────────────────────
@@ -302,8 +309,7 @@ async function persistBuyers(
   _adapter: ZohoAdapter,
 ): Promise<PersistResult> {
   const result: PersistResult = { created: 0, updated: 0, skipped: 0 };
-  const buyerMapPairs: Array<{ externalId: string; internalId: string }> = [];
-  const contactMapPairs: Array<{ externalId: string; internalId: string }> = [];
+  const buyerRows: Record<string, unknown>[] = [];
 
   for (const rec of records) {
     const externalId = asStr(rec.contact_id);
@@ -333,7 +339,6 @@ async function persistBuyers(
       business_name: businessName,
       contact_name: asStr(rec.contact_name) ?? asStr(rec.first_name),
       email: asStr(rec.email),
-      phone: asStr(rec.phone),
       gstin: asStr(rec.gst_no) ?? asStr((rec as Record<string, unknown>)['cf_gstin']),
       credit_limit: asNum(rec.credit_limit),
       payment_terms_days: asNum(rec.payment_terms) ?? asNum(rec.payment_terms_days),
@@ -341,50 +346,72 @@ async function persistBuyers(
       is_active: (asStr(rec.status) ?? 'active') === 'active',
       created_by: actorId,
       updated_by: actorId,
+      ...(sanitizeZohoPhone(rec.phone) ? { phone: sanitizeZohoPhone(rec.phone) } : {}),
     };
 
-    const persisted = await bulkPersistJsonbRecordsWithIds(admin, 'buyers', [row], ['tenant_id', 'external_ref']);
-    const buyerId = persisted[0] ?? null;
-    if (!buyerId) { result.skipped++; continue; }
-    buyerMapPairs.push({ externalId, internalId: buyerId });
-    result.updated++;
+    buyerRows.push(row);
+  }
+
+  const persistedBuyers = buyerRows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'buyers', buyerRows, ['tenant_id', 'external_ref'])
+    : [];
+
+  const buyerMapPairs = persistedBuyers
+    .map((row) => {
+      const externalId = asStr(row.external_ref);
+      const internalId = asStr(row.id);
+      return externalId && internalId ? { externalId, internalId } : null;
+    })
+    .filter((row): row is { externalId: string; internalId: string } => row !== null);
+  const buyerIdMap = new Map(buyerMapPairs.map((row) => [row.externalId, row.internalId] as const));
+
+  result.updated += buyerMapPairs.length;
+
+  const contactRows: Record<string, unknown>[] = [];
+  for (const rec of records) {
+    const externalId = asStr(rec.contact_id);
+    if (!externalId) continue;
+
+    const buyerId = buyerIdMap.get(externalId) ?? null;
+    if (!buyerId) continue;
 
     const embeddedContactPersons = Array.isArray((rec as Record<string, unknown>).contact_persons)
       ? (rec as Record<string, unknown>).contact_persons as Record<string, unknown>[]
       : [];
 
-    const cpRows = embeddedContactPersons
-      .map((cp) => {
-        const cpId = asStr(cp.contact_person_id);
-        if (!cpId) return null;
-        return {
-          buyer_id: buyerId,
-          external_ref: cpId,
-          role: 'buyer_assistant' as const,
-          first_name: asStr(cp.first_name),
-          last_name: asStr(cp.last_name),
-          email: asStr(cp.email),
-          phone: asStr(cp.phone),
-          mobile: asStr(cp.mobile),
-          designation: asStr(cp.designation),
-          department: asStr(cp.department),
-          is_active: asBool(cp.is_active, true),
-          created_by: actorId,
-          updated_by: actorId,
-        };
-      })
-      .filter((r): r is NonNullable<typeof r> => r !== null);
+    for (const cp of embeddedContactPersons) {
+      const cpId = asStr(cp.contact_person_id);
+      if (!cpId) continue;
 
-    if (cpRows.length > 0) {
-      const cpIds = await bulkPersistJsonbRecordsWithIds(admin, 'buyer_users', cpRows, ['buyer_id', 'external_ref']);
-      for (const [index, id] of cpIds.entries()) {
-        const externalId = cpRows[index]?.external_ref;
-        if (externalId && id) {
-          contactMapPairs.push({ externalId: String(externalId), internalId: id });
-        }
-      }
+      contactRows.push({
+        buyer_id: buyerId,
+        external_ref: cpId,
+        role: 'buyer_assistant' as const,
+        first_name: asStr(cp.first_name),
+        last_name: asStr(cp.last_name),
+        email: asStr(cp.email),
+        designation: asStr(cp.designation),
+        department: asStr(cp.department),
+        is_active: asBool(cp.is_active, true),
+        created_by: actorId,
+        updated_by: actorId,
+        ...(sanitizeZohoPhone(cp.phone) ? { phone: sanitizeZohoPhone(cp.phone) } : {}),
+        ...(sanitizeZohoPhone(cp.mobile) ? { mobile: sanitizeZohoPhone(cp.mobile) } : {}),
+      });
     }
   }
+
+  const persistedContacts = contactRows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'buyer_users', contactRows, ['buyer_id', 'external_ref'])
+    : [];
+
+  const contactMapPairs = persistedContacts
+    .map((row) => {
+      const externalId = asStr(row.external_ref);
+      const internalId = asStr(row.id);
+      return externalId && internalId ? { externalId, internalId } : null;
+    })
+    .filter((row): row is { externalId: string; internalId: string } => row !== null);
 
   await Promise.all([
     batchUpsertEntityMap(admin, tenantId, integrationId, 'customers', buyerMapPairs),
@@ -492,10 +519,8 @@ async function persistProducts(
       .map((b) => ({ externalId: String(b.external_ref), internalId: String(b.id) })),
   );
 
-  // Step C: upsert products
-  const productMapPairs: Array<{ externalId: string; internalId: string }> = [];
-  const productIdMap = new Map<string, string>(); // external_id → tenant_product_id
-
+  // Step C: upsert products in one batch
+  const productRows: Record<string, unknown>[] = [];
   for (const rec of records) {
     const externalId = asStr(rec.item_id);
     if (!externalId) { result.skipped++; continue; }
@@ -507,14 +532,12 @@ async function persistProducts(
     const catName = asStr(rec.category_name);
     const catId = catName ? (categoryMap.get(catName) ?? null) : null;
 
-    const internalSku = asStr(rec.sku) ?? asStr(rec.cf_sku) ?? externalId;
-
-    const row = {
+    productRows.push({
       tenant_id: tenantId,
       external_ref: externalId,
       tenant_brand_id: brandId,
       tenant_category_id: catId,
-      internal_sku: internalSku,
+      internal_sku: asStr(rec.sku) ?? asStr(rec.cf_sku) ?? externalId,
       name_override: asStr(rec.name),
       description: asStr(rec.description),
       base_selling_price: asNum(rec.rate),
@@ -525,16 +548,16 @@ async function persistProducts(
       is_active: (asStr(rec.status) ?? 'active') === 'active',
       created_by: actorId,
       updated_by: actorId,
-    };
-
-    const productIds = await bulkPersistJsonbRecordsWithIds(admin, 'tenant_products', [row], ['tenant_id', 'external_ref']);
-    const productId = productIds[0] ?? null;
-    if (!productId) { result.skipped++; continue; }
-    productMapPairs.push({ externalId, internalId: productId });
-    productIdMap.set(externalId, productId);
-    result.updated++;
+    });
   }
 
+  const persistedProducts = productRows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'tenant_products', productRows, ['tenant_id', 'external_ref'])
+    : [];
+  const productMapPairs = mapPersistedRowsByExternalRef(persistedProducts);
+  const productIdMap = new Map(productMapPairs.map((row) => [row.externalId, row.internalId] as const));
+
+  result.updated += productMapPairs.length;
   await batchUpsertEntityMap(admin, tenantId, integrationId, 'products', productMapPairs);
 
   // Step D: upsert inventory from embedded item location snapshots on each item
@@ -612,6 +635,8 @@ async function persistEstimates(
   const buyerIdMap = await resolveInternalIds(
     admin, tenantId, integrationId, 'customers', customerExternalIds,
   );
+  const parentRows: Record<string, unknown>[] = [];
+  const parentRecords: Array<{ estimateId: string; lineItems: Record<string, unknown>[] }> = [];
 
   for (const rec of records) {
     const externalId = asStr(rec.estimate_id);
@@ -620,7 +645,7 @@ async function persistEstimates(
     const customerId = asStr(rec.customer_id);
     const buyerId = customerId ? (buyerIdMap.get(customerId) ?? null) : null;
 
-    const row = {
+    parentRows.push({
       tenant_id: tenantId,
       external_ref: externalId,
       buyer_id: buyerId,
@@ -635,61 +660,71 @@ async function persistEstimates(
       source: 'zoho_import',
       created_by: actorId,
       updated_by: actorId,
-    };
+    });
 
-    const estimateIds = await bulkPersistJsonbRecordsWithIds(admin, 'estimates', [row], ['tenant_id', 'external_ref']);
-    const estimateId = estimateIds[0] ?? null;
-    if (!estimateId) { result.skipped++; continue; }
-    result.updated++;
+    parentRecords.push({
+      estimateId: externalId,
+      lineItems: Array.isArray(rec.line_items) ? rec.line_items as Record<string, unknown>[] : [],
+    });
+  }
 
-    // Soft-delete then reinsert line items
+  const persistedEstimates = parentRows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'estimates', parentRows, ['tenant_id', 'external_ref'])
+    : [];
+  const estimateMapPairs = mapPersistedRowsByExternalRef(persistedEstimates);
+  const estimateIdMap = new Map(estimateMapPairs.map((row) => [row.externalId, row.internalId] as const));
+  const estimateIds = estimateMapPairs.map((row) => row.internalId);
+
+  result.updated += estimateMapPairs.length;
+  await batchUpsertEntityMap(admin, tenantId, integrationId, 'estimates', estimateMapPairs);
+
+  if (estimateIds.length > 0) {
     await admin
       .schema('app')
       .from('estimate_items')
       .update({ deleted_at: nowIso() })
-      .eq('estimate_id', estimateId)
+      .in('estimate_id', estimateIds)
       .is('deleted_at', null);
+  }
 
-    const lineItems = Array.isArray(rec.line_items) ? rec.line_items as Record<string, unknown>[] : [];
-    const productExtIds = lineItems
-      .map((li) => asStr(li.item_id))
-      .filter((x): x is string => x !== null);
-    const productIdMap = await resolveInternalIds(
-      admin, tenantId, integrationId, 'products', productExtIds,
-    );
+  const productExtIds = [...new Set(
+    parentRecords.flatMap((entry) =>
+      entry.lineItems.map((li) => asStr(li.item_id)).filter((x): x is string => x !== null),
+    ),
+  )];
+  const productIdMap = await resolveInternalIds(admin, tenantId, integrationId, 'products', productExtIds);
 
-    const lineItemPayloads = lineItems
-      .map((li) => {
-        const extProdId = asStr(li.item_id);
-        const productId = extProdId ? (productIdMap.get(extProdId) ?? null) : null;
-        if (!productId) return null;
+  const lineItemRows: Record<string, unknown>[] = [];
+  for (const entry of parentRecords) {
+    const estimateId = estimateIdMap.get(entry.estimateId) ?? null;
+    if (!estimateId) continue;
 
-        const taxRate = asNum(li.tax_percentage) ?? asNum(li.tax_rate);
-        const discountPct = asNum(li.discount_percentage) ?? asNum(li.disc_pct) ?? 0;
+    for (const li of entry.lineItems) {
+      const extProdId = asStr(li.item_id);
+      const productId = extProdId ? (productIdMap.get(extProdId) ?? null) : null;
+      if (!productId) continue;
 
-        return {
-          row: {
-            estimate_id: estimateId,
-            tenant_product_id: productId,
-            qty: asNum(li.quantity) ?? 1,
-            unit_price: asNum(li.rate) ?? 0,
-            line_total: asNum(li.item_total),
-            tax_rate: taxRate,
-            tax_pct: taxRate,
-            disc_pct: discountPct,
-            discount_pct: discountPct,
-            created_by: actorId,
-            updated_by: actorId,
-          },
-        };
-      })
-      .filter((r): r is NonNullable<typeof r> => r !== null);
+      const taxRate = asNum(li.tax_percentage) ?? asNum(li.tax_rate);
+      const discountPct = asNum(li.discount_percentage) ?? asNum(li.disc_pct) ?? 0;
 
-    await persistLineItemRows(admin, 'estimate_items', lineItemPayloads);
+      lineItemRows.push({
+        estimate_id: estimateId,
+        tenant_product_id: productId,
+        qty: asNum(li.quantity) ?? 1,
+        unit_price: asNum(li.rate) ?? 0,
+        line_total: asNum(li.item_total),
+        tax_rate: taxRate,
+        tax_pct: taxRate,
+        disc_pct: discountPct,
+        discount_pct: discountPct,
+        created_by: actorId,
+        updated_by: actorId,
+      });
+    }
+  }
 
-    await batchUpsertEntityMap(admin, tenantId, integrationId, 'estimates', [
-      { externalId, internalId: estimateId },
-    ]);
+  if (lineItemRows.length > 0) {
+    await bulkPersistJsonbRecords(admin, 'estimate_items', lineItemRows);
   }
 
   return result;
@@ -723,6 +758,8 @@ async function persistOrders(
   const buyerIdMap = await resolveInternalIds(
     admin, tenantId, integrationId, 'customers', customerExternalIds,
   );
+  const parentRows: Record<string, unknown>[] = [];
+  const parentRecords: Array<{ orderExternalId: string; lineItems: Record<string, unknown>[] }> = [];
 
   for (const rec of records) {
     const externalId = asStr(rec.salesorder_id);
@@ -736,7 +773,7 @@ async function persistOrders(
       ? shippingAddr
       : null;
 
-    const row = {
+    parentRows.push({
       tenant_id: tenantId,
       external_ref: externalId,
       buyer_id: buyerId,
@@ -752,61 +789,71 @@ async function persistOrders(
       placed_at: asDate(rec.date),
       created_by: actorId,
       updated_by: actorId,
-    };
+    });
 
-    const orderIds = await bulkPersistJsonbRecordsWithIds(admin, 'orders', [row], ['tenant_id', 'external_ref']);
-    const orderId = orderIds[0] ?? null;
-    if (!orderId) { result.skipped++; continue; }
-    result.updated++;
+    parentRecords.push({
+      orderExternalId: externalId,
+      lineItems: Array.isArray(rec.line_items) ? rec.line_items as Record<string, unknown>[] : [],
+    });
+  }
 
-    // Soft-delete then reinsert line items
+  const persistedOrders = parentRows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'orders', parentRows, ['tenant_id', 'external_ref'])
+    : [];
+  const orderMapPairs = mapPersistedRowsByExternalRef(persistedOrders);
+  const orderIdMap = new Map(orderMapPairs.map((row) => [row.externalId, row.internalId] as const));
+  const orderIds = orderMapPairs.map((row) => row.internalId);
+
+  result.updated += orderMapPairs.length;
+  await batchUpsertEntityMap(admin, tenantId, integrationId, 'orders', orderMapPairs);
+
+  if (orderIds.length > 0) {
     await admin
       .schema('app')
       .from('order_items')
       .update({ deleted_at: nowIso() })
-      .eq('order_id', orderId)
+      .in('order_id', orderIds)
       .is('deleted_at', null);
+  }
 
-    const lineItems = Array.isArray(rec.line_items) ? rec.line_items as Record<string, unknown>[] : [];
-    const productExtIds = lineItems
-      .map((li) => asStr(li.item_id))
-      .filter((x): x is string => x !== null);
-    const productIdMap = await resolveInternalIds(
-      admin, tenantId, integrationId, 'products', productExtIds,
-    );
+  const productExtIds = [...new Set(
+    parentRecords.flatMap((entry) =>
+      entry.lineItems.map((li) => asStr(li.item_id)).filter((x): x is string => x !== null),
+    ),
+  )];
+  const productIdMap = await resolveInternalIds(admin, tenantId, integrationId, 'products', productExtIds);
 
-    const lineItemPayloads = lineItems
-      .map((li) => {
-        const extProdId = asStr(li.item_id);
-        const productId = extProdId ? (productIdMap.get(extProdId) ?? null) : null;
-        if (!productId) return null;
+  const lineItemRows: Record<string, unknown>[] = [];
+  for (const entry of parentRecords) {
+    const orderId = orderIdMap.get(entry.orderExternalId) ?? null;
+    if (!orderId) continue;
 
-        const taxRate = asNum(li.tax_percentage) ?? asNum(li.tax_rate);
-        const discountPct = asNum(li.discount_percentage) ?? asNum(li.disc_pct) ?? 0;
+    for (const li of entry.lineItems) {
+      const extProdId = asStr(li.item_id);
+      const productId = extProdId ? (productIdMap.get(extProdId) ?? null) : null;
+      if (!productId) continue;
 
-        return {
-          row: {
-            order_id: orderId,
-            tenant_product_id: productId,
-            qty: asNum(li.quantity) ?? 1,
-            unit_price: asNum(li.rate) ?? 0,
-            line_total: asNum(li.item_total),
-            tax_rate: taxRate,
-            tax_pct: taxRate,
-            disc_pct: discountPct,
-            discount_pct: discountPct,
-            created_by: actorId,
-            updated_by: actorId,
-          },
-        };
-      })
-      .filter((r): r is NonNullable<typeof r> => r !== null);
+      const taxRate = asNum(li.tax_percentage) ?? asNum(li.tax_rate);
+      const discountPct = asNum(li.discount_percentage) ?? asNum(li.disc_pct) ?? 0;
 
-    await persistLineItemRows(admin, 'order_items', lineItemPayloads);
+      lineItemRows.push({
+        order_id: orderId,
+        tenant_product_id: productId,
+        qty: asNum(li.quantity) ?? 1,
+        unit_price: asNum(li.rate) ?? 0,
+        line_total: asNum(li.item_total),
+        tax_rate: taxRate,
+        tax_pct: taxRate,
+        disc_pct: discountPct,
+        discount_pct: discountPct,
+        created_by: actorId,
+        updated_by: actorId,
+      });
+    }
+  }
 
-    await batchUpsertEntityMap(admin, tenantId, integrationId, 'orders', [
-      { externalId, internalId: orderId },
-    ]);
+  if (lineItemRows.length > 0) {
+    await bulkPersistJsonbRecords(admin, 'order_items', lineItemRows);
   }
 
   return result;
@@ -839,6 +886,8 @@ async function persistInvoices(
   const buyerIdMap = await resolveInternalIds(
     admin, tenantId, integrationId, 'customers', customerExternalIds,
   );
+  const parentRows: Record<string, unknown>[] = [];
+  const parentRecords: Array<{ invoiceExternalId: string; lineItems: Record<string, unknown>[] }> = [];
 
   for (const rec of records) {
     const externalId = asStr(rec.invoice_id);
@@ -858,7 +907,7 @@ async function persistInvoices(
     const balance = asNum(rec.balance) ?? 0;
     const amountPaid = asNum(rec.payment_made) ?? (total - balance);
 
-    const row = {
+    parentRows.push({
       tenant_id: tenantId,
       external_ref: externalId,
       buyer_id: buyerId,
@@ -874,61 +923,71 @@ async function persistInvoices(
       notes_for_buyer: asStr(rec.notes),
       created_by: actorId,
       updated_by: actorId,
-    };
+    });
 
-    const invoiceIds = await bulkPersistJsonbRecordsWithIds(admin, 'invoices', [row], ['tenant_id', 'external_ref']);
-    const invoiceId = invoiceIds[0] ?? null;
-    if (!invoiceId) { result.skipped++; continue; }
-    result.updated++;
+    parentRecords.push({
+      invoiceExternalId: externalId,
+      lineItems: Array.isArray(rec.line_items) ? rec.line_items as Record<string, unknown>[] : [],
+    });
+  }
 
-    // Soft-delete then reinsert line items
+  const persistedInvoices = parentRows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'invoices', parentRows, ['tenant_id', 'external_ref'])
+    : [];
+  const invoiceMapPairs = mapPersistedRowsByExternalRef(persistedInvoices);
+  const invoiceIdMap = new Map(invoiceMapPairs.map((row) => [row.externalId, row.internalId] as const));
+  const invoiceIds = invoiceMapPairs.map((row) => row.internalId);
+
+  result.updated += invoiceMapPairs.length;
+  await batchUpsertEntityMap(admin, tenantId, integrationId, 'invoices', invoiceMapPairs);
+
+  if (invoiceIds.length > 0) {
     await admin
       .schema('app')
       .from('invoice_items')
       .update({ deleted_at: nowIso() })
-      .eq('invoice_id', invoiceId)
+      .in('invoice_id', invoiceIds)
       .is('deleted_at', null);
+  }
 
-    const lineItems = Array.isArray(rec.line_items) ? rec.line_items as Record<string, unknown>[] : [];
-    const productExtIds = lineItems
-      .map((li) => asStr(li.item_id))
-      .filter((x): x is string => x !== null);
-    const productIdMap = await resolveInternalIds(
-      admin, tenantId, integrationId, 'products', productExtIds,
-    );
+  const productExtIds = [...new Set(
+    parentRecords.flatMap((entry) =>
+      entry.lineItems.map((li) => asStr(li.item_id)).filter((x): x is string => x !== null),
+    ),
+  )];
+  const productIdMap = await resolveInternalIds(admin, tenantId, integrationId, 'products', productExtIds);
 
-    const lineItemPayloads = lineItems
-      .map((li) => {
-        const extProdId = asStr(li.item_id);
-        const productId = extProdId ? (productIdMap.get(extProdId) ?? null) : null;
-        if (!productId) return null;
+  const lineItemRows: Record<string, unknown>[] = [];
+  for (const entry of parentRecords) {
+    const invoiceId = invoiceIdMap.get(entry.invoiceExternalId) ?? null;
+    if (!invoiceId) continue;
 
-        const taxRate = asNum(li.tax_percentage) ?? asNum(li.tax_rate);
-        const discountPct = asNum(li.discount_percentage) ?? asNum(li.disc_pct) ?? 0;
+    for (const li of entry.lineItems) {
+      const extProdId = asStr(li.item_id);
+      const productId = extProdId ? (productIdMap.get(extProdId) ?? null) : null;
+      if (!productId) continue;
 
-        return {
-          row: {
-            invoice_id: invoiceId,
-            tenant_product_id: productId,
-            qty: asNum(li.quantity) ?? 1,
-            unit_price: asNum(li.rate) ?? 0,
-            line_total: asNum(li.item_total),
-            tax_rate: taxRate,
-            tax_pct: taxRate,
-            disc_pct: discountPct,
-            discount_pct: discountPct,
-            created_by: actorId,
-            updated_by: actorId,
-          },
-        };
-      })
-      .filter((r): r is NonNullable<typeof r> => r !== null);
+      const taxRate = asNum(li.tax_percentage) ?? asNum(li.tax_rate);
+      const discountPct = asNum(li.discount_percentage) ?? asNum(li.disc_pct) ?? 0;
 
-    await persistLineItemRows(admin, 'invoice_items', lineItemPayloads);
+      lineItemRows.push({
+        invoice_id: invoiceId,
+        tenant_product_id: productId,
+        qty: asNum(li.quantity) ?? 1,
+        unit_price: asNum(li.rate) ?? 0,
+        line_total: asNum(li.item_total),
+        tax_rate: taxRate,
+        tax_pct: taxRate,
+        disc_pct: discountPct,
+        discount_pct: discountPct,
+        created_by: actorId,
+        updated_by: actorId,
+      });
+    }
+  }
 
-    await batchUpsertEntityMap(admin, tenantId, integrationId, 'invoices', [
-      { externalId, internalId: invoiceId },
-    ]);
+  if (lineItemRows.length > 0) {
+    await bulkPersistJsonbRecords(admin, 'invoice_items', lineItemRows);
   }
 
   return result;
