@@ -8,7 +8,6 @@ import {
   ExternalLink,
   Link2,
   Plus,
-  RefreshCw,
   ShieldCheck,
   Sparkles,
   Zap,
@@ -32,10 +31,10 @@ import { useFlagState } from '@/hooks/useFeatureFlag';
 import {
   type IntegrationCatalogItem,
   type IntegrationFamilyFlag,
-  type IntegrationTestResult,
   useIntegrationsSettings,
 } from '@/hooks/useIntegrationsSettings';
 import { useRole } from '@/hooks/useRole';
+import { classifyIntegrationMappingMode, getIntegrationTopologyDefinition } from '@/lib/integrations/definitions';
 import { cn } from '@/lib/utils';
 
 import { ConnectedIntegrationCard } from './ConnectedIntegrationCard';
@@ -48,10 +47,9 @@ type WizardState = {
   step: number;
   credentials: Record<string, string>;
   importStartDate: string;
-  testResult: IntegrationTestResult | null;
 };
 
-const WIZARD_STEPS = ['What you get', 'Connect', 'Test connection', 'Start import'] as const;
+const WIZARD_STEPS = ['What you get', 'Connect', 'Start syncing'] as const;
 
 function defaultImportStartDate(): string {
   const now = new Date();
@@ -100,7 +98,6 @@ function buildWizardState(integration: IntegrationCatalogItem | null): WizardSta
     step: 0,
     credentials,
     importStartDate: defaultImportStartDate(),
-    testResult: null,
   };
 }
 
@@ -114,16 +111,25 @@ export function IntegrationsSettingsClient() {
     isError,
     error,
     refetch,
-    testConnection,
     connectIntegration,
     startSync,
-    isTestingConnection,
+    syncNowIntegration,
+    stopSyncIntegration,
+    disconnectIntegration,
     isConnecting,
     isStartingSync,
+    isDisconnecting,
+    isSyncingNow,
+    isStoppingSync,
+    retryWebhookSetup,
+    isRetryingWebhookSetup,
   } = useIntegrationsSettings();
 
   const [isOAuthRedirecting, setIsOAuthRedirecting] = useState(false);
+  const [oauthNotice, setOauthNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [disconnectDialogIntegration, setDisconnectDialogIntegration] = useState<IntegrationCatalogItem | null>(null);
+  const [stopSyncDialogIntegration, setStopSyncDialogIntegration] = useState<IntegrationCatalogItem | null>(null);
 
   const zohoEnabled = useFlagState('ZOHO_INTEGRATION');
   const tallyEnabled = useFlagState('TALLY_INTEGRATION');
@@ -139,11 +145,16 @@ export function IntegrationsSettingsClient() {
   const [wizard, setWizard] = useState<WizardState>(buildWizardState(null));
   const [pendingOAuthConnectedId, setPendingOAuthConnectedId] = useState<string | null>(null);
   const oauthStorageListenerRef = useRef<((e: StorageEvent) => void) | null>(null);
+  const oauthPopupRef = useRef<Window | null>(null);
+  const oauthPopupWatchRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
       if (oauthStorageListenerRef.current) {
         window.removeEventListener('storage', oauthStorageListenerRef.current);
+      }
+      if (oauthPopupWatchRef.current) {
+        window.clearInterval(oauthPopupWatchRef.current);
       }
     };
   }, []);
@@ -170,7 +181,6 @@ export function IntegrationsSettingsClient() {
 
     if (connectedTypeId) {
       localStorage.setItem('df_zoho_oauth_complete', connectedTypeId);
-      window.close();
       router.replace('/settings/integrations');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -180,34 +190,25 @@ export function IntegrationsSettingsClient() {
     () => integrations.find((integration) => integration.id === wizard.integrationId) ?? null,
     [integrations, wizard.integrationId],
   );
-
-  // Auto-run test connection when wizard opens on step 2 with no result yet
-  useEffect(() => {
-    if (!wizard.open || wizard.step !== 2 || wizard.testResult !== null || !wizardIntegration) return;
-    void runTestConnection();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wizard.open, wizard.step, wizard.testResult, wizardIntegration?.id]);
+  const wizardTopology = useMemo(() => {
+    if (!wizardIntegration) return null;
+    try {
+      return getIntegrationTopologyDefinition(wizardIntegration.id as Parameters<typeof getIntegrationTopologyDefinition>[0]);
+    } catch {
+      return null;
+    }
+  }, [wizardIntegration]);
 
   function openWizard(integration: IntegrationCatalogItem) {
     const isConnected = integration.tenant_integration?.status === 'connected';
-    setWizard({ ...buildWizardState(integration), open: true, integrationId: integration.id, step: isConnected ? 3 : 0 });
+    setWizard({ ...buildWizardState(integration), open: true, integrationId: integration.id, step: isConnected ? 2 : 0 });
   }
 
   function updateCredential(key: string, value: string) {
     setWizard((current) => ({
       ...current,
       credentials: { ...current.credentials, [key]: value },
-      testResult: null,
     }));
-  }
-
-  async function runTestConnection() {
-    if (!wizardIntegration) return;
-    const result = await testConnection({
-      integration_type_id: wizardIntegration.id,
-      credentials: wizard.credentials,
-    });
-    setWizard((current) => ({ ...current, testResult: result }));
   }
 
   async function runStartImport() {
@@ -241,12 +242,62 @@ export function IntegrationsSettingsClient() {
     setWizard((current) => ({ ...current, open: false }));
   }
 
+  async function runDisconnectIntegration(integration: IntegrationCatalogItem) {
+    if (isDisconnecting) return;
+    setDisconnectDialogIntegration(integration);
+  }
+
+  async function runStopSyncIntegration(integration: IntegrationCatalogItem) {
+    const tenantIntegrationId = integration.tenant_integration?.id;
+    if (!tenantIntegrationId) return;
+    setStopSyncDialogIntegration(integration);
+  }
+
+  async function confirmDisconnectIntegration() {
+    if (!disconnectDialogIntegration) return;
+    const tenantIntegrationId = disconnectDialogIntegration.tenant_integration?.id;
+    if (!tenantIntegrationId) return;
+
+    await disconnectIntegration({
+      tenant_integration_id: tenantIntegrationId,
+    });
+    setDisconnectDialogIntegration(null);
+  }
+
+  async function confirmStopSyncIntegration() {
+    if (!stopSyncDialogIntegration) return;
+    const tenantIntegrationId = stopSyncDialogIntegration.tenant_integration?.id;
+    if (!tenantIntegrationId) return;
+
+    await stopSyncIntegration({
+      tenant_integration_id: tenantIntegrationId,
+    });
+    setStopSyncDialogIntegration(null);
+  }
+
+  async function runSyncNowIntegration(integration: IntegrationCatalogItem) {
+    const tenantIntegrationId = integration.tenant_integration?.id;
+    if (!tenantIntegrationId) return;
+    await syncNowIntegration({
+      tenant_integration_id: tenantIntegrationId,
+    });
+  }
+
+  async function runRetryWebhooks(integration: IntegrationCatalogItem) {
+    const tenantIntegrationId = integration.tenant_integration?.id;
+    if (!tenantIntegrationId) return;
+    await retryWebhookSetup({
+      tenant_integration_id: tenantIntegrationId,
+    });
+  }
+
   async function startZohoOAuth() {
     if (!wizardIntegration) return;
     const orgId = wizard.credentials['org_id'] ?? '';
     if (!orgId.trim()) return;
 
     setIsOAuthRedirecting(true);
+    setOauthNotice(null);
     try {
       const response = await fetch('/api/settings/integrations/zoho/oauth/start', {
         method: 'POST',
@@ -260,25 +311,88 @@ export function IntegrationsSettingsClient() {
       if (!response.ok || !json.data?.redirect_url) {
         throw new Error(json.error?.message ?? 'Failed to start OAuth flow');
       }
-      window.open(json.data.redirect_url, '_blank');
+      const popup = window.open(json.data.redirect_url, 'zoho-oauth', 'width=880,height=840');
+      oauthPopupRef.current = popup;
+      if (!popup) {
+        setIsOAuthRedirecting(false);
+        setOauthNotice({ kind: 'error', message: 'Your browser blocked the Zoho login window.' });
+        return;
+      }
 
       if (oauthStorageListenerRef.current) {
         window.removeEventListener('storage', oauthStorageListenerRef.current);
       }
       const handleStorage = (e: StorageEvent) => {
-        if (e.key !== 'df_zoho_oauth_complete' || !e.newValue) return;
-        window.removeEventListener('storage', handleStorage);
-        oauthStorageListenerRef.current = null;
-        const connectedId = e.newValue;
-        localStorage.removeItem('df_zoho_oauth_complete');
-        setIsOAuthRedirecting(false);
-        setPendingOAuthConnectedId(connectedId);
-        void refetch();
+        if (e.key === 'df_zoho_oauth_complete' && e.newValue) {
+          window.removeEventListener('storage', handleStorage);
+          oauthStorageListenerRef.current = null;
+          if (oauthPopupWatchRef.current) {
+            window.clearInterval(oauthPopupWatchRef.current);
+            oauthPopupWatchRef.current = null;
+          }
+          oauthPopupRef.current = null;
+          const connectedId = e.newValue;
+          localStorage.removeItem('df_zoho_oauth_complete');
+          localStorage.removeItem('df_zoho_oauth_error');
+          setIsOAuthRedirecting(false);
+          setOauthNotice({ kind: 'success', message: 'Zoho connection is set up. You can close the other tab.' });
+          setPendingOAuthConnectedId(connectedId);
+          const target = integrations.find((integration) => integration.id === connectedId);
+          if (target) {
+            setWizard({ ...buildWizardState(target), open: true, integrationId: target.id, step: 2 });
+          }
+          void refetch();
+          return;
+        }
+        if (e.key === 'df_zoho_oauth_error' && e.newValue) {
+          window.removeEventListener('storage', handleStorage);
+          oauthStorageListenerRef.current = null;
+          if (oauthPopupWatchRef.current) {
+            window.clearInterval(oauthPopupWatchRef.current);
+            oauthPopupWatchRef.current = null;
+          }
+          oauthPopupRef.current = null;
+          localStorage.removeItem('df_zoho_oauth_error');
+          setIsOAuthRedirecting(false);
+          try {
+            const parsed = JSON.parse(e.newValue) as { message?: string; detail?: string };
+            setOauthNotice({
+              kind: 'error',
+              message: parsed.message ?? 'Zoho connection failed. Please try again.',
+            });
+          } catch {
+            setOauthNotice({ kind: 'error', message: 'Zoho connection failed. Please try again.' });
+          }
+          void refetch();
+        }
       };
       oauthStorageListenerRef.current = handleStorage;
       window.addEventListener('storage', handleStorage);
+
+      if (oauthPopupWatchRef.current) {
+        window.clearInterval(oauthPopupWatchRef.current);
+      }
+      oauthPopupWatchRef.current = window.setInterval(() => {
+        if (oauthPopupRef.current && oauthPopupRef.current.closed) {
+          if (oauthPopupWatchRef.current) {
+            window.clearInterval(oauthPopupWatchRef.current);
+          }
+          oauthPopupWatchRef.current = null;
+          oauthPopupRef.current = null;
+          if (oauthStorageListenerRef.current) {
+            window.removeEventListener('storage', oauthStorageListenerRef.current);
+            oauthStorageListenerRef.current = null;
+          }
+          setIsOAuthRedirecting(false);
+          setOauthNotice((current) =>
+            current ?? { kind: 'error', message: 'Zoho window closed before the connection finished.' },
+          );
+          void refetch();
+        }
+      }, 1000);
     } catch {
       setIsOAuthRedirecting(false);
+      setOauthNotice({ kind: 'error', message: 'Failed to start Zoho OAuth flow.' });
     }
   }
 
@@ -321,8 +435,6 @@ export function IntegrationsSettingsClient() {
   const wizardFields = wizardIntegration?.auth_schema?.fields ?? [];
   const missingRequired = wizardFields.filter((f) => f.required && !wizard.credentials[f.key]?.trim());
   const canAdvanceFromConnect = missingRequired.length === 0;
-  const hasSuccessfulTest =
-    wizard.testResult?.ok === true || wizardIntegration?.tenant_integration?.status === 'connected';
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -345,17 +457,6 @@ export function IntegrationsSettingsClient() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => void refetch()}
-              title="Refresh integrations"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Refresh
-            </Button>
-
             {isSellerAdmin && unconnectedAvailable.length > 0 ? (
               <Button type="button" variant="primary" size="sm" onClick={() => setPickerOpen(true)}>
                 <Plus className="h-4 w-4" />
@@ -375,6 +476,14 @@ export function IntegrationsSettingsClient() {
                 available={familyAvailability[integration.family_flag]}
                 isSellerAdmin={isSellerAdmin}
                 onOpenWizard={() => openWizard(integration)}
+                onDisconnect={() => void runDisconnectIntegration(integration)}
+                onSyncNow={() => void runSyncNowIntegration(integration)}
+                onStopSync={() => void runStopSyncIntegration(integration)}
+                onRefresh={() => void refetch()}
+                onRetryWebhooks={() => void runRetryWebhooks(integration)}
+                isSyncingNow={isSyncingNow}
+                isStoppingSync={isStoppingSync}
+                isRetryingWebhooks={isRetryingWebhookSetup}
               />
             ))}
           </div>
@@ -402,20 +511,116 @@ export function IntegrationsSettingsClient() {
         }}
       />
 
+      <Dialog
+        open={Boolean(disconnectDialogIntegration)}
+        onOpenChange={(open) => {
+          if (!open) setDisconnectDialogIntegration(null);
+        }}
+      >
+        <DialogContent className="max-w-lg border-cream-200 bg-white">
+          <DialogHeader>
+            <DialogTitle className="font-display text-cream-900">Disconnect integration?</DialogTitle>
+            <DialogDescription className="text-cream-700">
+              This will disconnect the integration and archive its synced mappings and webhooks.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="space-y-3">
+            <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-4 py-4 text-sm leading-6 text-warning-900">
+              {disconnectDialogIntegration ? (
+                <>
+                  <div className="font-semibold text-warning-950">
+                    {disconnectDialogIntegration.display_name}
+                  </div>
+                  <div className="mt-1">
+                    This action disconnects the integration for this tenant. You can reconnect later if needed.
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </DialogBody>
+          <DialogFooter className="justify-between">
+            <div className="text-sm text-cream-600">
+              The integration can be reconnected later from the same settings page.
+            </div>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="ghost" onClick={() => setDisconnectDialogIntegration(null)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => void confirmDisconnectIntegration()}
+                disabled={isDisconnecting}
+              >
+                {isDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(stopSyncDialogIntegration)}
+        onOpenChange={(open) => {
+          if (!open) setStopSyncDialogIntegration(null);
+        }}
+      >
+        <DialogContent className="max-w-lg border-cream-200 bg-white">
+          <DialogHeader>
+            <DialogTitle className="font-display text-cream-900">Stop sync?</DialogTitle>
+            <DialogDescription className="text-cream-700">
+              This will stop the active sync job for this integration. You can start a new sync again after the current job is cancelled.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="space-y-3">
+            <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-4 py-4 text-sm leading-6 text-warning-900">
+              {stopSyncDialogIntegration ? (
+                <>
+                  <div className="font-semibold text-warning-950">
+                    {stopSyncDialogIntegration.display_name}
+                  </div>
+                  <div className="mt-1">
+                    The worker will stop before the next page. Already imported data will remain saved.
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </DialogBody>
+          <DialogFooter className="justify-between">
+            <div className="text-sm text-cream-600">
+              Use this when you want to pause an unexpectedly long sync.
+            </div>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="ghost" onClick={() => setStopSyncDialogIntegration(null)}>
+                Keep running
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => void confirmStopSyncIntegration()}
+                disabled={isStoppingSync}
+              >
+                {isStoppingSync ? 'Stopping…' : 'Stop sync'}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Setup wizard dialog (unchanged) ──────────────────────────────── */}
       <Dialog open={wizard.open} onOpenChange={(open) => setWizard((current) => ({ ...current, open }))}>
-        <DialogContent className="max-w-3xl border-cream-200 bg-white">
+        <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col overflow-hidden border-cream-200 bg-white">
           <DialogHeader>
             <DialogTitle className="font-display text-cream-900">
               {wizardIntegration ? `${wizardIntegration.display_name} setup` : 'Integration setup'}
             </DialogTitle>
             <DialogDescription className="text-cream-700">
-              Keep discovery, connection checks, and the first import in one flow. The detail panel updates automatically once the job is queued.
+              Keep discovery, setup, and the first import in one flow. The detail panel updates automatically once the job is queued.
             </DialogDescription>
           </DialogHeader>
 
-          <DialogBody className="space-y-5">
-            <div className="grid gap-2 md:grid-cols-4">
+          <DialogBody className="min-h-0 flex-1 space-y-5 overflow-y-auto">
+            <div className="grid gap-2 md:grid-cols-3">
               {WIZARD_STEPS.map((stepLabel, index) => (
                 <div
                   key={stepLabel}
@@ -464,6 +669,49 @@ export function IntegrationsSettingsClient() {
                         The first run imports reference data first, then recent transactional records from the chosen date window.
                       </p>
                     </div>
+                    {wizardTopology ? (
+                      <div className="rounded-2xl border border-cream-200 bg-white px-4 py-4">
+                        <div className="text-sm font-semibold text-cream-900">Mapping preview</div>
+                        <div className="mt-1 text-sm text-cream-700">
+                          These Zoho entities are synced into DealFlow after the connection completes.
+                        </div>
+                        <div className="mt-3 overflow-hidden rounded-2xl border border-cream-200">
+                          <div className="grid grid-cols-[1.2fr_1.2fr_0.9fr_0.9fr] gap-3 border-b border-cream-200 bg-cream-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">
+                            <div>Zoho entity</div>
+                            <div>DealFlow target</div>
+                            <div>Capture</div>
+                            <div>Status</div>
+                          </div>
+                          <div className="max-h-64 overflow-y-auto bg-white">
+                            {wizardTopology.mappings.map((mapping) => {
+                              const mode = classifyIntegrationMappingMode(mapping);
+                              return (
+                                <div
+                                  key={`${mapping.source_entity}:${mapping.target_entity}`}
+                                  className="grid grid-cols-[1.2fr_1.2fr_0.9fr_0.9fr] gap-3 border-b border-cream-100 px-4 py-3 last:border-b-0"
+                                >
+                                  <div className="flex items-center gap-2 text-sm font-medium text-cream-900">
+                                    <CheckCircle2 className="h-4 w-4 text-success-600" />
+                                    <span>{mapping.source_label}</span>
+                                  </div>
+                                  <div className="text-sm text-cream-700">{mapping.target_label}</div>
+                                  <div className="text-sm text-cream-700">{labelize(mapping.trigger_type)}</div>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Badge variant="outline">{labelize(mode)}</Badge>
+                                    <Badge variant={mapping.direction === 'bidirectional' ? 'success' : 'outline'}>
+                                      {labelize(mapping.direction)}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <div className="mt-3 text-xs leading-5 text-cream-600">
+                          Checkmarks indicate the Zoho entities currently captured by this integration.
+                        </div>
+                      </div>
+                    ) : null}
                     <div className="grid gap-3 sm:grid-cols-2">
                       {getImportScopes(wizardIntegration).map((scope) => (
                         <div key={scope} className="rounded-xl border border-cream-200 bg-white px-4 py-3">
@@ -503,6 +751,19 @@ export function IntegrationsSettingsClient() {
                       </div>
                     ) : null}
 
+                    {oauthNotice ? (
+                      <div
+                        className={cn(
+                          'rounded-2xl border px-4 py-3 text-sm',
+                          oauthNotice.kind === 'success'
+                            ? 'border-success-200 bg-success-50 text-success-900'
+                            : 'border-warning-500/30 bg-warning-50 text-warning-800',
+                        )}
+                      >
+                        {oauthNotice.message}
+                      </div>
+                    ) : null}
+
                     <div className="grid gap-4 sm:grid-cols-2">
                       {wizardFields.map((field) => (
                         <Input
@@ -527,19 +788,19 @@ export function IntegrationsSettingsClient() {
                         className="w-full"
                       >
                         <Zap className="h-4 w-4" />
-                        {isOAuthRedirecting ? 'Redirecting to Zoho…' : 'Connect to Zoho'}
+                        {isOAuthRedirecting ? 'Connecting to Zoho…' : 'Connect to Zoho'}
                       </Button>
                     ) : null}
 
                     {!isSellerAdmin ? (
                       <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-4 py-3 text-sm text-warning-800">
-                        Seller admin access is required to test credentials and start imports.
+                        Seller admin access is required to connect and start syncing.
                       </div>
                     ) : null}
 
                     {missingRequired.length > 0 ? (
                       <div className="rounded-2xl border border-warning-500/30 bg-warning-50 px-4 py-3 text-sm text-warning-800">
-                        Fill the required fields before moving to connection testing.
+                        Fill the required fields before continuing.
                       </div>
                     ) : null}
                   </div>
@@ -550,58 +811,10 @@ export function IntegrationsSettingsClient() {
                     <div className="rounded-2xl border border-cream-200 bg-cream-50 px-4 py-4">
                       <div className="flex items-center gap-2 text-sm font-semibold text-cream-900">
                         <ShieldCheck className="h-4 w-4 text-teal-600" />
-                        Verify before import
+                        Start syncing
                       </div>
                       <p className="mt-2 text-sm leading-6 text-cream-700">
-                        We call the test-connection API with the values from the previous step. Successful results stay visible here so import can start with confidence.
-                      </p>
-                    </div>
-
-                    {wizard.testResult ? (
-                      <div
-                        className={cn(
-                          'rounded-2xl border px-4 py-4',
-                          wizard.testResult.ok
-                            ? 'border-success-200 bg-success-50'
-                            : 'border-warning-500/30 bg-warning-50',
-                        )}
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant={wizard.testResult.ok ? 'success' : 'warning'}>
-                            {wizard.testResult.ok ? 'Connection verified' : 'Needs review'}
-                          </Badge>
-                          {wizard.testResult.connection_label ? (
-                            <span className="text-sm font-semibold text-cream-900">
-                              {wizard.testResult.connection_label}
-                            </span>
-                          ) : null}
-                        </div>
-                        {wizard.testResult.message ? (
-                          <p className="mt-2 text-sm leading-6 text-cream-700">{wizard.testResult.message}</p>
-                        ) : null}
-                        {wizard.testResult.sample_counts ? (
-                          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                            {Object.entries(wizard.testResult.sample_counts).map(([key, count]) => (
-                              <div key={key} className="rounded-xl border border-white/80 bg-white/70 px-3 py-3">
-                                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">
-                                  {labelize(key)}
-                                </div>
-                                <div className="mt-2 text-lg font-semibold text-cream-900">{count}</div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {wizard.step === 3 ? (
-                  <div className="space-y-4">
-                    <div className="rounded-2xl border border-cream-200 bg-cream-50 px-4 py-4">
-                      <div className="text-sm font-semibold text-cream-900">Start import</div>
-                      <p className="mt-2 text-sm leading-6 text-cream-700">
-                        Choose the backfill window for orders, estimates, and invoices. Reference data will import first either way.
+                        The connection is already saved. Starting sync will queue the Zoho import immediately using the stored secret.
                       </p>
                     </div>
 
@@ -631,35 +844,25 @@ export function IntegrationsSettingsClient() {
           </DialogBody>
 
           <DialogFooter className="justify-between">
-            <div className="text-sm text-cream-600">All progress returns to the detail panel.</div>
+            <div className="text-sm text-cream-600">
+              {wizard.step === 2
+                ? 'Sync starts in the background and updates the detail panel automatically.'
+                : 'All progress returns to the detail panel.'}
+            </div>
             <div className="flex items-center gap-2">
               {wizard.step > 0 ? (
                 <Button
                   type="button"
                   variant="ghost"
                   onClick={() => setWizard((current) => ({ ...current, step: Math.max(0, current.step - 1) }))}
-                  disabled={isTestingConnection || isConnecting || isStartingSync}
+                  disabled={isConnecting || isStartingSync}
                 >
                   Back
                 </Button>
               ) : null}
 
               {wizard.step < WIZARD_STEPS.length - 1 ? (
-                wizard.step === 2 && !hasSuccessfulTest ? (
-                  <Button
-                    type="button"
-                    onClick={() => void runTestConnection()}
-                    disabled={
-                      !isSellerAdmin ||
-                      !wizardIntegration ||
-                      !familyAvailability[wizardIntegration.family_flag] ||
-                      missingRequired.length > 0 ||
-                      isTestingConnection
-                    }
-                  >
-                    {isTestingConnection ? 'Testing…' : 'Test connection'}
-                  </Button>
-                ) : wizard.step === 1 && wizardIntegration?.auth_schema?.oauth === true ? null : (
+                wizard.step === 1 && wizardIntegration?.auth_schema?.oauth === true ? null : (
                   <Button
                     type="button"
                     onClick={() =>
@@ -671,8 +874,7 @@ export function IntegrationsSettingsClient() {
                     disabled={
                       !wizardIntegration ||
                       !familyAvailability[wizardIntegration.family_flag] ||
-                      (wizard.step === 1 && !canAdvanceFromConnect) ||
-                      (wizard.step === 2 && !hasSuccessfulTest)
+                      (wizard.step === 1 && !canAdvanceFromConnect)
                     }
                   >
                     Continue
@@ -686,13 +888,12 @@ export function IntegrationsSettingsClient() {
                     !isSellerAdmin ||
                     !wizardIntegration ||
                     !familyAvailability[wizardIntegration.family_flag] ||
-                    !hasSuccessfulTest ||
                     !wizard.importStartDate ||
                     isConnecting ||
                     isStartingSync
                   }
                 >
-                  {isConnecting || isStartingSync ? 'Starting import…' : 'Start import'}
+                  {isConnecting || isStartingSync ? 'Starting sync…' : 'Start syncing'}
                 </Button>
               )}
             </div>

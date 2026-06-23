@@ -138,19 +138,19 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
         <button
           type="button"
           onClick={handleBack}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
           style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface)', color: 'var(--fg-2)' }}
           aria-label="Back"
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
-        <span className="min-w-0 flex-1 truncate text-base font-semibold" style={{ fontFamily: 'var(--font-display)', color: 'var(--fg-1)' }}>
+        <span className="min-w-0 flex-1 truncate font-semibold" style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-display)', color: 'var(--fg-1)' }}>
           Product
         </span>
         <Link
           href={searchHref}
           onClick={() => markBuyerNavigationForward()}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
           style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface)', color: 'var(--fg-2)' }}
           aria-label="Search"
         >

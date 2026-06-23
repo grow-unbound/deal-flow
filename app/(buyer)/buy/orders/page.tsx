@@ -104,20 +104,20 @@ function EnquiryCard({ estimate, highlighted }: EnquiryCardProps) {
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-        <span style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>
+        <span style={{ fontSize: 'var(--b-text-body)', fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>
           {estimate.estimate_number ?? estimate.id.slice(0, 8).toUpperCase()}
         </span>
-        <span style={{ fontSize: 'var(--yk-text-xs)', fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.fg }}>
+        <span style={{ fontSize: 'var(--b-text-eyebrow)', fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.fg }}>
           {statusLabels[estimate.status] ?? estimate.status}
         </span>
       </div>
       {estimate.notes && (
-        <div style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-900)', fontWeight: 500, marginBottom: 4 }}>{estimate.notes}</div>
+        <div style={{ fontSize: 'var(--b-text-body)', color: 'var(--cream-900)', fontWeight: 500, marginBottom: 4 }}>{estimate.notes}</div>
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)' }}>{fmtDate(estimate.created_at)}</span>
+        <span style={{ fontSize: 'var(--b-text-sub)', color: 'var(--cream-600)' }}>{fmtDate(estimate.created_at)}</span>
         {estimate.total_amount > 0 && (
-          <span style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)' }}>
+          <span style={{ fontSize: 'var(--b-text-body)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)' }}>
             {inr(estimate.total_amount)}
           </span>
         )}
@@ -131,8 +131,8 @@ function PreviewPlaceholder({ icon, title, description }: { icon: string; title:
     <div style={{ padding: '12px 16px 0' }}>
       <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '20px 16px', textAlign: 'center' }}>
         <div style={{ fontSize: 28, marginBottom: 8 }}>{icon}</div>
-        <p style={{ fontSize: 'var(--yk-text-base)', fontWeight: 600, color: 'var(--cream-800)', marginBottom: 4 }}>{title}</p>
-        <p style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)', lineHeight: 1.5 }}>{description}</p>
+        <p style={{ fontSize: 'var(--b-text-body)', fontWeight: 600, color: 'var(--cream-800)', marginBottom: 4 }}>{title}</p>
+        <p style={{ fontSize: 'var(--b-text-sub)', color: 'var(--cream-600)', lineHeight: 1.5 }}>{description}</p>
       </div>
     </div>
   );
@@ -295,23 +295,29 @@ function OrdersPageInner() {
           }
         />
 
-        {/* Sub-tabs */}
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-1)', margin: '14px 0 0', padding: '0 16px' }}>
+        {/* Sub-tabs — segmented control */}
+        <div style={{ display: 'flex', background: 'var(--cream-200)', borderRadius: 10, padding: 3, margin: '14px 22px 0' }}>
           {tabs.map((t) => (
             <button
               key={t.id}
               onClick={() => { setActiveTab(t.id); setSearch(''); }}
               style={{
-                paddingBottom: 10, paddingRight: 18, marginBottom: -1,
-                background: 'none', border: 'none',
-                borderBottom: activeTab === t.id ? '2px solid var(--teal-500)' : '2px solid transparent',
-                cursor: 'pointer',
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                padding: '6px 8px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                background: activeTab === t.id ? '#fff' : 'transparent',
+                boxShadow: activeTab === t.id ? '0 1px 2px rgba(31,58,52,0.06)' : 'none',
+                transition: 'background 0.15s, box-shadow 0.15s',
               }}
             >
-              <span style={{ fontSize: 'var(--yk-text-base)', fontWeight: activeTab === t.id ? 600 : 400, color: activeTab === t.id ? 'var(--teal-500)' : 'var(--cream-700)' }}>
+              <span style={{ fontSize: 'var(--b-text-sub)', fontWeight: 500, color: activeTab === t.id ? 'var(--teal-500)' : 'var(--cream-700)' }}>
                 {t.label}
               </span>
-              <span style={{ marginLeft: 6, fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', color: 'var(--cream-600)', background: 'var(--cream-200)', padding: '1px 6px', borderRadius: 100 }}>
+              <span style={{
+                fontSize: 'var(--b-text-eyebrow)', fontFamily: 'var(--font-mono)',
+                padding: '1px 5px', borderRadius: 100,
+                background: activeTab === t.id ? 'var(--teal-50)' : 'var(--cream-300)',
+                color: activeTab === t.id ? 'var(--teal-500)' : 'var(--cream-700)',
+              }}>
                 {t.count}
               </span>
             </button>
@@ -329,7 +335,7 @@ function OrdersPageInner() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={searchPlaceholder}
-              style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 'var(--yk-text-base)', color: 'var(--cream-900)' }}
+              style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 'var(--b-text-body)', color: 'var(--cream-900)' }}
             />
             {search && (
               <button
@@ -350,7 +356,7 @@ function OrdersPageInner() {
             {!pageState.sellerPreview && (
               <div style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '12px 16px 0', scrollbarWidth: 'none' }}>
                 {['All', 'Received', 'Confirmed', 'Dispatched', 'Delivered'].map((f, i) => (
-                  <button key={f} style={{ flexShrink: 0, padding: '6px 14px', borderRadius: 100, fontSize: 'var(--yk-text-base)', fontWeight: 500, border: '1px solid', background: i === 0 ? 'var(--teal-500)' : 'var(--cream-50)', color: i === 0 ? '#fff' : 'var(--cream-800)', borderColor: i === 0 ? 'var(--teal-500)' : 'var(--border-2)', cursor: 'pointer' }}>
+                  <button key={f} style={{ flexShrink: 0, padding: '6px 14px', borderRadius: 100, fontSize: 'var(--b-text-label)', fontWeight: 500, border: '1px solid', background: i === 0 ? 'var(--teal-500)' : 'var(--cream-50)', color: i === 0 ? '#fff' : 'var(--cream-800)', borderColor: i === 0 ? 'var(--teal-500)' : 'var(--cream-400)', cursor: 'pointer' }}>
                     {f}
                   </button>
                 ))}
@@ -360,13 +366,13 @@ function OrdersPageInner() {
             <div style={{ padding: '12px 16px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {pageState.loading ? (
                 <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '16px 14px', textAlign: 'center' }}>
-                  <p style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-600)' }}>Loading orders…</p>
+                  <p style={{ fontSize: 'var(--b-text-body)', color: 'var(--cream-600)' }}>Loading orders…</p>
                 </div>
               ) : pageState.sellerPreview ? (
                 <PreviewPlaceholder icon="📦" title="Order history" description="When a buyer logs in, their complete order history appears here — with real-time status tracking, filters, and search." />
               ) : visibleOrders.length === 0 ? (
                 <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '20px 16px', textAlign: 'center' }}>
-                  <p style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-600)' }}>
+                  <p style={{ fontSize: 'var(--b-text-body)', color: 'var(--cream-600)' }}>
                     {search ? `No orders matching "${search}"` : 'No orders yet.'}
                   </p>
                 </div>
@@ -376,18 +382,18 @@ function OrdersPageInner() {
                 return (
                   <div key={o.id} onClick={() => markSeen(o.id)} style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '12px 14px', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <span style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>{o.order_number}</span>
+                      <span style={{ fontSize: 'var(--b-text-body)', fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>{o.order_number}</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         {orderTag && <RealtimeBadge type={orderTag} />}
-                        <span style={{ fontSize: 'var(--yk-text-xs)', fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.fg }}>{statusLabels[o.status] ?? o.status}</span>
+                        <span style={{ fontSize: 'var(--b-text-eyebrow)', fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.fg }}>{statusLabels[o.status] ?? o.status}</span>
                       </div>
                     </div>
-                    <div style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-800)', marginBottom: 6 }}>{o.catalog_name ?? 'Order'}</div>
+                    <div style={{ fontSize: 'var(--b-text-body)', color: 'var(--cream-800)', marginBottom: 6 }}>{o.catalog_name ?? 'Order'}</div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)' }}>
+                      <span style={{ fontSize: 'var(--b-text-sub)', color: 'var(--cream-600)' }}>
                         {o.items_count} products · {new Date(o.placed_at).toLocaleDateString('en-IN')}
                       </span>
-                      <span style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)' }}>{inr(o.total_amount)}</span>
+                      <span style={{ fontSize: 'var(--b-text-body)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)' }}>{inr(o.total_amount)}</span>
                     </div>
                   </div>
                 );
@@ -402,12 +408,12 @@ function OrdersPageInner() {
             <PreviewPlaceholder icon="📋" title="Enquiries" description="Buyers can raise enquiries for custom pricing or bulk orders. Their enquiries and status updates appear here." />
           ) : pageState.loading ? (
             <div style={{ padding: '12px 16px 0', textAlign: 'center' }}>
-              <p style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-600)' }}>Loading enquiries…</p>
+              <p style={{ fontSize: 'var(--b-text-body)', color: 'var(--cream-600)' }}>Loading enquiries…</p>
             </div>
           ) : visibleEstimates.length === 0 ? (
             <div style={{ padding: '12px 16px 0' }}>
               <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '20px 16px', textAlign: 'center' }}>
-                <p style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-600)' }}>
+                <p style={{ fontSize: 'var(--b-text-body)', color: 'var(--cream-600)' }}>
                   {search ? `No enquiries matching "${search}"` : 'No enquiries yet.'}
                 </p>
               </div>
@@ -427,12 +433,12 @@ function OrdersPageInner() {
             <PreviewPlaceholder icon="🧾" title="Invoices" description="Invoices generated for delivered orders appear here, with payment status and due dates." />
           ) : pageState.loading ? (
             <div style={{ padding: '12px 16px 0', textAlign: 'center' }}>
-              <p style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-600)' }}>Loading invoices…</p>
+              <p style={{ fontSize: 'var(--b-text-body)', color: 'var(--cream-600)' }}>Loading invoices…</p>
             </div>
           ) : visibleInvoices.length === 0 ? (
             <div style={{ padding: '12px 16px 0' }}>
               <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '20px 16px', textAlign: 'center' }}>
-                <p style={{ fontSize: 'var(--yk-text-base)', color: 'var(--cream-600)' }}>
+                <p style={{ fontSize: 'var(--b-text-body)', color: 'var(--cream-600)' }}>
                   {search ? `No invoices matching "${search}"` : 'No invoices yet.'}
                 </p>
               </div>
@@ -444,22 +450,22 @@ function OrdersPageInner() {
                 return (
                   <div key={inv.id} style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '12px 14px', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <span style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>{inv.invoice_number}</span>
-                      <span style={{ fontSize: 'var(--yk-text-xs)', fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.fg }}>
+                      <span style={{ fontSize: 'var(--b-text-body)', fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>{inv.invoice_number}</span>
+                      <span style={{ fontSize: 'var(--b-text-eyebrow)', fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.fg }}>
                         {statusLabels[inv.status] ?? inv.status}
                       </span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--cream-600)' }}>
+                      <span style={{ fontSize: 'var(--b-text-sub)', color: 'var(--cream-600)' }}>
                         {fmtDate(inv.invoice_date)}
                         {inv.due_date ? ` · Due ${fmtDate(inv.due_date)}` : ''}
                       </span>
-                      <span style={{ fontSize: 'var(--yk-text-base)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)' }}>
+                      <span style={{ fontSize: 'var(--b-text-body)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)' }}>
                         {inr(inv.total_amount)}
                       </span>
                     </div>
                     {inv.outstanding_balance != null && inv.outstanding_balance > 0 && (
-                      <div style={{ marginTop: 4, fontSize: 'var(--yk-text-xs)', color: statusColors.overdue.fg }}>
+                      <div style={{ marginTop: 4, fontSize: 'var(--b-text-eyebrow)', color: statusColors.overdue.fg }}>
                         Outstanding: {inr(inv.outstanding_balance)}
                       </div>
                     )}

@@ -51,9 +51,9 @@ export function BuyerShell({ children }: BuyerShellProps) {
 
   return (
     <BuyerRealtimeProvider>
-      <div className="min-h-screen bg-[var(--bg-surface)] md:px-4 md:py-6">
+      <div data-app="buyer" className="min-h-screen bg-[var(--bg-page)] md:px-4 md:py-6">
         <div
-          className="mx-auto flex min-h-screen w-full flex-col bg-[var(--bg-surface)] md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[28px] md:border md:border-cream-300 md:bg-[var(--bg-surface)] md:shadow-[0_20px_60px_rgba(20,40,35,0.08)]"
+          className="mx-auto flex min-h-screen w-full flex-col bg-[var(--bg-page)] md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[28px] md:border md:border-[var(--cream-300)] md:bg-[var(--bg-page)] md:shadow-[0_20px_60px_rgba(20,40,35,0.08)]"
           style={{ maxWidth: `${BUYER_PREVIEW_MAX_WIDTH}px` }}
         >
           <BuyerPreviewBootstrap>

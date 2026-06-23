@@ -93,8 +93,8 @@ export default function CheckoutPage() {
           </svg>
         </button>
         <h1
-          className="text-lg font-semibold text-cream-900"
-          style={{ fontFamily: 'var(--font-display)' }}
+          className="font-semibold text-[var(--fg-1)]"
+          style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-display)' }}
         >
           Review Your Inquiry
         </h1>

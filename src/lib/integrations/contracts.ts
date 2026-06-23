@@ -86,6 +86,7 @@ export interface IntegrationJobProgress {
   counts: Record<string, IntegrationSyncPhaseStats>;
   started_at: string;
   updated_at: string;
+  meta?: Record<string, unknown>;
   last_page?: {
     phase: string;
     count: number;
@@ -112,6 +113,7 @@ export interface IntegrationSyncRequest {
   scope?: IntegrationSyncScope;
   since?: string | null;
   page_limit?: number | null;
+  max_pages?: number | null;
 }
 
 export interface IntegrationWorkerDispatchRequest {
@@ -120,7 +122,9 @@ export interface IntegrationWorkerDispatchRequest {
   continuation?: boolean;
   reason?: string | null;
   page_limit?: number | null;
+  max_pages?: number | null;
   progress?: Partial<IntegrationJobProgress> | null;
+  credentials?: Record<string, unknown> | null;
 }
 
 export interface IntegrationWebhookRequest {
@@ -129,4 +133,3 @@ export interface IntegrationWebhookRequest {
   event_type?: string | null;
   payload?: unknown;
 }
-

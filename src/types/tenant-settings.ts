@@ -33,6 +33,7 @@ export const WhatsappNotificationsSchema = z.object({
   order_confirmed_to_buyer: z.boolean(),
   dispatch_to_buyer: z.boolean(),
   catalog_shared_to_buyer: z.boolean(),
+  response_eta_hours: z.number().int().min(1).max(168).optional(),
 });
 
 export const TenantSettingsNotificationsSchema = z.object({

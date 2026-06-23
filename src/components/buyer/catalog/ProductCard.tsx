@@ -81,12 +81,12 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
             aria-label={item.display_name}
           >
             {item.is_featured ? (
-              <span className="absolute left-2 top-2 z-[1] rounded bg-[var(--teal-500)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+              <span className="absolute left-2 top-2 z-[1] rounded bg-[var(--teal-500)] px-2 py-0.5 font-bold uppercase tracking-wide text-white" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
                 New
               </span>
             ) : null}
             {item.stock_status === 'limited' ? (
-              <span className="absolute right-2 top-2 z-[1] rounded bg-amber-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+              <span className="absolute right-2 top-2 z-[1] rounded bg-amber-500 px-2 py-0.5 font-bold uppercase tracking-wide text-white" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
                 Low stock
               </span>
             ) : null}
@@ -177,21 +177,21 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
           className="flex flex-1 flex-col gap-1 p-3 no-underline"
         >
           {item.brand_name ? (
-            <p className="truncate text-xs font-medium uppercase tracking-wider text-[var(--fg-3)]">{item.brand_name}</p>
+            <p className="truncate font-medium uppercase text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em' }}>{item.brand_name}</p>
           ) : null}
-          <p className="line-clamp-2 text-sm font-medium leading-snug text-[var(--fg-1)]">{item.display_name}</p>
-          {item.default_uom ? <p className="text-xs text-[var(--fg-3)]">{item.default_uom}</p> : null}
+          <p className="line-clamp-2 font-medium leading-snug text-[var(--fg-1)]" style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-body)', letterSpacing: '-0.005em' }}>{item.display_name}</p>
+          {item.default_uom ? <p className="text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-sub)' }}>{item.default_uom}</p> : null}
           <div className="mt-auto space-y-0.5 pt-1">
             <div className="flex items-baseline gap-1.5">
-              <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--fg-3)]">Your price</span>
-              <span className="font-mono text-sm font-semibold tabular-nums text-[var(--fg-1)]">
+              <span className="font-medium uppercase text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.10em' }}>Your price</span>
+              <span className="font-semibold tabular-nums text-[var(--fg-1)]" style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-price)', fontVariantNumeric: 'tabular-nums' }}>
                 {formatCurrency(item.price)}
               </span>
             </div>
             {showMrpLine ? (
               <div className="flex items-baseline gap-1.5">
-                <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--fg-3)]">MRP</span>
-                <span className="font-mono text-xs tabular-nums text-[var(--fg-3)] line-through">
+                <span className="font-medium uppercase text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.10em' }}>MRP</span>
+                <span className="tabular-nums text-[var(--fg-3)] line-through" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-sub)' }}>
                   {formatCurrency(item.mrp)}
                 </span>
               </div>

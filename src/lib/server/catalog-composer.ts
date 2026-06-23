@@ -73,13 +73,17 @@ export async function getCatalogComposerPayload(db: any, tenantId: string) {
   // Phase 1: fetch data that doesn't depend on each other.
   // cohort_members is intentionally excluded here — it must be scoped to this
   // tenant's cohort IDs, which we only know after the cohorts query resolves.
+  const PRODUCTS_LIMIT = 2000;
+
   const [productsRes, cohortsRes, recentOrdersRes, monthOrdersRes, buyersRes] = await Promise.all([
     db
       .schema('app')
       .from('tenant_products')
       .select('id, internal_sku, name_override, tenant_brand_id, master_product_id, category_name, mrp, base_selling_price, created_at')
       .eq('tenant_id', tenantId)
-      .is('deleted_at', null),
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(PRODUCTS_LIMIT),
     db
       .schema('app')
       .from('cohorts')

@@ -13,11 +13,14 @@ export async function GET(request: NextRequest) {
     const claims = await getVerifiedClaims(request);
     if (!claims.tenant_id) return jsonError(401, 'Login required', 'UNAUTHORIZED');
     if (claims.role !== 'seller_admin') return jsonError(403, 'Admin only', 'FORBIDDEN');
-    if (!(await getFlag(FLAGS.INTEGRATIONS, claims.tenant_id))) {
+    const [flagEnabled, payload] = await Promise.all([
+      getFlag(FLAGS.INTEGRATIONS, claims.tenant_id),
+      loadIntegrationsSettingsPayload(claims.tenant_id),
+    ]);
+
+    if (!flagEnabled && !payload.catalog.some((integration) => integration.integration !== null)) {
       return jsonError(403, 'Integrations are not enabled for this tenant', 'FEATURE_OFF');
     }
-
-    const payload = await loadIntegrationsSettingsPayload(claims.tenant_id);
     return NextResponse.json({ data: payload, error: null }, { status: 200 });
   } catch (error) {
     console.error('[GET /api/settings/integrations]', error);

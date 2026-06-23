@@ -177,7 +177,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
 
 function SectionHeader({ title }: { title: string }) {
   return (
-    <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--cream-500)' }}>
+    <h2 className="mb-2 font-semibold uppercase" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.18em', color: 'var(--cream-600)' }}>
       {title}
     </h2>
   );

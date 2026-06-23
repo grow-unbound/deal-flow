@@ -130,6 +130,59 @@
     --header-h: 52px;
   }
 
+/* ── Buyer-app design override (DealFlow "Ember & Cream") ─────────────────
+   Scoped under [data-app="buyer"] — seller cockpit is completely untouched.
+   All buyer font sizes live here as --b-text-* tokens; no pixel literals in JSX.
+──────────────────────────────────────────────────────────────────────────── */
+[data-app="buyer"] {
+  /* DealFlow palette overrides */
+  --cream-50:  #FAF7F2;
+  --cream-100: #F4EFE6;
+  --cream-200: #EAE4D7;
+  --cream-300: #D4CCC0;
+  --cream-400: #C5B8AC;
+  --cream-600: #A89E89;
+  --cream-700: #8A7E72;
+  --cream-800: #6B6760;
+  --cream-900: #2C2420;
+
+  --teal-50:   #E8F5F3;
+  --teal-500:  #1F3A34;
+  --teal-600:  #162C27;
+  --teal-700:  #142823;
+
+  --ember-50:  #FBEFE3;
+  --ember-200: #F6E5DF;
+  --ember-400: #C26E3A;
+  --ember-500: #A85A27;
+
+  --success-500: #2F5733;
+  --danger-500:  #C93D27;
+
+  --bg-page:    #FAF7F2;
+  --bg-surface: #FFFFFF;
+
+  /* Fraunces serif for all buyer headings/display text */
+  --font-display: var(--font-fraunces), 'Fraunces', Georgia, serif;
+
+  /* Buyer type scale — single source of truth; change --b-base to shift all sizes */
+  --b-base: 15px;
+  --b-text-eyebrow:  calc(var(--b-base) * 0.667);  /* ≈10px — labels, status pills */
+  --b-text-sub:      calc(var(--b-base) * 0.800);  /* 12px  — meta, UOM, SKU */
+  --b-text-label:    calc(var(--b-base) * 0.867);  /* 13px  — filter chips, table labels */
+  --b-text-body:     var(--b-base);                 /* 15px  — body copy */
+  --b-text-header:   calc(var(--b-base) * 1.133);  /* 17px  — sticky header title */
+  --b-text-price:    calc(var(--b-base) * 1.200);  /* 18px  — product grid price */
+  --b-text-section:  calc(var(--b-base) * 1.267);  /* 19px  — section row title */
+  --b-text-total:    calc(var(--b-base) * 1.467);  /* 22px  — cart subtotal, catalog hero */
+  --b-text-kpi:      calc(var(--b-base) * 1.600);  /* 24px  — normal KPI value */
+  --b-text-page-sm:  calc(var(--b-base) * 1.733);  /* 26px  — product list title */
+  --b-text-page:     calc(var(--b-base) * 2.000);  /* 30px  — page title */
+  --b-text-kpi-lg:   calc(var(--b-base) * 2.133);  /* 32px  — featured KPI */
+  --b-text-price-lg: calc(var(--b-base) * 2.267);  /* 34px  — product detail price */
+  --b-text-display:  calc(var(--b-base) * 2.533);  /* 38px  — login / hero headline */
+}
+
   * {
     box-sizing: border-box;
     border-color: var(--border-1);
