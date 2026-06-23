@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { loadBuyerCreditSnapshots } from '@/lib/server/buyer-credit';
+import { PAGE_SIZE } from '@/lib/pagination';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 
@@ -78,7 +80,7 @@ export async function GET(req: NextRequest) {
     dormantCutoff.setDate(dormantCutoff.getDate() - 30);
     const dormantCutoffIso = dormantCutoff.toISOString();
 
-    const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? '300'), 1000);
+    const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? String(PAGE_SIZE.SELLER)), PAGE_SIZE.MAX);
     const cacheKey = [
       tenantId,
       limit,
@@ -110,7 +112,13 @@ export async function GET(req: NextRequest) {
     const buyerRows = buyers ?? [];
     const buyerIds = buyerRows.map((b: { id: string }) => b.id);
 
-    const [mtdOrdersRes, prevOrdersRes, allOrdersRes, cohortMembersRes, invoicesRes] = await Promise.all([
+    // last_order_at is derived from the 90-day window orders query below.
+    // We intentionally avoid an unbounded "all orders ever" query — it would scan the
+    // entire orders table for every page load. 90 days covers all practical dormancy
+    // thresholds (the dormancy check uses a 30-day cutoff).
+    const ninetyDaysAgoIso = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+
+    const [mtdOrdersRes, prevOrdersRes, recentOrdersRes, cohortMembersRes, invoicesRes] = await Promise.all([
       db
         .schema('app')
         .from('orders')
@@ -131,15 +139,19 @@ export async function GET(req: NextRequest) {
         .neq('status', 'cancelled')
         .gte('placed_at', period.previous_start)
         .lt('placed_at', period.previous_end_exclusive),
-      db
-        .schema('app')
-        .from('orders')
-        .select('id, buyer_id, placed_at, status, deleted_at')
-        .eq('tenant_id', tenantId)
-        .in('buyer_id', buyerIds)
-        .is('deleted_at', null)
-        .neq('status', 'cancelled')
-        .order('placed_at', { ascending: false }),
+      // Bounded to 90 days — enough to determine last_order_at and dormancy (30-day threshold).
+      buyerIds.length
+        ? db
+            .schema('app')
+            .from('orders')
+            .select('id, buyer_id, placed_at, status, deleted_at')
+            .eq('tenant_id', tenantId)
+            .in('buyer_id', buyerIds)
+            .is('deleted_at', null)
+            .neq('status', 'cancelled')
+            .gte('placed_at', ninetyDaysAgoIso)
+            .order('placed_at', { ascending: false })
+        : Promise.resolve({ data: [] as any[], error: null }),
       buyerIds.length
         ? db
             .schema('app')
@@ -170,14 +182,14 @@ export async function GET(req: NextRequest) {
     if (
       mtdOrdersRes.error ||
       prevOrdersRes.error ||
-      allOrdersRes.error ||
+      recentOrdersRes.error ||
       cohortMembersRes.error ||
       (invoicesRes.error && !invoicesTableMissing)
     ) {
       console.error('[GET /api/tenant/customers] query failure', {
         mtd: mtdOrdersRes.error,
         prev: prevOrdersRes.error,
-        all: allOrdersRes.error,
+        recent: recentOrdersRes.error,
         cohorts: cohortMembersRes.error,
         invoices: invoicesRes.error,
       });
@@ -186,7 +198,7 @@ export async function GET(req: NextRequest) {
 
     const mtdOrders = mtdOrdersRes.data ?? [];
     const prevOrders = prevOrdersRes.data ?? [];
-    const allOrders = allOrdersRes.data ?? [];
+    const allOrders = recentOrdersRes.data ?? [];
     const cohortMembers = cohortMembersRes.data ?? [];
     const invoices = invoicesTableMissing ? [] : invoicesRes.data ?? [];
 
@@ -194,7 +206,6 @@ export async function GET(req: NextRequest) {
     const spendPrevByBuyer = new Map<string, number>();
     const ordersMtdByBuyer = new Map<string, number>();
     const lastOrderByBuyer = new Map<string, string>();
-    const duesByBuyer = new Map<string, number>();
 
     for (const order of mtdOrders) {
       spendMtdByBuyer.set(order.buyer_id, (spendMtdByBuyer.get(order.buyer_id) ?? 0) + Number(order.total_amount ?? 0));
@@ -211,9 +222,13 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    for (const invoice of invoices) {
-      duesByBuyer.set(invoice.buyer_id, (duesByBuyer.get(invoice.buyer_id) ?? 0) + Number(invoice.outstanding_balance ?? 0));
-    }
+    const creditSnapshots = await loadBuyerCreditSnapshots(supabaseAdmin as any, {
+      tenantId,
+      buyerIds: buyerRows.map((buyer: any) => buyer.id),
+      creditLimitByBuyerId: new Map(
+        buyerRows.map((buyer: any) => [buyer.id, Number(buyer.credit_limit ?? 0)]),
+      ),
+    });
 
     const cohortMap = new Map<string, string>();
     const cohortSet = new Set<string>();
@@ -235,7 +250,7 @@ export async function GET(req: NextRequest) {
       const orders_mtd = ordersMtdByBuyer.get(buyer.id) ?? 0;
       const last_order_at = lastOrderByBuyer.get(buyer.id) ?? null;
       const credit_limit = Number(buyer.credit_limit ?? 0);
-      const dues = duesByBuyer.get(buyer.id) ?? 0;
+      const dues = creditSnapshots.get(buyer.id)?.outstanding_dues ?? 0;
       const credit_used = dues;
       const dormant = !last_order_at || last_order_at < dormantCutoffIso;
 

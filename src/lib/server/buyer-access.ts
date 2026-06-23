@@ -650,6 +650,17 @@ export async function mintSellerSession(
     },
   });
 
+  // Persist the seller's phone in tenant_users so findLinkedBuyerId can
+  // reliably look up their linked buyer account without user_metadata fallbacks.
+  if (candidate.phone) {
+    await supabaseAdmin
+      .schema('app')
+      .from('tenant_users')
+      .update({ phone: candidate.phone })
+      .eq('user_id', candidate.user_id)
+      .eq('tenant_id', candidate.tenant_id);
+  }
+
   // Generate a recovery link server-side — does NOT send any email
   const { data: linkData, error: linkError } =
     await supabaseAdmin.auth.admin.generateLink({ type: 'recovery', email });

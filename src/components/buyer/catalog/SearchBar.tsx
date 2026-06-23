@@ -29,10 +29,11 @@ export function SearchBar({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         className={cn(
-          'w-full bg-[var(--bg-recessed)] border border-[var(--border-1)] rounded-xl',
-          'pl-9 pr-9 py-2.5 text-sm text-[var(--fg-1)] placeholder:text-[var(--fg-3)]',
+          'w-full bg-white border border-[var(--cream-400)] rounded-[12px]',
+          'pl-9 pr-9 py-2.5 text-[var(--fg-1)] placeholder:text-[var(--fg-3)]',
           'outline-none focus:border-[var(--teal-500)] transition-colors',
         )}
+        style={{ fontSize: 'var(--b-text-body)' }}
         aria-label="Search products"
       />
       {value && (

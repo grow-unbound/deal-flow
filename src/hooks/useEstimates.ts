@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, useInfiniteQuery, keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
@@ -39,6 +39,39 @@ export function useTenantEstimates(period: SellerLandingPeriod = 'month', initia
       return res.json();
     },
     initialData: getSellerLandingInitialData(period, initialData),
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+  });
+}
+
+export interface EstimatesInfiniteFilters {
+  search?: string;
+  status?: string; // filter_chip value
+}
+
+export interface TenantEstimatesPage extends TenantEstimatesResponse {
+  nextCursor: string | null;
+  total: number | null;
+}
+
+export function useTenantEstimatesInfinite(
+  period: SellerLandingPeriod = 'month',
+  filters: EstimatesInfiniteFilters = {},
+) {
+  return useInfiniteQuery({
+    queryKey: ['tenant-estimates-infinite', period, filters],
+    queryFn: async ({ pageParam }): Promise<TenantEstimatesPage> => {
+      const params = new URLSearchParams({ period });
+      if (pageParam) params.set('cursor', pageParam as string);
+      if (filters.search?.trim()) params.set('search', filters.search.trim());
+      if (filters.status && filters.status !== 'All') params.set('status', filters.status.toLowerCase());
+      const res = await apiFetch(`/api/tenant/estimates?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to fetch estimates');
+      return res.json() as Promise<TenantEstimatesPage>;
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
   });

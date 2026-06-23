@@ -27,14 +27,48 @@ function getAppUrl() {
   return (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/+$/, '');
 }
 
+async function insertOAuthState(
+  db: NonNullable<typeof supabaseAdmin>,
+  stateToken: string,
+  tenantId: string,
+  integrationTypeId: string,
+  orgId: string,
+  requestedBy: string,
+) {
+  const basePayload = {
+    state_token: stateToken,
+    tenant_id: tenantId,
+    integration_type_id: integrationTypeId,
+    org_id: orgId,
+  };
+
+  const withRequestedBy = await db
+    .schema('app')
+    .from('integration_oauth_states')
+    .insert({
+      ...basePayload,
+      requested_by: requestedBy,
+    });
+
+  if (!withRequestedBy.error) return;
+
+  if (withRequestedBy.error.code === '42703' || /requested_by/i.test(withRequestedBy.error.message ?? '')) {
+    const withoutRequestedBy = await db
+      .schema('app')
+      .from('integration_oauth_states')
+      .insert(basePayload);
+    if (!withoutRequestedBy.error) return;
+    throw withoutRequestedBy.error;
+  }
+
+  throw withRequestedBy.error;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const claims = await getVerifiedClaims(request);
     if (!claims.tenant_id || !claims.sub) return jsonError(401, 'Login required', 'UNAUTHORIZED');
     if (claims.role !== 'seller_admin') return jsonError(403, 'Admin only', 'FORBIDDEN');
-    if (!(await getFlag(FLAGS.INTEGRATIONS, claims.tenant_id))) {
-      return jsonError(403, 'Integrations are not enabled for this tenant', 'FEATURE_OFF');
-    }
     if (!(await getFlag(FLAGS.ZOHO_INTEGRATION, claims.tenant_id))) {
       return jsonError(403, 'Zoho integration is not enabled for this tenant', 'FEATURE_OFF');
     }
@@ -57,28 +91,21 @@ export async function POST(request: NextRequest) {
     if (!db) return jsonError(500, 'Server configuration error', 'SERVER_ERROR');
 
     const stateToken = randomUUID();
-    const { error } = await db
-      .schema('app')
-      .from('integration_oauth_states')
-      .insert({
-        state_token: stateToken,
-        tenant_id: claims.tenant_id,
-        integration_type_id: integrationTypeId,
-        org_id: orgId,
-      });
-
-    if (error) {
+    try {
+      await insertOAuthState(db, stateToken, claims.tenant_id, integrationTypeId, orgId, claims.sub);
+    } catch (error) {
       console.error('[zoho/oauth/start] Failed to insert OAuth state:', error);
       return jsonError(500, 'Failed to initiate OAuth flow', 'SERVER_ERROR');
     }
 
-    const redirectUri = `${getAppUrl()}/api/settings/integrations/zoho/oauth/callback`;
+    const redirectUri = `${request.nextUrl.origin}/api/settings/integrations/zoho/oauth/callback`;
     const authUrl = new URL('/oauth/v2/auth', getZohoAccountsBaseUrl());
     authUrl.searchParams.set('client_id', clientId);
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('scope', ZOHO_SCOPES);
     authUrl.searchParams.set('redirect_uri', redirectUri);
     authUrl.searchParams.set('access_type', 'offline');
+    authUrl.searchParams.set('prompt', 'consent');
     authUrl.searchParams.set('state', stateToken);
 
     return NextResponse.json({ data: { redirect_url: authUrl.toString() }, error: null });

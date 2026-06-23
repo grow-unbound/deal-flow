@@ -67,7 +67,7 @@ interface NormalizedZohoCredentials {
   module: 'books' | 'inventory';
 }
 
-const DEFAULT_PER_PAGE = 200;
+const DEFAULT_PER_PAGE = 1000;
 const DEFAULT_REGION = 'com';
 
 const TRANSACTIONAL_ENTITY_TYPES = new Set(['estimates', 'orders', 'invoices']);
@@ -376,6 +376,8 @@ export function createZohoAdapter(
       query: {
         page,
         per_page: perPage,
+        sort_column: 'last_modified_time',
+        sort_order: 'D',
         ...(dateStart ? { date_start: dateStart } : {}),
       },
     });

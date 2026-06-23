@@ -14,6 +14,7 @@ import {
 } from '@/lib/server/seller-location-access';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
+import { PAGE_SIZE } from '@/lib/pagination';
 
 type DbClient = any;
 import type {
@@ -176,7 +177,17 @@ export async function GET(request: NextRequest) {
 
     const db = supabaseAdmin;
 
-    const [{ data: invoiceRows, error: invErr }, { data: buyerRows }, { data: orderRows }, { data: estimateRows }] =
+    // Fetch invoices scoped to the requested period + a safety limit.
+    // Also fetch the previous period so we can compute KPI growth comparisons
+    // without a second unbounded query.
+    const periodStart = period.previous_start; // earliest date we need
+    const periodEndExclusive = period.current_end_exclusive; // latest date we need (exclusive)
+    const reqLimit = Math.min(
+      Number(searchParams.get('limit') || PAGE_SIZE.SELLER),
+      PAGE_SIZE.MAX,
+    );
+
+    const [{ data: invoiceRows, error: invErr }] =
       await Promise.all([
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         applySellerLocationScope(
@@ -188,23 +199,62 @@ export async function GET(request: NextRequest) {
             )
             .eq('tenant_id', tenantId)
             .is('deleted_at', null)
-            .order('created_at', { ascending: false }),
+            .gte('invoice_date', periodStart)
+            .lt('invoice_date', periodEndExclusive)
+            .order('invoice_date', { ascending: false })
+            .limit(reqLimit + 1), // +1 to detect hasNextPage
           claims,
         ) as any,
-        db.schema('app').from('buyers').select('id, business_name, geography').eq('tenant_id', tenantId).is('deleted_at', null),
-        db.schema('app').from('orders').select('id, order_number').eq('tenant_id', tenantId).is('deleted_at', null),
-        db
-          .schema('app')
-          .from('estimates')
-          .select('id, estimate_number')
-          .eq('tenant_id', tenantId)
-          .is('deleted_at', null),
       ]);
+
+    // Scope linked-doc lookups to only the IDs referenced by the fetched invoices
+    // to avoid full-table scans on orders and estimates.
+    const allInvoiceRows = (invoiceRows ?? []) as InvoiceDbRow[];
+    const linkedOrderIds = Array.from(
+      new Set(
+        allInvoiceRows
+          .map((r) => r.order_id)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0),
+      ),
+    );
+    const linkedEstimateIds = Array.from(
+      new Set(
+        allInvoiceRows
+          .map((r) => r.estimate_id)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0),
+      ),
+    );
+
+    const [{ data: orderRows }, { data: estimateRows }] = await Promise.all([
+      linkedOrderIds.length > 0
+        ? db.schema('app').from('orders').select('id, order_number').in('id', linkedOrderIds).is('deleted_at', null)
+        : Promise.resolve({ data: [] as OrderRow[], error: null }),
+      linkedEstimateIds.length > 0
+        ? db.schema('app').from('estimates').select('id, estimate_number').in('id', linkedEstimateIds).is('deleted_at', null)
+        : Promise.resolve({ data: [] as EstimateRow[], error: null }),
+    ]);
 
     if (invErr) {
       console.error('[GET /api/tenant/invoices]', invErr);
       return timedJson({ error: 'Failed to fetch invoices' }, { status: 500 });
     }
+
+    // Detect next page and slice to reqLimit
+    const hasNextPage = allInvoiceRows.length > reqLimit;
+    const pageRows = hasNextPage ? allInvoiceRows.slice(0, reqLimit) : allInvoiceRows;
+    const lastRow = pageRows.at(-1);
+    const nextCursor = hasNextPage && lastRow
+      ? Buffer.from(JSON.stringify({ t: lastRow.invoice_date, i: lastRow.id })).toString('base64url')
+      : null;
+
+    // Fetch snapshot total (O(1)) and scoped buyers in parallel
+    const pageBuyerIds = Array.from(new Set(pageRows.map((r) => r.buyer_id)));
+    const [{ data: buyerRows }, { data: snapshotRow }] = await Promise.all([
+      pageBuyerIds.length > 0
+        ? db.schema('app').from('buyers').select('id, business_name, geography').in('id', pageBuyerIds).is('deleted_at', null)
+        : Promise.resolve({ data: [] as BuyerRow[], error: null }),
+      db.schema('app').from('invoices_snapshot').select('total_count').eq('tenant_id', tenantId).maybeSingle(),
+    ]);
 
     const buyers = (buyerRows ?? []) as BuyerRow[];
     const orders = (orderRows ?? []) as OrderRow[];
@@ -213,11 +263,10 @@ export async function GET(request: NextRequest) {
     const orderById = new Map(orders.map((o) => [o.id, o]));
     const estimateById = new Map(estimates.map((e) => [e.id, e]));
 
-    const all = (invoiceRows ?? []) as InvoiceDbRow[];
-    const inCurrent = all.filter((r) => inPeriod(r.invoice_date, period.current_start, period.current_end_exclusive));
-    const inPrevious = all.filter((r) => inPeriod(r.invoice_date, period.previous_start, period.previous_end_exclusive));
+    const inCurrent = pageRows.filter((r) => inPeriod(r.invoice_date, period.current_start, period.current_end_exclusive));
+    const inPrevious = pageRows.filter((r) => inPeriod(r.invoice_date, period.previous_start, period.previous_end_exclusive));
     const invoiceIds = inCurrent.map((row) => row.id);
-    const creatorIds = Array.from(new Set(all.map((row) => row.created_by).filter((value): value is string => Boolean(value))));
+    const creatorIds = Array.from(new Set(allInvoiceRows.map((row) => row.created_by).filter((value): value is string => Boolean(value))));
 
     const [invoiceItemsRes, creatorMap] = await Promise.all([
       invoiceIds.length > 0
@@ -392,11 +441,13 @@ export async function GET(request: NextRequest) {
       top_risers: topRisers,
     };
 
-    const payload: TenantInvoicesResponse = {
+    const payload = {
       period,
       kpis,
       todays_read,
       invoices: landingRows,
+      nextCursor,
+      total: (snapshotRow as { total_count?: number } | null)?.total_count ?? null,
     };
 
     return timedJson(payload);

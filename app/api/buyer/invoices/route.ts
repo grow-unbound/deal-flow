@@ -34,16 +34,24 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerInvoi
     const { tenant_id } = profile.context;
     const buyer_id = profile.buyer.id;
     const db = supabaseAdmin ?? supabase;
-    const limit = Math.min(Number(request.nextUrl.searchParams.get('limit') ?? '50'), 200);
+    const unpaidOnly = request.nextUrl.searchParams.get('unpaid_only') === 'true';
+    const defaultLimit = unpaidOnly ? '200' : '50';
+    const limit = Math.min(Number(request.nextUrl.searchParams.get('limit') ?? defaultLimit), 200);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (db as any)
+    let query = (db as any)
       .schema('app')
       .from('invoices')
       .select('id, invoice_number, status, total_amount, outstanding_balance, invoice_date, due_date')
       .eq('tenant_id', tenant_id)
       .eq('buyer_id', buyer_id)
-      .is('deleted_at', null)
+      .is('deleted_at', null);
+
+    if (unpaidOnly) {
+      query = query.gt('outstanding_balance', 0);
+    }
+
+    const { data, error } = await query
       .order('invoice_date', { ascending: false })
       .limit(limit);
 

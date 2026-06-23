@@ -5,6 +5,7 @@ import {
   loadAccessibleSellerLocations,
   resolveDefaultSellerLocationId,
 } from '@/lib/server/seller-location-access';
+import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
 import type { EstimateComposerDocument } from '@/types/estimate-composer';
 import type { EstimateDetailActivity, EstimateDetailLineItem, EstimateDetailPayload } from '@/types/tenant-estimate-detail';
@@ -226,15 +227,12 @@ export async function loadEstimateDocument(
     linkedInvoiceNumber = (data?.invoice_number as string | null | undefined) ?? null;
   }
 
-  const outstandingInvoices = buyerId
-    ? await d.schema('app').from('invoices').select('outstanding_balance').eq('tenant_id', tenantId).eq('buyer_id', buyerId).is('deleted_at', null)
-    : { data: [] as Array<Record<string, unknown>> };
-
-  const creditUsed = ((outstandingInvoices.data ?? []) as Array<Record<string, unknown>>).reduce(
-    (sum, row) => sum + Number(row.outstanding_balance ?? 0), 0,
-  );
   const creditLimit = Number(buyer?.credit_limit ?? 0);
-  const creditAvailable = Math.max(creditLimit - creditUsed, 0);
+  const creditSnapshot = buyerId
+    ? await loadBuyerCreditSnapshot(d as any, { tenantId, buyerId, creditLimit })
+    : null;
+  const creditUsed = creditSnapshot?.credit_used ?? 0;
+  const creditAvailable = creditSnapshot?.available_credit ?? creditLimit;
 
   const cohortRows = buyerId
     ? await d.schema('app').from('cohort_members').select('cohort_id').eq('buyer_id', buyerId)

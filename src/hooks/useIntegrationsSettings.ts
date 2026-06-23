@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
+import { normalizeIntegrationJobErrorLog } from '@/lib/integrations/job-error-log';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { makeHttpError, transientQueryRetry } from '@/lib/query-retry';
 
@@ -40,6 +41,11 @@ export interface IntegrationCapabilities {
 }
 
 export interface IntegrationSyncProgress {
+  version?: number;
+  provider?: string;
+  scope?: 'reference' | 'transactional' | 'full';
+  since?: string | null;
+  phases?: string[];
   phase?: string | null;
   phase_label?: string | null;
   phases_total?: number | null;
@@ -47,7 +53,26 @@ export interface IntegrationSyncProgress {
   items_total?: number | null;
   items_processed?: number | null;
   items_failed?: number | null;
+  pages_processed?: number | null;
   cursor?: string | null;
+  counts?: Record<string, IntegrationSyncPhaseStats> | null;
+  started_at?: string | null;
+  updated_at?: string | null;
+  last_page?: {
+    phase: string;
+    count: number;
+    next_page: number | null;
+    completed_at: string;
+    sample_ids?: string[];
+  } | null;
+  note?: string | null;
+}
+
+export interface IntegrationSyncPhaseStats {
+  entity_type: string;
+  processed: number;
+  failed: number;
+  pages: number;
 }
 
 export interface IntegrationSyncError {
@@ -63,10 +88,31 @@ export interface IntegrationSyncJob {
   status: IntegrationSyncJobStatus;
   progress?: IntegrationSyncProgress | null;
   error_log?: IntegrationSyncError[] | null;
-  summary?: Record<string, number> | null;
+  summary?: IntegrationJobSummary | null;
   started_at?: string | null;
   completed_at?: string | null;
   created_at: string;
+}
+
+export interface IntegrationJobSummary {
+  provider?: string;
+  scope?: 'reference' | 'transactional' | 'full';
+  since?: string | null;
+  phases_completed?: string[];
+  counts?: Record<string, IntegrationSyncPhaseStats>;
+  last_synced_at?: string | null;
+  note?: string;
+  brands?: number;
+  products?: number;
+  customers?: number;
+  estimates?: number;
+  orders?: number;
+  invoices?: number;
+  total_processed?: number;
+  total_failed?: number;
+  duration_ms?: number;
+  warnings?: string[];
+  [key: string]: unknown;
 }
 
 export interface IntegrationDataFlow {
@@ -75,6 +121,8 @@ export interface IntegrationDataFlow {
   direction: IntegrationDirection;
   trigger_type: IntegrationTriggerType;
   schedule?: string | null;
+  field_mappings: Record<string, unknown>;
+  filters: Record<string, unknown>;
   is_active: boolean;
   last_run_at?: string | null;
 }
@@ -135,12 +183,22 @@ export interface StartImportInput extends TestConnectionInput {
   import_start_date: string;
 }
 
+export interface SyncNowInput {
+  tenant_integration_id: string;
+  max_pages?: number;
+}
+
+export interface StopSyncInput {
+  tenant_integration_id: string;
+}
+
 interface ApiEnvelope<T> {
   data: T | null;
   error?: { code?: string; message?: string } | null;
 }
 
 const ACTIVE_STATUSES: IntegrationSyncJobStatus[] = ['queued', 'running'];
+const TEST_SYNC_PAGE_LIMIT = 3;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -162,6 +220,66 @@ function asNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function normalizePhaseStats(value: unknown): IntegrationSyncPhaseStats | null {
+  if (!isRecord(value)) return null;
+  const processed = asNumber(value.processed);
+  const failed = asNumber(value.failed);
+  const pages = asNumber(value.pages);
+
+  if (processed === null && failed === null && pages === null) return null;
+
+  return {
+    entity_type: asString(value.entity_type, ''),
+    processed: processed ?? 0,
+    failed: failed ?? 0,
+    pages: pages ?? 0,
+  };
+}
+
+function normalizePhaseStatsRecord(value: unknown): Record<string, IntegrationSyncPhaseStats> | null {
+  if (!isRecord(value)) return null;
+
+  const entries = Object.entries(value)
+    .map(([key, stat]) => [key, normalizePhaseStats(stat)] as const)
+    .filter((entry): entry is readonly [string, IntegrationSyncPhaseStats] => entry[1] !== null);
+
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
+}
+
+function normalizeSummary(value: unknown): IntegrationJobSummary | null {
+  if (!isRecord(value)) return null;
+
+  const counts = normalizePhaseStatsRecord(value.counts);
+  const phasesCompleted = asArray<unknown>(value.phases_completed).filter((phase): phase is string => typeof phase === 'string');
+  const warnings = asArray<unknown>(value.warnings).filter((warning): warning is string => typeof warning === 'string');
+
+  const summary: IntegrationJobSummary = {
+    ...value,
+    provider: asNullableString(value.provider) ?? undefined,
+    scope:
+      value.scope === 'reference' || value.scope === 'transactional' || value.scope === 'full'
+        ? value.scope
+        : undefined,
+    since: typeof value.since === 'string' || value.since === null ? (value.since as string | null) : undefined,
+    phases_completed: phasesCompleted.length > 0 ? phasesCompleted : undefined,
+    counts: counts ?? undefined,
+    last_synced_at: asNullableString(value.last_synced_at) ?? undefined,
+    note: asNullableString(value.note) ?? undefined,
+    brands: asNumber(value.brands) ?? undefined,
+    products: asNumber(value.products) ?? undefined,
+    customers: asNumber(value.customers) ?? undefined,
+    estimates: asNumber(value.estimates) ?? undefined,
+    orders: asNumber(value.orders) ?? undefined,
+    invoices: asNumber(value.invoices) ?? undefined,
+    total_processed: asNumber(value.total_processed) ?? undefined,
+    total_failed: asNumber(value.total_failed) ?? undefined,
+    duration_ms: asNumber(value.duration_ms) ?? undefined,
+    warnings: warnings.length > 0 ? warnings : undefined,
+  };
+
+  return summary;
+}
+
 function inferFamilyFlag(id: string): IntegrationFamilyFlag {
   if (id.startsWith('zoho_')) return 'ZOHO_INTEGRATION';
   if (id === 'tally_prime') return 'TALLY_INTEGRATION';
@@ -177,6 +295,14 @@ function parseSyncJob(value: unknown): IntegrationSyncJob | null {
     status: (asString(value.status) || 'queued') as IntegrationSyncJobStatus,
     progress: isRecord(value.progress)
       ? {
+          version: asNumber(value.progress.version) ?? undefined,
+          provider: asNullableString(value.progress.provider) ?? undefined,
+          scope:
+            value.progress.scope === 'reference' || value.progress.scope === 'transactional' || value.progress.scope === 'full'
+              ? value.progress.scope
+              : undefined,
+          since: typeof value.progress.since === 'string' || value.progress.since === null ? (value.progress.since as string | null) : undefined,
+          phases: asArray<unknown>(value.progress.phases).filter((phase): phase is string => typeof phase === 'string'),
           phase: asNullableString(value.progress.phase),
           phase_label: asNullableString(value.progress.phase_label),
           phases_total: asNumber(value.progress.phases_total),
@@ -184,10 +310,26 @@ function parseSyncJob(value: unknown): IntegrationSyncJob | null {
           items_total: asNumber(value.progress.items_total),
           items_processed: asNumber(value.progress.items_processed),
           items_failed: asNumber(value.progress.items_failed),
+          pages_processed: asNumber(value.progress.pages_processed),
           cursor: asNullableString(value.progress.cursor),
+          counts: normalizePhaseStatsRecord(value.progress.counts),
+          started_at: asNullableString(value.progress.started_at) ?? undefined,
+          updated_at: asNullableString(value.progress.updated_at) ?? undefined,
+          last_page: isRecord(value.progress.last_page)
+            ? {
+                phase: asString(value.progress.last_page.phase),
+                count: asNumber(value.progress.last_page.count) ?? 0,
+                next_page: typeof value.progress.last_page.next_page === 'number' ? value.progress.last_page.next_page : null,
+                completed_at: asString(value.progress.last_page.completed_at, ''),
+                sample_ids: asArray<unknown>(value.progress.last_page.sample_ids).filter(
+                  (sampleId): sampleId is string => typeof sampleId === 'string',
+                ),
+              }
+            : null,
+          note: asNullableString(value.progress.note),
         }
       : null,
-    error_log: asArray<unknown>(value.error_log)
+    error_log: normalizeIntegrationJobErrorLog(value.error_log)
       .map((entry) =>
         isRecord(entry)
           ? {
@@ -199,11 +341,7 @@ function parseSyncJob(value: unknown): IntegrationSyncJob | null {
           : null,
       )
       .filter((entry): entry is IntegrationSyncError => entry !== null),
-    summary: isRecord(value.summary)
-      ? Object.fromEntries(
-          Object.entries(value.summary).filter(([, count]) => typeof count === 'number' && Number.isFinite(count)),
-        ) as Record<string, number>
-      : null,
+    summary: normalizeSummary(value.summary),
     started_at: asNullableString(value.started_at),
     completed_at: asNullableString(value.completed_at),
     created_at: asString(value.created_at, new Date(0).toISOString()),
@@ -219,6 +357,8 @@ function parseDataFlow(value: unknown): IntegrationDataFlow | null {
     direction: (asString(value.direction) || 'inbound') as IntegrationDirection,
     trigger_type: (asString(value.trigger_type) || 'scheduled') as IntegrationTriggerType,
     schedule: asNullableString(value.schedule),
+    field_mappings: isRecord(value.field_mappings) ? value.field_mappings : {},
+    filters: isRecord(value.filters) ? value.filters : {},
     is_active: value.is_active !== false,
     last_run_at: asNullableString(value.last_run_at),
   };
@@ -368,6 +508,57 @@ async function postStartImport(body: StartImportInput): Promise<StartImportResul
   };
 }
 
+async function postDisconnect(body: { tenant_integration_id: string }): Promise<IntegrationsSettingsView> {
+  const res = await apiPost('/api/settings/integrations/disconnect', body);
+  const json = await parseEnvelope<unknown>(res);
+  return parseSettingsView(json.data);
+}
+
+async function postRetryWebhookSetup(body: {
+  tenant_integration_id: string;
+}): Promise<{ status: 'active' | 'failed'; message: string }> {
+  const res = await apiPost('/api/settings/integrations/zoho/webhooks/retry', body);
+  const json = await parseEnvelope<{
+    webhook_setup?: {
+      status?: 'active' | 'failed';
+      message?: string;
+    };
+  }>(res);
+
+  const setup = json.data?.webhook_setup;
+  return {
+    status: setup?.status === 'active' ? 'active' : 'failed',
+    message:
+      setup?.message ??
+      (setup?.status === 'active'
+        ? 'Zoho webhooks are active.'
+        : 'Zoho webhooks could not be registered right now.'),
+  };
+}
+
+async function postSyncNow(body: SyncNowInput): Promise<StartImportResult> {
+  const res = await apiPost('/api/settings/integrations/sync', {
+    tenant_integration_id: body.tenant_integration_id,
+    job_type: 'manual',
+    max_pages: body.max_pages ?? TEST_SYNC_PAGE_LIMIT,
+  });
+  const json = await parseEnvelope<{ job_id?: string }>(res);
+  if (!json.data) throw new Error('Sync did not start');
+  return {
+    integration_type_id: '',
+    tenant_integration_id: body.tenant_integration_id,
+    job_id: asNullableString(json.data.job_id),
+  };
+}
+
+async function postStopSync(body: StopSyncInput): Promise<IntegrationsSettingsView> {
+  const res = await apiPost('/api/settings/integrations/sync/cancel', {
+    tenant_integration_id: body.tenant_integration_id,
+  });
+  const json = await parseEnvelope<unknown>(res);
+  return parseSettingsView(json.data);
+}
+
 function hasActiveJob(view?: IntegrationsSettingsView | null) {
   return (
     view?.integrations.some((integration) => {
@@ -424,6 +615,24 @@ function createOptimisticView(current: IntegrationsSettingsView | undefined, inp
   };
 }
 
+function createDisconnectOptimisticView(
+  current: IntegrationsSettingsView | undefined,
+  tenantIntegrationId: string,
+): IntegrationsSettingsView | undefined {
+  if (!current) return current;
+
+  return {
+    ...current,
+    integrations: current.integrations.map((integration) => {
+      if (integration.tenant_integration?.id !== tenantIntegrationId) return integration;
+      return {
+        ...integration,
+        tenant_integration: null,
+      };
+    }),
+  };
+}
+
 export function useIntegrationsSettings() {
   const { currentTenantId } = useAuth();
   const queryClient = useQueryClient();
@@ -434,7 +643,8 @@ export function useIntegrationsSettings() {
     enabled: Boolean(currentTenantId),
     queryFn: fetchSettings,
     retry: transientQueryRetry,
-    refetchInterval: (queryInfo) => (hasActiveJob(queryInfo.state.data as IntegrationsSettingsView | undefined) ? 3000 : false),
+    refetchInterval: (queryInfo) => (hasActiveJob(queryInfo.state.data as IntegrationsSettingsView | undefined) ? 30000 : false),
+    refetchIntervalInBackground: true,
   });
 
   const testMutation = useMutation({
@@ -477,16 +687,90 @@ export function useIntegrationsSettings() {
     },
   });
 
+  const disconnectMutation = useMutation({
+    mutationFn: postDisconnect,
+    onMutate: async (input) => {
+      const snapshots = await takeSnapshots(queryClient, [queryKey]);
+      queryClient.setQueryData<IntegrationsSettingsView>(queryKey, (current) =>
+        createDisconnectOptimisticView(current, input.tenant_integration_id),
+      );
+      return { snapshots };
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(queryKey, data);
+      toast.success('Integration disconnected');
+    },
+    onError: (error, _input, context) => {
+      rollbackSnapshots(queryClient, context?.snapshots);
+      toast.error(error instanceof Error ? error.message : 'Failed to disconnect integration');
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey });
+    },
+  });
+
+  const syncNowMutation = useMutation({
+    mutationFn: postSyncNow,
+    onSuccess: () => {
+      toast.success('Sync started');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Failed to start sync');
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey });
+    },
+  });
+
+  const stopSyncMutation = useMutation({
+    mutationFn: postStopSync,
+    onSuccess: (data) => {
+      queryClient.setQueryData(queryKey, data);
+      toast.success('Sync cancelled');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Failed to stop sync');
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey });
+    },
+  });
+
+  const retryWebhookMutation = useMutation({
+    mutationFn: postRetryWebhookSetup,
+    onSuccess: (result) => {
+      if (result.status === 'active') {
+        toast.success(result.message);
+      } else {
+        toast.error(result.message);
+      }
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Failed to retry webhook setup');
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey });
+    },
+  });
+
   return {
     ...query,
     testConnection: testMutation.mutateAsync,
     connectIntegration: connectMutation.mutateAsync,
     startSync: syncMutation.mutateAsync,
     startImport: syncMutation.mutateAsync,
+    disconnectIntegration: disconnectMutation.mutateAsync,
+    syncNowIntegration: syncNowMutation.mutateAsync,
+    stopSyncIntegration: stopSyncMutation.mutateAsync,
+    retryWebhookSetup: retryWebhookMutation.mutateAsync,
     isTestingConnection: testMutation.isPending,
     isConnecting: connectMutation.isPending,
     isStartingSync: syncMutation.isPending,
     isStartingImport: syncMutation.isPending,
+    isDisconnecting: disconnectMutation.isPending,
+    isSyncingNow: syncNowMutation.isPending,
+    isStoppingSync: stopSyncMutation.isPending,
+    isRetryingWebhookSetup: retryWebhookMutation.isPending,
     testResult: testMutation.data,
   };
 }

@@ -32,6 +32,8 @@ export interface BuyerCatalogSummary {
   hero_image_url?: string | null;
 }
 
+export interface BuyerPromotionSummary extends BuyerCatalogSummary {}
+
 export interface BuyerCategory {
   id: string;
   name: string;

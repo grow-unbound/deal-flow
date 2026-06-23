@@ -63,18 +63,20 @@ export function TransactionCard({ order }: TransactionCardProps) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <span
           style={{
-            fontSize: 'var(--yk-text-base)',
+            fontSize: 'var(--b-text-sub)',
             fontFamily: 'var(--font-mono)',
-            color: 'var(--fg-1)',
-            letterSpacing: '0.02em',
+            color: 'var(--cream-700)',
+            letterSpacing: '0.06em',
           }}
         >
           {order.order_number}
         </span>
         <span
           style={{
-            fontSize: 'var(--yk-text-xs)',
+            fontSize: 'var(--b-text-eyebrow)',
             fontWeight: 600,
+            letterSpacing: '0.10em',
+            textTransform: 'uppercase',
             padding: '2px 8px',
             borderRadius: 100,
             background: badge.bg,
@@ -87,22 +89,23 @@ export function TransactionCard({ order }: TransactionCardProps) {
 
       {/* Row 2: item count + date */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--fg-3)' }}>
+        <span style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}>
           {order.item_count != null && order.item_count > 0
             ? <><span className="tabular-inline">{order.item_count}</span> item{order.item_count !== 1 ? 's' : ''}</>
             : '—'}
         </span>
-        <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--fg-3)' }}><span className="tabular-inline">{formatDate(order.placed_at)}</span></span>
+        <span style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}><span className="tabular-inline">{formatDate(order.placed_at)}</span></span>
       </div>
 
       {/* Row 3: total */}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <span
           style={{
-            fontSize: 'var(--yk-text-md)',
-            fontFamily: 'var(--font-mono)',
-            fontWeight: 600,
+            fontSize: 'var(--b-text-header)',
+            fontFamily: 'var(--font-display)',
+            fontWeight: 500,
             color: 'var(--fg-1)',
+            letterSpacing: '-0.01em',
           }}
         >
           {inr(order.total_amount)}

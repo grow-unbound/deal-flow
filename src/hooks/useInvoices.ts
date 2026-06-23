@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, useInfiniteQuery, keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { apiFetch, apiPatch } from '@/lib/api-fetch';
@@ -126,11 +126,44 @@ export function useTenantInvoices(period: SellerLandingPeriod = 'month', initial
   return useQuery({
     queryKey: ['tenant-invoices', period],
     queryFn: async (): Promise<TenantInvoicesResponse> => {
-      const res = await apiFetch(`/api/tenant/invoices?limit=200&period=${period}`);
+      const res = await apiFetch(`/api/tenant/invoices?period=${period}`);
       if (!res.ok) throw new Error('Failed to fetch invoices');
       return res.json() as Promise<TenantInvoicesResponse>;
     },
     initialData: getSellerLandingInitialData(period, initialData),
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+  });
+}
+
+export interface InvoicesInfiniteFilters {
+  search?: string;
+  status?: string; // filter_chip value
+}
+
+export interface TenantInvoicesPage extends TenantInvoicesResponse {
+  nextCursor: string | null;
+  total: number | null;
+}
+
+export function useTenantInvoicesInfinite(
+  period: SellerLandingPeriod = 'month',
+  filters: InvoicesInfiniteFilters = {},
+) {
+  return useInfiniteQuery({
+    queryKey: ['tenant-invoices-infinite', period, filters],
+    queryFn: async ({ pageParam }): Promise<TenantInvoicesPage> => {
+      const params = new URLSearchParams({ period });
+      if (pageParam) params.set('cursor', pageParam as string);
+      if (filters.search?.trim()) params.set('search', filters.search.trim());
+      if (filters.status && filters.status !== 'All') params.set('status', filters.status.toLowerCase());
+      const res = await apiFetch(`/api/tenant/invoices?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to fetch invoices');
+      return res.json() as Promise<TenantInvoicesPage>;
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
   });

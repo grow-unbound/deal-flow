@@ -46,6 +46,7 @@ export const DEFAULT_TENANT_SETTINGS_STORED = {
       order_confirmed_to_buyer: true,
       dispatch_to_buyer: true,
       catalog_shared_to_buyer: true,
+      response_eta_hours: 24,
     },
   },
   business_policy: {

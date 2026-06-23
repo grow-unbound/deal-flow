@@ -25,11 +25,12 @@ export function BrandFilter({ brands, selected, onChange }: BrandFilterProps) {
       <button
         onClick={() => onChange(null)}
         className={cn(
-          'flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap',
+          'flex-shrink-0 rounded-full px-3 py-1.5 font-medium transition-colors whitespace-nowrap',
           selected === null
             ? 'bg-[var(--teal-500)] text-white'
-            : 'bg-[var(--bg-recessed)] text-[var(--fg-2)] border border-[var(--border-1)]',
+            : 'bg-[var(--bg-recessed)] text-[var(--fg-2)] border border-[var(--cream-400)]',
         )}
+        style={{ fontSize: 'var(--b-text-label)' }}
         aria-pressed={selected === null}
       >
         All
@@ -39,11 +40,12 @@ export function BrandFilter({ brands, selected, onChange }: BrandFilterProps) {
           key={brand.id}
           onClick={() => onChange(selected === brand.id ? null : brand.id)}
           className={cn(
-            'flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap',
+            'flex-shrink-0 rounded-full px-3 py-1.5 font-medium transition-colors whitespace-nowrap',
             selected === brand.id
               ? 'bg-[var(--teal-500)] text-white'
-              : 'bg-[var(--bg-recessed)] text-[var(--fg-2)] border border-[var(--border-1)]',
+              : 'bg-[var(--bg-recessed)] text-[var(--fg-2)] border border-[var(--cream-400)]',
           )}
+          style={{ fontSize: 'var(--b-text-label)' }}
           aria-pressed={selected === brand.id}
         >
           {brand.name}

@@ -134,37 +134,71 @@ export const IntegrationCapabilitiesSchema = z
   .strict();
 export type IntegrationCapabilities = z.infer<typeof IntegrationCapabilitiesSchema>;
 
-export const IntegrationProgressPhaseSchema = z.union([
-  IntegrationCapabilityEntityTypeSchema,
-  z.literal('queued'),
-  z.literal('complete'),
-]);
+export const IntegrationSyncPhaseStatsSchema = z
+  .object({
+    entity_type: z.string().trim().min(1).max(120),
+    processed: z.number().int().min(0),
+    failed: z.number().int().min(0),
+    pages: z.number().int().min(0),
+  })
+  .strict();
+export type IntegrationSyncPhaseStats = z.infer<typeof IntegrationSyncPhaseStatsSchema>;
+
+export const IntegrationProgressCursorSchema = z
+  .object({
+    phase: z.string().trim().min(1).max(120),
+    entity_type: z.string().trim().min(1).max(120),
+    page: z.number().int().min(1),
+    per_page: z.number().int().min(1),
+    has_more: z.boolean(),
+    since: z.string().datetime({ offset: true }).nullable(),
+  })
+  .strict();
+export type IntegrationProgressCursor = z.infer<typeof IntegrationProgressCursorSchema>;
 
 export const IntegrationJobProgressSchema = z
   .object({
     mode: z.enum(['initial_import', 'incremental', 'manual']).optional(),
-    phase: IntegrationProgressPhaseSchema.optional(),
-    phase_label: z.string().trim().min(1).max(200).optional(),
-    phases_total: z.number().int().min(1).optional(),
+    version: z.number().int().min(1).optional(),
+    provider: z.string().trim().min(1).max(40).optional(),
+    scope: z.enum(['reference', 'transactional', 'full']).optional(),
+    since: z.string().datetime({ offset: true }).nullable().optional(),
+    phases: z.array(z.string().trim().min(1).max(120)).default([]),
+    phases_total: z.number().int().min(0).optional(),
     phase_current: z.number().int().min(0).optional(),
-    current_entity: IntegrationEntityTypeSchema.optional(),
+    phase: z.string().trim().min(1).max(120).nullable().optional(),
+    phase_label: z.string().trim().min(1).max(200).optional(),
+    current_entity: z.string().trim().min(1).max(120).optional(),
     current_page: z.number().int().min(1).optional(),
-    total_pages_estimate: z.number().int().min(1).optional(),
-    items_total: z.number().int().min(0).optional(),
+    total_pages_estimate: z.number().int().min(1).nullable().optional(),
+    items_total: z.number().int().min(0).nullable().optional(),
     items_processed: z.number().int().min(0).optional(),
     items_failed: z.number().int().min(0).optional(),
     last_batch_size: z.number().int().min(0).optional(),
-    cursor: z.string().trim().min(1).max(2000).nullable().optional(),
+    pages_processed: z.number().int().min(0).optional(),
+    cursor: z.union([IntegrationProgressCursorSchema, z.string().trim().min(1).max(2000)]).nullable().optional(),
     eta_seconds_remaining: z.number().int().min(0).nullable().optional(),
     percent: z.number().min(0).max(100).optional(),
-    last_entity_type: IntegrationEntityTypeSchema.optional(),
+    last_entity_type: z.string().trim().min(1).max(120).optional(),
     last_external_id: z.string().trim().min(1).max(200).optional(),
-    message: z.string().trim().min(1).max(200).optional(),
-    started_at: z.string().datetime().optional(),
-    updated_at: z.string().datetime().optional(),
+    message: z.string().trim().min(1).max(200).nullable().optional(),
+    started_at: z.string().datetime({ offset: true }).optional(),
+    updated_at: z.string().datetime({ offset: true }).optional(),
+    counts: z.record(z.string().trim().min(1).max(120), IntegrationSyncPhaseStatsSchema).optional(),
+    last_page: z
+      .object({
+        phase: z.string().trim().min(1).max(120),
+        count: z.number().int().min(0),
+        next_page: z.number().int().min(0).nullable(),
+        completed_at: z.string().datetime({ offset: true }),
+        sample_ids: z.array(z.string().trim().min(1).max(200)).optional(),
+      })
+      .strict()
+      .optional(),
+    note: z.string().trim().min(1).max(500).optional(),
     meta: z.record(z.string(), z.unknown()).optional(),
   })
-  .strict()
+  .passthrough()
   .superRefine((progress, ctx) => {
     if (
       progress.phases_total !== undefined &&
@@ -179,7 +213,7 @@ export const IntegrationJobProgressSchema = z
     }
 
     if (
-      progress.items_total !== undefined &&
+      progress.items_total != null &&
       progress.items_processed !== undefined &&
       progress.items_processed > progress.items_total
     ) {
@@ -191,7 +225,7 @@ export const IntegrationJobProgressSchema = z
     }
 
     if (
-      progress.items_total !== undefined &&
+      progress.items_total != null &&
       progress.items_failed !== undefined &&
       progress.items_failed > progress.items_total
     ) {
@@ -212,6 +246,13 @@ const IntegrationJobSummaryCountSchema = z.number().int().min(0);
 
 export const IntegrationJobSummarySchema = z
   .object({
+    provider: z.string().trim().min(1).max(40).optional(),
+    scope: z.enum(['reference', 'transactional', 'full']).optional(),
+    since: z.string().datetime({ offset: true }).nullable().optional(),
+    phases_completed: z.array(z.string().trim().min(1).max(120)).optional(),
+    counts: z.record(z.string().trim().min(1).max(120), IntegrationSyncPhaseStatsSchema).optional(),
+    last_synced_at: z.string().datetime({ offset: true }).optional(),
+    note: z.string().trim().min(1).max(500).optional(),
     brands: IntegrationJobSummaryCountSchema.optional(),
     products: IntegrationJobSummaryCountSchema.optional(),
     customers: IntegrationJobSummaryCountSchema.optional(),
@@ -223,8 +264,18 @@ export const IntegrationJobSummarySchema = z
     duration_ms: z.number().int().min(0).optional(),
     warnings: z.array(z.string().trim().min(1).max(200)).optional(),
   })
-  .strict();
+  .passthrough();
 export type IntegrationJobSummary = z.infer<typeof IntegrationJobSummarySchema>;
+
+const IntegrationJobErrorEntrySchema = z.record(z.string(), z.unknown());
+const IntegrationJobErrorLogSchema = z.union([
+  z.array(IntegrationJobErrorEntrySchema),
+  z
+    .object({
+      entries: z.array(IntegrationJobErrorEntrySchema),
+    })
+    .passthrough(),
+]);
 
 export const IntegrationTypeRecordSchema = z
   .object({
@@ -247,12 +298,12 @@ export const TenantIntegrationRecordSchema = z
     integration_type_id: IntegrationTypeIdSchema,
     status: TenantIntegrationStatusSchema,
     config: z.record(z.string(), z.unknown()),
-    last_health_check_at: z.string().datetime().nullable(),
+    last_health_check_at: z.string().datetime({ offset: true }).nullable(),
     health_status: TenantIntegrationHealthStatusSchema.nullable(),
-    connected_at: z.string().datetime().nullable(),
+    connected_at: z.string().datetime({ offset: true }).nullable(),
     connected_by: z.string().uuid().nullable(),
-    created_at: z.string().datetime(),
-    updated_at: z.string().datetime(),
+    created_at: z.string().datetime({ offset: true }),
+    updated_at: z.string().datetime({ offset: true }),
   })
   .strict();
 export type TenantIntegrationRecord = z.infer<typeof TenantIntegrationRecordSchema>;
@@ -264,11 +315,11 @@ export const IntegrationJobRecordSchema = z
     job_type: IntegrationSyncJobTypeSchema,
     status: IntegrationSyncJobStatusSchema,
     progress: IntegrationJobProgressSchema,
-    error_log: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
+    error_log: IntegrationJobErrorLogSchema.nullable().optional(),
     summary: IntegrationJobSummarySchema.nullable().optional(),
-    started_at: z.string().datetime().nullable(),
-    completed_at: z.string().datetime().nullable(),
-    created_at: z.string().datetime(),
+    started_at: z.string().datetime({ offset: true }).nullable(),
+    completed_at: z.string().datetime({ offset: true }).nullable(),
+    created_at: z.string().datetime({ offset: true }),
   })
   .strict();
 export type IntegrationJobRecord = z.infer<typeof IntegrationJobRecordSchema>;
@@ -282,8 +333,10 @@ export const IntegrationDataFlowRecordSchema = z
     trigger_type: IntegrationFlowTriggerSchema,
     schedule: z.string().trim().min(1).nullable(),
     webhook_id: z.string().uuid().nullable(),
+    field_mappings: z.record(z.string(), z.unknown()),
+    filters: z.record(z.string(), z.unknown()),
     is_active: z.boolean(),
-    last_run_at: z.string().datetime().nullable(),
+    last_run_at: z.string().datetime({ offset: true }).nullable(),
   })
   .strict();
 export type IntegrationDataFlowRecord = z.infer<typeof IntegrationDataFlowRecordSchema>;
@@ -331,7 +384,9 @@ export const IntegrationSyncRequestSchema = z
     tenant_integration_id: z.string().uuid(),
     job_type: IntegrationSyncJobTypeSchema.default('manual'),
     mode: z.enum(['initial_import', 'incremental', 'manual']).default('initial_import'),
+    scope: z.enum(['reference', 'transactional', 'full']).optional(),
     import_orders_since: z.string().date().optional(),
+    max_pages: z.number().int().min(1).optional(),
   })
   .strict();
 export type IntegrationSyncRequest = z.infer<typeof IntegrationSyncRequestSchema>;

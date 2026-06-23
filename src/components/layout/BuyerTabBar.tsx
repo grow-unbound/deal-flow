@@ -30,8 +30,10 @@ export function BuyerTabBar() {
       )}
       style={{
         height: 'calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px))',
-        background: 'var(--cream-100)',
-        borderTop: '1px solid var(--border-1)',
+        background: 'rgba(250, 247, 242, 0.94)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        borderTop: '1px solid rgba(212, 204, 192, 0.6)',
       }}
     >
       {tabs.map(({ label, href, icon: Icon }) => {
@@ -51,7 +53,7 @@ export function BuyerTabBar() {
                 'text-eyebrow',
                 active ? 'text-teal-500' : 'text-cream-600',
               ].join(' ')}
-              style={{ fontSize: '10px', letterSpacing: '0.08em' }}
+              style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.10em' }}
             >
               {label}
             </span>

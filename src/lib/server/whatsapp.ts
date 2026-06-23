@@ -1,12 +1,174 @@
 import { formatWhatsappDestination } from '@/lib/phone';
 
-const WHATSAPP_TEMPLATE_NAME = 'login_otp';
-const WHATSAPP_TEMPLATE_LOCALE = 'en_US';
+export interface WhatsappNotificationContext {
+  sellerPhone: string;
+  sellerName: string;
+  sellerLocation: string;
+  buyerPhone: string;
+  buyerName: string;
+  etaHours: number;
+}
+
+const WHATSAPP_TEMPLATE_LOCALE = 'en';
+const WHATSAPP_OTP_TEMPLATE_LOCALE = 'en_US';
 const WHATSAPP_LOGIN_PRODUCT_NAME = 'Login to Yukti';
 
+function getWhatsappConfig() {
+  return {
+    token: process.env.WHATSAPP_TOKEN,
+    phoneNumberId: process.env.NEXT_PUBLIC_WHATSAPP_PHONE_NUMBER_ID,
+  };
+}
+
+async function sendWhatsappTemplate(
+  to: string,
+  templateName: string,
+  locale: string,
+  bodyParams: string[],
+  buttonParam: string,
+): Promise<void> {
+  const { token, phoneNumberId } = getWhatsappConfig();
+  if (!token || !phoneNumberId) return;
+
+  const destination = formatWhatsappDestination(to);
+  if (!destination) return;
+
+  const response = await fetch(
+    `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: destination,
+        type: 'template',
+        template: {
+          name: templateName,
+          language: { code: locale },
+          components: [
+            {
+              type: 'body',
+              parameters: bodyParams.map((text) => ({ type: 'text', text })),
+            },
+            {
+              type: 'button',
+              sub_type: 'url',
+              index: '0',
+              parameters: [{ type: 'text', text: buttonParam }],
+            },
+          ],
+        },
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`WhatsApp send failed [${templateName}] (${response.status}): ${body}`);
+  }
+}
+
+export async function sendOrderReceivedSeller(
+  ctx: WhatsappNotificationContext,
+  orderId: string,
+  orderNumber: string,
+  totalAmount: number,
+  itemCount: number,
+): Promise<void> {
+  await sendWhatsappTemplate(
+    ctx.sellerPhone,
+    'order_received_seller',
+    WHATSAPP_TEMPLATE_LOCALE,
+    [
+      ctx.sellerLocation,
+      ctx.buyerName,
+      ctx.buyerPhone,
+      orderNumber,
+      String(Math.round(totalAmount / 100)),
+      String(itemCount),
+      String(ctx.etaHours),
+    ],
+    orderId,
+  );
+}
+
+export async function sendOrderReceivedBuyer(
+  ctx: WhatsappNotificationContext,
+  orderId: string,
+  orderNumber: string,
+  totalAmount: number,
+  itemCount: number,
+): Promise<void> {
+  await sendWhatsappTemplate(
+    ctx.buyerPhone,
+    'order_received_buyer',
+    WHATSAPP_TEMPLATE_LOCALE,
+    [
+      ctx.buyerName,
+      String(itemCount),
+      orderNumber,
+      String(Math.round(totalAmount / 100)),
+      ctx.sellerName,
+      ctx.sellerLocation,
+      String(ctx.etaHours),
+    ],
+    orderId,
+  );
+}
+
+export async function sendRequestReceivedSeller(
+  ctx: WhatsappNotificationContext,
+  estimateId: string,
+  estimateNumber: string,
+  totalAmount: number,
+  itemCount: number,
+): Promise<void> {
+  await sendWhatsappTemplate(
+    ctx.sellerPhone,
+    'request_received_seller',
+    WHATSAPP_TEMPLATE_LOCALE,
+    [
+      ctx.sellerLocation,
+      ctx.buyerName,
+      ctx.buyerPhone,
+      estimateNumber,
+      String(Math.round(totalAmount / 100)),
+      String(itemCount),
+      String(ctx.etaHours),
+    ],
+    estimateId,
+  );
+}
+
+export async function sendRequestReceivedBuyer(
+  ctx: WhatsappNotificationContext,
+  estimateId: string,
+  estimateNumber: string,
+  totalAmount: number,
+  itemCount: number,
+): Promise<void> {
+  await sendWhatsappTemplate(
+    ctx.buyerPhone,
+    'request_received_buyer',
+    WHATSAPP_TEMPLATE_LOCALE,
+    [
+      ctx.buyerName,
+      String(itemCount),
+      estimateNumber,
+      String(Math.round(totalAmount / 100)),
+      ctx.sellerName,
+      ctx.sellerLocation,
+      String(ctx.etaHours),
+    ],
+    estimateId,
+  );
+}
+
 export async function sendLoginOtpWhatsapp(phone: string, otp: string) {
-  const token = process.env.WHATSAPP_TOKEN;
-  const phoneNumberId = process.env.NEXT_PUBLIC_WHATSAPP_PHONE_NUMBER_ID;
+  const { token, phoneNumberId } = getWhatsappConfig();
   const adminNumber = process.env.WHATSAPP_ADMIN_NUMBER;
 
   if (!token || !phoneNumberId || !adminNumber) {
@@ -26,10 +188,8 @@ export async function sendLoginOtpWhatsapp(phone: string, otp: string) {
         to: formatWhatsappDestination(phone),
         type: 'template',
         template: {
-          name: WHATSAPP_TEMPLATE_NAME,
-          language: {
-            code: WHATSAPP_TEMPLATE_LOCALE,
-          },
+          name: 'login_otp',
+          language: { code: WHATSAPP_OTP_TEMPLATE_LOCALE },
           components: [
             {
               type: 'body',
@@ -43,9 +203,7 @@ export async function sendLoginOtpWhatsapp(phone: string, otp: string) {
               type: 'button',
               sub_type: 'url',
               index: '0',
-              parameters: [
-                { type: 'text', text: otp },
-              ],
+              parameters: [{ type: 'text', text: otp }],
             },
           ],
         },

@@ -4,6 +4,7 @@ import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { cva, type VariantProps } from 'class-variance-authority';
+import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { cn } from '@/lib/utils';
 
 const Sheet = DialogPrimitive.Root;
@@ -35,7 +36,7 @@ const sheetVariants = cva(
       side: {
         right:  'inset-y-0 right-0 h-full w-full max-w-sm border-l border-cream-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right duration-slow',
         left:   'inset-y-0 left-0 h-full w-full max-w-sm border-r border-cream-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left duration-slow',
-        bottom: 'inset-x-0 bottom-0 w-full border-t border-cream-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom duration-slow',
+        bottom: 'relative w-full border-t border-cream-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom duration-500',
       },
     },
     defaultVariants: { side: 'right' },
@@ -44,27 +45,53 @@ const sheetVariants = cva(
 
 interface SheetContentProps
   extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>,
-    VariantProps<typeof sheetVariants> {}
+    VariantProps<typeof sheetVariants> {
+  showCloseButton?: boolean;
+}
 
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   SheetContentProps
->(({ side = 'right', className, children, ...props }, ref) => (
-  <SheetPortal>
-    <SheetOverlay />
+>(({ side = 'right', className, children, showCloseButton = true, ...props }, ref) => {
+  const content = (
     <DialogPrimitive.Content
       ref={ref}
       className={cn(sheetVariants({ side }), className)}
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ember-400 focus:ring-offset-2">
-        <X className="h-5 w-5 text-cream-700" />
-        <span className="sr-only">Close</span>
-      </DialogPrimitive.Close>
+      {showCloseButton ? (
+        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ember-400 focus:ring-offset-2">
+          <X className="h-5 w-5 text-cream-700" />
+          <span className="sr-only">Close</span>
+        </DialogPrimitive.Close>
+      ) : null}
     </DialogPrimitive.Content>
-  </SheetPortal>
-));
+  );
+
+  if (side === 'bottom') {
+    return (
+      <SheetPortal>
+        <SheetOverlay />
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center md:px-4">
+          <div
+            className="w-full pointer-events-auto"
+            style={{ maxWidth: BUYER_PREVIEW_MAX_WIDTH }}
+          >
+            {content}
+          </div>
+        </div>
+      </SheetPortal>
+    );
+  }
+
+  return (
+    <SheetPortal>
+      <SheetOverlay />
+      {content}
+    </SheetPortal>
+  );
+});
 SheetContent.displayName = 'SheetContent';
 
 const SheetHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (

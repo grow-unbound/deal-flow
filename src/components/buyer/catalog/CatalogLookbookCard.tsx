@@ -45,7 +45,7 @@ export function CatalogLookbookCard({
       className="block shrink-0 overflow-hidden rounded-xl border border-[var(--border-1)] no-underline"
       style={{ width: 200 }}
     >
-      <div className="relative flex h-[90px] items-end overflow-hidden p-3.5">
+      <div className="relative flex h-[220px] items-end overflow-hidden p-3.5">
         {showImage ? (
           <Image
             src={heroImageUrl!}
@@ -68,8 +68,8 @@ export function CatalogLookbookCard({
           />
         ) : null}
         <h4
-          className="relative z-[1] text-base font-semibold leading-tight text-white"
-          style={{ fontFamily: 'var(--font-display)' }}
+          className="relative z-[1] font-semibold leading-tight text-white"
+          style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-total)', fontWeight: 500 }}
         >
           {name}
         </h4>

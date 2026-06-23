@@ -6,6 +6,10 @@
 
 import type { ZohoAdapter } from './integrations-zoho.ts';
 import type { ZohoIntegrationTypeId } from '../../../src/lib/integrations/contracts.ts';
+import {
+  bulkPersistJsonbRecords,
+  bulkPersistJsonbRecordsWithIds,
+} from '../../../src/lib/integrations/rpc-persist.ts';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -53,6 +57,43 @@ function asBool(v: unknown, defaultVal = false): boolean {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function getEmbeddedLocationRows(rec: Record<string, unknown>): Record<string, unknown>[] {
+  const candidates = [
+    rec.item_locations,
+    rec.locations,
+    rec.warehouses,
+    rec.inventory,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate.filter((row): row is Record<string, unknown> => typeof row === 'object' && row !== null && !Array.isArray(row));
+    }
+  }
+
+  return [];
+}
+
+function getEmbeddedLocationExternalId(loc: Record<string, unknown>): string | null {
+  return (
+    asStr(loc.location_id)
+    ?? asStr(loc.warehouse_id)
+    ?? asStr(loc.item_location_id)
+    ?? asStr(loc.id)
+  );
+}
+
+function getEmbeddedLocationQty(loc: Record<string, unknown>): number {
+  return (
+    asNum(loc.location_available_stock)
+    ?? asNum(loc.warehouse_available_stock)
+    ?? asNum(loc.available_stock)
+    ?? asNum(loc.stock_on_hand)
+    ?? asNum(loc.quantity)
+    ?? 0
+  );
 }
 
 // ── Entity map helpers ───────────────────────────────────────────────────────
@@ -127,10 +168,56 @@ async function batchUpsertEntityMap(
     sync_status: 'synced',
   }));
 
-  await admin
-    .schema('app')
-    .from('integration_entity_map')
-    .upsert(rows, { onConflict: 'tenant_id,tenant_integration_id,entity_type,external_id' });
+  await bulkPersistJsonbRecords(admin, 'integration_entity_map', rows, [
+    'tenant_id',
+    'tenant_integration_id',
+    'entity_type',
+    'external_id',
+  ]);
+}
+
+async function upsertImportedPriceList(
+  admin: AdminClient,
+  tenantId: string,
+  actorId: string | null,
+  integrationId: string,
+  integrationTypeId: ZohoIntegrationTypeId,
+): Promise<string> {
+  const externalRef = `zoho_price_list:${integrationTypeId}:base`;
+  const name = `Zoho ${integrationTypeId === 'zoho_inventory' ? 'Inventory' : 'Books'} Imported Pricing`;
+  const now = nowIso();
+  const persisted = await bulkPersistJsonbRecordsWithIds(admin, 'price_lists', [{
+    tenant_id: tenantId,
+    external_ref: externalRef,
+    name,
+    currency: 'INR',
+    valid_from: now,
+    priority: 0,
+    is_active: true,
+    created_by: actorId,
+    updated_by: actorId,
+  }], ['tenant_id', 'name']);
+
+  const priceListId = persisted[0] ?? null;
+  if (!priceListId) {
+    throw new Error('Failed to create imported price list');
+  }
+
+  await batchUpsertEntityMap(admin, tenantId, integrationId, 'price_lists', [
+    { externalId: externalRef, internalId: priceListId },
+  ]);
+
+  return priceListId;
+}
+
+async function persistLineItemRows(
+  admin: AdminClient,
+  entityType: 'estimate_items' | 'order_items' | 'invoice_items',
+  items: Array<{ externalId: string; row: Record<string, unknown> }>,
+): Promise<void> {
+  if (items.length === 0) return;
+
+  await bulkPersistJsonbRecords(admin, entityType, items.map((item) => item.row));
 }
 
 // ── Locations ────────────────────────────────────────────────────────────────
@@ -158,7 +245,7 @@ async function persistLocations(
   })();
 
   let defaultAssigned = hasExistingDefault;
-  const entityMapPairs: Array<{ externalId: string; internalId: string }> = [];
+  const rows: Record<string, unknown>[] = [];
 
   for (const rec of records) {
     const externalId = asStr(isInventory ? rec.warehouse_id : rec.location_id);
@@ -183,21 +270,23 @@ async function persistLocations(
       created_by: actorId,
       updated_by: actorId,
     };
-
-    const { data, error } = await admin
-      .schema('app')
-      .from('locations')
-      .upsert(row, { onConflict: 'tenant_id,external_ref' })
-      .select('id')
-      .single();
-
-    if (error || !data) { result.skipped++; continue; }
-
-    const internalId = (data as { id: string }).id;
-    entityMapPairs.push({ externalId, internalId });
-    result.updated++;
+    rows.push(row);
   }
 
+  const persisted = rows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'locations', rows, ['tenant_id', 'external_ref'])
+    : [];
+
+  const entityMapPairs: Array<{ externalId: string; internalId: string }> = [];
+  for (const row of persisted) {
+    const externalId = asStr(row.external_ref);
+    const internalId = asStr(row.id);
+    if (externalId && internalId) {
+      entityMapPairs.push({ externalId, internalId });
+    }
+  }
+
+  result.updated += persisted.length;
   await batchUpsertEntityMap(admin, tenantId, integrationId, 'locations', entityMapPairs);
   return result;
 }
@@ -210,7 +299,7 @@ async function persistBuyers(
   actorId: string | null,
   integrationId: string,
   records: Record<string, unknown>[],
-  adapter: ZohoAdapter,
+  _adapter: ZohoAdapter,
 ): Promise<PersistResult> {
   const result: PersistResult = { created: 0, updated: 0, skipped: 0 };
   const buyerMapPairs: Array<{ externalId: string; internalId: string }> = [];
@@ -254,61 +343,46 @@ async function persistBuyers(
       updated_by: actorId,
     };
 
-    const { data, error } = await admin
-      .schema('app')
-      .from('buyers')
-      .upsert(row, { onConflict: 'tenant_id,external_ref' })
-      .select('id')
-      .single();
-
-    if (error || !data) { result.skipped++; continue; }
-
-    const buyerId = (data as { id: string }).id;
+    const persisted = await bulkPersistJsonbRecordsWithIds(admin, 'buyers', [row], ['tenant_id', 'external_ref']);
+    const buyerId = persisted[0] ?? null;
+    if (!buyerId) { result.skipped++; continue; }
     buyerMapPairs.push({ externalId, internalId: buyerId });
     result.updated++;
 
-    // Fetch and persist contact persons for this buyer
-    try {
-      const contactPersons = await adapter.fetchContactPersons(externalId);
-      const cpRows = contactPersons
-        .map((cp) => {
-          const cpId = asStr(cp.contact_person_id);
-          if (!cpId) return null;
-          return {
-            buyer_id: buyerId,
-            external_ref: cpId,
-            role: 'buyer_assistant' as const,
-            first_name: asStr(cp.first_name),
-            last_name: asStr(cp.last_name),
-            email: asStr(cp.email),
-            phone: asStr(cp.phone),
-            mobile: asStr(cp.mobile),
-            designation: asStr(cp.designation),
-            department: asStr(cp.department),
-            is_active: asBool(cp.is_active, true),
-            created_by: actorId,
-            updated_by: actorId,
-          };
-        })
-        .filter((r): r is NonNullable<typeof r> => r !== null);
+    const embeddedContactPersons = Array.isArray((rec as Record<string, unknown>).contact_persons)
+      ? (rec as Record<string, unknown>).contact_persons as Record<string, unknown>[]
+      : [];
 
-      if (cpRows.length > 0) {
-        const { data: cpData } = await admin
-          .schema('app')
-          .from('buyer_users')
-          .upsert(cpRows, { onConflict: 'buyer_id,external_ref' })
-          .select('id, external_ref');
+    const cpRows = embeddedContactPersons
+      .map((cp) => {
+        const cpId = asStr(cp.contact_person_id);
+        if (!cpId) return null;
+        return {
+          buyer_id: buyerId,
+          external_ref: cpId,
+          role: 'buyer_assistant' as const,
+          first_name: asStr(cp.first_name),
+          last_name: asStr(cp.last_name),
+          email: asStr(cp.email),
+          phone: asStr(cp.phone),
+          mobile: asStr(cp.mobile),
+          designation: asStr(cp.designation),
+          department: asStr(cp.department),
+          is_active: asBool(cp.is_active, true),
+          created_by: actorId,
+          updated_by: actorId,
+        };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
 
-        if (Array.isArray(cpData)) {
-          for (const cp of cpData as { id: string; external_ref: string }[]) {
-            if (cp.external_ref) {
-              contactMapPairs.push({ externalId: cp.external_ref, internalId: cp.id });
-            }
-          }
+    if (cpRows.length > 0) {
+      const cpIds = await bulkPersistJsonbRecordsWithIds(admin, 'buyer_users', cpRows, ['buyer_id', 'external_ref']);
+      for (const [index, id] of cpIds.entries()) {
+        const externalId = cpRows[index]?.external_ref;
+        if (externalId && id) {
+          contactMapPairs.push({ externalId: String(externalId), internalId: id });
         }
       }
-    } catch {
-      // Contact persons are non-fatal — continue with next buyer
     }
   }
 
@@ -352,23 +426,18 @@ async function persistProducts(
   const categoryMap = new Map<string, string>(); // zohoName → tenant_category_id
 
   if (categoryRows.length > 0) {
-    const { data: catData } = await admin
-      .schema('app')
-      .from('tenant_categories')
-      .upsert(categoryRows, { onConflict: 'tenant_id,external_ref' })
-      .select('id, name, external_ref');
-
-    if (Array.isArray(catData)) {
-      for (const cat of catData as { id: string; name: string; external_ref: string }[]) {
+    const catRowsPersisted = await bulkPersistJsonbRecords(admin, 'tenant_categories', categoryRows, ['tenant_id', 'external_ref']);
+    for (const cat of catRowsPersisted) {
+      if (typeof cat.name === 'string' && typeof cat.id === 'string') {
         categoryMap.set(cat.name, cat.id);
       }
     }
 
     await batchUpsertEntityMap(
       admin, tenantId, integrationId, 'categories',
-      (catData as { id: string; external_ref: string }[] ?? [])
-        .filter((c) => c.external_ref)
-        .map((c) => ({ externalId: c.external_ref, internalId: c.id })),
+      catRowsPersisted
+        .filter((c) => typeof c.external_ref === 'string' && typeof c.id === 'string')
+        .map((c) => ({ externalId: String(c.external_ref), internalId: String(c.id) })),
     );
   }
 
@@ -405,28 +474,23 @@ async function persistProducts(
   const brandMap = new Map<string, string>(); // zohoName → tenant_brand_id
   let fallbackBrandId: string | null = null;
 
-  const { data: brandData } = await admin
-    .schema('app')
-    .from('tenant_brands')
-    .upsert(allBrandRows, { onConflict: 'tenant_id,external_ref' })
-    .select('id, display_name_override, external_ref');
-
-  if (Array.isArray(brandData)) {
-    for (const b of brandData as { id: string; display_name_override: string; external_ref: string }[]) {
+  const brandData = await bulkPersistJsonbRecords(admin, 'tenant_brands', allBrandRows, ['tenant_id', 'external_ref']);
+  for (const b of brandData) {
+    if (typeof b.external_ref === 'string' && typeof b.id === 'string') {
       if (b.external_ref === fallbackBrandExtRef) {
         fallbackBrandId = b.id;
-      } else if (b.display_name_override) {
+      } else if (typeof b.display_name_override === 'string') {
         brandMap.set(b.display_name_override, b.id);
       }
     }
-
-    await batchUpsertEntityMap(
-      admin, tenantId, integrationId, 'brands',
-      (brandData as { id: string; external_ref: string }[])
-        .filter((b) => b.external_ref)
-        .map((b) => ({ externalId: b.external_ref, internalId: b.id })),
-    );
   }
+
+  await batchUpsertEntityMap(
+    admin, tenantId, integrationId, 'brands',
+    brandData
+      .filter((b) => typeof b.external_ref === 'string' && typeof b.id === 'string')
+      .map((b) => ({ externalId: String(b.external_ref), internalId: String(b.id) })),
+  );
 
   // Step C: upsert products
   const productMapPairs: Array<{ externalId: string; internalId: string }> = [];
@@ -463,16 +527,9 @@ async function persistProducts(
       updated_by: actorId,
     };
 
-    const { data, error } = await admin
-      .schema('app')
-      .from('tenant_products')
-      .upsert(row, { onConflict: 'tenant_id,external_ref' })
-      .select('id')
-      .single();
-
-    if (error || !data) { result.skipped++; continue; }
-
-    const productId = (data as { id: string }).id;
+    const productIds = await bulkPersistJsonbRecordsWithIds(admin, 'tenant_products', [row], ['tenant_id', 'external_ref']);
+    const productId = productIds[0] ?? null;
+    if (!productId) { result.skipped++; continue; }
     productMapPairs.push({ externalId, internalId: productId });
     productIdMap.set(externalId, productId);
     result.updated++;
@@ -480,12 +537,12 @@ async function persistProducts(
 
   await batchUpsertEntityMap(admin, tenantId, integrationId, 'products', productMapPairs);
 
-  // Step D: upsert inventory from embedded locations[] on each item
+  // Step D: upsert inventory from embedded item location snapshots on each item
   const locationExternalIds = [
     ...new Set(
       records.flatMap((r) => {
-        const locs = Array.isArray(r.locations) ? r.locations as Record<string, unknown>[] : [];
-        return locs.map((l) => asStr(l.location_id)).filter((x): x is string => x !== null);
+        const locs = getEmbeddedLocationRows(r);
+        return locs.map((l) => getEmbeddedLocationExternalId(l)).filter((x): x is string => x !== null);
       }),
     ),
   ];
@@ -503,9 +560,9 @@ async function persistProducts(
     const productId = productIdMap.get(extProductId);
     if (!productId) continue;
 
-    const locs = Array.isArray(rec.locations) ? rec.locations as Record<string, unknown>[] : [];
+    const locs = getEmbeddedLocationRows(rec);
     for (const loc of locs) {
-      const extLocId = asStr(loc.location_id);
+      const extLocId = getEmbeddedLocationExternalId(loc);
       if (!extLocId) continue;
 
       const locationId = locationIdMap.get(extLocId);
@@ -514,7 +571,7 @@ async function persistProducts(
       inventoryRows.push({
         tenant_product_id: productId,
         location_id: locationId,
-        qty_available: asNum(loc.location_available_stock) ?? 0,
+        qty_available: getEmbeddedLocationQty(loc),
         qty_reserved: 0,
         updated_at: nowIso(),
       });
@@ -522,10 +579,7 @@ async function persistProducts(
   }
 
   if (inventoryRows.length > 0) {
-    await admin
-      .schema('app')
-      .from('tenant_inventory')
-      .upsert(inventoryRows, { onConflict: 'tenant_product_id,location_id' });
+    await bulkPersistJsonbRecords(admin, 'tenant_inventory', inventoryRows, ['tenant_product_id', 'location_id']);
   }
 
   return result;
@@ -583,16 +637,9 @@ async function persistEstimates(
       updated_by: actorId,
     };
 
-    const { data, error } = await admin
-      .schema('app')
-      .from('estimates')
-      .upsert(row, { onConflict: 'tenant_id,external_ref' })
-      .select('id')
-      .single();
-
-    if (error || !data) { result.skipped++; continue; }
-
-    const estimateId = (data as { id: string }).id;
+    const estimateIds = await bulkPersistJsonbRecordsWithIds(admin, 'estimates', [row], ['tenant_id', 'external_ref']);
+    const estimateId = estimateIds[0] ?? null;
+    if (!estimateId) { result.skipped++; continue; }
     result.updated++;
 
     // Soft-delete then reinsert line items
@@ -611,31 +658,34 @@ async function persistEstimates(
       admin, tenantId, integrationId, 'products', productExtIds,
     );
 
-    const itemRows = lineItems
+    const lineItemPayloads = lineItems
       .map((li) => {
         const extProdId = asStr(li.item_id);
         const productId = extProdId ? (productIdMap.get(extProdId) ?? null) : null;
         if (!productId) return null;
 
+        const taxRate = asNum(li.tax_percentage) ?? asNum(li.tax_rate);
+        const discountPct = asNum(li.discount_percentage) ?? asNum(li.disc_pct) ?? 0;
+
         return {
-          estimate_id: estimateId,
-          tenant_product_id: productId,
-          qty: asNum(li.quantity) ?? 1,
-          unit_price: asNum(li.rate) ?? 0,
-          line_total: asNum(li.item_total),
-          tax_pct: asNum(li.tax_percentage),
-          disc_pct: asNum(li.discount_percentage) ?? 0,
-          created_by: actorId,
+          row: {
+            estimate_id: estimateId,
+            tenant_product_id: productId,
+            qty: asNum(li.quantity) ?? 1,
+            unit_price: asNum(li.rate) ?? 0,
+            line_total: asNum(li.item_total),
+            tax_rate: taxRate,
+            tax_pct: taxRate,
+            disc_pct: discountPct,
+            discount_pct: discountPct,
+            created_by: actorId,
+            updated_by: actorId,
+          },
         };
       })
       .filter((r): r is NonNullable<typeof r> => r !== null);
 
-    if (itemRows.length > 0) {
-      await admin
-        .schema('app')
-        .from('estimate_items')
-        .insert(itemRows);
-    }
+    await persistLineItemRows(admin, 'estimate_items', lineItemPayloads);
 
     await batchUpsertEntityMap(admin, tenantId, integrationId, 'estimates', [
       { externalId, internalId: estimateId },
@@ -704,16 +754,9 @@ async function persistOrders(
       updated_by: actorId,
     };
 
-    const { data, error } = await admin
-      .schema('app')
-      .from('orders')
-      .upsert(row, { onConflict: 'tenant_id,external_ref' })
-      .select('id')
-      .single();
-
-    if (error || !data) { result.skipped++; continue; }
-
-    const orderId = (data as { id: string }).id;
+    const orderIds = await bulkPersistJsonbRecordsWithIds(admin, 'orders', [row], ['tenant_id', 'external_ref']);
+    const orderId = orderIds[0] ?? null;
+    if (!orderId) { result.skipped++; continue; }
     result.updated++;
 
     // Soft-delete then reinsert line items
@@ -732,31 +775,34 @@ async function persistOrders(
       admin, tenantId, integrationId, 'products', productExtIds,
     );
 
-    const itemRows = lineItems
+    const lineItemPayloads = lineItems
       .map((li) => {
         const extProdId = asStr(li.item_id);
         const productId = extProdId ? (productIdMap.get(extProdId) ?? null) : null;
         if (!productId) return null;
 
+        const taxRate = asNum(li.tax_percentage) ?? asNum(li.tax_rate);
+        const discountPct = asNum(li.discount_percentage) ?? asNum(li.disc_pct) ?? 0;
+
         return {
-          order_id: orderId,
-          tenant_product_id: productId,
-          qty: asNum(li.quantity) ?? 1,
-          unit_price: asNum(li.rate) ?? 0,
-          line_total: asNum(li.item_total),
-          tax_pct: asNum(li.tax_percentage),
-          disc_pct: asNum(li.discount_percentage) ?? 0,
-          created_by: actorId,
+          row: {
+            order_id: orderId,
+            tenant_product_id: productId,
+            qty: asNum(li.quantity) ?? 1,
+            unit_price: asNum(li.rate) ?? 0,
+            line_total: asNum(li.item_total),
+            tax_rate: taxRate,
+            tax_pct: taxRate,
+            disc_pct: discountPct,
+            discount_pct: discountPct,
+            created_by: actorId,
+            updated_by: actorId,
+          },
         };
       })
       .filter((r): r is NonNullable<typeof r> => r !== null);
 
-    if (itemRows.length > 0) {
-      await admin
-        .schema('app')
-        .from('order_items')
-        .insert(itemRows);
-    }
+    await persistLineItemRows(admin, 'order_items', lineItemPayloads);
 
     await batchUpsertEntityMap(admin, tenantId, integrationId, 'orders', [
       { externalId, internalId: orderId },
@@ -770,11 +816,12 @@ async function persistOrders(
 
 const INVOICE_STATUS_MAP: Record<string, string> = {
   draft: 'draft',
-  sent: 'issued',
-  partially_paid: 'partially_paid',
+  sent: 'sent',
+  issued: 'sent',
+  partially_paid: 'sent',
   paid: 'paid',
   void: 'void',
-  overdue: 'issued',
+  overdue: 'overdue',
 };
 
 async function persistInvoices(
@@ -817,7 +864,7 @@ async function persistInvoices(
       buyer_id: buyerId,
       invoice_number: asStr(rec.invoice_number) ?? externalId,
       invoice_date: invoiceDate,
-      status: INVOICE_STATUS_MAP[asStr(rec.status) ?? ''] ?? 'issued',
+      status: INVOICE_STATUS_MAP[asStr(rec.status) ?? ''] ?? 'sent',
       subtotal: asNum(rec.sub_total),
       tax_amount: asNum(rec.tax_total),
       total_amount: total,
@@ -829,16 +876,9 @@ async function persistInvoices(
       updated_by: actorId,
     };
 
-    const { data, error } = await admin
-      .schema('app')
-      .from('invoices')
-      .upsert(row, { onConflict: 'tenant_id,external_ref' })
-      .select('id')
-      .single();
-
-    if (error || !data) { result.skipped++; continue; }
-
-    const invoiceId = (data as { id: string }).id;
+    const invoiceIds = await bulkPersistJsonbRecordsWithIds(admin, 'invoices', [row], ['tenant_id', 'external_ref']);
+    const invoiceId = invoiceIds[0] ?? null;
+    if (!invoiceId) { result.skipped++; continue; }
     result.updated++;
 
     // Soft-delete then reinsert line items
@@ -857,31 +897,34 @@ async function persistInvoices(
       admin, tenantId, integrationId, 'products', productExtIds,
     );
 
-    const itemRows = lineItems
+    const lineItemPayloads = lineItems
       .map((li) => {
         const extProdId = asStr(li.item_id);
         const productId = extProdId ? (productIdMap.get(extProdId) ?? null) : null;
         if (!productId) return null;
 
+        const taxRate = asNum(li.tax_percentage) ?? asNum(li.tax_rate);
+        const discountPct = asNum(li.discount_percentage) ?? asNum(li.disc_pct) ?? 0;
+
         return {
-          invoice_id: invoiceId,
-          tenant_product_id: productId,
-          qty: asNum(li.quantity) ?? 1,
-          unit_price: asNum(li.rate) ?? 0,
-          line_total: asNum(li.item_total),
-          tax_pct: asNum(li.tax_percentage),
-          disc_pct: asNum(li.discount_percentage) ?? 0,
-          created_by: actorId,
+          row: {
+            invoice_id: invoiceId,
+            tenant_product_id: productId,
+            qty: asNum(li.quantity) ?? 1,
+            unit_price: asNum(li.rate) ?? 0,
+            line_total: asNum(li.item_total),
+            tax_rate: taxRate,
+            tax_pct: taxRate,
+            disc_pct: discountPct,
+            discount_pct: discountPct,
+            created_by: actorId,
+            updated_by: actorId,
+          },
         };
       })
       .filter((r): r is NonNullable<typeof r> => r !== null);
 
-    if (itemRows.length > 0) {
-      await admin
-        .schema('app')
-        .from('invoice_items')
-        .insert(itemRows);
-    }
+    await persistLineItemRows(admin, 'invoice_items', lineItemPayloads);
 
     await batchUpsertEntityMap(admin, tenantId, integrationId, 'invoices', [
       { externalId, internalId: invoiceId },
