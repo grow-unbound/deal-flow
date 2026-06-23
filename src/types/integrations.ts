@@ -385,6 +385,7 @@ export const IntegrationSyncRequestSchema = z
     job_type: IntegrationSyncJobTypeSchema.default('manual'),
     mode: z.enum(['initial_import', 'incremental', 'manual']).default('initial_import'),
     scope: z.enum(['reference', 'transactional', 'full']).optional(),
+    phase: z.string().trim().min(1).max(120).optional(),
     import_orders_since: z.string().date().optional(),
     max_pages: z.number().int().min(1).optional(),
   })

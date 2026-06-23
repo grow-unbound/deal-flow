@@ -129,7 +129,7 @@ class HttpError extends Error {
   }
 }
 
-const DEFAULT_PAGE_LIMIT = 5;
+const DEFAULT_PAGE_LIMIT = 20;
 const ZOHO_DEFAULT_PER_PAGE = 1000;
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -203,6 +203,13 @@ function resolveScope(jobType: IntegrationJobType, requestedScope: unknown): Int
   if (jobType === 'initial_reference') return 'reference';
   if (jobType === 'initial_transactional' || jobType === 'incremental') return 'transactional';
   return 'full';
+}
+
+function resolveScopeForPhase(phase: string | null | undefined): IntegrationSyncScope {
+  if (phase === 'estimates' || phase === 'orders' || phase === 'invoices') {
+    return 'transactional';
+  }
+  return 'reference';
 }
 
 function normalizeSince(value: unknown): string | null {
@@ -1397,14 +1404,24 @@ export async function handleIntegrationsSync(request: Request): Promise<Response
     const credentials = await loadTenantIntegrationSecret(admin, integration.id, integration.integration_type_id);
 
     const jobType = normalizeJobType(payload.job_type);
-    const scope = resolveScope(jobType, payload.scope);
+    const requestedPhase = asString((payload as JsonRecord).phase);
+    const scope = requestedPhase ? resolveScopeForPhase(requestedPhase) : resolveScope(jobType, payload.scope);
     const since = normalizeSince(payload.since);
-    const plan = getZohoPhasePlan(integration.integration_type_id, scope);
+    const plan = requestedPhase
+      ? getZohoPhasePlan(integration.integration_type_id, scope).filter((phase) => phase.id === requestedPhase)
+      : getZohoPhasePlan(integration.integration_type_id, scope);
+
+    if (requestedPhase && plan.length === 0) {
+      throw new HttpError(400, `Unknown sync phase ${requestedPhase}.`);
+    }
+
     const progress = buildInitialProgress(
       scope,
       since,
       plan,
-      'Entity persistence is conservative for now: runtime counts and cursors are real, normalized upserts come next.',
+      requestedPhase
+        ? `Running phase sync for ${requestedPhase}.`
+        : 'Entity persistence is conservative for now: runtime counts and cursors are real, normalized upserts come next.',
       typeof payload.max_pages === 'number' && payload.max_pages > 0 ? { max_pages: payload.max_pages } : undefined,
     );
 

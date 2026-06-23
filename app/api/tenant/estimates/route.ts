@@ -3,7 +3,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { FEATURE_FLAGS } from '@/constants';
 import { loadEstimateDocument } from '@/lib/estimates/load-tenant-estimate-composer';
 import { getFlag } from '@/lib/flags';
-import { PAGE_SIZE } from '@/lib/pagination';
+import { PAGE_SIZE, encodeCursor, decodeCursor } from '@/lib/pagination';
 import {
   applySellerLocationScope,
   loadAccessibleSellerLocations,
@@ -156,20 +156,44 @@ export async function GET(req: NextRequest) {
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
     const db = supabaseAdmin;
     const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? String(PAGE_SIZE.SELLER)), PAGE_SIZE.MAX);
+    const cursorParam = req.nextUrl.searchParams.get('cursor');
+    const searchParam = req.nextUrl.searchParams.get('search')?.trim();
+    const statusParam = req.nextUrl.searchParams.get('status');
 
-    const scopedEstimatesQuery = applySellerLocationScope(
-      db
-        .schema('app')
-        .from('estimates')
-        .select(
-          'id, location_id, estimate_number, buyer_id, status, total_amount, created_at, sent_at, accepted_at, expires_at, source, catalog_id, created_by, updated_at',
-        )
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false })
-        .limit(limit) as any,
-      claims,
-    );
+    let baseEstimatesQuery = db
+      .schema('app')
+      .from('estimates')
+      .select(
+        'id, location_id, estimate_number, buyer_id, status, total_amount, created_at, sent_at, accepted_at, expires_at, source, catalog_id, created_by, updated_at',
+      )
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(limit + 1) as any;
+
+    if (cursorParam) {
+      const { created_at, id } = decodeCursor(cursorParam);
+      baseEstimatesQuery = baseEstimatesQuery.or(
+        `created_at.lt.${created_at},and(created_at.eq.${created_at},id.lt.${id})`,
+      );
+    }
+    if (searchParam) {
+      baseEstimatesQuery = baseEstimatesQuery.ilike('estimate_number', `%${searchParam}%`);
+    }
+    if (statusParam) {
+      baseEstimatesQuery = baseEstimatesQuery.eq('status', statusParam);
+    }
+
+    const scopedEstimatesQuery = applySellerLocationScope(baseEstimatesQuery, claims);
+
+    const snapshotQuery = db
+      .schema('app')
+      .from('estimates_snapshot')
+      .select('total_count')
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
     const scopedCurrentPeriodQuery = applySellerLocationScope(
       db
         .schema('app')
@@ -207,11 +231,12 @@ export async function GET(req: NextRequest) {
       claims,
     );
 
-    const [estimatesRes, currentPeriodRes, previousPeriodRes, convertedPeriodRes] = await Promise.all([
+    const [estimatesRes, currentPeriodRes, previousPeriodRes, convertedPeriodRes, snapshotRes] = await Promise.all([
       scopedEstimatesQuery,
       scopedCurrentPeriodQuery,
       scopedPreviousPeriodQuery,
       scopedConvertedQuery,
+      snapshotQuery,
     ]);
 
     if (estimatesRes.error || currentPeriodRes.error || previousPeriodRes.error || convertedPeriodRes.error) {
@@ -222,7 +247,14 @@ export async function GET(req: NextRequest) {
       return timedJson({ error: 'Failed to fetch estimates' }, { status: 500 });
     }
 
-    const rawEstimates = (estimatesRes.data ?? []) as EstimateDbRow[];
+    const allFetched = (estimatesRes.data ?? []) as EstimateDbRow[];
+    const hasNextPage = allFetched.length > limit;
+    const rawEstimates = hasNextPage ? allFetched.slice(0, limit) : allFetched;
+    const lastEstimate = rawEstimates.at(-1);
+    const nextCursor = hasNextPage && lastEstimate
+      ? encodeCursor({ created_at: lastEstimate.created_at, id: lastEstimate.id })
+      : null;
+    const totalCount = (snapshotRes.data as { total_count?: number | null } | null)?.total_count ?? null;
 
     // Scope the buyers lookup to only the buyer IDs referenced by the fetched estimates.
     // Previously this loaded all buyers for the tenant on every request.
@@ -487,11 +519,13 @@ export async function GET(req: NextRequest) {
 
     const estimates = normalized.map((n) => n.landing);
 
-    const payload: TenantEstimatesResponse = {
+    const payload = {
       period,
       kpis,
       todays_read,
       estimates,
+      nextCursor,
+      total: totalCount,
     };
 
     return timedJson(payload);

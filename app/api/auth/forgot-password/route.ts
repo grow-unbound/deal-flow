@@ -17,9 +17,11 @@ export async function POST(request: NextRequest) {
   // Derive the app origin from the incoming request so this works in all envs
   const origin = request.nextUrl.origin;
 
-  // Fire and forget — never reveal whether the email is registered
+  // Send password recovery email
+  // The redirectTo URL should match what's configured in Supabase project settings
+  // under Authentication > URL Configuration > Redirect URLs
   await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-    redirectTo: `${origin}/api/auth/callback?next=/reset-password`,
+    redirectTo: `${origin}/api/auth/callback`,
   });
 
   return NextResponse.json({ success: true });

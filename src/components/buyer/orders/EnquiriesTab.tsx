@@ -7,58 +7,48 @@ import { BuyerEmptyState } from '@/components/buyer/BuyerEmptyState';
 import { EnquiryCard } from './EnquiryCard';
 import { OrderRowSkeleton } from './OrderRowSkeleton';
 import { ErrorState } from '@/components/ui/empty-state';
-import type { EstimateSummary } from './EnquiryCard';
-
-interface EstimatesApiResponse {
-  estimates: EstimateSummary[];
-}
+import { useBuyerEstimatesInfinite } from '@/hooks/useEstimates';
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 
 export function EnquiriesTab() {
-  const [estimates, setEstimates] = React.useState<EstimateSummary[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useBuyerEstimatesInfinite();
 
-  const fetchEstimates = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/buyer/estimates');
-      if (!res.ok) {
-        setError(res.status === 403 ? 'You do not have access to enquiries.' : 'Could not load enquiries.');
-        setEstimates([]);
-        return;
-      }
-      const data = (await res.json()) as EstimatesApiResponse;
-      setEstimates(data.estimates ?? []);
-    } catch {
-      setError('Could not load enquiries.');
-      setEstimates([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const { sentinelRef } = useInfiniteScroll({
+    hasMore: hasNextPage ?? false,
+    isLoading: isFetchingNextPage,
+    rootMargin: '400px',
+    onLoadMore: fetchNextPage,
+  });
 
-  React.useEffect(() => {
-    void fetchEstimates();
-  }, [fetchEstimates]);
+  const allEstimates = React.useMemo(
+    () => data?.pages.flatMap((p) => p.estimates) ?? [],
+    [data?.pages],
+  );
 
-  if (loading) {
+  if (isLoading && !data) {
     return <OrderRowSkeleton count={3} />;
   }
 
-  if (error) {
+  if (isError && !data) {
     return (
       <div className="px-4 py-4">
         <ErrorState
           heading="Couldn't load enquiries"
-          description={error}
-          onRetry={() => void fetchEstimates()}
+          description={error instanceof Error ? error.message : 'Could not load enquiries.'}
         />
       </div>
     );
   }
 
-  if (estimates.length === 0) {
+  if (allEstimates.length === 0) {
     return (
       <BuyerEmptyState
         icon={<FileText size={28} strokeWidth={1.5} />}
@@ -70,9 +60,11 @@ export function EnquiriesTab() {
 
   return (
     <div className="flex flex-col gap-3 px-4 py-3">
-      {estimates.map((e) => (
+      {allEstimates.map((e) => (
         <EnquiryCard key={e.id} estimate={e} />
       ))}
+      <div ref={sentinelRef} style={{ height: 1 }} aria-hidden />
+      {isFetchingNextPage && <OrderRowSkeleton count={2} />}
     </div>
   );
 }

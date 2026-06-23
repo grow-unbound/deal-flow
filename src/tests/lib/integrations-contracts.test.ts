@@ -138,6 +138,7 @@ describe('integration runtime payload schemas', () => {
     const result = IntegrationSyncRequestSchema.safeParse({
       tenant_integration_id: '11111111-1111-1111-1111-111111111111',
       job_type: 'manual',
+      phase: 'customers',
       max_pages: 3,
     });
 

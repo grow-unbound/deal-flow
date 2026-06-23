@@ -23,7 +23,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerInvoi
       return NextResponse.json({ invoices: [] }, { status: 401 });
     }
 
-    if (profile.context.mode === 'preview') {
+    if (profile.context.mode === 'preview' && !profile.context.buyer_id) {
       return NextResponse.json({ invoices: [] });
     }
 
