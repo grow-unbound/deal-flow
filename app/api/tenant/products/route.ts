@@ -4,6 +4,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { createTimer } from '@/lib/server-timing';
 import { z } from 'zod';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
+import { PAGE_SIZE } from '@/lib/pagination';
 
 const AddProductSchema = z.object({
   master_product_id: z.string().uuid('Invalid product ID').optional().nullable(),
@@ -49,7 +50,14 @@ export async function GET(req: NextRequest) {
 
     const db = supabaseAdmin as any; // supabase client typed generically for multi-schema queries
 
-    const { data, error } = await db
+    const reqLimit = Math.min(
+      Number(req.nextUrl.searchParams.get('limit') || PAGE_SIZE.SELLER),
+      PAGE_SIZE.MAX,
+    );
+    const search = req.nextUrl.searchParams.get('search')?.trim() || null;
+    const brandId = req.nextUrl.searchParams.get('brand_id') || null;
+
+    let productsQuery = db
       .schema('app')
       .from('tenant_products')
       .select(`
@@ -71,8 +79,19 @@ export async function GET(req: NextRequest) {
         updated_at
       `)
       .eq('tenant_id', claims.tenant_id)
+      .eq('is_active', true)
       .is('deleted_at', null)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(reqLimit + 1); // +1 to detect hasNextPage
+
+    if (search) {
+      productsQuery = productsQuery.textSearch('search_vector', search, { type: 'websearch' });
+    }
+    if (brandId) {
+      productsQuery = productsQuery.eq('tenant_brand_id', brandId);
+    }
+
+    const { data, error } = await productsQuery;
 
     if (error) {
       console.error('[GET /api/tenant/products] DB error:', error.code, error.message, error.details);
@@ -82,15 +101,31 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const allProducts = data ?? [];
-    const activeProducts = allProducts.filter((row: { is_active: boolean }) => row.is_active);
-    const archivedCount = allProducts.length - activeProducts.length;
+    const activeProducts = data ?? [];
+    const hasNextPage = activeProducts.length > reqLimit;
+    const pageProducts = hasNextPage ? activeProducts.slice(0, reqLimit) : activeProducts;
+    const lastProduct = pageProducts.at(-1);
+    const nextCursor = hasNextPage && lastProduct
+      ? Buffer.from(JSON.stringify({ t: lastProduct.created_at, i: lastProduct.id })).toString('base64url')
+      : null;
+
+    // Fetch snapshot for total counts (O(1)) alongside enrichment queries
+    const { data: snapshotRow } = await db
+      .schema('app')
+      .from('products_snapshot')
+      .select('total_count, active_count')
+      .eq('tenant_id', claims.tenant_id)
+      .maybeSingle();
+
+    const archivedCount = snapshotRow
+      ? (snapshotRow.total_count ?? 0) - (snapshotRow.active_count ?? 0)
+      : 0;
 
     // Fetch master product details for enrichment
-    const masterProductIds = activeProducts
+    const masterProductIds = pageProducts
       .filter((r: { master_product_id: string | null }) => r.master_product_id)
       .map((r: { master_product_id: string }) => r.master_product_id);
-    const tenantBrandIds = activeProducts
+    const tenantBrandIds = pageProducts
       .filter((r: { tenant_brand_id: string | null }) => r.tenant_brand_id)
       .map((r: { tenant_brand_id: string }) => r.tenant_brand_id);
 
@@ -154,7 +189,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const productIds = activeProducts.map((row: { id: string }) => row.id);
+    const productIds = pageProducts.map((row: { id: string }) => row.id);
     const inventoryByProduct = new Map<string, number>();
     const unitsMtdByProduct = new Map<string, number>();
     const gmvMtdByProduct = new Map<string, number>();
@@ -225,7 +260,7 @@ export async function GET(req: NextRequest) {
 
     const role = claims.role;
 
-    const products = activeProducts.map(
+    const products = pageProducts.map(
       (row: {
         id: string;
         tenant_id: string;
@@ -335,9 +370,11 @@ export async function GET(req: NextRequest) {
       period,
       products,
       brands,
+      nextCursor,
+      total: (snapshotRow as { active_count?: number } | null)?.active_count ?? null,
       kpis: {
-        active_skus: products.length,
-        total_skus: allProducts.length,
+        active_skus: (snapshotRow as { active_count?: number } | null)?.active_count ?? products.length,
+        total_skus: (snapshotRow as { total_count?: number } | null)?.total_count ?? products.length,
         archived_skus: archivedCount,
         out_of_stock: outOfStock,
         low_stock: lowStock,

@@ -1,16 +1,18 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactElement } from 'react';
 
 const headersMock = vi.fn();
 const getFlagMock = vi.fn();
+const loadIntegrationsSettingsPayloadMock = vi.fn();
 const useFlagStateMock = vi.fn();
 const apiFetchMock = vi.fn();
 const apiPostMock = vi.fn();
 const toastSuccessMock = vi.fn();
 const toastErrorMock = vi.fn();
 const redirectMock = vi.fn();
+const routerReplaceMock = vi.fn();
 const useAuthMock = vi.fn();
 
 vi.mock('next/headers', () => ({
@@ -19,6 +21,15 @@ vi.mock('next/headers', () => ({
 
 vi.mock('next/navigation', () => ({
   redirect: (...args: unknown[]) => redirectMock(...args),
+  useRouter: () => ({
+    replace: (...args: unknown[]) => routerReplaceMock(...args),
+    push: vi.fn(),
+    refresh: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+  }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock('@/lib/flags', () => ({
@@ -28,12 +39,20 @@ vi.mock('@/lib/flags', () => ({
   getFlag: (...args: unknown[]) => getFlagMock(...args),
 }));
 
+vi.mock('@/lib/integrations/server', () => ({
+  loadIntegrationsSettingsPayload: (...args: unknown[]) => loadIntegrationsSettingsPayloadMock(...args),
+}));
+
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlagState: (flag: string) => useFlagStateMock(flag),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => useAuthMock(),
+}));
+
+vi.mock('@/lib/server/seller-server-claims', () => ({
+  requireSellerServerTenantId: async () => 'tenant-1',
 }));
 
 vi.mock('@/lib/api-fetch', () => ({
@@ -50,6 +69,7 @@ vi.mock('sonner', () => ({
 
 import SettingsIntegrationsPage from '../../../app/(seller)/settings/integrations/page';
 import { IntegrationsSettingsClient } from '@/components/seller/settings/IntegrationsSettingsClient';
+import { ConnectedIntegrationCard } from '@/components/seller/settings/ConnectedIntegrationCard';
 
 function jsonResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify({ data, error: null }), {
@@ -224,6 +244,7 @@ describe('settings integrations page', () => {
     vi.clearAllMocks();
     headersMock.mockResolvedValue(new Headers([['x-verified-tenant-id', 'tenant-1']]));
     getFlagMock.mockResolvedValue(true);
+    loadIntegrationsSettingsPayloadMock.mockResolvedValue({ catalog: [] });
     useFlagStateMock.mockImplementation((flag: string) => {
       if (flag === 'TALLY_INTEGRATION' || flag === 'BUSY_INTEGRATION') return false;
       return true;
@@ -248,10 +269,8 @@ describe('settings integrations page', () => {
     renderWithQueryClient(await SettingsIntegrationsPage());
 
     expect(screen.getByRole('heading', { name: 'Integrations' })).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Zoho Books' })).toBeInTheDocument();
-    });
-    expect(screen.getByText(/Single-page setup/i)).toBeInTheDocument();
+    expect(await screen.findByText('No integrations connected yet')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Add integration' })).toBeInTheDocument();
   });
 });
 
@@ -269,118 +288,264 @@ describe('integrations settings client', () => {
     apiFetchMock.mockResolvedValue(jsonResponse(buildIntegrationsPayload()));
   });
 
-  it('renders coming-soon cards when a family flag is off', async () => {
+  it('opens the picker with only available Zoho integrations', async () => {
     renderWithQueryClient(<IntegrationsSettingsClient />);
 
-    expect(await screen.findByText('Tally Prime')).toBeInTheDocument();
-    expect(screen.getAllByText('Coming soon').length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByRole('button', { name: 'Connect Tally Prime' })).toBeDisabled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add integration' }));
+
+    expect(await screen.findByRole('heading', { name: 'Add integration' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Zoho Books/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Zoho Inventory/ })).toBeInTheDocument();
+    expect(screen.queryByText('Tally Prime')).not.toBeInTheDocument();
+    expect(screen.queryByText('Busy Accounting')).not.toBeInTheDocument();
   });
 
-  it('tests connection and starts import from the wizard', async () => {
-    apiFetchMock
-      .mockResolvedValueOnce(jsonResponse(buildIntegrationsPayload()))
-      .mockResolvedValueOnce(jsonResponse(buildIntegrationsPayload({ activeJobStatus: 'running' })));
+  it('starts sync now without sending the legacy scope field', async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse(buildIntegrationsPayload({ includeSummary: true })));
 
-    apiPostMock
-      .mockResolvedValueOnce(
-        jsonResponse({
-          ok: true,
-          connection_label: 'WineYard HQ',
-          message: 'Credentials look healthy.',
-          sample_counts: {
-            products: 1240,
-            customers: 89,
-            orders: 318,
+    renderWithQueryClient(<IntegrationsSettingsClient />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Sync now' }));
+
+    await waitFor(() => {
+      expect(apiPostMock).toHaveBeenCalledWith('/api/settings/integrations/sync', {
+        tenant_integration_id: 'tenant-int-1',
+        job_type: 'manual',
+        max_pages: 3,
+      });
+    });
+  });
+
+  it('shows both reconnect and disconnect actions when an integration needs attention', () => {
+    render(
+      <ConnectedIntegrationCard
+        integration={{
+          id: 'zoho_books',
+          display_name: 'Zoho Books',
+          description: 'Sync orders and invoices with Zoho Books.',
+          family_flag: 'ZOHO_INTEGRATION',
+          connectivity_mode: 'cloud',
+          auth_schema: { fields: [] },
+          capabilities: {
+            inbound_reference: ['brands'],
+            inbound_transactional: ['orders'],
           },
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          job_id: 'job-1',
-        }),
-      );
+          tenant_integration: {
+            id: 'tenant-int-1',
+            status: 'sync_failed',
+            health_status: 'invalid',
+            connected_at: '2026-06-10T11:00:00.000Z',
+            last_health_check_at: '2026-06-12T08:50:00.000Z',
+            config: { org_id: 'org-123' },
+            active_job: null,
+            sync_history: [],
+            data_flows: [],
+          },
+        }}
+        available
+        isSellerAdmin
+        onOpenWizard={vi.fn()}
+        onDisconnect={vi.fn()}
+        onSyncNow={vi.fn()}
+        onStopSync={vi.fn()}
+        onRefresh={vi.fn()}
+        onRetryWebhooks={vi.fn()}
+      />,
+    );
 
-    renderWithQueryClient(<IntegrationsSettingsClient />);
+    expect(screen.getByRole('button', { name: 'Sync Again' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
+  });
 
-    expect(await screen.findByRole('button', { name: 'Connect Zoho Books' })).toBeInTheDocument();
+  it('shows stop sync when a job is actively running', () => {
+    render(
+      <ConnectedIntegrationCard
+        integration={{
+          id: 'zoho_books',
+          display_name: 'Zoho Books',
+          description: 'Sync orders and invoices with Zoho Books.',
+          family_flag: 'ZOHO_INTEGRATION',
+          connectivity_mode: 'cloud',
+          auth_schema: { fields: [] },
+          capabilities: {
+            inbound_reference: ['brands'],
+            inbound_transactional: ['orders'],
+          },
+          tenant_integration: {
+            id: 'tenant-int-1',
+            status: 'syncing',
+            health_status: 'ok',
+            connected_at: '2026-06-10T11:00:00.000Z',
+            last_health_check_at: '2026-06-12T08:50:00.000Z',
+            config: { org_id: 'org-123' },
+            active_job: {
+              id: 'job-1',
+              job_type: 'manual',
+              status: 'running',
+              progress: {
+                phase: 'customers',
+                phase_label: 'Importing customers...',
+                phases_total: 4,
+                phase_current: 2,
+                items_total: 0,
+                items_processed: 120,
+                items_failed: 0,
+                pages_processed: 2,
+                counts: {
+                  brands: { entity_type: 'brands', processed: 12, failed: 0, pages: 1 },
+                  customers: { entity_type: 'customers', processed: 120, failed: 0, pages: 2 },
+                },
+              },
+              error_log: [],
+              summary: null,
+              started_at: '2026-06-12T09:00:00.000Z',
+              completed_at: null,
+              created_at: '2026-06-12T08:59:00.000Z',
+            },
+            sync_history: [],
+            data_flows: [],
+          },
+        }}
+        available
+        isSellerAdmin
+        onOpenWizard={vi.fn()}
+        onDisconnect={vi.fn()}
+        onSyncNow={vi.fn()}
+        onStopSync={vi.fn()}
+        onRefresh={vi.fn()}
+        onRetryWebhooks={vi.fn()}
+      />,
+    );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Connect Zoho Books' }));
-    expect(screen.getByRole('heading', { name: 'Zoho Books setup' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Stop sync' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Sync now' })).not.toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+  it('marks cancelled runs clearly in the card header', () => {
+    render(
+      <ConnectedIntegrationCard
+        integration={{
+          id: 'zoho_books',
+          display_name: 'Zoho Books',
+          description: 'Sync orders and invoices with Zoho Books.',
+          family_flag: 'ZOHO_INTEGRATION',
+          connectivity_mode: 'cloud',
+          auth_schema: { fields: [] },
+          capabilities: {
+            inbound_reference: ['brands'],
+            inbound_transactional: ['orders'],
+          },
+          tenant_integration: {
+            id: 'tenant-int-1',
+            status: 'connected',
+            health_status: 'ok',
+            connected_at: '2026-06-10T11:00:00.000Z',
+            last_health_check_at: '2026-06-12T08:50:00.000Z',
+            config: { org_id: 'org-123' },
+            active_job: null,
+            sync_history: [
+              {
+                id: 'job-1',
+                job_type: 'manual',
+                status: 'cancelled',
+                progress: {
+                  phase: 'cancelled',
+                  phase_label: 'Sync cancelled',
+                  phases_total: 4,
+                  phase_current: 2,
+                  items_total: 0,
+                  items_processed: 120,
+                  items_failed: 0,
+                  pages_processed: 2,
+                },
+                error_log: [],
+                summary: null,
+                started_at: '2026-06-12T09:00:00.000Z',
+                completed_at: '2026-06-12T09:03:00.000Z',
+                created_at: '2026-06-12T08:59:00.000Z',
+              },
+            ],
+            data_flows: [],
+          },
+        }}
+        available
+        isSellerAdmin
+        onOpenWizard={vi.fn()}
+        onDisconnect={vi.fn()}
+        onSyncNow={vi.fn()}
+        onStopSync={vi.fn()}
+        onRefresh={vi.fn()}
+        onRetryWebhooks={vi.fn()}
+      />,
+    );
 
-    fireEvent.change(screen.getByLabelText('Client ID'), { target: { value: 'client-1' } });
-    fireEvent.change(screen.getByLabelText('Client Secret'), { target: { value: 'secret-1' } });
-    fireEvent.change(screen.getByLabelText('Refresh Token'), { target: { value: 'refresh-1' } });
-    fireEvent.change(screen.getByLabelText('Organization ID'), { target: { value: 'org-123' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByText('Cancelled')).toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Test connection' }));
+  it('surfaces the latest sync failure reason', () => {
+    render(
+      <ConnectedIntegrationCard
+        integration={{
+          id: 'zoho_books',
+          display_name: 'Zoho Books',
+          description: 'Sync orders and invoices with Zoho Books.',
+          family_flag: 'ZOHO_INTEGRATION',
+          connectivity_mode: 'cloud',
+          auth_schema: { fields: [] },
+          capabilities: {
+            inbound_reference: ['brands'],
+            inbound_transactional: ['orders'],
+          },
+          tenant_integration: {
+            id: 'tenant-int-1',
+            status: 'connected',
+            health_status: 'ok',
+            connected_at: '2026-06-10T11:00:00.000Z',
+            last_health_check_at: '2026-06-12T08:50:00.000Z',
+            config: { org_id: 'org-123' },
+            active_job: null,
+            sync_history: [
+              {
+                id: 'job-1',
+                job_type: 'initial_reference',
+                status: 'failed',
+                progress: {
+                  phase: 'products',
+                  phase_label: 'Importing products...',
+                  phases_total: 2,
+                  phase_current: 1,
+                  items_total: 1240,
+                  items_processed: 812,
+                  items_failed: 1,
+                },
+                error_log: [
+                  {
+                    timestamp: '2026-06-12T09:07:00.000Z',
+                    message: 'Unable to retrieve integration secret.',
+                  },
+                ],
+                summary: null,
+                started_at: '2026-06-12T09:00:00.000Z',
+                completed_at: '2026-06-12T09:07:00.000Z',
+                created_at: '2026-06-12T08:59:00.000Z',
+              },
+            ],
+            data_flows: [],
+          },
+        }}
+        available
+        isSellerAdmin
+        onOpenWizard={vi.fn()}
+        onDisconnect={vi.fn()}
+        onSyncNow={vi.fn()}
+        onStopSync={vi.fn()}
+        onRefresh={vi.fn()}
+        onRetryWebhooks={vi.fn()}
+      />,
+    );
 
-    await waitFor(() => {
-      expect(apiPostMock).toHaveBeenCalledWith(
-        '/api/settings/integrations/test',
-        expect.objectContaining({
-          integration_type_id: 'zoho_books',
-          credentials: expect.objectContaining({
-            client_id: 'client-1',
-            client_secret: 'secret-1',
-            refresh_token: 'refresh-1',
-            org_id: 'org-123',
-          }),
-        }),
-      );
-    });
-
-    expect(await screen.findByText('WineYard HQ')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-
-    fireEvent.click(screen.getByRole('button', { name: 'Start import' }));
-
-    await waitFor(() => {
-      expect(apiPostMock).toHaveBeenCalledWith(
-        '/api/settings/integrations/sync',
-        expect.objectContaining({
-          integration_type_id: 'zoho_books',
-          import_orders_since: expect.any(String),
-        }),
-      );
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText('Importing products...')).toBeInTheDocument();
-    });
-    expect(screen.getByText(/Polling every 3 seconds while active/i)).toBeInTheDocument();
-  }, 10000);
-
-  it('polls running syncs into completed history', async () => {
-    vi.useFakeTimers();
-
-    apiFetchMock
-      .mockResolvedValueOnce(jsonResponse(buildIntegrationsPayload({ activeJobStatus: 'running' })))
-      .mockResolvedValueOnce(jsonResponse(buildIntegrationsPayload({ activeJobStatus: 'completed', includeSummary: true })));
-
-    renderWithQueryClient(<IntegrationsSettingsClient />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Importing products...')).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      vi.advanceTimersByTime(3000);
-    });
-
-    await waitFor(() => {
-      expect(apiFetchMock).toHaveBeenCalledTimes(2);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText('Latest import summary')).toBeInTheDocument();
-    });
-    expect(screen.getByText('1240')).toBeInTheDocument();
-    expect(screen.getByText(/History updates after every completed run/i)).toBeInTheDocument();
-
-    vi.useRealTimers();
-  }, 10000);
+    expect(screen.getByText('Last sync failed')).toBeInTheDocument();
+    expect(screen.getByText('Unable to retrieve integration secret.')).toBeInTheDocument();
+  });
 });

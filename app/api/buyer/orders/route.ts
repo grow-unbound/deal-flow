@@ -3,6 +3,8 @@ import { supabaseAdmin, supabase } from '@/lib/supabase';
 import { getPostHogClient } from '@/lib/posthog-server';
 import type { BuyerAppMode } from '@/types/buyer';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+import { fetchWhatsappNotificationContext } from '@/lib/server/notification-context';
+import { sendOrderReceivedBuyer, sendOrderReceivedSeller } from '@/lib/server/whatsapp';
 
 export interface BuyerOrderPlaceRequest {
   items: Array<{
@@ -201,6 +203,26 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
     } catch {
       // non-blocking
     }
+
+    // Fire WhatsApp notifications without blocking the response
+    void (async () => {
+      try {
+        const ctx = await fetchWhatsappNotificationContext(
+          tenant_id!,
+          buyer_id,
+          location_id ?? null,
+          'order_placed',
+        );
+        if (ctx) {
+          await Promise.allSettled([
+            sendOrderReceivedBuyer(ctx, typed.id, typed.order_number, total_amount, items.length),
+            sendOrderReceivedSeller(ctx, typed.id, typed.order_number, total_amount, items.length),
+          ]);
+        }
+      } catch {
+        // non-blocking — order creation already succeeded
+      }
+    })();
 
     return NextResponse.json({
       success: true,

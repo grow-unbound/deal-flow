@@ -13,6 +13,11 @@ import type {
   ZohoIntegrationTypeId,
 } from '../../../src/lib/integrations/contracts.ts';
 import {
+  buildIntegrationDataFlowRows,
+  buildIntegrationTopologyConfig,
+} from '../../../src/lib/integrations/definitions.ts';
+import { normalizeIntegrationJobErrorLog } from '../../../src/lib/integrations/job-error-log.ts';
+import {
   INTEGRATION_JOB_TYPES,
   ZOHO_INTEGRATION_TYPE_IDS,
 } from '../../../src/lib/integrations/contracts.ts';
@@ -125,6 +130,7 @@ class HttpError extends Error {
 }
 
 const DEFAULT_PAGE_LIMIT = 5;
+const ZOHO_DEFAULT_PER_PAGE = 1000;
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -132,6 +138,10 @@ function isRecord(value: unknown): value is JsonRecord {
 
 function asString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function nowIso(): string {
@@ -200,6 +210,16 @@ function normalizeSince(value: unknown): string | null {
   if (!since) return null;
   const parsed = new Date(since);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function normalizeMaxPages(value: unknown): number | null {
+  const count = asNumber(value);
+  return count != null && count > 0 ? Math.floor(count) : null;
+}
+
+function getProgressMaxPages(progress: IntegrationJobProgress | null | undefined): number | null {
+  if (!progress || !isRecord(progress.meta)) return null;
+  return normalizeMaxPages(progress.meta.max_pages);
 }
 
 function normalizePageLimit(value: unknown): number {
@@ -420,6 +440,76 @@ async function updateTenantIntegration(
   return data as TenantIntegrationRow;
 }
 
+async function softDeleteIntegrationChildren(
+  admin: ReturnType<typeof createAdminClient>,
+  tenantIntegrationId: string,
+  actorUserId: string,
+): Promise<void> {
+  const now = nowIso();
+
+  await admin
+    .schema('app')
+    .from('integration_entity_map')
+    .update({
+      deleted_at: now,
+      updated_at: now,
+      updated_by: actorUserId,
+    })
+    .eq('tenant_integration_id', tenantIntegrationId)
+    .is('deleted_at', null);
+
+  await admin
+    .schema('app')
+    .from('integration_data_flows')
+    .update({
+      is_active: false,
+      deleted_at: now,
+      updated_at: now,
+      updated_by: actorUserId,
+    })
+    .eq('tenant_integration_id', tenantIntegrationId)
+    .is('deleted_at', null);
+
+  await admin
+    .schema('app')
+    .from('integration_webhooks')
+    .update({
+      is_active: false,
+      deleted_at: now,
+      updated_at: now,
+      updated_by: actorUserId,
+    })
+    .eq('tenant_integration_id', tenantIntegrationId)
+    .is('deleted_at', null);
+
+  await admin
+    .schema('app')
+    .from('integration_sync_jobs')
+    .update({
+      status: 'cancelled',
+      progress: {
+        phase: 'cancelled',
+        phase_label: 'Cancelled during disconnect',
+        phases_total: 0,
+        phase_current: 0,
+        items_total: 0,
+        items_processed: 0,
+        items_failed: 0,
+        cursor: null,
+        updated_at: now,
+      },
+      error_log: null,
+      summary: null,
+      started_at: null,
+      completed_at: now,
+      deleted_at: now,
+      updated_at: now,
+      updated_by: actorUserId,
+    })
+    .eq('tenant_integration_id', tenantIntegrationId)
+    .is('deleted_at', null);
+}
+
 async function storeTenantIntegrationSecret(
   admin: ReturnType<typeof createAdminClient>,
   tenantIntegrationId: string,
@@ -435,20 +525,30 @@ async function storeTenantIntegrationSecret(
       p_secret_name: null,
     });
 
-  if (error) throw new HttpError(500, 'Unable to persist integration secret.', { code: error.code ?? undefined });
+  if (error) {
+    throw new HttpError(500, error.message ?? 'Unable to persist integration secret.', {
+      code: error.code ?? undefined,
+    });
+  }
 }
 
 async function loadTenantIntegrationSecret(
   admin: ReturnType<typeof createAdminClient>,
   tenantIntegrationId: string,
+  expectedIntegrationTypeId: IntegrationTypeId,
 ): Promise<JsonRecord> {
   const { data, error } = await admin
     .schema('app')
-    .rpc('get_tenant_integration_secret', {
+    .rpc('get_tenant_integration_runtime_secret', {
       p_tenant_integration_id: tenantIntegrationId,
+      p_expected_integration_type_id: expectedIntegrationTypeId,
     });
 
-  if (error) throw new HttpError(500, 'Unable to retrieve integration secret.', { code: error.code ?? undefined });
+  if (error) {
+    throw new HttpError(500, error.message ?? 'Unable to retrieve integration secret.', {
+      code: error.code ?? undefined,
+    });
+  }
   if (!isRecord(data)) throw new HttpError(400, 'No integration secret is configured for this tenant integration.');
   return data;
 }
@@ -523,7 +623,7 @@ async function appendJobError(
   error: unknown,
 ): Promise<void> {
   const now = nowIso();
-  const existingEntries = Array.isArray(job.error_log?.entries) ? job.error_log?.entries : [];
+  const existingEntries = normalizeIntegrationJobErrorLog(job.error_log);
   const nextEntries = [
     ...existingEntries,
     {
@@ -545,9 +645,7 @@ async function appendJobError(
   await updateSyncJob(admin, job.id, {
     status: 'failed',
     completed_at: now,
-    error_log: {
-      entries: nextEntries,
-    },
+    error_log: nextEntries,
     ...(failedProgress ? { progress: asJsonRecord(failedProgress) } : {}),
   });
 }
@@ -571,6 +669,7 @@ function buildInitialProgress(
   since: string | null,
   plan: IntegrationSyncPhaseDefinition[],
   note?: string,
+  meta?: JsonRecord,
 ): IntegrationJobProgress {
   const first = plan[0] ?? null;
   const startedAt = nowIso();
@@ -591,17 +690,18 @@ function buildInitialProgress(
     pages_processed: 0,
     cursor: first
       ? {
-        phase: first.id,
-        entity_type: first.entityType,
-        page: 1,
-        per_page: first.perPage ?? 200,
-        has_more: true,
-        since,
-      }
+          phase: first.id,
+          entity_type: first.entityType,
+          page: 1,
+          per_page: first.perPage ?? ZOHO_DEFAULT_PER_PAGE,
+          has_more: true,
+          since,
+        }
       : null,
     counts: buildProgressCounts(plan),
     started_at: startedAt,
     updated_at: startedAt,
+    ...(meta ? { meta } : {}),
     ...(note ? { note } : {}),
   };
 }
@@ -657,6 +757,7 @@ function hydrateProgress(
     cursor,
     started_at: asString(raw.started_at) ?? fallback.started_at,
     updated_at: asString(raw.updated_at) ?? fallback.updated_at,
+    meta: isRecord(raw.meta) ? raw.meta : fallback.meta,
     note: asString(raw.note) ?? fallback.note,
     last_page: isRecord(raw.last_page)
       ? {
@@ -697,14 +798,14 @@ function moveToNextPhase(
     phase: nextPhase.id,
     phase_label: nextPhase.label,
     phase_current: currentIndex + 2,
-    cursor: {
-      phase: nextPhase.id,
-      entity_type: nextPhase.entityType,
-      page: 1,
-      per_page: nextPhase.perPage ?? 200,
-      has_more: true,
-      since: progress.since,
-    },
+      cursor: {
+        phase: nextPhase.id,
+        entity_type: nextPhase.entityType,
+        page: 1,
+        per_page: nextPhase.perPage ?? ZOHO_DEFAULT_PER_PAGE,
+        has_more: true,
+        since: progress.since,
+      },
     updated_at: updatedAt,
   };
 }
@@ -828,6 +929,9 @@ async function runWorkerJob(
   const job = await loadSyncJob(admin, payload.job_id);
   const integration = await loadTenantIntegration(admin, job.tenant_integration_id);
   const actor = await authorizeTenantActor(request, admin, integration.tenant_id);
+  const importActorId = actor.internal
+    ? (integration.connected_by ?? job.triggered_by ?? null)
+    : actor.userId;
 
   if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
     const scope = resolveScope(job.job_type, undefined);
@@ -844,12 +948,32 @@ async function runWorkerJob(
     };
   }
 
-  const credentials = await loadTenantIntegrationSecret(admin, integration.id);
+  const credentials = isRecord(payload.credentials)
+    ? payload.credentials
+    : await loadTenantIntegrationSecret(admin, integration.id, integration.integration_type_id);
   const adapter = createAdapterForIntegration(integration, credentials);
   const scope = resolveScope(job.job_type, (payload.progress as JsonRecord | null)?.scope);
   const since = normalizeSince((payload.progress as JsonRecord | null)?.since) ?? normalizeSince((job.progress as JsonRecord)?.since);
   const plan = getZohoPhasePlan(adapter.integrationTypeId, scope);
   let progress = hydrateProgress(payload.progress ?? job.progress, scope, since, plan);
+  const maxPages = getProgressMaxPages(progress);
+
+  if (job.status === 'cancelled') {
+    await updateTenantIntegration(admin, integration.id, {
+      status: 'connected',
+      health_status: 'ok',
+      last_health_check_at: nowIso(),
+      updated_by: importActorId,
+    });
+
+    return {
+      jobId: job.id,
+      status: 'noop',
+      continuationDispatched: false,
+      progress,
+      summary: (job.summary as unknown as IntegrationJobSummary | null) ?? null,
+    };
+  }
 
   if (plan.length === 0) {
     progress = {
@@ -869,13 +993,13 @@ async function runWorkerJob(
       summary: asJsonRecord(summary),
       started_at: job.started_at ?? progress.started_at,
       completed_at: nowIso(),
-      updated_by: actor.internal ? null : actor.userId,
+      updated_by: importActorId,
     });
     await updateTenantIntegration(admin, integration.id, {
       status: 'connected',
       health_status: 'ok',
       last_health_check_at: nowIso(),
-      updated_by: actor.internal ? null : actor.userId,
+      updated_by: importActorId,
     });
 
     return {
@@ -892,11 +1016,11 @@ async function runWorkerJob(
       status: 'running',
       started_at: job.started_at ?? nowIso(),
       progress: asJsonRecord(progress),
-      updated_by: actor.internal ? null : actor.userId,
+      updated_by: importActorId,
     });
     await updateTenantIntegration(admin, integration.id, {
       status: 'syncing',
-      updated_by: actor.internal ? null : actor.userId,
+      updated_by: importActorId,
     });
   }
 
@@ -904,6 +1028,28 @@ async function runWorkerJob(
   let processedPages = 0;
 
   while (processedPages < pageLimit && progress.phase) {
+    const liveJob = await loadSyncJob(admin, job.id);
+    if (liveJob.status === 'cancelled') {
+      progress = hydrateProgress(liveJob.progress, scope, since, plan);
+      await updateTenantIntegration(admin, integration.id, {
+        status: 'connected',
+        health_status: 'ok',
+        last_health_check_at: nowIso(),
+        updated_by: importActorId,
+      });
+      return {
+        jobId: job.id,
+        status: 'noop',
+        continuationDispatched: false,
+        progress,
+        summary: (liveJob.summary as unknown as IntegrationJobSummary | null) ?? null,
+      };
+    }
+
+    if (maxPages != null && progress.pages_processed >= maxPages) {
+      break;
+    }
+
     const currentPhase = plan.find((phase) => phase.id === progress.phase);
     if (!currentPhase) {
       progress = moveToNextPhase(progress, plan);
@@ -911,15 +1057,15 @@ async function runWorkerJob(
     }
 
     const cursor = progress.cursor?.phase === currentPhase.id
-      ? progress.cursor
-      : {
-        phase: currentPhase.id,
-        entity_type: currentPhase.entityType,
-        page: 1,
-        per_page: currentPhase.perPage ?? 200,
-        has_more: true,
-        since: progress.since,
-      };
+        ? progress.cursor
+        : {
+          phase: currentPhase.id,
+          entity_type: currentPhase.entityType,
+          page: 1,
+          per_page: currentPhase.perPage ?? ZOHO_DEFAULT_PER_PAGE,
+          has_more: true,
+          since: progress.since,
+        };
 
     const page = await adapter.fetchPhasePage(currentPhase, cursor, progress.since);
 
@@ -928,7 +1074,7 @@ async function runWorkerJob(
         await persistZohoEntityPage(
           admin,
           integration.tenant_id,
-          actor.internal ? null : (actor.userId ?? null),
+          importActorId,
           integration.id,
           currentPhase.entityType,
           integration.integration_type_id as ZohoIntegrationTypeId,
@@ -955,10 +1101,43 @@ async function runWorkerJob(
     await updateSyncJob(admin, job.id, {
       progress: asJsonRecord(progress),
       status: 'running',
-      updated_by: actor.internal ? null : actor.userId,
+      updated_by: importActorId,
     });
 
     processedPages += 1;
+  }
+
+  const testPageLimitReached = maxPages != null && progress.pages_processed >= maxPages;
+
+  if (testPageLimitReached) {
+    const completedAt = nowIso();
+    progress = {
+      ...progress,
+      note: progress.note ?? `Stopped after the test page limit of ${maxPages} pages.`,
+      updated_at: completedAt,
+    };
+    const summary = buildSummary(progress);
+    await updateSyncJob(admin, job.id, {
+      status: 'completed',
+      progress: asJsonRecord(progress),
+      summary: asJsonRecord(summary),
+      completed_at: completedAt,
+      updated_by: importActorId,
+    });
+    await updateTenantIntegration(admin, integration.id, {
+      status: 'connected',
+      health_status: 'ok',
+      last_health_check_at: completedAt,
+      updated_by: importActorId,
+    });
+
+    return {
+      jobId: job.id,
+      status: 'completed',
+      continuationDispatched: false,
+      progress,
+      summary,
+    };
   }
 
   if (!progress.phase) {
@@ -968,13 +1147,13 @@ async function runWorkerJob(
       progress: asJsonRecord(progress),
       summary: asJsonRecord(summary),
       completed_at: nowIso(),
-      updated_by: actor.internal ? null : actor.userId,
+      updated_by: importActorId,
     });
     await updateTenantIntegration(admin, integration.id, {
       status: 'connected',
       health_status: 'ok',
       last_health_check_at: nowIso(),
-      updated_by: actor.internal ? null : actor.userId,
+      updated_by: importActorId,
     });
 
     return {
@@ -1005,7 +1184,7 @@ async function runWorkerJob(
       };
       await updateSyncJob(admin, job.id, {
         progress: asJsonRecord(progress),
-        updated_by: actor.internal ? null : actor.userId,
+        updated_by: importActorId,
       });
     }
   } catch (error) {
@@ -1016,7 +1195,7 @@ async function runWorkerJob(
     };
     await updateSyncJob(admin, job.id, {
       progress: asJsonRecord(progress),
-      updated_by: actor.internal ? null : actor.userId,
+      updated_by: importActorId,
     });
     throw error;
   }
@@ -1072,7 +1251,10 @@ export async function handleIntegrationsConnect(request: Request): Promise<Respo
     );
 
     await storeTenantIntegrationSecret(admin, tenantIntegration.id, actor.userId, payload.credentials);
-    const config = describeConnectionMeta(meta as unknown as JsonRecord, isRecord(payload.config) ? payload.config : {});
+    const config = {
+      ...describeConnectionMeta(meta as unknown as JsonRecord, isRecord(payload.config) ? payload.config : {}),
+      ...buildIntegrationTopologyConfig(integrationTypeId),
+    };
     const updated = await updateTenantIntegration(admin, tenantIntegration.id, {
       status: 'connected',
       config,
@@ -1083,6 +1265,21 @@ export async function handleIntegrationsConnect(request: Request): Promise<Respo
       updated_by: actor.userId,
     });
 
+    const seededFlows = buildIntegrationDataFlowRows({
+      tenant_id: payload.tenant_id,
+      tenant_integration_id: tenantIntegration.id,
+      integration_type_id: integrationTypeId,
+      created_by: actor.userId,
+      updated_by: actor.userId,
+    }).filter((row) => row.trigger_type !== 'webhook' || row.webhook_id !== null);
+
+    if (seededFlows.length > 0) {
+      await admin
+        .schema('app')
+        .from('integration_data_flows')
+        .upsert(seededFlows, { onConflict: 'tenant_id,tenant_integration_id,entity_type' });
+    }
+
     return jsonResponse({
       ok: true,
       tenant_integration_id: updated.id,
@@ -1090,6 +1287,60 @@ export async function handleIntegrationsConnect(request: Request): Promise<Respo
       health_status: updated.health_status,
       config: updated.config,
       meta,
+    });
+  } catch (error) {
+    return handleRequestError(error);
+  }
+}
+
+export async function handleIntegrationsDisconnect(request: Request): Promise<Response> {
+  try {
+    requireMethod(request, 'POST');
+    const payload = await readJson<{ tenant_integration_id?: string | null }>(request);
+    const tenantIntegrationId = asString(payload.tenant_integration_id);
+
+    if (!tenantIntegrationId) {
+      throw new HttpError(400, 'tenant_integration_id is required.');
+    }
+
+    const admin = createAdminClient();
+    const integration = await loadTenantIntegration(admin, tenantIntegrationId);
+    const actor = await authorizeTenantActor(request, admin, integration.tenant_id);
+
+    await softDeleteIntegrationChildren(admin, integration.id, actor.userId);
+
+    if (integration.vault_secret_id) {
+      try {
+        await admin
+          .schema('app')
+          .rpc('delete_tenant_integration_secret', {
+            p_tenant_integration_id: integration.id,
+            p_actor_user_id: actor.userId,
+          });
+      } catch (error) {
+        throw new HttpError(500, 'Unable to remove integration secret.', {
+          code: error instanceof Error ? error.message : 'SECRET_DELETE_FAILED',
+        });
+      }
+    }
+
+    await updateTenantIntegration(admin, integration.id, {
+      status: 'disconnected',
+      health_status: null,
+      connected_at: null,
+      connected_by: null,
+      last_health_check_at: null,
+      config: {
+        ...scrubSecretValue(integration.config),
+      } as JsonRecord,
+      deleted_at: nowIso(),
+      updated_by: actor.userId,
+    });
+
+    return jsonResponse({
+      ok: true,
+      tenant_integration_id: integration.id,
+      status: 'disconnected',
     });
   } catch (error) {
     return handleRequestError(error);
@@ -1143,7 +1394,7 @@ export async function handleIntegrationsSync(request: Request): Promise<Response
       throw new HttpError(501, `Only Zoho runtime sync is implemented right now. Received ${integration.integration_type_id}.`);
     }
 
-    await loadTenantIntegrationSecret(admin, integration.id);
+    const credentials = await loadTenantIntegrationSecret(admin, integration.id, integration.integration_type_id);
 
     const jobType = normalizeJobType(payload.job_type);
     const scope = resolveScope(jobType, payload.scope);
@@ -1154,6 +1405,7 @@ export async function handleIntegrationsSync(request: Request): Promise<Response
       since,
       plan,
       'Entity persistence is conservative for now: runtime counts and cursors are real, normalized upserts come next.',
+      typeof payload.max_pages === 'number' && payload.max_pages > 0 ? { max_pages: payload.max_pages } : undefined,
     );
 
     const job = await createSyncJob(admin, {
@@ -1176,6 +1428,7 @@ export async function handleIntegrationsSync(request: Request): Promise<Response
       reason: 'initial_dispatch',
       page_limit: payload.page_limit ?? null,
       progress,
+      credentials,
     }).catch(async (error) => {
       const refreshedJob = await loadSyncJob(admin, job.id);
       await appendJobError(admin, refreshedJob, error);
@@ -1309,6 +1562,9 @@ export async function handleIntegrationsWebhook(request: Request): Promise<Respo
     const actor = endpointToken
       ? { userId: 'webhook-endpoint-token', authHeader: null, internal: true } as ActorContext
       : await authorizeTenantActor(request, admin, integration.tenant_id);
+    const importActorId = actor.internal
+      ? (integration.connected_by ?? null)
+      : actor.userId;
 
     if (webhook) {
       await touchWebhookFlows(admin, webhook.id);
@@ -1330,13 +1586,13 @@ export async function handleIntegrationsWebhook(request: Request): Promise<Respo
       tenantId: integration.tenant_id,
       tenantIntegrationId: integration.id,
       jobType: 'incremental',
-      triggeredBy: actor.internal ? null : actor.userId,
+      triggeredBy: importActorId,
       progress,
     });
 
     await updateTenantIntegration(admin, integration.id, {
       status: 'syncing',
-      updated_by: actor.internal ? null : actor.userId,
+      updated_by: importActorId,
     });
 
     waitUntil(dispatchWorkerInvocation(actor.authHeader, {
@@ -1352,7 +1608,7 @@ export async function handleIntegrationsWebhook(request: Request): Promise<Respo
         status: 'sync_failed',
         health_status: classifyHealthStatus(error),
         last_health_check_at: nowIso(),
-        updated_by: actor.internal ? null : actor.userId,
+        updated_by: importActorId,
       });
       throw error;
     }));

@@ -4,10 +4,12 @@ import {
   IntegrationAuthSchemaSchema,
   IntegrationCapabilitiesSchema,
   IntegrationEntityTypeSchema,
+  IntegrationDataFlowRecordSchema,
   IntegrationFlowDirectionSchema,
   IntegrationFlowTriggerSchema,
   IntegrationJobProgressSchema,
   IntegrationJobSummarySchema,
+  IntegrationSyncRequestSchema,
   IntegrationTypeIdSchema,
 } from '@/types/integrations';
 
@@ -87,37 +89,77 @@ describe('integration runtime payload schemas', () => {
 
   it('validates sync progress counters against totals', () => {
     const valid = IntegrationJobProgressSchema.safeParse({
-      phase: 'products',
-      phase_label: 'Importing products',
-      phases_total: 4,
-      phase_current: 2,
-      items_total: 100,
-      items_processed: 60,
-      items_failed: 3,
-      percent: 60,
-      last_entity_type: 'products',
+      version: 1,
+      provider: 'zoho',
+      scope: 'reference',
+      since: '2026-06-01T00:00:00.000Z',
+      phases: ['locations', 'customers', 'products'],
+      phases_total: 3,
+      phase_current: 1,
+      phase: 'locations',
+      phase_label: 'Importing locations from Zoho Books',
+      items_total: null,
+      items_processed: 0,
+      items_failed: 0,
+      pages_processed: 0,
+      cursor: {
+        phase: 'locations',
+        entity_type: 'locations',
+        page: 1,
+        per_page: 200,
+        has_more: true,
+        since: '2026-06-01T00:00:00.000Z',
+      },
+      counts: {
+        locations: {
+          entity_type: 'locations',
+          processed: 0,
+          failed: 0,
+          pages: 0,
+        },
+      },
+      started_at: '2026-06-01T00:00:00.000Z',
+      updated_at: '2026-06-01T00:05:00.000Z',
+      meta: {
+        max_pages: 3,
+      },
+      note: 'Initial import in progress',
     });
     const invalid = IntegrationJobProgressSchema.safeParse({
-      phases_total: 2,
-      phase_current: 3,
-      items_total: 10,
-      items_processed: 11,
+      phase: 'locations',
+      items_total: '10',
     });
 
     expect(valid.success).toBe(true);
     expect(invalid.success).toBe(false);
   });
 
+  it('allows sync requests to carry a temporary page cap', () => {
+    const result = IntegrationSyncRequestSchema.safeParse({
+      tenant_integration_id: '11111111-1111-1111-1111-111111111111',
+      job_type: 'manual',
+      max_pages: 3,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   it('accepts job summaries with non-negative aggregate counts', () => {
     const valid = IntegrationJobSummarySchema.safeParse({
-      brands: 12,
-      products: 240,
-      customers: 55,
-      orders: 18,
-      total_processed: 325,
-      total_failed: 2,
-      duration_ms: 4_500,
-      warnings: ['2 orders skipped because they were cancelled in the source system'],
+      provider: 'zoho',
+      scope: 'transactional',
+      since: '2026-06-01T00:00:00.000Z',
+      phases_completed: ['locations', 'customers'],
+      counts: {
+        locations: {
+          entity_type: 'locations',
+          processed: 1,
+          failed: 0,
+          pages: 1,
+        },
+      },
+      last_synced_at: '2026-06-12T09:07:00.000Z',
+      note: 'Transactional sync complete',
     });
     const invalid = IntegrationJobSummarySchema.safeParse({
       products: -1,
@@ -125,5 +167,28 @@ describe('integration runtime payload schemas', () => {
 
     expect(valid.success).toBe(true);
     expect(invalid.success).toBe(false);
+  });
+
+  it('accepts integration data flows with mapping metadata', () => {
+    const result = IntegrationDataFlowRecordSchema.safeParse({
+      id: '11111111-1111-1111-1111-111111111111',
+      tenant_integration_id: '22222222-2222-2222-2222-222222222222',
+      entity_type: 'orders',
+      direction: 'outbound',
+      trigger_type: 'event',
+      schedule: null,
+      webhook_id: null,
+      field_mappings: {
+        operational_mode: 'webhook_backed',
+        source_system: 'Zoho Books',
+      },
+      filters: {
+        region: 'West',
+      },
+      is_active: true,
+      last_run_at: null,
+    });
+
+    expect(result.success).toBe(true);
   });
 });

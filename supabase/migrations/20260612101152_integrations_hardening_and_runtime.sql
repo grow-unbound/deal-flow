@@ -134,19 +134,6 @@ BEGIN
     RAISE EXCEPTION 'tenant mismatch for integration child row' USING ERRCODE = '23514';
   END IF;
 
-  IF TG_TABLE_NAME = 'integration_data_flows' AND NEW.webhook_id IS NOT NULL THEN
-    IF NOT EXISTS (
-      SELECT 1
-      FROM app.integration_webhooks iw
-      WHERE iw.id = NEW.webhook_id
-        AND iw.tenant_id = NEW.tenant_id
-        AND iw.tenant_integration_id = NEW.tenant_integration_id
-        AND iw.deleted_at IS NULL
-    ) THEN
-      RAISE EXCEPTION 'integration webhook must belong to the same tenant integration' USING ERRCODE = '23514';
-    END IF;
-  END IF;
-
   RETURN NEW;
 END;
 $$;
@@ -172,6 +159,36 @@ DROP TRIGGER IF EXISTS integration_data_flows_tenant_consistency ON app.integrat
 CREATE TRIGGER integration_data_flows_tenant_consistency
   BEFORE INSERT OR UPDATE ON app.integration_data_flows
   FOR EACH ROW EXECUTE FUNCTION app._assert_integration_child_tenant_consistency();
+
+-- Validate webhook references specifically for integration_data_flows
+DROP FUNCTION IF EXISTS app._validate_integration_data_flow_webhook();
+CREATE OR REPLACE FUNCTION app._validate_integration_data_flow_webhook()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, app
+AS $$
+BEGIN
+  IF NEW.webhook_id IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1
+      FROM app.integration_webhooks iw
+      WHERE iw.id = NEW.webhook_id
+        AND iw.tenant_id = NEW.tenant_id
+        AND iw.tenant_integration_id = NEW.tenant_integration_id
+        AND iw.deleted_at IS NULL
+    ) THEN
+      RAISE EXCEPTION 'integration webhook must belong to the same tenant integration' USING ERRCODE = '23514';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS integration_data_flows_validate_webhook ON app.integration_data_flows;
+CREATE TRIGGER integration_data_flows_validate_webhook
+  BEFORE INSERT OR UPDATE ON app.integration_data_flows
+  FOR EACH ROW EXECUTE FUNCTION app._validate_integration_data_flow_webhook();
 
 -- ── Replace the broad secret getter with scoped admin/runtime helpers ──────
 DROP FUNCTION IF EXISTS app.get_tenant_integration_secret(uuid);

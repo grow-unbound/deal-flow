@@ -3,6 +3,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { FEATURE_FLAGS } from '@/constants';
 import { loadEstimateDocument } from '@/lib/estimates/load-tenant-estimate-composer';
 import { getFlag } from '@/lib/flags';
+import { PAGE_SIZE } from '@/lib/pagination';
 import {
   applySellerLocationScope,
   loadAccessibleSellerLocations,
@@ -154,7 +155,7 @@ export async function GET(req: NextRequest) {
     const tenantId = claims.tenant_id;
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
     const db = supabaseAdmin;
-    const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? '500'), 500);
+    const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? String(PAGE_SIZE.SELLER)), PAGE_SIZE.MAX);
 
     const scopedEstimatesQuery = applySellerLocationScope(
       db
@@ -191,6 +192,8 @@ export async function GET(req: NextRequest) {
         .lt('created_at', period.previous_end_exclusive) as any,
       claims,
     );
+    // Scope the converted query to the current period anchor window only.
+    // Without a date bound this would scan all ever-converted estimates.
     const scopedConvertedQuery = applySellerLocationScope(
       db
         .schema('app')
@@ -198,33 +201,47 @@ export async function GET(req: NextRequest) {
         .select('status, total_amount, created_at, accepted_at, updated_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
-        .in('status', ['converted', 'invoiced']) as any,
+        .in('status', ['converted', 'invoiced'])
+        .gte('updated_at', period.current_start)
+        .lte('updated_at', period.current_end_exclusive) as any,
       claims,
     );
 
-    const [buyersRes, estimatesRes, currentPeriodRes, previousPeriodRes, convertedPeriodRes] = await Promise.all([
-      db
-        .schema('app')
-        .from('buyers')
-        .select('id, business_name, geography')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null),
+    const [estimatesRes, currentPeriodRes, previousPeriodRes, convertedPeriodRes] = await Promise.all([
       scopedEstimatesQuery,
       scopedCurrentPeriodQuery,
       scopedPreviousPeriodQuery,
       scopedConvertedQuery,
     ]);
 
-    if (buyersRes.error || estimatesRes.error || currentPeriodRes.error || previousPeriodRes.error || convertedPeriodRes.error) {
+    if (estimatesRes.error || currentPeriodRes.error || previousPeriodRes.error || convertedPeriodRes.error) {
       console.error(
         '[GET /api/tenant/estimates] query error:',
-        buyersRes.error || estimatesRes.error || currentPeriodRes.error || previousPeriodRes.error || convertedPeriodRes.error,
+        estimatesRes.error || currentPeriodRes.error || previousPeriodRes.error || convertedPeriodRes.error,
       );
       return timedJson({ error: 'Failed to fetch estimates' }, { status: 500 });
     }
 
-    const buyers = (buyersRes.data ?? []) as BuyerRow[];
     const rawEstimates = (estimatesRes.data ?? []) as EstimateDbRow[];
+
+    // Scope the buyers lookup to only the buyer IDs referenced by the fetched estimates.
+    // Previously this loaded all buyers for the tenant on every request.
+    const estimateBuyerIds = Array.from(new Set(rawEstimates.map((e) => e.buyer_id)));
+    const buyersRes = estimateBuyerIds.length > 0
+      ? await db
+          .schema('app')
+          .from('buyers')
+          .select('id, business_name, geography')
+          .in('id', estimateBuyerIds)
+          .is('deleted_at', null)
+      : { data: [] as BuyerRow[], error: null };
+
+    if (buyersRes.error) {
+      console.error('[GET /api/tenant/estimates] buyers query error:', buyersRes.error);
+      return timedJson({ error: 'Failed to fetch estimates' }, { status: 500 });
+    }
+
+    const buyers = (buyersRes.data ?? []) as BuyerRow[];
 
     const buyerById = new Map<string, BuyerRow>();
     for (const buyer of buyers) {

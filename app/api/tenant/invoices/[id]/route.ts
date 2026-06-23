@@ -7,6 +7,7 @@ import { getFlag } from '@/lib/flags';
 import { buildInvoiceGstRows } from '@/lib/invoice-detail-gst-rows';
 import { effectiveInvoiceStatus } from '@/lib/invoice-status';
 import { loadInvoiceDocument } from '@/lib/invoices/load-tenant-invoice-composer';
+import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import {
   canAccessDocumentLocation,
   isSellerLocationSelectionAllowed,
@@ -289,21 +290,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     };
   });
 
-  const outstandingInvoices = buyerId
-    ? await db
-        .schema('app')
-        .from('invoices')
-        .select('outstanding_balance')
-        .eq('tenant_id', claims.tenant_id)
-        .eq('buyer_id', buyerId)
-        .is('deleted_at', null)
-    : { data: [] as Array<Record<string, unknown>> };
-
-  const creditUsed = ((outstandingInvoices.data ?? []) as Array<Record<string, unknown>>).reduce(
-    (sum, row) => sum + Number(row.outstanding_balance ?? 0),
-    0,
-  );
   const creditLimit = Number(buyer?.credit_limit ?? 0);
+  const creditSnapshot = buyerId
+    ? await loadBuyerCreditSnapshot(db as any, {
+        tenantId: claims.tenant_id,
+        buyerId,
+        creditLimit,
+      })
+    : null;
+  const creditUsed = creditSnapshot?.credit_used ?? 0;
 
   const geo = (buyer?.geography as Record<string, unknown> | null | undefined) ?? null;
   const sellerState = (tenant?.primary_state as string | null | undefined) ?? null;

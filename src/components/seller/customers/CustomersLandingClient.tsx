@@ -27,10 +27,12 @@ import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import {
-  useCustomersLanding,
+  useCustomersLandingInfinite,
   type CustomersLandingBuyer,
   type CustomersLandingResponse,
 } from '@/hooks/useCustomersLanding';
+import { useDebounce } from '@/hooks/useDebounce';
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 
 const InviteUserDialog = dynamic(
@@ -163,9 +165,6 @@ function CustomersLandingContent({
   const router = useRouter();
   const { creditEnabled } = useBusinessPolicy();
   const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
-  const { data, isLoading, isError } = useCustomersLanding(period, initialData);
-  const retainedData = useRetainedValue(data);
-  const landingData = data ?? retainedData;
   const [inviteOpen, setInviteOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
@@ -177,20 +176,34 @@ function CustomersLandingContent({
       search: '',
     },
   });
+  const activeChip = routeState.activeChip;
+  const sortBy = routeState.sortBy;
+  const search = routeState.search;
+
+  const debouncedSearch = useDebounce(search, 300);
+  const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useCustomersLandingInfinite(
+    period,
+    { search: debouncedSearch },
+  );
+  const { sentinelRef } = useInfiniteScroll({
+    hasMore: hasNextPage ?? false,
+    isLoading: isFetchingNextPage,
+    rootMargin: '400px',
+    onLoadMore: fetchNextPage,
+  });
   useRouteScrollRestoration({
     storageKey: 'seller-customers-landing',
     scopeKey: period,
     ready: !isLoading,
   });
-  const activeChip = routeState.activeChip;
-  const sortBy = routeState.sortBy;
-  const search = routeState.search;
 
-  const buyers = landingData?.buyers ?? [];
+  const firstPage = data?.pages[0];
+  const allBuyers = useMemo(() => data?.pages.flatMap((p) => p.buyers) ?? [], [data?.pages]);
+  const total = (firstPage as { total?: number | null } | undefined)?.total ?? firstPage?.kpis?.total ?? allBuyers.length;
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return buyers
+    const q = debouncedSearch.trim().toLowerCase();
+    return allBuyers
       .filter((buyer) => {
         if (activeChip === 'Tier A') return buyer.tier === 'A';
         if (activeChip === 'Tier B') return buyer.tier === 'B';
@@ -214,20 +227,22 @@ function CustomersLandingContent({
         const bDate = b.last_order_at ? Date.parse(b.last_order_at) : 0;
         return bDate - aDate;
       });
-  }, [buyers, activeChip, search, sortBy]);
+  }, [allBuyers, activeChip, debouncedSearch, sortBy]);
 
-  if (isLoading && !landingData) {
+  if (isLoading && !data) {
     return <CustomersLoadingSkeleton />;
   }
-  if (!landingData) return <CustomersLoadingSkeleton />;
+  if (!data) return <CustomersLoadingSkeleton />;
   const showRefreshingState = isLoading && !data;
+  const kpis = firstPage?.kpis;
+  const callouts = firstPage?.callouts;
 
   return (
     <PageWrap>
       <PageHeader
         eyebrow="Buyers"
         title="Customers"
-        subtitle={`${landingData.kpis.total} retailers across ${landingData.kpis.cohort_count} cohorts. ${landingData.kpis.active} active ${lowerLabel}. The Tier-A names buy most of revenue, and dues cluster there too.`}
+        subtitle={`${kpis?.total} retailers across ${kpis?.cohort_count} cohorts. ${kpis?.active} active ${lowerLabel}. The Tier-A names buy most of revenue, and dues cluster there too.`}
         horizon={horizonLabel}
         period={period}
         periodOptions={options}
@@ -250,25 +265,25 @@ function CustomersLandingContent({
         tiles={[
           {
             label: 'Active buyers',
-            value: `${landingData.kpis.active}/${landingData.kpis.total}`,
-            sub: `${landingData.kpis.active_pct}% of base ordered`,
+            value: `${kpis?.active}/${kpis?.total}`,
+            sub: `${kpis?.active_pct}% of base ordered`,
           },
           {
             label: `Spend · ${metricSuffix}`,
-            value: formatCompactInr(landingData.kpis.spend_mtd),
-            sub: `${landingData.kpis.spend_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(landingData.kpis.spend_growth_pct)}% vs last month`,
+            value: formatCompactInr(kpis?.spend_mtd ?? 0),
+            sub: `${(kpis?.spend_growth_pct ?? 0) >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis?.spend_growth_pct ?? 0)}% vs last month`,
             tone: 'accent',
           },
           {
             label: 'Dormant > 30d',
-            value: String(landingData.kpis.dormant_over_30d),
+            value: String(kpis?.dormant_over_30d),
             sub: "haven't ordered in a month",
             tone: 'warn',
           },
           {
             label: 'Outstanding dues',
-            value: formatCompactInr(landingData.kpis.outstanding_dues),
-            sub: `across ${landingData.kpis.buyers_with_dues} buyers`,
+            value: formatCompactInr(kpis?.outstanding_dues ?? 0),
+            sub: `across ${kpis?.buyers_with_dues} buyers`,
           },
         ]}
       />
@@ -278,8 +293,8 @@ function CustomersLandingContent({
           {
             kind: 'risk',
             eyebrow: 'Needs a call',
-            hint: `${landingData.callouts.needs_call.length}`,
-            rows: landingData.callouts.needs_call.map((buyer) => ({
+            hint: `${callouts?.needs_call.length}`,
+            rows: (callouts?.needs_call ?? []).map((buyer) => ({
               initials: buyer.avatar.initials,
               hue: buyer.avatar.hue,
               name: buyer.business_name,
@@ -294,7 +309,7 @@ function CustomersLandingContent({
             kind: 'info',
             eyebrow: 'Top spenders',
             hint: 'by GMV',
-            rows: landingData.callouts.top_spenders.map((buyer) => ({
+            rows: (callouts?.top_spenders ?? []).map((buyer) => ({
               initials: buyer.avatar.initials,
               hue: buyer.avatar.hue,
               name: buyer.business_name,
@@ -306,7 +321,7 @@ function CustomersLandingContent({
             kind: 'opportunity',
             eyebrow: 'Top risers',
             hint: 'fastest growth',
-            rows: landingData.callouts.top_risers.map((buyer) => ({
+            rows: (callouts?.top_risers ?? []).map((buyer) => ({
               initials: buyer.avatar.initials,
               hue: buyer.avatar.hue,
               name: buyer.business_name,
@@ -318,7 +333,7 @@ function CustomersLandingContent({
       />
 
       <FilterBar
-        count={`Showing ${filtered.length} of ${buyers.length}`}
+        count={`Showing ${filtered.length} of ${total}`}
         searchPlaceholder="Search buyer, city, GSTIN…"
         chips={CHIPS}
         activeChip={activeChip}
@@ -415,6 +430,14 @@ function CustomersLandingContent({
           );
         })}
       </LandingTable>
+
+      {/* Scroll sentinel — triggers next-page fetch 400px before list end */}
+      <div ref={sentinelRef} className="h-px" aria-hidden />
+      {isFetchingNextPage && (
+        <div className="flex justify-center py-4">
+          <Skeleton className="h-8 w-48 rounded-full" />
+        </div>
+      )}
 
       <InviteUserDialog open={inviteOpen} onOpenChange={setInviteOpen} />
       <AddCustomerDialog open={addOpen} onOpenChange={setAddOpen} />

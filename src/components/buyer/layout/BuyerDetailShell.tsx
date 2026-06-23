@@ -27,25 +27,30 @@ export function BuyerDetailShell({ title, searchHref, children }: BuyerDetailShe
   return (
     <>
       <header
-        className={cn(
-          'sticky top-0 z-[15] border-b border-[var(--border-1)] bg-[var(--bg-base)]/95 backdrop-blur-md transition-shadow',
-          collapsed && 'shadow-sm',
-        )}
+        className={cn('sticky top-0 z-[15] transition-shadow', collapsed && 'shadow-sm')}
+        style={{
+          borderBottom: '1px solid rgba(212, 204, 192, 0.6)',
+          background: 'rgba(250, 247, 242, 0.92)',
+          backdropFilter: 'blur(14px)',
+          WebkitBackdropFilter: 'blur(14px)',
+        }}
       >
         <div className="flex items-center gap-2 px-3 py-2.5">
           <button
             type="button"
             onClick={handleBack}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[var(--border-1)] bg-[var(--bg-surface)] text-[var(--fg-2)] active:bg-[var(--bg-recessed)]"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--border-1)] bg-[var(--bg-surface)] text-[var(--fg-2)] active:bg-[var(--bg-recessed)]"
             aria-label="Back"
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
           <h1
-            className={cn(
-              'min-w-0 flex-1 font-[var(--font-display)] font-bold text-[var(--fg-1)] leading-tight',
-              collapsed ? 'text-base' : 'text-lg',
-            )}
+            className="min-w-0 flex-1 font-semibold text-[var(--fg-1)] leading-tight"
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 'var(--b-text-header)',
+              letterSpacing: '-0.01em',
+            }}
           >
             {title}
           </h1>

@@ -115,7 +115,7 @@ export default function BuyerLocationPage(): React.ReactNode {
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
-        <h1 className="font-[var(--font-display)] text-lg font-semibold text-[var(--fg-1)]">Delivery location</h1>
+        <h1 className="font-semibold text-[var(--fg-1)]" style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-display)' }}>Delivery location</h1>
       </header>
 
       <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-[var(--fg-3)]">Search address</label>

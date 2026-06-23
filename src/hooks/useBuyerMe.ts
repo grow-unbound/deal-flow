@@ -8,9 +8,13 @@ export interface BuyerMeData {
   buyer_id: string;
   business_name: string;
   contact_name: string;
+  phone: string;
+  gstin: string | null;
   credit_limit: number;
   credit_used: number;
   open_orders_count: number;
+  seller_preview: boolean;
+  support_whatsapp_number: string | null;
   tenant: { id: string; name: string; slug: string };
   greeting_name?: string | null;
   order_features: {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery, keepPreviousData } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { CustomProductInput } from '@/lib/zod';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
@@ -225,6 +225,37 @@ export function useTenantProducts(period: SellerLandingPeriod = 'month', initial
       return res.json();
     },
     initialData: getSellerLandingInitialData(period, initialData),
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+  });
+}
+
+export interface ProductsInfiniteFilters {
+  search?: string;
+}
+
+export interface TenantProductsPage extends TenantProductsResponse {
+  nextCursor: string | null;
+  total: number | null;
+}
+
+export function useTenantProductsInfinite(
+  period: SellerLandingPeriod = 'month',
+  filters: ProductsInfiniteFilters = {},
+) {
+  return useInfiniteQuery({
+    queryKey: ['tenant-products-infinite', period, filters],
+    queryFn: async ({ pageParam }): Promise<TenantProductsPage> => {
+      const params = new URLSearchParams({ period });
+      if (pageParam) params.set('cursor', pageParam as string);
+      if (filters.search?.trim()) params.set('search', filters.search.trim());
+      const res = await apiFetch(`/api/tenant/products?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to fetch products');
+      return res.json() as Promise<TenantProductsPage>;
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
   });

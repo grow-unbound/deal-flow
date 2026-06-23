@@ -1,5 +1,6 @@
 import { getFlag, FLAGS } from '@/lib/flags';
 import { supabaseAdmin } from '@/lib/supabase';
+import { normalizeIntegrationJobErrorLog } from '@/lib/integrations/job-error-log';
 import {
   IntegrationAuthSchemaSchema,
   IntegrationCapabilitiesSchema,
@@ -42,6 +43,7 @@ type ZohoListResult<T> = {
 
 const ZOHO_TOKEN_URL = 'https://accounts.zoho.in/oauth/v2/token';
 const ZOHO_BOOKS_API_BASE = 'https://www.zohoapis.in/books/v3';
+const ZOHO_DEFAULT_PER_PAGE = 1000;
 
 const TYPE_TO_FAMILY_FLAG: Record<IntegrationTypeId, keyof typeof FLAGS> = {
   zoho_books: 'ZOHO_INTEGRATION',
@@ -83,6 +85,59 @@ function scrubSecretConfig(config: Record<string, unknown>) {
 
 function coerceRecord(v: unknown): Record<string, unknown> {
   return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : {};
+}
+
+function normalizeIntegrationProgressRecord(raw: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...raw };
+
+  const itemsTotal = typeof next.items_total === 'number' ? next.items_total : null;
+  const itemsProcessed = typeof next.items_processed === 'number' ? next.items_processed : null;
+  const itemsFailed = typeof next.items_failed === 'number' ? next.items_failed : null;
+
+  if (itemsTotal != null) {
+    const normalizedTotal = Math.max(itemsTotal, itemsProcessed ?? 0, itemsFailed ?? 0);
+    if (normalizedTotal !== itemsTotal) {
+      next.items_total = normalizedTotal;
+    }
+  }
+
+  const phasesTotal = typeof next.phases_total === 'number' ? next.phases_total : null;
+  const phaseCurrent = typeof next.phase_current === 'number' ? next.phase_current : null;
+  if (phasesTotal != null && phaseCurrent != null && phaseCurrent > phasesTotal) {
+    next.phases_total = phaseCurrent;
+  }
+
+  return next;
+}
+
+function getIntegrationsFunctionsBaseUrl() {
+  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/+$/, '');
+  if (!supabaseUrl) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL');
+  }
+  return `${supabaseUrl}/functions/v1`;
+}
+
+async function callIntegrationRuntime<T>(
+  path: string,
+  body: unknown,
+  authHeader?: string | null,
+): Promise<T> {
+  const response = await fetch(`${getIntegrationsFunctionsBaseUrl()}/${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(authHeader ? { Authorization: authHeader } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+
+  const json = await response.json().catch(() => null) as { ok?: boolean; error?: string; message?: string } | null;
+  if (!response.ok || json?.ok === false) {
+    throw new Error(json?.error ?? json?.message ?? `Request failed (${response.status})`);
+  }
+
+  return json as T;
 }
 
 async function assertTypeFlagEnabled(tenantId: string, typeId: IntegrationTypeId) {
@@ -149,7 +204,12 @@ async function fetchZohoPage(
             ? 'invoices'
             : 'estimates';
 
-  const json = await zohoGet(path, accessToken, orgId, { per_page: 200, page });
+  const json = await zohoGet(path, accessToken, orgId, {
+    per_page: ZOHO_DEFAULT_PER_PAGE,
+    page,
+    sort_column: 'last_modified_time',
+    sort_order: 'D',
+  });
   const rows = Array.isArray(json[responseKey]) ? (json[responseKey] as Record<string, unknown>[]) : [];
   const hasMore = Boolean((json.page_context as { has_more_page?: boolean } | undefined)?.has_more_page);
   return { rows, hasMore, page };
@@ -210,7 +270,7 @@ function buildInitialProgress(
     phases_total: entities.length,
     phase_current: 1,
     current_page: 1,
-    items_total: 0,
+    items_total: null,
     items_processed: 0,
     items_failed: 0,
     eta_seconds_remaining: null,
@@ -255,7 +315,7 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
       db.schema('catalog').from('integration_types').select('id, display_name, description, logo_url, auth_schema, capabilities, connectivity_mode, is_active').eq('is_active', true).order('display_name'),
       db.schema('app').from('tenant_integrations').select('id, tenant_id, integration_type_id, status, config, last_health_check_at, health_status, connected_at, connected_by, created_at, updated_at').eq('tenant_id', tenantId).is('deleted_at', null),
       db.schema('app').from('integration_sync_jobs').select('id, tenant_integration_id, job_type, status, progress, error_log, summary, started_at, completed_at, created_at').eq('tenant_id', tenantId).is('deleted_at', null).order('created_at', { ascending: false }),
-      db.schema('app').from('integration_data_flows').select('id, tenant_integration_id, entity_type, direction, trigger_type, schedule, webhook_id, is_active, last_run_at').eq('tenant_id', tenantId).is('deleted_at', null),
+      db.schema('app').from('integration_data_flows').select('id, tenant_integration_id, entity_type, direction, trigger_type, schedule, webhook_id, field_mappings, filters, is_active, last_run_at').eq('tenant_id', tenantId).is('deleted_at', null),
     ]);
 
   if (typeErr || integrationErr || jobErr || flowErr) {
@@ -304,17 +364,17 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
         latest_job: latestJob
           ? {
               ...latestJob,
-              progress: IntegrationProgressSchema.parse(coerceRecord(latestJob.progress)),
+              progress: IntegrationProgressSchema.parse(normalizeIntegrationProgressRecord(coerceRecord(latestJob.progress))),
               summary: latestJob.summary ? IntegrationJobSummarySchema.parse(coerceRecord(latestJob.summary)) : null,
-              error_log: Array.isArray(latestJob.error_log) ? latestJob.error_log : null,
+              error_log: normalizeIntegrationJobErrorLog(latestJob.error_log),
             }
           : null,
         recent_jobs: integrationId
           ? (recentJobsMap.get(integrationId) ?? []).map((row) => ({
               ...row,
-              progress: IntegrationProgressSchema.parse(coerceRecord(row.progress)),
+              progress: IntegrationProgressSchema.parse(normalizeIntegrationProgressRecord(coerceRecord(row.progress))),
               summary: row.summary ? IntegrationJobSummarySchema.parse(coerceRecord(row.summary)) : null,
-              error_log: Array.isArray(row.error_log) ? row.error_log : null,
+              error_log: normalizeIntegrationJobErrorLog(row.error_log),
             }))
           : [],
         active_flows: activeFlows,
@@ -325,93 +385,51 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
   return payload;
 }
 
-export async function testIntegrationConnection(tenantId: string, body: unknown) {
+export async function testIntegrationConnection(tenantId: string, body: unknown, authHeader?: string | null) {
   const parsed = IntegrationTestRequestSchema.parse(body);
   await assertTypeFlagEnabled(tenantId, parsed.integration_type_id);
 
-  if (parsed.integration_type_id === 'tally_prime' || parsed.integration_type_id === 'busy') {
-    return {
-      ok: true,
-      meta: {
-        organization_name: parsed.credentials.company_name ?? 'Local bridge',
-        discovered_counts: {},
-      },
-    };
-  }
-
-  const meta = await probeZohoConnection(parsed.integration_type_id, parsed.credentials as unknown as ZohoCredentials);
-  return { ok: true, meta };
+  return callIntegrationRuntime<{ ok: boolean; integration_type_id: string; meta: Record<string, unknown> }>(
+    'integrations-test',
+    parsed,
+    authHeader,
+  );
 }
 
-export async function connectTenantIntegration(tenantId: string, actorUserId: string, body: unknown) {
-  const db = requireAdminDb();
+export async function connectTenantIntegration(tenantId: string, actorUserId: string, body: unknown, authHeader?: string | null) {
   const parsed = IntegrationConnectRequestSchema.parse(body);
   await assertTypeFlagEnabled(tenantId, parsed.integration_type_id);
 
-  const test = await testIntegrationConnection(tenantId, parsed);
-  const now = new Date().toISOString();
+  await callIntegrationRuntime<{ ok: boolean; tenant_integration_id: string; status: string; health_status: string | null; config: Record<string, unknown>; meta: Record<string, unknown> }>(
+    'integrations-connect',
+    { ...parsed, tenant_id: tenantId, actor_user_id: actorUserId, config: scrubSecretConfig(parsed.config) },
+    authHeader,
+  );
 
-  const { data: existing } = await db
-    .schema('app')
-    .from('tenant_integrations')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .eq('integration_type_id', parsed.integration_type_id)
-    .is('deleted_at', null)
-    .maybeSingle();
+  return loadIntegrationsSettingsPayload(tenantId);
+}
 
-  const nextConfig = {
-    ...scrubSecretConfig(parsed.config),
-    organization_name: (test.meta as Record<string, unknown>).organization_name ?? null,
-    discovered_counts: (test.meta as Record<string, unknown>).discovered_counts ?? {},
-  };
-
-  let integrationId = existing?.id as string | undefined;
-  if (!integrationId) {
-    const { data, error } = await db
-      .schema('app')
-      .from('tenant_integrations')
-      .insert({
-        tenant_id: tenantId,
-        integration_type_id: parsed.integration_type_id,
-        status: 'connected',
-        config: nextConfig,
-        connected_at: now,
-        connected_by: actorUserId,
-        last_health_check_at: now,
-        health_status: 'ok',
-        created_by: actorUserId,
-        updated_by: actorUserId,
-      })
-      .select('id')
-      .single();
-    if (error || !data) throw error ?? new Error('Failed to create integration');
-    integrationId = data.id;
-  } else {
-    const { error } = await db
-      .schema('app')
-      .from('tenant_integrations')
-      .update({
-        status: 'connected',
-        config: nextConfig,
-        connected_at: now,
-        connected_by: actorUserId,
-        last_health_check_at: now,
-        health_status: 'ok',
-        updated_by: actorUserId,
-      })
-      .eq('id', integrationId)
-      .eq('tenant_id', tenantId);
-    if (error) throw error;
+export async function disconnectTenantIntegration(
+  tenantId: string,
+  actorUserId: string,
+  body: unknown,
+  authHeader?: string | null,
+) {
+  const record = coerceRecord(body);
+  const tenantIntegrationId = typeof record.tenant_integration_id === 'string' ? record.tenant_integration_id : null;
+  if (!tenantIntegrationId) {
+    throw new Error('tenant_integration_id is required');
   }
 
-  const { error: secretError } = await db.rpc('upsert_tenant_integration_secret', {
-    p_tenant_integration_id: integrationId!,
-    p_actor_user_id: actorUserId,
-    p_secret: parsed.credentials,
-    p_secret_name: `${parsed.integration_type_id}_${tenantId}`,
-  });
-  if (secretError) throw secretError;
+  await callIntegrationRuntime<{ ok: boolean; tenant_integration_id: string; status: string }>(
+    'integrations-disconnect',
+    {
+      tenant_integration_id: tenantIntegrationId,
+      tenant_id: tenantId,
+      actor_user_id: actorUserId,
+    },
+    authHeader,
+  );
 
   return loadIntegrationsSettingsPayload(tenantId);
 }
@@ -427,43 +445,43 @@ async function getTenantIntegrationWithSecret(db: DbClient, tenantIntegrationId:
     .single();
   if (error || !integration) throw error ?? new Error('Integration not found');
 
-  const { data: secret, error: secretError } = await db.rpc('get_tenant_integration_runtime_secret', {
-    p_tenant_integration_id: tenantIntegrationId,
-    p_expected_integration_type_id: integration.integration_type_id,
-  });
-  if (secretError) throw secretError;
+  const { data: secret, error: secretError } = await db
+    .schema('app')
+    .rpc('get_tenant_integration_runtime_secret', {
+      p_tenant_integration_id: tenantIntegrationId,
+      p_expected_integration_type_id: integration.integration_type_id,
+    });
+  if (secretError) throw new Error(secretError.message ?? 'Failed to load integration secret');
   return { integration, secret: secret as Record<string, unknown> | null };
 }
 
-export async function startIntegrationSync(tenantId: string, actorUserId: string, body: unknown) {
-  const db = requireAdminDb();
+export async function startIntegrationSync(tenantId: string, actorUserId: string, body: unknown, authHeader?: string | null) {
   const parsed = IntegrationSyncRequestSchema.parse(body);
-  const { integration } = await getTenantIntegrationWithSecret(db, parsed.tenant_integration_id, tenantId);
+  return callIntegrationRuntime<{ ok: boolean; job_id: string; tenant_integration_id: string; status: string; progress: Record<string, unknown> }>(
+    'integrations-sync',
+    { ...parsed, tenant_id: tenantId, actor_user_id: actorUserId },
+    authHeader,
+  );
+}
 
-  await assertTypeFlagEnabled(tenantId, integration.integration_type_id as IntegrationTypeId);
-  const entities = TYPE_TO_ENTITIES[integration.integration_type_id as IntegrationTypeId];
-  const initialProgress = buildInitialProgress(parsed.tenant_integration_id, entities, parsed.import_orders_since);
+export async function cancelIntegrationSync(tenantId: string, actorUserId: string, body: unknown, authHeader?: string | null) {
+  const record = coerceRecord(body);
+  const tenantIntegrationId = typeof record.tenant_integration_id === 'string' ? record.tenant_integration_id : null;
+  if (!tenantIntegrationId) {
+    throw new Error('tenant_integration_id is required');
+  }
 
-  const { data: job, error } = await db
-    .schema('app')
-    .from('integration_sync_jobs')
-    .insert({
-      tenant_id: tenantId,
-      tenant_integration_id: parsed.tenant_integration_id,
-      job_type: parsed.job_type,
-      status: 'queued',
-      progress: initialProgress,
-      triggered_by: actorUserId,
-      created_by: actorUserId,
-      updated_by: actorUserId,
-    })
-    .select('id')
-    .single();
-  if (error || !job) throw error ?? new Error('Failed to enqueue sync job');
+  const db = requireAdminDb();
+  const { error } = await db.schema('app').rpc('cancel_tenant_integration_sync_job', {
+    p_tenant_integration_id: tenantIntegrationId,
+    p_actor_user_id: actorUserId,
+  });
 
-  void runIntegrationSyncJob(job.id, tenantId, actorUserId);
+  if (error) {
+    throw new Error(error.message ?? 'Failed to cancel sync');
+  }
 
-  return job.id;
+  return loadIntegrationsSettingsPayload(tenantId);
 }
 
 export async function runIntegrationSyncJob(jobId: string, tenantId: string, actorUserId?: string | null) {
@@ -520,12 +538,10 @@ export async function runIntegrationSyncJob(jobId: string, tenantId: string, act
   const errors: Array<Record<string, unknown>> = [];
   for (let phaseIndex = 0; phaseIndex < entities.length; phaseIndex += 1) {
     const entity = entities[phaseIndex];
-    const entityTotal = await countZohoEntity(entity, credentials);
     let processed = 0;
     let page = 1;
     let brandSet = new Set<string>();
     let hasMore = true;
-    const phaseStartedMs = Date.now();
 
     while (hasMore) {
       const batch = await fetchZohoPage(entity, accessToken, credentials.org_id, page);
@@ -537,11 +553,6 @@ export async function runIntegrationSyncJob(jobId: string, tenantId: string, act
         }
       }
 
-      const elapsedSeconds = Math.max(1, Math.round((Date.now() - phaseStartedMs) / 1000));
-      const remaining = Math.max(0, entityTotal - processed);
-      const etaSecondsRemaining =
-        processed > 0 ? Math.round((remaining / processed) * elapsedSeconds) : null;
-
       await updateJob(db, jobId, {
         progress: IntegrationProgressSchema.parse({
           mode: 'initial_import',
@@ -551,13 +562,13 @@ export async function runIntegrationSyncJob(jobId: string, tenantId: string, act
           phase_current: phaseIndex + 1,
           current_entity: entity,
           current_page: page,
-          total_pages_estimate: Math.max(page, Math.ceil(entityTotal / 200) || 1),
-          items_total: entityTotal,
+          total_pages_estimate: batch.hasMore ? page + 1 : page,
+          items_total: null,
           items_processed: processed,
           items_failed: 0,
           last_batch_size: batch.rows.length,
           cursor: batch.hasMore ? String(page + 1) : null,
-          eta_seconds_remaining: etaSecondsRemaining,
+          eta_seconds_remaining: null,
           started_at: startedAt,
           updated_at: new Date().toISOString(),
         }),

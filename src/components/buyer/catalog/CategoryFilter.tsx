@@ -21,11 +21,12 @@ export function CategoryFilter({ categories, selected, onChange }: CategoryFilte
       <button
         onClick={() => onChange(null)}
         className={cn(
-          'flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap',
+          'flex-shrink-0 rounded-full px-3 py-1.5 font-medium transition-colors whitespace-nowrap',
           selected === null
             ? 'bg-[var(--teal-500)] text-white'
-            : 'bg-[var(--bg-recessed)] text-[var(--fg-2)] border border-[var(--border-1)]',
+            : 'bg-[var(--bg-recessed)] text-[var(--fg-2)] border border-[var(--cream-400)]',
         )}
+        style={{ fontSize: 'var(--b-text-label)' }}
         aria-pressed={selected === null}
       >
         All
@@ -35,20 +36,22 @@ export function CategoryFilter({ categories, selected, onChange }: CategoryFilte
           key={cat.id}
           onClick={() => onChange(selected === cat.id ? null : cat.id)}
           className={cn(
-            'flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap',
+            'flex-shrink-0 rounded-full px-3 py-1.5 font-medium transition-colors whitespace-nowrap',
             selected === cat.id
               ? 'bg-[var(--teal-500)] text-white'
-              : 'bg-[var(--bg-recessed)] text-[var(--fg-2)] border border-[var(--border-1)]',
+              : 'bg-[var(--bg-recessed)] text-[var(--fg-2)] border border-[var(--cream-400)]',
           )}
+          style={{ fontSize: 'var(--b-text-label)' }}
           aria-pressed={selected === cat.id}
         >
           {cat.name}
           {cat.product_count > 0 && (
             <span
               className={cn(
-                'ml-1.5 text-xs',
+                'ml-1.5',
                 selected === cat.id ? 'text-white/75' : 'text-[var(--fg-3)]',
               )}
+              style={{ fontSize: 'var(--b-text-eyebrow)' }}
             >
               {cat.product_count}
             </span>
