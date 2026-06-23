@@ -73,7 +73,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     const subtotal = items.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
     const total_amount = subtotal;
 
-    if (context.mode === 'preview') {
+    if (context.mode === 'preview' && !context.buyer_id) {
       return NextResponse.json({
         success: true,
         estimate_id: `preview-${Date.now()}`,
@@ -224,7 +224,7 @@ export async function GET(request: NextRequest) {
     }
     const context = profile.context;
 
-    if (context.mode === 'preview') {
+    if (context.mode === 'preview' && !context.buyer_id) {
       return NextResponse.json({ estimates: [] });
     }
 

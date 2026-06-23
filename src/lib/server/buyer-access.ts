@@ -124,9 +124,6 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
   }
 
   const normalizedPhone = normalizeIndianPhone(phone);
-  // Phone may be stored as '9490744841' (10 digits) OR '+919490744841' (+91 prefix).
-  // A suffix LIKE on the normalized 10-digit value matches both forms safely.
-  const phoneSuffix = `%${normalizedPhone}`;
   const db = supabaseAdmin;
 
   const [buyersRes, delegatesRes] = await Promise.all([
@@ -144,7 +141,7 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
         deleted_at,
         tenants!inner ( id, business_name, slug )
       `)
-      .like('phone', phoneSuffix)
+      .eq('phone', normalizedPhone)
       .eq('is_active', true)
       .is('deleted_at', null),
     db
@@ -169,7 +166,7 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
           tenants!inner ( id, business_name, slug )
         )
       `)
-      .like('phone', phoneSuffix)
+      .eq('phone', normalizedPhone)
       .eq('is_active', true)
       .is('deleted_at', null),
   ]);

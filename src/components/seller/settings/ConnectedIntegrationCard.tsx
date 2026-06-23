@@ -225,6 +225,36 @@ function getEntityCards(job: IntegrationSyncJob | null) {
     .filter((item): item is NonNullable<typeof item> => item !== null);
 }
 
+function getSyncablePhaseActions(integration: IntegrationCatalogItem) {
+  if (!integration.id.startsWith('zoho_')) return [];
+
+  const capabilities = integration.capabilities ?? {};
+  const actions: Array<{ id: string; label: string; description: string }> = [];
+  const add = (id: string, label: string, description: string) => {
+    actions.push({ id, label, description });
+  };
+
+  add('locations', integration.id === 'zoho_inventory' ? 'Warehouses' : 'Locations', 'Runs only the location import phase.');
+
+  if (capabilities.inbound_reference?.includes('customers')) {
+    add('customers', 'Customers', 'Runs only the customer import phase.');
+  }
+  if (capabilities.inbound_reference?.includes('products')) {
+    add('products', 'Products', 'Runs only the product import phase.');
+  }
+  if (capabilities.inbound_transactional?.includes('estimates')) {
+    add('estimates', 'Estimates', 'Runs only the estimate import phase.');
+  }
+  if (capabilities.inbound_transactional?.includes('orders')) {
+    add('orders', 'Sales Orders', 'Runs only the sales order import phase.');
+  }
+  if (capabilities.inbound_transactional?.includes('invoices')) {
+    add('invoices', 'Invoices', 'Runs only the invoice import phase.');
+  }
+
+  return actions;
+}
+
 function getSummaryChips(job: IntegrationSyncJob | null) {
   if (!job) return [];
 
@@ -268,10 +298,12 @@ interface ConnectedIntegrationCardProps {
   onOpenWizard: () => void;
   onDisconnect: () => void;
   onSyncNow: () => void;
+  onSyncPhase: (phaseId: string) => void;
   onStopSync: () => void;
   onRefresh: () => void;
   onRetryWebhooks: () => void;
   isSyncingNow?: boolean;
+  syncTargetPhase?: string | null;
   isStoppingSync?: boolean;
   isRetryingWebhooks?: boolean;
 }
@@ -283,10 +315,12 @@ export function ConnectedIntegrationCard({
   onOpenWizard,
   onDisconnect,
   onSyncNow,
+  onSyncPhase,
   onStopSync,
   onRefresh,
   onRetryWebhooks,
   isSyncingNow = false,
+  syncTargetPhase = null,
   isStoppingSync = false,
   isRetryingWebhooks = false,
 }: ConnectedIntegrationCardProps) {
@@ -327,6 +361,7 @@ export function ConnectedIntegrationCard({
   const currentRun = activeJob ?? latestVisibleRun;
   const currentRunPhaseEntries = currentRun ? getPhaseEntries(currentRun) : [];
   const currentRunProgress = currentRun ? getProgressText(currentRun) : null;
+  const syncablePhaseActions = getSyncablePhaseActions(integration);
 
   return (
     <section className="overflow-hidden rounded-2xl border border-cream-200 bg-white shadow-xs">
@@ -441,6 +476,11 @@ export function ConnectedIntegrationCard({
             <div className="mt-2 text-sm text-cream-700">
               {activeJob ? 'Polling every 30 seconds while active.' : 'Updates after every completed run.'}
             </div>
+            {latestFinishedRun?.status === 'cancelled' ? (
+              <div className="mt-3 rounded-lg border border-success-200 bg-success-50 px-3 py-2 text-sm leading-6 text-success-900">
+                Cancelled by user request. The worker stopped before the next fetch page.
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -543,6 +583,39 @@ export function ConnectedIntegrationCard({
                 </div>
               </div>
             )}
+
+            {isSellerAdmin && available && syncablePhaseActions.length > 0 ? (
+              <div className="rounded-2xl border border-cream-200 bg-white p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-cream-900">Run a single phase</div>
+                    <div className="mt-1 text-sm text-cream-700">
+                      Re-run just one entity phase to validate a specific slice without kicking off the full sync.
+                    </div>
+                  </div>
+                  <Badge variant="outline">Phase scoped</Badge>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {syncablePhaseActions.map((phase) => (
+                    <div key={phase.id} className="rounded-xl border border-cream-200 bg-cream-50 px-4 py-3">
+                      <div className="text-sm font-semibold text-cream-900">{phase.label}</div>
+                      <div className="mt-1 text-xs leading-5 text-cream-600">{phase.description}</div>
+                      <Button
+                        type="button"
+                        variant="accent"
+                        size="sm"
+                        className="mt-3"
+                        aria-label={`Sync now for ${phase.label}`}
+                        onClick={() => onSyncPhase(phase.id)}
+                        disabled={isSyncingNow || ti.status !== 'connected'}
+                      >
+                        {isSyncingNow && syncTargetPhase === phase.id ? 'Syncing…' : 'Sync now'}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="rounded-2xl border border-cream-200 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -678,6 +751,11 @@ export function ConnectedIntegrationCard({
                         <p className="mt-1 text-sm text-cream-700">
                           {job.progress?.phase_label ?? job.summary?.note ?? 'No phase details reported yet.'}
                         </p>
+                        {job.status === 'cancelled' ? (
+                          <p className="mt-2 rounded-lg border border-success-200 bg-success-50 px-3 py-2 text-sm leading-6 text-success-900">
+                            {job.progress?.note ?? 'Cancelled by user request. The worker stopped before the next fetch page.'}
+                          </p>
+                        ) : null}
                         {job.status === 'failed' ? (
                           <p className="mt-2 text-sm leading-6 text-warning-800">
                             {getLatestJobErrorMessage(job) ?? 'The worker failed before it could record a detailed error.'}

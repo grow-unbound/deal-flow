@@ -32,11 +32,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const context = profile.context;
     const buyer = profile.buyer;
-    let catalogs = context.mode === 'preview' || !buyer
+    let catalogs = !buyer
       ? []
       : await getVisibleBuyerCatalogs(context.tenant_id!, buyer.id!);
 
-    if (context.mode === 'preview') {
+    if (!buyer) {
       const previewRes = await supabaseAdmin
         .schema('app')
         .from('published_catalogs')

@@ -110,7 +110,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
     const tax_amount = Math.round(subtotal * 0.18);
     const total_amount = subtotal + tax_amount;
 
-    if (context.mode === 'preview') {
+    if (context.mode === 'preview' && !context.buyer_id) {
       return NextResponse.json({
         success: true,
         order_id: `preview-order-${Date.now()}`,

@@ -185,6 +185,7 @@ export interface StartImportInput extends TestConnectionInput {
 
 export interface SyncNowInput {
   tenant_integration_id: string;
+  phase?: string;
   max_pages?: number;
 }
 
@@ -198,8 +199,6 @@ interface ApiEnvelope<T> {
 }
 
 const ACTIVE_STATUSES: IntegrationSyncJobStatus[] = ['queued', 'running'];
-const TEST_SYNC_PAGE_LIMIT = 3;
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -540,7 +539,8 @@ async function postSyncNow(body: SyncNowInput): Promise<StartImportResult> {
   const res = await apiPost('/api/settings/integrations/sync', {
     tenant_integration_id: body.tenant_integration_id,
     job_type: 'manual',
-    max_pages: body.max_pages ?? TEST_SYNC_PAGE_LIMIT,
+    ...(body.phase ? { phase: body.phase } : {}),
+    ...(typeof body.max_pages === 'number' ? { max_pages: body.max_pages } : {}),
   });
   const json = await parseEnvelope<{ job_id?: string }>(res);
   if (!json.data) throw new Error('Sync did not start');

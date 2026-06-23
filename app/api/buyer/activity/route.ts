@@ -11,7 +11,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ items: [], next_cursor: null }, { status: 401 });
     }
 
-    if (profile.context.mode === 'preview' || !profile.buyer?.id) {
+    if (!profile.buyer?.id) {
       return NextResponse.json({ items: [], next_cursor: null });
     }
 

@@ -253,8 +253,8 @@ describe('settings integrations page', () => {
       currentTenantId: 'tenant-1',
       tenantProfile: { role: 'seller_admin' },
     });
-    apiFetchMock.mockResolvedValue(jsonResponse(buildIntegrationsPayload()));
-    apiPostMock.mockResolvedValue(jsonResponse({ ok: true }));
+    apiFetchMock.mockImplementation(async () => jsonResponse(buildIntegrationsPayload()));
+    apiPostMock.mockImplementation(async () => jsonResponse({ ok: true }));
   });
 
   it('renders feature-off state when umbrella integrations flag is disabled', async () => {
@@ -301,7 +301,7 @@ describe('integrations settings client', () => {
   });
 
   it('starts sync now without sending the legacy scope field', async () => {
-    apiFetchMock.mockResolvedValue(jsonResponse(buildIntegrationsPayload({ includeSummary: true })));
+    apiFetchMock.mockImplementation(async () => jsonResponse(buildIntegrationsPayload({ includeSummary: true })));
 
     renderWithQueryClient(<IntegrationsSettingsClient />);
 
@@ -311,7 +311,22 @@ describe('integrations settings client', () => {
       expect(apiPostMock).toHaveBeenCalledWith('/api/settings/integrations/sync', {
         tenant_integration_id: 'tenant-int-1',
         job_type: 'manual',
-        max_pages: 3,
+      });
+    });
+  });
+
+  it('starts a phase-scoped sync for a single entity', async () => {
+    apiFetchMock.mockImplementation(async () => jsonResponse(buildIntegrationsPayload({ includeSummary: true })));
+
+    renderWithQueryClient(<IntegrationsSettingsClient />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Sync now for Customers' }));
+
+    await waitFor(() => {
+      expect(apiPostMock).toHaveBeenCalledWith('/api/settings/integrations/sync', {
+        tenant_integration_id: 'tenant-int-1',
+        job_type: 'manual',
+        phase: 'customers',
       });
     });
   });
@@ -347,6 +362,7 @@ describe('integrations settings client', () => {
         onOpenWizard={vi.fn()}
         onDisconnect={vi.fn()}
         onSyncNow={vi.fn()}
+        onSyncPhase={vi.fn()}
         onStopSync={vi.fn()}
         onRefresh={vi.fn()}
         onRetryWebhooks={vi.fn()}
@@ -412,6 +428,7 @@ describe('integrations settings client', () => {
         onOpenWizard={vi.fn()}
         onDisconnect={vi.fn()}
         onSyncNow={vi.fn()}
+        onSyncPhase={vi.fn()}
         onStopSync={vi.fn()}
         onRefresh={vi.fn()}
         onRetryWebhooks={vi.fn()}
@@ -422,7 +439,7 @@ describe('integrations settings client', () => {
     expect(screen.queryByRole('button', { name: 'Sync now' })).not.toBeInTheDocument();
   });
 
-  it('marks cancelled runs clearly in the card header', () => {
+  it('marks cancelled runs clearly in history', () => {
     render(
       <ConnectedIntegrationCard
         integration={{
@@ -474,6 +491,7 @@ describe('integrations settings client', () => {
         onOpenWizard={vi.fn()}
         onDisconnect={vi.fn()}
         onSyncNow={vi.fn()}
+        onSyncPhase={vi.fn()}
         onStopSync={vi.fn()}
         onRefresh={vi.fn()}
         onRetryWebhooks={vi.fn()}
@@ -481,6 +499,119 @@ describe('integrations settings client', () => {
     );
 
     expect(screen.getByText('Cancelled')).toBeInTheDocument();
+    expect(screen.getByText('Cancelled by user request. The worker stopped before the next fetch page.')).toBeInTheDocument();
+  });
+
+  it('shows phase-scoped sync controls for Zoho integrations', () => {
+    render(
+      <ConnectedIntegrationCard
+        integration={{
+          id: 'zoho_books',
+          display_name: 'Zoho Books',
+          description: 'Sync orders and invoices with Zoho Books.',
+          family_flag: 'ZOHO_INTEGRATION',
+          connectivity_mode: 'cloud',
+          auth_schema: { fields: [] },
+          capabilities: {
+            inbound_reference: ['brands', 'products', 'customers'],
+            inbound_transactional: ['estimates', 'orders', 'invoices'],
+          },
+          tenant_integration: {
+            id: 'tenant-int-1',
+            status: 'connected',
+            health_status: 'ok',
+            connected_at: '2026-06-10T11:00:00.000Z',
+            last_health_check_at: '2026-06-12T08:50:00.000Z',
+            config: { org_id: 'org-123' },
+            active_job: null,
+            sync_history: [],
+            data_flows: [],
+          },
+        }}
+        available
+        isSellerAdmin
+        onOpenWizard={vi.fn()}
+        onDisconnect={vi.fn()}
+        onSyncNow={vi.fn()}
+        onSyncPhase={vi.fn()}
+        onStopSync={vi.fn()}
+        onRefresh={vi.fn()}
+        onRetryWebhooks={vi.fn()}
+        syncTargetPhase={null}
+      />,
+    );
+
+    expect(screen.getByText('Run a single phase')).toBeInTheDocument();
+    expect(screen.getByText('Customers')).toBeInTheDocument();
+    expect(screen.getByText('Products')).toBeInTheDocument();
+    expect(screen.getByText('Sales Orders')).toBeInTheDocument();
+  });
+
+  it('only marks the selected phase as syncing while a phase sync is pending', () => {
+    render(
+      <ConnectedIntegrationCard
+        integration={{
+          id: 'zoho_books',
+          display_name: 'Zoho Books',
+          description: 'Sync orders and invoices with Zoho Books.',
+          family_flag: 'ZOHO_INTEGRATION',
+          connectivity_mode: 'cloud',
+          auth_schema: { fields: [] },
+          capabilities: {
+            inbound_reference: ['brands', 'products', 'customers'],
+            inbound_transactional: ['estimates', 'orders', 'invoices'],
+          },
+          tenant_integration: {
+            id: 'tenant-int-1',
+            status: 'syncing',
+            health_status: 'ok',
+            connected_at: '2026-06-10T11:00:00.000Z',
+            last_health_check_at: '2026-06-12T08:50:00.000Z',
+            config: { org_id: 'org-123' },
+            active_job: {
+              id: 'job-2',
+              job_type: 'manual',
+              status: 'running',
+              progress: {
+                phase: 'customers',
+                phase_label: 'Importing customers...',
+                phases_total: 1,
+                phase_current: 1,
+                items_total: 0,
+                items_processed: 0,
+                items_failed: 0,
+                pages_processed: 0,
+                counts: {
+                  customers: { entity_type: 'customers', processed: 0, failed: 0, pages: 0 },
+                },
+              },
+              error_log: [],
+              summary: null,
+              started_at: '2026-06-12T09:00:00.000Z',
+              completed_at: null,
+              created_at: '2026-06-12T08:59:00.000Z',
+            },
+            sync_history: [],
+            data_flows: [],
+          },
+        }}
+        available
+        isSellerAdmin
+        onOpenWizard={vi.fn()}
+        onDisconnect={vi.fn()}
+        onSyncNow={vi.fn()}
+        onSyncPhase={vi.fn()}
+        onStopSync={vi.fn()}
+        onRefresh={vi.fn()}
+        onRetryWebhooks={vi.fn()}
+        isSyncingNow
+        syncTargetPhase="customers"
+      />,
+    );
+
+    expect(screen.getByText('Syncing…')).toBeInTheDocument();
+    expect(screen.getByText('Products')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sync now for Products' })).toBeDisabled();
   });
 
   it('surfaces the latest sync failure reason', () => {
@@ -539,6 +670,7 @@ describe('integrations settings client', () => {
         onOpenWizard={vi.fn()}
         onDisconnect={vi.fn()}
         onSyncNow={vi.fn()}
+        onSyncPhase={vi.fn()}
         onStopSync={vi.fn()}
         onRefresh={vi.fn()}
         onRetryWebhooks={vi.fn()}
