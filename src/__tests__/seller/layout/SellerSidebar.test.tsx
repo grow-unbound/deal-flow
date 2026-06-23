@@ -61,6 +61,7 @@ function makeFeatures(overrides: Partial<SellerShellFeatureAvailability> = {}): 
     cohorts: true,
     pricingEngine: true,
     catalogPublishing: true,
+    buyerApp: true,
     estimates: true,
     salesOrders: true,
     invoices: true,
