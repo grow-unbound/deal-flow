@@ -4,11 +4,8 @@ import * as React from 'react';
 import { ClipboardList } from 'lucide-react';
 import { TransactionCard } from './TransactionCard';
 import { OrderRowSkeleton } from './OrderRowSkeleton';
-import type { OrderSummary } from './TransactionCard';
-
-interface OrdersApiResponse {
-  orders: OrderSummary[];
-}
+import { useBuyerOrdersInfinite } from '@/hooks/useBuyerOrders';
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 
 function EmptyState() {
   return (
@@ -31,44 +28,33 @@ function EmptyState() {
 }
 
 export function OrdersTab() {
-  const [orders, setOrders] = React.useState<OrderSummary[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useBuyerOrdersInfinite();
 
-  React.useEffect(() => {
-    let cancelled = false;
+  const { sentinelRef } = useInfiniteScroll({
+    hasMore: hasNextPage ?? false,
+    isLoading: isFetchingNextPage,
+    rootMargin: '400px',
+    onLoadMore: fetchNextPage,
+  });
 
-    async function fetchOrders() {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch('/api/buyer/orders');
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({})) as { error?: string };
-          throw new Error(body.error ?? `HTTP ${res.status}`);
-        }
-        const data = await res.json() as OrdersApiResponse;
-        if (!cancelled) {
-          setOrders(data.orders ?? []);
-        }
-      } catch (err: unknown) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load orders');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
+  const allOrders = React.useMemo(
+    () => data?.pages.flatMap((p) => p.orders) ?? [],
+    [data?.pages],
+  );
 
-    void fetchOrders();
-    return () => { cancelled = true; };
-  }, []);
-
-  if (loading) {
+  if (isLoading && !data) {
     return <OrderRowSkeleton count={3} />;
   }
 
-  if (error) {
+  if (isError && !data) {
     return (
       <div
         style={{
@@ -81,20 +67,24 @@ export function OrdersTab() {
           textAlign: 'center',
         }}
       >
-        <p style={{ fontSize: 'var(--b-text-body)', color: 'var(--danger-500)', margin: 0 }}>{error}</p>
+        <p style={{ fontSize: 'var(--b-text-body)', color: 'var(--danger-500)', margin: 0 }}>
+          {error instanceof Error ? error.message : 'Failed to load orders'}
+        </p>
       </div>
     );
   }
 
-  if (orders.length === 0) {
+  if (allOrders.length === 0) {
     return <EmptyState />;
   }
 
   return (
     <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {orders.map((order) => (
+      {allOrders.map((order) => (
         <TransactionCard key={order.id} order={order} />
       ))}
+      <div ref={sentinelRef} style={{ height: 1 }} aria-hidden />
+      {isFetchingNextPage && <OrderRowSkeleton count={2} />}
     </div>
   );
 }

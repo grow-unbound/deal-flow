@@ -5,6 +5,7 @@ import type { BuyerAppMode } from '@/types/buyer';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { fetchWhatsappNotificationContext } from '@/lib/server/notification-context';
 import { sendOrderReceivedBuyer, sendOrderReceivedSeller } from '@/lib/server/whatsapp';
+import { PAGE_SIZE, encodeCursor, decodeCursor } from '@/lib/pagination';
 
 export interface BuyerOrderPlaceRequest {
   items: Array<{
@@ -66,6 +67,8 @@ export interface BuyerOrder {
 export interface BuyerOrdersResponse {
   mode: BuyerAppMode;
   orders: BuyerOrder[];
+  nextCursor: string | null;
+  total: number | null;
   seller_preview?: boolean;
   preview_message?: string;
 }
@@ -253,6 +256,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       const payload: BuyerOrdersResponse = {
         mode: 'preview',
         orders: [],
+        nextCursor: null,
+        total: null,
         seller_preview: true,
       };
       return NextResponse.json(payload);
@@ -266,9 +271,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const db = supabaseAdmin;
     const tenantId = context.tenant_id;
-    const limit = Math.min(Number(request.nextUrl.searchParams.get('limit') ?? '20'), 100);
+    const { searchParams } = request.nextUrl;
+    const reqLimit = Math.min(Number(searchParams.get('limit') ?? PAGE_SIZE.BUYER), PAGE_SIZE.MAX);
+    const cursorParam = searchParams.get('cursor');
 
-    const ordersRes = await db
+    let query = db
       .schema('app')
       .from('orders')
       .select('id, order_number, status, total_amount, placed_at, catalog_id')
@@ -276,14 +283,38 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .eq('buyer_id', buyerId)
       .is('deleted_at', null)
       .order('placed_at', { ascending: false })
-      .limit(limit);
+      .order('id', { ascending: false })
+      .limit(reqLimit + 1);
+
+    if (cursorParam) {
+      const { created_at, id } = decodeCursor(cursorParam);
+      query = query.or(`placed_at.lt.${created_at},and(placed_at.eq.${created_at},id.lt.${id})`);
+    }
+
+    const [ordersRes, countRes] = await Promise.all([
+      query,
+      db
+        .schema('app')
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .eq('buyer_id', buyerId)
+        .is('deleted_at', null),
+    ]);
 
     if (ordersRes.error) {
       console.error('[GET /api/buyer/orders] orders query error:', ordersRes.error);
       return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 });
     }
 
-    const orders = (ordersRes.data ?? []) as OrderRow[];
+    const rawOrders = (ordersRes.data ?? []) as OrderRow[];
+    const hasNextPage = rawOrders.length > reqLimit;
+    const orders = hasNextPage ? rawOrders.slice(0, reqLimit) : rawOrders;
+    const lastOrder = orders.at(-1);
+    const nextCursor = hasNextPage && lastOrder
+      ? encodeCursor({ created_at: lastOrder.placed_at, id: lastOrder.id })
+      : null;
+
     const orderIds = orders.map((o) => o.id);
     const catalogIds = Array.from(
       new Set(orders.map((o) => o.catalog_id).filter((id): id is string => id !== null))
@@ -330,6 +361,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         catalog_name: order.catalog_id ? (catalogNameById.get(order.catalog_id) ?? null) : null,
         items_count: countByOrder.get(order.id) ?? 0,
       })),
+      nextCursor,
+      total: countRes.count ?? null,
     };
 
     return NextResponse.json(payload);
