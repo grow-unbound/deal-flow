@@ -99,9 +99,9 @@ RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = app AS $$
   SELECT
     p_tenant_id,
     COUNT(*),
-    COALESCE(SUM(amount_due) FILTER (WHERE status IN ('sent', 'partial')), 0),
-    COUNT(*) FILTER (WHERE status IN ('sent', 'partial') AND due_date < now()),
-    COALESCE(SUM(amount_due) FILTER (WHERE status IN ('sent', 'partial') AND due_date < now()), 0),
+    COALESCE(SUM(outstanding_balance) FILTER (WHERE status IN ('sent', 'overdue')), 0),
+    COUNT(*) FILTER (WHERE status = 'overdue'),
+    COALESCE(SUM(outstanding_balance) FILTER (WHERE status = 'overdue'), 0),
     COUNT(*) FILTER (WHERE status = 'paid'),
     now()
   FROM app.invoices
