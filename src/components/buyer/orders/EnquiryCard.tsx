@@ -63,7 +63,7 @@ export function EnquiryCard({ estimate }: EnquiryCardProps) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <span
           style={{
-            fontSize: 'var(--yk-text-base)',
+            fontSize: 'var(--b-text-body)',
             fontFamily: 'var(--font-mono)',
             color: 'var(--fg-1)',
             letterSpacing: '0.02em',
@@ -73,7 +73,7 @@ export function EnquiryCard({ estimate }: EnquiryCardProps) {
         </span>
         <span
           style={{
-            fontSize: 'var(--yk-text-xs)',
+            fontSize: 'var(--b-text-eyebrow)',
             fontWeight: 600,
             padding: '2px 8px',
             borderRadius: 100,
@@ -89,7 +89,7 @@ export function EnquiryCard({ estimate }: EnquiryCardProps) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <span
           style={{
-            fontSize: 'var(--yk-text-sm)',
+            fontSize: 'var(--b-text-sub)',
             color: 'var(--fg-3)',
             maxWidth: '60%',
             overflow: 'hidden',
@@ -99,14 +99,14 @@ export function EnquiryCard({ estimate }: EnquiryCardProps) {
         >
           {estimate.notes ?? '—'}
         </span>
-        <span style={{ fontSize: 'var(--yk-text-sm)', color: 'var(--fg-3)' }}><span className="tabular-inline">{formatDate(estimate.created_at)}</span></span>
+        <span style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}><span className="tabular-inline">{formatDate(estimate.created_at)}</span></span>
       </div>
 
       {/* Row 3: total */}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <span
           style={{
-            fontSize: 'var(--yk-text-md)',
+            fontSize: 'var(--b-text-header)',
             fontFamily: 'var(--font-mono)',
             fontWeight: 600,
             color: 'var(--fg-1)',

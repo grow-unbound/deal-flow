@@ -100,8 +100,8 @@ function AccountRow({
     >
       <RowIcon icon={icon} tone={tone} />
       <div className="min-w-0 flex-1">
-        <div className="text-[1.05rem] font-semibold leading-tight text-cream-900">{title}</div>
-        <div className={`mt-1 text-sm leading-5 text-cream-600 ${mono ? 'font-mono' : ''}`}>{subtitle}</div>
+        <div className="font-semibold leading-tight text-cream-900" style={{ fontSize: 'var(--b-text-body)' }}>{title}</div>
+        <div className={`mt-1 leading-5 text-cream-600 ${mono ? 'font-mono' : ''}`} style={{ fontSize: 'var(--b-text-sub)' }}>{subtitle}</div>
       </div>
       {action}
     </button>
@@ -119,9 +119,9 @@ function SheetField({
 }) {
   return (
     <div className="space-y-2">
-      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">{label}</p>
+      <p className="font-semibold uppercase text-cream-600" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em' }}>{label}</p>
       {children}
-      {hint ? <p className="text-sm text-cream-600">{hint}</p> : null}
+      {hint ? <p className="text-cream-600" style={{ fontSize: 'var(--b-text-sub)' }}>{hint}</p> : null}
     </div>
   );
 }
@@ -164,7 +164,7 @@ function BuyerSheetPhoneInput({
 }) {
   return (
     <div className="flex h-14 items-stretch overflow-hidden rounded-[18px] border border-cream-300 bg-white transition-colors duration-fast ease-standard focus-within:border-ember-400 focus-within:ring-2 focus-within:ring-ember-400/20">
-      <span className="inline-flex items-center border-r border-cream-300 bg-[#f6efe4] px-4 text-lg font-medium text-cream-700">
+      <span className="inline-flex items-center border-r border-cream-300 bg-[#f6efe4] px-4 font-medium text-cream-700" style={{ fontSize: 'var(--b-text-body)' }}>
         +91
       </span>
       <input
@@ -174,7 +174,8 @@ function BuyerSheetPhoneInput({
         onChange={(e) => onChange(normalizePhoneInput(e.target.value))}
         maxLength={10}
         placeholder={placeholder}
-        className="w-full border-0 bg-transparent px-4 font-sans text-lg text-cream-900 placeholder:text-cream-500 focus:outline-none focus:ring-0"
+        className="w-full border-0 bg-transparent px-4 font-sans text-cream-900 placeholder:text-cream-500 focus:outline-none focus:ring-0"
+        style={{ fontSize: 'var(--b-text-body)' }}
       />
     </div>
   );
@@ -208,10 +209,10 @@ function BusinessDetailsSheet({
   return (
     <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[44vh]">
       <SheetHeader className="border-b-0 px-5 pb-2 pt-0">
-        <SheetTitle className="font-display text-[2rem] font-semibold leading-[1.02] tracking-[-0.03em] text-cream-950">
+        <SheetTitle className="font-display font-semibold leading-[1.02] tracking-[-0.025em] text-cream-950" style={{ fontSize: 'var(--b-text-page)', fontFamily: 'var(--font-display)' }}>
           Edit business details
         </SheetTitle>
-        <p className="mt-3 max-w-[32rem] text-[15px] leading-7 text-cream-700">
+        <p className="mt-3 max-w-[32rem] leading-6 text-cream-700" style={{ fontSize: 'var(--b-text-body)' }}>
           These details appear on every order placed and on invoices issued by your distributors.
         </p>
       </SheetHeader>
@@ -221,7 +222,7 @@ function BusinessDetailsSheet({
             value={businessName}
             onChange={(e) => setBusinessName(e.target.value)}
             maxLength={200}
-            className="h-14 rounded-[18px] border-cream-300 bg-white px-4 text-lg"
+            className="h-14 rounded-[18px] border-cream-300 bg-white px-4" style={{ fontSize: 'var(--b-text-body)' }}
           />
         </SheetField>
         <SheetField label="Contact name">
@@ -229,7 +230,7 @@ function BusinessDetailsSheet({
             value={contactName}
             onChange={(e) => setContactName(e.target.value)}
             maxLength={200}
-            className="h-14 rounded-[18px] border-cream-300 bg-white px-4 text-lg"
+            className="h-14 rounded-[18px] border-cream-300 bg-white px-4" style={{ fontSize: 'var(--b-text-body)' }}
           />
         </SheetField>
         <SheetField label="GSTIN" hint="Leave blank if your business is not GST registered.">
@@ -237,7 +238,7 @@ function BusinessDetailsSheet({
             value={gstin}
             onChange={(e) => setGstin(e.target.value.toUpperCase())}
             maxLength={15}
-            className="h-14 rounded-[18px] border-cream-300 bg-white px-4 text-lg"
+            className="h-14 rounded-[18px] border-cream-300 bg-white px-4" style={{ fontSize: 'var(--b-text-body)' }}
           />
         </SheetField>
       </SheetBody>
@@ -245,7 +246,7 @@ function BusinessDetailsSheet({
         <Button
           variant="secondary"
           size="lg"
-          className="h-14 flex-1 rounded-[18px] border-cream-300 bg-white text-lg"
+          className="h-14 flex-1 rounded-[18px] border-cream-300 bg-white" style={{ fontSize: 'var(--b-text-body)' }}
           onClick={() => onOpenChange(false)}
           disabled={pending}
         >
@@ -253,7 +254,7 @@ function BusinessDetailsSheet({
         </Button>
         <Button
           size="lg"
-          className="h-14 flex-1 rounded-[18px] text-lg"
+          className="h-14 flex-1 rounded-[18px]" style={{ fontSize: 'var(--b-text-body)' }}
           onClick={() => onSave({ business_name: businessName, contact_name: contactName, gstin })}
           disabled={pending}
         >
@@ -289,10 +290,10 @@ function PhoneSheet({
   return (
     <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[32vh]">
       <SheetHeader className="border-b-0 px-5 pb-2 pt-0">
-        <SheetTitle className="font-display text-[2rem] font-semibold leading-[1.02] tracking-[-0.03em] text-cream-950">
+        <SheetTitle className="font-display font-semibold leading-[1.02] tracking-[-0.025em] text-cream-950" style={{ fontSize: 'var(--b-text-page)', fontFamily: 'var(--font-display)' }}>
           Phone number
         </SheetTitle>
-        <p className="mt-2 text-[15px] leading-7 text-cream-700">
+        <p className="mt-2 leading-6 text-cream-700" style={{ fontSize: 'var(--b-text-body)' }}>
           OTP will be sent to this new number from your next login.
         </p>
       </SheetHeader>
@@ -305,7 +306,7 @@ function PhoneSheet({
         <Button
           variant="secondary"
           size="lg"
-          className="h-14 flex-1 rounded-[18px] border-cream-300 bg-white text-lg"
+          className="h-14 flex-1 rounded-[18px] border-cream-300 bg-white" style={{ fontSize: 'var(--b-text-body)' }}
           onClick={() => onOpenChange(false)}
           disabled={pending}
         >
@@ -313,7 +314,7 @@ function PhoneSheet({
         </Button>
         <Button
           size="lg"
-          className="h-14 flex-1 rounded-[18px] text-lg"
+          className="h-14 flex-1 rounded-[18px]" style={{ fontSize: 'var(--b-text-body)' }}
           onClick={() => onSave({ phone })}
           disabled={pending}
         >
@@ -349,10 +350,10 @@ function CreditLimitSheet({
   return (
     <ProfileSheetFrame open={open} onOpenChange={onOpenChange} className="min-h-[42vh]">
       <SheetHeader className="border-b-0 px-5 pb-2 pt-0">
-        <SheetTitle className="font-display text-[2rem] font-semibold leading-[1.02] tracking-[-0.03em] text-cream-950">
+        <SheetTitle className="font-display font-semibold leading-[1.02] tracking-[-0.025em] text-cream-950" style={{ fontSize: 'var(--b-text-page)', fontFamily: 'var(--font-display)' }}>
           Credit used
         </SheetTitle>
-        <p className="mt-2 text-[15px] leading-7 text-cream-700">
+        <p className="mt-2 leading-6 text-cream-700" style={{ fontSize: 'var(--b-text-body)' }}>
           These unpaid invoices add up to your current credit usage.
         </p>
       </SheetHeader>
@@ -504,16 +505,19 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-[#f8f4ed] pb-8">
-      <div className="bg-[linear-gradient(135deg,#21433B_0%,#17372F_100%)] px-4 pb-8 pt-8">
+      <div className="px-4 pb-8 pt-8" style={{ background: 'linear-gradient(135deg, #346A5C 0%, #1F3A34 60%, #142823 100%)' }}>
         <div className="flex items-center gap-4">
-          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-[3px] border-[#efc58d] bg-[#c97539] text-[2rem] font-semibold tracking-tight text-white">
+          <div
+            className="flex shrink-0 items-center justify-center rounded-full font-semibold tracking-tight text-white"
+            style={{ width: 64, height: 64, background: 'var(--ember-400)', border: '2px solid var(--ember-200)', fontSize: 'var(--b-text-kpi)', fontFamily: 'var(--font-display)', fontWeight: 500 }}
+          >
             {initials}
           </div>
           <div className="min-w-0">
-            <h1 className="font-display text-[2rem] font-semibold leading-none tracking-[-0.02em] text-white">
+            <h1 className="leading-none text-white" style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-kpi)', fontWeight: 500, letterSpacing: '-0.015em' }}>
               {data.greeting_name || data.contact_name || data.business_name}
             </h1>
-            <p className="mt-3 text-base font-normal text-white/80">{data.business_name}</p>
+            <p className="mt-2 font-normal text-white/70" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-label)' }}>{data.business_name}</p>
           </div>
         </div>
       </div>
@@ -527,7 +531,7 @@ export default function ProfilePage() {
       ) : null}
 
       <div className="px-4 pt-5">
-        <p className="px-2 text-xs font-semibold uppercase tracking-[0.16em] text-cream-600">Account</p>
+        <p className="px-2 font-semibold uppercase text-cream-600" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.18em' }}>Account</p>
         <div className="mt-3 overflow-hidden rounded-[24px] border border-cream-200 bg-white">
           <div className="border-b border-cream-200">
             <AccountRow

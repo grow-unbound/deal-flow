@@ -37,18 +37,19 @@ export function BuyerHomeLandingHeader({
             <div className="flex items-start justify-between px-5 pb-2 pt-6">
               <div className="min-w-0 flex-1 pr-4">
                 <p
-                  className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--cream-500)]"
+                  className="font-semibold uppercase text-[var(--cream-700)]"
+                  style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.18em' }}
                 >
                   {greetingLine}
                 </p>
                 <h1
-                  className="mt-2 text-[var(--yk-text-3xl)] font-extrabold leading-[0.95] tracking-[-0.025em] text-[var(--cream-900)]"
-                  style={{ fontFamily: 'var(--font-display)' }}
+                  className="mt-2 font-semibold leading-[0.95] text-[var(--cream-900)]"
+                  style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-page)', letterSpacing: '-0.025em' }}
                 >
                   {title}
                 </h1>
                 {previewNote ? (
-                  <p className="mt-2 max-w-[30rem] text-[var(--yk-text-base)] font-medium leading-6 tracking-[-0.01em] text-[var(--cream-500)]">
+                  <p className="mt-2 max-w-[30rem] font-medium leading-6 tracking-[-0.01em] text-[var(--cream-500)]" style={{ fontSize: 'var(--b-text-body)' }}>
                     {previewNote}
                   </p>
                 ) : null}
@@ -61,8 +62,8 @@ export function BuyerHomeLandingHeader({
         {collapsed ? (
           <div className="px-5 py-3">
             <p
-              className="truncate text-[var(--yk-text-lg)] font-bold tracking-[-0.02em] text-[var(--cream-900)]"
-              style={{ fontFamily: 'var(--font-display)' }}
+              className="truncate font-semibold tracking-[-0.015em] text-[var(--cream-900)]"
+              style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-header)' }}
             >
               {title}
             </p>

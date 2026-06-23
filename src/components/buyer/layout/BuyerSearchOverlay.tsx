@@ -156,13 +156,13 @@ export function BuyerSearchOverlay() {
             placeholder={scope === 'catalog' ? 'Search products, SKU…' : 'Search orders, estimates, invoices…'}
             style={{
               flex: 1, border: 'none', outline: 'none', background: 'transparent',
-              fontSize: 'var(--yk-text-base)', color: 'var(--cream-900)',
+              fontSize: 'var(--b-text-body)', color: 'var(--cream-900)',
             }}
           />
           <button
             type="button"
             onClick={() => setOpen(false)}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border-1)', background: 'var(--cream-100)', flexShrink: 0, cursor: 'pointer' }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: '50%', border: '1px solid var(--border-1)', background: 'var(--cream-100)', flexShrink: 0, cursor: 'pointer' }}
             aria-label="Close search"
           >
             <X size={14} style={{ color: 'var(--cream-600)' }} />
@@ -183,7 +183,7 @@ export function BuyerSearchOverlay() {
                 borderBottom: scope === sc ? '2px solid var(--teal-500)' : '2px solid transparent',
                 background: 'none',
                 cursor: 'pointer',
-                fontSize: 'var(--yk-text-sm)',
+                fontSize: 'var(--b-text-sub)',
                 fontWeight: scope === sc ? 600 : 400,
                 color: scope === sc ? 'var(--teal-500)' : 'var(--cream-600)',
               }}
@@ -204,13 +204,13 @@ export function BuyerSearchOverlay() {
           )}
 
           {!loading && query.trim() && items.length === 0 && (
-            <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--cream-500)', fontSize: 'var(--yk-text-sm)' }}>
+            <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--cream-500)', fontSize: 'var(--b-text-sub)' }}>
               No results for &ldquo;{query}&rdquo;
             </div>
           )}
 
           {!loading && !query.trim() && (
-            <div style={{ padding: '16px', textAlign: 'center', color: 'var(--cream-400)', fontSize: 'var(--yk-text-sm)' }}>
+            <div style={{ padding: '16px', textAlign: 'center', color: 'var(--cream-400)', fontSize: 'var(--b-text-sub)' }}>
               {scope === 'catalog' ? 'Search products and brands' : 'Search your orders, enquiries and invoices'}
             </div>
           )}
@@ -232,21 +232,21 @@ export function BuyerSearchOverlay() {
                   <Icon size={16} style={{ color: 'var(--cream-600)' }} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 'var(--yk-text-base)', fontWeight: 500, color: 'var(--cream-900)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 'var(--b-text-body)', fontWeight: 500, color: 'var(--cream-900)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {item.label}
                   </div>
                   {item.sublabel && (
-                    <div style={{ fontSize: 'var(--yk-text-xs)', color: 'var(--cream-500)', textTransform: 'capitalize' }}>
+                    <div style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--cream-500)', textTransform: 'capitalize' }}>
                       {item.sublabel}
                     </div>
                   )}
                 </div>
                 {item.meta && (
-                  <span style={{ fontSize: 'var(--yk-text-sm)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-700)', flexShrink: 0 }}>
+                  <span style={{ fontSize: 'var(--b-text-sub)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-700)', flexShrink: 0 }}>
                     {inr(Number(item.meta))}
                   </span>
                 )}
-                <span style={{ fontSize: 'var(--yk-text-xs)', color: 'var(--cream-400)', background: 'var(--cream-100)', padding: '2px 8px', borderRadius: 100, flexShrink: 0 }}>
+                <span style={{ fontSize: 'var(--b-text-eyebrow)', color: 'var(--cream-400)', background: 'var(--cream-100)', padding: '2px 8px', borderRadius: 100, flexShrink: 0 }}>
                   {ENTITY_LABEL[item.entity_type] ?? item.entity_type}
                 </span>
               </button>

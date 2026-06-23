@@ -24,8 +24,8 @@ function EmptyState() {
       }}
     >
       <ClipboardList size={48} strokeWidth={1.5} style={{ marginBottom: 16, color: 'var(--fg-3)' }} />
-      <p style={{ fontSize: 'var(--yk-text-md)', fontWeight: 600, color: 'var(--fg-1)', margin: '0 0 6px' }}>No orders yet</p>
-      <p style={{ fontSize: 'var(--yk-text-base)', color: 'var(--fg-3)', margin: 0 }}>Your orders will appear here once placed.</p>
+      <p style={{ fontSize: 'var(--b-text-body)', fontWeight: 600, color: 'var(--fg-1)', margin: '0 0 6px' }}>No orders yet</p>
+      <p style={{ fontSize: 'var(--b-text-body)', color: 'var(--fg-3)', margin: 0 }}>Your orders will appear here once placed.</p>
     </div>
   );
 }
@@ -81,7 +81,7 @@ export function OrdersTab() {
           textAlign: 'center',
         }}
       >
-        <p style={{ fontSize: 'var(--yk-text-base)', color: 'var(--danger-500)', margin: 0 }}>{error}</p>
+        <p style={{ fontSize: 'var(--b-text-body)', color: 'var(--danger-500)', margin: 0 }}>{error}</p>
       </div>
     );
   }

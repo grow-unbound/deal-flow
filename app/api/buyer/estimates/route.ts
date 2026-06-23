@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, supabase } from '@/lib/supabase';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+import { fetchWhatsappNotificationContext } from '@/lib/server/notification-context';
+import { sendRequestReceivedBuyer, sendRequestReceivedSeller } from '@/lib/server/whatsapp';
 
 // Exported types consumed by checkout/page.tsx and EnquiriesTab
 export interface EstimateRequest {
@@ -186,7 +188,27 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
       // non-blocking
     }
 
-    return NextResponse.json({ success: true, estimate_id: typed.id, estimate_number: typed.estimate_number, whatsapp_sent: false });
+    // Fire WhatsApp notifications without blocking the response
+    void (async () => {
+      try {
+        const ctx = await fetchWhatsappNotificationContext(
+          tenant_id!,
+          buyer_id,
+          location_id ?? null,
+          'enquiry_received',
+        );
+        if (ctx) {
+          await Promise.allSettled([
+            sendRequestReceivedBuyer(ctx, typed.id, typed.estimate_number ?? '', total_amount, items.length),
+            sendRequestReceivedSeller(ctx, typed.id, typed.estimate_number ?? '', total_amount, items.length),
+          ]);
+        }
+      } catch {
+        // non-blocking — estimate creation already succeeded
+      }
+    })();
+
+    return NextResponse.json({ success: true, estimate_id: typed.id, estimate_number: typed.estimate_number, whatsapp_sent: true });
   } catch (err) {
     console.error('[buyer/estimates] Unexpected error:', err);
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });

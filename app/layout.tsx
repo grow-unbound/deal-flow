@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Baloo_2, Inter, JetBrains_Mono } from 'next/font/google';
+import { Baloo_2, Fraunces, Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { TenantProvider } from '@/contexts/TenantContext';
@@ -24,6 +24,15 @@ const baloo2 = Baloo_2({
   weight: ['600'],
 });
 
+const fraunces = Fraunces({
+  subsets: ['latin'],
+  variable: '--font-fraunces',
+  weight: 'variable',
+  style: ['normal', 'italic'],
+  axes: ['opsz'],
+  display: 'swap',
+});
+
 export const metadata: Metadata = {
   title: 'yukti — Distributor Command Center',
   description: 'Manage multibrand catalogs, publish cohort pricing, capture orders.',
@@ -43,7 +52,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} ${baloo2.variable}`}>
+    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} ${baloo2.variable} ${fraunces.variable}`}>
       <body>
         <PostHogProvider>
           <ReactQueryProvider>

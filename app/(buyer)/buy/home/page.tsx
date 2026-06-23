@@ -62,8 +62,8 @@ function SectionRow({ title, href, linkLabel }: { title: string; href?: string; 
   return (
     <div className="flex items-center justify-between px-4 pb-3">
       <h2
-        className="text-[var(--yk-text-xl)] font-bold leading-none tracking-[-0.02em] text-[var(--cream-900)]"
-        style={{ fontFamily: 'var(--font-display)' }}
+        className="leading-none text-[var(--cream-900)]"
+        style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-section)', fontWeight: 500, letterSpacing: '-0.005em' }}
       >
         {title}
       </h2>
@@ -71,7 +71,8 @@ function SectionRow({ title, href, linkLabel }: { title: string; href?: string; 
         <Link
           href={href}
           onClick={() => markBuyerNavigationForward()}
-          className="inline-flex items-center gap-1.5 text-[var(--yk-text-md)] font-medium tracking-[-0.01em] text-[var(--teal-800)] no-underline"
+          className="inline-flex items-center gap-1.5 font-medium tracking-[-0.01em] text-[var(--teal-500)] no-underline"
+          style={{ fontSize: 'var(--b-text-label)' }}
         >
           {linkLabel ?? 'See all'}
           <ChevronRight className="h-4 w-4" />
@@ -229,14 +230,14 @@ export default function HomePage() {
             </>
           ) : (
             <>
-              <p className="text-[var(--yk-text-xs)] font-semibold uppercase tracking-[0.1em] text-white/60">Spend this year</p>
+              <p className="font-semibold uppercase tracking-[0.14em] text-white/60" style={{ fontSize: 'var(--b-text-eyebrow)' }}>Spend this year</p>
               <p
-                className="mt-4 text-[36px] font-semibold leading-none tracking-[-0.03em] tabular-nums text-white"
-                style={{ fontFamily: 'var(--font-mono)' }}
+                className="mt-4 font-semibold leading-none tracking-[-0.03em] tabular-nums text-white"
+                style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-kpi-lg)' }}
               >
                 {inr(summary?.gmv_mtd ?? 0)}
               </p>
-              <p className="mt-4 text-[var(--yk-text-sm)] font-medium leading-5 tracking-[-0.005em] text-white/70">
+              <p className="mt-4 font-medium leading-5 tracking-[-0.005em] text-white/70" style={{ fontSize: 'var(--b-text-sub)' }}>
                 {trendLabel(summary?.trend_vs_last_month_pct ?? 0)} · {summary?.invoice_count_ytd ?? 0} invoices this year
               </p>
             </>
@@ -252,14 +253,14 @@ export default function HomePage() {
             </>
           ) : (
             <>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--cream-500)]">Outstanding dues</p>
+              <p className="font-semibold uppercase tracking-[0.14em] text-[var(--cream-600)]" style={{ fontSize: 'var(--b-text-eyebrow)' }}>Outstanding dues</p>
               <p
-                className="mt-4 text-[30px] font-semibold leading-none tracking-[-0.025em] tabular-nums text-[var(--cream-900)]"
-                style={{ fontFamily: 'var(--font-mono)' }}
+                className="mt-4 font-semibold leading-none tracking-[-0.025em] tabular-nums text-[var(--cream-900)]"
+                style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-kpi)' }}
               >
                 {inr(dues?.outstanding_dues ?? 0)}
               </p>
-              <p className="mt-4 text-[var(--yk-text-sm)] font-medium leading-5 tracking-[-0.005em] text-[var(--cream-500)]">
+              <p className="mt-4 font-medium leading-5 tracking-[-0.005em] text-[var(--cream-600)]" style={{ fontSize: 'var(--b-text-sub)' }}>
                 {formatDueSummary(dues?.days_until_earliest_due ?? null, dues?.open_invoice_count ?? 0, dues?.outstanding_dues ?? 0)}
               </p>
             </>
@@ -275,14 +276,14 @@ export default function HomePage() {
             </>
           ) : (
             <>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--cream-500)]">Available credit</p>
+              <p className="font-semibold uppercase tracking-[0.14em] text-[var(--cream-600)]" style={{ fontSize: 'var(--b-text-eyebrow)' }}>Available credit</p>
               <p
-                className="mt-4 text-[30px] font-semibold leading-none tracking-[-0.025em] tabular-nums text-[var(--cream-900)]"
-                style={{ fontFamily: 'var(--font-mono)' }}
+                className="mt-4 font-semibold leading-none tracking-[-0.025em] tabular-nums text-[var(--cream-900)]"
+                style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-kpi)' }}
               >
                 {inr(credit?.available_credit ?? 0)}
               </p>
-              <p className="mt-4 text-[var(--yk-text-sm)] font-medium leading-5 tracking-[-0.005em] text-[var(--cream-500)]">
+              <p className="mt-4 font-medium leading-5 tracking-[-0.005em] text-[var(--cream-600)]" style={{ fontSize: 'var(--b-text-sub)' }}>
                 of {inr(credit?.credit_limit ?? 0)} limit
               </p>
             </>
@@ -329,17 +330,17 @@ export default function HomePage() {
                   )}
                 </div>
                 <div className="bg-white px-4 py-4">
-                  <p className="line-clamp-2 text-[var(--yk-text-lg)] font-semibold leading-7 tracking-[-0.015em] text-[var(--cream-900)]">
+                  <p className="line-clamp-2 text-[var(--b-text-section)] font-semibold leading-7 tracking-[-0.015em] text-[var(--cream-900)]">
                     {item.display_name}
                   </p>
-                  <p className="mt-2 font-mono text-[var(--yk-text-md)] font-medium tabular-nums text-[var(--cream-900)]">
+                  <p className="mt-2 font-mono text-[var(--b-text-header)] font-medium tabular-nums text-[var(--cream-900)]">
                     {inr(item.price)} <span className="font-sans text-[var(--cream-700)]">/ unit</span>
                   </p>
                 </div>
               </Link>
             ))
           ) : (
-            <p className="px-1 text-[var(--yk-text-base)] font-medium tracking-[-0.01em] text-[var(--cream-600)]">No previous orders yet.</p>
+            <p className="px-1 text-[var(--b-text-body)] font-medium tracking-[-0.01em] text-[var(--cream-600)]">No previous orders yet.</p>
           )}
         </div>
       </div>
@@ -367,20 +368,20 @@ export default function HomePage() {
               >
                 <div className="flex h-[170px] items-end px-6 py-5" style={{ background: promotionHues[index % promotionHues.length] }}>
                   <h3
-                    className="text-[var(--yk-text-xl)] font-bold leading-none tracking-[-0.02em] text-white"
+                    className="text-[var(--b-text-section)] font-bold leading-none tracking-[-0.02em] text-white"
                     style={{ fontFamily: 'var(--font-display)' }}
                   >
                     {promotion.name}
                   </h3>
                 </div>
-                <div className="flex items-center justify-between bg-white px-6 py-4 text-[var(--yk-text-md)] font-medium tracking-[-0.01em] text-[var(--cream-700)]">
+                <div className="flex items-center justify-between bg-white px-6 py-4 text-[var(--b-text-header)] font-medium tracking-[-0.01em] text-[var(--cream-700)]">
                   <span><strong className="font-medium text-[var(--cream-900)]">{promotion.product_count}</strong> products</span>
                   <span>{formatValidUntil(promotion.valid_until)}</span>
                 </div>
               </Link>
             ))
           ) : (
-            <p className="px-1 text-[var(--yk-text-base)] font-medium tracking-[-0.01em] text-[var(--cream-600)]">No promotions are live right now.</p>
+            <p className="px-1 text-[var(--b-text-body)] font-medium tracking-[-0.01em] text-[var(--cream-600)]">No promotions are live right now.</p>
           )}
         </div>
       </div>
@@ -405,9 +406,9 @@ export default function HomePage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="truncate font-mono text-[13px] tracking-[0.08em] text-[var(--cream-600)]">{item.title}</p>
+                      <p className="truncate font-mono tracking-[0.08em] text-[var(--cream-600)]" style={{ fontSize: 'var(--b-text-label)' }}>{item.title}</p>
                       <span
-                        className="rounded-full px-4 py-1 text-[var(--yk-text-xs)] font-semibold uppercase tracking-[0.08em]"
+                        className="rounded-full px-4 py-1 text-[var(--b-text-eyebrow)] font-semibold uppercase tracking-[0.08em]"
                         style={{
                           background:
                             item.status === 'delivered' ? '#e7efe8'
@@ -425,24 +426,24 @@ export default function HomePage() {
                       </span>
                     </div>
                     <p
-                      className="mt-3 text-[var(--yk-text-lg)] font-semibold leading-none tracking-[-0.015em] text-[var(--cream-900)]"
+                      className="mt-3 text-[var(--b-text-section)] font-semibold leading-none tracking-[-0.015em] text-[var(--cream-900)]"
                       style={{ fontFamily: 'var(--font-display)' }}
                     >
                       {item.meta ?? item.status}
                     </p>
-                    <p className="mt-4 text-[var(--yk-text-base)] font-medium tracking-[-0.01em] text-[var(--cream-600)]">
+                    <p className="mt-4 text-[var(--b-text-body)] font-medium tracking-[-0.01em] text-[var(--cream-600)]">
                       {item.secondary_label ? `${item.secondary_label} · ` : ''}
                       {formatRelativeTime(item.timestamp)}
                     </p>
                   </div>
                   <div className="pt-11 text-right">
-                    <p className="font-mono text-[var(--yk-text-md)] font-medium tabular-nums text-[var(--cream-900)]">{inr(item.amount)}</p>
+                    <p className="font-mono text-[var(--b-text-header)] font-medium tabular-nums text-[var(--cream-900)]">{inr(item.amount)}</p>
                   </div>
                 </div>
               </Link>
             ))
           ) : (
-            <div className="rounded-[26px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-6 text-center text-[var(--yk-text-base)] font-medium tracking-[-0.01em] text-[var(--cream-600)]">
+            <div className="rounded-[26px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-6 text-center text-[var(--b-text-body)] font-medium tracking-[-0.01em] text-[var(--cream-600)]">
               No recent activity yet.
             </div>
           )}

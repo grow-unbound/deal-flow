@@ -26,10 +26,13 @@ export function BuyerStickyPageHeader({
   return (
     <>
       <header
-        className={cn(
-          'sticky top-0 z-[15] border-b border-[var(--border-1)] bg-[var(--bg-base)]/95 backdrop-blur-md',
-          collapsed && 'shadow-sm',
-        )}
+        className={cn('sticky top-0 z-[15]', collapsed && 'shadow-sm')}
+        style={{
+          borderBottom: '1px solid rgba(212, 204, 192, 0.6)',
+          background: 'rgba(250, 247, 242, 0.92)',
+          backdropFilter: 'blur(14px)',
+          WebkitBackdropFilter: 'blur(14px)',
+        }}
       >
         <div className="flex items-start justify-between px-5 pb-2 pt-4">
           <div className="min-w-0 flex-1 pr-2">
@@ -43,10 +46,14 @@ export function BuyerStickyPageHeader({
             ) : null}
             <h1
               className={cn(
-                'font-[var(--font-display)] font-extrabold text-[var(--cream-900)] leading-tight tracking-tight',
-                collapsed ? 'mt-0 text-base' : 'mt-0.5 text-2xl sm:text-3xl',
+                'text-[var(--cream-900)] leading-tight',
+                collapsed ? 'mt-0 font-semibold' : 'mt-0.5 font-semibold',
               )}
-              style={{ letterSpacing: collapsed ? '0' : '-0.02em' }}
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: collapsed ? 'var(--b-text-header)' : 'var(--b-text-page)',
+                letterSpacing: collapsed ? '-0.01em' : '-0.025em',
+              }}
             >
               {collapsed ? compact : title}
             </h1>

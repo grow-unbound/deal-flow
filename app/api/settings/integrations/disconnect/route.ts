@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedClaims } from '@/lib/auth';
-import { startIntegrationSync } from '@/lib/integrations/server';
+import { disconnectTenantIntegration } from '@/lib/integrations/server';
 
 function jsonError(status: number, message: string, code = 'ERROR') {
   return NextResponse.json({ data: null, error: { code, message } }, { status });
@@ -16,16 +16,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => null);
     if (!body) return jsonError(400, 'Invalid JSON', 'BAD_REQUEST');
 
-    const payload = await startIntegrationSync(claims.tenant_id, claims.sub, body, request.headers.get('authorization'));
-    return NextResponse.json({ data: payload, error: null }, { status: 202 });
+    const payload = await disconnectTenantIntegration(claims.tenant_id, claims.sub, body, request.headers.get('authorization'));
+    return NextResponse.json({ data: payload, error: null }, { status: 200 });
   } catch (error) {
-    const msg =
-      error instanceof Error
-        ? error.message
-        : typeof (error as { message?: unknown }).message === 'string'
-          ? (error as { message: string }).message
-          : 'Failed to start sync';
-    console.error('[POST /api/settings/integrations/sync]', error);
-    return jsonError(400, msg, 'SYNC_FAILED');
+    console.error('[POST /api/settings/integrations/disconnect]', error);
+    return jsonError(400, error instanceof Error ? error.message : 'Failed to disconnect integration', 'DISCONNECT_FAILED');
   }
 }
