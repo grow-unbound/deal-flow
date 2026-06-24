@@ -52,7 +52,7 @@ export function BrandBuyersTab({ buyers }: BrandBuyersTabProps) {
       <LandingTable
         columns={[
           { label: 'Buyer', className: 'px-5' },
-          { label: 'Cohort', className: 'px-5' },
+          { label: 'Customer group', className: 'px-5' },
           { label: 'Spend', className: 'px-5' },
           { label: 'Orders', className: 'px-5' },
           { label: 'Last order', className: 'px-5' },

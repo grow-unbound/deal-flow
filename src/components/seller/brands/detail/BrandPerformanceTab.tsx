@@ -208,14 +208,14 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
 
       <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
         <div className="border-b border-cream-300 px-5 py-4">
-          <h3 className="font-display text-lg text-cream-950">Catalog history</h3>
+          <h3 className="font-display text-lg text-cream-950">Campaign history</h3>
           <p className="text-base text-cream-700">What you sent · how it landed</p>
         </div>
         <LandingTable
           columns={[
-            { label: 'Catalog', className: 'px-5' },
+            { label: 'Campaign', className: 'px-5' },
             { label: 'Sent', className: 'px-5' },
-            { label: 'Cohort', className: 'px-5' },
+            { label: 'Customer group', className: 'px-5' },
             { label: 'Orders', className: 'px-5 text-right' },
             { label: 'GMV', className: 'px-5 text-right' },
           ]}

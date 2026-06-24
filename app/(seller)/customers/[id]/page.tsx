@@ -108,7 +108,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
       { id: 'orders', label: 'Orders', badge: data?.orders.badge_count_mtd ?? 0 },
       { id: 'estimates', label: 'Estimates', badge: data?.estimates.rows.length ?? 0 },
       { id: 'invoices', label: 'Invoices', badge: data?.invoices.rows.length ?? 0 },
-      { id: 'cohorts', label: 'Cohorts', badge: data?.cohorts_summary.rows.length ?? 0 },
+      { id: 'cohorts', label: 'Customer Groups', badge: data?.cohorts_summary.rows.length ?? 0 },
       { id: 'price-lists', label: 'Price Lists', badge: data?.price_lists.assigned.length ?? 0 },
       { id: 'activity', label: 'Activity' },
     ],
@@ -253,14 +253,14 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         ) : null}
         {activeTab === 'cohorts' ? (
           <section className="mt-5 rounded-[14px] border border-cream-300 bg-white p-5">
-            <h3 className="font-display text-lg text-cream-950">Cohorts</h3>
+            <h3 className="font-display text-lg text-cream-950">Customer Groups</h3>
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {data.cohorts_summary.rows.length === 0 ? (
-                <p className="text-base text-cream-700">No cohort memberships found for this buyer.</p>
+                <p className="text-base text-cream-700">No customer group memberships found for this buyer.</p>
               ) : data.cohorts_summary.rows.map((cohort) => (
                 <article key={cohort.id} className="rounded-[12px] border border-cream-200 bg-cream-50 px-4 py-3">
                   <p className="font-medium text-cream-950">{cohort.name}</p>
-                  <p className="mt-1 text-sm text-cream-700">Buyer is assigned to this cohort.</p>
+                  <p className="mt-1 text-sm text-cream-700">Buyer is assigned to this customer group.</p>
                 </article>
               ))}
             </div>

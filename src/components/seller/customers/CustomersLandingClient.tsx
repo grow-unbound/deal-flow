@@ -242,7 +242,7 @@ function CustomersLandingContent({
       <PageHeader
         eyebrow="Buyers"
         title="Customers"
-        subtitle={`${kpis?.total} retailers across ${kpis?.cohort_count} cohorts. ${kpis?.active} active ${lowerLabel}. The Tier-A names buy most of revenue, and dues cluster there too.`}
+        subtitle={`${kpis?.total} retailers across ${kpis?.cohort_count} customer groups. ${kpis?.active} active ${lowerLabel}. The Tier-A names buy most of revenue, and dues cluster there too.`}
         horizon={horizonLabel}
         period={period}
         periodOptions={options}
@@ -357,7 +357,7 @@ function CustomersLandingContent({
             description={
               search.trim() || activeChip !== 'All tiers'
                 ? 'Try a different search or tier filter.'
-                : 'Add your first customer to start cohorts and pricing.'
+                : 'Add your first customer to start customer groups and pricing.'
             }
             action={
               <Button variant="primary" onClick={() => setAddOpen(true)} className="gap-1.5">
@@ -369,7 +369,7 @@ function CustomersLandingContent({
         }
         columns={[
           { label: 'Buyer', width: 320, className: 'px-5' },
-          { label: 'Cohort', className: 'px-5' },
+          { label: 'Customer group', className: 'px-5' },
           { label: `Spend · ${metricSuffix}`, className: 'px-5' },
           { label: 'Growth', className: 'px-5' },
           { label: 'Orders', className: 'px-5' },

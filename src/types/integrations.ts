@@ -4,6 +4,9 @@ export const INTEGRATION_TYPE_IDS = ['zoho_books', 'zoho_inventory', 'tally_prim
 export const IntegrationTypeIdSchema = z.enum(INTEGRATION_TYPE_IDS);
 export type IntegrationTypeId = z.infer<typeof IntegrationTypeIdSchema>;
 
+export const IntegrationRunOriginSchema = z.enum(['manual', 'scheduled', 'webhook']);
+export type IntegrationRunOrigin = z.infer<typeof IntegrationRunOriginSchema>;
+
 export const IntegrationConnectivityModeSchema = z.enum(['cloud', 'local']);
 export type IntegrationConnectivityMode = z.infer<typeof IntegrationConnectivityModeSchema>;
 
@@ -19,7 +22,7 @@ export type TenantIntegrationStatus = z.infer<typeof TenantIntegrationStatusSche
 export const TenantIntegrationHealthStatusSchema = z.enum(['ok', 'expired', 'invalid']);
 export type TenantIntegrationHealthStatus = z.infer<typeof TenantIntegrationHealthStatusSchema>;
 
-export const INTEGRATION_ENTITY_TYPES = ['brands', 'products', 'customers', 'estimates', 'orders', 'invoices'] as const;
+export const INTEGRATION_ENTITY_TYPES = ['locations', 'brands', 'products', 'customers', 'estimates', 'orders', 'invoices'] as const;
 export const IntegrationEntityTypeSchema = z.enum(INTEGRATION_ENTITY_TYPES);
 export type IntegrationEntityType = z.infer<typeof IntegrationEntityTypeSchema>;
 
@@ -249,6 +252,8 @@ export const IntegrationJobSummarySchema = z
     provider: z.string().trim().min(1).max(40).optional(),
     scope: z.enum(['reference', 'transactional', 'full']).optional(),
     since: z.string().datetime({ offset: true }).nullable().optional(),
+    run_origin: IntegrationRunOriginSchema.optional(),
+    sync_window: z.string().trim().min(1).max(200).nullable().optional(),
     phases_completed: z.array(z.string().trim().min(1).max(120)).optional(),
     counts: z.record(z.string().trim().min(1).max(120), IntegrationSyncPhaseStatsSchema).optional(),
     last_synced_at: z.string().datetime({ offset: true }).optional(),
@@ -314,6 +319,8 @@ export const IntegrationJobRecordSchema = z
     tenant_integration_id: z.string().uuid(),
     job_type: IntegrationSyncJobTypeSchema,
     status: IntegrationSyncJobStatusSchema,
+    run_origin: IntegrationRunOriginSchema.nullable().optional(),
+    sync_window: z.string().trim().min(1).max(200).nullable().optional(),
     progress: IntegrationJobProgressSchema,
     error_log: IntegrationJobErrorLogSchema.nullable().optional(),
     summary: IntegrationJobSummarySchema.nullable().optional(),
@@ -386,6 +393,9 @@ export const IntegrationSyncRequestSchema = z
     mode: z.enum(['initial_import', 'incremental', 'manual']).default('initial_import'),
     scope: z.enum(['reference', 'transactional', 'full']).optional(),
     phase: z.string().trim().min(1).max(120).optional(),
+    run_origin: IntegrationRunOriginSchema.optional(),
+    sync_window: z.string().trim().min(1).max(200).optional(),
+    since: z.string().date().optional(),
     import_orders_since: z.string().date().optional(),
     max_pages: z.number().int().min(1).optional(),
   })

@@ -44,6 +44,7 @@ export interface CatalogsLandingResponse {
     live_catalogs: number;
     draft_catalogs: number;
     ended_catalogs: number;
+    expiring7d: number;
     gmv_mtd: number;
     gmv_prev_mtd: number;
     gmv_growth_pct: number;

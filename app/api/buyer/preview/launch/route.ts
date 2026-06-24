@@ -27,7 +27,6 @@ async function findLinkedBuyerId(userId: string, tenantId: string): Promise<stri
       .maybeSingle();
 
     let phone = (tuRow as { phone?: string | null } | null)?.phone ?? null;
-    console.log('[findLinkedBuyerId] tenant_users.phone:', phone, '| userId:', userId, '| tenantId:', tenantId);
 
     // Fallback: read from auth.users.user_metadata (covers first login before the
     // tenant_users.phone write lands, or legacy accounts not yet migrated).
@@ -36,7 +35,6 @@ async function findLinkedBuyerId(userId: string, tenantId: string): Promise<stri
       const meta = authUser?.user?.user_metadata as Record<string, unknown> | null | undefined;
       phone = (typeof meta?.phone === 'string' && meta.phone ? meta.phone : null)
         ?? authUser?.user?.phone ?? null;
-      console.log('[findLinkedBuyerId] fallback user_metadata.phone:', phone);
 
       // Back-fill so the next request is fast.
       if (phone) {
@@ -49,17 +47,10 @@ async function findLinkedBuyerId(userId: string, tenantId: string): Promise<stri
       }
     }
 
-    if (!phone) {
-      console.log('[findLinkedBuyerId] no phone found — returning null');
-      return null;
-    }
+    if (!phone) return null;
 
     const candidates = await findBuyerLoginCandidates(phone);
-    console.log('[findLinkedBuyerId] candidates:', JSON.stringify(candidates.map(c => ({
-      buyer_id: c.buyer_id, tenant_id: c.tenant_id, buyer_app_enabled: c.buyer_app_enabled, business_name: c.business_name
-    }))));
     const sameTenantBuyers = candidates.filter((c) => c.tenant_id === tenantId && c.buyer_app_enabled);
-    console.log('[findLinkedBuyerId] sameTenantBuyers count:', sameTenantBuyers.length, '| returning:', sameTenantBuyers[0]?.buyer_id ?? null);
     if (sameTenantBuyers.length === 0) return null;
     return sameTenantBuyers[0].buyer_id ?? null;
   } catch (err) {

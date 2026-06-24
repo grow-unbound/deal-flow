@@ -1,6 +1,7 @@
 'use client';
 
-import { Building2 } from 'lucide-react';
+import { Scale } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -11,22 +12,34 @@ import {
 } from '@/components/ui/select';
 import { FeatureToggleRow } from '@/components/seller/settings/FeatureToggleRow';
 import { SettingsSectionCard } from '@/components/seller/settings/SettingsSectionCard';
-import { GST_RATE_OPTIONS } from '@/constants/settings-modules';
+import { GST_RATE_OPTIONS, UOM_OPTIONS } from '@/constants/settings-modules';
 import type { BusinessPolicy } from '@/types/tenant-settings';
 
 interface BusinessPolicySectionProps {
   value: BusinessPolicy;
   onChange: (v: BusinessPolicy) => void;
+  defaultUom: string;
+  onDefaultUomChange: (uom: string) => void;
+  routingThresholdKm: number;
+  onRoutingThresholdKmChange: (km: number) => void;
   className?: string;
 }
 
-export function BusinessPolicySection({ value, onChange, className }: BusinessPolicySectionProps) {
+export function BusinessPolicySection({
+  value,
+  onChange,
+  defaultUom,
+  onDefaultUomChange,
+  routingThresholdKm,
+  onRoutingThresholdKmChange,
+  className,
+}: BusinessPolicySectionProps) {
   return (
     <SettingsSectionCard
       className={className}
       title="Business Policy"
-      subtitle="Controls how credit, GST defaults, and pricing work across your entire account."
-      icon={Building2}
+      subtitle="Controls credit, GST defaults, product units, and warehouse routing."
+      icon={Scale}
     >
       <FeatureToggleRow
         label="Enable credit for buyers"
@@ -74,6 +87,44 @@ export function BusinessPolicySection({ value, onChange, className }: BusinessPo
           </p>
         </div>
       ) : null}
+
+      <div className="border-t border-cream-200 px-5 py-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Default unit of measure</Label>
+            <Select value={defaultUom} onValueChange={onDefaultUomChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select UOM" />
+              </SelectTrigger>
+              <SelectContent>
+                {UOM_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-sm text-cream-600">Pre-filled when adding new products.</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="routing_threshold">Nearest warehouse threshold (km)</Label>
+            <Input
+              id="routing_threshold"
+              type="number"
+              min={1}
+              max={5000}
+              step={10}
+              value={routingThresholdKm}
+              onChange={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (!isNaN(v) && v >= 1 && v <= 5000) onRoutingThresholdKmChange(v);
+              }}
+            />
+            <p className="text-sm text-cream-600">Maximum distance to assign a buyer order to a warehouse.</p>
+          </div>
+        </div>
+      </div>
     </SettingsSectionCard>
   );
 }

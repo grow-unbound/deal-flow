@@ -11,9 +11,9 @@ type CellVal = boolean | string;
 const ROWS: { feature: string; starter: CellVal; growth: CellVal; scale: CellVal }[] = [
   { feature: 'All core modules', starter: true, growth: true, scale: true },
   { feature: 'Buyer app (WhatsApp OTP)', starter: true, growth: true, scale: true },
-  { feature: 'Catalog publishing', starter: true, growth: true, scale: true },
+  { feature: 'Campaign publishing', starter: true, growth: true, scale: true },
   { feature: 'Tally & Zoho integrations', starter: true, growth: true, scale: true },
-  { feature: 'Cohort limit', starter: '5', growth: '20', scale: 'Unlimited' },
+  { feature: 'Customer group limit', starter: '5', growth: '20', scale: 'Unlimited' },
   { feature: 'Price list limit', starter: '2', growth: '10', scale: 'Unlimited' },
   { feature: 'Published catalog limit', starter: '3', growth: '15', scale: 'Unlimited' },
 ];
