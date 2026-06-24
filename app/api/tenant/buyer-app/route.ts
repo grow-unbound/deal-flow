@@ -52,7 +52,20 @@ export async function GET(request: NextRequest) {
     ]);
 
     const dailyRows: Record<string, number>[] = dailyResult.data ?? [];
-    const snap = snapshotResult.data ?? null;
+    let snap = snapshotResult.data ?? null;
+
+    // Snapshot row doesn't exist yet (table just created, no triggers fired).
+    // Seed it now so cards render on first load.
+    if (!snap) {
+      await db.schema('app').rpc('refresh_buyer_app_snapshot', { p_tenant_id: claims.tenant_id });
+      const seeded = await db
+        .schema('app')
+        .from('buyer_app_snapshot')
+        .select('*')
+        .eq('tenant_id', claims.tenant_id)
+        .maybeSingle();
+      snap = seeded.data ?? null;
+    }
 
     const kpis = dailyRows.reduce(
       (acc, row) => ({
