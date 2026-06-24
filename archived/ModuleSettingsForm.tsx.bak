@@ -433,17 +433,17 @@ export function ModuleSettingsForm() {
       </FeatureModuleCard>
 
       <FeatureModuleCard
-        title="Catalog & Pricing"
-        description="Cohort-specific pricing and publishing buyer-facing catalogs."
+        title="Campaigns & Pricing"
+        description="Customer group pricing and publishing buyer-facing campaigns."
         icon={LayoutGrid}
         headerActive={draft.catalog.cohort_pricing_enabled || draft.catalog.catalog_publishing_enabled}
       >
         <div className="border-t border-cream-200 px-5 py-3 text-sm font-semibold uppercase tracking-wide text-cream-600">
-          Cohort pricing
+          Customer group pricing
         </div>
         <FeatureToggleRow
-          label="Cohort pricing"
-          description="Different prices for different buyer groups via cohorts and price lists."
+          label="Customer group pricing"
+          description="Different prices for different buyer groups via customer groups and price lists."
           checked={draft.catalog.cohort_pricing_enabled}
           onCheckedChange={(cohort_pricing_enabled) =>
             setDraft((d) => (d ? { ...d, catalog: { ...d.catalog, cohort_pricing_enabled } } : d))
@@ -486,10 +486,10 @@ export function ModuleSettingsForm() {
         ) : null}
 
         <div className="border-t border-cream-200 px-5 py-3 text-sm font-semibold uppercase tracking-wide text-cream-600">
-          Catalog publishing
+          Campaign publishing
         </div>
         <FeatureToggleRow
-          label="Catalog publishing"
+          label="Campaign publishing"
           description="Create share links and published catalogs for buyers."
           checked={draft.catalog.catalog_publishing_enabled}
           onCheckedChange={(catalog_publishing_enabled) =>

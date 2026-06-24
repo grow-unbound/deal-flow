@@ -64,7 +64,7 @@ export default function PriceListDetailPage() {
   const subtitle = priceList
     ? [
         `${priceList.items.length} products`,
-        `Cohorts: ${priceList.assignments.filter((a) => a.target_type === 'cohort').map((a) => a.label).filter(Boolean).join(', ') || '—'}`,
+        `Customer groups: ${priceList.assignments.filter((a) => a.target_type === 'cohort').map((a) => a.label).filter(Boolean).join(', ') || '—'}`,
         `Valid ${formatDate(priceList.valid_from)} → ${formatDate(priceList.valid_to)}`,
         `Created by ${priceList.created_by_label ?? 'Team member'}`,
       ]
@@ -145,7 +145,7 @@ export default function PriceListDetailPage() {
                     sub: `across ${priceList.stats?.brands_covered ?? 0} brands`,
                   },
                   {
-                    label: 'Cohorts assigned',
+                    label: 'Customer groups assigned',
                     value: priceList.stats?.assignments_count ?? priceList.assignments.length,
                     sub: 'receiving this price list',
                   },

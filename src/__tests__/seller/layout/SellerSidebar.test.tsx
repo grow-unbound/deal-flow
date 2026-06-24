@@ -61,6 +61,7 @@ function makeFeatures(overrides: Partial<SellerShellFeatureAvailability> = {}): 
     cohorts: true,
     pricingEngine: true,
     catalogPublishing: true,
+    buyerApp: true,
     estimates: true,
     salesOrders: true,
     invoices: true,
@@ -130,7 +131,7 @@ describe('SellerSidebar', () => {
     expect(paths).toContain('/sales-orders');
     expect(paths).toContain('/settings');
     expect(paths).toContain('/settings/team');
-    expect(paths).toContain('/settings/modules');
+    expect(paths).not.toContain('/settings/modules');
     expect(paths).toContain('/settings/locations');
     expect(paths).toContain('/settings/integrations');
     expect(paths).toContain('/settings/billing');

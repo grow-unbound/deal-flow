@@ -268,7 +268,7 @@ describe('settings integrations page', () => {
   it('renders integrations settings when umbrella flag is enabled', async () => {
     renderWithQueryClient(await SettingsIntegrationsPage());
 
-    expect(screen.getByRole('heading', { name: 'Integrations' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Integrations' })).toBeInTheDocument();
     expect(await screen.findByText('No integrations connected yet')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Add integration' })).toBeInTheDocument();
   });
@@ -306,12 +306,15 @@ describe('integrations settings client', () => {
     renderWithQueryClient(<IntegrationsSettingsClient />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Sync now' }));
+    expect(await screen.findByText('Choose a sync window for full sync')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Start sync' }));
 
     await waitFor(() => {
-      expect(apiPostMock).toHaveBeenCalledWith('/api/settings/integrations/sync', {
+      expect(apiPostMock).toHaveBeenCalledWith('/api/settings/integrations/sync', expect.objectContaining({
         tenant_integration_id: 'tenant-int-1',
         job_type: 'manual',
-      });
+        since: expect.any(String),
+      }));
     });
   });
 
@@ -321,13 +324,16 @@ describe('integrations settings client', () => {
     renderWithQueryClient(<IntegrationsSettingsClient />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Sync now for Customers' }));
+    expect(await screen.findByText('Choose a sync window for Customers')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Start phase sync' }));
 
     await waitFor(() => {
-      expect(apiPostMock).toHaveBeenCalledWith('/api/settings/integrations/sync', {
+      expect(apiPostMock).toHaveBeenCalledWith('/api/settings/integrations/sync', expect.objectContaining({
         tenant_integration_id: 'tenant-int-1',
         job_type: 'manual',
         phase: 'customers',
-      });
+        since: expect.any(String),
+      }));
     });
   });
 
@@ -439,6 +445,150 @@ describe('integrations settings client', () => {
     expect(screen.queryByRole('button', { name: 'Sync now' })).not.toBeInTheDocument();
   });
 
+  it('surfaces Zoho schedules in flows and distinguishes scheduled runs in history', () => {
+    render(
+      <ConnectedIntegrationCard
+        integration={{
+          id: 'zoho_books',
+          display_name: 'Zoho Books',
+          description: 'Sync orders and invoices with Zoho Books.',
+          family_flag: 'ZOHO_INTEGRATION',
+          connectivity_mode: 'cloud',
+          auth_schema: { fields: [] },
+          capabilities: {
+            inbound_reference: ['brands', 'products', 'customers'],
+            inbound_transactional: ['estimates', 'orders', 'invoices'],
+          },
+          tenant_integration: {
+            id: 'tenant-int-1',
+            status: 'connected',
+            health_status: 'ok',
+            connected_at: '2026-06-10T11:00:00.000Z',
+            last_health_check_at: '2026-06-12T08:50:00.000Z',
+            config: { org_id: 'org-123' },
+            active_job: null,
+            sync_history: [
+              {
+                id: 'job-scheduled',
+                job_type: 'incremental',
+                status: 'completed',
+                run_origin: 'scheduled',
+                sync_window: 'Last 24 hours',
+                progress: {
+                  phase: 'orders',
+                  phase_label: 'Importing sales orders from Zoho Books',
+                  phases_total: 3,
+                  phase_current: 3,
+                  items_total: 120,
+                  items_processed: 120,
+                  items_failed: 0,
+                  pages_processed: 1,
+                  counts: {
+                    orders: { entity_type: 'orders', processed: 120, failed: 0, pages: 1 },
+                  },
+                },
+                error_log: [],
+                summary: {
+                  provider: 'zoho',
+                  scope: 'transactional',
+                  since: '2026-06-22T00:00:00.000Z',
+                  run_origin: 'scheduled',
+                  sync_window: 'Last 24 hours',
+                  phases_completed: ['orders'],
+                  counts: {
+                    orders: { entity_type: 'orders', processed: 120, failed: 0, pages: 1 },
+                  },
+                  last_synced_at: '2026-06-23T05:05:00.000Z',
+                },
+                started_at: '2026-06-23T05:00:00.000Z',
+                completed_at: '2026-06-23T05:05:00.000Z',
+                created_at: '2026-06-23T05:00:00.000Z',
+              },
+              {
+                id: 'job-manual',
+                job_type: 'manual',
+                status: 'completed',
+                run_origin: 'manual',
+                progress: {
+                  phase: 'products',
+                  phase_label: 'Importing products from Zoho Books',
+                  phases_total: 3,
+                  phase_current: 2,
+                  items_total: 80,
+                  items_processed: 80,
+                  items_failed: 0,
+                  pages_processed: 1,
+                  counts: {
+                    products: { entity_type: 'products', processed: 80, failed: 0, pages: 1 },
+                  },
+                },
+                error_log: [],
+                summary: {
+                  provider: 'zoho',
+                  scope: 'reference',
+                  since: '2026-06-21T00:00:00.000Z',
+                  run_origin: 'manual',
+                  phases_completed: ['products'],
+                  counts: {
+                    products: { entity_type: 'products', processed: 80, failed: 0, pages: 1 },
+                  },
+                  last_synced_at: '2026-06-21T11:05:00.000Z',
+                },
+                started_at: '2026-06-21T11:00:00.000Z',
+                completed_at: '2026-06-21T11:05:00.000Z',
+                created_at: '2026-06-21T11:00:00.000Z',
+              },
+            ],
+            data_flows: [
+              {
+                id: 'flow-locations',
+                entity_type: 'locations',
+                direction: 'inbound',
+                trigger_type: 'event',
+                schedule: '0 5 * * *',
+                field_mappings: {},
+                filters: {},
+                is_active: true,
+                last_run_at: '2026-06-23T05:05:00.000Z',
+              },
+              {
+                id: 'flow-products',
+                entity_type: 'products',
+                direction: 'inbound',
+                trigger_type: 'webhook',
+                schedule: '0 5 * * *',
+                field_mappings: {},
+                filters: {},
+                is_active: true,
+                last_run_at: '2026-06-23T05:05:00.000Z',
+              },
+            ],
+          },
+        }}
+        available
+        isSellerAdmin
+        onOpenWizard={vi.fn()}
+        onDisconnect={vi.fn()}
+        onSyncNow={vi.fn()}
+        onSyncPhase={vi.fn()}
+        onStopSync={vi.fn()}
+        onRefresh={vi.fn()}
+        onRetryWebhooks={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Data flows/ }));
+
+    expect(screen.getAllByText('Daily 5:00 AM').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Last run/).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: /History/ }));
+
+    expect(screen.getAllByText('Scheduled').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Manual').length).toBeGreaterThan(0);
+    expect(screen.getByText('Last 24 hours · Importing sales orders from Zoho Books')).toBeInTheDocument();
+  });
+
   it('marks cancelled runs clearly in history', () => {
     render(
       <ConnectedIntegrationCard
@@ -541,10 +691,11 @@ describe('integrations settings client', () => {
       />,
     );
 
-    expect(screen.getByText('Run a single phase')).toBeInTheDocument();
-    expect(screen.getByText('Customers')).toBeInTheDocument();
-    expect(screen.getByText('Products')).toBeInTheDocument();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
+    expect(screen.getByText('Estimates')).toBeInTheDocument();
     expect(screen.getByText('Sales Orders')).toBeInTheDocument();
+    expect(screen.getByText('Invoices')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sync now for Transactions' })).toBeInTheDocument();
   });
 
   it('only marks the selected phase as syncing while a phase sync is pending', () => {

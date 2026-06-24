@@ -72,7 +72,7 @@ export function CustomerDetailsTab({ id: _id, details, onEdit }: CustomerDetails
               value={details.payment_terms_days != null ? `Net ${details.payment_terms_days} days` : '—'}
             />
             <Row
-              label="Cohort assignment"
+              label="Customer group assignment"
               value={details.cohorts.length ? details.cohorts.join(', ') : '—'}
             />
             <Row label="Status" value={details.is_active ? 'Active' : 'Inactive'} />

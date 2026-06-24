@@ -360,6 +360,10 @@ export async function GET(req: NextRequest) {
     const liveCatalogs = catalogRows.filter((catalog) => catalog.status.label === 'Live');
     const draftCatalogs = catalogRows.filter((catalog) => catalog.status.label === 'Draft');
     const endedCatalogs = catalogRows.filter((catalog) => catalog.status.label === 'Ended');
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    const expiring7d = liveCatalogs.filter(
+      (catalog) => catalog.valid_to != null && new Date(catalog.valid_to).getTime() <= nowTs + sevenDaysMs,
+    ).length;
     const gmvMtd = orders.reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0);
     const gmvPrevMtd = prevOrders.reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0);
     const gmvGrowthPct = gmvPrevMtd > 0 ? Math.round(((gmvMtd - gmvPrevMtd) / gmvPrevMtd) * 100) : gmvMtd > 0 ? 100 : 0;
@@ -394,6 +398,7 @@ export async function GET(req: NextRequest) {
         live_catalogs: liveCatalogs.length,
         draft_catalogs: draftCatalogs.length,
         ended_catalogs: endedCatalogs.length,
+        expiring7d,
         gmv_mtd: gmvMtd,
         gmv_prev_mtd: gmvPrevMtd,
         gmv_growth_pct: gmvGrowthPct,

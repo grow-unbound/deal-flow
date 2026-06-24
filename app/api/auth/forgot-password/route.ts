@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   // The redirectTo URL should match what's configured in Supabase project settings
   // under Authentication > URL Configuration > Redirect URLs
   await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-    redirectTo: `${origin}/api/auth/callback`,
+    redirectTo: `${origin}/reset-password`,
   });
 
   return NextResponse.json({ success: true });

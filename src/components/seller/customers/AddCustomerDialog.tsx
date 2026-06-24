@@ -462,27 +462,27 @@ export function AddCustomerDialog({
                 </FormSectionGrid>
               </FormBlock>
 
-              {/* Cohort */}
+              {/* Customer group */}
               {cohortsEnabled && !isSellerAssistant ? (
-                <FormBlock title="Cohort">
+                <FormBlock title="Customer group">
                   <FormField
                     control={form.control}
                     name="default_cohort_id"
                     render={({ field }) => (
                       <FormItem className="space-y-2">
-                        <FormLabel>Cohort</FormLabel>
+                        <FormLabel>Customer group</FormLabel>
                         <FormControl>
                           {cohortsLoading ? (
                             <div className="h-10 animate-pulse rounded-[8px] border border-cream-200 bg-cream-100" />
                           ) : (
                             <StackedPickerField
-                              title="Pick a cohort"
+                              title="Pick a customer group"
                               items={cohortItems}
                               selectedId={field.value}
                               onSelect={field.onChange}
                               mode="inline"
-                              searchPlaceholder="Search cohorts…"
-                              emptyLabel="No cohorts match."
+                              searchPlaceholder="Search customer groups…"
+                              emptyLabel="No customer groups match."
                             />
                           )}
                         </FormControl>

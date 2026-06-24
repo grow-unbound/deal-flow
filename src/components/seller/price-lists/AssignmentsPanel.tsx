@@ -66,7 +66,7 @@ function useCohorts() {
 }
 
 const TARGET_TYPE_LABELS: Record<TargetType, string> = {
-  cohort: 'Cohort',
+  cohort: 'Customer group',
   buyer: 'Buyer',
   all_buyers: 'All Buyers',
 };
@@ -147,7 +147,7 @@ export function AssignmentsPanel({ priceListId }: AssignmentsPanelProps) {
 
         {targetType === 'cohort' && (
           <div>
-            <Label className="text-sm text-cream-700 mb-1 block">Cohort</Label>
+            <Label className="text-sm text-cream-700 mb-1 block">Customer group</Label>
             <Select value={targetId} onValueChange={setTargetId}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder={cohorts.length === 0 ? 'No cohorts available' : 'Select cohort'} />
