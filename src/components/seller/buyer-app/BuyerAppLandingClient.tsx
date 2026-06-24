@@ -248,7 +248,15 @@ function BuyerAppLandingContent({
   if (!landingData) return <BuyerAppLoadingSkeleton />;
 
   const kpis = landingData.kpis;
-  const snap = landingData.snapshot;
+  const snap = landingData.snapshot ?? {
+    enabled_buyers: 0, total_buyers: 0, opened_app_mtd: 0, ordered_mtd: 0, repeat_mtd: 0,
+    app_gmv_mtd: 0, app_orders_mtd: 0, total_gmv_mtd: 0,
+    estimates_app_value_mtd: 0, estimates_app_count_mtd: 0,
+    converted_order_value_mtd: 0, converted_order_count_mtd: 0,
+    invoiced_app_value_mtd: 0, invoiced_app_count_mtd: 0,
+    not_ordering_buyers: [], top_app_buyers_callout: [], no_app_buyers: [],
+    top_app_buyers_card: [], top_locations: [], refreshed_at: '',
+  };
 
   const enabledPct =
     kpis.total_buyers > 0 ? Math.round((kpis.enabled_buyers / kpis.total_buyers) * 100) : 0;
@@ -348,22 +356,14 @@ function BuyerAppLandingContent({
             })),
           },
         ]}
-        stalenessHint={snap?.refreshed_at ? `Updated ${new Date(snap.refreshed_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : undefined}
+        stalenessHint={snap.refreshed_at ? `Updated ${new Date(snap.refreshed_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : undefined}
       />
 
       <div className="buyer-app-cards mt-6 grid grid-cols-2 gap-6">
-        {snap ? (
-          <>
-            <AdoptionFunnelCard snap={snap} />
-            <GmvContributionCard snap={snap} />
-            <TopBuyersCard buyers={snap.top_app_buyers_card} />
-            <LocationUsageCard locations={snap.top_locations} />
-          </>
-        ) : (
-          Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-[260px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-          ))
-        )}
+        <AdoptionFunnelCard snap={snap} />
+        <GmvContributionCard snap={snap} />
+        <TopBuyersCard buyers={snap.top_app_buyers_card} />
+        <LocationUsageCard locations={snap.top_locations} />
       </div>
     </PageWrap>
   );
