@@ -95,6 +95,14 @@ interface IntegrationWebhookRow {
   endpoint_token: string;
   event_types: string[];
   is_active: boolean;
+  provider: string;
+  entity_type: string | null;
+  remote_webhook_id: string | null;
+  secret: string | null;
+  status: 'pending' | 'active' | 'failed' | 'disabled';
+  webhook_config: JsonRecord;
+  last_verified_at: string | null;
+  last_received_at: string | null;
   created_at: string;
   updated_at: string;
   created_by: string | null;
@@ -102,6 +110,14 @@ interface IntegrationWebhookRow {
   deleted_at: string | null;
   external_ref: string | null;
 }
+
+const WEBHOOK_PHASE_BY_ENTITY: Record<string, 'customers' | 'products' | 'estimates' | 'orders' | 'invoices'> = {
+  contacts: 'customers',
+  items: 'products',
+  estimates: 'estimates',
+  salesorders: 'orders',
+  invoices: 'invoices',
+};
 
 interface ActorContext {
   userId: string;
@@ -195,6 +211,15 @@ function normalizeJobType(value: unknown): IntegrationJobType {
   return 'manual';
 }
 
+function normalizeRunOrigin(value: unknown): 'manual' | 'scheduled' | 'webhook' | null {
+  if (value === 'manual' || value === 'scheduled' || value === 'webhook') return value;
+  return null;
+}
+
+function normalizeSyncWindow(value: unknown): string | null {
+  return asString(value);
+}
+
 function resolveScope(jobType: IntegrationJobType, requestedScope: unknown): IntegrationSyncScope {
   if (requestedScope === 'reference' || requestedScope === 'transactional' || requestedScope === 'full') {
     return requestedScope;
@@ -206,17 +231,21 @@ function resolveScope(jobType: IntegrationJobType, requestedScope: unknown): Int
 }
 
 function resolveScopeForPhase(phase: string | null | undefined): IntegrationSyncScope {
-  if (phase === 'estimates' || phase === 'orders' || phase === 'invoices') {
+  if (phase === 'transactions' || phase === 'estimates' || phase === 'orders' || phase === 'invoices') {
     return 'transactional';
   }
   return 'reference';
+}
+
+function toDateOnly(value: Date): string {
+  return value.toISOString().slice(0, 10);
 }
 
 function normalizeSince(value: unknown): string | null {
   const since = asString(value);
   if (!since) return null;
   const parsed = new Date(since);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  return Number.isNaN(parsed.getTime()) ? null : toDateOnly(parsed);
 }
 
 function normalizeMaxPages(value: unknown): number | null {
@@ -297,6 +326,27 @@ function hasValidDispatchSecret(request: Request): boolean {
   return Boolean(expected && received && expected === received);
 }
 
+async function hasValidZohoCronToken(
+  request: Request,
+  admin: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+): Promise<boolean> {
+  const received = request.headers.get('x-zoho-cron-token');
+  if (!received) return false;
+
+  const { data, error } = await admin
+    .schema('app')
+    .from('tenant_settings')
+    .select('settings')
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (error || !data) return false;
+
+  const settings = coerceRecord((data as { settings?: unknown }).settings);
+  return typeof settings.zoho_daily_sync_cron_token === 'string' && settings.zoho_daily_sync_cron_token === received;
+}
+
 async function requireActor(request: Request, admin: ReturnType<typeof createAdminClient>): Promise<ActorContext> {
   if (hasValidDispatchSecret(request)) {
     return {
@@ -350,6 +400,14 @@ async function authorizeTenantActor(
   admin: ReturnType<typeof createAdminClient>,
   tenantId: string,
 ): Promise<ActorContext> {
+  if (hasValidDispatchSecret(request) || await hasValidZohoCronToken(request, admin, tenantId)) {
+    return {
+      userId: 'internal-dispatch',
+      authHeader: getBearerHeader(request),
+      internal: true,
+    };
+  }
+
   const actor = await requireActor(request, admin);
   if (!actor.internal) {
     await assertSellerAdmin(admin, tenantId, actor.userId);
@@ -864,10 +922,16 @@ function applyPhasePage(
 }
 
 function buildSummary(progress: IntegrationJobProgress): IntegrationJobSummary {
+  const meta = isRecord(progress.meta) ? progress.meta : {};
+  const runOrigin = normalizeRunOrigin(meta.run_origin);
+  const syncWindow = normalizeSyncWindow(meta.sync_window);
+
   return {
     provider: 'zoho',
     scope: progress.scope,
     since: progress.since,
+    ...(runOrigin ? { run_origin: runOrigin } : {}),
+    ...(syncWindow ? { sync_window: syncWindow } : {}),
     phases_completed: Object.keys(progress.counts).filter((key) => progress.counts[key].pages > 0 || progress.counts[key].processed > 0),
     counts: progress.counts,
     last_synced_at: nowIso(),
@@ -1078,7 +1142,7 @@ async function runWorkerJob(
 
     if (page.records.length > 0) {
       try {
-        await persistZohoEntityPage(
+        const persistResult = await persistZohoEntityPage(
           admin,
           integration.tenant_id,
           importActorId,
@@ -1088,7 +1152,40 @@ async function runWorkerJob(
           page.records,
           adapter,
         );
+        const webhookEventId = isRecord(progress.meta) ? asString(progress.meta.webhook_event_id) : null;
+        if (webhookEventId) {
+          const targetTables: Record<string, string> = {
+            locations: 'locations', customers: 'buyers', products: 'tenant_products', estimates: 'estimates', orders: 'orders', invoices: 'invoices',
+          };
+          await admin.schema('app').from('integration_webhook_event_changes').insert({
+            tenant_id: integration.tenant_id,
+            tenant_integration_id: integration.id,
+            integration_webhook_event_id: webhookEventId,
+            entity_type: currentPhase.entityType,
+            target_table: `app.${targetTables[currentPhase.entityType] ?? currentPhase.entityType}`,
+            target_entity_type: currentPhase.entityType,
+            operation: persistResult.created > 0 ? 'create' : persistResult.updated > 0 ? 'update' : 'skip',
+            merge_decision: 'targeted_remote_fetch',
+            after_state: { processed: persistResult.created + persistResult.updated },
+            delta: persistResult,
+          });
+        }
       } catch (persistError) {
+        const webhookEventId = isRecord(progress.meta) ? asString(progress.meta.webhook_event_id) : null;
+        if (webhookEventId) {
+          const webhookId = asString(isRecord(progress.meta) ? progress.meta.webhook_id : null);
+          const { data: webhookRow } = webhookId
+            ? await admin.schema('app').from('integration_webhooks').select('*').eq('id', webhookId).maybeSingle()
+            : { data: null };
+          if (webhookRow) {
+            await appendWebhookError(admin, {
+              webhook: webhookRow as IntegrationWebhookRow,
+              eventId: webhookEventId,
+              stage: 'persist',
+              error: persistError,
+            });
+          }
+        }
         progress = {
           ...progress,
           note: persistError instanceof Error
@@ -1404,14 +1501,20 @@ export async function handleIntegrationsSync(request: Request): Promise<Response
     const credentials = await loadTenantIntegrationSecret(admin, integration.id, integration.integration_type_id);
 
     const jobType = normalizeJobType(payload.job_type);
+    const runOrigin = normalizeRunOrigin((payload as JsonRecord).run_origin) ?? 'manual';
+    const syncWindow = normalizeSyncWindow((payload as JsonRecord).sync_window)
+      ?? (runOrigin === 'scheduled' ? 'Last 24 hours' : null);
     const requestedPhase = asString((payload as JsonRecord).phase);
     const scope = requestedPhase ? resolveScopeForPhase(requestedPhase) : resolveScope(jobType, payload.scope);
     const since = normalizeSince(payload.since);
-    const plan = requestedPhase
-      ? getZohoPhasePlan(integration.integration_type_id, scope).filter((phase) => phase.id === requestedPhase)
-      : getZohoPhasePlan(integration.integration_type_id, scope);
+    const scopedPlan = getZohoPhasePlan(integration.integration_type_id, scope);
+    const plan = requestedPhase === 'transactions'
+      ? scopedPlan
+      : requestedPhase
+        ? scopedPlan.filter((phase) => phase.id === requestedPhase)
+        : scopedPlan;
 
-    if (requestedPhase && plan.length === 0) {
+    if (requestedPhase && requestedPhase !== 'transactions' && plan.length === 0) {
       throw new HttpError(400, `Unknown sync phase ${requestedPhase}.`);
     }
 
@@ -1419,10 +1522,16 @@ export async function handleIntegrationsSync(request: Request): Promise<Response
       scope,
       since,
       plan,
-      requestedPhase
-        ? `Running phase sync for ${requestedPhase}.`
-        : 'Entity persistence is conservative for now: runtime counts and cursors are real, normalized upserts come next.',
-      typeof payload.max_pages === 'number' && payload.max_pages > 0 ? { max_pages: payload.max_pages } : undefined,
+      requestedPhase === 'transactions'
+        ? 'Running transaction sync across estimates, sales orders, and invoices.'
+        : requestedPhase
+          ? `Running phase sync for ${requestedPhase}.`
+          : 'Entity persistence is conservative for now: runtime counts and cursors are real, normalized upserts come next.',
+      {
+        ...(typeof payload.max_pages === 'number' && payload.max_pages > 0 ? { max_pages: payload.max_pages } : {}),
+        run_origin: runOrigin,
+        ...(syncWindow ? { sync_window: syncWindow } : {}),
+      },
     );
 
     const job = await createSyncJob(admin, {
@@ -1547,10 +1656,121 @@ async function touchWebhookFlows(
     .eq('is_active', true);
 }
 
+function requestHeadersForAudit(request: Request): JsonRecord {
+  return Object.fromEntries(
+    [...request.headers.entries()].map(([key, value]) => [
+      key,
+      /token|secret|authorization/i.test(key) ? '***' : value,
+    ]),
+  );
+}
+
+function resolveWebhookExternalEntityId(payload: IntegrationWebhookRequest): string | null {
+  const body = isRecord(payload.payload) ? payload.payload : payload;
+  return asString(body.entity_id)
+    ?? asString(body.id)
+    ?? asString(body.contact_id)
+    ?? asString(body.item_id)
+    ?? asString(body.estimate_id)
+    ?? asString(body.invoice_id)
+    ?? asString(body.salesorder_id);
+}
+
+async function createWebhookAuditEvent(
+  admin: ReturnType<typeof createAdminClient>,
+  webhook: IntegrationWebhookRow,
+  payload: IntegrationWebhookRequest,
+  request: Request,
+): Promise<string> {
+  const eventType = asString(payload.event_type);
+  const externalEntityId = resolveWebhookExternalEntityId(payload);
+  const { data, error } = await admin.schema('app').from('integration_webhook_events').insert({
+    tenant_id: webhook.tenant_id,
+    tenant_integration_id: webhook.tenant_integration_id,
+    integration_webhook_id: webhook.id,
+    provider: webhook.provider,
+    entity_type: webhook.entity_type ?? 'unknown',
+    event_type: eventType,
+    external_entity_id: externalEntityId,
+    remote_webhook_id: webhook.remote_webhook_id,
+    request_headers: requestHeadersForAudit(request),
+    request_query: scrubSecretValue(Object.fromEntries(new URL(request.url).searchParams.entries())) as JsonRecord,
+    raw_payload: scrubSecretValue(payload) as JsonRecord,
+    normalized_payload: {
+      entity_type: webhook.entity_type,
+      event_type: eventType,
+      external_ref: externalEntityId,
+      received_at: nowIso(),
+    },
+    processing_status: 'processing',
+  }).select('id').single();
+  if (error || !data) throw new HttpError(500, 'Unable to write webhook audit event.', { code: error?.code });
+  return data.id as string;
+}
+
+async function appendWebhookError(
+  admin: ReturnType<typeof createAdminClient>,
+  input: { webhook: IntegrationWebhookRow; eventId?: string | null; eventType?: string | null; stage: string; error: unknown },
+): Promise<void> {
+  const message = input.error instanceof Error ? input.error.message : 'Unexpected webhook processing error.';
+  await admin.schema('app').from('integration_webhook_errors').insert({
+    tenant_id: input.webhook.tenant_id,
+    tenant_integration_id: input.webhook.tenant_integration_id,
+    integration_webhook_id: input.webhook.id,
+    integration_webhook_event_id: input.eventId ?? null,
+    provider: input.webhook.provider,
+    entity_type: input.webhook.entity_type,
+    event_type: input.eventType ?? null,
+    stage: input.stage,
+    reason_code: input.error instanceof HttpError ? `HTTP_${input.error.status}` : 'UNEXPECTED',
+    message,
+    retryable: !(input.error instanceof HttpError && input.error.status < 500),
+    debug_payload: input.error instanceof HttpError ? (input.error.details ?? {}) : {},
+  });
+}
+
+async function softDeleteWebhookEntity(
+  admin: ReturnType<typeof createAdminClient>,
+  webhook: IntegrationWebhookRow,
+  eventId: string,
+  externalEntityId: string,
+): Promise<void> {
+  const mapping = WEBHOOK_PHASE_BY_ENTITY[webhook.entity_type ?? ''];
+  const tables: Record<string, string> = {
+    customers: 'buyers', products: 'tenant_products', estimates: 'estimates', orders: 'orders', invoices: 'invoices',
+  };
+  const targetTable = mapping ? tables[mapping] : null;
+  if (!targetTable) return;
+
+  const { data: row } = await admin.schema('app').from(targetTable)
+    .select('id').eq('tenant_id', webhook.tenant_id).eq('external_ref', externalEntityId).is('deleted_at', null).maybeSingle();
+  if (!row) return;
+  const deletedAt = nowIso();
+  await admin.schema('app').from(targetTable).update({ deleted_at: deletedAt, updated_by: webhook.created_by }).eq('id', row.id);
+  await admin.schema('app').from('integration_webhook_event_changes').insert({
+    tenant_id: webhook.tenant_id,
+    tenant_integration_id: webhook.tenant_integration_id,
+    integration_webhook_event_id: eventId,
+    entity_type: webhook.entity_type ?? 'unknown',
+    target_table: `app.${targetTable}`,
+    target_entity_type: mapping,
+    target_row_id: row.id,
+    operation: 'soft_delete',
+    merge_decision: 'remote_delete',
+    before_state: { deleted_at: null },
+    after_state: { deleted_at: deletedAt },
+    delta: { deleted_at: deletedAt },
+  });
+}
+
 export async function handleIntegrationsWebhook(request: Request): Promise<Response> {
+  let webhookForAudit: IntegrationWebhookRow | null = null;
+  let auditEventId: string | null = null;
+  let payloadForAudit: IntegrationWebhookRequest | null = null;
   try {
     requireMethod(request, 'POST');
     const payload = await readJson<IntegrationWebhookRequest>(request);
+    payloadForAudit = payload;
     const admin = createAdminClient();
 
     const endpointToken = asString(payload.endpoint_token)
@@ -1566,6 +1786,10 @@ export async function handleIntegrationsWebhook(request: Request): Promise<Respo
 
     if (endpointToken) {
       webhook = await loadWebhook(admin, endpointToken);
+      webhookForAudit = webhook;
+      if (!webhook.is_active || webhook.status !== 'active' || !webhook.entity_type) {
+        throw new HttpError(403, 'Integration webhook is not active.');
+      }
       integration = await loadTenantIntegration(admin, webhook.tenant_integration_id);
     } else if (tenantIntegrationId) {
       integration = await loadTenantIntegration(admin, tenantIntegrationId);
@@ -1585,19 +1809,38 @@ export async function handleIntegrationsWebhook(request: Request): Promise<Respo
 
     if (webhook) {
       await touchWebhookFlows(admin, webhook.id);
+      auditEventId = await createWebhookAuditEvent(admin, webhook, payload, request);
     }
 
-    const scope: IntegrationSyncScope = 'transactional';
+    const phase = webhook?.entity_type ? WEBHOOK_PHASE_BY_ENTITY[webhook.entity_type] : null;
+    if (!phase) throw new HttpError(400, 'Webhook entity type is not supported.');
+    const scope = resolveScopeForPhase(phase);
     const since = normalizeSince(null);
+    const runOrigin = 'webhook' as const;
     const plan = isZohoIntegrationTypeId(integration.integration_type_id)
-      ? getZohoPhasePlan(integration.integration_type_id, scope)
+      ? getZohoPhasePlan(integration.integration_type_id, scope).filter((entry) => entry.id === phase)
       : [];
     const progress = buildInitialProgress(
       scope,
       since,
       plan,
-      `Triggered by webhook${payload.event_type ? `: ${payload.event_type}` : ''}.`,
+      `Triggered by ${webhook?.entity_type ?? 'unknown'} webhook${payload.event_type ? `: ${payload.event_type}` : ''}.`,
+      {
+        run_origin: runOrigin,
+        webhook_event_id: auditEventId,
+        webhook_id: webhook?.id ?? null,
+        webhook_entity_type: webhook?.entity_type ?? null,
+      },
     );
+
+    const externalEntityId = resolveWebhookExternalEntityId(payload);
+    if (auditEventId && webhook && asString(payload.event_type)?.endsWith('.deleted') && externalEntityId) {
+      await softDeleteWebhookEntity(admin, webhook, auditEventId, externalEntityId);
+      await admin.schema('app').from('integration_webhook_events').update({
+        processing_status: 'processed', processed_at: nowIso(), runtime_meta: { handled_as: 'soft_delete' },
+      }).eq('id', auditEventId);
+      return jsonResponse({ ok: true, tenant_integration_id: integration.id, event_type: payload.event_type ?? null, webhook_id: webhook.id }, 202);
+    }
 
     const job = await createSyncJob(admin, {
       tenantId: integration.tenant_id,
@@ -1612,6 +1855,24 @@ export async function handleIntegrationsWebhook(request: Request): Promise<Respo
       updated_by: importActorId,
     });
 
+    if (auditEventId && webhook) {
+      await admin.schema('app').from('integration_webhook_event_changes').insert({
+        tenant_id: webhook.tenant_id,
+        tenant_integration_id: webhook.tenant_integration_id,
+        integration_webhook_event_id: auditEventId,
+        entity_type: webhook.entity_type ?? 'unknown',
+        target_table: `app.${phase === 'customers' ? 'buyers' : phase === 'products' ? 'tenant_products' : phase}`,
+        target_entity_type: phase,
+        operation: 'update',
+        merge_decision: 'queued_targeted_fetch',
+        delta: { phase, job_id: job.id },
+      });
+      await admin.schema('app').from('integration_webhook_events').update({
+        processing_status: 'processed', processed_at: nowIso(), runtime_meta: { job_id: job.id, phase },
+      }).eq('id', auditEventId);
+      await admin.schema('app').from('integration_webhooks').update({ last_received_at: nowIso() }).eq('id', webhook.id);
+    }
+
     waitUntil(dispatchWorkerInvocation(actor.authHeader, {
       job_id: job.id,
       tenant_integration_id: integration.id,
@@ -1621,6 +1882,20 @@ export async function handleIntegrationsWebhook(request: Request): Promise<Respo
     }).catch(async (error) => {
       const refreshedJob = await loadSyncJob(admin, job.id);
       await appendJobError(admin, refreshedJob, error);
+      if (auditEventId && webhook) {
+        await appendWebhookError(admin, {
+          webhook,
+          eventId: auditEventId,
+          eventType: asString(payload.event_type),
+          stage: 'dispatch',
+          error,
+        });
+        await admin.schema('app').from('integration_webhook_events').update({
+          processing_status: 'failed',
+          processed_at: nowIso(),
+          runtime_meta: { job_id: job.id, phase, dispatch_failed: true },
+        }).eq('id', auditEventId);
+      }
       await updateTenantIntegration(admin, integration.id, {
         status: 'sync_failed',
         health_status: classifyHealthStatus(error),
@@ -1638,6 +1913,21 @@ export async function handleIntegrationsWebhook(request: Request): Promise<Respo
       webhook_id: webhook?.id ?? null,
     }, 202);
   } catch (error) {
+    if (webhookForAudit) {
+      const admin = createAdminClient();
+      await appendWebhookError(admin, {
+        webhook: webhookForAudit,
+        eventId: auditEventId,
+        eventType: payloadForAudit ? asString(payloadForAudit.event_type) : null,
+        stage: auditEventId ? 'dispatch' : 'verify',
+        error,
+      }).catch(() => undefined);
+      if (auditEventId) {
+        await admin.schema('app').from('integration_webhook_events').update({
+          processing_status: 'failed', processed_at: nowIso(),
+        }).eq('id', auditEventId).catch(() => undefined);
+      }
+    }
     return handleRequestError(error);
   }
 }

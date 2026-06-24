@@ -151,8 +151,8 @@ function CohortsLandingContent({
     return (
       <PageWrap>
         <ErrorState
-          heading="Couldn't load cohorts"
-          description="There was a problem fetching your cohorts. Please try again."
+          heading="Couldn't load customer groups"
+          description="There was a problem fetching your customer groups. Please try again."
           onRetry={() => refetch()}
         />
       </PageWrap>
@@ -167,22 +167,22 @@ function CohortsLandingContent({
     <PageWrap>
       <PageHeader
         eyebrow="Segmentation"
-        title="Cohorts"
-        subtitle={`${kpis?.total_cohorts ?? 0} buyer groups defined by geo, tier, and brand affinity. Each one gets its own catalogs and price list.`}
+        title="Customer Groups"
+        subtitle={`${kpis?.total_cohorts ?? 0} buyer groups defined by geo, tier, and brand affinity. Each one gets its own campaigns and price list.`}
         horizon={horizonLabel}
         period={period}
         periodOptions={options}
         onPeriodChange={setPeriod}
-        primary="Add a cohort"
-        onPrimaryClick={() => router.push('/cohorts/new')}
+        primary="Add a customer group"
+        onPrimaryClick={() => router.push('/customer-groups/new')}
       />
 
       {showRefreshingState ? (
         <CohortsDataSkeleton />
       ) : isError ? (
         <ErrorState
-          heading="Couldn't load cohorts"
-          description="There was a problem fetching your cohorts. Please try again."
+          heading="Couldn't load customer groups"
+          description="There was a problem fetching your customer groups. Please try again."
           onRetry={() => refetch()}
         />
       ) : (
@@ -190,7 +190,7 @@ function CohortsLandingContent({
       <InsightStrip4
         tiles={[
           {
-            label: 'Cohorts',
+            label: 'Customer Groups',
             value: `${kpis?.total_cohorts ?? 0}`,
             sub: `covering ${kpis?.covered_members ?? 0} of ${kpis?.total_buyers ?? 0} buyers`,
           },
@@ -203,7 +203,7 @@ function CohortsLandingContent({
           {
             label: 'Avg conversion',
             value: `${(kpis?.avg_conversion_pct ?? 0).toFixed(1)}%`,
-            sub: 'catalog → order',
+            sub: 'campaign → order',
           },
           {
             label: 'Uncategorised',
@@ -248,7 +248,7 @@ function CohortsLandingContent({
               initials: getInitials(row.name),
               hue: getHue(index),
               name: row.name,
-              reason: `${row.live_catalogs_count} catalogs live · ${row.active_members} active`,
+              reason: `${row.live_catalogs_count} campaigns live · ${row.active_members} active`,
               trailing: <GrowthPill value={row.growth_pct} />,
             })),
           },
@@ -256,8 +256,8 @@ function CohortsLandingContent({
       />
 
       <FilterBar
-        count={`${filtered.length} cohorts`}
-        searchPlaceholder="Search cohort or rule…"
+        count={`${filtered.length} customer groups`}
+        searchPlaceholder="Search customer group or rule…"
         chips={CHIPS}
         activeChip={activeChip}
         sortBy={sortBy}
@@ -272,17 +272,17 @@ function CohortsLandingContent({
       {filtered.length === 0 ? (
         <EmptyState
           icon={<Users size={28} strokeWidth={1.5} />}
-          heading={search.trim() || activeChip !== 'All' ? 'No matching cohorts' : 'No cohorts yet'}
+          heading={search.trim() || activeChip !== 'All' ? 'No matching customer groups' : 'No customer groups yet'}
           description={
             search.trim() || activeChip !== 'All'
               ? 'Try a different search or type filter.'
-              : 'Create a cohort to segment buyers for catalogs and pricing.'
+              : 'Create a customer group to segment buyers for campaigns and pricing.'
           }
           action={
             <Button variant="accent" asChild>
-              <Link href="/cohorts/new" className="inline-flex items-center gap-1.5">
+              <Link href="/customer-groups/new" className="inline-flex items-center gap-1.5">
                 <Plus size={13} />
-                Add a cohort
+                Add a customer group
               </Link>
             </Button>
           }
@@ -291,7 +291,7 @@ function CohortsLandingContent({
       <div className="v2-body overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
         <div className="v2-grid-body grid grid-cols-1 gap-[14px] bg-cream-50 p-4 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map((cohort) => (
-            <CohortTile key={cohort.id} cohort={cohort} metricSuffix={metricSuffix} onClick={() => router.push(`/cohorts/${cohort.id}`)} />
+            <CohortTile key={cohort.id} cohort={cohort} metricSuffix={metricSuffix} onClick={() => router.push(`/customer-groups/${cohort.id}`)} />
           ))}
         </div>
       </div>

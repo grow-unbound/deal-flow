@@ -79,7 +79,7 @@ function CatalogsDataSkeleton() {
 }
 
 function CatalogRowReason(catalog: CatalogLandingRow) {
-  if (catalog.status.label === 'Draft') return 'Draft · not yet shipped to cohort';
+  if (catalog.status.label === 'Draft') return 'Draft · not yet sent to customer group';
   if (catalog.status.label === 'Ended') return `Ended ${catalog.valid_until_label} · ${catalog.orders} orders`;
   if (catalog.days_left != null && catalog.days_left <= 5 && catalog.days_left > 0) {
     return `Expires in ${catalog.days_left}d · ${catalog.orders} orders`;
@@ -136,8 +136,8 @@ function CatalogsLandingContent({
   if (isError && !landingData) {
     return (
       <ErrorState
-        heading="Couldn't load catalogs"
-        description="There was a problem fetching catalog funnel metrics. Please try again."
+        heading="Couldn't load campaigns"
+        description="There was a problem fetching campaign funnel metrics. Please try again."
       />
     );
   }
@@ -147,32 +147,32 @@ function CatalogsLandingContent({
   return (
     <PageWrap>
       <PageHeader
-        eyebrow="Distribution"
-        title="Catalogs"
-        subtitle="The mailers your retailers see in the buyer app. Each one targets a cohort, runs for a validity window, and rolls up to one funnel."
+        eyebrow="Growth"
+        title="Campaigns"
+        subtitle="Targeted offers for your customer groups. Each campaign picks a product set, a price, and a group — then shares via WhatsApp."
         horizon={horizonLabel}
         period={period}
         periodOptions={options}
         onPeriodChange={setPeriod}
-        primary="Add a catalog"
-        onPrimaryClick={() => router.push('/catalogs/new')}
+        primary="New campaign"
+        onPrimaryClick={() => router.push('/campaigns/new')}
       />
 
       {showRefreshingState ? (
         <CatalogsDataSkeleton />
       ) : isError ? (
         <ErrorState
-          heading="Couldn't load catalogs"
-          description="There was a problem fetching catalog funnel metrics. Please try again."
+          heading="Couldn't load campaigns"
+          description="There was a problem fetching campaign funnel metrics. Please try again."
         />
       ) : (
         <>
       <InsightStrip4
         tiles={[
           {
-            label: 'Live catalogs',
+            label: 'Live campaigns',
             value: `${landingData.kpis.live_catalogs}`,
-            sub: `${landingData.kpis.draft_catalogs} in draft, ${landingData.kpis.ended_catalogs} ended`,
+            sub: `${landingData.kpis.draft_catalogs} in draft · ${landingData.kpis.expiring7d} ending in 7 days`,
           },
           {
             label: `GMV · ${metricSuffix}`,
@@ -235,8 +235,8 @@ function CatalogsLandingContent({
       />
 
       <FilterBar
-        count={`${filtered.length} catalogs`}
-        searchPlaceholder="Search catalog or cohort…"
+        count={`${filtered.length} campaigns`}
+        searchPlaceholder="Search campaign or customer group…"
         chips={FILTER_CHIPS}
         activeChip={activeChip}
         sortBy={sortBy}
@@ -251,17 +251,17 @@ function CatalogsLandingContent({
       {filtered.length === 0 ? (
         <EmptyState
           icon={<Library size={28} strokeWidth={1.5} />}
-          heading={search.trim() || activeChip !== 'All' ? 'No matching catalogs' : 'No catalogs yet'}
+          heading={search.trim() || activeChip !== 'All' ? 'No matching campaigns' : 'No campaigns yet'}
           description={
             search.trim() || activeChip !== 'All'
               ? 'Try a different search or status filter.'
-              : 'Publish a catalog to share products with a cohort.'
+              : 'Publish a campaign to share products with a customer group.'
           }
           action={
             <Button variant="accent" asChild>
-              <Link href="/catalogs/new" className="inline-flex items-center gap-1.5">
+              <Link href="/campaigns/new" className="inline-flex items-center gap-1.5">
                 <Plus size={13} />
-                Add a catalog
+                New campaign
               </Link>
             </Button>
           }
@@ -280,7 +280,7 @@ function CatalogsLandingContent({
             <article
               key={catalog.id}
               className="cursor-pointer overflow-hidden rounded-[14px] border border-cream-200 bg-cream-50 transition-colors hover:border-teal-300"
-              onClick={() => router.push(`/catalogs/${catalog.id}`)}
+              onClick={() => router.push(`/campaigns/${catalog.id}`)}
             >
               <div
                 className={`relative flex h-[110px] items-end justify-between overflow-hidden px-4 pb-[14px] ${
@@ -302,7 +302,7 @@ function CatalogsLandingContent({
 
               <div className="space-y-[10px] p-4">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-xs text-cream-500">Cohort</span>
+                  <span className="text-xs text-cream-500">Customer group</span>
                   <span className="font-medium text-cream-900">{catalog.cohort_name}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">

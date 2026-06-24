@@ -124,7 +124,7 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
         sub: 'reorder this week',
       },
       {
-        label: 'Catalog freshness',
+        label: 'Campaign freshness',
         value: data.meta_strip_4.days_since_catalog != null ? `${data.meta_strip_4.days_since_catalog}d ago` : '—',
         sub: data.meta_strip_4.last_sent_date
           ? `last sent ${new Date(data.meta_strip_4.last_sent_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`

@@ -169,7 +169,7 @@ function CohortComposerSkeleton() {
     <div
       className={cn('mx-auto flex w-full max-w-[1920px] flex-col px-8 pt-7 pb-6', composerPageMinHeightClass)}
       role="status"
-      aria-label="Loading cohort composer"
+      aria-label="Loading customer group composer"
     >
       <div className="flex min-h-0 flex-1 flex-col gap-4">
         <div className="h-4 w-44 animate-pulse rounded bg-cream-200" />
@@ -349,7 +349,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
     return () => window.removeEventListener('beforeunload', beforeUnload);
   }, [isDirty]);
 
-  const closeTarget = mode === 'edit' && cohortId ? `/cohorts/${cohortId}` : '/cohorts';
+  const closeTarget = mode === 'edit' && cohortId ? `/customer-groups/${cohortId}` : '/customer-groups';
   const dirtyGuard = useDirtyCloseGuard({
     isDirty,
     onConfirmClose: () => router.push(closeTarget),
@@ -357,7 +357,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
 
   const pendingSaveSummary = useMemo(
     () => [
-      { label: 'Name', value: name.trim() || 'Untitled cohort' },
+      { label: 'Name', value: name.trim() || 'Untitled customer group' },
       {
         label: 'Type',
         value: selectionMode === 'manual-selection' ? 'Manual selection' : 'Rule-based',
@@ -426,11 +426,11 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
       setInitialSnapshot(serializedState);
 
       if (redirect === 'detail') {
-        router.push(`/cohorts/${result.cohort.id}`);
+        router.push(`/customer-groups/${result.cohort.id}`);
         return;
       }
 
-      router.push('/cohorts');
+      router.push('/customer-groups');
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Failed to save cohort');
     }
@@ -478,22 +478,22 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
     return (
       <div className="max-w-[1920px] mx-auto w-full px-8 py-6">
         <div className="rounded-[18px] border border-danger-200 bg-danger-50 p-5 text-base text-danger-700">
-          We couldn&apos;t load this cohort composer right now.
+          We couldn&apos;t load this customer group composer right now.
         </div>
       </div>
     );
   }
 
-  const createSubtitle = 'Group buyers by geography, tier, or activity. Pricelists and catalogs target a cohort, not a one-off buyer list.';
+  const createSubtitle = 'Group buyers by geography, tier, or activity. Pricelists and campaigns target a customer group, not a one-off buyer list.';
   const editSubtitle = isLiveEdit
-    ? 'You are editing a live cohort. Save applies membership and rule changes immediately for pricelists and catalogs targeting this cohort.'
-    : 'Review the buyer set, adjust rules or manual membership, and save when the cohort profile looks right.';
+    ? 'You are editing a live customer group. Save applies membership and rule changes immediately for pricelists and campaigns targeting this customer group.'
+    : 'Review the buyer set, adjust rules or manual membership, and save when the customer group profile looks right.';
   const visibleIds = visibleRows.map((buyer) => buyer.id);
   const footerStatusText = isDirty
     ? 'Unsaved changes'
     : isLiveEdit
-      ? 'Live cohort · no pending edits'
-      : 'Save to create this cohort';
+      ? 'Live customer group · no pending edits'
+      : 'Save to create this customer group';
 
   return (
     <>
@@ -502,13 +502,13 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
           <div className="flex min-h-0 flex-1 flex-col gap-4">
           <ComposerBreadcrumbs
             items={[
-              { label: 'Cohorts', href: '/cohorts' },
-              { label: mode === 'edit' ? detailQuery.data?.details_rules.name ?? 'Edit cohort' : 'New cohort', current: true },
+              { label: 'Customer Groups', href: '/customer-groups' },
+              { label: mode === 'edit' ? detailQuery.data?.details_rules.name ?? 'Edit customer group' : 'New customer group', current: true },
             ]}
           />
 
           <ComposerTitleRow
-            title={mode === 'edit' ? 'Edit cohort' : 'Add a cohort'}
+            title={mode === 'edit' ? 'Edit customer group' : 'Add a customer group'}
             subtitle={mode === 'edit' ? editSubtitle : createSubtitle}
             status={{ label: mode === 'edit' ? 'Live' : 'Draft', tone: mode === 'edit' ? 'live' : 'draft' }}
             actions={
@@ -529,7 +529,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                   clearFieldError('name');
                   setSubmitError(null);
                 }}
-                placeholder="Cohort name"
+                placeholder="Customer group name"
                 className="h-auto border-0 bg-transparent px-0 py-0 font-medium text-base text-cream-950 shadow-none focus-visible:ring-0"
               />
             </ComposerBasicsField>
@@ -575,16 +575,16 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
 
           {submitError ? (
             <Alert variant="danger">
-              <AlertTitle>Couldn&apos;t save cohort</AlertTitle>
+              <AlertTitle>Couldn&apos;t save customer group</AlertTitle>
               <AlertDescription>{submitError}</AlertDescription>
             </Alert>
           ) : null}
 
           {isLiveEdit ? (
             <Alert variant="warning">
-              <AlertTitle>Editing a live cohort</AlertTitle>
+              <AlertTitle>Editing a live customer group</AlertTitle>
               <AlertDescription>
-                Save applies updates immediately. Pricelists and catalogs mapped to this cohort will use the updated buyer membership.
+                Save applies updates immediately. Pricelists and campaigns mapped to this customer group will use the updated buyer membership.
               </AlertDescription>
             </Alert>
           ) : null}
@@ -874,10 +874,10 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
               <ComposerSidebarCard>
               <div className="flex h-full flex-col gap-4">
                 <div>
-                  <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Cohort profile</h3>
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Customer group profile</h3>
                   <div className="mt-4">
                     <p className="font-display text-lg font-medium tracking-[-0.005em] text-cream-900">
-                      {name || 'Untitled cohort'}
+                      {name || 'Untitled customer group'}
                     </p>
                     <p className="mt-1 text-sm text-cream-700">
                       {selectionMode === 'manual-selection'
@@ -951,10 +951,10 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                     )}
                     <span>
                       {isLiveEdit
-                        ? 'Save applies these edits to the live cohort immediately. Review membership before confirming.'
+                        ? 'Save applies these edits to the live customer group immediately. Review membership before confirming.'
                         : summary.members > 0
-                          ? 'Ready to save. You can target this cohort from pricelists and catalogs after this.'
-                          : 'Add a few buyers through rules or manual selection to make this cohort useful downstream.'}
+                          ? 'Ready to save. You can target this customer group from pricelists and campaigns after this.'
+                          : 'Add a few buyers through rules or manual selection to make this customer group useful downstream.'}
                     </span>
                   </div>
                 </div>
@@ -984,7 +984,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                   disabled={saveMutation.isPending}
                 >
                   <Save className="h-3.5 w-3.5" />
-                  {isLiveEdit ? 'Save changes' : 'Save cohort'}
+                  {isLiveEdit ? 'Save changes' : 'Save customer group'}
                 </Button>
               </div>
             </div>
@@ -1001,9 +1001,9 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
       <Dialog open={confirmSaveOpen} onOpenChange={setConfirmSaveOpen}>
         <DialogContent className="max-w-[440px]">
           <DialogHeader>
-            <DialogTitle>Save cohort changes?</DialogTitle>
+            <DialogTitle>Save customer group changes?</DialogTitle>
             <DialogDescription>
-              This updates membership and rules for the live cohort. Pricelists and catalogs targeting it will use the updated buyer set.
+              This updates membership and rules for the live customer group. Pricelists and campaigns targeting it will use the updated buyer set.
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="pt-4 text-base leading-6 text-cream-700">

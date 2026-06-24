@@ -308,7 +308,7 @@ function SalesOrdersLandingContent({
                 { label: 'Order', className: 'px-5' },
                 { label: 'Buyer', className: 'px-5' },
                 { label: 'Source', className: 'px-5' },
-                { label: 'Catalog', className: 'px-5' },
+                { label: 'Campaign', className: 'px-5' },
                 { label: 'Delivery', className: 'px-5' },
                 { label: 'Items', align: 'right', className: 'px-5' },
                 { label: 'Total Amount', align: 'right', className: 'px-5' },

@@ -9,8 +9,8 @@ export default function SettingsPage() {
     <PageWrap>
       <SellerTopbar
         eyebrow="Settings"
-        title="General"
-        subtitle="Your business identity and WhatsApp notification preferences."
+        title="Settings"
+        subtitle="Manage your business profile, policies, and feature configuration."
       />
       <GeneralSettingsForm />
     </PageWrap>

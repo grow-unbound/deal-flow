@@ -143,7 +143,7 @@ export function CatalogComposerSkeleton() {
     <div
       className={cn('mx-auto flex w-full max-w-[1920px] flex-col px-8 pt-7 pb-6', composerPageMinHeightClass)}
       role="status"
-      aria-label="Loading catalog composer"
+      aria-label="Loading campaign composer"
     >
       <div className="flex min-h-0 flex-1 flex-col gap-4">
         <div className="h-4 w-44 animate-pulse rounded bg-cream-200" />
@@ -309,7 +309,7 @@ export function CatalogComposer({
   const selectedAudienceCount = isAllBuyersScope ? buyerCount : (selectedCohort?.member_count ?? 0);
   const overriddenTagCount = Object.values(tagOverrides).filter((value) => value != null).length;
   const pendingPublishSummary = [
-    { label: 'Name', value: name || 'Untitled catalog' },
+    { label: 'Name', value: name || 'Untitled campaign' },
     { label: 'Audience', value: `${selectedAudienceName} (${selectedAudienceCount} buyers)` },
     { label: 'Products', value: `${selectedVisibleCount} selected · ${selectedBrandCount} brands` },
     { label: 'Validity', value: validFrom ? `${formatDate(validFrom)} → ${validTo ? formatDate(validTo) : 'Open ended'}` : '—' },
@@ -347,7 +347,7 @@ export function CatalogComposer({
     return () => window.removeEventListener('beforeunload', beforeUnload);
   }, [isDirty]);
 
-  const closeTarget = mode === 'edit' && catalogId ? `/catalogs/${catalogId}` : '/catalogs';
+  const closeTarget = mode === 'edit' && catalogId ? `/campaigns/${catalogId}` : '/campaigns';
   const dirtyGuard = useDirtyCloseGuard({
     isDirty,
     onConfirmClose: () => router.push(closeTarget),
@@ -432,7 +432,7 @@ export function CatalogComposer({
     }
 
     if (payload.items.length === 0) {
-      nextErrors.products = 'Select at least one product to save this catalog.';
+      nextErrors.products = 'Select at least one product to save this campaign.';
     }
 
     setFieldErrors(nextErrors);
@@ -446,9 +446,9 @@ export function CatalogComposer({
 
     try {
       const result = await saveMutation.mutateAsync(payload);
-      router.push(`/catalogs/${result.catalog.id}`);
+      router.push(`/campaigns/${result.catalog.id}`);
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : 'Failed to save catalog');
+      setSubmitError(error instanceof Error ? error.message : 'Failed to save campaign');
     }
   }
 
@@ -456,7 +456,7 @@ export function CatalogComposer({
     return (
       <div className="max-w-[1920px] mx-auto w-full px-8 py-6">
         <div className="rounded-[18px] border border-danger-200 bg-danger-50 p-5 text-base text-danger-700">
-          We couldn&apos;t load this catalog composer right now.
+          We couldn&apos;t load this campaign composer right now.
         </div>
       </div>
     );
@@ -467,10 +467,10 @@ export function CatalogComposer({
   }
 
   const isPublishedEdit = mode === 'edit' && detail?.composer?.live_status === 'published';
-  const createSubtitle = 'Curate which products a cohort sees. The catalog controls visibility, availability, and what gets marked new.';
+  const createSubtitle = 'Curate which products a customer group sees. The campaign controls visibility, availability, and what gets marked new.';
   const editSubtitle = isPublishedEdit
-    ? 'You are staging edits for a live catalog. Save keeps current buyer assignments unchanged until you publish updates.'
-    : 'You are editing a draft catalog. Update the cohort-facing assortment, then review the summary before publishing.';
+    ? 'You are staging edits for a live campaign. Save keeps current buyer assignments unchanged until you publish updates.'
+    : 'You are editing a draft campaign. Update the customer group assortment, then review the summary before publishing.';
 
   async function handleActionClick(action: 'draft' | 'publish') {
     if (isPublishedEdit) {
@@ -487,13 +487,13 @@ export function CatalogComposer({
           <div className="flex min-h-0 flex-1 flex-col gap-4">
           <ComposerBreadcrumbs
             items={[
-              { label: 'Catalogs', href: '/catalogs' },
-              { label: mode === 'edit' ? detail?.header.name ?? 'Edit catalog' : 'New catalog', current: true },
+              { label: 'Campaigns', href: '/campaigns' },
+              { label: mode === 'edit' ? detail?.header.name ?? 'Edit campaign' : 'New campaign', current: true },
             ]}
           />
 
           <ComposerTitleRow
-            title={mode === 'edit' ? 'Edit catalog' : 'Add a catalog'}
+            title={mode === 'edit' ? 'Edit campaign' : 'Add a campaign'}
             subtitle={mode === 'edit' ? editSubtitle : createSubtitle}
             status={{
               label: mode === 'edit' && detail?.composer?.status === 'published' ? 'Live' : 'Draft',
@@ -524,7 +524,7 @@ export function CatalogComposer({
               />
             </ComposerBasicsField>
 
-            <ComposerBasicsField label="Cohort">
+            <ComposerBasicsField label="Customer group">
               <Select
                 value={cohortId}
                 onValueChange={(value) => {
@@ -543,7 +543,7 @@ export function CatalogComposer({
                       <BuyerCountPill count={selectedAudienceCount} />
                     </div>
                   ) : (
-                    <SelectValue placeholder="Pick a cohort" />
+                    <SelectValue placeholder="Pick a customer group" />
                   )}
                 </SelectTrigger>
                 <SelectContent>
@@ -597,16 +597,16 @@ export function CatalogComposer({
 
           {submitError ? (
             <Alert variant="danger">
-              <AlertTitle>Couldn&apos;t save catalog</AlertTitle>
+              <AlertTitle>Couldn&apos;t save campaign</AlertTitle>
               <AlertDescription>{submitError}</AlertDescription>
             </Alert>
           ) : null}
 
           {isPublishedEdit ? (
             <Alert variant="warning">
-              <AlertTitle>Editing a live catalog</AlertTitle>
+              <AlertTitle>Editing a live campaign</AlertTitle>
               <AlertDescription>
-                Save changes keeps the current buyer-facing catalog untouched. Publish updates pushes this staged version to the mapped cohort or buyers.
+                Save changes keeps the current buyer-facing campaign untouched. Publish updates pushes this staged version to the mapped customer group or buyers.
               </AlertDescription>
             </Alert>
           ) : null}
@@ -887,10 +887,10 @@ export function CatalogComposer({
               <ComposerSidebarCard>
                 <div className="flex h-full flex-col gap-4">
                   <div>
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Catalog summary</h3>
+                    <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Campaign summary</h3>
                     <div className="mt-4">
                       <p className="font-display text-lg font-medium tracking-[-0.005em] text-cream-900">
-                        {name || 'Untitled catalog'}
+                        {name || 'Untitled campaign'}
                       </p>
                       <p className="mt-1 text-sm text-cream-700">
                         Publishes to {selectedAudienceName} ({selectedAudienceCount} buyers)
@@ -986,8 +986,8 @@ export function CatalogComposer({
                       )}
                       <span>
                         {isPublishedEdit
-                          ? 'Save keeps these edits staged privately. Publish updates is the moment mapped buyers or cohorts see the new catalog.'
-                          : 'Ready to publish. Buyers see this catalog as soon as it goes live.'}
+                          ? 'Save keeps these edits staged privately. Publish updates is the moment mapped buyers or customer groups see the new campaign.'
+                          : 'Ready to publish. Buyers see this campaign as soon as it goes live.'}
                         {overriddenTagCount > 0 ? ` ${overriddenTagCount} product tag override${overriddenTagCount === 1 ? '' : 's'} will be preserved.` : ''}
                       </span>
                     </div>
@@ -1032,7 +1032,7 @@ export function CatalogComposer({
                   disabled={saveMutation.isPending}
                 >
                   <Send className="h-3.5 w-3.5" />
-                  {mode === 'edit' ? 'Publish updates' : 'Publish catalog'}
+                  {mode === 'edit' ? 'Publish updates' : 'Publish campaign'}
                 </Button>
               </div>
             </div>
@@ -1054,14 +1054,14 @@ export function CatalogComposer({
             </DialogTitle>
             <DialogDescription>
               {confirmAction === 'draft'
-                ? 'This stores your edits as a private draft. Mapped buyers and cohorts will keep seeing the current live catalog until you publish updates.'
-                : 'This replaces the live catalog for the currently mapped buyers or cohort. Publish only when the updated assortment is ready to go live.'}
+                ? 'This stores your edits as a private draft. Mapped buyers and customer groups will keep seeing the current live campaign until you publish updates.'
+                : 'This replaces the live campaign for the currently mapped buyers or customer group. Publish only when the updated assortment is ready to go live.'}
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="pt-4 text-base leading-6 text-cream-700">
             {confirmAction === 'draft'
               ? 'You can come back later, review these staged changes, and publish when ready.'
-              : `${selectedAudienceCount} buyers in ${selectedAudienceName} will see this updated catalog once you confirm.`}
+              : `${selectedAudienceCount} buyers in ${selectedAudienceName} will see this updated campaign once you confirm.`}
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setConfirmAction(null)}>
