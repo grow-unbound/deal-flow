@@ -8,7 +8,11 @@ import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { normalizeIntegrationJobErrorLog } from '@/lib/integrations/job-error-log';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { makeHttpError, transientQueryRetry } from '@/lib/query-retry';
-import type { IntegrationSettingsPayload } from '@/types/integrations';
+import type {
+  IntegrationCoverageTotals,
+  IntegrationSettingsPayload,
+  IntegrationWebhookTelemetry,
+} from '@/types/integrations';
 
 export type IntegrationFamilyFlag = 'ZOHO_INTEGRATION' | 'TALLY_INTEGRATION' | 'BUSY_INTEGRATION';
 export type IntegrationConnectivityMode = 'cloud' | 'local';
@@ -143,6 +147,8 @@ export interface TenantIntegrationDetail {
   active_job?: IntegrationSyncJob | null;
   sync_history: IntegrationSyncJob[];
   data_flows: IntegrationDataFlow[];
+  coverage_totals?: IntegrationCoverageTotals | null;
+  webhook_telemetry?: IntegrationWebhookTelemetry | null;
 }
 
 export interface IntegrationCatalogItem {
@@ -156,6 +162,8 @@ export interface IntegrationCatalogItem {
   logo_url?: string | null;
   tenant_integration?: TenantIntegrationDetail | null;
   setup_notes?: string[];
+  coverage_totals?: IntegrationCoverageTotals | null;
+  webhook_telemetry?: IntegrationWebhookTelemetry | null;
 }
 
 export interface IntegrationsSettingsView {
@@ -407,6 +415,8 @@ function parseTenantIntegration(value: unknown): TenantIntegrationDetail | null 
     data_flows: asArray<unknown>(value.data_flows)
       .map(parseDataFlow)
       .filter((flow): flow is IntegrationDataFlow => flow !== null),
+    coverage_totals: isRecord(value.coverage_totals) ? (value.coverage_totals as unknown as IntegrationCoverageTotals) : null,
+    webhook_telemetry: isRecord(value.webhook_telemetry) ? (value.webhook_telemetry as unknown as IntegrationWebhookTelemetry) : null,
   };
 }
 
@@ -448,6 +458,8 @@ function normalizeCatalogItem(value: unknown): IntegrationCatalogItem | null {
     logo_url: asNullableString(rawType.logo_url),
     tenant_integration: tenantIntegration,
     setup_notes: asArray<string>(value.setup_notes).filter((note) => typeof note === 'string'),
+    coverage_totals: isRecord(value.coverage_totals) ? (value.coverage_totals as unknown as IntegrationCoverageTotals) : null,
+    webhook_telemetry: isRecord(value.webhook_telemetry) ? (value.webhook_telemetry as unknown as IntegrationWebhookTelemetry) : null,
   };
 }
 

@@ -1,8 +1,5 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { Building2, Settings2, Radio } from 'lucide-react';
-import { toast } from 'sonner';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,27 +21,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
+import { Building2, Radio, Settings2 } from 'lucide-react';
 import { BusinessPolicySection } from '@/components/seller/settings/BusinessPolicySection';
 import { FeatureToggleRow } from '@/components/seller/settings/FeatureToggleRow';
 import { NotificationToggleRow } from '@/components/seller/settings/NotificationToggleRow';
 import { SettingsSectionCard } from '@/components/seller/settings/SettingsSectionCard';
-import { useTenantSettings } from '@/hooks/useTenantSettings';
-import { TenantSettingsPatchSchema } from '@/types/tenant-settings';
-import type { BusinessPolicy, TenantSettingsPatch, UnifiedSettingsView } from '@/types/tenant-settings';
-import {
-  DATE_FORMAT_OPTION_LABELS,
-  parseFormatToDisplay,
-  buildFormatFromDisplay,
-  previewDisplayFormat,
-} from '@/lib/tenant-settings/order-number-format';
-import type { DateFormatOption, OrderNumberDisplayFormat } from '@/lib/tenant-settings/order-number-format';
+import type { BusinessPolicy, TenantSettingsApiPayload, UnifiedSettingsView } from '@/types/tenant-settings';
 
 type OrderStageKey = 'enquiries' | 'sales_orders' | 'invoices';
-
-function cloneUnified(v: UnifiedSettingsView): UnifiedSettingsView {
-  return structuredClone(v);
-}
 
 function orderStageLabels(key: OrderStageKey): { title: string; plural: string } {
   switch (key) {
@@ -54,101 +38,53 @@ function orderStageLabels(key: OrderStageKey): { title: string; plural: string }
   }
 }
 
-// ── Number format row ──────────────────────────────────────────────────────────
-
-function NumberFormatRow({
-  label,
-  format,
-  onFormatChange,
-}: {
-  label: string;
-  format: string;
-  onFormatChange: (fmt: string) => void;
-}) {
-  const display = parseFormatToDisplay(format);
-  const preview = previewDisplayFormat(display);
-
-  function handlePrefixChange(e: React.ChangeEvent<HTMLInputElement>) {
-    onFormatChange(buildFormatFromDisplay({ ...display, prefix: e.target.value }));
+async function uploadLogo(file: File): Promise<string> {
+  const res = await fetch('/api/uploads/r2/logo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename: file.name, contentType: file.type, sizeBytes: file.size }),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? 'Failed to get upload URL');
   }
-
-  function handleDateFormatChange(v: string) {
-    onFormatChange(buildFormatFromDisplay({ ...display, date_format: v as DateFormatOption }));
+  const { uploadUrl, publicUrl } = (await res.json()) as { uploadUrl: string; publicUrl: string };
+  if (uploadUrl && !uploadUrl.includes('undefined')) {
+    const put = await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+    if (!put.ok) throw new Error(`Upload failed: ${put.status}`);
   }
-
-  return (
-    <div className="space-y-2">
-      <p className="text-sm font-medium text-cream-800">{label}</p>
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="space-y-1">
-          <Label className="text-xs text-cream-600">Prefix</Label>
-          <Input
-            value={display.prefix}
-            onChange={handlePrefixChange}
-            maxLength={10}
-            className="w-24 font-mono text-sm uppercase"
-            placeholder="e.g. EST"
-          />
-        </div>
-        <div className="space-y-1 min-w-[200px]">
-          <Label className="text-xs text-cream-600">Date in number</Label>
-          <Select value={display.date_format} onValueChange={handleDateFormatChange}>
-            <SelectTrigger className="text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(Object.keys(DATE_FORMAT_OPTION_LABELS) as DateFormatOption[]).map((key) => (
-                <SelectItem key={key} value={key} className="text-sm">
-                  {DATE_FORMAT_OPTION_LABELS[key]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <p className="text-xs text-cream-500">
-        Preview: <span className="font-mono font-medium text-cream-800">{preview}</span>
-      </p>
-    </div>
-  );
+  return publicUrl;
 }
 
-// ── Save / Cancel bar ──────────────────────────────────────────────────────────
-
-function ActionBar({ dirty, isSaving, onDiscard, onSave }: {
-  dirty: boolean;
+export interface GeneralSettingsFormProps {
+  data: TenantSettingsApiPayload | undefined;
+  isLoading: boolean;
+  error: Error | null;
+  refetch: () => void;
+  draft: UnifiedSettingsView | null;
+  setDraft: React.Dispatch<React.SetStateAction<UnifiedSettingsView | null>>;
+  pendingOff: OrderStageKey | null;
+  setPendingOff: React.Dispatch<React.SetStateAction<OrderStageKey | null>>;
+  onOrderFeatureChange: (key: OrderStageKey, checked: boolean) => void;
+  onConfirmDisableStage: () => void;
+  onCampaignsToggle: (enabled: boolean) => void;
   isSaving: boolean;
-  onDiscard: () => void;
-  onSave: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-end gap-2">
-      <Button type="button" variant="outline" disabled={!dirty || isSaving} onClick={onDiscard}>
-        Cancel
-      </Button>
-      <Button type="button" disabled={!dirty || isSaving} onClick={onSave}>
-        {isSaving ? 'Saving…' : 'Save changes'}
-      </Button>
-    </div>
-  );
 }
 
-// ── Main form ──────────────────────────────────────────────────────────────────
-
-export function GeneralSettingsForm() {
-  const { data, isLoading, error, refetch, save, isSaving } = useTenantSettings();
-  const [draft, setDraft] = useState<UnifiedSettingsView | null>(null);
-  const [pendingOff, setPendingOff] = useState<OrderStageKey | null>(null);
-
-  useEffect(() => {
-    if (data) setDraft(cloneUnified(data.unified));
-  }, [data]);
-
-  const dirty = useMemo(() => {
-    if (!data || !draft) return false;
-    return JSON.stringify(data.unified) !== JSON.stringify(draft);
-  }, [data, draft]);
-
+export function GeneralSettingsForm({
+  data,
+  isLoading,
+  error,
+  refetch,
+  draft,
+  setDraft,
+  pendingOff,
+  setPendingOff,
+  onOrderFeatureChange,
+  onConfirmDisableStage,
+  onCampaignsToggle,
+  isSaving: _isSaving,
+}: GeneralSettingsFormProps) {
   // ── Update helpers ──
 
   function updateBusiness(partial: Partial<UnifiedSettingsView['business']>) {
@@ -156,10 +92,9 @@ export function GeneralSettingsForm() {
   }
 
   function updateAddress(partial: Partial<UnifiedSettingsView['business']['address']>) {
-    setDraft((prev) => prev ? {
-      ...prev,
-      business: { ...prev.business, address: { ...prev.business.address, ...partial } },
-    } : prev);
+    setDraft((prev) =>
+      prev ? { ...prev, business: { ...prev.business, address: { ...prev.business.address, ...partial } } } : prev,
+    );
   }
 
   function updateBusinessPolicy(business_policy: BusinessPolicy) {
@@ -167,14 +102,19 @@ export function GeneralSettingsForm() {
   }
 
   function updateNotifications(partial: Partial<UnifiedSettingsView['notifications']['whatsapp']>) {
-    setDraft((prev) => prev ? {
-      ...prev,
-      notifications: { whatsapp: { ...prev.notifications.whatsapp, ...partial } },
-    } : prev);
+    setDraft((prev) =>
+      prev ? { ...prev, notifications: { whatsapp: { ...prev.notifications.whatsapp, ...partial } } } : prev,
+    );
   }
 
   function updateOrders(partial: Partial<UnifiedSettingsView['orders']>) {
     setDraft((prev) => prev ? { ...prev, orders: { ...prev.orders, ...partial } } : prev);
+  }
+
+  function updateOrderFeature(partial: Partial<UnifiedSettingsView['orders']['features']>) {
+    setDraft((prev) =>
+      prev ? { ...prev, orders: { ...prev.orders, features: { ...prev.orders.features, ...partial } } } : prev,
+    );
   }
 
   function updateCatalog(partial: Partial<UnifiedSettingsView['catalog']>) {
@@ -185,107 +125,11 @@ export function GeneralSettingsForm() {
     setDraft((prev) => prev ? { ...prev, buyer_app: { ...prev.buyer_app, ...partial } } : prev);
   }
 
-  // ── Order feature toggle with open-count warning ──
-
-  function handleOrderFeatureChange(key: OrderStageKey, checked: boolean) {
-    if (!draft) return;
-    if (checked) {
-      updateOrders({ features: { ...draft.orders.features, [key]: true } });
-      return;
-    }
-    const count =
-      key === 'enquiries' ? draft.open_counts.enquiries
-      : key === 'sales_orders' ? draft.open_counts.sales_orders
-      : draft.open_counts.invoices;
-    if (count > 0) { setPendingOff(key); return; }
-    updateOrders({ features: { ...draft.orders.features, [key]: false } });
-  }
-
-  function confirmDisableStage() {
-    if (!pendingOff || !draft) return;
-    updateOrders({ features: { ...draft.orders.features, [pendingOff]: false } });
-    setPendingOff(null);
-  }
-
-  // ── Campaigns dependency enforcement ──
-
-  function handleCampaignsToggle(enabled: boolean) {
-    if (!draft) return;
-    if (enabled) {
-      // auto-enable Pricelists + Customer Groups
-      updateCatalog({
-        catalog_publishing_enabled: true,
-        price_lists_enabled: true,
-        cohort_pricing_enabled: true,
-      });
-    } else {
-      updateCatalog({ catalog_publishing_enabled: false });
-    }
-  }
-
-  // ── Discard / Save ──
-
-  function handleDiscard() {
-    if (data) setDraft(cloneUnified(data.unified));
-  }
-
-  async function handleSave() {
-    if (!draft || !data) return;
-
-    // Auto-reset inventory lock stage if the selected stage was disabled
-    let finalDraft = draft;
-    const lockStage = draft.orders.inventory_lock_stage;
-    if (
-      (lockStage === 'enquiry' && !draft.orders.features.enquiries) ||
-      (lockStage === 'sales_order' && !draft.orders.features.sales_orders)
-    ) {
-      finalDraft = {
-        ...draft,
-        orders: { ...draft.orders, inventory_lock_stage: 'invoice' },
-      };
-      setDraft(finalDraft);
-      toast.warning('Inventory lock stage reset to Invoice.');
-    }
-
-    const patch: TenantSettingsPatch = {
-      business: finalDraft.business,
-      notifications: { whatsapp: finalDraft.notifications.whatsapp },
-      business_policy: finalDraft.business_policy,
-      delivery_routing_threshold_km: finalDraft.delivery_routing_threshold_km,
-      product_defaults: finalDraft.product_defaults,
-      orders: {
-        enquiry_number_format: finalDraft.orders.enquiry_number_format,
-        sales_order_number_format: finalDraft.orders.sales_order_number_format,
-        invoice_number_format: finalDraft.orders.invoice_number_format,
-        inventory_lock_stage: finalDraft.orders.inventory_lock_stage,
-        invoice_pdf_enabled: finalDraft.orders.invoice_pdf_enabled,
-        features: finalDraft.orders.features,
-      },
-      buyer_app: {
-        enabled: finalDraft.buyer_app.enabled,
-        whatsapp_number: finalDraft.buyer_app.whatsapp_number,
-      },
-      catalog: {
-        price_lists_enabled: finalDraft.catalog.price_lists_enabled,
-        cohort_pricing_enabled: finalDraft.catalog.cohort_pricing_enabled,
-        catalog_publishing_enabled: finalDraft.catalog.catalog_publishing_enabled,
-      },
-    };
-
-    const parsed = TenantSettingsPatchSchema.safeParse(patch);
-    if (!parsed.success) {
-      toast.error(parsed.error.errors[0]?.message ?? 'Invalid settings');
-      return;
-    }
-    await save(parsed.data);
-  }
-
-  // ── Loading / error states ──
+  // ── Loading / error ──
 
   if (isLoading || !draft) {
     return (
       <div className="w-full space-y-4" aria-busy="true">
-        <div className="h-8 w-40 animate-pulse rounded-md bg-cream-100" />
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="space-y-6">
             <div className="h-96 animate-pulse rounded-xl border border-cream-100 bg-cream-50" />
@@ -301,7 +145,7 @@ export function GeneralSettingsForm() {
     return (
       <div className="w-full rounded-lg border border-ember-200 bg-ember-50 px-4 py-3 text-base text-ember-900">
         <p className="font-medium">Could not load settings.</p>
-        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void refetch()}>
+        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={refetch}>
           Retry
         </Button>
       </div>
@@ -321,9 +165,6 @@ export function GeneralSettingsForm() {
 
   return (
     <div className="w-full space-y-4">
-      {/* Top action bar */}
-      <ActionBar dirty={dirty} isSaving={isSaving} onDiscard={handleDiscard} onSave={() => void handleSave()} />
-
       {/* 2-column grid */}
       <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
 
@@ -354,6 +195,7 @@ export function GeneralSettingsForm() {
                   value={logoUrls}
                   onChange={(urls) => updateBusiness({ logo_url: urls[0] ?? null })}
                   maxFiles={1}
+                  uploadFile={uploadLogo}
                   label="Upload logo"
                   helperText="JPG, PNG, WebP • Max 5MB"
                   emptyLabel="Drop an image here or browse"
@@ -414,10 +256,25 @@ export function GeneralSettingsForm() {
               </div>
             </div>
 
+            {/* Phone fields — +91 prefix, 10-digit numeric */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="phone">Business phone</Label>
-                <Input id="phone" type="tel" value={draft.business.phone} onChange={(e) => updateBusiness({ phone: e.target.value })} className="font-mono text-sm" />
+                <div className="flex items-stretch">
+                  <span className="inline-flex items-center rounded-l-sm border border-r-0 border-cream-300 bg-cream-200 px-3 text-sm text-cream-700">
+                    +91
+                  </span>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    inputMode="numeric"
+                    value={draft.business.phone}
+                    onChange={(e) => updateBusiness({ phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                    maxLength={10}
+                    className="rounded-l-none font-mono tracking-wide"
+                    placeholder="9876543210"
+                  />
+                </div>
                 <p className="text-sm text-cream-600">WhatsApp sender number for OTP messages</p>
               </div>
               <div className="space-y-2">
@@ -429,14 +286,21 @@ export function GeneralSettingsForm() {
 
             <div className="space-y-2">
               <Label htmlFor="buyer-whatsapp">WhatsApp number (buyer app)</Label>
-              <Input
-                id="buyer-whatsapp"
-                value={draft.buyer_app.whatsapp_number}
-                onChange={(e) => updateBuyerApp({ whatsapp_number: e.target.value })}
-                placeholder="+91 …"
-                maxLength={40}
-                className="max-w-xs font-mono text-sm"
-              />
+              <div className="flex items-stretch max-w-xs">
+                <span className="inline-flex items-center rounded-l-sm border border-r-0 border-cream-300 bg-cream-200 px-3 text-sm text-cream-700">
+                  +91
+                </span>
+                <Input
+                  id="buyer-whatsapp"
+                  type="tel"
+                  inputMode="numeric"
+                  value={draft.buyer_app.whatsapp_number}
+                  onChange={(e) => updateBuyerApp({ whatsapp_number: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                  maxLength={10}
+                  className="rounded-l-none font-mono tracking-wide"
+                  placeholder="9876543210"
+                />
+              </div>
               <p className="text-sm text-cream-600">Shown to buyers for support in the buyer app.</p>
             </div>
           </SettingsSectionCard>
@@ -463,57 +327,75 @@ export function GeneralSettingsForm() {
             <p className="eyebrow text-cream-600">Order workflow</p>
           </div>
 
+          {/* Estimates */}
           <FeatureToggleRow
             label="Estimates"
             description="Let buyers request quotes before committing to an order."
             checked={draft.orders.features.enquiries}
-            onCheckedChange={(v) => handleOrderFeatureChange('enquiries', v)}
+            onCheckedChange={(v) => onOrderFeatureChange('enquiries', v)}
+            hideBorderBottom={draft.orders.features.enquiries}
           />
           {draft.orders.features.enquiries && (
-            <div className="border-b border-cream-200 bg-cream-50 px-5 py-4">
-              <NumberFormatRow
-                label="Estimate number format"
-                format={draft.orders.enquiry_number_format}
-                onFormatChange={(fmt) => updateOrders({ enquiry_number_format: fmt })}
+            <div className="border-b border-cream-200 bg-cream-50 pl-10 pr-5 pb-4 pt-2">
+              <FeatureToggleRow
+                label="Allow creation of Estimates in Yukti"
+                description="When off, estimates are created in Zoho or another system — Yukti only tracks them."
+                checked={draft.orders.features.create_enquiries}
+                onCheckedChange={(v) => updateOrderFeature({ create_enquiries: v })}
               />
+              {draft.orders.features.create_enquiries && (
+                <p className="px-5 pb-1 text-xs text-cream-500">
+                  Number format is auto-derived from your most recent estimate.
+                </p>
+              )}
             </div>
           )}
 
+          {/* Sales Orders */}
           <FeatureToggleRow
             label="Sales Orders"
             description="Formal order documents after a quote is accepted."
             checked={draft.orders.features.sales_orders}
-            onCheckedChange={(v) => handleOrderFeatureChange('sales_orders', v)}
+            onCheckedChange={(v) => onOrderFeatureChange('sales_orders', v)}
+            hideBorderBottom={draft.orders.features.sales_orders}
           />
           {draft.orders.features.sales_orders && (
-            <div className="border-b border-cream-200 bg-cream-50 px-5 py-4">
-              <NumberFormatRow
-                label="Sales order number format"
-                format={draft.orders.sales_order_number_format}
-                onFormatChange={(fmt) => updateOrders({ sales_order_number_format: fmt })}
+            <div className="border-b border-cream-200 bg-cream-50 pl-10 pr-5 pb-4 pt-2">
+              <FeatureToggleRow
+                label="Allow creation of Sales Orders in Yukti"
+                description="When off, sales orders are created in Zoho or another system — Yukti only tracks them."
+                checked={draft.orders.features.create_sales_orders}
+                onCheckedChange={(v) => updateOrderFeature({ create_sales_orders: v })}
               />
+              {draft.orders.features.create_sales_orders && (
+                <p className="px-5 pb-1 text-xs text-cream-500">
+                  Number format is auto-derived from your most recent sales order.
+                </p>
+              )}
             </div>
           )}
 
+          {/* Invoices */}
           <FeatureToggleRow
             label="Invoices"
             description="Bill buyers and track payment status."
             checked={draft.orders.features.invoices}
-            onCheckedChange={(v) => handleOrderFeatureChange('invoices', v)}
+            onCheckedChange={(v) => onOrderFeatureChange('invoices', v)}
+            hideBorderBottom={draft.orders.features.invoices}
           />
           {draft.orders.features.invoices && (
-            <div className="border-b border-cream-200 bg-cream-50 px-5 py-4 space-y-4">
-              <NumberFormatRow
-                label="Invoice number format"
-                format={draft.orders.invoice_number_format}
-                onFormatChange={(fmt) => updateOrders({ invoice_number_format: fmt })}
-              />
+            <div className="border-b border-cream-200 bg-cream-50 pl-10 pr-5 pb-4 pt-2">
               <FeatureToggleRow
-                label="Generate invoice PDF"
-                description="Auto-generate a PDF when an invoice is created."
-                checked={draft.orders.invoice_pdf_enabled}
-                onCheckedChange={(invoice_pdf_enabled) => updateOrders({ invoice_pdf_enabled })}
+                label="Allow creation of Invoices in Yukti"
+                description="When off, invoices are created in Zoho or another system — Yukti only tracks them."
+                checked={draft.orders.features.create_invoices}
+                onCheckedChange={(v) => updateOrderFeature({ create_invoices: v })}
               />
+              {draft.orders.features.create_invoices && (
+                <p className="px-5 pb-1 text-xs text-cream-500">
+                  Number format is auto-derived from your most recent invoice.
+                </p>
+              )}
             </div>
           )}
 
@@ -579,7 +461,7 @@ export function GeneralSettingsForm() {
                 : 'Publish buyer-facing catalog campaigns with share links.'
             }
             checked={draft.catalog.catalog_publishing_enabled}
-            onCheckedChange={handleCampaignsToggle}
+            onCheckedChange={onCampaignsToggle}
             disabled={campaignsDepsOff && !draft.catalog.catalog_publishing_enabled}
           />
 
@@ -588,21 +470,17 @@ export function GeneralSettingsForm() {
             <p className="eyebrow text-cream-600">Buyer app</p>
           </div>
 
-          <div className="flex items-center justify-between px-5 py-3">
-            <div>
-              <p className="text-base font-medium text-cream-900">Buyer App</p>
-              <p className="text-sm text-cream-600">WhatsApp-first storefront for your buyers.</p>
-            </div>
-            <Switch
-              checked={draft.buyer_app.enabled}
-              onCheckedChange={(enabled) => updateBuyerApp({ enabled })}
-              aria-label="Enable buyer app"
-            />
-          </div>
+          <FeatureToggleRow
+            label="Buyer App"
+            description="WhatsApp-first storefront for your buyers."
+            checked={draft.buyer_app.enabled}
+            onCheckedChange={(enabled) => updateBuyerApp({ enabled })}
+            hideBorderBottom={draft.buyer_app.enabled}
+          />
 
           {draft.buyer_app.enabled && (
-            <div className="border-t border-cream-200 bg-cream-50 px-5 py-4 space-y-1">
-              <p className="text-sm font-semibold uppercase tracking-wide text-cream-600 pb-2">WhatsApp notifications</p>
+            <div className="border-b border-cream-200 bg-cream-50 pl-10 pr-5 pb-4 pt-2">
+              <p className="text-sm font-semibold uppercase tracking-wide text-cream-600 px-5 pb-2 pt-1">WhatsApp notifications</p>
               <NotificationToggleRow
                 label="Buyer enquiry received"
                 description="Notify you when a buyer submits a quote request."
@@ -645,9 +523,6 @@ export function GeneralSettingsForm() {
         </SettingsSectionCard>
       </div>
 
-      {/* Bottom action bar */}
-      <ActionBar dirty={dirty} isSaving={isSaving} onDiscard={handleDiscard} onSave={() => void handleSave()} />
-
       {/* Disable stage confirmation dialog */}
       <AlertDialog open={pendingOff !== null} onOpenChange={(open) => !open && setPendingOff(null)}>
         <AlertDialogContent>
@@ -658,8 +533,8 @@ export function GeneralSettingsForm() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
-            <AlertDialogAction type="button" onClick={confirmDisableStage}>
+            <AlertDialogCancel type="button" onClick={() => setPendingOff(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction type="button" onClick={onConfirmDisableStage}>
               Proceed
             </AlertDialogAction>
           </AlertDialogFooter>

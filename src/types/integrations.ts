@@ -272,6 +272,37 @@ export const IntegrationJobSummarySchema = z
   .passthrough();
 export type IntegrationJobSummary = z.infer<typeof IntegrationJobSummarySchema>;
 
+export interface IntegrationCoverageTotals {
+  locations: number;
+  customers: number;
+  products: number;
+  brands: number;
+  categories: number;
+  pricelists: number;
+  estimates: number;
+  orders: number;
+  invoices: number;
+  transactions: number;
+}
+
+export interface IntegrationWebhookTelemetryEntity {
+  active: boolean;
+  create: boolean;
+  update: boolean;
+  delete: boolean;
+  processed_last_24h: number;
+  failed_last_24h: number;
+  last_received_at?: string | null;
+  last_verified_at?: string | null;
+}
+
+export interface IntegrationWebhookTelemetry {
+  status: 'active' | 'pending' | 'failed' | 'missing';
+  total_processed_last_24h: number;
+  total_failed_last_24h: number;
+  entities: Record<'locations' | 'customers' | 'products' | 'transactions', IntegrationWebhookTelemetryEntity>;
+}
+
 const IntegrationJobErrorEntrySchema = z.record(z.string(), z.unknown());
 const IntegrationJobErrorLogSchema = z.union([
   z.array(IntegrationJobErrorEntrySchema),
@@ -355,6 +386,42 @@ export const IntegrationCatalogItemSchema = z
     latest_job: IntegrationJobRecordSchema.nullable(),
     recent_jobs: z.array(IntegrationJobRecordSchema).default([]),
     active_flows: z.array(IntegrationDataFlowRecordSchema).default([]),
+    coverage_totals: z
+      .object({
+        locations: z.number().int().min(0),
+        customers: z.number().int().min(0),
+        products: z.number().int().min(0),
+        brands: z.number().int().min(0),
+        categories: z.number().int().min(0),
+        pricelists: z.number().int().min(0),
+        estimates: z.number().int().min(0),
+        orders: z.number().int().min(0),
+        invoices: z.number().int().min(0),
+        transactions: z.number().int().min(0),
+      })
+      .nullable()
+      .optional(),
+    webhook_telemetry: z
+      .object({
+        status: z.enum(['active', 'pending', 'failed', 'missing']),
+        total_processed_last_24h: z.number().int().min(0),
+        total_failed_last_24h: z.number().int().min(0),
+        entities: z.record(
+          z.enum(['locations', 'customers', 'products', 'transactions']),
+          z.object({
+            active: z.boolean(),
+            create: z.boolean(),
+            update: z.boolean(),
+            delete: z.boolean(),
+            processed_last_24h: z.number().int().min(0),
+            failed_last_24h: z.number().int().min(0),
+            last_received_at: z.string().datetime({ offset: true }).nullable().optional(),
+            last_verified_at: z.string().datetime({ offset: true }).nullable().optional(),
+          }),
+        ),
+      })
+      .nullable()
+      .optional(),
   })
   .strict();
 export type IntegrationCatalogItem = z.infer<typeof IntegrationCatalogItemSchema>;

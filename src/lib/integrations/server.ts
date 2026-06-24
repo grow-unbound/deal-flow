@@ -67,6 +67,163 @@ const ENTITY_ENDPOINTS: Partial<Record<IntegrationEntityType, string>> = {
   estimates: '/estimates',
 };
 
+const COVERAGE_TABLES = [
+  { key: 'locations', table: 'locations' },
+  { key: 'customers', table: 'buyers' },
+  { key: 'products', table: 'tenant_products' },
+  { key: 'brands', table: 'tenant_brands' },
+  { key: 'categories', table: 'tenant_categories' },
+  { key: 'pricelists', table: 'price_lists' },
+  { key: 'estimates', table: 'estimates' },
+  { key: 'orders', table: 'orders' },
+  { key: 'invoices', table: 'invoices' },
+] as const;
+
+const WEBHOOK_GROUP_ENTITIES = ['locations', 'customers', 'products', 'transactions'] as const;
+const WEBHOOK_GROUP_ENTITY_ALIASES: Record<(typeof WEBHOOK_GROUP_ENTITIES)[number], string[]> = {
+  locations: ['locations'],
+  customers: ['customers'],
+  products: ['products', 'brands', 'categories', 'pricelists'],
+  transactions: ['estimates', 'orders', 'invoices'],
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function normalizeWebhookEventType(eventType: string) {
+  if (eventType.includes('created')) return 'create';
+  if (eventType.includes('updated')) return 'update';
+  if (eventType.includes('deleted')) return 'delete';
+  return null;
+}
+
+function mapWebhookEntityGroup(entityType?: string | null): (typeof WEBHOOK_GROUP_ENTITIES)[number] | null {
+  switch (entityType) {
+    case 'locations':
+    case 'warehouses':
+      return 'locations';
+    case 'contacts':
+    case 'customers':
+    case 'buyer_users':
+      return 'customers';
+    case 'items':
+    case 'products':
+    case 'brands':
+    case 'categories':
+    case 'price_lists':
+    case 'pricelists':
+      return 'products';
+    case 'estimates':
+    case 'orders':
+    case 'salesorders':
+    case 'invoices':
+      return 'transactions';
+    default:
+      return null;
+  }
+}
+
+function buildCoverageTotals(counts: Record<string, number>): import('@/types/integrations').IntegrationCoverageTotals {
+  return {
+    locations: counts.locations ?? 0,
+    customers: counts.customers ?? 0,
+    products: counts.products ?? 0,
+    brands: counts.brands ?? 0,
+    categories: counts.categories ?? 0,
+    pricelists: counts.pricelists ?? 0,
+    estimates: counts.estimates ?? 0,
+    orders: counts.orders ?? 0,
+    invoices: counts.invoices ?? 0,
+    transactions: (counts.estimates ?? 0) + (counts.orders ?? 0) + (counts.invoices ?? 0),
+  };
+}
+
+function buildWebhookTelemetry(
+  webhookRows: Array<Record<string, unknown>>,
+  eventRows: Array<Record<string, unknown>>,
+  errorRows: Array<Record<string, unknown>>,
+): import('@/types/integrations').IntegrationWebhookTelemetry {
+  const entityStatuses: Record<(typeof WEBHOOK_GROUP_ENTITIES)[number], { active: boolean; create: boolean; update: boolean; delete: boolean; processed_last_24h: number; failed_last_24h: number; last_received_at?: string | null; last_verified_at?: string | null; }> = {
+    locations: { active: false, create: false, update: false, delete: false, processed_last_24h: 0, failed_last_24h: 0 },
+    customers: { active: false, create: false, update: false, delete: false, processed_last_24h: 0, failed_last_24h: 0 },
+    products: { active: false, create: false, update: false, delete: false, processed_last_24h: 0, failed_last_24h: 0 },
+    transactions: { active: false, create: false, update: false, delete: false, processed_last_24h: 0, failed_last_24h: 0 },
+  };
+
+  let status: import('@/types/integrations').IntegrationWebhookTelemetry['status'] = 'missing';
+
+  for (const row of webhookRows) {
+    const group = mapWebhookEntityGroup(typeof row.entity_type === 'string' ? row.entity_type : null);
+    if (!group) continue;
+
+    const entity = entityStatuses[group];
+    entity.active = entity.active || row.status === 'active' || row.is_active === true;
+    if (isNonEmptyString(row.last_received_at)) entity.last_received_at = row.last_received_at;
+    if (isNonEmptyString(row.last_verified_at)) entity.last_verified_at = row.last_verified_at;
+
+    const events = Array.isArray(row.event_types) ? row.event_types.filter((value): value is string => typeof value === 'string') : [];
+    for (const eventType of events) {
+      const kind = normalizeWebhookEventType(eventType);
+      if (kind) entity[kind] = true;
+    }
+  }
+
+  for (const row of eventRows) {
+    const group = mapWebhookEntityGroup(typeof row.entity_type === 'string' ? row.entity_type : null);
+    if (!group) continue;
+    if (row.processing_status === 'processed') {
+      entityStatuses[group].processed_last_24h += 1;
+      status = status === 'missing' ? 'pending' : status;
+    }
+  }
+
+  for (const row of errorRows) {
+    const group = mapWebhookEntityGroup(typeof row.entity_type === 'string' ? row.entity_type : null);
+    if (!group) continue;
+    entityStatuses[group].failed_last_24h += 1;
+  }
+
+  const activeWebhookCount = webhookRows.filter((row) => row.status === 'active' || row.is_active === true).length;
+  if (activeWebhookCount > 0) {
+    status = 'active';
+  } else if (webhookRows.length > 0) {
+    status = webhookRows.some((row) => row.status === 'failed') ? 'failed' : 'pending';
+  }
+
+  return {
+    status,
+    total_processed_last_24h: Object.values(entityStatuses).reduce((sum, entity) => sum + entity.processed_last_24h, 0),
+    total_failed_last_24h: Object.values(entityStatuses).reduce((sum, entity) => sum + entity.failed_last_24h, 0),
+    entities: entityStatuses,
+  };
+}
+
+async function countActiveRows(db: DbClient, table: string, tenantId: string) {
+  const { count, error } = await db.schema('app').from(table).select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).is('deleted_at', null);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+function isJobRelevantForGroup(job: Record<string, unknown>, aliases: string[]) {
+  const progress = isRecord(job.progress) ? job.progress : null;
+  const summary = isRecord(job.summary) ? job.summary : null;
+  const progressCounts = isRecord(progress?.counts) ? progress.counts : null;
+  const summaryCounts = isRecord(summary?.counts) ? summary.counts : null;
+  const phase = typeof progress?.phase === 'string' ? progress.phase : null;
+  const phases = Array.isArray(progress?.phases) ? progress.phases.filter((value): value is string => typeof value === 'string') : [];
+
+  return (
+    aliases.some((alias) => Boolean(progressCounts?.[alias]) || Boolean(summaryCounts?.[alias])) ||
+    (phase ? aliases.includes(phase) : false) ||
+    aliases.some((alias) => phases.includes(alias))
+  );
+}
+
 function requireAdminDb(): DbClient {
   if (!supabaseAdmin) {
     throw new Error('Server configuration error');
@@ -393,18 +550,39 @@ async function updateJob(
 
 export async function loadIntegrationsSettingsPayload(tenantId: string) {
   const db = requireAdminDb();
+  const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-  const [{ data: types, error: typeErr }, { data: integrations, error: integrationErr }, { data: jobs, error: jobErr }, { data: flows, error: flowErr }] =
-    await Promise.all([
-      db.schema('catalog').from('integration_types').select('id, display_name, description, logo_url, auth_schema, capabilities, connectivity_mode, is_active').eq('is_active', true).order('display_name'),
-      db.schema('app').from('tenant_integrations').select('id, tenant_id, integration_type_id, status, config, last_health_check_at, health_status, connected_at, connected_by, created_at, updated_at').eq('tenant_id', tenantId).is('deleted_at', null),
-      db.schema('app').from('integration_sync_jobs').select('id, tenant_integration_id, job_type, status, progress, error_log, summary, started_at, completed_at, created_at').eq('tenant_id', tenantId).is('deleted_at', null).order('created_at', { ascending: false }),
-      db.schema('app').from('integration_data_flows').select('id, tenant_integration_id, entity_type, direction, trigger_type, schedule, webhook_id, field_mappings, filters, is_active, last_run_at').eq('tenant_id', tenantId).is('deleted_at', null),
-    ]);
+  const [
+    { data: types, error: typeErr },
+    { data: integrations, error: integrationErr },
+    { data: jobs, error: jobErr },
+    { data: flows, error: flowErr },
+    { data: webhooks, error: webhookErr },
+    { data: webhookEvents, error: webhookEventErr },
+    { data: webhookErrors, error: webhookErrorErr },
+  ] = await Promise.all([
+    db.schema('catalog').from('integration_types').select('id, display_name, description, logo_url, auth_schema, capabilities, connectivity_mode, is_active').eq('is_active', true).order('display_name'),
+    db.schema('app').from('tenant_integrations').select('id, tenant_id, integration_type_id, status, config, last_health_check_at, health_status, connected_at, connected_by, created_at, updated_at').eq('tenant_id', tenantId).is('deleted_at', null),
+    db.schema('app').from('integration_sync_jobs').select('id, tenant_integration_id, job_type, status, progress, error_log, summary, started_at, completed_at, created_at').eq('tenant_id', tenantId).is('deleted_at', null).order('created_at', { ascending: false }),
+    db.schema('app').from('integration_data_flows').select('id, tenant_integration_id, entity_type, direction, trigger_type, schedule, webhook_id, field_mappings, filters, is_active, last_run_at').eq('tenant_id', tenantId).is('deleted_at', null),
+    db.schema('app').from('integration_webhooks').select('tenant_integration_id, entity_type, event_types, status, is_active, last_received_at, last_verified_at').eq('tenant_id', tenantId).is('deleted_at', null),
+    db.schema('app').from('integration_webhook_events').select('tenant_integration_id, entity_type, processing_status, received_at').eq('tenant_id', tenantId).gte('received_at', sinceIso).is('deleted_at', null),
+    db.schema('app').from('integration_webhook_errors').select('tenant_integration_id, entity_type, created_at').eq('tenant_id', tenantId).gte('created_at', sinceIso).is('deleted_at', null),
+  ]);
 
-  if (typeErr || integrationErr || jobErr || flowErr) {
+  if (typeErr || integrationErr || jobErr || flowErr || webhookErr || webhookEventErr || webhookErrorErr) {
     throw new Error('Failed to load integrations');
   }
+
+  const coverageCounts = Object.fromEntries(
+    await Promise.all(
+      COVERAGE_TABLES.map(async ({ key, table }) => {
+        const count = await countActiveRows(db, table, tenantId);
+        return [key, count] as const;
+      }),
+    ),
+  ) as Record<string, number>;
+  const coverageTotals = buildCoverageTotals(coverageCounts);
 
   const integrationMap = new Map((integrations ?? []).map((row: Record<string, unknown>) => [String(row.integration_type_id), row]));
   const latestJobMap = new Map<string, Record<string, unknown>>();
@@ -426,12 +604,42 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
     flowMap.get(key)?.push(flow as Record<string, unknown>);
   }
 
+  const webhookMap = new Map<string, Record<string, unknown>[]>();
+  for (const row of webhooks ?? []) {
+    const key = String((row as Record<string, unknown>).tenant_integration_id ?? '');
+    if (!key) continue;
+    const bucket = webhookMap.get(key) ?? [];
+    bucket.push(row as Record<string, unknown>);
+    webhookMap.set(key, bucket);
+  }
+
+  const webhookEventMap = new Map<string, Record<string, unknown>[]>();
+  for (const row of webhookEvents ?? []) {
+    const key = String((row as Record<string, unknown>).tenant_integration_id ?? '');
+    if (!key) continue;
+    const bucket = webhookEventMap.get(key) ?? [];
+    bucket.push(row as Record<string, unknown>);
+    webhookEventMap.set(key, bucket);
+  }
+
+  const webhookErrorMap = new Map<string, Record<string, unknown>[]>();
+  for (const row of webhookErrors ?? []) {
+    const key = String((row as Record<string, unknown>).tenant_integration_id ?? '');
+    if (!key) continue;
+    const bucket = webhookErrorMap.get(key) ?? [];
+    bucket.push(row as Record<string, unknown>);
+    webhookErrorMap.set(key, bucket);
+  }
+
   const payload = IntegrationSettingsPayloadSchema.parse({
     catalog: (types ?? []).map((typeRow: Record<string, unknown>) => {
       const integrationRow = integrationMap.get(String(typeRow.id)) ?? null;
       const integrationId = integrationRow ? String(integrationRow.id) : null;
       const latestJob = integrationId ? latestJobMap.get(integrationId) ?? null : null;
       const activeFlows = integrationId ? flowMap.get(integrationId) ?? [] : [];
+      const tenantWebhooks = integrationId ? webhookMap.get(integrationId) ?? [] : [];
+      const tenantWebhookEvents = integrationId ? webhookEventMap.get(integrationId) ?? [] : [];
+      const tenantWebhookErrors = integrationId ? webhookErrorMap.get(integrationId) ?? [] : [];
       return {
         type: {
           ...typeRow,
@@ -464,6 +672,10 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
             }))
           : [],
         active_flows: activeFlows,
+        coverage_totals: coverageTotals,
+        webhook_telemetry: integrationId
+          ? buildWebhookTelemetry(tenantWebhooks, tenantWebhookEvents, tenantWebhookErrors)
+          : null,
       } as unknown as IntegrationCatalogItem;
     }),
   });
