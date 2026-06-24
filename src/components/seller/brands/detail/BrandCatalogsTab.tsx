@@ -52,8 +52,8 @@ export function BrandCatalogsTab({ catalogs }: BrandCatalogsTabProps) {
       />
       <LandingTable
         columns={[
-          { label: 'Catalog name', className: 'px-5' },
-          { label: 'Cohort', className: 'px-5' },
+          { label: 'Campaign name', className: 'px-5' },
+          { label: 'Customer group', className: 'px-5' },
           { label: 'GMV', className: 'px-5' },
           { label: 'Orders', className: 'px-5' },
           { label: 'Status', className: 'px-5' },

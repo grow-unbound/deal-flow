@@ -74,7 +74,7 @@ const FLAG_KEY_TO_FEATURE: Record<NavFlagKey, NavFlagConstant> = {
 
 export const navGroups: NavGroup[] = [
   {
-    label: 'RUN YOUR BUSINESS',
+    label: 'OPERATIONS',
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: DashboardIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT] },
       { label: 'Estimates', href: '/estimates', icon: EstimatesIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_estimates' },
@@ -85,26 +85,24 @@ export const navGroups: NavGroup[] = [
     ],
   },
   {
-    label: 'GROW YOUR BUSINESS',
+    label: 'GROWTH',
     items: [
       { label: 'Buyer App', href: '/buyer-app', icon: BuyerAppIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_buyer_app' },
-      { label: 'Locations', href: '/locations', icon: LocationsIcon, roles: [ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT], flagKey: 'df_brand_product_master' },
-      { label: 'Customer Groups', href: '/customer-groups', icon: CohortsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_cohorts' },
       { label: 'Campaigns', href: '/campaigns', icon: CatalogsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_catalog_publishing' },
+      { label: 'Customer Groups', href: '/customer-groups', icon: CohortsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_cohorts' },
       { label: 'Pricelists', href: '/price-lists', icon: PriceListsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_pricing_engine' },
       { label: 'Brands', href: '/brands', icon: BrandsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_brand_product_master' },
+      { label: 'Locations', href: '/locations', icon: LocationsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_brand_product_master' },
+      { label: 'Categories', href: '/categories', icon: TagIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_brand_product_master' },
     ],
   },
   {
-    label: 'SETUP YOUR BUSINESS',
+    label: 'SETUP',
     items: [
-      { label: 'General Settings', href: '/settings', icon: SettingsIcon, roles: [ROLES.SELLER_ADMIN] },
-      { label: 'Module Settings', href: '/settings/modules', icon: ModulesIcon, roles: [ROLES.SELLER_ADMIN] },
+      { label: 'Settings', href: '/settings', icon: SettingsIcon, roles: [ROLES.SELLER_ADMIN] },
       { label: 'Team', href: '/settings/team', icon: TeamIcon, roles: [ROLES.SELLER_ADMIN] },
       { label: 'Integrations', href: '/settings/integrations', icon: IntegrationsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_integrations' },
       { label: 'Billing & Plan', href: '/settings/billing', icon: BillingIcon, roles: [ROLES.SELLER_ADMIN] },
-      { label: 'Locations', href: '/settings/locations', icon: LocationsIcon, roles: [ROLES.SELLER_ADMIN] },
-      { label: 'Categories', href: '/settings/categories', icon: CategoriesIcon, roles: [ROLES.SELLER_ADMIN] },
     ],
   },
 ];
@@ -477,13 +475,11 @@ function LocationsIcon({ size = 16, className = '' }) {
     </svg>
   );
 }
-function CategoriesIcon({ size = 16, className = '' }) {
+function TagIcon({ size = 16, className = '' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <rect x="3" y="3" width="7" height="7" rx="1" />
-      <rect x="14" y="3" width="7" height="7" rx="1" />
-      <rect x="3" y="14" width="7" height="7" rx="1" />
-      <rect x="14" y="14" width="7" height="7" rx="1" />
+      <path d="M12 2H8a2 2 0 0 0-1.414.586l-4 4A2 2 0 0 0 2 8v4a2 2 0 0 0 .586 1.414l9 9a2 2 0 0 0 2.828 0l7-7a2 2 0 0 0 0-2.828l-9-9A2 2 0 0 0 12 2z" />
+      <circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none" />
     </svg>
   );
 }

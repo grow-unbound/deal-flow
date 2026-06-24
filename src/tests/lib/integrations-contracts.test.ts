@@ -7,6 +7,7 @@ import {
   IntegrationDataFlowRecordSchema,
   IntegrationFlowDirectionSchema,
   IntegrationFlowTriggerSchema,
+  IntegrationJobRecordSchema,
   IntegrationJobProgressSchema,
   IntegrationJobSummarySchema,
   IntegrationSyncRequestSchema,
@@ -21,6 +22,7 @@ describe('integration type contracts', () => {
   });
 
   it('locks entity, direction, and trigger enums', () => {
+    expect(IntegrationEntityTypeSchema.safeParse('locations').success).toBe(true);
     expect(IntegrationEntityTypeSchema.safeParse('invoices').success).toBe(true);
     expect(IntegrationEntityTypeSchema.safeParse('warehouse').success).toBe(false);
     expect(IntegrationFlowDirectionSchema.safeParse('bidirectional').success).toBe(true);
@@ -139,7 +141,69 @@ describe('integration runtime payload schemas', () => {
       tenant_integration_id: '11111111-1111-1111-1111-111111111111',
       job_type: 'manual',
       phase: 'customers',
+      since: '2026-06-01',
+      run_origin: 'manual',
+      sync_window: 'Last 24 hours',
       max_pages: 3,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts integration job records with run origin metadata', () => {
+    const result = IntegrationJobRecordSchema.safeParse({
+      id: '11111111-1111-1111-1111-111111111111',
+      tenant_integration_id: '22222222-2222-2222-2222-222222222222',
+      job_type: 'incremental',
+      status: 'completed',
+      run_origin: 'scheduled',
+      sync_window: 'Last 24 hours',
+      progress: {
+        version: 1,
+        provider: 'zoho',
+        scope: 'transactional',
+        since: '2026-06-01T00:00:00.000Z',
+        phases: ['orders'],
+        phase: 'orders',
+        phase_label: 'Importing sales orders from Zoho Books',
+        phases_total: 1,
+        phase_current: 1,
+        items_total: 10,
+        items_processed: 10,
+        items_failed: 0,
+        pages_processed: 1,
+        counts: {
+          orders: {
+            entity_type: 'orders',
+            processed: 10,
+            failed: 0,
+            pages: 1,
+          },
+        },
+        started_at: '2026-06-01T00:00:00.000Z',
+        updated_at: '2026-06-01T00:05:00.000Z',
+      },
+      error_log: [],
+      summary: {
+        provider: 'zoho',
+        scope: 'transactional',
+        since: '2026-06-01T00:00:00.000Z',
+        run_origin: 'scheduled',
+        sync_window: 'Last 24 hours',
+        phases_completed: ['orders'],
+        counts: {
+          orders: {
+            entity_type: 'orders',
+            processed: 10,
+            failed: 0,
+            pages: 1,
+          },
+        },
+        last_synced_at: '2026-06-01T00:05:00.000Z',
+      },
+      started_at: '2026-06-01T00:00:00.000Z',
+      completed_at: '2026-06-01T00:05:00.000Z',
+      created_at: '2026-06-01T00:00:00.000Z',
     });
 
     expect(result.success).toBe(true);
@@ -177,7 +241,7 @@ describe('integration runtime payload schemas', () => {
       entity_type: 'orders',
       direction: 'outbound',
       trigger_type: 'event',
-      schedule: null,
+      schedule: '0 5 * * *',
       webhook_id: null,
       field_mappings: {
         operational_mode: 'webhook_backed',

@@ -18,7 +18,7 @@ vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlag: (...args: unknown[]) => useFlagMock(...args),
 }));
 
-import CatalogsPage from '../../../app/(seller)/catalogs/page';
+import CatalogsPage from '../../../app/(seller)/campaigns/page';
 
 describe('catalogs landing page', () => {
   beforeEach(() => {

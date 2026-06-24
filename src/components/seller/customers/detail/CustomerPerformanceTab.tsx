@@ -130,7 +130,7 @@ export function CustomerPerformanceTab({ performance, performanceV2 }: CustomerP
               <p className="mt-1 text-base text-cream-700">{formatCurrency(performanceV2.credit_ops.last_order_value)}</p>
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Catalog opens</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Campaign opens</p>
               <p className="mt-1 font-display text-3xl leading-none text-cream-950">{performanceV2.credit_ops.catalog_opens_mtd}</p>
               <p className="mt-1 text-base text-cream-700">in PWA, this month</p>
             </div>

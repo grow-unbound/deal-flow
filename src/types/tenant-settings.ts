@@ -88,6 +88,7 @@ export const BuyerAppSettingsSchema = z.object({
 export const PriceVisibilitySchema = z.enum(['discounted_only', 'show_both', 'hidden']);
 
 export const CatalogSettingsSchema = z.object({
+  price_lists_enabled: z.boolean().default(false),
   cohort_pricing_enabled: z.boolean(),
   price_visibility: PriceVisibilitySchema,
   catalog_publishing_enabled: z.boolean(),
@@ -149,9 +150,15 @@ export const TenantSettingsPatchSchema = z.object({
       features: OrdersFeaturesSchema.partial().optional(),
     })
     .optional(),
-  buyer_app: BuyerAppSettingsSchema.partial().optional(),
+  buyer_app: z
+    .object({
+      enabled: z.boolean().optional(),
+      whatsapp_number: z.string().max(40).optional(),
+    })
+    .optional(),
   catalog: z
     .object({
+      price_lists_enabled: z.boolean().optional(),
       cohort_pricing_enabled: z.boolean().optional(),
       price_visibility: PriceVisibilitySchema.optional(),
       catalog_publishing_enabled: z.boolean().optional(),
@@ -191,8 +198,23 @@ export interface ModuleSettingsView {
   };
 }
 
+export interface UnifiedSettingsView {
+  business: TenantSettingsBusiness;
+  business_policy: BusinessPolicy;
+  buyer_app: Pick<BuyerAppSettings, 'enabled' | 'whatsapp_number'>;
+  notifications: TenantSettingsNotifications;
+  orders: OrdersSettings;
+  catalog: CatalogSettings;
+  product_defaults: ProductDefaults;
+  delivery_routing_threshold_km: number;
+  plan: 'starter' | 'growth' | 'scale';
+  usage: { cohorts: number; price_lists: number; catalogs: number };
+  open_counts: { enquiries: number; sales_orders: number; invoices: number };
+}
+
 /** GET/PATCH /api/settings unified payload. */
 export interface TenantSettingsApiPayload {
   general: GeneralSettingsView;
   modules: ModuleSettingsView;
+  unified: UnifiedSettingsView;
 }
