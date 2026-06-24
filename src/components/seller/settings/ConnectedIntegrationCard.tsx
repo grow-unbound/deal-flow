@@ -1,19 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ComponentPropsWithoutRef, type ReactNode } from 'react';
 import {
   BookCheck,
   Boxes,
   Cable,
-  CheckCircle2,
   ChevronDown,
   History,
+  Plug,
+  RefreshCw,
+  Unplug,
   ServerCog,
   ShieldAlert,
   ShieldCheck,
+  Webhook,
 } from 'lucide-react';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DetailTabs } from '@/components/seller/detail/DetailTabs';
 import type {
@@ -24,11 +26,14 @@ import type {
 } from '@/hooks/useIntegrationsSettings';
 import { formatIntegrationJobError } from '@/lib/integrations/job-error-log';
 import {
+  estimateZohoDailyNextRun,
   formatZohoDailyNextRun,
   formatZohoDailySyncLabel,
   isZohoDailySyncSchedule,
 } from '@/lib/integrations/schedule';
+import { formatIntegrationDateTimeLabel } from '@/lib/integrations/format';
 import { resolveSyncWindowSince, type SyncWindowId } from '@/lib/integrations/sync-window';
+import { cn } from '@/lib/utils';
 import { IntegrationJobLiveLog } from './IntegrationJobLiveLog';
 import { SyncWindowDialog } from './SyncWindowDialog';
 
@@ -54,6 +59,224 @@ function formatDate(value?: string | null, withTime = false) {
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat('en-IN').format(value);
+}
+
+type EntityGroupKey = 'locations' | 'customers' | 'products' | 'transactions';
+type SyncPhaseId = 'locations' | 'customers' | 'products' | 'transactions';
+
+const ENTITY_GROUPS: Array<{
+  key: EntityGroupKey;
+  label: string;
+  aliases: string[];
+  sublabels: string[];
+}> = [
+  { key: 'locations', label: 'Locations', aliases: ['locations', 'warehouses'], sublabels: ['Locations'] },
+  { key: 'customers', label: 'Customers', aliases: ['customers'], sublabels: ['Customers'] },
+  {
+    key: 'products',
+    label: 'Products',
+    aliases: ['products', 'brands', 'categories', 'pricelists', 'price_lists'],
+    sublabels: ['Products', 'Brands', 'Categories', 'Pricelists'],
+  },
+  {
+    key: 'transactions',
+    label: 'Transactions',
+    aliases: ['estimates', 'orders', 'salesorders', 'invoices'],
+    sublabels: ['Estimates', 'Sales Orders', 'Invoices'],
+  },
+];
+
+const GROUP_BY_PHASE_ID: Record<string, EntityGroupKey> = {
+  locations: 'locations',
+  warehouses: 'locations',
+  customers: 'customers',
+  products: 'products',
+  brands: 'products',
+  categories: 'products',
+  pricelists: 'products',
+  price_lists: 'products',
+  estimates: 'transactions',
+  orders: 'transactions',
+  salesorders: 'transactions',
+  invoices: 'transactions',
+};
+
+function getEntityGroup(key: EntityGroupKey) {
+  return ENTITY_GROUPS.find((group) => group.key === key) ?? ENTITY_GROUPS[0];
+}
+
+function getGroupCountLabel(key: EntityGroupKey, value: number) {
+  if (key === 'transactions') {
+    return value === 1 ? 'record' : 'records';
+  }
+  return value === 1 ? 'entity' : 'entities';
+}
+
+function getGroupSummaryTotals(totals: NonNullable<IntegrationCatalogItem['coverage_totals']> | null | undefined, key: EntityGroupKey) {
+  if (!totals) return null;
+  switch (key) {
+    case 'locations':
+      return { total: totals.locations, items: { Locations: totals.locations } };
+    case 'customers':
+      return { total: totals.customers, items: { Customers: totals.customers } };
+    case 'products':
+      return {
+        total: totals.products + totals.brands + totals.categories + totals.pricelists,
+        items: {
+          Products: totals.products,
+          Brands: totals.brands,
+          Categories: totals.categories,
+          Pricelists: totals.pricelists,
+        },
+      };
+    case 'transactions':
+      return {
+        total: totals.estimates + totals.orders + totals.invoices,
+        items: {
+          Estimates: totals.estimates,
+          'Sales Orders': totals.orders,
+          Invoices: totals.invoices,
+        },
+      };
+    default:
+      return null;
+  }
+}
+
+function getGroupRelevantJob(jobs: IntegrationSyncJob[], key: EntityGroupKey) {
+  const group = getEntityGroup(key);
+  return [...jobs].find((job) => {
+    const progress = job.progress;
+    const summary = job.summary;
+    const progressCounts = progress?.counts ?? null;
+    const summaryCounts = summary?.counts ?? null;
+    const phaseNames = progress?.phases ?? [];
+    const currentPhase = progress?.phase ?? null;
+
+    return (
+      group.aliases.some((alias) => Boolean(progressCounts?.[alias]) || Boolean(summaryCounts?.[alias])) ||
+      (currentPhase ? group.aliases.includes(currentPhase) : false) ||
+      phaseNames.some((phase) => group.aliases.includes(phase)) ||
+      (key === 'products' && (summary?.scope === 'reference' || summary?.phases_completed?.includes('brands') || summary?.phases_completed?.includes('products'))) ||
+      (key === 'transactions' && (summary?.scope === 'transactional' || summary?.phases_completed?.some((phase) => ['estimates', 'orders', 'invoices'].includes(phase))))
+    );
+  }) ?? null;
+}
+
+function getRunTime(job: IntegrationSyncJob | null) {
+  if (!job) return null;
+  return job.completed_at ?? job.started_at ?? job.created_at;
+}
+
+function getGroupState(job: IntegrationSyncJob | null, key: EntityGroupKey, lastRunAt?: string | null): PhaseState {
+  if (!job) return 'Not Started';
+  if (job.status === 'failed') return 'Failed';
+  if (job.status === 'running' || job.status === 'queued') return 'Syncing';
+  const progress = job.progress;
+  const summary = job.summary;
+  const counts = progress?.counts ?? summary?.counts ?? {};
+  const group = getEntityGroup(key);
+  const hasActivity = group.aliases.some((alias) => Boolean(counts[alias]) && ((counts[alias]?.processed ?? 0) > 0 || (counts[alias]?.failed ?? 0) > 0 || (counts[alias]?.pages ?? 0) > 0));
+  if (hasActivity) return 'Successful';
+  return lastRunAt ? 'Successful' : 'Not Started';
+}
+
+function getGroupAsOfLabel(lastRunAt?: string | null) {
+  if (!lastRunAt) return 'No sync yet';
+  return `as of ${formatIntegrationDateTimeLabel(lastRunAt)}`;
+}
+
+function getGroupNextRunLabel(nextRunAt?: Date | null) {
+  if (!nextRunAt) return 'No next run set';
+  return `Next run ${formatIntegrationDateTimeLabel(nextRunAt.toISOString())}`;
+}
+
+function getGroupLatestTimestamp(jobs: IntegrationSyncJob[], key: EntityGroupKey) {
+  return getRunTime(getGroupRelevantJob(jobs, key));
+}
+
+function getGroupLastSuccess(jobs: IntegrationSyncJob[], key: EntityGroupKey) {
+  const group = getEntityGroup(key);
+  return [...jobs].find((job) => {
+    if (job.status !== 'completed') return false;
+    const progress = job.progress;
+    const summary = job.summary;
+    const counts = progress?.counts ?? summary?.counts ?? {};
+    return group.aliases.some((alias) => Boolean(counts[alias]) || (summary?.phases_completed?.includes(alias) ?? false));
+  }) ?? null;
+}
+
+function getGroupPhaseEntries(job: IntegrationSyncJob | null, key: EntityGroupKey) {
+  if (!job) return [];
+  const group = getEntityGroup(key);
+  const phaseOrder = job.progress?.phases?.length ? job.progress.phases : Object.keys(job.progress?.counts ?? job.summary?.counts ?? {});
+  const entries = phaseOrder
+    .filter((phaseId) => group.aliases.includes(phaseId))
+    .map((phaseId) => ({
+      id: phaseId,
+      label: labelizePhase(phaseId),
+      state: getPhaseState(job, phaseId, phaseOrder.indexOf(phaseId)),
+      stat: job.progress?.counts?.[phaseId] ?? job.summary?.counts?.[phaseId] ?? null,
+    }));
+
+  if (key === 'transactions' && entries.length === 0) {
+    return TRANSACTION_PHASE_IDS.map((phaseId) => ({
+      id: phaseId,
+      label: labelizePhase(phaseId),
+      state: getPhaseStateForSummary(job, phaseId),
+      stat: job.progress?.counts?.[phaseId] ?? job.summary?.counts?.[phaseId] ?? null,
+    }));
+  }
+
+  return entries;
+}
+
+function getStatusTone(status: string) {
+  switch (status) {
+    case 'connected':
+    case 'completed':
+    case 'ok':
+    case 'active':
+      return 'success' as const;
+    case 'queued':
+    case 'running':
+    case 'syncing':
+      return 'info' as const;
+    case 'failed':
+    case 'sync_failed':
+    case 'expired':
+    case 'invalid':
+      return 'warning' as const;
+    default:
+      return 'outline' as const;
+  }
+}
+
+function StatusPill({
+  label,
+  variant,
+  icon,
+  ...props
+}: {
+  label: string;
+  variant: 'success' | 'info' | 'warning' | 'outline' | 'danger';
+  icon?: ReactNode;
+} & ComponentPropsWithoutRef<'span'>) {
+  const base = 'inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.08em]';
+  const variants: Record<typeof variant, string> = {
+    success: 'border-success-50 bg-success-50 text-success-700',
+    info: 'border-info-50 bg-info-50 text-info-700',
+    warning: 'border-warning-50 bg-warning-50 text-warning-700',
+    outline: 'border-cream-300 bg-transparent text-cream-700',
+    danger: 'border-danger-50 bg-danger-50 text-danger-700',
+  };
+
+  return (
+    <span className={cn(base, icon ? 'gap-1.5' : '', variants[variant])} {...props}>
+      {icon ? <span className="shrink-0">{icon}</span> : null}
+      <span className="leading-none">{label}</span>
+    </span>
+  );
 }
 
 function formatRunOrigin(origin?: string | null) {
@@ -128,11 +351,13 @@ function getMatchingFlowSummary(flows: IntegrationDataFlow[], key: 'locations' |
   const lastRunFlow = matches
     .filter((flow) => flow.last_run_at)
     .sort((a, b) => new Date(b.last_run_at ?? 0).getTime() - new Date(a.last_run_at ?? 0).getTime())[0] ?? null;
+  const nextRunAt = isZohoDailySyncSchedule(scheduleFlow.schedule) ? estimateZohoDailyNextRun() : null;
 
   return {
     flow: scheduleFlow,
     label: formatScheduleSummary(scheduleFlow)?.label ?? null,
-    nextRunLabel: formatScheduleSummary(scheduleFlow)?.nextRunLabel ?? null,
+    nextRunLabel: nextRunAt ? formatIntegrationDateTimeLabel(nextRunAt.toISOString(), nextRunAt) : null,
+    nextRunAt,
     lastRunAt: lastRunFlow?.last_run_at ?? null,
   };
 }
@@ -455,12 +680,17 @@ function getWebhookState(integration: IntegrationCatalogItem, webhookSetupStatus
   return { label: 'Webhooks missing', variant: 'warning' as const };
 }
 
-function getProgressText(job: IntegrationSyncJob) {
+function getProgressText(job: IntegrationSyncJob, completedPhaseCount = 0) {
   const progress = job.progress;
-  const knownDenominator = progress?.items_total ?? progress?.phases_total ?? null;
+  const knownDenominator = completedPhaseCount > 0 ? completedPhaseCount : progress?.items_total ?? progress?.phases_total ?? null;
   if (knownDenominator == null || knownDenominator === 0) return null;
 
-  const numerator = progress?.items_total != null ? progress.items_processed ?? 0 : progress?.phase_current ?? 0;
+  const numerator =
+    completedPhaseCount > 0
+      ? completedPhaseCount
+      : progress?.items_total != null
+        ? progress.items_processed ?? 0
+        : progress?.phase_current ?? 0;
   const percent = Math.max(4, Math.min(100, Math.round((numerator / knownDenominator) * 100)));
   return { percent, numerator, denominator: knownDenominator };
 }
@@ -515,24 +745,20 @@ export function ConnectedIntegrationCard({
   const previousRun = sortedHistory.find((job) => job.id !== latestCompleted?.id) ?? null;
   const latestFinishedRun = sortedHistory.find((job) => job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') ?? null;
   const latestVisibleRun = activeJob ?? latestFinishedRun ?? latestCompleted ?? null;
-  const webhookSetupStatus = (() => {
-    const setupByEntity = ti.config?.webhook_setup_by_entity;
-    if (setupByEntity && typeof setupByEntity === 'object' && !Array.isArray(setupByEntity)) {
-      const states = Object.values(setupByEntity as Record<string, { status?: unknown }>);
-      if (states.length > 0) {
-        return states.every((state) => state.status === 'active')
-          ? 'active'
-          : states.some((state) => state.status === 'pending')
-            ? 'pending'
-            : 'failed';
-      }
-    }
-    const legacy = ti.config?.webhook_setup;
-    if (!legacy || typeof legacy !== 'object' || Array.isArray(legacy)) return null;
-    const status = (legacy as { status?: unknown }).status;
-    return status === 'pending' || status === 'active' || status === 'failed' ? status : null;
-  })();
-  const webhookState = getWebhookState(integration, webhookSetupStatus);
+  const coverageTotals = integration.coverage_totals ?? ti.coverage_totals ?? {
+    locations: 0,
+    customers: 0,
+    products: 0,
+    brands: 0,
+    categories: 0,
+    pricelists: 0,
+    estimates: 0,
+    orders: 0,
+    invoices: 0,
+    transactions: 0,
+  };
+  const activeFlows = ti.data_flows.filter((flow) => flow.is_active);
+  const webhookTelemetry = integration.webhook_telemetry ?? ti.webhook_telemetry ?? null;
   const failedRun = latestFinishedRun?.status === 'failed' ? latestFinishedRun : null;
   const displayStatus = (() => {
     if (!available) return { label: 'Gated', variant: 'outline' as const };
@@ -551,19 +777,63 @@ export function ConnectedIntegrationCard({
   const needsReconnect = ti.status === 'disconnected' || ti.health_status === 'expired' || ti.health_status === 'invalid';
   const Icon = getIntegrationIcon(integration);
   const currentRun = activeJob ?? latestVisibleRun;
-  const currentRunPhaseEntries = currentRun ? getPhaseEntries(currentRun) : [];
-  const currentRunProgress = currentRun ? getProgressText(currentRun) : null;
+  const currentRunPhaseEntries = currentRun
+    ? getPhaseEntries(currentRun).filter((phase) => phase.stat && ((phase.stat.processed ?? 0) > 0 || (phase.stat.failed ?? 0) > 0 || (phase.stat.pages ?? 0) > 0))
+    : [];
+  const currentRunProgress = currentRun ? getProgressText(currentRun, currentRunPhaseEntries.length) : null;
   const syncablePhaseActions = getSyncablePhaseActions(integration);
-  const activeFlows = ti.data_flows.filter((flow) => flow.is_active);
-  const flowSummaries = activeFlows
-    .filter((flow) => flow.is_active)
-    .map((flow) => ({
-      ...flow,
-      label: getFlowDisplayName(flow),
-      scheduleLabel: formatZohoDailySyncLabel(flow.schedule),
-      nextRunLabel: formatZohoDailyNextRun(flow.schedule),
-    }));
-  const entityCards = getEntityCards(latestVisibleRun, activeFlows);
+  const runHistory = activeJob ? [activeJob, ...sortedHistory.filter((job) => job.id !== activeJob.id)] : sortedHistory;
+  const overviewCards = ENTITY_GROUPS.map((group) => {
+    const totals = getGroupSummaryTotals(coverageTotals, group.key);
+    const latestGroupRun = getGroupRelevantJob(runHistory, group.key);
+    const scheduleSummary = getMatchingFlowSummary(activeFlows, group.key);
+    const state = getGroupState(latestGroupRun, group.key, scheduleSummary?.lastRunAt ?? null);
+    const phaseAction = syncablePhaseActions.find((phase) => phase.id === group.key) ?? null;
+    const lastRunAt = scheduleSummary?.lastRunAt ?? getRunTime(latestGroupRun);
+    const nextRunAt = scheduleSummary?.nextRunAt ?? null;
+
+    return {
+      ...group,
+      total: totals?.total ?? 0,
+      items: totals?.items ?? {},
+      state,
+      latestGroupRun,
+      scheduleSummary,
+      phaseAction,
+      lastRunAt,
+      nextRunAt,
+      isCurrentTarget: syncTargetPhase === group.key,
+    };
+  });
+  const latestSyncLabel = latestVisibleRun ? formatIntegrationDateTimeLabel(getRunTime(latestVisibleRun)) : 'Not yet';
+  const latestSyncNote = latestVisibleRun
+    ? latestVisibleRun.summary?.note ?? latestVisibleRun.progress?.note ?? 'No note'
+    : 'No sync activity yet';
+  const webhookState = webhookTelemetry?.status ?? 'missing';
+  const webhookStateLabel = webhookState === 'active'
+    ? 'WEBHOOKS ACTIVE'
+    : webhookState === 'failed'
+      ? 'WEBHOOKS RETRYING'
+      : webhookState === 'pending'
+        ? 'WEBHOOKS PENDING'
+        : 'WEBHOOKS MISSING';
+  const webhookCards = ENTITY_GROUPS.map((group) => {
+    const telemetry = webhookTelemetry?.entities[group.key] ?? {
+      active: false,
+      create: false,
+      update: false,
+      delete: false,
+      processed_last_24h: 0,
+      failed_last_24h: 0,
+    };
+    const totals = getGroupSummaryTotals(coverageTotals, group.key);
+    return {
+      ...group,
+      total: totals?.total ?? 0,
+      items: totals?.items ?? {},
+      telemetry,
+    };
+  });
 
   function openFullSyncDialog() {
     setSyncDialog({ open: true, mode: 'full' });
@@ -593,19 +863,38 @@ export function ConnectedIntegrationCard({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="font-display text-lg text-cream-900">{integration.display_name}</h2>
-                <Badge variant={displayStatus.variant}>{displayStatus.label}</Badge>
+                <StatusPill label={displayStatus.label} variant={displayStatus.variant} />
               </div>
               <p className="text-sm text-cream-600">{integration.description}</p>
             </div>
           </div>
           {isSellerAdmin && available ? (
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={onOpenWizard}
-              >
+            <div className="flex flex-row-reverse flex-wrap items-center justify-end gap-2">
+              {isSyncInProgress ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={onStopSync}
+                  disabled={isStoppingSync}
+                >
+                  <History className="h-4 w-4" />
+                  {isStoppingSync ? 'Stopping…' : 'Stop sync'}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="accent"
+                  size="sm"
+                  onClick={openFullSyncDialog}
+                  disabled={isSyncingNow || ti.status !== 'connected'}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  {isSyncFailed ? 'Sync Again' : 'Sync now'}
+                </Button>
+              )}
+              <Button type="button" variant="outline" size="sm" onClick={onOpenWizard}>
+                <Plug className="h-4 w-4" />
                 Reconnect
               </Button>
               <Button
@@ -616,6 +905,7 @@ export function ConnectedIntegrationCard({
                 onClick={onDisconnect}
                 disabled={isSyncingNow || isStoppingSync}
               >
+                <Unplug className="h-4 w-4" />
                 Disconnect
               </Button>
             </div>
@@ -624,58 +914,6 @@ export function ConnectedIntegrationCard({
       </header>
 
       <div className="space-y-5 px-5 py-5">
-        {isSellerAdmin && available ? (
-          <div className="flex flex-wrap items-center justify-end gap-2 border-b border-cream-200 pb-4">
-            <Button type="button" variant="ghost" size="sm" onClick={onRefresh}>
-              <History className="h-4 w-4" />
-              Refresh
-            </Button>
-            {isSyncInProgress ? (
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                onClick={onStopSync}
-                disabled={isStoppingSync}
-              >
-                {isStoppingSync ? 'Stopping…' : 'Stop sync'}
-              </Button>
-            ) : isSyncFailed ? (
-              <Button
-                type="button"
-                variant="accent"
-                size="sm"
-                onClick={openFullSyncDialog}
-                disabled={isSyncingNow}
-              >
-                {isSyncingNow ? 'Syncing…' : 'Sync Again'}
-              </Button>
-            ) : null}
-            {!isSyncInProgress && !isSyncFailed ? (
-              <Button
-                type="button"
-                variant="accent"
-                size="sm"
-                onClick={openFullSyncDialog}
-                disabled={isSyncingNow || ti.status !== 'connected'}
-              >
-                {isSyncingNow ? 'Syncing…' : 'Sync now'}
-              </Button>
-            ) : null}
-            {integration.id.startsWith('zoho_') ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => openPhaseSyncDialog('products', 'Pricelists')}
-                disabled={isSyncingNow || ti.status !== 'connected'}
-              >
-                {isSyncingNow && syncTargetPhase === 'products' ? 'Syncing…' : 'Sync now Pricelists'}
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
-
         <div className="grid gap-3 md:grid-cols-3">
           <div className="rounded-2xl border border-cream-200 bg-cream-50 p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">Health</div>
@@ -698,19 +936,12 @@ export function ConnectedIntegrationCard({
 
           <div className="rounded-2xl border border-cream-200 bg-cream-50 p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">
-              {activeJob ? 'Live poll' : 'Latest sync'}
+              {activeJob ? 'Live poll' : 'Latest Sync'}
             </div>
             <div className="mt-3 text-lg font-semibold text-cream-900">
-              {latestVisibleRun ? formatDate(latestVisibleRun.completed_at ?? latestVisibleRun.started_at ?? latestVisibleRun.created_at, true) : 'Not yet'}
+              {latestSyncLabel}
             </div>
-            <div className="mt-2 text-sm text-cream-700">
-              {activeJob ? 'Polling every 30 seconds while active.' : 'Updates after every completed run.'}
-            </div>
-            {latestFinishedRun?.status === 'cancelled' ? (
-              <div className="mt-3 rounded-lg border border-success-200 bg-success-50 px-3 py-2 text-sm leading-6 text-success-900">
-                Cancelled by user request. The worker stopped before the next fetch page.
-              </div>
-            ) : null}
+            <div className="mt-2 text-sm text-cream-700">Latest note: {latestSyncNote}</div>
           </div>
         </div>
 
@@ -734,17 +965,17 @@ export function ConnectedIntegrationCard({
 
         {tab === 'overview' ? (
           <div className="space-y-4">
-            {activeJob ? (
+            {currentRun ? (
               <details className="group rounded-2xl border border-cream-200 bg-white">
                 <summary className="cursor-pointer list-none px-4 py-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-semibold text-cream-900">{labelize(activeJob.job_type)}</span>
-                        <Badge variant={getStatusVariant(activeJob.status)}>{labelize(activeJob.status)}</Badge>
+                        <span className="text-sm font-semibold text-cream-900">{labelize(activeJob?.job_type ?? currentRun.job_type)}</span>
+                        <StatusPill label={labelize(currentRun.status)} variant={getStatusVariant(currentRun.status)} />
                       </div>
                       <div className="mt-1 text-sm text-cream-700">
-                        {activeJob.progress?.phase_label ?? 'Waiting for worker…'}
+                        {currentRun.progress?.phase_label ?? currentRun.summary?.note ?? 'Waiting for worker…'}
                       </div>
                     </div>
                     <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-cream-500 transition-transform group-open:rotate-180" />
@@ -783,7 +1014,7 @@ export function ConnectedIntegrationCard({
                                 : 'No progress yet'}
                             </div>
                           </div>
-                          <Badge variant={getPhaseStateVariant(phase.state)}>{phase.state}</Badge>
+                          <StatusPill label={phase.state} variant={getPhaseStateVariant(phase.state)} />
                         </div>
                       ))
                     ) : (
@@ -794,154 +1025,65 @@ export function ConnectedIntegrationCard({
                   </div>
                 </div>
               </details>
-            ) : (
-              <div className="rounded-2xl border border-cream-200 bg-cream-50 px-4 py-4">
-                <div className="text-sm font-semibold text-cream-900">Setup notes</div>
-                <div className="mt-3 space-y-2 text-sm leading-6 text-cream-700">
-                  <div className="flex gap-2">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-teal-600" />
-                    <span>
-                      {integration.connectivity_mode === 'local'
-                        ? 'Bridge install, credential test, and initial import stay in the same wizard.'
-                        : 'Credential verification and the first import stay in the same wizard.'}
-                    </span>
-                  </div>
-                  <div className="flex gap-2">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-teal-600" />
-                    <span>Sync history updates live while a job is queued or running.</span>
-                  </div>
-                </div>
-              </div>
-            )}
+            ) : null}
 
             <div className="rounded-2xl border border-cream-200 bg-white p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-cream-900">Sync coverage</div>
                   <div className="mt-1 text-sm text-cream-700">
-                    Locations, Customers, Products, and Transactions stay visible in one row, with the transactional
-                    breakdown expanded underneath.
+                    Live totals for the current tenant. Products groups Products, Brands, Categories, and Pricelists together.
                   </div>
                 </div>
-                <Badge variant={webhookState.variant}>{webhookState.label}</Badge>
               </div>
               <div className="mt-4 grid gap-3 xl:grid-cols-4">
-                {entityCards.map((card) => {
-                  const phaseAction = syncablePhaseActions.find((phase) =>
-                    phase.id === (card.key === 'transactions' ? 'transactions' : card.key)
-                  );
-                  const phaseLabel = card.key === 'transactions' ? 'Transactions' : card.label;
-                  const disabled = isSyncingNow || ti.status !== 'connected' || !phaseAction;
-                  const isCurrentTarget = syncTargetPhase === (card.key === 'transactions' ? 'transactions' : card.key);
-
+                {overviewCards.map((card) => {
+                  const disabled = isSyncingNow || ti.status !== 'connected' || !card.phaseAction;
                   return (
                     <div
                       key={card.key}
-                      className="group/card rounded-2xl border border-cream-200 bg-cream-50 px-4 py-4 shadow-xs transition-shadow hover:shadow-sm"
+                      className="group/card rounded-2xl border border-cream-200 bg-cream-50 px-4 pt-4 pb-3 shadow-xs"
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">{phaseLabel}</div>
-                          <div className="mt-2 flex items-center gap-2">
-                            <span className="text-2xl font-display text-cream-900">{formatNumber(card.value)}</span>
-                            <span className="text-sm text-cream-600">{card.countLabel}</span>
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">
+                            {card.label}
                           </div>
+                          <div className="mt-2 flex items-end gap-2">
+                            <span className="text-2xl font-display text-cream-900">{formatNumber(card.total)}</span>
+                            <span className="text-sm text-cream-600">{getGroupCountLabel(card.key, card.total)} total</span>
+                          </div>
+                          <div className="mt-1 text-sm text-cream-700">{getGroupAsOfLabel(card.lastRunAt)}</div>
                         </div>
-                        <Badge variant={getPhaseStateVariant(card.state)}>{card.state}</Badge>
-                      </div>
-
-                      <div className="mt-3 text-sm leading-6 text-cream-700">{card.meta}</div>
-
-                      {card.key === 'transactions' ? (
-                        <div className="mt-4 space-y-2 rounded-xl border border-cream-200 bg-white p-3">
-                          {card.breakdown.map((phase) => (
-                            <div key={phase.id} className="flex flex-wrap items-center justify-between gap-3">
-                              <div>
-                                <div className="text-sm font-medium text-cream-900">{phase.label}</div>
-                                <div className="text-xs text-cream-600">
-                                  {phase.stat
-                                    ? `${formatNumber(phase.stat.processed)} synced · ${formatNumber(phase.stat.failed)} failed · ${formatNumber(phase.stat.pages)} pages`
-                                    : 'No sync yet'}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Badge variant={getPhaseStateVariant(phase.state)}>{phase.state}</Badge>
-                                {syncablePhaseActions.find((action) => action.id === phase.id) ? (
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => openPhaseSyncDialog(phase.id, phase.label)}
-                                    disabled={isSyncingNow || ti.status !== 'connected'}
-                                    aria-label={`Sync now for ${phase.label}`}
-                                  >
-                                    {isSyncingNow && syncTargetPhase === phase.id ? 'Syncing…' : 'Sync now'}
-                                  </Button>
-                                ) : null}
-                              </div>
-                            </div>
-                          ))}
+                        <div className="flex shrink-0 flex-col items-end gap-2 text-right">
+                          <StatusPill label={card.state} variant={getPhaseStateVariant(card.state)} />
+                          {card.phaseAction ? (
+                            <Button
+                              type="button"
+                              variant="primary"
+                              size="sm"
+                              className="opacity-0 transition-opacity duration-200 group-hover/card:opacity-100"
+                              onClick={() => openPhaseSyncDialog(card.phaseAction!.id, card.phaseAction!.label)}
+                              disabled={disabled}
+                              aria-label={`Sync now for ${card.label}`}
+                            >
+                              {isSyncingNow && syncTargetPhase === card.key ? 'Syncing…' : 'Sync now'}
+                            </Button>
+                          ) : null}
                         </div>
-                      ) : null}
-
-                      <div className="mt-4 flex justify-end opacity-100 transition sm:pointer-events-none sm:translate-y-1 sm:opacity-0 sm:group-hover/card:pointer-events-auto sm:group-hover/card:translate-y-0 sm:group-hover/card:opacity-100 sm:group-focus-within/card:pointer-events-auto sm:group-focus-within/card:translate-y-0 sm:group-focus-within/card:opacity-100">
-                        <Button
-                          type="button"
-                          variant="primary"
-                          size="sm"
-                          onClick={() => {
-                            if (!phaseAction || disabled) return;
-                            openPhaseSyncDialog(phaseAction.id, phaseLabel);
-                          }}
-                          disabled={disabled}
-                          aria-label={`Sync now for ${phaseLabel}`}
-                        >
-                          {isSyncingNow && isCurrentTarget ? 'Syncing…' : 'Sync now'}
-                        </Button>
                       </div>
+                      <div className="mt-3 space-y-2">
+                        {Object.entries(card.items).map(([label, count]) => (
+                          <div key={`${card.key}-${label}`} className="flex items-center justify-between gap-3 text-sm text-cream-700">
+                            <span>{label}</span>
+                            <span className="font-medium text-cream-900">{formatNumber(Number(count))}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-3 text-sm leading-6 text-cream-700">{getGroupNextRunLabel(card.nextRunAt)}</div>
                     </div>
                   );
                 })}
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-xl border border-cream-200 bg-cream-50 px-4 py-3">
-                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">Webhooks</div>
-                  <div className="mt-1 text-sm font-medium text-cream-900">{webhookState.label}</div>
-                  <div className="mt-1 text-xs text-cream-600">
-                    {integration.capabilities?.webhooks === true
-                      ? 'Webhook capture is enabled in the integration catalog.'
-                      : 'Webhook capture is not part of this integration yet.'}
-                  </div>
-                  {webhookState.label !== 'Webhooks active' ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="mt-3 px-0 text-teal-700 hover:bg-transparent hover:text-teal-800"
-                      onClick={onRetryWebhooks}
-                      disabled={isRetryingWebhooks}
-                    >
-                      {isRetryingWebhooks ? 'Retrying…' : 'Retry webhooks'}
-                    </Button>
-                  ) : null}
-                </div>
-                <div className="rounded-xl border border-cream-200 bg-cream-50 px-4 py-3">
-                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">Latest note</div>
-                  <div className="mt-1 text-sm font-medium text-cream-900">{latestVisibleRun?.summary?.note ?? latestVisibleRun?.progress?.note ?? 'No note'}</div>
-                  <div className="mt-1 text-xs text-cream-600">Pulled from the most recent sync payload.</div>
-                </div>
-                <div className="rounded-xl border border-cream-200 bg-cream-50 px-4 py-3">
-                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">Phases completed</div>
-                  <div className="mt-1 text-sm font-medium text-cream-900">
-                    {latestVisibleRun?.summary?.phases_completed?.length ? latestVisibleRun.summary.phases_completed.length : 0}
-                  </div>
-                  <div className="mt-1 text-xs text-cream-600">Visible in the latest sync summary.</div>
-                </div>
-                <div className="rounded-xl border border-cream-200 bg-cream-50 px-4 py-3">
-                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">Last health check</div>
-                  <div className="mt-1 text-sm font-medium text-cream-900">{formatDate(ti.last_health_check_at, true)}</div>
-                  <div className="mt-1 text-xs text-cream-600">Connection freshness from the integration record.</div>
-                </div>
               </div>
             </div>
 
@@ -955,7 +1097,7 @@ export function ConnectedIntegrationCard({
                         'The sync worker stopped before it could complete. Open History to review the run.'}
                     </p>
                   </div>
-                  <Badge variant="warning">{labelize(failedRun.job_type)}</Badge>
+                  <StatusPill label={labelize(failedRun.job_type)} variant="warning" />
                 </div>
               </div>
             ) : null}
@@ -963,217 +1105,181 @@ export function ConnectedIntegrationCard({
         ) : tab === 'flows' ? (
           <div className="space-y-4">
             <div className="rounded-2xl border border-cream-200 bg-cream-50 px-4 py-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-cream-900">Schedule coverage</div>
                   <p className="mt-1 max-w-3xl text-sm leading-6 text-cream-700">
-                    Each active Zoho flow shows its daily cadence, the last completed run, and the next expected 5:00 AM refresh.
+                    Each active flow keeps the same four-group structure so schedule and sync state stay easy to scan.
                   </p>
                 </div>
-                <Badge variant={webhookState.variant}>{webhookState.label}</Badge>
               </div>
 
-              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                {flowSummaries.length > 0 ? (
-                  flowSummaries.map((flow) => (
-                    <div key={flow.id} className="rounded-xl border border-cream-200 bg-white px-4 py-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-semibold text-cream-900">{flow.label}</div>
-                          <div className="mt-1 text-xs uppercase tracking-[0.12em] text-cream-600">
-                            {labelize(flow.trigger_type)} capture
-                          </div>
+              <div className="mt-4 grid gap-3 xl:grid-cols-4">
+                {overviewCards.map((card) => (
+                  <div key={`schedule-${card.key}`} className="rounded-2xl border border-cream-200 bg-white px-4 pt-4 pb-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-cream-900">{card.label}</div>
+                        <div className="mt-1 text-xs uppercase tracking-[0.12em] text-cream-600">
+                          {card.scheduleSummary?.label ?? 'No schedule'}
                         </div>
-                        <Badge variant={flow.scheduleLabel ? 'success' : 'outline'}>{flow.scheduleLabel ?? 'Not scheduled'}</Badge>
+                        <div className="mt-2 text-sm text-cream-700">
+                          {card.scheduleSummary?.lastRunAt
+                            ? `as of ${formatIntegrationDateTimeLabel(card.scheduleSummary.lastRunAt)}`
+                            : 'No sync yet'}
+                        </div>
                       </div>
-                      <div className="mt-3 space-y-1 text-sm text-cream-700">
-                        <div>{getFlowScheduleLine(flow)}</div>
-                        <div>Last run {getFlowLastRun(flow)}</div>
-                      </div>
+                      <StatusPill
+                        label={card.scheduleSummary?.nextRunAt ? 'Scheduled' : 'Not scheduled'}
+                        variant={card.scheduleSummary?.nextRunAt ? 'success' : 'outline'}
+                      />
                     </div>
-                  ))
-                ) : (
-                  <div className="rounded-xl border border-dashed border-cream-300 bg-white px-4 py-5 text-sm text-cream-700 md:col-span-2 xl:col-span-4">
-                    No active Zoho flows were found for this integration yet.
+                    <div className="mt-3 text-sm leading-6 text-cream-700">
+                      {card.scheduleSummary?.nextRunAt
+                        ? `Next run ${formatIntegrationDateTimeLabel(card.scheduleSummary.nextRunAt.toISOString())}`
+                        : 'No next run set'}
+                    </div>
                   </div>
-                )}
+                ))}
               </div>
             </div>
 
             <div className="rounded-2xl border border-cream-200 bg-white p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-cream-900">Sync coverage</div>
-                  <div className="mt-1 text-sm text-cream-700">
-                    Locations, Customers, Products, and Transactions stay visible in one row, with the transactional breakdown expanded underneath.
-                  </div>
+                  <div className="text-sm font-semibold text-cream-900">Webhooks</div>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-cream-700">
+                    Webhooks are Zoho&apos;s instant signals that something changed. We capture CREATE, UPDATE, and DELETE events as they arrive.
+                  </p>
                 </div>
-                <Badge variant={webhookState.variant}>{webhookState.label}</Badge>
+                <StatusPill
+                  data-testid="webhooks-status-label"
+                  label={webhookStateLabel}
+                  variant={webhookTelemetry?.status === 'active'
+                    ? 'success'
+                    : webhookTelemetry?.status === 'failed'
+                      ? 'warning'
+                      : 'info'}
+                  icon={<Webhook className="h-3.5 w-3.5" />}
+                />
               </div>
+
               <div className="mt-4 grid gap-3 xl:grid-cols-4">
-                {entityCards.map((card) => {
-                  const phaseAction = syncablePhaseActions.find((phase) =>
-                    phase.id === (card.key === 'transactions' ? 'transactions' : card.key)
-                  );
-                  const phaseLabel = card.key === 'transactions' ? 'Transactions' : card.label;
-                  const disabled = isSyncingNow || ti.status !== 'connected' || !phaseAction;
-                  const isCurrentTarget = syncTargetPhase === (card.key === 'transactions' ? 'transactions' : card.key);
-
-                  return (
-                    <div
-                      key={card.key}
-                      className="group/card rounded-2xl border border-cream-200 bg-cream-50 px-4 py-4 shadow-xs transition-shadow hover:shadow-sm"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">{phaseLabel}</div>
-                          <div className="mt-2 flex items-center gap-2">
-                            <span className="text-2xl font-display text-cream-900">{formatNumber(card.value)}</span>
-                            <span className="text-sm text-cream-600">{card.countLabel}</span>
-                          </div>
-                        </div>
-                        <Badge variant={getPhaseStateVariant(card.state)}>{card.state}</Badge>
+                {webhookCards.map((card) => (
+                  <div key={`webhook-${card.key}`} className="rounded-2xl border border-cream-200 bg-cream-50 px-4 pt-4 pb-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-cream-900">{card.label}</div>
+                        <div className="mt-1 text-xs uppercase tracking-[0.12em] text-cream-600">Captured updates</div>
                       </div>
-
-                      <div className="mt-3 space-y-1 text-sm leading-6 text-cream-700">
-                        {card.meta.split(' · ').map((part) => (
-                          <div key={`${card.key}-${part}`}>{part}</div>
-                        ))}
-                      </div>
-
-                      {card.key === 'transactions' ? (
-                        <div className="mt-4 space-y-2 rounded-xl border border-cream-200 bg-white p-3">
-                          {card.breakdown.map((phase) => (
-                            <div key={phase.id} className="flex items-center justify-between gap-3">
-                              <div>
-                                <div className="text-sm font-medium text-cream-900">{phase.label}</div>
-                                <div className="text-xs text-cream-600">
-                                  {phase.stat
-                                    ? `${formatNumber(phase.stat.processed)} synced · ${formatNumber(phase.stat.failed)} failed · ${formatNumber(phase.stat.pages)} pages`
-                                    : 'No sync yet'}
-                                </div>
-                              </div>
-                              <Badge variant={getPhaseStateVariant(phase.state)}>{phase.state}</Badge>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-
-                      <div className="mt-4 flex justify-end opacity-100 transition sm:pointer-events-none sm:translate-y-1 sm:opacity-0 sm:group-hover/card:pointer-events-auto sm:group-hover/card:translate-y-0 sm:group-hover/card:opacity-100 sm:group-focus-within/card:pointer-events-auto sm:group-focus-within/card:translate-y-0 sm:group-focus-within/card:opacity-100">
-                        <Button
-                          type="button"
-                          variant="primary"
-                          size="sm"
-                          onClick={() => {
-                            if (!phaseAction || disabled) return;
-                            openPhaseSyncDialog(phaseAction.id, phaseLabel);
-                          }}
-                          disabled={disabled}
-                          aria-label={`Sync now for ${phaseLabel}`}
-                        >
-                          {isSyncingNow && isCurrentTarget ? 'Syncing…' : 'Sync now'}
-                        </Button>
-                      </div>
+                      <StatusPill
+                        label={card.telemetry.active ? 'Active' : 'Inactive'}
+                        variant={card.telemetry.active ? 'success' : 'outline'}
+                        icon={<Webhook className="h-3.5 w-3.5" />}
+                      />
                     </div>
-                  );
-                })}
+                    {card.key !== 'locations' || card.telemetry.active ? (
+                      <>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <StatusPill label={card.telemetry.create ? 'CREATE' : 'CREATE off'} variant={card.telemetry.create ? 'success' : 'outline'} />
+                          <StatusPill label={card.telemetry.update ? 'UPDATE' : 'UPDATE off'} variant={card.telemetry.update ? 'success' : 'outline'} />
+                          <StatusPill label={card.telemetry.delete ? 'DELETE' : 'DELETE off'} variant={card.telemetry.delete ? 'success' : 'outline'} />
+                        </div>
+                        <div className="mt-3 space-y-1 text-sm text-cream-700">
+                          <div>today · {formatNumber(card.telemetry.processed_last_24h)} processed</div>
+                          <div>{formatNumber(card.telemetry.failed_last_24h)} failed</div>
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
+                ))}
               </div>
+            </div>
+
+            <div className="rounded-2xl border border-dashed border-cream-300 bg-cream-50 px-4 py-5">
+              <div className="text-sm font-semibold text-cream-900">Sync to Zoho</div>
+              <p className="mt-1 text-sm leading-6 text-cream-700">
+                Placeholder for outbound write-back rules. We&apos;ll use this space later to show which DealFlow changes are pushed into Zoho.
+              </p>
             </div>
           </div>
         ) : (
           <div className="space-y-4">
-            {activeJob ? (
-              <IntegrationJobLiveLog activeJob={activeJob} />
-            ) : null}
+            {activeJob ? <IntegrationJobLiveLog activeJob={activeJob} /> : null}
 
             {sortedHistory.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-cream-300 bg-cream-50 px-4 py-6 text-sm text-cream-700">
                 Sync history will appear here after the first import runs.
               </div>
             ) : (
-              <div className="space-y-3">
-                {sortedHistory.map((job) => (
-                  <details key={job.id} className="group rounded-2xl border border-cream-200 bg-white px-4 py-4">
-                    <summary className="flex cursor-pointer list-none items-start justify-between gap-3">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-semibold text-cream-900">{labelize(job.job_type)}</span>
-                          {job.run_origin ? (
-                            <Badge variant={job.run_origin === 'scheduled' ? 'success' : 'outline'}>
-                              {formatRunOrigin(job.run_origin)}
-                            </Badge>
+              <div className="divide-y divide-cream-200 overflow-hidden rounded-2xl border border-cream-200 bg-white">
+                {sortedHistory.map((job) => {
+                  const phaseEntries = getPhaseEntries(job).filter((phase) => phase.stat || phase.state !== 'Not Started');
+                  const scopeLabel = job.summary?.scope ? labelize(job.summary.scope) : 'Unknown';
+                  const sinceLabel = job.summary?.since ? formatIntegrationDateTimeLabel(job.summary.since) : 'Not set';
+                  const completedLabel = formatIntegrationDateTimeLabel(job.summary?.last_synced_at ?? getRunTime(job));
+                  return (
+                    <details key={job.id} className="group px-4 py-4">
+                      <summary className="flex cursor-pointer list-none items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-semibold text-cream-900">{labelize(job.job_type)}</span>
+                            {job.run_origin ? (
+                              <StatusPill
+                                label={formatRunOrigin(job.run_origin) ?? 'Unknown'}
+                                variant={job.run_origin === 'scheduled' ? 'success' : 'outline'}
+                              />
+                            ) : null}
+                            <StatusPill label={labelize(job.status)} variant={getStatusVariant(job.status)} />
+                          </div>
+                          <p className="mt-1 text-sm text-cream-700">
+                            {job.progress?.phase_label ?? job.summary?.note ?? 'No phase details reported yet.'}
+                          </p>
+                          <p className="mt-2 text-xs uppercase tracking-[0.12em] text-cream-600">
+                            Scope {scopeLabel} · Since {sinceLabel} · Completed {completedLabel}
+                          </p>
+                          {job.status === 'cancelled' ? (
+                            <p className="mt-2 rounded-lg border border-success-200 bg-success-50 px-3 py-2 text-sm leading-6 text-success-900">
+                              {job.progress?.note ?? 'Cancelled by user request. The worker stopped before the next fetch page.'}
+                            </p>
                           ) : null}
-                          <Badge variant={getStatusVariant(job.status)}>{labelize(job.status)}</Badge>
+                          {job.status === 'failed' ? (
+                            <p className="mt-2 text-sm leading-6 text-warning-800">
+                              {getLatestJobErrorMessage(job) ?? 'The worker failed before it could record a detailed error.'}
+                            </p>
+                          ) : null}
                         </div>
-                        <p className="mt-1 text-sm text-cream-700">
-                          {job.run_origin === 'scheduled'
-                            ? `${job.sync_window ?? job.summary?.sync_window ?? 'Scheduled sync'} · ${job.progress?.phase_label ?? job.summary?.note ?? 'No phase details reported yet.'}`
-                            : job.progress?.phase_label ?? job.summary?.note ?? 'No phase details reported yet.'}
-                        </p>
-                        {job.status === 'cancelled' ? (
-                          <p className="mt-2 rounded-lg border border-success-200 bg-success-50 px-3 py-2 text-sm leading-6 text-success-900">
-                            {job.progress?.note ?? 'Cancelled by user request. The worker stopped before the next fetch page.'}
-                          </p>
-                        ) : null}
-                        {job.status === 'failed' ? (
-                          <p className="mt-2 text-sm leading-6 text-warning-800">
-                            {getLatestJobErrorMessage(job) ?? 'The worker failed before it could record a detailed error.'}
-                          </p>
-                        ) : null}
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2 text-right text-xs text-cream-600">
-                        <span>{formatDate(job.completed_at ?? job.started_at ?? job.created_at, true)}</span>
-                        <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
-                      </div>
-                    </summary>
+                        <div className="flex shrink-0 items-center gap-2 text-right text-xs text-cream-600">
+                          <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                        </div>
+                      </summary>
 
-                    <div className="mt-4 space-y-3 border-t border-cream-200 pt-4">
-                      {job === activeJob ? (
-                        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">Live run log</div>
-                      ) : null}
-                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                        {getSummaryChips(job).map((chip) => (
-                          <div key={`${job.id}-${chip.label}`} className="rounded-xl border border-cream-200 bg-cream-50 px-4 py-3">
-                            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">{chip.label}</div>
-                            <div className="mt-1 text-sm font-medium text-cream-900">{chip.value}</div>
-                          </div>
-                        ))}
-                      </div>
-                      {job.run_origin === 'scheduled' ? (
-                        <div className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3">
-                          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-teal-700">Scheduled run</div>
-                          <div className="mt-1 text-sm font-medium text-teal-950">
-                            {job.sync_window ?? job.summary?.sync_window ?? 'Last 24 hours'}
-                          </div>
-                        </div>
-                      ) : null}
-                      <div className="rounded-xl border border-cream-200 bg-cream-50 p-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">Phase tracker</div>
-                            <div className="mt-1 text-sm text-cream-700">The latest run state for each phase, without the extra card clutter.</div>
-                          </div>
-                          <Badge variant={getStatusVariant(job.status)}>{labelize(job.status)}</Badge>
-                        </div>
-                        <div className="mt-4 space-y-2">
-                          {getPhaseEntries(job).map((phase) => (
-                            <div key={`${job.id}-${phase.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-cream-200 bg-white px-3 py-2">
-                              <div>
+                      <div className="ml-4 border-cream-200 pt-4">
+                        <div className="grid gap-3 xl:grid-cols-4">
+                          {phaseEntries.length > 0 ? (
+                            phaseEntries.map((phase) => (
+                              <div key={`${job.id}-${phase.id}`} className="rounded-xl border border-cream-200 bg-cream-50 px-4 py-3">
                                 <div className="text-sm font-medium text-cream-900">{phase.label}</div>
-                                <div className="mt-0.5 text-xs text-cream-600">
+                                <div className="mt-1 text-xs text-cream-600">
                                   {phase.stat
                                     ? `${formatNumber(phase.stat.processed)} synced · ${formatNumber(phase.stat.failed)} failed · ${formatNumber(phase.stat.pages)} pages`
                                     : 'No progress yet'}
                                 </div>
+                                <div className="mt-2">
+                                  <StatusPill label={phase.state} variant={getPhaseStateVariant(phase.state)} />
+                                </div>
                               </div>
-                              <Badge variant={getPhaseStateVariant(phase.state)}>{phase.state}</Badge>
+                            ))
+                          ) : (
+                            <div className="rounded-xl border border-dashed border-cream-300 bg-cream-50 px-4 py-5 text-sm text-cream-700 xl:col-span-4">
+                              No in-scope phases were reported for this run.
                             </div>
-                          ))}
+                          )}
                         </div>
                       </div>
-                    </div>
-                  </details>
-                ))}
+                    </details>
+                  );
+                })}
               </div>
             )}
           </div>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { getInAppCreateFlags } from '@/lib/server/seller-features';
 import {
   applySellerLocationScope,
   isSellerLocationSelectionAllowed,
@@ -407,13 +408,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const [orderMgmt, salesOrders] = await Promise.all([
+    const [orderMgmt, salesOrders, createFlags] = await Promise.all([
       getFlag(FEATURE_FLAGS.ORDER_MANAGEMENT, claims.tenant_id),
       getFlag(FEATURE_FLAGS.SALES_ORDERS, claims.tenant_id),
+      getInAppCreateFlags(claims.tenant_id),
     ]);
 
     if (!orderMgmt || !salesOrders) {
       return NextResponse.json({ error: 'Feature not enabled' }, { status: 403 });
+    }
+    if (!createFlags.create_sales_orders) {
+      return NextResponse.json({ error: 'Sales order creation is disabled for this tenant' }, { status: 403 });
     }
 
     if (!supabaseAdmin) {

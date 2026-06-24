@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { getInAppCreateFlags } from '@/lib/server/seller-features';
 import { effectiveInvoiceStatus } from '@/lib/invoice-status';
 import { loadInvoiceDocument } from '@/lib/invoices/load-tenant-invoice-composer';
 import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
@@ -467,12 +468,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const [orderMgmt, invoicesFlag] = await Promise.all([
+    const [orderMgmt, invoicesFlag, createFlags] = await Promise.all([
       getFlag(FEATURE_FLAGS.ORDER_MANAGEMENT, claims.tenant_id),
       getFlag(FEATURE_FLAGS.INVOICES, claims.tenant_id),
+      getInAppCreateFlags(claims.tenant_id),
     ]);
     if (!orderMgmt || !invoicesFlag) {
       return NextResponse.json({ error: 'Feature not enabled' }, { status: 403 });
+    }
+    if (!createFlags.create_invoices) {
+      return NextResponse.json({ error: 'Invoice creation is disabled for this tenant' }, { status: 403 });
     }
 
     if (!supabaseAdmin) {

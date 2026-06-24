@@ -38,25 +38,29 @@ function IntegrationDetailSkeleton() {
   return (
     <section className="overflow-hidden rounded-xl border border-cream-300 bg-white shadow-xs">
       <header className="border-b border-cream-200 bg-cream-50 px-5 py-4">
-        <div className="flex items-start gap-3">
-          <div className="h-9 w-9 animate-pulse rounded-lg border border-cream-200 bg-cream-100" />
-          <div className="min-w-0 flex-1 space-y-2">
-            <div className="h-5 w-48 animate-pulse rounded bg-cream-200" />
-            <div className="h-4 w-full max-w-md animate-pulse rounded bg-cream-200" />
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="h-10 w-10 animate-pulse rounded-xl border border-cream-200 bg-cream-100" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="h-5 w-48 animate-pulse rounded bg-cream-200" />
+              <div className="h-4 w-full max-w-md animate-pulse rounded bg-cream-200" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <div className="h-9 w-28 animate-pulse rounded-[9px] border border-cream-200 bg-cream-100" />
+            <div className="h-9 w-28 animate-pulse rounded-[9px] border border-cream-200 bg-cream-100" />
+            <div className="h-9 w-28 animate-pulse rounded-[9px] border border-cream-200 bg-cream-100" />
           </div>
         </div>
       </header>
 
       <div className="space-y-5 px-5 py-5">
-        <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-cream-200 bg-cream-50 px-4 py-4">
-          <div className="space-y-2">
-            <div className="h-5 w-44 animate-pulse rounded bg-cream-200" />
-            <div className="h-4 w-full max-w-sm animate-pulse rounded bg-cream-200" />
-          </div>
-          <div className="h-9 w-32 animate-pulse rounded-[9px] border border-cream-200 bg-cream-100" />
-        </div>
-
         <div className="grid gap-3 md:grid-cols-3">
+          <div className="space-y-2">
+            <div className="h-4 w-24 animate-pulse rounded bg-cream-200" />
+            <div className="h-6 w-28 animate-pulse rounded bg-cream-200" />
+            <div className="h-4 w-full animate-pulse rounded bg-cream-200" />
+          </div>
           {Array.from({ length: 3 }).map((_, index) => (
             <div key={index} className="rounded-2xl border border-cream-200 bg-cream-50 p-4">
               <div className="h-4 w-24 animate-pulse rounded bg-cream-200" />

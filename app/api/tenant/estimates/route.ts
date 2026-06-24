@@ -3,6 +3,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { FEATURE_FLAGS } from '@/constants';
 import { loadEstimateDocument } from '@/lib/estimates/load-tenant-estimate-composer';
 import { getFlag } from '@/lib/flags';
+import { getInAppCreateFlags } from '@/lib/server/seller-features';
 import { PAGE_SIZE, encodeCursor, decodeCursor } from '@/lib/pagination';
 import {
   applySellerLocationScope,
@@ -258,7 +259,7 @@ export async function GET(req: NextRequest) {
 
     // Scope the buyers lookup to only the buyer IDs referenced by the fetched estimates.
     // Previously this loaded all buyers for the tenant on every request.
-    const estimateBuyerIds = Array.from(new Set(rawEstimates.map((e) => e.buyer_id)));
+    const estimateBuyerIds = Array.from(new Set(rawEstimates.map((e) => e.buyer_id).filter(Boolean)));
     const buyersRes = estimateBuyerIds.length > 0
       ? await db
           .schema('app')
@@ -555,12 +556,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const [orderMgmt, estimatesFlag] = await Promise.all([
+    const [orderMgmt, estimatesFlag, createFlags] = await Promise.all([
       getFlag(FEATURE_FLAGS.ORDER_MANAGEMENT, claims.tenant_id),
       getFlag(FEATURE_FLAGS.ESTIMATES, claims.tenant_id),
+      getInAppCreateFlags(claims.tenant_id),
     ]);
     if (!orderMgmt || !estimatesFlag) {
       return NextResponse.json({ error: 'Feature not enabled' }, { status: 403 });
+    }
+    if (!createFlags.create_enquiries) {
+      return NextResponse.json({ error: 'Estimate creation is disabled for this tenant' }, { status: 403 });
     }
 
     if (!supabaseAdmin) {
