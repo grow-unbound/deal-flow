@@ -115,14 +115,18 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Sync relevant feature flags to PostHog group properties for sidebar/nav gating
-    if (parsed.data.orders?.features || parsed.data.catalog) {
+    if (parsed.data.orders?.features || parsed.data.buyer_app || parsed.data.catalog) {
       void syncTenantFeatureFlags(claims.tenant_id, {
         ...(parsed.data.orders?.features && {
-          df_order_enquiries: parsed.data.orders.features.enquiries,
-          df_order_sales_orders: parsed.data.orders.features.sales_orders,
-          df_order_invoices: parsed.data.orders.features.invoices,
+          df_estimates: parsed.data.orders.features.enquiries,
+          df_sales_orders: parsed.data.orders.features.sales_orders,
+          df_invoices: parsed.data.orders.features.invoices,
+        }),
+        ...(parsed.data.buyer_app?.enabled !== undefined && {
+          df_buyer_app: parsed.data.buyer_app.enabled,
         }),
         ...(parsed.data.catalog && {
+          df_pricing_engine: parsed.data.catalog.price_lists_enabled,
           df_cohorts: parsed.data.catalog.cohort_pricing_enabled,
           df_catalog_publishing: parsed.data.catalog.catalog_publishing_enabled,
         }),

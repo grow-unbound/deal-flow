@@ -28,7 +28,7 @@ import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 
-type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Growth (high → low)' | 'Catalog age (most recent)';
+type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Growth (high → low)' | 'Campaign age (most recent)';
 
 interface BrandVm {
   id: string;
@@ -50,7 +50,7 @@ interface BrandVm {
   logoUrl: string | null;
 }
 
-const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'GMV (low → high)', 'Growth (high → low)', 'Catalog age (most recent)'];
+const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'GMV (low → high)', 'Growth (high → low)', 'Campaign age (most recent)'];
 const PAGE_SIZE = 20;
 
 const AddBrandCommand = dynamic(
@@ -305,7 +305,7 @@ function BrandLandingContent({
             tone: 'warn',
           },
           {
-            label: 'Catalog freshness',
+            label: 'Campaign freshness',
             value: `${catalogFresh}`,
             sub: freshnessHelp(),
           },
@@ -399,7 +399,7 @@ function BrandLandingContent({
           { label: 'Growth', className: 'px-5' },
           { label: 'Share of portfolio', className: 'px-5' },
           { label: 'Active buyers', align: 'right', className: 'px-5' },
-          { label: 'Catalog', className: 'px-5' },
+          { label: 'Campaign', className: 'px-5' },
           { width: 40, className: 'px-4' },
         ]}
       >

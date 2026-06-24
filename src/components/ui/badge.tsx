@@ -14,7 +14,7 @@ const glyphVariants: Record<string, string> = {
 };
 
 const badgeVariants = cva(
-  'inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-1 text-xs font-medium uppercase tracking-[0.1em] transition-colors font-mono',
+  'inline-flex items-center gap-1.5 rounded-pill border px-2 py-1 text-xs font-medium uppercase tracking-[0.1em] transition-colors font-mono',
   {
     variants: {
       variant: {

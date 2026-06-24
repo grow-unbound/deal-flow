@@ -67,7 +67,7 @@ export function PlanHeroCard({ plan, usage, limits }: { plan: PlanTier; usage: B
       <h2 className="mt-1 font-display text-3xl font-medium tracking-tight">{TIER_LABEL[plan]}</h2>
       <p className="mt-1 max-w-prose text-sm text-teal-100/90">{TIER_SUB[plan]}</p>
       <div className="mt-6 grid gap-6 sm:grid-cols-3">
-        <Meter label="Cohorts" used={usage.cohorts} limit={limits.cohorts} />
+        <Meter label="Customer groups" used={usage.cohorts} limit={limits.cohorts} />
         <Meter label="Price lists" used={usage.price_lists} limit={limits.price_lists} />
         <Meter label="Published catalogs" used={usage.catalogs} limit={limits.catalogs} />
       </div>

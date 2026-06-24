@@ -155,7 +155,7 @@ export function CohortPerformanceTab({ performance }: CohortPerformanceTabProps)
         <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
           <div className="flex items-start justify-between gap-3 border-b border-cream-300 px-5 py-4">
             <div>
-              <h3 className="font-display text-lg text-cream-950">Catalogs to this cohort</h3>
+              <h3 className="font-display text-lg text-cream-950">Campaigns to this customer group</h3>
               <p className="mt-0.5 text-sm text-cream-700">Recent sends</p>
             </div>
             <button
@@ -232,7 +232,7 @@ export function CohortPerformanceTab({ performance }: CohortPerformanceTabProps)
       <SeeAllSheet
         open={catalogsSheetOpen}
         onOpenChange={setCatalogsSheetOpen}
-        title="Catalogs to this cohort"
+        title="Campaigns to this customer group"
         subtitle="Recent sends · sorted by date"
         items={sortedCatalogs}
         columns={[

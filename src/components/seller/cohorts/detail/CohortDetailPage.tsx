@@ -97,24 +97,24 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
       {
         label: 'AOV',
         value: formatCompactInr(data.meta_strip_4.aov),
-        sub: 'across this cohort',
+        sub: 'across this customer group',
       },
       {
         label: 'Conversion',
         value: `${data.meta_strip_4.conversion_pct.toFixed(1)}%`,
-        sub: 'catalog → order',
+        sub: 'campaign → order',
       },
     ];
   }, [data]);
 
   if (isLoading) return <CohortDetailSkeleton />;
-  if (isError || !data) return <ErrorState heading="Couldn't load cohort" description="There was a problem fetching this cohort detail page." />;
+  if (isError || !data) return <ErrorState heading="Couldn't load customer group" description="There was a problem fetching this customer group detail page." />;
 
   return (
     <PageWrap className="pt-7">
       <DetailHeader
         crumbPath={[
-          { label: 'Cohorts', href: '/cohorts' },
+          { label: 'Customer Groups', href: '/customer-groups' },
           { label: data.header.cohort_name, current: true },
         ]}
         avatar={{ kind: 'brand', initials: data.header.initials, hue: data.header.hue }}
@@ -125,9 +125,9 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
           isSellerAdmin ? (
             <div className="flex items-center gap-2 pt-1">
               <Button variant="accent" size="sm" className="h-9 px-4" asChild>
-                <Link href={`/cohorts/${id}/edit`}>
+                <Link href={`/customer-groups/${id}/edit`}>
                   <Pencil size={16} strokeWidth={2} aria-hidden />
-                  Edit cohort
+                  Edit customer group
                 </Link>
               </Button>
             </div>

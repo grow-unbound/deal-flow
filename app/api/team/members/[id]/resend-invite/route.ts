@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 
@@ -42,7 +42,6 @@ export async function PUT(
     return NextResponse.json({ error: 'Member is already active' }, { status: 400 });
   }
 
-  // Get the email from auth.users
   const { data: authUser, error: authError } =
     await supabaseAdmin.auth.admin.getUserById(member.user_id);
 
@@ -50,11 +49,40 @@ export async function PUT(
     return NextResponse.json({ error: 'Could not retrieve user email' }, { status: 500 });
   }
 
-  // Re-send the invite
+  const isConfirmed = !!authUser.user.email_confirmed_at;
+
+  if (isConfirmed) {
+    // User already confirmed their email but accept-invite never ran (is_active still false).
+    // Can't re-send an invite link (Supabase rejects it for confirmed users), so send a
+    // password-recovery link instead — same UX: user clicks link, lands on /setup-password,
+    // sets password, accept-invite activates them.
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+      authUser.user.email,
+      { redirectTo: `${appUrl}/setup-password` },
+    );
+
+    if (resetError) {
+      return NextResponse.json(
+        { error: 'Failed to resend invite', details: resetError.message },
+        { status: 500 },
+      );
+    }
+
+    await db
+      .schema('app')
+      .from('tenant_users')
+      .update({ invited_at: new Date().toISOString() })
+      .eq('id', id);
+
+    return NextResponse.json({ success: true, message: 'Invite resent' });
+  }
+
+  // User is unconfirmed — resend the invite via Supabase (Supabase sends the email).
   const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
     authUser.user.email,
     {
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/accept-invite`,
+      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/setup-password`,
       data: { tenant_id: claims.tenant_id, role: member.role },
     },
   );

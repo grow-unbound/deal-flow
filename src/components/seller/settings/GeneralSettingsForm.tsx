@@ -1,94 +1,277 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { Building2, Bell, Info } from 'lucide-react';
+import { Building2, Settings2, Radio } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { BrowseUploadField } from '@/components/ui/browse-upload-field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { BusinessPolicySection } from '@/components/seller/settings/BusinessPolicySection';
+import { FeatureToggleRow } from '@/components/seller/settings/FeatureToggleRow';
 import { NotificationToggleRow } from '@/components/seller/settings/NotificationToggleRow';
 import { SettingsSectionCard } from '@/components/seller/settings/SettingsSectionCard';
 import { useTenantSettings } from '@/hooks/useTenantSettings';
 import { TenantSettingsPatchSchema } from '@/types/tenant-settings';
-import type { BusinessPolicy, GeneralSettingsView, TenantSettingsPatch } from '@/types/tenant-settings';
-import { Navigation2 } from 'lucide-react';
+import type { BusinessPolicy, TenantSettingsPatch, UnifiedSettingsView } from '@/types/tenant-settings';
+import {
+  DATE_FORMAT_OPTION_LABELS,
+  parseFormatToDisplay,
+  buildFormatFromDisplay,
+  previewDisplayFormat,
+} from '@/lib/tenant-settings/order-number-format';
+import type { DateFormatOption, OrderNumberDisplayFormat } from '@/lib/tenant-settings/order-number-format';
 
-function cloneView(v: GeneralSettingsView): GeneralSettingsView {
+type OrderStageKey = 'enquiries' | 'sales_orders' | 'invoices';
+
+function cloneUnified(v: UnifiedSettingsView): UnifiedSettingsView {
   return structuredClone(v);
 }
 
+function orderStageLabels(key: OrderStageKey): { title: string; plural: string } {
+  switch (key) {
+    case 'enquiries': return { title: 'Estimates', plural: 'estimates' };
+    case 'sales_orders': return { title: 'Sales orders', plural: 'sales orders' };
+    case 'invoices': return { title: 'Invoices', plural: 'invoices' };
+  }
+}
+
+// ── Number format row ──────────────────────────────────────────────────────────
+
+function NumberFormatRow({
+  label,
+  format,
+  onFormatChange,
+}: {
+  label: string;
+  format: string;
+  onFormatChange: (fmt: string) => void;
+}) {
+  const display = parseFormatToDisplay(format);
+  const preview = previewDisplayFormat(display);
+
+  function handlePrefixChange(e: React.ChangeEvent<HTMLInputElement>) {
+    onFormatChange(buildFormatFromDisplay({ ...display, prefix: e.target.value }));
+  }
+
+  function handleDateFormatChange(v: string) {
+    onFormatChange(buildFormatFromDisplay({ ...display, date_format: v as DateFormatOption }));
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium text-cream-800">{label}</p>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1">
+          <Label className="text-xs text-cream-600">Prefix</Label>
+          <Input
+            value={display.prefix}
+            onChange={handlePrefixChange}
+            maxLength={10}
+            className="w-24 font-mono text-sm uppercase"
+            placeholder="e.g. EST"
+          />
+        </div>
+        <div className="space-y-1 min-w-[200px]">
+          <Label className="text-xs text-cream-600">Date in number</Label>
+          <Select value={display.date_format} onValueChange={handleDateFormatChange}>
+            <SelectTrigger className="text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(DATE_FORMAT_OPTION_LABELS) as DateFormatOption[]).map((key) => (
+                <SelectItem key={key} value={key} className="text-sm">
+                  {DATE_FORMAT_OPTION_LABELS[key]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <p className="text-xs text-cream-500">
+        Preview: <span className="font-mono font-medium text-cream-800">{preview}</span>
+      </p>
+    </div>
+  );
+}
+
+// ── Save / Cancel bar ──────────────────────────────────────────────────────────
+
+function ActionBar({ dirty, isSaving, onDiscard, onSave }: {
+  dirty: boolean;
+  isSaving: boolean;
+  onDiscard: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-end gap-2">
+      <Button type="button" variant="outline" disabled={!dirty || isSaving} onClick={onDiscard}>
+        Cancel
+      </Button>
+      <Button type="button" disabled={!dirty || isSaving} onClick={onSave}>
+        {isSaving ? 'Saving…' : 'Save changes'}
+      </Button>
+    </div>
+  );
+}
+
+// ── Main form ──────────────────────────────────────────────────────────────────
+
 export function GeneralSettingsForm() {
   const { data, isLoading, error, refetch, save, isSaving } = useTenantSettings();
-  const [draft, setDraft] = useState<GeneralSettingsView | null>(null);
+  const [draft, setDraft] = useState<UnifiedSettingsView | null>(null);
+  const [pendingOff, setPendingOff] = useState<OrderStageKey | null>(null);
 
   useEffect(() => {
-    if (data) setDraft(cloneView(data.general));
+    if (data) setDraft(cloneUnified(data.unified));
   }, [data]);
 
   const dirty = useMemo(() => {
     if (!data || !draft) return false;
-    return JSON.stringify(data.general) !== JSON.stringify(draft);
+    return JSON.stringify(data.unified) !== JSON.stringify(draft);
   }, [data, draft]);
 
-  function updateBusiness(partial: Partial<GeneralSettingsView['business']>) {
-    setDraft((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        business: { ...prev.business, ...partial },
-      };
-    });
+  // ── Update helpers ──
+
+  function updateBusiness(partial: Partial<UnifiedSettingsView['business']>) {
+    setDraft((prev) => prev ? { ...prev, business: { ...prev.business, ...partial } } : prev);
   }
 
-  function updateAddress(partial: Partial<GeneralSettingsView['business']['address']>) {
-    setDraft((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        business: {
-          ...prev.business,
-          address: { ...prev.business.address, ...partial },
-        },
-      };
-    });
-  }
-
-  function updateWhatsapp(partial: Partial<GeneralSettingsView['notifications']['whatsapp']>) {
-    setDraft((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        notifications: {
-          ...prev.notifications,
-          whatsapp: { ...prev.notifications.whatsapp, ...partial },
-        },
-      };
-    });
+  function updateAddress(partial: Partial<UnifiedSettingsView['business']['address']>) {
+    setDraft((prev) => prev ? {
+      ...prev,
+      business: { ...prev.business, address: { ...prev.business.address, ...partial } },
+    } : prev);
   }
 
   function updateBusinessPolicy(business_policy: BusinessPolicy) {
-    setDraft((prev) => (prev ? { ...prev, business_policy } : prev));
+    setDraft((prev) => prev ? { ...prev, business_policy } : prev);
   }
 
-  function updateRoutingThreshold(km: number) {
-    setDraft((prev) => (prev ? { ...prev, delivery_routing_threshold_km: km } : prev));
+  function updateNotifications(partial: Partial<UnifiedSettingsView['notifications']['whatsapp']>) {
+    setDraft((prev) => prev ? {
+      ...prev,
+      notifications: { whatsapp: { ...prev.notifications.whatsapp, ...partial } },
+    } : prev);
   }
+
+  function updateOrders(partial: Partial<UnifiedSettingsView['orders']>) {
+    setDraft((prev) => prev ? { ...prev, orders: { ...prev.orders, ...partial } } : prev);
+  }
+
+  function updateCatalog(partial: Partial<UnifiedSettingsView['catalog']>) {
+    setDraft((prev) => prev ? { ...prev, catalog: { ...prev.catalog, ...partial } } : prev);
+  }
+
+  function updateBuyerApp(partial: Partial<UnifiedSettingsView['buyer_app']>) {
+    setDraft((prev) => prev ? { ...prev, buyer_app: { ...prev.buyer_app, ...partial } } : prev);
+  }
+
+  // ── Order feature toggle with open-count warning ──
+
+  function handleOrderFeatureChange(key: OrderStageKey, checked: boolean) {
+    if (!draft) return;
+    if (checked) {
+      updateOrders({ features: { ...draft.orders.features, [key]: true } });
+      return;
+    }
+    const count =
+      key === 'enquiries' ? draft.open_counts.enquiries
+      : key === 'sales_orders' ? draft.open_counts.sales_orders
+      : draft.open_counts.invoices;
+    if (count > 0) { setPendingOff(key); return; }
+    updateOrders({ features: { ...draft.orders.features, [key]: false } });
+  }
+
+  function confirmDisableStage() {
+    if (!pendingOff || !draft) return;
+    updateOrders({ features: { ...draft.orders.features, [pendingOff]: false } });
+    setPendingOff(null);
+  }
+
+  // ── Campaigns dependency enforcement ──
+
+  function handleCampaignsToggle(enabled: boolean) {
+    if (!draft) return;
+    if (enabled) {
+      // auto-enable Pricelists + Customer Groups
+      updateCatalog({
+        catalog_publishing_enabled: true,
+        price_lists_enabled: true,
+        cohort_pricing_enabled: true,
+      });
+    } else {
+      updateCatalog({ catalog_publishing_enabled: false });
+    }
+  }
+
+  // ── Discard / Save ──
 
   function handleDiscard() {
-    if (data) setDraft(cloneView(data.general));
+    if (data) setDraft(cloneUnified(data.unified));
   }
 
   async function handleSave() {
-    if (!draft) return;
+    if (!draft || !data) return;
+
+    // Auto-reset inventory lock stage if the selected stage was disabled
+    let finalDraft = draft;
+    const lockStage = draft.orders.inventory_lock_stage;
+    if (
+      (lockStage === 'enquiry' && !draft.orders.features.enquiries) ||
+      (lockStage === 'sales_order' && !draft.orders.features.sales_orders)
+    ) {
+      finalDraft = {
+        ...draft,
+        orders: { ...draft.orders, inventory_lock_stage: 'invoice' },
+      };
+      setDraft(finalDraft);
+      toast.warning('Inventory lock stage reset to Invoice.');
+    }
+
     const patch: TenantSettingsPatch = {
-      business: draft.business,
-      notifications: { whatsapp: draft.notifications.whatsapp },
-      business_policy: draft.business_policy,
-      delivery_routing_threshold_km: draft.delivery_routing_threshold_km,
+      business: finalDraft.business,
+      notifications: { whatsapp: finalDraft.notifications.whatsapp },
+      business_policy: finalDraft.business_policy,
+      delivery_routing_threshold_km: finalDraft.delivery_routing_threshold_km,
+      product_defaults: finalDraft.product_defaults,
+      orders: {
+        enquiry_number_format: finalDraft.orders.enquiry_number_format,
+        sales_order_number_format: finalDraft.orders.sales_order_number_format,
+        invoice_number_format: finalDraft.orders.invoice_number_format,
+        inventory_lock_stage: finalDraft.orders.inventory_lock_stage,
+        invoice_pdf_enabled: finalDraft.orders.invoice_pdf_enabled,
+        features: finalDraft.orders.features,
+      },
+      buyer_app: {
+        enabled: finalDraft.buyer_app.enabled,
+        whatsapp_number: finalDraft.buyer_app.whatsapp_number,
+      },
+      catalog: {
+        price_lists_enabled: finalDraft.catalog.price_lists_enabled,
+        cohort_pricing_enabled: finalDraft.catalog.cohort_pricing_enabled,
+        catalog_publishing_enabled: finalDraft.catalog.catalog_publishing_enabled,
+      },
     };
+
     const parsed = TenantSettingsPatchSchema.safeParse(patch);
     if (!parsed.success) {
       toast.error(parsed.error.errors[0]?.message ?? 'Invalid settings');
@@ -97,14 +280,19 @@ export function GeneralSettingsForm() {
     await save(parsed.data);
   }
 
+  // ── Loading / error states ──
+
   if (isLoading || !draft) {
     return (
-      <div className="w-full space-y-6" aria-busy="true">
+      <div className="w-full space-y-4" aria-busy="true">
+        <div className="h-8 w-40 animate-pulse rounded-md bg-cream-100" />
         <div className="grid gap-6 lg:grid-cols-2">
-          <div className="h-64 animate-pulse rounded-xl border border-cream-100 bg-cream-50" />
-          <div className="h-64 animate-pulse rounded-xl border border-cream-100 bg-cream-50" />
+          <div className="space-y-6">
+            <div className="h-96 animate-pulse rounded-xl border border-cream-100 bg-cream-50" />
+            <div className="h-64 animate-pulse rounded-xl border border-cream-100 bg-cream-50" />
+          </div>
+          <div className="h-[600px] animate-pulse rounded-xl border border-cream-100 bg-cream-50" />
         </div>
-        <div className="h-72 animate-pulse rounded-xl border border-cream-100 bg-cream-50" />
       </div>
     );
   }
@@ -120,238 +308,363 @@ export function GeneralSettingsForm() {
     );
   }
 
+  const campaignsDepsOff = !draft.catalog.price_lists_enabled || !draft.catalog.cohort_pricing_enabled;
+
+  const pendingCount =
+    pendingOff === 'enquiries' ? draft.open_counts.enquiries
+    : pendingOff === 'sales_orders' ? draft.open_counts.sales_orders
+    : pendingOff === 'invoices' ? draft.open_counts.invoices
+    : 0;
+  const pendingLabels = pendingOff ? orderStageLabels(pendingOff) : { title: '', plural: '' };
+
   const logoUrls = draft.business.logo_url ? [draft.business.logo_url] : [];
 
   return (
-    <div className="w-full space-y-6">
+    <div className="w-full space-y-4">
+      {/* Top action bar */}
+      <ActionBar dirty={dirty} isSaving={isSaving} onDiscard={handleDiscard} onSave={() => void handleSave()} />
+
+      {/* 2-column grid */}
       <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-        <SettingsSectionCard
-          className="mb-0"
-          title="Business Profile"
-          subtitle="Appears on buyer-facing documents, invoices, and the buyer app."
-          icon={Building2}
-        >
-        <div className="flex flex-col gap-4 border-b border-cream-200 pb-5 sm:flex-row sm:items-start">
-          <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-[14px] border-2 border-dashed border-cream-400 bg-cream-50">
-            {logoUrls[0] ? (
-              // eslint-disable-next-line @next/next/no-img-element -- remote tenant logo URL
-              <img src={logoUrls[0]} alt="Company logo" className="h-full w-full object-cover" />
-            ) : (
-              <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-cream-500">
-                <span className="text-sm">No logo</span>
+
+        {/* ── Col 1: Business Profile + Business Policy ── */}
+        <div className="space-y-6">
+
+          {/* Business Profile */}
+          <SettingsSectionCard
+            title="Business Profile"
+            subtitle="Appears on buyer-facing documents, invoices, and the buyer app."
+            icon={Building2}
+          >
+            <div className="flex flex-col gap-4 border-b border-cream-200 pb-5 sm:flex-row sm:items-start">
+              <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-[14px] border-2 border-dashed border-cream-400 bg-cream-50">
+                {logoUrls[0] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={logoUrls[0]} alt="Company logo" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-cream-500">
+                    <span className="text-sm">No logo</span>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          <div className="min-w-0 flex-1 space-y-2">
-            <p className="text-base font-medium text-cream-900">Company logo</p>
-            <p className="text-sm text-cream-600">PNG, JPG or WebP, up to 5 MB. Used on invoices and in the buyer app.</p>
-            <BrowseUploadField
-              value={logoUrls}
-              onChange={(urls) => updateBusiness({ logo_url: urls[0] ?? null })}
-              maxFiles={1}
-              label="Upload logo"
-              helperText="JPG, PNG, WebP • Max 5MB"
-              emptyLabel="Drop an image here or browse from your computer"
-              previewInline
-              className="max-w-md"
-            />
-          </div>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="company_name">
-              Company name <span className="text-ember-600">*</span>
-            </Label>
-            <Input
-              id="company_name"
-              value={draft.business.company_name}
-              onChange={(e) => updateBusiness({ company_name: e.target.value })}
-              autoComplete="organization"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="gstin">GSTIN</Label>
-            <Input
-              id="gstin"
-              value={draft.business.gstin}
-              onChange={(e) => updateBusiness({ gstin: e.target.value.toUpperCase() })}
-              maxLength={15}
-              className="font-mono text-sm"
-              placeholder="15-character GSTIN"
-            />
-            <p className="text-sm text-cream-600">Your 15-character GST Identification Number</p>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <p className="eyebrow text-cream-600">Registered Address</p>
-          <div className="space-y-2">
-            <Label htmlFor="addr1">Address line 1</Label>
-            <Input id="addr1" value={draft.business.address.line1} onChange={(e) => updateAddress({ line1: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="addr2">Address line 2</Label>
-            <Input
-              id="addr2"
-              value={draft.business.address.line2}
-              onChange={(e) => updateAddress({ line2: e.target.value })}
-              placeholder="Landmark, floor, etc. (optional)"
-            />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-[1fr_100px_110px]">
-            <div className="space-y-2">
-              <Label htmlFor="city">City</Label>
-              <Input id="city" value={draft.business.address.city} onChange={(e) => updateAddress({ city: e.target.value })} />
+              <div className="min-w-0 flex-1 space-y-2">
+                <p className="text-base font-medium text-cream-900">Company logo</p>
+                <p className="text-sm text-cream-600">PNG, JPG or WebP, up to 5 MB.</p>
+                <BrowseUploadField
+                  value={logoUrls}
+                  onChange={(urls) => updateBusiness({ logo_url: urls[0] ?? null })}
+                  maxFiles={1}
+                  label="Upload logo"
+                  helperText="JPG, PNG, WebP • Max 5MB"
+                  emptyLabel="Drop an image here or browse"
+                  previewInline
+                  className="max-w-md"
+                />
+              </div>
             </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="company_name">
+                  Company name <span className="text-ember-600">*</span>
+                </Label>
+                <Input
+                  id="company_name"
+                  value={draft.business.company_name}
+                  onChange={(e) => updateBusiness({ company_name: e.target.value })}
+                  autoComplete="organization"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="gstin">GSTIN</Label>
+                <Input
+                  id="gstin"
+                  value={draft.business.gstin}
+                  onChange={(e) => updateBusiness({ gstin: e.target.value.toUpperCase() })}
+                  maxLength={15}
+                  className="font-mono text-sm"
+                  placeholder="15-character GSTIN"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <p className="eyebrow text-cream-600">Registered Address</p>
+              <div className="space-y-2">
+                <Label htmlFor="addr1">Address line 1</Label>
+                <Input id="addr1" value={draft.business.address.line1} onChange={(e) => updateAddress({ line1: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="addr2">Address line 2</Label>
+                <Input id="addr2" value={draft.business.address.line2} onChange={(e) => updateAddress({ line2: e.target.value })} placeholder="Landmark, floor, etc. (optional)" />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-[1fr_100px_110px]">
+                <div className="space-y-2">
+                  <Label htmlFor="city">City</Label>
+                  <Input id="city" value={draft.business.address.city} onChange={(e) => updateAddress({ city: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="state">State</Label>
+                  <Input id="state" value={draft.business.address.state} onChange={(e) => updateAddress({ state: e.target.value.toUpperCase() })} maxLength={2} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pin">Pincode</Label>
+                  <Input id="pin" value={draft.business.address.pincode} onChange={(e) => updateAddress({ pincode: e.target.value })} maxLength={10} className="font-mono text-sm" />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="phone">Business phone</Label>
+                <Input id="phone" type="tel" value={draft.business.phone} onChange={(e) => updateBusiness({ phone: e.target.value })} className="font-mono text-sm" />
+                <p className="text-sm text-cream-600">WhatsApp sender number for OTP messages</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Business email</Label>
+                <Input id="email" type="email" value={draft.business.email} onChange={(e) => updateBusiness({ email: e.target.value })} autoComplete="email" />
+                <p className="text-sm text-cream-600">Reply-to on order confirmation emails</p>
+              </div>
+            </div>
+
             <div className="space-y-2">
-              <Label htmlFor="state">State</Label>
+              <Label htmlFor="buyer-whatsapp">WhatsApp number (buyer app)</Label>
               <Input
-                id="state"
-                value={draft.business.address.state}
-                onChange={(e) => updateAddress({ state: e.target.value.toUpperCase() })}
-                maxLength={2}
+                id="buyer-whatsapp"
+                value={draft.buyer_app.whatsapp_number}
+                onChange={(e) => updateBuyerApp({ whatsapp_number: e.target.value })}
+                placeholder="+91 …"
+                maxLength={40}
+                className="max-w-xs font-mono text-sm"
+              />
+              <p className="text-sm text-cream-600">Shown to buyers for support in the buyer app.</p>
+            </div>
+          </SettingsSectionCard>
+
+          {/* Business Policy */}
+          <BusinessPolicySection
+            value={draft.business_policy}
+            onChange={updateBusinessPolicy}
+            defaultUom={draft.product_defaults.uom}
+            onDefaultUomChange={(uom) => setDraft((d) => d ? { ...d, product_defaults: { uom } } : d)}
+            routingThresholdKm={draft.delivery_routing_threshold_km}
+            onRoutingThresholdKmChange={(km) => setDraft((d) => d ? { ...d, delivery_routing_threshold_km: km } : d)}
+          />
+        </div>
+
+        {/* ── Col 2: Feature Toggles ── */}
+        <SettingsSectionCard
+          title="Feature Toggles"
+          subtitle="Enable or disable modules. Data is never deleted — features can be re-enabled at any time."
+          icon={Settings2}
+        >
+          {/* Order stages */}
+          <div className="px-5 pb-1 pt-4">
+            <p className="eyebrow text-cream-600">Order workflow</p>
+          </div>
+
+          <FeatureToggleRow
+            label="Estimates"
+            description="Let buyers request quotes before committing to an order."
+            checked={draft.orders.features.enquiries}
+            onCheckedChange={(v) => handleOrderFeatureChange('enquiries', v)}
+          />
+          {draft.orders.features.enquiries && (
+            <div className="border-b border-cream-200 bg-cream-50 px-5 py-4">
+              <NumberFormatRow
+                label="Estimate number format"
+                format={draft.orders.enquiry_number_format}
+                onFormatChange={(fmt) => updateOrders({ enquiry_number_format: fmt })}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="pin">Pincode</Label>
-              <Input
-                id="pin"
-                value={draft.business.address.pincode}
-                onChange={(e) => updateAddress({ pincode: e.target.value })}
-                maxLength={10}
-                className="font-mono text-sm"
+          )}
+
+          <FeatureToggleRow
+            label="Sales Orders"
+            description="Formal order documents after a quote is accepted."
+            checked={draft.orders.features.sales_orders}
+            onCheckedChange={(v) => handleOrderFeatureChange('sales_orders', v)}
+          />
+          {draft.orders.features.sales_orders && (
+            <div className="border-b border-cream-200 bg-cream-50 px-5 py-4">
+              <NumberFormatRow
+                label="Sales order number format"
+                format={draft.orders.sales_order_number_format}
+                onFormatChange={(fmt) => updateOrders({ sales_order_number_format: fmt })}
               />
             </div>
-          </div>
-        </div>
+          )}
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="phone">Business phone</Label>
-            <Input
-              id="phone"
-              type="tel"
-              value={draft.business.phone}
-              onChange={(e) => updateBusiness({ phone: e.target.value })}
-              className="font-mono text-sm"
-            />
-            <p className="text-sm text-cream-600">WhatsApp sender number for OTP messages to buyers</p>
+          <FeatureToggleRow
+            label="Invoices"
+            description="Bill buyers and track payment status."
+            checked={draft.orders.features.invoices}
+            onCheckedChange={(v) => handleOrderFeatureChange('invoices', v)}
+          />
+          {draft.orders.features.invoices && (
+            <div className="border-b border-cream-200 bg-cream-50 px-5 py-4 space-y-4">
+              <NumberFormatRow
+                label="Invoice number format"
+                format={draft.orders.invoice_number_format}
+                onFormatChange={(fmt) => updateOrders({ invoice_number_format: fmt })}
+              />
+              <FeatureToggleRow
+                label="Generate invoice PDF"
+                description="Auto-generate a PDF when an invoice is created."
+                checked={draft.orders.invoice_pdf_enabled}
+                onCheckedChange={(invoice_pdf_enabled) => updateOrders({ invoice_pdf_enabled })}
+              />
+            </div>
+          )}
+
+          {/* Inventory lock stage */}
+          <div className="border-t border-cream-200 bg-cream-50 px-5 py-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <Radio size={14} className="text-cream-600" />
+              <Label className="text-base font-medium">Lock inventory when</Label>
+            </div>
+            <div className="flex flex-col gap-2 pl-1">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="inventory_lock_stage"
+                  value="invoice"
+                  checked={draft.orders.inventory_lock_stage === 'invoice'}
+                  onChange={() => updateOrders({ inventory_lock_stage: 'invoice' })}
+                  className="accent-teal-600"
+                />
+                <span className="text-base text-cream-800">Invoice is created</span>
+              </label>
+              {draft.orders.features.sales_orders && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="inventory_lock_stage"
+                    value="sales_order"
+                    checked={draft.orders.inventory_lock_stage === 'sales_order'}
+                    onChange={() => updateOrders({ inventory_lock_stage: 'sales_order' })}
+                    className="accent-teal-600"
+                  />
+                  <span className="text-base text-cream-800">Order is accepted</span>
+                </label>
+              )}
+            </div>
+            <p className="text-sm text-cream-600">When stock is reserved against demand in your workflow.</p>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="email">Business email</Label>
-            <Input
-              id="email"
-              type="email"
-              value={draft.business.email}
-              onChange={(e) => updateBusiness({ email: e.target.value })}
-              autoComplete="email"
-            />
-            <p className="text-sm text-cream-600">Reply-to address on order confirmation emails</p>
+
+          {/* Pricing & campaigns */}
+          <div className="border-t border-cream-200 px-5 pb-1 pt-4">
+            <p className="eyebrow text-cream-600">Pricing &amp; campaigns</p>
           </div>
-        </div>
+
+          <FeatureToggleRow
+            label="Pricelists"
+            description="Create custom price lists and assign them to buyer groups."
+            checked={draft.catalog.price_lists_enabled}
+            onCheckedChange={(price_lists_enabled) => updateCatalog({ price_lists_enabled })}
+          />
+
+          <FeatureToggleRow
+            label="Customer Groups"
+            description="Segment buyers into groups for targeted pricing."
+            checked={draft.catalog.cohort_pricing_enabled}
+            onCheckedChange={(cohort_pricing_enabled) => updateCatalog({ cohort_pricing_enabled })}
+          />
+
+          <FeatureToggleRow
+            label="Campaigns"
+            description={
+              campaignsDepsOff && !draft.catalog.catalog_publishing_enabled
+                ? 'Enable Pricelists and Customer Groups first to unlock Campaigns.'
+                : 'Publish buyer-facing catalog campaigns with share links.'
+            }
+            checked={draft.catalog.catalog_publishing_enabled}
+            onCheckedChange={handleCampaignsToggle}
+            disabled={campaignsDepsOff && !draft.catalog.catalog_publishing_enabled}
+          />
+
+          {/* Buyer App */}
+          <div className="border-t border-cream-200 px-5 pb-1 pt-4">
+            <p className="eyebrow text-cream-600">Buyer app</p>
+          </div>
+
+          <div className="flex items-center justify-between px-5 py-3">
+            <div>
+              <p className="text-base font-medium text-cream-900">Buyer App</p>
+              <p className="text-sm text-cream-600">WhatsApp-first storefront for your buyers.</p>
+            </div>
+            <Switch
+              checked={draft.buyer_app.enabled}
+              onCheckedChange={(enabled) => updateBuyerApp({ enabled })}
+              aria-label="Enable buyer app"
+            />
+          </div>
+
+          {draft.buyer_app.enabled && (
+            <div className="border-t border-cream-200 bg-cream-50 px-5 py-4 space-y-1">
+              <p className="text-sm font-semibold uppercase tracking-wide text-cream-600 pb-2">WhatsApp notifications</p>
+              <NotificationToggleRow
+                label="Buyer enquiry received"
+                description="Notify you when a buyer submits a quote request."
+                checked={draft.notifications.whatsapp.enquiry_received}
+                onCheckedChange={(v) => updateNotifications({ enquiry_received: v })}
+              />
+              <NotificationToggleRow
+                label="Order placed by buyer"
+                description="Notify you when a buyer places a new order."
+                checked={draft.notifications.whatsapp.order_placed}
+                onCheckedChange={(v) => updateNotifications({ order_placed: v })}
+              />
+              <NotificationToggleRow
+                label="Order confirmed — notify buyer"
+                description="Send buyer a WhatsApp when you confirm their order."
+                checked={draft.notifications.whatsapp.order_confirmed_to_buyer}
+                onCheckedChange={(v) => updateNotifications({ order_confirmed_to_buyer: v })}
+              />
+              <NotificationToggleRow
+                label="Order dispatched — notify buyer"
+                description="Send buyer a dispatch update via WhatsApp."
+                checked={draft.notifications.whatsapp.dispatch_to_buyer}
+                onCheckedChange={(v) => updateNotifications({ dispatch_to_buyer: v })}
+              />
+              <NotificationToggleRow
+                label="Campaign shared — notify buyer"
+                description="Send buyer a WhatsApp when a catalog is shared with them."
+                checked={draft.notifications.whatsapp.catalog_shared_to_buyer}
+                onCheckedChange={(v) => updateNotifications({ catalog_shared_to_buyer: v })}
+              />
+              <NotificationToggleRow
+                label="OTP delivery"
+                description="WhatsApp OTP for buyer login — always on."
+                checked={true}
+                onCheckedChange={() => {}}
+                readOnlySystemOn
+              />
+            </div>
+          )}
         </SettingsSectionCard>
-
-        <BusinessPolicySection
-          className="mb-0"
-          value={draft.business_policy}
-          onChange={updateBusinessPolicy}
-        />
       </div>
 
-      <SettingsSectionCard
-        title="Order Routing"
-        subtitle="Controls how buyer orders and enquiries are assigned to your warehouses."
-        icon={Navigation2}
-      >
-        <div className="space-y-2">
-          <Label htmlFor="routing_threshold">Nearest warehouse threshold (km)</Label>
-          <div className="flex items-center gap-3">
-            <Input
-              id="routing_threshold"
-              type="number"
-              min={1}
-              max={5000}
-              step={10}
-              value={draft.delivery_routing_threshold_km}
-              onChange={(e) => {
-                const v = parseInt(e.target.value, 10);
-                if (!isNaN(v) && v >= 1 && v <= 5000) updateRoutingThreshold(v);
-              }}
-              className="w-32 font-mono text-sm"
-            />
-            <span className="text-sm text-cream-600">km</span>
-          </div>
-          <p className="text-sm text-cream-600">
-            Orders and enquiries are assigned to the nearest warehouse within this radius. If no warehouse is within range, the default warehouse is used instead.
-          </p>
-        </div>
-      </SettingsSectionCard>
+      {/* Bottom action bar */}
+      <ActionBar dirty={dirty} isSaving={isSaving} onDiscard={handleDiscard} onSave={() => void handleSave()} />
 
-      <SettingsSectionCard
-        title="WhatsApp Notifications"
-        subtitle="Each message uses one WhatsApp credit. Turn off anything that is not useful for your workflow."
-        icon={Bell}
-        footer={
-          <div className="flex items-start gap-2 text-base text-cream-700">
-            <Info size={14} className="mt-0.5 shrink-0 text-cream-500" aria-hidden />
-            <span>
-              Requires Buyer App to be enabled. Credits are managed in{' '}
-              <Link href="/settings/billing" className="font-medium text-teal-600 hover:underline">
-                Billing & Plan
-              </Link>
-              .
-            </span>
-          </div>
-        }
-      >
-        <NotificationToggleRow
-          label="Buyer enquiry received"
-          description="Notifies you when a buyer submits an enquiry via the app"
-          checked={draft.notifications.whatsapp.enquiry_received}
-          onCheckedChange={(v) => updateWhatsapp({ enquiry_received: v })}
-        />
-        <NotificationToggleRow
-          label="Order placed by buyer"
-          description="Notifies you when a buyer places an order"
-          checked={draft.notifications.whatsapp.order_placed}
-          onCheckedChange={(v) => updateWhatsapp({ order_placed: v })}
-        />
-        <NotificationToggleRow
-          label="Order confirmed — notify buyer"
-          description="Sends a WhatsApp confirmation to the buyer when you confirm their order"
-          checked={draft.notifications.whatsapp.order_confirmed_to_buyer}
-          onCheckedChange={(v) => updateWhatsapp({ order_confirmed_to_buyer: v })}
-        />
-        <NotificationToggleRow
-          label="Order dispatched — notify buyer"
-          description="Sends a dispatch update to the buyer when you mark an order as dispatched"
-          checked={draft.notifications.whatsapp.dispatch_to_buyer}
-          onCheckedChange={(v) => updateWhatsapp({ dispatch_to_buyer: v })}
-        />
-        <NotificationToggleRow
-          label="Catalog shared — notify buyer"
-          description="Notifies the buyer when you create a catalog share link for them"
-          checked={draft.notifications.whatsapp.catalog_shared_to_buyer}
-          onCheckedChange={(v) => updateWhatsapp({ catalog_shared_to_buyer: v })}
-        />
-        <NotificationToggleRow
-          label="OTP delivery"
-          description="Login passcode sent to buyers when they sign in. Cannot be turned off."
-          checked
-          onCheckedChange={() => undefined}
-          readOnlySystemOn
-        />
-      </SettingsSectionCard>
-
-      <div className="flex justify-end gap-3 pb-8">
-        <Button type="button" variant="ghost" disabled={!dirty || isSaving} onClick={handleDiscard}>
-          Discard changes
-        </Button>
-        <Button type="button" disabled={!dirty || isSaving} onClick={() => void handleSave()}>
-          {isSaving ? 'Saving…' : 'Save changes'}
-        </Button>
-      </div>
+      {/* Disable stage confirmation dialog */}
+      <AlertDialog open={pendingOff !== null} onOpenChange={(open) => !open && setPendingOff(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disable {pendingLabels.title.toLowerCase()}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have <strong>{pendingCount}</strong> open {pendingLabels.plural}. Disabling will hide them from the cockpit but not delete them. They can be re-enabled at any time.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
+            <AlertDialogAction type="button" onClick={confirmDisableStage}>
+              Proceed
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

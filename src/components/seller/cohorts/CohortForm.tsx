@@ -86,7 +86,7 @@ export function CohortForm({ mode = 'create', cohortId, defaultValues }: CohortF
         });
         if (!membersRes.ok) {
           const membersBody = await membersRes.json() as { error?: string };
-          setSubmitError(membersBody.error ?? 'Cohort created but failed to add members');
+          setSubmitError(membersBody.error ?? 'Customer group created but failed to add members');
           return;
         }
       }
@@ -115,7 +115,7 @@ export function CohortForm({ mode = 'create', cohortId, defaultValues }: CohortF
             render={({ field }) => (
               <FormItem>
                 <FormLabel className="text-caption font-medium text-cream-800">
-                  Cohort name <span className="text-danger-500">*</span>
+                  Customer group name <span className="text-danger-500">*</span>
                 </FormLabel>
                 <FormControl>
                   <Input
