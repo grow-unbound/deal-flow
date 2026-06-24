@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     const [dailyResult, snapshotResult] = await Promise.all([
       db
         .schema('app')
-        .from('buyer_app_daily')
+        .from('kpi_buyer_app_daily')
         .select('*')
         .eq('tenant_id', claims.tenant_id)
         .gte('snapshot_date', period.current_start.split('T')[0])
