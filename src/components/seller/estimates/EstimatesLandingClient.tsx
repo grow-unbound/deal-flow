@@ -376,7 +376,7 @@ function EstimatesLandingContent({
                 { label: 'Estimate Number', width: 160, className: 'px-5' },
                 { label: 'Buyer', width: 270, className: 'px-5' },
                 { label: 'Source', className: 'px-5' },
-                { label: 'Catalog', className: 'px-5' },
+                { label: 'Campaign', className: 'px-5' },
                 { label: 'Items', align: 'right', className: 'px-5' },
                 { label: 'Total Amount', align: 'right', className: 'px-5' },
                 { label: 'Status', className: 'px-5' },

@@ -34,6 +34,7 @@ export const DEFAULT_TENANT_SETTINGS_STORED = {
     show_out_of_stock: true,
   },
   catalog: {
+    price_lists_enabled: false,
     cohort_pricing_enabled: false,
     price_visibility: 'discounted_only' as const,
     catalog_publishing_enabled: false,

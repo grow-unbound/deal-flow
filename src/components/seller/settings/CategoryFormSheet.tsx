@@ -68,9 +68,10 @@ interface CategoryFormSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editingCategory: TenantCategory | null;
+  onSuccess?: () => void;
 }
 
-export function CategoryFormSheet({ open, onOpenChange, editingCategory }: CategoryFormSheetProps) {
+export function CategoryFormSheet({ open, onOpenChange, editingCategory, onSuccess }: CategoryFormSheetProps) {
   const { createCategory, updateCategory, isCreating, isUpdating } = useTenantCategories();
   const [stagedImage, setStagedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -178,6 +179,7 @@ export function CategoryFormSheet({ open, onOpenChange, editingCategory }: Categ
 
     form.reset(values);
     onOpenChange(false);
+    onSuccess?.();
   }
 
   const currentImageUrl = editingCategory?.r2_image_thumb_key

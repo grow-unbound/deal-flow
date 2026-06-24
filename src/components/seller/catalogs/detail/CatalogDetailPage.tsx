@@ -102,7 +102,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
               {data.meta_strip_4.growth_pct >= 0 ? '↑ +' : '↓ '}
               {Math.abs(data.meta_strip_4.growth_pct)}%
             </span>{' '}
-            vs previous catalog
+            vs previous campaign
           </span>
         ),
       },
@@ -126,7 +126,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
 
   if (isLoading) return <CatalogDetailSkeleton />;
   if (isError || !data) {
-    return <ErrorState heading="Couldn't load catalog" description="There was a problem fetching this catalog detail page." />;
+    return <ErrorState heading="Couldn't load campaign" description="There was a problem fetching this campaign detail page." />;
   }
 
   const isDraft = data.header.status_value === 'draft';
@@ -146,7 +146,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
     try {
       const response = await publishMutation.mutateAsync();
       setPublishConfirmOpen(false);
-      toast.success('Catalog published', {
+      toast.success('Campaign published', {
         action: {
           label: 'Copy link',
           onClick: () => {
@@ -155,7 +155,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
         },
       });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to publish catalog');
+      toast.error(error instanceof Error ? error.message : 'Failed to publish campaign');
     }
   }
 
@@ -163,7 +163,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
     <PageWrap className="pt-7">
       <DetailHeader
         crumbPath={[
-          { label: 'Catalogs', href: '/catalogs' },
+          { label: 'Campaigns', href: '/campaigns' },
           { label: data.header.name, current: true },
         ]}
         avatar={{ kind: 'catalog', initials: data.header.initials }}
@@ -203,16 +203,16 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
         }
         subtitle={[
           `${data.header.products_count} products · ${data.header.brands_covered} brands`,
-          `Cohort: ${data.header.cohort_name}`,
+          `Customer group: ${data.header.cohort_name}`,
           `Valid ${data.header.valid_from_label} → ${data.header.valid_until_label}`,
           `Published by ${data.header.published_by}`,
         ]}
         actions={
           <div className="flex items-center gap-2 pt-1">
             {isSellerAdmin ? (
-              <Button type="button" variant="accent" size="sm" onClick={() => router.push(`/catalogs/${id}/edit`)}>
+              <Button type="button" variant="accent" size="sm" onClick={() => router.push(`/campaigns/${id}/edit`)}>
                 <PencilLine size={14} />
-                Edit Catalog
+                Edit Campaign
               </Button>
             ) : null}
 
@@ -224,9 +224,9 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
                 </Button>
                 <DialogContent className="max-w-[420px]">
                   <DialogHeader>
-                    <DialogTitle>Publish this catalog?</DialogTitle>
+                    <DialogTitle>Publish this campaign?</DialogTitle>
                     <DialogDescription>
-                      Buyers will immediately be able to open this catalog with its share link.
+                      Buyers will immediately be able to open this campaign with its share link.
                     </DialogDescription>
                   </DialogHeader>
                   <DialogBody className="pt-4 text-base leading-6 text-cream-700">

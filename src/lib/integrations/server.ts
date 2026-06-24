@@ -53,8 +53,8 @@ const TYPE_TO_FAMILY_FLAG: Record<IntegrationTypeId, keyof typeof FLAGS> = {
 };
 
 const TYPE_TO_ENTITIES: Record<IntegrationTypeId, IntegrationEntityType[]> = {
-  zoho_books: ['products', 'customers', 'orders', 'invoices'],
-  zoho_inventory: ['products', 'customers', 'orders'],
+  zoho_books: ['locations', 'products', 'customers', 'orders', 'invoices'],
+  zoho_inventory: ['locations', 'products', 'customers', 'orders'],
   tally_prime: ['products', 'customers', 'orders'],
   busy: ['products', 'customers', 'orders'],
 };
@@ -87,8 +87,57 @@ function coerceRecord(v: unknown): Record<string, unknown> {
   return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : {};
 }
 
+function stripNullishFields<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value
+      .filter((entry) => entry !== null && entry !== undefined)
+      .map((entry) => stripNullishFields(entry)) as T;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry !== null && entry !== undefined)
+      .map(([key, entry]) => [key, stripNullishFields(entry)]),
+  ) as T;
+}
+
+function normalizeProgressCursor(raw: unknown): Record<string, unknown> | string | null {
+  if (typeof raw === 'string') {
+    return raw;
+  }
+
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return null;
+  }
+
+  const cursor = raw as Record<string, unknown>;
+  const phase = typeof cursor.phase === 'string' ? cursor.phase : null;
+  const entityType = typeof cursor.entity_type === 'string' ? cursor.entity_type : null;
+  const page = typeof cursor.page === 'number' ? cursor.page : null;
+  const perPage = typeof cursor.per_page === 'number' ? cursor.per_page : null;
+  const hasMore = typeof cursor.has_more === 'boolean' ? cursor.has_more : null;
+  const since = typeof cursor.since === 'string' ? cursor.since : null;
+
+  if (!phase || !entityType || page === null || perPage === null || hasMore === null) {
+    return null;
+  }
+
+  return {
+    phase,
+    entity_type: entityType,
+    page,
+    per_page: perPage,
+    has_more: hasMore,
+    since,
+  };
+}
+
 function normalizeIntegrationProgressRecord(raw: Record<string, unknown>): Record<string, unknown> {
-  const next = { ...raw };
+  const next = stripNullishFields({ ...raw });
 
   const itemsTotal = typeof next.items_total === 'number' ? next.items_total : null;
   const itemsProcessed = typeof next.items_processed === 'number' ? next.items_processed : null;
@@ -107,7 +156,42 @@ function normalizeIntegrationProgressRecord(raw: Record<string, unknown>): Recor
     next.phases_total = phaseCurrent;
   }
 
+  if (typeof next.last_page === 'object' && next.last_page !== null && !Array.isArray(next.last_page)) {
+    const lastPage = next.last_page as Record<string, unknown>;
+    next.last_page = {
+      ...lastPage,
+      next_page: typeof lastPage.next_page === 'number' ? lastPage.next_page : null,
+    };
+  }
+
+  next.cursor = normalizeProgressCursor(next.cursor);
+
   return next;
+}
+
+function normalizeRunOrigin(value: unknown): 'manual' | 'scheduled' | 'webhook' | null {
+  return value === 'manual' || value === 'scheduled' || value === 'webhook' ? value : null;
+}
+
+function extractJobMetadata(row: Record<string, unknown>): {
+  run_origin: 'manual' | 'scheduled' | 'webhook' | null;
+  sync_window: string | null;
+} {
+  const progress = coerceRecord(row.progress);
+  const summary = coerceRecord(row.summary);
+  const progressMeta = coerceRecord(progress.meta);
+
+  return {
+    run_origin: normalizeRunOrigin(row.run_origin ?? progressMeta.run_origin ?? summary.run_origin),
+    sync_window:
+      typeof row.sync_window === 'string'
+        ? row.sync_window
+        : typeof progressMeta.sync_window === 'string'
+          ? progressMeta.sync_window
+          : typeof summary.sync_window === 'string'
+            ? summary.sync_window
+            : null,
+  };
 }
 
 function getIntegrationsFunctionsBaseUrl() {
@@ -364,6 +448,7 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
         latest_job: latestJob
           ? {
               ...latestJob,
+              ...extractJobMetadata(latestJob),
               progress: IntegrationProgressSchema.parse(normalizeIntegrationProgressRecord(coerceRecord(latestJob.progress))),
               summary: latestJob.summary ? IntegrationJobSummarySchema.parse(coerceRecord(latestJob.summary)) : null,
               error_log: normalizeIntegrationJobErrorLog(latestJob.error_log),
@@ -372,6 +457,7 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
         recent_jobs: integrationId
           ? (recentJobsMap.get(integrationId) ?? []).map((row) => ({
               ...row,
+              ...extractJobMetadata(row),
               progress: IntegrationProgressSchema.parse(normalizeIntegrationProgressRecord(coerceRecord(row.progress))),
               summary: row.summary ? IntegrationJobSummarySchema.parse(coerceRecord(row.summary)) : null,
               error_log: normalizeIntegrationJobErrorLog(row.error_log),

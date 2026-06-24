@@ -14,19 +14,48 @@ const labelCls =
 export default function SetupPasswordPage() {
   const router = useRouter();
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    supabaseBrowser.auth.getUser().then(({ data }) => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+
+    // Hash fragment from Supabase old-style email links: #access_token=...&refresh_token=...
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const accessToken = hashParams.get('access_token');
+    const refreshToken = hashParams.get('refresh_token');
+
+    const bootstrap = async () => {
+      if (accessToken && refreshToken) {
+        // Explicitly call setSession — createClientComponentClient (cookie storage) does
+        // NOT auto-process hash fragments the way localStorage-based clients do.
+        await supabaseBrowser.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        window.history.replaceState({}, '', window.location.pathname + window.location.search);
+      } else if (code) {
+        await supabaseBrowser.auth.exchangeCodeForSession(code);
+        const clean = new URL(window.location.href);
+        clean.searchParams.delete('code');
+        window.history.replaceState({}, '', clean.toString());
+      }
+
+      const { data } = await supabaseBrowser.auth.getUser();
+      if (!data.user) {
+        setError('Your invite link has expired or is invalid. Please ask for a new invite.');
+        return;
+      }
       const name =
-        (data.user?.user_metadata?.full_name as string | undefined) ??
-        data.user?.email ??
+        (data.user.user_metadata?.full_name as string | undefined) ??
+        data.user.email ??
         null;
       setDisplayName(name);
-    });
+      setSessionReady(true);
+    };
+
+    void bootstrap();
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -91,7 +120,7 @@ export default function SetupPasswordPage() {
             placeholder="Min. 8 characters"
             value={password}
             onChange={(e) => { setPassword(e.target.value); setError(''); }}
-            disabled={loading}
+            disabled={loading || !sessionReady}
             required
             autoComplete="new-password"
             className={inputCls}
@@ -107,7 +136,7 @@ export default function SetupPasswordPage() {
             placeholder="Repeat your password"
             value={confirmPassword}
             onChange={(e) => { setConfirmPassword(e.target.value); setError(''); }}
-            disabled={loading}
+            disabled={loading || !sessionReady}
             required
             autoComplete="new-password"
             className={inputCls}
@@ -122,10 +151,10 @@ export default function SetupPasswordPage() {
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || !sessionReady}
           className="w-full px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? 'Setting up your account…' : 'Set password & continue'}
+          {loading ? 'Setting up your account…' : !sessionReady && !error ? 'Verifying link…' : 'Set password & continue'}
         </button>
       </form>
 

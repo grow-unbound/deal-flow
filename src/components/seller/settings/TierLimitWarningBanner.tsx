@@ -7,9 +7,9 @@ import { TIER_LIMITS, type PlanTier } from '@/constants/tier-limits';
 export type TierLimitResource = 'cohorts' | 'price_lists' | 'catalogs';
 
 const LABELS: Record<TierLimitResource, { noun: string }> = {
-  cohorts: { noun: 'cohorts' },
+  cohorts: { noun: 'customer groups' },
   price_lists: { noun: 'price lists' },
-  catalogs: { noun: 'published catalogs' },
+  catalogs: { noun: 'published campaigns' },
 };
 
 export interface TierLimitWarningBannerProps {

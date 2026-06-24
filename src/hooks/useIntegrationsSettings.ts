@@ -8,11 +8,13 @@ import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { normalizeIntegrationJobErrorLog } from '@/lib/integrations/job-error-log';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { makeHttpError, transientQueryRetry } from '@/lib/query-retry';
+import type { IntegrationSettingsPayload } from '@/types/integrations';
 
 export type IntegrationFamilyFlag = 'ZOHO_INTEGRATION' | 'TALLY_INTEGRATION' | 'BUSY_INTEGRATION';
 export type IntegrationConnectivityMode = 'cloud' | 'local';
 export type TenantIntegrationStatus = 'pending_setup' | 'connected' | 'syncing' | 'sync_failed' | 'disconnected';
 export type IntegrationHealthStatus = 'ok' | 'expired' | 'invalid' | null;
+export type IntegrationRunOrigin = 'manual' | 'scheduled' | 'webhook' | null;
 export type IntegrationSyncJobType = 'initial_reference' | 'initial_transactional' | 'incremental' | 'manual';
 export type IntegrationSyncJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type IntegrationTriggerType = 'webhook' | 'scheduled' | 'event';
@@ -86,6 +88,8 @@ export interface IntegrationSyncJob {
   id: string;
   job_type: IntegrationSyncJobType;
   status: IntegrationSyncJobStatus;
+  run_origin?: IntegrationRunOrigin;
+  sync_window?: string | null;
   progress?: IntegrationSyncProgress | null;
   error_log?: IntegrationSyncError[] | null;
   summary?: IntegrationJobSummary | null;
@@ -98,6 +102,8 @@ export interface IntegrationJobSummary {
   provider?: string;
   scope?: 'reference' | 'transactional' | 'full';
   since?: string | null;
+  run_origin?: IntegrationRunOrigin;
+  sync_window?: string | null;
   phases_completed?: string[];
   counts?: Record<string, IntegrationSyncPhaseStats>;
   last_synced_at?: string | null;
@@ -187,6 +193,7 @@ export interface SyncNowInput {
   tenant_integration_id: string;
   phase?: string;
   max_pages?: number;
+  since?: string;
 }
 
 export interface StopSyncInput {
@@ -260,6 +267,11 @@ function normalizeSummary(value: unknown): IntegrationJobSummary | null {
         ? value.scope
         : undefined,
     since: typeof value.since === 'string' || value.since === null ? (value.since as string | null) : undefined,
+    run_origin:
+      value.run_origin === 'manual' || value.run_origin === 'scheduled' || value.run_origin === 'webhook'
+        ? value.run_origin
+        : undefined,
+    sync_window: asNullableString(value.sync_window) ?? undefined,
     phases_completed: phasesCompleted.length > 0 ? phasesCompleted : undefined,
     counts: counts ?? undefined,
     last_synced_at: asNullableString(value.last_synced_at) ?? undefined,
@@ -285,13 +297,24 @@ function inferFamilyFlag(id: string): IntegrationFamilyFlag {
   return 'BUSY_INTEGRATION';
 }
 
+function normalizeRunOrigin(value: unknown): IntegrationRunOrigin {
+  return value === 'manual' || value === 'scheduled' || value === 'webhook' ? value : null;
+}
+
 function parseSyncJob(value: unknown): IntegrationSyncJob | null {
   if (!isRecord(value)) return null;
+
+  const progressMeta = isRecord(value.progress) && isRecord(value.progress.meta) ? value.progress.meta : null;
+  const summary = normalizeSummary(value.summary);
+  const runOrigin = normalizeRunOrigin(value.run_origin ?? progressMeta?.run_origin ?? summary?.run_origin);
+  const syncWindow = asNullableString(value.sync_window ?? progressMeta?.sync_window ?? summary?.sync_window) ?? null;
 
   return {
     id: asString(value.id),
     job_type: (asString(value.job_type) || 'manual') as IntegrationSyncJobType,
     status: (asString(value.status) || 'queued') as IntegrationSyncJobStatus,
+    run_origin: runOrigin,
+    sync_window: syncWindow,
     progress: isRecord(value.progress)
       ? {
           version: asNumber(value.progress.version) ?? undefined,
@@ -340,7 +363,7 @@ function parseSyncJob(value: unknown): IntegrationSyncJob | null {
           : null,
       )
       .filter((entry): entry is IntegrationSyncError => entry !== null),
-    summary: normalizeSummary(value.summary),
+    summary,
     started_at: asNullableString(value.started_at),
     completed_at: asNullableString(value.completed_at),
     created_at: asString(value.created_at, new Date(0).toISOString()),
@@ -540,6 +563,7 @@ async function postSyncNow(body: SyncNowInput): Promise<StartImportResult> {
     tenant_integration_id: body.tenant_integration_id,
     job_type: 'manual',
     ...(body.phase ? { phase: body.phase } : {}),
+    ...(body.since ? { since: body.since } : {}),
     ...(typeof body.max_pages === 'number' ? { max_pages: body.max_pages } : {}),
   });
   const json = await parseEnvelope<{ job_id?: string }>(res);
@@ -561,7 +585,7 @@ async function postStopSync(body: StopSyncInput): Promise<IntegrationsSettingsVi
 
 function hasActiveJob(view?: IntegrationsSettingsView | null) {
   return (
-    view?.integrations.some((integration) => {
+    view?.integrations?.some((integration) => {
       const status = integration.tenant_integration?.active_job?.status;
       return status ? ACTIVE_STATUSES.includes(status) : false;
     }) ?? false
@@ -633,7 +657,7 @@ function createDisconnectOptimisticView(
   };
 }
 
-export function useIntegrationsSettings() {
+export function useIntegrationsSettings(initialData?: IntegrationSettingsPayload | null) {
   const { currentTenantId } = useAuth();
   const queryClient = useQueryClient();
   const queryKey = ['settings-integrations', currentTenantId] as const;
@@ -642,6 +666,7 @@ export function useIntegrationsSettings() {
     queryKey,
     enabled: Boolean(currentTenantId),
     queryFn: fetchSettings,
+    initialData: initialData ? parseSettingsView(initialData) : undefined,
     retry: transientQueryRetry,
     refetchInterval: (queryInfo) => (hasActiveJob(queryInfo.state.data as IntegrationsSettingsView | undefined) ? 30000 : false),
     refetchIntervalInBackground: true,

@@ -168,7 +168,7 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
               sub: `${data?.kpis.draft_lists ?? 0} in draft`,
             },
             {
-              label: 'Cohorts covered',
+              label: 'Customer groups covered',
               value: `${data?.kpis.cohorts_covered ?? 0}`,
               sub: `of ${data?.kpis.cohorts_total ?? 0} cohorts`,
             },
@@ -268,7 +268,7 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
           }
           columns={[
             { label: 'Price list', width: 280, className: 'px-5' },
-            { label: 'Cohort(s)', className: 'px-5' },
+            { label: 'Customer group(s)', className: 'px-5' },
             { label: 'Priority', align: 'center', className: 'px-5' },
             { label: 'Products', align: 'center', className: 'px-5' },
             { label: 'Validity', className: 'px-5' },

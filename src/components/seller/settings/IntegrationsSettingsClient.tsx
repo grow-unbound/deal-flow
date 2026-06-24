@@ -13,6 +13,7 @@ import {
   Zap,
 } from 'lucide-react';
 
+import { SellerTopbar } from '@/components/layout/SellerTopbar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -36,6 +37,7 @@ import {
 import { useRole } from '@/hooks/useRole';
 import { classifyIntegrationMappingMode, getIntegrationTopologyDefinition } from '@/lib/integrations/definitions';
 import { cn } from '@/lib/utils';
+import type { IntegrationSettingsPayload } from '@/types/integrations';
 
 import { ConnectedIntegrationCard } from './ConnectedIntegrationCard';
 import { IntegrationPickerDialog } from './IntegrationPickerDialog';
@@ -50,6 +52,10 @@ type WizardState = {
 };
 
 const WIZARD_STEPS = ['What you get', 'Connect', 'Start syncing'] as const;
+
+interface IntegrationsSettingsClientProps {
+  initialData?: IntegrationSettingsPayload | null;
+}
 
 function defaultImportStartDate(): string {
   const now = new Date();
@@ -101,7 +107,7 @@ function buildWizardState(integration: IntegrationCatalogItem | null): WizardSta
   };
 }
 
-export function IntegrationsSettingsClient() {
+export function IntegrationsSettingsClient({ initialData }: IntegrationsSettingsClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isSellerAdmin } = useRole();
@@ -123,7 +129,7 @@ export function IntegrationsSettingsClient() {
     isStoppingSync,
     retryWebhookSetup,
     isRetryingWebhookSetup,
-  } = useIntegrationsSettings();
+  } = useIntegrationsSettings(initialData);
 
   const [isOAuthRedirecting, setIsOAuthRedirecting] = useState(false);
   const [oauthNotice, setOauthNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
@@ -276,20 +282,21 @@ export function IntegrationsSettingsClient() {
     setStopSyncDialogIntegration(null);
   }
 
-  async function runSyncNowIntegration(integration: IntegrationCatalogItem) {
+  async function runSyncNowIntegration(integration: IntegrationCatalogItem, since?: string) {
     const tenantIntegrationId = integration.tenant_integration?.id;
     if (!tenantIntegrationId) return;
     setSyncingPhaseTarget(null);
     try {
       await syncNowIntegration({
         tenant_integration_id: tenantIntegrationId,
+        ...(since ? { since } : {}),
       });
     } finally {
       setSyncingPhaseTarget((current) => (current === null ? null : current));
     }
   }
 
-  async function runSyncPhaseIntegration(integration: IntegrationCatalogItem, phase: string) {
+  async function runSyncPhaseIntegration(integration: IntegrationCatalogItem, phase: string, since?: string) {
     const tenantIntegrationId = integration.tenant_integration?.id;
     if (!tenantIntegrationId) return;
     setSyncingPhaseTarget(phase);
@@ -297,6 +304,7 @@ export function IntegrationsSettingsClient() {
       await syncNowIntegration({
         tenant_integration_id: tenantIntegrationId,
         phase,
+        ...(since ? { since } : {}),
       });
     } finally {
       setSyncingPhaseTarget((current) => (current === phase ? null : current));
@@ -445,13 +453,6 @@ export function IntegrationsSettingsClient() {
     (i) => !i.tenant_integration && familyAvailability[i.family_flag],
   );
 
-  const availableCount = integrations.filter((i) => familyAvailability[i.family_flag]).length;
-  const connectedCount = connectedIntegrations.length;
-  const syncingCount = integrations.filter((i) => {
-    const s = i.tenant_integration?.active_job?.status;
-    return s === 'queued' || s === 'running';
-  }).length;
-
   const wizardFields = wizardIntegration?.auth_schema?.fields ?? [];
   const missingRequired = wizardFields.filter((f) => f.required && !wizard.credentials[f.key]?.trim());
   const canAdvanceFromConnect = missingRequired.length === 0;
@@ -461,30 +462,19 @@ export function IntegrationsSettingsClient() {
   return (
     <>
       <div className="space-y-6">
-        {/* ── Top bar: stats + actions ──────────────────────────────────── */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap gap-3">
-            {[
-              { label: 'Available', value: availableCount },
-              { label: 'Connected', value: connectedCount },
-              { label: 'Syncing now', value: syncingCount },
-            ].map(({ label, value }) => (
-              <div key={label} className="rounded-2xl border border-cream-200 bg-cream-50 px-4 py-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">{label}</div>
-                <div className="mt-1 font-display text-2xl text-cream-900">{value}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-2">
-            {isSellerAdmin && unconnectedAvailable.length > 0 ? (
+        <SellerTopbar
+          eyebrow="Settings"
+          title="Integrations"
+          subtitle="Connect accounting and ERP tools behind PostHog-controlled rollout flags."
+          action={
+            isSellerAdmin && unconnectedAvailable.length > 0 ? (
               <Button type="button" variant="primary" size="sm" onClick={() => setPickerOpen(true)}>
                 <Plus className="h-4 w-4" />
                 Add integration
               </Button>
-            ) : null}
-          </div>
-        </div>
+            ) : null
+          }
+        />
 
         {/* ── Connected integration cards ───────────────────────────────── */}
         {connectedIntegrations.length > 0 ? (
@@ -497,8 +487,8 @@ export function IntegrationsSettingsClient() {
                 isSellerAdmin={isSellerAdmin}
                 onOpenWizard={() => openWizard(integration)}
                 onDisconnect={() => void runDisconnectIntegration(integration)}
-                onSyncNow={() => void runSyncNowIntegration(integration)}
-                onSyncPhase={(phase) => void runSyncPhaseIntegration(integration, phase)}
+                onSyncNow={(since) => void runSyncNowIntegration(integration, since)}
+                onSyncPhase={(phase, since) => void runSyncPhaseIntegration(integration, phase, since)}
                 onStopSync={() => void runStopSyncIntegration(integration)}
                 onRefresh={() => void refetch()}
                 onRetryWebhooks={() => void runRetryWebhooks(integration)}

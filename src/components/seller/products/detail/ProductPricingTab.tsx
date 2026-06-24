@@ -72,7 +72,7 @@ export function ProductPricingTab({ productId, role, pricingSummary, pricing }: 
             <thead className="border-b border-cream-300 bg-cream-100 text-xs uppercase tracking-[0.06em] text-cream-700">
               <tr>
                 <th className="px-5 py-2.5">Price list</th>
-                <th className="px-5 py-2.5">Cohorts</th>
+                <th className="px-5 py-2.5">Customer groups</th>
                 <th className="px-5 py-2.5">Effective price</th>
                 <th className="px-5 py-2.5">Validity</th>
                 <th className="px-5 py-2.5">Status</th>

@@ -170,13 +170,13 @@ export function ProductPerformanceTab({ performance }: ProductPerformanceTabProp
 
         <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
           <div className="border-b border-cream-300 px-5 py-4">
-            <h3 className="font-display text-2xl leading-none text-cream-950">Price by cohort</h3>
+            <h3 className="font-display text-2xl leading-none text-cream-950">Price by customer group</h3>
             <p className="text-base text-cream-700">Base + overrides</p>
           </div>
           <table className="w-full">
             <thead className="border-b border-cream-300 bg-cream-100 text-left text-xs uppercase tracking-[0.08em] text-cream-700">
               <tr>
-                <th className="px-5 py-2.5">Cohort</th>
+                <th className="px-5 py-2.5">Customer group</th>
                 <th className="px-5 py-2.5">Price</th>
                 <th className="px-5 py-2.5">Override</th>
               </tr>
@@ -199,7 +199,7 @@ export function ProductPerformanceTab({ performance }: ProductPerformanceTabProp
               ))}
               {performance.price_by_cohort.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="px-5 py-8 text-center text-base text-cream-700">No cohort pricing configured.</td>
+                  <td colSpan={3} className="px-5 py-8 text-center text-base text-cream-700">No customer group pricing configured.</td>
                 </tr>
               ) : null}
             </tbody>

@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@/lib/supabase';
 import { buildGeneralSettingsView } from '@/lib/tenant-settings/build-general-view';
 import type { TenantRowForSettings } from '@/lib/tenant-settings/build-general-view';
 import { buildModuleSettingsView } from '@/lib/tenant-settings/build-module-settings-view';
+import { buildUnifiedSettingsView } from '@/lib/tenant-settings/build-unified-view';
 import { loadTenantSettingsCounts } from '@/lib/tenant-settings/load-tenant-settings-counts';
 import type { TenantSettingsApiPayload } from '@/types/tenant-settings';
 
@@ -14,5 +15,6 @@ export async function assembleTenantSettingsPayload(
   const { usage, open_counts } = await loadTenantSettingsCounts(db, tenantId);
   const general = buildGeneralSettingsView(rawSettings, tenantRow);
   const modules = buildModuleSettingsView(rawSettings, tenantRow, usage, open_counts);
-  return { general, modules };
+  const unified = buildUnifiedSettingsView(rawSettings, tenantRow, usage, open_counts);
+  return { general, modules, unified };
 }

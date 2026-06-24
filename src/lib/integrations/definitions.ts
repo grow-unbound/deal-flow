@@ -1,4 +1,5 @@
 import type { IntegrationTypeId } from './contracts';
+import { ZOHO_DAILY_SYNC_CRON } from './schedule';
 
 export type IntegrationFlowDirection = 'inbound' | 'outbound' | 'bidirectional';
 export type IntegrationFlowTrigger = 'webhook' | 'scheduled' | 'event';
@@ -24,11 +25,25 @@ export interface IntegrationTopologyDefinition {
   notes: string[];
 }
 
+export interface IntegrationWebhookDefinition {
+  entity_type: string;
+  /** Provider-specific singular entity value required by Zoho's webhook API. */
+  provider_entity: string;
+  /** Zoho event names registered for this one remote webhook. */
+  event_types: string[];
+  /** Internal sync phase to run after the callback is authenticated. */
+  sync_phase: 'customers' | 'products' | 'estimates' | 'orders' | 'invoices';
+  /** Zoho Books workflow rules that invoke the one entity webhook. */
+  workflow_rule_types?: Array<'add_edit' | 'delete'>;
+}
+
 export interface IntegrationDataFlowSeed {
   tenant_id: string;
   tenant_integration_id: string;
   integration_type_id: IntegrationTypeId;
+  /** Kept for non-Zoho callers while existing rows are migrated. */
   webhook_id?: string | null;
+  webhook_ids_by_entity?: Record<string, string | null | undefined>;
   created_by?: string | null;
   updated_by?: string | null;
 }
@@ -36,6 +51,7 @@ export interface IntegrationDataFlowSeed {
 export type IntegrationMappingMode = 'webhook_backed' | 'scheduled' | 'derived_local';
 
 const SUPPORTED_FLOW_ENTITY_TYPES = new Set([
+  'locations',
   'brands',
   'products',
   'customers',
@@ -64,6 +80,19 @@ const ZOHO_INVENTORY_WEBHOOK_EVENTS = [
   'item.updated',
   'item.deleted',
 ] as const;
+
+const ZOHO_WEBHOOK_DEFINITIONS: Partial<Record<IntegrationTypeId, IntegrationWebhookDefinition[]>> = {
+  zoho_books: [
+    { entity_type: 'contacts', provider_entity: 'customer', event_types: ['contact.created', 'contact.updated', 'contact.deleted'], sync_phase: 'customers', workflow_rule_types: ['add_edit', 'delete'] },
+    { entity_type: 'items', provider_entity: 'item', event_types: ['item.created', 'item.updated', 'item.deleted'], sync_phase: 'products', workflow_rule_types: ['add_edit', 'delete'] },
+    { entity_type: 'estimates', provider_entity: 'estimate', event_types: ['estimate.created', 'estimate.updated', 'estimate.deleted'], sync_phase: 'estimates', workflow_rule_types: ['add_edit', 'delete'] },
+    { entity_type: 'invoices', provider_entity: 'invoice', event_types: ['invoice.created', 'invoice.updated', 'invoice.deleted'], sync_phase: 'invoices', workflow_rule_types: ['add_edit', 'delete'] },
+    { entity_type: 'salesorders', provider_entity: 'salesorder', event_types: ['salesorder.created', 'salesorder.updated', 'salesorder.deleted'], sync_phase: 'orders', workflow_rule_types: ['add_edit', 'delete'] },
+  ],
+  zoho_inventory: [
+    { entity_type: 'items', provider_entity: 'item', event_types: [...ZOHO_INVENTORY_WEBHOOK_EVENTS], sync_phase: 'products' },
+  ],
+};
 
 const COMMON_LOCAL_BRIDGE_NOTES = [
   'Local bridge sync is not implemented yet.',
@@ -499,6 +528,12 @@ export function getIntegrationTopologyDefinition(integrationTypeId: IntegrationT
   return INTEGRATION_TOPOLOGIES[integrationTypeId];
 }
 
+export function getIntegrationWebhookDefinitions(
+  integrationTypeId: IntegrationTypeId,
+): IntegrationWebhookDefinition[] {
+  return ZOHO_WEBHOOK_DEFINITIONS[integrationTypeId] ?? [];
+}
+
 export function buildIntegrationTopologyConfig(integrationTypeId: IntegrationTypeId) {
   const topology = getIntegrationTopologyDefinition(integrationTypeId);
   return {
@@ -506,6 +541,7 @@ export function buildIntegrationTopologyConfig(integrationTypeId: IntegrationTyp
       integration_type_id: topology.integration_type_id,
       integration_label: topology.integration_label,
       webhook_event_types: topology.webhook_event_types,
+      webhook_definitions: getIntegrationWebhookDefinitions(integrationTypeId),
       notes: topology.notes,
       mappings: topology.mappings,
     },
@@ -518,30 +554,32 @@ export function buildIntegrationDataFlowRows(input: IntegrationDataFlowSeed) {
   return topology.mappings
     .filter((mapping) => SUPPORTED_FLOW_ENTITY_TYPES.has(mapping.target_entity))
     .map((mapping) => ({
-    tenant_id: input.tenant_id,
-    tenant_integration_id: input.tenant_integration_id,
-    entity_type: mapping.target_entity,
-    direction: mapping.direction,
-    trigger_type: mapping.trigger_type,
-    schedule: null,
-    webhook_id: mapping.trigger_type === 'webhook' ? (input.webhook_id ?? null) : null,
-    field_mappings: {
-      operational_mode: classifyIntegrationMappingMode(mapping),
-      source_system: mapping.source_system,
-      source_entity: mapping.source_entity,
-      source_label: mapping.source_label,
-      target_entity: mapping.target_entity,
-      target_label: mapping.target_label,
-      target_table: mapping.target_table,
-      webhook_events: mapping.webhook_events,
-      note: mapping.note ?? null,
-    },
-    filters: {},
-    is_active: true,
-    created_by: input.created_by ?? null,
-    updated_by: input.updated_by ?? null,
-    external_ref: `${input.integration_type_id}:${mapping.source_entity}->${mapping.target_entity}`,
-  }));
+      tenant_id: input.tenant_id,
+      tenant_integration_id: input.tenant_integration_id,
+      entity_type: mapping.target_entity,
+      direction: mapping.direction,
+      trigger_type: mapping.trigger_type,
+      schedule: input.integration_type_id.startsWith('zoho_') ? ZOHO_DAILY_SYNC_CRON : null,
+      webhook_id: mapping.trigger_type === 'webhook'
+        ? (input.webhook_ids_by_entity?.[mapping.source_entity] ?? input.webhook_id ?? null)
+        : null,
+      field_mappings: {
+        operational_mode: classifyIntegrationMappingMode(mapping),
+        source_system: mapping.source_system,
+        source_entity: mapping.source_entity,
+        source_label: mapping.source_label,
+        target_entity: mapping.target_entity,
+        target_label: mapping.target_label,
+        target_table: mapping.target_table,
+        webhook_events: mapping.webhook_events,
+        note: mapping.note ?? null,
+      },
+      filters: {},
+      is_active: true,
+      created_by: input.created_by ?? null,
+      updated_by: input.updated_by ?? null,
+      external_ref: `${input.integration_type_id}:${mapping.source_entity}->${mapping.target_entity}`,
+    }));
 }
 
 export function classifyIntegrationMappingMode(mapping: IntegrationMappingDefinition): IntegrationMappingMode {
