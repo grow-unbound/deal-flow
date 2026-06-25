@@ -19,7 +19,7 @@ const EstimateSaveSchema = z.object({
   estimate_number: z.string().min(1).optional(),
   buyer_id: z.string().uuid().nullable().optional(),
   location_id: z.string().uuid().nullable().optional(),
-  date_issued: z.string().optional(),
+  estimate_date: z.string().optional(),
   valid_until: z.string().optional(),
   buyer_po_ref: z.string().max(255).optional(),
   place_of_supply: z.string().max(120).optional(),
@@ -35,6 +35,7 @@ const EstimateSaveSchema = z.object({
       unit_price: z.number().min(0),
       disc_pct: z.number().min(0).max(100),
       tax_pct: z.number().min(0).max(100),
+      item_order: z.number().int().positive().optional().nullable(),
       scheme_tag: z.string().nullable().optional(),
     }),
   ).optional(),
@@ -165,7 +166,7 @@ export async function PATCH(
     };
     if (payload.estimate_number !== undefined) updatePayload.estimate_number = payload.estimate_number;
     if (payload.buyer_id !== undefined) updatePayload.buyer_id = payload.buyer_id;
-    if (payload.date_issued !== undefined) updatePayload.date_issued = payload.date_issued;
+    if (payload.estimate_date !== undefined) updatePayload.estimate_date = payload.estimate_date;
     if (payload.valid_until !== undefined) updatePayload.valid_until = payload.valid_until;
     if (payload.buyer_po_ref !== undefined) updatePayload.buyer_po_ref = payload.buyer_po_ref || null;
     if (payload.place_of_supply !== undefined) {
@@ -220,6 +221,7 @@ export async function PATCH(
           tax_rate: item.tax_pct,
           tax_pct: item.tax_pct,
           line_total: discounted + discounted * (item.tax_pct / 100),
+          item_order: item.item_order ?? null,
           scheme_tag: item.scheme_tag ?? null,
           updated_at: new Date().toISOString(),
           updated_by: claims.sub,

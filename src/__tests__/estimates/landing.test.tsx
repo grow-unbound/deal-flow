@@ -60,6 +60,8 @@ function mockEstimatesData() {
     estimates: [
       {
         id: 'e1',
+        location_id: 'loc-1',
+        location_name: 'Mumbai HQ',
         estimate_number: 'EST-1',
         buyer_id: 'b1',
         buyer_name: 'Buyer One',
@@ -82,6 +84,8 @@ function mockEstimatesData() {
       },
       {
         id: 'e2',
+        location_id: 'loc-2',
+        location_name: 'Delhi Depot',
         estimate_number: 'EST-2',
         buyer_id: 'b2',
         buyer_name: 'Buyer Two',
@@ -104,6 +108,8 @@ function mockEstimatesData() {
       },
       {
         id: 'e3',
+        location_id: null,
+        location_name: null,
         estimate_number: 'EST-3',
         buyer_id: 'b2',
         buyer_name: 'Buyer Two',

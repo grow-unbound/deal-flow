@@ -56,6 +56,7 @@ import {
   useEstimateProductSearch,
 } from '@/hooks/useEstimates';
 import { useFlagState } from '@/hooks/useFeatureFlag';
+import { useTenantSettings } from '@/hooks/useTenantSettings';
 import {
   useBuyerSalesOrderContext,
   useDebouncedSalesOrderStockCheck,
@@ -206,6 +207,8 @@ export function DocComposerSalesOrder({
   const { isLeavingRef, beginLeaving, resetLeaving, shouldBlockComposer, isSubmitting, submitAction } = useComposerLeaveGuard();
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const salesOrdersFlag = useFlagState('SALES_ORDERS');
+  const { data: tenantSettings } = useTenantSettings();
+  const gstInclusive = tenantSettings?.unified.business_policy.gst_inclusive ?? false;
 
   const [workingId, setWorkingId] = useState<string | null>(orderId ?? null);
   const { data, isLoading, isError, error } = useSalesOrderComposer(workingId);
@@ -300,7 +303,7 @@ export function DocComposerSalesOrder({
     const mappedLines = (est.items ?? []).map((line) => ({
       ...line,
       diff: 'clean' as const,
-      line_total: computeLineTotal(line),
+      line_total: computeLineTotal(line, gstInclusive),
     }));
     const doc: SalesOrderComposerDocument = {
       id: '',
@@ -351,7 +354,7 @@ export function DocComposerSalesOrder({
     const mappedLines = (data.items ?? []).map((line) => ({
       ...line,
       diff: 'clean' as const,
-      line_total: computeLineTotal(line),
+      line_total: computeLineTotal(line, gstInclusive),
     }));
     setLineState(mappedLines);
     setPaymentTermsLabel(defaultPaymentTerms(data.buyer_context?.payment_terms_days ?? 0));
@@ -406,7 +409,7 @@ export function DocComposerSalesOrder({
         const nextPrice = pricingQuery.data[line.tenant_product_id];
         if (nextPrice == null || nextPrice === line.unit_price) return line;
         const next = { ...line, unit_price: nextPrice };
-        return { ...next, line_total: computeLineTotal(next) };
+        return { ...next, line_total: computeLineTotal(next, gstInclusive) };
       }),
     );
     lastAppliedPricingKeyRef.current = pricingKey;
@@ -421,8 +424,8 @@ export function DocComposerSalesOrder({
   }, [stockCheckQuery.data]);
 
   const totals = useMemo(
-    () => computeTotals(diffLines, documentState?.discount_flat ?? 0, documentState?.freight ?? 0, documentState?.round_off ?? 0),
-    [diffLines, documentState?.discount_flat, documentState?.freight, documentState?.round_off],
+    () => computeTotals(diffLines, documentState?.discount_flat ?? 0, documentState?.freight ?? 0, documentState?.round_off ?? 0, gstInclusive),
+    [diffLines, documentState?.discount_flat, documentState?.freight, documentState?.round_off, gstInclusive],
   );
   const dirty = useMemo(() => {
     if (!documentState) return false;
@@ -436,9 +439,10 @@ export function DocComposerSalesOrder({
         originalDocumentRef.current.discount_flat,
         originalDocumentRef.current.freight,
         originalDocumentRef.current.round_off,
+        gstInclusive,
       );
     },
-    [documentState?.id],
+    [documentState?.id, gstInclusive],
   );
   const stagedChangesRows = useMemo(() => {
     if (!documentState) return undefined;
@@ -668,7 +672,7 @@ export function DocComposerSalesOrder({
         base_selling_price: product.base_selling_price,
         disc_pct: 0,
         tax_pct: product.tax_pct ?? 0,
-        line_total: computeLineTotal({ qty: 1, unit_price: product.unit_price, disc_pct: 0, tax_pct: product.tax_pct ?? 0 }),
+        line_total: computeLineTotal({ qty: 1, unit_price: product.unit_price, disc_pct: 0, tax_pct: product.tax_pct ?? 0 }, gstInclusive),
         scheme_tag: null,
         diff: 'added',
       },
@@ -749,7 +753,7 @@ export function DocComposerSalesOrder({
         const savedLines = doc.items.map((line) => ({
           ...line,
           diff: 'clean' as const,
-          line_total: computeLineTotal(line),
+          line_total: computeLineTotal(line, gstInclusive),
         }));
         setDocumentState(doc);
         setLineState(savedLines);

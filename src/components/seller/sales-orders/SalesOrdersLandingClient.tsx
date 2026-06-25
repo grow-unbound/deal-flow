@@ -11,6 +11,7 @@ import { FeatureDisabledState } from '@/components/FeatureGate';
 import {
   EntityAvatar,
   FilterBar,
+  type FilterBarGroup,
   InsightStrip4,
   LandingTable,
   PageHeader,
@@ -29,9 +30,6 @@ import { formatCompactInr, formatDate, formatInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 
 type SortOption = 'Recent first' | 'GMV (high → low)' | 'Items (high → low)';
-type FilterChip = 'All' | 'Received' | 'Confirmed' | 'In transit' | 'Invoiced' | 'Delivered' | 'Cancelled';
-
-const FILTER_CHIPS: FilterChip[] = ['All', 'Received', 'Confirmed', 'In transit', 'Invoiced', 'Delivered', 'Cancelled'];
 const SORT_OPTIONS: SortOption[] = ['Recent first', 'GMV (high → low)', 'Items (high → low)'];
 
 function mapRowToCallout(row: OrderLandingRow) {
@@ -107,59 +105,52 @@ function SalesOrdersLandingContent({
   const router = useRouter();
   const { newEntityIds, markSeen } = useSellerRealtimeContext();
   const { period, setPeriod, horizonLabel, lowerLabel, options } = useSellerLandingPeriod(initialPeriod);
-  const { data, isLoading, isError } = useTenantOrders(period, initialData);
-  const retainedData = useRetainedValue(data);
-  const landingData = data ?? retainedData;
+  const summaryQuery = useTenantOrders(period, {}, initialData);
+  const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-sales-orders-landing',
     scopeKey: period,
-    version: 2,
+    version: 3,
     initialState: {
       search: '',
-      activeChip: 'All' as FilterChip,
+      filters: {
+        source: [] as string[],
+        status: [] as string[],
+        location_id: [] as string[],
+      },
       sortBy: 'Recent first' as SortOption,
     },
   });
+  const filters = routeState.filters ?? { source: [], status: [], location_id: [] };
+  const { data, isLoading, isError } = useTenantOrders(period, { search: routeState.search, ...filters }, initialData);
+  const retainedData = useRetainedValue(data);
+  const landingData = data ?? retainedData;
   useRouteScrollRestoration({
     storageKey: 'seller-sales-orders-landing',
     scopeKey: period,
     ready: !isLoading,
   });
   const search = routeState.search;
-  const activeChip = routeState.activeChip;
   const sortBy = routeState.sortBy;
 
+  const summaryOrders = summaryData?.orders ?? [];
   const orders = landingData?.orders ?? [];
 
   const filteredRows = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    const byChip = orders.filter((row) => (activeChip === 'All' ? true : row.status.filter_chip === activeChip));
-    const bySearch = byChip.filter((row) => {
-      if (!query) return true;
-      return (
-        row.order_id.toLowerCase().includes(query) ||
-        row.buyer_name.toLowerCase().includes(query) ||
-        row.delivery_city.toLowerCase().includes(query) ||
-        (row.catalog_name ?? '').toLowerCase().includes(query) ||
-        row.source_label.toLowerCase().includes(query) ||
-        row.source_detail.toLowerCase().includes(query)
-      );
-    });
-
-    return bySearch.sort((a, b) => {
+    return [...orders].sort((a, b) => {
       if (sortBy === 'Recent first') return new Date(b.placed_at).getTime() - new Date(a.placed_at).getTime();
       if (sortBy === 'GMV (high → low)') return b.gmv - a.gmv;
       return b.items_count - a.items_count;
     });
-  }, [activeChip, orders, search, sortBy]);
+  }, [orders, sortBy]);
 
   const subtitle = useMemo(() => {
-    const kpis = landingData?.kpis;
+    const kpis = summaryData?.kpis;
     if (!kpis) return `Sales orders ${lowerLabel} from your buyers. This list is your workboard.`;
     return `${kpis.orders_mtd} sales orders ${lowerLabel} from ${kpis.buyers_mtd} buyers. ${kpis.pending_dispatch_count} pending dispatch, ${kpis.received_count} received and awaiting confirmation.`;
-  }, [landingData?.kpis, lowerLabel]);
-  const needsAttentionCount = useMemo(() => countNeedsAttention(orders), [orders]);
-  const inMotionCount = useMemo(() => countOrdersInMotion(orders), [orders]);
+  }, [lowerLabel, summaryData?.kpis]);
+  const needsAttentionCount = useMemo(() => countNeedsAttention(summaryOrders), [summaryOrders]);
+  const inMotionCount = useMemo(() => countOrdersInMotion(summaryOrders), [summaryOrders]);
 
   if (isLoading && !landingData) return <SalesOrdersLoadingSkeleton />;
 
@@ -173,6 +164,16 @@ function SalesOrdersLandingContent({
   }
   if (!landingData) return <SalesOrdersLoadingSkeleton />;
   const showRefreshingState = isLoading && !data;
+  const groups: FilterBarGroup[] = (summaryData?.filters?.groups ?? []).map((group) => ({
+    key: group.key,
+    label: group.label,
+    options: group.options,
+    values: filters[group.key as keyof typeof filters] ?? [],
+    onChange: (values) => setRouteState((current) => ({
+      ...current,
+      filters: { ...(current.filters ?? filters), [group.key]: values },
+    })),
+  }));
 
   return (
     <>
@@ -271,13 +272,13 @@ function SalesOrdersLandingContent({
             <FilterBar
               count={`Showing ${filteredRows.length} of ${orders.length}`}
               searchPlaceholder="Search order ID, buyer, city, catalog…"
-              chips={FILTER_CHIPS}
-              activeChip={activeChip}
+              chips={[]}
+              activeChip=""
               sortBy={sortBy}
               hideViewToggle
+              groups={groups}
               searchValue={search}
               onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-              onChipChange={(chip) => setRouteState((current) => ({ ...current, activeChip: chip as FilterChip }))}
               sortOptions={SORT_OPTIONS}
               onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
             />
@@ -287,10 +288,10 @@ function SalesOrdersLandingContent({
               emptyState={
                 <EmptyState
                   icon={<Package size={28} strokeWidth={1.5} />}
-                  heading={search.trim() || activeChip !== 'All' ? 'No matching sales orders' : 'No sales orders yet'}
+                  heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching sales orders' : 'No sales orders yet'}
                   description={
-                    search.trim() || activeChip !== 'All'
-                      ? 'Try a different search or status filter.'
+                    search.trim() || groups.some((group) => group.values.length > 0)
+                      ? 'Try a different search or filter combination.'
                       : 'Create a sales order to track fulfilment.'
                   }
                   action={
@@ -308,6 +309,7 @@ function SalesOrdersLandingContent({
                 { label: 'Order', className: 'px-5' },
                 { label: 'Buyer', className: 'px-5' },
                 { label: 'Source', className: 'px-5' },
+                { label: 'Location', className: 'px-5' },
                 { label: 'Campaign', className: 'px-5' },
                 { label: 'Delivery', className: 'px-5' },
                 { label: 'Items', align: 'right', className: 'px-5' },
@@ -342,6 +344,7 @@ function SalesOrdersLandingContent({
                     <p className="truncate text-sm text-cream-900">{row.source_label}</p>
                     <p className="mt-0.5 truncate text-xs text-cream-600">{row.source_detail}</p>
                   </td>
+                  <td className="px-5 py-3.5 text-sm text-cream-900">{row.location_name ?? '—'}</td>
                   <td className="px-5 py-3.5 text-sm text-cream-900">{row.catalog_name ?? '—'}</td>
                   <td className="px-5 py-3.5 text-sm text-cream-900">{row.delivery_label}</td>
                   <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{row.items_count}</td>

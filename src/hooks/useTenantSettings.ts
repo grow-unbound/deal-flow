@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiFetch, apiPatch } from '@/lib/api-fetch';
@@ -23,6 +24,7 @@ async function parseSettingsResponse(res: Response): Promise<TenantSettingsApiPa
 
 export function useTenantSettings() {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const { currentTenantId } = useAuth();
 
   const query = useQuery({
@@ -59,6 +61,8 @@ export function useTenantSettings() {
     onSuccess: (data) => {
       queryClient.setQueryData(['tenant-settings', currentTenantId], data);
       toast.success('Settings saved');
+      // Re-render server layout so sidebar reflects updated feature toggles
+      router.refresh();
     },
   });
 

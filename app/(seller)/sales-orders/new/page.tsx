@@ -3,6 +3,7 @@ import { headers } from 'next/headers';
 import { FeatureDisabledState } from '@/components/FeatureGate';
 import { DocComposerSalesOrder } from '@/components/seller/sales-orders/DocComposerSalesOrder';
 import { FLAGS, getFlag } from '@/lib/flags';
+import { getInAppCreateFlags } from '@/lib/server/seller-features';
 
 export default async function NewSalesOrderPage({
   searchParams,
@@ -17,12 +18,13 @@ export default async function NewSalesOrderPage({
     return <FeatureDisabledState />;
   }
 
-  const [orderMgmt, salesOrders] = await Promise.all([
+  const [orderMgmt, salesOrders, createFlags] = await Promise.all([
     getFlag(FLAGS.ORDER_MANAGEMENT, tenantId),
     getFlag(FLAGS.SALES_ORDERS, tenantId),
+    getInAppCreateFlags(tenantId),
   ]);
 
-  if (!orderMgmt || !salesOrders) {
+  if (!orderMgmt || !salesOrders || !createFlags.create_sales_orders) {
     return <FeatureDisabledState />;
   }
 

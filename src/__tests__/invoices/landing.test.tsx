@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 
 const pushMock = vi.fn();
 const useTenantInvoicesMock = vi.fn();
+const useTenantInvoicesInfiniteMock = vi.fn();
 const useFlagStateMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
@@ -12,6 +13,7 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/hooks/useInvoices', () => ({
   useTenantInvoices: () => useTenantInvoicesMock(),
+  useTenantInvoicesInfinite: (...args: unknown[]) => useTenantInvoicesInfiniteMock(...args),
 }));
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
@@ -96,6 +98,8 @@ function mockInvoiceResponse(overrides?: Partial<TenantInvoicesResponse>): Tenan
     invoices: [
       {
         id: 'inv-sent',
+        location_id: 'loc-1',
+        location_name: 'Mumbai HQ',
         invoice_number: 'INV-2026-0001',
         buyer_id: 'b1',
         buyer_name: 'Acme',
@@ -120,6 +124,8 @@ function mockInvoiceResponse(overrides?: Partial<TenantInvoicesResponse>): Tenan
       },
       {
         id: 'inv-overdue',
+        location_id: 'loc-2',
+        location_name: 'Pune DC',
         invoice_number: 'INV-2026-0002',
         buyer_id: 'b2',
         buyer_name: 'Beta',
@@ -143,6 +149,18 @@ function mockInvoiceResponse(overrides?: Partial<TenantInvoicesResponse>): Tenan
         linked: { type: 'direct', label: '—' },
       },
     ],
+    filters: {
+      groups: [
+        {
+          key: 'status',
+          label: 'Status',
+          options: [
+            { value: 'Sent', label: 'Sent' },
+            { value: 'Overdue', label: 'Overdue' },
+          ],
+        },
+      ],
+    },
     ...overrides,
   };
 }
@@ -153,11 +171,70 @@ describe('invoices landing page', () => {
     pushMock.mockReset();
     useTenantInvoicesMock.mockReset();
     useFlagStateMock.mockReset();
+    useTenantInvoicesInfiniteMock.mockReset();
     useFlagStateMock.mockReturnValue(true);
     useTenantInvoicesMock.mockReturnValue({
       isLoading: false,
       isError: false,
       data: mockInvoiceResponse(),
+    });
+    useTenantInvoicesInfiniteMock.mockImplementation((_period: unknown, filters: { status?: string[] }) => {
+      const overdueOnly = filters?.status?.includes('Overdue');
+      const response = mockInvoiceResponse({
+        invoices: overdueOnly
+          ? [
+              {
+                id: 'inv-overdue',
+                location_id: 'loc-2',
+                location_name: 'Pune DC',
+                invoice_number: 'INV-2026-0002',
+                buyer_id: 'b2',
+                buyer_name: 'Beta',
+                buyer_city: 'Pune',
+                buyer_state: 'MH',
+                buyer_initials: 'BE',
+                buyer_hue: 'ember',
+                order_id: null,
+                estimate_id: null,
+                source_label: 'seller_app',
+                source_detail: 'Created by Ravi Nair',
+                created_by_label: 'Ravi Nair',
+                items_count: 4,
+                total_amount: 5000,
+                outstanding_amount: 5000,
+                invoice_date: '2026-06-05T00:00:00.000Z',
+                due_date: '2026-06-01T00:00:00.000Z',
+                paid_at: null,
+                created_at: '2026-06-05T00:00:00.000Z',
+                status: { value: 'overdue', label: 'Overdue', tone: 'danger', filter_chip: 'Overdue' },
+                linked: { type: 'direct', label: '—' },
+              },
+            ]
+          : mockInvoiceResponse().invoices,
+        kpis: {
+          invoices_this_period: overdueOnly ? 1 : 2,
+          invoices_prev_period: 1,
+          invoices_growth_pct: 100,
+          gmv_this_period: overdueOnly ? 5000 : 15000,
+          gmv_prev_period: 7000,
+          aov: overdueOnly ? 5000 : 7500,
+          overdue_count: 1,
+          overdue_sum: 5000,
+          outstanding_count: overdueOnly ? 1 : 2,
+          outstanding_sum: overdueOnly ? 5000 : 10000,
+        },
+      });
+
+      return {
+        isLoading: false,
+        isError: false,
+        data: {
+          pages: [response],
+        },
+        fetchNextPage: vi.fn(),
+        hasNextPage: false,
+        isFetchingNextPage: false,
+      };
     });
   });
 
@@ -176,8 +253,9 @@ describe('invoices landing page', () => {
     expect(screen.getByText('Top Risers')).toBeInTheDocument();
   });
 
-  it('Overdue filter chip hides non-overdue invoices', () => {
+  it('Overdue filter hides non-overdue invoices', () => {
     render(<InvoicesLandingClient initialData={mockInvoiceResponse()} initialPeriod="month" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Status: All' }));
     fireEvent.click(screen.getByRole('button', { name: 'Overdue' }));
     expect(screen.getByText('INV-2026-0002')).toBeInTheDocument();
     expect(screen.queryByText('INV-2026-0001')).not.toBeInTheDocument();

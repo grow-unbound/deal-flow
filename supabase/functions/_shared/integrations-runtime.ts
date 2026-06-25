@@ -18,6 +18,11 @@ import {
 } from '../../../src/lib/integrations/definitions.ts';
 import { normalizeIntegrationJobErrorLog } from '../../../src/lib/integrations/job-error-log.ts';
 import {
+  getZohoWebhookProviderIdField,
+  getZohoWebhookTimestampFields,
+  resolveZohoWebhookEventType,
+} from '../../../src/lib/integrations/zoho-webhooks.ts';
+import {
   INTEGRATION_JOB_TYPES,
   ZOHO_INTEGRATION_TYPE_IDS,
 } from '../../../src/lib/integrations/contracts.ts';
@@ -28,7 +33,7 @@ import {
   type IntegrationSyncPhaseDefinition,
   ZohoApiError,
 } from './integrations-zoho.ts';
-import { persistZohoEntityPage } from './integrations-persist.ts';
+import { persistZohoEntityPage, resolveInternalIdWithFallback, type PersistResult } from './integrations-persist.ts';
 
 declare const Deno: {
   env: {
@@ -133,6 +138,18 @@ interface WorkerExecutionResult {
   summary: IntegrationJobSummary | null;
 }
 
+interface NormalizedWebhookEnvelope {
+  entityType: string | null;
+  phase: 'customers' | 'products' | 'estimates' | 'orders' | 'invoices' | null;
+  incomingEventType: string | null;
+  providerEntityId: string | null;
+  externalRef: string | null;
+  providerTimestamp: string | null;
+  sourceCreatedAt: string | null;
+  sourceUpdatedAt: string | null;
+  entityPayload: JsonRecord | null;
+}
+
 class HttpError extends Error {
   status: number;
   details?: JsonRecord;
@@ -152,6 +169,10 @@ function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function coerceRecord(value: unknown): JsonRecord {
+  return isRecord(value) ? value : {};
+}
+
 function asString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
@@ -166,6 +187,13 @@ function nowIso(): string {
 
 function asJsonRecord(value: unknown): JsonRecord {
   return value as JsonRecord;
+}
+
+function normalizeTimestamp(value: unknown): string | null {
+  const stringValue = asString(value);
+  if (!stringValue) return null;
+  const parsed = new Date(stringValue);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -309,6 +337,84 @@ async function readJson<T>(request: Request): Promise<T> {
   return payload as T;
 }
 
+async function readWebhookPayload(
+  request: Request,
+  traceId: string,
+): Promise<{
+  payload: IntegrationWebhookRequest;
+  rawBody: string;
+  parseMode: 'json' | 'form' | 'empty';
+  parseError: string | null;
+  contentType: string | null;
+}> {
+  const contentType = request.headers.get('content-type');
+  const rawBody = await request.clone().text();
+  const trimmed = rawBody.trim();
+
+  if (!trimmed) {
+    logWebhookTrace('info', traceId, 'webhook body is empty; continuing with an empty payload', {
+      content_type: contentType,
+    });
+    return {
+      payload: {},
+      rawBody,
+      parseMode: 'empty',
+      parseError: null,
+      contentType,
+    };
+  }
+
+  if (contentType?.includes('application/x-www-form-urlencoded')) {
+    const form = Object.fromEntries(new URLSearchParams(rawBody).entries());
+    const nestedPayload = asString(form.payload);
+    let parsedPayload: JsonRecord = form;
+    if (nestedPayload) {
+      try {
+        const decoded = JSON.parse(nestedPayload);
+        if (isRecord(decoded)) {
+          parsedPayload = { ...form, payload: decoded };
+        }
+      } catch (error) {
+        logWebhookTrace('warn', traceId, 'Zoho webhook form payload contained invalid nested JSON', {
+          content_type: contentType,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return {
+      payload: parsedPayload as IntegrationWebhookRequest,
+      rawBody,
+      parseMode: 'form',
+      parseError: null,
+      contentType,
+    };
+  }
+
+  try {
+    return {
+      payload: JSON.parse(rawBody) as IntegrationWebhookRequest,
+      rawBody,
+      parseMode: 'json',
+      parseError: null,
+      contentType,
+    };
+  } catch (error) {
+    const parseError = error instanceof Error ? error.message : String(error);
+    logWebhookTrace('warn', traceId, 'Zoho webhook body was not valid JSON; continuing with an empty payload', {
+      content_type: contentType,
+      error: parseError,
+      body_preview: shortenForLog(rawBody),
+    });
+    return {
+      payload: {},
+      rawBody,
+      parseMode: 'empty',
+      parseError,
+      contentType,
+    };
+  }
+}
+
 function requireMethod(request: Request, method: string): void {
   if (request.method !== method) {
     throw new HttpError(405, `Method ${request.method} not allowed.`);
@@ -318,6 +424,11 @@ function requireMethod(request: Request, method: string): void {
 function getBearerHeader(request: Request): string | null {
   const authorization = request.headers.get('authorization');
   return authorization?.startsWith('Bearer ') ? authorization : null;
+}
+
+function hasValidWebhookToken(request: Request, webhook: IntegrationWebhookRow): boolean {
+  const received = request.headers.get('x-zoho-webhook-token');
+  return Boolean(received && webhook.secret && received === webhook.secret);
 }
 
 function hasValidDispatchSecret(request: Request): boolean {
@@ -995,11 +1106,12 @@ function createAdapterForIntegration(
 async function runWorkerJob(
   request: Request,
   payload: IntegrationWorkerDispatchRequest,
+  actorOverride?: ActorContext,
 ): Promise<WorkerExecutionResult> {
   const admin = createAdminClient();
   const job = await loadSyncJob(admin, payload.job_id);
   const integration = await loadTenantIntegration(admin, job.tenant_integration_id);
-  const actor = await authorizeTenantActor(request, admin, integration.tenant_id);
+  const actor = actorOverride ?? await authorizeTenantActor(request, admin, integration.tenant_id);
   const importActorId = actor.internal
     ? (integration.connected_by ?? job.triggered_by ?? null)
     : actor.userId;
@@ -1665,6 +1777,45 @@ function requestHeadersForAudit(request: Request): JsonRecord {
   );
 }
 
+function makeRequestTraceId(request: Request): string {
+  return asString(request.headers.get('x-request-id'))
+    ?? asString(request.headers.get('x-vercel-id'))
+    ?? crypto.randomUUID();
+}
+
+function shortenForLog(value: string, maxLength = 1200): string {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength)}... [truncated ${value.length - maxLength} chars]`;
+}
+
+function logWebhookTrace(
+  level: 'info' | 'warn' | 'error',
+  traceId: string,
+  message: string,
+  details: JsonRecord = {},
+): void {
+  const safeDetails = scrubSecretValue(details);
+  const payload = Object.keys(safeDetails).length > 0 ? safeDetails : undefined;
+  const prefix = `[integrations-webhook:${traceId}] ${message}`;
+  if (level === 'warn') {
+    console.warn(prefix, payload);
+    return;
+  }
+  if (level === 'error') {
+    console.error(prefix, payload);
+    return;
+  }
+  console.info(prefix, payload);
+}
+
+function extractEndpointTokenFromPath(request: Request): string | null {
+  const pathname = new URL(request.url).pathname.replace(/\/+$/, '');
+  const parts = pathname.split('/').filter(Boolean);
+  const index = parts.lastIndexOf('integrations-webhook');
+  if (index < 0 || index + 1 >= parts.length) return null;
+  return asString(decodeURIComponent(parts[index + 1]));
+}
+
 function resolveWebhookExternalEntityId(payload: IntegrationWebhookRequest): string | null {
   const body = isRecord(payload.payload) ? payload.payload : payload;
   return asString(body.entity_id)
@@ -1676,11 +1827,131 @@ function resolveWebhookExternalEntityId(payload: IntegrationWebhookRequest): str
     ?? asString(body.salesorder_id);
 }
 
+function parseJsonRecordString(value: unknown): JsonRecord | null {
+  const stringValue = asString(value);
+  if (!stringValue) return null;
+  try {
+    const parsed = JSON.parse(stringValue);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractZohoEntityPayload(body: JsonRecord, entityType: string | null): JsonRecord | null {
+  const candidates: unknown[] = [
+    body.payload,
+    body.entity,
+    entityType ? body[entityType] : null,
+    entityType ? body[entityType.replace(/s$/, '')] : null,
+  ];
+
+  for (const candidate of candidates) {
+    if (isRecord(candidate)) return candidate;
+    const parsed = parseJsonRecordString(candidate);
+    if (parsed) return parsed;
+  }
+
+  return null;
+}
+
+function resolveWebhookEntityIdentity(
+  entityType: string | null,
+  body: JsonRecord,
+  entityPayload: JsonRecord | null,
+): {
+  providerEntityId: string | null;
+  externalRef: string | null;
+  providerTimestamp: string | null;
+  sourceCreatedAt: string | null;
+  sourceUpdatedAt: string | null;
+} {
+  const providerIdField = entityType ? getZohoWebhookProviderIdField(entityType) : null;
+  const timestampFields = entityType ? getZohoWebhookTimestampFields(entityType) : ['last_modified_time', 'updated_time', 'created_time'];
+  const payload = entityPayload ?? {};
+
+  const providerEntityId = asString(body.provider_entity_id)
+    ?? asString(body.entity_id)
+    ?? (providerIdField ? asString(body[providerIdField]) : null)
+    ?? asString(payload.provider_entity_id)
+    ?? asString(payload.entity_id)
+    ?? (providerIdField ? asString(payload[providerIdField]) : null)
+    ?? resolveWebhookExternalEntityId({ payload });
+
+  const externalRef = asString(body.external_ref)
+    ?? asString(payload.external_ref)
+    ?? providerEntityId;
+
+  const providerTimestamp = normalizeTimestamp(body.provider_timestamp)
+    ?? timestampFields.map((field) => normalizeTimestamp(body[field])).find((value) => value !== null)
+    ?? timestampFields.map((field) => normalizeTimestamp(payload[field])).find((value) => value !== null)
+    ?? null;
+
+  const sourceCreatedAt = normalizeTimestamp(body.created_time)
+    ?? normalizeTimestamp(payload.created_time)
+    ?? normalizeTimestamp(payload.date)
+    ?? null;
+  const sourceUpdatedAt = providerTimestamp
+    ?? normalizeTimestamp(body.updated_time)
+    ?? normalizeTimestamp(payload.updated_time)
+    ?? null;
+
+  return {
+    providerEntityId,
+    externalRef,
+    providerTimestamp,
+    sourceCreatedAt,
+    sourceUpdatedAt,
+  };
+}
+
+function normalizeWebhookEnvelope(
+  webhook: IntegrationWebhookRow | null,
+  payload: IntegrationWebhookRequest,
+  requestUrl: URL,
+): NormalizedWebhookEnvelope {
+  const body = isRecord(payload) ? payload : {};
+  const entityType = asString(body.entity_type)
+    ?? asString(requestUrl.searchParams.get('entity_type'))
+    ?? webhook?.entity_type
+    ?? null;
+  const entityPayload = extractZohoEntityPayload(body, entityType);
+  const identity = resolveWebhookEntityIdentity(entityType, body, entityPayload);
+
+  return {
+    entityType,
+    phase: entityType ? (WEBHOOK_PHASE_BY_ENTITY[entityType] ?? null) : null,
+    incomingEventType: asString(body.event_type)
+      ?? asString(requestUrl.searchParams.get('event_type')),
+    providerEntityId: identity.providerEntityId,
+    externalRef: identity.externalRef,
+    providerTimestamp: identity.providerTimestamp,
+    sourceCreatedAt: identity.sourceCreatedAt,
+    sourceUpdatedAt: identity.sourceUpdatedAt,
+    entityPayload,
+  };
+}
+
+function buildWebhookNormalizedPayload(envelope: NormalizedWebhookEnvelope, resolvedInternalId: string | null, eventType: string | null): JsonRecord {
+  return {
+    entity_type: envelope.entityType,
+    event_type: eventType,
+    provider_entity_id: envelope.providerEntityId,
+    external_ref: envelope.externalRef,
+    resolved_internal_id: resolvedInternalId,
+    provider_timestamp: envelope.providerTimestamp,
+    payload_present: Boolean(envelope.entityPayload),
+    received_at: nowIso(),
+  };
+}
+
 async function createWebhookAuditEvent(
   admin: ReturnType<typeof createAdminClient>,
   webhook: IntegrationWebhookRow,
   payload: IntegrationWebhookRequest,
   request: Request,
+  traceId: string,
+  runtimeMeta: JsonRecord = {},
 ): Promise<string> {
   const eventType = asString(payload.event_type);
   const externalEntityId = resolveWebhookExternalEntityId(payload);
@@ -1703,6 +1974,10 @@ async function createWebhookAuditEvent(
       received_at: nowIso(),
     },
     processing_status: 'processing',
+    runtime_meta: {
+      trace_id: traceId,
+      ...runtimeMeta,
+    },
   }).select('id').single();
   if (error || !data) throw new HttpError(500, 'Unable to write webhook audit event.', { code: error?.code });
   return data.id as string;
@@ -1729,54 +2004,234 @@ async function appendWebhookError(
   });
 }
 
+function getWebhookTargetTable(phase: 'customers' | 'products' | 'estimates' | 'orders' | 'invoices'): string {
+  return phase === 'customers'
+    ? 'buyers'
+    : phase === 'products'
+      ? 'tenant_products'
+      : phase;
+}
+
+async function resolveWebhookTargetInternalId(
+  admin: ReturnType<typeof createAdminClient>,
+  webhook: IntegrationWebhookRow,
+  envelope: NormalizedWebhookEnvelope,
+): Promise<{
+  internalId: string | null;
+  by: 'external_ref' | 'provider_entity_id' | null;
+  conflict: boolean;
+  details?: JsonRecord;
+}> {
+  if (!envelope.phase) {
+    return { internalId: null, by: null, conflict: false };
+  }
+
+  const tableName = getWebhookTargetTable(envelope.phase);
+  const externalRefId = envelope.externalRef
+    ? await resolveInternalIdWithFallback(
+      admin,
+      webhook.tenant_id,
+      webhook.tenant_integration_id,
+      envelope.phase,
+      tableName,
+      envelope.externalRef,
+    )
+    : null;
+  const providerId = envelope.providerEntityId && envelope.providerEntityId !== envelope.externalRef
+    ? await resolveInternalIdWithFallback(
+      admin,
+      webhook.tenant_id,
+      webhook.tenant_integration_id,
+      envelope.phase,
+      tableName,
+      envelope.providerEntityId,
+    )
+    : externalRefId;
+
+  if (externalRefId && providerId && externalRefId !== providerId) {
+    return {
+      internalId: null,
+      by: null,
+      conflict: true,
+      details: {
+        external_ref: envelope.externalRef,
+        external_ref_internal_id: externalRefId,
+        provider_entity_id: envelope.providerEntityId,
+        provider_entity_internal_id: providerId,
+      },
+    };
+  }
+
+  if (externalRefId) {
+    return { internalId: externalRefId, by: 'external_ref', conflict: false };
+  }
+  if (providerId) {
+    return { internalId: providerId, by: 'provider_entity_id', conflict: false };
+  }
+
+  return { internalId: null, by: null, conflict: false };
+}
+
 async function softDeleteWebhookEntity(
   admin: ReturnType<typeof createAdminClient>,
   webhook: IntegrationWebhookRow,
   eventId: string,
-  externalEntityId: string,
-): Promise<void> {
-  const mapping = WEBHOOK_PHASE_BY_ENTITY[webhook.entity_type ?? ''];
-  const tables: Record<string, string> = {
-    customers: 'buyers', products: 'tenant_products', estimates: 'estimates', orders: 'orders', invoices: 'invoices',
-  };
-  const targetTable = mapping ? tables[mapping] : null;
-  if (!targetTable) return;
+  envelope: NormalizedWebhookEnvelope,
+): Promise<string | null> {
+  if (!envelope.phase) return null;
+  const targetTable = getWebhookTargetTable(envelope.phase);
+  const resolved = await resolveWebhookTargetInternalId(admin, webhook, envelope);
+  if (!resolved.internalId) return null;
 
-  const { data: row } = await admin.schema('app').from(targetTable)
-    .select('id').eq('tenant_id', webhook.tenant_id).eq('external_ref', externalEntityId).is('deleted_at', null).maybeSingle();
-  if (!row) return;
   const deletedAt = nowIso();
-  await admin.schema('app').from(targetTable).update({ deleted_at: deletedAt, updated_by: webhook.created_by }).eq('id', row.id);
+  await admin.schema('app').from(targetTable).update({ deleted_at: deletedAt, updated_by: webhook.created_by }).eq('id', resolved.internalId);
   await admin.schema('app').from('integration_webhook_event_changes').insert({
     tenant_id: webhook.tenant_id,
     tenant_integration_id: webhook.tenant_integration_id,
     integration_webhook_event_id: eventId,
     entity_type: webhook.entity_type ?? 'unknown',
     target_table: `app.${targetTable}`,
-    target_entity_type: mapping,
-    target_row_id: row.id,
+    target_entity_type: envelope.phase,
+    target_row_id: resolved.internalId,
     operation: 'soft_delete',
     merge_decision: 'remote_delete',
     before_state: { deleted_at: null },
     after_state: { deleted_at: deletedAt },
-    delta: { deleted_at: deletedAt },
+    delta: {
+      deleted_at: deletedAt,
+      provider_entity_id: envelope.providerEntityId,
+      external_ref: envelope.externalRef,
+    },
   });
+  return resolved.internalId;
+}
+
+async function applyDirectWebhookEntity(
+  admin: ReturnType<typeof createAdminClient>,
+  integration: TenantIntegrationRow,
+  webhook: IntegrationWebhookRow,
+  eventId: string,
+  envelope: NormalizedWebhookEnvelope,
+  actorUserId: string | null,
+): Promise<{
+  operation: 'create' | 'update';
+  resolvedInternalId: string;
+  mergeDecision: string;
+  persistResult: PersistResult;
+  eventType: string | null;
+}> {
+  if (!envelope.phase || !envelope.entityPayload) {
+    throw new HttpError(400, 'Webhook payload did not contain a direct Zoho entity payload.');
+  }
+
+  const before = await resolveWebhookTargetInternalId(admin, webhook, envelope);
+  if (before.conflict) {
+    await admin.schema('app').from('integration_webhook_event_changes').insert({
+      tenant_id: webhook.tenant_id,
+      tenant_integration_id: webhook.tenant_integration_id,
+      integration_webhook_event_id: eventId,
+      entity_type: webhook.entity_type ?? 'unknown',
+      target_table: `app.${getWebhookTargetTable(envelope.phase)}`,
+      target_entity_type: envelope.phase,
+      operation: 'conflict',
+      merge_decision: 'identifier_conflict',
+      delta: before.details ?? {},
+      external_ref: envelope.externalRef,
+    });
+    throw new HttpError(409, 'Webhook identifiers resolved to conflicting internal records.', before.details);
+  }
+
+  const persistResult = await persistZohoEntityPage(
+    admin,
+    integration.tenant_id,
+    actorUserId,
+    integration.id,
+    envelope.phase,
+    integration.integration_type_id as ZohoIntegrationTypeId,
+    [envelope.entityPayload],
+  );
+
+  const after = await resolveWebhookTargetInternalId(admin, webhook, envelope);
+  if (!after.internalId) {
+    throw new HttpError(422, 'Webhook entity was persisted but no internal row could be resolved afterwards.', {
+      entity_type: envelope.entityType,
+      provider_entity_id: envelope.providerEntityId,
+      external_ref: envelope.externalRef,
+    });
+  }
+
+  const operation: 'create' | 'update' = before.internalId ? 'update' : 'create';
+  const eventType = resolveZohoWebhookEventType(envelope.entityType ?? webhook.entity_type ?? envelope.phase, envelope.incomingEventType, operation);
+
+  await admin.schema('app').from('integration_webhook_event_changes').insert({
+    tenant_id: webhook.tenant_id,
+    tenant_integration_id: webhook.tenant_integration_id,
+    integration_webhook_event_id: eventId,
+    entity_type: webhook.entity_type ?? 'unknown',
+    target_table: `app.${getWebhookTargetTable(envelope.phase)}`,
+    target_entity_type: envelope.phase,
+    target_row_id: after.internalId,
+    operation,
+    merge_decision: before.by ? `matched_by_${before.by}` : 'created_from_direct_payload',
+    delta: {
+      provider_entity_id: envelope.providerEntityId,
+      external_ref: envelope.externalRef,
+      persist_result: persistResult,
+    },
+    external_ref: envelope.externalRef,
+  });
+
+  return {
+    operation,
+    resolvedInternalId: after.internalId,
+    mergeDecision: before.by ? `matched_by_${before.by}` : 'created_from_direct_payload',
+    persistResult,
+    eventType,
+  };
 }
 
 export async function handleIntegrationsWebhook(request: Request): Promise<Response> {
   let webhookForAudit: IntegrationWebhookRow | null = null;
   let auditEventId: string | null = null;
   let payloadForAudit: IntegrationWebhookRequest | null = null;
+  let webhookParseMode: 'json' | 'form' | 'empty' | null = null;
+  let webhookParseError: string | null = null;
+  const traceId = makeRequestTraceId(request);
+  const requestUrl = new URL(request.url);
   try {
     requireMethod(request, 'POST');
-    const payload = await readJson<IntegrationWebhookRequest>(request);
+    const endpointTokenFromUrl = asString(requestUrl.searchParams.get('endpoint_token'));
+    const endpointTokenFromHeader = asString(request.headers.get('x-integration-endpoint-token'));
+    const endpointTokenFromPath = extractEndpointTokenFromPath(request);
+    const tenantIntegrationIdFromUrl = asString(requestUrl.searchParams.get('tenant_integration_id'));
+    logWebhookTrace('info', traceId, 'webhook ingress received', {
+      method: request.method,
+      pathname: requestUrl.pathname,
+      query: Object.fromEntries(requestUrl.searchParams.entries()),
+      content_type: request.headers.get('content-type'),
+      raw_body_length: request.headers.get('content-length'),
+      endpoint_token_source: endpointTokenFromUrl
+        ? 'query'
+        : endpointTokenFromHeader
+          ? 'header'
+          : endpointTokenFromPath
+            ? 'path'
+            : null,
+      endpoint_token_present: Boolean(endpointTokenFromUrl || endpointTokenFromHeader || endpointTokenFromPath),
+      tenant_integration_id_present: Boolean(tenantIntegrationIdFromUrl),
+    });
+    const parsedPayload = await readWebhookPayload(request, traceId);
+    const payload = parsedPayload.payload;
     payloadForAudit = payload;
+    webhookParseMode = parsedPayload.parseMode;
+    webhookParseError = parsedPayload.parseError;
     const admin = createAdminClient();
 
     const endpointToken = asString(payload.endpoint_token)
-      ?? asString(new URL(request.url).searchParams.get('endpoint_token'))
-      ?? asString(request.headers.get('x-integration-endpoint-token'));
-    const tenantIntegrationId = asString(payload.tenant_integration_id);
+      ?? endpointTokenFromUrl
+      ?? endpointTokenFromHeader
+      ?? endpointTokenFromPath;
+    const tenantIntegrationId = asString(payload.tenant_integration_id) ?? tenantIntegrationIdFromUrl;
 
     // When an endpoint_token is present the token itself IS the authentication —
     // it's an opaque secret that only Zoho knows because we registered it.
@@ -1787,15 +2242,42 @@ export async function handleIntegrationsWebhook(request: Request): Promise<Respo
     if (endpointToken) {
       webhook = await loadWebhook(admin, endpointToken);
       webhookForAudit = webhook;
+      logWebhookTrace('info', traceId, 'resolved webhook registration from endpoint token', {
+        webhook_id: webhook.id,
+        tenant_integration_id: webhook.tenant_integration_id,
+        entity_type: webhook.entity_type,
+        status: webhook.status,
+        is_active: webhook.is_active,
+        remote_webhook_id: webhook.remote_webhook_id,
+        parse_mode: parsedPayload.parseMode,
+        parse_error: parsedPayload.parseError,
+      });
       if (!webhook.is_active || webhook.status !== 'active' || !webhook.entity_type) {
         throw new HttpError(403, 'Integration webhook is not active.');
       }
+      if (!hasValidWebhookToken(request, webhook)) {
+        throw new HttpError(401, 'Invalid Zoho webhook token.');
+      }
       integration = await loadTenantIntegration(admin, webhook.tenant_integration_id);
     } else if (tenantIntegrationId) {
+      logWebhookTrace('info', traceId, 'falling back to tenant integration lookup', {
+        tenant_integration_id: tenantIntegrationId,
+        parse_mode: parsedPayload.parseMode,
+        parse_error: parsedPayload.parseError,
+      });
       integration = await loadTenantIntegration(admin, tenantIntegrationId);
     }
 
     if (!integration) {
+      logWebhookTrace('warn', traceId, 'unable to resolve webhook target', {
+        body_endpoint_token_present: Boolean(asString(payload.endpoint_token)),
+        body_tenant_integration_id_present: Boolean(asString(payload.tenant_integration_id)),
+        request_endpoint_token_present: Boolean(endpointToken),
+        request_tenant_integration_id_present: Boolean(tenantIntegrationId),
+        parse_mode: parsedPayload.parseMode,
+        parse_error: parsedPayload.parseError,
+        body_preview: shortenForLog(parsedPayload.rawBody),
+      });
       throw new HttpError(400, 'Provide endpoint_token or tenant_integration_id.');
     }
 
@@ -1806,113 +2288,154 @@ export async function handleIntegrationsWebhook(request: Request): Promise<Respo
     const importActorId = actor.internal
       ? (integration.connected_by ?? null)
       : actor.userId;
+    const envelope = normalizeWebhookEnvelope(webhook, payload, requestUrl);
 
     if (webhook) {
       await touchWebhookFlows(admin, webhook.id);
-      auditEventId = await createWebhookAuditEvent(admin, webhook, payload, request);
-    }
-
-    const phase = webhook?.entity_type ? WEBHOOK_PHASE_BY_ENTITY[webhook.entity_type] : null;
-    if (!phase) throw new HttpError(400, 'Webhook entity type is not supported.');
-    const scope = resolveScopeForPhase(phase);
-    const since = normalizeSince(null);
-    const runOrigin = 'webhook' as const;
-    const plan = isZohoIntegrationTypeId(integration.integration_type_id)
-      ? getZohoPhasePlan(integration.integration_type_id, scope).filter((entry) => entry.id === phase)
-      : [];
-    const progress = buildInitialProgress(
-      scope,
-      since,
-      plan,
-      `Triggered by ${webhook?.entity_type ?? 'unknown'} webhook${payload.event_type ? `: ${payload.event_type}` : ''}.`,
-      {
-        run_origin: runOrigin,
-        webhook_event_id: auditEventId,
-        webhook_id: webhook?.id ?? null,
-        webhook_entity_type: webhook?.entity_type ?? null,
-      },
-    );
-
-    const externalEntityId = resolveWebhookExternalEntityId(payload);
-    if (auditEventId && webhook && asString(payload.event_type)?.endsWith('.deleted') && externalEntityId) {
-      await softDeleteWebhookEntity(admin, webhook, auditEventId, externalEntityId);
-      await admin.schema('app').from('integration_webhook_events').update({
-        processing_status: 'processed', processed_at: nowIso(), runtime_meta: { handled_as: 'soft_delete' },
-      }).eq('id', auditEventId);
-      return jsonResponse({ ok: true, tenant_integration_id: integration.id, event_type: payload.event_type ?? null, webhook_id: webhook.id }, 202);
-    }
-
-    const job = await createSyncJob(admin, {
-      tenantId: integration.tenant_id,
-      tenantIntegrationId: integration.id,
-      jobType: 'incremental',
-      triggeredBy: importActorId,
-      progress,
-    });
-
-    await updateTenantIntegration(admin, integration.id, {
-      status: 'syncing',
-      updated_by: importActorId,
-    });
-
-    if (auditEventId && webhook) {
-      await admin.schema('app').from('integration_webhook_event_changes').insert({
-        tenant_id: webhook.tenant_id,
-        tenant_integration_id: webhook.tenant_integration_id,
-        integration_webhook_event_id: auditEventId,
-        entity_type: webhook.entity_type ?? 'unknown',
-        target_table: `app.${phase === 'customers' ? 'buyers' : phase === 'products' ? 'tenant_products' : phase}`,
-        target_entity_type: phase,
-        operation: 'update',
-        merge_decision: 'queued_targeted_fetch',
-        delta: { phase, job_id: job.id },
+      auditEventId = await createWebhookAuditEvent(admin, webhook, payload, request, traceId, {
+        parse_mode: parsedPayload.parseMode,
+        parse_error: parsedPayload.parseError,
+        content_type: parsedPayload.contentType,
+      });
+      logWebhookTrace('info', traceId, 'webhook audit event created', {
+        audit_event_id: auditEventId,
+        webhook_id: webhook.id,
+        entity_type: webhook.entity_type,
+        event_type: payload.event_type ?? null,
       });
       await admin.schema('app').from('integration_webhook_events').update({
-        processing_status: 'processed', processed_at: nowIso(), runtime_meta: { job_id: job.id, phase },
+        entity_type: envelope.entityType ?? webhook.entity_type ?? 'unknown',
+        event_type: envelope.incomingEventType,
+        external_entity_id: envelope.providerEntityId,
+        external_ref: envelope.externalRef,
+        source_created_at: envelope.sourceCreatedAt,
+        source_updated_at: envelope.sourceUpdatedAt,
+        normalized_payload: buildWebhookNormalizedPayload(envelope, null, envelope.incomingEventType),
+      }).eq('id', auditEventId);
+    }
+
+    const phase = envelope.phase;
+    if (!phase) {
+      logWebhookTrace('warn', traceId, 'webhook entity type is not supported', {
+        webhook_id: webhook?.id ?? null,
+        entity_type: envelope.entityType ?? webhook?.entity_type ?? null,
+      });
+      throw new HttpError(400, 'Webhook entity type is not supported.');
+    }
+    const incomingEventType = envelope.incomingEventType;
+    if (auditEventId && webhook && incomingEventType?.endsWith('.deleted')) {
+      logWebhookTrace('info', traceId, 'processing webhook delete event as soft delete', {
+        audit_event_id: auditEventId,
+        webhook_id: webhook.id,
+        external_entity_id: envelope.providerEntityId,
+      });
+      const resolvedInternalId = await softDeleteWebhookEntity(admin, webhook, auditEventId, envelope);
+      const resolvedEventType = resolveZohoWebhookEventType(envelope.entityType ?? webhook.entity_type ?? phase, incomingEventType, 'soft_delete');
+      await admin.schema('app').from('integration_webhook_events').update({
+        processing_status: 'processed',
+        processed_at: nowIso(),
+        event_type: resolvedEventType,
+        normalized_payload: buildWebhookNormalizedPayload(envelope, resolvedInternalId, resolvedEventType),
+        runtime_meta: { handled_as: 'soft_delete', trace_id: traceId, resolved_internal_id: resolvedInternalId },
+      }).eq('id', auditEventId);
+      logWebhookTrace('info', traceId, 'soft delete webhook event completed', {
+        audit_event_id: auditEventId,
+        webhook_id: webhook.id,
+        resolved_internal_id: resolvedInternalId,
+      });
+      return jsonResponse({ ok: true, tenant_integration_id: integration.id, event_type: resolvedEventType, webhook_id: webhook.id }, 200);
+    }
+
+    if (!auditEventId || !webhook) {
+      throw new HttpError(500, 'Webhook audit state could not be established.');
+    }
+
+    try {
+      if (!envelope.entityPayload) {
+        throw new HttpError(422, 'Webhook payload did not contain a direct Zoho entity payload.', {
+          entity_type: envelope.entityType,
+          event_type: incomingEventType,
+          provider_entity_id: envelope.providerEntityId,
+          external_ref: envelope.externalRef,
+        });
+      }
+
+      const directResult = await applyDirectWebhookEntity(
+        admin,
+        integration,
+        webhook,
+        auditEventId,
+        envelope,
+        importActorId,
+      );
+      await admin.schema('app').from('integration_webhook_events').update({
+        processing_status: 'processed',
+        processed_at: nowIso(),
+        event_type: directResult.eventType,
+        external_entity_id: envelope.providerEntityId,
+        external_ref: envelope.externalRef,
+        normalized_payload: buildWebhookNormalizedPayload(envelope, directResult.resolvedInternalId, directResult.eventType),
+        runtime_meta: {
+          handled_as: 'direct_apply',
+          trace_id: traceId,
+          resolved_internal_id: directResult.resolvedInternalId,
+          merge_decision: directResult.mergeDecision,
+          persist_result: directResult.persistResult,
+        },
       }).eq('id', auditEventId);
       await admin.schema('app').from('integration_webhooks').update({ last_received_at: nowIso() }).eq('id', webhook.id);
-    }
-
-    waitUntil(dispatchWorkerInvocation(actor.authHeader, {
-      job_id: job.id,
-      tenant_integration_id: integration.id,
-      continuation: false,
-      reason: 'webhook_dispatch',
-      progress,
-    }).catch(async (error) => {
-      const refreshedJob = await loadSyncJob(admin, job.id);
-      await appendJobError(admin, refreshedJob, error);
-      if (auditEventId && webhook) {
-        await appendWebhookError(admin, {
-          webhook,
-          eventId: auditEventId,
-          eventType: asString(payload.event_type),
-          stage: 'dispatch',
-          error,
-        });
-        await admin.schema('app').from('integration_webhook_events').update({
-          processing_status: 'failed',
-          processed_at: nowIso(),
-          runtime_meta: { job_id: job.id, phase, dispatch_failed: true },
-        }).eq('id', auditEventId);
-      }
-      await updateTenantIntegration(admin, integration.id, {
-        status: 'sync_failed',
-        health_status: classifyHealthStatus(error),
-        last_health_check_at: nowIso(),
-        updated_by: importActorId,
+      logWebhookTrace('info', traceId, 'direct webhook apply completed', {
+        audit_event_id: auditEventId,
+        webhook_id: webhook.id,
+        resolved_internal_id: directResult.resolvedInternalId,
+        event_type: directResult.eventType,
+        operation: directResult.operation,
+      });
+      return jsonResponse({
+        ok: true,
+        tenant_integration_id: integration.id,
+        event_type: directResult.eventType,
+        webhook_id: webhook.id,
+        resolved_internal_id: directResult.resolvedInternalId,
+        processing_mode: 'direct_apply',
+      }, 200);
+    } catch (error) {
+      await appendWebhookError(admin, {
+        webhook,
+        eventId: auditEventId,
+        eventType: incomingEventType,
+        stage: 'persist',
+        error,
+      });
+      await admin.schema('app').from('integration_webhook_events').update({
+        processing_status: 'failed',
+        processed_at: nowIso(),
+        normalized_payload: buildWebhookNormalizedPayload(envelope, null, incomingEventType),
+        runtime_meta: {
+          handled_as: 'direct_apply_failed',
+          trace_id: traceId,
+          provider_entity_id: envelope.providerEntityId,
+          external_ref: envelope.externalRef,
+        },
+      }).eq('id', auditEventId);
+      logWebhookTrace('error', traceId, 'direct webhook apply failed', {
+        webhook_id: webhook.id,
+        entity_type: envelope.entityType,
+        event_type: incomingEventType,
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
-    }));
-
-    return jsonResponse({
-      ok: true,
-      tenant_integration_id: integration.id,
-      job_id: job.id,
-      event_type: payload.event_type ?? null,
-      webhook_id: webhook?.id ?? null,
-    }, 202);
+    }
   } catch (error) {
+    logWebhookTrace('error', traceId, 'webhook handler failed', {
+      error: error instanceof Error ? error.message : String(error),
+      status: error instanceof HttpError ? error.status : null,
+      webhook_id: webhookForAudit?.id ?? null,
+      audit_event_id: auditEventId,
+      parse_mode: webhookParseMode,
+      parse_error: webhookParseError,
+      body_preview: payloadForAudit ? shortenForLog(JSON.stringify(scrubSecretValue(payloadForAudit))) : null,
+    });
     if (webhookForAudit) {
       const admin = createAdminClient();
       await appendWebhookError(admin, {

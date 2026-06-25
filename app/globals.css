@@ -162,9 +162,6 @@
   --bg-page:    #FAF7F2;
   --bg-surface: #FFFFFF;
 
-  /* Fraunces serif for all buyer headings/display text */
-  --font-display: var(--font-fraunces), 'Fraunces', Georgia, serif;
-
   /* Buyer type scale — single source of truth; change --b-base to shift all sizes */
   --b-base: 15px;
   --b-text-eyebrow:  calc(var(--b-base) * 0.667);  /* ≈10px — labels, status pills */
@@ -172,7 +169,7 @@
   --b-text-label:    calc(var(--b-base) * 0.867);  /* 13px  — filter chips, table labels */
   --b-text-body:     var(--b-base);                 /* 15px  — body copy */
   --b-text-header:   calc(var(--b-base) * 1.133);  /* 17px  — sticky header title */
-  --b-text-price:    calc(var(--b-base) * 1.200);  /* 18px  — product grid price */
+  --b-text-price:    calc(var(--b-base) * 1.133);  /* 17px  — product grid price */
   --b-text-section:  calc(var(--b-base) * 1.267);  /* 19px  — section row title */
   --b-text-total:    calc(var(--b-base) * 1.467);  /* 22px  — cart subtotal, catalog hero */
   --b-text-kpi:      calc(var(--b-base) * 1.600);  /* 24px  — normal KPI value */
@@ -370,9 +367,26 @@
     color: var(--cream-700);
     margin-top: 2px;
   }
+  .landing-table td,
+  .landing-table th,
+  .data-table td,
+  .data-table th,
+  .v2-table td,
+  .v2-table th,
+  .lines-table td,
+  .lines-table th {
+    overflow: hidden;
+  }
+
+  .landing-table .chev,
+  .data-table .chev,
   .v2-table .chev {
+    width: 2rem;
+    padding-left: 0 !important;
+    padding-right: 0.5rem !important;
     color: var(--cream-500);
     text-align: right;
+    white-space: nowrap;
   }
 
   .doc-type-chip {

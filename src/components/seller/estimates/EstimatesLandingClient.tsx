@@ -12,6 +12,7 @@ import { FeatureDisabledState } from '@/components/FeatureGate';
 import {
   EntityAvatar,
   FilterBar,
+  type FilterBarGroup,
   InsightStrip4,
   LandingTable,
   PageHeader,
@@ -21,7 +22,7 @@ import {
 } from '@/components/seller/layout';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useFlagState } from '@/hooks/useFeatureFlag';
-import { useTenantEstimatesInfinite, type EstimateLandingRow, type TenantEstimatesResponse } from '@/hooks/useEstimates';
+import { useTenantEstimates, useTenantEstimatesInfinite, type EstimateLandingRow, type TenantEstimatesResponse } from '@/hooks/useEstimates';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -33,9 +34,6 @@ import { cn, formatCompactInr, formatDate } from '@/lib/utils';
 import { sellerLandingMetricSuffix, type SellerLandingPeriod } from '@/lib/seller-period';
 
 type SortOption = 'Recent first' | 'Total amount (high → low)' | 'Status (workflow order)' | 'Expiry (soonest first)';
-type FilterChip = 'All' | 'Buyer App' | 'Draft' | 'Sent' | 'Accepted' | 'Converted' | 'Declined' | 'Expired';
-
-const FILTER_CHIPS: FilterChip[] = ['All', 'Buyer App', 'Draft', 'Sent', 'Accepted', 'Converted', 'Declined', 'Expired'];
 const SORT_OPTIONS: SortOption[] = ['Recent first', 'Total amount (high → low)', 'Status (workflow order)', 'Expiry (soonest first)'];
 const DAY_MS = 24 * 60 * 60 * 1000;
 const STATUS_SORT_RANK: Record<EstimateLandingRow['status']['value'], number> = {
@@ -151,24 +149,30 @@ function EstimatesLandingContent({
   const { newEntityIds, markSeen } = useSellerRealtimeContext();
   const { period, setPeriod, horizonLabel, lowerLabel, options } = useSellerLandingPeriod(initialPeriod);
   const metricSuffix = sellerLandingMetricSuffix(period);
+  const summaryQuery = useTenantEstimates(period, initialData);
+  const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-estimates-landing',
     scopeKey: period,
-    version: 3,
+    version: 4,
     initialState: {
       search: '',
-      activeChip: 'All' as FilterChip,
+      filters: {
+        source: [] as string[],
+        status: [] as string[],
+        location_id: [] as string[],
+      },
       sortBy: 'Recent first' as SortOption,
     },
   });
   const search = routeState.search;
-  const activeChip = routeState.activeChip;
+  const filters = routeState.filters ?? { source: [], status: [], location_id: [] };
   const sortBy = (routeState.sortBy ?? 'Recent first') as SortOption;
 
   const debouncedSearch = useDebounce(search, 300);
   const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantEstimatesInfinite(
     period,
-    { search: debouncedSearch },
+    { search: debouncedSearch, ...filters },
   );
   const { sentinelRef } = useInfiniteScroll({
     hasMore: hasNextPage ?? false,
@@ -182,32 +186,12 @@ function EstimatesLandingContent({
     ready: !isLoading,
   });
 
-  const firstPage = data?.pages[0];
-  const allEstimates = useMemo(() => data?.pages.flatMap((p) => p.estimates) ?? [], [data?.pages]);
+  const firstPage = data?.pages?.[0];
+  const allEstimates = useMemo(() => data?.pages?.flatMap((p) => p.estimates) ?? [], [data?.pages]);
   const total = (firstPage as { total?: number | null } | undefined)?.total ?? firstPage?.kpis?.total_estimates_this_period ?? allEstimates.length;
 
   const filteredRows = useMemo(() => {
-    const query = debouncedSearch.trim().toLowerCase();
-    const byChip = allEstimates.filter((row) => {
-      if (activeChip === 'All') return true;
-      if (activeChip === 'Buyer App') return row.source === 'buyer_app';
-      if (activeChip === 'Converted') {
-        return row.status.value === 'converted' || row.status.value === 'invoiced';
-      }
-      return row.status.filter_chip === activeChip;
-    });
-    const bySearch = byChip.filter((row) => {
-      if (!query) return true;
-      return (
-        row.estimate_number.toLowerCase().includes(query) ||
-        row.buyer_name.toLowerCase().includes(query) ||
-        buyerGeographyLabel(row).toLowerCase().includes(query) ||
-        (row.catalog_name ?? '').toLowerCase().includes(query) ||
-        sourceLabel(row).toLowerCase().includes(query) ||
-        row.source_detail.toLowerCase().includes(query)
-      );
-    });
-    return bySearch.sort((a, b) => {
+    return [...allEstimates].sort((a, b) => {
       if (sortBy === 'Total amount (high → low)') return b.total_amount - a.total_amount;
       if (sortBy === 'Status (workflow order)') return compareStatusRows(a, b);
       if (sortBy === 'Expiry (soonest first)') {
@@ -218,15 +202,15 @@ function EstimatesLandingContent({
       }
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
-  }, [activeChip, allEstimates, debouncedSearch, sortBy]);
+  }, [allEstimates, sortBy]);
 
   const subtitle = useMemo(() => {
-    const kpis = firstPage?.kpis;
+    const kpis = summaryData?.kpis;
     if (!kpis) {
       return `Track buyer enquiries and seller quotes ${lowerLabel}.`;
     }
     return `${kpis.total_estimates_this_period} estimates ${lowerLabel} with ${formatCompactInr(kpis.total_gmv_this_period)} GMV. ${kpis.open_estimates_this_period} open and ${kpis.converted_this_period} converted ${lowerLabel}.`;
-  }, [firstPage?.kpis, lowerLabel]);
+  }, [lowerLabel, summaryData?.kpis]);
 
   const followUpHint = useMemo(() => `${countFollowUpCandidates(allEstimates)}`, [allEstimates]);
   const expiringHint = useMemo(() => `${countExpiringSoonOpen(allEstimates)}`, [allEstimates]);
@@ -244,8 +228,18 @@ function EstimatesLandingContent({
   if (!data) return <EstimatesLoadingSkeleton />;
   const showRefreshingState = isLoading && !data;
 
-  const kpis = firstPage?.kpis;
-  const read = firstPage?.todays_read;
+  const kpis = summaryData?.kpis;
+  const read = summaryData?.todays_read;
+  const groups: FilterBarGroup[] = (summaryData?.filters?.groups ?? []).map((group) => ({
+    key: group.key,
+    label: group.label,
+    options: group.options,
+    values: filters[group.key as keyof typeof filters] ?? [],
+    onChange: (values) => setRouteState((current) => ({
+      ...current,
+      filters: { ...(current.filters ?? filters), [group.key]: values },
+    })),
+  }));
 
   return (
     <>
@@ -339,13 +333,13 @@ function EstimatesLandingContent({
             <FilterBar
               count={`Showing ${filteredRows.length} of ${total}`}
               searchPlaceholder="Search estimate number, buyer, geography, catalog…"
-              chips={FILTER_CHIPS}
-              activeChip={activeChip}
+              chips={[]}
+              activeChip=""
               sortBy={sortBy}
               hideViewToggle
+              groups={groups}
               searchValue={search}
               onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-              onChipChange={(chip) => setRouteState((current) => ({ ...current, activeChip: chip as FilterChip }))}
               sortOptions={SORT_OPTIONS}
               onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
             />
@@ -355,10 +349,10 @@ function EstimatesLandingContent({
               emptyState={
                 <EmptyState
                   icon={<FileText size={28} strokeWidth={1.5} />}
-                  heading={search.trim() || activeChip !== 'All' ? 'No matching estimates' : 'No estimates yet'}
+                  heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching estimates' : 'No estimates yet'}
                   description={
-                    search.trim() || activeChip !== 'All'
-                      ? 'Try a different search or status filter.'
+                    search.trim() || groups.some((group) => group.values.length > 0)
+                      ? 'Try a different search or filter combination.'
                       : 'Create an estimate to share pricing with a buyer.'
                   }
                   action={
@@ -376,6 +370,7 @@ function EstimatesLandingContent({
                 { label: 'Estimate Number', width: 160, className: 'px-5' },
                 { label: 'Buyer', width: 270, className: 'px-5' },
                 { label: 'Source', className: 'px-5' },
+                { label: 'Location', className: 'px-5' },
                 { label: 'Campaign', className: 'px-5' },
                 { label: 'Items', align: 'right', className: 'px-5' },
                 { label: 'Total Amount', align: 'right', className: 'px-5' },
@@ -385,7 +380,7 @@ function EstimatesLandingContent({
                 { width: 40, className: 'px-4' },
               ]}
             >
-              {filteredRows.map((row) => {
+                {filteredRows.map((row) => {
                 const expiringSoon =
                   row.expires_at &&
                   isOpenStatusValue(row.status.value) &&
@@ -417,6 +412,7 @@ function EstimatesLandingContent({
                         {row.source_detail}
                       </p>
                     </td>
+                    <td className="px-5 py-3.5 text-sm text-cream-900">{row.location_name ?? '—'}</td>
                     <td className="px-5 py-3.5">
                       <p className="truncate text-sm text-cream-900">{row.catalog_name ?? '—'}</p>
                     </td>

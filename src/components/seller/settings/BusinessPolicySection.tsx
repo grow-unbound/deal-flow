@@ -47,14 +47,16 @@ export function BusinessPolicySection({
         checked={value.credit_enabled}
         onCheckedChange={(credit_enabled) => onChange({ ...value, credit_enabled })}
       />
+
       <FeatureToggleRow
         label="GST included in prices"
         description="When on, your prices are treated as GST-inclusive. GST is not broken out separately in documents."
         checked={value.gst_inclusive}
         onCheckedChange={(gst_inclusive) => onChange({ ...value, gst_inclusive })}
+        hideBorderBottom
       />
       {!value.gst_inclusive ? (
-        <div className="border-t border-cream-200 px-5 py-4">
+        <div className="border-b border-cream-200 pl-10 pr-5 py-4">
           <div className="max-w-xs space-y-2">
             <Label>Default GST rate</Label>
             <Select
@@ -81,7 +83,7 @@ export function BusinessPolicySection({
         </div>
       ) : null}
       {value.gst_inclusive ? (
-        <div className="border-t border-cream-200 bg-cream-50 px-5 py-3">
+        <div className="border-b border-cream-200 bg-cream-50 pl-10 pr-5 py-3">
           <p className="text-base text-cream-600">
             Product GST rates are preserved and will reapply if you switch this off.
           </p>

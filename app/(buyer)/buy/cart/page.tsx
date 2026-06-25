@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ShoppingCart, Trash2, Minus, Plus, Package, ChevronLeft, MapPin, ChevronRight, Check } from 'lucide-react';
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
@@ -46,8 +46,12 @@ function WhatsAppIcon({ className }: { className?: string }) {
 }
 
 const BACK_BTN: React.CSSProperties = {
-  width: 36, height: 36, borderRadius: '50%',
-  background: 'rgba(255,255,255,0.85)', border: '1px solid var(--cream-300)', color: 'var(--cream-800)',
+  width: 32,
+  height: 32,
+  borderRadius: 0,
+  background: 'transparent',
+  border: 'none',
+  color: 'var(--cream-800)',
 };
 
 const STICKY_HEADER: React.CSSProperties = {
@@ -65,6 +69,24 @@ export default function CartPage() {
   const [placingOrder, setPlacingOrder] = useState(false);
   const [requestingQuote, setRequestingQuote] = useState(false);
   const [error, setError] = useState('');
+  const [nearestLoc, setNearestLoc] = useState<NearestLocationResponse | null>(null);
+  const [nearestLoading, setNearestLoading] = useState(false);
+
+  useEffect(() => {
+    const loc = delivery?.selected;
+    if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') {
+      setNearestLoc(null);
+      return;
+    }
+    let cancelled = false;
+    setNearestLoading(true);
+    apiFetch(`/api/buyer/nearest-location?lat=${loc.lat}&lng=${loc.lng}`)
+      .then((r) => r.json())
+      .then((data: NearestLocationResponse) => { if (!cancelled) setNearestLoc(data); })
+      .catch(() => { if (!cancelled) setNearestLoc(null); })
+      .finally(() => { if (!cancelled) setNearestLoading(false); });
+    return () => { cancelled = true; };
+  }, [delivery?.selected]);
 
   const gstAmount = Math.round(subtotal * 0.18);
   const deliveryFee = 0;
@@ -166,8 +188,8 @@ export default function CartPage() {
     return (
       <>
         <header className="sticky top-0 z-20 flex items-center px-4" style={STICKY_HEADER}>
-          <button onClick={() => router.back()} className="flex items-center justify-center shrink-0" style={BACK_BTN} aria-label="Go back">
-            <ChevronLeft className="w-4 h-4" />
+          <button onClick={() => router.back()} className="flex items-center justify-center shrink-0 p-0" style={BACK_BTN} aria-label="Go back">
+            <ChevronLeft className="h-4 w-4" />
           </button>
           <h1 className="flex-1 text-center font-semibold" style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-display)', color: 'var(--fg-1, var(--cream-900))' }}>
             Cart
@@ -203,8 +225,8 @@ export default function CartPage() {
     <>
       {/* Sticky header */}
       <header className="sticky top-0 z-20 flex items-center px-4" style={STICKY_HEADER}>
-        <button onClick={() => router.back()} className="flex items-center justify-center shrink-0" style={BACK_BTN} aria-label="Go back">
-          <ChevronLeft className="w-4 h-4" />
+        <button onClick={() => router.back()} className="flex items-center justify-center shrink-0 p-0" style={BACK_BTN} aria-label="Go back">
+          <ChevronLeft className="h-4 w-4" />
         </button>
         <h1 className="flex-1 text-center font-semibold" style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-display)', color: 'var(--fg-1, var(--cream-900))' }}>
           Cart
@@ -262,7 +284,7 @@ export default function CartPage() {
 
         {/* Delivery row */}
         <button
-          onClick={() => router.push('/buy/location')}
+          onClick={() => router.push('/buy/location?returnTo=' + encodeURIComponent('/buy/cart'))}
           className="w-full rounded-xl px-4 py-3 flex items-center gap-3 text-left"
           style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}
         >
@@ -294,6 +316,22 @@ export default function CartPage() {
             <ChevronRight className="w-3 h-3" style={{ color: 'var(--teal-500)' }} />
           </div>
         </button>
+
+        {/* Fulfillment location note */}
+        {delivery?.selected && (
+          <div className="rounded-xl px-4 py-3 flex items-start gap-2.5" style={{ background: 'var(--teal-50, #f0fdfa)', border: '1px solid var(--teal-100, #ccfbf1)' }}>
+            <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: 'var(--teal-500)' }} />
+            <p style={{ fontSize: 'var(--b-text-sub)', color: 'var(--teal-700, #0f766e)', lineHeight: '1.45' }}>
+              {nearestLoading
+                ? 'Finding nearest fulfillment location…'
+                : nearestLoc && nearestLoc.name && !nearestLoc.fallback
+                  ? `Your order will be fulfilled from ${nearestLoc.name} — the nearest warehouse, ~${nearestLoc.distance_km} km from your delivery address.`
+                  : nearestLoc && nearestLoc.name && nearestLoc.fallback
+                    ? `No warehouse found near your delivery address. Your order will be fulfilled from ${nearestLoc.name} (default location).`
+                    : 'Set a delivery address to see your fulfillment location.'}
+            </p>
+          </div>
+        )}
 
         {/* Error */}
         {error && (

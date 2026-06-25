@@ -65,6 +65,9 @@ export const OrdersFeaturesSchema = z.object({
   enquiries: z.boolean(),
   sales_orders: z.boolean(),
   invoices: z.boolean(),
+  create_enquiries: z.boolean().default(true),
+  create_sales_orders: z.boolean().default(true),
+  create_invoices: z.boolean().default(true),
 });
 
 export const OrdersSettingsSchema = z.object({

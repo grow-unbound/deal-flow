@@ -1,5 +1,5 @@
 import type { IntegrationTypeId } from './contracts';
-import { ZOHO_DAILY_SYNC_CRON } from './schedule';
+import { ZOHO_DAILY_SYNC_CRON } from './schedule.ts';
 
 export type IntegrationFlowDirection = 'inbound' | 'outbound' | 'bidirectional';
 export type IntegrationFlowTrigger = 'webhook' | 'scheduled' | 'event';
@@ -54,6 +54,7 @@ const SUPPORTED_FLOW_ENTITY_TYPES = new Set([
   'locations',
   'brands',
   'products',
+  'pricelists',
   'customers',
   'estimates',
   'orders',
@@ -78,16 +79,15 @@ const ZOHO_BOOKS_WEBHOOK_EVENTS = [
 const ZOHO_INVENTORY_WEBHOOK_EVENTS = [
   'item.created',
   'item.updated',
-  'item.deleted',
 ] as const;
 
 const ZOHO_WEBHOOK_DEFINITIONS: Partial<Record<IntegrationTypeId, IntegrationWebhookDefinition[]>> = {
   zoho_books: [
-    { entity_type: 'contacts', provider_entity: 'customer', event_types: ['contact.created', 'contact.updated', 'contact.deleted'], sync_phase: 'customers', workflow_rule_types: ['add_edit', 'delete'] },
-    { entity_type: 'items', provider_entity: 'item', event_types: ['item.created', 'item.updated', 'item.deleted'], sync_phase: 'products', workflow_rule_types: ['add_edit', 'delete'] },
-    { entity_type: 'estimates', provider_entity: 'estimate', event_types: ['estimate.created', 'estimate.updated', 'estimate.deleted'], sync_phase: 'estimates', workflow_rule_types: ['add_edit', 'delete'] },
-    { entity_type: 'invoices', provider_entity: 'invoice', event_types: ['invoice.created', 'invoice.updated', 'invoice.deleted'], sync_phase: 'invoices', workflow_rule_types: ['add_edit', 'delete'] },
-    { entity_type: 'salesorders', provider_entity: 'salesorder', event_types: ['salesorder.created', 'salesorder.updated', 'salesorder.deleted'], sync_phase: 'orders', workflow_rule_types: ['add_edit', 'delete'] },
+    { entity_type: 'contacts', provider_entity: 'customer', event_types: ['contact.created', 'contact.updated'], sync_phase: 'customers', workflow_rule_types: ['add_edit'] },
+    { entity_type: 'items', provider_entity: 'item', event_types: ['item.created', 'item.updated'], sync_phase: 'products', workflow_rule_types: ['add_edit'] },
+    { entity_type: 'estimates', provider_entity: 'estimate', event_types: ['estimate.created', 'estimate.updated'], sync_phase: 'estimates', workflow_rule_types: ['add_edit'] },
+    { entity_type: 'invoices', provider_entity: 'invoice', event_types: ['invoice.created', 'invoice.updated'], sync_phase: 'invoices', workflow_rule_types: ['add_edit'] },
+    { entity_type: 'salesorders', provider_entity: 'salesorder', event_types: ['salesorder.created', 'salesorder.updated'], sync_phase: 'orders', workflow_rule_types: ['add_edit'] },
   ],
   zoho_inventory: [
     { entity_type: 'items', provider_entity: 'item', event_types: [...ZOHO_INVENTORY_WEBHOOK_EVENTS], sync_phase: 'products' },
@@ -189,7 +189,7 @@ const INTEGRATION_TOPOLOGIES: Record<IntegrationTypeId, IntegrationTopologyDefin
         direction: 'inbound',
         trigger_type: 'event',
         webhook_events: ['item.created', 'item.updated'],
-        note: 'Price lists are derived from Zoho item pricing tiers when present; otherwise they remain local.',
+        note: 'Synced from Zoho sales pricebooks and refreshed alongside product imports.',
       },
       {
         source_system: 'Zoho Books',
@@ -201,7 +201,7 @@ const INTEGRATION_TOPOLOGIES: Record<IntegrationTypeId, IntegrationTopologyDefin
         direction: 'inbound',
         trigger_type: 'event',
         webhook_events: ['item.created', 'item.updated'],
-        note: 'Per-item price list rows are derived from item pricing tiers and customer-specific overrides.',
+        note: 'Per-item price rows are imported from Zoho pricebook line items.',
       },
       {
         source_system: 'Zoho Books',
@@ -353,7 +353,7 @@ const INTEGRATION_TOPOLOGIES: Record<IntegrationTypeId, IntegrationTopologyDefin
         direction: 'inbound',
         trigger_type: 'event',
         webhook_events: ['item.created', 'item.updated', 'item.deleted'],
-        note: 'Per-item price rows are derived from item pricing tiers and overrides.',
+        note: 'Per-item price rows are imported from Zoho pricebook line items.',
       },
       {
         source_system: 'Zoho Inventory',

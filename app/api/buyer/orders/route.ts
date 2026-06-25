@@ -3,6 +3,7 @@ import { supabaseAdmin, supabase } from '@/lib/supabase';
 import { getPostHogClient } from '@/lib/posthog-server';
 import type { BuyerAppMode } from '@/types/buyer';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+import { getInAppCreateFlags } from '@/lib/server/seller-features';
 import { fetchWhatsappNotificationContext } from '@/lib/server/notification-context';
 import { sendOrderReceivedBuyer, sendOrderReceivedSeller } from '@/lib/server/whatsapp';
 import { PAGE_SIZE, encodeCursor, decodeCursor } from '@/lib/pagination';
@@ -90,6 +91,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
     }
 
     const { items, notes, catalog_id, location_id, delivery_address } = body;
+
+    const createFlags = await getInAppCreateFlags(context.tenant_id!);
+    if (!createFlags.create_sales_orders) {
+      return NextResponse.json({ success: false, error: 'Order placement is not available' }, { status: 403 });
+    }
 
     if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ success: false, error: 'Cart must have at least one item' }, { status: 400 });

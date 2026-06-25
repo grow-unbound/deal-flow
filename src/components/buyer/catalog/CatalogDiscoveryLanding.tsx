@@ -55,7 +55,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
     <div className="flex flex-col pb-[var(--tab-bar)]">
       <BuyerCatalogLandingHeader searchValue={search} onSearchChange={setSearch} />
 
-      <div className="space-y-6 px-4 pt-4">
+      <div className="space-y-6 px-3 pt-4">
         {loading ? (
           <div className="space-y-4" role="status" aria-label="Loading catalog">
             <div className="grid grid-cols-3 gap-2">
@@ -66,7 +66,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
                 </div>
               ))}
             </div>
-            <div className="-mx-4 flex gap-2 overflow-hidden px-4">
+            <div className="-mx-3 flex gap-2 overflow-hidden px-3">
               {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="w-[88px] shrink-0">
                   <div className="mx-auto h-[72px] w-[72px] animate-pulse rounded-xl bg-cream-100" />
@@ -74,7 +74,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
                 </div>
               ))}
             </div>
-            <div className="-mx-4 flex gap-2 overflow-hidden px-4">
+            <div className="-mx-3 flex gap-2 overflow-hidden px-3">
               {Array.from({ length: 2 }).map((_, i) => (
                 <div key={i} className="w-[200px] shrink-0 overflow-hidden rounded-xl border border-cream-200">
                   <div className="h-[90px] animate-pulse bg-cream-100" />
@@ -84,7 +84,16 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
             </div>
             <div className="grid grid-cols-2 gap-3">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="aspect-[4/5] animate-pulse rounded-xl" style={{ background: 'var(--cream-100)' }} />
+                <div key={i} className="flex flex-col overflow-hidden rounded-xl border border-cream-200 bg-cream-100 animate-pulse">
+                  <div className="relative aspect-square bg-cream-50">
+                    <div className="absolute right-2 bottom-2 h-8 w-8 rounded-md bg-cream-200" />
+                  </div>
+                  <div className="space-y-1.5 px-2.5 py-2.5">
+                    <div className="h-3 w-3/4 rounded bg-cream-200" />
+                    <div className="h-2.5 w-1/2 rounded bg-cream-200" />
+                    <div className="h-4 w-2/5 rounded bg-cream-200" />
+                  </div>
+                </div>
               ))}
             </div>
           </div>
