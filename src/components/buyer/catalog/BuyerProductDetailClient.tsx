@@ -138,8 +138,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
         <button
           type="button"
           onClick={handleBack}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
-          style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface)', color: 'var(--fg-2)' }}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-none border-0 bg-transparent p-0 text-[var(--fg-2)]"
           aria-label="Back"
         >
           <ChevronLeft className="h-5 w-5" />

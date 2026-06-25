@@ -214,13 +214,13 @@ export function LinesTable({
           <table className="lines-table w-full table-fixed text-left text-base">
             <colgroup>
               <col className="w-10" />
-              <col />
+              <col className="min-w-0" />
               <col className="w-[4.5rem]" />
               <col className="w-[5.5rem]" />
               <col className="w-[6.5rem]" />
               <col className="w-[4.5rem]" />
               <col className="w-[6.5rem]" />
-              {!readOnly ? <col className="w-10" /> : null}
+              {!readOnly ? <col className="w-8" /> : null}
             </colgroup>
             <thead>
               <tr className="sticky top-0 z-[1] border-b border-cream-200 bg-white">
@@ -231,7 +231,7 @@ export function LinesTable({
                 <th className="table-label num px-2 py-2 text-right text-cream-700">Pricelist</th>
                 <th className="table-label num px-2 py-2 text-right text-cream-700">Disc %</th>
                 <th className="table-label num px-2 py-2 text-right text-cream-700">Amount</th>
-                {!readOnly ? <th className="table-label px-2 py-2 text-cream-700" /> : null}
+                {!readOnly ? <th className="table-label px-1 py-2 text-cream-700" /> : null}
               </tr>
             </thead>
           <tbody>
@@ -378,7 +378,7 @@ export function LinesTable({
                     {formatInr(line.line_total)}
                   </td>
                   {!readOnly ? (
-                    <td className="px-2 py-3 text-right">
+                    <td className="px-1 py-3 text-right">
                       <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-cream-500" onClick={() => onRemoveLine(line.id)} aria-label="Remove line">
                         <X className="h-4 w-4" />
                       </Button>

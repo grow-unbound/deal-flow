@@ -4,9 +4,11 @@ import { useQuery, useMutation, useQueryClient, useInfiniteQuery, keepPreviousDa
 import { toast } from 'sonner';
 import type { CustomProductInput } from '@/lib/zod';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
+import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
+import type { LandingFilterMeta } from '@/lib/landing-filter-params';
 
 export interface MasterProduct {
   id: string;
@@ -190,6 +192,7 @@ export interface TenantProductsResponse {
   period?: SellerLandingPeriodMeta;
   products: TenantProduct[];
   brands?: string[];
+  filters?: LandingFilterMeta;
   kpis?: ProductsKpis;
   todays_read?: {
     needs_attention: ProductsTodaysReadItem[];
@@ -232,6 +235,10 @@ export function useTenantProducts(period: SellerLandingPeriod = 'month', initial
 
 export interface ProductsInfiniteFilters {
   search?: string;
+  brand?: string[];
+  category?: string[];
+  status?: string[];
+  stock?: string[];
 }
 
 export interface TenantProductsPage extends TenantProductsResponse {
@@ -249,6 +256,10 @@ export function useTenantProductsInfinite(
       const params = new URLSearchParams({ period });
       if (pageParam) params.set('cursor', pageParam as string);
       if (filters.search?.trim()) params.set('search', filters.search.trim());
+      appendArrayParam(params, 'brand', filters.brand);
+      appendArrayParam(params, 'category', filters.category);
+      appendArrayParam(params, 'status', filters.status);
+      appendArrayParam(params, 'stock', filters.stock);
       const res = await apiFetch(`/api/tenant/products?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch products');
       return res.json() as Promise<TenantProductsPage>;

@@ -2,8 +2,10 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-fetch';
+import { appendArrayParam } from '@/lib/landing-filter-params';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
+import type { LandingFilterMeta } from '@/lib/landing-filter-params';
 
 export type OrderStatusValue =
   | 'draft'
@@ -20,6 +22,8 @@ export type OrderAvatarHue = 'teal' | 'ember' | 'cream';
 
 export interface OrderLandingRow {
   id: string;
+  location_id: string | null;
+  location_name: string | null;
   order_id: string;
   buyer_id: string;
   buyer_name: string;
@@ -71,17 +75,39 @@ export interface TenantOrdersResponse {
   kpis: OrdersKpis;
   todays_read: OrdersTodaysRead;
   orders: OrderLandingRow[];
+  filters?: LandingFilterMeta;
 }
 
-export function useTenantOrders(period: SellerLandingPeriod = 'month', initialData?: TenantOrdersResponse | null) {
+export interface TenantOrdersFilters {
+  search?: string;
+  source?: string[];
+  status?: string[];
+  location_id?: string[];
+}
+
+export function useTenantOrders(
+  period: SellerLandingPeriod = 'month',
+  filters: TenantOrdersFilters = {},
+  initialData?: TenantOrdersResponse | null,
+) {
+  const hasActiveFilters =
+    Boolean(filters.search?.trim()) ||
+    (filters.source?.length ?? 0) > 0 ||
+    (filters.status?.length ?? 0) > 0 ||
+    (filters.location_id?.length ?? 0) > 0;
   return useQuery({
-    queryKey: ['tenant-orders', period],
+    queryKey: ['tenant-orders', period, filters],
     queryFn: async (): Promise<TenantOrdersResponse> => {
-      const res = await apiFetch(`/api/tenant/orders?period=${period}`);
+      const params = new URLSearchParams({ period });
+      if (filters.search?.trim()) params.set('search', filters.search.trim());
+      appendArrayParam(params, 'source', filters.source);
+      appendArrayParam(params, 'status', filters.status);
+      appendArrayParam(params, 'location_id', filters.location_id);
+      const res = await apiFetch(`/api/tenant/orders?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch orders');
       return res.json();
     },
-    initialData: getSellerLandingInitialData(period, initialData),
+    initialData: hasActiveFilters ? undefined : getSellerLandingInitialData(period, initialData),
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
   });

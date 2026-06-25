@@ -25,7 +25,7 @@ interface V3CalloutPanelProps {
   stalenessHint?: string;
 }
 
-export function V3CalloutPanel({ items, stalenessHint = 'Updated moments ago' }: V3CalloutPanelProps) {
+export function V3CalloutPanel({ items, stalenessHint = '' }: V3CalloutPanelProps) {
   return (
     <section className="mt-5">
       <header className="mb-2 flex items-center justify-between">

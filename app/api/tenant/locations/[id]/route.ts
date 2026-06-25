@@ -7,6 +7,7 @@ import {
   normalizeLocationAddress,
   wouldRemoveLastTrackedLocation,
 } from '@/lib/locations/location-deactivate-guards';
+import { normalizeLocationAssociatedUsers, syncLocationAssignees } from '@/lib/location-assignees';
 import { supabaseAdmin } from '@/lib/supabase';
 import { UpdateLocationInputSchema } from '@/types/tenant-locations';
 
@@ -134,6 +135,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         .from('locations')
         .update({
           deleted_at: null,
+          status: 'active',
           updated_at: nowIso,
           updated_by: claims.sub,
         })
@@ -213,6 +215,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       updatePayload.external_ref =
         patch.external_ref === null || patch.external_ref.trim() === '' ? null : patch.external_ref.trim();
     }
+    if (patch.phone_number !== undefined) {
+      updatePayload.phone_number = patch.phone_number === null || patch.phone_number.trim() === '' ? null : patch.phone_number.trim();
+    }
+    if (patch.status !== undefined) updatePayload.status = patch.status;
+    if (patch.associated_users !== undefined) updatePayload.associated_users = normalizeLocationAssociatedUsers(patch.associated_users);
     if (patch.lat !== undefined) updatePayload.lat = patch.lat ?? null;
     if (patch.lng !== undefined) updatePayload.lng = patch.lng ?? null;
 
@@ -229,6 +236,23 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (upErr || !updated) {
       console.error('[PATCH /api/tenant/locations/[id]]', upErr);
       return jsonError(500, 'Failed to update location', 'UPDATE_FAILED');
+    }
+
+    if (patch.associated_users !== undefined) {
+      const assignedUsers = await syncLocationAssignees(
+        db,
+        claims.tenant_id,
+        id,
+        normalizeLocationAssociatedUsers(patch.associated_users),
+        claims.sub,
+      );
+      await db
+        .schema('app')
+        .from('locations')
+        .update({ associated_users: assignedUsers })
+        .eq('id', id)
+        .eq('tenant_id', claims.tenant_id);
+      (updated as Record<string, unknown>).associated_users = assignedUsers;
     }
 
     await db.schema('app').from('audit_log').insert({
@@ -342,6 +366,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       .from('locations')
       .update({
         deleted_at: nowIso,
+        status: 'inactive',
         updated_at: nowIso,
         updated_by: claims.sub,
         is_default: false,

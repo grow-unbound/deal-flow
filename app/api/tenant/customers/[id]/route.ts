@@ -179,7 +179,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { data: buyer, error: buyerError } = await db
     .schema('app')
     .from('buyers')
-    .select('id, tenant_id, business_name, contact_name, phone, email, gstin, tier, is_active, credit_limit, payment_terms_days, external_ref, default_cohort_id, geography, created_at, updated_at')
+    .select('id, tenant_id, business_name, contact_name, phone, email, gstin, gst_treatment, status, billing_address, shipping_address, tier, is_active, credit_limit, payment_terms_days, external_ref, default_cohort_id, geography, created_at, updated_at')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .is('deleted_at', null)
@@ -197,6 +197,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     allOrdersRes,
     cohortMembersRes,
     auditRes,
+    buyerUsersRes,
   ] = await Promise.all([
     scopeByAccessibleLocations(db
       .schema('app')
@@ -239,9 +240,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .eq('tenant_id', claims.tenant_id)
       .order('ts', { ascending: false })
       .limit(250),
+    db
+      .schema('app')
+      .from('buyer_users')
+      .select('id, first_name, last_name, email, phone, designation, department, is_active')
+      .eq('buyer_id', id)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: true }),
   ]);
 
-  if (monthOrdersRes.error || prevOrdersRes.error || allOrdersRes.error || cohortMembersRes.error || auditRes.error) {
+  if (monthOrdersRes.error || prevOrdersRes.error || allOrdersRes.error || cohortMembersRes.error || auditRes.error || buyerUsersRes.error) {
     return NextResponse.json({ error: 'Failed to fetch customer detail data' }, { status: 500 });
   }
 
@@ -365,11 +373,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     db
       .schema('app')
       .from('estimates')
-      .select('id, estimate_number, date_issued, created_at, status, total_amount, location_id')
+      .select('id, estimate_number, estimate_date, created_at, status, total_amount, location_id')
       .eq('tenant_id', claims.tenant_id)
       .eq('buyer_id', id)
       .is('deleted_at', null)
-      .order('date_issued', { ascending: false }),
+      .order('estimate_date', { ascending: false }),
     claims,
   );
   if (estimatesRes.error) {
@@ -517,6 +525,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return right.priority - left.priority;
     })
     .map(({ priority: _priority, ...row }) => row);
+  const primaryAssignedPriceList = assignedPriceLists.find((row) => row.target_type === 'buyer') ?? assignedPriceLists[0] ?? null;
 
   const applicableLookupProductIds = Array.from(
     new Set(
@@ -829,13 +838,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       phone: buyer.phone,
       email: buyer.email,
       gstin: buyer.gstin,
+      gst_treatment: buyer.gst_treatment ?? null,
+      zoho_status: buyer.status ?? null,
       city: buyer.geography?.city ?? null,
       state: buyer.geography?.state ?? null,
       pincode: buyer.geography?.pincode ?? null,
       zone: buyer.geography?.zone ?? null,
+      billing_address: buyer.billing_address ?? null,
+      shipping_address: buyer.shipping_address ?? null,
       payment_terms_days: buyer.payment_terms_days,
       credit_limit: buyer.credit_limit,
       external_ref: buyer.external_ref,
+      assigned_price_list: primaryAssignedPriceList?.name ?? null,
+      contacts: (buyerUsersRes.data ?? []).map((contact: any) => ({
+        id: contact.id,
+        name: [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Buyer user',
+        phone: contact.phone ?? null,
+        email: contact.email ?? null,
+        designation: contact.designation ?? null,
+        department: contact.department ?? null,
+        is_active: Boolean(contact.is_active),
+      })),
       default_cohort_id: buyer.default_cohort_id,
       tier: buyer.tier,
       cohorts: activeCohorts,
@@ -883,7 +906,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       rows: estimateRows.map((estimate: any) => ({
         id: estimate.id,
         number: estimate.estimate_number,
-        issued_at: estimate.date_issued ?? estimate.created_at,
+        issued_at: estimate.estimate_date ?? estimate.created_at,
         total_amount: Number(estimate.total_amount ?? 0),
         status: estimate.status,
       })),

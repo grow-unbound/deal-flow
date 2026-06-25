@@ -7,6 +7,7 @@ import { ChevronRight, Tag } from 'lucide-react';
 
 import { FeatureGate } from '@/components/FeatureGate';
 import {
+  EntityAvatar,
   InsightStrip4,
   LandingTable,
   PageHeader,
@@ -250,12 +251,12 @@ function CategoriesLandingContent({
 
           <LandingTable
             columns={[
-              { label: 'Category', width: '30%' },
-              { label: `GMV · ${metricSuffix}`, align: 'right' },
-              { label: 'Growth', align: 'right' },
-              { label: 'SKUs', align: 'right' },
-              { label: 'Avg days cover', align: 'right' },
-              { label: '', width: 40 },
+              { label: 'Category', minWidth: 260, className: 'px-5' },
+              { label: `GMV · ${metricSuffix}`, align: 'right', minWidth: 140, className: 'px-5' },
+              { label: 'Growth', align: 'right', minWidth: 120, className: 'px-5' },
+              { label: 'SKUs', align: 'right', minWidth: 120, className: 'px-5' },
+              { label: 'Avg days cover', align: 'right', minWidth: 140, className: 'px-5' },
+              { width: 40, className: 'px-4' },
             ]}
             showEmptyState={filtered.length === 0}
             emptyState={
@@ -278,38 +279,36 @@ function CategoriesLandingContent({
             {filtered.map((row) => (
               <tr
                 key={row.id}
-                className="cursor-pointer border-b border-cream-200 transition-colors last:border-0 hover:bg-cream-50"
+                className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
                 onClick={() => router.push(`/categories/${row.id}`)}
               >
-                <td className="px-4 py-3">
+                <td className="px-5 py-3.5">
                   <div className="flex items-center gap-3">
-                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] bg-teal-100 text-xs font-semibold text-teal-700">
-                      {row.initials}
-                    </span>
-                    <div>
-                      <p className="text-sm font-medium text-cream-900">{row.name}</p>
-                      <p className="text-xs text-cream-500">
+                    <EntityAvatar initials={row.initials} hue={row.is_active ? 'teal' : 'cream'} size={38} />
+                    <div className="min-w-0">
+                      <p className="truncate text-base font-medium text-cream-900">{row.name}</p>
+                      <p className="mt-0.5 truncate text-xs text-cream-500">
                         {row.brand_count} brand{row.brand_count !== 1 ? 's' : ''}
                       </p>
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-right text-sm font-medium text-cream-900">
+                <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                   {row.gmv_mtd > 0 ? formatCompactInr(row.gmv_mtd) : '—'}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-5 py-3.5 text-right">
                   <GrowthPill value={row.growth_pct} />
                 </td>
-                <td className="px-4 py-3 text-right text-sm text-cream-700">
+                <td className="px-5 py-3.5 text-right text-sm text-cream-700">
                   <span className="font-medium text-cream-900">{row.active_sku_count}</span>
                   {row.oos_sku_count > 0 && (
                     <span className="ml-1 text-xs text-danger-600">({row.oos_sku_count} OOS)</span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-right text-sm">
+                <td className="px-5 py-3.5 text-right text-sm">
                   <DaysCoverBadge value={row.avg_days_cover} />
                 </td>
-                <td className="px-4 py-3 text-right text-cream-400">
+                <td className="px-4 py-3.5 text-right text-cream-400">
                   <ChevronRight size={16} />
                 </td>
               </tr>

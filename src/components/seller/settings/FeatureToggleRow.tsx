@@ -9,6 +9,7 @@ export interface FeatureToggleRowProps {
   checked: boolean;
   onCheckedChange: (next: boolean) => void;
   disabled?: boolean;
+  hideBorderBottom?: boolean;
 }
 
 export function FeatureToggleRow({
@@ -17,11 +18,13 @@ export function FeatureToggleRow({
   checked,
   onCheckedChange,
   disabled,
+  hideBorderBottom,
 }: FeatureToggleRowProps) {
   return (
     <div
       className={cn(
-        'flex items-start justify-between gap-4 border-b border-cream-200 px-5 py-4 last:border-b-0',
+        'flex items-start justify-between gap-4 px-5 py-4',
+        !hideBorderBottom && 'border-b border-cream-200 last:border-b-0',
         disabled && 'opacity-60',
       )}
     >

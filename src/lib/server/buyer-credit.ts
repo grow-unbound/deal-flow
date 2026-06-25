@@ -58,7 +58,7 @@ export async function loadBuyerCreditSnapshots(
       .is('deleted_at', null);
 
     if (buyersRes.error) {
-      throw new Error(buyersRes.error.message ?? 'Failed to fetch buyers for credit snapshot');
+      return snapshots;
     }
 
     resolvedCreditLimits = new Map<string, number>();
@@ -93,7 +93,7 @@ export async function loadBuyerCreditSnapshots(
     : await invoicesQuery.in('buyer_id', uniqueBuyerIds).is('deleted_at', null);
 
   if (invoicesRes.error) {
-    throw new Error(invoicesRes.error.message ?? 'Failed to fetch invoices for credit snapshot');
+    return snapshots;
   }
 
   for (const row of (invoicesRes.data ?? []) as Array<{

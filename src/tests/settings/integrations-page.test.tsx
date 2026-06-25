@@ -164,6 +164,65 @@ function buildIntegrationsPayload(overrides?: {
           inbound_reference: ['brands', 'products', 'customers'],
           inbound_transactional: ['orders', 'invoices', 'estimates'],
         },
+        coverage_totals: {
+          locations: 5,
+          customers: 89,
+          products: 1240,
+          brands: 42,
+          categories: 18,
+          pricelists: 9,
+          estimates: 41,
+          orders: 318,
+          invoices: 220,
+          transactions: 579,
+        },
+        webhook_telemetry: {
+          status: 'active',
+          total_processed_last_24h: 13,
+          total_failed_last_24h: 1,
+          entities: {
+            locations: {
+              active: false,
+              create: false,
+              update: false,
+              delete: false,
+              processed_last_24h: 0,
+              failed_last_24h: 0,
+              last_received_at: '2026-06-23T05:05:00.000Z',
+              last_verified_at: '2026-06-22T05:05:00.000Z',
+            },
+            customers: {
+              active: true,
+              create: true,
+              update: true,
+              delete: false,
+              processed_last_24h: 4,
+              failed_last_24h: 0,
+              last_received_at: '2026-06-23T08:15:00.000Z',
+              last_verified_at: '2026-06-22T08:10:00.000Z',
+            },
+            products: {
+              active: true,
+              create: true,
+              update: true,
+              delete: true,
+              processed_last_24h: 6,
+              failed_last_24h: 1,
+              last_received_at: '2026-06-23T09:00:00.000Z',
+              last_verified_at: '2026-06-22T09:00:00.000Z',
+            },
+            transactions: {
+              active: true,
+              create: true,
+              update: true,
+              delete: false,
+              processed_last_24h: 3,
+              failed_last_24h: 0,
+              last_received_at: '2026-06-23T10:00:00.000Z',
+              last_verified_at: '2026-06-22T10:00:00.000Z',
+            },
+          },
+        },
         tenant_integration:
           overrides?.activeJobStatus || overrides?.includeSummary
             ? {
@@ -378,6 +437,7 @@ describe('integrations settings client', () => {
     expect(screen.getByRole('button', { name: 'Sync Again' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reconnect' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Refresh' })).not.toBeInTheDocument();
   });
 
   it('shows stop sync when a job is actively running', () => {
@@ -563,6 +623,45 @@ describe('integrations settings client', () => {
                 last_run_at: '2026-06-23T05:05:00.000Z',
               },
             ],
+            webhook_telemetry: {
+              status: 'active',
+              total_processed_last_24h: 13,
+              total_failed_last_24h: 1,
+              entities: {
+                locations: {
+                  active: true,
+                  create: false,
+                  update: true,
+                  delete: false,
+                  processed_last_24h: 0,
+                  failed_last_24h: 0,
+                },
+                customers: {
+                  active: true,
+                  create: true,
+                  update: true,
+                  delete: false,
+                  processed_last_24h: 4,
+                  failed_last_24h: 0,
+                },
+                products: {
+                  active: true,
+                  create: true,
+                  update: true,
+                  delete: true,
+                  processed_last_24h: 6,
+                  failed_last_24h: 1,
+                },
+                transactions: {
+                  active: true,
+                  create: true,
+                  update: true,
+                  delete: false,
+                  processed_last_24h: 3,
+                  failed_last_24h: 0,
+                },
+              },
+            },
           },
         }}
         available
@@ -579,14 +678,19 @@ describe('integrations settings client', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Data flows/ }));
 
+    expect(screen.getByText('Schedule coverage')).toBeInTheDocument();
+    expect(screen.getByText('Webhooks')).toBeInTheDocument();
     expect(screen.getAllByText('Daily 5:00 AM').length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Last run/).length).toBeGreaterThan(0);
+    expect(screen.getByTestId('webhooks-status-label')).toHaveTextContent('WEBHOOKS ACTIVE');
+    expect(screen.getByText('today · 6 processed')).toBeInTheDocument();
+    expect(screen.getAllByText(/Next run/i).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: /History/ }));
 
     expect(screen.getAllByText('Scheduled').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Manual').length).toBeGreaterThan(0);
-    expect(screen.getByText('Last 24 hours · Importing sales orders from Zoho Books')).toBeInTheDocument();
+    expect(screen.getAllByText(/Scope Transactional/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Scope Reference/).length).toBeGreaterThan(0);
   });
 
   it('marks cancelled runs clearly in history', () => {
@@ -648,8 +752,9 @@ describe('integrations settings client', () => {
       />,
     );
 
-    expect(screen.getByText('Cancelled')).toBeInTheDocument();
-    expect(screen.getByText('Cancelled by user request. The worker stopped before the next fetch page.')).toBeInTheDocument();
+    expect(screen.getAllByText('Cancelled').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: /History/ }));
+    expect(screen.getAllByText(/Cancelled by user request/i).length).toBeGreaterThan(0);
   });
 
   it('shows phase-scoped sync controls for Zoho integrations', () => {
@@ -696,6 +801,69 @@ describe('integrations settings client', () => {
     expect(screen.getByText('Sales Orders')).toBeInTheDocument();
     expect(screen.getByText('Invoices')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sync now for Transactions' })).toBeInTheDocument();
+  });
+
+  it('shows only synced phases and completes the progress count when a single phase finishes', () => {
+    render(
+      <ConnectedIntegrationCard
+        integration={{
+          id: 'zoho_books',
+          display_name: 'Zoho Books',
+          description: 'Sync orders and invoices with Zoho Books.',
+          family_flag: 'ZOHO_INTEGRATION',
+          connectivity_mode: 'cloud',
+          auth_schema: { fields: [] },
+          capabilities: {
+            inbound_reference: ['brands', 'products', 'customers'],
+            inbound_transactional: ['estimates', 'orders', 'invoices'],
+          },
+          tenant_integration: {
+            id: 'tenant-int-1',
+            status: 'syncing',
+            health_status: 'ok',
+            connected_at: '2026-06-10T11:00:00.000Z',
+            last_health_check_at: '2026-06-12T08:50:00.000Z',
+            config: { org_id: 'org-123' },
+            active_job: {
+              id: 'job-products',
+              job_type: 'manual',
+              status: 'running',
+              progress: {
+                phase: 'products',
+                phase_label: 'Importing products...',
+                phases_total: 3,
+                phase_current: 1,
+                items_total: 80,
+                items_processed: 80,
+                items_failed: 0,
+                pages_processed: 1,
+                counts: {
+                  products: { entity_type: 'products', processed: 80, failed: 0, pages: 1 },
+                },
+              },
+              error_log: [],
+              summary: null,
+              started_at: '2026-06-12T09:00:00.000Z',
+              completed_at: null,
+              created_at: '2026-06-12T08:59:00.000Z',
+            },
+            sync_history: [],
+            data_flows: [],
+          },
+        }}
+        available
+        isSellerAdmin
+        onOpenWizard={vi.fn()}
+        onDisconnect={vi.fn()}
+        onSyncNow={vi.fn()}
+        onSyncPhase={vi.fn()}
+        onStopSync={vi.fn()}
+        onRefresh={vi.fn()}
+        onRetryWebhooks={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('1 / 1')).toBeInTheDocument();
   });
 
   it('only marks the selected phase as syncing while a phase sync is pending', () => {
@@ -761,7 +929,7 @@ describe('integrations settings client', () => {
     );
 
     expect(screen.getByText('Syncing…')).toBeInTheDocument();
-    expect(screen.getByText('Products')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sync now for Products' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sync now for Products' })).toBeDisabled();
   });
 

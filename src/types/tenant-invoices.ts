@@ -1,4 +1,5 @@
 import type { SellerLandingPeriodMeta } from '@/lib/seller-period';
+import type { LandingFilterMeta } from '@/lib/landing-filter-params';
 
 export type InvoiceStatusValue = 'draft' | 'sent' | 'paid' | 'overdue' | 'void';
 export type InvoiceStatusTone = 'success' | 'warning' | 'danger' | 'neutral';
@@ -14,6 +15,8 @@ export interface InvoiceLinkedDoc {
 
 export interface InvoiceLandingRow {
   id: string;
+  location_id: string | null;
+  location_name: string | null;
   invoice_number: string;
   buyer_id: string;
   buyer_name: string;
@@ -96,6 +99,7 @@ export interface TenantInvoicesResponse {
   kpis: InvoicesKpis;
   todays_read: InvoicesTodaysRead;
   invoices: InvoiceLandingRow[];
+  filters?: LandingFilterMeta;
 }
 
 /** --- Detail (EP-16-002) --- */

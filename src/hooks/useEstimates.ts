@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient, useInfiniteQuery, keepPreviousDa
 import { toast } from 'sonner';
 
 import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
+import { appendArrayParam } from '@/lib/landing-filter-params';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import { getSellerLandingInitialData, type SellerLandingPeriod } from '@/lib/seller-period';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -46,7 +47,9 @@ export function useTenantEstimates(period: SellerLandingPeriod = 'month', initia
 
 export interface EstimatesInfiniteFilters {
   search?: string;
-  status?: string; // filter_chip value
+  source?: string[];
+  status?: string[];
+  location_id?: string[];
 }
 
 export interface TenantEstimatesPage extends TenantEstimatesResponse {
@@ -64,7 +67,9 @@ export function useTenantEstimatesInfinite(
       const params = new URLSearchParams({ period });
       if (pageParam) params.set('cursor', pageParam as string);
       if (filters.search?.trim()) params.set('search', filters.search.trim());
-      if (filters.status && filters.status !== 'All') params.set('status', filters.status.toLowerCase());
+      appendArrayParam(params, 'source', filters.source);
+      appendArrayParam(params, 'status', filters.status);
+      appendArrayParam(params, 'location_id', filters.location_id);
       const res = await apiFetch(`/api/tenant/estimates?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch estimates');
       return res.json() as Promise<TenantEstimatesPage>;

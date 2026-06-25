@@ -71,6 +71,7 @@ const DEFAULT_PER_PAGE = 1000;
 const DEFAULT_REGION = 'com';
 
 const TRANSACTIONAL_ENTITY_TYPES = new Set(['estimates', 'orders', 'invoices']);
+const PRICE_LIST_RESPONSE_KEYS = ['pricebooks', 'pricelists'] as const;
 
 // Indian Financial Year starts April 1. For transactional data we load from:
 //   Apr–Jun (early in FY)  → Jan 1 of this calendar year (extra context quarter)
@@ -225,13 +226,15 @@ export function getZohoPhasePlan(
   const referencePhases: Record<ZohoIntegrationTypeId, IntegrationSyncPhaseDefinition[]> = {
     zoho_books: [
       { id: 'locations', label: 'Importing locations from Zoho Books', entityType: 'locations', path: '/locations', itemKey: 'locations' },
-      { id: 'customers', label: 'Importing customers from Zoho Books', entityType: 'customers', path: '/contacts', itemKey: 'contacts' },
       { id: 'products', label: 'Importing products from Zoho Books', entityType: 'products', path: '/items', itemKey: 'items' },
+      { id: 'pricelists', label: 'Importing pricelists from Zoho Books', entityType: 'pricelists', path: '/pricebooks', itemKey: 'pricebooks' },
+      { id: 'customers', label: 'Importing customers from Zoho Books', entityType: 'customers', path: '/contacts', itemKey: 'contacts' },
     ],
     zoho_inventory: [
       { id: 'locations', label: 'Importing warehouses from Zoho Inventory', entityType: 'locations', path: '/warehouses', itemKey: 'warehouses' },
-      { id: 'customers', label: 'Importing customers from Zoho Inventory', entityType: 'customers', path: '/contacts', itemKey: 'contacts' },
       { id: 'products', label: 'Importing products from Zoho Inventory', entityType: 'products', path: '/items', itemKey: 'items' },
+      { id: 'pricelists', label: 'Importing pricelists from Zoho Inventory', entityType: 'pricelists', path: '/pricebooks', itemKey: 'pricebooks' },
+      { id: 'customers', label: 'Importing customers from Zoho Inventory', entityType: 'customers', path: '/contacts', itemKey: 'contacts' },
     ],
   };
 
@@ -371,18 +374,24 @@ export function createZohoAdapter(
       ? (since ?? financialYearStart())
       : undefined;
 
-    const payload = await request({
-      path: phase.path,
-      query: {
-        page,
-        per_page: perPage,
-        sort_column: 'last_modified_time',
-        sort_order: 'D',
-        ...(dateStart ? { date_start: dateStart } : {}),
-      },
-    });
+    const query = {
+      page,
+      per_page: perPage,
+      ...(dateStart ? { date_start: dateStart } : {}),
+    };
+    let payload: Record<string, unknown>;
+    if (phase.id === 'pricelists') {
+      payload = await requestPricelistsPage(query);
+    } else {
+      payload = await request({
+        path: phase.path,
+        query,
+      });
+    }
 
-    const records = getRecordArray(payload, phase.itemKey);
+    const records = phase.id === 'pricelists'
+      ? getPriceListRecords(payload)
+      : getRecordArray(payload, phase.itemKey);
     const pageContext = getPageContext(payload);
     const nextCursor = nextCursorFromPage(phase, page, perPage, pageContext, records.length, since);
 
@@ -402,6 +411,85 @@ export function createZohoAdapter(
     return getRecordArray(payload, 'contact_persons');
   }
 
+  async function fetchUsers(): Promise<Record<string, unknown>[]> {
+    const allUsers: Record<string, unknown>[] = [];
+    let page = 1;
+    const perPage = 200;
+
+    while (true) {
+      const payload = await request({
+        path: '/users',
+        query: {
+          page,
+          per_page: perPage,
+          filter_by: 'Status.All',
+        },
+      });
+
+      const users = getRecordArray(payload, 'users');
+      allUsers.push(...users);
+
+      const pageContext = getPageContext(payload);
+      const hasMore = typeof pageContext?.has_more_page === 'boolean'
+        ? pageContext.has_more_page
+        : users.length >= perPage;
+      if (!hasMore) break;
+
+      page = (typeof pageContext?.page === 'number' ? pageContext.page : page) + 1;
+    }
+
+    return allUsers;
+  }
+
+  async function requestPricelistsPage(
+    query: Record<string, string | number | boolean | undefined | null>,
+  ): Promise<Record<string, unknown>> {
+    try {
+      return await request({
+        path: '/pricebooks',
+        query,
+      });
+    } catch (error) {
+      if (!(error instanceof ZohoApiError) || error.status < 400) {
+        throw error;
+      }
+      return await request({
+        path: '/pricelists',
+        query,
+      });
+    }
+  }
+
+  function getPriceListRecords(payload: Record<string, unknown>): Record<string, unknown>[] {
+    for (const key of PRICE_LIST_RESPONSE_KEYS) {
+      const rows = getRecordArray(payload, key);
+      if (rows.length > 0) return rows;
+    }
+    return [];
+  }
+
+  async function fetchPricelists(): Promise<Record<string, unknown>[]> {
+    const allPricelists: Record<string, unknown>[] = [];
+    let page = 1;
+    const perPage = DEFAULT_PER_PAGE;
+
+    while (true) {
+      const payload = await requestPricelistsPage({ page, per_page: perPage });
+      const rows = getPriceListRecords(payload);
+      allPricelists.push(...rows);
+
+      const pageContext = getPageContext(payload);
+      const hasMore = typeof pageContext?.has_more_page === 'boolean'
+        ? pageContext.has_more_page
+        : rows.length >= perPage;
+      if (!hasMore) break;
+
+      page = (typeof pageContext?.page === 'number' ? pageContext.page : page) + 1;
+    }
+
+    return allPricelists;
+  }
+
   return {
     provider: 'zoho' as const,
     integrationTypeId,
@@ -409,6 +497,8 @@ export function createZohoAdapter(
     testConnection,
     fetchPhasePage,
     fetchContactPersons,
+    fetchPricelists,
+    fetchUsers,
   };
 }
 

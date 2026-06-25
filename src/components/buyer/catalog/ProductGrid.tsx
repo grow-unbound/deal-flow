@@ -16,7 +16,7 @@ export function ProductGrid({ items, loading = false }: ProductGridProps) {
   if (items.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-2 gap-3 px-4 pb-4">
+    <div className="grid grid-cols-2 gap-2 px-2 pb-3">
       {items.map((item) => (
         <ProductCard key={item.id} item={item} />
       ))}

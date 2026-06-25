@@ -3,6 +3,17 @@ import { z } from 'zod';
 export const LocationTypeSchema = z.enum(['warehouse', 'dispatch_point', 'branch']);
 export type LocationType = z.infer<typeof LocationTypeSchema>;
 
+export const LocationStatusSchema = z.enum(['active', 'inactive']);
+export type LocationStatus = z.infer<typeof LocationStatusSchema>;
+
+export const LocationAssociatedUserSchema = z.object({
+  email: z.string().trim().email('Valid email required'),
+  user_name: z.string().trim().nullable().optional(),
+  user_id: z.string().trim().nullable().optional(),
+});
+
+export type LocationAssociatedUser = z.infer<typeof LocationAssociatedUserSchema>;
+
 /** Address stored in locations.address JSONB — line1 aligned with tenant_settings business address. */
 export const LocationAddressSchema = z.object({
   line1: z.string().max(500).default(''),
@@ -21,6 +32,9 @@ export const CreateLocationInputSchema = z.object({
   inventory_tracking: z.boolean().optional().default(true),
   is_default: z.boolean().optional().default(false),
   external_ref: z.string().max(200).optional(),
+  phone_number: z.string().trim().regex(/^[0-9]{10}$/, 'Phone number must be 10 digits').nullable().optional(),
+  status: LocationStatusSchema.optional().default('active'),
+  associated_users: z.array(LocationAssociatedUserSchema).optional().default([]),
   lat: z.number().optional(),
   lng: z.number().optional(),
 });
@@ -35,6 +49,9 @@ export const UpdateLocationInputSchema = z
     inventory_tracking: z.boolean().optional(),
     is_default: z.boolean().optional(),
     external_ref: z.string().max(200).nullable().optional(),
+    phone_number: z.string().trim().regex(/^[0-9]{10}$/, 'Phone number must be 10 digits').nullable().optional(),
+    status: LocationStatusSchema.optional(),
+    associated_users: z.array(LocationAssociatedUserSchema).optional(),
     lat: z.number().nullable().optional(),
     lng: z.number().nullable().optional(),
     /** When true, clears deleted_at (seller_admin only). */
@@ -50,9 +67,12 @@ export interface TenantLocation {
   name: string;
   type: LocationType;
   address: LocationAddress;
+  phone_number: string | null;
+  status: LocationStatus;
   inventory_tracking: boolean;
   is_default: boolean;
   external_ref: string | null;
+  associated_users: LocationAssociatedUser[];
   lat: number | null;
   lng: number | null;
   deleted_at: string | null;

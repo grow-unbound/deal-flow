@@ -10,6 +10,10 @@ import {
   bulkPersistJsonbRecords,
   bulkPersistJsonbRecordsWithIds,
 } from '../../../src/lib/integrations/rpc-persist.ts';
+import {
+  normalizeLocationAssociatedUsers,
+  syncLocationAssignees,
+} from '../../../src/lib/location-assignees.ts';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -150,6 +154,22 @@ function pickNumber(...values: unknown[]): number | null {
   return null;
 }
 
+function resolveLineTotal(line: Record<string, unknown>, lineIndex: number): number {
+  const itemTotal = pickNumber(line.item_total, line.total, line.amount);
+  if (itemTotal !== null) return itemTotal;
+  const qty = pickNumber(line.quantity, line.qty) ?? 0;
+  const rate = pickNumber(line.rate, line.unit_price, line.price) ?? 0;
+  return qty * rate;
+}
+
+function resolveLineOrder(line: Record<string, unknown>, lineIndex: number): number {
+  return pickNumber(line.item_order) ?? (lineIndex + 1);
+}
+
+function resolveImportedActorId(actorId: string | null, _salespersonId: string | null): string | null {
+  return actorId;
+}
+
 async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -160,6 +180,102 @@ function omitKeys(source: Record<string, unknown>, keys: string[]): Record<strin
   return Object.fromEntries(
     Object.entries(source).filter(([key, value]) => !blacklist.has(key) && value !== undefined),
   );
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return null;
+}
+
+function asRecordArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null && !Array.isArray(entry))
+    : [];
+}
+
+function pickSanitizedPhone(...values: unknown[]): string | null {
+  for (const value of values) {
+    const phone = sanitizeZohoPhone(value);
+    if (phone) return phone;
+  }
+  return null;
+}
+
+function normalizeZohoStrategy(value: unknown): string {
+  const raw = asStr(value)?.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  if (!raw) return 'per_item';
+  if (raw.includes('percent')) return 'percentage';
+  if (raw.includes('per_item') || raw.includes('item_wise') || raw.includes('item')) return 'per_item';
+  return 'per_item';
+}
+
+function isSalesPricebook(record: Record<string, unknown>): boolean {
+  const rawType = asStr(record.pricebook_type) ?? asStr(record.price_list_type) ?? asStr(record.type);
+  const normalized = rawType?.toLowerCase() ?? null;
+  if (normalized?.includes('purchase')) return false;
+  if (normalized?.includes('sale')) return true;
+  if (typeof record.is_sales === 'boolean') return record.is_sales;
+  return true;
+}
+
+function getPricebookItemRows(rec: Record<string, unknown>): Record<string, unknown>[] {
+  return asRecordArray(
+    rec.pricebook_items
+    ?? rec.pricelist_items
+    ?? rec.item_pricings
+    ?? rec.item_pricing
+    ?? rec.items
+    ?? rec.pricing_details,
+  );
+}
+
+function mergePersistResults(...results: PersistResult[]): PersistResult {
+  return results.reduce<PersistResult>(
+    (acc, result) => ({
+      created: acc.created + result.created,
+      updated: acc.updated + result.updated,
+      skipped: acc.skipped + result.skipped,
+    }),
+    { created: 0, updated: 0, skipped: 0 },
+  );
+}
+
+async function rebuildProductSearchVectors(
+  admin: AdminClient,
+  tenantId: string,
+  productIds: string[],
+): Promise<void> {
+  if (productIds.length === 0) return;
+  await admin.schema('app').rpc('rebuild_tenant_products_search_vectors', {
+    p_tenant_id: tenantId,
+    p_ids: productIds,
+  });
+}
+
+async function rebuildBuyerSearchVectors(
+  admin: AdminClient,
+  tenantId: string,
+  buyerIds: string[],
+): Promise<void> {
+  if (buyerIds.length === 0) return;
+  await admin.schema('app').rpc('rebuild_buyers_search_vectors', {
+    p_tenant_id: tenantId,
+    p_ids: buyerIds,
+  });
+}
+
+async function rebuildBuyerUserSearchVectors(
+  admin: AdminClient,
+  buyerIds: string[],
+  buyerUserIds: string[],
+): Promise<void> {
+  if (buyerIds.length === 0 && buyerUserIds.length === 0) return;
+  await admin.schema('app').rpc('rebuild_buyer_users_search_vectors', {
+    p_buyer_ids: buyerIds.length > 0 ? buyerIds : null,
+    p_ids: buyerUserIds.length > 0 ? buyerUserIds : null,
+  });
 }
 
 function getEmbeddedLocationRows(rec: Record<string, unknown>): Record<string, unknown>[] {
@@ -176,6 +292,14 @@ function getEmbeddedLocationRows(rec: Record<string, unknown>): Record<string, u
     }
   }
 
+  return [];
+}
+
+function getEmbeddedLocationAssociatedUsers(rec: Record<string, unknown>): Record<string, unknown>[] {
+  const candidate = rec.associated_users;
+  if (Array.isArray(candidate)) {
+    return candidate.filter((row): row is Record<string, unknown> => typeof row === 'object' && row !== null && !Array.isArray(row));
+  }
   return [];
 }
 
@@ -470,6 +594,7 @@ async function persistLocations(
   integrationId: string,
   integrationTypeId: ZohoIntegrationTypeId,
   records: Record<string, unknown>[],
+  adapter?: ZohoAdapter,
 ): Promise<PersistResult> {
   const isInventory = integrationTypeId === 'zoho_inventory';
   const result: PersistResult = { created: 0, updated: 0, skipped: 0 };
@@ -487,6 +612,22 @@ async function persistLocations(
 
   let defaultAssigned = hasExistingDefault;
   const rows: Record<string, unknown>[] = [];
+  const zohoUsers = adapter ? await adapter.fetchUsers() : [];
+  const zohoUserById = new Map(
+    zohoUsers
+      .map((user) => {
+        const id = asStr(user.user_id);
+        if (!id) return null;
+        return [
+          id,
+          {
+            email: asStr(user.email),
+            user_name: asStr(user.name) ?? asStr(user.user_name),
+          },
+        ] as const;
+      })
+      .filter((entry): entry is readonly [string, { email: string | null; user_name: string | null }] => entry !== null),
+  );
 
   for (const rec of records) {
     const externalId = asStr(isInventory ? rec.warehouse_id : rec.location_id);
@@ -501,13 +642,34 @@ async function persistLocations(
 
     const rawAddr = rec.address;
     const address = rawAddr && typeof rawAddr === 'object' ? rawAddr : null;
+    const phoneNumber = sanitizeZohoPhone(rec.phone) ?? sanitizeZohoPhone(rec.phone_number);
+    const status = asStr(rec.status) === 'inactive' ? 'inactive' : 'active';
+    const sourceAssociatedUsers = getEmbeddedLocationAssociatedUsers(rec);
+    const associatedUsers = normalizeLocationAssociatedUsers(
+      sourceAssociatedUsers.map((user) => {
+        const sourceUserId = asStr(user.user_id) ?? asStr(user.id);
+        const sourceUser = sourceUserId ? zohoUserById.get(sourceUserId) ?? null : null;
+        const email = pickString(user.email, sourceUser?.email);
+        if (!email) return null;
+        return {
+          email,
+          user_name: pickString(user.user_name, sourceUser?.user_name),
+          user_id: sourceUserId,
+        };
+      }).filter((user): user is Record<string, unknown> => user !== null),
+    );
 
     const row = {
       tenant_id: tenantId,
       external_ref: externalId,
       name,
       address: address as Record<string, unknown> | null,
+      phone_number: phoneNumber,
+      status,
+      associated_users: associatedUsers,
       ...(isDefault ? { is_default: true } : {}),
+      created_at: asDate(rec.created_time ?? rec.created_at ?? rec.date_created),
+      updated_at: asDate(rec.last_modified_time ?? rec.updated_at ?? rec.updated_time ?? rec.modified_time),
       created_by: actorId,
       updated_by: actorId,
     };
@@ -529,7 +691,121 @@ async function persistLocations(
 
   result.updated += persisted.length;
   await batchUpsertEntityMap(admin, tenantId, integrationId, 'locations', entityMapPairs);
+
+  const sourceByExternalRef = new Map(
+    rows
+      .map((row) => {
+        const externalRef = asStr(row.external_ref);
+        return externalRef ? [externalRef, row] as const : null;
+      })
+      .filter((entry): entry is readonly [string, Record<string, unknown>] => entry !== null),
+  );
+
+  const auditUpdates = persisted.flatMap((row) => {
+    const id = asStr(row.id);
+    const externalId = asStr(row.external_ref);
+    const source = externalId ? sourceByExternalRef.get(externalId) ?? null : null;
+    if (!id || !source) return [];
+
+    const updatePayload: Record<string, unknown> = {
+      updated_by: actorId,
+    };
+
+    const createdAt = asStr(source.created_at);
+    const updatedAt = asStr(source.updated_at);
+    const createdBy = asStr(source.created_by);
+    const updatedBy = asStr(source.updated_by);
+
+    if (createdAt) updatePayload.created_at = createdAt;
+    if (updatedAt) updatePayload.updated_at = updatedAt;
+    if (createdBy) updatePayload.created_by = createdBy;
+    else if (actorId) updatePayload.created_by = actorId;
+    if (updatedBy) updatePayload.updated_by = updatedBy;
+    else if (actorId) updatePayload.updated_by = actorId;
+
+    return [{ id, updatePayload }];
+  });
+
+  for (const item of auditUpdates) {
+    await admin
+      .schema('app')
+      .from('locations')
+      .update(item.updatePayload)
+      .eq('id', item.id);
+  }
+
+  const assignments = persisted.flatMap((row) => {
+    const id = asStr(row.id);
+    const externalId = asStr(row.external_ref);
+    if (!id || !externalId) return [];
+    const source = sourceByExternalRef.get(externalId) ?? null;
+    const users = normalizeLocationAssociatedUsers(source?.associated_users);
+    return [{ locationId: id, users }];
+  });
+
+  for (const assignment of assignments) {
+    await syncLocationAssignees(
+      admin as any,
+      tenantId,
+      assignment.locationId,
+      assignment.users,
+      actorId,
+    );
+  }
+
+  // Geocode any newly-added locations that don't have coordinates yet
+  await geocodeNewLocations(admin, tenantId);
+
   return result;
+}
+
+// Calls Google Geocoding REST API for locations that have an address but no lat/lng.
+// Uses the location name as additional context to improve accuracy.
+async function geocodeNewLocations(admin: AdminClient, tenantId: string) {
+  const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
+  if (!apiKey) return;
+
+  const { data: rows, error } = await admin
+    .schema('app')
+    .from('locations')
+    .select('id, name, address')
+    .eq('tenant_id', tenantId)
+    .is('lat', null)
+    .not('address', 'is', null)
+    .is('deleted_at', null);
+
+  if (error || !rows?.length) return;
+
+  for (const row of rows) {
+    const addr = (row.address ?? {}) as Record<string, unknown>;
+    const parts = [
+      row.name,
+      (addr.address ?? addr.street_address1 ?? addr.street ?? '') as string,
+      (addr.city ?? '') as string,
+      (addr.state ?? addr.state_code ?? '') as string,
+      (addr.country ?? '') as string,
+      (addr.zip ?? addr.postal_code ?? '') as string,
+    ].filter(Boolean);
+
+    if (parts.length < 2) continue;
+
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(parts.join(', '))}&key=${apiKey}`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const data = await res.json() as { status: string; results?: Array<{ geometry?: { location?: { lat: number; lng: number } } }> };
+      const loc = data.results?.[0]?.geometry?.location;
+      if (data.status === 'OK' && loc) {
+        await admin
+          .schema('app')
+          .from('locations')
+          .update({ lat: loc.lat, lng: loc.lng, updated_at: new Date().toISOString() })
+          .eq('id', row.id);
+      }
+    } catch {
+      // skip this location; it can be geocoded on the next sync
+    }
+  }
 }
 
 // ── Buyers (contacts) + buyer_contacts (contact persons) ────────────────────
@@ -540,7 +816,7 @@ async function persistBuyers(
   actorId: string | null,
   integrationId: string,
   records: Record<string, unknown>[],
-  _adapter: ZohoAdapter,
+  adapter?: ZohoAdapter,
 ): Promise<PersistResult> {
   const result: PersistResult = { created: 0, updated: 0, skipped: 0 };
   const buyerRows: Record<string, unknown>[] = [];
@@ -551,13 +827,13 @@ async function persistBuyers(
 
     const businessName = asStr(rec.company_name)
       ?? asStr(rec.contact_name)
-      ?? asStr(rec.display_name)
       ?? 'Unknown';
 
+    const billingAddress = asRecord(rec.billing_address);
+    const shippingAddress = asRecord(rec.shipping_address);
     const geo = (() => {
-      const addr = rec.billing_address;
-      if (!addr || typeof addr !== 'object') return null;
-      const a = addr as Record<string, unknown>;
+      const a = billingAddress;
+      if (!a) return null;
       return {
         state: asStr(a.state),
         city: asStr(a.city),
@@ -574,13 +850,35 @@ async function persistBuyers(
       contact_name: asStr(rec.contact_name) ?? asStr(rec.first_name),
       email: asStr(rec.email),
       gstin: asStr(rec.gst_no) ?? asStr((rec as Record<string, unknown>)['cf_gstin']),
+      gst_treatment: asStr(rec.gst_treatment),
+      status: asStr(rec.status),
+      billing_address: billingAddress,
+      shipping_address: shippingAddress,
       credit_limit: asNum(rec.credit_limit),
       payment_terms_days: asNum(rec.payment_terms) ?? asNum(rec.payment_terms_days),
       geography: geo,
       is_active: (asStr(rec.status) ?? 'active') === 'active',
       created_by: actorId,
       updated_by: actorId,
-      ...(sanitizeZohoPhone(rec.phone) ? { phone: sanitizeZohoPhone(rec.phone) } : {}),
+      ...(pickSanitizedPhone(
+        rec.phone,
+        rec.mobile,
+        billingAddress?.phone,
+        billingAddress?.mobile,
+        billingAddress?.phone_number,
+        shippingAddress?.phone,
+        shippingAddress?.mobile,
+      ) ? {
+        phone: pickSanitizedPhone(
+          rec.phone,
+          rec.mobile,
+          billingAddress?.phone,
+          billingAddress?.mobile,
+          billingAddress?.phone_number,
+          shippingAddress?.phone,
+          shippingAddress?.mobile,
+        ),
+      } : {}),
     };
 
     buyerRows.push(row);
@@ -602,6 +900,23 @@ async function persistBuyers(
   result.updated += buyerMapPairs.length;
 
   const contactRows: Record<string, unknown>[] = [];
+  const buyerAssignmentRows: Record<string, unknown>[] = [];
+  const pricebookExternalIds = [
+    ...new Set(
+      records
+        .map((rec) => asStr(rec.pricebook_id))
+        .filter((value): value is string => value !== null),
+    ),
+  ];
+  const pricebookIdMap = await resolveInternalIdsWithFallback(
+    admin,
+    tenantId,
+    integrationId,
+    'pricelists',
+    'price_lists',
+    pricebookExternalIds,
+  );
+
   for (const rec of records) {
     const externalId = asStr(rec.contact_id);
     if (!externalId) continue;
@@ -609,11 +924,14 @@ async function persistBuyers(
     const buyerId = buyerIdMap.get(externalId) ?? null;
     if (!buyerId) continue;
 
-    const embeddedContactPersons = Array.isArray((rec as Record<string, unknown>).contact_persons)
-      ? (rec as Record<string, unknown>).contact_persons as Record<string, unknown>[]
-      : [];
+    const embeddedContactPersons = asRecordArray((rec as Record<string, unknown>).contact_persons);
+    const contactPersons = embeddedContactPersons.length > 0
+      ? embeddedContactPersons
+      : adapter
+        ? await adapter.fetchContactPersons(externalId)
+        : [];
 
-    for (const cp of embeddedContactPersons) {
+    for (const cp of contactPersons) {
       const cpId = asStr(cp.contact_person_id);
       if (!cpId) continue;
 
@@ -629,8 +947,27 @@ async function persistBuyers(
         is_active: asBool(cp.is_active, true),
         created_by: actorId,
         updated_by: actorId,
-        ...(sanitizeZohoPhone(cp.phone) ? { phone: sanitizeZohoPhone(cp.phone) } : {}),
-        ...(sanitizeZohoPhone(cp.mobile) ? { mobile: sanitizeZohoPhone(cp.mobile) } : {}),
+        deleted_at: null,
+        ...(pickSanitizedPhone(cp.phone, cp.mobile) ? { phone: pickSanitizedPhone(cp.phone, cp.mobile) } : {}),
+      });
+    }
+
+    const pricebookExternalId = asStr(rec.pricebook_id);
+    const priceListId = pricebookExternalId ? pricebookIdMap.get(pricebookExternalId) ?? null : null;
+    if (priceListId) {
+      buyerAssignmentRows.push({
+        price_list_id: priceListId,
+        target_type: 'buyer',
+        target_id: buyerId,
+        external_ref: `zoho_buyer_pricebook:${buyerId}`,
+        source_payload: {
+          source: 'zoho_pricebook_assignment',
+          contact_id: externalId,
+          pricebook_id: pricebookExternalId,
+        },
+        created_by: actorId,
+        updated_by: actorId,
+        deleted_at: null,
       });
     }
   }
@@ -651,6 +988,38 @@ async function persistBuyers(
     batchUpsertEntityMap(admin, tenantId, integrationId, 'customers', buyerMapPairs),
     batchUpsertEntityMap(admin, tenantId, integrationId, 'contact_persons', contactMapPairs),
   ]);
+
+  const buyerIds = buyerMapPairs.map((row) => row.internalId);
+  const buyerUserIds = persistedContacts
+    .map((row) => asStr(row.id))
+    .filter((value): value is string => value !== null);
+
+  if (buyerIds.length > 0) {
+    await admin
+      .schema('app')
+      .from('price_list_assignments')
+      .update({
+        deleted_at: nowIso(),
+        updated_at: nowIso(),
+        updated_by: actorId,
+      })
+      .eq('target_type', 'buyer')
+      .in('target_id', buyerIds)
+      .like('external_ref', 'zoho_buyer_pricebook:%')
+      .is('deleted_at', null);
+  }
+
+  if (buyerAssignmentRows.length > 0) {
+    await bulkPersistJsonbRecords(
+      admin,
+      'price_list_assignments',
+      buyerAssignmentRows,
+      ['price_list_id', 'target_type', 'target_id', 'external_ref'],
+    );
+  }
+
+  await rebuildBuyerSearchVectors(admin, tenantId, buyerIds);
+  await rebuildBuyerUserSearchVectors(admin, buyerIds, buyerUserIds);
 
   return result;
 }
@@ -795,6 +1164,7 @@ async function persistProducts(
       base_selling_price: asNum(rec.rate),
       cost_price: asNum(rec.purchase_rate),
       mrp: asNum(rec.pricebook_rate),
+      gst_rate: pickNumber(rec.tax_percentage, rec.gst_rate),
       pack_size: pickNumber(rec.pack_size, rec.pack_quantity, rec.unit_conversion),
       image_urls: Array.isArray(rec.image_urls)
         ? rec.image_urls.filter((url): url is string => typeof url === 'string' && url.trim().length > 0)
@@ -816,6 +1186,8 @@ async function persistProducts(
         'unit',
         'hsn_or_sac',
         'hsn_sac',
+        'tax_percentage',
+        'gst_rate',
         'status',
         'brand',
         'manufacturer',
@@ -889,20 +1261,176 @@ async function persistProducts(
     await bulkPersistJsonbRecords(admin, 'tenant_inventory', inventoryRows, ['tenant_product_id', 'location_id']);
   }
 
+  await rebuildProductSearchVectors(
+    admin,
+    tenantId,
+    productMapPairs.map((row) => row.internalId),
+  );
+
+  return result;
+}
+
+async function persistPricelists(
+  admin: AdminClient,
+  tenantId: string,
+  actorId: string | null,
+  integrationId: string,
+  records: Record<string, unknown>[],
+  adapter?: ZohoAdapter,
+): Promise<PersistResult> {
+  const sourceRecords = records.length > 0
+    ? records
+    : adapter
+      ? await adapter.fetchPricelists()
+      : [];
+  const salesPricebooks = sourceRecords.filter(isSalesPricebook);
+  const result: PersistResult = {
+    created: 0,
+    updated: 0,
+    skipped: sourceRecords.length - salesPricebooks.length,
+  };
+
+  if (salesPricebooks.length === 0) {
+    return result;
+  }
+
+  const productExternalIds = [
+    ...new Set(
+      salesPricebooks.flatMap((pricebook) => (
+        getPricebookItemRows(pricebook)
+          .map((item) => pickString(item.item_id, item.product_id, item.item_external_id))
+          .filter((value): value is string => value !== null)
+      )),
+    ),
+  ];
+
+  const tenantProductIdMap = await resolveInternalIdsWithFallback(
+    admin,
+    tenantId,
+    integrationId,
+    'products',
+    'tenant_products',
+    productExternalIds,
+  );
+
+  const priceListRows: Record<string, unknown>[] = [];
+  for (const pricebook of salesPricebooks) {
+    const externalRef = asStr(pricebook.pricebook_id) ?? asStr(pricebook.pricelist_id);
+    if (!externalRef) {
+      result.skipped++;
+      continue;
+    }
+
+    priceListRows.push({
+      tenant_id: tenantId,
+      external_ref: externalRef,
+      name: pickString(pricebook.name, pricebook.pricebook_name) ?? `Zoho pricelist ${externalRef}`,
+      description: asStr(pricebook.description),
+      currency: pickString(pricebook.currency_code, pricebook.currency) ?? 'INR',
+      valid_from: asDate(pricebook.start_date ?? pricebook.valid_from ?? pricebook.created_time) ?? nowIso(),
+      valid_to: asDate(pricebook.end_date ?? pricebook.valid_to),
+      priority: asNum(pricebook.priority) ?? 0,
+      is_active: (asStr(pricebook.status) ?? 'active') === 'active',
+      pricing_strategy: normalizeZohoStrategy(pricebook.pricebook_type),
+      pricebook_type: asStr(pricebook.pricebook_type),
+      source_updated_at: asDate(pricebook.last_modified_time ?? pricebook.updated_time ?? pricebook.updated_at),
+      source_payload: pricebook,
+      created_by: actorId,
+      updated_by: actorId,
+      deleted_at: null,
+    });
+  }
+
+  const persistedPriceLists = priceListRows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'price_lists', priceListRows, ['tenant_id', 'external_ref'])
+    : [];
+  const priceListMapPairs = mapPersistedRowsByExternalRef(persistedPriceLists);
+  const priceListIdByExternalRef = new Map(priceListMapPairs.map((row) => [row.externalId, row.internalId] as const));
+
+  result.updated += priceListMapPairs.length;
+  await batchUpsertEntityMap(admin, tenantId, integrationId, 'pricelists', priceListMapPairs);
+
+  const priceListItemRows: Record<string, unknown>[] = [];
+  const desiredExternalRefsByPriceListId = new Map<string, Set<string>>();
+
+  for (const pricebook of salesPricebooks) {
+    const externalRef = asStr(pricebook.pricebook_id) ?? asStr(pricebook.pricelist_id);
+    if (!externalRef) continue;
+    const priceListId = priceListIdByExternalRef.get(externalRef) ?? null;
+    if (!priceListId) continue;
+
+    for (const item of getPricebookItemRows(pricebook)) {
+      const sourceProductId = pickString(item.item_id, item.product_id, item.item_external_id);
+      const tenantProductId = sourceProductId ? tenantProductIdMap.get(sourceProductId) ?? null : null;
+      if (!tenantProductId) continue;
+
+      const minQty = pickNumber(item.min_quantity, item.min_qty, item.from_quantity) ?? 1;
+      const itemExternalRef = `${externalRef}:${sourceProductId}:${minQty}`;
+      if (!desiredExternalRefsByPriceListId.has(priceListId)) {
+        desiredExternalRefsByPriceListId.set(priceListId, new Set());
+      }
+      desiredExternalRefsByPriceListId.get(priceListId)?.add(itemExternalRef);
+
+      priceListItemRows.push({
+        price_list_id: priceListId,
+        tenant_product_id: tenantProductId,
+        price: pickNumber(item.price, item.rate, item.pricebook_rate, item.selling_price) ?? 0,
+        min_qty: minQty,
+        max_qty: pickNumber(item.max_quantity, item.max_qty, item.to_quantity),
+        external_ref: itemExternalRef,
+        source_updated_at: asDate(item.last_modified_time ?? item.updated_time ?? pricebook.last_modified_time),
+        source_payload: item,
+        created_by: actorId,
+        updated_by: actorId,
+        deleted_at: null,
+      });
+    }
+  }
+
+  if (priceListItemRows.length > 0) {
+    await bulkPersistJsonbRecords(
+      admin,
+      'price_list_items',
+      priceListItemRows,
+      ['price_list_id', 'tenant_product_id', 'min_qty'],
+    );
+  }
+
+  const importedPriceListIds = priceListMapPairs.map((row) => row.internalId);
+  if (importedPriceListIds.length > 0) {
+    const { data: existingItems } = await admin
+      .schema('app')
+      .from('price_list_items')
+      .select('id, price_list_id, external_ref')
+      .in('price_list_id', importedPriceListIds)
+      .is('deleted_at', null);
+
+    const staleItemIds = (existingItems ?? [])
+      .filter((row: { id: string; price_list_id: string; external_ref: string | null }) => {
+        if (!row.external_ref) return false;
+        const desired = desiredExternalRefsByPriceListId.get(row.price_list_id);
+        return !desired?.has(row.external_ref);
+      })
+      .map((row: { id: string }) => row.id);
+
+    if (staleItemIds.length > 0) {
+      await admin
+        .schema('app')
+        .from('price_list_items')
+        .update({
+          deleted_at: nowIso(),
+          updated_at: nowIso(),
+          updated_by: actorId,
+        })
+        .in('id', staleItemIds)
+        .is('deleted_at', null);
+    }
+  }
+
   return result;
 }
 
 // ── Estimates ────────────────────────────────────────────────────────────────
-
-const ESTIMATE_STATUS_MAP: Record<string, string> = {
-  draft: 'draft',
-  sent: 'sent',
-  accepted: 'accepted',
-  declined: 'declined',
-  expired: 'expired',
-  invoiced: 'invoiced',
-  converted: 'invoiced',
-};
 
 async function persistEstimates(
   admin: AdminClient,
@@ -939,6 +1467,8 @@ async function persistEstimates(
     const locationExternalId = pickString(rec.location_id, rec.warehouse_id);
     const locationId = locationExternalId ? (locationIdMap.get(locationExternalId) ?? null) : null;
     const lineItems = Array.isArray(rec.line_items) ? rec.line_items as Record<string, unknown>[] : [];
+    const salespersonId = asStr(rec.salesperson_id);
+    const resolvedActorId = resolveImportedActorId(actorId, salespersonId);
     const cartHash = await sha256Hex(JSON.stringify({
       estimateId: externalId,
       buyerId,
@@ -951,7 +1481,7 @@ async function persistEstimates(
         itemId: pickString(li.item_id, li.product_id),
         qty: pickNumber(li.quantity, li.qty),
         unitPrice: pickNumber(li.rate, li.unit_price, li.price),
-        lineTotal: pickNumber(li.item_total, li.total, li.amount),
+        lineTotal: resolveLineTotal(li, 0),
         taxPct: pickNumber(li.tax_percentage, li.tax_rate),
         discPct: pickNumber(li.discount_percentage, li.disc_pct),
         schemeTag: pickString(li.scheme_tag, li.discount_type),
@@ -963,7 +1493,7 @@ async function persistEstimates(
       external_ref: externalId,
       buyer_id: buyerId,
       estimate_number: asStr(rec.estimate_number),
-      status: ESTIMATE_STATUS_MAP[asStr(rec.status) ?? ''] ?? 'draft',
+      status: asStr(rec.status) ?? 'draft',
       location_id: locationId,
       currency: asStr(rec.currency) ?? asStr(rec.currency_code) ?? 'INR',
       subtotal: pickNumber(rec.sub_total, rec.subtotal),
@@ -974,11 +1504,11 @@ async function persistEstimates(
       place_of_supply: pickString(rec.place_of_supply, rec.state, rec.billing_state, rec.shipping_state),
       cart_hash: cartHash,
       buyer_po_ref: pickString(rec.reference_number, rec.buyer_po_ref),
-      discount_flat: pickNumber(rec.discount_flat, rec.discount),
-      freight: pickNumber(rec.freight, rec.shipping_charge),
-      round_off: pickNumber(rec.round_off),
+      discount_flat: pickNumber(rec.discount_flat, rec.discount) ?? 0,
+      freight: pickNumber(rec.freight, rec.shipping_charge) ?? 0,
+      round_off: pickNumber(rec.round_off) ?? 0,
       valid_until: asDateOnly(rec.expiry_date),
-      date_issued: asDateOnly(rec.date_issued ?? rec.date ?? rec.created_time),
+      estimate_date: asDateOnly(rec.date_issued ?? rec.date ?? rec.created_time),
       expires_at: asDate(rec.expiry_date),
       sent_at: asDate(rec.sent_at ?? rec.date),
       created_at: asDate(rec.created_time ?? rec.date),
@@ -986,8 +1516,8 @@ async function persistEstimates(
       source: 'zoho_import',
       source_payload: buildTransactionalSourcePayload(rec),
       deleted_at: null,
-      created_by: actorId,
-      updated_by: actorId,
+      created_by: resolvedActorId,
+      updated_by: resolvedActorId,
     });
 
     parentRecords.push({
@@ -1031,14 +1561,16 @@ async function persistEstimates(
       const taxRate = pickNumber(li.tax_percentage, li.tax_rate);
       const discountPct = pickNumber(li.discount_percentage, li.disc_pct) ?? 0;
       const externalRef = await buildChildExternalRef(entry.estimateId, li, lineIndex);
+      const lineOrder = resolveLineOrder(li, lineIndex);
 
       lineItemRows.push({
         estimate_id: estimateId,
         tenant_product_id: productId,
         external_ref: externalRef,
+        item_order: lineOrder,
         qty: pickNumber(li.quantity, li.qty) ?? 1,
         unit_price: pickNumber(li.rate, li.unit_price, li.price) ?? 0,
-        line_total: pickNumber(li.item_total, li.total, li.amount),
+        line_total: resolveLineTotal(li, lineIndex),
         tax_rate: taxRate,
         tax_pct: taxRate,
         disc_pct: discountPct,
@@ -1050,8 +1582,8 @@ async function persistEstimates(
         deleted_at: null,
         created_at: asDate(li.created_time ?? li.created_at),
         updated_at: asDate(li.last_modified_time ?? li.updated_at ?? li.created_time),
-        created_by: actorId,
-        updated_by: actorId,
+        created_by: resolvedActorId,
+        updated_by: resolvedActorId,
       });
     }
   }
@@ -1062,17 +1594,6 @@ async function persistEstimates(
 }
 
 // ── Orders ───────────────────────────────────────────────────────────────────
-
-const ORDER_STATUS_MAP: Record<string, string> = {
-  draft: 'draft',
-  open: 'confirmed',
-  confirmed: 'confirmed',
-  void: 'cancelled',
-  cancelled: 'cancelled',
-  closed: 'delivered',
-  partially_invoiced: 'confirmed',
-  invoiced: 'delivered',
-};
 
 async function persistOrders(
   admin: AdminClient,
@@ -1114,14 +1635,16 @@ async function persistOrders(
       ? shippingAddr
       : null;
     const lineItems = Array.isArray(rec.line_items) ? rec.line_items as Record<string, unknown>[] : [];
+    const salespersonId = asStr(rec.salesperson_id);
+    const resolvedActorId = resolveImportedActorId(actorId, salespersonId);
 
     parentRows.push({
       tenant_id: tenantId,
       external_ref: externalId,
       buyer_id: buyerId,
-      placed_by: null,
+      placed_by: resolvedActorId,
       order_number: asStr(rec.salesorder_number) ?? externalId,
-      status: ORDER_STATUS_MAP[asStr(rec.status) ?? ''] ?? 'confirmed',
+      status: asStr(rec.status) ?? 'open',
       source: 'zoho_import',
       location_id: locationId,
       estimate_id: asStr(rec.estimate_id)
@@ -1134,11 +1657,12 @@ async function persistOrders(
       notes: pickString(rec.notes, rec.seller_note, rec.description),
       seller_note: pickString(rec.seller_note, rec.note),
       buyer_po_ref: pickString(rec.reference_number, rec.buyer_po_ref),
-      discount_flat: pickNumber(rec.discount_flat, rec.discount),
-      freight: pickNumber(rec.freight, rec.shipping_charge),
-      round_off: pickNumber(rec.round_off),
+      discount_flat: pickNumber(rec.discount_flat, rec.discount) ?? 0,
+      freight: pickNumber(rec.freight, rec.shipping_charge) ?? 0,
+      round_off: pickNumber(rec.round_off) ?? 0,
       has_backorder: asBool(rec.has_backorder ?? rec.backorder, false),
       expected_delivery: asDateOnly(rec.expected_delivery),
+      order_date: asDateOnly(rec.date ?? rec.created_time),
       placed_at: asDate(rec.date ?? rec.created_time),
       received_at: asDate(rec.received_at),
       confirmed_at: asDate(rec.confirmed_at),
@@ -1149,8 +1673,8 @@ async function persistOrders(
       updated_at: asDate(rec.last_modified_time ?? rec.updated_time ?? rec.created_time),
       source_payload: buildTransactionalSourcePayload(rec),
       deleted_at: null,
-      created_by: actorId,
-      updated_by: actorId,
+      created_by: resolvedActorId,
+      updated_by: resolvedActorId,
     });
 
     parentRecords.push({
@@ -1194,14 +1718,16 @@ async function persistOrders(
       const taxRate = pickNumber(li.tax_percentage, li.tax_rate);
       const discountPct = pickNumber(li.discount_percentage, li.disc_pct) ?? 0;
       const externalRef = await buildChildExternalRef(entry.orderExternalId, li, lineIndex);
+      const lineOrder = resolveLineOrder(li, lineIndex);
 
       lineItemRows.push({
         order_id: orderId,
         tenant_product_id: productId,
         external_ref: externalRef,
+        item_order: lineOrder,
         qty: pickNumber(li.quantity, li.qty) ?? 1,
         unit_price: pickNumber(li.rate, li.unit_price, li.price) ?? 0,
-        line_total: pickNumber(li.item_total, li.total, li.amount),
+        line_total: resolveLineTotal(li, lineIndex),
         tax_rate: taxRate,
         tax_pct: taxRate,
         disc_pct: discountPct,
@@ -1214,8 +1740,8 @@ async function persistOrders(
         deleted_at: null,
         created_at: asDate(li.created_time ?? li.created_at),
         updated_at: asDate(li.last_modified_time ?? li.updated_at ?? li.created_time),
-        created_by: actorId,
-        updated_by: actorId,
+        created_by: resolvedActorId,
+        updated_by: resolvedActorId,
       });
     }
   }
@@ -1226,16 +1752,6 @@ async function persistOrders(
 }
 
 // ── Invoices ─────────────────────────────────────────────────────────────────
-
-const INVOICE_STATUS_MAP: Record<string, string> = {
-  draft: 'draft',
-  sent: 'sent',
-  issued: 'sent',
-  partially_paid: 'sent',
-  paid: 'paid',
-  void: 'void',
-  overdue: 'overdue',
-};
 
 async function persistInvoices(
   admin: AdminClient,
@@ -1289,6 +1805,8 @@ async function persistInvoices(
       ? shippingAddr
       : null;
     const lineItems = Array.isArray(rec.line_items) ? rec.line_items as Record<string, unknown>[] : [];
+    const salespersonId = asStr(rec.salesperson_id);
+    const resolvedActorId = resolveImportedActorId(actorId, salespersonId);
 
     const total = asNum(rec.total) ?? 0;
     const balance = asNum(rec.balance) ?? 0;
@@ -1302,7 +1820,7 @@ async function persistInvoices(
       order_id: orderId,
       invoice_number: asStr(rec.invoice_number) ?? externalId,
       invoice_date: invoiceDate,
-      status: INVOICE_STATUS_MAP[asStr(rec.status) ?? ''] ?? 'sent',
+      status: asStr(rec.status) ?? 'sent',
       subtotal: pickNumber(rec.sub_total, rec.subtotal),
       tax_amount: pickNumber(rec.tax_total, rec.tax_amount),
       total_amount: total,
@@ -1314,17 +1832,17 @@ async function persistInvoices(
       notes_for_buyer: pickString(rec.notes_for_buyer, rec.notes),
       seller_note: pickString(rec.seller_note),
       buyer_po_ref: pickString(rec.reference_number, rec.buyer_po_ref),
-      discount_flat: pickNumber(rec.discount_flat, rec.discount),
-      freight: pickNumber(rec.freight, rec.shipping_charge),
-      round_off: pickNumber(rec.round_off),
+      discount_flat: pickNumber(rec.discount_flat, rec.discount) ?? 0,
+      freight: pickNumber(rec.freight, rec.shipping_charge) ?? 0,
+      round_off: pickNumber(rec.round_off) ?? 0,
       sent_at: asDate(rec.sent_at ?? rec.date),
       sent_channel: pickString(rec.sent_channel, rec.channel),
       created_at: asDate(rec.created_time ?? rec.date),
       updated_at: asDate(rec.last_modified_time ?? rec.updated_time ?? rec.created_time),
       source_payload: buildTransactionalSourcePayload(rec),
       deleted_at: null,
-      created_by: actorId,
-      updated_by: actorId,
+      created_by: resolvedActorId,
+      updated_by: resolvedActorId,
     });
 
     parentRecords.push({
@@ -1368,14 +1886,16 @@ async function persistInvoices(
       const taxRate = pickNumber(li.tax_percentage, li.tax_rate);
       const discountPct = pickNumber(li.discount_percentage, li.disc_pct) ?? 0;
       const externalRef = await buildChildExternalRef(entry.invoiceExternalId, li, lineIndex);
+      const lineOrder = resolveLineOrder(li, lineIndex);
 
       lineItemRows.push({
         invoice_id: invoiceId,
         tenant_product_id: productId,
         external_ref: externalRef,
+        item_order: lineOrder,
         qty: pickNumber(li.quantity, li.qty) ?? 1,
         unit_price: pickNumber(li.rate, li.unit_price, li.price) ?? 0,
-        line_total: pickNumber(li.item_total, li.total, li.amount),
+        line_total: resolveLineTotal(li, lineIndex),
         tax_rate: taxRate,
         tax_pct: taxRate,
         disc_pct: discountPct,
@@ -1387,8 +1907,8 @@ async function persistInvoices(
         deleted_at: null,
         created_at: asDate(li.created_time ?? li.created_at),
         updated_at: asDate(li.last_modified_time ?? li.updated_at ?? li.created_time),
-        created_by: actorId,
-        updated_by: actorId,
+        created_by: resolvedActorId,
+        updated_by: resolvedActorId,
       });
     }
   }
@@ -1412,14 +1932,21 @@ export async function persistZohoEntityPage(
 ): Promise<PersistResult> {
   switch (entityType) {
     case 'locations':
-      return persistLocations(admin, tenantId, actorId, integrationId, integrationTypeId, records);
+      return persistLocations(admin, tenantId, actorId, integrationId, integrationTypeId, records, adapter);
 
     case 'customers':
-      if (!adapter) throw new Error('adapter required for customers persister');
       return persistBuyers(admin, tenantId, actorId, integrationId, records, adapter);
 
-    case 'products':
-      return persistProducts(admin, tenantId, actorId, integrationId, records);
+    case 'products': {
+      const productResult = await persistProducts(admin, tenantId, actorId, integrationId, records);
+      const pricelistResult = adapter
+        ? await persistPricelists(admin, tenantId, actorId, integrationId, [], adapter)
+        : { created: 0, updated: 0, skipped: 0 };
+      return mergePersistResults(productResult, pricelistResult);
+    }
+
+    case 'pricelists':
+      return persistPricelists(admin, tenantId, actorId, integrationId, records, adapter);
 
     case 'estimates':
       return persistEstimates(admin, tenantId, actorId, integrationId, records);
