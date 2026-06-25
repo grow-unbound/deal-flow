@@ -90,7 +90,7 @@ function buildNewEstimateDraft(estimateNumber = 'Estimating next number...'): Es
     buyer_id: null,
     location_id: null,
     available_locations: [],
-    date_issued: isoDateOffset(0),
+    estimate_date: isoDateOffset(0),
     valid_until: isoDateOffset(14),
     buyer_po_ref: '',
     place_of_supply: '',
@@ -116,7 +116,7 @@ function snapshotPayload(document: EstimateComposerDocument, lines: EstimateComp
     estimate_number: document.estimate_number,
     buyer_id: document.buyer_id,
     location_id: document.location_id,
-    date_issued: document.date_issued,
+    estimate_date: document.estimate_date,
     valid_until: document.valid_until,
     buyer_po_ref: document.buyer_po_ref,
     place_of_supply: document.place_of_supply,
@@ -159,7 +159,7 @@ function toSavePayload(document: EstimateComposerDocument, lines: EstimateCompos
     estimate_number: document.estimate_number,
     buyer_id: document.buyer_id,
     location_id: document.location_id,
-    date_issued: document.date_issued,
+    estimate_date: document.estimate_date,
     valid_until: document.valid_until,
     buyer_po_ref: document.buyer_po_ref,
     place_of_supply: document.place_of_supply,
@@ -683,7 +683,7 @@ export function DocComposerEstimate({
             docNumber={documentState.estimate_number}
             locationId={documentState.location_id}
             availableLocations={documentState.available_locations}
-            dateIssued={documentState.date_issued}
+            dateIssued={documentState.estimate_date}
             secondDate={documentState.valid_until}
             buyerPoRef={documentState.buyer_po_ref}
             locationReadOnly={documentState.available_locations.length <= 1}
@@ -692,8 +692,8 @@ export function DocComposerEstimate({
                 if (!current) return current;
                 const bumped = bumpSecondDateAfterFirst(value, current.valid_until);
                 return bumped
-                  ? { ...current, date_issued: value, valid_until: bumped }
-                  : { ...current, date_issued: value };
+                  ? { ...current, estimate_date: value, valid_until: bumped }
+                  : { ...current, estimate_date: value };
               });
             }}
             onSecondDateChange={(value) => setDocumentPatch({ valid_until: value })}

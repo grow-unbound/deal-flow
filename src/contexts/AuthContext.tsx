@@ -97,6 +97,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setCurrentBuyerId(null);
   };
 
+  const redirectToLogin = () => {
+    if (typeof window === 'undefined') return;
+    window.location.replace('/login');
+  };
+
   const readSessionClaims = (activeSession: Session): SessionClaims => {
     const claims = decodeJwtPayloadClient(activeSession.access_token);
     const tenantId = typeof claims?.tenant_id === 'string' ? claims.tenant_id : null;
@@ -298,17 +303,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
       } else {
-        resetAuthState();
         const wasManualSignOut = manualSignOutRef.current;
         manualSignOutRef.current = false;
 
         if (
           event === 'SIGNED_OUT' &&
-          !wasManualSignOut &&
           typeof window !== 'undefined'
         ) {
+          if (wasManualSignOut) {
+            redirectToLogin();
+            return;
+          }
+
+          resetAuthState();
           window.location.assign(getSessionExpiredRedirectPath(window.location.pathname));
+          return;
         }
+
+        resetAuthState();
       }
     });
 
@@ -323,7 +335,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // This avoids a 403 blocking the logout flow.
       await supabase.auth.signOut({ scope: 'local' } as any);
     }
-    resetAuthState();
+    redirectToLogin();
   };
 
   const switchTenant = (tenantId: string) => {

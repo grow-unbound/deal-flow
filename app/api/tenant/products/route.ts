@@ -5,6 +5,7 @@ import { createTimer } from '@/lib/server-timing';
 import { z } from 'zod';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { PAGE_SIZE } from '@/lib/pagination';
+import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 
 const AddProductSchema = z.object({
   master_product_id: z.string().uuid('Invalid product ID').optional().nullable(),
@@ -56,6 +57,10 @@ export async function GET(req: NextRequest) {
     );
     const search = req.nextUrl.searchParams.get('search')?.trim() || null;
     const brandId = req.nextUrl.searchParams.get('brand_id') || null;
+    const brandParams = readArrayParam(req.nextUrl.searchParams, 'brand');
+    const categoryParams = readArrayParam(req.nextUrl.searchParams, 'category');
+    const statusParams = readArrayParam(req.nextUrl.searchParams, 'status');
+    const stockParams = readArrayParam(req.nextUrl.searchParams, 'stock');
 
     let productsQuery = db
       .schema('app')
@@ -64,6 +69,7 @@ export async function GET(req: NextRequest) {
         id,
         tenant_id,
         tenant_brand_id,
+        tenant_category_id,
         master_product_id,
         internal_sku,
         name_override,
@@ -128,6 +134,9 @@ export async function GET(req: NextRequest) {
     const tenantBrandIds = pageProducts
       .filter((r: { tenant_brand_id: string | null }) => r.tenant_brand_id)
       .map((r: { tenant_brand_id: string }) => r.tenant_brand_id);
+    const tenantCategoryIds = pageProducts
+      .filter((r: { tenant_category_id: string | null }) => r.tenant_category_id)
+      .map((r: { tenant_category_id: string }) => r.tenant_category_id);
 
     let masterProducts: Record<
       string,
@@ -142,6 +151,7 @@ export async function GET(req: NextRequest) {
       }
     > = {};
     let tenantBrands: Record<string, { id: string; display_name_override: string | null; master_brand_id: string | null }> = {};
+    let tenantCategories: Record<string, { id: string; name: string | null }> = {};
     let masterBrands: Record<string, { id: string; name: string }> = {};
 
     if (masterProductIds.length > 0) {
@@ -187,6 +197,16 @@ export async function GET(req: NextRequest) {
           .is('deleted_at', null);
         masterBrands = Object.fromEntries((masterBrandsData ?? []).map((row: { id: string }) => [row.id, row]));
       }
+    }
+
+    if (tenantCategoryIds.length > 0) {
+      const { data: tenantCategoryRows } = await db
+        .schema('app')
+        .from('tenant_categories')
+        .select('id, name')
+        .in('id', tenantCategoryIds)
+        .is('deleted_at', null);
+      tenantCategories = Object.fromEntries((tenantCategoryRows ?? []).map((row: { id: string }) => [row.id, row]));
     }
 
     const productIds = pageProducts.map((row: { id: string }) => row.id);
@@ -265,6 +285,7 @@ export async function GET(req: NextRequest) {
         id: string;
         tenant_id: string;
         tenant_brand_id: string | null;
+        tenant_category_id: string | null;
         master_product_id: string | null;
         internal_sku: string;
         name_override: string | null;
@@ -281,6 +302,7 @@ export async function GET(req: NextRequest) {
       }) => {
         const master = row.master_product_id ? masterProducts[row.master_product_id] : null;
         const tenantBrand = row.tenant_brand_id ? tenantBrands[row.tenant_brand_id] : null;
+        const tenantCategory = row.tenant_category_id ? tenantCategories[row.tenant_category_id] : null;
         const masterBrand = tenantBrand?.master_brand_id ? masterBrands[tenantBrand.master_brand_id] : null;
         const onHand = Math.max(0, Math.round(inventoryByProduct.get(row.id) ?? 0));
         const unitsMtd = Math.max(0, Math.round(unitsMtdByProduct.get(row.id) ?? 0));
@@ -302,7 +324,7 @@ export async function GET(req: NextRequest) {
           master_product: master ?? null,
           display_name: row.name_override ?? master?.name ?? row.internal_sku,
           brand_name: brandName,
-          category_name: master?.category_name ?? 'Uncategorized',
+          category_name: tenantCategory?.name ?? master?.category_name ?? 'Uncategorized',
           on_hand: onHand,
           days_cover: computedDaysCover,
           units_mtd: unitsMtd,
@@ -322,25 +344,38 @@ export async function GET(req: NextRequest) {
         return enriched;
       }
     );
-    const revenueMtd = products.reduce((sum: number, row: { gmv_mtd?: number }) => sum + Number(row.gmv_mtd ?? 0), 0);
-    const revenuePrev = products.reduce((sum: number, row: { id: string }) => sum + Number(gmvPrevByProduct.get(row.id) ?? 0), 0);
+    const brandOptions = Array.from(new Set(products.map((row: { brand_name?: string | null }) => row.brand_name).filter(Boolean) as string[])).sort();
+    const categoryOptions = Array.from(new Set(products.map((row: { category_name?: string | null }) => row.category_name).filter(Boolean) as string[])).sort();
+    const statusOptions = Array.from(new Set(products.map((row: { status_label?: string | null }) => row.status_label).filter(Boolean) as string[])).sort();
+    const filteredProducts = products.filter((row: { brand_name?: string | null; category_name?: string | null; status_label?: string | null; on_hand?: number; days_cover?: number }) => {
+      const brandMatch = brandParams.length === 0 || (row.brand_name ? brandParams.includes(row.brand_name) : false);
+      const categoryMatch = categoryParams.length === 0 || (row.category_name ? categoryParams.includes(row.category_name) : false);
+      const statusMatch = statusParams.length === 0 || (row.status_label ? statusParams.includes(row.status_label) : false);
+      const stockMatch =
+        stockParams.length === 0 ||
+        stockParams.some((value) => {
+          const onHand = Number(row.on_hand ?? 0);
+          const daysCover = Number(row.days_cover ?? 0);
+          if (value === 'Out of stock') return onHand === 0;
+          if (value === 'Low stock') return onHand > 0 && daysCover < 14;
+          if (value === 'In stock') return onHand > 0 && daysCover >= 14;
+          return false;
+        });
+      return brandMatch && categoryMatch && statusMatch && stockMatch;
+    });
+    const revenueMtd = filteredProducts.reduce((sum: number, row: { gmv_mtd?: number }) => sum + Number(row.gmv_mtd ?? 0), 0);
+    const revenuePrev = filteredProducts.reduce((sum: number, row: { id: string }) => sum + Number(gmvPrevByProduct.get(row.id) ?? 0), 0);
     const revenueGrowth = revenuePrev > 0 ? Math.round(((revenueMtd - revenuePrev) / revenuePrev) * 100) : revenueMtd > 0 ? 100 : 0;
-    const outOfStock = products.filter((row: { on_hand?: number }) => Number(row.on_hand ?? 0) === 0).length;
-    const lowStock = products.filter((row: { on_hand?: number; days_cover?: number }) => Number(row.on_hand ?? 0) > 0 && Number(row.days_cover ?? 0) < 14).length;
+    const outOfStock = filteredProducts.filter((row: { on_hand?: number }) => Number(row.on_hand ?? 0) === 0).length;
+    const lowStock = filteredProducts.filter((row: { on_hand?: number; days_cover?: number }) => Number(row.on_hand ?? 0) > 0 && Number(row.days_cover ?? 0) < 14).length;
 
-    const brandSet = new Set<string>();
-    for (const row of products) {
-      if (row.brand_name) brandSet.add(row.brand_name);
-    }
-    const brands = Array.from(brandSet).sort((a, b) => a.localeCompare(b));
-
-    const attention = products
+    const attention = filteredProducts
       .filter((row: { status_tone?: string; growth_pct?: number }) => row.status_tone === 'danger' || row.status_tone === 'warning' || Number(row.growth_pct ?? 0) < 0)
       .slice(0, 3);
-    const topPerformers = [...products]
+    const topPerformers = [...filteredProducts]
       .sort((a, b) => Number(b.gmv_mtd ?? 0) - Number(a.gmv_mtd ?? 0))
       .slice(0, 2);
-    const topRisers = [...products]
+    const topRisers = [...filteredProducts]
       .sort((a, b) => Number(b.growth_pct ?? 0) - Number(a.growth_pct ?? 0))
       .slice(0, 2);
 
@@ -366,15 +401,24 @@ export async function GET(req: NextRequest) {
       },
     });
 
+    const filters: LandingFilterMeta = {
+      groups: [
+        { key: 'brand', label: 'Brand', options: brandOptions.map((value) => ({ value, label: value })) },
+        { key: 'category', label: 'Category', options: categoryOptions.map((value) => ({ value, label: value })) },
+        { key: 'status', label: 'Status', options: statusOptions.map((value) => ({ value, label: value })) },
+        { key: 'stock', label: 'Stock', options: ['In stock', 'Low stock', 'Out of stock'].map((value) => ({ value, label: value })) },
+      ],
+    };
     return timedJson({
       period,
-      products,
-      brands,
+      products: filteredProducts,
+      brands: brandOptions,
+      filters,
       nextCursor,
-      total: (snapshotRow as { active_count?: number } | null)?.active_count ?? null,
+      total: filteredProducts.length,
       kpis: {
-        active_skus: (snapshotRow as { active_count?: number } | null)?.active_count ?? products.length,
-        total_skus: (snapshotRow as { total_count?: number } | null)?.total_count ?? products.length,
+        active_skus: filteredProducts.length,
+        total_skus: filteredProducts.length,
         archived_skus: archivedCount,
         out_of_stock: outOfStock,
         low_stock: lowStock,
@@ -433,7 +477,6 @@ export async function POST(req: NextRequest) {
       hsn_code,
       gst_rate,
       description,
-      category_name,
       tenant_category_id,
       attributes,
       image_urls,
@@ -516,7 +559,6 @@ export async function POST(req: NextRequest) {
         hsn_code: hsn_code ?? null,
         gst_rate: gst_rate ?? null,
         description: description ?? null,
-        category_name: category_name ?? null,
         tenant_category_id: tenant_category_id ?? null,
         attributes_override: attributes ?? {},
         image_urls: image_urls ?? [],

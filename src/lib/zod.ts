@@ -285,6 +285,8 @@ export const PriceListPricingStrategySchema = z.enum([
   'edit_each',
   'margin_from_mrp',
   'flat_off_base',
+  'per_item',
+  'percentage',
 ]);
 export type PriceListPricingStrategy = z.infer<typeof PriceListPricingStrategySchema>;
 

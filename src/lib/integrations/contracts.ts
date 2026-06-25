@@ -132,5 +132,10 @@ export interface IntegrationWebhookRequest {
   endpoint_token?: string | null;
   tenant_integration_id?: string | null;
   event_type?: string | null;
+  entity_type?: string | null;
+  provider_entity_id?: string | null;
+  external_ref?: string | null;
+  provider_timestamp?: string | null;
   payload?: unknown;
+  [key: string]: unknown;
 }

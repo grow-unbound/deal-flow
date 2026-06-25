@@ -168,15 +168,15 @@ export function LineItemEditor({ priceListId }: LineItemEditorProps) {
         <p className="text-cream-500 text-sm">No line items yet. Add a product above.</p>
       ) : (
         <ScrollableTableShell className="rounded-lg border border-cream-200 bg-white">
-          <table className="w-full min-w-max border-collapse text-base">
+          <table className="data-table w-full min-w-[900px] table-fixed border-collapse text-base">
             <thead>
               <tr className="border-b border-cream-200 bg-cream-100">
-                <th className="table-label px-4 py-3 text-left">Product</th>
-                <th className="table-label px-4 py-3 text-left">SKU</th>
-                <th className="table-label px-4 py-3 text-right">Price</th>
-                <th className="table-label px-4 py-3 text-right">Min Qty</th>
-                <th className="table-label px-4 py-3 text-right">Max Qty</th>
-                <th className="table-label w-12 px-4 py-3" />
+                <th className="table-label px-4 py-3 text-left" style={{ minWidth: '280px', maxWidth: '420px' }}>Product</th>
+                <th className="table-label px-4 py-3 text-left" style={{ minWidth: '160px', maxWidth: '260px' }}>SKU</th>
+                <th className="table-label px-4 py-3 text-right" style={{ minWidth: '110px', maxWidth: '140px' }}>Price</th>
+                <th className="table-label px-4 py-3 text-right" style={{ minWidth: '90px', maxWidth: '110px' }}>Min Qty</th>
+                <th className="table-label px-4 py-3 text-right" style={{ minWidth: '90px', maxWidth: '110px' }}>Max Qty</th>
+                <th className="table-label w-8 px-2 py-3" />
               </tr>
             </thead>
             <tbody>
@@ -189,8 +189,12 @@ export function LineItemEditor({ priceListId }: LineItemEditorProps) {
 
                 return (
                   <tr key={item.id} className="border-b border-cream-100 bg-white transition-colors hover:bg-cream-50">
-                    <td className="px-4 py-3 font-medium text-cream-900">{productName}</td>
-                    <td className="px-4 py-3 text-base text-cream-600">{sku}</td>
+                    <td className="px-4 py-3 font-medium text-cream-900">
+                      <span className="block truncate">{productName}</span>
+                    </td>
+                    <td className="px-4 py-3 text-base text-cream-600">
+                      <span className="block truncate">{sku}</span>
+                    </td>
                     <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-cream-900">
                       {item.price.toFixed(2)}
                     </td>
@@ -200,11 +204,11 @@ export function LineItemEditor({ priceListId }: LineItemEditorProps) {
                     <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-cream-700">
                       {item.max_qty != null ? item.max_qty : '—'}
                     </td>
-                    <td className="px-4 py-3 text-right align-middle">
+                    <td className="px-2 py-3 text-right align-middle">
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-auto p-1 text-red-500 hover:bg-red-50 hover:text-red-700"
+                        className="h-8 w-8 p-0 text-red-500 hover:bg-red-50 hover:text-red-700"
                         onClick={() => deleteItem.mutate(item.id)}
                         disabled={deleteItem.isPending}
                         aria-label="Remove item"

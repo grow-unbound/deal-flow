@@ -1,4 +1,8 @@
-import { Search, ChevronDown } from 'lucide-react';
+'use client';
+
+import * as React from 'react';
+import { createPortal } from 'react-dom';
+import { ChevronDown, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
@@ -7,7 +11,23 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-interface FilterBarProps {
+type FilterValue = string;
+
+export interface FilterBarOption {
+  value: FilterValue;
+  label: string;
+  disabled?: boolean;
+}
+
+export interface FilterBarGroup {
+  key: string;
+  label: string;
+  options: FilterBarOption[];
+  values: FilterValue[];
+  onChange: (values: FilterValue[]) => void;
+}
+
+interface LegacyFilterBarProps {
   count: string;
   searchPlaceholder: string;
   chips: string[];
@@ -19,6 +39,68 @@ interface FilterBarProps {
   onChipChange?: (chip: string) => void;
   sortOptions?: string[];
   onSortChange?: (option: string) => void;
+}
+
+interface FilterBarProps extends LegacyFilterBarProps {
+  groups?: FilterBarGroup[];
+}
+
+interface MenuPosition {
+  top: number;
+  left: number;
+  width: number;
+  maxHeight: number;
+}
+
+function useOutsideDismiss(
+  openKey: string | null,
+  setOpenKey: (value: string | null) => void,
+  extraRef?: React.RefObject<HTMLElement | null>,
+) {
+  const ref = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!ref.current || !openKey) return;
+      const target = event.target as Node;
+      const clickedInsideRoot = ref.current.contains(target);
+      const clickedInsideExtra = extraRef?.current?.contains(target) ?? false;
+      if (!clickedInsideRoot && !clickedInsideExtra) {
+        setOpenKey(null);
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [extraRef, openKey, setOpenKey]);
+
+  return ref;
+}
+
+function describeSelection(group: FilterBarGroup): string {
+  if (group.values.length === 0) return 'All';
+  if (group.values.length === 1) {
+    return group.options.find((option) => option.value === group.values[0])?.label ?? group.values[0];
+  }
+
+  const labels = group.values
+    .map((value) => group.options.find((option) => option.value === value)?.label ?? value)
+    .filter(Boolean);
+  if (labels.length <= 2) return labels.join(', ');
+  return `${labels.slice(0, 2).join(', ')} +${labels.length - 2}`;
+}
+
+function normalizeLegacyGroups(props: LegacyFilterBarProps): FilterBarGroup[] {
+  const allLabel = props.chips[0] ?? 'All';
+  return [
+    {
+      key: 'legacy-filter',
+      label: 'Filter',
+      options: props.chips.map((chip) => ({ value: chip, label: chip })),
+      values: props.activeChip && props.activeChip !== allLabel ? [props.activeChip] : [],
+      onChange: (values) => props.onChipChange?.(values[0] ?? allLabel),
+    },
+  ];
 }
 
 export function FilterBar({
@@ -33,60 +115,224 @@ export function FilterBar({
   onChipChange,
   sortOptions,
   onSortChange,
+  groups,
 }: FilterBarProps) {
+  const activeGroups = groups ?? normalizeLegacyGroups({
+    count,
+    searchPlaceholder,
+    chips,
+    activeChip,
+    sortBy,
+    hideViewToggle,
+    searchValue,
+    onSearchChange,
+    onChipChange,
+    sortOptions,
+    onSortChange,
+  });
+
+  const [openKey, setOpenKey] = React.useState<string | null>(null);
+  const triggerRefs = React.useRef(new Map<string, HTMLButtonElement | null>());
+  const panelRef = React.useRef<HTMLDivElement | null>(null);
+  const rootRef = useOutsideDismiss(openKey, setOpenKey, panelRef);
+  const [panelPosition, setPanelPosition] = React.useState<MenuPosition | null>(null);
+
+  const updatePanelPosition = React.useCallback(() => {
+    if (!openKey) {
+      setPanelPosition(null);
+      return;
+    }
+
+    const trigger = triggerRefs.current.get(openKey);
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const viewportPadding = 8;
+    const width = rect.width;
+    const left = Math.max(
+      viewportPadding,
+      Math.min(rect.left, window.innerWidth - width - viewportPadding),
+    );
+    const top = rect.bottom + 2;
+    const maxHeight = Math.max(180, window.innerHeight - top - viewportPadding);
+
+    setPanelPosition({ top, left, width, maxHeight });
+  }, [openKey]);
+
+  React.useLayoutEffect(() => {
+    if (!openKey) {
+      setPanelPosition(null);
+      return;
+    }
+
+    updatePanelPosition();
+
+    const handleReposition = () => updatePanelPosition();
+    window.addEventListener('resize', handleReposition);
+    window.addEventListener('scroll', handleReposition, true);
+
+    return () => {
+      window.removeEventListener('resize', handleReposition);
+      window.removeEventListener('scroll', handleReposition, true);
+    };
+  }, [openKey, updatePanelPosition]);
+
+  React.useEffect(() => {
+    if (openKey && !activeGroups.some((group) => group.key === openKey)) {
+      setOpenKey(null);
+    }
+  }, [activeGroups, openKey]);
+
+  const clearAllFilters = React.useCallback(() => {
+    activeGroups.forEach((group) => group.onChange([]));
+    setOpenKey(null);
+  }, [activeGroups]);
+  const allSelected = activeGroups.every((group) => group.values.length === 0);
+  const openGroup = activeGroups.find((group) => group.key === openKey) ?? null;
+
   return (
-    <section className="mt-5 flex flex-wrap items-center gap-3 rounded-t-[14px] border border-cream-300 border-b-0 bg-cream-50 px-3 py-[10px]">
-      <div className="relative inline-flex flex-[0_0_280px] items-center gap-2 rounded-[8px] border border-cream-300 bg-white px-[10px] py-[6px] text-cream-700">
-        <Search size={14} className="pointer-events-none text-cream-600" />
-        <input
-          className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-cream-900 placeholder:text-cream-600 focus:outline-none focus:ring-0"
-          placeholder={searchPlaceholder}
-          aria-label={searchPlaceholder}
-          value={searchValue}
-          onChange={(event) => onSearchChange?.(event.target.value)}
-        />
-      </div>
-      <div className="inline-flex items-center gap-1.5">
-        {chips.map((chip) => (
+    <section
+      ref={rootRef}
+      className="mt-5 rounded-t-[14px] border border-cream-300 border-b-0 bg-cream-50 px-3 py-[10px]"
+    >
+      <div className="flex w-full flex-nowrap items-center gap-2 overflow-visible">
+        <div className="relative inline-flex h-9 min-w-[176px] flex-[0_1_220px] items-center gap-2 rounded-[10px] border border-cream-300 bg-white px-[10px] text-cream-700">
+          <Search size={14} className="pointer-events-none text-cream-600" />
+          <input
+            className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-cream-900 placeholder:text-cream-600 focus:outline-none focus:ring-0"
+            placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder}
+            value={searchValue}
+            onChange={(event) => onSearchChange?.(event.target.value)}
+          />
+        </div>
+
+        <div className="flex min-w-0 flex-1 items-center justify-start gap-2 overflow-x-auto">
           <button
-            key={chip}
             type="button"
-            onClick={() => onChipChange?.(chip)}
+            onClick={clearAllFilters}
             className={cn(
-              'whitespace-nowrap rounded-full border border-cream-400 bg-white px-[11px] py-1 text-sm text-cream-800 transition-colors hover:bg-cream-100',
-              chip === activeChip && 'border-ember-200 bg-ember-50 text-cream-900 hover:bg-ember-50'
+              'inline-flex h-9 shrink-0 items-center rounded-full border px-3 text-sm transition-colors',
+              'border-cream-400 bg-white text-cream-800 hover:bg-cream-100',
+              allSelected && 'border-ember-200 bg-ember-50 text-cream-900 hover:bg-ember-50',
             )}
           >
-            {chip}
+            All
           </button>
-        ))}
+          {activeGroups.map((group) => {
+            const isOpen = openKey === group.key;
+            const triggerLabel = group.label ? `${group.label}: ${describeSelection(group)}` : describeSelection(group);
+            return (
+              <div key={group.key} className="relative shrink-0">
+                <button
+                  ref={(node) => {
+                    triggerRefs.current.set(group.key, node);
+                  }}
+                  type="button"
+                  onClick={() => setOpenKey(isOpen ? null : group.key)}
+                  className={cn(
+                    'inline-flex h-9 items-center gap-2 rounded-full border px-3 text-sm text-cream-800 transition-colors hover:bg-cream-100',
+                    'border-cream-400 bg-white',
+                    group.values.length > 0 && 'border-ember-300 bg-ember-50 text-cream-900',
+                    isOpen && 'border-ember-300 bg-ember-50',
+                  )}
+                  >
+                  <span className="font-medium">{triggerLabel}</span>
+                  <ChevronDown size={14} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="hidden shrink-0 justify-center xl:flex">
+          <p className="whitespace-nowrap text-sm text-cream-700">{count}</p>
+        </div>
+
+        {sortOptions ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex h-9 shrink-0 items-center gap-1 rounded-[10px] border border-cream-400 bg-white px-3 text-sm text-cream-800 hover:bg-cream-100">
+              <span className="text-cream-700">Sort</span>
+              <span className="font-semibold">{sortBy}</span>
+              <ChevronDown size={14} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[220px] border-cream-300">
+              {sortOptions.map((option) => (
+                <DropdownMenuItem
+                  key={option}
+                  onClick={() => onSortChange?.(option)}
+                  className={cn(option === sortBy && 'bg-cream-100 font-medium text-cream-900')}
+                >
+                  {option}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+
+        {!hideViewToggle ? (
+          <button type="button" className="hidden h-9 shrink-0 rounded-md border border-cream-200 px-2 text-sm text-cream-700 xl:inline-flex">
+            View
+          </button>
+        ) : null}
       </div>
-      <div className="flex flex-1 justify-center">
-        <p className="text-sm text-cream-700">{count}</p>
-      </div>
-      <DropdownMenu>
-        <DropdownMenuTrigger className="inline-flex items-center gap-1 rounded-[8px] border border-cream-400 bg-white px-[10px] py-[5px] text-sm text-cream-800 hover:bg-cream-100">
-          <span className="text-cream-700">Sort</span>
-          <span>{sortBy}</span>
-          <ChevronDown size={14} />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-[220px] border-cream-300">
-          {(sortOptions ?? [sortBy]).map((option) => (
-            <DropdownMenuItem
-              key={option}
-              onClick={() => onSortChange?.(option)}
-              className={cn(option === sortBy && 'bg-cream-100 font-medium text-cream-900')}
-            >
-              {option}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-      {!hideViewToggle ? (
-        <button type="button" className="rounded-md border border-cream-200 px-2 py-1 text-sm text-cream-700">
-          View
-        </button>
-      ) : null}
+
+      {openGroup && panelPosition
+        ? createPortal(
+          <div
+            ref={panelRef}
+            role="menu"
+            className="fixed z-[70] overflow-hidden rounded-[10px] border border-cream-300 bg-white shadow-lg"
+            style={{
+              top: panelPosition.top,
+              left: panelPosition.left,
+              width: panelPosition.width,
+              maxHeight: panelPosition.maxHeight,
+            }}
+          >
+            <div className="max-h-full overflow-y-auto p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  openGroup.onChange([]);
+                  setOpenKey(null);
+                }}
+                className={cn(
+                  'flex w-full items-center rounded-[8px] px-2 py-1.5 text-left text-sm transition-colors hover:bg-cream-50',
+                  openGroup.values.length === 0 && 'font-medium text-cream-900',
+                )}
+              >
+                All
+              </button>
+              {openGroup.options.map((option) => {
+                const checked = openGroup.values.includes(option.value);
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    disabled={option.disabled}
+                    onClick={() =>
+                      {
+                        openGroup.onChange([option.value]);
+                        setOpenKey(null);
+                      }
+                    }
+                    className={cn(
+                      'flex w-full items-center rounded-[8px] px-2 py-1.5 text-left text-sm transition-colors hover:bg-cream-50',
+                      option.disabled && 'cursor-not-allowed opacity-50',
+                    )}
+                  >
+                    <span className={cn('min-w-0 flex-1', checked && 'font-medium text-cream-900')}>
+                      {option.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>,
+          document.body,
+        )
+        : null}
     </section>
   );
 }

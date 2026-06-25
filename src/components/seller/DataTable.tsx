@@ -14,6 +14,8 @@ export interface Column<T> {
   accessor?: (row: T) => React.ReactNode;
   sortable?: boolean;
   width?: string;
+  minWidth?: string;
+  maxWidth?: string;
   align?: 'left' | 'center' | 'right';
 }
 
@@ -78,7 +80,7 @@ function DataTable<T extends { id: string }>({
   return (
     <div className={cn('w-full', className)}>
       <ScrollableTableShell className="rounded-[14px] border border-cream-300 bg-white shadow-xs">
-        <table className="w-full min-w-max border-collapse bg-white text-base text-cream-900">
+        <table className="data-table w-full min-w-[960px] table-fixed border-collapse bg-white text-base text-cream-900">
           <thead>
             <tr className="border-b border-cream-400 bg-cream-50">
               {selectable && (
@@ -94,9 +96,9 @@ function DataTable<T extends { id: string }>({
               {columns.map((col) => (
                 <th
                   key={String(col.key)}
-                  style={{ width: col.width }}
+                  style={{ width: col.width, minWidth: col.minWidth, maxWidth: col.maxWidth }}
                   className={cn(
-                    'table-label px-4 py-3 text-left whitespace-nowrap',
+                    'table-label px-4 py-3 text-left whitespace-nowrap overflow-hidden text-ellipsis',
                     col.align === 'center' && 'text-center',
                     col.align === 'right' && 'text-right',
                     col.sortable && 'cursor-pointer select-none hover:text-cream-900 transition-colors'
@@ -162,7 +164,7 @@ function DataTable<T extends { id: string }>({
                     <td
                       key={String(col.key)}
                       className={cn(
-                        'px-4 py-[13px] align-middle',
+                        'px-4 py-[13px] align-middle overflow-hidden',
                         col.align === 'center' && 'text-center',
                         col.align === 'right' && 'text-right'
                       )}

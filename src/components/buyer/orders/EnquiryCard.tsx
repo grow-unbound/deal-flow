@@ -1,6 +1,7 @@
 'use client';
 
-import * as React from 'react';
+import { ActivityCardShell } from './ActivityCardShell';
+import type { StatusTone } from '@/components/ui/status-pill';
 
 export interface EstimateSummary {
   id: string;
@@ -33,13 +34,13 @@ function formatDate(iso: string): string {
 
 type EnquiryStatusKey = 'pending' | 'accepted' | 'declined';
 
-const statusBadge: Record<EnquiryStatusKey, { bg: string; fg: string; label: string }> = {
-  pending:  { bg: 'var(--info-50)',    fg: 'var(--info-500)',    label: 'Pending' },
-  accepted: { bg: 'var(--success-50)', fg: 'var(--success-500)', label: 'Accepted' },
-  declined: { bg: 'var(--danger-50)',  fg: 'var(--danger-500)',  label: 'Declined' },
+const statusBadge: Record<EnquiryStatusKey, { tone: StatusTone; label: string }> = {
+  pending:  { tone: 'info', label: 'Pending' },
+  accepted: { tone: 'success', label: 'Accepted' },
+  declined: { tone: 'danger', label: 'Declined' },
 };
 
-function getBadge(status: string): { bg: string; fg: string; label: string } {
+function getBadge(status: string): { tone: StatusTone; label: string } {
   return (
     statusBadge[status as EnquiryStatusKey] ?? statusBadge.pending
   );
@@ -50,71 +51,13 @@ export function EnquiryCard({ estimate }: EnquiryCardProps) {
   const docNumber = estimate.estimate_number ?? `ENQ-${estimate.id.slice(0, 6).toUpperCase()}`;
 
   return (
-    <div
-      style={{
-        background: 'var(--bg-surface)',
-        border: '1px solid var(--border-1)',
-        borderRadius: 12,
-        padding: '12px 14px',
-        cursor: 'pointer',
-      }}
-    >
-      {/* Row 1: estimate number + status badge */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span
-          style={{
-            fontSize: 'var(--b-text-body)',
-            fontFamily: 'var(--font-mono)',
-            color: 'var(--fg-1)',
-            letterSpacing: '0.02em',
-          }}
-        >
-          {docNumber}
-        </span>
-        <span
-          style={{
-            fontSize: 'var(--b-text-eyebrow)',
-            fontWeight: 600,
-            padding: '2px 8px',
-            borderRadius: 100,
-            background: badge.bg,
-            color: badge.fg,
-          }}
-        >
-          {badge.label}
-        </span>
-      </div>
-
-      {/* Row 2: notes (if any) + date */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span
-          style={{
-            fontSize: 'var(--b-text-sub)',
-            color: 'var(--fg-3)',
-            maxWidth: '60%',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {estimate.notes ?? '—'}
-        </span>
-        <span style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}><span className="tabular-inline">{formatDate(estimate.created_at)}</span></span>
-      </div>
-
-      {/* Row 3: total */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <span
-          style={{
-            fontSize: 'var(--b-text-header)',
-            fontFamily: 'var(--font-mono)',
-            fontWeight: 600,
-            color: 'var(--fg-1)',
-          }}
-        >
-          {inr(estimate.total_amount)}
-        </span>
-      </div>
-    </div>
+    <ActivityCardShell
+      documentNumber={docNumber}
+      statusLabel={badge.label}
+      statusTone={badge.tone}
+      middleLeft={estimate.notes ?? '—'}
+      middleRight={<span className="tabular-inline">{formatDate(estimate.created_at)}</span>}
+      amount={<span className="tabular-inline">{inr(estimate.total_amount)}</span>}
+    />
   );
 }

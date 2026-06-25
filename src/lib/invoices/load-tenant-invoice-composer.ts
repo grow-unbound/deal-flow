@@ -63,7 +63,7 @@ export async function loadInvoiceDocument(
     db
       .schema('app')
       .from('invoice_items')
-      .select('id, tenant_product_id, sku, qty, unit_price, disc_pct, tax_pct, line_total, scheme_tag')
+      .select('id, tenant_product_id, sku, qty, unit_price, disc_pct, tax_pct, line_total, item_order, scheme_tag')
       .eq('invoice_id', id)
       .is('deleted_at', null),
     db.schema('app').from('tenants').select('id, primary_state').eq('id', tenantId).maybeSingle(),
@@ -189,6 +189,7 @@ export async function loadInvoiceDocument(
       disc_pct: Number(row.disc_pct ?? 0),
       tax_pct: Number(row.tax_pct ?? product?.gst_rate ?? master?.gst_rate ?? 0),
       line_total: Number(row.line_total ?? 0),
+      item_order: Number(row.item_order ?? index + 1),
       scheme_tag: (row.scheme_tag as string | null | undefined) ?? null,
     };
   });

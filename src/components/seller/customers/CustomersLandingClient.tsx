@@ -10,6 +10,7 @@ import { FeatureGate } from '@/components/FeatureGate';
 import {
   EntityAvatar,
   FilterBar,
+  type FilterBarGroup,
   GrowthPill,
   InsightStrip4,
   LandingTable,
@@ -28,6 +29,7 @@ import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSna
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import {
   useCustomersLandingInfinite,
+  useCustomersLanding,
   type CustomersLandingBuyer,
   type CustomersLandingResponse,
 } from '@/hooks/useCustomersLanding';
@@ -46,10 +48,7 @@ const AddCustomerDialog = dynamic(
 );
 
 type SortOption = 'Spend (high → low)' | 'Spend (low → high)' | 'Growth (high → low)' | 'Recent activity';
-type Chip = 'All tiers' | 'Tier A' | 'Tier B' | 'Dormant' | 'Has dues';
-
 const SORT_OPTIONS: SortOption[] = ['Spend (high → low)', 'Spend (low → high)', 'Growth (high → low)', 'Recent activity'];
-const CHIPS: Chip[] = ['All tiers', 'Tier A', 'Tier B', 'Dormant', 'Has dues'];
 
 function formatDate(value: string | null) {
   if (!value) return 'Never';
@@ -165,25 +164,32 @@ function CustomersLandingContent({
   const router = useRouter();
   const { creditEnabled } = useBusinessPolicy();
   const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
+  const summaryQuery = useCustomersLanding(period, initialData);
+  const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-customers-landing',
     scopeKey: period,
     initialState: {
-      activeChip: 'All tiers' as Chip,
+      filters: {
+        status: [] as string[],
+        due: [] as string[],
+        city: [] as string[],
+        state: [] as string[],
+      },
       sortBy: 'Spend (high → low)' as SortOption,
       search: '',
     },
   });
-  const activeChip = routeState.activeChip;
+  const filters = routeState.filters ?? { status: [], due: [], city: [], state: [] };
   const sortBy = routeState.sortBy;
   const search = routeState.search;
 
   const debouncedSearch = useDebounce(search, 300);
   const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useCustomersLandingInfinite(
     period,
-    { search: debouncedSearch },
+    { search: debouncedSearch, ...filters },
   );
   const { sentinelRef } = useInfiniteScroll({
     hasMore: hasNextPage ?? false,
@@ -197,29 +203,12 @@ function CustomersLandingContent({
     ready: !isLoading,
   });
 
-  const firstPage = data?.pages[0];
-  const allBuyers = useMemo(() => data?.pages.flatMap((p) => p.buyers) ?? [], [data?.pages]);
-  const total = (firstPage as { total?: number | null } | undefined)?.total ?? firstPage?.kpis?.total ?? allBuyers.length;
+  const firstPage = data?.pages?.[0];
+  const allBuyers = useMemo(() => data?.pages?.flatMap((p) => p.buyers) ?? [], [data?.pages]);
+  const filteredTotal = (firstPage as { total?: number | null } | undefined)?.total ?? firstPage?.kpis?.total ?? allBuyers.length;
 
   const filtered = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase();
-    return allBuyers
-      .filter((buyer) => {
-        if (activeChip === 'Tier A') return buyer.tier === 'A';
-        if (activeChip === 'Tier B') return buyer.tier === 'B';
-        if (activeChip === 'Dormant') return buyer.status.label === 'Dormant';
-        if (activeChip === 'Has dues') return buyer.dues > 0;
-        return true;
-      })
-      .filter((buyer) => {
-        if (!q) return true;
-        return (
-          buyer.business_name.toLowerCase().includes(q) ||
-          buyer.city.toLowerCase().includes(q) ||
-          buyer.cohort.toLowerCase().includes(q)
-        );
-      })
-      .sort((a, b) => {
+    return [...allBuyers].sort((a, b) => {
         if (sortBy === 'Spend (high → low)') return b.spend_mtd - a.spend_mtd;
         if (sortBy === 'Spend (low → high)') return a.spend_mtd - b.spend_mtd;
         if (sortBy === 'Growth (high → low)') return b.growth_pct - a.growth_pct;
@@ -227,15 +216,25 @@ function CustomersLandingContent({
         const bDate = b.last_order_at ? Date.parse(b.last_order_at) : 0;
         return bDate - aDate;
       });
-  }, [allBuyers, activeChip, debouncedSearch, sortBy]);
+  }, [allBuyers, sortBy]);
 
   if (isLoading && !data) {
     return <CustomersLoadingSkeleton />;
   }
   if (!data) return <CustomersLoadingSkeleton />;
   const showRefreshingState = isLoading && !data;
-  const kpis = firstPage?.kpis;
-  const callouts = firstPage?.callouts;
+  const kpis = summaryData?.kpis;
+  const callouts = summaryData?.callouts;
+  const groups: FilterBarGroup[] = (summaryData?.filters?.groups ?? []).map((group) => ({
+    key: group.key,
+    label: group.label,
+    options: group.options,
+    values: filters[group.key as keyof typeof filters] ?? [],
+    onChange: (values) => setRouteState((current) => ({
+      ...current,
+      filters: { ...(current.filters ?? filters), [group.key]: values },
+    })),
+  }));
 
   return (
     <PageWrap>
@@ -333,15 +332,15 @@ function CustomersLandingContent({
       />
 
       <FilterBar
-        count={`Showing ${filtered.length} of ${total}`}
+        count={`Showing ${filtered.length} of ${filteredTotal}`}
         searchPlaceholder="Search buyer, city, GSTIN…"
-        chips={CHIPS}
-        activeChip={activeChip}
+        chips={[]}
+        activeChip=""
         sortBy={sortBy}
         hideViewToggle
+        groups={groups}
         searchValue={search}
         onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-        onChipChange={(chip) => setRouteState((current) => ({ ...current, activeChip: chip as Chip }))}
         sortOptions={SORT_OPTIONS}
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
@@ -353,10 +352,10 @@ function CustomersLandingContent({
         emptyState={
           <EmptyState
             icon={<Users size={28} strokeWidth={1.5} />}
-            heading={search.trim() || activeChip !== 'All tiers' ? 'No matching customers' : 'No customers yet'}
+            heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching customers' : 'No customers yet'}
             description={
-              search.trim() || activeChip !== 'All tiers'
-                ? 'Try a different search or tier filter.'
+              search.trim() || groups.some((group) => group.values.length > 0)
+                ? 'Try a different search or filter combination.'
                 : 'Add your first customer to start customer groups and pricing.'
             }
             action={
@@ -368,14 +367,14 @@ function CustomersLandingContent({
           />
         }
         columns={[
-          { label: 'Buyer', width: 320, className: 'px-5' },
-          { label: 'Customer group', className: 'px-5' },
-          { label: `Spend · ${metricSuffix}`, className: 'px-5' },
-          { label: 'Growth', className: 'px-5' },
-          { label: 'Orders', className: 'px-5' },
-          { label: 'Last order', className: 'px-5' },
+          { label: 'Buyer', minWidth: 260, className: 'px-5' },
+          { label: 'Customer group', minWidth: 160, className: 'px-5' },
+          { label: `Spend · ${metricSuffix}`, align: 'right', minWidth: 140, className: 'px-5' },
+          { label: 'Growth', minWidth: 120, className: 'px-5' },
+          { label: 'Orders', align: 'right', minWidth: 100, className: 'px-5' },
+          { label: 'Last order', minWidth: 140, className: 'px-5' },
           ...(creditEnabled ? [{ label: 'Credit', className: 'px-5' }] : []),
-          { label: 'Status', className: 'px-5' },
+          { label: 'Status', minWidth: 160, className: 'px-5' },
           { width: 40, className: 'px-4' },
         ]}
       >
@@ -398,14 +397,23 @@ function CustomersLandingContent({
                         <span className="ml-2 rounded bg-ember-50 px-1.5 text-xs font-medium uppercase tracking-[0.06em] text-ember-700">{tier}</span>
                       ) : null}
                     </p>
-                    <p className="ent-sub mt-0.5 truncate text-xs uppercase tracking-[0.05em] text-cream-500">{buyer.city}</p>
+                    <p className="ent-sub mt-0.5 truncate text-xs uppercase tracking-[0.05em] text-cream-500">
+                      {buyer.city}{buyer.phone ? ` · ${buyer.phone}` : ''}
+                    </p>
                   </div>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-sm text-cream-800">{buyer.cohort}</td>
-              <td className="px-5 py-3.5"><span className="font-display text-md font-medium tabular-nums text-cream-900">{formatCompactInr(buyer.spend_mtd)}</span></td>
+              <td className="px-5 py-3.5 text-sm text-cream-800">
+                <div>
+                  <p>{buyer.cohort}</p>
+                  <p className="mt-1 text-xs text-cream-500">{buyer.active_price_list ?? 'No price list'}</p>
+                </div>
+              </td>
+              <td className="px-5 py-3.5 text-right">
+                <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatCompactInr(buyer.spend_mtd)}</span>
+              </td>
               <td className="px-5 py-3.5"><GrowthPill value={buyer.growth_pct} /></td>
-              <td className="px-5 py-3.5 font-mono text-base tabular-nums text-cream-900">{buyer.orders_mtd}</td>
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{buyer.orders_mtd}</td>
               <td className="px-5 py-3.5 text-sm text-cream-800"><span className="tabular-inline">{formatDate(buyer.last_order_at)}</span></td>
               {creditEnabled ? (
                 <td className="px-5 py-3.5">

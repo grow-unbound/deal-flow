@@ -53,8 +53,8 @@ const TYPE_TO_FAMILY_FLAG: Record<IntegrationTypeId, keyof typeof FLAGS> = {
 };
 
 const TYPE_TO_ENTITIES: Record<IntegrationTypeId, IntegrationEntityType[]> = {
-  zoho_books: ['locations', 'products', 'customers', 'orders', 'invoices'],
-  zoho_inventory: ['locations', 'products', 'customers', 'orders'],
+  zoho_books: ['locations', 'products', 'pricelists', 'customers', 'orders', 'invoices'],
+  zoho_inventory: ['locations', 'products', 'pricelists', 'customers', 'orders'],
   tally_prime: ['products', 'customers', 'orders'],
   busy: ['products', 'customers', 'orders'],
 };

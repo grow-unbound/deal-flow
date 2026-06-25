@@ -20,6 +20,21 @@ function Row({ label, value, mono = false }: { label: string; value: string; mon
   );
 }
 
+function formatAddress(value: Record<string, unknown> | null | undefined) {
+  if (!value) return '—';
+  const parts = [
+    value.address,
+    value.street,
+    value.city,
+    value.state,
+    value.zip,
+    value.country,
+  ]
+    .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
+    .map((part) => part.trim());
+  return parts.length > 0 ? parts.join(', ') : '—';
+}
+
 export function CustomerDetailsTab({ id: _id, details, onEdit }: CustomerDetailsTabProps) {
   const { isSellerAdmin } = useRole();
   const { creditEnabled } = useBusinessPolicy();
@@ -42,6 +57,8 @@ export function CustomerDetailsTab({ id: _id, details, onEdit }: CustomerDetails
           <Row label="Phone" value={details.phone ?? '—'} mono />
           <Row label="Email" value={details.email ?? '—'} />
           <Row label="GSTIN" value={details.gstin ?? '—'} mono />
+          <Row label="GST treatment" value={details.gst_treatment ?? '—'} />
+          <Row label="Zoho status" value={details.zoho_status ?? '—'} />
           <Row label="ERP ID" value={details.external_ref ?? '—'} mono />
         </div>
       </article>
@@ -54,6 +71,8 @@ export function CustomerDetailsTab({ id: _id, details, onEdit }: CustomerDetails
             <Row label="State" value={details.state ?? '—'} />
             <Row label="Pincode" value={details.pincode ?? '—'} mono />
             <Row label="Zone" value={details.zone ?? '—'} />
+            <Row label="Billing address" value={formatAddress(details.billing_address)} />
+            <Row label="Shipping address" value={formatAddress(details.shipping_address)} />
           </div>
         </article>
 
@@ -75,10 +94,29 @@ export function CustomerDetailsTab({ id: _id, details, onEdit }: CustomerDetails
               label="Customer group assignment"
               value={details.cohorts.length ? details.cohorts.join(', ') : '—'}
             />
+            <Row label="Price list assignment" value={details.assigned_price_list ?? '—'} />
             <Row label="Status" value={details.is_active ? 'Active' : 'Inactive'} />
           </div>
         </article>
       </div>
+
+      <article className="rounded-[14px] border border-cream-300 bg-white p-5">
+        <h3 className="font-display text-md text-cream-950">Buyer users</h3>
+        <div className="mt-4 grid grid-cols-2 gap-4">
+          {details.contacts.length > 0 ? details.contacts.map((contact) => (
+            <div key={contact.id} className="rounded-[12px] border border-cream-200 bg-cream-50 p-4">
+              <p className="text-base font-medium text-cream-900">{contact.name}</p>
+              <p className="mt-1 text-sm text-cream-700">
+                {[contact.designation, contact.department].filter(Boolean).join(' · ') || '—'}
+              </p>
+              <p className="mt-2 font-mono text-sm text-cream-800">{contact.phone ?? '—'}</p>
+              <p className="text-sm text-cream-700">{contact.email ?? '—'}</p>
+            </div>
+          )) : (
+            <p className="text-sm text-cream-700">No buyer users synced yet.</p>
+          )}
+        </div>
+      </article>
     </section>
   );
 }

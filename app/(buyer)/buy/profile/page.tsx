@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BriefcaseBusiness, Check, ChevronRight, HelpCircle, LogOut, Phone, Wallet } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { apiFetch, apiPatch } from '@/lib/api-fetch';
 import { formatWhatsappDestination } from '@/lib/phone';
@@ -396,7 +395,6 @@ function CreditLimitSheet({
 }
 
 export default function ProfilePage() {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const { data, isLoading, isError } = useBuyerMe();
   const { effectiveBuyerRole } = useBuyerSession();
@@ -481,7 +479,6 @@ export default function ProfilePage() {
     try {
       setLogoutPending(true);
       await signOut();
-      router.replace('/login');
     } catch {
       toast.error('Failed to log out. Please try again.');
     } finally {

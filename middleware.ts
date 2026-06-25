@@ -21,7 +21,7 @@ const PUBLIC_PREFIXES = [
 ];
 
 function isPublicRoute(pathname: string): boolean {
-  return PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
+  return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
 function extractSubdomain(hostname: string): string | null {

@@ -8,7 +8,7 @@ interface TenantProductRow {
   name_override: string | null;
   tenant_brand_id: string | null;
   master_product_id: string | null;
-  category_name: string | null;
+  tenant_category_id: string | null;
   mrp: number | null;
   base_selling_price: number | null;
   created_at: string;
@@ -79,7 +79,7 @@ export async function getCatalogComposerPayload(db: any, tenantId: string) {
     db
       .schema('app')
       .from('tenant_products')
-      .select('id, internal_sku, name_override, tenant_brand_id, master_product_id, category_name, mrp, base_selling_price, created_at')
+      .select('id, internal_sku, name_override, tenant_brand_id, master_product_id, tenant_category_id, mrp, base_selling_price, created_at')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
@@ -134,7 +134,8 @@ export async function getCatalogComposerPayload(db: any, tenantId: string) {
   const allOrderIds = Array.from(new Set([...recentOrderIds, ...monthOrderIds]));
 
   // Phase 2: queries that depend on phase-1 IDs. Run in parallel.
-  const [cohortMembersRes, orderItemsRes, inventoryRes] = await Promise.all([
+  const tenantCategoryIds = Array.from(new Set(products.map((p) => p.tenant_category_id).filter(Boolean))) as string[];
+  const [cohortMembersRes, orderItemsRes, inventoryRes, tenantCategoriesRes] = await Promise.all([
     cohortIds.length > 0
       ? db
           .schema('app')
@@ -158,11 +159,20 @@ export async function getCatalogComposerPayload(db: any, tenantId: string) {
           .in('tenant_product_id', productIds)
           .is('deleted_at', null)
       : Promise.resolve({ data: [], error: null }),
+    tenantCategoryIds.length > 0
+      ? db
+          .schema('app')
+          .from('tenant_categories')
+          .select('id, name')
+          .in('id', tenantCategoryIds)
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   if (cohortMembersRes.error) throw dbErr('catalog-composer: cohort_members', cohortMembersRes.error);
   if (orderItemsRes.error) throw dbErr('catalog-composer: order_items', orderItemsRes.error);
   if (inventoryRes.error) throw dbErr('catalog-composer: tenant_inventory', inventoryRes.error);
+  if (tenantCategoriesRes.error) throw dbErr('catalog-composer: tenant_categories', tenantCategoriesRes.error);
 
   const cohortMembers = (cohortMembersRes.data ?? []) as CohortMemberRow[];
   const orderItems = (orderItemsRes.data ?? []) as OrderItemRow[];
@@ -214,6 +224,7 @@ export async function getCatalogComposerPayload(db: any, tenantId: string) {
 
   // Build lookup maps. Sum qty across locations; keep the latest stock update per product.
   const inventoryByProductId = new Map<string, InventoryRow>();
+  const tenantCategoryNameById = new Map(((tenantCategoriesRes.data ?? []) as Array<{ id: string; name: string | null }>).map((category) => [category.id, category.name]));
   for (const row of (inventoryRes.data ?? []) as InventoryRow[]) {
     const existing = inventoryByProductId.get(row.tenant_product_id);
     if (!existing) {
@@ -264,7 +275,7 @@ export async function getCatalogComposerPayload(db: any, tenantId: string) {
         ? brand.display_name_override ?? masterBrandById.get(brand.master_brand_id) ?? 'Unknown brand'
         : 'Unknown brand';
       const categoryName =
-        product.category_name?.trim() ||
+        (product.tenant_category_id ? tenantCategoryNameById.get(product.tenant_category_id) ?? null : null) ||
         (product.master_product_id ? categoryNameByMasterProductId.get(product.master_product_id) ?? null : null);
       const unitsMtd = unitsMtdByProductId.get(product.id) ?? 0;
       const dailyRunRate = unitsMtd > 0 ? unitsMtd / daysElapsed : 0;

@@ -22,15 +22,6 @@ vi.mock('@/components/buyer/layout/BuyerNotificationDrawer', () => ({
   BuyerNotificationDrawer: () => null,
 }));
 
-vi.mock('@/components/buyer/layout/BuyerHomeLandingHeader', () => ({
-  BuyerHomeLandingHeader: ({ greetingLine, title }: { greetingLine: string; title: string }) => (
-    <div>
-      <p>{greetingLine}</p>
-      <h1>{title}</h1>
-    </div>
-  ),
-}));
-
 vi.mock('@/hooks/useInfiniteScroll', () => ({
   useInfiniteScroll: () => ({ sentinelRef: { current: null } }),
 }));
@@ -80,12 +71,15 @@ describe('buyer home page', () => {
 
     render(<HomePage />);
 
-    expect(await screen.findByText('Your shelf, this month.')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Your shelf, this month.' })).toHaveStyle({ fontSize: 'var(--b-text-page-sm)' });
+    expect(screen.getByRole('button', { name: /notifications/i })).toHaveClass('h-12', 'w-12');
     expect(screen.getByText('Latest promotions')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /browse all/i })).toHaveAttribute('href', '/buy/buy-again');
     expect(screen.getByRole('link', { name: /see all/i })).toHaveAttribute('href', '/buy/promotions');
     expect(screen.getByRole('link', { name: /see orders/i })).toHaveAttribute('href', '/buy/orders?tab=orders');
     expect(screen.queryByText('Your distributor')).not.toBeInTheDocument();
+    expect(screen.getByText('SO-001')).toBeInTheDocument();
+    expect(screen.getByText('Sales order')).toBeInTheDocument();
 
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(1));
   });
