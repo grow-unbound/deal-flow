@@ -82,7 +82,7 @@ export async function loadTenantSalesOrderComposer(
   const { data: itemRowsRaw, error: itemsError } = await d
     .schema('app')
     .from('order_items')
-    .select('id, tenant_product_id, qty, unit_price, tax_rate, line_total, disc_pct, tax_pct, scheme_tag, on_hand_at_confirm')
+    .select('id, tenant_product_id, qty, unit_price, tax_rate, line_total, disc_pct, tax_pct, item_order, scheme_tag, on_hand_at_confirm')
     .eq('order_id', orderId)
     .is('deleted_at', null);
 
@@ -207,6 +207,7 @@ export async function loadTenantSalesOrderComposer(
       disc_pct: Number(row.disc_pct ?? 0),
       tax_pct: taxPct,
       line_total: lineTotal,
+      item_order: Number(row.item_order ?? index + 1),
       scheme_tag: (row.scheme_tag as string | null | undefined) ?? null,
     };
   });

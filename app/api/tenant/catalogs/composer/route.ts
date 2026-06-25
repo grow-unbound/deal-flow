@@ -3,6 +3,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
 import { getCatalogComposerPayload } from '@/lib/server/catalog-composer';
+import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
 
 export async function GET(request: NextRequest) {
   const timer = createTimer();
@@ -22,12 +23,9 @@ export async function GET(request: NextRequest) {
     return timedJson({ error: 'Forbidden' }, { status: 403 });
   }
 
-  if (!supabaseAdmin) {
-    return timedJson({ error: 'Server configuration error' }, { status: 500 });
-  }
-
   try {
-    const payload = await getCatalogComposerPayload(supabaseAdmin as any, claims.tenant_id);
+    const db = supabaseAdmin ?? getRequestSupabaseClient();
+    const payload = await getCatalogComposerPayload(db as any, claims.tenant_id);
     return timedJson(payload);
   } catch (error: any) {
     console.error('[GET /api/tenant/catalogs/composer] failed for tenant=%s code=%s message=%s', claims.tenant_id, error?.code ?? 'n/a', error?.message ?? String(error));

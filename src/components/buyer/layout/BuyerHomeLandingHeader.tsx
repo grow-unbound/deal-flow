@@ -43,13 +43,13 @@ export function BuyerHomeLandingHeader({
                   {greetingLine}
                 </p>
                 <h1
-                  className="mt-2 font-semibold leading-[0.95] text-[var(--cream-900)]"
-                  style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-page)', letterSpacing: '-0.025em' }}
+                  className="mt-1.5 font-semibold leading-[0.96] text-[var(--cream-900)]"
+                  style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-page-sm)', letterSpacing: '-0.022em' }}
                 >
                   {title}
                 </h1>
                 {previewNote ? (
-                  <p className="mt-2 max-w-[30rem] font-medium leading-6 tracking-[-0.01em] text-[var(--cream-500)]" style={{ fontSize: 'var(--b-text-body)' }}>
+                  <p className="mt-1.5 max-w-[30rem] font-medium leading-5 tracking-[-0.01em] text-[var(--cream-500)]" style={{ fontSize: 'var(--b-text-sub)' }}>
                     {previewNote}
                   </p>
                 ) : null}
@@ -60,7 +60,7 @@ export function BuyerHomeLandingHeader({
         </div>
 
         {collapsed ? (
-          <div className="px-5 py-3">
+          <div className="px-5 py-2.5">
             <p
               className="truncate font-semibold tracking-[-0.015em] text-[var(--cream-900)]"
               style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-header)' }}

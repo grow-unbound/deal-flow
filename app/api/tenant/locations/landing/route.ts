@@ -32,7 +32,7 @@ function getCity(address: unknown): string {
   return '';
 }
 
-export async function getLocationsLandingPayload(
+async function getLocationsLandingPayload(
   tenantId: string,
   periodInput?: string | null,
 ): Promise<LocationsLandingResponse> {
@@ -76,13 +76,42 @@ export async function getLocationsLandingPayload(
 
   if (locationsRes.error) throw locationsRes.error;
 
-  const rawLocations: Array<{ id: string; name: string; type: string; address: unknown; deleted_at: string | null }> =
+  const rawLocations:
+    Array<{ id: string; name: string; type: string; address: unknown; deleted_at: string | null }> =
     locationsRes.data ?? [];
   const snapshots: Array<Record<string, unknown>> = snapshotRes.data ?? [];
   const currentOrders: Array<{ id: string; location_id: string | null; buyer_id: string; total_amount: number }> =
     currentOrdersRes.data ?? [];
   const prevOrders: Array<{ id: string; location_id: string | null; total_amount: number }> =
     prevOrdersRes.data ?? [];
+
+  const locationIds = rawLocations.map((loc) => loc.id);
+  let extraById = new Map<
+    string,
+    { phone_number: string | null; status: 'active' | 'inactive' | null }
+  >();
+  if (locationIds.length > 0) {
+    try {
+      const { data: extraRows } = await db
+        .schema('app')
+        .from('locations')
+        .select('id, phone_number, status')
+        .eq('tenant_id', tenantId)
+        .in('id', locationIds);
+      extraById = new Map(
+        (extraRows ?? []).map((row: Record<string, unknown>) => [
+          String(row.id),
+          {
+            phone_number: typeof row.phone_number === 'string' ? row.phone_number : null,
+            status:
+              row.status === 'active' || row.status === 'inactive' ? row.status : null,
+          },
+        ]),
+      );
+    } catch {
+      // Compatibility with older deployments where the new columns do not exist yet.
+    }
+  }
 
   // Index snapshots by location_id
   const snapshotByLocation = new Map<string, Record<string, unknown>>();
@@ -113,6 +142,7 @@ export async function getLocationsLandingPayload(
   // Build rows
   const rows: LocationsLandingRow[] = rawLocations.map((loc) => {
     const snap = snapshotByLocation.get(loc.id);
+    const extra = extraById.get(loc.id);
     const gmv_mtd = gmvMtdByLocation.get(loc.id) ?? 0;
     const gmv_prev = gmvPrevByLocation.get(loc.id) ?? 0;
     const oos = Number(snap?.oos_sku_count ?? 0);
@@ -127,6 +157,7 @@ export async function getLocationsLandingPayload(
       name: loc.name,
       type: loc.type,
       city: getCity(loc.address),
+      phone_number: extra?.phone_number ?? null,
       initials: getInitials(loc.name),
       gmv_mtd,
       gmv_prev,

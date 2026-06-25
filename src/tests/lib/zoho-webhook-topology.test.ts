@@ -4,6 +4,11 @@ import {
   buildIntegrationDataFlowRows,
   getIntegrationWebhookDefinitions,
 } from '@/lib/integrations/definitions';
+import {
+  buildZohoWebhookRegistrationPayload,
+  buildZohoWorkflowRegistrationPayload,
+  resolveZohoWebhookEventType,
+} from '@/lib/integrations/zoho-webhooks';
 
 describe('Zoho entity-scoped webhook topology', () => {
   it('registers a distinct Zoho Books webhook contract for every supported entity', () => {
@@ -40,5 +45,33 @@ describe('Zoho entity-scoped webhook topology', () => {
     expect(flows.find((flow) => flow.entity_type === 'estimates')?.webhook_id).toBe('estimates-webhook');
     expect(flows.find((flow) => flow.entity_type === 'orders')?.webhook_id).toBe('orders-webhook');
     expect(flows.find((flow) => flow.entity_type === 'invoices')?.webhook_id).toBe('invoices-webhook');
+  });
+
+  it('builds a default full-entity payload contract with the shared request header', () => {
+    const payload = buildZohoWebhookRegistrationPayload({
+      webhookUrl: 'https://example.com/functions/v1/integrations-webhook/token-123',
+      entityType: 'contacts',
+      providerEntity: 'customer',
+      secret: 'abcdefghijkl',
+      ruleType: 'add_edit',
+    });
+
+    expect(payload.headers).toEqual([{ param_name: 'x-zoho-webhook-token', param_value: 'abcdefghijkl' }]);
+    expect(payload).not.toHaveProperty('body_type');
+    expect(payload).not.toHaveProperty('is_new_response_format');
+    expect(payload).not.toHaveProperty('raw_data');
+  });
+
+  it('stamps workflow event metadata and resolves add/edit callbacks to create or update results', () => {
+    const workflow = buildZohoWorkflowRegistrationPayload({
+      entityType: 'items',
+      providerEntity: 'item',
+      webhookId: 'wh_123',
+      ruleType: 'add_edit',
+    });
+
+    expect(workflow.instant_actions[0]).toEqual({ action_id: 'wh_123', action_type: 'webhook' });
+    expect(resolveZohoWebhookEventType('items', 'item.add_edit', 'create')).toBe('item.created');
+    expect(resolveZohoWebhookEventType('items', 'item.add_edit', 'update')).toBe('item.updated');
   });
 });

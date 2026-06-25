@@ -3,6 +3,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const getVerifiedClaimsMock = vi.fn();
 const getFlagMock = vi.fn();
 const getCohortComposerPayloadMock = vi.fn();
+const getRequestSupabaseClientMock = vi.fn();
+const state = {
+  supabaseAdmin: { schema: vi.fn() },
+};
 
 vi.mock('@/lib/auth', () => ({
   getVerifiedClaims: (...args: unknown[]) => getVerifiedClaimsMock(...args),
@@ -17,7 +21,13 @@ vi.mock('@/lib/server/cohort-composer', () => ({
 }));
 
 vi.mock('@/lib/supabase', () => ({
-  supabaseAdmin: { schema: vi.fn() },
+  get supabaseAdmin() {
+    return state.supabaseAdmin;
+  },
+}));
+
+vi.mock('@/lib/server/request-supabase', () => ({
+  getRequestSupabaseClient: (...args: unknown[]) => getRequestSupabaseClientMock(...args),
 }));
 
 import { GET } from '../../../app/api/cohorts/composer/route';
@@ -27,6 +37,8 @@ describe('cohort composer route', () => {
     getVerifiedClaimsMock.mockReset();
     getFlagMock.mockReset();
     getCohortComposerPayloadMock.mockReset();
+    getRequestSupabaseClientMock.mockReset();
+    state.supabaseAdmin = { schema: vi.fn() };
   });
 
   it('returns seller composer payload with buyer metrics', async () => {
@@ -81,5 +93,20 @@ describe('cohort composer route', () => {
     const res = await GET(new Request('http://localhost/api/cohorts/composer') as any);
 
     expect(res.status).toBe(403);
+  });
+
+  it('falls back to request-scoped supabase when the service key is unavailable', async () => {
+    state.supabaseAdmin = null;
+    const requestDb = { schema: vi.fn() };
+    getVerifiedClaimsMock.mockResolvedValue({ tenant_id: 'tenant-a', role: 'seller_admin' });
+    getFlagMock.mockResolvedValue(true);
+    getRequestSupabaseClientMock.mockReturnValue(requestDb);
+    getCohortComposerPayloadMock.mockResolvedValue({ buyers: [], filters: { geographies: [], tiers: [], last_order_buckets: [], gmv_90d_buckets: [] } });
+
+    const res = await GET(new Request('http://localhost/api/cohorts/composer') as any);
+
+    expect(res.status).toBe(200);
+    expect(getRequestSupabaseClientMock).toHaveBeenCalledTimes(1);
+    expect(getCohortComposerPayloadMock).toHaveBeenCalledWith(requestDb, 'tenant-a');
   });
 });

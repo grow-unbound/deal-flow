@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient, useInfiniteQuery, keepPreviousDa
 import { toast } from 'sonner';
 
 import { apiFetch, apiPatch } from '@/lib/api-fetch';
+import { appendArrayParam } from '@/lib/landing-filter-params';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import { getSellerLandingInitialData, type SellerLandingPeriod } from '@/lib/seller-period';
 import type { InvoiceComposerDocument, InvoiceComposerSavePayload } from '@/types/invoice-composer';
@@ -138,7 +139,10 @@ export function useTenantInvoices(period: SellerLandingPeriod = 'month', initial
 
 export interface InvoicesInfiniteFilters {
   search?: string;
-  status?: string; // filter_chip value
+  source?: string[];
+  status?: string[];
+  due?: string[];
+  location_id?: string[];
 }
 
 export interface TenantInvoicesPage extends TenantInvoicesResponse {
@@ -156,7 +160,10 @@ export function useTenantInvoicesInfinite(
       const params = new URLSearchParams({ period });
       if (pageParam) params.set('cursor', pageParam as string);
       if (filters.search?.trim()) params.set('search', filters.search.trim());
-      if (filters.status && filters.status !== 'All') params.set('status', filters.status.toLowerCase());
+      appendArrayParam(params, 'source', filters.source);
+      appendArrayParam(params, 'status', filters.status);
+      appendArrayParam(params, 'due', filters.due);
+      appendArrayParam(params, 'location_id', filters.location_id);
       const res = await apiFetch(`/api/tenant/invoices?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch invoices');
       return res.json() as Promise<TenantInvoicesPage>;

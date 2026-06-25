@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { getInAppCreateFlags } from '@/lib/server/seller-features';
 import { effectiveInvoiceStatus } from '@/lib/invoice-status';
 import { loadInvoiceDocument } from '@/lib/invoices/load-tenant-invoice-composer';
 import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
@@ -15,6 +16,7 @@ import {
 import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
 import { PAGE_SIZE } from '@/lib/pagination';
+import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 
 type DbClient = any;
 import type {
@@ -58,6 +60,7 @@ interface BuyerRow {
 interface OrderRow {
   id: string;
   order_number: string;
+  source?: string | null;
 }
 
 interface EstimateRow {
@@ -186,6 +189,10 @@ export async function GET(request: NextRequest) {
       Number(searchParams.get('limit') || PAGE_SIZE.SELLER),
       PAGE_SIZE.MAX,
     );
+    const sourceParams = readArrayParam(searchParams, 'source');
+    const statusParams = readArrayParam(searchParams, 'status');
+    const dueParams = readArrayParam(searchParams, 'due');
+    const locationParams = readArrayParam(searchParams, 'location_id');
 
     const [{ data: invoiceRows, error: invErr }] =
       await Promise.all([
@@ -227,7 +234,7 @@ export async function GET(request: NextRequest) {
 
     const [{ data: orderRows }, { data: estimateRows }] = await Promise.all([
       linkedOrderIds.length > 0
-        ? db.schema('app').from('orders').select('id, order_number').in('id', linkedOrderIds).is('deleted_at', null)
+        ? db.schema('app').from('orders').select('id, order_number, source').in('id', linkedOrderIds).is('deleted_at', null)
         : Promise.resolve({ data: [] as OrderRow[], error: null }),
       linkedEstimateIds.length > 0
         ? db.schema('app').from('estimates').select('id, estimate_number').in('id', linkedEstimateIds).is('deleted_at', null)
@@ -263,6 +270,9 @@ export async function GET(request: NextRequest) {
     const orderById = new Map(orders.map((o) => [o.id, o]));
     const estimateById = new Map(estimates.map((e) => [e.id, e]));
 
+    const availableLocations = await loadAccessibleSellerLocations(db as any, claims.tenant_id, claims);
+    const locationNameById = new Map(availableLocations.map((location) => [location.id, location.name]));
+
     const inCurrent = pageRows.filter((r) => inPeriod(r.invoice_date, period.current_start, period.current_end_exclusive));
     const inPrevious = pageRows.filter((r) => inPeriod(r.invoice_date, period.previous_start, period.previous_end_exclusive));
     const invoiceIds = inCurrent.map((row) => row.id);
@@ -294,10 +304,19 @@ export async function GET(request: NextRequest) {
       const meta = statusPresentation(effective);
       const createdByLabel = creatorMap.get(row.created_by ?? '') ?? 'Team member';
       const linked = buildLinked(row, orderById, estimateById);
+      const linkedOrder = row.order_id ? orderById.get(row.order_id) : null;
       const sourceLabel = linked.type === 'direct' ? 'seller_app' : linked.label;
       const sourceDetail = linked.type === 'direct' ? `Created by ${createdByLabel}` : `Converted by ${createdByLabel}`;
+      const sourceCategory =
+        linked.type === 'direct'
+          ? 'Direct'
+          : linkedOrder?.source === 'buyer_app'
+            ? 'Buyer App'
+            : 'Converted';
       return {
         id: row.id,
+        location_id: row.location_id,
+        location_name: row.location_id ? locationNameById.get(row.location_id) ?? null : null,
         invoice_number: row.invoice_number,
         buyer_id: row.buyer_id,
         buyer_name: buyerName,
@@ -324,12 +343,22 @@ export async function GET(request: NextRequest) {
           filter_chip: meta.filter_chip,
         },
         linked,
+        source_category: sourceCategory,
       };
     });
+    const filteredRows = landingRows.filter((row) => {
+      const sourceMatch = sourceParams.length === 0 || sourceParams.includes((row as typeof row & { source_category: string }).source_category);
+      const statusMatch = statusParams.length === 0 || statusParams.includes(row.status.label);
+      const dueMatch =
+        dueParams.length === 0 ||
+        dueParams.some((value) => (value === 'Overdue' ? row.status.value === 'overdue' : row.outstanding_amount > 0 && row.status.value !== 'overdue' && row.status.value !== 'void'));
+      const locationMatch = locationParams.length === 0 || (row.location_id ? locationParams.includes(row.location_id) : false);
+      return sourceMatch && statusMatch && dueMatch && locationMatch;
+    });
 
-    const invoicesThisPeriod = landingRows.length;
+    const invoicesThisPeriod = filteredRows.length;
     const invoicesPrevPeriod = inPrevious.length;
-    const gmvThisPeriod = landingRows
+    const gmvThisPeriod = filteredRows
       .filter((row) => row.status.value !== 'draft' && row.status.value !== 'void')
       .reduce((sum, row) => sum + row.total_amount, 0);
     const gmvPrevPeriod = inPrevious
@@ -340,8 +369,8 @@ export async function GET(request: NextRequest) {
       .filter((row) => row.effective !== 'draft' && row.effective !== 'void')
       .reduce((sum, row) => sum + row.total_amount, 0);
     const aov = invoicesThisPeriod > 0 ? gmvThisPeriod / invoicesThisPeriod : 0;
-    const overdueRows = landingRows.filter((row) => row.status.value === 'overdue');
-    const outstandingRows = landingRows.filter((row) => row.outstanding_amount > 0 && row.status.value !== 'void');
+    const overdueRows = filteredRows.filter((row) => row.status.value === 'overdue');
+    const outstandingRows = filteredRows.filter((row) => row.outstanding_amount > 0 && row.status.value !== 'void');
     const overdueCount = overdueRows.length;
     const overdueSum = overdueRows.reduce((sum, row) => sum + row.outstanding_amount, 0);
     const outstandingCount = outstandingRows.length;
@@ -360,7 +389,7 @@ export async function GET(request: NextRequest) {
       outstanding_sum: outstandingSum,
     };
 
-    const needsAttention = [...landingRows]
+    const needsAttention = [...filteredRows]
       .filter((row) => row.outstanding_amount > 0 && (row.status.value === 'overdue' || row.status.value === 'sent'))
       .sort((a, b) => {
         if (a.status.value === 'overdue' && b.status.value !== 'overdue') return -1;
@@ -389,7 +418,7 @@ export async function GET(request: NextRequest) {
         effective: row.status.value,
       }));
 
-    const topSpenders = [...landingRows]
+    const topSpenders = [...filteredRows]
       .sort((a, b) => b.total_amount - a.total_amount)
       .slice(0, 3)
       .map((row) => ({
@@ -441,13 +470,38 @@ export async function GET(request: NextRequest) {
       top_risers: topRisers,
     };
 
+    const filters: LandingFilterMeta = {
+      groups: [
+        {
+          key: 'source',
+          label: 'Source',
+          options: ['Buyer App', 'Direct', 'Converted'].map((value) => ({ value, label: value })),
+        },
+        {
+          key: 'status',
+          label: 'Status',
+          options: ['Draft', 'Sent', 'Paid', 'Overdue', 'Void'].map((value) => ({ value, label: value })),
+        },
+        {
+          key: 'due',
+          label: 'Due',
+          options: ['Due', 'Overdue'].map((value) => ({ value, label: value })),
+        },
+        {
+          key: 'location_id',
+          label: 'Location',
+          options: availableLocations.map((location) => ({ value: location.id, label: location.name })),
+        },
+      ],
+    };
     const payload = {
       period,
       kpis,
       todays_read,
-      invoices: landingRows,
+      invoices: filteredRows,
+      filters,
       nextCursor,
-      total: (snapshotRow as { total_count?: number } | null)?.total_count ?? null,
+      total: filteredRows.length,
     };
 
     return timedJson(payload);
@@ -467,12 +521,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const [orderMgmt, invoicesFlag] = await Promise.all([
+    const [orderMgmt, invoicesFlag, createFlags] = await Promise.all([
       getFlag(FEATURE_FLAGS.ORDER_MANAGEMENT, claims.tenant_id),
       getFlag(FEATURE_FLAGS.INVOICES, claims.tenant_id),
+      getInAppCreateFlags(claims.tenant_id),
     ]);
     if (!orderMgmt || !invoicesFlag) {
       return NextResponse.json({ error: 'Feature not enabled' }, { status: 403 });
+    }
+    if (!createFlags.create_invoices) {
+      return NextResponse.json({ error: 'Invoice creation is disabled for this tenant' }, { status: 403 });
     }
 
     if (!supabaseAdmin) {

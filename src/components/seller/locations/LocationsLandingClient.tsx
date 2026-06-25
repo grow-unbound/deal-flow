@@ -10,6 +10,7 @@ import {
   FilterBar,
   GrowthPill,
   InsightStrip4,
+  LandingTable,
   PageHeader,
   PageWrap,
   StatusTag,
@@ -254,7 +255,7 @@ function LocationsLandingContent({
                   initials: row.initials,
                   hue: 'ember' as const,
                   name: row.name,
-                  reason: `₹${formatCompactInr(row.outstanding_dues ?? 0)} · oldest ${row.oldest_unpaid_days}d unpaid`,
+                  reason: `${formatCompactInr(row.outstanding_dues ?? 0)} · oldest ${row.oldest_unpaid_days}d unpaid`,
                   trailing: <StatusTag tone="danger" label="Overdue" />,
                 })),
               },
@@ -286,64 +287,58 @@ function LocationsLandingContent({
               }
             />
           ) : (
-            <div className="v2-body overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-cream-200 bg-cream-50">
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.08em] text-cream-600 w-[260px]">Location</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.08em] text-cream-600">GMV · MTD</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.08em] text-cream-600">Growth</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.08em] text-cream-600">Active buyers</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.08em] text-cream-600">Outstanding dues</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.08em] text-cream-600">Stock status</th>
-                    <th className="w-8 px-2 py-3" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((row) => (
-                    <tr
-                      key={row.id}
-                      onClick={() => router.push(`/locations/${row.id}`)}
-                      className="cursor-pointer border-b border-cream-100 hover:bg-cream-50 transition-colors"
-                    >
-                      <td className="px-4 py-3 w-[260px]">
-                        <div className="flex items-center gap-3">
-                          <EntityAvatar size={38} initials={row.initials} hue="teal" />
-                          <div>
-                            <p className="ent-name font-medium text-cream-900">{row.name}</p>
-                            <p className="text-xs text-cream-600">{row.type} · {row.city}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono text-cream-900">
-                        {row.gmv_mtd > 0 ? formatCompactInr(row.gmv_mtd) : '—'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <GrowthPill value={row.growth_pct} />
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono text-cream-900">
-                        {row.active_buyers}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {row.outstanding_dues > 0 ? (
-                          <span className="text-danger-600 font-mono font-semibold">
-                            ₹{formatCompactInr(row.outstanding_dues)}
-                          </span>
-                        ) : (
-                          <span className="text-cream-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusTag tone={stockTone(row.stock_status)} label={stockLabel(row.stock_status)} />
-                      </td>
-                      <td className="w-8 px-2 py-3 text-right">
-                        <ChevronRight size={14} className="text-cream-400" />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <LandingTable
+              columns={[
+                { label: 'Location', minWidth: 280, className: 'px-5' },
+                { label: 'Phone', minWidth: 140, className: 'px-5' },
+                { label: 'GMV · MTD', align: 'right', minWidth: 140, className: 'px-5' },
+                { label: 'Growth', minWidth: 120, className: 'px-5' },
+                { label: 'Active buyers', align: 'right', minWidth: 120, className: 'px-5' },
+                { label: 'Outstanding dues', align: 'right', minWidth: 150, className: 'px-5' },
+                { label: 'Stock status', minWidth: 180, className: 'px-5' },
+                { width: 40, className: 'px-4' },
+              ]}
+              tableClassName="min-w-[1260px]"
+            >
+              {filtered.map((row) => (
+                <tr
+                  key={row.id}
+                  onClick={() => router.push(`/locations/${row.id}`)}
+                  className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
+                >
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-3">
+                      <EntityAvatar size={38} initials={row.initials} hue="teal" />
+                      <div className="min-w-0">
+                        <p className="truncate text-base font-medium text-cream-900">{row.name}</p>
+                        <p className="mt-0.5 truncate text-xs text-cream-600">{row.type} · {row.city}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-5 py-3.5 text-sm text-cream-700">
+                    {row.phone_number ?? '—'}
+                  </td>
+                  <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                    {row.gmv_mtd > 0 ? formatCompactInr(row.gmv_mtd) : '—'}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <GrowthPill value={row.growth_pct} />
+                  </td>
+                  <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                    {row.active_buyers}
+                  </td>
+                  <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                    {row.outstanding_dues > 0 ? formatCompactInr(row.outstanding_dues) : '—'}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <StatusTag tone={stockTone(row.stock_status)} label={stockLabel(row.stock_status)} />
+                  </td>
+                  <td className="px-4 py-3.5 text-right text-cream-500">
+                    <ChevronRight size={14} className="text-cream-400" />
+                  </td>
+                </tr>
+              ))}
+            </LandingTable>
           )}
         </>
       )}

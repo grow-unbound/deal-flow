@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { normalizeLocationAssociatedUsers } from '@/lib/location-assignees';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import type {
@@ -58,15 +59,46 @@ export async function GET(
   const db = supabaseAdmin as any;
 
   // Cross-tenant guard
-  const { data: location, error: locationError } = await db
+  const { data: baseLocation, error: locationError } = await db
     .schema('app')
     .from('locations')
     .select('id, tenant_id, name, type, address, deleted_at, created_at')
     .eq('id', id)
     .single();
 
-  if (locationError || !location || location.tenant_id !== claims.tenant_id) {
+  if (locationError || !baseLocation || baseLocation.tenant_id !== claims.tenant_id) {
     return timedJson({ error: 'Not found' }, { status: 404 });
+  }
+
+  let location: typeof baseLocation & {
+    phone_number: string | null;
+    status: 'active' | 'inactive';
+    associated_users: unknown;
+  } = {
+    ...baseLocation,
+    phone_number: null,
+    status: 'active',
+    associated_users: [],
+  };
+
+  try {
+    const { data: extraLocation } = await db
+      .schema('app')
+      .from('locations')
+      .select('id, phone_number, status, associated_users')
+      .eq('id', id)
+      .single();
+    if (extraLocation) {
+      location = {
+        ...location,
+        phone_number: typeof extraLocation.phone_number === 'string' ? extraLocation.phone_number : null,
+        status:
+          extraLocation.status === 'inactive' ? 'inactive' : 'active',
+        associated_users: extraLocation.associated_users,
+      };
+    }
+  } catch {
+    // Compatibility with older deployments where the new columns do not exist yet.
   }
 
   const period = getSellerLandingPeriodMeta(request.nextUrl.searchParams.get('period'));
@@ -395,14 +427,18 @@ export async function GET(
 
   const city = getCity(location.address);
   const initials = getInitials(location.name);
+  const associatedUsers = normalizeLocationAssociatedUsers(location.associated_users);
 
   const response: LocationDetailResponse = {
     id: location.id,
     name: location.name,
     type: location.type,
     city,
+    phone_number: location.phone_number ?? null,
+    status: location.status ?? 'active',
     initials,
     is_active: location.deleted_at === null,
+    associated_users: associatedUsers,
     meta_strip: {
       gmv_mtd,
       growth_pct,

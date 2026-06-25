@@ -113,7 +113,7 @@ export async function GET(
         cost_price,
         default_uom,
         pack_size,
-        category_name,
+        tenant_category_id,
         hsn_code,
         gst_rate,
         description,
@@ -137,7 +137,7 @@ export async function GET(
       return NextResponse.json({ error: 'Product not found' }, { status: 404 });
     }
 
-    const [{ data: masterProduct }, { data: tenantBrand }, { data: inventoryRows }] = await Promise.all([
+    const [{ data: masterProduct }, { data: tenantBrand }, { data: tenantCategory }, { data: inventoryRows }] = await Promise.all([
       product.master_product_id
         ? db
             .schema('catalog')
@@ -153,6 +153,15 @@ export async function GET(
             .select('id, display_name_override, master_brand_id')
             .eq('id', product.tenant_brand_id)
             .eq('tenant_id', claims.tenant_id)
+            .is('deleted_at', null)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      product.tenant_category_id
+        ? db
+            .schema('app')
+            .from('tenant_categories')
+            .select('id, name')
+            .eq('id', product.tenant_category_id)
             .is('deleted_at', null)
             .maybeSingle()
         : Promise.resolve({ data: null }),
@@ -431,7 +440,7 @@ export async function GET(
         id: product.id,
         name: displayName,
         sku: product.internal_sku,
-        category: product.category_name ?? masterProduct?.categories?.name ?? 'Uncategorized',
+        category: tenantCategory?.name ?? masterProduct?.categories?.name ?? 'Uncategorized',
         pack_size: product.pack_size ?? masterProduct?.pack_size ?? null,
         default_uom: product.default_uom,
         mrp: product.mrp,

@@ -57,6 +57,8 @@ function mockSalesOrdersData(): TenantOrdersResponse {
     orders: [
       {
         id: 'o-new',
+        location_id: 'loc-1',
+        location_name: 'Bengaluru Hub',
         order_id: 'DF-NEW',
         buyer_id: 'b1',
         buyer_name: 'Buyer One',
@@ -80,6 +82,8 @@ function mockSalesOrdersData(): TenantOrdersResponse {
       },
       {
         id: 'o-old',
+        location_id: 'loc-2',
+        location_name: 'Mysuru Depot',
         order_id: 'DF-OLD',
         buyer_id: 'b2',
         buyer_name: 'Buyer Two',
@@ -103,6 +107,8 @@ function mockSalesOrdersData(): TenantOrdersResponse {
       },
       {
         id: 'o-inv',
+        location_id: 'loc-1',
+        location_name: 'Bengaluru Hub',
         order_id: 'DF-INV',
         buyer_id: 'b3',
         buyer_name: 'Buyer Three',

@@ -9,6 +9,7 @@ import { FeatureGate } from '@/components/FeatureGate';
 import {
   EntityAvatar,
   FilterBar,
+  type FilterBarGroup,
   GrowthPill,
   InsightStrip4,
   LandingTable,
@@ -26,7 +27,7 @@ import { useRole } from '@/hooks/useRole';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
-import { useTenantProductsInfinite, type TenantProduct, type TenantProductsResponse } from '@/hooks/useProducts';
+import { useTenantProducts, useTenantProductsInfinite, type TenantProduct, type TenantProductsResponse } from '@/hooks/useProducts';
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 
@@ -102,6 +103,7 @@ function ProductLandingDataSkeleton() {
 }
 
 function ProductsLandingContent({
+  initialData,
   initialPeriod,
 }: {
   initialData: TenantProductsResponse | null;
@@ -110,24 +112,31 @@ function ProductsLandingContent({
   const router = useRouter();
   const { isSellerAssistant } = useRole();
   const { period, setPeriod, horizonLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
+  const summaryQuery = useTenantProducts(period, initialData);
+  const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-products-landing',
     scopeKey: period,
     initialState: {
       search: '',
       sortBy: 'GMV (high → low)' as SortOption,
-      activeChip: 'All brands',
+      filters: {
+        brand: [] as string[],
+        category: [] as string[],
+        status: [] as string[],
+        stock: [] as string[],
+      },
     },
   });
   const search = routeState.search;
   const sortBy = routeState.sortBy;
-  const activeChip = routeState.activeChip;
+  const filters = routeState.filters ?? { brand: [], category: [], status: [], stock: [] };
   const [addProductOpen, setAddProductOpen] = useState(false);
 
   const debouncedSearch = useDebounce(search, 300);
   const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantProductsInfinite(
     period,
-    { search: debouncedSearch },
+    { search: debouncedSearch, ...filters },
   );
   const { sentinelRef } = useInfiniteScroll({
     hasMore: hasNextPage ?? false,
@@ -142,34 +151,22 @@ function ProductsLandingContent({
   });
 
   // Flatten all pages into a single products list
-  const allProducts = useMemo(() => data?.pages.flatMap((p) => p.products) ?? [], [data?.pages]);
+  const allProducts = useMemo(() => data?.pages?.flatMap((p) => p.products) ?? [], [data?.pages]);
   // Total count from snapshot (O(1)); falls back to loaded count
-  const firstPage = data?.pages[0];
-  const total = (firstPage as { total?: number | null } | undefined)?.total ?? firstPage?.kpis?.total_skus ?? allProducts.length;
-
-  const brandChips = useMemo(() => {
-    const brands = firstPage?.brands ?? [];
-    return ['All brands', ...brands, 'Low stock'];
-  }, [firstPage?.brands]);
+  const firstPage = data?.pages?.[0];
+  const filteredTotal = (firstPage as { total?: number | null } | undefined)?.total ?? firstPage?.kpis?.total_skus ?? allProducts.length;
+  const summaryProducts = summaryData?.products ?? [];
+  const summaryTotal = summaryData?.kpis?.total_skus ?? summaryProducts.length;
+  const summaryBrands = summaryData?.brands?.length ?? 0;
 
   const filtered = useMemo(() => {
-    return allProducts
-      .filter((product) => {
-        if (activeChip === 'Low stock') {
-          return Number(product.on_hand ?? 0) > 0 && Number(product.days_cover ?? 0) < 14;
-        }
-        if (activeChip !== 'All brands') {
-          return (product.brand_name ?? '').toLowerCase() === activeChip.toLowerCase();
-        }
-        return true;
-      })
-      .sort((a, b) => {
+    return [...allProducts].sort((a, b) => {
         if (!isSellerAssistant && sortBy === 'GMV (high → low)') return Number(b.gmv_mtd ?? 0) - Number(a.gmv_mtd ?? 0);
         if (!isSellerAssistant && sortBy === 'GMV (low → high)') return Number(a.gmv_mtd ?? 0) - Number(b.gmv_mtd ?? 0);
         if (!isSellerAssistant && sortBy === 'Growth (high → low)') return Number(b.growth_pct ?? 0) - Number(a.growth_pct ?? 0);
         return Number(a.on_hand ?? 0) - Number(b.on_hand ?? 0);
       });
-  }, [activeChip, isSellerAssistant, allProducts, sortBy]);
+  }, [isSellerAssistant, allProducts, sortBy]);
 
   const retainedFiltered = useRetainedValue(filtered.length > 0 ? filtered : null);
   const displayRows = filtered.length > 0 ? filtered : (retainedFiltered ?? []);
@@ -189,17 +186,27 @@ function ProductsLandingContent({
   if (!data) return <ProductLandingSkeleton />;
   const showRefreshingState = isLoading && !data;
 
-  const kpis = firstPage?.kpis;
-  const outOfStock = kpis?.out_of_stock ?? allProducts.filter((p) => Number(p.on_hand ?? 0) === 0).length;
-  const lowStock = kpis?.low_stock ?? allProducts.filter((p) => Number(p.on_hand ?? 0) > 0 && Number(p.days_cover ?? 0) < 14).length;
+  const kpis = summaryData?.kpis;
+  const outOfStock = kpis?.out_of_stock ?? summaryProducts.filter((p) => Number(p.on_hand ?? 0) === 0).length;
+  const lowStock = kpis?.low_stock ?? summaryProducts.filter((p) => Number(p.on_hand ?? 0) > 0 && Number(p.days_cover ?? 0) < 14).length;
   const growth = kpis?.revenue_growth_pct ?? 0;
+  const groups: FilterBarGroup[] = (summaryData?.filters?.groups ?? []).map((group) => ({
+    key: group.key,
+    label: group.label,
+    options: group.options,
+    values: filters[group.key as keyof typeof filters] ?? [],
+    onChange: (values) => setRouteState((current) => ({
+      ...current,
+      filters: { ...(current.filters ?? filters), [group.key]: values },
+    })),
+  }));
 
   return (
     <PageWrap>
       <PageHeader
         eyebrow="Catalog"
         title="Products"
-        subtitle={`${total} SKUs across ${(firstPage?.brands ?? []).length} brands. ${outOfStock} out of stock, ${lowStock} running low — those are the ones to chase this week.`}
+        subtitle={`${summaryTotal} SKUs across ${summaryBrands} brands. ${outOfStock} out of stock, ${lowStock} running low — those are the ones to chase this week.`}
         horizon={horizonLabel}
         period={period}
         periodOptions={options}
@@ -298,15 +305,15 @@ function ProductsLandingContent({
       />
 
       <FilterBar
-        count={`${filtered.length} of ${total} products`}
+        count={`${filtered.length} of ${filteredTotal} products`}
         searchPlaceholder="Search product, SKU, brand…"
-        chips={brandChips}
-        activeChip={activeChip}
+        chips={[]}
+        activeChip=""
         sortBy={sortBy}
         hideViewToggle
+        groups={groups}
         searchValue={search}
         onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-        onChipChange={(value) => setRouteState((current) => ({ ...current, activeChip: value }))}
         sortOptions={isSellerAssistant ? ['On hand (low → high)'] : [...SORT_OPTIONS]}
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
@@ -318,10 +325,10 @@ function ProductsLandingContent({
         emptyState={
           <EmptyState
             icon={<Package size={28} strokeWidth={1.5} />}
-            heading={search.trim() || activeChip !== 'All brands' ? 'No matching products' : 'No products in your catalog'}
+            heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching products' : 'No products in your catalog'}
             description={
-              search.trim() || activeChip !== 'All brands'
-                ? 'Try a different search or brand filter.'
+              search.trim() || groups.some((group) => group.values.length > 0)
+                ? 'Try a different search or filter combination.'
                 : isSellerAssistant
                   ? 'Products will appear here once your team adds them to the catalog.'
                   : 'Add products to start tracking inventory and revenue.'

@@ -10,6 +10,8 @@ export interface SalesOrderStepperTimestamps {
 }
 
 const DB_TO_UI: Record<string, SalesOrderUiStatus | undefined> = {
+  draft: 'received',
+  open: 'received',
   received: 'received',
   confirmed: 'confirmed',
   partially_invoiced: 'confirmed',
@@ -17,6 +19,8 @@ const DB_TO_UI: Record<string, SalesOrderUiStatus | undefined> = {
   dispatched: 'dispatched',
   delivered: 'delivered',
   invoiced: 'delivered',
+  overdue: 'confirmed',
+  void: 'cancelled',
   cancelled: 'cancelled',
 };
 

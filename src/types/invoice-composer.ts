@@ -24,6 +24,7 @@ export interface InvoiceComposerLineInput {
   disc_pct: number;
   tax_pct: number;
   line_total: number;
+  item_order?: number | null;
   scheme_tag: string | null;
 }
 
@@ -82,6 +83,7 @@ export interface InvoiceComposerSavePayload {
     unit_price: number;
     disc_pct: number;
     tax_pct: number;
+    item_order?: number | null;
     scheme_tag?: string | null;
   }>;
 }

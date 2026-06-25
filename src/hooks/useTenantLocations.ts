@@ -63,6 +63,9 @@ export function useTenantLocations() {
           state: input.address?.state ?? '',
           pincode: input.address?.pincode ?? '',
         },
+        phone_number: input.phone_number ?? null,
+        status: input.status ?? 'active',
+        associated_users: input.associated_users ?? [],
         inventory_tracking: input.inventory_tracking ?? true,
         is_default: input.is_default ?? false,
         external_ref: input.external_ref?.trim() ? input.external_ref.trim() : null,
@@ -120,6 +123,9 @@ export function useTenantLocations() {
           cur.address = { ...cur.address, ...patch.address };
         }
         if (patch.inventory_tracking !== undefined) cur.inventory_tracking = patch.inventory_tracking;
+        if (patch.phone_number !== undefined) cur.phone_number = patch.phone_number;
+        if (patch.status !== undefined) cur.status = patch.status;
+        if (patch.associated_users !== undefined) cur.associated_users = patch.associated_users;
         if (patch.is_default === true) {
           for (const l of locs) {
             l.is_default = false;
@@ -133,6 +139,7 @@ export function useTenantLocations() {
         }
         if (patch.reactivate) {
           cur.deleted_at = null;
+          cur.status = 'active';
         }
         locs[idx] = cur;
         queryClient.setQueryData(['tenant-locations', currentTenantId], { locations: locs });

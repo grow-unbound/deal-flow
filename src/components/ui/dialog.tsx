@@ -36,7 +36,7 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2',
+        'fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100vh-2rem)] w-[calc(100vw-1.5rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden',
         'bg-white rounded-xl shadow-xl border border-cream-200',
         'data-[state=open]:animate-in data-[state=closed]:animate-out',
         'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
@@ -59,12 +59,12 @@ const DialogContent = React.forwardRef<
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn('px-6 py-5 border-b border-cream-200', className)} {...props} />
+  <div className={cn('sticky top-0 z-10 shrink-0 border-b border-cream-200 bg-white/95 px-6 py-5 backdrop-blur-sm', className)} {...props} />
 );
 DialogHeader.displayName = 'DialogHeader';
 
 const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn('px-6 py-4 border-t border-cream-200 flex items-center justify-end gap-3', className)} {...props} />
+  <div className={cn('sticky bottom-0 z-10 flex shrink-0 items-center justify-end gap-3 border-t border-cream-200 bg-white/95 px-6 py-4 backdrop-blur-sm', className)} {...props} />
 );
 DialogFooter.displayName = 'DialogFooter';
 
@@ -93,7 +93,7 @@ const DialogDescription = React.forwardRef<
 DialogDescription.displayName = DialogPrimitive.Description.displayName;
 
 const DialogBody = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn('px-6 py-5', className)} {...props} />
+  <div className={cn('min-h-0 flex-1 overflow-y-auto px-6 py-5', className)} {...props} />
 );
 DialogBody.displayName = 'DialogBody';
 

@@ -130,6 +130,10 @@ BEGIN
   -- Clear prior operational rows (single-tenant dev seed; techwave only). Cohort rows removed separately (see above).
   EXECUTE $trx$
     TRUNCATE
+      app.integration_webhook_event_changes,
+      app.integration_webhook_events,
+      app.integration_webhook_errors,
+      app.integration_webhook_echo_guards,
       app.payments,
       app.credit_notes,
       app.catalog_views,
@@ -137,8 +141,20 @@ BEGIN
       app.invoices,
       app.estimate_items,
       app.estimates,
+      app.kpi_buyer_app_daily,
+      app.kpi_location_daily,
+      app.kpi_category_daily,
+      app.kpi_brand_daily,
       app.kpi_product_daily,
       app.kpi_tenant_daily,
+      app.buyer_app_snapshot,
+      app.locations_snapshot,
+      app.estimates_snapshot,
+      app.invoices_snapshot,
+      app.customers_snapshot,
+      app.products_snapshot,
+      app.categories_snapshot,
+      app.brands_snapshot,
       app.audit_log,
       app.order_items,
       app.orders,
@@ -1088,10 +1104,8 @@ BEGIN
     AND i.deleted_at IS NULL
     AND i.buyer_id IS NULL;
 
-  -- ── KPI aggregates (seller landing) ─────────────────────────────────────
-  FOR v_day IN SELECT generate_series(current_date - 13, current_date, interval '1 day')::date LOOP
-    PERFORM app.refresh_kpi_tenant_daily(v_tenant_id, v_day);
-  END LOOP;
+  -- ── Snapshots + daily KPI tables (seller/buyer landings) ─────────────────
+  PERFORM app.post_sync_rebuild(v_tenant_id, 14);
 END $$;
 
 -- Quick verification snapshot
@@ -1156,4 +1170,24 @@ UNION ALL
 SELECT 'invoices_linked_to_order', count(*)::text
 FROM app.invoices i
 JOIN app.tenants t ON t.id = i.tenant_id
-WHERE t.slug = 'techwave' AND i.deleted_at IS NULL AND i.order_id IS NOT NULL;
+WHERE t.slug = 'techwave' AND i.deleted_at IS NULL AND i.order_id IS NOT NULL
+UNION ALL
+SELECT 'tenant_settings', count(*)::text
+FROM app.tenant_settings ts
+JOIN app.tenants t ON t.id = ts.tenant_id
+WHERE t.slug = 'techwave'
+UNION ALL
+SELECT 'products_snapshot', count(*)::text
+FROM app.products_snapshot ps
+JOIN app.tenants t ON t.id = ps.tenant_id
+WHERE t.slug = 'techwave'
+UNION ALL
+SELECT 'buyer_app_snapshot', count(*)::text
+FROM app.buyer_app_snapshot bas
+JOIN app.tenants t ON t.id = bas.tenant_id
+WHERE t.slug = 'techwave'
+UNION ALL
+SELECT 'kpi_buyer_app_daily', count(*)::text
+FROM app.kpi_buyer_app_daily kbad
+JOIN app.tenants t ON t.id = kbad.tenant_id
+WHERE t.slug = 'techwave';
