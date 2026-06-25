@@ -49,7 +49,7 @@ export function stagedSliceFromEstimate(doc: EstimateComposerDocument): Composer
     buyerId: doc.buyer_id,
     buyerBusinessName: doc.buyer_context?.business_name,
     buyerPoRef: doc.buyer_po_ref,
-    dateIssued: doc.date_issued,
+    dateIssued: doc.estimate_date,
     secondDate: doc.valid_until,
     placeOfSupply: doc.place_of_supply,
     sellerNote: doc.seller_note,

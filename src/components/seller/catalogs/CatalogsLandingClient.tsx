@@ -7,7 +7,9 @@ import { Plus, Library } from 'lucide-react';
 
 import { FeatureGate } from '@/components/FeatureGate';
 import {
+  EntityAvatar,
   InsightStrip4,
+  LandingTable,
   PageHeader,
   PageWrap,
   StatusTag,
@@ -154,7 +156,7 @@ function CatalogsLandingContent({
         period={period}
         periodOptions={options}
         onPeriodChange={setPeriod}
-        primary="New campaign"
+        primary="Add a campaign"
         onPrimaryClick={() => router.push('/campaigns/new')}
       />
 
@@ -261,73 +263,70 @@ function CatalogsLandingContent({
             <Button variant="accent" asChild>
               <Link href="/campaigns/new" className="inline-flex items-center gap-1.5">
                 <Plus size={13} />
-                New campaign
+                Add a campaign
               </Link>
             </Button>
           }
         />
       ) : (
-      <div className="mt-2 grid grid-cols-2 gap-4">
-        {filtered.map((catalog) => {
-          const badgeClass =
-            catalog.status.label === 'Draft'
-              ? 'bg-amber-100 text-amber-700'
-              : catalog.status.label === 'Ended'
-                ? 'bg-cream-200 text-cream-700'
-                : 'bg-white/20 text-cream-50';
-
-          return (
-            <article
+        <LandingTable
+          columns={[
+            { label: 'Campaign', minWidth: 260, className: 'px-5' },
+            { label: 'Customer group', minWidth: 180, className: 'px-5' },
+            { label: `GMV · ${metricSuffix}`, align: 'right', minWidth: 140, className: 'px-5' },
+            { label: 'Orders / conversion', align: 'right', minWidth: 160, className: 'px-5' },
+            { label: 'Status', minWidth: 180, className: 'px-5' },
+            { width: 40, className: 'px-4' },
+          ]}
+          tableClassName="min-w-[1080px]"
+        >
+          {filtered.map((catalog) => (
+            <tr
               key={catalog.id}
-              className="cursor-pointer overflow-hidden rounded-[14px] border border-cream-200 bg-cream-50 transition-colors hover:border-teal-300"
+              className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
               onClick={() => router.push(`/campaigns/${catalog.id}`)}
             >
-              <div
-                className={`relative flex h-[110px] items-end justify-between overflow-hidden px-4 pb-[14px] ${
-                  catalog.hue === 'teal'
-                    ? 'bg-[linear-gradient(135deg,#346A5C_0%,#1F3A34_60%,#142823_100%)]'
-                    : catalog.hue === 'ember'
-                      ? 'bg-[linear-gradient(135deg,#DC9655_0%,#C26E3A_60%,#874720_100%)]'
-                      : 'bg-[linear-gradient(135deg,#C9BFAC_0%,#A89E89_60%,#6B6760_100%)]'
-                }`}
-              >
-                <div>
-                  <h3 className="font-display text-md font-semibold leading-[1.15] text-white">{catalog.name}</h3>
-                  <p className="mt-1 text-xs text-white/70">{catalog.products_count} products · {catalog.brands_count} brands</p>
+              <td className="px-5 py-3.5">
+                <div className="flex items-center gap-3">
+                  <EntityAvatar initials={catalog.initials} hue={catalog.hue} size={38} />
+                  <div className="min-w-0">
+                    <p className="truncate text-base font-medium text-cream-900">{catalog.name}</p>
+                    <p className="mt-0.5 truncate text-xs uppercase tracking-[0.05em] text-cream-500">
+                      {catalog.products_count} products · {catalog.brands_count} brands
+                    </p>
+                  </div>
                 </div>
-                <span className={`absolute right-3 top-3 rounded-full px-[9px] py-[3px] text-xs font-semibold tracking-[0.04em] ${badgeClass}`}>
-                  {catalog.status.label.toUpperCase()}
-                </span>
-              </div>
-
-              <div className="space-y-[10px] p-4">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-xs text-cream-500">Customer group</span>
-                  <span className="font-medium text-cream-900">{catalog.cohort_name}</span>
+              </td>
+              <td className="px-5 py-3.5 text-sm text-cream-800">{catalog.cohort_name}</td>
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                {catalog.gmv > 0 ? formatCompactInr(catalog.gmv) : '—'}
+              </td>
+              <td className="px-5 py-3.5 text-right">
+                <div className="space-y-1">
+                  <p className="font-mono text-sm text-cream-900">
+                    {catalog.orders > 0 ? `${catalog.orders}` : '—'}
+                  </p>
+                  <p className="text-xs text-cream-600">{catalog.conversion_pct}% conversion</p>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-xs text-cream-500">GMV</span>
-                  <span className="font-medium text-cream-900">{catalog.gmv > 0 ? formatCompactInr(catalog.gmv) : '—'}</span>
+              </td>
+              <td className="px-5 py-3.5">
+                <div className="space-y-1">
+                  <StatusTag label={catalog.status.label} tone={catalog.status.tone} />
+                  <p className="text-xs text-cream-600">
+                    {catalog.status.label === 'Draft'
+                      ? 'Not yet sent'
+                      : catalog.status.label === 'Ended'
+                        ? catalog.valid_until_label
+                        : catalog.days_left != null
+                          ? `${catalog.days_left}d · until ${catalog.valid_until_label}`
+                          : catalog.valid_until_label}
+                  </p>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-xs text-cream-500">Orders</span>
-                  <span className="font-medium text-cream-900">{catalog.orders > 0 ? `${catalog.orders} (${catalog.conversion_pct}%)` : '—'}</span>
-                </div>
-                <div className="flex items-center justify-between border-t border-dashed border-cream-300 pt-2 text-sm">
-                  <span className="text-xs text-cream-500">
-                    {catalog.status.label === 'Draft' ? 'Validity' : catalog.status.label === 'Ended' ? 'Ended' : 'Days left'}
-                  </span>
-                  <span className="font-medium text-cream-900">
-                    {catalog.status.label === 'Live' && catalog.days_left != null
-                      ? `${catalog.days_left}d · until ${catalog.valid_until_label}`
-                      : catalog.valid_until_label}
-                  </span>
-                </div>
-              </div>
-            </article>
-          );
-        })}
-      </div>
+              </td>
+              <td className="px-4 py-3.5 text-right text-cream-500">›</td>
+            </tr>
+          ))}
+        </LandingTable>
       )}
         </>
       )}

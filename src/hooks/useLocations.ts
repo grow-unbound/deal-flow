@@ -24,6 +24,7 @@ export interface LocationsLandingRow {
   name: string;
   type: string;
   city: string;
+  phone_number: string | null;
   initials: string;
   gmv_mtd: number;
   gmv_prev: number;
@@ -136,8 +137,11 @@ export interface LocationDetailResponse {
   name: string;
   type: string;
   city: string;
+  phone_number: string | null;
+  status: 'active' | 'inactive';
   initials: string;
   is_active: boolean;
+  associated_users: Array<{ email: string; user_name: string | null; user_id: string | null }>;
   meta_strip: {
     gmv_mtd: number;
     growth_pct: number;

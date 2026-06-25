@@ -29,6 +29,7 @@ import {
 import { FEATURE_FLAGS } from '@/constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFlagState } from '@/hooks/useFeatureFlag';
+import { useTenantSettings } from '@/hooks/useTenantSettings';
 import { composerSubmitFooterLabel, useComposerLeaveGuard } from '@/hooks/useComposerLeaveGuard';
 import { useDocumentBuyerPicker } from '@/hooks/useDocumentBuyerPicker';
 import {
@@ -89,7 +90,7 @@ function buildNewEstimateDraft(estimateNumber = 'Estimating next number...'): Es
     buyer_id: null,
     location_id: null,
     available_locations: [],
-    date_issued: isoDateOffset(0),
+    estimate_date: isoDateOffset(0),
     valid_until: isoDateOffset(14),
     buyer_po_ref: '',
     place_of_supply: '',
@@ -115,7 +116,7 @@ function snapshotPayload(document: EstimateComposerDocument, lines: EstimateComp
     estimate_number: document.estimate_number,
     buyer_id: document.buyer_id,
     location_id: document.location_id,
-    date_issued: document.date_issued,
+    estimate_date: document.estimate_date,
     valid_until: document.valid_until,
     buyer_po_ref: document.buyer_po_ref,
     place_of_supply: document.place_of_supply,
@@ -158,7 +159,7 @@ function toSavePayload(document: EstimateComposerDocument, lines: EstimateCompos
     estimate_number: document.estimate_number,
     buyer_id: document.buyer_id,
     location_id: document.location_id,
-    date_issued: document.date_issued,
+    estimate_date: document.estimate_date,
     valid_until: document.valid_until,
     buyer_po_ref: document.buyer_po_ref,
     place_of_supply: document.place_of_supply,
@@ -193,6 +194,8 @@ export function DocComposerEstimate({
   const { user } = useAuth();
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const estimatesFlag = useFlagState('ESTIMATES');
+  const { data: tenantSettings } = useTenantSettings();
+  const gstInclusive = tenantSettings?.unified.business_policy.gst_inclusive ?? false;
 
   const [workingId, setWorkingId] = useState<string | null>(estimateId ?? null);
   const { data, isLoading, isError, error } = useEstimateComposer(workingId);
@@ -272,7 +275,7 @@ export function DocComposerEstimate({
     const mappedLines = (data.items ?? []).map((line) => ({
       ...line,
       diff: 'clean' as const,
-      line_total: computeLineTotal(line),
+      line_total: computeLineTotal(line, gstInclusive),
     }));
     setLineState(mappedLines);
     setPaymentTermsLabel(defaultPaymentTerms(data.buyer_context?.payment_terms_days ?? 0));
@@ -337,7 +340,7 @@ export function DocComposerEstimate({
         const nextPrice = pricingQuery.data[line.tenant_product_id];
         if (nextPrice == null || nextPrice === line.unit_price) return line;
         const next = { ...line, unit_price: nextPrice };
-        return { ...next, line_total: computeLineTotal(next) };
+        return { ...next, line_total: computeLineTotal(next, gstInclusive) };
       }),
     );
     lastAppliedPricingKeyRef.current = pricingKey;
@@ -345,8 +348,8 @@ export function DocComposerEstimate({
 
   const diffLines = useMemo(() => mapDiffLines(lineState, originalLinesRef.current), [lineState]);
   const totals = useMemo(
-    () => computeTotals(diffLines, documentState?.discount_flat ?? 0, documentState?.freight ?? 0, documentState?.round_off ?? 0),
-    [diffLines, documentState?.discount_flat, documentState?.freight, documentState?.round_off],
+    () => computeTotals(diffLines, documentState?.discount_flat ?? 0, documentState?.freight ?? 0, documentState?.round_off ?? 0, gstInclusive),
+    [diffLines, documentState?.discount_flat, documentState?.freight, documentState?.round_off, gstInclusive],
   );
   const dirty = useMemo(() => {
     if (!documentState) return false;
@@ -360,6 +363,7 @@ export function DocComposerEstimate({
         originalDocumentRef.current.discount_flat,
         originalDocumentRef.current.freight,
         originalDocumentRef.current.round_off,
+        gstInclusive,
       );
     },
     [documentState?.id],
@@ -528,7 +532,7 @@ export function DocComposerEstimate({
         base_selling_price: product.base_selling_price,
         disc_pct: 0,
         tax_pct: product.tax_pct ?? 0,
-        line_total: computeLineTotal({ qty: 1, unit_price: product.unit_price, disc_pct: 0, tax_pct: product.tax_pct ?? 0 }),
+        line_total: computeLineTotal({ qty: 1, unit_price: product.unit_price, disc_pct: 0, tax_pct: product.tax_pct ?? 0 }, gstInclusive),
         scheme_tag: null,
         diff: 'added',
       },
@@ -679,7 +683,7 @@ export function DocComposerEstimate({
             docNumber={documentState.estimate_number}
             locationId={documentState.location_id}
             availableLocations={documentState.available_locations}
-            dateIssued={documentState.date_issued}
+            dateIssued={documentState.estimate_date}
             secondDate={documentState.valid_until}
             buyerPoRef={documentState.buyer_po_ref}
             locationReadOnly={documentState.available_locations.length <= 1}
@@ -688,8 +692,8 @@ export function DocComposerEstimate({
                 if (!current) return current;
                 const bumped = bumpSecondDateAfterFirst(value, current.valid_until);
                 return bumped
-                  ? { ...current, date_issued: value, valid_until: bumped }
-                  : { ...current, date_issued: value };
+                  ? { ...current, estimate_date: value, valid_until: bumped }
+                  : { ...current, estimate_date: value };
               });
             }}
             onSecondDateChange={(value) => setDocumentPatch({ valid_until: value })}

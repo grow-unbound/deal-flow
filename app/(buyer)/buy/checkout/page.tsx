@@ -85,7 +85,7 @@ export default function CheckoutPage() {
       >
         <button
           onClick={() => router.back()}
-          className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-cream-200 transition-colors"
+          className="flex h-8 w-8 items-center justify-center rounded-none border-0 bg-transparent p-0 text-[var(--cream-800)]"
           aria-label="Go back"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">

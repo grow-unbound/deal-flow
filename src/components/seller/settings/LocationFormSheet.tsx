@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { MutationButton } from '@/components/ui/mutation-button';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -30,15 +31,16 @@ import {
 } from '@/components/ui/select';
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useTenantLocations } from '@/hooks/useTenantLocations';
-import { useDebounce } from '@/hooks/useDebounce';
-import { CreateLocationInputSchema, LocationTypeSchema, type TenantLocation } from '@/types/tenant-locations';
+import { parseLocationAssociatedUserEmails } from '@/lib/location-assignees';
+import { getMapsLoader } from '@/lib/google-maps-loader';
+import {
+  CreateLocationInputSchema,
+  LocationStatusSchema,
+  LocationTypeSchema,
+  type TenantLocation,
+} from '@/types/tenant-locations';
 
 // ── Maps address search slideout ─────────────────────────────────────────────
-
-interface Prediction {
-  place_id: string;
-  description: string;
-}
 
 interface PlaceDetails {
   lat: number | null;
@@ -58,47 +60,74 @@ interface MapsAddressSearchProps {
 function MapsAddressSearch({ selectedLabel, onSelect }: MapsAddressSearchProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [predictions, setPredictions] = useState<Prediction[]>([]);
+  const [suggestions, setSuggestions] = useState<google.maps.places.AutocompleteSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
-  const [fetchingDetails, setFetchingDetails] = useState<string | null>(null);
-  const debouncedQuery = useDebounce(query, 350);
+  const [fetchingIndex, setFetchingIndex] = useState<number | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sessionTokenRef = useRef<google.maps.places.AutocompleteSessionToken | null>(null);
 
   useEffect(() => {
     if (!open) {
       setQuery('');
-      setPredictions([]);
+      setSuggestions([]);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
     }
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [open]);
 
-  useEffect(() => {
-    const q = debouncedQuery.trim();
-    if (q.length < 2) {
-      setPredictions([]);
-      return;
-    }
-    setLoading(true);
-    fetch(`/api/tenant/locations/geocode?type=autocomplete&input=${encodeURIComponent(q)}`)
-      .then((r) => r.json())
-      .then((data: { predictions?: Prediction[] }) => {
-        setPredictions(data.predictions ?? []);
-      })
-      .catch(() => setPredictions([]))
-      .finally(() => setLoading(false));
-  }, [debouncedQuery]);
+  function handleQueryChange(value: string) {
+    setQuery(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const q = value.trim();
+    if (q.length < 2) { setSuggestions([]); return; }
+    debounceRef.current = setTimeout(() => void doSearch(q), 350);
+  }
 
-  async function handleSelect(prediction: Prediction) {
-    setFetchingDetails(prediction.place_id);
+  async function doSearch(q: string) {
+    setLoading(true);
+    setSuggestions([]);
     try {
-      const res = await fetch(
-        `/api/tenant/locations/geocode?type=details&place_id=${encodeURIComponent(prediction.place_id)}`,
-      );
-      const data: PlaceDetails & { error?: string } = await res.json();
-      if (!data.error) {
-        onSelect(data);
-        setOpen(false);
-      }
+      const { AutocompleteSuggestion, AutocompleteSessionToken } = await getMapsLoader().importLibrary('places') as google.maps.PlacesLibrary;
+      if (!sessionTokenRef.current) sessionTokenRef.current = new AutocompleteSessionToken();
+      const { suggestions: results } = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
+        input: q,
+        includedRegionCodes: ['in'],
+        sessionToken: sessionTokenRef.current,
+      });
+      setSuggestions(results);
+    } catch {
+      setSuggestions([]);
     } finally {
-      setFetchingDetails(null);
+      setLoading(false);
+    }
+  }
+
+  async function handleSelect(suggestion: google.maps.places.AutocompleteSuggestion, index: number) {
+    const prediction = suggestion.placePrediction;
+    if (!prediction) return;
+    setFetchingIndex(index);
+    try {
+      await getMapsLoader().importLibrary('places');
+      const place = prediction.toPlace();
+      await place.fetchFields({ fields: ['location', 'addressComponents', 'formattedAddress'] });
+      sessionTokenRef.current = null;
+      if (!place.location) throw new Error('No location');
+      const lat = place.location.lat();
+      const lng = place.location.lng();
+      const components = place.addressComponents ?? [];
+      const get = (type: string) => components.find((c) => c.types.includes(type));
+      const line1 = get('route')?.longText || get('establishment')?.longText || prediction.mainText?.text || '';
+      const city = get('locality')?.longText ?? '';
+      const state = get('administrative_area_level_1')?.shortText ?? '';
+      const pincode = get('postal_code')?.longText ?? '';
+      onSelect({ lat, lng, formatted_address: place.formattedAddress ?? '', line1, city, state, pincode });
+      setOpen(false);
+    } catch {
+      // leave sheet open so user can retry
+    } finally {
+      setFetchingIndex(null);
     }
   }
 
@@ -137,7 +166,7 @@ function MapsAddressSearch({ selectedLabel, onSelect }: MapsAddressSearchProps) 
               <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-cream-700" />
               <Input
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => handleQueryChange(e.target.value)}
                 className="pl-8"
                 placeholder="Type a place name or address…"
                 autoFocus
@@ -152,25 +181,25 @@ function MapsAddressSearch({ selectedLabel, onSelect }: MapsAddressSearchProps) 
               </div>
             )}
 
-            {!loading && predictions.length === 0 && debouncedQuery.trim().length >= 2 && (
+            {!loading && suggestions.length === 0 && query.trim().length >= 2 && (
               <p className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-500">
                 No results found.
               </p>
             )}
 
-            {!loading && predictions.length > 0 && (
+            {!loading && suggestions.length > 0 && (
               <div className="flex flex-col gap-0.5">
-                {predictions.map((p) => (
+                {suggestions.map((s, i) => (
                   <button
-                    key={p.place_id}
+                    key={s.placePrediction?.placeId ?? i}
                     type="button"
-                    disabled={fetchingDetails !== null}
-                    onClick={() => void handleSelect(p)}
+                    disabled={fetchingIndex !== null}
+                    onClick={() => void handleSelect(s, i)}
                     className="flex w-full items-start gap-3 rounded-[8px] px-3 py-[10px] text-left transition-colors hover:bg-cream-100 disabled:opacity-60"
                   >
                     <MapPin size={14} className="mt-0.5 shrink-0 text-cream-500" />
                     <p className="text-sm text-cream-900">
-                      {fetchingDetails === p.place_id ? 'Loading…' : p.description}
+                      {fetchingIndex === i ? 'Loading…' : (s.placePrediction?.text.text ?? '')}
                     </p>
                   </button>
                 ))}
@@ -188,6 +217,8 @@ function MapsAddressSearch({ selectedLabel, onSelect }: MapsAddressSearchProps) 
 const FormSchema = z.object({
   name: z.string().min(1, 'Location name is required').max(200),
   type: LocationTypeSchema,
+  phone_number: z.string().trim().regex(/^[0-9]{10}$/, 'Phone number must be 10 digits').optional().or(z.literal('')),
+  status: LocationStatusSchema,
   line1: z.string().max(500),
   line2: z.string().max(500).optional(),
   city: z.string().max(200),
@@ -196,6 +227,7 @@ const FormSchema = z.object({
   inventory_tracking: z.boolean(),
   is_default: z.boolean(),
   external_ref: z.string().max(200).optional(),
+  associated_user_emails: z.string().max(4000).optional(),
   lat: z.number().optional(),
   lng: z.number().optional(),
 });
@@ -207,6 +239,8 @@ function defaultsFromLocation(loc: TenantLocation | null): FormValues {
     return {
       name: '',
       type: 'warehouse',
+      phone_number: '',
+      status: 'active',
       line1: '',
       line2: '',
       city: '',
@@ -215,11 +249,18 @@ function defaultsFromLocation(loc: TenantLocation | null): FormValues {
       inventory_tracking: true,
       is_default: false,
       external_ref: '',
+      associated_user_emails: '',
     };
   }
+  const associatedUserEmails = (loc.associated_users ?? [])
+    .map((user) => user.email)
+    .filter((email): email is string => typeof email === 'string' && email.trim().length > 0)
+    .join('\n');
   return {
     name: loc.name,
     type: loc.type,
+    phone_number: loc.phone_number ?? '',
+    status: loc.status,
     line1: loc.address?.line1 ?? '',
     line2: loc.address?.line2 ?? '',
     city: loc.address?.city ?? '',
@@ -228,6 +269,7 @@ function defaultsFromLocation(loc: TenantLocation | null): FormValues {
     inventory_tracking: loc.inventory_tracking,
     is_default: loc.is_default,
     external_ref: loc.external_ref ?? '',
+    associated_user_emails: associatedUserEmails,
     lat: loc.lat ?? undefined,
     lng: loc.lng ?? undefined,
   };
@@ -275,7 +317,7 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
     () =>
       isEdit
         ? "Update this location's details."
-        : 'Add a warehouse, dispatch point, or branch. Inventory can be tracked per location.',
+        : 'Add a warehouse or branch. Inventory can be tracked per location.',
     [isEdit],
   );
 
@@ -302,9 +344,12 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
   }
 
   async function onSubmit(values: FormValues) {
+    const associatedUsers = parseLocationAssociatedUserEmails(values.associated_user_emails);
     const payload = {
       name: values.name.trim(),
       type: values.type,
+      phone_number: values.phone_number?.trim() ? values.phone_number.trim() : null,
+      status: values.status,
       address: {
         line1: values.line1.trim(),
         line2: (values.line2 ?? '').trim(),
@@ -315,6 +360,7 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
       inventory_tracking: values.inventory_tracking,
       is_default: values.is_default,
       external_ref: values.external_ref?.trim() ? values.external_ref.trim() : undefined,
+      associated_users: associatedUsers.map((email) => ({ email })),
       lat: values.lat,
       lng: values.lng,
     };
@@ -331,10 +377,13 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
         patch: {
           name: parsedCreate.data.name,
           type: parsedCreate.data.type,
+          phone_number: parsedCreate.data.phone_number ?? null,
+          status: parsedCreate.data.status,
           address: parsedCreate.data.address,
           inventory_tracking: parsedCreate.data.inventory_tracking,
           is_default: parsedCreate.data.is_default,
           external_ref: parsedCreate.data.external_ref ?? null,
+          associated_users: parsedCreate.data.associated_users,
           lat: parsedCreate.data.lat ?? null,
           lng: parsedCreate.data.lng ?? null,
         },
@@ -381,7 +430,6 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="warehouse">Warehouse — holds stock</SelectItem>
-                        <SelectItem value="dispatch_point">Dispatch point — ships orders</SelectItem>
                         <SelectItem value="branch">Branch — sales or admin office</SelectItem>
                       </SelectContent>
                     </Select>
@@ -389,6 +437,43 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
                   </FormItem>
                 )}
               />
+
+              <FormSectionGrid>
+                <FormField
+                  control={form.control}
+                  name="phone_number"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phone number</FormLabel>
+                      <FormControl>
+                        <Input {...field} inputMode="numeric" placeholder="10-digit mobile" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Status</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select status" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="inactive">Inactive</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </FormSectionGrid>
 
               <FormBlock title="Address">
                 <div className="space-y-4">
@@ -463,6 +548,27 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
                   </FormSectionGrid>
                 </div>
               </FormBlock>
+
+              <FormField
+                control={form.control}
+                name="associated_user_emails"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Associated users</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        {...field}
+                        placeholder="one email per line or comma-separated"
+                        className="min-h-[96px] resize-y"
+                      />
+                    </FormControl>
+                    <p className="text-body-sm text-cream-600">
+                      Users will be invited if needed and assigned to this location automatically.
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <FormField
                 control={form.control}

@@ -16,6 +16,7 @@ export interface DocumentComposerTotals {
   round_off: number;
   grand_total: number;
   total_units: number;
+  gst_inclusive: boolean;
 }
 
 export function defaultPaymentTerms(days: number | null | undefined): string {
@@ -24,8 +25,18 @@ export function defaultPaymentTerms(days: number | null | undefined): string {
   return `${n} days`;
 }
 
-export function computeLineTotal(line: Pick<DocumentLineForTotals, 'qty' | 'unit_price' | 'disc_pct' | 'tax_pct'>): number {
+/**
+ * Computes the line total for a single line item.
+ *
+ * When gstInclusive is true, the unit_price already includes GST so no
+ * additional tax multiplication is applied — the taxable amount IS the total.
+ */
+export function computeLineTotal(
+  line: Pick<DocumentLineForTotals, 'qty' | 'unit_price' | 'disc_pct' | 'tax_pct'>,
+  gstInclusive = false,
+): number {
   const taxable = line.qty * line.unit_price * (1 - line.disc_pct / 100);
+  if (gstInclusive) return Number(taxable.toFixed(2));
   return Number((taxable + taxable * (line.tax_pct / 100)).toFixed(2));
 }
 
@@ -34,13 +45,20 @@ export function computeTotals(
   discountFlat: number,
   freight: number,
   roundOff: number,
+  gstInclusive = false,
 ): DocumentComposerTotals {
   const activeLines = lines.filter((line) => line.diff !== 'removed');
-  const subtotal = activeLines.reduce((sum, line) => sum + line.qty * line.unit_price * (1 - line.disc_pct / 100), 0);
-  const taxAmount = activeLines.reduce((sum, line) => {
-    const taxable = line.qty * line.unit_price * (1 - line.disc_pct / 100);
-    return sum + taxable * (line.tax_pct / 100);
-  }, 0);
+  const subtotal = activeLines.reduce(
+    (sum, line) => sum + line.qty * line.unit_price * (1 - line.disc_pct / 100),
+    0,
+  );
+  const taxAmount = gstInclusive
+    ? 0
+    : activeLines.reduce((sum, line) => {
+        const taxable = line.qty * line.unit_price * (1 - line.disc_pct / 100);
+        return sum + taxable * (line.tax_pct / 100);
+      }, 0);
+
   return {
     subtotal,
     discount_flat: discountFlat,
@@ -50,5 +68,6 @@ export function computeTotals(
     round_off: roundOff,
     grand_total: Math.max(subtotal - discountFlat, 0) + taxAmount + freight + roundOff,
     total_units: activeLines.reduce((sum, line) => sum + line.qty, 0),
+    gst_inclusive: gstInclusive,
   };
 }

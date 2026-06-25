@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { getCohortComposerPayload } from '@/lib/server/cohort-composer';
+import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
 
 export async function GET(_request: NextRequest) {
   const claims = await getVerifiedClaims(_request);
@@ -20,12 +21,9 @@ export async function GET(_request: NextRequest) {
     return NextResponse.json({ error: 'Feature not enabled' }, { status: 403 });
   }
 
-  if (!supabaseAdmin) {
-    return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
-  }
-
   try {
-    const payload = await getCohortComposerPayload(supabaseAdmin as any, claims.tenant_id);
+    const db = supabaseAdmin ?? getRequestSupabaseClient();
+    const payload = await getCohortComposerPayload(db as any, claims.tenant_id);
     return NextResponse.json(payload);
   } catch (error: any) {
     console.error('[GET /api/cohorts/composer]', error?.code, error?.message);

@@ -73,6 +73,7 @@ export interface EstimateComposerLineInput {
   disc_pct: number;
   tax_pct: number;
   line_total: number;
+  item_order?: number | null;
   scheme_tag: string | null;
 }
 
@@ -83,7 +84,7 @@ export interface EstimateComposerDocument {
   buyer_id: string | null;
   location_id: string | null;
   available_locations: ComposerLocationOption[];
-  date_issued: string;
+  estimate_date: string;
   valid_until: string;
   buyer_po_ref: string;
   place_of_supply: string;
@@ -118,7 +119,7 @@ export interface EstimateComposerSavePayload {
   estimate_number?: string;
   buyer_id?: string | null;
   location_id?: string | null;
-  date_issued?: string;
+  estimate_date?: string;
   valid_until?: string;
   buyer_po_ref?: string;
   place_of_supply?: string;
@@ -133,6 +134,7 @@ export interface EstimateComposerSavePayload {
     unit_price: number;
     disc_pct: number;
     tax_pct: number;
+    item_order?: number | null;
     scheme_tag?: string | null;
   }>;
 }

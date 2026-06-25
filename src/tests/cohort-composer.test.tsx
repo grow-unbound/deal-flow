@@ -69,10 +69,10 @@ describe('cohort composer', () => {
   it('renders the shared composer shell and buyer table columns', () => {
     render(<CohortComposer mode="create" />);
 
-    expect(screen.getByText('Add a cohort')).toBeInTheDocument();
+    expect(screen.getByText('Add a customer group')).toBeInTheDocument();
     expect(screen.getByText('Name')).toBeInTheDocument();
     expect(screen.getByText('Description')).toBeInTheDocument();
-    expect(screen.getByText('Cohort profile')).toBeInTheDocument();
+    expect(screen.getByText('Type')).toBeInTheDocument();
     expect(screen.getByText('Business name')).toBeInTheDocument();
     expect(screen.getAllByText('Geography').length).toBeGreaterThan(0);
     expect(screen.getByText('Last order')).toBeInTheDocument();

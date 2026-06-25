@@ -9,6 +9,7 @@ import { FeatureDisabledState } from '@/components/FeatureGate';
 import {
   EntityAvatar,
   FilterBar,
+  type FilterBarGroup,
   InsightStrip4,
   LandingTable,
   PageHeader,
@@ -18,7 +19,7 @@ import {
 } from '@/components/seller/layout';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useFlagState } from '@/hooks/useFeatureFlag';
-import { useTenantInvoicesInfinite, type TenantInvoicesResponse } from '@/hooks/useInvoices';
+import { useTenantInvoices, useTenantInvoicesInfinite, type TenantInvoicesResponse } from '@/hooks/useInvoices';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -30,9 +31,6 @@ import { formatCompactInr, formatDate, formatInr } from '@/lib/utils';
 import { sellerLandingMetricSuffix, type SellerLandingPeriod } from '@/lib/seller-period';
 
 type SortOption = 'Recent first';
-type FilterChip = 'All' | 'Draft' | 'Sent' | 'Paid' | 'Overdue' | 'Void';
-
-const FILTER_CHIPS: FilterChip[] = ['All', 'Draft', 'Sent', 'Paid', 'Overdue', 'Void'];
 const SORT_OPTIONS: SortOption[] = ['Recent first'];
 
 function buyerGeographyLabel(row: Pick<TenantInvoicesResponse['invoices'][number], 'buyer_city' | 'buyer_state'>) {
@@ -91,6 +89,7 @@ function InvoicesDataSkeleton() {
 }
 
 function InvoicesLandingContent({
+  initialData,
   initialPeriod,
 }: {
   initialData: TenantInvoicesResponse | null;
@@ -99,24 +98,31 @@ function InvoicesLandingContent({
   const router = useRouter();
   const { period, setPeriod, horizonLabel, lowerLabel, options } = useSellerLandingPeriod(initialPeriod);
   const metricSuffix = sellerLandingMetricSuffix(period);
+  const summaryQuery = useTenantInvoices(period, initialData);
+  const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-invoices-landing',
     scopeKey: period,
-    version: 2,
+    version: 3,
     initialState: {
       search: '',
-      activeChip: 'All' as FilterChip,
+      filters: {
+        source: [] as string[],
+        status: [] as string[],
+        due: [] as string[],
+        location_id: [] as string[],
+      },
       sortBy: 'Recent first' as SortOption,
     },
   });
   const search = routeState.search;
-  const activeChip = routeState.activeChip;
+  const filters = routeState.filters ?? { source: [], status: [], due: [], location_id: [] };
   const sortBy = routeState.sortBy;
 
   const debouncedSearch = useDebounce(search, 300);
   const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantInvoicesInfinite(
     period,
-    { search: debouncedSearch, status: activeChip },
+    { search: debouncedSearch, ...filters },
   );
   const { sentinelRef } = useInfiniteScroll({
     hasMore: hasNextPage ?? false,
@@ -130,8 +136,8 @@ function InvoicesLandingContent({
     ready: !isLoading,
   });
 
-  const firstPage = data?.pages[0];
-  const allInvoices = useMemo(() => data?.pages.flatMap((p) => p.invoices) ?? [], [data?.pages]);
+  const firstPage = data?.pages?.[0];
+  const allInvoices = useMemo(() => data?.pages?.flatMap((p) => p.invoices) ?? [], [data?.pages]);
   const total = (firstPage as { total?: number | null } | undefined)?.total ?? firstPage?.kpis?.invoices_this_period ?? allInvoices.length;
 
   // Client-side sort only (server returns DESC by invoice_date)
@@ -144,12 +150,12 @@ function InvoicesLandingContent({
   const displayRows = filteredRows.length > 0 ? filteredRows : (retainedRows ?? []);
 
   const subtitle = useMemo(() => {
-    const kpis = firstPage?.kpis;
+    const kpis = summaryData?.kpis;
     if (!kpis) {
       return `Track receivables and collections ${lowerLabel}.`;
     }
     return `${kpis.invoices_this_period} invoices ${lowerLabel} with ${formatCompactInr(kpis.gmv_this_period)} GMV. ${kpis.outstanding_count} still due and ${kpis.overdue_count} overdue.`;
-  }, [firstPage?.kpis, lowerLabel]);
+  }, [lowerLabel, summaryData?.kpis]);
 
   if (isLoading && !data) return <InvoicesLoadingSkeleton />;
 
@@ -163,7 +169,17 @@ function InvoicesLandingContent({
   }
   if (!data) return <InvoicesLoadingSkeleton />;
   const showRefreshingState = isLoading && !data;
-  const kpis = firstPage?.kpis;
+  const kpis = summaryData?.kpis;
+  const groups: FilterBarGroup[] = (summaryData?.filters?.groups ?? []).map((group) => ({
+    key: group.key,
+    label: group.label,
+    options: group.options,
+    values: filters[group.key as keyof typeof filters] ?? [],
+    onChange: (values) => setRouteState((current) => ({
+      ...current,
+      filters: { ...(current.filters ?? filters), [group.key]: values },
+    })),
+  }));
 
   return (
     <PageWrap className="max-w-[1920px]">
@@ -215,8 +231,8 @@ function InvoicesLandingContent({
               {
                 kind: 'risk',
                 eyebrow: 'Needs Attention',
-                hint: `${firstPage?.todays_read?.needs_attention?.length ?? 0}`,
-                rows: (firstPage?.todays_read?.needs_attention ?? []).map((row) => ({
+                hint: `${summaryData?.todays_read?.needs_attention?.length ?? 0}`,
+                rows: (summaryData?.todays_read?.needs_attention ?? []).map((row) => ({
                   ...mapRowToCallout(row),
                   reason: `${row.invoice_number} · Due ${row.due_date ? formatDate(row.due_date) : '—'}`,
                   trailing: (
@@ -229,8 +245,8 @@ function InvoicesLandingContent({
               {
                 kind: 'info',
                 eyebrow: 'Top Spenders',
-                hint: `${firstPage?.todays_read?.top_spenders?.length ?? 0}`,
-                rows: (firstPage?.todays_read?.top_spenders ?? []).map((row) => ({
+                hint: `${summaryData?.todays_read?.top_spenders?.length ?? 0}`,
+                rows: (summaryData?.todays_read?.top_spenders ?? []).map((row) => ({
                   ...mapRowToCallout(row),
                   reason: `${row.invoice_number} · ${row.items_count} items`,
                   trailing: formatCompactInr(row.total_amount),
@@ -239,8 +255,8 @@ function InvoicesLandingContent({
               {
                 kind: 'opportunity',
                 eyebrow: 'Top Risers',
-                hint: `${firstPage?.todays_read?.top_risers?.length ?? 0}`,
-                rows: (firstPage?.todays_read?.top_risers ?? []).map((row) => ({
+                hint: `${summaryData?.todays_read?.top_risers?.length ?? 0}`,
+                rows: (summaryData?.todays_read?.top_risers ?? []).map((row) => ({
                   initials: row.buyer_initials,
                   hue: row.buyer_hue,
                   name: row.buyer_name,
@@ -251,29 +267,29 @@ function InvoicesLandingContent({
             ]}
           />
 
-          <FilterBar
-            count={`${displayRows.length} of ${total} invoices`}
-            searchPlaceholder="Search invoice number, buyer, geography…"
-            chips={FILTER_CHIPS}
-            activeChip={activeChip}
-            sortBy={sortBy}
-            hideViewToggle
-            searchValue={search}
-            onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-            onChipChange={(chip) => setRouteState((current) => ({ ...current, activeChip: chip as FilterChip }))}
-            sortOptions={SORT_OPTIONS}
-            onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
-          />
+            <FilterBar
+              count={`${displayRows.length} of ${total} invoices`}
+              searchPlaceholder="Search invoice number, buyer, geography…"
+              chips={[]}
+              activeChip=""
+              sortBy={sortBy}
+              hideViewToggle
+              groups={groups}
+              searchValue={search}
+              onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+              sortOptions={SORT_OPTIONS}
+              onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
+            />
 
           <LandingTable
             showEmptyState={displayRows.length === 0 && !isLoading}
             emptyState={
               <EmptyState
                 icon={<Receipt size={28} strokeWidth={1.5} />}
-                heading={search.trim() || activeChip !== 'All' ? 'No matching invoices' : 'No invoices yet'}
+                heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching invoices' : 'No invoices yet'}
                 description={
-                  search.trim() || activeChip !== 'All'
-                    ? 'Try a different search or status filter.'
+                  search.trim() || groups.some((group) => group.values.length > 0)
+                    ? 'Try a different search or filter combination.'
                     : 'Create an invoice to bill a buyer.'
                 }
                 action={
@@ -291,6 +307,7 @@ function InvoicesLandingContent({
               { label: 'Invoice #', width: 140, className: 'px-5' },
               { label: 'Buyer', width: 240, className: 'px-5' },
               { label: 'Source', className: 'px-5' },
+              { label: 'Location', className: 'px-5' },
               { label: 'Items', align: 'right', className: 'px-5' },
               { label: 'Value', align: 'right', className: 'px-5' },
               { label: 'Status', className: 'px-5' },
@@ -319,6 +336,7 @@ function InvoicesLandingContent({
                   <p className="truncate text-sm text-cream-900">{row.source_label}</p>
                   <p className="mt-0.5 truncate text-xs text-cream-600">{row.source_detail}</p>
                 </td>
+                <td className="px-5 py-3.5 text-sm text-cream-900">{row.location_name ?? '—'}</td>
                 <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{row.items_count}</td>
                 <td className="num num-display px-5 py-3.5 text-right text-cream-900">
                   <p className="font-mono text-sm text-cream-900">{formatInr(row.total_amount)}</p>

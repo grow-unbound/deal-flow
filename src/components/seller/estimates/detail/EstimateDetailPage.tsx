@@ -243,7 +243,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
             docNumber={data.estimate_number}
             locationId={data.location_id}
             availableLocations={data.available_locations}
-            dateIssued={data.date_issued}
+            dateIssued={data.estimate_date}
             secondDate={data.valid_until}
             buyerPoRef={data.buyer_po_ref}
             onDateIssuedChange={noop}

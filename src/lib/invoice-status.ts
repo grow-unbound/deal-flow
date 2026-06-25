@@ -28,5 +28,6 @@ export function effectiveInvoiceStatus(row: InvoiceStatusInput): InvoiceDbEffect
     const todayKey = istYmd(new Date());
     if (dueKey < todayKey) return 'overdue';
   }
+  if (row.status === 'unpaid' || row.status === 'viewed' || row.status === 'partially_paid') return 'sent';
   return raw;
 }

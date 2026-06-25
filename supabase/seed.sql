@@ -13,9 +13,37 @@
 -- 0. TRUNCATE — clear all data in dependency-safe order.
 --    Listing every table in one TRUNCATE statement lets Postgres
 --    resolve FK ordering automatically.
+--    catalog.integration_types is excluded (migration-owned reference data).
 -- ──────────────────────────────────────────────────────────────
 
+UPDATE app.tenant_brands SET default_cohort_id = NULL WHERE default_cohort_id IS NOT NULL;
+UPDATE app.buyers SET default_cohort_id = NULL WHERE default_cohort_id IS NOT NULL;
+
 TRUNCATE
+  app.integration_webhook_event_changes,
+  app.integration_webhook_events,
+  app.integration_webhook_errors,
+  app.integration_webhook_echo_guards,
+  app.integration_data_flows,
+  app.integration_webhooks,
+  app.integration_entity_map,
+  app.integration_sync_jobs,
+  app.integration_oauth_states,
+  app.tenant_integrations,
+  app.kpi_buyer_app_daily,
+  app.kpi_location_daily,
+  app.kpi_category_daily,
+  app.kpi_brand_daily,
+  app.kpi_product_daily,
+  app.kpi_tenant_daily,
+  app.buyer_app_snapshot,
+  app.locations_snapshot,
+  app.estimates_snapshot,
+  app.invoices_snapshot,
+  app.customers_snapshot,
+  app.products_snapshot,
+  app.categories_snapshot,
+  app.brands_snapshot,
   app.audit_log,
   app.payments,
   app.credit_notes,
@@ -24,8 +52,6 @@ TRUNCATE
   app.invoices,
   app.estimate_items,
   app.estimates,
-  app.kpi_product_daily,
-  app.kpi_tenant_daily,
   app.order_items,
   app.orders,
   app.tenant_inventory,
@@ -38,11 +64,19 @@ TRUNCATE
   app.cohorts,
   app.buyer_users,
   app.buyers,
+  app.tenant_category_images,
+  app.tenant_categories,
   app.tenant_products,
   app.tenant_brands,
+  app.tenant_settings,
+  app.user_profiles,
   app.tenant_users,
   app.locations,
   app.tenants,
+  catalog.embedding_queue,
+  catalog.product_images,
+  catalog.brand_images,
+  catalog.category_images,
   catalog.product_aliases,
   catalog.products,
   catalog.brands,
@@ -164,6 +198,18 @@ INSERT INTO catalog.brands (id, name, slug, logo_url, is_public) VALUES
 ('550e8400-e29b-41d4-a716-446655440105'::uuid, 'Google',  'google',  'https://example.com/google-logo.png',  true),
 ('550e8400-e29b-41d4-a716-446655440106'::uuid, 'Realme',  'realme',  'https://example.com/realme-logo.png',  true);
 
+INSERT INTO catalog.brand_images (brand_id, image_type, r2_medium_key, status, created_by, updated_by)
+SELECT
+  b.id,
+  'logo',
+  b.logo_url,
+  'approved',
+  '550e8400-e29b-41d4-a716-446655440701'::uuid,
+  '550e8400-e29b-41d4-a716-446655440701'::uuid
+FROM catalog.brands b
+WHERE b.is_public = true
+  AND b.logo_url IS NOT NULL;
+
 -- ──────────────────────────────────────────────────────────────
 -- 4. Master Catalog — Products
 -- ──────────────────────────────────────────────────────────────
@@ -210,6 +256,21 @@ VALUES (
   'seller_admin', true, now()
 );
 
+INSERT INTO app.tenant_settings (tenant_id, settings, updated_by)
+VALUES (
+  '550e8400-e29b-41d4-a716-446655440501'::uuid,
+  jsonb_build_object(
+    'delivery_routing_threshold_km', 300,
+    'business_policy', jsonb_build_object('gst_rate', 18)
+  ),
+  '550e8400-e29b-41d4-a716-446655440701'::uuid
+);
+
+INSERT INTO app.user_profiles (user_id, created_by, updated_by)
+VALUES
+  ('550e8400-e29b-41d4-a716-446655440701'::uuid, '550e8400-e29b-41d4-a716-446655440701'::uuid, '550e8400-e29b-41d4-a716-446655440701'::uuid),
+  ('550e8400-e29b-41d4-a716-446655440702'::uuid, '550e8400-e29b-41d4-a716-446655440701'::uuid, '550e8400-e29b-41d4-a716-446655440701'::uuid);
+
 -- ──────────────────────────────────────────────────────────────
 -- 6. Tenant brands — assign all master brands to TechWave
 -- ──────────────────────────────────────────────────────────────
@@ -223,24 +284,37 @@ VALUES
 ('550e8400-e29b-41d4-a716-446655440501'::uuid, '550e8400-e29b-41d4-a716-446655440105'::uuid, true),
 ('550e8400-e29b-41d4-a716-446655440501'::uuid, '550e8400-e29b-41d4-a716-446655440106'::uuid, true);
 
+INSERT INTO app.tenant_categories (tenant_id, master_category_id, name, slug, review_status, is_active, created_by, updated_by)
+SELECT
+  '550e8400-e29b-41d4-a716-446655440501'::uuid,
+  c.id,
+  c.name,
+  c.slug,
+  'approved',
+  true,
+  '550e8400-e29b-41d4-a716-446655440701'::uuid,
+  '550e8400-e29b-41d4-a716-446655440701'::uuid
+FROM catalog.categories c
+WHERE c.is_public = true;
+
 -- ──────────────────────────────────────────────────────────────
 -- 7. Warehouse locations
 -- ──────────────────────────────────────────────────────────────
 
-INSERT INTO app.locations (id, tenant_id, name, address, is_default) VALUES
+INSERT INTO app.locations (id, tenant_id, name, address, type, lat, lng, inventory_tracking, is_default) VALUES
 (
   '550e8400-e29b-41d4-a716-446655440801'::uuid,
   '550e8400-e29b-41d4-a716-446655440501'::uuid,
   'Main Warehouse',
   '{"line1":"42 Industrial Area","city":"Bangalore","state":"KA","pincode":"560058"}',
-  true
+  'warehouse', 12.9716000, 77.5946000, true, true
 ),
 (
   '550e8400-e29b-41d4-a716-446655440802'::uuid,
   '550e8400-e29b-41d4-a716-446655440501'::uuid,
   'Branch Store',
   '{"line1":"18 Electronics Hub","city":"Hyderabad","state":"TS","pincode":"500016"}',
-  false
+  'branch', 17.3850000, 78.4867000, true, false
 );
 
 -- ──────────────────────────────────────────────────────────────
@@ -308,20 +382,20 @@ WHERE p.is_public = true;
 -- ──────────────────────────────────────────────────────────────
 
 INSERT INTO app.buyers (
-  id, tenant_id, business_name, contact_name, phone, email, gstin, geography, is_active
+  id, tenant_id, business_name, contact_name, phone, email, gstin, geography, tier, is_active
 ) VALUES
 ('550e8400-e29b-41d4-a716-446655440601'::uuid, '550e8400-e29b-41d4-a716-446655440501'::uuid,
  'Kumar Electronics',   'Rajesh Kumar', '+91-9123456789', 'rajesh@kumarelectronics.com',
- '36AABCT5678H1Z5', '{"city":"Hyderabad","state":"TS"}', true),
+ '36AABCT5678H1Z5', '{"city":"Hyderabad","state":"TS"}', 'A', true),
 ('550e8400-e29b-41d4-a716-446655440602'::uuid, '550e8400-e29b-41d4-a716-446655440501'::uuid,
  'Singh Mobile Store',  'Priya Singh',  '+91-9876541234', 'priya@singhmobilestore.com',
- '07AABDM1234H1Z2', '{"city":"Delhi","state":"DL"}',     true),
+ '07AABDM1234H1Z2', '{"city":"Delhi","state":"DL"}',     'B', true),
 ('550e8400-e29b-41d4-a716-446655440603'::uuid, '550e8400-e29b-41d4-a716-446655440501'::uuid,
  'Patel Tech Hub',      'Amit Patel',   '+91-9123454567', 'amit@pateltech.com',
- '27AABDU5432H1Z8', '{"city":"Mumbai","state":"MH"}',    true),
+ '27AABDU5432H1Z8', '{"city":"Mumbai","state":"MH"}',    'C', true),
 ('550e8400-e29b-41d4-a716-446655440604'::uuid, '550e8400-e29b-41d4-a716-446655440501'::uuid,
  'Phani Mobiles',       'Phani Buyer',  '+918985987350',  'ksssp.iiith@gmail.com',
- NULL,              '{"city":"Hyderabad","state":"TS"}',  true);
+ NULL,              '{"city":"Hyderabad","state":"TS"}',  'C', true);
 
 -- Link Phani Buyer auth user → Phani Mobiles buyer record
 INSERT INTO app.buyer_users (buyer_id, user_id, role, is_active)
@@ -390,6 +464,12 @@ VALUES (
 );
 
 -- ──────────────────────────────────────────────────────────────
+-- 12. Snapshots + daily KPI tables (derived from base seed)
+-- ──────────────────────────────────────────────────────────────
+
+SELECT app.post_sync_rebuild('550e8400-e29b-41d4-a716-446655440501'::uuid, 1);
+
+-- ──────────────────────────────────────────────────────────────
 -- Verification summary
 -- ──────────────────────────────────────────────────────────────
 
@@ -414,4 +494,16 @@ UNION ALL
 SELECT 'estimates',                    COUNT(*)         FROM app.estimates        WHERE tenant_id = '550e8400-e29b-41d4-a716-446655440501'::uuid AND deleted_at IS NULL
 UNION ALL
 SELECT 'invoices',                     COUNT(*)         FROM app.invoices         WHERE tenant_id = '550e8400-e29b-41d4-a716-446655440501'::uuid AND deleted_at IS NULL
+UNION ALL
+SELECT 'tenant_settings',              COUNT(*)         FROM app.tenant_settings  WHERE tenant_id = '550e8400-e29b-41d4-a716-446655440501'::uuid
+UNION ALL
+SELECT 'tenant_categories',            COUNT(*)         FROM app.tenant_categories WHERE tenant_id = '550e8400-e29b-41d4-a716-446655440501'::uuid AND deleted_at IS NULL
+UNION ALL
+SELECT 'user_profiles',                COUNT(*)         FROM app.user_profiles    WHERE user_id IN ('550e8400-e29b-41d4-a716-446655440701'::uuid,'550e8400-e29b-41d4-a716-446655440702'::uuid) AND deleted_at IS NULL
+UNION ALL
+SELECT 'products_snapshot',            COUNT(*)         FROM app.products_snapshot WHERE tenant_id = '550e8400-e29b-41d4-a716-446655440501'::uuid
+UNION ALL
+SELECT 'customers_snapshot',           COUNT(*)         FROM app.customers_snapshot WHERE tenant_id = '550e8400-e29b-41d4-a716-446655440501'::uuid
+UNION ALL
+SELECT 'buyer_app_snapshot',           COUNT(*)         FROM app.buyer_app_snapshot WHERE tenant_id = '550e8400-e29b-41d4-a716-446655440501'::uuid
 ORDER BY table_name;

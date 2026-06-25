@@ -46,6 +46,16 @@ function LocationDetailSkeleton() {
             <Skeleton key={i} className="h-28 rounded-[14px]" />
           ))}
         </div>
+        <div className="rounded-[14px] border border-cream-200 bg-white p-4">
+          <div className="grid gap-4 md:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="space-y-2">
+                <Skeleton className="h-3 w-16" />
+                <Skeleton className="h-5 w-40" />
+              </div>
+            ))}
+          </div>
+        </div>
         <div className="flex gap-2">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-10 w-28 rounded-full" />
@@ -54,6 +64,51 @@ function LocationDetailSkeleton() {
         <Skeleton className="h-[28rem] rounded-[14px]" />
       </div>
     </PageWrap>
+  );
+}
+
+function LocationProfileStrip({
+  phoneNumber,
+  status,
+  users,
+}: {
+  phoneNumber: string | null;
+  status: 'active' | 'inactive';
+  users: Array<{ email: string; user_name: string | null }>;
+}) {
+  return (
+    <div className="mt-4 rounded-[14px] border border-cream-200 bg-white p-4">
+      <div className="grid gap-4 md:grid-cols-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-500">Phone</p>
+          <p className="mt-1 text-sm font-medium text-cream-900">{phoneNumber ?? '—'}</p>
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-500">Status</p>
+          <p className="mt-1 text-sm font-medium text-cream-900">
+            {status === 'active' ? 'Active' : 'Inactive'}
+          </p>
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cream-500">Associated users</p>
+          {users.length > 0 ? (
+            <div className="mt-1 flex flex-wrap gap-2">
+              {users.map((user) => (
+                <span
+                  key={user.email}
+                  className="inline-flex items-center rounded-full border border-cream-200 bg-cream-50 px-2.5 py-1 text-xs font-medium text-cream-800"
+                  title={user.email}
+                >
+                  {user.user_name ?? user.email}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-1 text-sm font-medium text-cream-900">—</p>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -140,17 +195,26 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
         avatar={{ kind: 'brand', initials: data.initials, hue: 'teal' }}
         title={data.name}
         status={
-          data.is_active
-            ? { label: data.type, tone: 'neutral' }
+          data.status === 'active' && data.is_active
+            ? { label: 'Active', tone: 'success' }
             : { label: 'Inactive', tone: 'neutral' }
         }
-        subtitle={[data.city || '—', `${data.tab_badges.customers} buyers`, skuSubLabel]}
+        subtitle={[
+          data.city || '—',
+          data.type,
+          data.phone_number ?? 'No phone',
+          `${data.associated_users.length} associated users`,
+          `${data.tab_badges.customers} buyers`,
+          skuSubLabel,
+        ]}
         actions={
           <Button variant="ghost" size="sm" onClick={() => setSheetOpen(true)}>
             Edit
           </Button>
         }
       />
+
+      <LocationProfileStrip phoneNumber={data.phone_number} status={data.status} users={data.associated_users} />
 
       <MetaStrip4 tiles={tiles} />
 

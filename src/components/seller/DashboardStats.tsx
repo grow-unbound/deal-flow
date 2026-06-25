@@ -40,7 +40,7 @@ function StatCard({ stat }: { stat: StatItem }) {
   const isNegative = trend !== undefined && trend < 0;
 
   return (
-    <div className="rounded-lg border border-cream-300 bg-[var(--bg-surface)] p-5 shadow-xs">
+    <div className="rounded-lg border border-cream-300 bg-white p-5 shadow-xs">
       <div className="flex items-start justify-between">
         <p className="eyebrow text-cream-600 mb-2">{stat.label}</p>
         {stat.icon && <span className="text-cream-400">{stat.icon}</span>}
@@ -74,4 +74,29 @@ function StatCard({ stat }: { stat: StatItem }) {
   );
 }
 
-export { DashboardStats };
+function DashboardCard({
+  title,
+  subtitle,
+  rightSlot,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  rightSlot?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-[14px] border border-cream-300 bg-white">
+      <div className="flex items-center justify-between border-b border-cream-200 px-5 py-4">
+        <div>
+          <h2 className="text-md font-semibold text-cream-900">{title}</h2>
+          {subtitle ? <p className="text-sm text-cream-600">{subtitle}</p> : null}
+        </div>
+        {rightSlot ? <div className="shrink-0">{rightSlot}</div> : null}
+      </div>
+      <div className="p-5">{children}</div>
+    </section>
+  );
+}
+
+export { DashboardStats, DashboardCard, StatCard };

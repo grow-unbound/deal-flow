@@ -5,6 +5,7 @@ export type { InsightTile } from './InsightStrip4';
 export { V3CalloutPanel } from './V3CalloutPanel';
 export type { V3CalloutItem, CalloutRow, CalloutKind } from './V3CalloutPanel';
 export { FilterBar } from './FilterBar';
+export type { FilterBarGroup } from './FilterBar';
 export { StatusTag } from './StatusTag';
 export type { StatusTone } from './StatusTag';
 export { GrowthPill } from './GrowthPill';

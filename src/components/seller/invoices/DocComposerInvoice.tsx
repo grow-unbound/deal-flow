@@ -27,6 +27,7 @@ import {
 import { FEATURE_FLAGS } from '@/constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFlagState } from '@/hooks/useFeatureFlag';
+import { useTenantSettings } from '@/hooks/useTenantSettings';
 import { composerSubmitFooterLabel, useComposerLeaveGuard } from '@/hooks/useComposerLeaveGuard';
 import { useDocumentBuyerPicker } from '@/hooks/useDocumentBuyerPicker';
 import {
@@ -180,6 +181,8 @@ export function DocComposerInvoice({
   const { isLeavingRef, beginLeaving, resetLeaving, shouldBlockComposer, isSubmitting, submitAction } = useComposerLeaveGuard();
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const invoicesFlag = useFlagState('INVOICES');
+  const { data: tenantSettings } = useTenantSettings();
+  const gstInclusive = tenantSettings?.unified.business_policy.gst_inclusive ?? false;
 
   const [workingId, setWorkingId] = useState<string | null>(invoiceId ?? null);
   const { data, isLoading, isError, error } = useInvoiceComposer(workingId);
@@ -263,7 +266,7 @@ export function DocComposerInvoice({
     const mappedLines = (data.items ?? []).map((line) => ({
       ...line,
       diff: 'clean' as const,
-      line_total: computeLineTotal(line),
+      line_total: computeLineTotal(line, gstInclusive),
     }));
     setLineState(mappedLines);
     setPaymentTermsLabel(defaultPaymentTerms(data.buyer_context?.payment_terms_days ?? 0));
@@ -327,7 +330,7 @@ export function DocComposerInvoice({
         const nextPrice = pricingQuery.data[line.tenant_product_id];
         if (nextPrice == null || nextPrice === line.unit_price) return line;
         const next = { ...line, unit_price: nextPrice };
-        return { ...next, line_total: computeLineTotal(next) };
+        return { ...next, line_total: computeLineTotal(next, gstInclusive) };
       }),
     );
     lastAppliedPricingKeyRef.current = pricingKey;
@@ -340,8 +343,9 @@ export function DocComposerInvoice({
       documentState?.discount_flat ?? 0,
       documentState?.freight ?? 0,
       documentState?.round_off ?? 0,
+      gstInclusive,
     ),
-    [diffLines, documentState?.discount_flat, documentState?.freight, documentState?.round_off],
+    [diffLines, documentState?.discount_flat, documentState?.freight, documentState?.round_off, gstInclusive],
   );
   const dirty = useMemo(() => {
     if (!documentState) return false;
@@ -355,9 +359,10 @@ export function DocComposerInvoice({
         originalDocumentRef.current.discount_flat,
         originalDocumentRef.current.freight,
         originalDocumentRef.current.round_off,
+        gstInclusive,
       );
     },
-    [documentState?.id],
+    [documentState?.id, gstInclusive],
   );
   const stagedChangesRows = useMemo(() => {
     if (!documentState) return undefined;
@@ -521,7 +526,7 @@ export function DocComposerInvoice({
         base_selling_price: product.base_selling_price,
         disc_pct: 0,
         tax_pct: product.tax_pct ?? 0,
-        line_total: computeLineTotal({ qty: 1, unit_price: product.unit_price, disc_pct: 0, tax_pct: product.tax_pct ?? 0 }),
+        line_total: computeLineTotal({ qty: 1, unit_price: product.unit_price, disc_pct: 0, tax_pct: product.tax_pct ?? 0 }, gstInclusive),
         scheme_tag: null,
         diff: 'added',
       },
@@ -533,7 +538,7 @@ export function DocComposerInvoice({
       current.map((line) => {
         if (line.id !== lineId) return line;
         const next = { ...line, ...patch };
-        return { ...next, line_total: computeLineTotal(next) };
+        return { ...next, line_total: computeLineTotal(next, gstInclusive) };
       }),
     );
   }

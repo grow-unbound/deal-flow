@@ -60,6 +60,7 @@ export interface SalesOrderComposerLineInput {
   disc_pct: number;
   tax_pct: number;
   line_total: number;
+  item_order?: number | null;
   scheme_tag: string | null;
 }
 
@@ -117,6 +118,7 @@ export interface SalesOrderComposerSavePayload {
     unit_price: number;
     disc_pct: number;
     tax_pct: number;
+    item_order?: number | null;
     scheme_tag?: string | null;
   }>;
 }

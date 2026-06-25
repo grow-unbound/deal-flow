@@ -3,7 +3,6 @@
 import type { FC } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useRouter } from 'next/navigation';
 import {
   ChevronLeft,
   ChevronRight,
@@ -164,7 +163,6 @@ export function SellerSidebar({
   featureAvailability,
 }: SellerSidebarProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const { user, signOut } = useAuth();
   const { currentTenant } = useTenant();
   const { isSellerAssistant, role } = useRole();
@@ -203,7 +201,6 @@ export function SellerSidebar({
 
   async function handleLogout() {
     await signOut();
-    router.push('/login');
   }
 
   function renderNavItem(item: NavItem) {

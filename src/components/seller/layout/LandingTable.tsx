@@ -7,6 +7,8 @@ interface LandingTableColumn {
   label?: string;
   align?: 'left' | 'right' | 'center';
   width?: number | string;
+  minWidth?: number | string;
+  maxWidth?: number | string;
   className?: string;
 }
 
@@ -34,7 +36,7 @@ export function LandingTable({
     <ScrollableTableShell
       className={cn('rounded-b-[14px] border border-cream-300 border-t-0 bg-white', className)}
     >
-      <table className={cn('w-full min-w-max border-collapse text-base', tableClassName)}>
+      <table className={cn('landing-table w-full min-w-[960px] table-fixed border-collapse text-base', tableClassName)}>
         <thead>
           <tr className="border-y border-cream-300 bg-white">
             {columns.map((column, index) => (
@@ -46,7 +48,11 @@ export function LandingTable({
                   column.align === 'center' && 'text-center',
                   column.className
                 )}
-                style={column.width ? { width: column.width } : undefined}
+                style={{
+                  width: column.width,
+                  minWidth: column.minWidth,
+                  maxWidth: column.maxWidth,
+                }}
               >
                 {column.label ?? ''}
               </th>

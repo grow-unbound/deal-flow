@@ -1,4 +1,5 @@
 import type { SellerLandingPeriodMeta } from '@/lib/seller-period';
+import type { LandingFilterMeta } from '@/lib/landing-filter-params';
 
 export type EstimateDbStatus =
   | 'draft'
@@ -25,6 +26,8 @@ export type EstimateFilterChip =
 
 export interface EstimateLandingRow {
   id: string;
+  location_id: string | null;
+  location_name: string | null;
   estimate_number: string;
   buyer_id: string;
   buyer_name: string;
@@ -94,4 +97,5 @@ export interface TenantEstimatesResponse {
   kpis: EstimatesKpis;
   todays_read: EstimatesTodaysRead;
   estimates: EstimateLandingRow[];
+  filters?: LandingFilterMeta;
 }

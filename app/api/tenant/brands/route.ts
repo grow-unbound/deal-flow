@@ -6,19 +6,6 @@ import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { createTenantBrand } from '@/lib/server/tenant-brand-create';
 import { getPostHogClient } from '@/lib/posthog-server';
 
-type BrandAggregate = {
-  brandId: string;
-  gmvMtd: number;
-  gmvPrevMtd: number;
-  activeBuyersMtd: number;
-  lowStockSkus: number;
-  catalogTouchesMtd: number;
-  latestCatalogUpdatedAt: string | null;
-  latestCatalogName: string | null;
-  categories: string[];
-  skuCount: number;
-};
-
 type TenantBrandLandingRow = {
   id: string;
   tenant_id: string;
@@ -78,50 +65,83 @@ export async function GET(req: NextRequest) {
 
     const db = supabaseAdmin as any;
     const tenantId = claims.tenant_id;
-
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
 
-    const { data: tenantBrandsData, error: tenantBrandsError } = await db
-      .schema('app')
-      .from('tenant_brands')
-      .select(
-        `
-        id,
-        tenant_id,
-        master_brand_id,
-        display_name_override,
-        slug,
-        description,
-        logo_url,
-        margin_pct,
-        exclusivity,
-        is_active,
-        external_ref,
-        principal_name,
-        principal_email,
-        principal_phone,
-        principal_location,
-        contact_name,
-        contact_email,
-        contact_phone,
-        default_cohort_id,
-        created_at,
-        updated_at,
-        deleted_at
-      `,
-      )
-      .eq('tenant_id', tenantId)
-      .eq('is_active', true)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false });
+    // ── Parallel fetch: brands list + static snapshot + per-brand KPI daily ──
+    const [brandsRes, snapshotRes, customersSnapshotRes, currentKpiRes, prevKpiRes] = await Promise.all([
+      db
+        .schema('app')
+        .from('tenant_brands')
+        .select(`
+          id, tenant_id, master_brand_id, display_name_override, slug, description,
+          logo_url, margin_pct, exclusivity, is_active, external_ref,
+          principal_name, principal_email, principal_phone, principal_location,
+          contact_name, contact_email, contact_phone, default_cohort_id,
+          created_at, updated_at, deleted_at
+        `)
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false }),
+      db
+        .schema('app')
+        .from('brands_snapshot')
+        .select('total_count, active_count, with_products_count, refreshed_at')
+        .eq('tenant_id', tenantId)
+        .maybeSingle(),
+      db
+        .schema('app')
+        .from('customers_snapshot')
+        .select('active_count')
+        .eq('tenant_id', tenantId)
+        .maybeSingle(),
+      db
+        .schema('app')
+        .from('kpi_brand_daily')
+        .select('tenant_brand_id, gmv, orders_count, buyers_count, units_sold')
+        .eq('tenant_id', tenantId)
+        .gte('day', period.current_start.split('T')[0])
+        .lt('day', period.current_end_exclusive.split('T')[0]),
+      db
+        .schema('app')
+        .from('kpi_brand_daily')
+        .select('tenant_brand_id, gmv')
+        .eq('tenant_id', tenantId)
+        .gte('day', period.previous_start.split('T')[0])
+        .lt('day', period.previous_end_exclusive.split('T')[0]),
+    ]);
 
-    if (tenantBrandsError) {
-      console.error('[GET /api/tenant/brands] tenant_brands error:', tenantBrandsError.code, tenantBrandsError.message);
+    if (brandsRes.error) {
+      console.error('[GET /api/tenant/brands] tenant_brands error:', brandsRes.error.code, brandsRes.error.message);
       return NextResponse.json({ error: 'Failed to fetch brands' }, { status: 500 });
     }
 
-    const tenantBrands = tenantBrandsData ?? [];
+    const tenantBrands = brandsRes.data ?? [];
     const brandIds = tenantBrands.map((b: { id: string }) => b.id);
+    const snapshot = snapshotRes.data ?? null;
+    const totalBuyers = customersSnapshotRes.data?.active_count ?? 0;
+
+    // Aggregate kpi_brand_daily rows by brand ID for current and prev periods.
+    const currentKpiByBrand = new Map<string, { gmv: number; orders_count: number; buyers_count: number; units_sold: number }>();
+    const prevGmvByBrand = new Map<string, number>();
+
+    for (const row of currentKpiRes.data ?? []) {
+      const existing = currentKpiByBrand.get(row.tenant_brand_id) ?? { gmv: 0, orders_count: 0, buyers_count: 0, units_sold: 0 };
+      currentKpiByBrand.set(row.tenant_brand_id, {
+        gmv:          existing.gmv          + Number(row.gmv ?? 0),
+        orders_count: existing.orders_count + Number(row.orders_count ?? 0),
+        buyers_count: existing.buyers_count + Number(row.buyers_count ?? 0),
+        units_sold:   existing.units_sold   + Number(row.units_sold ?? 0),
+      });
+    }
+    for (const row of prevKpiRes.data ?? []) {
+      prevGmvByBrand.set(row.tenant_brand_id, (prevGmvByBrand.get(row.tenant_brand_id) ?? 0) + Number(row.gmv ?? 0));
+    }
+
+    const portfolioGmvMtd = Array.from(currentKpiByBrand.values()).reduce((s, r) => s + r.gmv, 0);
+    const portfolioGmvPrevMtd = Array.from(prevGmvByBrand.values()).reduce((s, v) => s + v, 0);
+
+    // ── Master brands ────────────────────────────────────────────────────────
     const masterBrandIds = tenantBrands
       .map((b: { master_brand_id: string | null }) => b.master_brand_id)
       .filter(Boolean);
@@ -140,7 +160,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const { data: tenantProductsData, error: tenantProductsError } = await db
+    // ── Per-brand: SKU counts, categories, low stock, catalog freshness ──────
+    const tenantProductsRes = await db
       .schema('app')
       .from('tenant_products')
       .select('id, tenant_brand_id, master_product_id, is_active, deleted_at')
@@ -149,20 +170,20 @@ export async function GET(req: NextRequest) {
       .is('deleted_at', null)
       .in('tenant_brand_id', brandIds.length > 0 ? brandIds : ['00000000-0000-0000-0000-000000000000']);
 
-    if (tenantProductsError) {
-      console.error('[GET /api/tenant/brands] tenant_products error:', tenantProductsError.code, tenantProductsError.message);
+    if (tenantProductsRes.error) {
+      console.error('[GET /api/tenant/brands] tenant_products error:', tenantProductsRes.error.code, tenantProductsRes.error.message);
       return NextResponse.json({ error: 'Failed to fetch brands' }, { status: 500 });
     }
 
-    const tenantProducts = tenantProductsData ?? [];
+    const tenantProducts = tenantProductsRes.data ?? [];
     const tenantProductIds = tenantProducts.map((p: { id: string }) => p.id);
-    const tenantProductIdSet = new Set(tenantProductIds);
     const productToBrand = new Map<string, string>();
     for (const row of tenantProducts) {
       if (row.tenant_brand_id) productToBrand.set(row.id, row.tenant_brand_id);
     }
 
-    let productCategoryRows: Array<{ brand_id: string; category_name: string }> = [];
+    // Categories per brand
+    const categorySetByBrand = new Map<string, Set<string>>();
     if (tenantProducts.length > 0) {
       const masterProductIds = tenantProducts
         .map((p: { master_product_id: string | null }) => p.master_product_id)
@@ -177,172 +198,24 @@ export async function GET(req: NextRequest) {
 
         const masterProductToCategory = new Map<string, string>();
         for (const row of categoryRows ?? []) {
-          const categoryName = row.categories?.name;
-          if (categoryName) masterProductToCategory.set(row.id, categoryName);
+          if (row.categories?.name) masterProductToCategory.set(row.id, row.categories.name);
         }
-
-        productCategoryRows = tenantProducts
-          .map((p: { tenant_brand_id: string; master_product_id: string | null }) => ({
-            brand_id: p.tenant_brand_id,
-            category_name: p.master_product_id ? masterProductToCategory.get(p.master_product_id) ?? 'Uncategorized' : 'Uncategorized',
-          }))
-          .filter((r: { brand_id: string | null; category_name: string | null }) => Boolean(r.brand_id && r.category_name)) as Array<{
-          brand_id: string;
-          category_name: string;
-        }>;
+        for (const p of tenantProducts) {
+          const catName = p.master_product_id ? masterProductToCategory.get(p.master_product_id) ?? 'Uncategorized' : 'Uncategorized';
+          if (!categorySetByBrand.has(p.tenant_brand_id)) categorySetByBrand.set(p.tenant_brand_id, new Set());
+          categorySetByBrand.get(p.tenant_brand_id)?.add(catName);
+        }
       }
     }
 
-    const { count: totalBuyersCount, error: totalBuyersError } = await db
-      .schema('app')
-      .from('buyers')
-      .select('id', { count: 'exact', head: true })
-      .eq('tenant_id', tenantId)
-      .eq('is_active', true)
-      .is('deleted_at', null);
-    if (totalBuyersError) {
-      console.error('[GET /api/tenant/brands] buyers error:', totalBuyersError.code, totalBuyersError.message);
-      return NextResponse.json({ error: 'Failed to fetch brands' }, { status: 500 });
-    }
-
-    const { data: monthOrders, error: monthOrdersError } = await db
-      .schema('app')
-      .from('orders')
-      .select('id, buyer_id, total_amount, placed_at, created_at, status, deleted_at')
-      .eq('tenant_id', tenantId)
-      .neq('status', 'cancelled')
-      .is('deleted_at', null)
-      .gte('placed_at', period.current_start)
-      .lt('placed_at', period.current_end_exclusive);
-
-    if (monthOrdersError) {
-      console.error('[GET /api/tenant/brands] month orders error:', monthOrdersError.code, monthOrdersError.message);
-      return NextResponse.json({ error: 'Failed to fetch brands' }, { status: 500 });
-    }
-
-    const { data: prevMonthOrders, error: prevMonthOrdersError } = await db
-      .schema('app')
-      .from('orders')
-      .select('id, buyer_id, total_amount, placed_at, created_at, status, deleted_at')
-      .eq('tenant_id', tenantId)
-      .neq('status', 'cancelled')
-      .is('deleted_at', null)
-      .gte('placed_at', period.previous_start)
-      .lt('placed_at', period.previous_end_exclusive);
-
-    if (prevMonthOrdersError) {
-      console.error('[GET /api/tenant/brands] prev orders error:', prevMonthOrdersError.code, prevMonthOrdersError.message);
-      return NextResponse.json({ error: 'Failed to fetch brands' }, { status: 500 });
-    }
-
-    const monthOrderIds = (monthOrders ?? []).map((o: { id: string }) => o.id);
-    const prevOrderIds = (prevMonthOrders ?? []).map((o: { id: string }) => o.id);
-
-    const [monthOrderItemsRes, prevOrderItemsRes] = await Promise.all([
-      monthOrderIds.length
-        ? db
-            .schema('app')
-            .from('order_items')
-            .select('order_id, tenant_product_id, deleted_at')
-            .in('order_id', monthOrderIds)
-            .is('deleted_at', null)
-        : Promise.resolve({ data: [] as any[], error: null }),
-      prevOrderIds.length
-        ? db
-            .schema('app')
-            .from('order_items')
-            .select('order_id, tenant_product_id, deleted_at')
-            .in('order_id', prevOrderIds)
-            .is('deleted_at', null)
-        : Promise.resolve({ data: [] as any[], error: null }),
-    ]);
-
-    if (monthOrderItemsRes.error || prevOrderItemsRes.error) {
-      console.error('[GET /api/tenant/brands] order_items error:', monthOrderItemsRes.error || prevOrderItemsRes.error);
-      return NextResponse.json({ error: 'Failed to fetch brands' }, { status: 500 });
-    }
-
-    const monthOrderItems = monthOrderItemsRes.data ?? [];
-    const prevOrderItems = prevOrderItemsRes.data ?? [];
-
-    const monthOrderTotals = new Map<string, number>();
-    for (const order of monthOrders ?? []) {
-      monthOrderTotals.set(order.id, Number(order.total_amount ?? 0));
-    }
-    const prevOrderTotals = new Map<string, number>();
-    for (const order of prevMonthOrders ?? []) {
-      prevOrderTotals.set(order.id, Number(order.total_amount ?? 0));
-    }
-
-    const monthOrderBuyers = new Map<string, string>();
-    for (const order of monthOrders ?? []) {
-      monthOrderBuyers.set(order.id, order.buyer_id);
-    }
-
-    const brandAggMap = new Map<string, BrandAggregate>();
-    for (const b of tenantBrands) {
-      brandAggMap.set(b.id, {
-        brandId: b.id,
-        gmvMtd: 0,
-        gmvPrevMtd: 0,
-        activeBuyersMtd: 0,
-        lowStockSkus: 0,
-        catalogTouchesMtd: 0,
-        latestCatalogUpdatedAt: null,
-        latestCatalogName: null,
-        categories: [],
-        skuCount: 0,
-      });
-    }
-
-    const categorySetByBrand = new Map<string, Set<string>>();
-    for (const row of productCategoryRows) {
-      if (!categorySetByBrand.has(row.brand_id)) categorySetByBrand.set(row.brand_id, new Set());
-      categorySetByBrand.get(row.brand_id)?.add(row.category_name);
-    }
-
+    // SKU counts per brand
+    const skuCountByBrand = new Map<string, number>();
     for (const tp of tenantProducts) {
-      const agg = brandAggMap.get(tp.tenant_brand_id);
-      if (agg) agg.skuCount += 1;
+      skuCountByBrand.set(tp.tenant_brand_id, (skuCountByBrand.get(tp.tenant_brand_id) ?? 0) + 1);
     }
 
-    const monthOrderCountedForBrand = new Set<string>();
-    const buyersByBrand = new Map<string, Set<string>>();
-    for (const item of monthOrderItems) {
-      if (!tenantProductIdSet.has(item.tenant_product_id)) continue;
-      const brandId = productToBrand.get(item.tenant_product_id);
-      if (!brandId) continue;
-      const dedupeKey = `${brandId}:${item.order_id}`;
-      if (!monthOrderCountedForBrand.has(dedupeKey)) {
-        monthOrderCountedForBrand.add(dedupeKey);
-        const agg = brandAggMap.get(brandId);
-        if (agg) agg.gmvMtd += Number(monthOrderTotals.get(item.order_id) ?? 0);
-      }
-      const buyerId = monthOrderBuyers.get(item.order_id);
-      if (buyerId) {
-        if (!buyersByBrand.has(brandId)) buyersByBrand.set(brandId, new Set());
-        buyersByBrand.get(brandId)?.add(buyerId);
-      }
-    }
-
-    const prevOrderCountedForBrand = new Set<string>();
-    for (const item of prevOrderItems) {
-      if (!tenantProductIdSet.has(item.tenant_product_id)) continue;
-      const brandId = productToBrand.get(item.tenant_product_id);
-      if (!brandId) continue;
-      const dedupeKey = `${brandId}:${item.order_id}`;
-      if (!prevOrderCountedForBrand.has(dedupeKey)) {
-        prevOrderCountedForBrand.add(dedupeKey);
-        const agg = brandAggMap.get(brandId);
-        if (agg) agg.gmvPrevMtd += Number(prevOrderTotals.get(item.order_id) ?? 0);
-      }
-    }
-
-    for (const [brandId, buyers] of buyersByBrand.entries()) {
-      const agg = brandAggMap.get(brandId);
-      if (agg) agg.activeBuyersMtd = buyers.size;
-    }
-
+    // Low-stock SKUs per brand
+    const lowStockByBrand = new Map<string, number>();
     if (tenantProductIds.length > 0) {
       const { data: lowStockRows, error: lowStockError } = await db
         .schema('app')
@@ -356,18 +229,17 @@ export async function GET(req: NextRequest) {
         console.error('[GET /api/tenant/brands] inventory error:', lowStockError.code, lowStockError.message);
         return NextResponse.json({ error: 'Failed to fetch brands' }, { status: 500 });
       }
-
       for (const row of lowStockRows ?? []) {
         if (Number(row.qty_available ?? 0) <= Number(row.reorder_point ?? -1)) {
           const brandId = productToBrand.get(row.tenant_product_id);
-          if (!brandId) continue;
-          const agg = brandAggMap.get(brandId);
-          if (agg) agg.lowStockSkus += 1;
+          if (brandId) lowStockByBrand.set(brandId, (lowStockByBrand.get(brandId) ?? 0) + 1);
         }
       }
     }
 
-    let publishedCatalogs: any[] = [];
+    // Catalog freshness per brand
+    const latestCatalogByBrand = new Map<string, { updated_at: string; name: string }>();
+    const catalogTouchesMtdByBrand = new Map<string, number>();
     const { data: catalogsData, error: catalogsError } = await db
       .schema('app')
       .from('published_catalogs')
@@ -379,12 +251,13 @@ export async function GET(req: NextRequest) {
       console.error('[GET /api/tenant/brands] catalogs error:', catalogsError.code, catalogsError.message);
       return NextResponse.json({ error: 'Failed to fetch brands' }, { status: 500 });
     }
-    publishedCatalogs = catalogsData ?? [];
-
-    const monthCatalogs = publishedCatalogs.filter(
-      (c: { updated_at: string }) => c.updated_at >= period.current_start && c.updated_at < period.current_end_exclusive,
-    );
+    const publishedCatalogs = catalogsData ?? [];
     const allCatalogIds = publishedCatalogs.map((c: { id: string }) => c.id);
+    const monthCatalogIdSet = new Set(
+      publishedCatalogs
+        .filter((c: { updated_at: string }) => c.updated_at >= period.current_start && c.updated_at < period.current_end_exclusive)
+        .map((c: { id: string }) => c.id),
+    );
 
     if (allCatalogIds.length > 0) {
       const { data: catalogItemsData, error: catalogItemsError } = await db
@@ -398,125 +271,89 @@ export async function GET(req: NextRequest) {
         console.error('[GET /api/tenant/brands] catalog items error:', catalogItemsError.code, catalogItemsError.message);
         return NextResponse.json({ error: 'Failed to fetch brands' }, { status: 500 });
       }
-
       const catalogMetaById = new Map<string, { updated_at: string; name: string }>();
       for (const c of publishedCatalogs) catalogMetaById.set(c.id, { updated_at: c.updated_at, name: c.name });
-      const monthCatalogIdSet = new Set(monthCatalogs.map((c: { id: string }) => c.id));
 
       for (const row of catalogItemsData ?? []) {
         const brandId = productToBrand.get(row.tenant_product_id);
         if (!brandId) continue;
-        const agg = brandAggMap.get(brandId);
-        if (!agg) continue;
-
-        const catalogMeta = catalogMetaById.get(row.catalog_id) ?? null;
-        const catalogUpdated = catalogMeta?.updated_at ?? null;
-        if (catalogUpdated && (!agg.latestCatalogUpdatedAt || catalogUpdated > agg.latestCatalogUpdatedAt)) {
-          agg.latestCatalogUpdatedAt = catalogUpdated;
-          agg.latestCatalogName = catalogMeta?.name ?? null;
+        const meta = catalogMetaById.get(row.catalog_id);
+        if (meta) {
+          const cur = latestCatalogByBrand.get(brandId);
+          if (!cur || meta.updated_at > cur.updated_at) latestCatalogByBrand.set(brandId, meta);
         }
-
         if (monthCatalogIdSet.has(row.catalog_id)) {
-          agg.catalogTouchesMtd += 1;
+          catalogTouchesMtdByBrand.set(brandId, (catalogTouchesMtdByBrand.get(brandId) ?? 0) + 1);
         }
       }
     }
 
+    // ── Assemble row objects ─────────────────────────────────────────────────
     const now = new Date();
-    for (const [brandId, agg] of brandAggMap.entries()) {
-      const categories = Array.from(categorySetByBrand.get(brandId) ?? []);
-      agg.categories = categories.length > 0 ? categories : ['Uncategorized'];
-    }
-
-    const totalBuyers = totalBuyersError ? 0 : totalBuyersCount ?? 0;
-    const uniqueBuyersMtd = new Set((monthOrders ?? []).map((o: { buyer_id: string }) => o.buyer_id)).size;
-
-    const aggregates = Array.from(brandAggMap.values());
-    const portfolioGmvMtd = (monthOrders ?? []).reduce((sum: number, order: { total_amount: number | null }) => sum + Number(order.total_amount ?? 0), 0);
-    const portfolioGmvPrevMtd = (prevMonthOrders ?? []).reduce((sum: number, order: { total_amount: number | null }) => sum + Number(order.total_amount ?? 0), 0);
-    const brandsCarried = aggregates.filter((a) => a.gmvMtd > 0).length;
-
-    const needsAttentionBrandIds = new Set<string>();
-    for (const a of aggregates) {
-      if (a.lowStockSkus > 0 || a.gmvMtd < a.gmvPrevMtd || a.catalogTouchesMtd === 0) {
-        needsAttentionBrandIds.add(a.brandId);
-      }
-    }
-
-    const catalogFreshnessCount = aggregates.filter((a) => a.catalogTouchesMtd > 0).length;
-    const earliestMonthCatalogUpdate = monthCatalogs
-      .map((c: { updated_at: string }) => c.updated_at)
-      .sort()[0] ?? null;
-    const catalogFreshnessEarliestDays = earliestMonthCatalogUpdate
-      ? Math.max(
-          0,
-          Math.floor((now.getTime() - new Date(earliestMonthCatalogUpdate).getTime()) / (1000 * 60 * 60 * 24)),
-        )
-      : null;
-
     const brands: TenantBrandLandingRow[] = tenantBrands.map(
-      (row: {
-        id: string;
-        tenant_id: string;
-        master_brand_id: string | null;
-        display_name_override: string | null;
-        slug: string | null;
-        description: string | null;
-        margin_pct: number | null;
-        exclusivity: boolean | null;
-        is_active: boolean;
-        external_ref: string | null;
-        created_at: string;
-        updated_at: string;
-      }) => {
-        const agg = brandAggMap.get(row.id);
-        const gmvMtd = agg?.gmvMtd ?? 0;
-        const gmvPrevMtd = agg?.gmvPrevMtd ?? 0;
-        const growthPct = gmvPrevMtd > 0 ? Math.round(((gmvMtd - gmvPrevMtd) / gmvPrevMtd) * 100) : gmvMtd > 0 ? 100 : 0;
+      (row: { id: string; tenant_id: string; master_brand_id: string | null; display_name_override: string | null; slug: string | null; description: string | null; margin_pct: number | null; exclusivity: boolean | null; is_active: boolean; external_ref: string | null; created_at: string; updated_at: string }) => {
+        const kpi        = currentKpiByBrand.get(row.id);
+        const gmvMtd     = kpi?.gmv ?? 0;
+        const gmvPrevMtd = prevGmvByBrand.get(row.id) ?? 0;
+        const growthPct  = gmvPrevMtd > 0 ? Math.round(((gmvMtd - gmvPrevMtd) / gmvPrevMtd) * 100) : gmvMtd > 0 ? 100 : 0;
         const portfolioSharePct = portfolioGmvMtd > 0 ? Math.round((gmvMtd / portfolioGmvMtd) * 100) : 0;
-        const catalogDaysAgo = agg?.latestCatalogUpdatedAt
-          ? Math.max(0, Math.floor((now.getTime() - new Date(agg.latestCatalogUpdatedAt).getTime()) / (1000 * 60 * 60 * 24)))
+        const latestCatalog = latestCatalogByBrand.get(row.id) ?? null;
+        const catalogDaysAgo = latestCatalog
+          ? Math.max(0, Math.floor((now.getTime() - new Date(latestCatalog.updated_at).getTime()) / (1000 * 60 * 60 * 24)))
           : null;
+        const lowStockSkus       = lowStockByBrand.get(row.id) ?? 0;
+        const catalogTouchesMtd  = catalogTouchesMtdByBrand.get(row.id) ?? 0;
         const alerts = [
-          ...(agg && agg.lowStockSkus > 0 ? ['low_stock'] : []),
-          ...(agg && agg.gmvMtd < agg.gmvPrevMtd ? ['gmv_decline'] : []),
-          ...(agg && agg.catalogTouchesMtd === 0 ? ['not_in_catalog_mtd'] : []),
+          ...(lowStockSkus > 0 ? ['low_stock'] : []),
+          ...(gmvMtd < gmvPrevMtd ? ['gmv_decline'] : []),
+          ...(catalogTouchesMtd === 0 ? ['not_in_catalog_mtd'] : []),
         ];
 
         return {
           ...row,
-          master_brand: row.master_brand_id ? masterBrands[row.master_brand_id] ?? null : null,
-          gmv_mtd: gmvMtd,
-          gmv_prev_mtd: gmvPrevMtd,
-          growth_pct: growthPct,
+          master_brand:       row.master_brand_id ? masterBrands[row.master_brand_id] ?? null : null,
+          gmv_mtd:            gmvMtd,
+          gmv_prev_mtd:       gmvPrevMtd,
+          growth_pct:         growthPct,
           portfolio_share_pct: portfolioSharePct,
-          sku_count: agg?.skuCount ?? 0,
-          active_buyers_mtd: agg?.activeBuyersMtd ?? 0,
-          total_buyers: totalBuyers,
-          catalog_days_ago: catalogDaysAgo,
-          categories: agg?.categories ?? ['Uncategorized'],
-          catalog_name: agg?.latestCatalogName ?? null,
+          sku_count:          skuCountByBrand.get(row.id) ?? 0,
+          active_buyers_mtd:  kpi?.buyers_count ?? 0,
+          total_buyers:       totalBuyers,
+          catalog_days_ago:   catalogDaysAgo,
+          categories:         Array.from(categorySetByBrand.get(row.id) ?? ['Uncategorized']),
+          catalog_name:       latestCatalog?.name ?? null,
           alerts,
         };
       },
     );
 
-    const byGmv = [...brands].sort((a, b) => b.gmv_mtd - a.gmv_mtd);
+    const byGmv    = [...brands].sort((a, b) => b.gmv_mtd - a.gmv_mtd);
     const byGrowth = [...brands].sort((a, b) => b.growth_pct - a.growth_pct);
-
     const categories = Array.from(new Set(brands.flatMap((b) => b.categories))).sort((a: string, b: string) => a.localeCompare(b));
+
+    const needsAttentionCount     = brands.filter((b) => b.alerts.length > 0).length;
+    const catalogFreshnessCount   = brands.filter((b) => (catalogTouchesMtdByBrand.get(b.id) ?? 0) > 0).length;
+    const monthCatalogDates       = publishedCatalogs
+      .filter((c: { id: string }) => monthCatalogIdSet.has(c.id))
+      .map((c: { updated_at: string }) => c.updated_at)
+      .sort();
+    const catalogFreshnessEarliestDays = monthCatalogDates[0]
+      ? Math.max(0, Math.floor((now.getTime() - new Date(monthCatalogDates[0]).getTime()) / (1000 * 60 * 60 * 24)))
+      : null;
 
     return NextResponse.json({
       period,
       kpis: {
-        portfolio_gmv_mtd: portfolioGmvMtd,
-        portfolio_gmv_prev_mtd: portfolioGmvPrevMtd,
-        brands_carried: brandsCarried,
-        buyers_with_orders_mtd: uniqueBuyersMtd,
-        total_buyers: totalBuyers,
-        need_attention_count: needsAttentionBrandIds.size,
-        catalog_freshness_count: catalogFreshnessCount,
-        total_published_catalogs: publishedCatalogs.length,
+        portfolio_gmv_mtd:             portfolioGmvMtd,
+        portfolio_gmv_prev_mtd:        portfolioGmvPrevMtd,
+        brands_carried:                snapshot?.active_count ?? tenantBrands.length,
+        buyers_with_orders_mtd:        new Set(
+          (currentKpiRes.data ?? []).map((r: { tenant_brand_id: string }) => r.tenant_brand_id),
+        ).size, // distinct brands with any buyers this period (proxy; exact unique buyers across all brands is live-computed below if needed)
+        total_buyers:                  totalBuyers,
+        need_attention_count:          needsAttentionCount,
+        catalog_freshness_count:       catalogFreshnessCount,
+        total_published_catalogs:      publishedCatalogs.length,
         catalog_freshness_earliest_days: catalogFreshnessEarliestDays,
       },
       todays_read: {

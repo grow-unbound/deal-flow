@@ -23,6 +23,9 @@ export const DEFAULT_TENANT_SETTINGS_STORED = {
       enquiries: false,
       sales_orders: false,
       invoices: false,
+      create_enquiries: true,
+      create_sales_orders: true,
+      create_invoices: true,
     },
   },
   buyer_app: {

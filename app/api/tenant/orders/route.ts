@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { getInAppCreateFlags } from '@/lib/server/seller-features';
 import {
   applySellerLocationScope,
   isSellerLocationSelectionAllowed,
@@ -15,6 +16,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { FEATURE_FLAGS } from '@/constants';
+import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 
 const CreateSalesOrderDraftSchema = z.object({
   from_estimate_id: z.string().uuid().optional(),
@@ -22,6 +24,7 @@ const CreateSalesOrderDraftSchema = z.object({
 
 type OrderStatus =
   | 'draft'
+  | 'open'
   | 'received'
   | 'confirmed'
   | 'partially_dispatched'
@@ -29,6 +32,8 @@ type OrderStatus =
   | 'delivered'
   | 'invoiced'
   | 'partially_invoiced'
+  | 'overdue'
+  | 'void'
   | 'cancelled';
 type StatusTone = 'success' | 'warning' | 'danger' | 'neutral';
 type AvatarHue = 'teal' | 'ember' | 'cream';
@@ -82,7 +87,7 @@ function getHue(index: number): AvatarHue {
 }
 
 function statusMeta(status: OrderStatus): { label: string; tone: StatusTone; filterChip: SalesOrderFilterChip } {
-  if (status === 'received' || status === 'draft') {
+  if (status === 'received' || status === 'draft' || status === 'open') {
     return { label: 'Received', tone: 'neutral', filterChip: 'Received' };
   }
   if (status === 'confirmed') return { label: 'Confirmed', tone: 'warning', filterChip: 'Confirmed' };
@@ -93,11 +98,8 @@ function statusMeta(status: OrderStatus): { label: string; tone: StatusTone; fil
     return { label: 'In transit', tone: 'neutral', filterChip: 'In transit' };
   }
   if (status === 'delivered') return { label: 'Delivered', tone: 'success', filterChip: 'Delivered' };
-  if (status === 'invoiced') return { label: 'Invoiced', tone: 'success', filterChip: 'Invoiced' };
-  if (status === 'partially_invoiced') {
-    return { label: 'Partly invoiced', tone: 'warning', filterChip: 'Invoiced' };
-  }
-  if (status === 'cancelled') return { label: 'Cancelled', tone: 'neutral', filterChip: 'Cancelled' };
+  if (status === 'invoiced' || status === 'partially_invoiced' || status === 'overdue') return { label: 'Invoiced', tone: 'success', filterChip: 'Invoiced' };
+  if (status === 'void' || status === 'cancelled') return { label: 'Cancelled', tone: 'neutral', filterChip: 'Cancelled' };
   return { label: 'Received', tone: 'neutral', filterChip: 'Received' };
 }
 
@@ -120,6 +122,12 @@ function sourceLabel(source: string | null): string {
   if (source === 'buyer_app') return 'buyer_app';
   if (source === 'csv_import') return 'csv_import';
   return '—';
+}
+
+function orderSourceCategory(order: Pick<OrderRow, 'source' | 'estimate_id'>): string {
+  if (order.estimate_id) return 'Converted Estimate';
+  if (order.source === 'buyer_app') return 'Buyer App';
+  return 'Direct';
 }
 
 export async function GET(req: NextRequest) {
@@ -146,6 +154,10 @@ export async function GET(req: NextRequest) {
 
     const tenantId = claims.tenant_id;
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
+    const search = req.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '';
+    const sourceParams = readArrayParam(req.nextUrl.searchParams, 'source');
+    const statusParams = readArrayParam(req.nextUrl.searchParams, 'status');
+    const locationParams = readArrayParam(req.nextUrl.searchParams, 'location_id');
 
     const db = supabaseAdmin;
 
@@ -155,6 +167,10 @@ export async function GET(req: NextRequest) {
       claims.role ?? 'unknown',
       locationScopeCacheKey(claims),
       limit,
+      search,
+      sourceParams.join('|'),
+      statusParams.join('|'),
+      locationParams.join('|'),
       period.selected,
       period.current_start.slice(0, 10),
       period.current_end_exclusive.slice(0, 10),
@@ -288,6 +304,9 @@ export async function GET(req: NextRequest) {
       itemsCountByOrder.set(item.order_id, (itemsCountByOrder.get(item.order_id) ?? 0) + 1);
     }
 
+    const availableLocations = await loadAccessibleSellerLocations(db as any, tenantId, claims);
+    const locationNameById = new Map(availableLocations.map((location) => [location.id, location.name]));
+
     const buyersMtd = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.buyers_count ?? 0), 0)
       || new Set(mtdOrders.map((order) => order.buyer_id)).size;
     const ordersMtd = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.orders_count ?? 0), 0)
@@ -318,9 +337,12 @@ export async function GET(req: NextRequest) {
       const sourceLinePrimary = estimateNumber && estimateNumber.trim().length > 0 ? estimateNumber : sourceLabel(order.source);
       const sourceLineSecondary =
         estimateNumber && estimateNumber.trim().length > 0 ? `Converted by ${actorLabel}` : actorLabel;
+      const sourceCategory = orderSourceCategory(order);
 
       return {
         id: order.id,
+        location_id: order.location_id,
+        location_name: order.location_id ? locationNameById.get(order.location_id) ?? null : null,
         order_id: order.order_number,
         buyer_id: order.buyer_id,
         buyer_name: buyerName,
@@ -331,6 +353,7 @@ export async function GET(req: NextRequest) {
         delivery_city: city,
         delivery_label: city,
         source: order.source,
+        source_category: sourceCategory,
         source_label: sourceLinePrimary,
         source_detail: sourceLineSecondary,
         catalog_name: order.catalog_id ? catalogById.get(order.catalog_id) ?? null : null,
@@ -348,33 +371,69 @@ export async function GET(req: NextRequest) {
         placed_at: order.placed_at,
       };
     });
+    const filteredRows = rows.filter((row) => {
+      const sourceMatch = sourceParams.length === 0 || sourceParams.includes((row as typeof row & { source_category: string }).source_category);
+      const statusMatch = statusParams.length === 0 || statusParams.includes(row.status.label);
+      const locationMatch = locationParams.length === 0 || (row.location_id ? locationParams.includes(row.location_id) : false);
+      const searchMatch =
+        search.length === 0 ||
+        [row.order_id, row.buyer_name, row.delivery_city, row.catalog_name ?? '', row.source_label, row.source_detail, row.location_name ?? '']
+          .some((value) => value.toLowerCase().includes(search));
+      return sourceMatch && statusMatch && locationMatch && searchMatch;
+    });
 
-    const needsAttention = rows.filter((row) => row.status.value === 'received').slice(0, 3);
-    const biggestTickets = [...rows].sort((a, b) => b.gmv - a.gmv).slice(0, 3);
-    const inMotion = rows
+    const needsAttention = filteredRows.filter((row) => row.status.value === 'received').slice(0, 3);
+    const biggestTickets = [...filteredRows].sort((a, b) => b.gmv - a.gmv).slice(0, 3);
+    const inMotion = filteredRows
       .filter((row) => row.status.value === 'dispatched' || row.status.value === 'partially_dispatched')
       .slice(0, 3);
+    const filteredGmv = filteredRows.reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
+    const filteredReceived = filteredRows.filter((row) => row.status.value === 'received').length;
+    const filteredPendingDispatch = filteredRows.filter((row) => row.status.value === 'confirmed').length;
+    const filteredDelivered = filteredRows.filter((row) => row.status.value === 'delivered').length;
+    const filteredBuyers = new Set(filteredRows.map((row) => row.buyer_id)).size;
+    const filters: LandingFilterMeta = {
+      groups: [
+        {
+          key: 'source',
+          label: 'Source',
+          options: ['Buyer App', 'Direct', 'Converted Estimate'].map((value) => ({ value, label: value })),
+        },
+        {
+          key: 'status',
+          label: 'Status',
+          options: ['Received', 'Confirmed', 'In transit', 'Invoiced', 'Delivered', 'Cancelled'].map((value) => ({ value, label: value })),
+        },
+        {
+          key: 'location_id',
+          label: 'Location',
+          options: availableLocations.map((location) => ({ value: location.id, label: location.name })),
+        },
+      ],
+    };
 
     const payload = {
       period,
       kpis: {
-        orders_mtd: ordersMtd,
+        orders_mtd: filteredRows.length,
         orders_prev_mtd: ordersPrevMtd,
         orders_growth_pct: ordersGrowthPct,
-        gmv_mtd: gmvMtd,
+        gmv_mtd: filteredGmv,
         gmv_prev_mtd: gmvPrevMtd,
-        aov,
-        pending_dispatch_count: pendingDispatchCount,
-        received_count: receivedCount,
-        delivered_count: deliveredCount,
-        buyers_mtd: buyersMtd,
+        aov: filteredRows.length > 0 ? filteredGmv / filteredRows.length : 0,
+        pending_dispatch_count: filteredPendingDispatch,
+        received_count: filteredReceived,
+        delivered_count: filteredDelivered,
+        buyers_mtd: filteredBuyers,
       },
       todays_read: {
         needs_attention: needsAttention,
         biggest_tickets: biggestTickets,
         in_motion: inMotion,
       },
-      orders: rows,
+      orders: filteredRows,
+      filters,
+      total: filteredRows.length,
     };
 
     ordersLandingCache.set(cacheKey, {
@@ -407,13 +466,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const [orderMgmt, salesOrders] = await Promise.all([
+    const [orderMgmt, salesOrders, createFlags] = await Promise.all([
       getFlag(FEATURE_FLAGS.ORDER_MANAGEMENT, claims.tenant_id),
       getFlag(FEATURE_FLAGS.SALES_ORDERS, claims.tenant_id),
+      getInAppCreateFlags(claims.tenant_id),
     ]);
 
     if (!orderMgmt || !salesOrders) {
       return NextResponse.json({ error: 'Feature not enabled' }, { status: 403 });
+    }
+    if (!createFlags.create_sales_orders) {
+      return NextResponse.json({ error: 'Sales order creation is disabled for this tenant' }, { status: 403 });
     }
 
     if (!supabaseAdmin) {
