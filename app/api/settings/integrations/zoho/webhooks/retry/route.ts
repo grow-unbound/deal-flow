@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedClaims } from '@/lib/auth';
 import { buildIntegrationTopologyConfig, getIntegrationWebhookDefinitions } from '@/lib/integrations/definitions';
+import {
+  buildZohoWebhookRegistrationPayload,
+  buildZohoWorkflowRegistrationPayload,
+} from '@/lib/integrations/zoho-webhooks';
 import { supabaseAdmin } from '@/lib/supabase';
 
 interface ZohoSecret {
@@ -30,6 +34,12 @@ function getFunctionsBaseUrl() {
 
 function toRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function extractWorkflowIds(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === 'string');
+  const record = toRecord(value);
+  return Object.values(record).filter((entry): entry is string => typeof entry === 'string');
 }
 
 function resolveDc(config: Record<string, unknown>) {
@@ -76,48 +86,47 @@ async function registerZohoWebhook(
   const url = new URL(`/${module}/settings/webhooks`, `https://www.zohoapis.${dc}`);
   url.searchParams.set('organization_id', orgId);
 
-  const response = await fetch(url.toString(), {
-    method: 'POST',
-    headers: {
-      Authorization: `Zoho-oauthtoken ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      webhook_name: `${entityType} sync - Yukti`,
-      description: `Yukti inbound ${entityType} sync`,
-      entity: providerEntity,
-      method: 'POST',
-      url: webhookUrl,
-      secret,
-      body_type: 'application/json',
-    }),
-  });
-
-  const json = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!response.ok || json.code !== 0) {
-    throw new Error(`Zoho ${entityType} webhook registration failed (${response.status}): ${String(json.message ?? 'Unknown Zoho error')}`);
-  }
-  const webhook = typeof json.webhook === 'object' && json.webhook !== null ? (json.webhook as Record<string, unknown>) : null;
-  const webhookId = typeof webhook?.webhook_id === 'string' ? webhook.webhook_id : null;
-  if (!webhookId) throw new Error(`Zoho did not return a ${entityType} webhook id.`);
   const workflowIds: Record<string, string> = {};
+  const webhookIds: Record<string, string> = {};
   const createdWorkflowIds: string[] = [];
+  const createdWebhookIds: string[] = [];
   try {
     for (const ruleType of workflowRuleTypes) {
+      const webhookResponse = await fetch(url.toString(), {
+        method: 'POST',
+        headers: {
+          Authorization: `Zoho-oauthtoken ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(buildZohoWebhookRegistrationPayload({
+          webhookUrl,
+          entityType,
+          providerEntity,
+          secret,
+          ruleType,
+        })),
+      });
+      const webhookJson = (await webhookResponse.json().catch(() => ({}))) as Record<string, unknown>;
+      const remoteWebhook = typeof webhookJson.webhook === 'object' && webhookJson.webhook !== null
+        ? webhookJson.webhook as Record<string, unknown>
+        : null;
+      const webhookId = typeof remoteWebhook?.webhook_id === 'string' ? remoteWebhook.webhook_id : null;
+      if (!webhookResponse.ok || webhookJson.code !== 0 || !webhookId) {
+        throw new Error(`Zoho ${entityType} ${ruleType} webhook registration failed (${webhookResponse.status}): ${String(webhookJson.message ?? 'Unknown Zoho error')}`);
+      }
+      webhookIds[ruleType] = webhookId;
+      createdWebhookIds.push(webhookId);
       const workflowUrl = new URL(`/${module}/settings/workflows`, `https://www.zohoapis.${dc}`);
       workflowUrl.searchParams.set('organization_id', orgId);
       const workflowResponse = await fetch(workflowUrl.toString(), {
         method: 'POST',
         headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workflow_name: `${entityType} ${ruleType} - Yukti`,
-          description: `Yukti inbound ${entityType} ${ruleType} sync`,
-          rule_type: ruleType,
-          entity: providerEntity,
-          rule: {},
-          apply_rule_always: true,
-          instant_actions: [{ action_id: webhookId, action_type: 'webhook' }],
-        }),
+        body: JSON.stringify(buildZohoWorkflowRegistrationPayload({
+          entityType,
+          providerEntity,
+          webhookId,
+          ruleType,
+        })),
       });
       const workflowJson = await workflowResponse.json().catch(() => ({})) as Record<string, unknown>;
       const workflow = workflowJson.workflow as Record<string, unknown> | undefined;
@@ -128,18 +137,51 @@ async function registerZohoWebhook(
       workflowIds[ruleType] = workflowId;
       createdWorkflowIds.push(workflowId);
     }
-    return { webhookId, workflowIds };
+    return { webhookIds, workflowIds };
   } catch (error) {
     await Promise.all(createdWorkflowIds.map((workflowId) => {
       const workflowUrl = new URL(`/${module}/settings/workflows/${workflowId}`, `https://www.zohoapis.${dc}`);
       workflowUrl.searchParams.set('organization_id', orgId);
       return fetch(workflowUrl.toString(), { method: 'DELETE', headers: { Authorization: `Zoho-oauthtoken ${accessToken}` } });
     }));
-    const deleteUrl = new URL(`/${module}/settings/webhooks/${webhookId}`, `https://www.zohoapis.${dc}`);
-    deleteUrl.searchParams.set('organization_id', orgId);
-    await fetch(deleteUrl.toString(), { method: 'DELETE', headers: { Authorization: `Zoho-oauthtoken ${accessToken}` } }).catch(() => undefined);
+    await Promise.all(createdWebhookIds.map((webhookId) => {
+      const deleteUrl = new URL(`/${module}/settings/webhooks/${webhookId}`, `https://www.zohoapis.${dc}`);
+      deleteUrl.searchParams.set('organization_id', orgId);
+      return fetch(deleteUrl.toString(), { method: 'DELETE', headers: { Authorization: `Zoho-oauthtoken ${accessToken}` } }).catch(() => undefined);
+    }));
     throw error;
   }
+}
+
+async function deleteZohoWebhookRegistration(input: {
+  accessToken: string;
+  orgId: string;
+  dc: string;
+  integrationTypeId: string;
+  remoteWebhookId?: string | null;
+  remoteWebhookIds?: string[];
+  workflowIds?: string[];
+}) {
+  const module = input.integrationTypeId === 'zoho_inventory' ? 'inventory/v1' : 'books/v3';
+
+  await Promise.all((input.workflowIds ?? []).map((workflowId) => {
+    const workflowUrl = new URL(`/${module}/settings/workflows/${workflowId}`, `https://www.zohoapis.${input.dc}`);
+    workflowUrl.searchParams.set('organization_id', input.orgId);
+    return fetch(workflowUrl.toString(), {
+      method: 'DELETE',
+      headers: { Authorization: `Zoho-oauthtoken ${input.accessToken}` },
+    }).catch(() => undefined);
+  }));
+
+  const webhookIds = [...new Set([input.remoteWebhookId, ...(input.remoteWebhookIds ?? [])].filter((id): id is string => Boolean(id)))];
+  await Promise.all(webhookIds.map((webhookId) => {
+    const webhookUrl = new URL(`/${module}/settings/webhooks/${webhookId}`, `https://www.zohoapis.${input.dc}`);
+    webhookUrl.searchParams.set('organization_id', input.orgId);
+    return fetch(webhookUrl.toString(), {
+      method: 'DELETE',
+      headers: { Authorization: `Zoho-oauthtoken ${input.accessToken}` },
+    }).catch(() => undefined);
+  }));
 }
 
 function buildWebhookSetupState(input: {
@@ -246,12 +288,19 @@ export async function POST(request: NextRequest) {
       }
       if (!webhook) return jsonError(500, `Unable to prepare ${definition.entity_type} webhook`, 'WEBHOOK_SETUP_FAILED');
 
-      if (webhook.remote_webhook_id && webhook.status === 'active') {
-        setupByEntity[definition.entity_type] = buildWebhookSetupState({
-          status: 'active',
-          webhookId: webhook.remote_webhook_id,
+      const workflowIds = extractWorkflowIds(toRecord(webhook.webhook_config).workflow_ids);
+      const remoteWebhookIds = extractWorkflowIds(toRecord(webhook.webhook_config).remote_webhook_ids);
+
+      if (webhook.remote_webhook_id || workflowIds.length > 0) {
+        await deleteZohoWebhookRegistration({
+          accessToken,
+          orgId,
+          dc,
+          integrationTypeId: integration.integration_type_id,
+          remoteWebhookId: webhook.remote_webhook_id,
+          remoteWebhookIds,
+          workflowIds,
         });
-        continue;
       }
 
       const webhookSecret = (webhook.secret ?? crypto.randomUUID()).replace(/-/g, '');
@@ -259,14 +308,21 @@ export async function POST(request: NextRequest) {
         accessToken,
         orgId,
         dc,
-        `${getFunctionsBaseUrl()}/integrations-webhook?endpoint_token=${webhook.endpoint_token}`,
+        `${getFunctionsBaseUrl()}/integrations-webhook/${webhook.endpoint_token}`,
         integration.integration_type_id,
         definition.entity_type,
         definition.provider_entity,
         webhookSecret,
         definition.workflow_rule_types,
       );
-      const remoteWebhookId = registration.webhookId;
+      const remoteWebhookId = registration.webhookIds.add_edit ?? Object.values(registration.webhookIds)[0] ?? null;
+      console.info('[zoho/webhooks/retry] webhook registered', {
+        tenant_integration_id: integration.id,
+        entity_type: definition.entity_type,
+        callback_url: `${getFunctionsBaseUrl()}/integrations-webhook/${webhook.endpoint_token}`,
+        webhook_ids: registration.webhookIds,
+        workflow_ids: registration.workflowIds,
+      });
       const state = buildWebhookSetupState({
         status: remoteWebhookId ? 'active' : 'failed',
         webhookId: remoteWebhookId,
@@ -278,7 +334,11 @@ export async function POST(request: NextRequest) {
         external_ref: remoteWebhookId,
         status: state.status,
         is_active: Boolean(remoteWebhookId),
-        webhook_config: { sync_phase: definition.sync_phase, workflow_ids: registration.workflowIds },
+        webhook_config: {
+          sync_phase: definition.sync_phase,
+          workflow_ids: registration.workflowIds,
+          remote_webhook_ids: registration.webhookIds,
+        },
         secret: webhookSecret,
         last_verified_at: remoteWebhookId ? new Date().toISOString() : null,
         updated_by: claims.sub,

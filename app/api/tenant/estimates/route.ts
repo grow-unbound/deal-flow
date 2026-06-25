@@ -14,6 +14,7 @@ import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
+import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbClient = any;
@@ -76,7 +77,6 @@ function getHue(index: number): EstimateAvatarHue {
 }
 
 function normalizeStatus(raw: string): Exclude<EstimateDbStatus, 'pending'> {
-  if (raw === 'pending') return 'draft';
   const allowed: Exclude<EstimateDbStatus, 'pending'>[] = [
     'draft',
     'sent',
@@ -108,8 +108,9 @@ function statusMeta(status: Exclude<EstimateDbStatus, 'pending'>): {
   if (status === 'declined') return { label: 'Declined', tone: 'neutral', filter_chip: 'Declined' };
   if (status === 'expired') return { label: 'Expired', tone: 'neutral', filter_chip: 'Expired' };
   if (status === 'converted') return { label: 'Converted to SO', tone: 'success', filter_chip: 'Converted' };
+  if (status === 'invoiced') return { label: 'Invoiced', tone: 'success', filter_chip: 'Converted' };
   if (status === 'void') return { label: 'Void', tone: 'neutral', filter_chip: 'Draft' };
-  return { label: 'Invoiced', tone: 'success', filter_chip: 'Converted' };
+  return { label: status, tone: 'neutral', filter_chip: 'All' };
 }
 
 function inPeriod(iso: string | null, start: string, endExclusive: string): boolean {
@@ -128,6 +129,22 @@ function estimateAnchor(estimate: { accepted_at: string | null; updated_at?: str
 
 function toText(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function estimateStatusesForFilters(values: string[]) {
+  const statuses = new Set<string>();
+  values.forEach((value) => {
+    if (value === 'Draft') statuses.add('draft');
+    if (value === 'Sent') statuses.add('sent');
+    if (value === 'Accepted') statuses.add('accepted');
+    if (value === 'Declined') statuses.add('declined');
+    if (value === 'Expired') statuses.add('expired');
+  if (value === 'Converted') {
+    statuses.add('converted');
+    statuses.add('invoiced');
+  }
+  });
+  return Array.from(statuses);
 }
 
 export async function GET(req: NextRequest) {
@@ -159,7 +176,9 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? String(PAGE_SIZE.SELLER)), PAGE_SIZE.MAX);
     const cursorParam = req.nextUrl.searchParams.get('cursor');
     const searchParam = req.nextUrl.searchParams.get('search')?.trim();
-    const statusParam = req.nextUrl.searchParams.get('status');
+    const sourceParams = readArrayParam(req.nextUrl.searchParams, 'source');
+    const statusParams = readArrayParam(req.nextUrl.searchParams, 'status');
+    const locationParams = readArrayParam(req.nextUrl.searchParams, 'location_id');
 
     let baseEstimatesQuery = db
       .schema('app')
@@ -182,8 +201,17 @@ export async function GET(req: NextRequest) {
     if (searchParam) {
       baseEstimatesQuery = baseEstimatesQuery.ilike('estimate_number', `%${searchParam}%`);
     }
-    if (statusParam) {
-      baseEstimatesQuery = baseEstimatesQuery.eq('status', statusParam);
+    if (sourceParams.length > 0) {
+      baseEstimatesQuery = baseEstimatesQuery.in(
+        'source',
+        sourceParams.map((value) => (value === 'Direct' ? 'seller' : 'buyer_app')),
+      );
+    }
+    if (statusParams.length > 0) {
+      baseEstimatesQuery = baseEstimatesQuery.in('status', estimateStatusesForFilters(statusParams));
+    }
+    if (locationParams.length > 0) {
+      baseEstimatesQuery = baseEstimatesQuery.in('location_id', locationParams);
     }
 
     const scopedEstimatesQuery = applySellerLocationScope(baseEstimatesQuery, claims);
@@ -333,6 +361,9 @@ export async function GET(req: NextRequest) {
     const now = Date.now();
     const expiringCutoff = now + 7 * DAY_MS;
 
+    const availableLocations = await loadAccessibleSellerLocations(db as any, claims.tenant_id, claims);
+    const locationNameById = new Map(availableLocations.map((location) => [location.id, location.name]));
+
     const normalized = rawEstimates.map((row, index) => {
       const norm = normalizeStatus(row.status);
       const buyer = buyerById.get(row.buyer_id);
@@ -346,6 +377,8 @@ export async function GET(req: NextRequest) {
       const catalogName = row.catalog_id ? catalogById.get(row.catalog_id) ?? null : null;
       const landing: EstimateLandingRow = {
         id: row.id,
+        location_id: row.location_id,
+        location_name: row.location_id ? locationNameById.get(row.location_id) ?? null : null,
         estimate_number: row.estimate_number ?? '—',
         buyer_id: row.buyer_id,
         buyer_name: buyerName,
@@ -519,12 +552,35 @@ export async function GET(req: NextRequest) {
     };
 
     const estimates = normalized.map((n) => n.landing);
+    const filters: LandingFilterMeta = {
+      groups: [
+        {
+          key: 'source',
+          label: 'Source',
+          options: [
+            { value: 'Buyer App', label: 'Buyer App' },
+            { value: 'Direct', label: 'Direct' },
+          ],
+        },
+        {
+          key: 'status',
+          label: 'Status',
+          options: ['Draft', 'Sent', 'Accepted', 'Converted', 'Declined', 'Expired'].map((value) => ({ value, label: value })),
+        },
+        {
+          key: 'location_id',
+          label: 'Location',
+          options: availableLocations.map((location) => ({ value: location.id, label: location.name })),
+        },
+      ],
+    };
 
     const payload = {
       period,
       kpis,
       todays_read,
       estimates,
+      filters,
       nextCursor,
       total: totalCount,
     };
@@ -617,7 +673,7 @@ export async function POST(request: NextRequest) {
         subtotal: 0,
         tax_amount: 0,
         total_amount: 0,
-        date_issued: today,
+        estimate_date: today,
         valid_until: validUntil,
         expires_at: `${validUntil}T23:59:59.000Z`,
         buyer_po_ref: null,

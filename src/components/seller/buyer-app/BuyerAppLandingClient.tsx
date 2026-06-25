@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { ExternalLink } from 'lucide-react';
 
 import { FeatureGate } from '@/components/FeatureGate';
 import {
@@ -12,6 +11,7 @@ import {
   StatusTag,
   V3CalloutPanel,
 } from '@/components/seller/layout';
+import { DashboardCard } from '@/components/seller/DashboardStats';
 import { ErrorState } from '@/components/ui/empty-state';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
@@ -24,10 +24,6 @@ import {
 } from '@/hooks/useBuyerApp';
 import { formatCompactInr, formatInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
-
-const CARD = 'bg-cream-50 border border-cream-200 rounded-[14px] p-5';
-const CARD_TITLE = 'text-[13px] font-semibold text-cream-950';
-const CARD_SUB = 'text-[11px] text-cream-500 mt-0.5 mb-4';
 
 function BuyerAppLoadingSkeleton() {
   return (
@@ -100,14 +96,12 @@ function GmvFunnelRow({
 function AdoptionFunnelCard({ snap }: { snap: NonNullable<BuyerAppLandingResponse['snapshot']> }) {
   const total = snap.enabled_buyers;
   return (
-    <div className={CARD}>
-      <p className={CARD_TITLE}>Adoption funnel</p>
-      <p className={CARD_SUB}>This month</p>
+    <DashboardCard title="Adoption funnel" subtitle="This month">
       <FunnelRow label="Enabled" count={snap.enabled_buyers} total={total} />
       <FunnelRow label="Opened app" count={snap.opened_app_mtd} total={total} />
       <FunnelRow label="Ordered" count={snap.ordered_mtd} total={total} />
       <FunnelRow label="Repeat (2+ orders)" count={snap.repeat_mtd} total={total} />
-    </div>
+    </DashboardCard>
   );
 }
 
@@ -122,9 +116,7 @@ function GmvContributionCard({ snap }: { snap: NonNullable<BuyerAppLandingRespon
       : 0;
 
   return (
-    <div className={CARD}>
-      <p className={CARD_TITLE}>Business through app</p>
-      <p className={CARD_SUB}>This month</p>
+    <DashboardCard title="Business through app" subtitle="This month">
       <GmvFunnelRow
         label="Estimates (app-sourced)"
         value={snap.estimates_app_value_mtd}
@@ -145,15 +137,13 @@ function GmvContributionCard({ snap }: { snap: NonNullable<BuyerAppLandingRespon
         App share of total GMV:{' '}
         <span className="font-semibold text-cream-800">{gmvSharePct}%</span>
       </p>
-    </div>
+    </DashboardCard>
   );
 }
 
 function TopBuyersCard({ buyers }: { buyers: BuyerAppTopBuyer[] }) {
   return (
-    <div className={CARD}>
-      <p className={CARD_TITLE}>Top buyers on app</p>
-      <p className={CARD_SUB}>by GMV this month</p>
+    <DashboardCard title="Top buyers on app" subtitle="by GMV this month">
       {buyers.length === 0 ? (
         <p className="text-[12px] text-cream-400">No app orders yet this month.</p>
       ) : (
@@ -179,15 +169,13 @@ function TopBuyersCard({ buyers }: { buyers: BuyerAppTopBuyer[] }) {
       >
         View all →
       </Link>
-    </div>
+    </DashboardCard>
   );
 }
 
 function LocationUsageCard({ locations }: { locations: BuyerAppLocation[] }) {
   return (
-    <div className={CARD}>
-      <p className={CARD_TITLE}>Usage by location</p>
-      <p className={CARD_SUB}>buyer app orders &amp; GMV</p>
+    <DashboardCard title="Usage by location" subtitle="buyer app orders & GMV">
       {locations.length === 0 ? (
         <p className="text-[12px] text-cream-400">No app orders by location yet.</p>
       ) : (
@@ -218,7 +206,7 @@ function LocationUsageCard({ locations }: { locations: BuyerAppLocation[] }) {
           </tbody>
         </table>
       )}
-    </div>
+    </DashboardCard>
   );
 }
 

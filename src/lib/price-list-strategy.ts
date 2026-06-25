@@ -15,7 +15,7 @@ export function computeStrategyPrice(
   strategyValue: string,
 ): number {
   const base = Number(product.base_selling_price ?? 0);
-  if (strategy === 'margin_from_mrp') {
+  if (strategy === 'margin_from_mrp' || strategy === 'percentage') {
     const discount = Number(strategyValue || 0);
     return Math.max(0, Math.round(base * (1 - discount / 100)));
   }
@@ -31,8 +31,8 @@ export function formatStrategySummary(
   strategyValue: number | null | undefined,
 ): string {
   const s = strategy ?? 'edit_each';
-  if (s === 'edit_each') return 'Independent product pricing';
-  if (s === 'margin_from_mrp') {
+  if (s === 'edit_each' || s === 'per_item') return 'Independent product pricing';
+  if (s === 'margin_from_mrp' || s === 'percentage') {
     const v = strategyValue ?? 0;
     return `${v}% off base price`;
   }
@@ -41,7 +41,7 @@ export function formatStrategySummary(
 }
 
 export function strategyLabelShort(value: PriceListPricingStrategy): string {
-  if (value === 'margin_from_mrp') return '% off base price';
+  if (value === 'margin_from_mrp' || value === 'percentage') return '% off base price';
   if (value === 'flat_off_base') return 'Flat ₹ off base price';
   return 'Edit each price';
 }
@@ -58,7 +58,7 @@ export function formatApplyingRuleSummary(
       ? 'No row overrides yet.'
       : `${overrideCount} row override${overrideCount === 1 ? '' : 's'}.`;
 
-  if (strategy === 'margin_from_mrp') {
+  if (strategy === 'margin_from_mrp' || strategy === 'percentage') {
     const pct = strategyValue || '0';
     return `Applying ${pct}% off base price to ${selectedCount} selected products · ${overridePart}`;
   }

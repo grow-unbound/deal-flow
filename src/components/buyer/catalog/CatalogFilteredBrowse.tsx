@@ -121,7 +121,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
             {/* Toolbar row — count + sort */}
             {items.length > 0 && (
               <div
-                className="flex items-center justify-between px-4 pb-2 pt-2"
+                className="flex items-center justify-between px-2 pb-2 pt-2"
                 style={{ borderBottom: '1px solid var(--border-1)' }}
               >
                 <span className="text-xs font-medium" style={{ color: 'var(--fg-3)' }}>
@@ -136,16 +136,16 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
                 </button>
               </div>
             )}
-            <div className="px-4 pt-2">
+            <div className="px-2 pt-2">
               <ProductGrid items={items} />
             </div>
             {items.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm" style={{ color: 'var(--fg-3)' }}>
+              <p className="px-2 py-8 text-center text-sm" style={{ color: 'var(--fg-3)' }}>
                 No products in this view.
               </p>
             ) : null}
             {hasMore ? (
-              <div className="px-4 pb-6">
+              <div className="px-2 pb-6">
                 <button
                   type="button"
                   onClick={handleLoadMore}

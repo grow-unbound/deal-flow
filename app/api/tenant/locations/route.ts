@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { normalizeLocationAddress } from '@/lib/locations/location-deactivate-guards';
+import {
+  normalizeLocationAssociatedUsers,
+  syncLocationAssignees,
+} from '@/lib/location-assignees';
 import { CreateLocationInputSchema } from '@/types/tenant-locations';
 
 export const dynamic = 'force-dynamic';
@@ -50,11 +54,42 @@ export async function GET(req: NextRequest) {
       return jsonError(500, 'Failed to fetch locations', 'LOAD_FAILED');
     }
 
+    const locationIds = (data ?? []).map((row: { id: string }) => row.id);
+    let extraById = new Map<string, { phone_number: string | null; status: string | null; associated_users: unknown }>();
+    if (locationIds.length > 0) {
+      try {
+        const { data: extraRows } = await db
+          .schema('app')
+          .from('locations')
+          .select('id, phone_number, status, associated_users')
+          .eq('tenant_id', claims.tenant_id)
+          .in('id', locationIds);
+        extraById = new Map(
+          (extraRows ?? []).map((row: Record<string, unknown>) => [
+            String(row.id),
+            {
+              phone_number: typeof row.phone_number === 'string' ? row.phone_number : null,
+              status: typeof row.status === 'string' ? row.status : null,
+              associated_users: row.associated_users,
+            },
+          ]),
+        );
+      } catch {
+        // Old DB schema: optional location columns may not exist yet.
+      }
+    }
+
     const locations = (data ?? [])
-      .map((row: Record<string, unknown>) => ({
-        ...row,
-        address: normalizeLocationAddress(row.address),
-      }))
+      .map((row: Record<string, unknown>) => {
+        const extra = extraById.get(String(row.id));
+        return {
+          ...row,
+          phone_number: extra?.phone_number ?? null,
+          status: extra?.status ?? 'active',
+          address: normalizeLocationAddress(row.address),
+          associated_users: normalizeLocationAssociatedUsers(extra?.associated_users),
+        };
+      })
       .sort(
         (
           a: { deleted_at: string | null; is_default: boolean; created_at: string },
@@ -109,9 +144,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { name, address, is_default, type, inventory_tracking, external_ref, lat, lng } = parsed.data;
+    const {
+      name,
+      address,
+      is_default,
+      type,
+      inventory_tracking,
+      external_ref,
+      lat,
+      lng,
+      phone_number,
+      status,
+      associated_users,
+    } = parsed.data;
 
     const db = supabaseAdmin as any;
+    const normalizedAssociatedUsers = normalizeLocationAssociatedUsers(associated_users);
 
     if (is_default) {
       await db
@@ -136,6 +184,9 @@ export async function POST(req: NextRequest) {
         type: type ?? 'warehouse',
         inventory_tracking: inventory_tracking ?? true,
         external_ref: external_ref?.trim() ? external_ref.trim() : null,
+        phone_number: phone_number?.trim() ? phone_number.trim() : null,
+        status: status ?? 'active',
+        associated_users: normalizedAssociatedUsers,
         lat: lat ?? null,
         lng: lng ?? null,
         created_by: claims.sub,
@@ -148,6 +199,22 @@ export async function POST(req: NextRequest) {
       console.error('[POST /api/tenant/locations]', insertError);
       return jsonError(500, 'Failed to create location', 'CREATE_FAILED');
     }
+
+    const assignedUsers = await syncLocationAssignees(
+      db,
+      claims.tenant_id,
+      inserted.id,
+      normalizedAssociatedUsers,
+      claims.sub,
+    );
+
+    const { data: finalLocation } = await db
+      .schema('app')
+      .from('locations')
+      .update({ associated_users: assignedUsers })
+      .eq('id', inserted.id)
+      .select()
+      .single();
 
     const nowIso = new Date().toISOString();
     const { error: auditError } = await db.schema('app').from('audit_log').insert({
@@ -164,8 +231,8 @@ export async function POST(req: NextRequest) {
     }
 
     const location = {
-      ...inserted,
-      address: normalizeLocationAddress(inserted.address),
+      ...(finalLocation ?? inserted),
+      address: normalizeLocationAddress((finalLocation ?? inserted).address),
     };
 
     return NextResponse.json({ data: { location }, error: null }, { status: 201 });

@@ -50,7 +50,14 @@ export function InvoiceDocument({ data }: InvoiceDocumentProps) {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="v2-table w-full border-collapse text-base">
+        <table className="v2-table w-full min-w-[760px] table-fixed border-collapse text-base">
+          <colgroup>
+            <col style={{ width: '42%' }} />
+            <col style={{ width: '16%' }} />
+            <col style={{ width: '12%' }} />
+            <col style={{ width: '15%' }} />
+            <col style={{ width: '15%' }} />
+          </colgroup>
           <thead>
             <tr className="border-b border-cream-200 text-left text-xs font-semibold uppercase tracking-[0.08em] text-cream-600">
               <th className="py-2 pr-3">Item</th>
@@ -63,8 +70,12 @@ export function InvoiceDocument({ data }: InvoiceDocumentProps) {
           <tbody>
             {items.map((row) => (
               <tr key={row.id} className="border-b border-cream-100">
-                <td className="py-2.5 pr-3 font-medium text-cream-900">{row.product_name}</td>
-                <td className="py-2.5 pr-3 font-mono text-sm text-cream-700">{row.hsn_code ?? '—'}</td>
+                <td className="py-2.5 pr-3 font-medium text-cream-900">
+                  <span className="block truncate">{row.product_name}</span>
+                </td>
+                <td className="py-2.5 pr-3 font-mono text-sm text-cream-700">
+                  <span className="block truncate">{row.hsn_code ?? '—'}</span>
+                </td>
                 <td className="num py-2.5 pr-3">{row.qty}</td>
                 <td className="num py-2.5 pr-3">{formatCompactInr(row.unit_price)}</td>
                 <td className="num py-2.5 font-medium">{formatCompactInr(row.line_total ?? row.qty * row.unit_price)}</td>

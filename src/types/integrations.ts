@@ -22,7 +22,7 @@ export type TenantIntegrationStatus = z.infer<typeof TenantIntegrationStatusSche
 export const TenantIntegrationHealthStatusSchema = z.enum(['ok', 'expired', 'invalid']);
 export type TenantIntegrationHealthStatus = z.infer<typeof TenantIntegrationHealthStatusSchema>;
 
-export const INTEGRATION_ENTITY_TYPES = ['locations', 'brands', 'products', 'customers', 'estimates', 'orders', 'invoices'] as const;
+export const INTEGRATION_ENTITY_TYPES = ['locations', 'brands', 'products', 'pricelists', 'customers', 'estimates', 'orders', 'invoices'] as const;
 export const IntegrationEntityTypeSchema = z.enum(INTEGRATION_ENTITY_TYPES);
 export type IntegrationEntityType = z.infer<typeof IntegrationEntityTypeSchema>;
 

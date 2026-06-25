@@ -24,7 +24,6 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
 
   const cartItem = items.find((i) => i.tenant_product_id === item.tenant_product_id);
   const isOos = item.stock_status === 'out_of_stock';
-  const showMrpLine = item.mrp > 0 && item.mrp > item.price;
   const showStockBadge = item.stock_status === 'limited' || item.stock_status === 'out_of_stock';
   const productHref = `/buy/product/${item.tenant_product_id}`;
 
@@ -72,7 +71,7 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
         className,
       )}
     >
-      <div className="relative flex aspect-square items-center justify-center overflow-hidden bg-[var(--bg-recessed)]">
+      <div className="relative flex aspect-square items-center justify-center overflow-hidden bg-[var(--bg-surface)]">
         <Pressable asChild haptic>
           <Link
             href={productHref}
@@ -97,7 +96,7 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
                     src={productImg}
                     alt=""
                     fill
-                    className="object-contain p-2"
+                    className="object-contain p-2.5"
                     sizes="(max-width: 640px) 50vw, 200px"
                     onError={() => setProductImgError(true)}
                     unoptimized
@@ -159,13 +158,12 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
             disabled={isOos}
             onClick={handleQuickAdd}
             className={cn(
-              'absolute bottom-2 right-2 z-[2] flex h-9 items-center gap-1 rounded-lg bg-[#1C1C1E] px-3 text-xs font-semibold uppercase tracking-wide text-white shadow-md',
+              'absolute bottom-2 right-2 z-[2] flex h-8 w-8 items-center justify-center rounded-md bg-[#1C1C1E] text-white shadow-md',
               'active:scale-95 disabled:cursor-not-allowed disabled:opacity-40',
             )}
             aria-label="Add to cart"
           >
-            <Plus className="h-3.5 w-3.5" />
-            ADD
+            <Plus className="h-4 w-4" />
           </button>
         )}
       </div>
@@ -174,28 +172,18 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
         <Link
           href={productHref}
           onClick={() => markBuyerNavigationForward()}
-          className="flex flex-1 flex-col gap-1 p-3 no-underline"
+          className="flex flex-1 flex-col gap-1 p-2.5 no-underline"
         >
-          {item.brand_name ? (
-            <p className="truncate font-medium uppercase text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em' }}>{item.brand_name}</p>
-          ) : null}
-          <p className="line-clamp-2 font-medium leading-snug text-[var(--fg-1)]" style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-body)', letterSpacing: '-0.005em' }}>{item.display_name}</p>
-          {item.default_uom ? <p className="text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-sub)' }}>{item.default_uom}</p> : null}
-          <div className="mt-auto space-y-0.5 pt-1">
-            <div className="flex items-baseline gap-1.5">
-              <span className="font-medium uppercase text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.10em' }}>Your price</span>
-              <span className="font-semibold tabular-nums text-[var(--fg-1)]" style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-price)', fontVariantNumeric: 'tabular-nums' }}>
-                {formatCurrency(item.price)}
-              </span>
-            </div>
-            {showMrpLine ? (
-              <div className="flex items-baseline gap-1.5">
-                <span className="font-medium uppercase text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.10em' }}>MRP</span>
-                <span className="tabular-nums text-[var(--fg-3)] line-through" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-sub)' }}>
-                  {formatCurrency(item.mrp)}
-                </span>
-              </div>
-            ) : null}
+          <p className="pt-2 line-clamp-2 border-t border-[var(--border-1)] font-medium leading-snug text-[var(--fg-1)]" style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-label)', letterSpacing: '-0.01em' }}>
+            {item.display_name}
+          </p>
+          <p className="truncate text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-sub)' }}>
+            {item.internal_sku}
+          </p>
+          <div className="pt-2">
+            <span className="font-semibold tabular-nums text-[var(--fg-1)]" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-price)', fontVariantNumeric: 'tabular-nums' }}>
+              {formatCurrency(item.price)}
+            </span>
           </div>
           {showStockBadge ? <StockBadge status={item.stock_status} /> : null}
         </Link>

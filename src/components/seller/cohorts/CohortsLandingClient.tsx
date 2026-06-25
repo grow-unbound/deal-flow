@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Grid, Plus, Users } from 'lucide-react';
+import { Plus, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -10,6 +10,7 @@ import {
   FilterBar,
   GrowthPill,
   InsightStrip4,
+  LandingTable,
   PageHeader,
   PageWrap,
   StatusTag,
@@ -21,7 +22,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
-import { useCohortsLanding, type CohortType, type CohortsLandingResponse, type CohortsLandingRow } from '@/hooks/useCohorts';
+import { useCohortsLanding, type CohortType, type CohortsLandingResponse } from '@/hooks/useCohorts';
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 
@@ -288,75 +289,69 @@ function CohortsLandingContent({
           }
         />
       ) : (
-      <div className="v2-body overflow-hidden rounded-b-[14px] border border-cream-300 border-t-0 bg-white">
-        <div className="v2-grid-body grid grid-cols-1 gap-[14px] bg-cream-50 p-4 md:grid-cols-2 xl:grid-cols-3">
+        <LandingTable
+          columns={[
+            { label: 'Customer group', minWidth: 280, className: 'px-5' },
+            { label: 'Type', minWidth: 140, className: 'px-5' },
+            { label: 'Members', align: 'right', minWidth: 140, className: 'px-5' },
+            { label: `GMV · ${metricSuffix}`, align: 'right', minWidth: 140, className: 'px-5' },
+            { label: 'Growth', align: 'right', minWidth: 120, className: 'px-5' },
+            { label: 'Conversion', align: 'right', minWidth: 120, className: 'px-5' },
+            { label: 'Status', minWidth: 160, className: 'px-5' },
+            { width: 40, className: 'px-4' },
+          ]}
+          tableClassName="min-w-[1160px]"
+        >
           {filtered.map((cohort) => (
-            <CohortTile key={cohort.id} cohort={cohort} metricSuffix={metricSuffix} onClick={() => router.push(`/customer-groups/${cohort.id}`)} />
+            <tr
+              key={cohort.id}
+              className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
+              onClick={() => router.push(`/customer-groups/${cohort.id}`)}
+            >
+              <td className="px-5 py-3.5">
+                <div className="min-w-0">
+                  <p className="truncate text-base font-medium text-cream-900">{cohort.name}</p>
+                  <p className="mt-0.5 truncate text-xs text-cream-600">
+                    {cohort.description ?? `${cohort.type} cohort`}
+                  </p>
+                </div>
+              </td>
+              <td className="px-5 py-3.5 text-sm text-cream-800">{cohort.type}</td>
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                {cohort.active_members} / <span className="text-cream-600">{cohort.total_members}</span>
+              </td>
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                {formatCompactInr(cohort.gmv_mtd)}
+              </td>
+              <td className="px-5 py-3.5 text-right">
+                <GrowthPill value={cohort.growth_pct} />
+              </td>
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                {cohort.conversion_pct.toFixed(1)}%
+              </td>
+              <td className="px-5 py-3.5">
+                <div className="space-y-1">
+                  <StatusTag tone={cohort.status_tone} label={cohort.status_label} />
+                  <div className="flex flex-wrap gap-1.5">
+                    {cohort.focus_chips.slice(0, 3).map((chip) => (
+                      <span
+                        key={chip}
+                        className="rounded-[4px] border border-cream-300 bg-cream-100 px-1.5 py-0.5 text-xs uppercase tracking-[0.04em] text-cream-700"
+                      >
+                        {chip}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </td>
+              <td className="px-4 py-3.5 text-right text-cream-500">›</td>
+            </tr>
           ))}
-        </div>
-      </div>
+        </LandingTable>
       )}
         </>
       )}
     </PageWrap>
-  );
-}
-
-function CohortTile({
-  cohort,
-  metricSuffix,
-  onClick,
-}: {
-  cohort: CohortsLandingRow;
-  metricSuffix: string;
-  onClick: () => void;
-}) {
-  return (
-    <article
-      className="v2-coh-tile flex cursor-pointer flex-col gap-3 rounded-[14px] border border-cream-300 bg-white px-5 py-[18px] transition-all duration-fast hover:-translate-y-[1px] hover:border-cream-500"
-      onClick={onClick}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="font-display text-lg font-medium leading-[1.2] tracking-[-0.005em] text-cream-900">{cohort.name}</h3>
-        <StatusTag tone={cohort.status_tone} label={cohort.status_label} />
-      </div>
-
-      <p className="-mt-0.5 text-sm leading-[1.5] text-cream-700">{cohort.description ?? `${cohort.type} cohort`}</p>
-
-      <div className="mt-3 flex flex-wrap items-center gap-1.5">
-        <span className="font-mono text-xs uppercase tracking-[0.06em] text-cream-500">FOCUS:</span>
-        {cohort.focus_chips.map((chip) => (
-          <span key={chip} className="rounded-[4px] border border-cream-300 bg-cream-100 px-1.5 py-0.5 font-mono text-xs text-cream-800">
-            {chip}
-          </span>
-        ))}
-      </div>
-
-      <div className="v2-coh-stats mt-1 grid grid-cols-2 gap-x-3 gap-y-2.5 border-t border-cream-300 pt-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">{`GMV · ${metricSuffix}`}</p>
-          <p className="mt-0.5 font-display text-lg font-medium tracking-[-0.005em] text-cream-900">{formatCompactInr(cohort.gmv_mtd)}</p>
-        </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Growth</p>
-          <p className={`mt-0.5 font-display text-lg font-medium tracking-[-0.005em] ${cohort.growth_pct >= 10 ? 'text-success-500' : 'text-cream-900'}`}>
-            {cohort.growth_pct >= 0 ? '+' : ''}
-            {cohort.growth_pct}%
-          </p>
-        </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Members</p>
-          <p className="mt-0.5 font-display text-lg font-medium tracking-[-0.005em] text-cream-900">
-            {cohort.active_members}
-            <span className="text-base text-cream-600"> / {cohort.total_members}</span>
-          </p>
-        </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Conversion</p>
-          <p className="mt-0.5 font-display text-lg font-medium tracking-[-0.005em] text-cream-900">{cohort.conversion_pct.toFixed(1)}%</p>
-        </div>
-      </div>
-    </article>
   );
 }
 

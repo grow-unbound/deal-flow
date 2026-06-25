@@ -104,9 +104,10 @@ describe('CatalogComposer', () => {
   it('renders the composer chrome and panels in create mode', () => {
     render(<CatalogComposer mode="create" />);
 
-    expect(screen.getByRole('heading', { name: /Add a catalog/i })).toBeInTheDocument();
-    expect(screen.getByText('Catalog summary')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Add a campaign/i })).toBeInTheDocument();
+    expect(screen.getByText('Customer group')).toBeInTheDocument();
     expect(screen.getByText('Product Category')).toBeInTheDocument();
+    expect(screen.getByText('Availability')).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/Search SKU or product name/i)).toBeInTheDocument();
   });
 
@@ -311,6 +312,6 @@ describe('CatalogComposer', () => {
 
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText(/Publish updates to buyers/i)).toBeInTheDocument();
-    expect(within(dialog).getByText(/will see this updated catalog/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/will see this updated campaign/i)).toBeInTheDocument();
   });
 });

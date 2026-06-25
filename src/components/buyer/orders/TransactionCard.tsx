@@ -1,6 +1,7 @@
 'use client';
 
-import * as React from 'react';
+import { ActivityCardShell } from './ActivityCardShell';
+import type { StatusTone } from '@/components/ui/status-pill';
 
 export interface OrderSummary {
   id: string;
@@ -9,6 +10,7 @@ export interface OrderSummary {
   total_amount: number;
   placed_at: string;
   item_count?: number;
+  description?: string;
 }
 
 interface TransactionCardProps {
@@ -33,84 +35,34 @@ function formatDate(iso: string): string {
 
 type StatusKey = 'received' | 'pending' | 'confirmed' | 'dispatched' | 'delivered' | 'cancelled';
 
-const statusBadge: Record<StatusKey, { bg: string; fg: string; label: string }> = {
-  received:  { bg: 'var(--info-50)',    fg: 'var(--info-500)',    label: 'Received' },
-  pending:   { bg: 'var(--info-50)',    fg: 'var(--info-500)',    label: 'Pending' },
-  confirmed: { bg: 'var(--ember-50)',   fg: 'var(--ember-400)',   label: 'Confirmed' },
-  dispatched:{ bg: 'var(--warning-50)', fg: 'var(--warning-500)', label: 'Dispatched' },
-  delivered: { bg: 'var(--success-50)', fg: 'var(--success-500)', label: 'Delivered' },
-  cancelled: { bg: 'var(--danger-50)',  fg: 'var(--danger-500)',  label: 'Cancelled' },
+const statusBadge: Record<StatusKey, { tone: StatusTone; label: string }> = {
+  received:  { tone: 'info', label: 'Received' },
+  pending:   { tone: 'info', label: 'Pending' },
+  confirmed: { tone: 'accent', label: 'Confirmed' },
+  dispatched:{ tone: 'warning', label: 'Dispatched' },
+  delivered: { tone: 'success', label: 'Delivered' },
+  cancelled: { tone: 'danger', label: 'Cancelled' },
 };
 
-function getBadge(status: string): { bg: string; fg: string; label: string } {
+function getBadge(status: string): { tone: StatusTone; label: string } {
   return statusBadge[status as StatusKey] ?? statusBadge.received;
 }
 
 export function TransactionCard({ order }: TransactionCardProps) {
   const badge = getBadge(order.status);
 
+  const itemsAndDate = order.item_count != null && order.item_count > 0
+    ? `${order.item_count} item${order.item_count !== 1 ? 's' : ''} · ${formatDate(order.placed_at)}`
+    : formatDate(order.placed_at);
+
   return (
-    <div
-      style={{
-        background: 'var(--bg-surface)',
-        border: '1px solid var(--border-1)',
-        borderRadius: 12,
-        padding: '12px 14px',
-        cursor: 'pointer',
-      }}
-    >
-      {/* Row 1: order number + status badge */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span
-          style={{
-            fontSize: 'var(--b-text-sub)',
-            fontFamily: 'var(--font-mono)',
-            color: 'var(--cream-700)',
-            letterSpacing: '0.06em',
-          }}
-        >
-          {order.order_number}
-        </span>
-        <span
-          style={{
-            fontSize: 'var(--b-text-eyebrow)',
-            fontWeight: 600,
-            letterSpacing: '0.10em',
-            textTransform: 'uppercase',
-            padding: '2px 8px',
-            borderRadius: 100,
-            background: badge.bg,
-            color: badge.fg,
-          }}
-        >
-          {badge.label}
-        </span>
-      </div>
-
-      {/* Row 2: item count + date */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}>
-          {order.item_count != null && order.item_count > 0
-            ? <><span className="tabular-inline">{order.item_count}</span> item{order.item_count !== 1 ? 's' : ''}</>
-            : '—'}
-        </span>
-        <span style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3)' }}><span className="tabular-inline">{formatDate(order.placed_at)}</span></span>
-      </div>
-
-      {/* Row 3: total */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <span
-          style={{
-            fontSize: 'var(--b-text-header)',
-            fontFamily: 'var(--font-display)',
-            fontWeight: 500,
-            color: 'var(--fg-1)',
-            letterSpacing: '-0.01em',
-          }}
-        >
-          {inr(order.total_amount)}
-        </span>
-      </div>
-    </div>
+    <ActivityCardShell
+      documentNumber={order.order_number}
+      statusLabel={badge.label}
+      statusTone={badge.tone}
+      middleLeft={order.description || '—'}
+      middleRight={<span className="tabular-inline">{itemsAndDate}</span>}
+      amount={<span className="tabular-inline">{inr(order.total_amount)}</span>}
+    />
   );
 }

@@ -15,9 +15,8 @@ import type { EstimateDbStatus, EstimateStatusTone } from '@/types/tenant-estima
 type DbClient = any;
 
 function normalizeEstimateStatus(raw: string): Exclude<EstimateDbStatus, 'pending'> {
-  if (raw === 'pending') return 'draft';
   const allowed: Array<Exclude<EstimateDbStatus, 'pending'>> = [
-    'draft', 'sent', 'accepted', 'declined', 'expired', 'converted', 'invoiced', 'void',
+    'draft', 'sent', 'accepted', 'declined', 'expired', 'invoiced', 'converted', 'void',
   ];
   return allowed.includes(raw as Exclude<EstimateDbStatus, 'pending'>)
     ? (raw as Exclude<EstimateDbStatus, 'pending'>)
@@ -78,7 +77,7 @@ export async function loadEstimateDocument(
     .schema('app')
     .from('estimates')
     .select(
-      'id, tenant_id, location_id, buyer_id, estimate_number, status, subtotal, tax_amount, total_amount, currency, notes, expires_at, created_at, sent_at, accepted_at, converted_to_order_id, converted_to_invoice_id, date_issued, valid_until, buyer_po_ref, discount_flat, freight, round_off, sent_channel, viewed_at, viewed_by_name, voided_at, estimate_version, place_of_supply, created_by',
+    'id, tenant_id, location_id, buyer_id, estimate_number, status, subtotal, tax_amount, total_amount, currency, notes, expires_at, created_at, sent_at, accepted_at, converted_to_order_id, converted_to_invoice_id, estimate_date, valid_until, buyer_po_ref, discount_flat, freight, round_off, sent_channel, viewed_at, viewed_by_name, voided_at, estimate_version, place_of_supply, created_by',
     )
     .eq('id', id)
     .is('deleted_at', null)
@@ -102,7 +101,7 @@ export async function loadEstimateDocument(
           .eq('tenant_id', tenantId).eq('id', buyerId).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     d.schema('app').from('estimate_items')
-      .select('id, tenant_product_id, qty, unit_price, tax_rate, line_total, discount_pct, disc_pct, tax_pct, scheme_tag')
+      .select('id, tenant_product_id, qty, unit_price, tax_rate, line_total, discount_pct, disc_pct, tax_pct, item_order, scheme_tag')
       .eq('estimate_id', id).is('deleted_at', null),
     d.schema('app').from('audit_log')
       .select('id, ts, action, diff')
@@ -211,6 +210,7 @@ export async function loadEstimateDocument(
       disc_pct: Number(row.disc_pct ?? row.discount_pct ?? 0),
       tax_pct: Number(row.tax_pct ?? row.tax_rate ?? (product as any)?.gst_rate ?? (master as any)?.gst_rate ?? 0),
       line_total: Number(row.line_total ?? 0),
+      item_order: Number(row.item_order ?? index + 1),
       scheme_tag: (row.scheme_tag as string | null | undefined) ?? null,
     };
   });
@@ -343,7 +343,7 @@ export async function loadEstimateDocument(
     buyer_id: buyerId,
     location_id: (estimate.location_id as string | null | undefined) ?? defaultLocationId,
     available_locations: availableLocations,
-    date_issued: isoDateValue(estimate.date_issued as string | null | undefined, fallbackDate),
+    estimate_date: isoDateValue(estimate.estimate_date as string | null | undefined, fallbackDate),
     valid_until: isoDateValue(estimate.valid_until as string | null | undefined, fallbackDate),
     buyer_po_ref: String(estimate.buyer_po_ref ?? ''),
     place_of_supply: String(estimate.place_of_supply ?? ''),

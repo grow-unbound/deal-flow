@@ -9,6 +9,9 @@ import { BuyerStickyPageHeader } from '@/components/buyer/layout/BuyerStickyPage
 import { openBuyerSearch } from '@/components/buyer/layout/BuyerSearchOverlay';
 import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
 import { useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
+import { TransactionCard, type OrderSummary } from '@/components/buyer/orders/TransactionCard';
+import { InvoiceCard, type InvoiceSummary } from '@/components/buyer/orders/InvoiceCard';
+import { StatusPill, type StatusTone } from '@/components/ui/status-pill';
 
 function inr(n: number): string {
   const s = Math.round(n).toString();
@@ -90,11 +93,25 @@ interface EnquiryCardProps {
 }
 
 function EnquiryCard({ estimate, highlighted }: EnquiryCardProps) {
-  const sc = statusColors[estimate.status] ?? statusColors.received;
+  const getStatusTone = (status: string): StatusTone => {
+    switch (status) {
+      case 'accepted':
+        return 'success';
+      case 'declined':
+        return 'danger';
+      case 'pending':
+      default:
+        return 'info';
+    }
+  };
+
+  const statusLabel = statusLabels[estimate.status] ?? estimate.status;
+  const statusTone = getStatusTone(estimate.status);
+
   return (
     <div
       style={{
-        background: 'var(--cream-50)',
+        background: 'white',
         border: highlighted ? '2px solid var(--teal-500)' : '1px solid var(--border-1)',
         borderRadius: 12,
         padding: highlighted ? '11px 13px' : '12px 14px',
@@ -107,9 +124,7 @@ function EnquiryCard({ estimate, highlighted }: EnquiryCardProps) {
         <span style={{ fontSize: 'var(--b-text-body)', fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>
           {estimate.estimate_number ?? estimate.id.slice(0, 8).toUpperCase()}
         </span>
-        <span style={{ fontSize: 'var(--b-text-eyebrow)', fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.fg }}>
-          {statusLabels[estimate.status] ?? estimate.status}
-        </span>
+        <StatusPill label={statusLabel} tone={statusTone} />
       </div>
       {estimate.notes && (
         <div style={{ fontSize: 'var(--b-text-body)', color: 'var(--cream-900)', fontWeight: 500, marginBottom: 4 }}>{estimate.notes}</div>
@@ -129,7 +144,7 @@ function EnquiryCard({ estimate, highlighted }: EnquiryCardProps) {
 function PreviewPlaceholder({ icon, title, description }: { icon: string; title: string; description: string }) {
   return (
     <div style={{ padding: '12px 16px 0' }}>
-      <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '20px 16px', textAlign: 'center' }}>
+      <div style={{ background: 'white', border: '1px solid var(--border-1)', borderRadius: 12, padding: '20px 16px', textAlign: 'center' }}>
         <div style={{ fontSize: 28, marginBottom: 8 }}>{icon}</div>
         <p style={{ fontSize: 'var(--b-text-body)', fontWeight: 600, color: 'var(--cream-800)', marginBottom: 4 }}>{title}</p>
         <p style={{ fontSize: 'var(--b-text-sub)', color: 'var(--cream-600)', lineHeight: 1.5 }}>{description}</p>
@@ -365,36 +380,32 @@ function OrdersPageInner() {
 
             <div style={{ padding: '12px 16px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {pageState.loading ? (
-                <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '16px 14px', textAlign: 'center' }}>
+                <div style={{ background: 'white', border: '1px solid var(--border-1)', borderRadius: 12, padding: '16px 14px', textAlign: 'center' }}>
                   <p style={{ fontSize: 'var(--b-text-body)', color: 'var(--cream-600)' }}>Loading orders…</p>
                 </div>
               ) : pageState.sellerPreview ? (
                 <PreviewPlaceholder icon="📦" title="Order history" description="When a buyer logs in, their complete order history appears here — with real-time status tracking, filters, and search." />
               ) : visibleOrders.length === 0 ? (
-                <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '20px 16px', textAlign: 'center' }}>
+                <div style={{ background: 'white', border: '1px solid var(--border-1)', borderRadius: 12, padding: '20px 16px', textAlign: 'center' }}>
                   <p style={{ fontSize: 'var(--b-text-body)', color: 'var(--cream-600)' }}>
                     {search ? `No orders matching "${search}"` : 'No orders yet.'}
                   </p>
                 </div>
               ) : visibleOrders.map((o) => {
-                const sc = statusColors[o.status] ?? statusColors.received;
                 const orderTag = updatedEntityIds.get(o.id);
+                const orderSummary: OrderSummary = {
+                  id: o.id,
+                  order_number: o.order_number,
+                  status: o.status,
+                  total_amount: o.total_amount,
+                  placed_at: o.placed_at,
+                  item_count: o.items_count,
+                  description: o.catalog_name || 'Order',
+                };
                 return (
-                  <div key={o.id} onClick={() => markSeen(o.id)} style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '12px 14px', cursor: 'pointer' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <span style={{ fontSize: 'var(--b-text-body)', fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>{o.order_number}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {orderTag && <RealtimeBadge type={orderTag} />}
-                        <span style={{ fontSize: 'var(--b-text-eyebrow)', fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.fg }}>{statusLabels[o.status] ?? o.status}</span>
-                      </div>
-                    </div>
-                    <div style={{ fontSize: 'var(--b-text-body)', color: 'var(--cream-800)', marginBottom: 6 }}>{o.catalog_name ?? 'Order'}</div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 'var(--b-text-sub)', color: 'var(--cream-600)' }}>
-                        {o.items_count} products · {new Date(o.placed_at).toLocaleDateString('en-IN')}
-                      </span>
-                      <span style={{ fontSize: 'var(--b-text-body)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)' }}>{inr(o.total_amount)}</span>
-                    </div>
+                  <div key={o.id} onClick={() => markSeen(o.id)}>
+                    {orderTag && <RealtimeBadge type={orderTag} />}
+                    <TransactionCard order={orderSummary} />
                   </div>
                 );
               })}
@@ -412,7 +423,7 @@ function OrdersPageInner() {
             </div>
           ) : visibleEstimates.length === 0 ? (
             <div style={{ padding: '12px 16px 0' }}>
-              <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '20px 16px', textAlign: 'center' }}>
+              <div style={{ background: 'white', border: '1px solid var(--border-1)', borderRadius: 12, padding: '20px 16px', textAlign: 'center' }}>
                 <p style={{ fontSize: 'var(--b-text-body)', color: 'var(--cream-600)' }}>
                   {search ? `No enquiries matching "${search}"` : 'No enquiries yet.'}
                 </p>
@@ -437,7 +448,7 @@ function OrdersPageInner() {
             </div>
           ) : visibleInvoices.length === 0 ? (
             <div style={{ padding: '12px 16px 0' }}>
-              <div style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '20px 16px', textAlign: 'center' }}>
+              <div style={{ background: 'white', border: '1px solid var(--border-1)', borderRadius: 12, padding: '20px 16px', textAlign: 'center' }}>
                 <p style={{ fontSize: 'var(--b-text-body)', color: 'var(--cream-600)' }}>
                   {search ? `No invoices matching "${search}"` : 'No invoices yet.'}
                 </p>
@@ -446,30 +457,17 @@ function OrdersPageInner() {
           ) : (
             <div style={{ padding: '12px 16px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {visibleInvoices.map((inv) => {
-                const sc = statusColors[inv.status] ?? statusColors.due;
+                const invoiceSummary: InvoiceSummary = {
+                  id: inv.id,
+                  invoice_number: inv.invoice_number,
+                  status: inv.status,
+                  total_amount: inv.total_amount,
+                  outstanding_balance: inv.outstanding_balance,
+                  invoice_date: inv.invoice_date,
+                  due_date: inv.due_date,
+                };
                 return (
-                  <div key={inv.id} style={{ background: 'var(--cream-50)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '12px 14px', cursor: 'pointer' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <span style={{ fontSize: 'var(--b-text-body)', fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>{inv.invoice_number}</span>
-                      <span style={{ fontSize: 'var(--b-text-eyebrow)', fontWeight: 600, padding: '2px 8px', borderRadius: 100, background: sc.bg, color: sc.fg }}>
-                        {statusLabels[inv.status] ?? inv.status}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 'var(--b-text-sub)', color: 'var(--cream-600)' }}>
-                        {fmtDate(inv.invoice_date)}
-                        {inv.due_date ? ` · Due ${fmtDate(inv.due_date)}` : ''}
-                      </span>
-                      <span style={{ fontSize: 'var(--b-text-body)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)' }}>
-                        {inr(inv.total_amount)}
-                      </span>
-                    </div>
-                    {inv.outstanding_balance != null && inv.outstanding_balance > 0 && (
-                      <div style={{ marginTop: 4, fontSize: 'var(--b-text-eyebrow)', color: statusColors.overdue.fg }}>
-                        Outstanding: {inr(inv.outstanding_balance)}
-                      </div>
-                    )}
-                  </div>
+                  <InvoiceCard key={inv.id} invoice={invoiceSummary} />
                 );
               })}
             </div>

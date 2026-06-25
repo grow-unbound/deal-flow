@@ -39,7 +39,7 @@ export function BuyerDetailShell({ title, searchHref, children }: BuyerDetailShe
           <button
             type="button"
             onClick={handleBack}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--border-1)] bg-[var(--bg-surface)] text-[var(--fg-2)] active:bg-[var(--bg-recessed)]"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-none border-0 bg-transparent p-0 text-[var(--fg-2)]"
             aria-label="Back"
           >
             <ChevronLeft className="h-5 w-5" />

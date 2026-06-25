@@ -4,10 +4,12 @@ import { useMutation, useQuery, useQueryClient, useInfiniteQuery, keepPreviousDa
 import { toast } from 'sonner';
 
 import { apiFetch, apiPost } from '@/lib/api-fetch';
+import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { BuyerCreateInput } from '@/lib/zod';
 import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
+import type { LandingFilterMeta } from '@/lib/landing-filter-params';
 
 export type StatusTone = 'success' | 'warning' | 'danger' | 'neutral';
 export type AvatarHue = 'teal' | 'ember' | 'cream';
@@ -16,8 +18,13 @@ export interface CustomersLandingBuyer {
   id: string;
   business_name: string;
   tier: 'A' | 'B' | 'C' | null;
+  phone: string | null;
+  gst_treatment?: string | null;
+  zoho_status?: string | null;
   city: string;
+  state?: string | null;
   cohort: string;
+  active_price_list?: string | null;
   spend_mtd: number;
   spend_prev_mtd: number;
   growth_pct: number;
@@ -49,6 +56,7 @@ export interface CustomersLandingResponse {
     top_risers: CustomersLandingBuyer[];
   };
   buyers: CustomersLandingBuyer[];
+  filters?: LandingFilterMeta;
 }
 
 export interface TenantCustomerDetailResponse {
@@ -82,13 +90,27 @@ export interface TenantCustomerDetailResponse {
     phone: string | null;
     email: string | null;
     gstin: string | null;
+    gst_treatment: string | null;
+    zoho_status: string | null;
     city: string | null;
     state: string | null;
     pincode: string | null;
     zone: string | null;
+    billing_address: Record<string, unknown> | null;
+    shipping_address: Record<string, unknown> | null;
     payment_terms_days: number | null;
     credit_limit: number | null;
     external_ref: string | null;
+    assigned_price_list: string | null;
+    contacts: Array<{
+      id: string;
+      name: string;
+      phone: string | null;
+      email: string | null;
+      designation: string | null;
+      department: string | null;
+      is_active: boolean;
+    }>;
     default_cohort_id?: string | null;
     tier?: 'A' | 'B' | 'C' | null;
     cohorts: string[];
@@ -211,7 +233,10 @@ export function useCustomersLanding(period: SellerLandingPeriod = 'month', initi
 
 export interface CustomersInfiniteFilters {
   search?: string;
-  tier?: string;
+  status?: string[];
+  due?: string[];
+  city?: string[];
+  state?: string[];
 }
 
 export interface CustomersLandingPage extends CustomersLandingResponse {
@@ -229,7 +254,10 @@ export function useCustomersLandingInfinite(
       const params = new URLSearchParams({ period });
       if (pageParam) params.set('cursor', pageParam as string);
       if (filters.search?.trim()) params.set('search', filters.search.trim());
-      if (filters.tier && filters.tier !== 'All') params.set('tier', filters.tier);
+      appendArrayParam(params, 'status', filters.status);
+      appendArrayParam(params, 'due', filters.due);
+      appendArrayParam(params, 'city', filters.city);
+      appendArrayParam(params, 'state', filters.state);
       const res = await apiFetch(`/api/tenant/customers?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch customers landing');
       return res.json() as Promise<CustomersLandingPage>;
@@ -363,8 +391,12 @@ export function useCreateCustomerOptimistic() {
           id: `optimistic-${Date.now()}`,
           business_name: payload.business_name,
           tier: payload.tier ?? null,
+          phone: payload.phone ?? null,
+          gst_treatment: null,
+          zoho_status: null,
           city: payload.geography?.city ?? 'Unknown',
           cohort: '—',
+          active_price_list: null,
           spend_mtd: 0,
           spend_prev_mtd: 0,
           growth_pct: 0,

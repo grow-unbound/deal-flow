@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Badge, type BadgeProps } from '@/components/ui/badge';
+import { StatusPill } from '@/components/ui/status-pill';
 
 type OrderStatus =
   | 'draft'
@@ -11,19 +11,19 @@ type OrderStatus =
 
 type ProductStatus = 'active' | 'inactive' | 'out_of_stock';
 
-const ORDER_STATUS_MAP: Record<OrderStatus, { label: string; variant: BadgeProps['variant'] }> = {
-  draft:      { label: 'Draft',      variant: 'default' },
-  received:   { label: 'Received',   variant: 'info' },
-  confirmed:  { label: 'Confirmed',  variant: 'teal' },
-  dispatched: { label: 'Dispatched', variant: 'warning' },
-  delivered:  { label: 'Delivered',  variant: 'success' },
-  cancelled:  { label: 'Cancelled',  variant: 'danger' },
+const ORDER_STATUS_MAP: Record<OrderStatus, { label: string; tone: React.ComponentProps<typeof StatusPill>['tone'] }> = {
+  draft:      { label: 'Draft',      tone: 'neutral' },
+  received:   { label: 'Received',   tone: 'info' },
+  confirmed:  { label: 'Confirmed',  tone: 'accent' },
+  dispatched: { label: 'Dispatched', tone: 'warning' },
+  delivered:  { label: 'Delivered',  tone: 'success' },
+  cancelled:  { label: 'Cancelled',  tone: 'danger' },
 };
 
-const PRODUCT_STATUS_MAP: Record<ProductStatus, { label: string; variant: BadgeProps['variant'] }> = {
-  active:       { label: 'Active',        variant: 'success' },
-  inactive:     { label: 'Inactive',      variant: 'default' },
-  out_of_stock: { label: 'Out of stock',  variant: 'warning' },
+const PRODUCT_STATUS_MAP: Record<ProductStatus, { label: string; tone: React.ComponentProps<typeof StatusPill>['tone'] }> = {
+  active:       { label: 'Active',       tone: 'success' },
+  inactive:     { label: 'Inactive',     tone: 'neutral' },
+  out_of_stock: { label: 'Out of stock', tone: 'warning' },
 };
 
 interface OrderStatusPillProps {
@@ -35,13 +35,13 @@ interface ProductStatusPillProps {
 }
 
 function OrderStatusPill({ status }: OrderStatusPillProps) {
-  const { label, variant } = ORDER_STATUS_MAP[status] ?? { label: status, variant: 'default' as const };
-  return <Badge variant={variant}>{label}</Badge>;
+  const { label, tone } = ORDER_STATUS_MAP[status] ?? { label: status, tone: 'neutral' as const };
+  return <StatusPill label={label} tone={tone} />;
 }
 
 function ProductStatusPill({ status }: ProductStatusPillProps) {
-  const { label, variant } = PRODUCT_STATUS_MAP[status] ?? { label: status, variant: 'default' as const };
-  return <Badge variant={variant}>{label}</Badge>;
+  const { label, tone } = PRODUCT_STATUS_MAP[status] ?? { label: status, tone: 'neutral' as const };
+  return <StatusPill label={label} tone={tone} />;
 }
 
 export { OrderStatusPill, ProductStatusPill };

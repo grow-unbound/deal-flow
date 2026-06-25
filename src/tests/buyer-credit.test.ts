@@ -24,6 +24,28 @@ function makeDb(rows: Array<{ buyer_id: string; outstanding_balance: number | nu
   } as any;
 }
 
+function makeErrorDb(message = 'Bad Request') {
+  const chain = {
+    eq() { return chain; },
+    in() { return chain; },
+    neq() { return chain; },
+    is: vi.fn(async () => ({ data: null, error: { message } })),
+  };
+  return {
+    schema() {
+      return {
+        from(table: 'buyers' | 'invoices') {
+          return {
+            select() {
+              return chain;
+            },
+          };
+        },
+      };
+    },
+  } as any;
+}
+
 describe('loadBuyerCreditSnapshot', () => {
   it('sums unpaid non-draft invoices and returns the earliest due date', async () => {
     const snapshot = await loadBuyerCreditSnapshot(
@@ -52,5 +74,18 @@ describe('loadBuyerCreditSnapshot', () => {
     );
 
     expect(snapshot.available_credit).toBe(0);
+  });
+
+  it('falls back to zero dues when invoice enrichment fails', async () => {
+    const snapshot = await loadBuyerCreditSnapshot(
+      makeErrorDb(),
+      { tenantId: 'tenant-1', buyerId: 'buyer-1', creditLimit: 20000 },
+    );
+
+    expect(snapshot.credit_limit).toBe(20000);
+    expect(snapshot.outstanding_dues).toBe(0);
+    expect(snapshot.available_credit).toBe(20000);
+    expect(snapshot.open_invoice_count).toBe(0);
+    expect(snapshot.earliest_due_date).toBeNull();
   });
 });
