@@ -55,7 +55,7 @@ CREATE INDEX IF NOT EXISTS idx_inventory_product_live
   WHERE deleted_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_catalogs_tenant_created
-  ON app.published_catalogs (tenant_id, created_at)
+  ON app.campaigns (tenant_id, created_at)
   WHERE deleted_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_buyers_tenant_active

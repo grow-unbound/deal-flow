@@ -11,7 +11,7 @@
 ALTER TABLE IF EXISTS app.buyers ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
 ALTER TABLE IF EXISTS app.cohorts ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
 ALTER TABLE IF EXISTS app.price_lists ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
-ALTER TABLE IF EXISTS app.published_catalogs ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+ALTER TABLE IF EXISTS app.campaigns ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
 ALTER TABLE IF EXISTS app.orders ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
 ALTER TABLE IF EXISTS app.tenant_products ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
 ALTER TABLE IF EXISTS app.locations ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
@@ -158,8 +158,8 @@ BEGIN
       app.audit_log,
       app.order_items,
       app.orders,
-      app.published_catalog_items,
-      app.published_catalogs,
+      app.campaign_items,
+      app.campaigns,
       app.price_list_assignments,
       app.price_list_items,
       app.price_lists
@@ -308,7 +308,7 @@ BEGIN
     AND c.slug = 'accessories';
 
   -- Catalogs
-  INSERT INTO app.published_catalogs (
+  INSERT INTO app.campaigns (
     tenant_id, name, scope_type, scope_value, valid_from, valid_to, status,
     hero_image_url, message, share_token, created_at, updated_at, created_by, updated_by
   ) VALUES
@@ -321,11 +321,11 @@ BEGIN
      now(), now() + interval '10 days', 'draft',
      'https://example.com/catalog-draft.jpg', 'Draft-only curated picks', 'techwave-draft-picks', now(), now(), v_seller_user_id, v_seller_user_id);
 
-  SELECT id INTO v_catalog_all FROM app.published_catalogs WHERE tenant_id = v_tenant_id AND share_token = 'techwave-fast-movers' AND deleted_at IS NULL LIMIT 1;
-  SELECT id INTO v_catalog_cohort FROM app.published_catalogs WHERE tenant_id = v_tenant_id AND share_token = 'techwave-premium-program' AND deleted_at IS NULL LIMIT 1;
-  SELECT id INTO v_catalog_draft FROM app.published_catalogs WHERE tenant_id = v_tenant_id AND share_token = 'techwave-draft-picks' AND deleted_at IS NULL LIMIT 1;
+  SELECT id INTO v_catalog_all FROM app.campaigns WHERE tenant_id = v_tenant_id AND share_token = 'techwave-fast-movers' AND deleted_at IS NULL LIMIT 1;
+  SELECT id INTO v_catalog_cohort FROM app.campaigns WHERE tenant_id = v_tenant_id AND share_token = 'techwave-premium-program' AND deleted_at IS NULL LIMIT 1;
+  SELECT id INTO v_catalog_draft FROM app.campaigns WHERE tenant_id = v_tenant_id AND share_token = 'techwave-draft-picks' AND deleted_at IS NULL LIMIT 1;
 
-  INSERT INTO app.published_catalog_items (catalog_id, tenant_product_id, is_featured, display_order, price_override, created_at, updated_at, created_by, updated_by)
+  INSERT INTO app.campaign_items (campaign_id, tenant_product_id, is_featured, display_order, price_override, created_at, updated_at, created_by, updated_by)
   SELECT v_catalog_all, tp.id, (row_number() OVER (ORDER BY tp.created_at, tp.id) % 4 = 0), row_number() OVER (ORDER BY tp.created_at, tp.id), NULL,
          now(), now(), v_seller_user_id, v_seller_user_id
   FROM app.tenant_products tp
@@ -333,7 +333,7 @@ BEGIN
   ORDER BY tp.created_at, tp.id
   LIMIT 12;
 
-  INSERT INTO app.published_catalog_items (catalog_id, tenant_product_id, is_featured, display_order, price_override, created_at, updated_at, created_by, updated_by)
+  INSERT INTO app.campaign_items (campaign_id, tenant_product_id, is_featured, display_order, price_override, created_at, updated_at, created_by, updated_by)
   SELECT v_catalog_cohort, tp.id, (row_number() OVER (ORDER BY tp.created_at, tp.id) % 3 = 0), row_number() OVER (ORDER BY tp.created_at, tp.id), round(tp.base_selling_price * 0.96, 2),
          now(), now(), v_seller_user_id, v_seller_user_id
   FROM app.tenant_products tp
@@ -346,7 +346,7 @@ BEGIN
   ORDER BY tp.created_at, tp.id
   LIMIT 10;
 
-  INSERT INTO app.published_catalog_items (catalog_id, tenant_product_id, is_featured, display_order, price_override, created_at, updated_at, created_by, updated_by)
+  INSERT INTO app.campaign_items (campaign_id, tenant_product_id, is_featured, display_order, price_override, created_at, updated_at, created_by, updated_by)
   SELECT v_catalog_draft, tp.id, false, row_number() OVER (ORDER BY tp.created_at DESC, tp.id DESC), NULL,
          now(), now(), v_seller_user_id, v_seller_user_id
   FROM app.tenant_products tp
@@ -355,8 +355,8 @@ BEGIN
   LIMIT 8;
 
   -- If category-scoped inserts produced no rows (schema drift), backfill so estimates always have PCI lines.
-  IF NOT EXISTS (SELECT 1 FROM app.published_catalog_items pci WHERE pci.catalog_id = v_catalog_cohort AND pci.deleted_at IS NULL) THEN
-    INSERT INTO app.published_catalog_items (catalog_id, tenant_product_id, is_featured, display_order, price_override, created_at, updated_at, created_by, updated_by)
+  IF NOT EXISTS (SELECT 1 FROM app.campaign_items pci WHERE pci.campaign_id = v_catalog_cohort AND pci.deleted_at IS NULL) THEN
+    INSERT INTO app.campaign_items (campaign_id, tenant_product_id, is_featured, display_order, price_override, created_at, updated_at, created_by, updated_by)
     SELECT v_catalog_cohort, tp.id, false, row_number() OVER (ORDER BY tp.created_at, tp.id), NULL,
            now(), now(), v_seller_user_id, v_seller_user_id
     FROM app.tenant_products tp
@@ -364,8 +364,8 @@ BEGIN
     ORDER BY tp.created_at, tp.id
     LIMIT 12;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM app.published_catalog_items pci WHERE pci.catalog_id = v_catalog_all AND pci.deleted_at IS NULL) THEN
-    INSERT INTO app.published_catalog_items (catalog_id, tenant_product_id, is_featured, display_order, price_override, created_at, updated_at, created_by, updated_by)
+  IF NOT EXISTS (SELECT 1 FROM app.campaign_items pci WHERE pci.campaign_id = v_catalog_all AND pci.deleted_at IS NULL) THEN
+    INSERT INTO app.campaign_items (campaign_id, tenant_product_id, is_featured, display_order, price_override, created_at, updated_at, created_by, updated_by)
     SELECT v_catalog_all, tp.id, (row_number() OVER (ORDER BY tp.created_at, tp.id) % 4 = 0), row_number() OVER (ORDER BY tp.created_at, tp.id), NULL,
            now(), now(), v_seller_user_id, v_seller_user_id
     FROM app.tenant_products tp
@@ -373,8 +373,8 @@ BEGIN
     ORDER BY tp.created_at, tp.id
     LIMIT 12;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM app.published_catalog_items pci WHERE pci.catalog_id = v_catalog_draft AND pci.deleted_at IS NULL) THEN
-    INSERT INTO app.published_catalog_items (catalog_id, tenant_product_id, is_featured, display_order, price_override, created_at, updated_at, created_by, updated_by)
+  IF NOT EXISTS (SELECT 1 FROM app.campaign_items pci WHERE pci.campaign_id = v_catalog_draft AND pci.deleted_at IS NULL) THEN
+    INSERT INTO app.campaign_items (campaign_id, tenant_product_id, is_featured, display_order, price_override, created_at, updated_at, created_by, updated_by)
     SELECT v_catalog_draft, tp.id, false, row_number() OVER (ORDER BY tp.created_at DESC, tp.id DESC), NULL,
            now(), now(), v_seller_user_id, v_seller_user_id
     FROM app.tenant_products tp
@@ -421,7 +421,7 @@ BEGIN
     END IF;
 
     INSERT INTO app.estimates (
-      tenant_id, buyer_id, estimate_number, status, catalog_id,
+      tenant_id, buyer_id, estimate_number, status, campaign_id,
       subtotal, tax_amount, total_amount, currency, notes, source,
       sent_at, accepted_at, expires_at, external_ref,
       created_at, updated_at, created_by, updated_by
@@ -440,18 +440,18 @@ BEGIN
     v_est_seq := v_est_seq + 1;
 
     SELECT count(*)::int INTO v_pci_count
-    FROM app.published_catalog_items pci
-    WHERE pci.catalog_id = v_line_catalog AND pci.deleted_at IS NULL;
+    FROM app.campaign_items pci
+    WHERE pci.campaign_id = v_line_catalog AND pci.deleted_at IS NULL;
 
     FOR v_j IN 1..2 LOOP
       v_tp_id := NULL;
       IF v_pci_count > 0 THEN
         SELECT pci.tenant_product_id, COALESCE(p.gst_rate, 18)
         INTO v_tp_id, v_tax
-        FROM app.published_catalog_items pci
+        FROM app.campaign_items pci
         JOIN app.tenant_products tp ON tp.id = pci.tenant_product_id AND tp.tenant_id = v_tenant_id
         LEFT JOIN catalog.products p ON p.id = tp.master_product_id
-        WHERE pci.catalog_id = v_line_catalog AND pci.deleted_at IS NULL
+        WHERE pci.campaign_id = v_line_catalog AND pci.deleted_at IS NULL
         ORDER BY pci.display_order, pci.tenant_product_id
         LIMIT 1 OFFSET ((v_j - 1 + abs(hashtext(se.ext_ref || v_j::text))) % v_pci_count);
       END IF;
@@ -519,7 +519,7 @@ BEGIN
     END;
 
     INSERT INTO app.estimates (
-      tenant_id, buyer_id, estimate_number, status, catalog_id,
+      tenant_id, buyer_id, estimate_number, status, campaign_id,
       subtotal, tax_amount, total_amount, currency, notes, source,
       sent_at, accepted_at, expires_at, external_ref,
       created_at, updated_at, created_by, updated_by
@@ -538,8 +538,8 @@ BEGIN
     v_est_seq := v_est_seq + 1;
 
     SELECT count(*)::int INTO v_pci_count
-    FROM app.published_catalog_items pci
-    WHERE pci.catalog_id = v_catalog_cohort AND pci.deleted_at IS NULL;
+    FROM app.campaign_items pci
+    WHERE pci.campaign_id = v_catalog_cohort AND pci.deleted_at IS NULL;
 
     v_items := 2 + (v_conv_idx % 2);
     FOR v_j IN 1..v_items LOOP
@@ -547,10 +547,10 @@ BEGIN
       IF v_pci_count > 0 THEN
         SELECT pci.tenant_product_id, COALESCE(p.gst_rate, 18)
         INTO v_tp_id, v_tax
-        FROM app.published_catalog_items pci
+        FROM app.campaign_items pci
         JOIN app.tenant_products tp ON tp.id = pci.tenant_product_id AND tp.tenant_id = v_tenant_id
         LEFT JOIN catalog.products p ON p.id = tp.master_product_id
-        WHERE pci.catalog_id = v_catalog_cohort AND pci.deleted_at IS NULL
+        WHERE pci.campaign_id = v_catalog_cohort AND pci.deleted_at IS NULL
         ORDER BY pci.display_order, pci.tenant_product_id
         LIMIT 1 OFFSET ((v_j - 1 + v_conv_idx) % v_pci_count);
       END IF;
@@ -605,7 +605,7 @@ BEGIN
     v_order_number := format('DF-EST-%s', lpad(v_conv_idx::text, 3, '0'));
 
     INSERT INTO app.orders (
-      tenant_id, buyer_id, placed_by, order_number, status, source, catalog_id,
+      tenant_id, buyer_id, placed_by, order_number, status, source, campaign_id,
       subtotal, tax_amount, total_amount, currency, notes, placed_at, estimate_id,
       created_at, updated_at, created_by, updated_by
     ) VALUES (
@@ -674,7 +674,7 @@ BEGIN
       v_catalog_id := CASE WHEN v_i % 3 = 0 THEN v_catalog_cohort WHEN v_i % 2 = 0 THEN v_catalog_all ELSE NULL END;
 
       INSERT INTO app.orders (
-        tenant_id, buyer_id, placed_by, order_number, status, source, catalog_id,
+        tenant_id, buyer_id, placed_by, order_number, status, source, campaign_id,
         subtotal, tax_amount, total_amount, currency, notes, placed_at,
         created_at, updated_at, created_by, updated_by
       ) VALUES (
@@ -694,16 +694,16 @@ BEGIN
 
         IF v_catalog_id IS NOT NULL THEN
           SELECT count(*)::int INTO v_pci_count
-          FROM app.published_catalog_items pci
-          WHERE pci.catalog_id = v_catalog_id AND pci.deleted_at IS NULL;
+          FROM app.campaign_items pci
+          WHERE pci.campaign_id = v_catalog_id AND pci.deleted_at IS NULL;
 
           IF v_pci_count > 0 THEN
             SELECT pci.tenant_product_id, COALESCE(p.gst_rate, 18)
             INTO v_tp_id, v_tax
-            FROM app.published_catalog_items pci
+            FROM app.campaign_items pci
             JOIN app.tenant_products tp ON tp.id = pci.tenant_product_id AND tp.tenant_id = v_tenant_id
             LEFT JOIN catalog.products p ON p.id = tp.master_product_id
-            WHERE pci.catalog_id = v_catalog_id AND pci.deleted_at IS NULL
+            WHERE pci.campaign_id = v_catalog_id AND pci.deleted_at IS NULL
             ORDER BY pci.display_order, pci.tenant_product_id
             LIMIT 1 OFFSET ((v_j - 1 + abs(hashtext(v_order_number || v_j::text))) % v_pci_count);
           END IF;
@@ -770,7 +770,7 @@ BEGIN
 
   -- ── Direct estimate → invoice (no sales order) ─────────────────────────
   INSERT INTO app.estimates (
-    tenant_id, buyer_id, estimate_number, status, catalog_id,
+    tenant_id, buyer_id, estimate_number, status, campaign_id,
     subtotal, tax_amount, total_amount, currency, notes, source,
     sent_at, accepted_at, expires_at, external_ref,
     created_at, updated_at, created_by, updated_by
@@ -789,18 +789,18 @@ BEGIN
 
   v_line_catalog := v_catalog_all;
   SELECT count(*)::int INTO v_pci_count
-  FROM app.published_catalog_items pci
-  WHERE pci.catalog_id = v_line_catalog AND pci.deleted_at IS NULL;
+  FROM app.campaign_items pci
+  WHERE pci.campaign_id = v_line_catalog AND pci.deleted_at IS NULL;
 
   FOR v_j IN 1..3 LOOP
     v_tp_id := NULL;
     IF v_pci_count > 0 THEN
       SELECT pci.tenant_product_id, COALESCE(p.gst_rate, 18)
       INTO v_tp_id, v_tax
-      FROM app.published_catalog_items pci
+      FROM app.campaign_items pci
       JOIN app.tenant_products tp ON tp.id = pci.tenant_product_id AND tp.tenant_id = v_tenant_id
       LEFT JOIN catalog.products p ON p.id = tp.master_product_id
-      WHERE pci.catalog_id = v_line_catalog AND pci.deleted_at IS NULL
+      WHERE pci.campaign_id = v_line_catalog AND pci.deleted_at IS NULL
       ORDER BY pci.display_order, pci.tenant_product_id
       LIMIT 1 OFFSET ((v_j - 1 + abs(hashtext('directinv' || v_j::text))) % v_pci_count);
     END IF;
@@ -1119,8 +1119,8 @@ FROM app.price_lists pl
 JOIN app.tenants t ON t.id = pl.tenant_id
 WHERE t.slug = 'techwave' AND pl.deleted_at IS NULL
 UNION ALL
-SELECT 'published_catalogs', count(*)::text
-FROM app.published_catalogs pc
+SELECT 'campaigns', count(*)::text
+FROM app.campaigns pc
 JOIN app.tenants t ON t.id = pc.tenant_id
 WHERE t.slug = 'techwave' AND pc.deleted_at IS NULL
 UNION ALL

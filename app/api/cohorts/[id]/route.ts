@@ -22,7 +22,7 @@ type OrderRow = {
   total_amount: number | null;
   status: string;
   placed_at: string | null;
-  catalog_id: string | null;
+  campaign_id: string | null;
 };
 
 type CatalogRow = {
@@ -36,13 +36,19 @@ type CatalogRow = {
 };
 
 type CatalogItemRow = {
-  catalog_id: string;
+  campaign_id: string;
   tenant_product_id: string;
 };
 
 type TenantProductRow = {
   id: string;
   tenant_brand_id: string | null;
+};
+
+type TenantBrandRow = {
+  id: string;
+  display_name_override: string | null;
+  master_brand_id: string | null;
 };
 
 function getIstMonthWindow(now = new Date()) {
@@ -155,14 +161,14 @@ async function getCatalogOpensByCatalog(tenantId: string, catalogIds: string[], 
         query: {
           kind: 'HogQLQuery',
           query: `
-            SELECT properties.catalog_id AS catalog_id, count(DISTINCT person_id) AS unique_views
+            SELECT properties.campaign_id AS campaign_id, count(DISTINCT person_id) AS unique_views
             FROM events
             WHERE event = 'catalog_viewed'
               AND properties.tenant_id = {tenant_id:String}
-              AND properties.catalog_id IN (${quotedCatalogIds})
+              AND properties.campaign_id IN (${quotedCatalogIds})
               AND timestamp >= toDateTime({from_ts:String})
               AND timestamp < toDateTime({to_ts:String})
-            GROUP BY properties.catalog_id
+            GROUP BY properties.campaign_id
           `,
           placeholders: {
             tenant_id: tenantId,
@@ -174,14 +180,14 @@ async function getCatalogOpensByCatalog(tenantId: string, catalogIds: string[], 
     });
 
     if (!response.ok) return new Map<string, number>();
-    const payload = (await response.json()) as { results?: Array<[string, number] | { catalog_id: string; unique_views: number }> };
+    const payload = (await response.json()) as { results?: Array<[string, number] | { campaign_id: string; unique_views: number }> };
 
     const map = new Map<string, number>();
     for (const row of payload.results ?? []) {
       if (Array.isArray(row)) {
         map.set(String(row[0]), Number(row[1] ?? 0));
       } else {
-        map.set(String(row.catalog_id), Number(row.unique_views ?? 0));
+        map.set(String(row.campaign_id), Number(row.unique_views ?? 0));
       }
     }
     return map;
@@ -217,7 +223,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { data: cohort, error: cohortError } = await db
     .schema('app')
     .from('cohorts')
-    .select('id, tenant_id, name, description, rules, is_static, cached_member_count, created_at, created_by, updated_at')
+    .select('id, tenant_id, name, description, rules, is_static, cached_member_count, created_at, created_by, updated_at, allowed_tenant_brand_ids')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .is('deleted_at', null)
@@ -225,7 +231,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   if (cohortError || !cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 404 });
 
-  const [{ data: buyers }, { data: members }, { data: orders }, { data: catalogRowsData }, { data: catalogItems }, { data: tenantProducts }] = await Promise.all([
+  const [{ data: buyers }, { data: members }, { data: orders }, { data: catalogRowsData }, { data: catalogItems }, { data: tenantProducts }, { data: tenantBrandsData }] = await Promise.all([
     db
       .schema('app')
       .from('buyers')
@@ -241,25 +247,31 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     db
       .schema('app')
       .from('orders')
-      .select('id, buyer_id, total_amount, status, placed_at, catalog_id')
+      .select('id, buyer_id, total_amount, status, placed_at, campaign_id')
       .eq('tenant_id', claims.tenant_id)
       .neq('status', 'cancelled')
       .is('deleted_at', null),
     db
       .schema('app')
-      .from('published_catalogs')
+      .from('campaigns')
       .select('id, scope_type, scope_value, status, name, created_at, updated_at')
       .eq('tenant_id', claims.tenant_id)
       .is('deleted_at', null),
     db
       .schema('app')
-      .from('published_catalog_items')
-      .select('catalog_id, tenant_product_id')
+      .from('campaign_items')
+      .select('campaign_id, tenant_product_id')
       .is('deleted_at', null),
     db
       .schema('app')
       .from('tenant_products')
       .select('id, tenant_brand_id')
+      .eq('tenant_id', claims.tenant_id)
+      .is('deleted_at', null),
+    db
+      .schema('app')
+      .from('tenant_brands')
+      .select('id, display_name_override, master_brand_id')
       .eq('tenant_id', claims.tenant_id)
       .is('deleted_at', null),
   ]);
@@ -270,6 +282,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const catalogRows = (catalogRowsData ?? []) as CatalogRow[];
   const catalogItemRows = (catalogItems ?? []) as CatalogItemRow[];
   const tenantProductRows = (tenantProducts ?? []) as TenantProductRow[];
+  const tenantBrandRows = (tenantBrandsData ?? []) as TenantBrandRow[];
+  const allowedTenantBrandIds = (cohort.allowed_tenant_brand_ids as string[] | null | undefined) ?? null;
+  const masterBrandIds = Array.from(new Set(tenantBrandRows.map((row) => row.master_brand_id).filter(Boolean) as string[]));
+  const { data: masterBrandsData } = masterBrandIds.length > 0
+    ? await db.schema('catalog').from('brands').select('id, name').in('id', masterBrandIds)
+    : { data: [] };
+  const masterBrandMap = new Map(((masterBrandsData ?? []) as Array<{ id: string; name: string }>).map((row) => [row.id, row.name]));
+  const tenantBrandNameMap = new Map(
+    tenantBrandRows.map((row) => [
+      row.id,
+      row.display_name_override ?? (row.master_brand_id ? masterBrandMap.get(row.master_brand_id) ?? 'Unnamed brand' : 'Unnamed brand'),
+    ]),
+  );
+  const allowedBrandNames = allowedTenantBrandIds?.map((brandId) => tenantBrandNameMap.get(brandId) ?? 'Unnamed brand') ?? [];
 
   const memberBuyerIds = new Set<string>(memberRows.map((row: { buyer_id: string }) => row.buyer_id));
   const totalMembers = cohort.cached_member_count ?? memberBuyerIds.size;
@@ -321,7 +347,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   );
 
   const catalogOrdersMtd = orderRows.filter((order) => {
-    if (!order.catalog_id || !scopedCatalogIds.has(order.catalog_id)) return false;
+    if (!order.campaign_id || !scopedCatalogIds.has(order.campaign_id)) return false;
     if (!order.placed_at) return false;
     const placedIso = new Date(order.placed_at).toISOString();
     return placedIso >= currentStartIso && placedIso < nextStartIso;
@@ -366,7 +392,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const scopedCatalogIdSet = new Set(scopedCatalogs.map((c) => c.id));
 
   const scopedCatalogOrdersMtd = orderRows.filter((order) => {
-    if (!order.catalog_id || !scopedCatalogIdSet.has(order.catalog_id) || !order.placed_at) return false;
+    if (!order.campaign_id || !scopedCatalogIdSet.has(order.campaign_id) || !order.placed_at) return false;
     const placedIso = new Date(order.placed_at).toISOString();
     return placedIso >= currentStartIso && placedIso < nextStartIso;
   });
@@ -375,17 +401,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const brandIdsCarried = new Set<string>();
   const catalogProductIdsByCatalog = new Map<string, string[]>();
   for (const row of catalogItemRows) {
-    if (!scopedCatalogIdSet.has(row.catalog_id)) continue;
-    if (!catalogProductIdsByCatalog.has(row.catalog_id)) catalogProductIdsByCatalog.set(row.catalog_id, []);
-    catalogProductIdsByCatalog.get(row.catalog_id)?.push(row.tenant_product_id);
+    if (!scopedCatalogIdSet.has(row.campaign_id)) continue;
+    if (!catalogProductIdsByCatalog.has(row.campaign_id)) catalogProductIdsByCatalog.set(row.campaign_id, []);
+    catalogProductIdsByCatalog.get(row.campaign_id)?.push(row.tenant_product_id);
     const brandId = tenantProductToBrand.get(row.tenant_product_id);
     if (brandId) brandIdsCarried.add(brandId);
   }
 
   const brandIdsSold = new Set<string>();
   for (const order of scopedCatalogOrdersMtd) {
-    if (!order.catalog_id) continue;
-    const productIds = catalogProductIdsByCatalog.get(order.catalog_id) ?? [];
+    if (!order.campaign_id) continue;
+    const productIds = catalogProductIdsByCatalog.get(order.campaign_id) ?? [];
     for (const productId of productIds) {
       const brandId = tenantProductToBrand.get(productId);
       if (brandId) brandIdsSold.add(brandId);
@@ -400,11 +426,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   );
   const ordersByCatalogMtd = new Map<string, { orders: number; gmv: number }>();
   for (const order of scopedCatalogOrdersMtd) {
-    if (!order.catalog_id) continue;
-    const current = ordersByCatalogMtd.get(order.catalog_id) ?? { orders: 0, gmv: 0 };
+    if (!order.campaign_id) continue;
+    const current = ordersByCatalogMtd.get(order.campaign_id) ?? { orders: 0, gmv: 0 };
     current.orders += 1;
     current.gmv += Number(order.total_amount ?? 0);
-    ordersByCatalogMtd.set(order.catalog_id, current);
+    ordersByCatalogMtd.set(order.campaign_id, current);
   }
 
   const catalogs = scopedCatalogs
@@ -412,7 +438,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     .map((catalog) => {
       const stats = ordersByCatalogMtd.get(catalog.id) ?? { orders: 0, gmv: 0 };
       return {
-        catalog_id: catalog.id,
+        campaign_id: catalog.id,
         catalog_name: catalog.name,
         sent_at: catalog.updated_at || catalog.created_at,
         opens: opensByCatalog.get(catalog.id) ?? 0,
@@ -431,6 +457,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     filters: rulesPayload.filters ?? [],
     member_count: totalMembers,
     total_tenant_buyers: buyerRows.length,
+    allowed_brand_names: allowedBrandNames,
   });
 
   let buyersPayload: Array<{
@@ -498,6 +525,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       description: cohort.description ?? '',
       type: cohort.is_static ? 'Static list' : 'Rule-based',
       is_static: cohort.is_static,
+      allowed_tenant_brand_ids: allowedTenantBrandIds,
+      allowed_brand_names: allowedBrandNames,
       rules: cohort.rules ?? { filters: [] },
       members_preview: memberPreview,
       updated_at: cohort.updated_at,
@@ -575,10 +604,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const nextIsStatic =
     parsed.data.is_static !== undefined ? parsed.data.is_static : existing.is_static;
 
+  const normalizedAllowedBrandIds =
+    parsed.data.allowed_tenant_brand_ids === undefined
+      ? undefined
+      : parsed.data.allowed_tenant_brand_ids && parsed.data.allowed_tenant_brand_ids.length > 0
+        ? parsed.data.allowed_tenant_brand_ids
+        : null;
+
   const { data: cohort, error: updateError } = await db
     .schema('app')
     .from('cohorts')
-    .update({ ...parsed.data, updated_at: new Date().toISOString(), updated_by: claims.sub })
+    .update({ ...parsed.data, allowed_tenant_brand_ids: normalizedAllowedBrandIds, updated_at: new Date().toISOString(), updated_by: claims.sub })
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .is('deleted_at', null)
@@ -658,7 +694,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
   const { data: activeCatalogs } = await db
     .schema('app')
-    .from('published_catalogs')
+    .from('campaigns')
     .select('id')
     .eq('tenant_id', claims.tenant_id)
     .eq('status', 'published')

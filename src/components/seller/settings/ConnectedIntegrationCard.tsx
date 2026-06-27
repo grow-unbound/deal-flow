@@ -21,6 +21,7 @@ import { DetailTabs } from '@/components/seller/detail/DetailTabs';
 import type {
   IntegrationCatalogItem,
   IntegrationDataFlow,
+  IntegrationEntityError,
   IntegrationSyncJob,
   IntegrationSyncPhaseStats,
 } from '@/hooks/useIntegrationsSettings';
@@ -399,6 +400,12 @@ function getLatestJobErrorMessage(job: IntegrationSyncJob | null) {
   return job.progress?.phase_label ?? null;
 }
 
+function getEntityErrorLabel(error: NonNullable<IntegrationCatalogItem['recent_entity_errors']>[number]) {
+  const entity = labelizePhase(error.entity_type);
+  const external = error.external_id ? ` · ${error.external_id}` : '';
+  return `${entity}${external}: ${error.error_reason}`;
+}
+
 function getJobTimestamp(job: IntegrationSyncJob) {
   return new Date(job.completed_at ?? job.started_at ?? job.created_at).getTime();
 }
@@ -680,17 +687,16 @@ function getWebhookState(integration: IntegrationCatalogItem, webhookSetupStatus
   return { label: 'Webhooks missing', variant: 'warning' as const };
 }
 
-function getProgressText(job: IntegrationSyncJob, completedPhaseCount = 0) {
+function getProgressText(job: IntegrationSyncJob) {
   const progress = job.progress;
-  const knownDenominator = completedPhaseCount > 0 ? completedPhaseCount : progress?.items_total ?? progress?.phases_total ?? null;
+  const knownDenominator = progress?.items_total && progress.items_total > 0
+    ? progress.items_total
+    : progress?.phases_total ?? null;
   if (knownDenominator == null || knownDenominator === 0) return null;
 
-  const numerator =
-    completedPhaseCount > 0
-      ? completedPhaseCount
-      : progress?.items_total != null
-        ? progress.items_processed ?? 0
-        : progress?.phase_current ?? 0;
+  const numerator = progress?.items_total && progress.items_total > 0
+    ? progress.items_processed ?? 0
+    : progress?.phase_current ?? 0;
   const percent = Math.max(4, Math.min(100, Math.round((numerator / knownDenominator) * 100)));
   return { percent, numerator, denominator: knownDenominator };
 }
@@ -780,7 +786,7 @@ export function ConnectedIntegrationCard({
   const currentRunPhaseEntries = currentRun
     ? getPhaseEntries(currentRun).filter((phase) => phase.stat && ((phase.stat.processed ?? 0) > 0 || (phase.stat.failed ?? 0) > 0 || (phase.stat.pages ?? 0) > 0))
     : [];
-  const currentRunProgress = currentRun ? getProgressText(currentRun, currentRunPhaseEntries.length) : null;
+  const currentRunProgress = currentRun ? getProgressText(currentRun) : null;
   const syncablePhaseActions = getSyncablePhaseActions(integration);
   const runHistory = activeJob ? [activeJob, ...sortedHistory.filter((job) => job.id !== activeJob.id)] : sortedHistory;
   const overviewCards = ENTITY_GROUPS.map((group) => {
@@ -834,6 +840,7 @@ export function ConnectedIntegrationCard({
       telemetry,
     };
   });
+  const recentEntityErrors = ((integration.recent_entity_errors ?? ti.recent_entity_errors ?? []) as IntegrationEntityError[]).slice(0, 4);
 
   function openFullSyncDialog() {
     setSyncDialog({ open: true, mode: 'full' });
@@ -1098,6 +1105,27 @@ export function ConnectedIntegrationCard({
                     </p>
                   </div>
                   <StatusPill label={labelize(failedRun.job_type)} variant="warning" />
+                </div>
+              </div>
+            ) : null}
+
+            {recentEntityErrors.length > 0 ? (
+              <div className="rounded-2xl border border-danger-200 bg-danger-50 px-4 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-danger-950">Recent entity sync errors</div>
+                    <p className="mt-1 text-sm leading-6 text-danger-900">
+                      These are the latest entity-map failures captured with `error_reason` for faster debugging.
+                    </p>
+                  </div>
+                  <StatusPill label="Entity errors" variant="warning" />
+                </div>
+                <div className="mt-3 space-y-2">
+                  {recentEntityErrors.map((error: IntegrationEntityError) => (
+                    <div key={`${error.entity_type}-${error.external_id ?? error.updated_at ?? error.error_reason}`} className="rounded-lg border border-danger-200 bg-white px-3 py-2 text-sm text-danger-950">
+                      {getEntityErrorLabel(error)}
+                    </div>
+                  ))}
                 </div>
               </div>
             ) : null}

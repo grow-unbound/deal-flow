@@ -21,6 +21,8 @@ export function formatIntegrationJobError(entry: unknown): string {
   const message =
     typeof record.error === 'string'
       ? record.error
+      : typeof record.error_reason === 'string'
+        ? record.error_reason
       : typeof record.message === 'string'
         ? record.message
         : 'Unknown error';

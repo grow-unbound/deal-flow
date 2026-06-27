@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { BuyerLocationControl } from '@/components/buyer/layout/BuyerLocationControl';
 import { BuyerSearchIconButton } from '@/components/buyer/layout/BuyerSearchIconButton';
 import { useBuyerScrollCollapse } from '@/hooks/useBuyerScrollCollapse';
 import { markBuyerNavigationBack } from '@/hooks/useBuyerNavigationDirection';
@@ -54,6 +55,7 @@ export function BuyerDetailShell({ title, searchHref, children }: BuyerDetailShe
           >
             {title}
           </h1>
+          <BuyerLocationControl />
           {searchHref ? <BuyerSearchIconButton href={searchHref} /> : null}
         </div>
       </header>

@@ -169,7 +169,7 @@ export function CohortPerformanceTab({ performance }: CohortPerformanceTabProps)
           <ul>
             {visibleCatalogs.map((catalog, index) => (
               <li
-                key={catalog.catalog_id}
+                key={catalog.campaign_id}
                 className="flex items-center gap-3 border-b border-cream-200 px-[18px] py-3 last:border-b-0"
               >
                 <EntityAvatar initials={catalogInitials(catalog.catalog_name)} hue={catalogHue(index)} size={28} />
@@ -243,7 +243,7 @@ export function CohortPerformanceTab({ performance }: CohortPerformanceTabProps)
           { label: 'GMV', className: 'px-5 text-right' },
         ]}
         renderRow={(catalog) => (
-          <tr key={catalog.catalog_id} className="border-b border-cream-300 bg-white">
+          <tr key={catalog.campaign_id} className="border-b border-cream-300 bg-white">
             <td className="px-5 py-3.5 text-cream-900">{catalog.catalog_name}</td>
             <td className="px-5 py-3.5 font-mono text-sm text-cream-700">{formatSentShort(catalog.sent_at)}</td>
             <td className="px-5 py-3.5 text-right text-cream-900">{catalog.opens}</td>

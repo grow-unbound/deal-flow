@@ -176,6 +176,14 @@ function buildIntegrationsPayload(overrides?: {
           invoices: 220,
           transactions: 579,
         },
+        recent_entity_errors: [
+          {
+            entity_type: 'orders',
+            external_id: 'SO-404',
+            error_reason: 'Unable to resolve product ITEM-404 for order SO-404.',
+            updated_at: '2026-06-23T10:30:00.000Z',
+          },
+        ],
         webhook_telemetry: {
           status: 'active',
           total_processed_last_24h: 13,
@@ -357,6 +365,26 @@ describe('integrations settings client', () => {
     expect(screen.getByRole('button', { name: /Zoho Inventory/ })).toBeInTheDocument();
     expect(screen.queryByText('Tally Prime')).not.toBeInTheDocument();
     expect(screen.queryByText('Busy Accounting')).not.toBeInTheDocument();
+  });
+
+  it('shows recent entity sync errors on the connected integration card', () => {
+    render(
+      <ConnectedIntegrationCard
+        integration={buildIntegrationsPayload({ includeSummary: true }).integrations[0] as never}
+        available
+        isSellerAdmin
+        onOpenWizard={vi.fn()}
+        onDisconnect={vi.fn()}
+        onSyncNow={vi.fn()}
+        onSyncPhase={vi.fn()}
+        onStopSync={vi.fn()}
+        onRefresh={vi.fn()}
+        onRetryWebhooks={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Recent entity sync errors')).toBeInTheDocument();
+    expect(screen.getByText(/Orders · SO-404: Unable to resolve product ITEM-404 for order SO-404\./)).toBeInTheDocument();
   });
 
   it('starts sync now without sending the legacy scope field', async () => {
@@ -803,7 +831,7 @@ describe('integrations settings client', () => {
     expect(screen.getByRole('button', { name: 'Sync now for Transactions' })).toBeInTheDocument();
   });
 
-  it('shows only synced phases and completes the progress count when a single phase finishes', () => {
+  it('prefers item-based progress when the worker reports item totals', () => {
     render(
       <ConnectedIntegrationCard
         integration={{
@@ -863,7 +891,73 @@ describe('integrations settings client', () => {
       />,
     );
 
-    expect(screen.getByText('1 / 1')).toBeInTheDocument();
+    expect(screen.getByText('80 / 80')).toBeInTheDocument();
+  });
+
+  it('falls back to phase-based progress when item totals are unavailable', () => {
+    render(
+      <ConnectedIntegrationCard
+        integration={{
+          id: 'zoho_books',
+          display_name: 'Zoho Books',
+          description: 'Sync orders and invoices with Zoho Books.',
+          family_flag: 'ZOHO_INTEGRATION',
+          connectivity_mode: 'cloud',
+          auth_schema: { fields: [] },
+          capabilities: {
+            inbound_reference: ['brands', 'products', 'customers'],
+            inbound_transactional: ['estimates', 'orders', 'invoices'],
+          },
+          tenant_integration: {
+            id: 'tenant-int-1',
+            status: 'syncing',
+            health_status: 'ok',
+            connected_at: '2026-06-10T11:00:00.000Z',
+            last_health_check_at: '2026-06-12T08:50:00.000Z',
+            config: { org_id: 'org-123' },
+            active_job: {
+              id: 'job-manual',
+              job_type: 'manual',
+              status: 'running',
+              progress: {
+                phase: 'customers',
+                phase_label: 'Importing customers...',
+                phases_total: 7,
+                phase_current: 4,
+                items_total: 0,
+                items_processed: 1200,
+                items_failed: 0,
+                pages_processed: 6,
+                counts: {
+                  locations: { entity_type: 'locations', processed: 9, failed: 0, pages: 1 },
+                  products: { entity_type: 'products', processed: 447, failed: 0, pages: 1 },
+                  pricelists: { entity_type: 'pricelists', processed: 3, failed: 0, pages: 1 },
+                  customers: { entity_type: 'customers', processed: 1200, failed: 0, pages: 6 },
+                },
+              },
+              error_log: [],
+              summary: null,
+              started_at: '2026-06-12T09:00:00.000Z',
+              completed_at: null,
+              created_at: '2026-06-12T08:59:00.000Z',
+            },
+            sync_history: [],
+            data_flows: [],
+          },
+        }}
+        available
+        isSellerAdmin
+        onOpenWizard={vi.fn()}
+        onDisconnect={vi.fn()}
+        onSyncNow={vi.fn()}
+        onSyncPhase={vi.fn()}
+        onStopSync={vi.fn()}
+        onRefresh={vi.fn()}
+        onRetryWebhooks={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('4 / 7')).toBeInTheDocument();
   });
 
   it('only marks the selected phase as syncing while a phase sync is pending', () => {

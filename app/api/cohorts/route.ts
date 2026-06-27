@@ -102,7 +102,7 @@ export async function getCohortsLandingPayload(tenantId: string, periodInput?: s
   const { data: cohorts, error: cohortsError } = await db
     .schema('app')
     .from('cohorts')
-    .select('id, name, description, rules, is_static, cached_member_count, created_at')
+    .select('id, name, description, rules, is_static, cached_member_count, created_at, allowed_tenant_brand_ids')
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
@@ -146,7 +146,7 @@ export async function getCohortsLandingPayload(tenantId: string, periodInput?: s
       .lt('placed_at', period.previous_end_exclusive),
     db
       .schema('app')
-      .from('published_catalogs')
+      .from('campaigns')
       .select('id, scope_type, scope_value, status')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null),
@@ -235,6 +235,8 @@ export async function getCohortsLandingPayload(tenantId: string, periodInput?: s
       description: cohort.description ?? null,
       type,
       focus_chips: deriveFocusChips(cohort.rules, type),
+      allowed_brands_count: Array.isArray(cohort.allowed_tenant_brand_ids) ? cohort.allowed_tenant_brand_ids.length : null,
+      allowed_brands_label: Array.isArray(cohort.allowed_tenant_brand_ids) ? `${cohort.allowed_tenant_brand_ids.length} brands` : 'All Brands',
       gmv_mtd: gmvMtd,
       growth_pct: growthPct,
       active_members: activeMembers,
@@ -361,6 +363,10 @@ export async function POST(request: NextRequest) {
   }
 
   const data = parsed.data;
+  const allowedTenantBrandIds =
+    data.allowed_tenant_brand_ids && data.allowed_tenant_brand_ids.length > 0
+      ? data.allowed_tenant_brand_ids
+      : null;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabaseAdmin as any;
@@ -387,6 +393,7 @@ export async function POST(request: NextRequest) {
       description: data.description ?? null,
       is_static: data.is_static,
       rules: data.rules ?? null,
+      allowed_tenant_brand_ids: allowedTenantBrandIds,
       created_by: claims.sub,
       updated_by: claims.sub,
     })

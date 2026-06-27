@@ -24,6 +24,21 @@ export interface PersistResult {
 }
 
 type AdminClient = Parameters<typeof persistZohoEntityPage>[0];
+type JsonRecord = Record<string, unknown>;
+
+export class IntegrationSyncError extends Error {
+  entityType: string;
+  externalId: string | null;
+  details?: JsonRecord;
+
+  constructor(entityType: string, message: string, externalId: string | null, details?: JsonRecord) {
+    super(message);
+    this.name = 'IntegrationSyncError';
+    this.entityType = entityType;
+    this.externalId = externalId;
+    this.details = details;
+  }
+}
 
 // ── Shared utilities ─────────────────────────────────────────────────────────
 
@@ -77,6 +92,79 @@ export function sanitizeZohoPhone(value: unknown): string | null {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function formatErrorReason(message: string, details?: JsonRecord): string {
+  if (!details || Object.keys(details).length === 0) return message;
+  try {
+    return `${message} :: ${JSON.stringify(details)}`;
+  } catch {
+    return message;
+  }
+}
+
+function dedupeByExternalRef(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  return dedupeByColumns(rows, ['external_ref']);
+}
+
+function dedupeByColumns(
+  rows: Record<string, unknown>[],
+  columns: string[],
+): Record<string, unknown>[] {
+  const deduped = new Map<string, Record<string, unknown>>();
+
+  for (const row of rows) {
+    const parts: string[] = [];
+    let hasAllValues = true;
+
+    for (const column of columns) {
+      const value = row[column];
+      if (typeof value === 'string') {
+        const normalized = value.trim();
+        if (!normalized) {
+          hasAllValues = false;
+          break;
+        }
+        parts.push(normalized);
+        continue;
+      }
+
+      if (typeof value === 'number' || typeof value === 'boolean') {
+        parts.push(String(value));
+        continue;
+      }
+
+      hasAllValues = false;
+      break;
+    }
+
+    if (!hasAllValues) continue;
+    deduped.set(parts.join('::'), row);
+  }
+
+  return [...deduped.values()];
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    for (;;) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      if (currentIndex >= items.length) return;
+      results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+    }
+  }
+
+  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
 }
 
 /**
@@ -231,17 +319,6 @@ function getPricebookItemRows(rec: Record<string, unknown>): Record<string, unkn
   );
 }
 
-function mergePersistResults(...results: PersistResult[]): PersistResult {
-  return results.reduce<PersistResult>(
-    (acc, result) => ({
-      created: acc.created + result.created,
-      updated: acc.updated + result.updated,
-      skipped: acc.skipped + result.skipped,
-    }),
-    { created: 0, updated: 0, skipped: 0 },
-  );
-}
-
 async function rebuildProductSearchVectors(
   admin: AdminClient,
   tenantId: string,
@@ -382,6 +459,10 @@ async function batchUpsertEntityMap(
   integrationId: string,
   entityType: string,
   pairs: Array<{ externalId: string; internalId: string }>,
+  options?: {
+    syncStatus?: 'synced' | 'pending_push' | 'conflict' | 'error';
+    errorReason?: string | null;
+  },
 ): Promise<void> {
   if (pairs.length === 0) return;
 
@@ -392,10 +473,16 @@ async function batchUpsertEntityMap(
     external_id: p.externalId,
     internal_id: p.internalId,
     last_synced_at: nowIso(),
-    sync_status: 'synced',
+    sync_status: options?.syncStatus ?? 'synced',
+    error_reason: options?.errorReason ?? null,
   }));
 
-  await bulkPersistJsonbRecords(admin, 'integration_entity_map', rows, [
+  await bulkPersistJsonbRecords(admin, 'integration_entity_map', dedupeByColumns(rows, [
+    'tenant_id',
+    'tenant_integration_id',
+    'entity_type',
+    'external_id',
+  ]), [
     'tenant_id',
     'tenant_integration_id',
     'entity_type',
@@ -537,9 +624,10 @@ async function persistDerivedChildRows(
   rows: Record<string, unknown>[],
 ): Promise<void> {
   if (parentIds.length === 0) return;
+  const dedupedRows = dedupeByColumns(rows, [parentColumn, 'external_ref']);
 
-  if (rows.length > 0) {
-    await bulkPersistJsonbRecords(admin, table, rows, [parentColumn, 'external_ref']);
+  if (dedupedRows.length > 0) {
+    await bulkPersistJsonbRecords(admin, table, dedupedRows, [parentColumn, 'external_ref']);
   }
 
   const { data } = await admin
@@ -552,7 +640,7 @@ async function persistDerivedChildRows(
   if (!Array.isArray(data)) return;
 
   const desiredByParent = new Map<string, Set<string>>();
-  for (const row of rows) {
+  for (const row of dedupedRows) {
     const parentId = asStr(row[parentColumn]);
     const externalRef = asStr(row.external_ref);
     if (!parentId || !externalRef) continue;
@@ -676,8 +764,9 @@ async function persistLocations(
     rows.push(row);
   }
 
-  const persisted = rows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'locations', rows, ['tenant_id', 'external_ref'])
+  const dedupedLocationRows = dedupeByExternalRef(rows);
+  const persisted = dedupedLocationRows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'locations', dedupedLocationRows, ['tenant_id', 'external_ref'])
     : [];
 
   const entityMapPairs: Array<{ externalId: string; internalId: string }> = [];
@@ -884,8 +973,9 @@ async function persistBuyers(
     buyerRows.push(row);
   }
 
-  const persistedBuyers = buyerRows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'buyers', buyerRows, ['tenant_id', 'external_ref'])
+  const dedupedBuyerRows = dedupeByExternalRef(buyerRows);
+  const persistedBuyers = dedupedBuyerRows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'buyers', dedupedBuyerRows, ['tenant_id', 'external_ref'])
     : [];
 
   const buyerMapPairs = persistedBuyers
@@ -917,6 +1007,27 @@ async function persistBuyers(
     pricebookExternalIds,
   );
 
+  const remoteContactPersonMap = new Map<string, Record<string, unknown>[]>();
+  if (adapter) {
+    const contactsNeedingFetch = records
+      .map((rec) => {
+        const externalId = asStr(rec.contact_id);
+        const embeddedContactPersons = asRecordArray((rec as Record<string, unknown>).contact_persons);
+        return externalId && embeddedContactPersons.length === 0 ? externalId : null;
+      })
+      .filter((value): value is string => value !== null);
+
+    const uniqueContactIds = [...new Set(contactsNeedingFetch)];
+    const fetchedContactPersons = await mapWithConcurrency(uniqueContactIds, 12, async (contactId) => ({
+      contactId,
+      rows: await adapter.fetchContactPersons(contactId),
+    }));
+
+    for (const entry of fetchedContactPersons) {
+      remoteContactPersonMap.set(entry.contactId, entry.rows);
+    }
+  }
+
   for (const rec of records) {
     const externalId = asStr(rec.contact_id);
     if (!externalId) continue;
@@ -927,9 +1038,7 @@ async function persistBuyers(
     const embeddedContactPersons = asRecordArray((rec as Record<string, unknown>).contact_persons);
     const contactPersons = embeddedContactPersons.length > 0
       ? embeddedContactPersons
-      : adapter
-        ? await adapter.fetchContactPersons(externalId)
-        : [];
+      : remoteContactPersonMap.get(externalId) ?? [];
 
     for (const cp of contactPersons) {
       const cpId = asStr(cp.contact_person_id);
@@ -972,8 +1081,9 @@ async function persistBuyers(
     }
   }
 
-  const persistedContacts = contactRows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'buyer_users', contactRows, ['buyer_id', 'external_ref'])
+  const dedupedContactRows = dedupeByColumns(contactRows, ['buyer_id', 'external_ref']);
+  const persistedContacts = dedupedContactRows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'buyer_users', dedupedContactRows, ['buyer_id', 'external_ref'])
     : [];
 
   const contactMapPairs = persistedContacts
@@ -1009,11 +1119,16 @@ async function persistBuyers(
       .is('deleted_at', null);
   }
 
-  if (buyerAssignmentRows.length > 0) {
+  const dedupedBuyerAssignmentRows = dedupeByColumns(
+    buyerAssignmentRows,
+    ['price_list_id', 'target_type', 'target_id', 'external_ref'],
+  );
+
+  if (dedupedBuyerAssignmentRows.length > 0) {
     await bulkPersistJsonbRecords(
       admin,
       'price_list_assignments',
-      buyerAssignmentRows,
+      dedupedBuyerAssignmentRows,
       ['price_list_id', 'target_type', 'target_id', 'external_ref'],
     );
   }
@@ -1064,7 +1179,12 @@ async function persistProducts(
   const categoryMap = new Map<string, string>(); // source category identity → tenant_category_id
 
   if (categoryRows.length > 0) {
-    const catRowsPersisted = await bulkPersistJsonbRecords(admin, 'tenant_categories', categoryRows, ['tenant_id', 'external_ref']);
+    const catRowsPersisted = await bulkPersistJsonbRecords(
+      admin,
+      'tenant_categories',
+      dedupeByExternalRef(categoryRows),
+      ['tenant_id', 'external_ref'],
+    );
     for (const cat of catRowsPersisted) {
       if (typeof cat.id === 'string') {
         if (typeof cat.external_ref === 'string') {
@@ -1117,7 +1237,12 @@ async function persistProducts(
   const brandMap = new Map<string, string>(); // zohoName → tenant_brand_id
   let fallbackBrandId: string | null = null;
 
-  const brandData = await bulkPersistJsonbRecords(admin, 'tenant_brands', allBrandRows, ['tenant_id', 'external_ref']);
+  const brandData = await bulkPersistJsonbRecords(
+    admin,
+    'tenant_brands',
+    dedupeByExternalRef(allBrandRows),
+    ['tenant_id', 'external_ref'],
+  );
   for (const b of brandData) {
     if (typeof b.external_ref === 'string' && typeof b.id === 'string') {
       if (b.external_ref === fallbackBrandExtRef) {
@@ -1207,8 +1332,9 @@ async function persistProducts(
     });
   }
 
-  const persistedProducts = productRows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'tenant_products', productRows, ['tenant_id', 'external_ref'])
+  const dedupedProductRows = dedupeByExternalRef(productRows);
+  const persistedProducts = dedupedProductRows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'tenant_products', dedupedProductRows, ['tenant_id', 'external_ref'])
     : [];
   const productMapPairs = mapPersistedRowsByExternalRef(persistedProducts);
   const productIdMap = new Map(productMapPairs.map((row) => [row.externalId, row.internalId] as const));
@@ -1231,13 +1357,22 @@ async function persistProducts(
   );
 
   const inventoryRows: Record<string, unknown>[] = [];
+  let inventorySyncError: IntegrationSyncError | null = null;
 
   for (const rec of records) {
     const extProductId = asStr(rec.item_id);
     if (!extProductId) continue;
 
     const productId = productIdMap.get(extProductId);
-    if (!productId) continue;
+    if (!productId) {
+      inventorySyncError = new IntegrationSyncError(
+        'tenant_inventory',
+        `Unable to resolve imported product ${extProductId} for inventory sync.`,
+        extProductId,
+        { product_id: extProductId },
+      );
+      break;
+    }
 
     const locs = getEmbeddedLocationRows(rec);
     for (const loc of locs) {
@@ -1245,7 +1380,18 @@ async function persistProducts(
       if (!extLocId) continue;
 
       const locationId = locationIdMap.get(extLocId);
-      if (!locationId) continue; // location not yet synced — skip
+      if (!locationId) {
+        inventorySyncError = new IntegrationSyncError(
+          'tenant_inventory',
+          `Unable to resolve location ${extLocId} for product ${extProductId}.`,
+          extProductId,
+          {
+            product_id: extProductId,
+            location_id: extLocId,
+          },
+        );
+        break;
+      }
 
       inventoryRows.push({
         tenant_product_id: productId,
@@ -1255,10 +1401,22 @@ async function persistProducts(
         updated_at: nowIso(),
       });
     }
+
+    if (inventorySyncError) break;
   }
 
-  if (inventoryRows.length > 0) {
-    await bulkPersistJsonbRecords(admin, 'tenant_inventory', inventoryRows, ['tenant_product_id', 'location_id']);
+  if (inventorySyncError) {
+    const errorReason = formatErrorReason(inventorySyncError.message, inventorySyncError.details);
+    await batchUpsertEntityMap(admin, tenantId, integrationId, 'products', productMapPairs, {
+      syncStatus: 'error',
+      errorReason,
+    });
+    throw inventorySyncError;
+  }
+
+  const dedupedInventoryRows = dedupeByColumns(inventoryRows, ['tenant_product_id', 'location_id']);
+  if (dedupedInventoryRows.length > 0) {
+    await bulkPersistJsonbRecords(admin, 'tenant_inventory', dedupedInventoryRows, ['tenant_product_id', 'location_id']);
   }
 
   await rebuildProductSearchVectors(
@@ -1341,8 +1499,9 @@ async function persistPricelists(
     });
   }
 
-  const persistedPriceLists = priceListRows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'price_lists', priceListRows, ['tenant_id', 'external_ref'])
+  const dedupedPriceListRows = dedupeByExternalRef(priceListRows);
+  const persistedPriceLists = dedupedPriceListRows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'price_lists', dedupedPriceListRows, ['tenant_id', 'external_ref'])
     : [];
   const priceListMapPairs = mapPersistedRowsByExternalRef(persistedPriceLists);
   const priceListIdByExternalRef = new Map(priceListMapPairs.map((row) => [row.externalId, row.internalId] as const));
@@ -1352,17 +1511,38 @@ async function persistPricelists(
 
   const priceListItemRows: Record<string, unknown>[] = [];
   const desiredExternalRefsByPriceListId = new Map<string, Set<string>>();
+  let priceListSyncError: IntegrationSyncError | null = null;
 
   for (const pricebook of salesPricebooks) {
     const externalRef = asStr(pricebook.pricebook_id) ?? asStr(pricebook.pricelist_id);
     if (!externalRef) continue;
     const priceListId = priceListIdByExternalRef.get(externalRef) ?? null;
-    if (!priceListId) continue;
+    if (!priceListId) {
+      priceListSyncError = new IntegrationSyncError(
+        'price_lists',
+        `Unable to resolve imported price list ${externalRef}.`,
+        externalRef,
+        { pricebook_id: externalRef },
+      );
+      break;
+    }
 
     for (const item of getPricebookItemRows(pricebook)) {
       const sourceProductId = pickString(item.item_id, item.product_id, item.item_external_id);
       const tenantProductId = sourceProductId ? tenantProductIdMap.get(sourceProductId) ?? null : null;
-      if (!tenantProductId) continue;
+      if (!tenantProductId) {
+        priceListSyncError = new IntegrationSyncError(
+          'price_list_items',
+          `Unable to resolve product ${sourceProductId ?? 'unknown'} for Zoho pricelist ${externalRef}.`,
+          externalRef,
+          {
+            pricebook_id: externalRef,
+            item_id: sourceProductId,
+            min_qty: pickNumber(item.min_quantity, item.min_qty, item.from_quantity) ?? 1,
+          },
+        );
+        break;
+      }
 
       const minQty = pickNumber(item.min_quantity, item.min_qty, item.from_quantity) ?? 1;
       const itemExternalRef = `${externalRef}:${sourceProductId}:${minQty}`;
@@ -1385,13 +1565,29 @@ async function persistPricelists(
         deleted_at: null,
       });
     }
+
+    if (priceListSyncError) break;
   }
 
-  if (priceListItemRows.length > 0) {
+  if (priceListSyncError) {
+    const errorReason = formatErrorReason(priceListSyncError.message, priceListSyncError.details);
+    await batchUpsertEntityMap(admin, tenantId, integrationId, 'pricelists', priceListMapPairs, {
+      syncStatus: 'error',
+      errorReason,
+    });
+    throw priceListSyncError;
+  }
+
+  const dedupedPriceListItemRows = dedupeByColumns(
+    priceListItemRows,
+    ['price_list_id', 'tenant_product_id', 'min_qty'],
+  );
+
+  if (dedupedPriceListItemRows.length > 0) {
     await bulkPersistJsonbRecords(
       admin,
       'price_list_items',
-      priceListItemRows,
+      dedupedPriceListItemRows,
       ['price_list_id', 'tenant_product_id', 'min_qty'],
     );
   }
@@ -1456,7 +1652,7 @@ async function persistEstimates(
     admin, tenantId, integrationId, 'locations', 'locations', locationExternalIds,
   );
   const parentRows: Record<string, unknown>[] = [];
-  const parentRecords: Array<{ estimateId: string; lineItems: Record<string, unknown>[] }> = [];
+  const parentRecords: Array<{ estimateId: string; lineItems: Record<string, unknown>[]; resolvedActorId: string | null }> = [];
 
   for (const rec of records) {
     const externalId = asStr(rec.estimate_id);
@@ -1501,7 +1697,7 @@ async function persistEstimates(
       total_amount: pickNumber(rec.total, rec.total_amount),
       notes: pickString(rec.notes, rec.terms, rec.description),
       seller_note: pickString(rec.seller_note, rec.note),
-      place_of_supply: pickString(rec.place_of_supply, rec.state, rec.billing_state, rec.shipping_state),
+      place_of_supply: pickString(rec.place_of_supply, rec.state, rec.billing_state, rec.shipping_state) ?? 'Unknown',
       cart_hash: cartHash,
       buyer_po_ref: pickString(rec.reference_number, rec.buyer_po_ref),
       discount_flat: pickNumber(rec.discount_flat, rec.discount) ?? 0,
@@ -1523,14 +1719,16 @@ async function persistEstimates(
     parentRecords.push({
       estimateId: externalId,
       lineItems: Array.isArray(rec.line_items) ? rec.line_items as Record<string, unknown>[] : [],
+      resolvedActorId,
     });
   }
 
   const guardedEstimateRows = await applyImmediateEchoGuards(
     admin, tenantId, integrationId, 'estimates', 'estimates', parentRows,
   );
-  const persistedEstimates = guardedEstimateRows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'estimates', guardedEstimateRows, ['tenant_id', 'external_ref'])
+  const dedupedEstimateRows = dedupeByExternalRef(guardedEstimateRows);
+  const persistedEstimates = dedupedEstimateRows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'estimates', dedupedEstimateRows, ['tenant_id', 'external_ref'])
     : [];
   const estimateMapPairs = mapPersistedRowsByExternalRef(persistedEstimates);
   const estimateIdMap = new Map(estimateMapPairs.map((row) => [row.externalId, row.internalId] as const));
@@ -1549,14 +1747,35 @@ async function persistEstimates(
   );
 
   const lineItemRows: Record<string, unknown>[] = [];
+  let estimateItemSyncError: IntegrationSyncError | null = null;
   for (const entry of parentRecords) {
     const estimateId = estimateIdMap.get(entry.estimateId) ?? null;
-    if (!estimateId) continue;
+    if (!estimateId) {
+      estimateItemSyncError = new IntegrationSyncError(
+        'estimates',
+        `Unable to resolve imported estimate ${entry.estimateId}.`,
+        entry.estimateId,
+        { estimate_id: entry.estimateId },
+      );
+      break;
+    }
 
     for (const [lineIndex, li] of entry.lineItems.entries()) {
       const extProdId = asStr(li.item_id);
       const productId = extProdId ? (productIdMap.get(extProdId) ?? null) : null;
-      if (!productId) continue;
+      if (!productId) {
+        estimateItemSyncError = new IntegrationSyncError(
+          'estimate_items',
+          `Unable to resolve product ${extProdId ?? 'unknown'} for estimate ${entry.estimateId}.`,
+          entry.estimateId,
+          {
+            estimate_id: entry.estimateId,
+            item_id: extProdId,
+            line_index: lineIndex,
+          },
+        );
+        break;
+      }
 
       const taxRate = pickNumber(li.tax_percentage, li.tax_rate);
       const discountPct = pickNumber(li.discount_percentage, li.disc_pct) ?? 0;
@@ -1582,10 +1801,21 @@ async function persistEstimates(
         deleted_at: null,
         created_at: asDate(li.created_time ?? li.created_at),
         updated_at: asDate(li.last_modified_time ?? li.updated_at ?? li.created_time),
-        created_by: resolvedActorId,
-        updated_by: resolvedActorId,
+        created_by: entry.resolvedActorId,
+        updated_by: entry.resolvedActorId,
       });
     }
+
+    if (estimateItemSyncError) break;
+  }
+
+  if (estimateItemSyncError) {
+    const errorReason = formatErrorReason(estimateItemSyncError.message, estimateItemSyncError.details);
+    await batchUpsertEntityMap(admin, tenantId, integrationId, 'estimates', estimateMapPairs, {
+      syncStatus: 'error',
+      errorReason,
+    });
+    throw estimateItemSyncError;
   }
 
   await persistDerivedChildRows(admin, 'estimate_items', 'estimate_id', estimateIds, lineItemRows);
@@ -1619,7 +1849,7 @@ async function persistOrders(
     admin, tenantId, integrationId, 'locations', 'locations', locationExternalIds,
   );
   const parentRows: Record<string, unknown>[] = [];
-  const parentRecords: Array<{ orderExternalId: string; lineItems: Record<string, unknown>[] }> = [];
+  const parentRecords: Array<{ orderExternalId: string; lineItems: Record<string, unknown>[]; resolvedActorId: string | null }> = [];
 
   for (const rec of records) {
     const externalId = asStr(rec.salesorder_id);
@@ -1654,6 +1884,7 @@ async function persistOrders(
       tax_amount: pickNumber(rec.tax_total, rec.tax_amount),
       total_amount: pickNumber(rec.total, rec.total_amount),
       delivery_address: deliveryAddress as Record<string, unknown> | null,
+      place_of_supply: pickString(rec.place_of_supply, rec.state, rec.billing_state, rec.shipping_state) ?? 'Unknown',
       notes: pickString(rec.notes, rec.seller_note, rec.description),
       seller_note: pickString(rec.seller_note, rec.note),
       buyer_po_ref: pickString(rec.reference_number, rec.buyer_po_ref),
@@ -1680,14 +1911,16 @@ async function persistOrders(
     parentRecords.push({
       orderExternalId: externalId,
       lineItems,
+      resolvedActorId,
     });
   }
 
   const guardedOrderRows = await applyImmediateEchoGuards(
     admin, tenantId, integrationId, 'orders', 'orders', parentRows,
   );
-  const persistedOrders = guardedOrderRows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'orders', guardedOrderRows, ['tenant_id', 'external_ref'])
+  const dedupedOrderRows = dedupeByExternalRef(guardedOrderRows);
+  const persistedOrders = dedupedOrderRows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'orders', dedupedOrderRows, ['tenant_id', 'external_ref'])
     : [];
   const orderMapPairs = mapPersistedRowsByExternalRef(persistedOrders);
   const orderIdMap = new Map(orderMapPairs.map((row) => [row.externalId, row.internalId] as const));
@@ -1706,14 +1939,35 @@ async function persistOrders(
   );
 
   const lineItemRows: Record<string, unknown>[] = [];
+  let orderItemSyncError: IntegrationSyncError | null = null;
   for (const entry of parentRecords) {
     const orderId = orderIdMap.get(entry.orderExternalId) ?? null;
-    if (!orderId) continue;
+    if (!orderId) {
+      orderItemSyncError = new IntegrationSyncError(
+        'orders',
+        `Unable to resolve imported order ${entry.orderExternalId}.`,
+        entry.orderExternalId,
+        { order_id: entry.orderExternalId },
+      );
+      break;
+    }
 
     for (const [lineIndex, li] of entry.lineItems.entries()) {
       const extProdId = asStr(li.item_id);
       const productId = extProdId ? (productIdMap.get(extProdId) ?? null) : null;
-      if (!productId) continue;
+      if (!productId) {
+        orderItemSyncError = new IntegrationSyncError(
+          'order_items',
+          `Unable to resolve product ${extProdId ?? 'unknown'} for order ${entry.orderExternalId}.`,
+          entry.orderExternalId,
+          {
+            order_id: entry.orderExternalId,
+            item_id: extProdId,
+            line_index: lineIndex,
+          },
+        );
+        break;
+      }
 
       const taxRate = pickNumber(li.tax_percentage, li.tax_rate);
       const discountPct = pickNumber(li.discount_percentage, li.disc_pct) ?? 0;
@@ -1740,10 +1994,21 @@ async function persistOrders(
         deleted_at: null,
         created_at: asDate(li.created_time ?? li.created_at),
         updated_at: asDate(li.last_modified_time ?? li.updated_at ?? li.created_time),
-        created_by: resolvedActorId,
-        updated_by: resolvedActorId,
+        created_by: entry.resolvedActorId,
+        updated_by: entry.resolvedActorId,
       });
     }
+
+    if (orderItemSyncError) break;
+  }
+
+  if (orderItemSyncError) {
+    const errorReason = formatErrorReason(orderItemSyncError.message, orderItemSyncError.details);
+    await batchUpsertEntityMap(admin, tenantId, integrationId, 'orders', orderMapPairs, {
+      syncStatus: 'error',
+      errorReason,
+    });
+    throw orderItemSyncError;
   }
 
   await persistDerivedChildRows(admin, 'order_items', 'order_id', orderIds, lineItemRows);
@@ -1785,7 +2050,7 @@ async function persistInvoices(
     admin, tenantId, integrationId, 'orders', 'orders', orderExternalIds,
   );
   const parentRows: Record<string, unknown>[] = [];
-  const parentRecords: Array<{ invoiceExternalId: string; lineItems: Record<string, unknown>[] }> = [];
+  const parentRecords: Array<{ invoiceExternalId: string; lineItems: Record<string, unknown>[]; resolvedActorId: string | null }> = [];
 
   for (const rec of records) {
     const externalId = asStr(rec.invoice_id);
@@ -1827,7 +2092,7 @@ async function persistInvoices(
       outstanding_balance: balance,
       amount_paid: amountPaid,
       delivery_address: deliveryAddress as Record<string, unknown> | null,
-      place_of_supply: pickString(rec.place_of_supply, rec.state, rec.billing_state, rec.shipping_state),
+      place_of_supply: pickString(rec.place_of_supply, rec.state, rec.billing_state, rec.shipping_state) ?? 'Unknown',
       notes: pickString(rec.notes, rec.seller_note),
       notes_for_buyer: pickString(rec.notes_for_buyer, rec.notes),
       seller_note: pickString(rec.seller_note),
@@ -1848,14 +2113,16 @@ async function persistInvoices(
     parentRecords.push({
       invoiceExternalId: externalId,
       lineItems,
+      resolvedActorId,
     });
   }
 
   const guardedInvoiceRows = await applyImmediateEchoGuards(
     admin, tenantId, integrationId, 'invoices', 'invoices', parentRows,
   );
-  const persistedInvoices = guardedInvoiceRows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'invoices', guardedInvoiceRows, ['tenant_id', 'external_ref'])
+  const dedupedInvoiceRows = dedupeByExternalRef(guardedInvoiceRows);
+  const persistedInvoices = dedupedInvoiceRows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'invoices', dedupedInvoiceRows, ['tenant_id', 'external_ref'])
     : [];
   const invoiceMapPairs = mapPersistedRowsByExternalRef(persistedInvoices);
   const invoiceIdMap = new Map(invoiceMapPairs.map((row) => [row.externalId, row.internalId] as const));
@@ -1874,14 +2141,35 @@ async function persistInvoices(
   );
 
   const lineItemRows: Record<string, unknown>[] = [];
+  let invoiceItemSyncError: IntegrationSyncError | null = null;
   for (const entry of parentRecords) {
     const invoiceId = invoiceIdMap.get(entry.invoiceExternalId) ?? null;
-    if (!invoiceId) continue;
+    if (!invoiceId) {
+      invoiceItemSyncError = new IntegrationSyncError(
+        'invoices',
+        `Unable to resolve imported invoice ${entry.invoiceExternalId}.`,
+        entry.invoiceExternalId,
+        { invoice_id: entry.invoiceExternalId },
+      );
+      break;
+    }
 
     for (const [lineIndex, li] of entry.lineItems.entries()) {
       const extProdId = asStr(li.item_id);
       const productId = extProdId ? (productIdMap.get(extProdId) ?? null) : null;
-      if (!productId) continue;
+      if (!productId) {
+        invoiceItemSyncError = new IntegrationSyncError(
+          'invoice_items',
+          `Unable to resolve product ${extProdId ?? 'unknown'} for invoice ${entry.invoiceExternalId}.`,
+          entry.invoiceExternalId,
+          {
+            invoice_id: entry.invoiceExternalId,
+            item_id: extProdId,
+            line_index: lineIndex,
+          },
+        );
+        break;
+      }
 
       const taxRate = pickNumber(li.tax_percentage, li.tax_rate);
       const discountPct = pickNumber(li.discount_percentage, li.disc_pct) ?? 0;
@@ -1907,10 +2195,21 @@ async function persistInvoices(
         deleted_at: null,
         created_at: asDate(li.created_time ?? li.created_at),
         updated_at: asDate(li.last_modified_time ?? li.updated_at ?? li.created_time),
-        created_by: resolvedActorId,
-        updated_by: resolvedActorId,
+        created_by: entry.resolvedActorId,
+        updated_by: entry.resolvedActorId,
       });
     }
+
+    if (invoiceItemSyncError) break;
+  }
+
+  if (invoiceItemSyncError) {
+    const errorReason = formatErrorReason(invoiceItemSyncError.message, invoiceItemSyncError.details);
+    await batchUpsertEntityMap(admin, tenantId, integrationId, 'invoices', invoiceMapPairs, {
+      syncStatus: 'error',
+      errorReason,
+    });
+    throw invoiceItemSyncError;
   }
 
   await persistDerivedChildRows(admin, 'invoice_items', 'invoice_id', invoiceIds, lineItemRows);
@@ -1937,13 +2236,8 @@ export async function persistZohoEntityPage(
     case 'customers':
       return persistBuyers(admin, tenantId, actorId, integrationId, records, adapter);
 
-    case 'products': {
-      const productResult = await persistProducts(admin, tenantId, actorId, integrationId, records);
-      const pricelistResult = adapter
-        ? await persistPricelists(admin, tenantId, actorId, integrationId, [], adapter)
-        : { created: 0, updated: 0, skipped: 0 };
-      return mergePersistResults(productResult, pricelistResult);
-    }
+    case 'products':
+      return persistProducts(admin, tenantId, actorId, integrationId, records);
 
     case 'pricelists':
       return persistPricelists(admin, tenantId, actorId, integrationId, records, adapter);

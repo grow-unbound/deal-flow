@@ -90,9 +90,14 @@ export async function loadEstimateDocument(
 
   const estimate = estimateRes.data as Record<string, unknown>;
   const buyerId = typeof estimate.buyer_id === 'string' ? estimate.buyer_id : null;
+  const locationId = typeof estimate.location_id === 'string' ? estimate.location_id : null;
   const effectiveClaims = viewerClaims ?? { role: 'seller_admin', location_ids: null };
   const availableLocations = await loadAccessibleSellerLocations(d, tenantId, effectiveClaims);
   const defaultLocationId = resolveDefaultSellerLocationId(effectiveClaims, availableLocations);
+  const locationRes = locationId
+    ? await d.schema('app').from('locations').select('name').eq('tenant_id', tenantId).eq('id', locationId).is('deleted_at', null).maybeSingle()
+    : { data: null, error: null };
+  if (locationRes.error) throw locationRes.error;
 
   const [buyerRes, itemsRes, auditRes, tenantRes] = await Promise.all([
     buyerId
@@ -341,7 +346,8 @@ export async function loadEstimateDocument(
     estimate_number: String(estimate.estimate_number ?? '—'),
     status,
     buyer_id: buyerId,
-    location_id: (estimate.location_id as string | null | undefined) ?? defaultLocationId,
+    location_id: locationId ?? defaultLocationId,
+    location_name: (locationRes.data?.name as string | null | undefined) ?? null,
     available_locations: availableLocations,
     estimate_date: isoDateValue(estimate.estimate_date as string | null | undefined, fallbackDate),
     valid_until: isoDateValue(estimate.valid_until as string | null | undefined, fallbackDate),

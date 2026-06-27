@@ -2,9 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ShoppingBag } from 'lucide-react';
+import { ChevronRight, MapPin, ShoppingBag } from 'lucide-react';
 import { useCart } from '@/contexts/BuyerCartContext';
+import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { apiFetch } from '@/lib/api-fetch';
+import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import posthog from 'posthog-js';
 
 function inr(n: number): string {
@@ -17,6 +19,8 @@ function inr(n: number): string {
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, clearCart, subtotal } = useCart();
+  const delivery = useBuyerDeliveryOptional();
+  const selectedDelivery = delivery?.selected ?? null;
   const [notes, setNotes] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,9 +38,19 @@ export default function CheckoutPage() {
   }
 
   async function handleSubmit(): Promise<void> {
+    if (!selectedDelivery) {
+      setError('Select a delivery location before submitting.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
+      const nearestRes = await apiFetch(`/api/buyer/nearest-location?lat=${selectedDelivery.lat}&lng=${selectedDelivery.lng}`);
+      const nearest = await nearestRes.json() as { location_id: string | null };
+      if (!nearest.location_id) {
+        setError('Select a delivery location that can be routed to a warehouse.');
+        return;
+      }
       const res = await apiFetch('/api/buyer/estimates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -48,6 +62,8 @@ export default function CheckoutPage() {
             product_name: i.name,
           })),
           notes: notes.trim() || undefined,
+          location_id: nearest.location_id,
+          place_of_supply: deriveBuyerPlaceOfSupply(selectedDelivery),
         }),
       });
       const data: { success: boolean; estimate_id?: string; estimate_number?: string | null; error?: string } = await res.json();
@@ -177,6 +193,41 @@ export default function CheckoutPage() {
           />
         </div>
 
+        <button
+          type="button"
+          onClick={() => router.push('/buy/location?returnTo=' + encodeURIComponent('/buy/checkout'))}
+          className="w-full rounded-xl px-4 py-3 flex items-center gap-3 text-left"
+          style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}
+        >
+          <div className="flex items-center justify-center shrink-0" style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--ember-50)' }}>
+            <MapPin className="w-3.5 h-3.5" style={{ color: 'var(--ember-400)' }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            {selectedDelivery ? (
+              <>
+                <p className="uppercase" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em', color: 'var(--cream-600)' }}>Deliver to</p>
+                <p className="font-semibold truncate" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1, var(--cream-900))' }}>
+                  {selectedDelivery.label}
+                </p>
+                <p className="truncate" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3, var(--cream-600))' }}>
+                  {[selectedDelivery.city, selectedDelivery.pincode].filter(Boolean).join(' · ')}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="uppercase" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em', color: 'var(--cream-600)' }}>Deliver to</p>
+                <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1, var(--cream-900))' }}>
+                  Set delivery location
+                </p>
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <span className="font-medium" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--teal-500)' }}>Change</span>
+            <ChevronRight className="w-3 h-3" style={{ color: 'var(--teal-500)' }} />
+          </div>
+        </button>
+
         {/* Error */}
         {error && (
           <div
@@ -193,7 +244,7 @@ export default function CheckoutPage() {
         {/* Submit */}
         <button
           onClick={handleSubmit}
-          disabled={submitting}
+          disabled={submitting || !selectedDelivery}
           className="w-full h-12 rounded-lg flex items-center justify-center gap-2 text-sm font-semibold text-white transition-opacity disabled:opacity-60"
           style={{ background: 'var(--teal-500)' }}
         >

@@ -15,6 +15,12 @@ vi.mock('@/lib/server/notification-context', () => ({
     fetchWhatsappNotificationContextMock(...args),
 }));
 
+vi.mock('@/lib/server/seller-features', () => ({
+  getInAppCreateFlags: vi.fn().mockResolvedValue({
+    create_enquiries: true,
+  }),
+}));
+
 vi.mock('@/lib/server/whatsapp', () => ({
   sendRequestReceivedBuyer: (...args: unknown[]) => sendRequestReceivedBuyerMock(...args),
   sendRequestReceivedSeller: (...args: unknown[]) => sendRequestReceivedSellerMock(...args),
@@ -42,6 +48,7 @@ vi.mock('@/lib/supabase', () => ({
               count: countMock,
             })),
             insert: vi.fn(() => ({ select: vi.fn(() => ({ single: insertSingleMock })) })),
+            update: vi.fn(() => ({ eq: vi.fn(async () => ({ data: null, error: null })) })),
           };
         }
         if (table === 'estimate_items') {
@@ -118,7 +125,11 @@ describe('buyer estimates route (POST)', () => {
     const { POST } = await import('../../app/api/buyer/estimates/route');
     const request = new Request('http://localhost/api/buyer/estimates', {
       method: 'POST',
-      body: JSON.stringify({ items: VALID_ITEMS }),
+      body: JSON.stringify({
+        items: VALID_ITEMS,
+        location_id: 'loc-1',
+        place_of_supply: 'Andheri East',
+      }),
     });
     const response = await POST(request as never);
     const body = await response.json();
@@ -136,7 +147,7 @@ describe('buyer estimates route (POST)', () => {
     const { POST } = await import('../../app/api/buyer/estimates/route');
     const request = new Request('http://localhost/api/buyer/estimates', {
       method: 'POST',
-      body: JSON.stringify({ items: [] }),
+      body: JSON.stringify({ items: [], location_id: 'loc-1' }),
     });
     const response = await POST(request as never);
     expect(response.status).toBe(400);
@@ -157,7 +168,10 @@ describe('buyer estimates route (POST)', () => {
     const { POST } = await import('../../app/api/buyer/estimates/route');
     const request = new Request('http://localhost/api/buyer/estimates', {
       method: 'POST',
-      body: JSON.stringify({ items: VALID_ITEMS }),
+      body: JSON.stringify({
+        items: VALID_ITEMS,
+        location_id: 'loc-1',
+      }),
     });
     const response = await POST(request as never);
     const body = await response.json();
@@ -172,7 +186,7 @@ describe('buyer estimates route (POST)', () => {
     expect(fetchWhatsappNotificationContextMock).toHaveBeenCalledWith(
       'tenant-1',
       'buyer-1',
-      null,
+      'loc-1',
       'enquiry_received',
     );
     expect(sendRequestReceivedBuyerMock).toHaveBeenCalledWith(
@@ -198,7 +212,10 @@ describe('buyer estimates route (POST)', () => {
     const { POST } = await import('../../app/api/buyer/estimates/route');
     const request = new Request('http://localhost/api/buyer/estimates', {
       method: 'POST',
-      body: JSON.stringify({ items: VALID_ITEMS }),
+      body: JSON.stringify({
+        items: VALID_ITEMS,
+        location_id: 'loc-1',
+      }),
     });
     await POST(request as never);
 

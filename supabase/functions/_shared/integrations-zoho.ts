@@ -72,6 +72,9 @@ const DEFAULT_REGION = 'com';
 
 const TRANSACTIONAL_ENTITY_TYPES = new Set(['estimates', 'orders', 'invoices']);
 const PRICE_LIST_RESPONSE_KEYS = ['pricebooks', 'pricelists'] as const;
+const ZOHO_REQUEST_RETRYABLE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const ZOHO_REQUEST_MAX_ATTEMPTS = 3;
+const ZOHO_REQUEST_TIMEOUT_MS = 30_000;
 
 // Indian Financial Year starts April 1. For transactional data we load from:
 //   Apr–Jun (early in FY)  → Jan 1 of this calendar year (extra context quarter)
@@ -116,7 +119,7 @@ function buildAccountsDomain(region: string | null): string {
   return `https://accounts.zoho.${normalized}`;
 }
 
-function normalizeZohoCredentials(
+export function normalizeZohoCredentials(
   integrationTypeId: ZohoIntegrationTypeId,
   raw: Record<string, unknown>,
 ): NormalizedZohoCredentials {
@@ -147,6 +150,11 @@ function normalizeZohoCredentials(
     apiBaseUrl: apiBaseUrl.replace(/\/+$/, ''),
     module,
   };
+}
+
+export function extractZohoDcFromAccountsBaseUrl(accountsBaseUrl: string): string {
+  const match = accountsBaseUrl.trim().match(/accounts\.zoho\.([a-z.]+)$/i);
+  return match?.[1]?.toLowerCase() ?? DEFAULT_REGION;
 }
 
 function collectOrganizations(payload: Record<string, unknown>): Record<string, unknown>[] {
@@ -182,6 +190,59 @@ async function parseZohoResponse(response: Response): Promise<Record<string, unk
   }
 
   return payload;
+}
+
+function isRetryableZohoRequestError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes('http2 error')
+    || message.includes('sendrequest')
+    || message.includes('connection error')
+    || message.includes('fetch failed')
+    || message.includes('network error')
+    || message.includes('aborted')
+    || message.includes('timeout')
+  );
+}
+
+function isRetryableZohoResponseStatus(status: number): boolean {
+  return ZOHO_REQUEST_RETRYABLE_STATUSES.has(status);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchZohoResponse(url: string, init: RequestInit, retryLabel: string): Promise<Response> {
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= ZOHO_REQUEST_MAX_ATTEMPTS; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new Error(`Zoho ${retryLabel} request timed out after ${ZOHO_REQUEST_TIMEOUT_MS}ms.`)), ZOHO_REQUEST_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, {
+        ...init,
+        signal: controller.signal,
+      });
+      if (attempt < ZOHO_REQUEST_MAX_ATTEMPTS && isRetryableZohoResponseStatus(response.status)) {
+        await delay(250 * attempt);
+        continue;
+      }
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= ZOHO_REQUEST_MAX_ATTEMPTS || !isRetryableZohoRequestError(error)) {
+        throw error;
+      }
+      await delay(250 * attempt);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(`Zoho ${retryLabel} request failed.`);
 }
 
 function getPageContext(payload: Record<string, unknown>): ZohoPageContext | null {
@@ -295,7 +356,7 @@ export function createZohoAdapter(
     url.searchParams.set('client_secret', credentials.clientSecret);
     url.searchParams.set('refresh_token', credentials.refreshToken);
 
-    const response = await fetch(url.toString(), { method: 'POST' });
+    const response = await fetchZohoResponse(url.toString(), { method: 'POST' }, 'token refresh');
     const payload = await parseZohoResponse(response);
     const accessToken = asString(payload.access_token);
 
@@ -324,14 +385,14 @@ export function createZohoAdapter(
       url.searchParams.set('organization_id', credentials.organizationId);
     }
 
-    const response = await fetch(url.toString(), {
+    const response = await fetchZohoResponse(url.toString(), {
       method: init.method ?? 'GET',
       headers: {
         Authorization: `Zoho-oauthtoken ${token}`,
         'Content-Type': 'application/json',
       },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
-    });
+    }, init.path);
 
     if (response.status === 401 && retryOnUnauthorized) {
       cachedToken = null;
@@ -500,6 +561,28 @@ export function createZohoAdapter(
     fetchPricelists,
     fetchUsers,
   };
+}
+
+export async function refreshZohoAccessToken(
+  integrationTypeId: ZohoIntegrationTypeId,
+  rawCredentials: Record<string, unknown>,
+): Promise<{ accessToken: string; credentials: NormalizedZohoCredentials }> {
+  const credentials = normalizeZohoCredentials(integrationTypeId, rawCredentials);
+  const url = new URL('/oauth/v2/token', credentials.accountsBaseUrl);
+  url.searchParams.set('grant_type', 'refresh_token');
+  url.searchParams.set('client_id', credentials.clientId);
+  url.searchParams.set('client_secret', credentials.clientSecret);
+  url.searchParams.set('refresh_token', credentials.refreshToken);
+
+  const response = await fetch(url.toString(), { method: 'POST' });
+  const payload = await parseZohoResponse(response);
+  const accessToken = asString(payload.access_token);
+
+  if (!accessToken) {
+    throw new ZohoApiError('Zoho refresh response did not include an access_token.', response.status, undefined, payload);
+  }
+
+  return { accessToken, credentials };
 }
 
 export type ZohoAdapter = ReturnType<typeof createZohoAdapter>;

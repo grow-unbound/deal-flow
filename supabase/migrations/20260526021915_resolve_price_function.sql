@@ -11,28 +11,7 @@ AS $$
 DECLARE
   v_price numeric;
 BEGIN
-  -- Step 1: catalog price_override (most specific published catalog)
-  SELECT pci.price_override INTO v_price
-  FROM app.published_catalog_items pci
-  JOIN app.published_catalogs pc ON pc.id = pci.catalog_id
-  WHERE pci.tenant_product_id = p_tenant_product_id
-    AND pc.status = 'published'
-    AND pci.price_override IS NOT NULL
-    AND (
-      (pc.scope_type = 'all')
-      OR (pc.scope_type = 'buyer' AND (pc.scope_value->>'buyer_id')::uuid = p_buyer_id)
-      OR (pc.scope_type = 'cohort' AND EXISTS (
-            SELECT 1 FROM app.cohort_members cm
-            WHERE cm.cohort_id = (pc.scope_value->>'cohort_id')::uuid
-              AND cm.buyer_id = p_buyer_id
-         ))
-    )
-  ORDER BY pci.price_override ASC  -- lowest override price wins
-  LIMIT 1;
-
-  IF v_price IS NOT NULL THEN RETURN v_price; END IF;
-
-  -- Step 2: buyer-specific price lists
+  -- Step 1: buyer-specific price lists
   SELECT pli.price INTO v_price
   FROM app.price_list_items pli
   JOIN app.price_lists pl ON pl.id = pli.price_list_id
@@ -50,7 +29,7 @@ BEGIN
 
   IF v_price IS NOT NULL THEN RETURN v_price; END IF;
 
-  -- Step 3: cohort price lists (static cohort membership)
+  -- Step 2: cohort price lists (static cohort membership)
   SELECT pli.price INTO v_price
   FROM app.price_list_items pli
   JOIN app.price_lists pl ON pl.id = pli.price_list_id
@@ -69,7 +48,7 @@ BEGIN
 
   IF v_price IS NOT NULL THEN RETURN v_price; END IF;
 
-  -- Step 4: all_buyers price lists
+  -- Step 3: all_buyers price lists
   SELECT pli.price INTO v_price
   FROM app.price_list_items pli
   JOIN app.price_lists pl ON pl.id = pli.price_list_id
@@ -86,7 +65,7 @@ BEGIN
 
   IF v_price IS NOT NULL THEN RETURN v_price; END IF;
 
-  -- Step 5: base_selling_price fallback
+  -- Step 4: base_selling_price fallback
   SELECT base_selling_price INTO v_price
   FROM app.tenant_products
   WHERE id = p_tenant_product_id;
@@ -97,5 +76,5 @@ $$;
 
 COMMENT ON FUNCTION app.resolve_price IS
   'Resolves effective price for a buyer+product+qty. Resolution order: '
-  '(1) catalog price_override, (2) buyer price list, (3) cohort price list, '
-  '(4) all_buyers price list, (5) base_selling_price. Returns NULL if none set.';
+  '(1) buyer price list, (2) cohort price list, '
+  '(3) all_buyers price list, (4) base_selling_price. Returns NULL if none set.';

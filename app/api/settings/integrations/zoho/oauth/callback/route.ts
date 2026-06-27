@@ -6,8 +6,10 @@ import {
   getIntegrationWebhookDefinitions,
 } from '@/lib/integrations/definitions';
 import {
+  buildZohoWebhookRegistrationName,
   buildZohoWebhookRegistrationPayload,
   buildZohoWorkflowRegistrationPayload,
+  deleteZohoWebhookRegistrationsByName,
 } from '@/lib/integrations/zoho-webhooks';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -658,59 +660,96 @@ export async function GET(request: NextRequest) {
         }).eq('id', webhook.id);
       }
 
-      const existingConfig = webhook && 'webhook_config' in webhook ? webhook.webhook_config : null;
-      const workflowIds = extractWorkflowIds(toRecord(existingConfig).workflow_ids);
-      const remoteWebhookIds = extractWorkflowIds(toRecord(existingConfig).remote_webhook_ids);
-      if (webhook.remote_webhook_id || workflowIds.length > 0) {
-        await deleteZohoWebhookRegistration({
+      webhookIdsByEntity[definition.entity_type] = webhook.id;
+      const callbackUrl = `${getSupabaseFunctionsUrl()}/integrations-webhook/${webhook.endpoint_token}`;
+
+      try {
+        const existingConfig = webhook && 'webhook_config' in webhook ? webhook.webhook_config : null;
+        const workflowIds = extractWorkflowIds(toRecord(existingConfig).workflow_ids);
+        const remoteWebhookIds = extractWorkflowIds(toRecord(existingConfig).remote_webhook_ids);
+        if (webhook.remote_webhook_id || workflowIds.length > 0) {
+          await deleteZohoWebhookRegistration({
+            accessToken: tokens.access_token,
+            orgId: org_id,
+            dc,
+            integrationTypeId: integration_type_id,
+            remoteWebhookId: webhook.remote_webhook_id,
+            remoteWebhookIds,
+            workflowIds,
+          });
+        }
+
+        await deleteZohoWebhookRegistrationsByName({
           accessToken: tokens.access_token,
           orgId: org_id,
           dc,
           integrationTypeId: integration_type_id,
-          remoteWebhookId: webhook.remote_webhook_id,
-          remoteWebhookIds,
-          workflowIds,
+          webhookNames: (definition.workflow_rule_types ?? ['add_edit']).map((ruleType) => (
+            buildZohoWebhookRegistrationName({ entityType: definition.entity_type, ruleType })
+          )),
+          callbackUrls: [callbackUrl],
         });
-      }
 
-      const webhookSecret = (webhook.secret ?? crypto.randomUUID()).replace(/-/g, '');
-      const registration = await registerZohoWebhook(
-        tokens.access_token,
-        org_id,
-        dc,
-        `${getSupabaseFunctionsUrl()}/integrations-webhook/${webhook.endpoint_token}`,
-        integration_type_id,
-        definition.entity_type,
-        definition.provider_entity,
-        webhookSecret,
-        definition.workflow_rule_types,
-      );
-      const remoteWebhookId = registration.webhookIds.add_edit ?? Object.values(registration.webhookIds)[0] ?? null;
-      console.info('[zoho/oauth/callback] webhook registered', {
-        tenant_integration_id: integrationId,
-        entity_type: definition.entity_type,
-        callback_url: `${getSupabaseFunctionsUrl()}/integrations-webhook/${webhook.endpoint_token}`,
-        webhook_ids: registration.webhookIds,
-        workflow_ids: registration.workflowIds,
-      });
-      const state: WebhookSetupState = { status: 'active', attempted_at: now, last_error: null, external_ref: remoteWebhookId, last_success_at: now };
-      webhookSetupByEntity[definition.entity_type] = state;
-      webhookIdsByEntity[definition.entity_type] = webhook.id;
-
-      await db.schema('app').from('integration_webhooks').update({
-        remote_webhook_id: remoteWebhookId,
-        external_ref: remoteWebhookId,
-        status: state.status,
-        webhook_config: {
-          sync_phase: definition.sync_phase,
+        const webhookSecret = (webhook.secret ?? crypto.randomUUID()).replace(/-/g, '');
+        const registration = await registerZohoWebhook(
+          tokens.access_token,
+          org_id,
+          dc,
+          callbackUrl,
+          integration_type_id,
+          definition.entity_type,
+          definition.provider_entity,
+          webhookSecret,
+          definition.workflow_rule_types,
+        );
+        const remoteWebhookId = registration.webhookIds.add_edit ?? Object.values(registration.webhookIds)[0] ?? null;
+        console.info('[zoho/oauth/callback] webhook registered', {
+          tenant_integration_id: integrationId,
+          entity_type: definition.entity_type,
+          callback_url: callbackUrl,
+          webhook_ids: registration.webhookIds,
           workflow_ids: registration.workflowIds,
-          remote_webhook_ids: registration.webhookIds,
-        },
-        secret: webhookSecret,
-        is_active: Boolean(remoteWebhookId),
-        last_verified_at: remoteWebhookId ? now : null,
-        updated_by: actorUserId,
-      }).eq('id', webhook.id);
+        });
+        const state: WebhookSetupState = { status: 'active', attempted_at: now, last_error: null, external_ref: remoteWebhookId, last_success_at: now };
+        webhookSetupByEntity[definition.entity_type] = state;
+
+        await db.schema('app').from('integration_webhooks').update({
+          remote_webhook_id: remoteWebhookId,
+          external_ref: remoteWebhookId,
+          status: state.status,
+          webhook_config: {
+            sync_phase: definition.sync_phase,
+            workflow_ids: registration.workflowIds,
+            remote_webhook_ids: registration.webhookIds,
+          },
+          secret: webhookSecret,
+          is_active: Boolean(remoteWebhookId),
+          last_verified_at: remoteWebhookId ? now : null,
+          updated_by: actorUserId,
+        }).eq('id', webhook.id);
+      } catch (error) {
+        const state: WebhookSetupState = {
+          status: 'failed',
+          attempted_at: now,
+          last_error: error instanceof Error ? error.message : `Failed to register ${definition.entity_type} webhook.`,
+          external_ref: null,
+          last_success_at: null,
+        };
+        webhookSetupByEntity[definition.entity_type] = state;
+        await db.schema('app').from('integration_webhooks').update({
+          remote_webhook_id: null,
+          external_ref: null,
+          status: 'failed',
+          is_active: false,
+          webhook_config: {
+            sync_phase: definition.sync_phase,
+            workflow_ids: {},
+            remote_webhook_ids: {},
+          },
+          last_verified_at: null,
+          updated_by: actorUserId,
+        }).eq('id', webhook.id);
+      }
     }
 
     webhookSetupState = Object.values(webhookSetupByEntity).every((state) => state.status === 'active')

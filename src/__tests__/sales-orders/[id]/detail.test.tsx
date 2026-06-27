@@ -29,11 +29,18 @@ vi.mock('@/hooks/useSalesOrderDetail', () => ({
   useDispatchSalesOrder: (...args: unknown[]) => useDispatchMock(...args),
   useDeliverSalesOrder: (...args: unknown[]) => useDeliverMock(...args),
   useCancelSalesOrder: (...args: unknown[]) => useCancelMock(...args),
+  useConfirmSalesOrder: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useSendSalesOrder: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlagState: (...args: unknown[]) => useFlagStateMock(...args),
+}));
+
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: { id: 'user-1', email: 'seller@example.com', displayName: 'Phani' },
+  }),
 }));
 
 import type { SalesOrderDetail } from '@/types/tenant-sales-orders';
@@ -98,6 +105,8 @@ function baseDetail(overrides: Partial<SalesOrderDetail> = {}): SalesOrderDetail
   return {
     id: 'ord-1',
     order_number: 'DF-1001',
+    location_id: 'loc-1',
+    location_name: 'Mumbai HQ',
     db_status: 'received',
     ui_status: 'received',
     placed_at: '2026-05-10T10:00:00.000Z',

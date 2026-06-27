@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { BuyerHomeResponse } from '@/lib/buyer-home-types';
 import { loadBuyerActivityFeed } from '@/lib/server/buyer-activity';
 import { assembleBuyerCatalogItemsForProductIds } from '@/lib/server/buyer-assemble-catalog-items';
+import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 import { getVisibleBuyerCatalogs, requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -47,6 +48,8 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
         order_again_preview: [],
         latest_promotions_preview: [],
         recent_activity: { items: [], next_cursor: null },
+        bestsellers: [],
+        buy_again: [],
         preview_message: 'Preview mode — buyer-specific numbers show as 0.',
       };
       return NextResponse.json(previewPayload);
@@ -54,6 +57,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
 
     const tenantId = context.tenant_id!;
     const buyerId = buyer.id;
+    const allowedTenantBrandIds = await resolveBuyerAllowedTenantBrandIds(supabaseAdmin as any, tenantId, buyerId);
     const now = new Date();
     const monthStart = startOfMonth(now);
     const prevMonthStart = startOfMonth(addMonths(now, -1));
@@ -136,13 +140,13 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
     if (catalogIds.length > 0) {
       const itemsRes = await supabaseAdmin
         .schema('app')
-        .from('published_catalog_items')
-        .select('catalog_id')
-        .in('catalog_id', catalogIds)
+        .from('campaign_items')
+        .select('campaign_id')
+        .in('campaign_id', catalogIds)
         .is('deleted_at', null);
       if (itemsRes.error) throw new Error(itemsRes.error.message);
-      for (const row of (itemsRes.data ?? []) as Array<{ catalog_id: string }>) {
-        countByCatalog.set(row.catalog_id, (countByCatalog.get(row.catalog_id) ?? 0) + 1);
+      for (const row of (itemsRes.data ?? []) as Array<{ campaign_id: string }>) {
+        countByCatalog.set(row.campaign_id, (countByCatalog.get(row.campaign_id) ?? 0) + 1);
       }
     }
 
@@ -167,11 +171,61 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
     const reorderPreviewMap = await assembleBuyerCatalogItemsForProductIds(supabaseAdmin as any, {
       buyerId,
       productIds: previewProductIds,
-      catalogId: null,
-      catalogName: null,
-      catalogValidUntil: null,
+      allowedTenantBrandIds,
+      campaignId: null,
+      campaignName: null,
+      campaignValidUntil: null,
       priceOverrides: new Map(),
     });
+
+    // Fetch recommendation data (non-blocking — empty arrays on failure)
+    let bestsellers: import('@/types/buyer').BuyerCatalogItem[] = [];
+    let buyAgain: import('@/types/buyer').BuyerCatalogItem[] = [];
+    try {
+      const recoRes = await supabaseAdmin
+        .schema('app')
+        .rpc('reco_get_home', { p_tenant_id: tenantId, p_buyer_id: buyerId });
+
+      if (!recoRes.error && recoRes.data) {
+        const recoData = recoRes.data as { bestsellers?: string[]; buy_again?: string[] };
+        const bestsellerIds = (recoData.bestsellers ?? []).slice(0, 12);
+        const buyAgainIds = (recoData.buy_again ?? []).slice(0, 10);
+
+        const [bestsellerMap, buyAgainMap] = await Promise.all([
+          bestsellerIds.length > 0
+            ? assembleBuyerCatalogItemsForProductIds(supabaseAdmin as any, {
+                buyerId,
+                productIds: bestsellerIds,
+                allowedTenantBrandIds,
+                campaignId: null,
+                campaignName: null,
+                campaignValidUntil: null,
+                priceOverrides: new Map(),
+              })
+            : Promise.resolve(new Map<string, import('@/types/buyer').BuyerCatalogItem>()),
+          buyAgainIds.length > 0
+            ? assembleBuyerCatalogItemsForProductIds(supabaseAdmin as any, {
+                buyerId,
+                productIds: buyAgainIds,
+                allowedTenantBrandIds,
+                campaignId: null,
+                campaignName: null,
+                campaignValidUntil: null,
+                priceOverrides: new Map(),
+              })
+            : Promise.resolve(new Map<string, import('@/types/buyer').BuyerCatalogItem>()),
+        ]);
+
+        bestsellers = bestsellerIds
+          .map((id) => bestsellerMap.get(id))
+          .filter((item): item is NonNullable<typeof item> => Boolean(item));
+        buyAgain = buyAgainIds
+          .map((id) => buyAgainMap.get(id))
+          .filter((item): item is NonNullable<typeof item> => Boolean(item));
+      }
+    } catch {
+      // Recommendation data is non-critical — home page still works without it
+    }
 
     const payload: BuyerHomeResponse = {
       greeting_name: profile.greeting_name ?? buyer.contact_name ?? buyer.business_name,
@@ -197,6 +251,8 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
         .filter((item): item is NonNullable<typeof item> => Boolean(item)),
       latest_promotions_preview: promotionsPreview,
       recent_activity: activity,
+      bestsellers,
+      buy_again: buyAgain,
     };
 
     return NextResponse.json(payload);

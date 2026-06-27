@@ -5,13 +5,17 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Heart, Minus, Package, Plus, ShoppingCart } from 'lucide-react';
+import posthog from 'posthog-js';
 import { apiFetch } from '@/lib/api-fetch';
 import { formatCurrency, cn } from '@/lib/utils';
 import { markBuyerNavigationBack, markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { StockBadge } from '@/components/buyer/catalog/StockBadge';
+import { RecoSection } from '@/components/buyer/catalog/RecoSection';
+import { BuyerLocationControl } from '@/components/buyer/layout/BuyerLocationControl';
 import { buildBuyerSearchHref } from '@/lib/buyer-routes';
 import type { BuyerCatalogItem } from '@/types/buyer';
+import type { BuyerProductPageRecos } from '@/lib/buyer-home-types';
 
 interface BuyerProductDetailClientProps {
   tenantProductId: string;
@@ -22,6 +26,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   const { addItem, items: cartItems } = useCart();
   const [item, setItem] = React.useState<BuyerCatalogItem | null>(null);
   const [brandItems, setBrandItems] = React.useState<BuyerCatalogItem[]>([]);
+  const [recos, setRecos] = React.useState<BuyerProductPageRecos>({ co_order: [], co_buyer: [], same_category: [] });
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(false);
   const [imgError, setImgError] = React.useState(false);
@@ -32,6 +37,12 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
     let cancelled = false;
     setLoading(true);
     setError(false);
+    // Fetch product + recommendations in parallel; recos are non-critical
+    const recoFetch = apiFetch(`/api/buyer/recommendations?product_id=${encodeURIComponent(tenantProductId)}`)
+      .then((r) => r.json() as Promise<BuyerProductPageRecos>)
+      .then((data) => { if (!cancelled) setRecos(data); })
+      .catch(() => { /* recos are non-critical — silent fail */ });
+
     apiFetch(`/api/buyer/catalog?tenant_product_id=${encodeURIComponent(tenantProductId)}&limit=1&offset=0`)
       .then((r) => r.json() as Promise<{ items?: BuyerCatalogItem[] }>)
       .then((data) => {
@@ -58,6 +69,8 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+
+    void recoFetch;
     return () => { cancelled = true; };
   }, [tenantProductId]);
 
@@ -66,6 +79,26 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   function handleBack(): void {
     markBuyerNavigationBack();
     router.back();
+  }
+
+  function handleRecoAddToCart(recoItem: BuyerCatalogItem, widget: string, sourceProductId: string | undefined): void {
+    addItem({
+      tenant_product_id: recoItem.tenant_product_id,
+      name: recoItem.display_name,
+      brand: recoItem.brand_name ?? undefined,
+      internal_sku: recoItem.internal_sku,
+      image_url: recoItem.image_urls[0],
+      unit_price: recoItem.price,
+      unit: recoItem.default_uom ?? undefined,
+      quantity: 1,
+      line_total: recoItem.price,
+      tenant_category_id: recoItem.category_id ?? undefined,
+    });
+    posthog.capture('reco_add_to_cart', {
+      widget,
+      source_product_id: sourceProductId,
+      added_product_id: recoItem.tenant_product_id,
+    });
   }
 
   function handleAddToCart(): void {
@@ -81,6 +114,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
       unit: item.default_uom ?? undefined,
       quantity: q,
       line_total: item.price * q,
+      tenant_category_id: item.category_id ?? undefined,
     });
     setQty(1);
   }
@@ -146,6 +180,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
         <span className="min-w-0 flex-1 truncate font-semibold" style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-display)', color: 'var(--fg-1)' }}>
           Product
         </span>
+        <BuyerLocationControl />
         <Link
           href={searchHref}
           onClick={() => markBuyerNavigationForward()}
@@ -212,6 +247,11 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           <span className="text-xl font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-1)' }}>
             {formatCurrency(item.price)}
           </span>
+          {item.has_campaign_price && item.resolved_price != null ? (
+            <span className="text-sm line-through" style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-3)' }}>
+              {formatCurrency(item.resolved_price)}
+            </span>
+          ) : null}
           {item.mrp > 0 && item.mrp > item.price && (
             <span className="text-sm line-through" style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-3)' }}>
               {formatCurrency(item.mrp)}
@@ -226,6 +266,12 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
             </span>
           )}
         </div>
+
+        {item.has_campaign_price && item.campaign_valid_until ? (
+          <p className="text-sm text-amber-700">
+            Valid until {new Date(item.campaign_valid_until).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+          </p>
+        ) : null}
 
         <StockBadge status={item.stock_status} />
 
@@ -246,9 +292,27 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           {item.default_uom && <SpecRow label="Unit" value={item.default_uom} />}
           {item.pack_size && <SpecRow label="Pack size" value={String(item.pack_size)} />}
           <SpecRow label="SKU" value={item.internal_sku} mono />
-          {item.catalog_name && <SpecRow label="Catalog" value={item.catalog_name} />}
+          {item.campaign_name && <SpecRow label="Campaign" value={item.campaign_name} />}
         </div>
       </div>
+
+      {/* W2 — Frequently Bought Together */}
+      <RecoSection
+        title="Frequently Bought Together"
+        widget="co_order"
+        items={recos.co_order}
+        sourceProductId={tenantProductId}
+        onAddToCart={handleRecoAddToCart}
+      />
+
+      {/* W3 — People Also Bought */}
+      <RecoSection
+        title="People Also Bought"
+        widget="co_buyer"
+        items={recos.co_buyer}
+        sourceProductId={tenantProductId}
+        onAddToCart={handleRecoAddToCart}
+      />
 
       {/* More from brand carousel */}
       {brandItems.length > 0 && (
@@ -297,6 +361,15 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           </div>
         </div>
       )}
+
+      {/* W5 — More from this Category */}
+      <RecoSection
+        title="More from this Category"
+        widget="same_category"
+        items={recos.same_category}
+        sourceProductId={tenantProductId}
+        onAddToCart={handleRecoAddToCart}
+      />
 
       {/* Sticky footer — qty stepper + Add to cart */}
       <div

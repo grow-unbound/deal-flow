@@ -251,6 +251,7 @@ export const CohortCreateSchema = z.object({
   description: z.string().optional(),
   is_static: z.boolean().default(false),
   rules: CohortRulesSchema.optional(),
+  allowed_tenant_brand_ids: z.array(z.string().uuid('Invalid brand')).optional().nullable(),
 });
 export type CohortCreateInput = z.infer<typeof CohortCreateSchema>;
 

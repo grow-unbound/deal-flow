@@ -1,4 +1,5 @@
 import { CatalogFilteredBrowse } from '@/components/buyer/catalog/CatalogFilteredBrowse';
+import { requireBuyerDeliverySelection } from '@/lib/server/buyer-location-selection';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -6,5 +7,6 @@ type PageProps = {
 
 export default async function BuyerCatalogCategoryPage({ params }: PageProps) {
   const { id } = await params;
+  await requireBuyerDeliverySelection(`/buy/catalog/category/${id}`);
   return <CatalogFilteredBrowse mode="category" id={id} />;
 }

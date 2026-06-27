@@ -14,7 +14,7 @@ interface EstimateRow {
   accepted_at: string | null;
   expires_at: string | null;
   source: string | null;
-  catalog_id?: string | null;
+  campaign_id?: string | null;
   created_by?: string | null;
   updated_at?: string | null;
 }
@@ -123,7 +123,7 @@ vi.mock('@/lib/supabase', () => {
       if (this.table === 'buyers') return resolve({ data: applyFilters(queryState.buyers), error: null });
       if (this.table === 'estimates') return resolve({ data: applyFilters(queryState.estimates), error: null });
       if (this.table === 'estimate_items') return resolve({ data: applyFilters(queryState.estimateItems), error: null });
-      if (this.table === 'published_catalogs') return resolve({ data: applyFilters(queryState.catalogs), error: null });
+      if (this.table === 'campaigns') return resolve({ data: applyFilters(queryState.catalogs), error: null });
       return resolve({ data: [], error: null });
     }
   }
@@ -173,7 +173,7 @@ describe('estimates landing API route', () => {
         accepted_at: '2026-06-02T10:00:00.000Z',
         expires_at: soon,
         source: 'buyer_app',
-        catalog_id: 'c1',
+        campaign_id: 'c1',
         updated_at: '2026-06-02T10:00:00.000Z',
       },
       {
@@ -188,7 +188,7 @@ describe('estimates landing API route', () => {
         accepted_at: null,
         expires_at: null,
         source: 'buyer_app',
-        catalog_id: 'c1',
+        campaign_id: 'c1',
         updated_at: '2026-06-03T10:00:00.000Z',
       },
       {
@@ -203,7 +203,7 @@ describe('estimates landing API route', () => {
         accepted_at: null,
         expires_at: soon,
         source: 'seller',
-        catalog_id: null,
+        campaign_id: null,
         created_by: 'u-seller',
         updated_at: '2026-06-04T10:00:00.000Z',
       },
@@ -219,7 +219,7 @@ describe('estimates landing API route', () => {
         accepted_at: '2026-06-05T12:00:00.000Z',
         expires_at: null,
         source: 'seller',
-        catalog_id: 'c2',
+        campaign_id: 'c2',
         created_by: 'u-seller',
         updated_at: '2026-06-05T14:00:00.000Z',
       },
