@@ -1,9 +1,9 @@
 export interface BuyerCatalogItem {
   id: string;
   tenant_product_id: string;
-  catalog_id: string | null;
-  catalog_name: string | null;
-  catalog_valid_until: string | null;
+  campaign_id: string | null;
+  campaign_name: string | null;
+  campaign_valid_until: string | null;
   internal_sku: string;
   display_name: string;
   brand_id: string | null;
@@ -12,6 +12,9 @@ export interface BuyerCatalogItem {
   category_name: string | null;
   mrp: number;
   price: number;
+  resolved_price?: number | null;
+  campaign_price?: number | null;
+  has_campaign_price?: boolean;
   default_uom: string | null;
   pack_size: number | null;
   image_urls: string[];
@@ -19,7 +22,7 @@ export interface BuyerCatalogItem {
   category_image_url?: string | null;
   stock_status: 'available' | 'limited' | 'out_of_stock';
   on_hand: number;
-  /** From published_catalog_items when product appears in a catalog. */
+  /** From campaign_items when product appears in a catalog. */
   is_featured?: boolean;
 }
 
@@ -58,9 +61,9 @@ export interface BuyerCatalogResponse {
   total: number;
   has_more: boolean;
   catalogs?: BuyerCatalogSummary[];
-  selected_catalog_id?: string | null;
-  selected_catalog_name?: string | null;
-  selected_catalog_valid_until?: string | null;
+  selected_campaign_id?: string | null;
+  selected_campaign_name?: string | null;
+  selected_campaign_valid_until?: string | null;
 }
 
 export interface BuyerCategoriesResponse {

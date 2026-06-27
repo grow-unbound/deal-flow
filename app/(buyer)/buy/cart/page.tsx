@@ -5,9 +5,15 @@ import { useRouter } from 'next/navigation';
 import { ShoppingCart, Trash2, Minus, Plus, Package, ChevronLeft, MapPin, ChevronRight, Check } from 'lucide-react';
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
+import { useBuyerMe } from '@/hooks/useBuyerMe';
+import { useCartBundles } from '@/hooks/useCartBundles';
+import { CartGapWidget } from '@/components/buyer/cart/CartGapWidget';
 import { formatCurrency } from '@/lib/utils';
 import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
+import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
+import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location';
+import type { BuyerCatalogItem } from '@/types/buyer';
 
 interface NearestLocationResponse {
   location_id: string | null;
@@ -64,8 +70,12 @@ const STICKY_HEADER: React.CSSProperties = {
 
 export default function CartPage() {
   const router = useRouter();
-  const { items, itemCount, subtotal, removeItem, updateQty, clearCart } = useCart();
+  const { items, itemCount, subtotal, removeItem, updateQty, clearCart, addItem } = useCart();
   const delivery = useBuyerDeliveryOptional();
+  const { data: meData } = useBuyerMe();
+  const { data: cartBundlesData } = useCartBundles();
+  const tenantId = meData?.tenant.id ?? '';
+  const selectedDelivery = delivery?.selected ?? null;
   const [placingOrder, setPlacingOrder] = useState(false);
   const [requestingQuote, setRequestingQuote] = useState(false);
   const [error, setError] = useState('');
@@ -73,7 +83,7 @@ export default function CartPage() {
   const [nearestLoading, setNearestLoading] = useState(false);
 
   useEffect(() => {
-    const loc = delivery?.selected;
+    const loc = selectedDelivery;
     if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') {
       setNearestLoc(null);
       return;
@@ -86,7 +96,7 @@ export default function CartPage() {
       .catch(() => { if (!cancelled) setNearestLoc(null); })
       .finally(() => { if (!cancelled) setNearestLoading(false); });
     return () => { cancelled = true; };
-  }, [delivery?.selected]);
+  }, [selectedDelivery]);
 
   const gstAmount = Math.round(subtotal * 0.18);
   const deliveryFee = 0;
@@ -102,40 +112,38 @@ export default function CartPage() {
     }));
   }
 
-  async function resolveNearestLocation(): Promise<{ location_id: string | null; delivery_address: object | null }> {
-    const loc = delivery?.selected;
-    if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') {
-      return { location_id: null, delivery_address: null };
+  async function resolveFulfillmentPayload(): Promise<{
+    location_id: string | null;
+    place_of_supply: string | null;
+  }> {
+    if (!selectedDelivery) {
+      return { location_id: null, place_of_supply: null };
     }
-    try {
-      const res = await apiFetch(`/api/buyer/nearest-location?lat=${loc.lat}&lng=${loc.lng}`);
-      const data: NearestLocationResponse = await res.json();
-      return {
-        location_id: data.location_id,
-        delivery_address: {
-          label: loc.label,
-          formatted_address: loc.formatted_address,
-          city: loc.city,
-          state: loc.state,
-          pincode: loc.pincode,
-          lat: loc.lat,
-          lng: loc.lng,
-        },
-      };
-    } catch {
-      return { location_id: null, delivery_address: null };
-    }
+    const res = await apiFetch(`/api/buyer/nearest-location?lat=${selectedDelivery.lat}&lng=${selectedDelivery.lng}`);
+    const data: NearestLocationResponse = await res.json();
+    return {
+      location_id: data.location_id,
+      place_of_supply: deriveBuyerPlaceOfSupply(selectedDelivery),
+    };
   }
 
   async function handlePlaceOrder() {
     if (isBusy || items.length === 0) return;
+    if (!selectedDelivery) {
+      setError('Select a delivery location before placing an order.');
+      return;
+    }
     setError('');
     setPlacingOrder(true);
     try {
-      const { location_id, delivery_address } = await resolveNearestLocation();
+      const { location_id, place_of_supply } = await resolveFulfillmentPayload();
+      if (!location_id) {
+        setError('Select a delivery location that can be routed to a warehouse.');
+        return;
+      }
       const raw = await apiFetch('/api/buyer/orders', {
         method: 'POST',
-        body: JSON.stringify({ items: buildLineItems(), location_id, delivery_address }),
+        body: JSON.stringify({ items: buildLineItems(), location_id, place_of_supply }),
       });
       const res: OrderPlaceResponse = await raw.json();
       if (!raw.ok || !res.success) {
@@ -158,13 +166,21 @@ export default function CartPage() {
 
   async function handleRequestQuote() {
     if (isBusy || items.length === 0) return;
+    if (!selectedDelivery) {
+      setError('Select a delivery location before requesting a quote.');
+      return;
+    }
     setError('');
     setRequestingQuote(true);
     try {
-      const { location_id, delivery_address } = await resolveNearestLocation();
+      const { location_id, place_of_supply } = await resolveFulfillmentPayload();
+      if (!location_id) {
+        setError('Select a delivery location that can be routed to a warehouse.');
+        return;
+      }
       const raw = await apiFetch('/api/buyer/estimates', {
         method: 'POST',
-        body: JSON.stringify({ items: buildLineItems(), location_id, delivery_address }),
+        body: JSON.stringify({ items: buildLineItems(), location_id, place_of_supply }),
       });
       const res: EstimateResponse = await raw.json();
       if (!raw.ok || !res.success) {
@@ -265,6 +281,29 @@ export default function CartPage() {
           ))}
         </div>
 
+        {/* W6: Complete Your Cart — gap widget (renders only when bundle matches) */}
+        {cartBundlesData && tenantId && (
+          <CartGapWidget
+            bundles={cartBundlesData.bundles}
+            items={items}
+            tenantId={tenantId}
+            onAddToCart={(product: BuyerCatalogItem) => {
+              addItem({
+                tenant_product_id: product.tenant_product_id,
+                name: product.display_name,
+                brand: product.brand_name ?? undefined,
+                internal_sku: product.internal_sku,
+                image_url: product.image_urls[0],
+                unit_price: product.price,
+                unit: product.default_uom ?? undefined,
+                quantity: 1,
+                line_total: product.price,
+                tenant_category_id: product.category_id ?? undefined,
+              });
+            }}
+          />
+        )}
+
         {/* Totals card */}
         <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
           <div className="px-4 py-3.5 space-y-2.5">
@@ -296,7 +335,7 @@ export default function CartPage() {
               <>
                 <p className="uppercase" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em', color: 'var(--cream-600)' }}>Deliver to</p>
                 <p className="font-semibold truncate" style={{ fontSize: 'var(--b-text-label)', color: 'var(--fg-1, var(--cream-900))' }}>
-                  {delivery.selected.label}
+                  {formatBuyerSelectedLocationLabel(delivery.selected)}
                 </p>
                 <p className="truncate" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--fg-3, var(--cream-600))' }}>
                   {[delivery.selected.city, delivery.selected.pincode].filter(Boolean).join(' · ')}{' · 2–3 days'}
@@ -357,19 +396,19 @@ export default function CartPage() {
         <div className="flex gap-2">
           <button
             onClick={handleRequestQuote}
-            disabled={isBusy}
-            className="flex h-12 flex-1 items-center justify-center gap-1.5 font-semibold text-white transition-opacity disabled:opacity-60"
-            style={{ fontSize: 'var(--b-text-label)', background: 'var(--teal-500)', borderRadius: 10 }}
-          >
+          disabled={isBusy || !selectedDelivery}
+          className="flex h-12 flex-1 items-center justify-center gap-1.5 font-semibold text-white transition-opacity disabled:opacity-60"
+          style={{ fontSize: 'var(--b-text-label)', background: 'var(--teal-500)', borderRadius: 10 }}
+        >
             <WhatsAppIcon className="w-4 h-4 shrink-0" />
             {requestingQuote ? 'Requesting…' : 'Get WhatsApp quote'}
           </button>
           <button
             onClick={handlePlaceOrder}
-            disabled={isBusy}
-            className="flex h-12 flex-1 items-center justify-center gap-1.5 font-semibold text-white transition-opacity disabled:opacity-60"
-            style={{ fontSize: 'var(--b-text-label)', background: 'var(--ember-400)', borderRadius: 10 }}
-          >
+          disabled={isBusy || !selectedDelivery}
+          className="flex h-12 flex-1 items-center justify-center gap-1.5 font-semibold text-white transition-opacity disabled:opacity-60"
+          style={{ fontSize: 'var(--b-text-label)', background: 'var(--ember-400)', borderRadius: 10 }}
+        >
             <Check className="w-4 h-4 shrink-0" />
             {placingOrder ? 'Placing…' : 'Place order'}
           </button>

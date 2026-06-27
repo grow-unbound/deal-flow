@@ -107,6 +107,8 @@ const BuyerContextSchema = z.object({
 export const SalesOrderDetailSchema = z.object({
   id: z.string(),
   order_number: z.string(),
+  location_id: z.string().nullable(),
+  location_name: z.string().nullable(),
   db_status: z.string(),
   ui_status: SalesOrderUiStatusSchema,
   placed_at: z.string().nullable(),

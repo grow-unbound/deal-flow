@@ -34,6 +34,7 @@ export interface InvoiceComposerDocument {
   status: string;
   buyer_id: string | null;
   location_id: string | null;
+  location_name: string | null;
   available_locations: ComposerLocationOption[];
   invoice_date: string;
   due_date: string | null;

@@ -39,10 +39,10 @@ export function DocumentMetaCard({
         <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">Notes</p>
         <textarea
           className={cn(
-            'mt-2 min-h-[96px] w-full rounded-[10px] border border-cream-300 p-3 text-base',
+            'mt-2 min-h-[32px] w-full rounded-[10px] border border-cream-300 p-3 text-base',
             readOnly && 'cursor-default bg-cream-50 text-cream-800',
           )}
-          rows={4}
+          rows={2}
           value={notesValue}
           onChange={(event) => onNotesChange(event.target.value)}
           placeholder="Add buyer-facing notes"

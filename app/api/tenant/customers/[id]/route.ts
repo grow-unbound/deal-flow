@@ -223,7 +223,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     scopeByAccessibleLocations(db
       .schema('app')
       .from('orders')
-      .select('id, order_number, buyer_id, status, total_amount, placed_at, created_at, catalog_id, location_id')
+      .select('id, order_number, buyer_id, status, total_amount, placed_at, created_at, campaign_id, location_id')
       .eq('tenant_id', claims.tenant_id)
       .eq('buyer_id', id)
       .is('deleted_at', null)
@@ -365,7 +365,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const invoices = await optionalSelect(db, 'invoices', 'id, invoice_number, invoice_date, created_at, status, outstanding_balance, total_amount, location_id', claims.tenant_id, id);
   const payments = await optionalSelect(db, 'payments', 'id, paid_at, created_at, amount, status, mode', claims.tenant_id, id);
   const creditNotes = await optionalSelect(db, 'credit_notes', 'id, issued_at, created_at, amount, reason, status', claims.tenant_id, id);
-  const catalogViews = await optionalSelect(db, 'catalog_views', 'id, viewed_at, created_at, catalog_id', claims.tenant_id, id);
+  const catalogViews = await optionalSelect(db, 'catalog_views', 'id, viewed_at, created_at, campaign_id', claims.tenant_id, id);
   const scopedInvoices = claims.role === 'seller_assistant' && (claims.location_ids?.length ?? 0) > 0
     ? invoices.filter((invoice: any) => invoice.location_id && claims.location_ids?.includes(String(invoice.location_id)))
     : invoices;
@@ -769,7 +769,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       at: view.viewed_at ?? view.created_at ?? new Date().toISOString(),
       kind: 'catalog_view',
       title: 'Catalog viewed',
-      subtitle: `Catalog ${String(view.catalog_id ?? '').slice(0, 8)}`,
+      subtitle: `Catalog ${String(view.campaign_id ?? '').slice(0, 8)}`,
     });
   }
 

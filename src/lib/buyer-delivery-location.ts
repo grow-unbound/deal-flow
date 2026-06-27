@@ -49,6 +49,21 @@ export function pushRecentLocation(
   return { ...payload, recent };
 }
 
+function trimText(value: string | null | undefined): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
+ * Buyer catalog/cart headers need a short label that fits narrow mobile widths.
+ * We prefer the picked sublocality-style label, then city, then a generic prompt.
+ */
+export function formatBuyerSelectedLocationLabel(
+  location: Pick<BuyerDeliveryLocation, 'label' | 'city'> | null | undefined,
+  fallback = 'Select location',
+): string {
+  return trimText(location?.label) || trimText(location?.city) || fallback;
+}
+
 export function buildSetCookieHeader(payload: BuyerDeliveryCookiePayload): string {
   const body = serializeDeliveryCookie(payload);
   return `${DELIVERY_COOKIE_NAME}=${body}; Path=/; Max-Age=${COOKIE_MAX_AGE}; SameSite=Lax`;

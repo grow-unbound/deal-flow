@@ -92,6 +92,7 @@ function baseDocument(overrides: Partial<InvoiceComposerDocument> = {}): Invoice
     status: 'draft',
     buyer_id: null,
     location_id: null,
+    location_name: null,
     available_locations: [],
     invoice_date: '2026-06-01',
     due_date: '2026-06-20',
@@ -235,5 +236,9 @@ describe('DocComposerInvoice', () => {
     expect(screen.getByRole('button', { name: /Save & close/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Send invoice/i })).toBeEnabled();
     expect(screen.getAllByDisplayValue(String(line.qty))[0]).toBeInTheDocument();
+    expect(screen.getByText('Quantity')).toBeInTheDocument();
+    expect(screen.getByText('BASE PRICE')).toBeInTheDocument();
+    expect(screen.queryByText('Disc %')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Resolved price check/i)).not.toBeInTheDocument();
   });
 });

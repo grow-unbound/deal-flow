@@ -38,6 +38,7 @@ interface BuyerRow {
   phone: string | null;
   gstin: string | null;
   buyer_app_enabled: boolean | null;
+  geography?: { state?: string; city?: string; zone?: string } | null;
 }
 
 interface TenantRow {
@@ -449,7 +450,7 @@ export async function requireBuyerAccessProfile(request: NextRequest): Promise<B
     db
       .schema('app')
       .from('buyers')
-      .select('id, tenant_id, business_name, contact_name, credit_limit, phone, gstin, buyer_app_enabled')
+      .select('id, tenant_id, business_name, contact_name, credit_limit, phone, gstin, buyer_app_enabled, geography')
       .eq('id', context.buyer_id)
       .eq('tenant_id', context.tenant_id)
       .eq('is_active', true)
@@ -511,10 +512,15 @@ function buyerMatchesCatalog(
   buyerId: string,
   buyerDefaultCohortId: string | null,
   explicitCohortIds: Set<string>,
+  buyerGeography: { state?: string; city?: string; zone?: string } | null,
 ) {
   if (catalog.scope_type === 'all') return true;
 
-  const scopeValue = (catalog.scope_value ?? {}) as { buyer_id?: string; cohort_id?: string };
+  const scopeValue = (catalog.scope_value ?? {}) as {
+    buyer_id?: string;
+    cohort_id?: string;
+    geography?: { state?: string; city?: string; zone?: string };
+  };
 
   if (catalog.scope_type === 'buyer') {
     return scopeValue.buyer_id === buyerId;
@@ -525,6 +531,15 @@ function buyerMatchesCatalog(
     if (!cohortId) return false;
     if (explicitCohortIds.has(cohortId)) return true;
     return buyerDefaultCohortId === cohortId;
+  }
+
+  if (catalog.scope_type === 'geography') {
+    const geo = scopeValue.geography;
+    if (!geo || !buyerGeography) return false;
+    if (geo.state && geo.state !== buyerGeography.state) return false;
+    if (geo.city && geo.city !== buyerGeography.city) return false;
+    if (geo.zone && geo.zone !== buyerGeography.zone) return false;
+    return true;
   }
 
   return false;
@@ -709,7 +724,7 @@ export async function getVisibleBuyerCatalogs(tenantId: string, buyerId: string)
   const [catalogsRes, buyerRes, cohortMembershipRes] = await Promise.all([
     db
       .schema('app')
-      .from('published_catalogs')
+      .from('campaigns')
       .select('id, tenant_id, name, share_token, valid_to, created_at, scope_type, scope_value, hero_image_url')
       .eq('tenant_id', tenantId)
       .eq('status', 'published')
@@ -719,7 +734,7 @@ export async function getVisibleBuyerCatalogs(tenantId: string, buyerId: string)
     db
       .schema('app')
       .from('buyers')
-      .select('id, default_cohort_id')
+      .select('id, default_cohort_id, geography')
       .eq('id', buyerId)
       .eq('tenant_id', tenantId)
       .maybeSingle(),
@@ -737,9 +752,14 @@ export async function getVisibleBuyerCatalogs(tenantId: string, buyerId: string)
   const explicitCohorts = new Set(
     ((cohortMembershipRes.data ?? []) as Array<{ cohort_id: string }>).map((row) => row.cohort_id),
   );
-  const buyerDefaultCohortId = (buyerRes.data as { default_cohort_id?: string | null } | null)?.default_cohort_id ?? null;
+  const buyerData = (buyerRes.data as {
+    default_cohort_id?: string | null;
+    geography?: { state?: string; city?: string; zone?: string } | null;
+  } | null);
+  const buyerDefaultCohortId = buyerData?.default_cohort_id ?? null;
+  const buyerGeography = buyerData?.geography ?? null;
 
   return ((catalogsRes.data ?? []) as BuyerVisibleCatalog[]).filter((catalog) =>
-    buyerMatchesCatalog(catalog, buyerId, buyerDefaultCohortId, explicitCohorts),
+    buyerMatchesCatalog(catalog, buyerId, buyerDefaultCohortId, explicitCohorts, buyerGeography),
   );
 }

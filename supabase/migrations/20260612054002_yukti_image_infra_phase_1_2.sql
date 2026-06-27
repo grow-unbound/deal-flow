@@ -133,7 +133,7 @@ ALTER TABLE app.tenant_brands
   ADD COLUMN IF NOT EXISTS r2_logo_medium_key text,
   ADD COLUMN IF NOT EXISTS r2_logo_thumb_key text;
 
-ALTER TABLE app.published_catalogs
+ALTER TABLE app.campaigns
   ADD COLUMN IF NOT EXISTS r2_hero_original_key text,
   ADD COLUMN IF NOT EXISTS r2_hero_medium_key text;
 

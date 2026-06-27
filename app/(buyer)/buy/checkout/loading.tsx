@@ -30,10 +30,12 @@ export default function CheckoutLoading() {
         {/* Notes textarea */}
         <div className="h-24 animate-pulse rounded-xl border border-cream-200 bg-cream-100" />
 
-        {/* Delivery / address fields */}
-        {Array.from({ length: 2 }).map((_, i) => (
-          <div key={i} className="h-14 animate-pulse rounded-xl border border-cream-200 bg-cream-100" />
-        ))}
+        {/* Delivery location card */}
+        <div className="animate-pulse rounded-xl border border-cream-200 bg-cream-50 p-4">
+          <div className="mb-2 h-3 w-20 rounded bg-cream-200" />
+          <div className="h-4 w-44 rounded bg-cream-200" />
+          <div className="mt-2 h-3 w-28 rounded bg-cream-200" />
+        </div>
       </div>
 
       {/* Submit button */}

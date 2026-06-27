@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerCatalogItem } from '@/types/buyer';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+import { getSelectedBuyerDeliveryFromRequest } from '@/lib/server/buyer-location-selection';
+import { resolveNearestBuyerLocation } from '@/lib/server/buyer-routing';
 
 interface GuestCatalogItem {
   id: string;
   tenant_product_id: string;
-  catalog_id: string;
-  catalog_name: string;
-  catalog_valid_until: string | null;
+  campaign_id: string;
+  campaign_name: string;
+  campaign_valid_until: string | null;
   internal_sku: string | null;
   display_name: string;
   brand_id: string | null;
@@ -16,6 +18,9 @@ interface GuestCatalogItem {
   category_id: string | null;
   category_name: string | null;
   price: number;
+  resolved_price: number;
+  campaign_price: number | null;
+  has_campaign_price: boolean;
   mrp: number;
   default_uom: string | null;
   pack_size: number | null;
@@ -43,7 +48,7 @@ export async function GET(
   // Resolve catalog by share_token — must be published and not deleted
   const { data: catalog, error: catalogError } = await db
     .schema('app')
-    .from('published_catalogs')
+    .from('campaigns')
     .select('id, name, tenant_id, status, valid_to')
     .eq('share_token', share_token)
     .eq('status', 'published')
@@ -67,9 +72,9 @@ export async function GET(
   // Fetch catalog items
   const { data: catalogItems, error: itemsError } = await db
     .schema('app')
-    .from('published_catalog_items')
+    .from('campaign_items')
     .select('tenant_product_id, price_override, display_order, is_featured')
-    .eq('catalog_id', catalog.id)
+    .eq('campaign_id', catalog.id)
     .is('deleted_at', null)
     .order('display_order', { ascending: true });
 
@@ -92,12 +97,20 @@ export async function GET(
 
   if (tenantProductIds.length === 0) {
     return NextResponse.json({
-      catalog_id: catalog.id,
+      campaign_id: catalog.id,
       name: catalog.name,
       products_count: 0,
       items: [],
     });
   }
+
+  const selectedDelivery = getSelectedBuyerDeliveryFromRequest(request);
+  const resolvedRouting = await resolveNearestBuyerLocation(
+    db as any,
+    catalog.tenant_id,
+    selectedDelivery,
+  );
+  const inventoryLocationId = resolvedRouting?.locationId ?? null;
 
   // Fetch tenant products
   const { data: tenantProducts, error: productsError } = await db
@@ -223,19 +236,26 @@ export async function GET(
   }
 
   // Fetch inventory for in-stock status
-  const { data: inventoryData } = await db
+  let inventoryQuery = db
     .schema('app')
     .from('tenant_inventory')
-    .select('tenant_product_id, qty_available')
+    .select('tenant_product_id, qty_available, location_id')
     .in('tenant_product_id', tenantProductIds)
     .is('deleted_at', null);
 
-  const inventoryByProductId = new Map(
-    ((inventoryData ?? []) as Array<{ tenant_product_id: string; qty_available: number | null }>).map((inv) => [
+  if (inventoryLocationId) {
+    inventoryQuery = inventoryQuery.eq('location_id', inventoryLocationId);
+  }
+
+  const { data: inventoryData } = await inventoryQuery;
+
+  const inventoryByProductId = new Map<string, number>();
+  for (const inv of ((inventoryData ?? []) as Array<{ tenant_product_id: string; qty_available: number | null }>)) {
+    inventoryByProductId.set(
       inv.tenant_product_id,
-      inv,
-    ])
-  );
+      (inventoryByProductId.get(inv.tenant_product_id) ?? 0) + Number(inv.qty_available ?? 0),
+    );
+  }
 
   // Build price override map
   const priceOverrideByProductId = new Map(
@@ -257,28 +277,27 @@ export async function GET(
       const brandId = product.tenant_brand_id ? (brandIdByTenantBrandId.get(product.tenant_brand_id) ?? null) : null;
       const masterProduct = product.master_product_id ? (masterProductById.get(product.master_product_id) ?? null) : null;
 
-      const inv = inventoryByProductId.get(item.tenant_product_id);
-      const onHand = Math.max(0, Number(inv?.qty_available ?? 0));
-      let price =
-        priceOverrideByProductId.get(item.tenant_product_id) ??
-        Number(product.base_selling_price ?? 0);
-      if (priceOverrideByProductId.get(item.tenant_product_id) == null && profile?.buyer?.id) {
-        const { data: resolvedPrice } = await db.schema('app').rpc('resolve_price', {
+      const onHand = Math.max(0, Number(inventoryByProductId.get(item.tenant_product_id) ?? 0));
+      let resolvedPrice = Number(product.base_selling_price ?? 0);
+      if (profile?.buyer?.id) {
+        const { data: resolvedPriceData } = await db.schema('app').rpc('resolve_price', {
           p_tenant_product_id: item.tenant_product_id,
           p_buyer_id: profile.buyer.id,
           p_qty: 1,
         });
-        price = Number(resolvedPrice ?? price);
+        resolvedPrice = Number(resolvedPriceData ?? resolvedPrice);
       }
+      const campaignPrice = priceOverrideByProductId.get(item.tenant_product_id) ?? null;
+      const price = campaignPrice ?? resolvedPrice;
       const stockStatus: BuyerCatalogItem['stock_status'] =
         onHand === 0 ? 'out_of_stock' : onHand < 10 ? 'limited' : 'available';
 
       return {
         id: product.id,
         tenant_product_id: product.id,
-        catalog_id: catalog.id,
-        catalog_name: catalog.name,
-        catalog_valid_until: catalog.valid_to,
+        campaign_id: catalog.id,
+        campaign_name: catalog.name,
+        campaign_valid_until: catalog.valid_to,
         internal_sku: product.internal_sku,
         display_name: product.name_override ?? product.internal_sku ?? 'Unknown product',
         brand_id: brandId,
@@ -286,6 +305,9 @@ export async function GET(
         category_id: masterProduct?.category_id ?? null,
         category_name: masterProduct?.category_name ?? null,
         price,
+        resolved_price: resolvedPrice,
+        campaign_price: campaignPrice,
+        has_campaign_price: campaignPrice != null,
         mrp: Number(product.mrp ?? 0),
         default_uom: product.default_uom,
         pack_size: product.pack_size,
@@ -299,7 +321,7 @@ export async function GET(
     }))).filter((item): item is GuestCatalogItem => item !== null);
 
   return NextResponse.json({
-    catalog_id: catalog.id,
+    campaign_id: catalog.id,
     name: catalog.name,
     valid_until: catalog.valid_to,
     products_count: guestItems.length,

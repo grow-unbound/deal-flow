@@ -252,6 +252,8 @@ export interface InvoicePaymentRecordDto {
 export interface InvoiceDetailResponse {
   id: string;
   doc_number: string;
+  location_id: string | null;
+  location_name: string | null;
   db_status: string;
   status: InvoiceStatusValue;
   version: number;

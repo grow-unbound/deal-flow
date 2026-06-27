@@ -38,8 +38,8 @@ class QueryBuilder {
 
   insert(payload: unknown) {
     this.action = 'insert';
-    if (this.table === 'published_catalogs') state.insertedCatalogPayload = payload;
-    if (this.table === 'published_catalog_items') state.insertedItemsPayload = payload;
+    if (this.table === 'campaigns') state.insertedCatalogPayload = payload;
+    if (this.table === 'campaign_items') state.insertedItemsPayload = payload;
     return this;
   }
 
@@ -51,7 +51,7 @@ class QueryBuilder {
   }
 
   single() {
-    if (this.table === 'published_catalogs' && this.action === 'insert') {
+    if (this.table === 'campaigns' && this.action === 'insert') {
       return Promise.resolve({ data: { id: 'cat-1', status: 'draft' }, error: null });
     }
     return Promise.resolve({ data: null, error: null });
@@ -62,7 +62,7 @@ class QueryBuilder {
       const ids = (this.filters.id as string[]) ?? [];
       return Promise.resolve(resolve({ data: ids.map((id) => ({ id })), error: null }));
     }
-    if (this.table === 'published_catalog_items' && this.action === 'insert') {
+    if (this.table === 'campaign_items' && this.action === 'insert') {
       return Promise.resolve(resolve({ data: null, error: null }));
     }
     return Promise.resolve(resolve({ data: null, error: null }));
@@ -133,7 +133,7 @@ describe('POST /api/tenant/catalogs', () => {
     });
     expect(state.insertedItemsPayload).toEqual([
       expect.objectContaining({
-        catalog_id: 'cat-1',
+        campaign_id: 'cat-1',
         tenant_product_id: '223e4567-e89b-12d3-a456-426614174000',
         display_order: 0,
       }),

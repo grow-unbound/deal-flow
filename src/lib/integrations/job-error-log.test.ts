@@ -25,4 +25,12 @@ describe('integration job error log helpers', () => {
       '[products] SKU-1: Missing price',
     );
   });
+
+  it('falls back to entity error_reason for newer integration map logs', () => {
+    expect(formatIntegrationJobError({
+      entity_type: 'orders',
+      external_id: 'SO-1',
+      error_reason: 'Unable to resolve product ITEM-1 for order SO-1.',
+    })).toBe('[orders] SO-1: Unable to resolve product ITEM-1 for order SO-1.');
+  });
 });

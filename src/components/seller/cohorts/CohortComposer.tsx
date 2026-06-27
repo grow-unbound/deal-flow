@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check, RotateCcw, Save, Search, TriangleAlert, X } from 'lucide-react';
+import { Check, ChevronsUpDown, RotateCcw, Save, Search, TriangleAlert, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { EntityAvatar, PageWrap } from '@/components/seller/layout';
 import {
@@ -19,7 +19,16 @@ import {
 } from '@/components/seller/composer/ComposerLayout';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
 import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Dialog,
@@ -212,6 +221,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
   const [selectedGmvBuckets, setSelectedGmvBuckets] = useState<GmvBucket[]>([]);
   const [selectedBuyerIds, setSelectedBuyerIds] = useState<string[]>([]);
   const [excludedBuyerIds, setExcludedBuyerIds] = useState<string[]>([]);
+  const [selectedBrandIds, setSelectedBrandIds] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [didInit, setDidInit] = useState(false);
   const [initialSnapshot, setInitialSnapshot] = useState('');
@@ -236,6 +246,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
       setLastOrderBucket(rulesState.lastOrderBucket);
       setSelectedGmvBuckets(rulesState.gmvBuckets);
       setExcludedBuyerIds(rulesState.excludedBuyerIds);
+      setSelectedBrandIds(detailQuery.data.details_rules.allowed_tenant_brand_ids ?? []);
       setSelectedBuyerIds(
         detailQuery.data.details_rules.is_static
           ? (rulesState.selectedBuyerIds.length > 0
@@ -251,6 +262,11 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
   const buyerMap = useMemo(
     () => new Map((composerQuery.data?.buyers ?? []).map((buyer) => [buyer.id, buyer])),
     [composerQuery.data?.buyers],
+  );
+  const brandOptions = composerQuery.data?.brands ?? [];
+  const brandLabelById = useMemo(
+    () => new Map(brandOptions.map((brand) => [brand.id, brand.label])),
+    [brandOptions],
   );
 
   const matchedByFilters = useMemo(() => {
@@ -317,6 +333,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
         selectedGmvBuckets,
         selectedBuyerIds: [...selectedBuyerIds].sort(),
         excludedBuyerIds: [...excludedBuyerIds].sort(),
+        selectedBrandIds: [...selectedBrandIds].sort(),
       }),
     [
       description,
@@ -324,6 +341,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
       lastOrderBucket,
       name,
       selectedBuyerIds,
+      selectedBrandIds,
       selectedGeographies,
       selectedGmvBuckets,
       selectedTiers,
@@ -364,8 +382,9 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
       },
       { label: 'Members', value: `${summary.members} buyers` },
       { label: 'Areas', value: `${summary.areasCovered} geographies` },
+      { label: 'Brands', value: selectedBrandIds.length > 0 ? `${selectedBrandIds.length} selected` : 'All Brands' },
     ],
-    [name, selectionMode, summary.areasCovered, summary.members],
+    [name, selectedBrandIds.length, selectionMode, summary.areasCovered, summary.members],
   );
 
   function buildSavePayload() {
@@ -373,6 +392,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
       name: name.trim(),
       description: description.trim() || undefined,
       is_static: selectionMode === 'manual-selection',
+      allowed_tenant_brand_ids: selectedBrandIds.length > 0 ? selectedBrandIds : null,
       rules: buildRulesPayload({
         geographies: selectedGeographies,
         tiers: selectedTiers,
@@ -462,6 +482,12 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
     );
     clearFieldError('members');
     setSubmitError(null);
+  }
+
+  function toggleBrand(id: string) {
+    setSelectedBrandIds((current) => (
+      current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
+    ));
   }
 
   function toggleRuleRow(id: string, checked: boolean) {
@@ -555,11 +581,64 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
               </Select>
             </ComposerBasicsField>
 
-            <ComposerBasicsField label="Selection">
-              <div className="flex items-center gap-2 text-base font-medium text-cream-950">
-                <span>{summary.members} buyers</span>
-                <span className="text-cream-500">·</span>
-                <span>{summary.areasCovered} areas</span>
+            <ComposerBasicsField label="Allowed brands">
+              <div className="space-y-2">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-auto w-full justify-between border-cream-300 bg-cream-50 px-3 py-2 text-left font-normal text-cream-900"
+                    >
+                      <span>
+                        {selectedBrandIds.length > 0
+                          ? `${selectedBrandIds.length} brand${selectedBrandIds.length === 1 ? '' : 's'} selected`
+                          : 'All Brands'}
+                      </span>
+                      <ChevronsUpDown size={14} className="text-cream-500" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80 p-0 bg-cream-50" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search brands…" className="bg-cream-50" />
+                      <CommandList>
+                        <CommandEmpty>No brands found.</CommandEmpty>
+                        <CommandGroup>
+                          {brandOptions.map((brand) => {
+                            const isSelected = selectedBrandIds.includes(brand.id);
+                            return (
+                              <CommandItem
+                                key={brand.id}
+                                value={brand.label}
+                                onSelect={() => toggleBrand(brand.id)}
+                                className="flex cursor-pointer items-center justify-between"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div className={`flex h-4 w-4 items-center justify-center rounded border ${isSelected ? 'border-teal-500 bg-teal-500' : 'border-cream-400 bg-cream-50'}`}>
+                                    {isSelected ? <Check size={10} className="text-white" /> : null}
+                                  </div>
+                                  <span className="text-sm text-cream-900">{brand.label}</span>
+                                </div>
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                <p className="text-xs text-cream-600">
+                  Leave empty to allow all brands. Select one or more brands to restrict this customer group&apos;s assortment.
+                </p>
+                {selectedBrandIds.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedBrandIds.map((brandId) => (
+                      <span key={brandId} className="inline-flex items-center rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700">
+                        {brandLabelById.get(brandId) ?? 'Brand'}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </ComposerBasicsField>
           </ComposerBasicsStrip>

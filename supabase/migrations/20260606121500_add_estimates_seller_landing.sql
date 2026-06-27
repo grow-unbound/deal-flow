@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS app.estimates (
   buyer_id uuid NOT NULL REFERENCES app.buyers(id) ON DELETE RESTRICT,
   estimate_number text,
   status text NOT NULL DEFAULT 'draft',
-  catalog_id uuid REFERENCES app.published_catalogs(id) ON DELETE SET NULL,
+  campaign_id uuid REFERENCES app.campaigns(id) ON DELETE SET NULL,
   subtotal numeric,
   tax_amount numeric,
   total_amount numeric,

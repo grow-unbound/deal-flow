@@ -413,18 +413,18 @@ CREATE POLICY price_list_assignments_seller_admin_delete ON app.price_list_assig
   );
 
 -- ──────────────────────────────────────────────────────────
--- 14. app.published_catalogs
+-- 14. app.campaigns
 --     Sellers: full CRUD for their tenant.
 --     Buyers: SELECT published catalogs in their tenant (scope
 --             filtering—cohort/geography—is enforced at app layer via
 --             SECURITY DEFINER RPC to avoid complex per-row subqueries).
 -- ──────────────────────────────────────────────────────────
-ALTER TABLE app.published_catalogs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app.campaigns ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY published_catalogs_seller_select ON app.published_catalogs
+CREATE POLICY campaigns_seller_select ON app.campaigns
   FOR SELECT USING (app.is_seller() AND tenant_id = app.jwt_tenant_id());
 
-CREATE POLICY published_catalogs_buyer_select ON app.published_catalogs
+CREATE POLICY campaigns_buyer_select ON app.campaigns
   FOR SELECT USING (
     app.is_buyer()
     AND tenant_id = app.jwt_tenant_id()
@@ -432,62 +432,62 @@ CREATE POLICY published_catalogs_buyer_select ON app.published_catalogs
     AND (valid_to IS NULL OR valid_to > now())
   );
 
-CREATE POLICY published_catalogs_seller_insert ON app.published_catalogs
+CREATE POLICY campaigns_seller_insert ON app.campaigns
   FOR INSERT WITH CHECK (app.is_seller() AND tenant_id = app.jwt_tenant_id());
 
-CREATE POLICY published_catalogs_seller_update ON app.published_catalogs
+CREATE POLICY campaigns_seller_update ON app.campaigns
   FOR UPDATE USING (app.is_seller() AND tenant_id = app.jwt_tenant_id())
   WITH CHECK (app.is_seller() AND tenant_id = app.jwt_tenant_id());
 
-CREATE POLICY published_catalogs_seller_delete ON app.published_catalogs
+CREATE POLICY campaigns_seller_delete ON app.campaigns
   FOR DELETE USING (app.is_seller() AND tenant_id = app.jwt_tenant_id());
 
 -- ──────────────────────────────────────────────────────────
--- 15. app.published_catalog_items
+-- 15. app.campaign_items
 --     Sellers: full CRUD. Buyers: SELECT for published catalogs only.
 -- ──────────────────────────────────────────────────────────
-ALTER TABLE app.published_catalog_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app.campaign_items ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY published_catalog_items_seller_select ON app.published_catalog_items
+CREATE POLICY campaign_items_seller_select ON app.campaign_items
   FOR SELECT USING (
     app.is_seller() AND EXISTS (
-      SELECT 1 FROM app.published_catalogs pc
-      WHERE pc.id = catalog_id AND pc.tenant_id = app.jwt_tenant_id()
+      SELECT 1 FROM app.campaigns pc
+      WHERE pc.id = campaign_id AND pc.tenant_id = app.jwt_tenant_id()
     )
   );
 
-CREATE POLICY published_catalog_items_buyer_select ON app.published_catalog_items
+CREATE POLICY campaign_items_buyer_select ON app.campaign_items
   FOR SELECT USING (
     app.is_buyer() AND EXISTS (
-      SELECT 1 FROM app.published_catalogs pc
-      WHERE pc.id = catalog_id
+      SELECT 1 FROM app.campaigns pc
+      WHERE pc.id = campaign_id
         AND pc.tenant_id = app.jwt_tenant_id()
         AND pc.status = 'published'
         AND (pc.valid_to IS NULL OR pc.valid_to > now())
     )
   );
 
-CREATE POLICY published_catalog_items_seller_insert ON app.published_catalog_items
+CREATE POLICY campaign_items_seller_insert ON app.campaign_items
   FOR INSERT WITH CHECK (
     app.is_seller() AND EXISTS (
-      SELECT 1 FROM app.published_catalogs pc
-      WHERE pc.id = catalog_id AND pc.tenant_id = app.jwt_tenant_id()
+      SELECT 1 FROM app.campaigns pc
+      WHERE pc.id = campaign_id AND pc.tenant_id = app.jwt_tenant_id()
     )
   );
 
-CREATE POLICY published_catalog_items_seller_update ON app.published_catalog_items
+CREATE POLICY campaign_items_seller_update ON app.campaign_items
   FOR UPDATE USING (
     app.is_seller() AND EXISTS (
-      SELECT 1 FROM app.published_catalogs pc
-      WHERE pc.id = catalog_id AND pc.tenant_id = app.jwt_tenant_id()
+      SELECT 1 FROM app.campaigns pc
+      WHERE pc.id = campaign_id AND pc.tenant_id = app.jwt_tenant_id()
     )
   );
 
-CREATE POLICY published_catalog_items_seller_delete ON app.published_catalog_items
+CREATE POLICY campaign_items_seller_delete ON app.campaign_items
   FOR DELETE USING (
     app.is_seller() AND EXISTS (
-      SELECT 1 FROM app.published_catalogs pc
-      WHERE pc.id = catalog_id AND pc.tenant_id = app.jwt_tenant_id()
+      SELECT 1 FROM app.campaigns pc
+      WHERE pc.id = campaign_id AND pc.tenant_id = app.jwt_tenant_id()
     )
   );
 

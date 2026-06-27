@@ -53,8 +53,8 @@ const TYPE_TO_FAMILY_FLAG: Record<IntegrationTypeId, keyof typeof FLAGS> = {
 };
 
 const TYPE_TO_ENTITIES: Record<IntegrationTypeId, IntegrationEntityType[]> = {
-  zoho_books: ['locations', 'products', 'pricelists', 'customers', 'orders', 'invoices'],
-  zoho_inventory: ['locations', 'products', 'pricelists', 'customers', 'orders'],
+  zoho_books: ['locations', 'products', 'pricelists', 'customers', 'estimates', 'orders', 'invoices'],
+  zoho_inventory: ['locations', 'products', 'pricelists', 'customers', 'estimates', 'orders', 'invoices'],
   tally_prime: ['products', 'customers', 'orders'],
   busy: ['products', 'customers', 'orders'],
 };
@@ -560,6 +560,7 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
     { data: webhooks, error: webhookErr },
     { data: webhookEvents, error: webhookEventErr },
     { data: webhookErrors, error: webhookErrorErr },
+    { data: entityErrors, error: entityErrorErr },
   ] = await Promise.all([
     db.schema('catalog').from('integration_types').select('id, display_name, description, logo_url, auth_schema, capabilities, connectivity_mode, is_active').eq('is_active', true).order('display_name'),
     db.schema('app').from('tenant_integrations').select('id, tenant_id, integration_type_id, status, config, last_health_check_at, health_status, connected_at, connected_by, created_at, updated_at').eq('tenant_id', tenantId).is('deleted_at', null),
@@ -568,9 +569,10 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
     db.schema('app').from('integration_webhooks').select('tenant_integration_id, entity_type, event_types, status, is_active, last_received_at, last_verified_at').eq('tenant_id', tenantId).is('deleted_at', null),
     db.schema('app').from('integration_webhook_events').select('tenant_integration_id, entity_type, processing_status, received_at').eq('tenant_id', tenantId).gte('received_at', sinceIso).is('deleted_at', null),
     db.schema('app').from('integration_webhook_errors').select('tenant_integration_id, entity_type, created_at').eq('tenant_id', tenantId).gte('created_at', sinceIso).is('deleted_at', null),
+    db.schema('app').from('integration_entity_map').select('tenant_integration_id, entity_type, external_id, error_reason, updated_at').eq('tenant_id', tenantId).not('error_reason', 'is', null).is('deleted_at', null).order('updated_at', { ascending: false }).limit(50),
   ]);
 
-  if (typeErr || integrationErr || jobErr || flowErr || webhookErr || webhookEventErr || webhookErrorErr) {
+  if (typeErr || integrationErr || jobErr || flowErr || webhookErr || webhookEventErr || webhookErrorErr || entityErrorErr) {
     throw new Error('Failed to load integrations');
   }
 
@@ -631,6 +633,15 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
     webhookErrorMap.set(key, bucket);
   }
 
+  const entityErrorMap = new Map<string, Record<string, unknown>[]>();
+  for (const row of entityErrors ?? []) {
+    const key = String((row as Record<string, unknown>).tenant_integration_id ?? '');
+    if (!key) continue;
+    const bucket = entityErrorMap.get(key) ?? [];
+    bucket.push(row as Record<string, unknown>);
+    entityErrorMap.set(key, bucket);
+  }
+
   const payload = IntegrationSettingsPayloadSchema.parse({
     catalog: (types ?? []).map((typeRow: Record<string, unknown>) => {
       const integrationRow = integrationMap.get(String(typeRow.id)) ?? null;
@@ -640,6 +651,7 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
       const tenantWebhooks = integrationId ? webhookMap.get(integrationId) ?? [] : [];
       const tenantWebhookEvents = integrationId ? webhookEventMap.get(integrationId) ?? [] : [];
       const tenantWebhookErrors = integrationId ? webhookErrorMap.get(integrationId) ?? [] : [];
+      const tenantEntityErrors = integrationId ? entityErrorMap.get(integrationId) ?? [] : [];
       return {
         type: {
           ...typeRow,
@@ -672,6 +684,14 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
             }))
           : [],
         active_flows: activeFlows,
+        recent_entity_errors: tenantEntityErrors
+          .map((row) => ({
+            entity_type: String(row.entity_type ?? ''),
+            external_id: typeof row.external_id === 'string' ? row.external_id : null,
+            error_reason: String(row.error_reason ?? ''),
+            updated_at: typeof row.updated_at === 'string' ? row.updated_at : null,
+          }))
+          .filter((row) => row.entity_type.length > 0 && row.error_reason.length > 0),
         coverage_totals: coverageTotals,
         webhook_telemetry: integrationId
           ? buildWebhookTelemetry(tenantWebhooks, tenantWebhookEvents, tenantWebhookErrors)

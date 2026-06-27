@@ -10,6 +10,7 @@ import { ErrorState } from '@/components/ui/empty-state';
 import { BuyerHomeLandingHeader } from '@/components/buyer/layout/BuyerHomeLandingHeader';
 import { BuyerNotificationDrawer } from '@/components/buyer/layout/BuyerNotificationDrawer';
 import { ActivityCardShell } from '@/components/buyer/orders/ActivityCardShell';
+import { RecoSection } from '@/components/buyer/catalog/RecoSection';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
@@ -222,6 +223,8 @@ export default function HomePage() {
   const credit = homeData?.credit_card;
   const reorderItems = homeData?.order_again_preview ?? [];
   const promotions = homeData?.latest_promotions_preview ?? [];
+  const bestsellers = homeData?.bestsellers ?? [];
+  const buyAgain = homeData?.buy_again ?? [];
 
   return (
     <div className="pb-8">
@@ -313,6 +316,13 @@ export default function HomePage() {
         </div>
       </div>
 
+      {/* W4 — Buy Again (logged-in buyers with purchase history) */}
+      {buyAgain.length > 0 && (
+        <div className="pt-10">
+          <RecoSection title="Buy Again" widget="buy_again" items={buyAgain} />
+        </div>
+      )}
+
       <div className="pt-10">
         <SectionRow title="Order again" href="/buy/buy-again" linkLabel="Browse all" />
         <div className="flex gap-3 overflow-x-auto px-4 pb-1">
@@ -366,6 +376,13 @@ export default function HomePage() {
           )}
         </div>
       </div>
+
+      {/* W1 — Bestsellers */}
+      {bestsellers.length > 0 && (
+        <div className="pt-10">
+          <RecoSection title="Bestsellers this month" widget="bestsellers" items={bestsellers} />
+        </div>
+      )}
 
       <div className="pt-10">
         <SectionRow title="Latest promotions" href="/buy/promotions" linkLabel="See all" />

@@ -27,7 +27,7 @@ class QueryBuilder {
   }
 
   maybeSingle() {
-    if (this.table === 'published_catalogs') {
+    if (this.table === 'campaigns') {
       return Promise.resolve({
         data: { id: 'cat-1', tenant_id: state.tenantId, status: state.status, share_token: null },
         error: null,

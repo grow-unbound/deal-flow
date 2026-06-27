@@ -248,7 +248,7 @@ function BrandLandingContent({
   const freshnessHelp = () => {
     const days = landingData?.kpis?.catalog_freshness_earliest_days;
     const fresh = landingData?.kpis?.catalog_freshness_count ?? 0;
-    const total = landingData?.kpis?.total_published_catalogs ?? 0;
+    const total = landingData?.kpis?.total_campaigns ?? 0;
     const denom = `${fresh}/${total} catalogs`;
     if (days == null) return `${denom} published ${lowerLabel}`;
     if (days === 0) return `${denom} published today`;

@@ -4,7 +4,7 @@ const getVerifiedClaimsMock = vi.fn();
 const getFlagMock = vi.fn();
 const getCohortComposerPayloadMock = vi.fn();
 const getRequestSupabaseClientMock = vi.fn();
-const state = {
+const state: { supabaseAdmin: { schema: ReturnType<typeof vi.fn> } | null } = {
   supabaseAdmin: { schema: vi.fn() },
 };
 

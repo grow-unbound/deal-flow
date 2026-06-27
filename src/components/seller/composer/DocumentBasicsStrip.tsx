@@ -47,6 +47,7 @@ export function DocumentBasicsStrip({
   kind,
   docNumber,
   locationId,
+  locationName,
   availableLocations,
   dateIssued,
   secondDate,
@@ -62,6 +63,7 @@ export function DocumentBasicsStrip({
   kind: DocumentComposerKind;
   docNumber: string;
   locationId: string | null;
+  locationName?: string | null;
   availableLocations: ComposerLocationOption[];
   dateIssued: string;
   secondDate: string;
@@ -76,6 +78,7 @@ export function DocumentBasicsStrip({
 }) {
   const resolvedLocationLabel =
     locationLabel
+    ?? locationName
     ?? availableLocations.find((location) => location.id === locationId)?.name
     ?? '—';
 
@@ -119,7 +122,7 @@ export function DocumentBasicsStrip({
       </ComposerBasicsField>
 
       <ComposerBasicsField label="Location">
-        {readOnly || locationReadOnly || availableLocations.length <= 1 ? (
+        {readOnly || locationReadOnly ? (
           <span className="text-base text-cream-950">{resolvedLocationLabel}</span>
         ) : (
           <Select value={locationId ?? undefined} onValueChange={onLocationChange}>

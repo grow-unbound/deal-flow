@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS app.catalog_views (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES app.tenants(id) ON DELETE RESTRICT,
   buyer_id uuid NOT NULL REFERENCES app.buyers(id) ON DELETE RESTRICT,
-  catalog_id uuid NOT NULL REFERENCES app.published_catalogs(id) ON DELETE RESTRICT,
+  campaign_id uuid NOT NULL REFERENCES app.campaigns(id) ON DELETE RESTRICT,
   viewed_at timestamptz NOT NULL DEFAULT now(),
   source text CHECK (source IN ('buyer_app', 'guest_link', 'cockpit')),
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS app.catalog_views (
 );
 
 CREATE INDEX IF NOT EXISTS idx_catalog_views_tenant_buyer_viewed ON app.catalog_views(tenant_id, buyer_id, viewed_at);
-CREATE INDEX IF NOT EXISTS idx_catalog_views_catalog_id ON app.catalog_views(catalog_id);
+CREATE INDEX IF NOT EXISTS idx_catalog_views_catalog_id ON app.catalog_views(campaign_id);
 
 CREATE TRIGGER catalog_views_updated_at BEFORE UPDATE ON app.catalog_views
   FOR EACH ROW EXECUTE FUNCTION app.set_updated_at();

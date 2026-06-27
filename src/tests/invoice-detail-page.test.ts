@@ -18,6 +18,7 @@ type MaybeSingleResult = { data: unknown; error: unknown };
 const invoiceRow: Record<string, unknown> = {
   id: 'inv-1',
   tenant_id: 'tenant-1',
+  location_id: 'loc-1',
   buyer_id: 'buyer-1',
   order_id: null,
   estimate_id: null,
@@ -71,23 +72,24 @@ function chainArray(data: unknown[]) {
 
 function defaultFromImpl(table: string) {
   if (table === 'invoices') {
-    return {
-      select: vi.fn(() => ({
-        eq: vi.fn((col: string) => {
-          if (col === 'tenant_id') {
-            return {
-              eq: vi.fn(() => ({
-                is: vi.fn().mockResolvedValue({ data: [], error: null }),
-              })),
-            };
-          }
+    const query = {
+      eq: vi.fn((col: string) => {
+        if (col === 'id') {
           return {
             is: vi.fn(() => ({
               maybeSingle: vi.fn().mockResolvedValue({ data: { ...invoiceRow }, error: null }),
             })),
           };
-        }),
-      })),
+        }
+        return query;
+      }),
+      neq: vi.fn(() => query),
+      in: vi.fn(() => query),
+      is: vi.fn().mockResolvedValue({ data: [], error: null }),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { ...invoiceRow }, error: null }),
+    };
+    return {
+      select: vi.fn(() => query),
       update: vi.fn(() => ({
         eq: vi.fn(() => ({
           eq: vi.fn().mockResolvedValue({ error: null }),
@@ -124,6 +126,16 @@ function defaultFromImpl(table: string) {
             primary_state: 'ka',
             settings: { payment_instructions: 'Pay', inventory_hold_point: 'invoice' },
           },
+          error: null,
+        }),
+      ),
+    };
+  }
+  if (table === 'locations') {
+    return {
+      select: vi.fn(() =>
+        chainMaybeSingle({
+          data: { name: 'Mumbai HQ' },
           error: null,
         }),
       ),

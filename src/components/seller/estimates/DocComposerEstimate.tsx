@@ -11,7 +11,6 @@ import { PermissionDenied } from '@/components/auth/PermissionDenied';
 import {
   ComposerSidebarCard,
 } from '@/components/seller/composer/ComposerLayout';
-import { ResolvedPriceLookupCard } from '@/components/seller/pricing/ResolvedPriceLookupCard';
 import {
   DocumentBasicsStrip,
   DocumentComposerFooterRow,
@@ -89,6 +88,7 @@ function buildNewEstimateDraft(estimateNumber = 'Estimating next number...'): Es
     status: 'draft',
     buyer_id: null,
     location_id: null,
+    location_name: null,
     available_locations: [],
     estimate_date: isoDateOffset(0),
     valid_until: isoDateOffset(14),
@@ -219,6 +219,7 @@ export function DocComposerEstimate({
     tone: 'draft',
   });
   const [selectedPriceListId, setSelectedPriceListId] = useState<string | null>(null);
+  const [autoFocusLineId, setAutoFocusLineId] = useState<string | null>(null);
 
   const originalDocumentRef = useRef<EstimateComposerDocument | null>(null);
   const originalLinesRef = useRef<EstimateComposerLineRow[]>([]);
@@ -514,10 +515,11 @@ export function DocComposerEstimate({
   }
 
   function handleAddProduct(product: EstimateComposerProductSearchRow) {
+    const lineId = `draft-line-${Date.now()}-${product.tenant_product_id}`;
     setLineState((current) => [
       ...current,
       {
-        id: `draft-line-${Date.now()}-${product.tenant_product_id}`,
+        id: lineId,
         tenant_product_id: product.tenant_product_id,
         product_name: product.product_name,
         sku: product.sku,
@@ -537,6 +539,7 @@ export function DocComposerEstimate({
         diff: 'added',
       },
     ]);
+    setAutoFocusLineId(lineId);
   }
 
   function handleLineChange(lineId: string, patch: Partial<EstimateComposerLineRow>) {
@@ -682,11 +685,11 @@ export function DocComposerEstimate({
             kind="estimate"
             docNumber={documentState.estimate_number}
             locationId={documentState.location_id}
+            locationName={documentState.location_name}
             availableLocations={documentState.available_locations}
             dateIssued={documentState.estimate_date}
             secondDate={documentState.valid_until}
             buyerPoRef={documentState.buyer_po_ref}
-            locationReadOnly={documentState.available_locations.length <= 1}
             onDateIssuedChange={(value) => {
               setDocumentState((current) => {
                 if (!current) return current;
@@ -754,7 +757,9 @@ export function DocComposerEstimate({
             internalExpanded={false}
             singleNoteMode
             title="Estimate lines"
-            description="Search by product, SKU, or brand. Pricelist pricing is applied automatically."
+            description="Search and add Products to this estimate"
+            autoFocusLineId={autoFocusLineId}
+            onAutoFocusHandled={() => setAutoFocusLineId(null)}
             showNotesControls={false}
             showFreightControls={false}
             notesValue={documentState.seller_note}
@@ -790,16 +795,6 @@ export function DocComposerEstimate({
                   <span>Saving these edits stages a new version before the estimate is re-sent.</span>
                 ) : undefined
               }
-            />
-            <ResolvedPriceLookupCard
-              buyerId={documentState.buyer_id}
-              productOptions={activeLines.map((line) => ({
-                id: line.tenant_product_id,
-                label: line.product_name,
-                meta: `${line.sku} · Qty ${line.qty}`,
-              }))}
-              title="Resolved price check"
-              description="Cross-check the buyer's resolved price before saving or sending this estimate."
             />
           </div>
         )}

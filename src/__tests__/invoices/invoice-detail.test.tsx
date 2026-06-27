@@ -33,6 +33,12 @@ vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlagState: (...args: unknown[]) => useFlagStateMock(...args),
 }));
 
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: { id: 'user-1', email: 'seller@example.com', displayName: 'Phani' },
+  }),
+}));
+
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
@@ -49,6 +55,8 @@ function baseInvoice(overrides: Partial<InvoiceDetailResponse> = {}): InvoiceDet
   return {
     id: 'inv-1',
     doc_number: 'INV-100',
+    location_id: 'loc-1',
+    location_name: 'Mumbai HQ',
     db_status: 'draft',
     status: 'draft',
     version: 1,

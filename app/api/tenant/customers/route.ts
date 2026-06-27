@@ -128,7 +128,6 @@ export async function GET(req: NextRequest) {
       .from('buyers')
       .select('id, business_name, tier, phone, gst_treatment, status, credit_limit, is_active, geography, deleted_at')
       .eq('tenant_id', tenantId)
-      .eq('is_active', true)
       .is('deleted_at', null)
       .order('business_name', { ascending: true })
       .order('id', { ascending: true });

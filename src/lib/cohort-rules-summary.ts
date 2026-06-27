@@ -12,6 +12,7 @@ export interface CohortRulesSummary {
   /** e.g. "28 of 142 buyers" */
   matched_of_total_label: string;
   filters: CohortRulesSummaryFilterRow[];
+  allowed_brands_label: string;
 }
 
 const RULE_FIELD_LABELS: Record<string, string> = {
@@ -47,6 +48,7 @@ export function buildCohortRulesSummary(input: {
   filters: Array<{ field: string; operator: string; value: string | string[] }>;
   member_count: number;
   total_tenant_buyers: number;
+  allowed_brand_names?: string[] | null;
 }): CohortRulesSummary {
   const filters = (input.filters ?? []).map((f) => ({
     label: RULE_FIELD_LABELS[f.field] ?? f.field,
@@ -59,5 +61,6 @@ export function buildCohortRulesSummary(input: {
     total_tenant_buyers: input.total_tenant_buyers,
     matched_of_total_label: `${input.member_count} of ${input.total_tenant_buyers} buyers`,
     filters,
+    allowed_brands_label: input.allowed_brand_names?.length ? input.allowed_brand_names.join(', ') : 'All Brands',
   };
 }

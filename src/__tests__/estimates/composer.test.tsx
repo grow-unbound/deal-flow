@@ -126,8 +126,9 @@ function baseDocument(overrides: Partial<EstimateComposerDocument> = {}): Estima
     status: 'draft',
     buyer_id: null,
     location_id: null,
+    location_name: null,
     available_locations: [],
-    date_issued: '2026-06-07',
+    estimate_date: '2026-06-07',
     valid_until: '2026-06-21',
     buyer_po_ref: '',
     place_of_supply: '',
@@ -251,16 +252,21 @@ describe('DocComposerEstimate', () => {
     expect(screen.getByText(/North Delhi A-class/i)).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText(/Search product/i), { target: { value: 'Shiraz' } });
-    fireEvent.click(await screen.findByRole('option', { name: /Vinikus Shiraz Reserve/i }));
+    fireEvent.keyDown(screen.getByPlaceholderText(/Search product/i), { key: 'Enter' });
 
     await waitFor(
       () => {
         expect(screen.getByText(/Over limit by/i)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /Send estimate/i })).toBeEnabled();
         expect(screen.getAllByText(/₹1,392/i).length).toBeGreaterThan(0);
+        expect(screen.getByDisplayValue('1')).toHaveFocus();
       },
       { timeout: 12_000 },
     );
+    expect(screen.getByText('Quantity')).toBeInTheDocument();
+    expect(screen.getByText('BASE PRICE')).toBeInTheDocument();
+    expect(screen.queryByText('Disc %')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Resolved price check/i)).not.toBeInTheDocument();
   }, 15_000);
 
   it('shows edit mode chip and save & resend CTA for sent estimates', async () => {
@@ -301,5 +307,29 @@ describe('DocComposerEstimate', () => {
 
     expect(await screen.findByText(/Editing live draft/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Save & resend/i })).toBeInTheDocument();
+  });
+
+  it('keeps location editable in edit mode when multiple locations are available', async () => {
+    useEstimateComposerMock.mockReturnValue({
+      data: baseDocument({
+        id: 'est-3',
+        buyer_id: 'buyer-1',
+        location_id: 'loc-2',
+        location_name: 'Pune Depot',
+        available_locations: [
+          { id: 'loc-1', name: 'Mumbai HQ', is_default: true },
+          { id: 'loc-2', name: 'Pune Depot', is_default: false },
+        ],
+        buyer_context: baseBuyer({ credit_limit: 20_000, credit_used: 2000, credit_available: 18_000 }),
+      }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+
+    renderComposer({ mode: 'edit', estimateId: 'est-3' });
+
+    expect((await screen.findAllByRole('combobox')).length).toBeGreaterThan(1);
+    expect(screen.getByText('Pune Depot')).toBeInTheDocument();
   });
 });
