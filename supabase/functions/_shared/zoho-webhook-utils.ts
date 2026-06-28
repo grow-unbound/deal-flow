@@ -54,6 +54,7 @@ export async function parseWebhookBody(
 ): Promise<Record<string, unknown> | null> {
   try {
     const contentType = req.headers.get('content-type') ?? '';
+    // Handle form-encoded payloads (some Zoho/webhook configs send form data)
     if (contentType.includes('application/x-www-form-urlencoded')) {
       const text = await req.text();
       const params = new URLSearchParams(text);
@@ -65,6 +66,7 @@ export async function parseWebhookBody(
       for (const [k, v] of params.entries()) obj[k] = v;
       return Object.keys(obj).length > 0 ? obj : null;
     }
+    // Default: parse as JSON (Zoho's default webhook payload is JSON)
     const text = await req.text();
     if (!text || text.trim() === '') return null;
     return JSON.parse(text);
