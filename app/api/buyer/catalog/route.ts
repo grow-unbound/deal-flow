@@ -59,8 +59,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         .eq('is_default', true)
         .is('deleted_at', null)
         .limit(1)
-        .single()
-        .catch(() => ({ data: null }));
+        .maybeSingle();
       inventoryLocationId = (defaultLoc as { id: string } | null)?.id ?? null;
     } else {
       // Fall back to delivery-based resolution

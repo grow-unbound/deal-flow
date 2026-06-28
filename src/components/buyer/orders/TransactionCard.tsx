@@ -15,6 +15,7 @@ export interface OrderSummary {
 
 interface TransactionCardProps {
   order: OrderSummary;
+  href?: string;
 }
 
 function inr(n: number): string {
@@ -48,7 +49,7 @@ function getBadge(status: string): { tone: StatusTone; label: string } {
   return statusBadge[status as StatusKey] ?? statusBadge.received;
 }
 
-export function TransactionCard({ order }: TransactionCardProps) {
+export function TransactionCard({ order, href }: TransactionCardProps) {
   const badge = getBadge(order.status);
 
   const itemsAndDate = order.item_count != null && order.item_count > 0
@@ -57,6 +58,7 @@ export function TransactionCard({ order }: TransactionCardProps) {
 
   return (
     <ActivityCardShell
+      href={href}
       documentNumber={order.order_number}
       statusLabel={badge.label}
       statusTone={badge.tone}

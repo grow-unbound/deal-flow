@@ -67,21 +67,50 @@ async function fetchEntityText(entityType: string, entityId: string): Promise<st
   if (entityType === 'app.tenant_products') {
     const { data } = await (db as any)
       .schema('app').from('tenant_products')
-      .select('name_override, internal_sku, attributes_override, master_product_id')
+      .select('name_override, internal_sku, attributes_override, master_product_id, tenant_brand_id, tenant_category_id, hsn_code')
       .eq('id', entityId)
       .single();
     if (!data) return null;
 
     let masterName = '';
     let masterAttrs = '';
+    let brandName = '';
+    let categoryName = '';
     if (data.master_product_id) {
       const { data: cp } = await (db as any).schema('catalog').from('products').select('name, attributes').eq('id', data.master_product_id).single();
       masterName  = cp?.name ?? '';
       masterAttrs = cp?.attributes ? JSON.stringify(cp.attributes) : '';
     }
 
+    if (data.tenant_brand_id) {
+      const { data: tb } = await (db as any)
+        .schema('app').from('tenant_brands')
+        .select('display_name_override, master_brand_id')
+        .eq('id', data.tenant_brand_id)
+        .single();
+      if (tb?.display_name_override) {
+        brandName = tb.display_name_override;
+      } else if (tb?.master_brand_id) {
+        const { data: cb } = await (db as any).schema('catalog').from('brands').select('name').eq('id', tb.master_brand_id).single();
+        brandName = cb?.name ?? '';
+      }
+    }
+
+    if (data.tenant_category_id) {
+      const { data: tc } = await (db as any).schema('app').from('tenant_categories').select('name').eq('id', data.tenant_category_id).single();
+      categoryName = tc?.name ?? '';
+    }
+
     const attrs = data.attributes_override ? JSON.stringify(data.attributes_override) : masterAttrs;
-    return [data.name_override ?? masterName, data.internal_sku, attrs].filter(Boolean).join(' ');
+    return [
+      data.name_override ?? masterName,
+      data.internal_sku,
+      brandName,
+      categoryName,
+      data.hsn_code,
+      attrs,
+      masterAttrs,
+    ].filter(Boolean).join(' ');
   }
 
   return null;
