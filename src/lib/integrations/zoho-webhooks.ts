@@ -96,11 +96,10 @@ export function buildZohoWebhookRegistrationPayload(input: {
       param_name: 'x-zoho-webhook-token',
       param_value: input.secret,  // always sent — never empty
     }],
-    // Default Payload format: JSON with complete entity object
-    // Omitting body_type defaults to Zoho's standard JSON format
-    // notify_all_fields: true ensures all entity fields are included
-    notify_all_fields: true,
-    // For delete events Zoho sends only the entity ID (entity is already gone)
+    // Omitting body_type defaults to Zoho's "Default Payload" format:
+    // - Content-Type: application/json;charset=UTF-8
+    // - Body: { "entity_key": { ...complete entity object... } }
+    // For delete events Zoho only sends the entity ID (entity is gone in Zoho)
   };
 }
 
