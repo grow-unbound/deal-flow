@@ -153,7 +153,14 @@ export async function logWebhookEvent(
   },
 ): Promise<void> {
   try {
-    await admin.schema('app').from('integration_webhook_events').insert({
+    console.log('[webhook-utils] logWebhookEvent: preparing insert', {
+      webhookId: opts.webhookId,
+      tenantId: opts.tenantId,
+      entityType: opts.entityType,
+      status: opts.status,
+    });
+
+    const { data, error } = await admin.schema('app').from('integration_webhook_events').insert({
       integration_webhook_id: opts.webhookId,
       tenant_id: opts.tenantId,
       tenant_integration_id: opts.tenantIntegrationId,
@@ -164,8 +171,20 @@ export async function logWebhookEvent(
       runtime_meta: opts.runtimeMeta,
       received_at: new Date().toISOString(),
     });
+
+    if (error) {
+      console.error('[webhook-utils] logWebhookEvent DB error', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+      });
+    } else {
+      console.log('[webhook-utils] logWebhookEvent success', {
+        data,
+      });
+    }
   } catch (e) {
-    console.error('[webhook-utils] logWebhookEvent failed', String(e));
+    console.error('[webhook-utils] logWebhookEvent exception', String(e));
   }
 }
 
