@@ -67,7 +67,7 @@ interface NormalizedZohoCredentials {
   module: 'books' | 'inventory';
 }
 
-const DEFAULT_PER_PAGE = 1000;
+const DEFAULT_PER_PAGE = 200;
 const DEFAULT_REGION = 'com';
 
 const TRANSACTIONAL_ENTITY_TYPES = new Set(['estimates', 'orders', 'invoices']);
@@ -472,6 +472,16 @@ export function createZohoAdapter(
     return getRecordArray(payload, 'contact_persons');
   }
 
+  async function fetchPricebookDetail(pricebookId: string): Promise<Record<string, unknown> | null> {
+    try {
+      const payload = await request({ path: `/pricebooks/${pricebookId}` });
+      const book = payload.pricebook;
+      return isRecord(book) ? book : null;
+    } catch {
+      return null;
+    }
+  }
+
   async function fetchUsers(): Promise<Record<string, unknown>[]> {
     const allUsers: Record<string, unknown>[] = [];
     let page = 1;
@@ -558,6 +568,7 @@ export function createZohoAdapter(
     testConnection,
     fetchPhasePage,
     fetchContactPersons,
+    fetchPricebookDetail,
     fetchPricelists,
     fetchUsers,
   };

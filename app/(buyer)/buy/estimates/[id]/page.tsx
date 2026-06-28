@@ -1,36 +1,33 @@
-import { BuyerAmount, BuyerDate, BuyerDocumentStat, BuyerSimpleDocumentDetail } from '@/components/buyer/documents/BuyerSimpleDocumentDetail';
+'use client';
 
-interface BuyerEstimate {
-  id: string;
-  estimate_number: string | null;
-  status: string;
-  total_amount: number;
-  created_at: string;
-  notes: string | null;
+import { use } from 'react';
+import { TransactionDetailPage, type TransactionDoc } from '@/components/buyer/documents/TransactionDetailPage';
+
+function pickDoc(payload: any): TransactionDoc | null {
+  const e = payload?.estimate;
+  if (!e) return null;
+  return {
+    docNumber: e.estimate_number ?? `ENQ-${e.id.slice(0, 6).toUpperCase()}`,
+    status: e.status,
+    primaryDate: e.created_at,
+    primaryDateLabel: 'Created',
+    notes: e.notes ?? null,
+    subtotal: e.subtotal,
+    tax_total: e.tax_total,
+    total_amount: e.total_amount,
+    items: e.items ?? [],
+  };
 }
 
-export default async function BuyerEstimateDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+export default function BuyerEstimateDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   return (
-    <BuyerSimpleDocumentDetail<BuyerEstimate>
+    <TransactionDetailPage
       id={id}
-      title="Estimate"
-      endpoint="/api/buyer/estimates?limit=200"
-      pickRows={(payload) => payload.estimates ?? []}
-      match={(row) => row.id === id}
-      render={(estimate) => (
-        <div className="space-y-3">
-          <BuyerDocumentStat
-            label="Estimate number"
-            value={estimate.estimate_number ?? estimate.id.slice(0, 8).toUpperCase()}
-            sub={estimate.notes ?? `Created ${BuyerDate(estimate.created_at)}`}
-          />
-          <div className="grid grid-cols-2 gap-3">
-            <BuyerDocumentStat label="Amount" value={BuyerAmount(estimate.total_amount)} sub={`Created ${BuyerDate(estimate.created_at)}`} />
-            <BuyerDocumentStat label="Status" value={estimate.status} sub="Estimate" />
-          </div>
-        </div>
-      )}
+      title="Enquiry"
+      endpoint={`/api/buyer/estimates/${id}`}
+      docType="estimate"
+      pickDoc={pickDoc}
     />
   );
 }

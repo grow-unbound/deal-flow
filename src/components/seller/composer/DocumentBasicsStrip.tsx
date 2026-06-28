@@ -129,7 +129,7 @@ export function DocumentBasicsStrip({
             <SelectTrigger className={cn(borderlessInputClass, 'h-auto px-0 text-base font-medium')}>
               <SelectValue placeholder="Select location" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="z-[80]">
               {availableLocations.map((location) => (
                 <SelectItem key={location.id} value={location.id}>
                   {location.name}

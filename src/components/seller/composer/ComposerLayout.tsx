@@ -100,7 +100,7 @@ export function ComposerBasicsStrip({
   columnsClassName?: string;
 }) {
   return (
-    <div className={cn('grid gap-0 overflow-hidden rounded-[14px] border border-cream-300 bg-white', columnsClassName)}>
+    <div className={cn('grid gap-0 overflow-visible rounded-[14px] border border-cream-300 bg-white', columnsClassName)}>
       {children}
     </div>
   );
@@ -116,7 +116,7 @@ export function ComposerBasicsField({
   className?: string;
 }) {
   return (
-    <div className={cn('border-b border-cream-300 px-4 py-3 last:border-b-0 lg:border-b-0 lg:border-r last:lg:border-r-0', className)}>
+    <div className={cn('relative border-b border-cream-300 px-4 py-3 last:border-b-0 lg:border-b-0 lg:border-r last:lg:border-r-0', className)}>
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">{label}</p>
       <div className="mt-2">{children}</div>
     </div>

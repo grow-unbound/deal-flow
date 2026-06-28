@@ -11,7 +11,8 @@ import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
 import { useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
 import { TransactionCard, type OrderSummary } from '@/components/buyer/orders/TransactionCard';
 import { InvoiceCard, type InvoiceSummary } from '@/components/buyer/orders/InvoiceCard';
-import { StatusPill, type StatusTone } from '@/components/ui/status-pill';
+import { EnquiryCard, type EstimateSummary } from '@/components/buyer/orders/EnquiryCard';
+
 
 function inr(n: number): string {
   const s = Math.round(n).toString();
@@ -55,19 +56,6 @@ interface BuyerInvoice {
   due_date: string | null;
 }
 
-const statusColors: Record<string, { bg: string; fg: string }> = {
-  received:            { bg: '#E7EEF1', fg: '#2A4B59' },
-  confirmed:           { bg: '#FBEFE3', fg: '#6B3818' },
-  partially_dispatched:{ bg: '#FBF1DC', fg: '#7A5519' },
-  dispatched:          { bg: '#FBF1DC', fg: '#7A5519' },
-  delivered:           { bg: '#ECF3EC', fg: '#2F5733' },
-  cancelled:           { bg: '#F6E5DF', fg: '#6B2615' },
-  draft:               { bg: '#F0EFF9', fg: '#3D3877' },
-  pending:             { bg: '#FBEFE3', fg: '#6B3818' },
-  paid:                { bg: '#ECF3EC', fg: '#2F5733' },
-  due:                 { bg: '#FBEFE3', fg: '#6B3818' },
-  overdue:             { bg: '#F6E5DF', fg: '#6B2615' },
-};
 
 const statusLabels: Record<string, string> = {
   draft: 'Draft', received: 'Received', confirmed: 'Confirmed',
@@ -87,59 +75,6 @@ interface PageState {
   loading: boolean;
 }
 
-interface EnquiryCardProps {
-  estimate: BuyerEstimate;
-  highlighted: boolean;
-}
-
-function EnquiryCard({ estimate, highlighted }: EnquiryCardProps) {
-  const getStatusTone = (status: string): StatusTone => {
-    switch (status) {
-      case 'accepted':
-        return 'success';
-      case 'declined':
-        return 'danger';
-      case 'pending':
-      default:
-        return 'info';
-    }
-  };
-
-  const statusLabel = statusLabels[estimate.status] ?? estimate.status;
-  const statusTone = getStatusTone(estimate.status);
-
-  return (
-    <div
-      style={{
-        background: 'white',
-        border: highlighted ? '2px solid var(--teal-500)' : '1px solid var(--border-1)',
-        borderRadius: 12,
-        padding: highlighted ? '11px 13px' : '12px 14px',
-        cursor: 'pointer',
-        transition: 'border-color 0.2s',
-        boxShadow: highlighted ? '0 0 0 3px rgba(0,163,163,0.15)' : undefined,
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-        <span style={{ fontSize: 'var(--b-text-body)', fontFamily: 'var(--font-mono)', color: 'var(--cream-700)' }}>
-          {estimate.estimate_number ?? estimate.id.slice(0, 8).toUpperCase()}
-        </span>
-        <StatusPill label={statusLabel} tone={statusTone} />
-      </div>
-      {estimate.notes && (
-        <div style={{ fontSize: 'var(--b-text-body)', color: 'var(--cream-900)', fontWeight: 500, marginBottom: 4 }}>{estimate.notes}</div>
-      )}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 'var(--b-text-sub)', color: 'var(--cream-600)' }}>{fmtDate(estimate.created_at)}</span>
-        {estimate.total_amount > 0 && (
-          <span style={{ fontSize: 'var(--b-text-body)', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--cream-900)' }}>
-            {inr(estimate.total_amount)}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function PreviewPlaceholder({ icon, title, description }: { icon: string; title: string; description: string }) {
   return (
@@ -405,7 +340,7 @@ function OrdersPageInner() {
                 return (
                   <div key={o.id} onClick={() => markSeen(o.id)}>
                     {orderTag && <RealtimeBadge type={orderTag} />}
-                    <TransactionCard order={orderSummary} />
+                    <TransactionCard order={orderSummary} href={`/buy/orders/${o.id}`} />
                   </div>
                 );
               })}
@@ -431,9 +366,24 @@ function OrdersPageInner() {
             </div>
           ) : (
             <div style={{ padding: '12px 16px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {visibleEstimates.map((e) => (
-                <EnquiryCard key={e.id} estimate={e} highlighted={activeHighlight === e.id} />
-              ))}
+              {visibleEstimates.map((e) => {
+                const estimateSummary: EstimateSummary = {
+                  id: e.id,
+                  estimate_number: e.estimate_number,
+                  status: e.status,
+                  total_amount: e.total_amount,
+                  created_at: e.created_at,
+                  notes: e.notes,
+                };
+                return (
+                  <EnquiryCard
+                    key={e.id}
+                    estimate={estimateSummary}
+                    href={`/buy/estimates/${e.id}`}
+                    highlighted={activeHighlight === e.id}
+                  />
+                );
+              })}
             </div>
           )
         )}
@@ -467,7 +417,7 @@ function OrdersPageInner() {
                   due_date: inv.due_date,
                 };
                 return (
-                  <InvoiceCard key={inv.id} invoice={invoiceSummary} />
+                  <InvoiceCard key={inv.id} invoice={invoiceSummary} href={`/buy/invoices/${inv.id}`} />
                 );
               })}
             </div>

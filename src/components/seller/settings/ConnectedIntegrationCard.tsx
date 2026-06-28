@@ -894,7 +894,7 @@ export function ConnectedIntegrationCard({
                   variant="accent"
                   size="sm"
                   onClick={openFullSyncDialog}
-                  disabled={isSyncingNow || ti.status !== 'connected'}
+                  disabled={isSyncingNow || (ti.status !== 'connected' && ti.status !== 'sync_failed')}
                 >
                   <RefreshCw className="h-4 w-4" />
                   {isSyncFailed ? 'Sync Again' : 'Sync now'}
@@ -1045,7 +1045,7 @@ export function ConnectedIntegrationCard({
               </div>
               <div className="mt-4 grid gap-3 xl:grid-cols-4">
                 {overviewCards.map((card) => {
-                  const disabled = isSyncingNow || ti.status !== 'connected' || !card.phaseAction;
+                  const disabled = isSyncingNow || (ti.status !== 'connected' && ti.status !== 'sync_failed') || !card.phaseAction;
                   return (
                     <div
                       key={card.key}

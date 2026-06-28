@@ -291,6 +291,18 @@ function pickSanitizedPhone(...values: unknown[]): string | null {
   return null;
 }
 
+function extractCustomField(rec: Record<string, unknown>, apiName: string): string | null {
+  const fields = rec.custom_fields;
+  if (!Array.isArray(fields)) return null;
+  for (const f of fields) {
+    if (typeof f === 'object' && f !== null && !Array.isArray(f)) {
+      const field = f as Record<string, unknown>;
+      if (asStr(field.api_name) === apiName) return asStr(field.value);
+    }
+  }
+  return null;
+}
+
 function normalizeZohoStrategy(value: unknown): string {
   const raw = asStr(value)?.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
   if (!raw) return 'per_item';
@@ -458,7 +470,7 @@ async function batchUpsertEntityMap(
   tenantId: string,
   integrationId: string,
   entityType: string,
-  pairs: Array<{ externalId: string; internalId: string }>,
+  pairs: Array<{ externalId: string; internalId: string; sourcePayload?: Record<string, unknown> | null }>,
   options?: {
     syncStatus?: 'synced' | 'pending_push' | 'conflict' | 'error';
     errorReason?: string | null;
@@ -475,6 +487,7 @@ async function batchUpsertEntityMap(
     last_synced_at: nowIso(),
     sync_status: options?.syncStatus ?? 'synced',
     error_reason: options?.errorReason ?? null,
+    source_payload: p.sourcePayload ?? null,
   }));
 
   await bulkPersistJsonbRecords(admin, 'integration_entity_map', dedupeByColumns(rows, [
@@ -624,6 +637,9 @@ async function persistDerivedChildRows(
   rows: Record<string, unknown>[],
 ): Promise<void> {
   if (parentIds.length === 0) return;
+  // Guard: no desired rows means we have no complete picture (e.g. Zoho list endpoint
+  // omits line_items). Do not touch existing children — webhooks may have written them.
+  if (rows.length === 0) return;
   const dedupedRows = dedupeByColumns(rows, [parentColumn, 'external_ref']);
 
   if (dedupedRows.length > 0) {
@@ -717,6 +733,22 @@ async function persistLocations(
       .filter((entry): entry is readonly [string, { email: string | null; user_name: string | null }] => entry !== null),
   );
 
+  // Build reverse map: location_id → users assigned there.
+  // Zoho users carry a location_id/warehouse_id field; the location list itself
+  // doesn't embed associated_users, so we infer assignments from the user list.
+  const usersByLocationId = new Map<string, Array<{ email: string; user_name: string | null }>>();
+  for (const user of zohoUsers) {
+    const locId = asStr(user.location_id) ?? asStr(user.warehouse_id);
+    if (!locId) continue;
+    const email = asStr(user.email);
+    if (!email) continue;
+    if (!usersByLocationId.has(locId)) usersByLocationId.set(locId, []);
+    usersByLocationId.get(locId)!.push({
+      email,
+      user_name: asStr(user.name) ?? asStr(user.user_name) ?? null,
+    });
+  }
+
   for (const rec of records) {
     const externalId = asStr(isInventory ? rec.warehouse_id : rec.location_id);
     if (!externalId) { result.skipped++; continue; }
@@ -730,22 +762,25 @@ async function persistLocations(
 
     const rawAddr = rec.address;
     const address = rawAddr && typeof rawAddr === 'object' ? rawAddr : null;
-    const phoneNumber = sanitizeZohoPhone(rec.phone) ?? sanitizeZohoPhone(rec.phone_number);
-    const status = asStr(rec.status) === 'inactive' ? 'inactive' : 'active';
+    const phoneNumber = sanitizeZohoPhone(rec.phone);
+    const status = asStr(rec.is_location_active) ?? asBool(rec.status) ? 'active' : 'inactive';
     const sourceAssociatedUsers = getEmbeddedLocationAssociatedUsers(rec);
-    const associatedUsers = normalizeLocationAssociatedUsers(
-      sourceAssociatedUsers.map((user) => {
-        const sourceUserId = asStr(user.user_id) ?? asStr(user.id);
-        const sourceUser = sourceUserId ? zohoUserById.get(sourceUserId) ?? null : null;
-        const email = pickString(user.email, sourceUser?.email);
-        if (!email) return null;
-        return {
-          email,
-          user_name: pickString(user.user_name, sourceUser?.user_name),
-          user_id: sourceUserId,
-        };
-      }).filter((user): user is Record<string, unknown> => user !== null),
-    );
+    // Fall back to users inferred from the Zoho /users reverse map when the location
+    // list endpoint doesn't embed associated_users.
+    const effectiveAssociatedUsers = sourceAssociatedUsers.length > 0
+      ? sourceAssociatedUsers.map((user) => {
+          const sourceUserId = asStr(user.user_id) ?? asStr(user.id);
+          const sourceUser = sourceUserId ? zohoUserById.get(sourceUserId) ?? null : null;
+          const email = pickString(user.email, sourceUser?.email);
+          if (!email) return null;
+          return {
+            email,
+            user_name: pickString(user.user_name, sourceUser?.user_name),
+            user_id: sourceUserId,
+          };
+        }).filter((user): user is Record<string, unknown> => user !== null)
+      : (externalId ? (usersByLocationId.get(externalId) ?? []) : []);
+    const associatedUsers = normalizeLocationAssociatedUsers(effectiveAssociatedUsers);
 
     const row = {
       tenant_id: tenantId,
@@ -870,6 +905,7 @@ async function geocodeNewLocations(admin: AdminClient, tenantId: string) {
     const parts = [
       row.name,
       (addr.address ?? addr.street_address1 ?? addr.street ?? '') as string,
+      (addr.street_address2 ?? '') as string,
       (addr.city ?? '') as string,
       (addr.state ?? addr.state_code ?? '') as string,
       (addr.country ?? '') as string,
@@ -938,7 +974,7 @@ async function persistBuyers(
       business_name: businessName,
       contact_name: asStr(rec.contact_name) ?? asStr(rec.first_name),
       email: asStr(rec.email),
-      gstin: asStr(rec.gst_no) ?? asStr((rec as Record<string, unknown>)['cf_gstin']),
+      gstin: asStr(rec.gst_no) ?? asStr(rec.gstin) ?? extractCustomField(rec, 'cf_gstin'),
       gst_treatment: asStr(rec.gst_treatment),
       status: asStr(rec.status),
       billing_address: billingAddress,
@@ -994,7 +1030,7 @@ async function persistBuyers(
   const pricebookExternalIds = [
     ...new Set(
       records
-        .map((rec) => asStr(rec.pricebook_id))
+        .map((rec) => asStr(rec.pricebook_id) ?? asStr(rec.price_list_id))
         .filter((value): value is string => value !== null),
     ),
   ];
@@ -1012,8 +1048,11 @@ async function persistBuyers(
     const contactsNeedingFetch = records
       .map((rec) => {
         const externalId = asStr(rec.contact_id);
-        const embeddedContactPersons = asRecordArray((rec as Record<string, unknown>).contact_persons);
-        return externalId && embeddedContactPersons.length === 0 ? externalId : null;
+        // Only fall back to per-contact fetch when Zoho omitted the key entirely
+        // (happens at large per_page). At per_page=200, Zoho always embeds
+        // contact_persons (possibly []) — trusting the empty array avoids N+1 calls.
+        const hasEmbeddedKey = 'contact_persons' in (rec as Record<string, unknown>);
+        return externalId && !hasEmbeddedKey ? externalId : null;
       })
       .filter((value): value is string => value !== null);
 
@@ -1061,7 +1100,7 @@ async function persistBuyers(
       });
     }
 
-    const pricebookExternalId = asStr(rec.pricebook_id);
+    const pricebookExternalId = asStr(rec.pricebook_id) ?? asStr(rec.price_list_id);
     const priceListId = pricebookExternalId ? pricebookIdMap.get(pricebookExternalId) ?? null : null;
     if (priceListId) {
       buyerAssignmentRows.push({
@@ -1312,6 +1351,8 @@ async function persistProducts(
         'hsn_or_sac',
         'hsn_sac',
         'tax_percentage',
+        'tax_id',
+        'tax_name',
         'gst_rate',
         'status',
         'brand',
@@ -1452,25 +1493,6 @@ async function persistPricelists(
     return result;
   }
 
-  const productExternalIds = [
-    ...new Set(
-      salesPricebooks.flatMap((pricebook) => (
-        getPricebookItemRows(pricebook)
-          .map((item) => pickString(item.item_id, item.product_id, item.item_external_id))
-          .filter((value): value is string => value !== null)
-      )),
-    ),
-  ];
-
-  const tenantProductIdMap = await resolveInternalIdsWithFallback(
-    admin,
-    tenantId,
-    integrationId,
-    'products',
-    'tenant_products',
-    productExternalIds,
-  );
-
   const priceListRows: Record<string, unknown>[] = [];
   for (const pricebook of salesPricebooks) {
     const externalRef = asStr(pricebook.pricebook_id) ?? asStr(pricebook.pricelist_id);
@@ -1492,7 +1514,6 @@ async function persistPricelists(
       pricing_strategy: normalizeZohoStrategy(pricebook.pricebook_type),
       pricebook_type: asStr(pricebook.pricebook_type),
       source_updated_at: asDate(pricebook.last_modified_time ?? pricebook.updated_time ?? pricebook.updated_at),
-      source_payload: pricebook,
       created_by: actorId,
       updated_by: actorId,
       deleted_at: null,
@@ -1503,11 +1524,51 @@ async function persistPricelists(
   const persistedPriceLists = dedupedPriceListRows.length > 0
     ? await bulkPersistJsonbRecords(admin, 'price_lists', dedupedPriceListRows, ['tenant_id', 'external_ref'])
     : [];
-  const priceListMapPairs = mapPersistedRowsByExternalRef(persistedPriceLists);
+  const sourcePricebookByRef = new Map(
+    salesPricebooks
+      .map((pb) => {
+        const id = asStr(pb.pricebook_id) ?? asStr(pb.pricelist_id);
+        return id ? ([id, pb] as const) : null;
+      })
+      .filter((x): x is [string, Record<string, unknown>] => x !== null),
+  );
+  const priceListMapPairs = mapPersistedRowsByExternalRef(persistedPriceLists).map((p) => ({
+    ...p,
+    sourcePayload: sourcePricebookByRef.get(p.externalId) ?? null,
+  }));
   const priceListIdByExternalRef = new Map(priceListMapPairs.map((row) => [row.externalId, row.internalId] as const));
 
   result.updated += priceListMapPairs.length;
   await batchUpsertEntityMap(admin, tenantId, integrationId, 'pricelists', priceListMapPairs);
+
+  // Enrich pricebooks with per-book detail (list endpoint omits pricebook_items)
+  const detailedPricebooks = new Map<string, Record<string, unknown>>();
+  if (adapter?.fetchPricebookDetail) {
+    await mapWithConcurrency(salesPricebooks, 5, async (pb) => {
+      const id = asStr(pb.pricebook_id) ?? asStr(pb.pricelist_id);
+      if (!id) return;
+      const detail = await adapter!.fetchPricebookDetail!(id);
+      if (detail) detailedPricebooks.set(id, detail);
+    });
+  }
+
+  const productExternalIds = [
+    ...new Set(
+      salesPricebooks.flatMap((pricebook) => {
+        const id = asStr(pricebook.pricebook_id) ?? asStr(pricebook.pricelist_id);
+        const effective = (id ? detailedPricebooks.get(id) : null) ?? pricebook;
+        return getPricebookItemRows(effective)
+          .map((item) => pickString(item.item_id, item.product_id, item.item_external_id))
+          .filter((value): value is string => value !== null);
+      }),
+    ),
+  ];
+
+  const tenantProductIdMap = productExternalIds.length > 0
+    ? await resolveInternalIdsWithFallback(
+        admin, tenantId, integrationId, 'products', 'tenant_products', productExternalIds,
+      )
+    : new Map<string, string>();
 
   const priceListItemRows: Record<string, unknown>[] = [];
   const desiredExternalRefsByPriceListId = new Map<string, Set<string>>();
@@ -1527,7 +1588,8 @@ async function persistPricelists(
       break;
     }
 
-    for (const item of getPricebookItemRows(pricebook)) {
+    const effectivePricebook = detailedPricebooks.get(externalRef) ?? pricebook;
+    for (const item of getPricebookItemRows(effectivePricebook)) {
       const sourceProductId = pickString(item.item_id, item.product_id, item.item_external_id);
       const tenantProductId = sourceProductId ? tenantProductIdMap.get(sourceProductId) ?? null : null;
       if (!tenantProductId) {
@@ -1558,8 +1620,7 @@ async function persistPricelists(
         min_qty: minQty,
         max_qty: pickNumber(item.max_quantity, item.max_qty, item.to_quantity),
         external_ref: itemExternalRef,
-        source_updated_at: asDate(item.last_modified_time ?? item.updated_time ?? pricebook.last_modified_time),
-        source_payload: item,
+        source_updated_at: asDate(item.last_modified_time ?? item.updated_time ?? effectivePricebook.last_modified_time),
         created_by: actorId,
         updated_by: actorId,
         deleted_at: null,
@@ -1652,7 +1713,7 @@ async function persistEstimates(
     admin, tenantId, integrationId, 'locations', 'locations', locationExternalIds,
   );
   const parentRows: Record<string, unknown>[] = [];
-  const parentRecords: Array<{ estimateId: string; lineItems: Record<string, unknown>[]; resolvedActorId: string | null }> = [];
+  const parentRecords: Array<{ estimateId: string; sourcePayload: Record<string, unknown>; lineItems: Record<string, unknown>[]; resolvedActorId: string | null }> = [];
 
   for (const rec of records) {
     const externalId = asStr(rec.estimate_id);
@@ -1710,7 +1771,6 @@ async function persistEstimates(
       created_at: asDate(rec.created_time ?? rec.date),
       updated_at: asDate(rec.last_modified_time ?? rec.updated_time ?? rec.created_time),
       source: 'zoho_import',
-      source_payload: buildTransactionalSourcePayload(rec),
       deleted_at: null,
       created_by: resolvedActorId,
       updated_by: resolvedActorId,
@@ -1718,6 +1778,7 @@ async function persistEstimates(
 
     parentRecords.push({
       estimateId: externalId,
+      sourcePayload: buildTransactionalSourcePayload(rec),
       lineItems: Array.isArray(rec.line_items) ? rec.line_items as Record<string, unknown>[] : [],
       resolvedActorId,
     });
@@ -1730,7 +1791,13 @@ async function persistEstimates(
   const persistedEstimates = dedupedEstimateRows.length > 0
     ? await bulkPersistJsonbRecords(admin, 'estimates', dedupedEstimateRows, ['tenant_id', 'external_ref'])
     : [];
-  const estimateMapPairs = mapPersistedRowsByExternalRef(persistedEstimates);
+  const sourcePayloadByExternalRef = new Map(
+    parentRecords.map((e) => [e.estimateId, e.sourcePayload] as const),
+  );
+  const estimateMapPairs = mapPersistedRowsByExternalRef(persistedEstimates).map((p) => ({
+    ...p,
+    sourcePayload: sourcePayloadByExternalRef.get(p.externalId) ?? null,
+  }));
   const estimateIdMap = new Map(estimateMapPairs.map((row) => [row.externalId, row.internalId] as const));
   const estimateIds = estimateMapPairs.map((row) => row.internalId);
 
@@ -1797,7 +1864,6 @@ async function persistEstimates(
         scheme_tag: pickString(li.scheme_tag, li.discount_type),
         sku: pickString(li.sku, li.item_sku, li.item_code, li.code),
         hsn_code: pickString(li.hsn_code, li.hsn_or_sac, li.hsn_sac),
-        source_payload: li,
         deleted_at: null,
         created_at: asDate(li.created_time ?? li.created_at),
         updated_at: asDate(li.last_modified_time ?? li.updated_at ?? li.created_time),
@@ -1849,7 +1915,7 @@ async function persistOrders(
     admin, tenantId, integrationId, 'locations', 'locations', locationExternalIds,
   );
   const parentRows: Record<string, unknown>[] = [];
-  const parentRecords: Array<{ orderExternalId: string; lineItems: Record<string, unknown>[]; resolvedActorId: string | null }> = [];
+  const parentRecords: Array<{ orderExternalId: string; sourcePayload: Record<string, unknown>; lineItems: Record<string, unknown>[]; resolvedActorId: string | null }> = [];
 
   for (const rec of records) {
     const externalId = asStr(rec.salesorder_id);
@@ -1902,7 +1968,6 @@ async function persistOrders(
       cancelled_at: asDate(rec.cancelled_at),
       created_at: asDate(rec.created_time ?? rec.date),
       updated_at: asDate(rec.last_modified_time ?? rec.updated_time ?? rec.created_time),
-      source_payload: buildTransactionalSourcePayload(rec),
       deleted_at: null,
       created_by: resolvedActorId,
       updated_by: resolvedActorId,
@@ -1910,6 +1975,7 @@ async function persistOrders(
 
     parentRecords.push({
       orderExternalId: externalId,
+      sourcePayload: buildTransactionalSourcePayload(rec),
       lineItems,
       resolvedActorId,
     });
@@ -1922,7 +1988,13 @@ async function persistOrders(
   const persistedOrders = dedupedOrderRows.length > 0
     ? await bulkPersistJsonbRecords(admin, 'orders', dedupedOrderRows, ['tenant_id', 'external_ref'])
     : [];
-  const orderMapPairs = mapPersistedRowsByExternalRef(persistedOrders);
+  const sourcePayloadByOrderRef = new Map(
+    parentRecords.map((e) => [e.orderExternalId, e.sourcePayload] as const),
+  );
+  const orderMapPairs = mapPersistedRowsByExternalRef(persistedOrders).map((p) => ({
+    ...p,
+    sourcePayload: sourcePayloadByOrderRef.get(p.externalId) ?? null,
+  }));
   const orderIdMap = new Map(orderMapPairs.map((row) => [row.externalId, row.internalId] as const));
   const orderIds = orderMapPairs.map((row) => row.internalId);
 
@@ -1990,7 +2062,6 @@ async function persistOrders(
         on_hand_at_confirm: pickNumber(li.on_hand_at_confirm, li.on_hand, li.available_stock),
         sku: pickString(li.sku, li.item_sku, li.item_code, li.code),
         hsn_code: pickString(li.hsn_code, li.hsn_or_sac, li.hsn_sac),
-        source_payload: li,
         deleted_at: null,
         created_at: asDate(li.created_time ?? li.created_at),
         updated_at: asDate(li.last_modified_time ?? li.updated_at ?? li.created_time),
@@ -2049,8 +2120,18 @@ async function persistInvoices(
   const orderIdMap = await resolveInternalIdsWithFallback(
     admin, tenantId, integrationId, 'orders', 'orders', orderExternalIds,
   );
+  const estimateExternalIds = [...new Set(
+    records
+      .map((r) => asStr(r.estimate_id))
+      .filter((x): x is string => x !== null),
+  )];
+  const estimateIdMap = estimateExternalIds.length > 0
+    ? await resolveInternalIdsWithFallback(
+        admin, tenantId, integrationId, 'estimates', 'estimates', estimateExternalIds,
+      )
+    : new Map<string, string>();
   const parentRows: Record<string, unknown>[] = [];
-  const parentRecords: Array<{ invoiceExternalId: string; lineItems: Record<string, unknown>[]; resolvedActorId: string | null }> = [];
+  const parentRecords: Array<{ invoiceExternalId: string; sourcePayload: Record<string, unknown>; lineItems: Record<string, unknown>[]; resolvedActorId: string | null }> = [];
 
   for (const rec of records) {
     const externalId = asStr(rec.invoice_id);
@@ -2064,6 +2145,8 @@ async function persistInvoices(
     const locationId = locationExternalId ? (locationIdMap.get(locationExternalId) ?? null) : null;
     const orderExternalId = pickString(rec.salesorder_id, rec.order_id);
     const orderId = orderExternalId ? (orderIdMap.get(orderExternalId) ?? null) : null;
+    const estimateExternalId = asStr(rec.estimate_id);
+    const estimateId = estimateExternalId ? (estimateIdMap.get(estimateExternalId) ?? null) : null;
 
     const shippingAddr = rec.shipping_address;
     const deliveryAddress = shippingAddr && typeof shippingAddr === 'object'
@@ -2100,11 +2183,14 @@ async function persistInvoices(
       discount_flat: pickNumber(rec.discount_flat, rec.discount) ?? 0,
       freight: pickNumber(rec.freight, rec.shipping_charge) ?? 0,
       round_off: pickNumber(rec.round_off) ?? 0,
+      estimate_id: estimateId,
+      due_date: asDateOnly(rec.due_date),
+      paid_at: asDate(rec.payment_date ?? rec.paid_at),
+      payment_reference: pickString(rec.payment_reference, rec.reference_number),
       sent_at: asDate(rec.sent_at ?? rec.date),
       sent_channel: pickString(rec.sent_channel, rec.channel),
       created_at: asDate(rec.created_time ?? rec.date),
       updated_at: asDate(rec.last_modified_time ?? rec.updated_time ?? rec.created_time),
-      source_payload: buildTransactionalSourcePayload(rec),
       deleted_at: null,
       created_by: resolvedActorId,
       updated_by: resolvedActorId,
@@ -2112,6 +2198,7 @@ async function persistInvoices(
 
     parentRecords.push({
       invoiceExternalId: externalId,
+      sourcePayload: buildTransactionalSourcePayload(rec),
       lineItems,
       resolvedActorId,
     });
@@ -2124,7 +2211,13 @@ async function persistInvoices(
   const persistedInvoices = dedupedInvoiceRows.length > 0
     ? await bulkPersistJsonbRecords(admin, 'invoices', dedupedInvoiceRows, ['tenant_id', 'external_ref'])
     : [];
-  const invoiceMapPairs = mapPersistedRowsByExternalRef(persistedInvoices);
+  const sourcePayloadByInvoiceRef = new Map(
+    parentRecords.map((e) => [e.invoiceExternalId, e.sourcePayload] as const),
+  );
+  const invoiceMapPairs = mapPersistedRowsByExternalRef(persistedInvoices).map((p) => ({
+    ...p,
+    sourcePayload: sourcePayloadByInvoiceRef.get(p.externalId) ?? null,
+  }));
   const invoiceIdMap = new Map(invoiceMapPairs.map((row) => [row.externalId, row.internalId] as const));
   const invoiceIds = invoiceMapPairs.map((row) => row.internalId);
 
@@ -2191,7 +2284,6 @@ async function persistInvoices(
         sku: pickString(li.sku, li.item_sku, li.item_code, li.code),
         hsn_code: pickString(li.hsn_code, li.hsn_or_sac, li.hsn_sac),
         scheme_tag: pickString(li.scheme_tag, li.discount_type),
-        source_payload: li,
         deleted_at: null,
         created_at: asDate(li.created_time ?? li.created_at),
         updated_at: asDate(li.last_modified_time ?? li.updated_at ?? li.created_time),
