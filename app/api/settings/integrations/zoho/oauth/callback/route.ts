@@ -258,23 +258,39 @@ async function registerZohoWebhook(
   const createdWebhookIds: string[] = [];
   try {
     for (const ruleType of workflowRuleTypes) {
+      const webhookPayload = buildZohoWebhookRegistrationPayload({
+        webhookUrl,
+        entityType,
+        providerEntity,
+        secret,
+        ruleType,
+      });
+      console.log(`[registerZohoWebhook] sending webhook for ${entityType} ${ruleType}`, {
+        payload: webhookPayload,
+        url: url.toString(),
+      });
+
       const webhookResponse = await fetch(url.toString(), {
         method: 'POST',
         headers: {
           Authorization: `Zoho-oauthtoken ${accessToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(buildZohoWebhookRegistrationPayload({
-          webhookUrl,
-          entityType,
-          providerEntity,
-          secret,
-          ruleType,
-        })),
+        body: JSON.stringify(webhookPayload),
       });
       const webhookJson = await webhookResponse.json().catch(() => ({})) as Record<string, unknown>;
       const remoteWebhook = webhookJson.webhook as Record<string, unknown> | undefined;
       const webhookId = remoteWebhook?.webhook_id;
+
+      console.log(`[registerZohoWebhook] Zoho webhook response for ${entityType} ${ruleType}`, {
+        ok: webhookResponse.ok,
+        status: webhookResponse.status,
+        code: webhookJson.code,
+        webhook_id: webhookId,
+        message: webhookJson.message,
+        full_webhook: remoteWebhook,
+      });
+
       if (!webhookResponse.ok || webhookJson.code !== 0 || typeof webhookId !== 'string') {
         throw new Error(`Zoho ${entityType} ${ruleType} webhook registration failed (${webhookResponse.status}): ${String(webhookJson.message ?? 'Unknown Zoho error')}`);
       }
