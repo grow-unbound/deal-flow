@@ -719,6 +719,7 @@ export async function GET(request: NextRequest) {
           status: state.status,
           webhook_config: {
             sync_phase: definition.sync_phase,
+            integration_type_id: integration_type_id ?? 'zoho_books',
             workflow_ids: registration.workflowIds,
             remote_webhook_ids: registration.webhookIds,
           },

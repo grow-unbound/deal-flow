@@ -370,6 +370,7 @@ export async function POST(request: NextRequest) {
           is_active: Boolean(remoteWebhookId),
           webhook_config: {
             sync_phase: definition.sync_phase,
+            integration_type_id: integration.integration_type_id ?? 'zoho_books',
             workflow_ids: registration.workflowIds,
             remote_webhook_ids: registration.webhookIds,
           },
