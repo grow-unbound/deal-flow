@@ -138,9 +138,10 @@ async function logWebhookError(
     webhookId: string;
     eventId: string | null;
     entityType: string;
-    externalEntityId: string | null;
-    errorCode: string;
-    errorMessage: string;
+    externalRef: string | null;
+    stage: string; // e.g., 'persist', 'echo_guard', 'validation'
+    reasonCode: string;
+    message: string;
   },
 ): Promise<void> {
   try {
@@ -150,9 +151,10 @@ async function logWebhookError(
       integration_webhook_id: opts.webhookId,
       integration_webhook_event_id: opts.eventId,
       entity_type: opts.entityType,
-      external_entity_id: opts.externalEntityId,
-      error_code: opts.errorCode,
-      error_message: opts.errorMessage,
+      external_ref: opts.externalRef,
+      stage: opts.stage,
+      reason_code: opts.reasonCode,
+      message: opts.message,
     });
   } catch (e) {
     console.error(`[webhook-errors] failed to log error: ${String(e)}`);
@@ -360,9 +362,10 @@ Deno.serve(async (req: Request) => {
         webhookId: webhook.id,
         eventId,
         entityType,
-        externalEntityId: externalId,
-        errorCode: 'PERSIST_FAILED',
-        errorMessage: `Persistence failed for ${persistResult.failed} records`,
+        externalRef: externalId,
+        stage: 'persist',
+        reasonCode: 'PERSIST_FAILED',
+        message: `Persistence failed for ${persistResult.failed} records`,
       });
       return ok('persist_error');
     }
