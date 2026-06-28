@@ -79,20 +79,26 @@ export function buildZohoWebhookRegistrationPayload(input: {
   secret: string;
   ruleType: ZohoWebhookRuleType;
 }) {
+  // Append ?event_type= to the URL so the webhook handler can distinguish
+  // upsert from delete without parsing the body — Zoho's Default Payload does
+  // not include an event_type field in the body.
+  const eventTypeParam = input.ruleType === 'delete' ? 'delete' : 'upsert';
+  const urlWithEventType = `${input.webhookUrl}?event_type=${eventTypeParam}`;
+
   return {
     webhook_name: `${input.entityType} ${input.ruleType} - Yukti`,
     description: `Yukti inbound ${input.entityType} ${input.ruleType}`,
     entity: input.providerEntity,
     method: 'POST',
-    url: input.webhookUrl,
+    url: urlWithEventType,
     secret: input.secret,
     headers: [{
       param_name: 'x-zoho-webhook-token',
-      param_value: input.secret,
+      param_value: input.secret,  // always sent — never empty
     }],
-    // Omitting body_type/raw_data selects Zoho's Default Payload. That is the
-    // working WineYard contract: JSON with the complete entity object, e.g.
-    // { "invoice": { ...all invoice fields... } }.
+    // Omitting body_type/raw_data selects Zoho's Default Payload: JSON with the
+    // complete entity object, e.g. { "contact": { ...all fields... } }.
+    // For delete events Zoho sends only the entity ID (entity is already gone).
   };
 }
 
