@@ -49,7 +49,7 @@ export const IntegrationSyncJobTypeSchema = z.enum([
 ]);
 export type IntegrationSyncJobType = z.infer<typeof IntegrationSyncJobTypeSchema>;
 
-export const IntegrationSyncJobStatusSchema = z.enum(['queued', 'running', 'completed', 'failed', 'cancelled']);
+export const IntegrationSyncJobStatusSchema = z.enum(['pending', 'queued', 'running', 'paused', 'completed', 'failed', 'cancelled']);
 export type IntegrationSyncJobStatus = z.infer<typeof IntegrationSyncJobStatusSchema>;
 
 export const IntegrationEntitySyncStatusSchema = z.enum(['synced', 'pending_push', 'conflict', 'error']);

@@ -527,7 +527,7 @@ async function updateJob(
   db: DbClient,
   jobId: string,
   patch: {
-    status?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+    status?: 'pending' | 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
     progress?: IntegrationProgress;
     summary?: IntegrationJobSummary;
     error_log?: Array<Record<string, unknown>>;

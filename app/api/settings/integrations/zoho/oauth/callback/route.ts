@@ -635,19 +635,20 @@ export async function GET(request: NextRequest) {
       integration_type_id as 'zoho_books' | 'zoho_inventory',
     );
 
+    // 1. Create webhook records in pending state (no registration yet)
     for (const definition of definitions) {
       const { data: existingWebhook } = await db
         .schema('app')
         .from('integration_webhooks')
-        .select('id, endpoint_token, remote_webhook_id, secret, webhook_config')
+        .select('id, endpoint_token')
         .eq('tenant_integration_id', integrationId)
         .eq('provider', 'zoho')
         .eq('entity_type', definition.entity_type)
         .is('deleted_at', null)
         .maybeSingle();
 
-      let webhook = existingWebhook;
-      if (!webhook) {
+      let webhookId: string;
+      if (!existingWebhook) {
         const { data, error } = await db
           .schema('app')
           .from('integration_webhooks')
@@ -658,121 +659,36 @@ export async function GET(request: NextRequest) {
             entity_type: definition.entity_type,
             event_types: definition.event_types,
             secret: crypto.randomUUID().replace(/-/g, ''),
-            is_active: true,
+            is_active: false,
             status: 'pending',
             created_by: actorUserId,
             updated_by: actorUserId,
           })
-          .select('id, endpoint_token, remote_webhook_id, secret, webhook_config')
+          .select('id')
           .single();
         if (error || !data) throw error ?? new Error(`Unable to prepare ${definition.entity_type} webhook.`);
-        webhook = data;
+        webhookId = data.id;
       } else {
+        webhookId = existingWebhook.id;
         await db.schema('app').from('integration_webhooks').update({
           event_types: definition.event_types,
-          is_active: true,
+          is_active: false,
           status: 'pending',
           updated_by: actorUserId,
-        }).eq('id', webhook.id);
+        }).eq('id', webhookId);
       }
 
-      webhookIdsByEntity[definition.entity_type] = webhook.id;
-      const callbackUrl = `${getSupabaseFunctionsUrl()}/integrations-webhook/${webhook.endpoint_token}`;
-
-      try {
-        const existingConfig = webhook && 'webhook_config' in webhook ? webhook.webhook_config : null;
-        const workflowIds = extractWorkflowIds(toRecord(existingConfig).workflow_ids);
-        const remoteWebhookIds = extractWorkflowIds(toRecord(existingConfig).remote_webhook_ids);
-        if (webhook.remote_webhook_id || workflowIds.length > 0) {
-          await deleteZohoWebhookRegistration({
-            accessToken: tokens.access_token,
-            orgId: org_id,
-            dc,
-            integrationTypeId: integration_type_id,
-            remoteWebhookId: webhook.remote_webhook_id,
-            remoteWebhookIds,
-            workflowIds,
-          });
-        }
-
-        await deleteZohoWebhookRegistrationsByName({
-          accessToken: tokens.access_token,
-          orgId: org_id,
-          dc,
-          integrationTypeId: integration_type_id,
-          webhookNames: (definition.workflow_rule_types ?? ['add_edit']).map((ruleType) => (
-            buildZohoWebhookRegistrationName({ entityType: definition.entity_type, ruleType })
-          )),
-          callbackUrls: [callbackUrl],
-        });
-
-        const webhookSecret = (webhook.secret ?? crypto.randomUUID()).replace(/-/g, '');
-        const registration = await registerZohoWebhook(
-          tokens.access_token,
-          org_id,
-          dc,
-          callbackUrl,
-          integration_type_id,
-          definition.entity_type,
-          definition.provider_entity,
-          webhookSecret,
-          definition.workflow_rule_types,
-        );
-        const remoteWebhookId = registration.webhookIds.add_edit ?? Object.values(registration.webhookIds)[0] ?? null;
-        console.info('[zoho/oauth/callback] webhook registered', {
-          tenant_integration_id: integrationId,
-          entity_type: definition.entity_type,
-          callback_url: callbackUrl,
-          webhook_ids: registration.webhookIds,
-          workflow_ids: registration.workflowIds,
-        });
-        const state: WebhookSetupState = { status: 'active', attempted_at: now, last_error: null, external_ref: remoteWebhookId, last_success_at: now };
-        webhookSetupByEntity[definition.entity_type] = state;
-
-        await db.schema('app').from('integration_webhooks').update({
-          remote_webhook_id: remoteWebhookId,
-          external_ref: remoteWebhookId,
-          status: state.status,
-          webhook_config: {
-            sync_phase: definition.sync_phase,
-            integration_type_id: integration_type_id ?? 'zoho_books',
-            workflow_ids: registration.workflowIds,
-            remote_webhook_ids: registration.webhookIds,
-          },
-          secret: webhookSecret,
-          is_active: Boolean(remoteWebhookId),
-          last_verified_at: remoteWebhookId ? now : null,
-          updated_by: actorUserId,
-        }).eq('id', webhook.id);
-      } catch (error) {
-        const state: WebhookSetupState = {
-          status: 'failed',
-          attempted_at: now,
-          last_error: error instanceof Error ? error.message : `Failed to register ${definition.entity_type} webhook.`,
-          external_ref: null,
-          last_success_at: null,
-        };
-        webhookSetupByEntity[definition.entity_type] = state;
-        await db.schema('app').from('integration_webhooks').update({
-          remote_webhook_id: null,
-          external_ref: null,
-          status: 'failed',
-          is_active: false,
-          webhook_config: {
-            sync_phase: definition.sync_phase,
-            workflow_ids: {},
-            remote_webhook_ids: {},
-          },
-          last_verified_at: null,
-          updated_by: actorUserId,
-        }).eq('id', webhook.id);
-      }
+      webhookIdsByEntity[definition.entity_type] = webhookId;
+      webhookSetupByEntity[definition.entity_type] = {
+        status: 'pending',
+        attempted_at: now,
+        last_error: null,
+        external_ref: null,
+        last_success_at: null,
+      };
     }
 
-    webhookSetupState = Object.values(webhookSetupByEntity).every((state) => state.status === 'active')
-      ? { status: 'active', attempted_at: now, last_error: null, external_ref: null, last_success_at: now }
-      : { status: 'failed', attempted_at: now, last_error: 'One or more Zoho entity webhooks could not be registered.', external_ref: null, last_success_at: null };
-
+    // 2. Seed data flows (will use pending webhook IDs)
     const flowRows = buildIntegrationDataFlowRows({
       tenant_id,
       tenant_integration_id: integrationId,
@@ -790,15 +706,44 @@ export async function GET(request: NextRequest) {
     if (flowError) {
       console.warn('[zoho/oauth/callback] Failed to seed data flows:', flowError);
     }
-  } catch (webhookError) {
+
     webhookSetupState = {
-      status: 'failed',
+      status: 'pending_registration',
       attempted_at: now,
-      last_error: webhookError instanceof Error ? webhookError.message : 'Zoho webhook registration failed.',
+      last_error: null,
       external_ref: null,
       last_success_at: null,
     };
-    console.warn('[zoho/oauth/callback] Webhook registration skipped:', webhookError);
+
+    // 3. Queue webhook registration as background job (don't wait for it)
+    if (actorUserId && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
+      // Fire-and-forget: queue webhook registration without awaiting
+      const webhookJobUrl = `${getSupabaseFunctionsUrl()}/integrations-webhook-setup`;
+      fetch(webhookJobUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id,
+          tenant_integration_id: integrationId,
+          integration_type_id,
+          org_id,
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+          actor_user_id: actorUserId,
+        }),
+      }).catch((err) => {
+        console.error('[zoho/oauth/callback] Failed to queue webhook setup:', err);
+      });
+    }
+  } catch (setupError) {
+    webhookSetupState = {
+      status: 'pending_registration',
+      attempted_at: now,
+      last_error: null,
+      external_ref: null,
+      last_success_at: null,
+    };
+    console.warn('[zoho/oauth/callback] Setup deferred to background:', setupError instanceof Error ? setupError.message : String(setupError));
   }
 
   await db

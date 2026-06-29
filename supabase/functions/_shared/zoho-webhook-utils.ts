@@ -153,11 +153,17 @@ export async function logWebhookEvent(
   },
 ): Promise<void> {
   try {
+    // Map status to processing_status (schema uses processing_status, not status)
+    const processingStatus =
+      opts.status === 'success' ? 'processed' :
+      opts.status === 'error' ? 'failed' :
+      'received';
+
     console.log('[webhook-utils] logWebhookEvent: preparing insert', {
       webhookId: opts.webhookId,
       tenantId: opts.tenantId,
       entityType: opts.entityType,
-      status: opts.status,
+      processingStatus,
     });
 
     const { data, error } = await admin.schema('app').from('integration_webhook_events').insert({
@@ -167,9 +173,8 @@ export async function logWebhookEvent(
       entity_type: opts.entityType,
       event_type: opts.eventType,
       external_entity_id: opts.externalEntityId,
-      status: opts.status,
+      processing_status: processingStatus,
       runtime_meta: opts.runtimeMeta,
-      received_at: new Date().toISOString(),
     });
 
     if (error) {
@@ -180,7 +185,7 @@ export async function logWebhookEvent(
       });
     } else {
       console.log('[webhook-utils] logWebhookEvent success', {
-        data,
+        rows_inserted: 1,
       });
     }
   } catch (e) {

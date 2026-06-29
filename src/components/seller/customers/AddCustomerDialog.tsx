@@ -480,7 +480,7 @@ export function AddCustomerDialog({
                               items={cohortItems}
                               selectedId={field.value}
                               onSelect={field.onChange}
-                              mode="inline"
+                              mode="stacked"
                               searchPlaceholder="Search customer groups…"
                               emptyLabel="No customer groups match."
                             />

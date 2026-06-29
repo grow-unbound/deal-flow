@@ -50,6 +50,7 @@ async function createWebhookEventPlaceholder(
     tenantIntegrationId: string;
     webhookId: string;
     entityType: string;
+    eventType: 'upsert' | 'delete' | null;
     externalEntityId: string | null;
     rawPayload: Record<string, unknown>;
   },
@@ -60,6 +61,7 @@ async function createWebhookEventPlaceholder(
       tenant_integration_id: opts.tenantIntegrationId,
       integration_webhook_id: opts.webhookId,
       entity_type: opts.entityType,
+      event_type: opts.eventType,
       external_entity_id: opts.externalEntityId,
       processing_status: 'received',
       raw_payload: opts.rawPayload,
@@ -246,6 +248,7 @@ Deno.serve(async (req: Request) => {
         tenantIntegrationId: webhook.tenant_integration_id,
         webhookId: webhook.id,
         entityType,
+        eventType: null,
         externalEntityId: null,
         rawPayload: body ?? {},
       });
@@ -270,6 +273,7 @@ Deno.serve(async (req: Request) => {
       tenantIntegrationId: webhook.tenant_integration_id,
       webhookId: webhook.id,
       entityType,
+      eventType: operation,
       externalEntityId: externalId,
       rawPayload: body ?? {},
     });

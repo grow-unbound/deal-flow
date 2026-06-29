@@ -1848,6 +1848,7 @@ async function persistEstimates(
       const discountPct = pickNumber(li.discount_percentage, li.disc_pct) ?? 0;
       const externalRef = await buildChildExternalRef(entry.estimateId, li, lineIndex);
       const lineOrder = resolveLineOrder(li, lineIndex);
+      const parentCreatedAt = asDate(entry.sourcePayload.created_time ?? entry.sourcePayload.created_at);
 
       lineItemRows.push({
         estimate_id: estimateId,
@@ -1865,8 +1866,8 @@ async function persistEstimates(
         sku: pickString(li.sku, li.item_sku, li.item_code, li.code),
         hsn_code: pickString(li.hsn_code, li.hsn_or_sac, li.hsn_sac),
         deleted_at: null,
-        created_at: asDate(li.created_time ?? li.created_at),
-        updated_at: asDate(li.last_modified_time ?? li.updated_at ?? li.created_time),
+        created_at: asDate(li.created_time ?? li.created_at) ?? parentCreatedAt ?? nowIso(),
+        updated_at: asDate(li.last_modified_time ?? li.updated_at ?? li.created_time) ?? parentCreatedAt ?? nowIso(),
         created_by: entry.resolvedActorId,
         updated_by: entry.resolvedActorId,
       });
@@ -2045,6 +2046,7 @@ async function persistOrders(
       const discountPct = pickNumber(li.discount_percentage, li.disc_pct) ?? 0;
       const externalRef = await buildChildExternalRef(entry.orderExternalId, li, lineIndex);
       const lineOrder = resolveLineOrder(li, lineIndex);
+      const parentCreatedAt = asDate(entry.sourcePayload.created_time ?? entry.sourcePayload.created_at);
 
       lineItemRows.push({
         order_id: orderId,
@@ -2063,8 +2065,8 @@ async function persistOrders(
         sku: pickString(li.sku, li.item_sku, li.item_code, li.code),
         hsn_code: pickString(li.hsn_code, li.hsn_or_sac, li.hsn_sac),
         deleted_at: null,
-        created_at: asDate(li.created_time ?? li.created_at),
-        updated_at: asDate(li.last_modified_time ?? li.updated_at ?? li.created_time),
+        created_at: asDate(li.created_time ?? li.created_at) ?? parentCreatedAt ?? nowIso(),
+        updated_at: asDate(li.last_modified_time ?? li.updated_at ?? li.created_time) ?? parentCreatedAt ?? nowIso(),
         created_by: entry.resolvedActorId,
         updated_by: entry.resolvedActorId,
       });
@@ -2268,6 +2270,7 @@ async function persistInvoices(
       const discountPct = pickNumber(li.discount_percentage, li.disc_pct) ?? 0;
       const externalRef = await buildChildExternalRef(entry.invoiceExternalId, li, lineIndex);
       const lineOrder = resolveLineOrder(li, lineIndex);
+      const parentCreatedAt = asDate(entry.sourcePayload.created_time ?? entry.sourcePayload.created_at);
 
       lineItemRows.push({
         invoice_id: invoiceId,
@@ -2285,8 +2288,8 @@ async function persistInvoices(
         hsn_code: pickString(li.hsn_code, li.hsn_or_sac, li.hsn_sac),
         scheme_tag: pickString(li.scheme_tag, li.discount_type),
         deleted_at: null,
-        created_at: asDate(li.created_time ?? li.created_at),
-        updated_at: asDate(li.last_modified_time ?? li.updated_at ?? li.created_time),
+        created_at: asDate(li.created_time ?? li.created_at) ?? parentCreatedAt ?? nowIso(),
+        updated_at: asDate(li.last_modified_time ?? li.updated_at ?? li.created_time) ?? parentCreatedAt ?? nowIso(),
         created_by: entry.resolvedActorId,
         updated_by: entry.resolvedActorId,
       });

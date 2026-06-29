@@ -129,7 +129,6 @@ export function CategoryFormSheet({ open, onOpenChange, editingCategory, onSucce
       slug: values.slug.trim(),
       description: values.description?.trim() || undefined,
       display_order: values.display_order,
-      external_ref: values.external_ref?.trim() || undefined,
     };
 
     const parsedCreate = CreateCategoryInputSchema.safeParse(payload);
@@ -214,7 +213,7 @@ export function CategoryFormSheet({ open, onOpenChange, editingCategory, onSucce
                   name="slug"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Slug</FormLabel>
+                      <FormLabel>Category code</FormLabel>
                       <FormControl>
                         <Input
                           {...field}
@@ -245,7 +244,7 @@ export function CategoryFormSheet({ open, onOpenChange, editingCategory, onSucce
                 />
               </FormBlock>
 
-              <FormBlock title="Purchase journey order">
+              <FormBlock title="Buyer app display priority">
                 <FormSectionGrid>
                   <FormField
                     control={form.control}
@@ -264,7 +263,7 @@ export function CategoryFormSheet({ open, onOpenChange, editingCategory, onSucce
                           />
                         </FormControl>
                         <p className="text-body-sm text-cream-600">
-                          Lower number = shown first. E.g. NVR/DVR = 0, Cameras = 1, Accessories = 10.
+                          Categories are shown in increasing order
                         </p>
                         <FormMessage />
                       </FormItem>
@@ -299,20 +298,6 @@ export function CategoryFormSheet({ open, onOpenChange, editingCategory, onSucce
                   }}
                 />
               </FormBlock>
-
-              <FormField
-                control={form.control}
-                name="external_ref"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>External reference (optional)</FormLabel>
-                    <FormControl>
-                      <Input {...field} placeholder="ERP / Tally code" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
 
               {form.formState.errors.root ? (
                 <p className="text-body-sm text-danger-600">{form.formState.errors.root.message}</p>
