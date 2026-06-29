@@ -60,6 +60,19 @@ function toLabelCase(input: string): string {
     .join(' ');
 }
 
+function dedupeProductsById(products: TenantProduct[]): TenantProduct[] {
+  const seen = new Set<string>();
+
+  return products.filter((product) => {
+    if (seen.has(product.id)) {
+      return false;
+    }
+
+    seen.add(product.id);
+    return true;
+  });
+}
+
 function ProductLandingSkeleton() {
   return (
     <PageWrap>
@@ -151,7 +164,7 @@ function ProductsLandingContent({
   });
 
   // Flatten all pages into a single products list
-  const allProducts = useMemo(() => data?.pages?.flatMap((p) => p.products) ?? [], [data?.pages]);
+  const allProducts = useMemo(() => dedupeProductsById(data?.pages?.flatMap((p) => p.products) ?? []), [data?.pages]);
   // Total count from snapshot (O(1)); falls back to loaded count
   const firstPage = data?.pages?.[0];
   const filteredTotal = (firstPage as { total?: number | null } | undefined)?.total ?? firstPage?.kpis?.total_skus ?? allProducts.length;

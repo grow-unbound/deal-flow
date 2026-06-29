@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { createTimer } from '@/lib/server-timing';
+import { resolveImportedProductTenantLinks } from '@/lib/server/tenant-product-source-resolution';
 import { z } from 'zod';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { PAGE_SIZE } from '@/lib/pagination';
@@ -495,6 +496,7 @@ export async function POST(req: NextRequest) {
       claims.role === 'seller_assistant' ? null : (cost_price ?? null);
 
     const tenantId = claims.tenant_id;
+    const actorUserId = claims.sub ?? claims.tenant_id;
 
     const db = supabaseAdmin as any; // supabase client typed generically for multi-schema queries
 
@@ -515,30 +517,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Resolve tenant_brand_id if not provided
     let resolvedTenantBrandId = providedTenantBrandId ?? null;
+    let resolvedTenantCategoryId = tenant_category_id ?? null;
 
-    if (!resolvedTenantBrandId && master_product_id) {
-      // Look up brand_id from catalog product
-      const { data: catalogProduct } = await db
-        .schema('catalog')
-        .from('products')
-        .select('brand_id')
-        .eq('id', master_product_id)
-        .maybeSingle();
+    if (master_product_id) {
+      let importedLinks: Awaited<ReturnType<typeof resolveImportedProductTenantLinks>> = null;
+      try {
+        importedLinks = await resolveImportedProductTenantLinks(db, tenantId, actorUserId, master_product_id, {
+          tenant_brand_id: resolvedTenantBrandId,
+          tenant_category_id: resolvedTenantCategoryId,
+        });
+      } catch (resolutionError) {
+        console.error('[POST /api/tenant/products] failed to resolve imported product links:', resolutionError);
+        return NextResponse.json(
+          { error: 'Failed to resolve imported brand/category links' },
+          { status: 500 },
+        );
+      }
 
-      if (catalogProduct?.brand_id) {
-        // Find matching tenant_brand
-        const { data: tenantBrand } = await db
-          .schema('app')
-          .from('tenant_brands')
-          .select('id')
-          .eq('tenant_id', tenantId)
-          .eq('master_brand_id', catalogProduct.brand_id)
-          .is('is_active', true)
-          .maybeSingle();
-
-        resolvedTenantBrandId = tenantBrand?.id ?? null;
+      if (importedLinks) {
+        resolvedTenantBrandId = importedLinks.tenant_brand_id;
+        resolvedTenantCategoryId = importedLinks.tenant_category_id;
       }
     }
 
@@ -550,7 +549,7 @@ export async function POST(req: NextRequest) {
         tenant_brand_id: resolvedTenantBrandId,
         master_product_id: master_product_id ?? null,
         internal_sku,
-        name_override: name_override ?? name ?? null,
+        name_override: name_override?.trim() || name?.trim() || null,
         mrp,
         base_selling_price,
         cost_price: effectiveCostPrice,
@@ -559,12 +558,12 @@ export async function POST(req: NextRequest) {
         hsn_code: hsn_code ?? null,
         gst_rate: gst_rate ?? null,
         description: description ?? null,
-        tenant_category_id: tenant_category_id ?? null,
+        tenant_category_id: resolvedTenantCategoryId,
         attributes_override: attributes ?? {},
         image_urls: image_urls ?? [],
         is_active: true,
-        created_by: tenantId,
-        updated_by: tenantId,
+        created_by: actorUserId,
+        updated_by: actorUserId,
       })
       .select()
       .single();

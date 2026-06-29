@@ -503,6 +503,7 @@ export const CustomProductSchema = z.object({
   tenant_brand_id: z.string().uuid('Brand is required').optional(),
   internal_sku: z.string().min(1, 'Internal SKU is required'),
   name: z.string().min(1, 'Product name is required'),
+  name_override: z.string().min(1, 'Product name override is required'),
   mrp: z.coerce.number().positive('MRP must be positive'),
   base_selling_price: z.coerce.number().positive('Base selling price must be positive'),
   cost_price: z.coerce.number().positive('Cost price must be positive').optional().nullable(),

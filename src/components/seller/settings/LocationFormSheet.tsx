@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { ChevronRight, MapPin, Search } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 
 import {
   DiscardChangesDialog,
@@ -21,7 +22,6 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { MutationButton } from '@/components/ui/mutation-button';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -30,13 +30,16 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { SearchOverlayPicker } from '@/components/ui/search-overlay-picker';
+import { apiFetch } from '@/lib/api-fetch';
+import { useAuth } from '@/contexts/AuthContext';
 import { useTenantLocations } from '@/hooks/useTenantLocations';
-import { parseLocationAssociatedUserEmails } from '@/lib/location-assignees';
 import { getMapsLoader } from '@/lib/google-maps-loader';
 import {
   CreateLocationInputSchema,
   LocationStatusSchema,
   LocationTypeSchema,
+  LocationAssociatedUserSchema,
   type TenantLocation,
 } from '@/types/tenant-locations';
 
@@ -227,7 +230,7 @@ const FormSchema = z.object({
   inventory_tracking: z.boolean(),
   is_default: z.boolean(),
   external_ref: z.string().max(200).optional(),
-  associated_user_emails: z.string().max(4000).optional(),
+  associated_users: z.array(LocationAssociatedUserSchema).default([]),
   lat: z.number().optional(),
   lng: z.number().optional(),
 });
@@ -249,13 +252,9 @@ function defaultsFromLocation(loc: TenantLocation | null): FormValues {
       inventory_tracking: true,
       is_default: false,
       external_ref: '',
-      associated_user_emails: '',
+      associated_users: [],
     };
   }
-  const associatedUserEmails = (loc.associated_users ?? [])
-    .map((user) => user.email)
-    .filter((email): email is string => typeof email === 'string' && email.trim().length > 0)
-    .join('\n');
   return {
     name: loc.name,
     type: loc.type,
@@ -269,7 +268,7 @@ function defaultsFromLocation(loc: TenantLocation | null): FormValues {
     inventory_tracking: loc.inventory_tracking,
     is_default: loc.is_default,
     external_ref: loc.external_ref ?? '',
-    associated_user_emails: associatedUserEmails,
+    associated_users: loc.associated_users ?? [],
     lat: loc.lat ?? undefined,
     lng: loc.lng ?? undefined,
   };
@@ -281,9 +280,22 @@ interface LocationFormSheetProps {
   editingLocation: TenantLocation | null;
 }
 
+type TeamMemberOption = {
+  id: string;
+  user_id: string;
+  email: string;
+  full_name: string | null;
+  phone: string | null;
+  role: 'seller_admin' | 'seller_assistant';
+  status: 'active' | 'pending' | 'inactive';
+};
+
 export function LocationFormSheet({ open, onOpenChange, editingLocation }: LocationFormSheetProps) {
   const { createLocation, updateLocation, isCreating, isUpdating } = useTenantLocations();
+  const { currentTenantId } = useAuth();
   const [mapsLabel, setMapsLabel] = useState<string | null>(null);
+  const [userSearchOpen, setUserSearchOpen] = useState(false);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
 
   const isEdit = Boolean(editingLocation?.id && !editingLocation.deleted_at);
   const pending = isCreating || isUpdating;
@@ -292,6 +304,20 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
     resolver: zodResolver(FormSchema),
     defaultValues: defaultsFromLocation(editingLocation),
   });
+  const selectedUsers = form.watch('associated_users') ?? [];
+
+  const { data: teamMembersResponse, isLoading: teamMembersLoading } = useQuery({
+    queryKey: ['team-members', currentTenantId],
+    enabled: open && Boolean(currentTenantId),
+    queryFn: async () => {
+      const res = await apiFetch('/api/team/members');
+      if (!res.ok) {
+        throw new Error('Failed to load team members');
+      }
+      return res.json() as Promise<{ members?: TeamMemberOption[] }>;
+    },
+  });
+  const teamMembers = teamMembersResponse?.members ?? [];
 
   useEffect(() => {
     if (open) {
@@ -301,6 +327,8 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
           ? `${editingLocation.address.line1 || editingLocation.name}, ${editingLocation.address.city}`
           : null,
       );
+      setUserSearchQuery('');
+      setUserSearchOpen(false);
     }
   }, [open, editingLocation, form]);
 
@@ -320,6 +348,66 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
         : 'Add a warehouse or branch. Inventory can be tracked per location.',
     [isEdit],
   );
+
+  const filteredTeamMembers = useMemo(() => {
+    const q = userSearchQuery.trim().toLowerCase();
+    if (!q) return teamMembers;
+    return teamMembers.filter((member) =>
+      [member.full_name, member.email, member.phone, member.role, member.status]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(q)),
+    );
+  }, [teamMembers, userSearchQuery]);
+
+  const selectedUserIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const user of selectedUsers) {
+      if (user.user_id) ids.add(user.user_id);
+      else ids.add(user.email.toLowerCase());
+    }
+    return ids;
+  }, [selectedUsers]);
+
+  const selectedUserSummary = useMemo(() => {
+    if (selectedUsers.length === 0) return 'Search team members';
+    const first = selectedUsers[0];
+    const head = first.user_name ?? first.email;
+    return selectedUsers.length === 1 ? head : `${head} +${selectedUsers.length - 1} more`;
+  }, [selectedUsers]);
+
+  const userTriggerDescription = selectedUsers.length > 0
+    ? `${selectedUsers.length} user${selectedUsers.length === 1 ? '' : 's'} selected`
+    : 'Choose existing tenant users for this location.';
+
+  function upsertSelectedUser(member: TeamMemberOption, checked: boolean) {
+    const next = checked
+      ? [
+          ...selectedUsers.filter((user) => user.user_id !== member.user_id && user.email.toLowerCase() !== member.email.toLowerCase()),
+          {
+            email: member.email,
+            user_name: member.full_name,
+            user_id: member.user_id,
+          },
+        ]
+      : selectedUsers.filter((user) => user.user_id !== member.user_id && user.email.toLowerCase() !== member.email.toLowerCase());
+
+    form.setValue('associated_users', next, {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    });
+  }
+
+  function removeSelectedUser(identifier: string) {
+    const next = selectedUsers.filter(
+      (user) => user.user_id !== identifier && user.email.toLowerCase() !== identifier.toLowerCase(),
+    );
+    form.setValue('associated_users', next, {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    });
+  }
 
   function handleMapsSelect(details: {
     lat: number | null;
@@ -344,7 +432,6 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
   }
 
   async function onSubmit(values: FormValues) {
-    const associatedUsers = parseLocationAssociatedUserEmails(values.associated_user_emails);
     const payload = {
       name: values.name.trim(),
       type: values.type,
@@ -360,7 +447,7 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
       inventory_tracking: values.inventory_tracking,
       is_default: values.is_default,
       external_ref: values.external_ref?.trim() ? values.external_ref.trim() : undefined,
-      associated_users: associatedUsers.map((email) => ({ email })),
+      associated_users: values.associated_users,
       lat: values.lat,
       lng: values.lng,
     };
@@ -551,19 +638,93 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
 
               <FormField
                 control={form.control}
-                name="associated_user_emails"
-                render={({ field }) => (
+                name="associated_users"
+                render={() => (
                   <FormItem>
                     <FormLabel>Associated users</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        {...field}
-                        placeholder="one email per line or comma-separated"
-                        className="min-h-[96px] resize-y"
-                      />
-                    </FormControl>
+                    <SearchOverlayPicker
+                      open={userSearchOpen}
+                      onOpenChange={(next) => {
+                        setUserSearchOpen(next);
+                        if (!next) {
+                          setUserSearchQuery('');
+                        }
+                      }}
+                      title="Add users"
+                      eyebrow="Settings"
+                      description="Select one or more existing tenant users for this location."
+                      triggerTitle={selectedUserSummary}
+                      triggerDescription={userTriggerDescription}
+                      searchValue={userSearchQuery}
+                      onSearchValueChange={setUserSearchQuery}
+                      searchPlaceholder="Search team members…"
+                      loading={teamMembersLoading}
+                    >
+                      {selectedUsers.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {selectedUsers.map((user) => (
+                            <button
+                              key={`${user.user_id ?? user.email}`}
+                              type="button"
+                              onClick={() => removeSelectedUser(user.user_id ?? user.email)}
+                              className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-medium text-teal-800 transition-colors hover:bg-teal-100"
+                            >
+                              <span>{user.user_name ?? user.email}</span>
+                              <span aria-hidden="true" className="text-teal-500">×</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      {teamMembersLoading ? (
+                        <div className="space-y-1">
+                          {Array.from({ length: 3 }).map((_, idx) => (
+                            <div key={idx} className="h-12 animate-pulse rounded-[8px] bg-cream-100" />
+                          ))}
+                        </div>
+                      ) : filteredTeamMembers.length > 0 ? (
+                        <div className="space-y-0.5">
+                          {filteredTeamMembers.map((member) => {
+                            const selected = selectedUserIds.has(member.user_id) || selectedUserIds.has(member.email.toLowerCase());
+                            return (
+                              <button
+                                key={member.user_id}
+                                type="button"
+                                onClick={() => upsertSelectedUser(member, !selected)}
+                                className={[
+                                  'flex w-full items-center justify-between rounded-[8px] px-3 py-[10px] text-left transition-colors',
+                                  selected ? 'border border-ember-100 bg-ember-50' : 'hover:bg-cream-100',
+                                ].join(' ')}
+                              >
+                                <div className="min-w-0">
+                                  <p className="text-base font-medium text-cream-900">
+                                    {member.full_name ?? member.email}
+                                  </p>
+                                  <p className="mt-0.5 text-sm text-cream-700">
+                                    {member.email}
+                                    {member.phone ? ` · ${member.phone}` : ''}
+                                    {member.role === 'seller_admin' ? ' · admin' : ' · assistant'}
+                                  </p>
+                                </div>
+                                <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">
+                                  {selected ? 'Selected' : member.status}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : userSearchQuery.trim() ? (
+                        <p className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-500">
+                          No team members match this search.
+                        </p>
+                      ) : (
+                        <p className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-500">
+                          Start typing to search existing team members.
+                        </p>
+                      )}
+                    </SearchOverlayPicker>
                     <p className="text-body-sm text-cream-600">
-                      Users will be invited if needed and assigned to this location automatically.
+                      Select existing tenant users only. Their email and name will be stored on the location.
                     </p>
                     <FormMessage />
                   </FormItem>
