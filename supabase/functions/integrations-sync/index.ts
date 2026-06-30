@@ -307,11 +307,17 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Phase 3 — Analysis (snapshots + KPI + reco).
-    // post_sync_rebuild is also fired by DB trigger on each job completion (p_days=2 for incremental).
-    // We fire it explicitly here with a larger window when a transactional phase just ran,
-    // and then run the reco suite (not in the trigger) sequentially.
+    // Phase 3 — Analysis.
+    // Snapshots and KPI tables are already rebuilt by the DB trigger (trg_integration_sync_jobs_post_rebuild)
+    // that fires on each phase job completion. Here we only run the reco suite, which the trigger
+    // does NOT cover, plus a final post_sync_rebuild with the correct window for initial syncs
+    // (trigger uses p_days=2 for incremental; initial syncs need 90 days).
+    //
+    // TIMEOUT RISK: post_sync_rebuild + 6 reco RPCs can take 30-90s on large datasets.
+    // If this risks hitting the 150s Supabase limit, the analysis job is left 'running'
+    // and the pg_cron will pick it up on the next cycle (if we add that hook later).
     const totalSynced = results.reduce((sum, r) => sum + r.records_synced, 0);
+    const isInitialSync = jobType === 'initial_reference' || jobType === 'initial_transactional';
     if (totalSynced > 0) {
       const analysisJobId = await createPhaseJob(admin, {
         tenantId: integration.tenant_id,
@@ -325,17 +331,26 @@ Deno.serve(async (req: Request) => {
         status: 'running',
         started_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        progress: { phase_label: 'Rebuilding snapshots and KPI…' },
       }).eq('id', analysisJobId);
 
       try {
-        // Determine rebuild window: use 90 days for initial sync types, 2 for incremental
-        const rebuildDays = jobType === 'initial_reference' || jobType === 'initial_transactional' ? 90 : 2;
-        await admin.schema('app').rpc('post_sync_rebuild', {
-          p_tenant_id: integration.tenant_id,
-          p_days: rebuildDays,
-        });
+        // For initial syncs: trigger used p_days=2 but we need 90. Explicit call corrects the window.
+        // For incremental: trigger already ran with p_days=2 — skip to avoid double-work.
+        if (isInitialSync) {
+          await admin.schema('app').rpc('post_sync_rebuild', {
+            p_tenant_id: integration.tenant_id,
+            p_days: 90,
+          });
+        }
 
-        // Reco suite (sequential — each depends on the prior step's output)
+        await admin.schema('app').from('integration_sync_jobs').update({
+          progress: { phase_label: 'Computing recommendations…' },
+          updated_at: new Date().toISOString(),
+        }).eq('id', analysisJobId);
+
+        // Reco suite — sequential (each step depends on prior output).
+        // Wineyard runs these weekly via cron; deal-flow runs after every Phase 2 sync.
         await admin.schema('app').rpc('reco_compute_popularity', { p_tenant_id: integration.tenant_id });
         await admin.schema('app').rpc('reco_compute_associations', { p_tenant_id: integration.tenant_id });
         await admin.schema('app').rpc('reco_refresh_buyer_profiles', { p_tenant_id: integration.tenant_id });
@@ -347,7 +362,7 @@ Deno.serve(async (req: Request) => {
           status: 'completed',
           completed_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-          progress: { phase_label: 'Analysis complete', rebuild_days: rebuildDays },
+          progress: { phase_label: 'Analysis complete' },
         }).eq('id', analysisJobId);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Analysis failed';
@@ -356,9 +371,10 @@ Deno.serve(async (req: Request) => {
           status: 'failed',
           completed_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
+          progress: { phase_label: `Analysis failed: ${message}` },
           error_log: { message, timestamp: new Date().toISOString() },
         }).eq('id', analysisJobId);
-        // Don't fail the whole sync — Phase 1+2 data is still good
+        // Phase 1+2 data is intact — don't fail the overall sync response
       }
     }
 

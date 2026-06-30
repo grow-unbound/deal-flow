@@ -76,6 +76,8 @@ const DEFAULT_PER_PAGE = 200;
 const DEFAULT_REGION = 'com';
 
 const TRANSACTIONAL_ENTITY_TYPES = new Set(['estimates', 'orders', 'invoices']);
+// Zoho supports last_modified_time filter on these endpoints; locations and pricelists always do full fetch
+const LAST_MODIFIED_SUPPORTED_TYPES = new Set(['products', 'customers', 'estimates', 'orders', 'invoices']);
 const PRICE_LIST_RESPONSE_KEYS = ['pricebooks', 'pricelists'] as const;
 const ZOHO_REQUEST_RETRYABLE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const ZOHO_REQUEST_MAX_ATTEMPTS = 3;
@@ -461,17 +463,24 @@ export function createZohoAdapter(
     const page = cursor?.page ?? 1;
     const perPage = cursor?.per_page ?? phase.perPage ?? DEFAULT_PER_PAGE;
 
-    // For transactional entities apply a date_start filter so we only load
-    // from the beginning of the current Indian Financial Year.
-    // `since` (from incremental re-syncs) takes precedence when set.
+    // Apply time filters based on entity type and Zoho API support:
+    // - Transactional (estimates/orders/invoices): date_start filter (Zoho date range param)
+    // - Reference with last_modified_time support (products/customers): last_modified_time filter
+    // - Locations and pricelists: always full fetch (Zoho doesn't support these filters)
     const dateStart = TRANSACTIONAL_ENTITY_TYPES.has(phase.entityType)
       ? (since ?? financialYearStart())
+      : undefined;
+    const lastModified = !TRANSACTIONAL_ENTITY_TYPES.has(phase.entityType) &&
+      LAST_MODIFIED_SUPPORTED_TYPES.has(phase.entityType) &&
+      since != null
+      ? since
       : undefined;
 
     const query = {
       page,
       per_page: perPage,
       ...(dateStart ? { date_start: dateStart } : {}),
+      ...(lastModified ? { last_modified_time: lastModified } : {}),
     };
     let payload: Record<string, unknown>;
     if (phase.id === 'pricelists') {

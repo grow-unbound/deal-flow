@@ -1604,6 +1604,15 @@ async function persistPricelists(
 
   if (skippedItems.length > 0) {
     console.warn('[persistPricelists] skipped items:', JSON.stringify(skippedItems.slice(0, 10)));
+    // Persist skipped rows to entity map so they appear in the frontend entity-error section
+    const errorPairs = skippedItems.map((s) => ({
+      externalId: s.item_id ? `${s.pricebook_id}:${s.item_id}` : s.pricebook_id,
+      internalId: '',
+    }));
+    await batchUpsertEntityMap(admin, tenantId, integrationId, 'price_list_items', errorPairs, {
+      syncStatus: 'error',
+      errorReason: skippedItems[0]?.reason ?? 'FK resolution failed',
+    }).catch((e) => console.warn('[persistPricelists] entity map error write failed:', e));
   }
 
   const dedupedPriceListItemRows = dedupeByColumns(
