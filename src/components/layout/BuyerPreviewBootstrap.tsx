@@ -4,7 +4,6 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   BUYER_PREVIEW_QUERY_PARAM,
-  verifyBuyerPreviewToken,
 } from '@/lib/buyer-preview';
 import {
   clearStoredBuyerPreviewToken,
@@ -14,6 +13,21 @@ import {
 
 const EXPIRY_CHECK_MS = 30_000;
 const EXPIRY_WARNING_BEFORE_S = 120;
+
+// Decode exp from the preview token without HMAC verification.
+// HMAC is verified server-side on every API call — client only needs exp for UX.
+function decodePreviewTokenExp(token: string): number | null {
+  try {
+    const [payloadB64] = token.split('.');
+    if (!payloadB64) return null;
+    const normalized = payloadB64.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    const payload = JSON.parse(atob(padded)) as Record<string, unknown>;
+    return typeof payload.exp === 'number' ? payload.exp : null;
+  } catch {
+    return null;
+  }
+}
 
 function Spinner() {
   return (
@@ -78,20 +92,22 @@ function BuyerPreviewBootstrapInner({ children }: { children: React.ReactNode })
     }
   }, [pathname]);
 
-  // Periodically check stored token expiry; show overlay when expired.
+  // Periodically check stored token expiry; show overlay when nearing or past exp.
+  // Uses decode-only (no HMAC) — server verifies signature on every API call.
   useEffect(() => {
-    async function checkExpiry() {
+    function checkExpiry() {
       const stored = getStoredBuyerPreviewToken();
       if (!stored) return;
+      const exp = decodePreviewTokenExp(stored);
+      if (exp === null) return;
       const nowS = Math.floor(Date.now() / 1000);
-      const payload = await verifyBuyerPreviewToken(stored, nowS + EXPIRY_WARNING_BEFORE_S);
-      if (!payload) {
+      if (nowS >= exp - EXPIRY_WARNING_BEFORE_S) {
         setExpired(true);
       }
     }
 
-    void checkExpiry();
-    const id = setInterval(() => { void checkExpiry(); }, EXPIRY_CHECK_MS);
+    checkExpiry();
+    const id = setInterval(checkExpiry, EXPIRY_CHECK_MS);
     return () => clearInterval(id);
   }, []);
 
