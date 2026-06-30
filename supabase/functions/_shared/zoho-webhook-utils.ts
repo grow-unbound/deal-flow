@@ -25,7 +25,7 @@ export async function loadWebhookByToken(
   const { data, error } = await admin
     .schema('app')
     .from('integration_webhooks')
-    .select('id, tenant_id, tenant_integration_id, entity_type, secret, status, is_active, webhook_config')
+    .select('id, tenant_id, tenant_integration_id, entity_type, event_types, secret, status, is_active, webhook_config')
     .eq('endpoint_token', endpointToken)
     .maybeSingle();
   if (error) throw error;

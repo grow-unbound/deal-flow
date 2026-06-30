@@ -230,10 +230,19 @@ Deno.serve(async (req: Request) => {
     const body = await parseWebhookBody(req);
     console.log(`[${traceId}] body parsed | body_present=${!!body} | body_keys=${body ? Object.keys(body).slice(0, 5).join(',') : 'none'}`);
 
+    // Derive operation from event_types stored on the DB row.
+    // Delete rows store only *.deleted events; add_edit rows store *.created/*.updated.
+    // Fall back to ?event_type= URL param (legacy single-row registrations) then body-based detection.
+    const rowEventTypes = Array.isArray((webhook as Record<string, unknown>).event_types)
+      ? ((webhook as Record<string, unknown>).event_types as string[])
+      : [];
+    const isDeleteRow = rowEventTypes.length > 0 && rowEventTypes.every((e) => e.endsWith('.deleted'));
     const eventTypeParam = url.searchParams.get('event_type');
-    console.log(`[${traceId}] event_type_param=${eventTypeParam}`);
+    console.log(`[${traceId}] row_event_types=${rowEventTypes.join(',')} is_delete_row=${isDeleteRow} event_type_param=${eventTypeParam}`);
 
     const operation: 'upsert' | 'delete' | null =
+      isDeleteRow ? 'delete' :
+      rowEventTypes.length > 0 ? 'upsert' :
       eventTypeParam === 'delete' ? 'delete' :
       eventTypeParam === 'upsert' ? 'upsert' :
       (body ? resolveWebhookOperation(body) : null);
