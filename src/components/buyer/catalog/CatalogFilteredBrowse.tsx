@@ -33,7 +33,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
   const searchHref = React.useMemo(() => {
     if (mode === 'category') return buildBuyerSearchHref({ category_id: id });
     if (mode === 'brand') return buildBuyerSearchHref({ brand_id: id });
-    return buildBuyerSearchHref({ catalog_id: id });
+    return buildBuyerSearchHref({ campaign_id: id });
   }, [mode, id]);
 
   React.useEffect(() => {
@@ -50,7 +50,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     });
     if (mode === 'category') params.set('category_id', id);
     if (mode === 'brand') params.set('brand_id', id);
-    if (mode === 'list') params.set('catalog_id', id);
+    if (mode === 'list') params.set('campaign_id', id);
 
     apiFetch(`/api/buyer/catalog?${params.toString()}`)
       .then((r) => r.json() as Promise<BuyerCatalogResponse>)
@@ -60,8 +60,8 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
         setItems(next);
         setOffset(next.length);
         setHasMore(data.has_more ?? false);
-        if (mode === 'list' && data.selected_catalog_name) {
-          setTitle(data.selected_catalog_name);
+        if (mode === 'list' && data.selected_campaign_name) {
+          setTitle(data.selected_campaign_name);
         } else {
           const first = next[0];
           if (mode === 'category' && first?.category_name) setTitle(first.category_name);
@@ -89,7 +89,7 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     });
     if (mode === 'category') params.set('category_id', id);
     if (mode === 'brand') params.set('brand_id', id);
-    if (mode === 'list') params.set('catalog_id', id);
+    if (mode === 'list') params.set('campaign_id', id);
 
     apiFetch(`/api/buyer/catalog?${params.toString()}`)
       .then((r) => r.json() as Promise<BuyerCatalogResponse>)

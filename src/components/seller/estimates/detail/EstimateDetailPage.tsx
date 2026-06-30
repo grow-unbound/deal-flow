@@ -242,6 +242,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
             readOnly
             docNumber={data.estimate_number}
             locationId={data.location_id}
+            locationName={data.location_name}
             availableLocations={data.available_locations}
             dateIssued={data.estimate_date}
             secondDate={data.valid_until}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
+import { createProductQueryEmbedding } from '@/lib/server/product-search';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -37,6 +38,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<GlobalSearchRe
   }
 
   const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? '5'), 10);
+  const queryEmbedding = await createProductQueryEmbedding(q);
 
   const db = supabaseAdmin;
   if (!db) {
@@ -45,10 +47,11 @@ export async function GET(req: NextRequest): Promise<NextResponse<GlobalSearchRe
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (db as any).rpc('global_search', {
-    p_query:           q,
-    p_tenant_id:       claims.tenant_id,
-    p_role:            claims.role,
+    p_query: q,
+    p_tenant_id: claims.tenant_id,
+    p_role: claims.role,
     p_items_per_group: limit,
+    p_query_embedding: queryEmbedding,
   });
 
   if (error) {

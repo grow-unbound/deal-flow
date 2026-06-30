@@ -53,7 +53,7 @@ export interface NavItem {
 }
 
 export interface NavGroup {
-  label: 'RUN YOUR BUSINESS' | 'GROW YOUR BUSINESS' | 'SETUP YOUR BUSINESS';
+  label: string;
   items: NavItem[];
 }
 
@@ -101,6 +101,7 @@ export const navGroups: NavGroup[] = [
       { label: 'Settings', href: '/settings', icon: SettingsIcon, roles: [ROLES.SELLER_ADMIN] },
       { label: 'Team', href: '/settings/team', icon: TeamIcon, roles: [ROLES.SELLER_ADMIN] },
       { label: 'Integrations', href: '/settings/integrations', icon: IntegrationsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_integrations' },
+      { label: 'Recommendations', href: '/settings/recommendations', icon: RecommendationsIcon, roles: [ROLES.SELLER_ADMIN] },
       { label: 'Billing & Plan', href: '/settings/billing', icon: BillingIcon, roles: [ROLES.SELLER_ADMIN] },
     ],
   },
@@ -477,6 +478,14 @@ function TagIcon({ size = 16, className = '' }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="M12 2H8a2 2 0 0 0-1.414.586l-4 4A2 2 0 0 0 2 8v4a2 2 0 0 0 .586 1.414l9 9a2 2 0 0 0 2.828 0l7-7a2 2 0 0 0 0-2.828l-9-9A2 2 0 0 0 12 2z" />
       <circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function RecommendationsIcon({ size = 16, className = '' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z" />
     </svg>
   );
 }

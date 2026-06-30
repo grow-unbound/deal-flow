@@ -59,7 +59,11 @@ export interface BuyerSearchHrefParams {
   q?: string;
   category_id?: string;
   brand_id?: string;
-  catalog_id?: string;
+  campaign_id?: string;
+}
+
+export function buildBuyerLocationHref(returnTo: string): string {
+  return `/buy/location?returnTo=${encodeURIComponent(returnTo)}`;
 }
 
 /** Build `/buy/search` URL with query params for overlay search. */
@@ -69,7 +73,7 @@ export function buildBuyerSearchHref(params: BuyerSearchHrefParams): string {
   if (params.q?.trim()) sp.set('q', params.q.trim());
   if (params.category_id) sp.set('category_id', params.category_id);
   if (params.brand_id) sp.set('brand_id', params.brand_id);
-  if (params.catalog_id) sp.set('catalog_id', params.catalog_id);
+  if (params.campaign_id) sp.set('campaign_id', params.campaign_id);
   const qs = sp.toString();
   return qs ? `/buy/search?${qs}` : '/buy/search';
 }

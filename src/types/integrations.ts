@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+const IntegrationSinceValueSchema = z.union([
+  z.string().datetime({ offset: true }),
+  z.string().date(),
+]);
+
 export const INTEGRATION_TYPE_IDS = ['zoho_books', 'zoho_inventory', 'tally_prime', 'busy'] as const;
 export const IntegrationTypeIdSchema = z.enum(INTEGRATION_TYPE_IDS);
 export type IntegrationTypeId = z.infer<typeof IntegrationTypeIdSchema>;
@@ -22,7 +27,7 @@ export type TenantIntegrationStatus = z.infer<typeof TenantIntegrationStatusSche
 export const TenantIntegrationHealthStatusSchema = z.enum(['ok', 'expired', 'invalid']);
 export type TenantIntegrationHealthStatus = z.infer<typeof TenantIntegrationHealthStatusSchema>;
 
-export const INTEGRATION_ENTITY_TYPES = ['locations', 'brands', 'products', 'pricelists', 'customers', 'estimates', 'orders', 'invoices'] as const;
+export const INTEGRATION_ENTITY_TYPES = ['locations', 'brands', 'categories', 'products', 'pricelists', 'customers', 'estimates', 'orders', 'invoices'] as const;
 export const IntegrationEntityTypeSchema = z.enum(INTEGRATION_ENTITY_TYPES);
 export type IntegrationEntityType = z.infer<typeof IntegrationEntityTypeSchema>;
 
@@ -44,7 +49,7 @@ export const IntegrationSyncJobTypeSchema = z.enum([
 ]);
 export type IntegrationSyncJobType = z.infer<typeof IntegrationSyncJobTypeSchema>;
 
-export const IntegrationSyncJobStatusSchema = z.enum(['queued', 'running', 'completed', 'failed', 'cancelled']);
+export const IntegrationSyncJobStatusSchema = z.enum(['pending', 'queued', 'running', 'paused', 'completed', 'failed', 'cancelled']);
 export type IntegrationSyncJobStatus = z.infer<typeof IntegrationSyncJobStatusSchema>;
 
 export const IntegrationEntitySyncStatusSchema = z.enum(['synced', 'pending_push', 'conflict', 'error']);
@@ -154,7 +159,7 @@ export const IntegrationProgressCursorSchema = z
     page: z.number().int().min(1),
     per_page: z.number().int().min(1),
     has_more: z.boolean(),
-    since: z.string().datetime({ offset: true }).nullable(),
+    since: IntegrationSinceValueSchema.nullable(),
   })
   .strict();
 export type IntegrationProgressCursor = z.infer<typeof IntegrationProgressCursorSchema>;
@@ -165,7 +170,7 @@ export const IntegrationJobProgressSchema = z
     version: z.number().int().min(1).optional(),
     provider: z.string().trim().min(1).max(40).optional(),
     scope: z.enum(['reference', 'transactional', 'full']).optional(),
-    since: z.string().datetime({ offset: true }).nullable().optional(),
+    since: IntegrationSinceValueSchema.nullable().optional(),
     phases: z.array(z.string().trim().min(1).max(120)).default([]),
     phases_total: z.number().int().min(0).optional(),
     phase_current: z.number().int().min(0).optional(),
@@ -251,7 +256,7 @@ export const IntegrationJobSummarySchema = z
   .object({
     provider: z.string().trim().min(1).max(40).optional(),
     scope: z.enum(['reference', 'transactional', 'full']).optional(),
-    since: z.string().datetime({ offset: true }).nullable().optional(),
+    since: IntegrationSinceValueSchema.nullable().optional(),
     run_origin: IntegrationRunOriginSchema.optional(),
     sync_window: z.string().trim().min(1).max(200).nullable().optional(),
     phases_completed: z.array(z.string().trim().min(1).max(120)).optional(),
@@ -312,6 +317,16 @@ const IntegrationJobErrorLogSchema = z.union([
     })
     .passthrough(),
 ]);
+
+export const IntegrationEntityErrorSchema = z
+  .object({
+    entity_type: z.string().trim().min(1).max(120),
+    external_id: z.string().trim().min(1).max(200).nullable().optional(),
+    error_reason: z.string().trim().min(1).max(1000),
+    updated_at: z.string().datetime({ offset: true }).nullable().optional(),
+  })
+  .strict();
+export type IntegrationEntityError = z.infer<typeof IntegrationEntityErrorSchema>;
 
 export const IntegrationTypeRecordSchema = z
   .object({
@@ -386,6 +401,7 @@ export const IntegrationCatalogItemSchema = z
     latest_job: IntegrationJobRecordSchema.nullable(),
     recent_jobs: z.array(IntegrationJobRecordSchema).default([]),
     active_flows: z.array(IntegrationDataFlowRecordSchema).default([]),
+    recent_entity_errors: z.array(IntegrationEntityErrorSchema).default([]),
     coverage_totals: z
       .object({
         locations: z.number().int().min(0),

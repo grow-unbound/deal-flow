@@ -10,9 +10,12 @@ import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { makeHttpError, transientQueryRetry } from '@/lib/query-retry';
 import type {
   IntegrationCoverageTotals,
+  IntegrationEntityError,
   IntegrationSettingsPayload,
   IntegrationWebhookTelemetry,
 } from '@/types/integrations';
+
+export type { IntegrationEntityError } from '@/types/integrations';
 
 export type IntegrationFamilyFlag = 'ZOHO_INTEGRATION' | 'TALLY_INTEGRATION' | 'BUSY_INTEGRATION';
 export type IntegrationConnectivityMode = 'cloud' | 'local';
@@ -147,6 +150,7 @@ export interface TenantIntegrationDetail {
   active_job?: IntegrationSyncJob | null;
   sync_history: IntegrationSyncJob[];
   data_flows: IntegrationDataFlow[];
+  recent_entity_errors?: IntegrationEntityError[];
   coverage_totals?: IntegrationCoverageTotals | null;
   webhook_telemetry?: IntegrationWebhookTelemetry | null;
 }
@@ -164,6 +168,7 @@ export interface IntegrationCatalogItem {
   setup_notes?: string[];
   coverage_totals?: IntegrationCoverageTotals | null;
   webhook_telemetry?: IntegrationWebhookTelemetry | null;
+  recent_entity_errors?: IntegrationEntityError[];
 }
 
 export interface IntegrationsSettingsView {

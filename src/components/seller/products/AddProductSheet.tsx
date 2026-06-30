@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Package, Plus, Search, X } from 'lucide-react';
+import { Check, Package, Plus, X } from 'lucide-react';
 import { useForm, useFieldArray, useController, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -37,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { SearchOverlayPicker } from '@/components/ui/search-overlay-picker';
 
 import {
   useSearchMasterProducts,
@@ -64,6 +64,7 @@ const INLINE_RESULTS = 5;
 
 const AddProductFormSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
+  name_override: z.string().min(1, 'Product name override is required'),
   // optional at schema level — required for custom products, auto-resolved for imported
   tenant_brand_id: z.string().optional(),
   tenant_category_id: z.string().uuid().optional(),
@@ -212,6 +213,7 @@ export function AddProductSheet({
 
   const [selectedMaster, setSelectedMaster] = useState<MasterProduct | null>(null);
   const [inputValue, setInputValue] = useState('');
+  const [productSearchOpen, setProductSearchOpen] = useState(false);
   const [customProductNameSelected, setCustomProductNameSelected] = useState<string | null>(null);
   const [stagedImage, setStagedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -243,6 +245,7 @@ export function AddProductSheet({
     resolver: zodResolver(AddProductFormSchema),
     defaultValues: {
       name: '',
+      name_override: '',
       tenant_brand_id: '',
       tenant_category_id: undefined,
       internal_sku: '',
@@ -311,6 +314,7 @@ export function AddProductSheet({
     setPriceListAmounts({});
     form.reset({
       name: product.display_name ?? '',
+      name_override: product.name_override ?? product.display_name ?? '',
       tenant_brand_id: product.tenant_brand_id ?? '',
       tenant_category_id: (product as any).tenant_category_id ?? undefined,
       internal_sku: product.internal_sku ?? '',
@@ -341,10 +345,12 @@ export function AddProductSheet({
     setSelectedMaster(product);
     setCustomProductNameSelected(null);
     setInputValue(product.name);
+    setProductSearchOpen(false);
     form.reset(
       {
         ...form.getValues(),
         name: product.name,
+        name_override: product.name,
         internal_sku: product.master_sku,
         hsn_code: product.hsn_code ?? '',
         gst_rate: product.gst_rate != null ? String(product.gst_rate) : gstInclusive ? '' : String(gstRate),
@@ -361,6 +367,7 @@ export function AddProductSheet({
     setSelectedMaster(null);
     setInputValue('');
     form.setValue('name', '', { shouldDirty: true });
+    form.setValue('name_override', '', { shouldDirty: true });
     form.setValue('internal_sku', '');
     form.setValue('hsn_code', '');
     form.setValue('gst_rate', gstInclusive ? '' : String(gstRate));
@@ -378,16 +385,33 @@ export function AddProductSheet({
   function selectCustomProductName(name: string) {
     setCustomProductNameSelected(name);
     form.setValue('name', name, { shouldDirty: true });
+    form.setValue('name_override', name, { shouldDirty: true });
+    setProductSearchOpen(false);
   }
 
   function clearCustomProductName() {
     setCustomProductNameSelected(null);
-    setInputValue('');
+    setProductSearchOpen(false);
     form.setValue('name', '');
+    form.setValue('name_override', '');
   }
 
-  const showDropdown =
-    !isEditMode && inputValue.trim().length > 0 && !selectedMaster && !customProductNameSelected;
+  useEffect(() => {
+    if (!productSearchOpen) {
+      setInputValue(selectedMaster?.name ?? customProductNameSelected ?? '');
+    }
+  }, [customProductNameSelected, productSearchOpen, selectedMaster?.name]);
+
+  const productSearchTriggerTitle = isEditMode
+    ? product?.display_name ?? form.getValues('name') ?? 'Product name'
+    : selectedMaster?.name ?? customProductNameSelected ?? 'Search products';
+  const productSearchTriggerDescription = isEditMode
+    ? 'Update the existing product details below.'
+    : selectedMaster
+      ? `Imported from the master catalog · ${selectedMaster.master_sku}`
+      : customProductNameSelected
+        ? 'Creating a private catalog product.'
+        : 'Search the master catalog or create a custom product.';
 
   // Sync search term to form name field when not imported
   useEffect(() => {
@@ -395,6 +419,16 @@ export function AddProductSheet({
       form.setValue('name', inputValue, { shouldDirty: inputValue.length > 0 });
     }
   }, [form, inputValue, selectedMaster, customProductNameSelected]);
+
+  useEffect(() => {
+    if (isEditMode || selectedMaster || customProductNameSelected) return;
+
+    const currentName = form.getValues('name');
+    const currentOverride = form.getValues('name_override');
+    if (!currentOverride || currentOverride === currentName) {
+      form.setValue('name_override', inputValue, { shouldDirty: inputValue.length > 0 });
+    }
+  }, [form, inputValue, isEditMode, selectedMaster, customProductNameSelected]);
 
   const onSubmit: SubmitHandler<AddProductFormValues> = async (values) => {
     // For custom products, brand selection is required
@@ -423,7 +457,7 @@ export function AddProductSheet({
             id: product.id,
             data: {
               internal_sku: values.internal_sku,
-              name: values.name,
+              name_override: values.name_override,
               tenant_brand_id: values.tenant_brand_id || null,
               mrp,
               base_selling_price: bsp,
@@ -443,6 +477,7 @@ export function AddProductSheet({
             ...(values.tenant_brand_id ? { tenant_brand_id: values.tenant_brand_id } : {}),
             internal_sku: values.internal_sku,
             name: values.name,
+            name_override: values.name_override,
             mrp,
             base_selling_price: bsp,
             cost_price: costPrice ?? undefined,
@@ -590,7 +625,7 @@ export function AddProductSheet({
               {/* ── Identity ── */}
               <FormBlock title="Identity">
 
-                {/* Name + search dropdown */}
+                {/* Name + search overlay */}
                 <FormField
                   control={form.control}
                   name="name"
@@ -598,86 +633,101 @@ export function AddProductSheet({
                     <FormItem className="space-y-2">
                       <FormLabel>Product name</FormLabel>
                       <FormControl>
-                        <Popover open={showDropdown}>
-                          <PopoverAnchor asChild>
-                            <div className="relative">
-                              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-cream-700" />
-                              <Input
-                                {...field}
-                                className="pl-8"
-                                placeholder={isEditMode ? 'Product name' : 'Search master catalog or type a new name'}
-                                value={inputValue}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setInputValue(val);
-                                  setCustomProductNameSelected(null);
-                                  field.onChange(val);
-                                }}
-                                readOnly={isEditMode || !!selectedMaster || !!customProductNameSelected}
-                              />
+                        <SearchOverlayPicker
+                          open={isEditMode ? false : productSearchOpen}
+                          onOpenChange={(next) => {
+                            if (isEditMode) return;
+                            setProductSearchOpen(next);
+                            if (!next) {
+                              setInputValue(selectedMaster?.name ?? customProductNameSelected ?? '');
+                            }
+                          }}
+                          triggerDisabled={isEditMode}
+                          title="Search products"
+                          eyebrow="Products"
+                          description="Match against the master catalog, or create a custom product if no match fits."
+                          triggerTitle={productSearchTriggerTitle}
+                          triggerDescription={productSearchTriggerDescription}
+                          searchValue={inputValue}
+                          onSearchValueChange={(value) => {
+                            if (isEditMode) return;
+                            setInputValue(value);
+                            setCustomProductNameSelected(null);
+                            field.onChange(value);
+                          }}
+                          searchPlaceholder="Search master products…"
+                          loading={isPending}
+                          footer={isEditMode || !inputValue.trim() ? null : (
+                            <button
+                              type="button"
+                              onClick={() => selectCustomProductName(inputValue.trim())}
+                              className="flex w-full items-center gap-1.5 rounded-[8px] border border-cream-200 bg-cream-50 px-4 py-[10px] text-left text-sm text-cream-700 transition-colors hover:bg-cream-100"
+                            >
+                              <Plus size={13} className="shrink-0 text-cream-700" />
+                              <span>
+                                Create new product{' '}
+                                <strong className="font-medium text-cream-900">&ldquo;{inputValue.trim()}&rdquo;</strong>
+                              </span>
+                            </button>
+                          )}
+                        >
+                          {isEditMode ? (
+                            <p className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-500">
+                              Editing an existing product.
+                            </p>
+                          ) : isPending ? (
+                            <div className="space-y-1">
+                              <div className="h-10 animate-pulse rounded-[8px] bg-cream-100" />
+                              <div className="h-10 animate-pulse rounded-[8px] bg-cream-100" />
+                              <div className="h-10 animate-pulse rounded-[8px] bg-cream-100" />
                             </div>
-                          </PopoverAnchor>
-                          <PopoverContent
-                            side="bottom"
-                            align="start"
-                            sideOffset={6}
-                            onOpenAutoFocus={(e) => e.preventDefault()}
-                            onInteractOutside={(e) => e.preventDefault()}
-                            style={{ width: 'max(var(--radix-popover-anchor-width, 320px), 320px)' }}
-                            className="overflow-hidden rounded-[12px] border-cream-300 bg-white p-0 shadow-[0_12px_32px_rgba(20,40,35,0.12),0_2px_6px_rgba(20,40,35,0.05)]"
-                          >
-                            {isPending ? (
-                              <div className="space-y-1 p-3">
-                                <div className="h-10 animate-pulse rounded-[8px] bg-cream-100" />
-                                <div className="h-10 animate-pulse rounded-[8px] bg-cream-100" />
-                                <div className="h-10 animate-pulse rounded-[8px] bg-cream-100" />
+                          ) : masterResults.length > 0 ? (
+                            <div className="space-y-0.5">
+                              <div className="px-[14px] pb-[6px] pt-[10px] text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">
+                                Master catalog · import &amp; prefill
                               </div>
-                            ) : masterResults.length > 0 ? (
-                              <>
-                                <div className="px-[14px] pb-[6px] pt-[10px] text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">
-                                  Master catalog · import &amp; prefill
-                                </div>
-                                <div className="pb-1">
-                                  {masterResults.map((product) => (
-                                    <button
-                                      key={product.id}
-                                      type="button"
-                                      onClick={() => applyMasterProduct(product)}
-                                      className="mx-1 flex w-[calc(100%-8px)] items-center rounded-[8px] px-3 py-2 text-left transition-colors hover:bg-cream-100"
-                                    >
-                                      <MasterProductRow product={product} />
-                                    </button>
-                                  ))}
-                                </div>
+                              {masterResults.map((masterProduct) => (
                                 <button
+                                  key={masterProduct.id}
                                   type="button"
-                                  onClick={() => selectCustomProductName(inputValue)}
-                                  className="flex w-full items-center gap-1.5 border-t border-cream-300 bg-cream-50 px-4 py-[10px] text-left text-sm text-cream-700 transition-colors hover:bg-cream-100"
+                                  onClick={() => applyMasterProduct(masterProduct)}
+                                  className="mx-1 flex w-[calc(100%-8px)] items-center rounded-[8px] px-3 py-2 text-left transition-colors hover:bg-cream-100"
                                 >
-                                  <Plus size={13} className="shrink-0 text-cream-700" />
-                                  <span>
-                                    Create new product{' '}
-                                    <strong className="font-medium text-cream-900">&ldquo;{inputValue}&rdquo;</strong>
-                                  </span>
+                                  <MasterProductRow product={masterProduct} />
                                 </button>
-                              </>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => selectCustomProductName(inputValue)}
-                                className="flex w-full items-center gap-1.5 px-4 py-[10px] text-left text-sm text-cream-700 transition-colors hover:bg-cream-100"
-                              >
-                                <Plus size={13} className="shrink-0 text-cream-700" />
-                                <span>
-                                  No match — create{' '}
-                                  <strong className="font-medium text-cream-900">&ldquo;{inputValue}&rdquo;</strong>{' '}
-                                  as a new product
-                                </span>
-                              </button>
-                            )}
-                          </PopoverContent>
-                        </Popover>
+                              ))}
+                            </div>
+                          ) : inputValue.trim() ? (
+                            <p className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-500">
+                              No master product matches this search.
+                            </p>
+                          ) : (
+                            <p className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-500">
+                              Start typing to search the master catalog.
+                            </p>
+                          )}
+                        </SearchOverlayPicker>
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="name_override"
+                  render={({ field }) => (
+                    <FormItem className="space-y-2">
+                      <FormLabel>Product name override</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          placeholder="Used in catalog, price lists, and buyer views"
+                        />
+                      </FormControl>
+                      <p className="text-sm text-cream-700">
+                        Defaults to the selected product name for master imports, and is prefilled for new products.
+                      </p>
                       <FormMessage />
                     </FormItem>
                   )}

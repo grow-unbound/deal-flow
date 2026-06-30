@@ -342,7 +342,7 @@ async function fetchSellerDashboardData(
       .is('deleted_at', null),
     db
       .schema('app')
-      .from('published_catalogs')
+      .from('campaigns')
       .select('id, name, status, valid_to, updated_at')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null),

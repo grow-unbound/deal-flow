@@ -70,6 +70,7 @@ export interface SalesOrderComposerDocument {
   status: string;
   buyer_id: string | null;
   location_id: string | null;
+  location_name: string | null;
   available_locations: ComposerLocationOption[];
   order_date: string;
   expected_delivery: string;

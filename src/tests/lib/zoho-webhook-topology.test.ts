@@ -24,6 +24,7 @@ describe('Zoho entity-scoped webhook topology', () => {
     expect(definitions.every((definition) => definition.event_types.length > 0)).toBe(true);
     expect(definitions.some((definition) => definition.entity_type === 'contact_persons')).toBe(false);
     expect(definitions.some((definition) => definition.entity_type === 'item_locations')).toBe(false);
+    expect(definitions.every((definition) => definition.event_types.some((eventType) => eventType.endsWith('.deleted')))).toBe(true);
   });
 
   it('assigns each webhook-backed data flow to its matching local webhook row', () => {
@@ -42,6 +43,9 @@ describe('Zoho entity-scoped webhook topology', () => {
 
     expect(flows.find((flow) => flow.entity_type === 'customers')?.webhook_id).toBe('contacts-webhook');
     expect(flows.find((flow) => flow.entity_type === 'products')?.webhook_id).toBe('items-webhook');
+    expect(flows.find((flow) => flow.entity_type === 'brands')?.webhook_id).toBeNull();
+    expect(flows.find((flow) => flow.entity_type === 'categories')?.webhook_id).toBeNull();
+    expect(flows.find((flow) => flow.entity_type === 'pricelists')?.webhook_id).toBeNull();
     expect(flows.find((flow) => flow.entity_type === 'estimates')?.webhook_id).toBe('estimates-webhook');
     expect(flows.find((flow) => flow.entity_type === 'orders')?.webhook_id).toBe('orders-webhook');
     expect(flows.find((flow) => flow.entity_type === 'invoices')?.webhook_id).toBe('invoices-webhook');
@@ -73,5 +77,6 @@ describe('Zoho entity-scoped webhook topology', () => {
     expect(workflow.instant_actions[0]).toEqual({ action_id: 'wh_123', action_type: 'webhook' });
     expect(resolveZohoWebhookEventType('items', 'item.add_edit', 'create')).toBe('item.created');
     expect(resolveZohoWebhookEventType('items', 'item.add_edit', 'update')).toBe('item.updated');
+    expect(resolveZohoWebhookEventType('items', 'item.deleted', 'soft_delete')).toBe('item.deleted');
   });
 });

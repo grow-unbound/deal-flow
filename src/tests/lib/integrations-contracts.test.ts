@@ -23,6 +23,7 @@ describe('integration type contracts', () => {
 
   it('locks entity, direction, and trigger enums', () => {
     expect(IntegrationEntityTypeSchema.safeParse('locations').success).toBe(true);
+    expect(IntegrationEntityTypeSchema.safeParse('categories').success).toBe(true);
     expect(IntegrationEntityTypeSchema.safeParse('invoices').success).toBe(true);
     expect(IntegrationEntityTypeSchema.safeParse('warehouse').success).toBe(false);
     expect(IntegrationFlowDirectionSchema.safeParse('bidirectional').success).toBe(true);
@@ -134,6 +135,36 @@ describe('integration runtime payload schemas', () => {
 
     expect(valid.success).toBe(true);
     expect(invalid.success).toBe(false);
+  });
+
+  it('accepts date-only since values for YTD and FYTD sync windows', () => {
+    const result = IntegrationJobProgressSchema.safeParse({
+      version: 1,
+      provider: 'zoho',
+      scope: 'transactional',
+      since: '2026-04-01',
+      phases: ['estimates', 'orders', 'invoices'],
+      phases_total: 3,
+      phase_current: 1,
+      phase: 'estimates',
+      phase_label: 'Importing estimates from Zoho Books',
+      items_total: null,
+      items_processed: 0,
+      items_failed: 0,
+      pages_processed: 0,
+      cursor: {
+        phase: 'estimates',
+        entity_type: 'estimates',
+        page: 1,
+        per_page: 1000,
+        has_more: true,
+        since: '2026-04-01',
+      },
+      started_at: '2026-06-25T14:00:00.000Z',
+      updated_at: '2026-06-25T14:00:00.000Z',
+    });
+
+    expect(result.success).toBe(true);
   });
 
   it('allows sync requests to carry a temporary page cap', () => {
@@ -250,6 +281,27 @@ describe('integration runtime payload schemas', () => {
       filters: {
         region: 'West',
       },
+      is_active: true,
+      last_run_at: null,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts category flow records in the integration settings payload', () => {
+    const result = IntegrationDataFlowRecordSchema.safeParse({
+      id: '11111111-1111-1111-1111-111111111111',
+      tenant_integration_id: '22222222-2222-2222-2222-222222222222',
+      entity_type: 'categories',
+      direction: 'inbound',
+      trigger_type: 'event',
+      schedule: '0 5 * * *',
+      webhook_id: null,
+      field_mappings: {
+        operational_mode: 'derived_local',
+        source_system: 'Zoho Books',
+      },
+      filters: {},
       is_active: true,
       last_run_at: null,
     });

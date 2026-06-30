@@ -22,7 +22,7 @@ export async function loadTenantSettingsCounts(
       .is('deleted_at', null),
     db
       .schema('app')
-      .from('published_catalogs')
+      .from('campaigns')
       .select('id', { count: 'exact', head: true })
       .eq('tenant_id', tenantId)
       .is('deleted_at', null),
@@ -52,7 +52,7 @@ export async function loadTenantSettingsCounts(
   for (const [err, label] of [
     [e1, 'cohorts'],
     [e2, 'price_lists'],
-    [e3, 'published_catalogs'],
+    [e3, 'campaigns'],
     [e4, 'estimates'],
     [e5, 'orders'],
     [e6, 'invoices'],

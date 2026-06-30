@@ -6,6 +6,8 @@ import { usePathname } from 'next/navigation';
 import { ChevronDown, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
+import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location';
+import { buildBuyerLocationHref } from '@/lib/buyer-routes';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 
 interface BuyerLocationRowProps {
@@ -15,16 +17,8 @@ interface BuyerLocationRowProps {
 export function BuyerLocationRow({ className }: BuyerLocationRowProps) {
   const pathname = usePathname();
   const delivery = useBuyerDeliveryOptional();
-  const label =
-    delivery?.selected?.label?.trim() ||
-    delivery?.selected?.formatted_address?.trim() ||
-    null;
-  const display = label ?? 'Select delivery location';
-
-  const locationHref = React.useMemo(() => {
-    const returnTo = encodeURIComponent(pathname || '/buy/catalog');
-    return `/buy/location?returnTo=${returnTo}`;
-  }, [pathname]);
+  const display = formatBuyerSelectedLocationLabel(delivery?.selected, 'Select delivery location');
+  const locationHref = React.useMemo(() => buildBuyerLocationHref(pathname || '/buy/catalog'), [pathname]);
 
   return (
     <Link

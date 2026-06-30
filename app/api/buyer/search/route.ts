@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, supabase } from '@/lib/supabase';
-import { requireBuyerAccessProfile, getVisibleBuyerCatalogs } from '@/lib/server/buyer-access';
+import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 
 export interface BuyerSearchItem {
   id: string;
@@ -34,38 +35,26 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerSearc
     const items: BuyerSearchItem[] = [];
 
     if (scope === 'catalog') {
-      // Resolve which product IDs are visible to this buyer
-      let allowedProductIds: string[] | null = null;
-      if (profile.context.mode === 'buyer' && buyer_id && tenant_id) {
-        try {
-          const catalogs = await getVisibleBuyerCatalogs(tenant_id, buyer_id);
-          if (catalogs.length > 0) {
-            const catalogIds = catalogs.map((c: { id: string }) => c.id);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { data: catItems } = await (db as any)
-              .schema('app')
-              .from('published_catalog_items')
-              .select('tenant_product_id')
-              .in('catalog_id', catalogIds);
-            allowedProductIds = ((catItems ?? []) as { tenant_product_id: string }[]).map((ci) => ci.tenant_product_id);
-          }
-        } catch {
-          allowedProductIds = null;
-        }
-      }
+      const allowedTenantBrandIds =
+        profile.context.mode === 'buyer' && buyer_id && tenant_id
+          ? await resolveBuyerAllowedTenantBrandIds(db as any, tenant_id, buyer_id)
+          : null;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let productQuery = (db as any)
         .schema('app')
         .from('tenant_products')
-        .select('id, name_override, internal_sku')
+        .select('id, name_override, internal_sku, tenant_brand_id')
         .eq('tenant_id', tenant_id)
         .eq('is_active', true)
         .or(`name_override.ilike.%${q}%,internal_sku.ilike.%${q}%`)
         .limit(20);
 
-      if (allowedProductIds && allowedProductIds.length > 0) {
-        productQuery = productQuery.in('id', allowedProductIds);
+      if (Array.isArray(allowedTenantBrandIds)) {
+        if (allowedTenantBrandIds.length === 0) {
+          return NextResponse.json({ items: [], scope });
+        }
+        productQuery = productQuery.in('tenant_brand_id', allowedTenantBrandIds);
       }
 
       const { data: products } = await productQuery;

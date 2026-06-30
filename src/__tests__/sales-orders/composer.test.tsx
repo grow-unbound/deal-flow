@@ -92,6 +92,7 @@ function baseDocument(overrides: Partial<SalesOrderComposerDocument> = {}): Sale
     status: 'draft',
     buyer_id: null,
     location_id: null,
+    location_name: null,
     available_locations: [],
     order_date: '2026-06-07',
     expected_delivery: '2026-06-14',
@@ -117,8 +118,9 @@ function estimateForSoPrefill(): TenantEstimateDetailResponse {
     status: 'draft',
     buyer_id: 'buyer-1',
     location_id: 'loc-1',
+    location_name: 'Main warehouse',
     available_locations: [{ id: 'loc-1', name: 'Main warehouse', is_default: true }],
-    date_issued: '2026-06-01',
+    estimate_date: '2026-06-01',
     valid_until: '2026-06-15',
     buyer_po_ref: 'PO-1',
     place_of_supply: 'Delhi',
@@ -274,11 +276,17 @@ describe('DocComposerSalesOrder', () => {
     expect(apiPostMock).not.toHaveBeenCalled();
   });
 
-  it('locks buyer swap in confirmed edit mode while keeping line editing enabled', async () => {
+  it('keeps location editable in confirmed edit mode while buyer swap stays locked', async () => {
     useSalesOrderComposerMock.mockReturnValue({
       data: baseDocument({
         status: 'confirmed',
         buyer_id: 'buyer-1',
+        location_id: 'loc-2',
+        location_name: 'Pune Depot',
+        available_locations: [
+          { id: 'loc-1', name: 'Mumbai HQ', is_default: true },
+          { id: 'loc-2', name: 'Pune Depot', is_default: false },
+        ],
         buyer_context: baseBuyer({ credit_limit: 20000, credit_used: 2000, credit_available: 18000 }),
         items: [
           {
@@ -311,6 +319,9 @@ describe('DocComposerSalesOrder', () => {
 
     expect(await screen.findByText(/Editing · confirmed/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Change/i })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('combobox').length).toBeGreaterThan(1);
+    expect(screen.getByText('Pune Depot')).toBeInTheDocument();
     expect(screen.getAllByDisplayValue('1')[0]).toBeInTheDocument();
+    expect(screen.queryByText(/Resolved price check/i)).not.toBeInTheDocument();
   });
 });

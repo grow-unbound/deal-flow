@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { assembleBuyerCatalogItemsForProductIds } from '@/lib/server/buyer-assemble-catalog-items';
+import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
 export interface BuyerReorderOrderSummary {
@@ -45,9 +46,10 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerReord
       return NextResponse.json(empty);
     }
 
-    const tenantId = context.tenant_id;
+    const tenantId = context.tenant_id!;
     const buyerId = profile.buyer.id;
     const db = supabaseAdmin;
+    const allowedTenantBrandIds = await resolveBuyerAllowedTenantBrandIds(db as any, tenantId, buyerId);
 
     const ordersRes = await db
       .schema('app')
@@ -93,9 +95,10 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerReord
     const itemMap = await assembleBuyerCatalogItemsForProductIds(db, {
       buyerId,
       productIds,
-      catalogId: null,
-      catalogName: null,
-      catalogValidUntil: null,
+      allowedTenantBrandIds,
+      campaignId: null,
+      campaignName: null,
+      campaignValidUntil: null,
       priceOverrides: new Map(),
     });
 

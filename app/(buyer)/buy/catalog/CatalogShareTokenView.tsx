@@ -72,7 +72,7 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
     setCategoriesFetchError(false);
     const params = new URLSearchParams();
     if (shareToken) params.set('share_token', shareToken);
-    if (!shareToken && selectedCatalogId) params.set('catalog_id', selectedCatalogId);
+    if (!shareToken && selectedCatalogId) params.set('campaign_id', selectedCatalogId);
     apiFetch(`/api/buyer/categories${params.toString() ? `?${params.toString()}` : ''}`)
       .then((r) => r.json() as Promise<{ categories?: BuyerCategory[] }>)
       .then((data) => {
@@ -92,7 +92,7 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
 
     if (shareToken) {
       apiFetch(`/api/buyer/catalog/${shareToken}`)
-        .then((r) => r.json() as Promise<{ catalog_id?: string; name?: string; valid_until?: string | null; items?: BuyerCatalogItem[] }>)
+        .then((r) => r.json() as Promise<{ campaign_id?: string; name?: string; valid_until?: string | null; items?: BuyerCatalogItem[] }>)
         .then((data) => {
           if (cancelled) return;
           setRouteState((current) => ({
@@ -106,8 +106,8 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
           }));
           posthog.capture('catalog_viewed', {
             share_token: shareToken,
-            catalog_id: data.catalog_id,
-            catalog_name: data.name,
+            campaign_id: data.campaign_id,
+            campaign_name: data.name,
             product_count: data.items?.length ?? 0,
           });
         })
@@ -127,7 +127,7 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
       limit: String(PAGE_LIMIT),
       offset: '0',
     });
-    if (selectedCatalogId) params.set('catalog_id', selectedCatalogId);
+    if (selectedCatalogId) params.set('campaign_id', selectedCatalogId);
     if (debouncedSearch) params.set('search', debouncedSearch);
     if (selectedCategory) params.set('category_id', selectedCategory);
     if (selectedBrand) params.set('brand_id', selectedBrand);
@@ -137,9 +137,9 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
         items?: BuyerCatalogItem[];
         has_more?: boolean;
         catalogs?: BuyerCatalogSummary[];
-        selected_catalog_id?: string | null;
-        selected_catalog_name?: string | null;
-        selected_catalog_valid_until?: string | null;
+        selected_campaign_id?: string | null;
+        selected_campaign_name?: string | null;
+        selected_campaign_valid_until?: string | null;
       }>)
       .then((data) => {
         if (cancelled) return;
@@ -149,9 +149,9 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
           catalogs: data.catalogs ?? current.catalogs,
           hasMore: data.has_more ?? false,
           page: 1,
-          shareCatalogName: data.selected_catalog_name ?? null,
-          shareCatalogValidUntil: data.selected_catalog_valid_until ?? null,
-          selectedCatalogId: data.selected_catalog_id ?? current.selectedCatalogId,
+          shareCatalogName: data.selected_campaign_name ?? null,
+          shareCatalogValidUntil: data.selected_campaign_valid_until ?? null,
+          selectedCatalogId: data.selected_campaign_id ?? current.selectedCatalogId,
           loadedShareToken: null,
         }));
       })
@@ -178,7 +178,7 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
       limit: String(PAGE_LIMIT),
       offset: String(offset),
     });
-    if (selectedCatalogId) params.set('catalog_id', selectedCatalogId);
+    if (selectedCatalogId) params.set('campaign_id', selectedCatalogId);
     if (debouncedSearch) params.set('search', debouncedSearch);
     if (selectedCategory) params.set('category_id', selectedCategory);
     if (selectedBrand) params.set('brand_id', selectedBrand);
@@ -222,8 +222,8 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
   }, [items]);
 
   // Catalog name/date from first item
-  const catalogName = shareToken ? (shareCatalogName ?? 'Catalog') : (items[0]?.catalog_name ?? 'Catalog');
-  const catalogValidUntil = shareToken ? shareCatalogValidUntil : (items[0]?.catalog_valid_until ?? null);
+  const catalogName = shareToken ? (shareCatalogName ?? 'Campaign') : (items[0]?.campaign_name ?? 'Catalog');
+  const catalogValidUntil = shareToken ? shareCatalogValidUntil : (items[0]?.campaign_valid_until ?? null);
 
   const hasActiveFilters =
     selectedCategory !== null || selectedBrand !== null || debouncedSearch !== '';
@@ -252,7 +252,7 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
 
   const searchExtraParams = React.useMemo(
     () => ({
-      catalog_id: selectedCatalogId ?? items[0]?.catalog_id ?? undefined,
+      campaign_id: selectedCatalogId ?? items[0]?.campaign_id ?? undefined,
       category_id: selectedCategory ?? undefined,
       brand_id: selectedBrand ?? undefined,
     }),

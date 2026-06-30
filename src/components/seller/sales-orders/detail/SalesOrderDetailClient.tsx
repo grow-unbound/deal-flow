@@ -284,12 +284,12 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
             kind="so"
             readOnly
             docNumber={data.order_number}
-            locationId={null}
+            locationId={data.location_id}
             availableLocations={[]}
             dateIssued={orderDate}
             secondDate={expectedYmd}
             buyerPoRef={data.buyer_po_ref ?? ''}
-            locationLabel="—"
+            locationName={data.location_name}
             onDateIssuedChange={noop}
             onSecondDateChange={noop}
             onBuyerPoRefChange={noop}

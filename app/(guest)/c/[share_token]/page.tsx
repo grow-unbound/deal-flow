@@ -19,7 +19,7 @@ interface GuestCatalogItem {
 }
 
 interface GuestCatalogResponse {
-  catalog_id: string;
+  campaign_id: string;
   name: string;
   products_count: number;
   items: GuestCatalogItem[];

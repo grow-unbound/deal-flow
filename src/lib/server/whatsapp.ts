@@ -9,6 +9,11 @@ export interface WhatsappNotificationContext {
   etaHours: number;
 }
 
+interface WhatsappTemplateBodyParam {
+  text: string;
+  parameterName?: string;
+}
+
 const WHATSAPP_TEMPLATE_LOCALE = 'en';
 const WHATSAPP_OTP_TEMPLATE_LOCALE = 'en_US';
 const WHATSAPP_LOGIN_PRODUCT_NAME = 'Login to Yukti';
@@ -24,7 +29,7 @@ async function sendWhatsappTemplate(
   to: string,
   templateName: string,
   locale: string,
-  bodyParams: string[],
+  bodyParams: WhatsappTemplateBodyParam[],
   buttonParam: string,
 ): Promise<void> {
   const { token, phoneNumberId } = getWhatsappConfig();
@@ -51,7 +56,11 @@ async function sendWhatsappTemplate(
           components: [
             {
               type: 'body',
-              parameters: bodyParams.map((text) => ({ type: 'text', text })),
+              parameters: bodyParams.map((param) => ({
+                type: 'text',
+                text: param.text,
+                ...(param.parameterName ? { parameter_name: param.parameterName } : {}),
+              })),
             },
             {
               type: 'button',
@@ -83,13 +92,13 @@ export async function sendOrderReceivedSeller(
     'order_received_seller',
     WHATSAPP_TEMPLATE_LOCALE,
     [
-      ctx.sellerLocation,
-      ctx.buyerName,
-      ctx.buyerPhone,
-      orderNumber,
-      String(Math.round(totalAmount / 100)),
-      String(itemCount),
-      String(ctx.etaHours),
+      { text: ctx.sellerLocation, parameterName: 'seller_location' },
+      { text: ctx.buyerName, parameterName: 'buyer_name' },
+      { text: ctx.buyerPhone, parameterName: 'buyer_phone_number' },
+      { text: orderNumber, parameterName: 'order_number' },
+      { text: String(Math.round(totalAmount / 100)), parameterName: 'total_amount' },
+      { text: String(itemCount), parameterName: 'item_count' },
+      { text: String(ctx.etaHours), parameterName: 'eta' },
     ],
     orderId,
   );
@@ -107,13 +116,13 @@ export async function sendOrderReceivedBuyer(
     'order_received_buyer',
     WHATSAPP_TEMPLATE_LOCALE,
     [
-      ctx.buyerName,
-      String(itemCount),
-      orderNumber,
-      String(Math.round(totalAmount / 100)),
-      ctx.sellerName,
-      ctx.sellerLocation,
-      String(ctx.etaHours),
+      { text: ctx.buyerName, parameterName: 'buyer_name' },
+      { text: String(itemCount), parameterName: 'item_count' },
+      { text: orderNumber, parameterName: 'order_number' },
+      { text: String(Math.round(totalAmount / 100)), parameterName: 'total_amount' },
+      { text: ctx.sellerName, parameterName: 'seller_name' },
+      { text: ctx.sellerLocation, parameterName: 'seller_location' },
+      { text: String(ctx.etaHours), parameterName: 'eta' },
     ],
     orderId,
   );
@@ -131,13 +140,13 @@ export async function sendRequestReceivedSeller(
     'request_received_seller',
     WHATSAPP_TEMPLATE_LOCALE,
     [
-      ctx.sellerLocation,
-      ctx.buyerName,
-      ctx.buyerPhone,
-      estimateNumber,
-      String(Math.round(totalAmount / 100)),
-      String(itemCount),
-      String(ctx.etaHours),
+      { text: ctx.sellerLocation, parameterName: 'seller_location' },
+      { text: ctx.buyerName, parameterName: 'buyer_name' },
+      { text: ctx.buyerPhone, parameterName: 'buyer_phone_number' },
+      { text: estimateNumber, parameterName: 'request_number' },
+      { text: String(Math.round(totalAmount / 100)), parameterName: 'total_amount' },
+      { text: String(itemCount), parameterName: 'item_count' },
+      { text: String(ctx.etaHours), parameterName: 'eta' },
     ],
     estimateId,
   );
@@ -155,13 +164,13 @@ export async function sendRequestReceivedBuyer(
     'request_received_buyer',
     WHATSAPP_TEMPLATE_LOCALE,
     [
-      ctx.buyerName,
-      String(itemCount),
-      estimateNumber,
-      String(Math.round(totalAmount / 100)),
-      ctx.sellerName,
-      ctx.sellerLocation,
-      String(ctx.etaHours),
+      { text: ctx.buyerName, parameterName: 'buyer_name' },
+      { text: String(itemCount), parameterName: 'item_count' },
+      { text: estimateNumber, parameterName: 'estimate_number' },
+      { text: String(Math.round(totalAmount / 100)), parameterName: 'total_amount' },
+      { text: ctx.sellerName, parameterName: 'seller_name' },
+      { text: ctx.sellerLocation, parameterName: 'seller_location' },
+      { text: String(ctx.etaHours), parameterName: 'eta' },
     ],
     estimateId,
   );

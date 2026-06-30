@@ -15,9 +15,13 @@ import type {
 import {
   buildIntegrationDataFlowRows,
   buildIntegrationTopologyConfig,
+  getIntegrationWebhookDefinitions,
 } from '../../../src/lib/integrations/definitions.ts';
 import { normalizeIntegrationJobErrorLog } from '../../../src/lib/integrations/job-error-log.ts';
 import {
+  buildZohoWebhookRegistrationName,
+  deleteZohoWebhookRegistrations,
+  deleteZohoWebhookRegistrationsByName,
   getZohoWebhookProviderIdField,
   getZohoWebhookTimestampFields,
   resolveZohoWebhookEventType,
@@ -28,12 +32,14 @@ import {
 } from '../../../src/lib/integrations/contracts.ts';
 import {
   createZohoAdapter,
+  extractZohoDcFromAccountsBaseUrl,
   getZohoPhasePlan,
+  refreshZohoAccessToken,
   sampleExternalIds,
   type IntegrationSyncPhaseDefinition,
   ZohoApiError,
 } from './integrations-zoho.ts';
-import { persistZohoEntityPage, resolveInternalIdWithFallback, type PersistResult } from './integrations-persist.ts';
+import { IntegrationSyncError, persistZohoEntityPage, resolveInternalIdWithFallback, type PersistResult } from './integrations-persist.ts';
 
 declare const Deno: {
   env: {
@@ -686,6 +692,75 @@ async function softDeleteIntegrationChildren(
     .is('deleted_at', null);
 }
 
+async function cleanupZohoWebhookRegistrations(
+  admin: ReturnType<typeof createAdminClient>,
+  integration: TenantIntegrationRow,
+  credentials: JsonRecord,
+): Promise<void> {
+  if (!isZohoIntegrationTypeId(integration.integration_type_id)) return;
+
+  const { accessToken, credentials: normalized } = await refreshZohoAccessToken(
+    integration.integration_type_id,
+    credentials,
+  );
+
+  const { data: webhooks, error } = await admin
+    .schema('app')
+    .from('integration_webhooks')
+    .select('endpoint_token, remote_webhook_id, webhook_config, entity_type')
+    .eq('tenant_integration_id', integration.id)
+    .eq('provider', 'zoho')
+    .is('deleted_at', null);
+
+  if (error) {
+    throw new HttpError(500, 'Unable to load integration webhooks for disconnect cleanup.', {
+      code: error.code ?? undefined,
+    });
+  }
+
+  const callbackUrls = (webhooks ?? [])
+    .flatMap((row) => (
+      typeof row.endpoint_token === 'string'
+        ? [`${getFunctionsBaseUrl()}/integrations-webhook/${row.endpoint_token}`]
+        : []
+    ));
+  const webhookNames = getIntegrationWebhookDefinitions(integration.integration_type_id)
+    .flatMap((definition) => (
+      (definition.workflow_rule_types ?? ['add_edit']).map((ruleType) => (
+        buildZohoWebhookRegistrationName({ entityType: definition.entity_type, ruleType })
+      ))
+    ));
+
+  await deleteZohoWebhookRegistrationsByName({
+    accessToken,
+    orgId: normalized.organizationId,
+    dc: extractZohoDcFromAccountsBaseUrl(normalized.accountsBaseUrl),
+    integrationTypeId: integration.integration_type_id,
+    webhookNames,
+    callbackUrls,
+  });
+
+  const remoteWebhookIds = (webhooks ?? [])
+    .flatMap((row) => (
+      typeof row.remote_webhook_id === 'string' ? [row.remote_webhook_id] : []
+    ));
+  const workflowIds = (webhooks ?? [])
+    .flatMap((row) => {
+      const webhookConfig = isRecord(row.webhook_config) ? row.webhook_config : {};
+      const workflowConfig = isRecord(webhookConfig.workflow_ids) ? webhookConfig.workflow_ids : {};
+      return Object.values(workflowConfig).filter((value): value is string => typeof value === 'string');
+    });
+
+  await deleteZohoWebhookRegistrations({
+    accessToken,
+    orgId: normalized.organizationId,
+    dc: extractZohoDcFromAccountsBaseUrl(normalized.accountsBaseUrl),
+    integrationTypeId: integration.integration_type_id,
+    remoteWebhookIds,
+    workflowIds,
+  });
+}
+
 async function storeTenantIntegrationSecret(
   admin: ReturnType<typeof createAdminClient>,
   tenantIntegrationId: string,
@@ -800,11 +875,15 @@ async function appendJobError(
 ): Promise<void> {
   const now = nowIso();
   const existingEntries = normalizeIntegrationJobErrorLog(job.error_log);
+  const integrationSyncError = error instanceof IntegrationSyncError ? error : null;
   const nextEntries = [
     ...existingEntries,
     {
       timestamp: now,
       message: error instanceof Error ? error.message : 'Unknown error',
+      ...(integrationSyncError?.entityType ? { entity_type: integrationSyncError.entityType } : {}),
+      ...(integrationSyncError?.externalId ? { external_id: integrationSyncError.externalId } : {}),
+      ...(integrationSyncError?.details ? { error_reason: integrationSyncError.message, details: integrationSyncError.details } : {}),
       ...(error instanceof ZohoApiError && error.code !== undefined ? { code: error.code } : {}),
     },
   ];
@@ -993,6 +1072,8 @@ function applyPhasePage(
     phase: IntegrationSyncPhaseDefinition;
     records: JsonRecord[];
     nextCursor: IntegrationJobProgress['cursor'];
+    processedCount: number;
+    failedCount: number;
   },
 ): IntegrationJobProgress {
   const updatedAt = nowIso();
@@ -1008,13 +1089,15 @@ function applyPhasePage(
     phase: page.phase.id,
     phase_label: page.phase.label,
     phase_current: plan.findIndex((entry) => entry.id === page.phase.id) + 1,
-    items_processed: progress.items_processed + page.records.length,
+    items_processed: progress.items_processed + page.processedCount,
+    items_failed: progress.items_failed + page.failedCount,
     pages_processed: progress.pages_processed + 1,
     counts: {
       ...progress.counts,
       [page.phase.id]: {
         ...stats,
-        processed: stats.processed + page.records.length,
+        processed: stats.processed + page.processedCount,
+        failed: stats.failed + page.failedCount,
         pages: stats.pages + 1,
       },
     },
@@ -1022,7 +1105,7 @@ function applyPhasePage(
     updated_at: updatedAt,
     last_page: {
       phase: page.phase.id,
-      count: page.records.length,
+      count: page.processedCount,
       next_page: page.nextCursor?.page ?? null,
       completed_at: updatedAt,
       sample_ids: sampleExternalIds(page.records),
@@ -1087,6 +1170,49 @@ async function dispatchWorkerInvocation(
   }
 }
 
+async function dispatchWebhookPhaseRefresh(
+  admin: ReturnType<typeof createAdminClient>,
+  integration: TenantIntegrationRow,
+  actor: ActorContext,
+  phase: 'customers' | 'products' | 'estimates' | 'orders' | 'invoices',
+  since: string | null,
+): Promise<void> {
+  const credentials = await loadTenantIntegrationSecret(admin, integration.id, integration.integration_type_id);
+  const scope = resolveScopeForPhase(phase);
+  const phasePlan = getZohoPhasePlan(integration.integration_type_id, scope).filter((entry) => entry.id === phase);
+  const progress = buildInitialProgress(
+    scope,
+    since,
+    phasePlan,
+    'Webhook payload did not include a direct entity, queued a phase refresh.',
+    {
+      run_origin: 'webhook',
+    },
+  );
+  const job = await createSyncJob(admin, {
+    tenantId: integration.tenant_id,
+    tenantIntegrationId: integration.id,
+    jobType: 'incremental',
+    triggeredBy: actor.internal ? null : actor.userId,
+    progress,
+  });
+
+  await updateTenantIntegration(admin, integration.id, {
+    status: 'syncing',
+    updated_by: actor.internal ? null : actor.userId,
+  });
+
+  await dispatchWorkerInvocation(actor.authHeader, {
+    job_id: job.id,
+    tenant_integration_id: integration.id,
+    continuation: false,
+    reason: 'initial_dispatch',
+    page_limit: null,
+    progress,
+    credentials,
+  });
+}
+
 function waitUntil(promise: Promise<unknown>): void {
   const runtime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
   runtime?.waitUntil?.(promise);
@@ -1108,6 +1234,7 @@ async function runWorkerJob(
   payload: IntegrationWorkerDispatchRequest,
   actorOverride?: ActorContext,
 ): Promise<WorkerExecutionResult> {
+  const traceId = makeRequestTraceId(request);
   const admin = createAdminClient();
   const job = await loadSyncJob(admin, payload.job_id);
   const integration = await loadTenantIntegration(admin, job.tenant_integration_id);
@@ -1251,6 +1378,19 @@ async function runWorkerJob(
         };
 
     const page = await adapter.fetchPhasePage(currentPhase, cursor, progress.since);
+    let processedCount = 0;
+    let failedCount = 0;
+
+    logSyncTrace('info', traceId, 'sync page fetched', {
+      job_id: job.id,
+      tenant_integration_id: integration.id,
+      phase: currentPhase.id,
+      entity_type: currentPhase.entityType,
+      page: cursor.page,
+      per_page: cursor.per_page,
+      record_count: page.records.length,
+      has_more: page.nextCursor !== null,
+    });
 
     if (page.records.length > 0) {
       try {
@@ -1264,6 +1404,16 @@ async function runWorkerJob(
           page.records,
           adapter,
         );
+        processedCount = persistResult.created + persistResult.updated;
+        failedCount = persistResult.skipped;
+        logSyncTrace('info', traceId, 'sync page persisted', {
+          job_id: job.id,
+          tenant_integration_id: integration.id,
+          phase: currentPhase.id,
+          entity_type: currentPhase.entityType,
+          processed: processedCount,
+          skipped: persistResult.skipped,
+        });
         const webhookEventId = isRecord(progress.meta) ? asString(progress.meta.webhook_event_id) : null;
         if (webhookEventId) {
           const targetTables: Record<string, string> = {
@@ -1283,6 +1433,7 @@ async function runWorkerJob(
           });
         }
       } catch (persistError) {
+        failedCount = page.records.length;
         const webhookEventId = isRecord(progress.meta) ? asString(progress.meta.webhook_event_id) : null;
         if (webhookEventId) {
           const webhookId = asString(isRecord(progress.meta) ? progress.meta.webhook_id : null);
@@ -1298,13 +1449,25 @@ async function runWorkerJob(
             });
           }
         }
+        const errorMessage = persistError instanceof Error ? persistError.message : 'unknown';
+        logSyncTrace('error', traceId, 'sync page failed', {
+          job_id: job.id,
+          tenant_integration_id: integration.id,
+          phase: currentPhase.id,
+          entity_type: currentPhase.entityType,
+          error: errorMessage,
+          sample_ids: sampleExternalIds(page.records),
+        });
         progress = {
           ...progress,
-          note: persistError instanceof Error
-            ? `Persist error (${currentPhase.entityType}): ${persistError.message}`
-            : `Persist error (${currentPhase.entityType}): unknown`,
+          note: `Persist error (${currentPhase.entityType}): ${errorMessage}`,
           updated_at: nowIso(),
         };
+        await updateSyncJob(admin, job.id, {
+          progress: asJsonRecord(progress),
+          updated_by: importActorId,
+        });
+        throw persistError;
       }
     }
 
@@ -1312,6 +1475,8 @@ async function runWorkerJob(
       phase: currentPhase,
       records: page.records,
       nextCursor: page.nextCursor,
+      processedCount,
+      failedCount,
     });
 
     await updateSyncJob(admin, job.id, {
@@ -1523,6 +1688,11 @@ export async function handleIntegrationsDisconnect(request: Request): Promise<Re
     const integration = await loadTenantIntegration(admin, tenantIntegrationId);
     const actor = await authorizeTenantActor(request, admin, integration.tenant_id);
 
+    if (isZohoIntegrationTypeId(integration.integration_type_id) && integration.vault_secret_id) {
+      const credentials = await loadTenantIntegrationSecret(admin, integration.id, integration.integration_type_id);
+      await cleanupZohoWebhookRegistrations(admin, integration, credentials);
+    }
+
     await softDeleteIntegrationChildren(admin, integration.id, actor.userId);
 
     if (integration.vault_secret_id) {
@@ -1605,6 +1775,7 @@ export async function handleIntegrationsSync(request: Request): Promise<Response
     const admin = createAdminClient();
     const integration = await loadTenantIntegration(admin, tenantIntegrationId);
     const actor = await authorizeTenantActor(request, admin, integration.tenant_id);
+    const auditActorId = actor.internal ? null : actor.userId;
 
     if (!isZohoIntegrationTypeId(integration.integration_type_id)) {
       throw new HttpError(501, `Only Zoho runtime sync is implemented right now. Received ${integration.integration_type_id}.`);
@@ -1650,13 +1821,13 @@ export async function handleIntegrationsSync(request: Request): Promise<Response
       tenantId: integration.tenant_id,
       tenantIntegrationId: integration.id,
       jobType,
-      triggeredBy: actor.userId,
+      triggeredBy: auditActorId,
       progress,
     });
 
     await updateTenantIntegration(admin, integration.id, {
       status: 'syncing',
-      updated_by: actor.userId,
+      updated_by: auditActorId,
     });
 
     const kickoff = dispatchWorkerInvocation(actor.authHeader, {
@@ -1674,7 +1845,7 @@ export async function handleIntegrationsSync(request: Request): Promise<Response
         status: 'sync_failed',
         health_status: classifyHealthStatus(error),
         last_health_check_at: nowIso(),
-        updated_by: actor.userId,
+        updated_by: auditActorId,
       });
       throw error;
     });
@@ -1797,6 +1968,26 @@ function logWebhookTrace(
   const safeDetails = scrubSecretValue(details);
   const payload = Object.keys(safeDetails).length > 0 ? safeDetails : undefined;
   const prefix = `[integrations-webhook:${traceId}] ${message}`;
+  if (level === 'warn') {
+    console.warn(prefix, payload);
+    return;
+  }
+  if (level === 'error') {
+    console.error(prefix, payload);
+    return;
+  }
+  console.info(prefix, payload);
+}
+
+function logSyncTrace(
+  level: 'info' | 'warn' | 'error',
+  traceId: string,
+  message: string,
+  details: JsonRecord = {},
+): void {
+  const safeDetails = scrubSecretValue(details);
+  const payload = Object.keys(safeDetails).length > 0 ? safeDetails : undefined;
+  const prefix = `[integrations-sync:${traceId}] ${message}`;
   if (level === 'warn') {
     console.warn(prefix, payload);
     return;
@@ -2352,12 +2543,55 @@ export async function handleIntegrationsWebhook(request: Request): Promise<Respo
 
     try {
       if (!envelope.entityPayload) {
-        throw new HttpError(422, 'Webhook payload did not contain a direct Zoho entity payload.', {
-          entity_type: envelope.entityType,
-          event_type: incomingEventType,
-          provider_entity_id: envelope.providerEntityId,
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        await admin.schema('app').from('integration_webhook_event_changes').insert({
+          tenant_id: webhook.tenant_id,
+          tenant_integration_id: webhook.tenant_integration_id,
+          integration_webhook_event_id: auditEventId,
+          entity_type: webhook.entity_type ?? 'unknown',
+          target_table: `app.${getWebhookTargetTable(phase)}`,
+          target_entity_type: phase,
+          operation: 'skip',
+          merge_decision: 'phase_refresh_queued',
+          delta: {
+            provider_entity_id: envelope.providerEntityId,
+            external_ref: envelope.externalRef,
+            since,
+            reason: 'empty_webhook_payload',
+          },
           external_ref: envelope.externalRef,
         });
+        await dispatchWebhookPhaseRefresh(admin, integration, actor, phase, since);
+        await admin.schema('app').from('integration_webhook_events').update({
+          processing_status: 'processed',
+          processed_at: nowIso(),
+          event_type: incomingEventType,
+          external_entity_id: envelope.providerEntityId,
+          external_ref: envelope.externalRef,
+          source_created_at: envelope.sourceCreatedAt,
+          source_updated_at: envelope.sourceUpdatedAt,
+          normalized_payload: buildWebhookNormalizedPayload(envelope, null, incomingEventType),
+          runtime_meta: {
+            handled_as: 'phase_refresh_queued',
+            trace_id: traceId,
+            phase,
+            since,
+          },
+        }).eq('id', auditEventId);
+        await admin.schema('app').from('integration_webhooks').update({ last_received_at: nowIso() }).eq('id', webhook.id);
+        logWebhookTrace('info', traceId, 'empty webhook payload queued a phase refresh', {
+          audit_event_id: auditEventId,
+          webhook_id: webhook.id,
+          phase,
+          since,
+        });
+        return jsonResponse({
+          ok: true,
+          tenant_integration_id: integration.id,
+          webhook_id: webhook.id,
+          event_type: incomingEventType,
+          processing_mode: 'phase_refresh_queued',
+        }, 202);
       }
 
       const directResult = await applyDirectWebhookEntity(

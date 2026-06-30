@@ -15,6 +15,7 @@ export interface BuyerCartItem {
   unit?: string;
   quantity: number;
   line_total: number;
+  tenant_category_id?: string;
 }
 
 type CartState = { items: BuyerCartItem[] };

@@ -9,7 +9,6 @@ import { toast } from 'sonner';
 import { FeatureDisabledState } from '@/components/FeatureGate';
 import { PermissionDenied } from '@/components/auth/PermissionDenied';
 import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
-import { ResolvedPriceLookupCard } from '@/components/seller/pricing/ResolvedPriceLookupCard';
 import {
   DocumentBasicsStrip,
   DocumentComposerFooterRow,
@@ -77,6 +76,7 @@ function buildNewInvoiceDraft(invoiceNumber = 'Reserving next number...'): Invoi
     status: 'draft',
     buyer_id: null,
     location_id: null,
+    location_name: null,
     available_locations: [],
     invoice_date: isoToday(),
     due_date: null,
@@ -206,6 +206,7 @@ export function DocComposerInvoice({
     tone: 'draft',
   });
   const [selectedPriceListId, setSelectedPriceListId] = useState<string | null>(null);
+  const [autoFocusLineId, setAutoFocusLineId] = useState<string | null>(null);
 
   const originalDocumentRef = useRef<InvoiceComposerDocument | null>(null);
   const originalLinesRef = useRef<EstimateComposerLineRow[]>([]);
@@ -508,10 +509,11 @@ export function DocComposerInvoice({
   }
 
   function handleAddProduct(product: InvoiceComposerProductSearchRow) {
+    const lineId = `draft-line-${Date.now()}-${product.tenant_product_id}`;
     setLineState((current) => [
       ...current,
       {
-        id: `draft-line-${Date.now()}-${product.tenant_product_id}`,
+        id: lineId,
         tenant_product_id: product.tenant_product_id,
         product_name: product.product_name,
         sku: product.sku,
@@ -531,6 +533,7 @@ export function DocComposerInvoice({
         diff: 'added',
       },
     ]);
+    setAutoFocusLineId(lineId);
   }
 
   function handleLineChange(lineId: string, patch: Partial<EstimateComposerLineRow>) {
@@ -663,11 +666,11 @@ export function DocComposerInvoice({
             kind="invoice"
             docNumber={documentState.invoice_number}
             locationId={documentState.location_id}
+            locationName={documentState.location_name}
             availableLocations={documentState.available_locations}
             dateIssued={documentState.invoice_date}
             secondDate={documentState.due_date ?? ''}
             buyerPoRef={documentState.buyer_po_ref}
-            locationReadOnly={documentState.available_locations.length <= 1}
             onDateIssuedChange={(value) => {
               setDocumentState((current) => {
                 if (!current) return current;
@@ -738,6 +741,8 @@ export function DocComposerInvoice({
             singleNoteMode
             title="Invoice lines"
             description="Search by product, SKU, or brand. Pricelist pricing is applied automatically."
+            autoFocusLineId={autoFocusLineId}
+            onAutoFocusHandled={() => setAutoFocusLineId(null)}
             showNotesControls={false}
             showFreightControls={false}
             notesValue={documentState.seller_note}
@@ -767,16 +772,6 @@ export function DocComposerInvoice({
               isInterState={isInterState}
               lineCount={activeLines.length}
               stagedChanges={stagedChangesRows}
-            />
-            <ResolvedPriceLookupCard
-              buyerId={documentState.buyer_id}
-              productOptions={activeLines.map((line) => ({
-                id: line.tenant_product_id,
-                label: line.product_name,
-                meta: `${line.sku} · Qty ${line.qty}`,
-              }))}
-              title="Resolved price check"
-              description="Verify the resolved buyer price before finalizing this invoice."
             />
           </div>
         )}

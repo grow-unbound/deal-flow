@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedClaims } from '@/lib/auth';
-import { buildIntegrationTopologyConfig, getIntegrationWebhookDefinitions } from '@/lib/integrations/definitions';
 import {
+  buildIntegrationDataFlowRows,
+  buildIntegrationTopologyConfig,
+  getIntegrationWebhookDefinitions,
+} from '@/lib/integrations/definitions';
+import {
+  buildZohoWebhookRegistrationName,
   buildZohoWebhookRegistrationPayload,
   buildZohoWorkflowRegistrationPayload,
+  deleteZohoWebhookRegistrationsByName,
 } from '@/lib/integrations/zoho-webhooks';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -259,6 +265,7 @@ export async function POST(request: NextRequest) {
     );
     const accessToken = await refreshAccessToken(secret, dc);
     const setupByEntity: Record<string, ReturnType<typeof buildWebhookSetupState>> = {};
+    const webhookIdsByEntity: Record<string, string> = {};
 
     for (const definition of definitions) {
       const { data: existingWebhook } = await db.schema('app').from('integration_webhooks')
@@ -283,67 +290,128 @@ export async function POST(request: NextRequest) {
           created_by: claims.sub,
           updated_by: claims.sub,
         }).select('id, endpoint_token, secret, remote_webhook_id, status, webhook_config').single();
-        if (error || !data) return jsonError(500, `Unable to prepare ${definition.entity_type} webhook`, 'WEBHOOK_SETUP_FAILED');
+        if (error || !data) {
+          setupByEntity[definition.entity_type] = buildWebhookSetupState({
+            status: 'failed',
+            message: `Unable to prepare ${definition.entity_type} webhook`,
+          });
+          continue;
+        }
         webhook = data;
       }
-      if (!webhook) return jsonError(500, `Unable to prepare ${definition.entity_type} webhook`, 'WEBHOOK_SETUP_FAILED');
+      if (!webhook) {
+        setupByEntity[definition.entity_type] = buildWebhookSetupState({
+          status: 'failed',
+          message: `Unable to prepare ${definition.entity_type} webhook`,
+        });
+        continue;
+      }
 
+      webhookIdsByEntity[definition.entity_type] = webhook.id;
+
+      const callbackUrl = `${getFunctionsBaseUrl()}/integrations-webhook/${webhook.endpoint_token}`;
       const workflowIds = extractWorkflowIds(toRecord(webhook.webhook_config).workflow_ids);
       const remoteWebhookIds = extractWorkflowIds(toRecord(webhook.webhook_config).remote_webhook_ids);
 
-      if (webhook.remote_webhook_id || workflowIds.length > 0) {
-        await deleteZohoWebhookRegistration({
+      try {
+        if (webhook.remote_webhook_id || workflowIds.length > 0) {
+          await deleteZohoWebhookRegistration({
+            accessToken,
+            orgId,
+            dc,
+            integrationTypeId: integration.integration_type_id,
+            remoteWebhookId: webhook.remote_webhook_id,
+            remoteWebhookIds,
+            workflowIds,
+          });
+        }
+
+        await deleteZohoWebhookRegistrationsByName({
           accessToken,
           orgId,
           dc,
           integrationTypeId: integration.integration_type_id,
-          remoteWebhookId: webhook.remote_webhook_id,
-          remoteWebhookIds,
-          workflowIds,
+          webhookNames: (definition.workflow_rule_types ?? ['add_edit']).map((ruleType) => (
+            buildZohoWebhookRegistrationName({ entityType: definition.entity_type, ruleType })
+          )),
+          callbackUrls: [callbackUrl],
         });
-      }
 
-      const webhookSecret = (webhook.secret ?? crypto.randomUUID()).replace(/-/g, '');
-      const registration = await registerZohoWebhook(
-        accessToken,
-        orgId,
-        dc,
-        `${getFunctionsBaseUrl()}/integrations-webhook/${webhook.endpoint_token}`,
-        integration.integration_type_id,
-        definition.entity_type,
-        definition.provider_entity,
-        webhookSecret,
-        definition.workflow_rule_types,
-      );
-      const remoteWebhookId = registration.webhookIds.add_edit ?? Object.values(registration.webhookIds)[0] ?? null;
-      console.info('[zoho/webhooks/retry] webhook registered', {
-        tenant_integration_id: integration.id,
-        entity_type: definition.entity_type,
-        callback_url: `${getFunctionsBaseUrl()}/integrations-webhook/${webhook.endpoint_token}`,
-        webhook_ids: registration.webhookIds,
-        workflow_ids: registration.workflowIds,
-      });
-      const state = buildWebhookSetupState({
-        status: remoteWebhookId ? 'active' : 'failed',
-        webhookId: remoteWebhookId,
-      });
-      setupByEntity[definition.entity_type] = state;
-      await db.schema('app').from('integration_webhooks').update({
-        event_types: definition.event_types,
-        remote_webhook_id: remoteWebhookId,
-        external_ref: remoteWebhookId,
-        status: state.status,
-        is_active: Boolean(remoteWebhookId),
-        webhook_config: {
-          sync_phase: definition.sync_phase,
+        const webhookSecret = (webhook.secret ?? crypto.randomUUID()).replace(/-/g, '');
+        const registration = await registerZohoWebhook(
+          accessToken,
+          orgId,
+          dc,
+          callbackUrl,
+          integration.integration_type_id,
+          definition.entity_type,
+          definition.provider_entity,
+          webhookSecret,
+          definition.workflow_rule_types,
+        );
+        const remoteWebhookId = registration.webhookIds.add_edit ?? Object.values(registration.webhookIds)[0] ?? null;
+        console.info('[zoho/webhooks/retry] webhook registered', {
+          tenant_integration_id: integration.id,
+          entity_type: definition.entity_type,
+          callback_url: callbackUrl,
+          webhook_ids: registration.webhookIds,
           workflow_ids: registration.workflowIds,
-          remote_webhook_ids: registration.webhookIds,
-        },
-        secret: webhookSecret,
-        last_verified_at: remoteWebhookId ? new Date().toISOString() : null,
-        updated_by: claims.sub,
-      }).eq('id', webhook.id);
+        });
+        const state = buildWebhookSetupState({
+          status: remoteWebhookId ? 'active' : 'failed',
+          webhookId: remoteWebhookId,
+        });
+        setupByEntity[definition.entity_type] = state;
+        await db.schema('app').from('integration_webhooks').update({
+          event_types: definition.event_types,
+          remote_webhook_id: remoteWebhookId,
+          external_ref: remoteWebhookId,
+          status: state.status,
+          is_active: Boolean(remoteWebhookId),
+          webhook_config: {
+            sync_phase: definition.sync_phase,
+            integration_type_id: integration.integration_type_id ?? 'zoho_books',
+            workflow_ids: registration.workflowIds,
+            remote_webhook_ids: registration.webhookIds,
+          },
+          secret: webhookSecret,
+          last_verified_at: remoteWebhookId ? new Date().toISOString() : null,
+          updated_by: claims.sub,
+        }).eq('id', webhook.id);
+      } catch (error) {
+        const state = buildWebhookSetupState({
+          status: 'failed',
+          message: error instanceof Error ? error.message : `Failed to register ${definition.entity_type} webhook`,
+        });
+        setupByEntity[definition.entity_type] = state;
+        await db.schema('app').from('integration_webhooks').update({
+          event_types: definition.event_types,
+          remote_webhook_id: null,
+          external_ref: null,
+          status: 'failed',
+          is_active: false,
+          webhook_config: {
+            sync_phase: definition.sync_phase,
+            workflow_ids: {},
+            remote_webhook_ids: {},
+          },
+          last_verified_at: null,
+          updated_by: claims.sub,
+        }).eq('id', webhook.id);
+      }
     }
+
+    const flowRows = buildIntegrationDataFlowRows({
+      tenant_id: integration.tenant_id,
+      tenant_integration_id: integration.id,
+      integration_type_id: integration.integration_type_id === 'zoho_inventory' ? 'zoho_inventory' : 'zoho_books',
+      webhook_ids_by_entity: webhookIdsByEntity,
+      created_by: claims.sub,
+      updated_by: claims.sub,
+    });
+    await db.schema('app').from('integration_data_flows').upsert(flowRows, {
+      onConflict: 'tenant_id,tenant_integration_id,entity_type',
+    });
 
     const topologyConfig = buildIntegrationTopologyConfig(
       integration.integration_type_id === 'zoho_inventory' ? 'zoho_inventory' : 'zoho_books',

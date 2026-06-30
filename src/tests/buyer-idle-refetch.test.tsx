@@ -67,7 +67,7 @@ describe('buyer pages avoid idle refetch loops', () => {
             {
               id: 'item-1',
               tenant_product_id: 'tp-1',
-              catalog_id: 'catalog-1',
+              campaign_id: 'catalog-1',
               catalog_name: 'June Deals',
               catalog_valid_until: null,
               internal_sku: 'SKU-1',

@@ -33,6 +33,16 @@ type BuyerRow = {
   avatar: { initials: string; hue: 'teal' | 'ember' | 'cream' };
 };
 
+type PriceListAssignmentRow = {
+  target_id: string | null;
+  price_list_id: string;
+  created_at: string | null;
+  price_lists?: {
+    id: string;
+    name: string;
+  } | null;
+};
+
 const CUSTOMERS_LANDING_CACHE_TTL_MS = 20_000;
 const customersLandingCache = new Map<string, { expiresAt: number; payload: unknown }>();
 
@@ -128,7 +138,6 @@ export async function GET(req: NextRequest) {
       .from('buyers')
       .select('id, business_name, tier, phone, gst_treatment, status, credit_limit, is_active, geography, deleted_at')
       .eq('tenant_id', tenantId)
-      .eq('is_active', true)
       .is('deleted_at', null)
       .order('business_name', { ascending: true })
       .order('id', { ascending: true });
@@ -222,10 +231,11 @@ export async function GET(req: NextRequest) {
       db
         .schema('app')
         .from('price_list_assignments')
-        .select('target_id, price_list_id, created_at')
+        .select('target_id, price_list_id, created_at, price_lists!inner(id, name, tenant_id, deleted_at)')
         .eq('target_type', 'buyer')
-        .in('target_id', buyerIds)
         .is('deleted_at', null)
+        .eq('price_lists.tenant_id', tenantId)
+        .is('price_lists.deleted_at', null)
         .order('created_at', { ascending: false }),
     ]);
 
@@ -242,32 +252,28 @@ export async function GET(req: NextRequest) {
       prevOrdersRes.error ||
       recentOrdersRes.error ||
       cohortMembersRes.error ||
-      (invoicesRes.error && !invoicesTableMissing) ||
-      priceListAssignmentsRes.error
+      (invoicesRes.error && !invoicesTableMissing)
     ) {
       console.error('[GET /api/tenant/customers] query failure', {
         mtd: mtdOrdersRes.error,
         prev: prevOrdersRes.error,
-      recent: recentOrdersRes.error,
-      cohorts: cohortMembersRes.error,
-      invoices: invoicesRes.error,
-      priceListAssignments: priceListAssignmentsRes.error,
-    });
+        recent: recentOrdersRes.error,
+        cohorts: cohortMembersRes.error,
+        invoices: invoicesRes.error,
+        priceListAssignments: priceListAssignmentsRes.error,
+      });
       return timedJson({ error: 'Failed to fetch customers landing data' }, { status: 500 });
     }
 
-    const priceListIds = Array.from(new Set((priceListAssignmentsRes.data ?? []).map((row: any) => row.price_list_id).filter(Boolean)));
-    const { data: priceLists } = priceListIds.length > 0
-      ? await db
-          .schema('app')
-          .from('price_lists')
-          .select('id, name')
-          .in('id', priceListIds)
-          .is('deleted_at', null)
-      : { data: [] as Array<{ id: string; name: string }> };
-    const priceListNameById = new Map<string, string>((priceLists ?? []).map((row: any) => [row.id, row.name] as const));
+    const priceListAssignments = priceListAssignmentsRes.error ? [] : (priceListAssignmentsRes.data ?? []);
+    const priceListNameById = new Map<string, string>(
+      (priceListAssignments as PriceListAssignmentRow[])
+        .map((row) => row.price_lists)
+        .filter((row): row is NonNullable<PriceListAssignmentRow['price_lists']> => Boolean(row))
+        .map((row) => [row.id, row.name] as const),
+    );
     const activePriceListByBuyerId = new Map<string, string>();
-    for (const row of (priceListAssignmentsRes.data ?? []) as Array<{ target_id: string | null; price_list_id: string }>) {
+    for (const row of priceListAssignments as PriceListAssignmentRow[]) {
       if (!row.target_id || activePriceListByBuyerId.has(row.target_id)) continue;
       activePriceListByBuyerId.set(row.target_id, priceListNameById.get(row.price_list_id) ?? 'Assigned');
     }
