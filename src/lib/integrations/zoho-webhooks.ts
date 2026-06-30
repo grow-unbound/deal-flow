@@ -79,18 +79,14 @@ export function buildZohoWebhookRegistrationPayload(input: {
   secret: string;
   ruleType: ZohoWebhookRuleType;
 }) {
-  // Append ?event_type= to the URL so the webhook handler can distinguish
-  // upsert from delete without parsing the body — Zoho's Default Payload does
-  // not include an event_type field in the body.
-  const eventTypeParam = input.ruleType === 'delete' ? 'delete' : 'upsert';
-  const urlWithEventType = `${input.webhookUrl}?event_type=${eventTypeParam}`;
-
+  // Each rule_type gets its own endpoint_token URL — no query param needed.
+  // The handler derives operation from the integration_webhooks.rule_type column.
   return {
     webhook_name: `${input.entityType} ${input.ruleType} - Yukti`,
     description: `Yukti inbound ${input.entityType} ${input.ruleType}`,
     entity: input.providerEntity,
     method: 'POST',
-    url: urlWithEventType,
+    url: input.webhookUrl,
     secret: input.secret,
     headers: [{
       param_name: 'x-zoho-webhook-token',
