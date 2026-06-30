@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
       now,
     });
 
-    const redirectPath = buyerId ? '/buy/home' : '/buy/catalog';
+    const redirectPath = '/buy/home';
     const response = NextResponse.redirect(new URL(redirectPath, request.url));
 
     const cookieOptions = {

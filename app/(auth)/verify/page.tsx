@@ -76,6 +76,15 @@ function VerifyOtpForm() {
         });
       }
 
+      // Clear stale buyer route snapshots so a previous buyer's cached home data
+      // (e.g. from a seller preview) doesn't render before the fresh API fetch.
+      try {
+        const SNAPSHOT_PREFIX = 'yukti_route_snapshot:';
+        Object.keys(sessionStorage)
+          .filter((k) => k.startsWith(SNAPSHOT_PREFIX))
+          .forEach((k) => sessionStorage.removeItem(k));
+      } catch { /* sessionStorage may be unavailable */ }
+
       shouldResetLoading = false;
       router.replace(data.redirect ?? '/dashboard');
       router.refresh();
