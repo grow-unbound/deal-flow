@@ -1044,28 +1044,7 @@ async function persistBuyers(
   );
 
   const remoteContactPersonMap = new Map<string, Record<string, unknown>[]>();
-  if (adapter) {
-    const contactsNeedingFetch = records
-      .map((rec) => {
-        const externalId = asStr(rec.contact_id);
-        // Only fall back to per-contact fetch when Zoho omitted the key entirely
-        // (happens at large per_page). At per_page=200, Zoho always embeds
-        // contact_persons (possibly []) — trusting the empty array avoids N+1 calls.
-        const hasEmbeddedKey = 'contact_persons' in (rec as Record<string, unknown>);
-        return externalId && !hasEmbeddedKey ? externalId : null;
-      })
-      .filter((value): value is string => value !== null);
-
-    const uniqueContactIds = [...new Set(contactsNeedingFetch)];
-    const fetchedContactPersons = await mapWithConcurrency(uniqueContactIds, 12, async (contactId) => ({
-      contactId,
-      rows: await adapter.fetchContactPersons(contactId),
-    }));
-
-    for (const entry of fetchedContactPersons) {
-      remoteContactPersonMap.set(entry.contactId, entry.rows);
-    }
-  }
+  // contact_persons are embedded in Zoho's list response (per_page=200). No per-contact fetch.
 
   for (const rec of records) {
     const externalId = asStr(rec.contact_id);
