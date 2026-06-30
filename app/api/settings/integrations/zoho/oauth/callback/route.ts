@@ -29,7 +29,7 @@ interface OAuthStateRow {
 }
 
 type WebhookSetupState = {
-  status: 'pending' | 'active' | 'failed';
+  status: 'pending' | 'pending_registration' | 'active' | 'failed';
   attempted_at: string;
   last_error: string | null;
   external_ref: string | null;

@@ -95,6 +95,13 @@ export async function middleware(request: NextRequest) {
   if (locationIds) requestHeaders.set('x-verified-location-ids', JSON.stringify(locationIds));
   if (session.user?.id) requestHeaders.set('x-verified-user-id', session.user.id);
 
+  // Forward buyer preview cookie as a trusted server-side header.
+  // Cookie is httpOnly and HMAC-signed — getBuyerAppContext verifies the signature.
+  const buyerPreviewCookie = request.cookies.get('buyer_preview')?.value;
+  if (buyerPreviewCookie) {
+    requestHeaders.set('x-buyer-preview', buyerPreviewCookie);
+  }
+
   // Role-based zone guards
   // Guard 2: buyers must stay in /buy — redirect them away from seller/root pages
   const isBuyerSafeZone =
