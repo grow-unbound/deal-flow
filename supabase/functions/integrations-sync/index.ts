@@ -307,14 +307,59 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // All phases complete — trigger Phase 3 analysis RPCs if we synced any data
+    // Phase 3 — Analysis (snapshots + KPI + reco).
+    // post_sync_rebuild is also fired by DB trigger on each job completion (p_days=2 for incremental).
+    // We fire it explicitly here with a larger window when a transactional phase just ran,
+    // and then run the reco suite (not in the trigger) sequentially.
     const totalSynced = results.reduce((sum, r) => sum + r.records_synced, 0);
-    if (totalSynced > 0 && !requestedPhase) {
-      // Fire async — don't block the sync response
-      Promise.all([
-        admin.schema('app').rpc('compute_kpi_summary', { p_tenant_id: integration.tenant_id }),
-        admin.schema('app').rpc('compute_reco_all', { p_tenant_id: integration.tenant_id }),
-      ]).catch((err) => console.error('[integrations-sync] Phase 3 RPC error:', err));
+    if (totalSynced > 0) {
+      const analysisJobId = await createPhaseJob(admin, {
+        tenantId: integration.tenant_id,
+        tenantIntegrationId: integration.id,
+        phase: 'analysis',
+        jobType,
+        triggeredBy: actorUserId,
+      });
+      jobIds['analysis'] = analysisJobId;
+      await admin.schema('app').from('integration_sync_jobs').update({
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq('id', analysisJobId);
+
+      try {
+        // Determine rebuild window: use 90 days for initial sync types, 2 for incremental
+        const rebuildDays = jobType === 'initial_reference' || jobType === 'initial_transactional' ? 90 : 2;
+        await admin.schema('app').rpc('post_sync_rebuild', {
+          p_tenant_id: integration.tenant_id,
+          p_days: rebuildDays,
+        });
+
+        // Reco suite (sequential — each depends on the prior step's output)
+        await admin.schema('app').rpc('reco_compute_popularity', { p_tenant_id: integration.tenant_id });
+        await admin.schema('app').rpc('reco_compute_associations', { p_tenant_id: integration.tenant_id });
+        await admin.schema('app').rpc('reco_refresh_buyer_profiles', { p_tenant_id: integration.tenant_id });
+        await admin.schema('app').rpc('reco_compute_category_profiles', { p_tenant_id: integration.tenant_id });
+        await admin.schema('app').rpc('reco_compute_category_associations', { p_tenant_id: integration.tenant_id });
+        await admin.schema('app').rpc('reco_suggest_bundles', { p_tenant_id: integration.tenant_id });
+
+        await admin.schema('app').from('integration_sync_jobs').update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          progress: { phase_label: 'Analysis complete', rebuild_days: rebuildDays },
+        }).eq('id', analysisJobId);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Analysis failed';
+        console.error('[integrations-sync] Phase 3 error:', message);
+        await admin.schema('app').from('integration_sync_jobs').update({
+          status: 'failed',
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          error_log: { message, timestamp: new Date().toISOString() },
+        }).eq('id', analysisJobId);
+        // Don't fail the whole sync — Phase 1+2 data is still good
+      }
     }
 
     await setIntegrationStatus(admin, integration.id, 'connected');

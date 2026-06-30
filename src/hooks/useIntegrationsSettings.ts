@@ -94,6 +94,7 @@ export interface IntegrationSyncError {
 export interface IntegrationSyncJob {
   id: string;
   job_type: IntegrationSyncJobType;
+  phase?: string | null;
   status: IntegrationSyncJobStatus;
   run_origin?: IntegrationRunOrigin;
   sync_window?: string | null;
@@ -325,6 +326,7 @@ function parseSyncJob(value: unknown): IntegrationSyncJob | null {
   return {
     id: asString(value.id),
     job_type: (asString(value.job_type) || 'manual') as IntegrationSyncJobType,
+    phase: asNullableString(value.phase) ?? null,
     status: (asString(value.status) || 'queued') as IntegrationSyncJobStatus,
     run_origin: runOrigin,
     sync_window: syncWindow,
