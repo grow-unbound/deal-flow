@@ -96,9 +96,6 @@ export function buildZohoWebhookRegistrationPayload(input: {
       param_name: 'x-zoho-webhook-token',
       param_value: input.secret,  // always sent — never empty
     }],
-    // Explicitly request JSON payload format (full entity)
-    // Valid Zoho body_type values: 'json', 'form'
-    // Requesting 'json' ensures Zoho sends the complete entity object
     body_type: 'json',
   };
 }

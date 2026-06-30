@@ -140,7 +140,7 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
         buyer_app_enabled,
         is_active,
         deleted_at,
-        tenants!inner ( id, business_name, slug )
+        tenants!tenant_id ( id, business_name, slug )
       `)
       .eq('phone', normalizedPhone)
       .eq('is_active', true)
@@ -156,7 +156,7 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
         phone,
         is_active,
         deleted_at,
-        buyers!inner (
+        buyers!buyer_id (
           id,
           tenant_id,
           business_name,
@@ -164,7 +164,7 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
           buyer_app_enabled,
           is_active,
           deleted_at,
-          tenants!inner ( id, business_name, slug )
+          tenants!tenant_id ( id, business_name, slug )
         )
       `)
       .eq('phone', normalizedPhone)
@@ -661,17 +661,6 @@ export async function mintSellerSession(
       current_buyer_id: null,
     },
   });
-
-  // Persist the seller's phone in tenant_users so findLinkedBuyerId can
-  // reliably look up their linked buyer account without user_metadata fallbacks.
-  if (candidate.phone) {
-    await supabaseAdmin
-      .schema('app')
-      .from('tenant_users')
-      .update({ phone: candidate.phone })
-      .eq('user_id', candidate.user_id)
-      .eq('tenant_id', candidate.tenant_id);
-  }
 
   // Generate a recovery link server-side — does NOT send any email
   const { data: linkData, error: linkError } =

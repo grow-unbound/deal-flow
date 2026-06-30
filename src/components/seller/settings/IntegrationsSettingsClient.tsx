@@ -465,7 +465,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
         <SellerTopbar
           eyebrow="Settings"
           title="Integrations"
-          subtitle="Connect accounting and ERP tools behind PostHog-controlled rollout flags."
+          subtitle="Connect accounting and ERP tools."
           action={
             isSellerAdmin && unconnectedAvailable.length > 0 ? (
               <Button type="button" variant="primary" size="sm" onClick={() => setPickerOpen(true)}>
