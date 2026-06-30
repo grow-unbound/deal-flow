@@ -44,6 +44,11 @@ export class ZohoApiError extends Error {
   }
 }
 
+export interface ZohoTokenCacheProvider {
+  read(): Promise<string | null>;
+  write(token: string, expiresAt: Date): Promise<void>;
+}
+
 interface ZohoPageContext {
   page?: number;
   per_page?: number;
@@ -214,6 +219,17 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function retryDelayMs(attempt: number, response?: Response): number {
+  // On 429 rate-limit: honour Retry-After header when present (value is seconds)
+  if (response?.status === 429) {
+    const header = response.headers.get('Retry-After');
+    const seconds = header ? parseFloat(header) : NaN;
+    if (Number.isFinite(seconds) && seconds > 0) return Math.min(seconds * 1000, 30_000);
+  }
+  // Exponential backoff with ±200ms jitter for all other retryable errors
+  return 1000 * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 200);
+}
+
 async function fetchZohoResponse(url: string, init: RequestInit, retryLabel: string): Promise<Response> {
   let lastError: unknown = null;
 
@@ -227,7 +243,7 @@ async function fetchZohoResponse(url: string, init: RequestInit, retryLabel: str
         signal: controller.signal,
       });
       if (attempt < ZOHO_REQUEST_MAX_ATTEMPTS && isRetryableZohoResponseStatus(response.status)) {
-        await delay(250 * attempt);
+        await delay(retryDelayMs(attempt, response));
         continue;
       }
       return response;
@@ -236,7 +252,7 @@ async function fetchZohoResponse(url: string, init: RequestInit, retryLabel: str
       if (attempt >= ZOHO_REQUEST_MAX_ATTEMPTS || !isRetryableZohoRequestError(error)) {
         throw error;
       }
-      await delay(250 * attempt);
+      await delay(retryDelayMs(attempt));
     } finally {
       clearTimeout(timer);
     }
@@ -345,11 +361,21 @@ export function sampleExternalIds(records: Record<string, unknown>[]): string[] 
 export function createZohoAdapter(
   integrationTypeId: ZohoIntegrationTypeId,
   rawCredentials: Record<string, unknown>,
+  tokenCache?: ZohoTokenCacheProvider,
 ) {
   const credentials = normalizeZohoCredentials(integrationTypeId, rawCredentials);
   let cachedToken: string | null = null;
 
   async function refreshAccessToken(): Promise<string> {
+    // Check persistent cache first (avoids token refresh on every Edge Function cold-start)
+    if (tokenCache) {
+      const persisted = await tokenCache.read().catch(() => null);
+      if (persisted) {
+        cachedToken = persisted;
+        return persisted;
+      }
+    }
+
     const url = new URL('/oauth/v2/token', credentials.accountsBaseUrl);
     url.searchParams.set('grant_type', 'refresh_token');
     url.searchParams.set('client_id', credentials.clientId);
@@ -365,6 +391,11 @@ export function createZohoAdapter(
     }
 
     cachedToken = accessToken;
+    // Zoho access tokens expire in 3600s — cache with 120s buffer so we never use a near-expired token
+    if (tokenCache) {
+      const expiresAt = new Date(Date.now() + (3600 - 120) * 1000);
+      tokenCache.write(accessToken, expiresAt).catch(() => {});
+    }
     return accessToken;
   }
 
@@ -396,6 +427,8 @@ export function createZohoAdapter(
 
     if (response.status === 401 && retryOnUnauthorized) {
       cachedToken = null;
+      // Evict persisted cache so next call forces a real refresh
+      if (tokenCache) tokenCache.write('', new Date(0)).catch(() => {});
       await refreshAccessToken();
       return request<T>(init, false);
     }

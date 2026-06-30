@@ -102,6 +102,56 @@ const GROUP_BY_PHASE_ID: Record<string, EntityGroupKey> = {
   invoices: 'transactions',
 };
 
+// ── 3-phase structure ──────────────────────────────────────────────────────────
+
+interface SyncPhaseGroup {
+  id: string;
+  label: string;
+  description: string;
+  subPhases: Array<{ id: string; label: string; aliases: string[] }>;
+  syncWindowLabel: string;
+  canSyncAgain: boolean;
+}
+
+const SYNC_PHASE_GROUPS: SyncPhaseGroup[] = [
+  {
+    id: 'reference',
+    label: 'Phase 1 — Reference Data',
+    description: 'Locations, Products, Pricelists, Customers',
+    subPhases: [
+      { id: 'locations', label: 'Locations', aliases: ['locations', 'warehouses'] },
+      { id: 'products', label: 'Products', aliases: ['products', 'brands', 'categories'] },
+      { id: 'pricelists', label: 'Pricelists', aliases: ['pricelists', 'price_lists'] },
+      { id: 'customers', label: 'Customers', aliases: ['customers'] },
+    ],
+    syncWindowLabel: 'Products and Customers use the selected date window. Locations and Pricelists always sync fully.',
+    canSyncAgain: true,
+  },
+  {
+    id: 'transactional',
+    label: 'Phase 2 — Transactions',
+    description: 'Estimates, Sales Orders, Invoices',
+    subPhases: [
+      { id: 'estimates', label: 'Estimates', aliases: ['estimates'] },
+      { id: 'orders', label: 'Sales Orders', aliases: ['orders', 'salesorders'] },
+      { id: 'invoices', label: 'Invoices', aliases: ['invoices'] },
+    ],
+    syncWindowLabel: 'All transaction data is filtered by the selected date window.',
+    canSyncAgain: true,
+  },
+  {
+    id: 'analysis',
+    label: 'Phase 3 — Analysis',
+    description: 'KPI summary, recommendations, snapshots',
+    subPhases: [
+      { id: 'kpi_summary', label: 'KPI Summary', aliases: ['kpi_summary'] },
+      { id: 'recommendations', label: 'Recommendations', aliases: ['reco'] },
+    ],
+    syncWindowLabel: 'Computed automatically after Phase 2 completes.',
+    canSyncAgain: false,
+  },
+];
+
 function getEntityGroup(key: EntityGroupKey) {
   return ENTITY_GROUPS.find((group) => group.key === key) ?? ENTITY_GROUPS[0];
 }
@@ -1034,64 +1084,109 @@ export function ConnectedIntegrationCard({
               </details>
             ) : null}
 
-            <div className="rounded-2xl border border-cream-200 bg-white p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-cream-900">Sync coverage</div>
-                  <div className="mt-1 text-sm text-cream-700">
-                    Live totals for the current tenant. Products groups Products, Brands, Categories, and Pricelists together.
-                  </div>
-                </div>
-              </div>
-              <div className="mt-4 grid gap-3 xl:grid-cols-4">
-                {overviewCards.map((card) => {
-                  const disabled = isSyncingNow || (ti.status !== 'connected' && ti.status !== 'sync_failed') || !card.phaseAction;
-                  return (
-                    <div
-                      key={card.key}
-                      className="group/card rounded-2xl border border-cream-200 bg-cream-50 px-4 pt-4 pb-3 shadow-xs"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">
-                            {card.label}
-                          </div>
-                          <div className="mt-2 flex items-end gap-2">
-                            <span className="text-2xl font-display text-cream-900">{formatNumber(card.total)}</span>
-                            <span className="text-sm text-cream-600">{getGroupCountLabel(card.key, card.total)} total</span>
-                          </div>
-                          <div className="mt-1 text-sm text-cream-700">{getGroupAsOfLabel(card.lastRunAt)}</div>
-                        </div>
-                        <div className="flex shrink-0 flex-col items-end gap-2 text-right">
-                          <StatusPill label={card.state} variant={getPhaseStateVariant(card.state)} />
-                          {card.phaseAction ? (
-                            <Button
-                              type="button"
-                              variant="primary"
-                              size="sm"
-                              className="opacity-0 transition-opacity duration-200 group-hover/card:opacity-100"
-                              onClick={() => openPhaseSyncDialog(card.phaseAction!.id, card.phaseAction!.label)}
-                              disabled={disabled}
-                              aria-label={`Sync now for ${card.label}`}
-                            >
-                              {isSyncingNow && syncTargetPhase === card.key ? 'Syncing…' : 'Sync now'}
-                            </Button>
-                          ) : null}
+            <div className="space-y-3">
+              <div className="text-sm font-semibold text-cream-900">Sync phases</div>
+              {SYNC_PHASE_GROUPS.map((phaseGroup) => {
+                const canSync = isSellerAdmin && available && !isSyncingNow &&
+                  (ti.status === 'connected' || ti.status === 'sync_failed') && phaseGroup.canSyncAgain;
+
+                // Aggregate sub-phase counts and status from coverage totals
+                const subPhaseRows = phaseGroup.subPhases.map((sub) => {
+                  const count = (() => {
+                    switch (sub.id) {
+                      case 'locations': return coverageTotals.locations ?? 0;
+                      case 'products': return (coverageTotals.products ?? 0) + (coverageTotals.brands ?? 0) + (coverageTotals.categories ?? 0);
+                      case 'pricelists': return coverageTotals.pricelists ?? 0;
+                      case 'customers': return coverageTotals.customers ?? 0;
+                      case 'estimates': return coverageTotals.estimates ?? 0;
+                      case 'orders': return coverageTotals.orders ?? 0;
+                      case 'invoices': return coverageTotals.invoices ?? 0;
+                      default: return 0;
+                    }
+                  })();
+
+                  // Find the most recent job that touched this sub-phase
+                  const relevantGroup = GROUP_BY_PHASE_ID[sub.id];
+                  const latestJob = relevantGroup ? getGroupRelevantJob(runHistory, relevantGroup as EntityGroupKey) : null;
+                  const isSyncing = isSyncingNow && latestJob?.status === 'running';
+                  const pagesNote = isSyncing && latestJob?.progress
+                    ? (() => {
+                        const pg = (latestJob.progress as { pages_fetched?: number }).pages_fetched;
+                        return pg ? `page ${pg}` : null;
+                      })()
+                    : null;
+
+                  return { ...sub, count, isSyncing, pagesNote };
+                });
+
+                const phaseTotal = subPhaseRows.reduce((s, r) => s + r.count, 0);
+                const anyActive = subPhaseRows.some((r) => r.isSyncing);
+
+                return (
+                  <details key={phaseGroup.id} className="group/phase overflow-hidden rounded-2xl border border-cream-200 bg-white" open={anyActive}>
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <ChevronDown className="h-4 w-4 shrink-0 text-cream-500 transition-transform group-open/phase:rotate-180" />
+                        <div>
+                          <div className="text-sm font-semibold text-cream-900">{phaseGroup.label}</div>
+                          <div className="text-xs text-cream-600">{phaseGroup.description}</div>
                         </div>
                       </div>
-                      <div className="mt-3 space-y-2">
-                        {Object.entries(card.items).map(([label, count]) => (
-                          <div key={`${card.key}-${label}`} className="flex items-center justify-between gap-3 text-sm text-cream-700">
-                            <span>{label}</span>
-                            <span className="font-medium text-cream-900">{formatNumber(Number(count))}</span>
-                          </div>
-                        ))}
+                      <div className="flex shrink-0 items-center gap-2">
+                        {anyActive ? (
+                          <StatusPill label="Syncing" variant="info" />
+                        ) : phaseTotal > 0 ? (
+                          <span className="text-sm font-medium text-cream-900">{formatNumber(phaseTotal)} records</span>
+                        ) : null}
+                        {phaseGroup.canSyncAgain ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              openPhaseSyncDialog(phaseGroup.id, phaseGroup.label.replace(/^Phase \d+ — /, ''));
+                            }}
+                            disabled={!canSync}
+                          >
+                            <RefreshCw className="h-3.5 w-3.5" />
+                            {isSyncingNow && syncTargetPhase === phaseGroup.id ? 'Syncing…' : 'Sync Again'}
+                          </Button>
+                        ) : null}
                       </div>
-                      <div className="mt-3 text-sm leading-6 text-cream-700">{getGroupNextRunLabel(card.nextRunAt)}</div>
+                    </summary>
+
+                    <div className="border-t border-cream-200 bg-cream-50 px-4 py-3">
+                      <div className="space-y-2">
+                        {phaseGroup.id === 'analysis' ? (
+                          <div className="text-sm text-cream-700">
+                            {phaseTotal > 0
+                              ? 'Analysis tables computed. KPI summary and recommendations are up to date.'
+                              : 'Will be computed automatically after Phase 1 and Phase 2 complete.'}
+                          </div>
+                        ) : (
+                          subPhaseRows.map((sub) => (
+                            <div key={sub.id} className="flex items-center justify-between gap-3 rounded-lg border border-cream-200 bg-white px-3 py-2">
+                              <div className="text-sm text-cream-900">{sub.label}</div>
+                              <div className="flex items-center gap-2 text-sm">
+                                {sub.isSyncing ? (
+                                  <span className="text-info-700">
+                                    {sub.pagesNote ? `syncing ${sub.pagesNote}…` : 'syncing…'}
+                                  </span>
+                                ) : sub.count > 0 ? (
+                                  <span className="font-medium text-cream-900">{formatNumber(sub.count)}</span>
+                                ) : (
+                                  <span className="text-cream-500">—</span>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
+                  </details>
+                );
+              })}
             </div>
 
             {failedRun ? (
