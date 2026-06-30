@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
-import {
-  buildBuyerPreviewRedirectPath,
-  createBuyerPreviewToken,
-} from '@/lib/buyer-preview';
+import { createBuyerPreviewToken, BUYER_PREVIEW_TTL_SECONDS } from '@/lib/buyer-preview';
 import { findBuyerLoginCandidates } from '@/lib/server/buyer-access';
 import { supabaseAdmin } from '@/lib/supabase';
 import { SELLER_ROLES } from '@/constants';
@@ -12,47 +9,19 @@ function isSellerRole(role: string | null): boolean {
   return role !== null && (SELLER_ROLES as readonly string[]).includes(role);
 }
 
+// Reads seller's phone from auth.users.user_metadata (set once at invite/signup, never changes).
+// Queries app.buyers by normalized phone to find the linked buyer account.
 async function findLinkedBuyerId(userId: string, tenantId: string): Promise<string | null> {
   if (!supabaseAdmin) return null;
   try {
-    // Primary: read phone from tenant_users (written on every login, backfilled by migration).
-    const { data: tuRow } = await supabaseAdmin
-      .schema('app')
-      .from('tenant_users')
-      .select('phone')
-      .eq('user_id', userId)
-      .eq('tenant_id', tenantId)
-      .eq('is_active', true)
-      .is('deleted_at', null)
-      .maybeSingle();
-
-    let phone = (tuRow as { phone?: string | null } | null)?.phone ?? null;
-
-    // Fallback: read from auth.users.user_metadata (covers first login before the
-    // tenant_users.phone write lands, or legacy accounts not yet migrated).
-    if (!phone) {
-      const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
-      const meta = authUser?.user?.user_metadata as Record<string, unknown> | null | undefined;
-      phone = (typeof meta?.phone === 'string' && meta.phone ? meta.phone : null)
-        ?? authUser?.user?.phone ?? null;
-
-      // Back-fill so the next request is fast.
-      if (phone) {
-        void supabaseAdmin
-          .schema('app')
-          .from('tenant_users')
-          .update({ phone })
-          .eq('user_id', userId)
-          .eq('tenant_id', tenantId);
-      }
-    }
-
+    const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
+    const meta = authUser?.user?.user_metadata as Record<string, unknown> | null | undefined;
+    const phone = typeof meta?.phone === 'string' && meta.phone ? meta.phone : null;
     if (!phone) return null;
 
     const candidates = await findBuyerLoginCandidates(phone);
-    const sameTenantBuyers = candidates.filter((c) => c.tenant_id === tenantId && c.buyer_app_enabled);
-    if (sameTenantBuyers.length === 0) return null;
-    return sameTenantBuyers[0].buyer_id ?? null;
+    const match = candidates.find((c) => c.tenant_id === tenantId && c.buyer_app_enabled);
+    return match?.buyer_id ?? null;
   } catch (err) {
     console.error('[findLinkedBuyerId] error:', err);
     return null;
@@ -67,24 +36,36 @@ export async function GET(request: NextRequest) {
     }
 
     const shareToken = request.nextUrl.searchParams.get('share_token');
-
     const buyerId = claims.sub
       ? await findLinkedBuyerId(claims.sub, claims.tenant_id)
       : null;
 
+    const now = Math.floor(Date.now() / 1000);
     const previewToken = await createBuyerPreviewToken({
       tenantId: claims.tenant_id,
       shareToken,
       buyerId,
+      now,
     });
 
-    const redirectPath = buildBuyerPreviewRedirectPath({
-      previewToken,
-      shareToken,
-      buyerId,
+    const redirectPath = buyerId ? '/buy/home' : '/buy/catalog';
+    const response = NextResponse.redirect(new URL(redirectPath, request.url));
+
+    const cookieOptions = {
+      httpOnly: true,
+      path: '/',
+      maxAge: BUYER_PREVIEW_TTL_SECONDS,
+      sameSite: 'lax' as const,
+      secure: process.env.NODE_ENV === 'production',
+    };
+    response.cookies.set('buyer_preview', previewToken, cookieOptions);
+    // Non-httpOnly companion so the client can show the expiry overlay without decoding the token.
+    response.cookies.set('buyer_preview_exp', String(now + BUYER_PREVIEW_TTL_SECONDS), {
+      ...cookieOptions,
+      httpOnly: false,
     });
 
-    return NextResponse.redirect(new URL(redirectPath, request.url));
+    return response;
   } catch (error) {
     console.error('[GET /api/buyer/preview/launch] unexpected error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
