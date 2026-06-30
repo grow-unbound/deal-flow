@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
           is_active,
           deleted_at,
           created_at,
-          tenants(id, business_name, slug)
+          tenants!tenant_id(id, business_name, slug)
         `)
         .eq('phone', normalized),
       supabaseAdmin
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
           is_active,
           deleted_at,
           created_at,
-          buyers(
+          buyers!buyer_id(
             id,
             tenant_id,
             business_name,
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
             buyer_app_enabled,
             is_active,
             deleted_at,
-            tenants(id, business_name, slug)
+            tenants!tenant_id(id, business_name, slug)
           )
         `)
         .eq('phone', normalized),
