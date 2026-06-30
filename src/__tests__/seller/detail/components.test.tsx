@@ -6,6 +6,7 @@ import { MetaStrip4 } from '@/components/seller/detail/MetaStrip4';
 import { DetailTabs } from '@/components/seller/detail/DetailTabs';
 import { DetailHeader } from '@/components/seller/detail/DetailHeader';
 import { DetailActions } from '@/components/seller/detail/DetailActions';
+import { PerformanceCard } from '@/components/seller/detail/PerformanceCard';
 import { PageWrap } from '@/components/seller/layout/PageWrap';
 
 describe('MetaStrip4', () => {
@@ -64,7 +65,22 @@ describe('DetailHeader', () => {
       />
     );
 
-    expect(screen.getByText('WineYard Vintners')).toHaveClass('font-medium');
+    expect(screen.getAllByText('WineYard Vintners')[0]).toHaveClass('font-medium');
+  });
+});
+
+describe('PerformanceCard', () => {
+  it('uses the shared dashboard-style card header and body chrome', () => {
+    render(
+      <PerformanceCard title="Brand performance" subtitle="Revenue share for the selected period" actions={<button type="button">All brands</button>}>
+        <div>Body</div>
+      </PerformanceCard>
+    );
+
+    expect(screen.getByText('Brand performance')).toHaveClass('font-display', 'text-md');
+    expect(screen.getByText('Revenue share for the selected period')).toHaveClass('text-sm');
+    expect(screen.getByRole('button', { name: 'All brands' })).toBeInTheDocument();
+    expect(screen.getByText('Body').closest('section')).toHaveClass('overflow-hidden', 'rounded-[14px]', 'border');
   });
 });
 

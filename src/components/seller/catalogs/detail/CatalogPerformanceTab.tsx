@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
+import { PerformanceCard } from '@/components/seller/detail';
 import { SeeAllSheet, StatusTag } from '@/components/seller/layout';
 import type { CatalogDetailResponse } from '@/hooks/useCatalogs';
 import { formatCompactInr, formatDate } from '@/lib/utils';
@@ -50,12 +51,10 @@ export function CatalogPerformanceTab({ performance }: CatalogPerformanceTabProp
   return (
     <section className="mt-5 space-y-4">
       <div className="grid grid-cols-[1.75fr_1fr] gap-4">
-        <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-          <div className="flex items-start justify-between gap-4 border-b border-cream-300 px-5 py-4">
-            <div>
-              <h3 className="font-display text-lg text-cream-950">Cumulative orders</h3>
-              <p className="text-base text-cream-700">Since publish · valid until {performance.summary.valid_until_label}</p>
-            </div>
+        <PerformanceCard
+          title="Cumulative orders"
+          subtitle={`Since publish · valid until ${performance.summary.valid_until_label}`}
+          actions={(
             <div className="inline-flex rounded-[10px] bg-cream-200 p-1">
               {(['3m', '12m', 'ytd'] as TrendPeriod[]).map((option) => (
                 <button
@@ -68,7 +67,9 @@ export function CatalogPerformanceTab({ performance }: CatalogPerformanceTabProp
                 </button>
               ))}
             </div>
-          </div>
+          )}
+          bodyClassName="p-0"
+        >
           <div className="px-5 pt-4">
             <div className="flex items-end gap-3">
               <p className="font-display text-3xl leading-none text-cream-950">{performance.summary.orders}</p>
@@ -118,13 +119,9 @@ export function CatalogPerformanceTab({ performance }: CatalogPerformanceTabProp
               </AreaChart>
             </ResponsiveContainer>
           </div>
-        </article>
+        </PerformanceCard>
 
-        <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-          <div className="border-b border-cream-300 px-5 py-4">
-            <h3 className="font-display text-lg text-cream-950">Funnel</h3>
-            <p className="text-base text-cream-700">Buyer engagement</p>
-          </div>
+        <PerformanceCard title="Funnel" subtitle="Buyer engagement" bodyClassName="p-0">
           <div className="grid grid-cols-2 gap-x-6 gap-y-7 px-5 py-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Views</p>
@@ -147,20 +144,20 @@ export function CatalogPerformanceTab({ performance }: CatalogPerformanceTabProp
               <p className="mt-1 text-base text-cream-700">opened, didn&apos;t order</p>
             </div>
           </div>
-        </article>
+        </PerformanceCard>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-          <div className="flex items-center justify-between border-b border-cream-300 px-5 py-4">
-            <div>
-              <h3 className="font-display text-lg text-cream-950">Top SKUs in this catalog</h3>
-              <p className="text-base text-cream-700">Product performance</p>
-            </div>
-            <button type="button" className="text-base font-medium text-teal-700 hover:text-teal-800" onClick={() => setSkusSheetOpen(true)}>
+        <PerformanceCard
+          title="Top SKUs in this catalog"
+          subtitle="Product performance"
+          actions={(
+            <button type="button" className="text-sm font-semibold text-teal-700 no-underline" onClick={() => setSkusSheetOpen(true)}>
               See more →
             </button>
-          </div>
+          )}
+          bodyClassName="p-0"
+        >
           <div>
             {visibleTopSkus.map((sku, index) => (
               <div key={sku.tenant_product_id} className="grid grid-cols-[26px_1fr_auto] items-center gap-3 border-b border-cream-300 px-5 py-3.5 last:border-b-0">
@@ -176,18 +173,18 @@ export function CatalogPerformanceTab({ performance }: CatalogPerformanceTabProp
               </div>
             ))}
           </div>
-        </article>
+        </PerformanceCard>
 
-        <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-          <div className="flex items-center justify-between border-b border-cream-300 px-5 py-4">
-            <div>
-              <h3 className="font-display text-lg text-cream-950">Per-buyer activity</h3>
-              <p className="text-base text-cream-700">From this catalog&apos;s cohort</p>
-            </div>
-            <button type="button" className="text-base font-medium text-teal-700 hover:text-teal-800" onClick={() => setBuyersSheetOpen(true)}>
+        <PerformanceCard
+          title="Per-buyer activity"
+          subtitle="From this catalog&apos;s cohort"
+          actions={(
+            <button type="button" className="text-sm font-semibold text-teal-700 no-underline" onClick={() => setBuyersSheetOpen(true)}>
               See more →
             </button>
-          </div>
+          )}
+          bodyClassName="p-0"
+        >
           <div>
             {visibleBuyers.map((buyer) => (
               <div key={buyer.buyer_id} className="grid grid-cols-[1.4fr_120px_80px_96px] items-center gap-3 border-b border-cream-300 px-5 py-3.5 last:border-b-0">
@@ -203,7 +200,7 @@ export function CatalogPerformanceTab({ performance }: CatalogPerformanceTabProp
               </div>
             ))}
           </div>
-        </article>
+        </PerformanceCard>
       </div>
 
       <SeeAllSheet

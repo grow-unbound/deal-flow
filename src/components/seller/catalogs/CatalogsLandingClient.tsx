@@ -15,6 +15,7 @@ import {
   StatusTag,
   V3CalloutPanel,
   FilterBar,
+  type FilterBarGroup,
   GrowthPill,
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
@@ -28,10 +29,9 @@ import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 
 type SortOption = 'Recently published' | 'GMV (high → low)' | 'Conversion (high → low)';
-type FilterChip = 'All' | 'Live' | 'Draft' | 'Ended';
 
 const SORT_OPTIONS: SortOption[] = ['Recently published', 'GMV (high → low)', 'Conversion (high → low)'];
-const FILTER_CHIPS: FilterChip[] = ['All', 'Live', 'Draft', 'Ended'];
+const STATUS_OPTIONS = ['Draft', 'Live', 'Expiring soon', 'Ended'] as const;
 
 function CatalogsLoadingSkeleton() {
   return (
@@ -104,9 +104,12 @@ function CatalogsLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-catalogs-landing',
     scopeKey: period,
+    version: 2,
     initialState: {
       search: '',
-      activeChip: 'All' as FilterChip,
+      filters: {
+        status: [] as string[],
+      },
       sortBy: 'Recently published' as SortOption,
     },
   });
@@ -116,22 +119,45 @@ function CatalogsLandingContent({
     ready: !isLoading,
   });
   const search = routeState.search;
-  const activeChip = routeState.activeChip;
   const sortBy = routeState.sortBy;
+  const filters = routeState.filters ?? { status: [] };
+  const statusFilter = filters.status ?? [];
+  const groups: FilterBarGroup[] = [
+    {
+      key: 'status',
+      label: 'Status',
+      options: STATUS_OPTIONS.map((value) => ({ value, label: value })),
+      values: statusFilter,
+      onChange: (values) =>
+        setRouteState((current) => ({
+          ...current,
+          filters: { ...(current.filters ?? filters), status: values },
+        })),
+    },
+  ];
 
   const catalogs = landingData?.catalogs ?? [];
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return catalogs
-      .filter((catalog) => (activeChip === 'All' ? true : catalog.status.label === activeChip))
+      .filter((catalog) => {
+        if (statusFilter.length === 0 || statusFilter.includes('All')) return true;
+        return statusFilter.some((value) => {
+          if (value === 'Draft') return catalog.status.label === 'Draft';
+          if (value === 'Live') return catalog.status.label === 'Live';
+          if (value === 'Expiring soon') return catalog.days_left != null && catalog.days_left <= 7 && catalog.days_left > 0;
+          if (value === 'Ended') return catalog.status.label === 'Ended';
+          return false;
+        });
+      })
       .filter((catalog) => !query || catalog.name.toLowerCase().includes(query) || catalog.cohort_name.toLowerCase().includes(query))
       .sort((a, b) => {
         if (sortBy === 'Recently published') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
         if (sortBy === 'GMV (high → low)') return b.gmv - a.gmv;
         return b.conversion_pct - a.conversion_pct;
       });
-  }, [activeChip, catalogs, search, sortBy]);
+  }, [catalogs, search, sortBy, statusFilter]);
 
   if (isLoading && !landingData) return <CatalogsLoadingSkeleton />;
 
@@ -239,13 +265,13 @@ function CatalogsLandingContent({
       <FilterBar
         count={`${filtered.length} campaigns`}
         searchPlaceholder="Search campaign or customer group…"
-        chips={FILTER_CHIPS}
-        activeChip={activeChip}
+        chips={[]}
+        activeChip=""
         sortBy={sortBy}
         hideViewToggle
+        groups={groups}
         searchValue={search}
         onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-        onChipChange={(chip) => setRouteState((current) => ({ ...current, activeChip: chip as FilterChip }))}
         sortOptions={SORT_OPTIONS}
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
@@ -253,9 +279,9 @@ function CatalogsLandingContent({
       {filtered.length === 0 ? (
         <EmptyState
           icon={<Library size={28} strokeWidth={1.5} />}
-          heading={search.trim() || activeChip !== 'All' ? 'No matching campaigns' : 'No campaigns yet'}
+          heading={search.trim() || statusFilter.length > 0 ? 'No matching campaigns' : 'No campaigns yet'}
           description={
-            search.trim() || activeChip !== 'All'
+            search.trim() || statusFilter.length > 0
               ? 'Try a different search or status filter.'
               : 'Publish a campaign to share products with a customer group.'
           }

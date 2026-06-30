@@ -235,8 +235,6 @@ export interface CustomersInfiniteFilters {
   search?: string;
   status?: string[];
   due?: string[];
-  city?: string[];
-  state?: string[];
 }
 
 export interface CustomersLandingPage extends CustomersLandingResponse {
@@ -256,8 +254,6 @@ export function useCustomersLandingInfinite(
       if (filters.search?.trim()) params.set('search', filters.search.trim());
       appendArrayParam(params, 'status', filters.status);
       appendArrayParam(params, 'due', filters.due);
-      appendArrayParam(params, 'city', filters.city);
-      appendArrayParam(params, 'state', filters.state);
       const res = await apiFetch(`/api/tenant/customers?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch customers landing');
       return res.json() as Promise<CustomersLandingPage>;

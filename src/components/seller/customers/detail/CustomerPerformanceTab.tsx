@@ -1,6 +1,7 @@
 'use client';
 
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
+import { PerformanceCard } from '@/components/seller/detail';
 import type { TenantCustomerDetailResponse } from '@/hooks/useCustomersLanding';
 import { formatCompactInr, formatCurrency } from '@/lib/utils';
 
@@ -23,11 +24,7 @@ export function CustomerPerformanceTab({ performance, performanceV2 }: CustomerP
 
   return (
     <section className="mt-5 grid grid-cols-2 gap-4">
-      <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-        <div className="border-b border-cream-300 px-5 py-4">
-          <h3 className="font-display text-lg text-cream-950">Spend trend</h3>
-          <p className="text-base text-cream-700">Last 12 months</p>
-        </div>
+      <PerformanceCard title="Spend trend" subtitle="Last 12 months" bodyClassName="p-0">
         <div className="px-5 pt-4">
           <div className="flex items-end gap-3">
             <p className="font-display text-3xl leading-none text-cream-950">{formatCompactInr(trendValue, 1)}</p>
@@ -63,13 +60,9 @@ export function CustomerPerformanceTab({ performance, performanceV2 }: CustomerP
             </AreaChart>
           </ResponsiveContainer>
         </div>
-      </article>
+      </PerformanceCard>
 
-      <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-        <div className="border-b border-cream-300 px-5 py-4">
-          <h3 className="font-display text-lg text-cream-950">Brand mix</h3>
-          <p className="text-base text-cream-700">This month</p>
-        </div>
+      <PerformanceCard title="Brand mix" subtitle="This month" bodyClassName="p-0">
         <div className="px-5 py-4">
           <div className="flex h-5 overflow-hidden rounded-full border border-cream-300 bg-cream-100">
             {(performanceV2.brand_mix.rows.length ? performanceV2.brand_mix.rows : [{ brand: 'No data', spend: 0, pct: 100 }]).map((row, index) => (
@@ -94,13 +87,9 @@ export function CustomerPerformanceTab({ performance, performanceV2 }: CustomerP
             ))}
           </div>
         </div>
-      </article>
+      </PerformanceCard>
 
-      <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-        <div className="border-b border-cream-300 px-5 py-4">
-          <h3 className="font-display text-lg text-cream-950">Top SKUs</h3>
-          <p className="text-base text-cream-700">What this buyer keeps reordering</p>
-        </div>
+      <PerformanceCard title="Top SKUs" subtitle="What this buyer keeps reordering" bodyClassName="p-0">
         <div>
           {(performanceV2.top_skus.length ? performanceV2.top_skus : [{ name: 'No SKU activity yet', sku: '—', revenue: 0, units: 0 }]).map((sku, index) => (
             <div key={`${sku.sku}-${index}`} className="grid grid-cols-[24px_1fr_auto] items-center gap-3 border-b border-cream-300 px-5 py-3.5 last:border-b-0">
@@ -116,12 +105,9 @@ export function CustomerPerformanceTab({ performance, performanceV2 }: CustomerP
             </div>
           ))}
         </div>
-      </article>
+      </PerformanceCard>
 
-      <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-        <div className="border-b border-cream-300 px-5 py-4">
-          <h3 className="font-display text-lg text-cream-950">Credit & ops</h3>
-        </div>
+      <PerformanceCard title="Credit & ops" bodyClassName="p-0">
         <div className="px-5 py-4">
           <div className="grid grid-cols-2 gap-6">
             <div>
@@ -156,7 +142,7 @@ export function CustomerPerformanceTab({ performance, performanceV2 }: CustomerP
             {performanceV2.credit_ops.payment_behavior_summary}
           </div>
         </div>
-      </article>
+      </PerformanceCard>
     </section>
   );
 }

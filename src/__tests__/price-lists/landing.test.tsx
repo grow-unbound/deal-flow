@@ -20,6 +20,17 @@ vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlagState: (...args: unknown[]) => useFlagMock(...args),
 }));
 
+vi.mock('@/hooks/useRole', () => ({
+  useRole: () => ({ isSellerAssistant: false }),
+}));
+
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({
+    tenantProfile: { role: 'seller_admin' },
+    currentTenantId: 'tenant-1',
+  }),
+}));
+
 import { PriceListsLandingClient } from '@/components/seller/price-lists/PriceListsLandingClient';
 
 const mockData = {
@@ -175,7 +186,8 @@ describe('price lists landing page', () => {
   it('expired chip hides active and draft rows', () => {
     render(<PriceListsLandingClient initialData={null} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Expired' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Status: All' }));
+    fireEvent.click(within(screen.getByRole('menu')).getByRole('button', { name: 'Expired' }));
 
     expect(screen.getByText('Old Window')).toBeInTheDocument();
     expect(screen.getByText('Old Window').closest('tr')).toBeInTheDocument();
@@ -201,7 +213,8 @@ describe('price lists landing page', () => {
     expect(within(body).getByText(/flat ₹25 off base price/i)).toBeInTheDocument();
     expect(within(body).getByText(/10% off base price/i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Expired' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Status: All' }));
+    fireEvent.click(within(screen.getByRole('menu')).getByRole('button', { name: 'Expired' }));
     const expiredRow = within(body).getByText('Old Window').closest('tr');
     expect(expiredRow?.textContent).toContain('—');
     expect(expiredRow?.textContent).not.toContain('Unassigned');

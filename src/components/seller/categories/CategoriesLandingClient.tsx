@@ -14,6 +14,7 @@ import {
   PageWrap,
   V3CalloutPanel,
   FilterBar,
+  type FilterBarGroup,
   GrowthPill,
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
@@ -26,10 +27,10 @@ import { CategoryFormSheet } from '@/components/seller/settings/CategoryFormShee
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 
-type FilterChip = 'All' | 'Active' | 'Empty';
 type SortOption = 'GMV (high → low)' | 'Name (A → Z)' | 'OOS SKUs (high → low)';
 
-const FILTER_CHIPS: FilterChip[] = ['All', 'Active', 'Empty'];
+const STATUS_OPTIONS = ['Active', 'Inactive'] as const;
+const PRODUCT_OPTIONS = ['Has Products', 'Empty'] as const;
 const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'Name (A → Z)', 'OOS SKUs (high → low)'];
 
 function DaysCoverBadge({ value }: { value: number | null }) {
@@ -100,9 +101,13 @@ function CategoriesLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-categories-landing',
     scopeKey: period,
+    version: 2,
     initialState: {
       search: '',
-      activeChip: 'All' as FilterChip,
+      filters: {
+        status: [] as string[],
+        products: [] as string[],
+      },
       sortBy: 'GMV (high → low)' as SortOption,
     },
   });
@@ -112,16 +117,47 @@ function CategoriesLandingContent({
     ready: !isLoading,
   });
 
-  const { search, activeChip, sortBy } = routeState;
+  const { search, sortBy } = routeState;
+  const filters = routeState.filters ?? { status: [], products: [] };
+  const groups: FilterBarGroup[] = [
+    {
+      key: 'status',
+      label: 'Status',
+      options: STATUS_OPTIONS.map((value) => ({ value, label: value })),
+      values: filters.status ?? [],
+      onChange: (values) => setRouteState((current) => ({
+        ...current,
+        filters: { ...(current.filters ?? filters), status: values },
+      })),
+    },
+    {
+      key: 'products',
+      label: 'Products',
+      options: PRODUCT_OPTIONS.map((value) => ({ value, label: value })),
+      values: filters.products ?? [],
+      onChange: (values) => setRouteState((current) => ({
+        ...current,
+        filters: { ...(current.filters ?? filters), products: values },
+      })),
+    },
+  ];
   const rows = landingData?.rows ?? [];
 
   const filtered = useMemo<CategoryTableRow[]>(() => {
     const q = search.trim().toLowerCase();
     return rows
       .filter((r) => {
-        if (activeChip === 'Active') return r.is_active && r.active_sku_count > 0;
-        if (activeChip === 'Empty') return r.active_sku_count === 0;
-        return true;
+        const statusFilter = filters.status ?? [];
+        const productFilter = filters.products ?? [];
+        const statusOk =
+          statusFilter.length === 0 ||
+          statusFilter.includes('All') ||
+          (statusFilter.includes('Active') ? r.is_active : !r.is_active);
+        const productOk =
+          productFilter.length === 0 ||
+          productFilter.includes('All') ||
+          (productFilter.includes('Has Products') ? r.active_sku_count > 0 : r.active_sku_count === 0);
+        return statusOk && productOk;
       })
       .filter((r) => !q || r.name.toLowerCase().includes(q))
       .sort((a, b) => {
@@ -129,7 +165,7 @@ function CategoriesLandingContent({
         if (sortBy === 'OOS SKUs (high → low)') return b.oos_sku_count - a.oos_sku_count;
         return b.gmv_mtd - a.gmv_mtd;
       });
-  }, [rows, search, activeChip, sortBy]);
+  }, [filters.products, filters.status, rows, search, sortBy]);
 
   if (isLoading && !landingData) return <CategoriesLoadingSkeleton />;
   if (isError && !landingData) {
@@ -238,13 +274,13 @@ function CategoriesLandingContent({
           <FilterBar
             count={`${filtered.length} categories`}
             searchPlaceholder="Search category…"
-            chips={FILTER_CHIPS}
-            activeChip={activeChip}
+            chips={[]}
+            activeChip=""
             sortBy={sortBy}
             hideViewToggle
+            groups={groups}
             searchValue={search}
             onSearchChange={(value) => setRouteState((s) => ({ ...s, search: value }))}
-            onChipChange={(chip) => setRouteState((s) => ({ ...s, activeChip: chip as FilterChip }))}
             sortOptions={SORT_OPTIONS}
             onSortChange={(option) => setRouteState((s) => ({ ...s, sortBy: option as SortOption }))}
           />
@@ -262,9 +298,9 @@ function CategoriesLandingContent({
             emptyState={
               <EmptyState
                 icon={<Tag size={28} strokeWidth={1.5} />}
-                heading={search.trim() || activeChip !== 'All' ? 'No matching categories' : 'No categories yet'}
+                heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching categories' : 'No categories yet'}
                 description={
-                  search.trim() || activeChip !== 'All'
+                  search.trim() || groups.some((group) => group.values.length > 0)
                     ? 'Try a different search or filter.'
                     : 'Add your first category to start tracking performance.'
                 }

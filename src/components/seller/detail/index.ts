@@ -6,3 +6,5 @@ export { DetailTabs } from './DetailTabs';
 export type { DetailTab, DetailTabsProps } from './DetailTabs';
 export { DetailActions } from './DetailActions';
 export type { DetailActionMode, DetailActionsProps } from './DetailActions';
+export { PerformanceCard } from './PerformanceCard';
+export type { PerformanceCardProps } from './PerformanceCard';

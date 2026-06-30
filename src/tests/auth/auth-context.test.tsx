@@ -66,7 +66,12 @@ vi.mock('posthog-js', () => ({
 
 function AuthProbe() {
   const { user } = useAuth();
-  return <div>{user?.email ?? 'signed-out'}</div>;
+  return (
+    <div>
+      <span>{user?.email ?? 'signed-out'}</span>
+      <span>{user?.phone ?? 'no-phone'}</span>
+    </div>
+  );
 }
 
 describe('AuthProvider', () => {
@@ -95,7 +100,10 @@ describe('AuthProvider', () => {
           user: {
             id: 'user-1',
             email: 'owner@yukti.so',
-            phone: '+919999999999',
+            phone: null,
+            user_metadata: {
+              phone: '+919999999999',
+            },
           },
         },
       },
@@ -151,6 +159,7 @@ describe('AuthProvider', () => {
 
     await waitFor(() => {
       expect(screen.getByText('owner@yukti.so')).toBeInTheDocument();
+      expect(screen.getByText('+919999999999')).toBeInTheDocument();
     });
 
     await act(async () => {

@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { ResponsiveContainer, LineChart, Line, XAxis, Tooltip, CartesianGrid } from 'recharts';
 import { LandingTable, SeeAllSheet } from '@/components/seller/layout';
+import { PerformanceCard } from '@/components/seller/detail';
 import type { BrandDetailResponse } from '@/hooks/useBrands';
 import { formatCompactInr } from '@/lib/utils';
 import { EntityAvatar } from '@/components/seller/layout';
@@ -55,12 +56,11 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
   return (
     <section className="mt-5 space-y-5">
       <div className="grid grid-cols-3 gap-4">
-        <article className="col-span-2 overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-          <div className="flex items-start justify-between border-b border-cream-300 px-5 py-4">
-            <div>
-              <h3 className="font-display text-lg text-cream-950">GMV trend</h3>
-              <p className="text-base text-cream-700">{periodLabel(period)} · this brand</p>
-            </div>
+        <PerformanceCard
+          className="col-span-2"
+          title="GMV trend"
+          subtitle={`${periodLabel(period)} · this brand`}
+          actions={(
             <div className="inline-flex rounded-[10px] bg-cream-200 p-1">
               <button
                 type="button"
@@ -84,8 +84,10 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
                 3 mo
               </button>
             </div>
-          </div>
-          <div className="px-5 pt-3">
+          )}
+          bodyClassName="px-5 pt-3"
+        >
+          <div>
             <div className="flex items-end gap-3">
               <p className="font-display text-3xl leading-none text-cream-950">{formatCompactInr(trendCurrent)}</p>
               <p className="pb-0.5 text-base text-cream-700">
@@ -113,18 +115,17 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
               </LineChart>
             </ResponsiveContainer>
           </div>
-        </article>
+        </PerformanceCard>
 
         <div className="space-y-4">
-          <article className="rounded-[14px] border border-cream-300 bg-white p-5">
-            <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">This brand</h3>
-            <p className="mt-3 text-base leading-[1.55] text-cream-900">
+          <PerformanceCard title="This brand" bodyClassName="p-5">
+            <p className="text-base leading-[1.55] text-cream-900">
               Margin is holding steady at <strong>{performance.insights.margin_avg_pct.toFixed(1)}%</strong>. Buyer reach this month is{' '}
               <strong>{performance.insights.buyer_reach}</strong>.
             </p>
-          </article>
+          </PerformanceCard>
 
-          <article className="rounded-[14px] border border-cream-300 bg-white p-5">
+          <PerformanceCard title="Key metrics" bodyClassName="p-5">
             <div className="grid grid-cols-2 gap-y-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Margin (avg)</p>
@@ -147,19 +148,21 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
                 <p className="mt-1 text-xs text-cream-700">bought this month</p>
               </div>
             </div>
-          </article>
+          </PerformanceCard>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-          <div className="flex items-center justify-between border-b border-cream-300 px-5 py-4">
-            <div>
-              <h3 className="font-display text-md text-cream-950">Top buyers</h3>
-              <p className="text-base text-cream-700">By GMV · this month</p>
-            </div>
-            <button type="button" className="text-base font-medium text-teal-700 hover:text-teal-800" onClick={() => setBuyersSheetOpen(true)}>See all →</button>
-          </div>
+        <PerformanceCard
+          title="Top buyers"
+          subtitle="By GMV · this month"
+          actions={(
+            <button type="button" className="text-sm font-semibold text-teal-700 no-underline" onClick={() => setBuyersSheetOpen(true)}>
+              See all →
+            </button>
+          )}
+          bodyClassName="p-0"
+        >
           <div>
             {visibleTopBuyers.map((buyer, index) => (
               <div key={buyer.id} className="grid grid-cols-[30px_1fr_auto] items-center gap-3 border-b border-cream-300 px-5 py-3.5">
@@ -178,16 +181,18 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
               </div>
             ))}
           </div>
-        </article>
+        </PerformanceCard>
 
-        <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-          <div className="flex items-center justify-between border-b border-cream-300 px-5 py-4">
-            <div>
-              <h3 className="font-display text-md text-cream-950">Top SKUs</h3>
-              <p className="text-base text-cream-700">By units · this month</p>
-            </div>
-            <button type="button" className="text-base font-medium text-teal-700 hover:text-teal-800" onClick={() => setSkusSheetOpen(true)}>See all →</button>
-          </div>
+        <PerformanceCard
+          title="Top SKUs"
+          subtitle="By units · this month"
+          actions={(
+            <button type="button" className="text-sm font-semibold text-teal-700 no-underline" onClick={() => setSkusSheetOpen(true)}>
+              See all →
+            </button>
+          )}
+          bodyClassName="p-0"
+        >
           <div>
             {visibleTopSkus.map((sku, index) => (
               <div key={sku.product_id} className="grid grid-cols-[30px_1fr_auto] items-center gap-3 border-b border-cream-300 px-5 py-3.5">
@@ -203,14 +208,10 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
               </div>
             ))}
           </div>
-        </article>
+        </PerformanceCard>
       </div>
 
-      <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-        <div className="border-b border-cream-300 px-5 py-4">
-          <h3 className="font-display text-lg text-cream-950">Campaign history</h3>
-          <p className="text-base text-cream-700">What you sent · how it landed</p>
-        </div>
+      <PerformanceCard title="Campaign history" subtitle="What you sent · how it landed" bodyClassName="p-0">
         <LandingTable
           columns={[
             { label: 'Campaign', className: 'px-5' },
@@ -231,7 +232,7 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
             </tr>
           ))}
         </LandingTable>
-      </article>
+      </PerformanceCard>
 
       <SeeAllSheet
         open={buyersSheetOpen}

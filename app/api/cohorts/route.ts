@@ -111,7 +111,7 @@ export async function getCohortsLandingPayload(tenantId: string, periodInput?: s
 
   const cohortIds = (cohorts ?? []).map((cohort: { id: string }) => cohort.id);
 
-  const [buyersRes, membersRes, monthOrdersRes, prevOrdersRes, catalogsRes] = await Promise.all([
+  const [buyersRes, membersRes, monthOrdersRes, prevOrdersRes, catalogsRes, brandsRes] = await Promise.all([
     db
       .schema('app')
       .from('buyers')
@@ -150,6 +150,14 @@ export async function getCohortsLandingPayload(tenantId: string, periodInput?: s
       .select('id, scope_type, scope_value, status')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null),
+    db
+      .schema('app')
+      .from('tenant_brands')
+      .select('id, display_name_override, master_brand_id, is_active, deleted_at')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false }),
   ]);
 
   if (buyersRes.error) throw buyersRes.error;
@@ -157,12 +165,27 @@ export async function getCohortsLandingPayload(tenantId: string, periodInput?: s
   if (monthOrdersRes.error) throw monthOrdersRes.error;
   if (prevOrdersRes.error) throw prevOrdersRes.error;
   if (catalogsRes.error) throw catalogsRes.error;
+  if (brandsRes.error) throw brandsRes.error;
 
   const buyers = buyersRes.data ?? [];
   const members = membersRes.data ?? [];
   const monthOrders = monthOrdersRes.data ?? [];
   const prevOrders = prevOrdersRes.data ?? [];
   const catalogs = catalogsRes.data ?? [];
+  const brands = brandsRes.data ?? [];
+  const brandMasterIds = [...new Set(brands.map((brand: { master_brand_id: string | null }) => brand.master_brand_id).filter(Boolean) as string[])];
+  const masterBrandNameById = new Map<string, string>();
+  if (brandMasterIds.length > 0) {
+    const { data: masterBrands } = await db
+      .schema('catalog')
+      .from('brands')
+      .select('id, name, deleted_at')
+      .in('id', brandMasterIds)
+      .is('deleted_at', null);
+    for (const row of masterBrands ?? []) {
+      masterBrandNameById.set(row.id, row.name);
+    }
+  }
 
   const memberBuyerSet = new Set<string>();
   const membersByCohort = new Map<string, Set<string>>();
@@ -237,6 +260,7 @@ export async function getCohortsLandingPayload(tenantId: string, periodInput?: s
       focus_chips: deriveFocusChips(cohort.rules, type),
       allowed_brands_count: Array.isArray(cohort.allowed_tenant_brand_ids) ? cohort.allowed_tenant_brand_ids.length : null,
       allowed_brands_label: Array.isArray(cohort.allowed_tenant_brand_ids) ? `${cohort.allowed_tenant_brand_ids.length} brands` : 'All Brands',
+      allowed_tenant_brand_ids: Array.isArray(cohort.allowed_tenant_brand_ids) ? cohort.allowed_tenant_brand_ids : null,
       gmv_mtd: gmvMtd,
       growth_pct: growthPct,
       active_members: activeMembers,
@@ -267,6 +291,10 @@ export async function getCohortsLandingPayload(tenantId: string, periodInput?: s
   const topRisers = [...cohortRows].sort((a, b) => b.growth_pct - a.growth_pct).slice(0, 2);
 
   return {
+    brands: brands.map((brand: { id: string; display_name_override: string | null; master_brand_id: string | null }) => ({
+      id: brand.id,
+      name: brand.display_name_override ?? (brand.master_brand_id ? masterBrandNameById.get(brand.master_brand_id) ?? 'Unknown brand' : 'Unknown brand'),
+    })),
     kpis: {
       total_cohorts: cohortRows.length,
       covered_members: coveredMembers,

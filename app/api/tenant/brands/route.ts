@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
 
     // ── Parallel fetch: brands list + static snapshot + per-brand KPI daily ──
-    const [brandsRes, snapshotRes, customersSnapshotRes, currentKpiRes, prevKpiRes] = await Promise.all([
+    const [brandsRes, snapshotRes, customersSnapshotRes, currentKpiRes, prevKpiRes, categoriesRes, cohortsRes] = await Promise.all([
       db
         .schema('app')
         .from('tenant_brands')
@@ -109,10 +109,26 @@ export async function GET(req: NextRequest) {
         .eq('tenant_id', tenantId)
         .gte('day', period.previous_start.split('T')[0])
         .lt('day', period.previous_end_exclusive.split('T')[0]),
+      db
+        .schema('app')
+        .from('tenant_categories')
+        .select('id, name, is_active, deleted_at')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .order('name', { ascending: true }),
+      db
+        .schema('app')
+        .from('cohorts')
+        .select('id, name, deleted_at')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .order('name', { ascending: true }),
     ]);
 
-    if (brandsRes.error) {
-      console.error('[GET /api/tenant/brands] tenant_brands error:', brandsRes.error.code, brandsRes.error.message);
+    if (brandsRes.error || categoriesRes.error || cohortsRes.error) {
+      const err = brandsRes.error ?? categoriesRes.error ?? cohortsRes.error;
+      console.error('[GET /api/tenant/brands] query error:', err?.code, err?.message);
       return NextResponse.json({ error: 'Failed to fetch brands' }, { status: 500 });
     }
 
@@ -120,6 +136,10 @@ export async function GET(req: NextRequest) {
     const brandIds = tenantBrands.map((b: { id: string }) => b.id);
     const snapshot = snapshotRes.data ?? null;
     const totalBuyers = customersSnapshotRes.data?.active_count ?? 0;
+    const activeCategories = (categoriesRes.data ?? []).map((row: { name: string }) => row.name).filter(Boolean);
+    const activeCohorts = (cohortsRes.data ?? [])
+      .map((row: { id: string; name: string }) => ({ id: row.id, name: row.name }))
+      .filter((row: { id: string; name: string }) => Boolean(row.id && row.name));
 
     // Aggregate kpi_brand_daily rows by brand ID for current and prev periods.
     const currentKpiByBrand = new Map<string, { gmv: number; orders_count: number; buyers_count: number; units_sold: number }>();
@@ -329,7 +349,7 @@ export async function GET(req: NextRequest) {
 
     const byGmv    = [...brands].sort((a, b) => b.gmv_mtd - a.gmv_mtd);
     const byGrowth = [...brands].sort((a, b) => b.growth_pct - a.growth_pct);
-    const categories = Array.from(new Set(brands.flatMap((b) => b.categories))).sort((a: string, b: string) => a.localeCompare(b));
+    const categories = Array.from(new Set([...activeCategories, ...brands.flatMap((b) => b.categories)])).sort((a: string, b: string) => a.localeCompare(b));
 
     const needsAttentionCount     = brands.filter((b) => b.alerts.length > 0).length;
     const catalogFreshnessCount   = brands.filter((b) => (catalogTouchesMtdByBrand.get(b.id) ?? 0) > 0).length;
@@ -363,6 +383,7 @@ export async function GET(req: NextRequest) {
         top_performers: byGmv.slice(0, 3).map((b) => ({ id: b.id, name: b.display_name_override ?? 'Unknown brand', gmv_mtd: b.gmv_mtd })),
         top_risers: byGrowth.slice(0, 3).map((b) => ({ id: b.id, name: b.display_name_override ?? 'Unknown brand', growth_pct: b.growth_pct, gmv_mtd: b.gmv_mtd, gmv_prev_mtd: b.gmv_prev_mtd })),
       },
+      cohorts: activeCohorts,
       categories,
       brands,
     });
