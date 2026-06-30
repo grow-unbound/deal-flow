@@ -9,18 +9,26 @@ function isSellerRole(role: string | null): boolean {
   return role !== null && (SELLER_ROLES as readonly string[]).includes(role);
 }
 
-// Reads seller's phone from auth.users.user_metadata (set once at invite/signup, never changes).
-// Queries app.buyers by normalized phone to find the linked buyer account.
+// Finds the buyer account linked to a seller by phone.
+// Phone lookup order: user_metadata.phone → native auth.users.phone (set via phone OTP auth).
+// Does NOT require buyer_app_enabled — seller preview bypasses that gate (it controls buyer login,
+// not seller access to preview their own buyer portal).
 async function findLinkedBuyerId(userId: string, tenantId: string): Promise<string | null> {
   if (!supabaseAdmin) return null;
   try {
     const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
-    const meta = authUser?.user?.user_metadata as Record<string, unknown> | null | undefined;
-    const phone = typeof meta?.phone === 'string' && meta.phone ? meta.phone : null;
+    const user = authUser?.user;
+    const meta = user?.user_metadata as Record<string, unknown> | null | undefined;
+    // user_metadata.phone is set during email/password invite flow;
+    // user.phone (native) is set when the seller uses phone OTP auth.
+    const phone = (typeof meta?.phone === 'string' && meta.phone ? meta.phone : null)
+      ?? user?.phone
+      ?? null;
     if (!phone) return null;
 
     const candidates = await findBuyerLoginCandidates(phone);
-    const match = candidates.find((c) => c.tenant_id === tenantId && c.buyer_app_enabled);
+    // Match by tenant only — buyer_app_enabled is irrelevant for seller preview.
+    const match = candidates.find((c) => c.tenant_id === tenantId);
     return match?.buyer_id ?? null;
   } catch (err) {
     console.error('[findLinkedBuyerId] error:', err);
