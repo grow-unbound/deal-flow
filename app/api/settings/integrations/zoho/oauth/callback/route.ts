@@ -6,10 +6,8 @@ import {
   getIntegrationWebhookDefinitions,
 } from '@/lib/integrations/definitions';
 import {
-  buildZohoWebhookRegistrationName,
   buildZohoWebhookRegistrationPayload,
   buildZohoWorkflowRegistrationPayload,
-  deleteZohoWebhookRegistrationsByName,
 } from '@/lib/integrations/zoho-webhooks';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -635,60 +633,137 @@ export async function GET(request: NextRequest) {
       integration_type_id as 'zoho_books' | 'zoho_inventory',
     );
 
-    // 1. Create webhook records in pending state (no registration yet)
+    // One DB row per (entity_type, event_types subset).
+    // add_edit row: non-delete events. delete row: *.deleted events only.
     for (const definition of definitions) {
-      const { data: existingWebhook } = await db
-        .schema('app')
-        .from('integration_webhooks')
-        .select('id, endpoint_token')
-        .eq('tenant_integration_id', integrationId)
-        .eq('provider', 'zoho')
-        .eq('entity_type', definition.entity_type)
-        .is('deleted_at', null)
-        .maybeSingle();
+      const ruleTypes = definition.workflow_rule_types ?? (['add_edit'] as const);
+      let entityHasAnyFailure = false;
 
-      let webhookId: string;
-      if (!existingWebhook) {
-        const { data, error } = await db
+      for (const ruleType of ruleTypes) {
+        // Split event_types by rule: delete row gets only *.deleted; add_edit row gets the rest.
+        const rowEventTypes = ruleType === 'delete'
+          ? definition.event_types.filter((e) => e.endsWith('.deleted'))
+          : definition.event_types.filter((e) => !e.endsWith('.deleted'));
+
+        const { data: existingWebhook } = await db
           .schema('app')
           .from('integration_webhooks')
-          .insert({
-            tenant_id,
-            tenant_integration_id: integrationId,
-            provider: 'zoho',
-            entity_type: definition.entity_type,
-            event_types: definition.event_types,
-            secret: crypto.randomUUID().replace(/-/g, ''),
+          .select('id, endpoint_token, remote_webhook_id, secret, webhook_config')
+          .eq('tenant_integration_id', integrationId)
+          .eq('provider', 'zoho')
+          .eq('entity_type', definition.entity_type)
+          .contains('event_types', rowEventTypes)
+          .is('deleted_at', null)
+          .maybeSingle();
+
+        let webhook: { id: string; endpoint_token: string; remote_webhook_id: string | null; secret: string | null; webhook_config: unknown };
+        if (!existingWebhook) {
+          const { data, error } = await db
+            .schema('app')
+            .from('integration_webhooks')
+            .insert({
+              tenant_id,
+              tenant_integration_id: integrationId,
+              provider: 'zoho',
+              entity_type: definition.entity_type,
+              event_types: rowEventTypes,
+              secret: crypto.randomUUID().replace(/-/g, ''),
+              is_active: false,
+              status: 'pending',
+              created_by: actorUserId,
+              updated_by: actorUserId,
+            })
+            .select('id, endpoint_token, remote_webhook_id, secret, webhook_config')
+            .single();
+          if (error || !data) throw error ?? new Error(`Unable to prepare ${definition.entity_type}/${ruleType} webhook.`);
+          webhook = data;
+        } else {
+          webhook = existingWebhook;
+          await db.schema('app').from('integration_webhooks').update({
+            event_types: rowEventTypes,
             is_active: false,
             status: 'pending',
-            created_by: actorUserId,
+            updated_by: actorUserId,
+          }).eq('id', webhook.id);
+        }
+
+        // add_edit row is the data-flow anchor (drives upsert syncs)
+        if (ruleType === 'add_edit') {
+          webhookIdsByEntity[definition.entity_type] = webhook.id;
+        }
+
+        // Clean up previously-registered IDs from DB — no extra LIST call to Zoho
+        const existingConfig = toRecord(webhook.webhook_config);
+        const priorWorkflowIds = extractWorkflowIds(existingConfig.workflow_ids);
+        const priorRemoteWebhookIds = extractWorkflowIds(existingConfig.remote_webhook_ids);
+        if (webhook.remote_webhook_id || priorWorkflowIds.length > 0 || priorRemoteWebhookIds.length > 0) {
+          await deleteZohoWebhookRegistration({
+            accessToken: tokens.access_token,
+            orgId: org_id,
+            dc,
+            integrationTypeId: integration_type_id,
+            remoteWebhookId: webhook.remote_webhook_id,
+            remoteWebhookIds: priorRemoteWebhookIds,
+            workflowIds: priorWorkflowIds,
+          });
+        }
+
+        const callbackUrl = `${getSupabaseFunctionsUrl()}/integrations-webhook/${webhook.endpoint_token}`;
+        const webhookSecret = (webhook.secret ?? crypto.randomUUID()).replace(/-/g, '');
+        const registration = await registerZohoWebhook(
+          tokens.access_token,
+          org_id,
+          dc,
+          callbackUrl,
+          integration_type_id,
+          definition.entity_type,
+          definition.provider_entity,
+          webhookSecret,
+          [ruleType],
+        );
+        const remoteWebhookId = registration.webhookIds[ruleType] ?? Object.values(registration.webhookIds)[0] ?? null;
+        console.info('[zoho/oauth/callback] webhook registered', {
+          entity_type: definition.entity_type,
+          rule_type: ruleType,
+          event_types: rowEventTypes,
+          webhook_id: remoteWebhookId,
+          workflow_ids: registration.workflowIds,
+        });
+
+        if (!remoteWebhookId) entityHasAnyFailure = true;
+
+        await db
+          .schema('app')
+          .from('integration_webhooks')
+          .update({
+            remote_webhook_id: remoteWebhookId,
+            external_ref: remoteWebhookId,
+            status: remoteWebhookId ? 'active' : 'failed',
+            webhook_config: {
+              sync_phase: definition.sync_phase,
+              integration_type_id,
+              workflow_ids: registration.workflowIds,
+              remote_webhook_ids: registration.webhookIds,
+            },
+            secret: webhookSecret,
+            is_active: Boolean(remoteWebhookId),
+            last_verified_at: remoteWebhookId ? now : null,
             updated_by: actorUserId,
           })
-          .select('id')
-          .single();
-        if (error || !data) throw error ?? new Error(`Unable to prepare ${definition.entity_type} webhook.`);
-        webhookId = data.id;
-      } else {
-        webhookId = existingWebhook.id;
-        await db.schema('app').from('integration_webhooks').update({
-          event_types: definition.event_types,
-          is_active: false,
-          status: 'pending',
-          updated_by: actorUserId,
-        }).eq('id', webhookId);
+          .eq('id', webhook.id);
       }
 
-      webhookIdsByEntity[definition.entity_type] = webhookId;
+      const entityStatus = entityHasAnyFailure ? 'failed' : 'active';
       webhookSetupByEntity[definition.entity_type] = {
-        status: 'pending',
+        status: entityStatus,
         attempted_at: now,
-        last_error: null,
+        last_error: entityHasAnyFailure ? 'One or more rule_type registrations failed' : null,
         external_ref: null,
-        last_success_at: null,
+        last_success_at: entityHasAnyFailure ? null : now,
       };
     }
 
-    // 2. Seed data flows (will use pending webhook IDs)
+    // Seed data flows
     const flowRows = buildIntegrationDataFlowRows({
       tenant_id,
       tenant_integration_id: integrationId,
@@ -697,53 +772,31 @@ export async function GET(request: NextRequest) {
       created_by: actorUserId,
       updated_by: actorUserId,
     });
-
     const { error: flowError } = await db
       .schema('app')
       .from('integration_data_flows')
       .upsert(flowRows, { onConflict: 'tenant_id,tenant_integration_id,entity_type' });
-
     if (flowError) {
       console.warn('[zoho/oauth/callback] Failed to seed data flows:', flowError);
     }
 
+    const allActive = Object.values(webhookSetupByEntity).every((s) => s.status === 'active');
     webhookSetupState = {
-      status: 'pending_registration',
+      status: allActive ? 'active' : 'failed',
       attempted_at: now,
-      last_error: null,
+      last_error: allActive ? null : 'One or more webhook registrations failed',
       external_ref: null,
-      last_success_at: null,
+      last_success_at: allActive ? now : null,
     };
-
-    // 3. Queue webhook registration as background job (don't wait for it)
-    if (actorUserId && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
-      // Fire-and-forget: queue webhook registration without awaiting
-      const webhookJobUrl = `${getSupabaseFunctionsUrl()}/integrations-webhook-setup`;
-      fetch(webhookJobUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenant_id,
-          tenant_integration_id: integrationId,
-          integration_type_id,
-          org_id,
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token,
-          actor_user_id: actorUserId,
-        }),
-      }).catch((err) => {
-        console.error('[zoho/oauth/callback] Failed to queue webhook setup:', err);
-      });
-    }
   } catch (setupError) {
     webhookSetupState = {
-      status: 'pending_registration',
+      status: 'failed',
       attempted_at: now,
-      last_error: null,
+      last_error: setupError instanceof Error ? setupError.message : String(setupError),
       external_ref: null,
       last_success_at: null,
     };
-    console.warn('[zoho/oauth/callback] Setup deferred to background:', setupError instanceof Error ? setupError.message : String(setupError));
+    console.error('[zoho/oauth/callback] Webhook setup failed:', setupError instanceof Error ? setupError.message : String(setupError));
   }
 
   await db
