@@ -219,10 +219,15 @@ Deno.serve(async (req: Request) => {
     const admin = createAdminClient();
     const integration = await loadIntegration(admin, tenantIntegrationId);
 
+    // Concurrent-start guard — reject if a sync is already in flight for this tenant integration
+    if (integration.status === 'syncing') {
+      return json({ ok: false, error: 'Sync already in progress', code: 'SYNC_ACTIVE' }, 409);
+    }
+
     // Mark integration as syncing
     await setIntegrationStatus(admin, integration.id, 'syncing');
 
-    // Create one pending job row per phase upfront — frontend can subscribe to these
+    // Create one pending job row per phase upfront — frontend subscribes via Realtime
     const jobIds: Record<string, string> = {};
     for (const phase of phasesToRun) {
       jobIds[phase] = await createPhaseJob(admin, {
@@ -234,56 +239,84 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Run phases sequentially — one must complete before the next starts
+    // Run phases sequentially with inner resume loop per phase.
+    // Each sync-* function is time-bounded (100s) and returns has_more=true when
+    // the budget runs out. The orchestrator re-dispatches the same phase with the
+    // saved cursor until the phase is fully done — or until the orchestrator's own
+    // 130s budget runs out, in which case it returns 'paused' for the cron to resume.
+    const ORCH_BUDGET_MS = 130_000;
+    const orchStart = Date.now();
     const results: PhaseResult[] = [];
 
     for (const phase of phasesToRun) {
-      try {
-        const result = await dispatchPhase({
-          phase,
-          tenantIntegrationId: integration.id,
-          jobId: jobIds[phase],
-          // Only apply page_from to the first (or only) phase — resume is per-phase
-          pageFrom: phase === requestedPhase ? pageFrom : null,
-          since,
-        });
+      // For a targeted phase resume, apply the provided cursor; otherwise start fresh
+      let cursor: Record<string, unknown> | null = null;
+      let phasePageFrom: number | null = (phase === requestedPhase ? pageFrom : null);
 
-        results.push(result);
+      while (true) {
+        try {
+          const result = await dispatchPhase({
+            phase,
+            tenantIntegrationId: integration.id,
+            jobId: jobIds[phase],
+            pageFrom: phasePageFrom,
+            since,
+          });
 
-        if (result.has_more) {
-          // Phase hit page limit — return early, caller must resume this phase
-          await setIntegrationStatus(admin, integration.id, 'connected');
+          if (!result.has_more) {
+            results.push(result);
+            break;
+          }
+
+          // Phase needs more pages — loop if orchestrator still has budget
+          cursor = result.next_cursor;
+          phasePageFrom = (cursor as { page?: number } | null)?.page ?? null;
+
+          if (Date.now() - orchStart > ORCH_BUDGET_MS) {
+            // Orchestrator budget exceeded — hand off to cron for continuation
+            results.push(result);
+            await setIntegrationStatus(admin, integration.id, 'connected');
+            return json({
+              ok: true,
+              status: 'paused',
+              paused_at: phase,
+              job_ids: jobIds,
+              results,
+              resume: {
+                tenant_integration_id: integration.id,
+                phase,
+                page_from: phasePageFrom,
+                next_cursor: cursor,
+              },
+            });
+          }
+          // Continue inner loop — re-dispatch same phase from cursor
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Unknown error';
+          await markJobFailed(admin, jobIds[phase], message);
+          await setIntegrationStatus(admin, integration.id, 'sync_failed');
           return json({
-            ok: true,
-            status: 'paused',
-            paused_at: phase,
+            ok: false,
+            status: 'failed',
+            failed_at: phase,
+            error: message,
             job_ids: jobIds,
             results,
-            resume: {
-              tenant_integration_id: integration.id,
-              phase,
-              page_from: (result.next_cursor as { page?: number } | null)?.page ?? null,
-              next_cursor: result.next_cursor,
-            },
-          });
+          }, 500);
         }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Unknown error';
-        await markJobFailed(admin, jobIds[phase], message);
-        await setIntegrationStatus(admin, integration.id, 'sync_failed');
-
-        return json({
-          ok: false,
-          status: 'failed',
-          failed_at: phase,
-          error: message,
-          job_ids: jobIds,
-          results,
-        }, 500);
       }
     }
 
-    // All phases complete
+    // All phases complete — trigger Phase 3 analysis RPCs if we synced any data
+    const totalSynced = results.reduce((sum, r) => sum + r.records_synced, 0);
+    if (totalSynced > 0 && !requestedPhase) {
+      // Fire async — don't block the sync response
+      Promise.all([
+        admin.schema('app').rpc('compute_kpi_summary', { p_tenant_id: integration.tenant_id }),
+        admin.schema('app').rpc('compute_reco_all', { p_tenant_id: integration.tenant_id }),
+      ]).catch((err) => console.error('[integrations-sync] Phase 3 RPC error:', err));
+    }
+
     await setIntegrationStatus(admin, integration.id, 'connected');
 
     return json({

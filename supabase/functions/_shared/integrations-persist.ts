@@ -1520,15 +1520,17 @@ async function persistPricelists(
   result.updated += priceListMapPairs.length;
   await batchUpsertEntityMap(admin, tenantId, integrationId, 'pricelists', priceListMapPairs);
 
-  // Enrich pricebooks with per-book detail (list endpoint omits pricebook_items)
+  // Enrich pricebooks with per-book detail (list endpoint omits pricebook_items).
+  // Sequential with 300ms inter-call delay to avoid Zoho rate limits (was: 5-concurrent).
   const detailedPricebooks = new Map<string, Record<string, unknown>>();
   if (adapter?.fetchPricebookDetail) {
-    await mapWithConcurrency(salesPricebooks, 5, async (pb) => {
+    for (const pb of salesPricebooks) {
       const id = asStr(pb.pricebook_id) ?? asStr(pb.pricelist_id);
-      if (!id) return;
-      const detail = await adapter!.fetchPricebookDetail!(id);
+      if (!id) continue;
+      const detail = await adapter.fetchPricebookDetail(id);
       if (detail) detailedPricebooks.set(id, detail);
-    });
+      await new Promise<void>((r) => setTimeout(r, 300));
+    }
   }
 
   const productExternalIds = [
@@ -1551,20 +1553,17 @@ async function persistPricelists(
 
   const priceListItemRows: Record<string, unknown>[] = [];
   const desiredExternalRefsByPriceListId = new Map<string, Set<string>>();
-  let priceListSyncError: IntegrationSyncError | null = null;
+  // Collect errors per row instead of throwing — entity-level isolation keeps partial data intact
+  const skippedItems: Array<{ pricebook_id: string; item_id: string | null; reason: string }> = [];
 
   for (const pricebook of salesPricebooks) {
     const externalRef = asStr(pricebook.pricebook_id) ?? asStr(pricebook.pricelist_id);
     if (!externalRef) continue;
     const priceListId = priceListIdByExternalRef.get(externalRef) ?? null;
     if (!priceListId) {
-      priceListSyncError = new IntegrationSyncError(
-        'price_lists',
-        `Unable to resolve imported price list ${externalRef}.`,
-        externalRef,
-        { pricebook_id: externalRef },
-      );
-      break;
+      // Pricebook itself couldn't be persisted — skip all its items
+      skippedItems.push({ pricebook_id: externalRef, item_id: null, reason: `price_list row not found for ${externalRef}` });
+      continue;
     }
 
     const effectivePricebook = detailedPricebooks.get(externalRef) ?? pricebook;
@@ -1572,17 +1571,13 @@ async function persistPricelists(
       const sourceProductId = pickString(item.item_id, item.product_id, item.item_external_id);
       const tenantProductId = sourceProductId ? tenantProductIdMap.get(sourceProductId) ?? null : null;
       if (!tenantProductId) {
-        priceListSyncError = new IntegrationSyncError(
-          'price_list_items',
-          `Unable to resolve product ${sourceProductId ?? 'unknown'} for Zoho pricelist ${externalRef}.`,
-          externalRef,
-          {
-            pricebook_id: externalRef,
-            item_id: sourceProductId,
-            min_qty: pickNumber(item.min_quantity, item.min_qty, item.from_quantity) ?? 1,
-          },
-        );
-        break;
+        // Product FK not found — skip this item row, continue with next
+        skippedItems.push({
+          pricebook_id: externalRef,
+          item_id: sourceProductId ?? null,
+          reason: `product ${sourceProductId ?? 'unknown'} not yet synced`,
+        });
+        continue;
       }
 
       const minQty = pickNumber(item.min_quantity, item.min_qty, item.from_quantity) ?? 1;
@@ -1605,17 +1600,10 @@ async function persistPricelists(
         deleted_at: null,
       });
     }
-
-    if (priceListSyncError) break;
   }
 
-  if (priceListSyncError) {
-    const errorReason = formatErrorReason(priceListSyncError.message, priceListSyncError.details);
-    await batchUpsertEntityMap(admin, tenantId, integrationId, 'pricelists', priceListMapPairs, {
-      syncStatus: 'error',
-      errorReason,
-    });
-    throw priceListSyncError;
+  if (skippedItems.length > 0) {
+    console.warn('[persistPricelists] skipped items:', JSON.stringify(skippedItems.slice(0, 10)));
   }
 
   const dedupedPriceListItemRows = dedupeByColumns(

@@ -7,7 +7,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import type { ZohoIntegrationTypeId } from '../../../src/lib/integrations/contracts.ts';
 import { ZOHO_INTEGRATION_TYPE_IDS } from '../../../src/lib/integrations/contracts.ts';
-import type { IntegrationSyncPhaseDefinition } from './integrations-zoho.ts';
+import type { IntegrationSyncPhaseDefinition, ZohoTokenCacheProvider } from './integrations-zoho.ts';
 import { createZohoAdapter } from './integrations-zoho.ts';
 import { persistZohoEntityPage } from './integrations-persist.ts';
 import type { PersistResult } from './integrations-persist.ts';
@@ -213,10 +213,50 @@ export async function setIntegrationSyncFailed(
     .eq('id', integrationId);
 }
 
+// ── DB-backed Zoho token cache ─────────────────────────────────────────────────
+
+export function createDbTokenCache(
+  admin: ReturnType<typeof createAdminClient>,
+  tenantIntegrationId: string,
+): ZohoTokenCacheProvider {
+  return {
+    async read(): Promise<string | null> {
+      const { data } = await admin
+        .schema('app')
+        .from('zoho_token_cache')
+        .select('access_token, expires_at')
+        .eq('tenant_integration_id', tenantIntegrationId)
+        .maybeSingle();
+      if (!data?.access_token) return null;
+      // Require at least 60s of remaining validity
+      const expiresAt = new Date(data.expires_at as string).getTime();
+      if (Date.now() > expiresAt - 60_000) return null;
+      return data.access_token as string;
+    },
+    async write(token: string, expiresAt: Date): Promise<void> {
+      await admin
+        .schema('app')
+        .from('zoho_token_cache')
+        .upsert(
+          {
+            tenant_integration_id: tenantIntegrationId,
+            access_token: token,
+            expires_at: expiresAt.toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'tenant_integration_id' },
+        );
+    },
+  };
+}
+
 // ── Core sync loop ────────────────────────────────────────────────────────────
 
-const DEFAULT_PAGE_LIMIT = 20;
+// Each sync-* Edge Function invocation runs for up to 100s before returning a
+// resume cursor. Supabase hard limit is 150s — this leaves a 50s safety buffer.
+const TIME_BUDGET_MS = 100_000;
 const DEFAULT_PER_PAGE = 200;
+const INTER_PAGE_DELAY_MS = 100;
 
 export async function runPhaseSync(
   admin: ReturnType<typeof createAdminClient>,
@@ -231,9 +271,11 @@ export async function runPhaseSync(
   } = {},
 ): Promise<SyncResult> {
   const zohoTypeId = assertZohoIntegration(integration.integration_type_id);
-  const adapter = createZohoAdapter(zohoTypeId, credentials);
+  const tokenCache = createDbTokenCache(admin, integration.id);
+  const adapter = createZohoAdapter(zohoTypeId, credentials, tokenCache);
 
   const startedAt = new Date().toISOString();
+  const budgetStart = Date.now();
   if (opts.jobId) {
     await updatePhaseJob(admin, opts.jobId, { status: 'running', started_at: startedAt });
   }
@@ -251,9 +293,11 @@ export async function runPhaseSync(
 
   let totalSynced = 0;
   let pagesFetched = 0;
-  const pageLimit = DEFAULT_PAGE_LIMIT;
 
-  while (pagesFetched < pageLimit) {
+  while (true) {
+    // Time-budget check: stop before Supabase's 150s hard limit
+    if (Date.now() - budgetStart > TIME_BUDGET_MS) break;
+
     const page = await adapter.fetchPhasePage(phase, cursor, opts.since ?? null);
 
     if (page.records.length > 0) {
@@ -272,29 +316,41 @@ export async function runPhaseSync(
 
     pagesFetched++;
 
+    // Write progress after every page so UI updates within ~1s (via Realtime)
+    if (opts.jobId) {
+      await updatePhaseJob(admin, opts.jobId, {
+        status: 'running',
+        records_synced: totalSynced,
+        progress: { pages_fetched: pagesFetched, records_synced: totalSynced },
+      });
+    }
+
     if (!page.hasMore || !page.nextCursor) {
       if (opts.jobId) {
         await updatePhaseJob(admin, opts.jobId, {
           status: 'completed',
           records_synced: totalSynced,
           completed_at: new Date().toISOString(),
-          progress: { pages_fetched: pagesFetched },
+          progress: { pages_fetched: pagesFetched, records_synced: totalSynced },
         });
       }
       return { ok: true, phase: phase.id, records_synced: totalSynced, has_more: false, next_cursor: null };
     }
 
     cursor = page.nextCursor;
+
+    // Natural throttle between Zoho API pages — keeps us well under 60 calls/min
+    await new Promise<void>((r) => setTimeout(r, INTER_PAGE_DELAY_MS));
   }
 
-  // Hit page limit — return resume cursor
+  // Time budget exceeded — persist cursor so orchestrator can resume
   const nextCursorRecord = cursor as Record<string, unknown> | null;
   if (opts.jobId) {
     await updatePhaseJob(admin, opts.jobId, {
       status: 'paused',
       records_synced: totalSynced,
       next_cursor: nextCursorRecord,
-      progress: { pages_fetched: pagesFetched },
+      progress: { pages_fetched: pagesFetched, records_synced: totalSynced },
     });
   }
   return { ok: true, phase: phase.id, records_synced: totalSynced, has_more: true, next_cursor: nextCursorRecord };
