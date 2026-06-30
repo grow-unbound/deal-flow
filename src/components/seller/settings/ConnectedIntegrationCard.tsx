@@ -1122,8 +1122,18 @@ export function ConnectedIntegrationCard({
                 const phaseTotal = subPhaseRows.reduce((s, r) => s + r.count, 0);
                 const anyActive = subPhaseRows.some((r) => r.isSyncing);
 
+                // For Phase 3 (analysis), find the dedicated analysis job
+                const analysisJob = phaseGroup.id === 'analysis'
+                  ? runHistory.find((j) => j.phase === 'analysis') ?? null
+                  : null;
+                const analysisStatus = analysisJob?.status ?? null;
+                const analysisRunning = analysisStatus === 'running';
+                const analysisComplete = analysisStatus === 'completed';
+                const analysisFailed = analysisStatus === 'failed';
+                const phaseIsOpen = anyActive || analysisRunning;
+
                 return (
-                  <details key={phaseGroup.id} className="group/phase overflow-hidden rounded-2xl border border-cream-200 bg-white" open={anyActive}>
+                  <details key={phaseGroup.id} className="group/phase overflow-hidden rounded-2xl border border-cream-200 bg-white" open={phaseIsOpen}>
                     <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <ChevronDown className="h-4 w-4 shrink-0 text-cream-500 transition-transform group-open/phase:rotate-180" />
@@ -1133,9 +1143,14 @@ export function ConnectedIntegrationCard({
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
-                        {anyActive ? (
-                          <StatusPill label="Syncing" variant="info" />
-                        ) : phaseTotal > 0 ? (
+                        {anyActive || analysisRunning ? (
+                          <StatusPill label="Running" variant="info" />
+                        ) : analysisFailed ? (
+                          <StatusPill label="Failed" variant="danger" />
+                        ) : analysisComplete || phaseTotal > 0 ? (
+                          <StatusPill label="Done" variant="success" />
+                        ) : null}
+                        {!analysisComplete && !analysisRunning && phaseTotal > 0 && phaseGroup.id !== 'analysis' ? (
                           <span className="text-sm font-medium text-cream-900">{formatNumber(phaseTotal)} records</span>
                         ) : null}
                         {phaseGroup.canSyncAgain ? (
@@ -1159,10 +1174,36 @@ export function ConnectedIntegrationCard({
                     <div className="border-t border-cream-200 bg-cream-50 px-4 py-3">
                       <div className="space-y-2">
                         {phaseGroup.id === 'analysis' ? (
-                          <div className="text-sm text-cream-700">
-                            {phaseTotal > 0
-                              ? 'Analysis tables computed. KPI summary and recommendations are up to date.'
-                              : 'Will be computed automatically after Phase 1 and Phase 2 complete.'}
+                          <div className="space-y-2">
+                            {analysisRunning ? (
+                              <div className="flex items-center gap-2 text-sm text-info-700">
+                                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                Computing snapshots and KPI tables…
+                              </div>
+                            ) : analysisFailed ? (
+                              <div className="text-sm text-danger-700">
+                                Analysis failed: {analysisJob?.progress?.phase_label ?? 'check sync logs for details'}
+                              </div>
+                            ) : analysisComplete ? (
+                              <>
+                                <div className="flex items-center justify-between gap-3 rounded-lg border border-cream-200 bg-white px-3 py-2 text-sm">
+                                  <span className="text-cream-900">Snapshots</span>
+                                  <span className="text-success-700 font-medium">Ready</span>
+                                </div>
+                                <div className="flex items-center justify-between gap-3 rounded-lg border border-cream-200 bg-white px-3 py-2 text-sm">
+                                  <span className="text-cream-900">KPI tables</span>
+                                  <span className="text-success-700 font-medium">Ready</span>
+                                </div>
+                                <div className="flex items-center justify-between gap-3 rounded-lg border border-cream-200 bg-white px-3 py-2 text-sm">
+                                  <span className="text-cream-900">Recommendations</span>
+                                  <span className="text-success-700 font-medium">Ready</span>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-sm text-cream-700">
+                                Triggered automatically after Phase 2 completes.
+                              </div>
+                            )}
                           </div>
                         ) : (
                           subPhaseRows.map((sub) => (
