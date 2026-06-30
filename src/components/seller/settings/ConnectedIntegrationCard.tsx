@@ -109,6 +109,8 @@ interface SyncPhaseGroup {
   label: string;
   description: string;
   subPhases: Array<{ id: string; label: string; aliases: string[] }>;
+  /** Entity types (from integration_entity_map) that belong to this phase */
+  errorEntityTypes: string[];
   syncWindowLabel: string;
   canSyncAgain: boolean;
 }
@@ -124,7 +126,8 @@ const SYNC_PHASE_GROUPS: SyncPhaseGroup[] = [
       { id: 'pricelists', label: 'Pricelists', aliases: ['pricelists', 'price_lists'] },
       { id: 'customers', label: 'Customers', aliases: ['customers'] },
     ],
-    syncWindowLabel: 'Products and Customers use the selected date window. Locations and Pricelists always sync fully.',
+    errorEntityTypes: ['locations', 'warehouses', 'products', 'brands', 'categories', 'pricelists', 'price_lists', 'price_list_items', 'customers'],
+    syncWindowLabel: 'Products & Customers: filtered by selected date. Locations & Pricelists: always full sync (Zoho API limitation).',
     canSyncAgain: true,
   },
   {
@@ -136,7 +139,8 @@ const SYNC_PHASE_GROUPS: SyncPhaseGroup[] = [
       { id: 'orders', label: 'Sales Orders', aliases: ['orders', 'salesorders'] },
       { id: 'invoices', label: 'Invoices', aliases: ['invoices'] },
     ],
-    syncWindowLabel: 'All transaction data is filtered by the selected date window.',
+    errorEntityTypes: ['estimates', 'orders', 'salesorders', 'invoices'],
+    syncWindowLabel: 'All transaction data filtered by the selected date window.',
     canSyncAgain: true,
   },
   {
@@ -147,6 +151,7 @@ const SYNC_PHASE_GROUPS: SyncPhaseGroup[] = [
       { id: 'kpi_summary', label: 'KPI Summary', aliases: ['kpi_summary'] },
       { id: 'recommendations', label: 'Recommendations', aliases: ['reco'] },
     ],
+    errorEntityTypes: ['analysis', 'kpi_summary', 'reco'],
     syncWindowLabel: 'Computed automatically after Phase 2 completes.',
     canSyncAgain: false,
   },
@@ -751,6 +756,35 @@ function getProgressText(job: IntegrationSyncJob) {
   return { percent, numerator, denominator: knownDenominator };
 }
 
+function PhaseErrorFlyout({ errors }: { errors: IntegrationEntityError[] }) {
+  const [open, setOpen] = useState(false);
+  if (errors.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-danger-200 bg-danger-50">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between px-3 py-2 text-sm"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span className="font-medium text-danger-800">{errors.length} row{errors.length !== 1 ? 's' : ''} skipped</span>
+        <ChevronDown className={cn('h-3.5 w-3.5 text-danger-600 transition-transform', open ? 'rotate-180' : '')} />
+      </button>
+      {open ? (
+        <div className="border-t border-danger-200 px-3 pb-2 pt-1 space-y-1">
+          {errors.map((e, i) => (
+            <div key={`${e.entity_type}-${e.external_id ?? i}`} className="text-xs text-danger-900">
+              <span className="font-medium">{labelizePhase(e.entity_type)}</span>
+              {e.external_id ? <span className="text-danger-600"> · {e.external_id}</span> : null}
+              {e.error_reason ? <span className="text-danger-700"> — {e.error_reason}</span> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 type TabId = 'overview' | 'flows' | 'history';
 
 interface ConnectedIntegrationCardProps {
@@ -890,7 +924,8 @@ export function ConnectedIntegrationCard({
       telemetry,
     };
   });
-  const recentEntityErrors = ((integration.recent_entity_errors ?? ti.recent_entity_errors ?? []) as IntegrationEntityError[]).slice(0, 4);
+  const allEntityErrors = (integration.recent_entity_errors ?? ti.recent_entity_errors ?? []) as IntegrationEntityError[];
+  const recentEntityErrors = allEntityErrors.slice(0, 4);
 
   function openFullSyncDialog() {
     setSyncDialog({ open: true, mode: 'full' });
@@ -1206,22 +1241,28 @@ export function ConnectedIntegrationCard({
                             )}
                           </div>
                         ) : (
-                          subPhaseRows.map((sub) => (
-                            <div key={sub.id} className="flex items-center justify-between gap-3 rounded-lg border border-cream-200 bg-white px-3 py-2">
-                              <div className="text-sm text-cream-900">{sub.label}</div>
-                              <div className="flex items-center gap-2 text-sm">
-                                {sub.isSyncing ? (
-                                  <span className="text-info-700">
-                                    {sub.pagesNote ? `syncing ${sub.pagesNote}…` : 'syncing…'}
-                                  </span>
-                                ) : sub.count > 0 ? (
-                                  <span className="font-medium text-cream-900">{formatNumber(sub.count)}</span>
-                                ) : (
-                                  <span className="text-cream-500">—</span>
-                                )}
+                          <>
+                            {subPhaseRows.map((sub) => (
+                              <div key={sub.id} className="flex items-center justify-between gap-3 rounded-lg border border-cream-200 bg-white px-3 py-2">
+                                <div className="text-sm text-cream-900">{sub.label}</div>
+                                <div className="flex items-center gap-2 text-sm">
+                                  {sub.isSyncing ? (
+                                    <span className="text-info-700">
+                                      {sub.pagesNote ? `syncing ${sub.pagesNote}…` : 'syncing…'}
+                                    </span>
+                                  ) : sub.count > 0 ? (
+                                    <span className="font-medium text-cream-900">{formatNumber(sub.count)}</span>
+                                  ) : (
+                                    <span className="text-cream-500">—</span>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          ))
+                            ))}
+                            <PhaseErrorFlyout
+                              errors={allEntityErrors.filter((e) => phaseGroup.errorEntityTypes.includes(e.entity_type))}
+                            />
+                            <p className="pt-1 text-xs text-cream-500">{phaseGroup.syncWindowLabel}</p>
+                          </>
                         )}
                       </div>
                     </div>
