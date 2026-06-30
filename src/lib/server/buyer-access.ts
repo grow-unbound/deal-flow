@@ -140,7 +140,7 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
         buyer_app_enabled,
         is_active,
         deleted_at,
-        tenants!inner ( id, business_name, slug )
+        tenants!tenant_id ( id, business_name, slug )
       `)
       .eq('phone', normalizedPhone)
       .eq('is_active', true)
@@ -156,7 +156,7 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
         phone,
         is_active,
         deleted_at,
-        buyers!inner (
+        buyers!buyer_id (
           id,
           tenant_id,
           business_name,
@@ -164,7 +164,7 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
           buyer_app_enabled,
           is_active,
           deleted_at,
-          tenants!inner ( id, business_name, slug )
+          tenants!tenant_id ( id, business_name, slug )
         )
       `)
       .eq('phone', normalizedPhone)
