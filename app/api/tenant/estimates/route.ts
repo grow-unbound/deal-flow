@@ -49,7 +49,7 @@ interface EstimateDbRow {
   accepted_at: string | null;
   expires_at: string | null;
   source: string | null;
-  catalog_id: string | null;
+  campaign_id: string | null;
   created_by: string | null;
   updated_at?: string | null;
 }
@@ -184,7 +184,7 @@ export async function GET(req: NextRequest) {
       .schema('app')
       .from('estimates')
       .select(
-        'id, location_id, estimate_number, buyer_id, status, total_amount, created_at, sent_at, accepted_at, expires_at, source, catalog_id, created_by, updated_at',
+        'id, location_id, estimate_number, buyer_id, status, total_amount, created_at, sent_at, accepted_at, expires_at, source, campaign_id, created_by, updated_at',
       )
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
@@ -310,7 +310,7 @@ export async function GET(req: NextRequest) {
     }
 
     const catalogIds = Array.from(
-      new Set(rawEstimates.map((row) => row.catalog_id).filter((value): value is string => Boolean(value))),
+      new Set(rawEstimates.map((row) => row.campaign_id).filter((value): value is string => Boolean(value))),
     );
     const creatorIds = Array.from(
       new Set(
@@ -322,13 +322,13 @@ export async function GET(req: NextRequest) {
 
     const [catalogsRes, creatorMap] = await Promise.all([
       catalogIds.length > 0
-        ? db.schema('app').from('published_catalogs').select('id, name').in('id', catalogIds).is('deleted_at', null)
+        ? db.schema('app').from('campaigns').select('id, name').in('id', catalogIds).is('deleted_at', null)
         : Promise.resolve({ data: [] as Array<{ id: string; name: string }>, error: null }),
       getAuthUserDisplayNameMap(creatorIds),
     ]);
 
     if (catalogsRes.error) {
-      console.error('[GET /api/tenant/estimates] published_catalogs error:', catalogsRes.error);
+      console.error('[GET /api/tenant/estimates] campaigns error:', catalogsRes.error);
       return timedJson({ error: 'Failed to fetch estimates' }, { status: 500 });
     }
 
@@ -374,7 +374,7 @@ export async function GET(req: NextRequest) {
       const meta = statusMeta(norm);
       const source: 'buyer_app' | 'seller' = row.source === 'seller' ? 'seller' : 'buyer_app';
       const createdByLabel = source === 'seller' ? creatorMap.get(row.created_by ?? '') ?? 'Team member' : null;
-      const catalogName = row.catalog_id ? catalogById.get(row.catalog_id) ?? null : null;
+      const catalogName = row.campaign_id ? catalogById.get(row.campaign_id) ?? null : null;
       const landing: EstimateLandingRow = {
         id: row.id,
         location_id: row.location_id,

@@ -8,6 +8,7 @@ import { z } from 'zod';
 const ImportProductSchema = z.object({
   internal_sku: z.string().min(1),
   name: z.string().min(1),
+  name_override: z.string().min(1).optional(),
   tenant_brand_id: z.string().uuid(),
   mrp: z.number().positive(),
   base_selling_price: z.number().positive(),
@@ -98,7 +99,7 @@ export async function POST(req: NextRequest) {
         tenant_brand_id: product.tenant_brand_id,
         master_product_id: null,
         internal_sku: sku,
-        name_override: product.name,
+        name_override: product.name_override?.trim() || product.name.trim(),
         mrp: product.mrp,
         base_selling_price: product.base_selling_price,
         cost_price: effectiveCostPrice,

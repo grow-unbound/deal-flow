@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
         .is('deleted_at', null),
       db
         .schema('app')
-        .from('published_catalogs')
+        .from('campaigns')
         .select('id', { count: 'exact', head: true })
         .eq('tenant_id', tenantId)
         .eq('status', 'published')

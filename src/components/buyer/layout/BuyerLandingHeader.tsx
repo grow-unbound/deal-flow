@@ -16,7 +16,7 @@ interface BuyerLandingHeaderProps {
   searchPlaceholder?: string;
   /** Passed as `scope` when opening fullscreen search (Enter). Default `catalog`. */
   searchScope?: string;
-  /** Extra search query params (e.g. `catalog_id`) merged when submitting search. */
+  /** Extra search query params (e.g. `campaign_id`) merged when submitting search. */
   searchExtraParams?: Omit<BuyerSearchHrefParams, 'scope' | 'q'>;
   /** Category chips row — only when expanded (Catalog). */
   showCategoryChips?: boolean;

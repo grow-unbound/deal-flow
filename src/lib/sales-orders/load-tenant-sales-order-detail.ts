@@ -66,7 +66,7 @@ export async function loadTenantSalesOrderDetail(
         'order_number',
         'status',
         'source',
-        'catalog_id',
+        'campaign_id',
         'placed_at',
         'subtotal',
         'tax_amount',
@@ -102,6 +102,11 @@ export async function loadTenantSalesOrderDetail(
 
   const buyerId = typeof order.buyer_id === 'string' ? order.buyer_id : null;
   const estimateId = typeof order.estimate_id === 'string' ? order.estimate_id : null;
+  const locationId = typeof order.location_id === 'string' ? order.location_id : null;
+  const locationRes = locationId
+    ? await d.schema('app').from('locations').select('name').eq('tenant_id', tenantId).eq('id', locationId).is('deleted_at', null).maybeSingle()
+    : { data: null, error: null };
+  if (locationRes.error) return 'notfound';
 
   const [itemsRes, auditRes, catalogRes, estimateRes, tenantRes] = await Promise.all([
     d
@@ -119,12 +124,12 @@ export async function loadTenantSalesOrderDetail(
       .eq('entity_id', orderId)
       .order('ts', { ascending: false })
       .limit(80),
-    order.catalog_id
+    order.campaign_id
       ? d
           .schema('app')
-          .from('published_catalogs')
+          .from('campaigns')
           .select('name')
-          .eq('id', order.catalog_id as string)
+          .eq('id', order.campaign_id as string)
           .eq('tenant_id', tenantId)
           .is('deleted_at', null)
           .maybeSingle()
@@ -438,6 +443,8 @@ export async function loadTenantSalesOrderDetail(
   const raw: SalesOrderDetail = {
     id: String(order.id),
     order_number: String(order.order_number ?? order.id),
+    location_id: locationId,
+    location_name: (locationRes.data?.name as string | null | undefined) ?? null,
     db_status: dbStatus,
     ui_status: uiStatus,
     placed_at: placedAt,

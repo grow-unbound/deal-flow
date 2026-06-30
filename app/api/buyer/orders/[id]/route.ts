@@ -1,0 +1,99 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { supabaseAdmin, supabase } from '@/lib/supabase';
+import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+
+export interface BuyerOrderItem {
+  tenant_product_id: string;
+  product_name: string;
+  internal_sku: string | null;
+  unit: string | null;
+  qty: number;
+  unit_price: number;
+  tax_rate: number | null;
+  line_total: number;
+}
+
+export interface BuyerOrderDetail {
+  id: string;
+  order_number: string;
+  status: string;
+  notes: string | null;
+  placed_at: string;
+  total_amount: number;
+  subtotal: number;
+  tax_total: number;
+  items: BuyerOrderItem[];
+}
+
+export interface BuyerOrderDetailResponse {
+  order: BuyerOrderDetail;
+}
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+): Promise<NextResponse> {
+  try {
+    const { id } = await params;
+    const profile = await requireBuyerAccessProfile(request);
+    if (!profile?.context.tenant_id || !profile.buyer?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { tenant_id } = profile.context;
+    const buyer_id = profile.buyer.id;
+    const db = supabaseAdmin ?? supabase;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: order, error } = await (db as any)
+      .schema('app')
+      .from('orders')
+      .select(`
+        id, order_number, status, notes, placed_at, total_amount,
+        order_items (
+          tenant_product_id, qty, unit_price, tax_rate, line_total,
+          tenant_products ( name, internal_sku, unit )
+        )
+      `)
+      .eq('id', id)
+      .eq('tenant_id', tenant_id)
+      .eq('buyer_id', buyer_id)
+      .is('deleted_at', null)
+      .single();
+
+    if (error || !order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+
+    const rawItems: BuyerOrderItem[] = ((order.order_items as any[]) ?? []).map((oi: any) => ({
+      tenant_product_id: oi.tenant_product_id,
+      product_name: oi.tenant_products?.name ?? 'Unknown product',
+      internal_sku: oi.tenant_products?.internal_sku ?? null,
+      unit: oi.tenant_products?.unit ?? null,
+      qty: Number(oi.qty),
+      unit_price: Number(oi.unit_price),
+      tax_rate: oi.tax_rate != null ? Number(oi.tax_rate) : null,
+      line_total: Number(oi.line_total),
+    }));
+
+    const subtotal = rawItems.reduce((sum, i) => sum + i.line_total, 0);
+    const tax_total = Number(order.total_amount) - subtotal;
+
+    const detail: BuyerOrderDetail = {
+      id: order.id,
+      order_number: order.order_number,
+      status: order.status,
+      notes: order.notes ?? null,
+      placed_at: order.placed_at,
+      total_amount: Number(order.total_amount),
+      subtotal,
+      tax_total: Math.max(0, tax_total),
+      items: rawItems,
+    };
+
+    return NextResponse.json({ order: detail });
+  } catch (err) {
+    console.error('[buyer/orders/[id]] GET error:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}

@@ -83,6 +83,7 @@ export interface EstimateComposerDocument {
   status: string;
   buyer_id: string | null;
   location_id: string | null;
+  location_name: string | null;
   available_locations: ComposerLocationOption[];
   estimate_date: string;
   valid_until: string;

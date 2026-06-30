@@ -3,7 +3,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 const getVerifiedClaimsMock = vi.fn();
 const getCatalogComposerPayloadMock = vi.fn();
 const getRequestSupabaseClientMock = vi.fn();
-const state = {
+const state: { supabaseAdmin: { schema: ReturnType<typeof vi.fn> } | null } = {
   supabaseAdmin: { schema: vi.fn() },
 };
 

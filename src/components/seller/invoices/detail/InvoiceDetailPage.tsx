@@ -291,12 +291,12 @@ export function InvoiceDetailPage({ id }: { id: string }) {
             kind="invoice"
             readOnly
             docNumber={data.doc_number}
-            locationId={null}
+            locationId={data.location_id}
             availableLocations={[]}
             dateIssued={data.invoice_date}
             secondDate={data.due_date ?? ''}
             buyerPoRef={data.buyer_po_ref ?? ''}
-            locationLabel="—"
+            locationName={data.location_name}
             onDateIssuedChange={noop}
             onSecondDateChange={noop}
             onBuyerPoRefChange={noop}

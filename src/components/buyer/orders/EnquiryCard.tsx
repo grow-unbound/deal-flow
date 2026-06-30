@@ -14,6 +14,8 @@ export interface EstimateSummary {
 
 interface EnquiryCardProps {
   estimate: EstimateSummary;
+  href?: string;
+  highlighted?: boolean;
 }
 
 function inr(n: number): string {
@@ -46,18 +48,27 @@ function getBadge(status: string): { tone: StatusTone; label: string } {
   );
 }
 
-export function EnquiryCard({ estimate }: EnquiryCardProps) {
+export function EnquiryCard({ estimate, href, highlighted }: EnquiryCardProps) {
   const badge = getBadge(estimate.status);
   const docNumber = estimate.estimate_number ?? `ENQ-${estimate.id.slice(0, 6).toUpperCase()}`;
 
   return (
-    <ActivityCardShell
-      documentNumber={docNumber}
-      statusLabel={badge.label}
-      statusTone={badge.tone}
-      middleLeft={estimate.notes ?? '—'}
-      middleRight={<span className="tabular-inline">{formatDate(estimate.created_at)}</span>}
-      amount={<span className="tabular-inline">{inr(estimate.total_amount)}</span>}
-    />
+    <div
+      style={
+        highlighted
+          ? { borderRadius: 12, boxShadow: '0 0 0 2px var(--teal-500), 0 0 0 5px rgba(0,163,163,0.15)', transition: 'box-shadow 0.2s' }
+          : undefined
+      }
+    >
+      <ActivityCardShell
+        href={href}
+        documentNumber={docNumber}
+        statusLabel={badge.label}
+        statusTone={badge.tone}
+        middleLeft={estimate.notes ?? '—'}
+        middleRight={<span className="tabular-inline">{formatDate(estimate.created_at)}</span>}
+        amount={<span className="tabular-inline">{inr(estimate.total_amount)}</span>}
+      />
+    </div>
   );
 }

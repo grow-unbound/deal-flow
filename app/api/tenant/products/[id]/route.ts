@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
+import { resolveImportedProductTenantLinks } from '@/lib/server/tenant-product-source-resolution';
 import { z } from 'zod';
 
 const UpdateProductSchema = z.object({
@@ -590,7 +591,11 @@ export async function PATCH(
       updated_at: new Date().toISOString(),
     };
 
-    if (updateFields.name !== undefined) {
+    if (updateFields.name_override !== undefined) {
+      patchPayload.name_override = updateFields.name_override?.trim() || null;
+    }
+
+    if (updateFields.name !== undefined && updateFields.name_override === undefined) {
       patchPayload.name_override = updateFields.name?.trim() || null;
       delete patchPayload.name;
     }
@@ -610,6 +615,27 @@ export async function PATCH(
     if (updateFields.archive) {
       patchPayload.deleted_at = new Date().toISOString();
       delete patchPayload.archive;
+    }
+
+    if (current.master_product_id) {
+      let importedLinks: Awaited<ReturnType<typeof resolveImportedProductTenantLinks>> = null;
+      try {
+        importedLinks = await resolveImportedProductTenantLinks(db, claims.tenant_id, claims.sub ?? claims.tenant_id, current.master_product_id, {
+          tenant_brand_id: typeof updateFields.tenant_brand_id === 'undefined' ? current.tenant_brand_id : updateFields.tenant_brand_id,
+          tenant_category_id: typeof updateFields.tenant_category_id === 'undefined' ? current.tenant_category_id : updateFields.tenant_category_id,
+        });
+      } catch (resolutionError) {
+        console.error('[PATCH /api/tenant/products/[id]] failed to resolve imported product links:', resolutionError);
+        return NextResponse.json(
+          { error: 'Failed to resolve imported brand/category links' },
+          { status: 500 },
+        );
+      }
+
+      if (importedLinks) {
+        patchPayload.tenant_brand_id = importedLinks.tenant_brand_id;
+        patchPayload.tenant_category_id = importedLinks.tenant_category_id;
+      }
     }
 
     const diff = computeDiff(

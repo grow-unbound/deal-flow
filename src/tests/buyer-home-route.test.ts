@@ -83,14 +83,40 @@ vi.mock('@/lib/supabase', () => ({
           };
         }
 
-        if (schemaName === 'app' && tableName === 'published_catalog_items') {
+        if (schemaName === 'app' && tableName === 'campaign_items') {
           return {
             select: vi.fn(() => ({
               in: vi.fn(() => ({
                 is: vi.fn(async () => ({
-                  data: [{ catalog_id: 'promo-1' }],
+                  data: [{ campaign_id: 'promo-1' }],
                   error: null,
                 })),
+              })),
+            })),
+          };
+        }
+
+        if (schemaName === 'app' && tableName === 'buyers') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({
+                    data: { default_cohort_id: null },
+                    error: null,
+                  })),
+                })),
+              })),
+            })),
+          };
+        }
+
+        if (schemaName === 'app' && tableName === 'cohort_members') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(async () => ({
+                data: [],
+                error: null,
               })),
             })),
           };

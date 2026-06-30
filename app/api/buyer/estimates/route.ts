@@ -17,9 +17,9 @@ export interface EstimateRequest {
     product_name?: string;
   }>;
   notes?: string;
-  catalog_id?: string | null;
+  campaign_id?: string | null;
   location_id?: string | null;
-  delivery_address?: Record<string, unknown> | null;
+  place_of_supply?: string | null;
 }
 
 export interface EstimateResponse {
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
       return NextResponse.json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const { items, notes, catalog_id, location_id, delivery_address } = body;
+    const { items, notes, campaign_id, location_id } = body;
 
     const createFlags = await getInAppCreateFlags(context.tenant_id!);
     if (!createFlags.create_enquiries) {
@@ -92,6 +92,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (!location_id) {
+      return NextResponse.json(
+        { success: false, error: 'Select a delivery location before requesting a quote' },
+        { status: 400 },
+      );
+    }
+
     const tenant_id = context.tenant_id;
     const buyer_id = profile.buyer.id;
     const { sub } = context;
@@ -100,8 +107,14 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
     const sortedItems = [...items].sort((a, b) => a.tenant_product_id.localeCompare(b.tenant_product_id));
+    const placeOfSupply = (typeof body.place_of_supply === 'string' && body.place_of_supply.trim())
+      || 'Unknown';
     const cart_hash = createHash('sha256')
-      .update(JSON.stringify(sortedItems.map((i) => ({ id: i.tenant_product_id, qty: i.qty, price: i.unit_price }))))
+      .update(JSON.stringify({
+        items: sortedItems.map((i) => ({ id: i.tenant_product_id, qty: i.qty, price: i.unit_price })),
+        location_id,
+        place_of_supply: placeOfSupply,
+      }))
       .digest('hex');
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -146,9 +159,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
         total_amount,
         cart_hash,
         notes: notes ?? null,
-        catalog_id: catalog_id ?? null,
-        location_id: location_id ?? null,
-        delivery_address: delivery_address ?? null,
+        campaign_id: campaign_id ?? null,
+        location_id,
+        place_of_supply: placeOfSupply,
         created_by: sub,
       })
       .select('id, estimate_number')
@@ -195,27 +208,41 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
       // non-blocking
     }
 
-    // Fire WhatsApp notifications without blocking the response
-    void (async () => {
-      try {
-        const ctx = await fetchWhatsappNotificationContext(
-          tenant_id!,
-          buyer_id,
-          location_id ?? null,
-          'enquiry_received',
-        );
-        if (ctx) {
-          await Promise.allSettled([
-            sendRequestReceivedBuyer(ctx, typed.id, typed.estimate_number ?? '', total_amount, items.length),
-            sendRequestReceivedSeller(ctx, typed.id, typed.estimate_number ?? '', total_amount, items.length),
-          ]);
+    let whatsappSent = false;
+    try {
+      const ctx = await fetchWhatsappNotificationContext(
+        tenant_id!,
+        buyer_id,
+        location_id,
+        'enquiry_received',
+      );
+      if (ctx) {
+        const notificationResults = await Promise.allSettled([
+          sendRequestReceivedBuyer(ctx, typed.id, typed.estimate_number ?? '', total_amount, items.length),
+          sendRequestReceivedSeller(ctx, typed.id, typed.estimate_number ?? '', total_amount, items.length),
+        ]);
+        whatsappSent = notificationResults.some((result) => result.status === 'fulfilled');
+        if (whatsappSent) {
+          await (db as any)
+            .schema('app')
+            .from('estimates')
+            .update({
+              sent_at: new Date().toISOString(),
+              sent_channel: 'whatsapp',
+            })
+            .eq('id', typed.id);
         }
-      } catch {
-        // non-blocking — estimate creation already succeeded
       }
-    })();
+    } catch {
+      // non-blocking — estimate creation already succeeded
+    }
 
-    return NextResponse.json({ success: true, estimate_id: typed.id, estimate_number: typed.estimate_number, whatsapp_sent: true });
+    return NextResponse.json({
+      success: true,
+      estimate_id: typed.id,
+      estimate_number: typed.estimate_number,
+      whatsapp_sent: whatsappSent,
+    });
   } catch (err) {
     console.error('[buyer/estimates] Unexpected error:', err);
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });

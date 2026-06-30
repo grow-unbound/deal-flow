@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     const db = supabaseAdmin as any;
     await requireTenantOwnedRow(db, {
       schema: 'app',
-      table: 'published_catalogs',
+      table: 'campaigns',
       tenantId: claims.tenant_id,
       id: entityId,
     });
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
 
     const { data, error } = await db
       .schema('app')
-      .from('published_catalogs')
+      .from('campaigns')
       .update({
         r2_hero_original_key: keys.original,
         r2_hero_medium_key: keys.medium,

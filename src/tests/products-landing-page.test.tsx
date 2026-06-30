@@ -133,4 +133,65 @@ describe('products landing integration', () => {
     expect(screen.getByText('Alpha Water')).toBeInTheDocument();
     expect(screen.queryByText('Beta Juice')).not.toBeInTheDocument();
   });
+
+  it('deduplicates repeated products before rendering rows', () => {
+    useFlagMock.mockReturnValue(true);
+    useRoleMock.mockReturnValue({ isSellerAssistant: false });
+    useTenantProductsMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        kpis: {
+          active_skus: 1,
+          total_skus: 1,
+          archived_skus: 0,
+          out_of_stock: 0,
+          low_stock: 0,
+          revenue_mtd: 1000,
+          revenue_prev_mtd: 500,
+          revenue_growth_pct: 100,
+        },
+        products: [
+          { id: 'p1', display_name: 'Alpha Water', brand_name: 'Alpha', on_hand: 10, days_cover: 30 },
+        ],
+        brands: ['Alpha'],
+        filters: { groups: [] },
+        todays_read: { needs_attention: [], top_performers: [], top_risers: [] },
+      },
+    });
+    useTenantProductsInfiniteMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        pages: [
+          {
+            products: [
+              { id: 'p1', display_name: 'Alpha Water', brand_name: 'Alpha', on_hand: 10, days_cover: 30 },
+              { id: 'p1', display_name: 'Alpha Water', brand_name: 'Alpha', on_hand: 10, days_cover: 30 },
+            ],
+            kpis: {
+              active_skus: 1,
+              total_skus: 1,
+              archived_skus: 0,
+              out_of_stock: 0,
+              low_stock: 0,
+              revenue_mtd: 1000,
+              revenue_prev_mtd: 500,
+              revenue_growth_pct: 100,
+            },
+            nextCursor: null,
+            total: 1,
+          },
+        ],
+      },
+      fetchNextPage: vi.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+    });
+
+    render(<ProductsLandingClient initialData={null} initialPeriod="month" />);
+
+    expect(screen.getAllByText('Alpha Water')).toHaveLength(1);
+    expect(screen.getByText('1 of 1 products')).toBeInTheDocument();
+  });
 });

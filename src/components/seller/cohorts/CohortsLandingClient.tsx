@@ -293,6 +293,7 @@ function CohortsLandingContent({
           columns={[
             { label: 'Customer group', minWidth: 280, className: 'px-5' },
             { label: 'Type', minWidth: 140, className: 'px-5' },
+            { label: 'Allowed brands', minWidth: 140, className: 'px-5' },
             { label: 'Members', align: 'right', minWidth: 140, className: 'px-5' },
             { label: `GMV · ${metricSuffix}`, align: 'right', minWidth: 140, className: 'px-5' },
             { label: 'Growth', align: 'right', minWidth: 120, className: 'px-5' },
@@ -317,6 +318,7 @@ function CohortsLandingContent({
                 </div>
               </td>
               <td className="px-5 py-3.5 text-sm text-cream-800">{cohort.type}</td>
+              <td className="px-5 py-3.5 text-sm text-cream-800">{cohort.allowed_brands_label}</td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                 {cohort.active_members} / <span className="text-cream-600">{cohort.total_members}</span>
               </td>

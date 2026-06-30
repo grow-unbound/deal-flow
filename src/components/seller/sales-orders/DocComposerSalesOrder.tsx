@@ -34,7 +34,6 @@ import {
   TotalsCard,
   type EstimateComposerLineRow,
 } from '@/components/seller/document-composer';
-import { ResolvedPriceLookupCard } from '@/components/seller/pricing/ResolvedPriceLookupCard';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -101,6 +100,7 @@ function buildNewSalesOrderDraft(orderNumber = 'Reserving next number...'): Sale
     status: 'draft',
     buyer_id: null,
     location_id: null,
+    location_name: null,
     available_locations: [],
     order_date: isoToday(),
     expected_delivery: defaultExpectedDelivery(),
@@ -235,6 +235,7 @@ export function DocComposerSalesOrder({
   const [backorderOpen, setBackorderOpen] = useState(false);
   const [pendingConfirmOrderId, setPendingConfirmOrderId] = useState<string | null>(null);
   const [notifyBuyer, setNotifyBuyer] = useState(true);
+  const [autoFocusLineId, setAutoFocusLineId] = useState<string | null>(null);
 
   const originalDocumentRef = useRef<SalesOrderComposerDocument | null>(null);
   const originalLinesRef = useRef<EstimateComposerLineRow[]>([]);
@@ -311,6 +312,7 @@ export function DocComposerSalesOrder({
       status: 'draft',
       buyer_id: est.buyer_id,
       location_id: est.location_id ?? null,
+      location_name: est.location_name ?? null,
       available_locations: est.available_locations ?? [],
       order_date: isoToday(),
       expected_delivery: defaultExpectedDelivery(),
@@ -654,10 +656,11 @@ export function DocComposerSalesOrder({
   }
 
   function handleAddProduct(product: EstimateComposerProductSearchRow) {
+    const lineId = `draft-line-${Date.now()}-${product.tenant_product_id}`;
     setLineState((current) => [
       ...current,
       {
-        id: `draft-line-${Date.now()}-${product.tenant_product_id}`,
+        id: lineId,
         tenant_product_id: product.tenant_product_id,
         product_name: product.product_name,
         sku: product.sku,
@@ -677,6 +680,7 @@ export function DocComposerSalesOrder({
         diff: 'added',
       },
     ]);
+    setAutoFocusLineId(lineId);
   }
 
   function handleLineChange(lineId: string, patch: Partial<EstimateComposerLineRow>) {
@@ -817,11 +821,11 @@ export function DocComposerSalesOrder({
             kind="so"
             docNumber={documentState.order_number}
             locationId={documentState.location_id}
+            locationName={documentState.location_name}
             availableLocations={documentState.available_locations}
             dateIssued={documentState.order_date}
             secondDate={documentState.expected_delivery}
             buyerPoRef={documentState.buyer_po_ref}
-            locationReadOnly={documentState.available_locations.length <= 1 || isConfirmedEdit}
             onDateIssuedChange={(value) => {
               setDocumentState((current) => {
                 if (!current) return current;
@@ -895,6 +899,8 @@ export function DocComposerSalesOrder({
             singleNoteMode
             title="Sales order lines"
             description="Search by product, SKU, or brand. Pricelist pricing is applied automatically."
+            autoFocusLineId={autoFocusLineId}
+            onAutoFocusHandled={() => setAutoFocusLineId(null)}
             showNotesControls={false}
             showFreightControls={false}
             notesValue={documentState.seller_note}
@@ -924,16 +930,6 @@ export function DocComposerSalesOrder({
               isInterState={isInterState}
               lineCount={activeLines.length}
               stagedChanges={stagedChangesRows}
-            />
-            <ResolvedPriceLookupCard
-              buyerId={documentState.buyer_id}
-              productOptions={activeLines.map((line) => ({
-                id: line.tenant_product_id,
-                label: line.product_name,
-                meta: `${line.sku} · Qty ${line.qty}`,
-              }))}
-              title="Resolved price check"
-              description="Verify the buyer's resolved price while you build the order."
             />
           </div>
         )}

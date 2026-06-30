@@ -15,6 +15,7 @@ export interface InvoiceSummary {
 
 interface InvoiceCardProps {
   invoice: InvoiceSummary;
+  href?: string;
 }
 
 function inr(n: number): string {
@@ -45,7 +46,7 @@ function getBadge(status: string): { tone: StatusTone; label: string } {
   return statusBadge[status as InvoiceStatusKey] ?? statusBadge.due;
 }
 
-export function InvoiceCard({ invoice }: InvoiceCardProps) {
+export function InvoiceCard({ invoice, href }: InvoiceCardProps) {
   const badge = getBadge(invoice.status);
 
   const middleRight = invoice.due_date
@@ -54,6 +55,7 @@ export function InvoiceCard({ invoice }: InvoiceCardProps) {
 
   return (
     <ActivityCardShell
+      href={href}
       documentNumber={invoice.invoice_number}
       statusLabel={badge.label}
       statusTone={badge.tone}

@@ -75,9 +75,14 @@ export async function loadTenantSalesOrderComposer(
 
   const buyerId = typeof order.buyer_id === 'string' ? order.buyer_id : null;
   const estimateId = typeof order.estimate_id === 'string' ? order.estimate_id : null;
+  const locationId = typeof order.location_id === 'string' ? order.location_id : null;
   const effectiveClaims = viewerClaims ?? { role: 'seller_admin', location_ids: null };
   const availableLocations = await loadAccessibleSellerLocations(d, tenantId, effectiveClaims);
   const defaultLocationId = resolveDefaultSellerLocationId(effectiveClaims, availableLocations);
+  const locationRes = locationId
+    ? await d.schema('app').from('locations').select('name').eq('tenant_id', tenantId).eq('id', locationId).is('deleted_at', null).maybeSingle()
+    : { data: null, error: null };
+  if (locationRes.error) throw locationRes.error;
 
   const { data: itemRowsRaw, error: itemsError } = await d
     .schema('app')
@@ -319,7 +324,8 @@ export async function loadTenantSalesOrderComposer(
     order_number: String(order.order_number ?? order.id),
     status: String(order.status ?? 'draft'),
     buyer_id: buyerId,
-    location_id: (order.location_id as string | null | undefined) ?? defaultLocationId,
+    location_id: locationId ?? defaultLocationId,
+    location_name: (locationRes.data?.name as string | null | undefined) ?? null,
     available_locations: availableLocations,
     order_date: orderDate,
     expected_delivery: expectedDelivery,

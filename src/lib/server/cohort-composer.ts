@@ -1,7 +1,7 @@
 import type { CohortRules } from '@/lib/zod';
 
 type DbClient = {
-  schema: (name: 'app') => {
+  schema: (name: 'app' | 'catalog') => {
     from: (table: string) => any;
   };
 };
@@ -57,6 +57,10 @@ export type CohortComposerFilterOption = {
 
 export type CohortComposerPayload = {
   buyers: CohortComposerBuyerRow[];
+  brands: Array<{
+    id: string;
+    label: string;
+  }>;
   filters: {
     geographies: CohortComposerFilterOption[];
     tiers: CohortComposerFilterOption[];
@@ -296,24 +300,54 @@ export function resolveBuyerIdsForRules(
 }
 
 export async function getCohortComposerPayload(db: DbClient, tenantId: string): Promise<CohortComposerPayload> {
-  const { data: buyers, error: buyersError } = await db
-    .schema('app')
-    .from('buyers')
-    .select('id, business_name, contact_name, geography, tier, payment_terms_days, credit_limit, external_ref')
-    .eq('tenant_id', tenantId)
-    .eq('is_active', true)
-    .is('deleted_at', null)
-    .order('business_name', { ascending: true });
+  const [buyersRes, brandsRes] = await Promise.all([
+    db
+      .schema('app')
+      .from('buyers')
+      .select('id, business_name, contact_name, geography, tier, payment_terms_days, credit_limit, external_ref')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .order('business_name', { ascending: true }),
+    db
+      .schema('app')
+      .from('tenant_brands')
+      .select('id, display_name_override, master_brand_id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .eq('is_active', true)
+      .order('created_at', { ascending: true }),
+  ]);
 
-  if (buyersError) {
-    throw buyersError;
-  }
+  if (buyersRes.error) throw buyersRes.error;
+  if (brandsRes.error) throw brandsRes.error;
 
-  const buyerRows = (buyers ?? []) as BuyerDbRow[];
+  const tenantBrands = (brandsRes.data ?? []) as Array<{
+    id: string;
+    display_name_override: string | null;
+    master_brand_id: string | null;
+  }>;
+  const masterBrandIds = Array.from(
+    new Set(tenantBrands.map((brand) => brand.master_brand_id).filter(Boolean) as string[]),
+  );
+  const masterBrandsRes = masterBrandIds.length > 0
+    ? await db.schema('catalog').from('brands').select('id, name').in('id', masterBrandIds)
+    : { data: [], error: null };
+  if (masterBrandsRes.error) throw masterBrandsRes.error;
+  const masterBrandMap = new Map(
+    ((masterBrandsRes.data ?? []) as Array<{ id: string; name: string }>).map((brand) => [brand.id, brand.name]),
+  );
+  const brandOptions = tenantBrands.map((brand) => ({
+    id: brand.id,
+    label: brand.display_name_override ?? (brand.master_brand_id ? masterBrandMap.get(brand.master_brand_id) ?? 'Unnamed brand' : 'Unnamed brand'),
+  }));
+
+  const buyerRows = (buyersRes.data ?? []) as BuyerDbRow[];
   const buyerIds = buyerRows.map((buyer) => buyer.id);
   if (buyerIds.length === 0) {
     return {
       buyers: [],
+      brands: brandOptions,
       filters: {
         geographies: [],
         tiers: [],
@@ -430,6 +464,7 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
 
   return {
     buyers: buyersPayload,
+    brands: brandOptions,
     filters: {
       geographies: buildOptionCounts(buyersPayload.map((buyer) => buyer.geography_label)),
       tiers: buildOptionCounts(buyersPayload.map((buyer) => buyer.tier)),

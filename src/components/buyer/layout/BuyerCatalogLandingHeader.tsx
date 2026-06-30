@@ -2,9 +2,9 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { HelpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SearchBar } from '@/components/buyer/catalog/SearchBar';
+import { BuyerLocationControl } from '@/components/buyer/layout/BuyerLocationControl';
 import { useBuyerScrollCollapse } from '@/hooks/useBuyerScrollCollapse';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 import { buildBuyerSearchHref } from '@/lib/buyer-routes';
@@ -58,14 +58,7 @@ export function BuyerCatalogLandingHeader({
                   Catalog
                 </h1>
               </div>
-              <button
-                type="button"
-                className="mt-1 flex h-9 w-9 items-center justify-center rounded-full"
-                style={{ color: 'var(--cream-400)' }}
-                aria-label="Help"
-              >
-                <HelpCircle className="h-5 w-5" />
-              </button>
+              <BuyerLocationControl className="mt-1" />
             </div>
           </div>
         </div>

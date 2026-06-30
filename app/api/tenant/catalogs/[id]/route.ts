@@ -208,9 +208,9 @@ async function fetchPosthogCatalogFunnel(catalogId: string): Promise<{ uniqueVie
           SELECT count(*)
           FROM events
           WHERE event = 'catalog_item_added_to_cart'
-            AND properties.catalog_id = {catalog_id:String}
+            AND properties.campaign_id = {campaign_id:String}
         `,
-        values: { catalog_id: catalogId },
+        values: { campaign_id: catalogId },
       } as Record<string, unknown>),
       posthog.query({
         kind: 'HogQLQuery',
@@ -221,11 +221,11 @@ async function fetchPosthogCatalogFunnel(catalogId: string): Promise<{ uniqueVie
             toString(max(timestamp)) AS last_opened_at
           FROM events
           WHERE event = 'catalog_viewed'
-            AND properties.catalog_id = {catalog_id:String}
+            AND properties.campaign_id = {campaign_id:String}
             AND properties.buyer_id IS NOT NULL
           GROUP BY properties.buyer_id
         `,
-        values: { catalog_id: catalogId },
+        values: { campaign_id: catalogId },
       } as Record<string, unknown>),
     ]);
 
@@ -264,7 +264,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const { data: globalCatalog, error: globalCatalogError } = await db
     .schema('app')
-    .from('published_catalogs')
+    .from('campaigns')
     .select('id, tenant_id')
     .eq('id', id)
     .is('deleted_at', null)
@@ -277,7 +277,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const [catalogRes, itemsRes, ordersRes, composerPayload] = await Promise.all([
     db
       .schema('app')
-      .from('published_catalogs')
+      .from('campaigns')
       .select('id, tenant_id, name, scope_type, scope_value, valid_from, valid_to, status, share_token, created_by, created_at')
       .eq('id', id)
       .eq('tenant_id', claims.tenant_id)
@@ -285,9 +285,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .single(),
     db
       .schema('app')
-      .from('published_catalog_items')
+      .from('campaign_items')
       .select('id, tenant_product_id, price_override, display_order, created_at')
-      .eq('catalog_id', id)
+      .eq('campaign_id', id)
       .is('deleted_at', null)
       .order('display_order', { ascending: true }),
     db
@@ -295,7 +295,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .from('orders')
       .select('id, buyer_id, total_amount, placed_at, status, created_at')
       .eq('tenant_id', claims.tenant_id)
-      .eq('catalog_id', id)
+      .eq('campaign_id', id)
       .is('deleted_at', null),
     getCatalogComposerPayload(db, claims.tenant_id),
   ]);
@@ -466,7 +466,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const previousCatalogRes = await db
     .schema('app')
-    .from('published_catalogs')
+    .from('campaigns')
     .select('id, created_at')
     .eq('tenant_id', claims.tenant_id)
     .neq('id', id)
@@ -484,7 +484,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .from('orders')
       .select('total_amount, status')
       .eq('tenant_id', claims.tenant_id)
-      .eq('catalog_id', previousCatalogRes.data.id)
+      .eq('campaign_id', previousCatalogRes.data.id)
       .is('deleted_at', null);
 
     if (!prevOrdersRes.error) {
@@ -729,7 +729,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   const { data: globalCatalog, error: globalCatalogError } = await db
     .schema('app')
-    .from('published_catalogs')
+    .from('campaigns')
     .select('id, tenant_id, status, share_token, scope_type, scope_value')
     .eq('id', id)
     .is('deleted_at', null)
@@ -744,7 +744,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const { error } = await db
       .schema('app')
-      .from('published_catalogs')
+      .from('campaigns')
       .update({ valid_to: actionParsed.data.valid_until, updated_by: claims.sub })
       .eq('id', id)
       .eq('tenant_id', claims.tenant_id)
@@ -763,7 +763,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const shareToken = globalCatalog.share_token ?? generateShareToken();
     const { error } = await db
       .schema('app')
-      .from('published_catalogs')
+      .from('campaigns')
       .update({
         status: 'published',
         share_token: shareToken,
@@ -781,7 +781,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         distinctId: claims.sub ?? claims.tenant_id,
         event: 'catalog_published',
         properties: {
-          catalog_id: id,
+          campaign_id: id,
           tenant_id: claims.tenant_id,
           scope_type: globalCatalog.scope_type,
           share_token: shareToken,
@@ -811,7 +811,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!globalCatalog.share_token) {
       const { error } = await db
         .schema('app')
-        .from('published_catalogs')
+        .from('campaigns')
         .update({
           share_token: shareToken,
           updated_by: claims.sub,
@@ -838,9 +838,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (globalCatalog.status !== 'draft') return NextResponse.json({ error: 'Composition can only be edited for draft catalogs' }, { status: 400 });
     const { error } = await db
       .schema('app')
-      .from('published_catalog_items')
+      .from('campaign_items')
       .insert({
-        catalog_id: id,
+        campaign_id: id,
         tenant_product_id: actionParsed.data.tenant_product_id,
         price_override: actionParsed.data.price_override ?? null,
         created_by: claims.sub,
@@ -856,9 +856,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (globalCatalog.status !== 'draft') return NextResponse.json({ error: 'Composition can only be edited for draft catalogs' }, { status: 400 });
     const { error } = await db
       .schema('app')
-      .from('published_catalog_items')
+      .from('campaign_items')
       .update({ deleted_at: new Date().toISOString(), updated_by: claims.sub })
-      .eq('catalog_id', id)
+      .eq('campaign_id', id)
       .eq('tenant_product_id', actionParsed.data.tenant_product_id)
       .is('deleted_at', null);
 
@@ -902,7 +902,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const { data: savedDraft, error: saveDraftError } = await db
       .schema('app')
-      .from('published_catalogs')
+      .from('campaigns')
       .update({
         scope_value: buildCatalogScopeValue({
           scopeType: (globalCatalog.scope_type as ComposerScopeType) === 'all' ? 'all' : 'cohort',
@@ -933,7 +933,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const nextStatus: CatalogStatus = payload.save_mode === 'publish' ? 'published' : 'draft';
   const { data: updatedCatalog, error: updateCatalogError } = await db
     .schema('app')
-    .from('published_catalogs')
+    .from('campaigns')
     .update({
       name: payload.name,
       scope_type: payload.scope_type,
@@ -963,9 +963,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const deletedAt = new Date().toISOString();
   const { error: deleteItemsError } = await db
     .schema('app')
-    .from('published_catalog_items')
+    .from('campaign_items')
     .update({ deleted_at: deletedAt, updated_by: claims.sub })
-    .eq('catalog_id', id)
+    .eq('campaign_id', id)
     .is('deleted_at', null);
 
   if (deleteItemsError) {
@@ -975,17 +975,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (payload.items.length > 0) {
     const { error: insertItemsError } = await db
       .schema('app')
-      .from('published_catalog_items')
+      .from('campaign_items')
       .upsert(
         payload.items.map((item) => ({
-          catalog_id: id,
+          campaign_id: id,
           tenant_product_id: item.tenant_product_id,
           display_order: item.display_order,
           deleted_at: null,
           created_by: claims.sub,
           updated_by: claims.sub,
         })),
-        { onConflict: 'catalog_id,tenant_product_id' },
+        { onConflict: 'campaign_id,tenant_product_id' },
       );
 
     if (insertItemsError) {

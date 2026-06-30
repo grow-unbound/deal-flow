@@ -46,6 +46,7 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
       unit: item.default_uom ?? undefined,
       quantity: 1,
       line_total: item.price,
+      tenant_category_id: item.category_id ?? undefined,
     });
   }
 
@@ -181,9 +182,21 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
             {item.internal_sku}
           </p>
           <div className="pt-2">
-            <span className="font-semibold tabular-nums text-[var(--fg-1)]" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-price)', fontVariantNumeric: 'tabular-nums' }}>
-              {formatCurrency(item.price)}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold tabular-nums text-[var(--fg-1)]" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-price)', fontVariantNumeric: 'tabular-nums' }}>
+                {formatCurrency(item.price)}
+              </span>
+              {item.has_campaign_price && item.resolved_price != null ? (
+                <span className="text-xs line-through text-[var(--fg-3)]" style={{ fontFamily: 'var(--font-mono)' }}>
+                  {formatCurrency(item.resolved_price)}
+                </span>
+              ) : null}
+            </div>
+            {item.has_campaign_price && item.campaign_valid_until ? (
+              <p className="mt-1 text-[11px] text-amber-700">
+                Valid until {new Date(item.campaign_valid_until).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+              </p>
+            ) : null}
           </div>
           {showStockBadge ? <StockBadge status={item.stock_status} /> : null}
         </Link>

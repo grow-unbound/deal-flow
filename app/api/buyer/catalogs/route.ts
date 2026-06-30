@@ -16,7 +16,7 @@ interface BuyerCatalogsResponse {
 }
 
 interface CatalogItemCountRow {
-  catalog_id: string;
+  campaign_id: string;
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (!buyer) {
       const previewRes = await supabaseAdmin
         .schema('app')
-        .from('published_catalogs')
+        .from('campaigns')
         .select('id, name, share_token, valid_to, created_at, hero_image_url')
         .eq('tenant_id', context.tenant_id)
         .eq('status', 'published')
@@ -61,9 +61,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (catalogIds.length > 0) {
       const itemsRes = await supabaseAdmin
         .schema('app')
-        .from('published_catalog_items')
-        .select('catalog_id')
-        .in('catalog_id', catalogIds)
+        .from('campaign_items')
+        .select('campaign_id')
+        .in('campaign_id', catalogIds)
         .is('deleted_at', null);
 
       if (itemsRes.error) {
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const countByCatalog = new Map<string, number>();
     for (const item of itemCounts) {
-      countByCatalog.set(item.catalog_id, (countByCatalog.get(item.catalog_id) ?? 0) + 1);
+      countByCatalog.set(item.campaign_id, (countByCatalog.get(item.campaign_id) ?? 0) + 1);
     }
 
     const payload: BuyerCatalogsResponse = {

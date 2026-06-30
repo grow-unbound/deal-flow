@@ -242,7 +242,7 @@ export async function GET(req: NextRequest) {
     const catalogTouchesMtdByBrand = new Map<string, number>();
     const { data: catalogsData, error: catalogsError } = await db
       .schema('app')
-      .from('published_catalogs')
+      .from('campaigns')
       .select('id, name, status, updated_at, deleted_at')
       .eq('tenant_id', tenantId)
       .eq('status', 'published')
@@ -262,9 +262,9 @@ export async function GET(req: NextRequest) {
     if (allCatalogIds.length > 0) {
       const { data: catalogItemsData, error: catalogItemsError } = await db
         .schema('app')
-        .from('published_catalog_items')
-        .select('catalog_id, tenant_product_id, deleted_at')
-        .in('catalog_id', allCatalogIds)
+        .from('campaign_items')
+        .select('campaign_id, tenant_product_id, deleted_at')
+        .in('campaign_id', allCatalogIds)
         .is('deleted_at', null);
 
       if (catalogItemsError) {
@@ -277,12 +277,12 @@ export async function GET(req: NextRequest) {
       for (const row of catalogItemsData ?? []) {
         const brandId = productToBrand.get(row.tenant_product_id);
         if (!brandId) continue;
-        const meta = catalogMetaById.get(row.catalog_id);
+        const meta = catalogMetaById.get(row.campaign_id);
         if (meta) {
           const cur = latestCatalogByBrand.get(brandId);
           if (!cur || meta.updated_at > cur.updated_at) latestCatalogByBrand.set(brandId, meta);
         }
-        if (monthCatalogIdSet.has(row.catalog_id)) {
+        if (monthCatalogIdSet.has(row.campaign_id)) {
           catalogTouchesMtdByBrand.set(brandId, (catalogTouchesMtdByBrand.get(brandId) ?? 0) + 1);
         }
       }
@@ -353,7 +353,7 @@ export async function GET(req: NextRequest) {
         total_buyers:                  totalBuyers,
         need_attention_count:          needsAttentionCount,
         catalog_freshness_count:       catalogFreshnessCount,
-        total_published_catalogs:      publishedCatalogs.length,
+        total_campaigns:      publishedCatalogs.length,
         catalog_freshness_earliest_days: catalogFreshnessEarliestDays,
       },
       todays_read: {

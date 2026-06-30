@@ -10,7 +10,7 @@ type OrderRow = {
   status: string;
   total_amount: number | null;
   placed_at: string | null;
-  catalog_id: string | null;
+  campaign_id: string | null;
 };
 type OrderItemRow = {
   order_id: string;
@@ -136,8 +136,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     productIds.length
       ? db
           .schema('app')
-          .from('published_catalog_items')
-          .select('catalog_id, tenant_product_id, updated_at')
+          .from('campaign_items')
+          .select('campaign_id, tenant_product_id, updated_at')
           .in('tenant_product_id', productIds)
           .is('deleted_at', null)
       : Promise.resolve({ data: [] }),
@@ -150,13 +150,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .limit(250),
   ]);
 
-  const catalogIds = Array.from(new Set((catalogsItemsRes.data ?? []).map((item: { catalog_id: string }) => item.catalog_id)));
+  const catalogIds = Array.from(new Set((catalogsItemsRes.data ?? []).map((item: { campaign_id: string }) => item.campaign_id)));
 
   const [catalogsRes, ordersRes] = await Promise.all([
     catalogIds.length
       ? db
           .schema('app')
-          .from('published_catalogs')
+          .from('campaigns')
           .select('id, name, scope_type, scope_value, status, valid_from, valid_to, updated_at, created_at')
           .in('id', catalogIds)
           .eq('tenant_id', claims.tenant_id)
@@ -165,7 +165,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     db
       .schema('app')
       .from('orders')
-      .select('id, buyer_id, status, total_amount, placed_at, catalog_id')
+      .select('id, buyer_id, status, total_amount, placed_at, campaign_id')
       .eq('tenant_id', claims.tenant_id)
       .neq('status', 'cancelled')
       .is('deleted_at', null),
@@ -255,11 +255,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
     buyerSpendMap.set(buyerId, buyerCurrent);
 
-    if (order.catalog_id) {
-      const catalogCurrent = catalogStatsMap.get(order.catalog_id) ?? { orders: 0, gmv: 0 };
+    if (order.campaign_id) {
+      const catalogCurrent = catalogStatsMap.get(order.campaign_id) ?? { orders: 0, gmv: 0 };
       catalogCurrent.orders += 1;
       catalogCurrent.gmv += amount;
-      catalogStatsMap.set(order.catalog_id, catalogCurrent);
+      catalogStatsMap.set(order.campaign_id, catalogCurrent);
     }
   }
 

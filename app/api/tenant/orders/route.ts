@@ -53,7 +53,7 @@ interface OrderRow {
   buyer_id: string;
   status: string;
   source: string | null;
-  catalog_id: string | null;
+  campaign_id: string | null;
   estimate_id: string | null;
   placed_by: string | null;
   subtotal: number;
@@ -187,7 +187,7 @@ export async function GET(req: NextRequest) {
       db
         .schema('app')
         .from('orders')
-        .select('id, order_number, buyer_id, location_id, status, source, catalog_id, estimate_id, placed_by, subtotal, tax_amount, total_amount, placed_at, created_at')
+        .select('id, order_number, buyer_id, location_id, status, source, campaign_id, estimate_id, placed_by, subtotal, tax_amount, total_amount, placed_at, created_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .gte('placed_at', period.current_start)
@@ -249,13 +249,13 @@ export async function GET(req: NextRequest) {
     const buyers = (buyersRes.data ?? []) as BuyerRow[];
     const mtdOrders = (mtdOrdersRes.data ?? []) as OrderRow[];
     const prevOrders = (prevOrdersRes.data ?? []) as Array<{ id: string; total_amount: number }>;
-    const catalogIds = Array.from(new Set(mtdOrders.map((order) => order.catalog_id).filter((value): value is string => Boolean(value))));
+    const catalogIds = Array.from(new Set(mtdOrders.map((order) => order.campaign_id).filter((value): value is string => Boolean(value))));
     const estimateIds = Array.from(new Set(mtdOrders.map((order) => order.estimate_id).filter((value): value is string => Boolean(value))));
     const placedByIds = Array.from(new Set(mtdOrders.map((order) => order.placed_by).filter((value): value is string => Boolean(value))));
 
     const [catalogsRes, estimatesRes, placedByMap] = await Promise.all([
       catalogIds.length > 0
-        ? db.schema('app').from('published_catalogs').select('id, name').in('id', catalogIds).is('deleted_at', null)
+        ? db.schema('app').from('campaigns').select('id, name').in('id', catalogIds).is('deleted_at', null)
         : Promise.resolve({ data: [] as Array<{ id: string; name: string }>, error: null }),
       estimateIds.length > 0
         ? db.schema('app').from('estimates').select('id, estimate_number').in('id', estimateIds).is('deleted_at', null)
@@ -356,7 +356,7 @@ export async function GET(req: NextRequest) {
         source_category: sourceCategory,
         source_label: sourceLinePrimary,
         source_detail: sourceLineSecondary,
-        catalog_name: order.catalog_id ? catalogById.get(order.catalog_id) ?? null : null,
+        catalog_name: order.campaign_id ? catalogById.get(order.campaign_id) ?? null : null,
         items_count: itemsCountByOrder.get(order.id) ?? 0,
         gmv: Number(order.total_amount ?? 0),
         subtotal: Number(order.subtotal ?? 0),

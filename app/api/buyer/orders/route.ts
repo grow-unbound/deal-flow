@@ -16,15 +16,16 @@ export interface BuyerOrderPlaceRequest {
     product_name?: string;
   }>;
   notes?: string;
-  catalog_id?: string | null;
+  campaign_id?: string | null;
   location_id?: string | null;
-  delivery_address?: Record<string, unknown> | null;
+  place_of_supply?: string | null;
 }
 
 export interface BuyerOrderPlaceResponse {
   success: boolean;
   order_id?: string;
   order_number?: string | null;
+  whatsapp_sent?: boolean;
   error?: string;
 }
 
@@ -43,7 +44,7 @@ interface OrderRow {
   status: OrderStatus;
   total_amount: number;
   placed_at: string;
-  catalog_id: string | null;
+  campaign_id: string | null;
 }
 
 interface OrderItemCountRow {
@@ -90,7 +91,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
       return NextResponse.json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const { items, notes, catalog_id, location_id, delivery_address } = body;
+    const { items, notes, campaign_id, location_id } = body;
 
     const createFlags = await getInAppCreateFlags(context.tenant_id!);
     if (!createFlags.create_sales_orders) {
@@ -128,10 +129,20 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (!location_id) {
+      return NextResponse.json(
+        { success: false, error: 'Select a delivery location before placing an order' },
+        { status: 400 },
+      );
+    }
+
     const tenant_id = context.tenant_id;
     const buyer_id = profile.buyer.id;
     const placed_by = context.sub;
     const db = supabaseAdmin ?? supabase;
+
+    const placeOfSupply = (typeof body.place_of_supply === 'string' && body.place_of_supply.trim())
+      || 'Unknown';
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { count: orderCount } = await (db as any)
@@ -156,9 +167,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
         order_number,
         status: 'received',
         source: 'buyer_app',
-        catalog_id: catalog_id ?? null,
-        location_id: location_id ?? null,
-        delivery_address: delivery_address ?? null,
+        campaign_id: campaign_id ?? null,
+        location_id,
+        place_of_supply: placeOfSupply,
         subtotal,
         tax_amount,
         total_amount,
@@ -213,30 +224,40 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
       // non-blocking
     }
 
-    // Fire WhatsApp notifications without blocking the response
-    void (async () => {
-      try {
-        const ctx = await fetchWhatsappNotificationContext(
-          tenant_id!,
-          buyer_id,
-          location_id ?? null,
-          'order_placed',
-        );
-        if (ctx) {
-          await Promise.allSettled([
-            sendOrderReceivedBuyer(ctx, typed.id, typed.order_number, total_amount, items.length),
-            sendOrderReceivedSeller(ctx, typed.id, typed.order_number, total_amount, items.length),
-          ]);
+    let whatsappSent = false;
+    try {
+      const ctx = await fetchWhatsappNotificationContext(
+        tenant_id!,
+        buyer_id,
+        location_id,
+        'order_placed',
+      );
+      if (ctx) {
+        const notificationResults = await Promise.allSettled([
+          sendOrderReceivedBuyer(ctx, typed.id, typed.order_number, total_amount, items.length),
+          sendOrderReceivedSeller(ctx, typed.id, typed.order_number, total_amount, items.length),
+        ]);
+        whatsappSent = notificationResults.some((result) => result.status === 'fulfilled');
+        if (whatsappSent) {
+          await (db as any)
+            .schema('app')
+            .from('orders')
+            .update({
+              sent_at: new Date().toISOString(),
+              sent_channel: 'whatsapp',
+            })
+            .eq('id', typed.id);
         }
-      } catch {
-        // non-blocking — order creation already succeeded
       }
-    })();
+    } catch {
+      // non-blocking — order creation already succeeded
+    }
 
     return NextResponse.json({
       success: true,
       order_id: typed.id,
       order_number: typed.order_number,
+      whatsapp_sent: whatsappSent,
     });
   } catch (error) {
     console.error('[POST /api/buyer/orders] unexpected error:', error);
@@ -284,7 +305,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     let query = db
       .schema('app')
       .from('orders')
-      .select('id, order_number, status, total_amount, placed_at, catalog_id')
+      .select('id, order_number, status, total_amount, placed_at, campaign_id')
       .eq('tenant_id', tenantId)
       .eq('buyer_id', buyerId)
       .is('deleted_at', null)
@@ -323,7 +344,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const orderIds = orders.map((o) => o.id);
     const catalogIds = Array.from(
-      new Set(orders.map((o) => o.catalog_id).filter((id): id is string => id !== null))
+      new Set(orders.map((o) => o.campaign_id).filter((id): id is string => id !== null))
     );
 
     const [itemsRes, catalogsRes] = await Promise.all([
@@ -331,7 +352,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         ? db.schema('app').from('order_items').select('order_id').in('order_id', orderIds).is('deleted_at', null)
         : Promise.resolve({ data: [], error: null }),
       catalogIds.length > 0
-        ? db.schema('app').from('published_catalogs').select('id, name').in('id', catalogIds).is('deleted_at', null)
+        ? db.schema('app').from('campaigns').select('id, name').in('id', catalogIds).is('deleted_at', null)
         : Promise.resolve({ data: [], error: null }),
     ]);
 
@@ -364,7 +385,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         status: order.status,
         total_amount: Number(order.total_amount ?? 0),
         placed_at: order.placed_at,
-        catalog_name: order.catalog_id ? (catalogNameById.get(order.catalog_id) ?? null) : null,
+        catalog_name: order.campaign_id ? (catalogNameById.get(order.campaign_id) ?? null) : null,
         items_count: countByOrder.get(order.id) ?? 0,
       })),
       nextCursor,

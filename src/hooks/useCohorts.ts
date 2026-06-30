@@ -42,6 +42,8 @@ export interface CohortsLandingRow {
   description: string | null;
   type: CohortType;
   focus_chips: string[];
+  allowed_brands_count: number | null;
+  allowed_brands_label: string;
   gmv_mtd: number;
   growth_pct: number;
   active_members: number;
@@ -122,6 +124,8 @@ export interface CohortDetailDetailsRules {
   description: string;
   type: string;
   is_static: boolean;
+  allowed_tenant_brand_ids?: string[] | null;
+  allowed_brand_names?: string[];
   rules: {
     filters: Array<{ field: string; operator: string; value: string | string[] }>;
   };
@@ -152,7 +156,7 @@ export interface CohortDetailPerformance {
     order_count_mtd: number;
   }>;
   catalogs: Array<{
-    catalog_id: string;
+    campaign_id: string;
     catalog_name: string;
     sent_at: string;
     opens: number;
@@ -198,6 +202,10 @@ export interface CohortComposerBuyer {
 
 export interface CohortComposerResponse {
   buyers: CohortComposerBuyer[];
+  brands: Array<{
+    id: string;
+    label: string;
+  }>;
   filters: {
     geographies: CohortComposerFilterOption[];
     tiers: CohortComposerFilterOption[];
@@ -364,6 +372,7 @@ export function useSaveCohortComposer(cohortId?: string) {
               name: payload.name,
               description: payload.description ?? '',
               is_static: payload.is_static,
+              allowed_tenant_brand_ids: payload.allowed_tenant_brand_ids ?? null,
               type: payload.is_static ? 'Static list' : 'Rule-based',
               rules: payload.rules ?? { filters: [] },
             },
@@ -372,6 +381,7 @@ export function useSaveCohortComposer(cohortId?: string) {
               filters: payload.rules?.filters ?? [],
               member_count: old.rules_summary.member_count,
               total_tenant_buyers: old.rules_summary.total_tenant_buyers,
+              allowed_brand_names: old.details_rules.allowed_brand_names,
             }),
           };
         });
@@ -429,6 +439,10 @@ export function useUpdateCohortDetail(id: string) {
             name: payload.name ?? old.details_rules.name,
             description: payload.description ?? old.details_rules.description,
             is_static: payload.is_static ?? old.details_rules.is_static,
+            allowed_tenant_brand_ids:
+              payload.allowed_tenant_brand_ids === undefined
+                ? old.details_rules.allowed_tenant_brand_ids
+                : payload.allowed_tenant_brand_ids,
             type:
               payload.is_static !== undefined
                 ? payload.is_static
@@ -458,6 +472,7 @@ export function useUpdateCohortDetail(id: string) {
                 : old.details_rules.rules.filters,
             member_count: old.rules_summary.member_count,
             total_tenant_buyers: old.rules_summary.total_tenant_buyers,
+            allowed_brand_names: old.details_rules.allowed_brand_names,
           }),
         };
       });

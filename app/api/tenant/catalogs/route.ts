@@ -23,7 +23,7 @@ interface CatalogRow {
 }
 
 interface CatalogItemRow {
-  catalog_id: string;
+  campaign_id: string;
   tenant_product_id: string;
 }
 
@@ -62,7 +62,7 @@ interface CohortMemberRow {
 
 interface OrderRow {
   id: string;
-  catalog_id: string | null;
+  campaign_id: string | null;
   total_amount: number | null;
   placed_at: string | null;
 }
@@ -97,18 +97,29 @@ function getStatusTone(status: DisplayStatus): StatusTone {
 }
 
 function buildCatalogScopeValue(input: {
-  scopeType: 'cohort' | 'all';
+  scopeType: 'cohort' | 'buyer' | 'geography' | 'all';
   cohortId?: string | null;
+  buyerId?: string | null;
+  geography?: { state?: string; city?: string; zone?: string } | null;
   filters: CatalogComposerFilterState;
   tagOverrides?: Record<string, CatalogComposerTag | null>;
 }) {
-  return {
-    ...(input.scopeType === 'cohort' && input.cohortId ? { cohort_id: input.cohortId } : {}),
+  const scope: Record<string, unknown> = {
     composer: {
       filters: input.filters,
       tag_overrides: input.tagOverrides ?? {},
     },
   };
+
+  if (input.scopeType === 'cohort' && input.cohortId) {
+    scope.cohort_id = input.cohortId;
+  } else if (input.scopeType === 'buyer' && input.buyerId) {
+    scope.buyer_id = input.buyerId;
+  } else if (input.scopeType === 'geography' && input.geography) {
+    scope.geography = input.geography;
+  }
+
+  return scope;
 }
 
 function generateShareToken() {
@@ -172,7 +183,7 @@ export async function GET(req: NextRequest) {
     const [catalogsRes, ordersRes, prevOrdersRes, cohortsRes] = await Promise.all([
       db
         .schema('app')
-        .from('published_catalogs')
+        .from('campaigns')
         .select('id, name, scope_type, scope_value, valid_from, valid_to, status, created_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
@@ -181,19 +192,19 @@ export async function GET(req: NextRequest) {
       db
         .schema('app')
         .from('orders')
-        .select('id, catalog_id, total_amount, placed_at')
+        .select('id, campaign_id, total_amount, placed_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
-        .not('catalog_id', 'is', null)
+        .not('campaign_id', 'is', null)
         .gte('placed_at', period.current_start)
         .lt('placed_at', period.current_end_exclusive),
       db
         .schema('app')
         .from('orders')
-        .select('id, catalog_id, total_amount, placed_at')
+        .select('id, campaign_id, total_amount, placed_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
-        .not('catalog_id', 'is', null)
+        .not('campaign_id', 'is', null)
         .gte('placed_at', period.previous_start)
         .lt('placed_at', period.previous_end_exclusive),
       db.schema('app').from('cohorts').select('id, name').eq('tenant_id', tenantId).is('deleted_at', null),
@@ -210,9 +221,9 @@ export async function GET(req: NextRequest) {
     if (catalogIds.length > 0) {
       const itemsRes = await db
         .schema('app')
-        .from('published_catalog_items')
-        .select('catalog_id, tenant_product_id')
-        .in('catalog_id', catalogIds)
+        .from('campaign_items')
+        .select('campaign_id, tenant_product_id')
+        .in('campaign_id', catalogIds)
         .is('deleted_at', null);
 
       if (itemsRes.error) {
@@ -286,23 +297,23 @@ export async function GET(req: NextRequest) {
     const masterBrandById = new Map(masterBrands.map((brand) => [brand.id, brand.name]));
     const itemsByCatalog = new Map<string, CatalogItemRow[]>();
     for (const item of items) {
-      if (!itemsByCatalog.has(item.catalog_id)) itemsByCatalog.set(item.catalog_id, []);
-      itemsByCatalog.get(item.catalog_id)?.push(item);
+      if (!itemsByCatalog.has(item.campaign_id)) itemsByCatalog.set(item.campaign_id, []);
+      itemsByCatalog.get(item.campaign_id)?.push(item);
     }
 
     const ordersByCatalog = new Map<string, OrderRow[]>();
     const prevOrdersByCatalog = new Map<string, OrderRow[]>();
 
     for (const order of orders) {
-      if (!order.catalog_id) continue;
-      if (!ordersByCatalog.has(order.catalog_id)) ordersByCatalog.set(order.catalog_id, []);
-      ordersByCatalog.get(order.catalog_id)?.push(order);
+      if (!order.campaign_id) continue;
+      if (!ordersByCatalog.has(order.campaign_id)) ordersByCatalog.set(order.campaign_id, []);
+      ordersByCatalog.get(order.campaign_id)?.push(order);
     }
 
     for (const order of prevOrders) {
-      if (!order.catalog_id) continue;
-      if (!prevOrdersByCatalog.has(order.catalog_id)) prevOrdersByCatalog.set(order.catalog_id, []);
-      prevOrdersByCatalog.get(order.catalog_id)?.push(order);
+      if (!order.campaign_id) continue;
+      if (!prevOrdersByCatalog.has(order.campaign_id)) prevOrdersByCatalog.set(order.campaign_id, []);
+      prevOrdersByCatalog.get(order.campaign_id)?.push(order);
     }
 
     const catalogRows = catalogs.map((catalog, index) => {
@@ -456,7 +467,7 @@ export async function POST(request: NextRequest) {
 
   const { data: insertedCatalog, error: insertError } = await db
     .schema('app')
-    .from('published_catalogs')
+    .from('campaigns')
     .insert({
       tenant_id: claims.tenant_id,
       name: payload.name,
@@ -485,10 +496,10 @@ export async function POST(request: NextRequest) {
   if (payload.items.length > 0) {
     const { error: itemsError } = await db
       .schema('app')
-      .from('published_catalog_items')
+      .from('campaign_items')
       .insert(
         payload.items.map((item) => ({
-          catalog_id: insertedCatalog.id,
+          campaign_id: insertedCatalog.id,
           tenant_product_id: item.tenant_product_id,
           display_order: item.display_order,
           created_by: claims.sub,

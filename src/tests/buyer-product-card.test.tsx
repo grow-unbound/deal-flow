@@ -38,7 +38,7 @@ describe('buyer product card', () => {
         item={{
           id: '1',
           tenant_product_id: 'tp-1',
-          catalog_id: null,
+          campaign_id: null,
           catalog_name: null,
           catalog_valid_until: null,
           internal_sku: 'CP-UNC-TC21ZL6C-VMDS',

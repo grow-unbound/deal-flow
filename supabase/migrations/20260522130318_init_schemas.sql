@@ -361,7 +361,7 @@ CREATE INDEX idx_price_list_assignments_price_list_id ON app.price_list_assignme
 CREATE INDEX idx_price_list_assignments_target ON app.price_list_assignments(target_type, target_id);
 
 -- Published catalogs table
-CREATE TABLE app.published_catalogs (
+CREATE TABLE app.campaigns (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES app.tenants(id) ON DELETE CASCADE,
   name text NOT NULL,
@@ -379,14 +379,14 @@ CREATE TABLE app.published_catalogs (
   updated_by uuid
 );
 
-CREATE INDEX idx_published_catalogs_tenant_id ON app.published_catalogs(tenant_id);
-CREATE INDEX idx_published_catalogs_share_token ON app.published_catalogs(share_token);
-CREATE INDEX idx_published_catalogs_status ON app.published_catalogs(status);
+CREATE INDEX idx_campaigns_tenant_id ON app.campaigns(tenant_id);
+CREATE INDEX idx_campaigns_share_token ON app.campaigns(share_token);
+CREATE INDEX idx_campaigns_status ON app.campaigns(status);
 
 -- Published catalog items table
-CREATE TABLE app.published_catalog_items (
+CREATE TABLE app.campaign_items (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  catalog_id uuid NOT NULL REFERENCES app.published_catalogs(id) ON DELETE CASCADE,
+  campaign_id uuid NOT NULL REFERENCES app.campaigns(id) ON DELETE CASCADE,
   tenant_product_id uuid NOT NULL REFERENCES app.tenant_products(id) ON DELETE CASCADE,
   is_featured boolean DEFAULT false,
   display_order integer,
@@ -395,10 +395,10 @@ CREATE TABLE app.published_catalog_items (
   updated_at timestamptz DEFAULT now(),
   created_by uuid,
   updated_by uuid,
-  UNIQUE(catalog_id, tenant_product_id)
+  UNIQUE(campaign_id, tenant_product_id)
 );
 
-CREATE INDEX idx_published_catalog_items_catalog_id ON app.published_catalog_items(catalog_id);
+CREATE INDEX idx_campaign_items_catalog_id ON app.campaign_items(campaign_id);
 
 -- Orders table
 CREATE TABLE app.orders (
@@ -409,7 +409,7 @@ CREATE TABLE app.orders (
   order_number text NOT NULL,
   status text DEFAULT 'draft' CHECK (status IN ('draft', 'received', 'confirmed', 'partially_dispatched', 'dispatched', 'delivered', 'cancelled')),
   source text CHECK (source IN ('buyer_app', 'cockpit_manual', 'csv_import')),
-  catalog_id uuid REFERENCES app.published_catalogs(id) ON DELETE SET NULL,
+  campaign_id uuid REFERENCES app.campaigns(id) ON DELETE SET NULL,
   subtotal numeric,
   tax_amount numeric,
   total_amount numeric,
@@ -485,7 +485,7 @@ CREATE TRIGGER cohorts_updated_at BEFORE UPDATE ON app.cohorts
 CREATE TRIGGER price_lists_updated_at BEFORE UPDATE ON app.price_lists
   FOR EACH ROW EXECUTE FUNCTION app.set_updated_at();
 
-CREATE TRIGGER published_catalogs_updated_at BEFORE UPDATE ON app.published_catalogs
+CREATE TRIGGER campaigns_updated_at BEFORE UPDATE ON app.campaigns
   FOR EACH ROW EXECUTE FUNCTION app.set_updated_at();
 
 CREATE TRIGGER orders_updated_at BEFORE UPDATE ON app.orders

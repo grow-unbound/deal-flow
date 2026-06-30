@@ -102,6 +102,11 @@ export function CohortBuyersTab({ buyers, rules_summary, activeMembersMtd }: Coh
             No saved filters. This cohort uses its manually curated member list only.
           </div>
         )}
+
+        <div className="mt-3 rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Allowed brands</p>
+          <p className="mt-1 text-base text-cream-900">{rules_summary.allowed_brands_label}</p>
+        </div>
       </article>
 
       <div>

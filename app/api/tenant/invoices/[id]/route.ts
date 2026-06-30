@@ -153,6 +153,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   const buyerId = inv.buyer_id as string | null;
+  const locationId = inv.location_id as string | null;
+  const locationRes = locationId
+    ? await db.schema('app').from('locations').select('name').eq('tenant_id', claims.tenant_id).eq('id', locationId).is('deleted_at', null).maybeSingle()
+    : { data: null, error: null };
+  if (locationRes.error) {
+    return NextResponse.json({ error: 'Failed to load invoice location' }, { status: 500 });
+  }
   const { data: buyer } = buyerId
     ? await db
       .schema('app')
@@ -395,6 +402,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const payload: InvoiceDetailResponse = {
     id: String(inv.id),
     doc_number: String(inv.invoice_number ?? '—'),
+    location_id: locationId,
+    location_name: (locationRes.data?.name as string | null | undefined) ?? null,
     db_status: dbStatus,
     status: eff,
     version: Number(inv.version ?? 1),

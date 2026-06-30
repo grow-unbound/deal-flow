@@ -46,9 +46,14 @@ export async function loadInvoiceDocument(
   if (viewerClaims && !canAccessDocumentLocation(viewerClaims, inv.location_id)) return 'forbidden';
 
   const buyerId = typeof inv.buyer_id === 'string' ? inv.buyer_id : null;
+  const locationId = typeof inv.location_id === 'string' ? inv.location_id : null;
   const effectiveClaims = viewerClaims ?? { role: 'seller_admin', location_ids: null };
   const availableLocations = await loadAccessibleSellerLocations(db, tenantId, effectiveClaims);
   const defaultLocationId = resolveDefaultSellerLocationId(effectiveClaims, availableLocations);
+  const locationRes = locationId
+    ? await db.schema('app').from('locations').select('name').eq('tenant_id', tenantId).eq('id', locationId).is('deleted_at', null).maybeSingle()
+    : { data: null, error: null };
+  if (locationRes.error) throw locationRes.error;
 
   const [buyerRes, itemsRes, tenantRes] = await Promise.all([
     buyerId
@@ -281,7 +286,8 @@ export async function loadInvoiceDocument(
     invoice_number: String(inv.invoice_number ?? '—'),
     status: String(inv.status ?? 'draft'),
     buyer_id: buyerId,
-    location_id: (inv.location_id as string | null | undefined) ?? defaultLocationId,
+    location_id: locationId ?? defaultLocationId,
+    location_name: (locationRes.data?.name as string | null | undefined) ?? null,
     available_locations: availableLocations,
     invoice_date: isoDateValue(inv.invoice_date as string | null | undefined, fallbackDate),
     due_date: isoDateValue(inv.due_date as string | null | undefined, null as unknown as string) || null,

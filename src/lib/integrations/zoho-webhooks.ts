@@ -1,5 +1,15 @@
 export type ZohoWebhookRuleType = 'add_edit' | 'delete';
 
+export interface ZohoWebhookRegistrationTarget {
+  webhook_id?: string;
+  webhook_name?: string;
+  url?: string;
+  entity?: string;
+  related_rules?: Array<{
+    workflow_id?: string;
+  }>;
+}
+
 const ZOHO_PROVIDER_ID_FIELD_BY_ENTITY: Record<string, string> = {
   contacts: 'contact_id',
   items: 'item_id',
@@ -69,21 +79,35 @@ export function buildZohoWebhookRegistrationPayload(input: {
   secret: string;
   ruleType: ZohoWebhookRuleType;
 }) {
+  // Append ?event_type= to the URL so the webhook handler can distinguish
+  // upsert from delete without parsing the body — Zoho's Default Payload does
+  // not include an event_type field in the body.
+  const eventTypeParam = input.ruleType === 'delete' ? 'delete' : 'upsert';
+  const urlWithEventType = `${input.webhookUrl}?event_type=${eventTypeParam}`;
+
   return {
     webhook_name: `${input.entityType} ${input.ruleType} - Yukti`,
     description: `Yukti inbound ${input.entityType} ${input.ruleType}`,
     entity: input.providerEntity,
     method: 'POST',
-    url: input.webhookUrl,
+    url: urlWithEventType,
     secret: input.secret,
     headers: [{
       param_name: 'x-zoho-webhook-token',
-      param_value: input.secret,
+      param_value: input.secret,  // always sent — never empty
     }],
-    // Omitting body_type/raw_data selects Zoho's Default Payload. That is the
-    // working WineYard contract: JSON with the complete entity object, e.g.
-    // { "invoice": { ...all invoice fields... } }.
+    // Explicitly request JSON payload format (full entity)
+    // Valid Zoho body_type values: 'json', 'form'
+    // Requesting 'json' ensures Zoho sends the complete entity object
+    body_type: 'json',
   };
+}
+
+export function buildZohoWebhookRegistrationName(input: {
+  entityType: string;
+  ruleType: ZohoWebhookRuleType;
+}) {
+  return `${input.entityType} ${input.ruleType} - Yukti`;
 }
 
 export function buildZohoWorkflowRegistrationPayload(input: {
@@ -106,4 +130,99 @@ export function buildZohoWorkflowRegistrationPayload(input: {
       },
     ],
   };
+}
+
+function getZohoModulePath(integrationTypeId: string) {
+  return integrationTypeId === 'zoho_inventory' ? 'inventory/v1' : 'books/v3';
+}
+
+async function listZohoWebhooks(input: {
+  accessToken: string;
+  orgId: string;
+  dc: string;
+  integrationTypeId: string;
+}): Promise<ZohoWebhookRegistrationTarget[]> {
+  const url = new URL(`/${getZohoModulePath(input.integrationTypeId)}/settings/webhooks`, `https://www.zohoapis.${input.dc}`);
+  url.searchParams.set('organization_id', input.orgId);
+
+  const response = await fetch(url.toString(), {
+    headers: { Authorization: `Zoho-oauthtoken ${input.accessToken}` },
+  });
+  const json = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+  if (!response.ok || json.code !== 0) {
+    throw new Error(`Zoho webhook list failed (${response.status}): ${String(json.message ?? 'Unknown Zoho error')}`);
+  }
+
+  return Array.isArray(json.webhooks)
+    ? (json.webhooks as ZohoWebhookRegistrationTarget[]).filter((value) => typeof value === 'object' && value !== null)
+    : [];
+}
+
+export async function deleteZohoWebhookRegistrations(input: {
+  accessToken: string;
+  orgId: string;
+  dc: string;
+  integrationTypeId: string;
+  remoteWebhookIds?: string[];
+  workflowIds?: string[];
+}): Promise<void> {
+  const modulePath = getZohoModulePath(input.integrationTypeId);
+  const webhookIds = [...new Set((input.remoteWebhookIds ?? []).filter((id): id is string => Boolean(id)))];
+  const workflowIds = [...new Set((input.workflowIds ?? []).filter((id): id is string => Boolean(id)))];
+
+  await Promise.all(workflowIds.map((workflowId) => {
+    const workflowUrl = new URL(`/${modulePath}/settings/workflows/${workflowId}`, `https://www.zohoapis.${input.dc}`);
+    workflowUrl.searchParams.set('organization_id', input.orgId);
+    return fetch(workflowUrl.toString(), {
+      method: 'DELETE',
+      headers: { Authorization: `Zoho-oauthtoken ${input.accessToken}` },
+    }).catch(() => undefined);
+  }));
+
+  await Promise.all(webhookIds.map((webhookId) => {
+    const webhookUrl = new URL(`/${modulePath}/settings/webhooks/${webhookId}`, `https://www.zohoapis.${input.dc}`);
+    webhookUrl.searchParams.set('organization_id', input.orgId);
+    return fetch(webhookUrl.toString(), {
+      method: 'DELETE',
+      headers: { Authorization: `Zoho-oauthtoken ${input.accessToken}` },
+    }).catch(() => undefined);
+  }));
+}
+
+export async function deleteZohoWebhookRegistrationsByName(input: {
+  accessToken: string;
+  orgId: string;
+  dc: string;
+  integrationTypeId: string;
+  webhookNames: string[];
+  callbackUrls?: string[];
+}): Promise<void> {
+  const webhooks = await listZohoWebhooks(input);
+  const matching = webhooks.filter((webhook) => {
+    if (typeof webhook.webhook_name === 'string' && input.webhookNames.includes(webhook.webhook_name)) {
+      return true;
+    }
+
+    if (typeof webhook.url === 'string' && (input.callbackUrls ?? []).some((callbackUrl) => webhook.url === callbackUrl)) {
+      return true;
+    }
+
+    return false;
+  });
+
+  const workflowIds = matching.flatMap((webhook) => (
+    Array.isArray(webhook.related_rules)
+      ? webhook.related_rules.flatMap((rule) => (typeof rule?.workflow_id === 'string' ? [rule.workflow_id] : []))
+      : []
+  ));
+
+  await deleteZohoWebhookRegistrations({
+    accessToken: input.accessToken,
+    orgId: input.orgId,
+    dc: input.dc,
+    integrationTypeId: input.integrationTypeId,
+    remoteWebhookIds: matching.flatMap((webhook) => (typeof webhook.webhook_id === 'string' ? [webhook.webhook_id] : [])),
+    workflowIds,
+  });
 }

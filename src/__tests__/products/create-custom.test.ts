@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { CustomProductSchema } from '@/lib/zod';
 
 // ─── Mock data ───────────────────────────────────────────────────────────────
 
@@ -10,6 +11,7 @@ const baseCustomProduct = {
   tenant_brand_id: BRAND_ID,
   internal_sku: 'CUSTOM-001',
   name: 'My Custom Product',
+  name_override: 'My Custom Product',
   mrp: 500,
   base_selling_price: 400,
   default_uom: 'pcs',
@@ -223,5 +225,17 @@ describe('Custom product creation — POST /api/tenant/products', () => {
       'https://example.com/a.jpg',
       'https://example.com/b.jpg',
     ]);
+  });
+
+  it('requires name_override in the shared custom product schema', () => {
+    const validSchemaInput = {
+      ...baseCustomProduct,
+      tenant_brand_id: '11111111-1111-1111-1111-111111111111',
+    };
+    const { name_override: _nameOverride, ...withoutOverride } = validSchemaInput;
+    void _nameOverride;
+
+    expect(CustomProductSchema.safeParse(validSchemaInput).success).toBe(true);
+    expect(CustomProductSchema.safeParse(withoutOverride).success).toBe(false);
   });
 });

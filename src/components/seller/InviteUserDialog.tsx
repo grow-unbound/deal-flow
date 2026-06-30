@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm, type UseFormSetError } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
@@ -10,16 +10,6 @@ import { supabaseBrowser } from '@/lib/supabase-browser';
 import { useTenantLocations } from '@/hooks/useTenantLocations';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import {
   Form,
@@ -30,6 +20,15 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import {
+  DiscardChangesDialog,
+  FormOverlay,
+  FormOverlayBody,
+  FormOverlayFooter,
+  FormOverlayHeader,
+  useDirtyCloseGuard,
+} from '@/components/ui/form-overlay';
+import { SearchOverlayPicker } from '@/components/ui/search-overlay-picker';
 import { InviteUserSchema, type InviteUserInput } from '@/lib/zod';
 import { cn } from '@/lib/utils';
 import type { TeamMember } from '@/types/team';
@@ -100,8 +99,10 @@ function RoleToggle({
 export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialogProps) {
   const queryClient = useQueryClient();
   const isEdit = Boolean(member);
-  const { data: locationsResponse } = useTenantLocations();
+  const { data: locationsResponse, isLoading: locationsLoading } = useTenantLocations();
   const availableLocations = (locationsResponse?.locations ?? []).filter((location) => location.deleted_at == null);
+  const [locationSearchOpen, setLocationSearchOpen] = useState(false);
+  const [locationSearchQuery, setLocationSearchQuery] = useState('');
   const form = useForm<InviteUserInput>({
     resolver: zodResolver(InviteUserSchema),
     defaultValues: {
@@ -126,6 +127,21 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
 
   const roleValue = watch('role');
   const selectedLocationIds = watch('location_ids') ?? [];
+  const dirtyGuard = useDirtyCloseGuard({
+    isDirty: form.formState.isDirty,
+    onConfirmClose: () => {
+      reset({
+        full_name: member?.full_name ?? '',
+        email: member?.email ?? '',
+        phone: normalizePhone(member?.phone),
+        role: member?.role ?? 'seller_assistant',
+        location_ids: member?.location_ids ?? [],
+      });
+      setLocationSearchOpen(false);
+      setLocationSearchQuery('');
+      onOpenChange(false);
+    },
+  });
 
   useEffect(() => {
     if (!open) {
@@ -136,6 +152,8 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
         role: member?.role ?? 'seller_assistant',
         location_ids: member?.location_ids ?? [],
       });
+      setLocationSearchOpen(false);
+      setLocationSearchQuery('');
       return;
     }
 
@@ -146,11 +164,15 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
       role: member?.role ?? 'seller_assistant',
       location_ids: member?.location_ids ?? [],
     });
+    setLocationSearchOpen(false);
+    setLocationSearchQuery('');
   }, [member, open, reset]);
 
   useEffect(() => {
     if (roleValue === 'seller_admin' && selectedLocationIds.length > 0) {
       setValue('location_ids', [], { shouldValidate: true, shouldDirty: true });
+      setLocationSearchOpen(false);
+      setLocationSearchQuery('');
       return;
     }
 
@@ -163,6 +185,33 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
       setValue('location_ids', [availableLocations[0].id], { shouldValidate: true });
     }
   }, [availableLocations, member?.role, roleValue, selectedLocationIds.length, setValue]);
+
+  const filteredLocations = useMemo(() => {
+    const q = locationSearchQuery.trim().toLowerCase();
+    if (!q) return availableLocations;
+    return availableLocations.filter((location) =>
+      [location.name, location.address.city, location.address.state, location.type]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(q)),
+    );
+  }, [availableLocations, locationSearchQuery]);
+
+  const selectedLocations = useMemo(
+    () => availableLocations.filter((location) => selectedLocationIds.includes(location.id)),
+    [availableLocations, selectedLocationIds],
+  );
+
+  const selectedLocationSummary = useMemo(() => {
+    if (selectedLocations.length === 0) return 'Search locations';
+    const first = selectedLocations[0];
+    return selectedLocations.length === 1
+      ? first.name
+      : `${first.name} +${selectedLocations.length - 1} more`;
+  }, [selectedLocations]);
+
+  const locationTriggerDescription = selectedLocations.length > 0
+    ? `${selectedLocations.length} location${selectedLocations.length === 1 ? '' : 's'} selected`
+    : 'Assign the user to one or more locations.';
 
   function toggleLocation(locationId: string, checked: boolean) {
     const next = checked
@@ -239,42 +288,26 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) {
-          clearErrors();
-          reset({
-            full_name: member?.full_name ?? '',
-            email: member?.email ?? '',
-            phone: normalizePhone(member?.phone),
-            role: member?.role ?? 'seller_assistant',
-            location_ids: member?.location_ids ?? [],
-          });
-        }
-        onOpenChange(nextOpen);
-      }}
-    >
-      <DialogContent className="sm:max-w-xl bg-cream-50 border-cream-200 p-0 overflow-hidden">
-        <DialogHeader>
-          <DialogTitle className="font-display text-cream-900 text-h3">
-            {isEdit ? 'Edit User' : 'Add user'}
-          </DialogTitle>
-          <DialogDescription className="text-cream-700">
-            {isEdit
+    <>
+      <FormOverlay open={open} onOpenChange={dirtyGuard.handleOpenChange}>
+        <FormOverlayHeader
+          eyebrow="Settings"
+          title={isEdit ? 'Edit user' : 'Add user'}
+          description={
+            isEdit
               ? 'Update the user profile, contact details, and role for this tenant.'
-              : 'Create a new user for this tenant workspace and send an invite.'}
-          </DialogDescription>
-        </DialogHeader>
+              : 'Create a new user for this tenant workspace and send an invite.'
+          }
+        />
 
         <Form {...form}>
-          <form onSubmit={handleSubmit(onSubmit)}>
-            <DialogBody className="space-y-4 sm:space-y-5">
-              {errors.root && (
+          <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+            <FormOverlayBody className="flex-1 space-y-4 overflow-y-auto sm:space-y-5">
+              {errors.root ? (
                 <Alert variant="danger">
                   <AlertDescription>{errors.root.message}</AlertDescription>
                 </Alert>
-              )}
+              ) : null}
 
               <FormField
                 control={form.control}
@@ -387,41 +420,85 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
                       <FormLabel className="text-caption font-medium text-cream-800">
                         Locations <span className="text-danger-500">*</span>
                       </FormLabel>
-                      <div className="rounded-sm border border-cream-300 bg-white">
-                        {availableLocations.length > 0 ? (
-                          <div className="space-y-0 border-cream-200 p-3">
-                            {availableLocations.map((location, index) => (
-                              <div
+                      <SearchOverlayPicker
+                        open={locationSearchOpen}
+                        onOpenChange={(next) => {
+                          setLocationSearchOpen(next);
+                          if (!next) {
+                            setLocationSearchQuery('');
+                          }
+                        }}
+                        title="Select locations"
+                        eyebrow="Settings"
+                        description="Assign the seller assistant to one or more locations."
+                        triggerTitle={selectedLocationSummary}
+                        triggerDescription={locationTriggerDescription}
+                        searchValue={locationSearchQuery}
+                        onSearchValueChange={setLocationSearchQuery}
+                        searchPlaceholder="Search locations…"
+                        loading={locationsLoading}
+                      >
+                        {selectedLocations.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {selectedLocations.map((location) => (
+                              <button
                                 key={location.id}
-                                className={cn(
-                                  'flex items-start justify-between gap-3 py-2',
-                                  index > 0 && 'border-t border-cream-200',
-                                )}
+                                type="button"
+                                onClick={() => toggleLocation(location.id, false)}
+                                className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-medium text-teal-800 transition-colors hover:bg-teal-100"
                               >
-                                <div className="min-w-0">
-                                  <p className="text-body-sm font-medium text-cream-900">{location.name}</p>
-                                  <p className="text-caption text-cream-600">
-                                    {location.address.city
-                                      ? `${location.address.city}${location.address.state ? `, ${location.address.state}` : ''}`
-                                      : location.type.replace(/_/g, ' ')}
-                                  </p>
-                                </div>
-                                <FormControl>
-                                  <Checkbox
-                                    checked={selectedLocationIds.includes(location.id)}
-                                    onCheckedChange={(checked) => toggleLocation(location.id, checked === true)}
-                                    aria-label={`Assign ${location.name}`}
-                                  />
-                                </FormControl>
-                              </div>
+                                <span>{location.name}</span>
+                                <span aria-hidden="true" className="text-teal-500">×</span>
+                              </button>
                             ))}
                           </div>
-                        ) : (
-                          <div className="p-3 text-body-sm text-cream-600">
-                            Add at least one location in Settings before inviting a seller assistant.
+                        ) : null}
+
+                        {locationsLoading ? (
+                          <div className="space-y-1">
+                            {Array.from({ length: 3 }).map((_, idx) => (
+                              <div key={idx} className="h-12 animate-pulse rounded-[8px] bg-cream-100" />
+                            ))}
                           </div>
+                        ) : filteredLocations.length > 0 ? (
+                          <div className="space-y-0.5">
+                            {filteredLocations.map((location) => {
+                              const selected = selectedLocationIds.includes(location.id);
+                              return (
+                                <button
+                                  key={location.id}
+                                  type="button"
+                                  onClick={() => toggleLocation(location.id, !selected)}
+                                  className={[
+                                    'flex w-full items-center justify-between rounded-[8px] px-3 py-[10px] text-left transition-colors',
+                                    selected ? 'border border-ember-100 bg-ember-50' : 'hover:bg-cream-100',
+                                  ].join(' ')}
+                                >
+                                  <div className="min-w-0">
+                                    <p className="text-base font-medium text-cream-900">{location.name}</p>
+                                    <p className="mt-0.5 text-sm text-cream-700">
+                                      {location.address.city
+                                        ? `${location.address.city}${location.address.state ? `, ${location.address.state}` : ''}`
+                                        : location.type.replace(/_/g, ' ')}
+                                    </p>
+                                  </div>
+                                  <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">
+                                    {selected ? 'Selected' : 'Add'}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : locationSearchQuery.trim() ? (
+                          <p className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-500">
+                            No locations match this search.
+                          </p>
+                        ) : (
+                          <p className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-500">
+                            Start typing to search locations.
+                          </p>
                         )}
-                      </div>
+                      </SearchOverlayPicker>
                       <FormDescription className="text-caption text-cream-600">
                         Seller assistants can only work within their assigned locations.
                       </FormDescription>
@@ -430,22 +507,13 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
                   )}
                 />
               ) : null}
-            </DialogBody>
-            <DialogFooter className="justify-end gap-2">
+            </FormOverlayBody>
+
+            <FormOverlayFooter className="justify-end gap-2">
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => {
-                  clearErrors();
-                  reset({
-                    full_name: member?.full_name ?? '',
-                    email: member?.email ?? '',
-                    phone: normalizePhone(member?.phone),
-                    role: member?.role ?? 'seller_assistant',
-                    location_ids: member?.location_ids ?? [],
-                  });
-                  onOpenChange(false);
-                }}
+                onClick={() => dirtyGuard.handleOpenChange(false)}
               >
                 Cancel
               </Button>
@@ -456,10 +524,16 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
                 {isEdit ? <Save size={16} /> : <UserPlus size={16} />}
                 {isSubmitting ? (isEdit ? 'Saving…' : 'Creating…') : isEdit ? 'Save changes' : 'Create User'}
               </Button>
-            </DialogFooter>
+            </FormOverlayFooter>
           </form>
         </Form>
-      </DialogContent>
-    </Dialog>
+      </FormOverlay>
+
+      <DiscardChangesDialog
+        open={dirtyGuard.discardOpen}
+        onOpenChange={dirtyGuard.setDiscardOpen}
+        onDiscard={dirtyGuard.confirmDiscard}
+      />
+    </>
   );
 }

@@ -60,7 +60,7 @@ export interface BrandsKpis {
   total_buyers: number;
   need_attention_count: number;
   catalog_freshness_count: number;
-  total_published_catalogs?: number;
+  total_campaigns?: number;
   catalog_freshness_earliest_days: number | null;
 }
 

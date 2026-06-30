@@ -51,6 +51,8 @@ export function LinesTable({
   resetEnabled = false,
   title,
   description,
+  autoFocusLineId,
+  onAutoFocusHandled,
   showNotesControls = true,
   showFreightControls = true,
   notesValue,
@@ -83,6 +85,8 @@ export function LinesTable({
   resetEnabled?: boolean;
   title?: string;
   description?: string;
+  autoFocusLineId?: string | null;
+  onAutoFocusHandled?: () => void;
   showNotesControls?: boolean;
   showFreightControls?: boolean;
   notesValue: string;
@@ -102,11 +106,12 @@ export function LinesTable({
   onToggleInternal: () => void;
 }) {
   const activeLines = lines.filter((line) => line.diff !== 'removed');
-  const colCount = readOnly ? 7 : 8;
+  const colCount = readOnly ? 6 : 7;
   const bodyLines = readOnly ? activeLines : lines;
   const showDualNotes = !singleNoteMode;
   const topSearchAnchorRef = useRef<HTMLDivElement | null>(null);
   const productSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const quantityInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const listboxId = useId();
   const [lineFilterQuery, setLineFilterQuery] = useState('');
   const [highlightedProductIndex, setHighlightedProductIndex] = useState(0);
@@ -123,6 +128,15 @@ export function LinesTable({
   useEffect(() => {
     if (!searchOpen) setHighlightedProductIndex(0);
   }, [searchOpen]);
+
+  useEffect(() => {
+    if (!autoFocusLineId || readOnly) return;
+    const input = quantityInputRefs.current[autoFocusLineId];
+    if (!input) return;
+    input.focus();
+    input.select();
+    onAutoFocusHandled?.();
+  }, [autoFocusLineId, onAutoFocusHandled, readOnly, visibleLines]);
 
   const showBottomProductSearch = !readOnly && buyerSelected;
 
@@ -213,10 +227,9 @@ export function LinesTable({
         <ScrollableTableShell>
           <table className="lines-table w-full table-fixed text-left text-base">
             <colgroup>
-              <col className="w-10" />
-              <col className="min-w-0" />
-              <col className="w-[4.5rem]" />
-              <col className="w-[5.5rem]" />
+              <col className="w-[4.25rem]" />
+              <col className="w-[42%]" />
+              <col className="w-[5.75rem]" />
               <col className="w-[6.5rem]" />
               <col className="w-[4.5rem]" />
               <col className="w-[6.5rem]" />
@@ -224,21 +237,20 @@ export function LinesTable({
             </colgroup>
             <thead>
               <tr className="sticky top-0 z-[1] border-b border-cream-200 bg-white">
-                <th className="table-label px-3 py-2 text-cream-700">#</th>
+                <th className="table-label px-5 py-2 text-cream-700">#</th>
                 <th className="table-label px-3 py-2 text-cream-700">Product</th>
-                <th className="table-label num px-2 py-2 text-right text-cream-700">Qty</th>
-                <th className="table-label num px-2 py-2 text-right text-cream-700">Base</th>
+                <th className="table-label num px-2 py-2 text-right text-cream-700">Quantity</th>
+                <th className="table-label num px-2 py-2 text-right text-cream-700">BASE PRICE</th>
                 <th className="table-label num px-2 py-2 text-right text-cream-700">Pricelist</th>
-                <th className="table-label num px-2 py-2 text-right text-cream-700">Disc %</th>
                 <th className="table-label num px-2 py-2 text-right text-cream-700">Amount</th>
                 {!readOnly ? <th className="table-label px-1 py-2 text-cream-700" /> : null}
               </tr>
             </thead>
           <tbody>
             {showBottomProductSearch ? (
-              <tr className="sticky top-[41px] z-[2] border-b border-cream-200 bg-white shadow-[0_4px_12px_rgba(0,0,0,0.04)]">
+              <tr className="sticky top-[41px] z-[2] border-b border-cream-200 bg-white">
                 <td colSpan={colCount} className="p-0">
-                  <div ref={topSearchAnchorRef} className="relative px-4 py-3">
+                  <div ref={topSearchAnchorRef} className="relative px-4 py-2">
                     <Search className="pointer-events-none absolute left-7 top-1/2 h-4 w-4 -translate-y-1/2 text-cream-500" />
                     <Input
                       ref={productSearchInputRef}
@@ -256,7 +268,7 @@ export function LinesTable({
                         window.setTimeout(() => onSearchOpenChange(false), 120);
                       }}
                       onKeyDown={handleProductSearchKeyDown}
-                      className="h-10 pl-10"
+                      className="h-10 border-cream-300 pl-10 shadow-none"
                       placeholder="Search product, SKU, or brand to add a line"
                     />
                     <ProductSearchDropdown
@@ -293,7 +305,7 @@ export function LinesTable({
               if (!readOnly && line.diff === 'removed') {
                 return (
                   <tr key={line.id} className={cn('border-b border-cream-50', lineRowClass(line, readOnly))}>
-                    <td className="px-3 py-3 text-cream-400">{index + 1}</td>
+                    <td className="px-5 py-3 text-cream-400">{index + 1}</td>
                     <td colSpan={colCount - 1} className="px-3 py-3 text-cream-500 line-through">
                       {line.product_name} (removed)
                     </td>
@@ -303,7 +315,7 @@ export function LinesTable({
 
               return (
                 <tr key={line.id} className={cn('border-b border-cream-50', lineRowClass(line, readOnly))}>
-                  <td className="px-3 py-3 tabular-nums text-cream-600">{index + 1}</td>
+                  <td className="px-5 py-3 tabular-nums text-cream-600">{index + 1}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-start gap-3">
                       <EntityAvatar initials={line.brand_initials} hue={line.brand_hue} size={32} />
@@ -324,6 +336,9 @@ export function LinesTable({
                     ) : (
                       <div className="qty-cell editable inline-flex items-center justify-end">
                         <Input
+                          ref={(node) => {
+                            quantityInputRefs.current[line.id] = node;
+                          }}
                           className="h-8 w-[4.5rem] text-right tabular-nums"
                           inputMode="numeric"
                           value={formatNumberForInput(line.qty)}
@@ -357,21 +372,6 @@ export function LinesTable({
                           }}
                         />
                       </div>
-                    )}
-                  </td>
-                  <td className="num px-2 py-3 text-right">
-                    {readOnly ? (
-                      <span className="field-value tabular-nums">{line.disc_pct}%</span>
-                    ) : (
-                      <Input
-                        className="editable h-8 text-right tabular-nums"
-                        value={String(line.disc_pct)}
-                        onChange={(event) => {
-                          const next = Number(event.target.value);
-                          if (!Number.isFinite(next) || next < 0 || next > 100) return;
-                          onLineChange(line.id, { disc_pct: next });
-                        }}
-                      />
                     )}
                   </td>
                   <td className="num-display px-2 py-3 text-right font-mono text-sm tabular-nums text-cream-900">

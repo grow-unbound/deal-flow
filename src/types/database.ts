@@ -244,6 +244,7 @@ export type Database = {
           last_synced_at: string | null;
           sync_status: 'synced' | 'pending_push' | 'conflict' | 'error' | null;
           external_hash: string | null;
+          error_reason: string | null;
           created_at: string;
           updated_at: string;
           created_by: string | null;
@@ -260,6 +261,7 @@ export type Database = {
           last_synced_at?: string | null;
           sync_status?: 'synced' | 'pending_push' | 'conflict' | 'error' | null;
           external_hash?: string | null;
+          error_reason?: string | null;
           created_by?: string | null;
           updated_by?: string | null;
           deleted_at?: string | null;
@@ -419,7 +421,7 @@ export type Database = {
           order_number: string;
           status: 'draft' | 'received' | 'confirmed' | 'partially_dispatched' | 'dispatched' | 'delivered' | 'cancelled';
           source: 'buyer_app' | 'cockpit_manual' | 'csv_import';
-          catalog_id: string | null;
+          campaign_id: string | null;
           subtotal: number;
           tax_amount: number;
           total_amount: number;

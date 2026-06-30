@@ -59,7 +59,7 @@ export function useBuyerRealtime({ tenantId, buyerId, buyerCohortIds, onNew, onR
       .channel(`buyer:${tenantId}:${buyerId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'app', table: 'published_catalogs', filter: `tenant_id=eq.${tenantId}` },
+        { event: '*', schema: 'app', table: 'campaigns', filter: `tenant_id=eq.${tenantId}` },
         (payload) => {
           const record = payload.new as CatalogRecord | undefined;
           if (!record || record.status !== 'published') return;
