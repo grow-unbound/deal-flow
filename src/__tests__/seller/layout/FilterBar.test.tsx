@@ -3,7 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 
 import { FilterBar, type FilterBarGroup } from '@/components/seller/layout';
 
-function renderFilterBar(groups: FilterBarGroup[]) {
+function renderFilterBar(groups: FilterBarGroup[], props?: { searchValue?: string; searchLoading?: boolean }) {
   return render(
     <div style={{ maxWidth: 220, overflowX: 'auto' }}>
       <FilterBar
@@ -14,6 +14,8 @@ function renderFilterBar(groups: FilterBarGroup[]) {
         sortBy="Recent first"
         hideViewToggle
         groups={groups}
+        searchValue={props?.searchValue ?? ''}
+        searchLoading={props?.searchLoading}
       />
     </div>,
   );
@@ -88,6 +90,56 @@ describe('FilterBar', () => {
     fireEvent.click(within(screen.getByRole('menu')).getByRole('button', { name: 'All' }));
 
     expect(onChange).toHaveBeenCalledWith([]);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('shows a clear button when search has text and clears on click', () => {
+    const onSearchChange = vi.fn();
+
+    render(
+      <div style={{ maxWidth: 220, overflowX: 'auto' }}>
+        <FilterBar
+          count="12 results"
+          searchPlaceholder="Search items…"
+          chips={[]}
+          activeChip=""
+          sortBy="Recent first"
+          hideViewToggle
+          searchValue="alpha"
+          onSearchChange={onSearchChange}
+        />
+      </div>,
+    );
+
+    expect(screen.getByRole('button', { name: 'Clear search' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
+    expect(onSearchChange).toHaveBeenCalledWith('');
+  });
+
+  it('shows a loading indicator while search is in flight', () => {
+    const { container } = renderFilterBar([], { searchValue: 'alpha', searchLoading: true });
+
+    expect(container.querySelector('svg.animate-spin')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Clear search' })).not.toBeInTheDocument();
+  });
+
+  it('dismisses an open dropdown when clicking outside', () => {
+    renderFilterBar([
+      {
+        key: 'region',
+        label: 'Region',
+        options: [
+          { value: 'north', label: 'North' },
+          { value: 'south', label: 'South' },
+        ],
+        values: [],
+        onChange: vi.fn(),
+      },
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Region: All' }));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    fireEvent.pointerDown(document.body);
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 });

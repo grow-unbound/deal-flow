@@ -86,7 +86,6 @@ export async function GET(req: NextRequest) {
         updated_at
       `)
       .eq('tenant_id', claims.tenant_id)
-      .eq('is_active', true)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(reqLimit + 1); // +1 to detect hasNextPage
@@ -108,9 +107,9 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const activeProducts = data ?? [];
-    const hasNextPage = activeProducts.length > reqLimit;
-    const pageProducts = hasNextPage ? activeProducts.slice(0, reqLimit) : activeProducts;
+    const allProducts = data ?? [];
+    const hasNextPage = allProducts.length > reqLimit;
+    const pageProducts = hasNextPage ? allProducts.slice(0, reqLimit) : allProducts;
     const lastProduct = pageProducts.at(-1);
     const nextCursor = hasNextPage && lastProduct
       ? Buffer.from(JSON.stringify({ t: lastProduct.created_at, i: lastProduct.id })).toString('base64url')
@@ -123,10 +122,6 @@ export async function GET(req: NextRequest) {
       .select('total_count, active_count')
       .eq('tenant_id', claims.tenant_id)
       .maybeSingle();
-
-    const archivedCount = snapshotRow
-      ? (snapshotRow.total_count ?? 0) - (snapshotRow.active_count ?? 0)
-      : 0;
 
     // Fetch master product details for enrichment
     const masterProductIds = pageProducts
@@ -154,6 +149,8 @@ export async function GET(req: NextRequest) {
     let tenantBrands: Record<string, { id: string; display_name_override: string | null; master_brand_id: string | null }> = {};
     let tenantCategories: Record<string, { id: string; name: string | null }> = {};
     let masterBrands: Record<string, { id: string; name: string }> = {};
+    let activeBrandRows: Array<{ id: string; display_name_override: string | null; master_brand_id: string | null }> = [];
+    let activeCategoryRows: Array<{ id: string; name: string | null }> = [];
 
     if (masterProductIds.length > 0) {
       const { data: catalogProducts } = await db
@@ -209,6 +206,28 @@ export async function GET(req: NextRequest) {
         .is('deleted_at', null);
       tenantCategories = Object.fromEntries((tenantCategoryRows ?? []).map((row: { id: string }) => [row.id, row]));
     }
+
+    const [{ data: activeBrandsData }, { data: activeCategoriesData }] = await Promise.all([
+      db
+        .schema('app')
+        .from('tenant_brands')
+        .select('id, display_name_override, master_brand_id')
+        .eq('tenant_id', claims.tenant_id)
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false }),
+      db
+        .schema('app')
+        .from('tenant_categories')
+        .select('id, name')
+        .eq('tenant_id', claims.tenant_id)
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .order('name', { ascending: true }),
+    ]);
+
+    activeBrandRows = (activeBrandsData ?? []) as Array<{ id: string; display_name_override: string | null; master_brand_id: string | null }>;
+    activeCategoryRows = (activeCategoriesData ?? []) as Array<{ id: string; name: string | null }>;
 
     const productIds = pageProducts.map((row: { id: string }) => row.id);
     const inventoryByProduct = new Map<string, number>();
@@ -345,13 +364,28 @@ export async function GET(req: NextRequest) {
         return enriched;
       }
     );
-    const brandOptions = Array.from(new Set(products.map((row: { brand_name?: string | null }) => row.brand_name).filter(Boolean) as string[])).sort();
-    const categoryOptions = Array.from(new Set(products.map((row: { category_name?: string | null }) => row.category_name).filter(Boolean) as string[])).sort();
-    const statusOptions = Array.from(new Set(products.map((row: { status_label?: string | null }) => row.status_label).filter(Boolean) as string[])).sort();
-    const filteredProducts = products.filter((row: { brand_name?: string | null; category_name?: string | null; status_label?: string | null; on_hand?: number; days_cover?: number }) => {
+    const brandOptions = Array.from(
+      new Set(
+        activeBrandRows
+          .map((row) => {
+            if (row.display_name_override) return row.display_name_override;
+            return row.master_brand_id ? masterBrands[row.master_brand_id]?.name ?? null : null;
+          })
+          .filter(Boolean) as string[],
+      ),
+    ).sort();
+    const categoryOptions = activeCategoryRows.map((row) => row.name).filter(Boolean).sort() as string[];
+    const statusOptions = ['Active', 'Inactive'];
+    const filteredProducts = products.filter((row: { brand_name?: string | null; category_name?: string | null; is_active?: boolean; on_hand?: number; days_cover?: number }) => {
       const brandMatch = brandParams.length === 0 || (row.brand_name ? brandParams.includes(row.brand_name) : false);
       const categoryMatch = categoryParams.length === 0 || (row.category_name ? categoryParams.includes(row.category_name) : false);
-      const statusMatch = statusParams.length === 0 || (row.status_label ? statusParams.includes(row.status_label) : false);
+      const statusMatch =
+        statusParams.length === 0 ||
+        statusParams.some((value) => {
+          if (value === 'Active') return row.is_active === true;
+          if (value === 'Inactive') return row.is_active === false;
+          return false;
+        });
       const stockMatch =
         stockParams.length === 0 ||
         stockParams.some((value) => {
@@ -367,6 +401,7 @@ export async function GET(req: NextRequest) {
     const revenueMtd = filteredProducts.reduce((sum: number, row: { gmv_mtd?: number }) => sum + Number(row.gmv_mtd ?? 0), 0);
     const revenuePrev = filteredProducts.reduce((sum: number, row: { id: string }) => sum + Number(gmvPrevByProduct.get(row.id) ?? 0), 0);
     const revenueGrowth = revenuePrev > 0 ? Math.round(((revenueMtd - revenuePrev) / revenuePrev) * 100) : revenueMtd > 0 ? 100 : 0;
+    const activeCount = filteredProducts.filter((row: { is_active?: boolean }) => row.is_active).length;
     const outOfStock = filteredProducts.filter((row: { on_hand?: number }) => Number(row.on_hand ?? 0) === 0).length;
     const lowStock = filteredProducts.filter((row: { on_hand?: number; days_cover?: number }) => Number(row.on_hand ?? 0) > 0 && Number(row.days_cover ?? 0) < 14).length;
 
@@ -418,9 +453,9 @@ export async function GET(req: NextRequest) {
       nextCursor,
       total: filteredProducts.length,
       kpis: {
-        active_skus: filteredProducts.length,
+        active_skus: activeCount,
         total_skus: filteredProducts.length,
-        archived_skus: archivedCount,
+        archived_skus: filteredProducts.length - activeCount,
         out_of_stock: outOfStock,
         low_stock: lowStock,
         revenue_mtd: revenueMtd,

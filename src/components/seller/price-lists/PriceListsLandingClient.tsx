@@ -9,6 +9,7 @@ import { FeatureGate } from '@/components/FeatureGate';
 import {
   EntityAvatar,
   FilterBar,
+  type FilterBarGroup,
   InsightStrip4,
   LandingTable,
   PageHeader,
@@ -25,10 +26,10 @@ import { usePriceListsLanding, type PriceListLandingRow, type PriceListsLandingR
 import { cn, formatDate } from '@/lib/utils';
 import { formatStrategySummary } from '@/lib/price-list-strategy';
 
-type LandingChip = 'All' | 'Active' | 'Draft' | 'Expired';
+type LandingChip = 'Active' | 'Draft' | 'Expired';
 type SortOption = 'Recently updated' | 'Name (A-Z)' | 'Products (high → low)' | 'Validity (latest end date)' | 'Priority (high → low)';
 
-const CHIPS: LandingChip[] = ['All', 'Active', 'Draft', 'Expired'];
+const STATUS_OPTIONS: LandingChip[] = ['Draft', 'Active', 'Expired'];
 const SORT_OPTIONS: SortOption[] = ['Recently updated', 'Name (A-Z)', 'Products (high → low)', 'Validity (latest end date)', 'Priority (high → low)'];
 
 function PriceListsLandingSkeleton() {
@@ -88,9 +89,12 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
   const { data, isLoading, isError, refetch } = usePriceListsLanding(initialData);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-price-lists-landing',
+    version: 2,
     initialState: {
       search: '',
-      activeChip: 'All' as LandingChip,
+      filters: {
+        status: [] as string[],
+      },
       sortBy: 'Recently updated' as SortOption,
     },
   });
@@ -99,18 +103,35 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
     ready: !isLoading,
   });
   const search = routeState.search;
-  const activeChip = routeState.activeChip;
   const sortBy = routeState.sortBy;
+  const filters = routeState.filters ?? { status: [] };
+  const statusFilter = filters.status ?? [];
+  const groups: FilterBarGroup[] = [
+    {
+      key: 'status',
+      label: 'Status',
+      options: STATUS_OPTIONS.map((value) => ({ value, label: value })),
+      values: statusFilter,
+      onChange: (values) =>
+        setRouteState((current) => ({
+          ...current,
+          filters: { ...(current.filters ?? filters), status: values },
+        })),
+    },
+  ];
   const allRows = data?.price_lists ?? [];
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
 
     const statusFiltered = allRows.filter((row) => {
-      if (activeChip === 'All') return true;
-      if (activeChip === 'Active') return row.status === 'active';
-      if (activeChip === 'Draft') return row.status === 'draft';
-      return row.status === 'expired';
+      if (statusFilter.length === 0 || statusFilter.includes('All')) return true;
+      return statusFilter.some((value) => {
+        if (value === 'Active') return row.status === 'active';
+        if (value === 'Draft') return row.status === 'draft';
+        if (value === 'Expired') return row.status === 'expired';
+        return false;
+      });
     });
 
     const searched = statusFiltered.filter((row) => {
@@ -128,7 +149,7 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
       }
       return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
     });
-  }, [activeChip, allRows, search, sortBy]);
+  }, [allRows, search, sortBy, statusFilter]);
 
   if (isLoading) return <PriceListsLandingSkeleton />;
 
@@ -232,13 +253,13 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
         <FilterBar
           count={`${filteredRows.length} price lists`}
           searchPlaceholder="Search price list or cohort…"
-          chips={CHIPS}
-          activeChip={activeChip}
+          chips={[]}
+          activeChip=""
           sortBy={sortBy}
           hideViewToggle
+          groups={groups}
           searchValue={search}
           onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-          onChipChange={(chip) => setRouteState((current) => ({ ...current, activeChip: chip as LandingChip }))}
           sortOptions={SORT_OPTIONS}
           onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
         />
@@ -248,9 +269,9 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
           emptyState={
             <EmptyState
               icon={<ListOrdered size={28} strokeWidth={1.5} />}
-              heading={search.trim() || activeChip !== 'All' ? 'No matching price lists' : 'No price lists yet'}
+              heading={search.trim() || statusFilter.length > 0 ? 'No matching price lists' : 'No price lists yet'}
               description={
-                search.trim() || activeChip !== 'All'
+                search.trim() || statusFilter.length > 0
                   ? 'Try a different search or status filter.'
                   : isSellerAssistant
                     ? 'No price lists are available yet.'

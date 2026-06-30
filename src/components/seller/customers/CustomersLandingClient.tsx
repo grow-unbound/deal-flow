@@ -171,23 +171,22 @@ function CustomersLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-customers-landing',
     scopeKey: period,
+    version: 2,
     initialState: {
       filters: {
         status: [] as string[],
         due: [] as string[],
-        city: [] as string[],
-        state: [] as string[],
       },
       sortBy: 'Spend (high → low)' as SortOption,
       search: '',
     },
   });
-  const filters = routeState.filters ?? { status: [], due: [], city: [], state: [] };
+  const filters = routeState.filters ?? { status: [], due: [] };
   const sortBy = routeState.sortBy;
   const search = routeState.search;
 
   const debouncedSearch = useDebounce(search, 300);
-  const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useCustomersLandingInfinite(
+  const { data, isLoading, isError, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useCustomersLandingInfinite(
     period,
     { search: debouncedSearch, ...filters },
   );
@@ -241,7 +240,7 @@ function CustomersLandingContent({
       <PageHeader
         eyebrow="Buyers"
         title="Customers"
-        subtitle={`${kpis?.total} retailers across ${kpis?.cohort_count} customer groups. ${kpis?.active} active ${lowerLabel}. The Tier-A names buy most of revenue, and dues cluster there too.`}
+        subtitle={`${kpis?.total} retailers across ${kpis?.cohort_count} customer groups. ${kpis?.active} active ${lowerLabel}.`}
         horizon={horizonLabel}
         period={period}
         periodOptions={options}
@@ -265,12 +264,12 @@ function CustomersLandingContent({
           {
             label: 'Active buyers',
             value: `${kpis?.active}/${kpis?.total}`,
-            sub: `${kpis?.active_pct}% of base ordered`,
+            sub: `${kpis?.active_pct}% of buyers ordered`,
           },
           {
             label: `Spend · ${metricSuffix}`,
             value: formatCompactInr(kpis?.spend_mtd ?? 0),
-            sub: `${(kpis?.spend_growth_pct ?? 0) >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis?.spend_growth_pct ?? 0)}% vs last month`,
+            sub: `${(kpis?.spend_growth_pct ?? 0) >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis?.spend_growth_pct ?? 0)}% vs last ${period}`,
             tone: 'accent',
           },
           {
@@ -340,6 +339,7 @@ function CustomersLandingContent({
         hideViewToggle
         groups={groups}
         searchValue={search}
+        searchLoading={Boolean(debouncedSearch.trim()) && (isFetching || isFetchingNextPage)}
         onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
         sortOptions={SORT_OPTIONS}
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}

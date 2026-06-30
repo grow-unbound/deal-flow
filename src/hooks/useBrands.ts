@@ -88,6 +88,10 @@ export interface TopRiserItem {
 export interface TenantBrandsResponse {
   brands: TenantBrand[];
   categories?: string[];
+  cohorts?: Array<{
+    id: string;
+    name: string;
+  }>;
   kpis?: BrandsKpis;
   todays_read?: {
     needs_attention: TodaysReadItem[];

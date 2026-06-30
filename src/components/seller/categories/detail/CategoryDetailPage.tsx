@@ -19,7 +19,7 @@ import { CategoryProductsTab } from './CategoryProductsTab';
 import { CategoryBrandsTab } from './CategoryBrandsTab';
 import { CategoryActivityTab } from './CategoryActivityTab';
 
-type TabId = 'overview' | 'products' | 'brands' | 'activity';
+type TabId = 'performance' | 'products' | 'brands' | 'activity';
 
 interface CategoryDetailPageProps {
   id: string;
@@ -60,7 +60,7 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-category-detail-tab',
     scopeKey: id,
-    initialState: 'overview',
+    initialState: 'performance',
   });
   const { data, isLoading, isError } = useCategoryDetail(id);
   const { isSellerAdmin } = useRole();
@@ -163,7 +163,7 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
 
       <DetailTabs
         tabs={[
-          { id: 'overview', label: 'Overview' },
+          { id: 'performance', label: 'Performance' },
           { id: 'products', label: 'Products', badge: h.active_sku_count },
           { id: 'brands', label: 'Brands', badge: h.brand_count },
           { id: 'activity', label: 'Activity' },
@@ -172,7 +172,7 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
         onChange={(value) => setTab(value as TabId)}
       />
 
-      {tab === 'overview' ? <CategoryOverviewTab overview={data.overview} /> : null}
+      {tab === 'performance' ? <CategoryOverviewTab overview={data.overview} /> : null}
       {tab === 'products' ? <CategoryProductsTab products={data.products} categoryId={id} /> : null}
       {tab === 'brands' ? <CategoryBrandsTab brands={data.brands} /> : null}
       {tab === 'activity' ? <CategoryActivityTab activity={data.activity} /> : null}

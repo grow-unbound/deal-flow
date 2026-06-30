@@ -17,6 +17,7 @@ type BuyerRow = {
   phone: string | null;
   gst_treatment: string | null;
   zoho_status: string | null;
+  is_active: boolean;
   city: string;
   state: string | null;
   cohort: string;
@@ -110,8 +111,6 @@ export async function GET(req: NextRequest) {
     const search = req.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '';
     const statusParams = readArrayParam(req.nextUrl.searchParams, 'status');
     const dueParams = readArrayParam(req.nextUrl.searchParams, 'due');
-    const cityParams = readArrayParam(req.nextUrl.searchParams, 'city');
-    const stateParams = readArrayParam(req.nextUrl.searchParams, 'state');
     const cacheKey = [
       tenantId,
       limit,
@@ -119,8 +118,6 @@ export async function GET(req: NextRequest) {
       search,
       statusParams.join('|'),
       dueParams.join('|'),
-      cityParams.join('|'),
-      stateParams.join('|'),
       period.selected,
       period.current_start.slice(0, 10),
       period.current_end_exclusive.slice(0, 10),
@@ -359,6 +356,7 @@ export async function GET(req: NextRequest) {
         phone: buyer.phone ?? null,
         gst_treatment: buyer.gst_treatment ?? null,
         zoho_status: buyer.status ?? null,
+        is_active: Boolean(buyer.is_active),
         city: buyer.geography?.city ?? 'Unknown',
         state: buyer.geography?.state ?? null,
         cohort: cohortMap.get(buyer.id) ?? '—',
@@ -380,7 +378,16 @@ export async function GET(req: NextRequest) {
     });
 
     const filteredRows = rows
-      .filter((row) => statusParams.length === 0 || statusParams.includes(row.status.label))
+      .filter((row) => {
+        if (statusParams.length === 0) return true;
+        const dormant = !row.last_order_at || row.last_order_at < dormantCutoffIso;
+        return statusParams.some((value) => {
+          if (value === 'Active') return row.is_active && !dormant;
+          if (value === 'Inactive') return !row.is_active;
+          if (value === 'Dormant') return row.is_active && dormant;
+          return false;
+        });
+      })
       .filter((row) => {
         if (dueParams.length === 0) return true;
         return dueParams.some((value) => {
@@ -389,8 +396,6 @@ export async function GET(req: NextRequest) {
           return false;
         });
       })
-      .filter((row) => cityParams.length === 0 || cityParams.includes(row.city))
-      .filter((row) => stateParams.length === 0 || (row.state ? stateParams.includes(row.state) : false))
       .filter((row) =>
         search
           ? [row.business_name, row.phone ?? '', row.city, row.cohort, row.active_price_list ?? '', row.status.label, row.state ?? '', row.gst_treatment ?? '', row.zoho_status ?? ''].some((value) =>
@@ -438,22 +443,12 @@ export async function GET(req: NextRequest) {
         {
           key: 'status',
           label: 'Status',
-          options: Array.from(new Set(rows.map((row) => row.status.label))).sort().map((value) => ({ value, label: value })),
+          options: ['Active', 'Inactive', 'Dormant'].map((value) => ({ value, label: value })),
         },
         {
           key: 'due',
           label: 'Due',
           options: ['Due', 'Overdue'].map((value) => ({ value, label: value })),
-        },
-        {
-          key: 'city',
-          label: 'City',
-          options: Array.from(new Set(rows.map((row) => row.city))).sort().map((value) => ({ value, label: value })),
-        },
-        {
-          key: 'state',
-          label: 'State',
-          options: Array.from(new Set(rows.map((row) => row.state).filter(Boolean) as string[])).sort().map((value) => ({ value, label: value })),
         },
       ],
     };

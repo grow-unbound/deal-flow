@@ -1230,7 +1230,7 @@ async function persistProducts(
   )];
 
   // Fallback brand for products with no brand field
-  const fallbackBrandExtRef = 'zoho_brand:__import__';
+  const fallbackBrandExtRef = 'zoho_brand:__unknown__';
   const allBrandRows = [
     ...brandNames.map((name) => ({
       tenant_id: tenantId,
@@ -1244,8 +1244,8 @@ async function persistProducts(
     {
       tenant_id: tenantId,
       external_ref: fallbackBrandExtRef,
-      display_name_override: 'Zoho Import',
-      slug: 'zoho-import',
+      display_name_override: 'Unknown Brand',
+      slug: 'unknown-brand',
       is_active: true,
       created_by: actorId,
       updated_by: actorId,

@@ -130,6 +130,7 @@ function ProductsLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-products-landing',
     scopeKey: period,
+    version: 2,
     initialState: {
       search: '',
       sortBy: 'GMV (high → low)' as SortOption,
@@ -147,7 +148,7 @@ function ProductsLandingContent({
   const [addProductOpen, setAddProductOpen] = useState(false);
 
   const debouncedSearch = useDebounce(search, 300);
-  const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantProductsInfinite(
+  const { data, isLoading, isError, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantProductsInfinite(
     period,
     { search: debouncedSearch, ...filters },
   );
@@ -265,7 +266,7 @@ function ProductsLandingContent({
           ...(isSellerAssistant
             ? [{
                 label: `Units moved · ${metricSuffix}`,
-                value: `${allProducts.reduce((sum: number, product: TenantProduct) => sum + Number(product.units_mtd ?? 0), 0)}`,
+                value: `${summaryProducts.reduce((sum: number, product: TenantProduct) => sum + Number(product.units_mtd ?? 0), 0)}`,
                 sub: 'Operational volume this period',
               }]
             : [{
@@ -281,8 +282,8 @@ function ProductsLandingContent({
           {
             kind: 'risk' as const,
             eyebrow: 'Needs attention',
-            hint: `${firstPage?.todays_read?.needs_attention?.length ?? 0}`,
-            rows: (firstPage?.todays_read?.needs_attention ?? []).map((row) => ({
+            hint: `${summaryData?.todays_read?.needs_attention?.length ?? 0}`,
+            rows: (summaryData?.todays_read?.needs_attention ?? []).map((row) => ({
               initials: row.brand_initials,
               hue: row.brand_hue,
               name: row.name,
@@ -294,7 +295,7 @@ function ProductsLandingContent({
             kind: 'info' as const,
             eyebrow: 'Top performers',
             hint: 'by GMV',
-            rows: (firstPage?.todays_read?.top_performers ?? []).map((row) => ({
+            rows: (summaryData?.todays_read?.top_performers ?? []).map((row) => ({
               initials: row.brand_initials,
               hue: row.brand_hue,
               name: row.name,
@@ -306,7 +307,7 @@ function ProductsLandingContent({
             kind: 'opportunity' as const,
             eyebrow: 'Top risers',
             hint: 'fastest growth',
-            rows: (firstPage?.todays_read?.top_risers ?? []).map((row) => ({
+            rows: (summaryData?.todays_read?.top_risers ?? []).map((row) => ({
               initials: row.brand_initials,
               hue: row.brand_hue,
               name: row.name,
@@ -326,6 +327,7 @@ function ProductsLandingContent({
         hideViewToggle
         groups={groups}
         searchValue={search}
+        searchLoading={Boolean(debouncedSearch.trim()) && (isFetching || isFetchingNextPage)}
         onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
         sortOptions={isSellerAssistant ? ['On hand (low → high)'] : [...SORT_OPTIONS]}
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}

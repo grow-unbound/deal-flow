@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { ResponsiveContainer, Area, AreaChart, Tooltip, XAxis, CartesianGrid } from 'recharts';
+import { PerformanceCard } from '@/components/seller/detail';
 import { EntityAvatar, SeeAllSheet } from '@/components/seller/layout';
 import { formatCompactInr } from '@/lib/utils';
 import type { CohortDetailResponse } from '@/hooks/useCohorts';
@@ -43,11 +44,7 @@ export function CohortPerformanceTab({ performance }: CohortPerformanceTabProps)
   return (
     <section className="mt-5 space-y-4">
       <div className="grid grid-cols-2 gap-4">
-        <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-          <div className="border-b border-cream-300 px-5 py-4">
-            <h3 className="font-display text-lg text-cream-950">GMV trend</h3>
-            <p className="mt-0.5 text-sm text-cream-700">Last 12 months · from this cohort</p>
-          </div>
+        <PerformanceCard title="GMV trend" subtitle="Last 12 months · from this cohort" bodyClassName="p-0">
           <div className="px-5 pb-2 pt-4">
             <div className="flex flex-wrap items-baseline gap-3.5">
               <p className="font-display text-3xl font-medium leading-none tracking-[-0.018em] text-cream-950 tabular-nums">
@@ -77,12 +74,9 @@ export function CohortPerformanceTab({ performance }: CohortPerformanceTabProps)
               </AreaChart>
             </ResponsiveContainer>
           </div>
-        </article>
+        </PerformanceCard>
 
-        <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-          <div className="border-b border-cream-300 px-5 py-4">
-            <h3 className="font-display text-lg text-cream-950">Engagement</h3>
-          </div>
+        <PerformanceCard title="Engagement" bodyClassName="p-0">
           <div className="grid grid-cols-2 gap-x-[18px] gap-y-[18px] px-[18px] py-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Active members</p>
@@ -113,24 +107,24 @@ export function CohortPerformanceTab({ performance }: CohortPerformanceTabProps)
               <p className="mt-0.5 text-sm text-cream-700">of {performance.engagement.brands_carried} carried</p>
             </div>
           </div>
-        </article>
+        </PerformanceCard>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-          <div className="flex items-start justify-between gap-3 border-b border-cream-300 px-5 py-4">
-            <div>
-              <h3 className="font-display text-lg text-cream-950">Top members</h3>
-              <p className="mt-0.5 text-sm text-cream-700">By GMV · this month</p>
-            </div>
+        <PerformanceCard
+          title="Top members"
+          subtitle="By GMV · this month"
+          actions={(
             <button
               type="button"
-              className="shrink-0 pt-0.5 text-base font-medium text-teal-700 hover:text-teal-800"
+              className="shrink-0 text-sm font-semibold text-teal-700 no-underline"
               onClick={() => setTopMembersSheetOpen(true)}
             >
               See all →
             </button>
-          </div>
+          )}
+          bodyClassName="p-0"
+        >
           <ul>
             {visibleTopMembers.map((member, index) => (
               <li
@@ -150,22 +144,22 @@ export function CohortPerformanceTab({ performance }: CohortPerformanceTabProps)
               </li>
             ))}
           </ul>
-        </article>
+        </PerformanceCard>
 
-        <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-          <div className="flex items-start justify-between gap-3 border-b border-cream-300 px-5 py-4">
-            <div>
-              <h3 className="font-display text-lg text-cream-950">Campaigns to this customer group</h3>
-              <p className="mt-0.5 text-sm text-cream-700">Recent sends</p>
-            </div>
+        <PerformanceCard
+          title="Campaigns to this customer group"
+          subtitle="Recent sends"
+          actions={(
             <button
               type="button"
-              className="shrink-0 pt-0.5 text-base font-medium text-teal-700 hover:text-teal-800"
+              className="shrink-0 text-sm font-semibold text-teal-700 no-underline"
               onClick={() => setCatalogsSheetOpen(true)}
             >
               See all →
             </button>
-          </div>
+          )}
+          bodyClassName="p-0"
+        >
           <ul>
             {visibleCatalogs.map((catalog, index) => (
               <li
@@ -192,7 +186,7 @@ export function CohortPerformanceTab({ performance }: CohortPerformanceTabProps)
               </li>
             ))}
           </ul>
-        </article>
+        </PerformanceCard>
       </div>
 
       <SeeAllSheet

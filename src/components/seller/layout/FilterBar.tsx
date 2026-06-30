@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Search } from 'lucide-react';
+import { ChevronDown, Loader2, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
@@ -35,6 +35,7 @@ interface LegacyFilterBarProps {
   sortBy: string;
   hideViewToggle: boolean;
   searchValue?: string;
+  searchLoading?: boolean;
   onSearchChange?: (value: string) => void;
   onChipChange?: (chip: string) => void;
   sortOptions?: string[];
@@ -60,18 +61,32 @@ function useOutsideDismiss(
   const ref = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
-    function handlePointerDown(event: MouseEvent) {
+    function handlePointerDown(event: PointerEvent) {
       if (!ref.current || !openKey) return;
-      const target = event.target as Node;
-      const clickedInsideRoot = ref.current.contains(target);
-      const clickedInsideExtra = extraRef?.current?.contains(target) ?? false;
-      if (!clickedInsideRoot && !clickedInsideExtra) {
+      const target = event.target as Node | null;
+      const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+      const clickedInsideRoot = target ? ref.current.contains(target) : false;
+      const clickedInsideExtra = target ? (extraRef?.current?.contains(target) ?? false) : false;
+      const clickedInsidePath = path.some((node) => node === ref.current || node === extraRef?.current);
+      if (!clickedInsideRoot && !clickedInsideExtra && !clickedInsidePath) {
         setOpenKey(null);
       }
     }
 
-    document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
+    function handleFocusIn(event: FocusEvent) {
+      if (!ref.current || !openKey) return;
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (ref.current.contains(target) || extraRef?.current?.contains(target)) return;
+      setOpenKey(null);
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('focusin', handleFocusIn);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('focusin', handleFocusIn);
+    };
   }, [extraRef, openKey, setOpenKey]);
 
   return ref;
@@ -111,6 +126,7 @@ export function FilterBar({
   sortBy,
   hideViewToggle,
   searchValue,
+  searchLoading,
   onSearchChange,
   onChipChange,
   sortOptions,
@@ -196,7 +212,7 @@ export function FilterBar({
       className="mt-5 rounded-t-[14px] border border-cream-300 border-b-0 bg-cream-50 px-3 py-[10px]"
     >
       <div className="flex w-full flex-nowrap items-center gap-2 overflow-visible">
-        <div className="relative inline-flex h-9 min-w-[176px] flex-[0_1_220px] items-center gap-2 rounded-[10px] border border-cream-300 bg-white px-[10px] text-cream-700">
+        <div className="relative inline-flex h-9 min-w-[176px] flex-[0_1_220px] items-center gap-2 rounded-[10px] border border-cream-300 bg-white px-[10px] pr-8 text-cream-700">
           <Search size={14} className="pointer-events-none text-cream-600" />
           <input
             className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-cream-900 placeholder:text-cream-600 focus:outline-none focus:ring-0"
@@ -205,6 +221,18 @@ export function FilterBar({
             value={searchValue}
             onChange={(event) => onSearchChange?.(event.target.value)}
           />
+          {searchLoading ? (
+            <Loader2 size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-cream-500" aria-hidden />
+          ) : searchValue?.length ? (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => onSearchChange?.('')}
+              className="absolute right-2 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-cream-500 transition-colors hover:bg-cream-100 hover:text-cream-800"
+            >
+              <X size={12} />
+            </button>
+          ) : null}
         </div>
 
         <div className="flex min-w-0 flex-1 items-center justify-start gap-2 overflow-x-auto">

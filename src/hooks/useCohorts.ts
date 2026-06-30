@@ -44,6 +44,7 @@ export interface CohortsLandingRow {
   focus_chips: string[];
   allowed_brands_count: number | null;
   allowed_brands_label: string;
+  allowed_tenant_brand_ids?: string[] | null;
   gmv_mtd: number;
   growth_pct: number;
   active_members: number;
@@ -62,6 +63,10 @@ export interface CohortsLandingResponse {
     top_risers: CohortsLandingCalloutRow[];
   };
   cohorts: CohortsLandingRow[];
+  brands: Array<{
+    id: string;
+    name: string;
+  }>;
   period: SellerLandingPeriodMeta;
 }
 

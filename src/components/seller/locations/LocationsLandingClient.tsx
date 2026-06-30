@@ -8,6 +8,7 @@ import { FeatureGate } from '@/components/FeatureGate';
 import {
   EntityAvatar,
   FilterBar,
+  type FilterBarGroup,
   GrowthPill,
   InsightStrip4,
   LandingTable,
@@ -31,9 +32,9 @@ import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LocationFormSheet } from '@/components/seller/settings/LocationFormSheet';
 
 type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Outstanding dues (high → low)';
-type ChipOption = 'All' | 'Active' | 'Stock issues' | 'Has dues';
-
-const CHIPS: ChipOption[] = ['All', 'Active', 'Stock issues', 'Has dues'];
+const STATUS_OPTIONS = ['Active', 'Inactive'] as const;
+const STOCK_OPTIONS = ['In Stock', 'Low Stock', 'Out of Stock'] as const;
+const DUE_OPTIONS = ['Due', 'Overdue'] as const;
 const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'GMV (low → high)', 'Outstanding dues (high → low)'];
 
 function LocationsLandingSkeleton() {
@@ -106,9 +107,14 @@ function LocationsLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-locations-landing',
     scopeKey: period,
+    version: 2,
     initialState: {
       search: '',
-      activeChip: 'All' as ChipOption,
+      filters: {
+        status: [] as string[],
+        stock: [] as string[],
+        dues: [] as string[],
+      },
       sortBy: 'GMV (high → low)' as SortOption,
     },
   });
@@ -119,20 +125,70 @@ function LocationsLandingContent({
   });
 
   const search = routeState.search;
-  const activeChip = routeState.activeChip;
   const sortBy = routeState.sortBy;
+  const filters = routeState.filters ?? { status: [], stock: [], dues: [] };
+  const groups: FilterBarGroup[] = [
+    {
+      key: 'status',
+      label: 'Status',
+      options: STATUS_OPTIONS.map((value) => ({ value, label: value })),
+      values: filters.status ?? [],
+      onChange: (values) => setRouteState((current) => ({
+        ...current,
+        filters: { ...(current.filters ?? filters), status: values },
+      })),
+    },
+    {
+      key: 'stock',
+      label: 'Stock',
+      options: STOCK_OPTIONS.map((value) => ({ value, label: value })),
+      values: filters.stock ?? [],
+      onChange: (values) => setRouteState((current) => ({
+        ...current,
+        filters: { ...(current.filters ?? filters), stock: values },
+      })),
+    },
+    {
+      key: 'dues',
+      label: 'Dues',
+      options: DUE_OPTIONS.map((value) => ({ value, label: value })),
+      values: filters.dues ?? [],
+      onChange: (values) => setRouteState((current) => ({
+        ...current,
+        filters: { ...(current.filters ?? filters), dues: values },
+      })),
+    },
+  ];
 
   const filtered = useMemo(() => {
     const rows = landingData?.locations ?? [];
     const query = search.trim().toLowerCase();
+    const statusFilter = filters.status ?? [];
+    const stockFilter = filters.stock ?? [];
+    const duesFilter = filters.dues ?? [];
 
     return rows
       .filter((row) => {
-        if (activeChip === 'All') return true;
-        if (activeChip === 'Active') return row.is_active;
-        if (activeChip === 'Stock issues') return row.stock_status !== 'clear';
-        if (activeChip === 'Has dues') return row.outstanding_dues > 0;
-        return true;
+        const statusOk =
+          statusFilter.length === 0 || statusFilter.includes('All') || (statusFilter.includes('Active') ? row.is_active : !row.is_active);
+        const stockOk =
+          stockFilter.length === 0 ||
+          stockFilter.includes('All') ||
+          stockFilter.some((value) => {
+            if (value === 'In Stock') return row.stock_status === 'clear';
+            if (value === 'Low Stock') return row.stock_status === 'low_stock';
+            if (value === 'Out of Stock') return row.stock_status === 'out_of_stock';
+            return false;
+          });
+        const duesOk =
+          duesFilter.length === 0 ||
+          duesFilter.includes('All') ||
+          duesFilter.some((value) => {
+            if (value === 'Due') return row.outstanding_dues > 0;
+            if (value === 'Overdue') return row.outstanding_dues > 0 && (row.oldest_unpaid_days ?? 0) > 0;
+            return false;
+          });
+        return statusOk && stockOk && duesOk;
       })
       .filter((row) => {
         if (!query) return true;
@@ -147,7 +203,7 @@ function LocationsLandingContent({
         if (sortBy === 'GMV (low → high)') return a.gmv_mtd - b.gmv_mtd;
         return b.outstanding_dues - a.outstanding_dues;
       });
-  }, [activeChip, landingData?.locations, search, sortBy]);
+  }, [filters.dues, filters.status, filters.stock, landingData?.locations, search, sortBy]);
 
   if (isLoading && !landingData) return <LocationsLandingSkeleton />;
 
@@ -265,13 +321,13 @@ function LocationsLandingContent({
           <FilterBar
             count={`${filtered.length} locations`}
             searchPlaceholder="Search location…"
-            chips={CHIPS}
-            activeChip={activeChip}
+            chips={[]}
+            activeChip=""
             sortBy={sortBy}
             hideViewToggle
+            groups={groups}
             searchValue={search}
             onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-            onChipChange={(chip) => setRouteState((current) => ({ ...current, activeChip: chip as ChipOption }))}
             sortOptions={[...SORT_OPTIONS]}
             onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
           />
@@ -279,9 +335,9 @@ function LocationsLandingContent({
           {filtered.length === 0 ? (
             <EmptyState
               icon={<MapPin size={28} strokeWidth={1.5} />}
-              heading={search.trim() || activeChip !== 'All' ? 'No matching locations' : 'No locations yet'}
+              heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching locations' : 'No locations yet'}
               description={
-                search.trim() || activeChip !== 'All'
+                search.trim() || groups.some((group) => group.values.length > 0)
                   ? 'Try a different search or filter.'
                   : 'Add your branches and godowns to track stock and dues per location.'
               }
