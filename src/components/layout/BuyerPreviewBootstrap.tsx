@@ -1,32 +1,16 @@
 'use client';
 
-import { Suspense, useEffect, useRef, useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import {
-  BUYER_PREVIEW_QUERY_PARAM,
-} from '@/lib/buyer-preview';
-import {
-  clearStoredBuyerPreviewToken,
-  getStoredBuyerPreviewToken,
-  setStoredBuyerPreviewToken,
-} from '@/lib/auth-session';
+import { useEffect, useState } from 'react';
 
 const EXPIRY_CHECK_MS = 30_000;
 const EXPIRY_WARNING_BEFORE_S = 120;
 
-// Decode exp from the preview token without HMAC verification.
-// HMAC is verified server-side on every API call — client only needs exp for UX.
-function decodePreviewTokenExp(token: string): number | null {
-  try {
-    const [payloadB64] = token.split('.');
-    if (!payloadB64) return null;
-    const normalized = payloadB64.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
-    const payload = JSON.parse(atob(padded)) as Record<string, unknown>;
-    return typeof payload.exp === 'number' ? payload.exp : null;
-  } catch {
-    return null;
-  }
+function getPreviewExpFromCookie(): number | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(/(?:^|;\s*)buyer_preview_exp=([^;]*)/);
+  if (!match) return null;
+  const exp = parseInt(match[1], 10);
+  return Number.isNaN(exp) ? null : exp;
 }
 
 function Spinner() {
@@ -36,6 +20,8 @@ function Spinner() {
     </div>
   );
 }
+
+export { Spinner };
 
 function PreviewExpiredOverlay({ onRefresh }: { onRefresh: () => void }) {
   return (
@@ -47,7 +33,7 @@ function PreviewExpiredOverlay({ onRefresh }: { onRefresh: () => void }) {
         </p>
         <button
           onClick={onRefresh}
-          className="w-full rounded-lg bg-teal-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-600 transition-colors"
+          className="w-full rounded-lg bg-teal-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-teal-600"
         >
           Return to seller app
         </button>
@@ -56,62 +42,22 @@ function PreviewExpiredOverlay({ onRefresh }: { onRefresh: () => void }) {
   );
 }
 
-function BuyerPreviewBootstrapInner({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const previewToken = searchParams.get(BUYER_PREVIEW_QUERY_PARAM);
-  const [ready, setReady] = useState(previewToken === null);
+export function BuyerPreviewBootstrap({ children }: { children: React.ReactNode }) {
   const [expired, setExpired] = useState(false);
-  const processedTokenRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    if (!previewToken) {
-      processedTokenRef.current = null;
-      setReady(true);
-      return;
-    }
-
-    if (processedTokenRef.current === previewToken) {
-      return;
-    }
-
-    processedTokenRef.current = previewToken;
-    setReady(false);
-    setStoredBuyerPreviewToken(previewToken);
-
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete(BUYER_PREVIEW_QUERY_PARAM);
-    const nextUrl = params.size > 0 ? `${pathname}?${params.toString()}` : pathname;
-    router.replace(nextUrl, { scroll: false });
-  }, [pathname, previewToken, router, searchParams]);
-
-  useEffect(() => {
-    if (pathname.startsWith('/login')) {
-      clearStoredBuyerPreviewToken();
-    }
-  }, [pathname]);
-
-  // Periodically check stored token expiry; show overlay when nearing or past exp.
-  // Uses decode-only (no HMAC) — server verifies signature on every API call.
   useEffect(() => {
     function checkExpiry() {
-      const stored = getStoredBuyerPreviewToken();
-      if (!stored) return;
-      const exp = decodePreviewTokenExp(stored);
+      const exp = getPreviewExpFromCookie();
       if (exp === null) return;
       const nowS = Math.floor(Date.now() / 1000);
       if (nowS >= exp - EXPIRY_WARNING_BEFORE_S) {
         setExpired(true);
       }
     }
-
     checkExpiry();
     const id = setInterval(checkExpiry, EXPIRY_CHECK_MS);
     return () => clearInterval(id);
   }, []);
-
-  if (!ready) return <Spinner />;
 
   return (
     <>
@@ -119,19 +65,11 @@ function BuyerPreviewBootstrapInner({ children }: { children: React.ReactNode })
       {expired && (
         <PreviewExpiredOverlay
           onRefresh={() => {
-            clearStoredBuyerPreviewToken();
             window.close();
+            window.location.href = '/login';
           }}
         />
       )}
     </>
-  );
-}
-
-export function BuyerPreviewBootstrap({ children }: { children: React.ReactNode }) {
-  return (
-    <Suspense fallback={<Spinner />}>
-      <BuyerPreviewBootstrapInner>{children}</BuyerPreviewBootstrapInner>
-    </Suspense>
   );
 }

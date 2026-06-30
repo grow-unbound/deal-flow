@@ -1,6 +1,5 @@
 import { ROLES } from '@/constants';
 
-export const BUYER_PREVIEW_QUERY_PARAM = 'buyer_preview';
 export const BUYER_PREVIEW_HEADER = 'x-buyer-preview';
 export const BUYER_PREVIEW_TOKEN_VERSION = 'buyer_preview_v1';
 export const BUYER_PREVIEW_TTL_SECONDS = 15 * 60;
@@ -134,19 +133,3 @@ export async function verifyBuyerPreviewToken(
   }
 }
 
-export function buildBuyerPreviewRedirectPath(input: {
-  previewToken: string;
-  shareToken?: string | null;
-  buyerId?: string | null;
-}): string {
-  const params = new URLSearchParams({
-    [BUYER_PREVIEW_QUERY_PARAM]: input.previewToken,
-  });
-
-  if (input.shareToken) {
-    params.set('share_token', input.shareToken);
-  }
-
-  const basePath = input.buyerId ? '/buy/home' : '/buy/catalog';
-  return `${basePath}?${params.toString()}`;
-}
