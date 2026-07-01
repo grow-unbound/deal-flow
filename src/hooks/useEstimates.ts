@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient, useInfiniteQuery, keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
@@ -346,11 +347,11 @@ export function useEstimateProductSearch(
   priceListId?: string | null,
 ) {
   const debounced = useDebounce(query, 300);
-
-  return useQuery({
+  const queryResult = useInfiniteQuery({
     queryKey: ['estimate-product-search', debounced, buyerId, open, priceListId ?? null],
-    queryFn: async (): Promise<EstimateComposerProductSearchRow[]> => {
-      const params = new URLSearchParams({ q: debounced });
+    queryFn: async ({ pageParam }): Promise<{ products: EstimateComposerProductSearchRow[]; has_more: boolean }> => {
+      const requestedLimit = typeof pageParam === 'number' && pageParam > 0 ? pageParam : 12;
+      const params = new URLSearchParams({ q: debounced, limit: String(requestedLimit) });
       if (buyerId) params.set('buyerId', buyerId);
       if (priceListId) params.set('priceListId', priceListId);
       const res = await apiFetch(`/api/tenant/products/search?${params.toString()}`);
@@ -358,14 +359,37 @@ export function useEstimateProductSearch(
         const err = await res.json().catch(() => ({}));
         throw new Error((err as { error?: string }).error ?? 'Failed to search products');
       }
-      const json = (await res.json()) as { products: EstimateComposerProductSearchRow[] };
-      return json.products;
+      const json = (await res.json()) as { products: EstimateComposerProductSearchRow[]; has_more?: boolean };
+      return {
+        products: json.products ?? [],
+        has_more: Boolean(json.has_more),
+      };
     },
     enabled: open && Boolean(buyerId),
+    initialPageParam: 12,
+    getNextPageParam: (lastPage) => (lastPage.has_more ? lastPage.products.length + 12 : undefined),
     staleTime: 30_000,
     gcTime: NAVIGATION_QUERY_GC_TIME,
-    placeholderData: (previous) => previous,
+    placeholderData: keepPreviousData,
   });
+
+  const flattenedProducts = useMemo(() => {
+    const pages = queryResult.data?.pages ?? [];
+    const seen = new Set<string>();
+    return pages.flatMap((page) =>
+      page.products.filter((row) => {
+        if (seen.has(row.tenant_product_id)) return false;
+        seen.add(row.tenant_product_id);
+        return true;
+      }),
+    );
+  }, [queryResult.data]);
+
+  return {
+    ...queryResult,
+    data: flattenedProducts,
+    hasNextPage: queryResult.hasNextPage ?? false,
+  };
 }
 
 export function useNextEstimateNumber(enabled: boolean) {

@@ -86,7 +86,6 @@ function entityHue(index: number): 'teal' | 'ember' | 'cream' {
 function PriceListsLandingContent({ initialData }: { initialData: PriceListsLandingResponse | null }) {
   const router = useRouter();
   const { isSellerAssistant } = useRole();
-  const { data, isLoading, isError, refetch } = usePriceListsLanding(initialData);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-price-lists-landing',
     version: 2,
@@ -98,13 +97,14 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
       sortBy: 'Recently updated' as SortOption,
     },
   });
+  const search = routeState.search;
+  const sortBy = routeState.sortBy;
+  const filters = routeState.filters ?? { status: [] };
+  const { data, isLoading, isError, refetch } = usePriceListsLanding({ search, status: filters.status }, initialData);
   useRouteScrollRestoration({
     storageKey: 'seller-price-lists-landing',
     ready: !isLoading,
   });
-  const search = routeState.search;
-  const sortBy = routeState.sortBy;
-  const filters = routeState.filters ?? { status: [] };
   const statusFilter = filters.status ?? [];
   const groups: FilterBarGroup[] = [
     {
@@ -288,22 +288,20 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
             />
           }
           columns={[
-            { label: 'Price list', width: 280, className: 'px-5' },
-            { label: 'Customer group(s)', className: 'px-5' },
-            { label: 'Priority', align: 'center', className: 'px-5' },
-            { label: 'Products', align: 'center', className: 'px-5' },
-            { label: 'Validity', className: 'px-5' },
-            { label: 'Avg discount', align: 'right', className: 'px-5' },
-            ...(isSellerAssistant ? [] : [{ label: 'Avg margin', align: 'right' as const, className: 'px-5' }]),
-            { label: 'Status', className: 'px-5' },
+            { label: 'Price list', minWidth: 280, maxWidth: 360, className: 'px-5' },
+            { label: 'Pricing strategy', minWidth: 180, maxWidth: 220, className: 'px-5' },
+            { label: 'Priority', align: 'center', minWidth: 120, maxWidth: 140, className: 'px-5' },
+            { label: 'Products', align: 'center', minWidth: 120, maxWidth: 140, className: 'px-5' },
+            { label: 'Validity', minWidth: 200, maxWidth: 260, className: 'px-5' },
+            { label: 'Avg discount', align: 'right', minWidth: 140, maxWidth: 160, className: 'px-5' },
+            ...(isSellerAssistant ? [] : [{ label: 'Avg margin', align: 'right' as const, minWidth: 140, maxWidth: 160, className: 'px-5' }]),
+            { label: 'Status', minWidth: 140, maxWidth: 180, className: 'px-5' },
             { width: 40, className: 'px-4' },
           ]}
+          tableMinWidth={1240}
         >
-          {filteredRows.map((row, index) => {
+          {filteredRows.map((row) => {
             const validity = `${formatDate(row.valid_from ?? row.created_at)} → ${row.valid_to ? formatDate(row.valid_to) : 'Open'}`;
-            const cohortText = row.cohort_names.length <= 1
-              ? row.cohort_names[0] ?? '—'
-              : `${row.cohort_names[0]} +${row.cohort_names.length - 1} more`;
             const isExpired = row.status === 'expired';
             const strategySub = formatStrategySummary(row.pricing_strategy, row.strategy_value);
 
@@ -318,14 +316,14 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
                     <EntityAvatar initials={getInitials(row.name)} hue="teal" size={38} />
                     <div className="min-w-0">
                       <p className="ent-name truncate text-base font-medium text-cream-900">{row.name}</p>
-                      <p className="ent-sub mt-0.5 font-mono text-xs text-cream-500">
-                        {strategySub}
+                      <p className="ent-sub mt-0.5 truncate text-xs text-cream-500">
+                        {row.description ?? strategySub}
                       </p>
                     </div>
                   </div>
                 </td>
                 <td className="px-5 py-3.5 text-sm text-cream-800">
-                  {cohortText}
+                  {strategySub}
                 </td>
                 <td className="px-5 py-3.5 text-center font-mono text-base font-semibold text-cream-900 tabular-nums">
                   {row.priority}

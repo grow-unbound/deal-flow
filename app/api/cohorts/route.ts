@@ -6,6 +6,7 @@ import { createTimer } from '@/lib/server-timing';
 import { CohortCreateSchema } from '@/lib/zod';
 import { getCohortComposerPayload, resolveBuyerIdsForRules } from '@/lib/server/cohort-composer';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
+import { readArrayParam } from '@/lib/landing-filter-params';
 
 type CohortType = 'Geo-based' | 'Tier-based' | 'Brand affinity';
 
@@ -256,6 +257,7 @@ export async function getCohortsLandingPayload(tenantId: string, periodInput?: s
       id: cohort.id,
       name: cohort.name,
       description: cohort.description ?? null,
+      is_static: Boolean(cohort.is_static),
       type,
       focus_chips: deriveFocusChips(cohort.rules, type),
       allowed_brands_count: Array.isArray(cohort.allowed_tenant_brand_ids) ? cohort.allowed_tenant_brand_ids.length : null,
@@ -342,6 +344,8 @@ export async function GET(request: NextRequest) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabaseAdmin as any;
+  const search = request.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '';
+  const brandFilter = readArrayParam(request.nextUrl.searchParams, 'brands');
   const { data: rows, error } = await db
     .schema('app')
     .from('cohorts')
@@ -355,7 +359,17 @@ export async function GET(request: NextRequest) {
     return timedJson({ error: 'Failed to fetch cohorts' }, { status: 500 });
   }
 
-  return timedJson({ cohorts: rows ?? [] });
+  const filteredRows = (rows ?? []).filter((row: { name: string; description: string | null; allowed_tenant_brand_ids: string[] | null }) => {
+    const brandOk =
+      brandFilter.length === 0 ||
+      (Array.isArray(row.allowed_tenant_brand_ids) && row.allowed_tenant_brand_ids.some((brandId) => brandFilter.includes(brandId)));
+    const searchOk =
+      !search ||
+      [row.name, row.description ?? ''].some((value) => value.toLowerCase().includes(search));
+    return brandOk && searchOk;
+  });
+
+  return timedJson({ cohorts: filteredRows });
 }
 
 export async function POST(request: NextRequest) {

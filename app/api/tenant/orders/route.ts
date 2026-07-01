@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getVerifiedClaims } from '@/lib/auth';
+import { isoDateInTimeZone, offsetIsoDateInTimeZone } from '@/lib/date-utils';
 import { getFlag } from '@/lib/flags';
 import { getInAppCreateFlags } from '@/lib/server/seller-features';
 import {
   applySellerLocationScope,
   isSellerLocationSelectionAllowed,
   loadAccessibleSellerLocations,
-  locationScopeCacheKey,
   resolveDefaultSellerLocationId,
 } from '@/lib/server/seller-location-access';
 import { loadTenantSalesOrderComposer } from '@/lib/sales-orders/load-tenant-sales-order-composer';
@@ -55,6 +55,7 @@ interface OrderRow {
   source: string | null;
   campaign_id: string | null;
   estimate_id: string | null;
+  place_of_supply: string | null;
   placed_by: string | null;
   subtotal: number;
   tax_amount: number;
@@ -66,9 +67,6 @@ interface OrderRow {
 interface OrderItemRow {
   order_id: string;
 }
-
-const ORDERS_LANDING_CACHE_TTL_MS = 20_000;
-const ordersLandingCache = new Map<string, { expiresAt: number; payload: unknown }>();
 
 function getInitials(name: string): string {
   return name
@@ -162,32 +160,11 @@ export async function GET(req: NextRequest) {
     const db = supabaseAdmin;
 
     const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? '200'), 500);
-    const cacheKey = [
-      tenantId,
-      claims.role ?? 'unknown',
-      locationScopeCacheKey(claims),
-      limit,
-      search,
-      sourceParams.join('|'),
-      statusParams.join('|'),
-      locationParams.join('|'),
-      period.selected,
-      period.current_start.slice(0, 10),
-      period.current_end_exclusive.slice(0, 10),
-      period.previous_start.slice(0, 10),
-      period.previous_end_exclusive.slice(0, 10),
-    ].join(':');
-
-    const cached = ordersLandingCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
-      return timedJson(cached.payload);
-    }
-
     const scopedCurrentOrdersQuery = applySellerLocationScope(
       db
         .schema('app')
         .from('orders')
-        .select('id, order_number, buyer_id, location_id, status, source, campaign_id, estimate_id, placed_by, subtotal, tax_amount, total_amount, placed_at, created_at')
+        .select('id, order_number, buyer_id, location_id, status, source, campaign_id, estimate_id, place_of_supply, placed_by, subtotal, tax_amount, total_amount, placed_at, created_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .gte('placed_at', period.current_start)
@@ -210,13 +187,7 @@ export async function GET(req: NextRequest) {
       claims,
     );
 
-    const [buyersRes, mtdOrdersRes, prevOrdersRes, kpiCurrentRes, kpiPrevRes] = await Promise.all([
-      db
-        .schema('app')
-        .from('buyers')
-        .select('id, business_name, geography')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null),
+    const [mtdOrdersRes, prevOrdersRes, kpiCurrentRes, kpiPrevRes] = await Promise.all([
       scopedCurrentOrdersQuery,
       scopedPreviousOrdersQuery,
       claims.role === 'seller_admin'
@@ -241,19 +212,27 @@ export async function GET(req: NextRequest) {
         : Promise.resolve({ data: [], error: null }),
     ]);
 
-    if (buyersRes.error || mtdOrdersRes.error || prevOrdersRes.error) {
-      console.error('[GET /api/tenant/orders] query error:', buyersRes.error || mtdOrdersRes.error || prevOrdersRes.error);
+    if (mtdOrdersRes.error || prevOrdersRes.error) {
+      console.error('[GET /api/tenant/orders] query error:', mtdOrdersRes.error || prevOrdersRes.error);
       return timedJson({ error: 'Failed to fetch orders' }, { status: 500 });
     }
 
-    const buyers = (buyersRes.data ?? []) as BuyerRow[];
     const mtdOrders = (mtdOrdersRes.data ?? []) as OrderRow[];
     const prevOrders = (prevOrdersRes.data ?? []) as Array<{ id: string; total_amount: number }>;
+    const buyerIds = Array.from(new Set(mtdOrders.map((order) => order.buyer_id).filter((value): value is string => Boolean(value))));
     const catalogIds = Array.from(new Set(mtdOrders.map((order) => order.campaign_id).filter((value): value is string => Boolean(value))));
     const estimateIds = Array.from(new Set(mtdOrders.map((order) => order.estimate_id).filter((value): value is string => Boolean(value))));
     const placedByIds = Array.from(new Set(mtdOrders.map((order) => order.placed_by).filter((value): value is string => Boolean(value))));
 
-    const [catalogsRes, estimatesRes, placedByMap] = await Promise.all([
+    const [buyersRes, catalogsRes, estimatesRes, placedByMap] = await Promise.all([
+      buyerIds.length > 0
+        ? db
+            .schema('app')
+            .from('buyers')
+            .select('id, business_name, geography')
+            .in('id', buyerIds)
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [] as BuyerRow[], error: null }),
       catalogIds.length > 0
         ? db.schema('app').from('campaigns').select('id, name').in('id', catalogIds).is('deleted_at', null)
         : Promise.resolve({ data: [] as Array<{ id: string; name: string }>, error: null }),
@@ -263,11 +242,12 @@ export async function GET(req: NextRequest) {
       getAuthUserDisplayNameMap(placedByIds),
     ]);
 
-    if (catalogsRes.error || estimatesRes.error) {
-      console.error('[GET /api/tenant/orders] supporting query error:', catalogsRes.error || estimatesRes.error);
+    if (buyersRes.error || catalogsRes.error || estimatesRes.error) {
+      console.error('[GET /api/tenant/orders] supporting query error:', buyersRes.error || catalogsRes.error || estimatesRes.error);
       return timedJson({ error: 'Failed to fetch orders' }, { status: 500 });
     }
 
+    const buyers = (buyersRes.data ?? []) as BuyerRow[];
     const catalogById = new Map<string, string>(
       ((catalogsRes.data ?? []) as Array<{ id: string; name: string }>).map((row) => [row.id, row.name]),
     );
@@ -330,6 +310,9 @@ export async function GET(req: NextRequest) {
       const geography = (buyer?.geography ?? null) as Record<string, unknown> | null;
       const city = getCity(geography);
       const state = getState(geography);
+      const placeOfSupply = (typeof order.place_of_supply === 'string' && order.place_of_supply.trim().length > 0)
+        ? order.place_of_supply.trim()
+        : city;
       const status = order.status as OrderStatus;
       const meta = statusMeta(status);
       const estimateNumber = order.estimate_id ? estimateById.get(order.estimate_id) ?? null : null;
@@ -338,6 +321,7 @@ export async function GET(req: NextRequest) {
       const sourceLineSecondary =
         estimateNumber && estimateNumber.trim().length > 0 ? `Converted by ${actorLabel}` : actorLabel;
       const sourceCategory = orderSourceCategory(order);
+      const sourceKind = estimateNumber ? 'converted' : order.source === 'buyer_app' ? 'buyer_app' : 'direct';
 
       return {
         id: order.id,
@@ -346,6 +330,7 @@ export async function GET(req: NextRequest) {
         order_id: order.order_number,
         buyer_id: order.buyer_id,
         buyer_name: buyerName,
+        place_of_supply: placeOfSupply ?? null,
         buyer_city: city === 'Unknown city' ? null : city,
         buyer_state: state,
         buyer_initials: getInitials(buyerName),
@@ -353,9 +338,11 @@ export async function GET(req: NextRequest) {
         delivery_city: city,
         delivery_label: city,
         source: order.source,
+        source_kind: sourceKind,
         source_category: sourceCategory,
         source_label: sourceLinePrimary,
         source_detail: sourceLineSecondary,
+        campaign_name: order.campaign_id ? catalogById.get(order.campaign_id) ?? null : null,
         catalog_name: order.campaign_id ? catalogById.get(order.campaign_id) ?? null : null,
         items_count: itemsCountByOrder.get(order.id) ?? 0,
         gmv: Number(order.total_amount ?? 0),
@@ -436,11 +423,6 @@ export async function GET(req: NextRequest) {
       total: filteredRows.length,
     };
 
-    ordersLandingCache.set(cacheKey, {
-      expiresAt: Date.now() + ORDERS_LANDING_CACHE_TTL_MS,
-      payload,
-    });
-
     return timedJson(payload);
   } catch (error) {
     console.error('[GET /api/tenant/orders] unexpected error:', error);
@@ -449,9 +431,7 @@ export async function GET(req: NextRequest) {
 }
 
 function plusDays(days: number) {
-  const next = new Date();
-  next.setDate(next.getDate() + days);
-  return next.toISOString().slice(0, 10);
+  return offsetIsoDateInTimeZone(new Date(), days);
 }
 
 export async function POST(request: NextRequest) {
@@ -505,7 +485,7 @@ export async function POST(request: NextRequest) {
     }
 
     const orderNumber = `SO-${new Date().getFullYear()}-${String((existingOrders ?? []).length + 1).padStart(5, '0')}`;
-    const draftDate = new Date().toISOString();
+    const draftDate = `${isoDateInTimeZone(new Date())}T00:00:00.000Z`;
     const expectedDelivery = plusDays(7);
 
     let buyerId: string | null = null;

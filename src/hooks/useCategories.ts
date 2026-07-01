@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { apiFetch } from '@/lib/api-fetch';
+import { appendArrayParam } from '@/lib/landing-filter-params';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 
 // ─── Landing types ────────────────────────────────────────────────────────────
@@ -55,15 +56,26 @@ export interface CategoriesLandingResponse {
   period: string;
 }
 
+export interface CategoriesLandingFilters {
+  search?: string;
+  status?: string[];
+  products?: string[];
+}
+
 export function useCategoryLanding(
   period: SellerLandingPeriod,
+  filters: CategoriesLandingFilters = {},
   initialData?: CategoriesLandingResponse | null,
 ) {
   const { session } = useAuth();
   const { data, isLoading, isError } = useQuery<CategoriesLandingResponse>({
-    queryKey: ['categories-landing', period],
+    queryKey: ['categories-landing', period, filters],
     queryFn: async () => {
-      const res = await apiFetch(`/api/tenant/categories/landing?period=${period}`);
+      const params = new URLSearchParams({ period });
+      if (filters.search?.trim()) params.set('search', filters.search.trim());
+      appendArrayParam(params, 'status', filters.status);
+      appendArrayParam(params, 'products', filters.products);
+      const res = await apiFetch(`/api/tenant/categories/landing?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch categories landing');
       return res.json();
     },

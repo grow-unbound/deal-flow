@@ -363,7 +363,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
           localStorage.removeItem('df_zoho_oauth_complete');
           localStorage.removeItem('df_zoho_oauth_error');
           setIsOAuthRedirecting(false);
-          setOauthNotice({ kind: 'success', message: 'Zoho connection is set up. You can close the other tab.' });
+          // setOauthNotice({ kind: 'success', message: 'Zoho connection is set up. You can close the other tab.' });
           setPendingOAuthConnectedId(connectedId);
           const target = integrations.find((integration) => integration.id === connectedId);
           if (target) {
@@ -555,9 +555,6 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
             </div>
           </DialogBody>
           <DialogFooter className="justify-between">
-            <div className="text-sm text-cream-600">
-              The integration can be reconnected later from the same settings page.
-            </div>
             <div className="flex items-center gap-2">
               <Button type="button" variant="ghost" onClick={() => setDisconnectDialogIntegration(null)}>
                 Cancel
@@ -762,7 +759,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                           One-click Zoho login
                         </div>
                         <p className="mt-2 text-sm leading-6 text-cream-700">
-                          Enter your Organization ID, then click the button below to log in with your Zoho account. You&apos;ll be redirected back here automatically.
+                          Enter your Organization ID to log in with your Zoho account. You&apos;ll be redirected back here automatically.
                         </p>
                       </div>
                     ) : null}
@@ -850,7 +847,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                           Transactional backfill from {formatDate(wizard.importStartDate)}
                         </Badge>
                         <ArrowRight className="h-4 w-4 text-cream-500" />
-                        <Badge variant="outline">Detail panel live polling</Badge>
+                        <Badge variant="outline">Detail panel live updates</Badge>
                       </div>
                     </div>
                   </div>

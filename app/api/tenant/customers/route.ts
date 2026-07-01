@@ -21,7 +21,6 @@ type BuyerRow = {
   city: string;
   state: string | null;
   cohort: string;
-  active_price_list: string | null;
   spend_mtd: number;
   spend_prev_mtd: number;
   growth_pct: number;
@@ -32,15 +31,32 @@ type BuyerRow = {
   dues: number;
   status: { label: string; tone: StatusTone };
   avatar: { initials: string; hue: 'teal' | 'ember' | 'cream' };
+  active_price_list: {
+    name: string;
+    source: 'direct' | 'cohort';
+    cohort_name?: string | null;
+  } | null;
 };
 
 type PriceListAssignmentRow = {
   target_id: string | null;
+  target_type: 'buyer' | 'cohort' | 'all_buyers';
   price_list_id: string;
   created_at: string | null;
   price_lists?: {
     id: string;
     name: string;
+    priority: number;
+  } | null;
+};
+
+type CohortMembershipRow = {
+  buyer_id: string;
+  cohort_id: string;
+  cohort: {
+    id: string;
+    name: string;
+    deleted_at: string | null;
   } | null;
 };
 
@@ -217,7 +233,7 @@ export async function GET(req: NextRequest) {
       db
         .schema('app')
         .from('cohort_members')
-        .select('buyer_id, cohort:cohorts(name, deleted_at)'),
+        .select('buyer_id, cohort_id, cohort:cohorts(id, name, deleted_at)'),
       db
         .schema('app')
         .from('invoices')
@@ -228,8 +244,7 @@ export async function GET(req: NextRequest) {
       db
         .schema('app')
         .from('price_list_assignments')
-        .select('target_id, price_list_id, created_at, price_lists!inner(id, name, tenant_id, deleted_at)')
-        .eq('target_type', 'buyer')
+        .select('target_id, target_type, price_list_id, created_at, price_lists!inner(id, name, priority, tenant_id, deleted_at)')
         .is('deleted_at', null)
         .eq('price_lists.tenant_id', tenantId)
         .is('price_lists.deleted_at', null)
@@ -263,22 +278,35 @@ export async function GET(req: NextRequest) {
     }
 
     const priceListAssignments = priceListAssignmentsRes.error ? [] : (priceListAssignmentsRes.data ?? []);
-    const priceListNameById = new Map<string, string>(
-      (priceListAssignments as PriceListAssignmentRow[])
-        .map((row) => row.price_lists)
-        .filter((row): row is NonNullable<PriceListAssignmentRow['price_lists']> => Boolean(row))
-        .map((row) => [row.id, row.name] as const),
-    );
-    const activePriceListByBuyerId = new Map<string, string>();
+    const buyerDirectPriceListByBuyerId = new Map<string, { name: string; source: 'direct'; cohort_name?: string | null }>();
+    const cohortPriceListsByCohortId = new Map<
+      string,
+      Array<{ name: string; priority: number; created_at: string | null }>
+    >();
     for (const row of priceListAssignments as PriceListAssignmentRow[]) {
-      if (!row.target_id || activePriceListByBuyerId.has(row.target_id)) continue;
-      activePriceListByBuyerId.set(row.target_id, priceListNameById.get(row.price_list_id) ?? 'Assigned');
+      const list = row.price_lists;
+      if (!list || !row.target_id) continue;
+      if (row.target_type === 'buyer' && !buyerDirectPriceListByBuyerId.has(row.target_id)) {
+        buyerDirectPriceListByBuyerId.set(row.target_id, {
+          name: list.name,
+          source: 'direct',
+        });
+      }
+      if (row.target_type === 'cohort') {
+        const rows = cohortPriceListsByCohortId.get(row.target_id) ?? [];
+        rows.push({
+          name: list.name,
+          priority: Number(list.priority ?? 0),
+          created_at: row.created_at ?? null,
+        });
+        cohortPriceListsByCohortId.set(row.target_id, rows);
+      }
     }
 
     const mtdOrders = (mtdOrdersRes.data ?? []).filter((order: { buyer_id: string }) => buyerIdSet.has(order.buyer_id));
     const prevOrders = (prevOrdersRes.data ?? []).filter((order: { buyer_id: string }) => buyerIdSet.has(order.buyer_id));
     const allOrders = (recentOrdersRes.data ?? []).filter((order: { buyer_id: string }) => buyerIdSet.has(order.buyer_id));
-    const cohortMembers = (cohortMembersRes.data ?? []).filter((row: { buyer_id: string }) => buyerIdSet.has(row.buyer_id));
+    const cohortMembers = (cohortMembersRes.data ?? []) as CohortMembershipRow[];
     const invoices = invoicesTableMissing ? [] : (invoicesRes.data ?? []).filter((invoice: { buyer_id: string }) => buyerIdSet.has(invoice.buyer_id));
 
     const spendMtdByBuyer = new Map<string, number>();
@@ -317,12 +345,16 @@ export async function GET(req: NextRequest) {
     }
 
     const cohortMap = new Map<string, string>();
+    const buyerCohortsByBuyerId = new Map<string, Array<{ id: string; name: string }>>();
     const cohortSet = new Set<string>();
     for (const row of cohortMembers) {
       const cohortName = row.cohort?.name;
       const cohortDeletedAt = row.cohort?.deleted_at;
       if (!cohortName || cohortDeletedAt) continue;
       cohortSet.add(cohortName);
+      const cohortList = buyerCohortsByBuyerId.get(row.buyer_id) ?? [];
+      cohortList.push({ id: row.cohort_id, name: cohortName });
+      buyerCohortsByBuyerId.set(row.buyer_id, cohortList);
       const prev = cohortMap.get(row.buyer_id);
       if (!prev || cohortName.localeCompare(prev) < 0) {
         cohortMap.set(row.buyer_id, cohortName);
@@ -344,6 +376,33 @@ export async function GET(req: NextRequest) {
       const dues = creditSnapshots.get(buyer.id)?.outstanding_dues ?? 0;
       const credit_used = dues;
       const dormant = !last_order_at || last_order_at < dormantCutoffIso;
+      const directPriceList = buyerDirectPriceListByBuyerId.get(buyer.id) ?? null;
+      let cohortPriceList: { name: string; source: 'cohort'; cohort_name?: string | null } | null = null;
+      if (!directPriceList) {
+        const cohorts = buyerCohortsByBuyerId.get(buyer.id) ?? [];
+        let best: { name: string; priority: number; created_at: string | null; cohort_name: string } | null = null;
+        for (const cohort of cohorts) {
+          const options = cohortPriceListsByCohortId.get(cohort.id) ?? [];
+          for (const option of options) {
+            const candidate = {
+              name: option.name,
+              priority: option.priority,
+              created_at: option.created_at,
+              cohort_name: cohort.name,
+            };
+            if (
+              !best
+              || candidate.priority > best.priority
+              || (candidate.priority === best.priority && (candidate.created_at ?? '') > (best.created_at ?? ''))
+            ) {
+              best = candidate;
+            }
+          }
+        }
+        if (best) {
+          cohortPriceList = { name: best.name, source: 'cohort', cohort_name: best.cohort_name };
+        }
+      }
 
       let status: BuyerRow['status'] = { label: 'Healthy', tone: 'success' };
       if (dues > 80000 || growth_pct < 0) status = { label: 'Needs follow-up', tone: 'warning' };
@@ -360,7 +419,7 @@ export async function GET(req: NextRequest) {
         city: buyer.geography?.city ?? 'Unknown',
         state: buyer.geography?.state ?? null,
         cohort: cohortMap.get(buyer.id) ?? '—',
-        active_price_list: activePriceListByBuyerId.get(buyer.id) ?? null,
+        active_price_list: directPriceList ?? cohortPriceList,
         spend_mtd,
         spend_prev_mtd,
         growth_pct,
@@ -398,7 +457,18 @@ export async function GET(req: NextRequest) {
       })
       .filter((row) =>
         search
-          ? [row.business_name, row.phone ?? '', row.city, row.cohort, row.active_price_list ?? '', row.status.label, row.state ?? '', row.gst_treatment ?? '', row.zoho_status ?? ''].some((value) =>
+          ? [
+              row.business_name,
+              row.phone ?? '',
+              row.city,
+              row.cohort,
+              row.active_price_list?.name ?? '',
+              row.active_price_list?.cohort_name ?? '',
+              row.status.label,
+              row.state ?? '',
+              row.gst_treatment ?? '',
+              row.zoho_status ?? '',
+            ].some((value) =>
               value.toLowerCase().includes(search),
             )
           : true,

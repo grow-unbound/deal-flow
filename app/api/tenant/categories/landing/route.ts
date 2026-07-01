@@ -4,6 +4,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
+import { readArrayParam } from '@/lib/landing-filter-params';
 import type {
   CategoryLandingKpis,
   CategoryTableRow,
@@ -41,6 +42,9 @@ export async function GET(request: NextRequest) {
   const db = supabaseAdmin as any;
   const tenantId = claims.tenant_id;
   const period = getSellerLandingPeriodMeta(request.nextUrl.searchParams.get('period'));
+  const search = request.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '';
+  const statusFilter = readArrayParam(request.nextUrl.searchParams, 'status');
+  const productFilter = readArrayParam(request.nextUrl.searchParams, 'products');
 
   // 30 days ago for avg_days_cover computation
   const thirtyDaysAgo = new Date();
@@ -220,6 +224,24 @@ export async function GET(request: NextRequest) {
     });
 
     const activeRows = rows.filter((r) => r.is_active);
+    const filteredRows = rows.filter((r) => {
+      const statusOk =
+        statusFilter.length === 0 ||
+        statusFilter.some((value) => {
+          if (value === 'Active') return r.is_active;
+          if (value === 'Inactive') return !r.is_active;
+          return false;
+        });
+      const productOk =
+        productFilter.length === 0 ||
+        productFilter.some((value) => {
+          if (value === 'Has Products') return r.active_sku_count > 0;
+          if (value === 'Empty') return r.active_sku_count === 0;
+          return false;
+        });
+      const searchOk = !search || r.name.toLowerCase().includes(search);
+      return statusOk && productOk && searchOk;
+    });
     const totalGmv = activeRows.reduce((s, r) => s + r.gmv_mtd, 0);
     const topCategory = activeRows.reduce<CategoryTableRow | null>(
       (best, r) => (best === null || r.gmv_mtd > best.gmv_mtd ? r : best),
@@ -257,7 +279,7 @@ export async function GET(request: NextRequest) {
     const payload: CategoriesLandingResponse = {
       kpis,
       callouts: { stockout_risk, top_performers, fast_movers },
-      rows,
+      rows: filteredRows,
       period: period.selected,
     };
 

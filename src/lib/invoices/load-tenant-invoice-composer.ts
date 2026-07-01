@@ -1,5 +1,6 @@
 import { computePlaceOfSupplyFromBuyer } from '@/lib/sales-orders/compute-place-of-supply';
 import type { JWTClaims } from '@/lib/auth';
+import { isoDateInTimeZone } from '@/lib/date-utils';
 import {
   canAccessDocumentLocation,
   loadAccessibleSellerLocations,
@@ -257,6 +258,8 @@ export async function loadInvoiceDocument(
     : null;
 
   const geo = (buyer?.geography as Record<string, unknown> | null | undefined) ?? null;
+  const storedPlaceOfSupply = typeof inv.place_of_supply === 'string' ? inv.place_of_supply.trim() : '';
+  const placeOfSupply = storedPlaceOfSupply || computePlaceOfSupplyFromBuyer(geo, (buyer?.gstin as string | null | undefined) ?? null);
   const buyerContext: EstimateComposerBuyerContext | null = buyer
     ? {
         id: String(buyer.id),
@@ -269,7 +272,7 @@ export async function loadInvoiceDocument(
         city: (geo?.city as string | null | undefined) ?? null,
         state: (geo?.state as string | null | undefined) ?? null,
         pincode: (geo?.pincode as string | null | undefined) ?? null,
-        place_of_supply: computePlaceOfSupplyFromBuyer(geo, (buyer.gstin as string | null | undefined) ?? null),
+        place_of_supply: placeOfSupply,
         seller_state: (tenantRes.data?.primary_state as string | null | undefined) ?? null,
         payment_terms_days: Number(buyer.payment_terms_days ?? 0),
         credit_limit: creditLimit,
@@ -280,7 +283,6 @@ export async function loadInvoiceDocument(
       }
     : null;
 
-  const fallbackDate = String(inv.created_at).slice(0, 10);
   const composerPayload: InvoiceComposerDocument = {
     id: String(inv.id),
     invoice_number: String(inv.invoice_number ?? '—'),
@@ -289,10 +291,10 @@ export async function loadInvoiceDocument(
     location_id: locationId ?? defaultLocationId,
     location_name: (locationRes.data?.name as string | null | undefined) ?? null,
     available_locations: availableLocations,
-    invoice_date: isoDateValue(inv.invoice_date as string | null | undefined, fallbackDate),
+    invoice_date: isoDateValue(inv.invoice_date as string | null | undefined, isoDateInTimeZone(new Date())),
     due_date: isoDateValue(inv.due_date as string | null | undefined, null as unknown as string) || null,
     buyer_po_ref: String(inv.buyer_po_ref ?? ''),
-    place_of_supply: String(inv.place_of_supply ?? ''),
+    place_of_supply: placeOfSupply,
     seller_note: String(inv.notes ?? ''),
     freight: Number(inv.freight ?? 0),
     discount_flat: Number(inv.discount_flat ?? 0),

@@ -368,6 +368,7 @@ export const IntegrationJobRecordSchema = z
     status: IntegrationSyncJobStatusSchema,
     run_origin: IntegrationRunOriginSchema.nullable().optional(),
     sync_window: z.string().trim().min(1).max(200).nullable().optional(),
+    since_date: z.string().datetime({ offset: true }).nullable().optional(),
     progress: IntegrationJobProgressSchema,
     error_log: IntegrationJobErrorLogSchema.nullable().optional(),
     summary: IntegrationJobSummarySchema.nullable().optional(),

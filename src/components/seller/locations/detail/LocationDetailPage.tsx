@@ -15,10 +15,12 @@ import { formatCompactInr } from '@/lib/utils';
 import { LocationOverviewTab } from './LocationOverviewTab';
 import { LocationCustomersTab } from './LocationCustomersTab';
 import { LocationOrdersTab } from './LocationOrdersTab';
+import { LocationEstimatesTab } from './LocationEstimatesTab';
+import { LocationInvoicesTab } from './LocationInvoicesTab';
 import { LocationInventoryTab } from './LocationInventoryTab';
 import { LocationActivityTab } from './LocationActivityTab';
 
-type TabId = 'performance' | 'customers' | 'orders' | 'inventory' | 'activity';
+type TabId = 'performance' | 'customers' | 'orders' | 'estimates' | 'invoices' | 'inventory' | 'activity';
 
 interface LocationDetailPageProps {
   id: string;
@@ -141,6 +143,8 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
     { id: 'performance', label: 'Performance' },
     { id: 'customers', label: 'Customers', badge: data.tab_badges.customers },
     { id: 'orders', label: 'Orders', badge: data.tab_badges.orders_mtd },
+    { id: 'estimates', label: 'Estimates', badge: data.tab_badges.estimates_mtd },
+    { id: 'invoices', label: 'Invoices', badge: data.tab_badges.invoices_mtd },
     {
       id: 'inventory',
       label: 'Inventory',
@@ -226,7 +230,9 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
 
       {tab === 'performance' ? <LocationOverviewTab data={data.overview} /> : null}
       {tab === 'customers' ? <LocationCustomersTab customers={data.customers} /> : null}
-      {tab === 'orders' ? <LocationOrdersTab orders={data.orders} /> : null}
+      {tab === 'orders' ? <LocationOrdersTab rows={data.orders} /> : null}
+      {tab === 'estimates' ? <LocationEstimatesTab rows={data.estimates} /> : null}
+      {tab === 'invoices' ? <LocationInvoicesTab rows={data.invoices} /> : null}
       {tab === 'inventory' ? <LocationInventoryTab inventory={data.inventory} /> : null}
       {tab === 'activity' ? <LocationActivityTab activity={data.activity} /> : null}
 

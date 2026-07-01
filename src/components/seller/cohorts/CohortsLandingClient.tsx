@@ -27,9 +27,9 @@ import { useCohortsLanding, type CohortsLandingResponse } from '@/hooks/useCohor
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 
-type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Growth (high → low)' | 'Conversion (high → low)';
+type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Growth (high → low)';
 
-const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'GMV (low → high)', 'Growth (high → low)', 'Conversion (high → low)'];
+const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'GMV (low → high)', 'Growth (high → low)'];
 
 function getInitials(name: string): string {
   return name
@@ -103,9 +103,6 @@ function CohortsLandingContent({
 }) {
   const router = useRouter();
   const { period, setPeriod, horizonLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
-  const { data, isLoading, isError, refetch } = useCohortsLanding(period, initialData);
-  const retainedData = useRetainedValue(data);
-  const landingData = data ?? retainedData;
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-cohorts-landing',
     scopeKey: period,
@@ -118,16 +115,23 @@ function CohortsLandingContent({
       sortBy: 'GMV (high → low)' as SortOption,
     },
   });
+  const search = routeState.search;
+  const sortBy = routeState.sortBy;
+  const filters = routeState.filters ?? { brands: [] };
+  const { data, isLoading, isError, refetch } = useCohortsLanding(period, { search, brands: filters.brands }, initialData);
   useRouteScrollRestoration({
     storageKey: 'seller-cohorts-landing',
     scopeKey: period,
     ready: !isLoading,
   });
-  const search = routeState.search;
-  const sortBy = routeState.sortBy;
-  const filters = routeState.filters ?? { brands: [] };
+  const retainedData = useRetainedValue(data);
+  const landingData = data ?? retainedData;
   const brandOptions = useMemo(
     () => (landingData?.brands ?? []).map((brand) => ({ value: brand.id, label: brand.name })),
+    [landingData?.brands],
+  );
+  const brandNameById = useMemo(
+    () => new Map((landingData?.brands ?? []).map((brand) => [brand.id, brand.name])),
     [landingData?.brands],
   );
   const groups: FilterBarGroup[] = [
@@ -165,10 +169,18 @@ function CohortsLandingContent({
       .sort((a, b) => {
         if (sortBy === 'GMV (high → low)') return b.gmv_mtd - a.gmv_mtd;
         if (sortBy === 'GMV (low → high)') return a.gmv_mtd - b.gmv_mtd;
-        if (sortBy === 'Growth (high → low)') return b.growth_pct - a.growth_pct;
-        return b.conversion_pct - a.conversion_pct;
+        return b.growth_pct - a.growth_pct;
       });
   }, [filters.brands, landingData?.cohorts, search, sortBy]);
+
+  const formatAllowedBrands = (cohort: { allowed_tenant_brand_ids?: string[] | null }) => {
+    const ids = cohort.allowed_tenant_brand_ids ?? [];
+    if (ids.length === 0) return 'All brands';
+    const names = ids.map((id) => brandNameById.get(id) ?? id).filter(Boolean);
+    if (names.length === 0) return 'All brands';
+    const visible = names.slice(0, 3);
+    return names.length > 3 ? `${visible.join(', ')} + ${names.length - 3} more` : visible.join(', ');
+  };
 
   if (isLoading && !landingData) return <CohortsLandingSkeleton />;
 
@@ -315,17 +327,16 @@ function CohortsLandingContent({
       ) : (
         <LandingTable
           columns={[
-            { label: 'Customer group', minWidth: 280, className: 'px-5' },
-            { label: 'Type', minWidth: 140, className: 'px-5' },
-            { label: 'Allowed brands', minWidth: 140, className: 'px-5' },
-            { label: 'Members', align: 'right', minWidth: 140, className: 'px-5' },
-            { label: `GMV · ${metricSuffix}`, align: 'right', minWidth: 140, className: 'px-5' },
-            { label: 'Growth', align: 'right', minWidth: 120, className: 'px-5' },
-            { label: 'Conversion', align: 'right', minWidth: 120, className: 'px-5' },
-            { label: 'Status', minWidth: 160, className: 'px-5' },
+            { label: 'Customer group', minWidth: 280, maxWidth: 360, className: 'px-5' },
+            { label: 'Type', minWidth: 160, maxWidth: 180, className: 'px-5' },
+            { label: 'Allowed brands', minWidth: 220, maxWidth: 340, className: 'px-5' },
+            { label: 'Members', align: 'right', minWidth: 140, maxWidth: 180, className: 'px-5' },
+            { label: `GMV · ${metricSuffix}`, align: 'right', minWidth: 140, maxWidth: 160, className: 'px-5' },
+            { label: 'Growth', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
+            { label: 'Status', minWidth: 140, maxWidth: 180, className: 'px-5' },
             { width: 40, className: 'px-4' },
           ]}
-          tableClassName="min-w-[1160px]"
+          tableMinWidth={1260}
         >
           {filtered.map((cohort) => (
             <tr
@@ -336,15 +347,13 @@ function CohortsLandingContent({
               <td className="px-5 py-3.5">
                 <div className="min-w-0">
                   <p className="truncate text-base font-medium text-cream-900">{cohort.name}</p>
-                  <p className="mt-0.5 truncate text-xs text-cream-600">
-                    {cohort.description ?? `${cohort.type} cohort`}
-                  </p>
+                  <p className="mt-0.5 truncate text-xs text-cream-600">{cohort.description ?? '—'}</p>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-sm text-cream-800">{cohort.type}</td>
-              <td className="px-5 py-3.5 text-sm text-cream-800">{cohort.allowed_brands_label}</td>
+              <td className="px-5 py-3.5 text-sm text-cream-800">{cohort.is_static ? 'Manual selection' : 'Rule based'}</td>
+              <td className="px-5 py-3.5 text-sm text-cream-800">{formatAllowedBrands(cohort)}</td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
-                {cohort.active_members} / <span className="text-cream-600">{cohort.total_members}</span>
+                {cohort.active_members}/{cohort.total_members}
               </td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                 {formatCompactInr(cohort.gmv_mtd)}
@@ -352,22 +361,9 @@ function CohortsLandingContent({
               <td className="px-5 py-3.5 text-right">
                 <GrowthPill value={cohort.growth_pct} />
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
-                {cohort.conversion_pct.toFixed(1)}%
-              </td>
               <td className="px-5 py-3.5">
                 <div className="space-y-1">
                   <StatusTag tone={cohort.status_tone} label={cohort.status_label} />
-                  <div className="flex flex-wrap gap-1.5">
-                    {cohort.focus_chips.slice(0, 3).map((chip) => (
-                      <span
-                        key={chip}
-                        className="rounded-[4px] border border-cream-300 bg-cream-100 px-1.5 py-0.5 text-xs uppercase tracking-[0.04em] text-cream-700"
-                      >
-                        {chip}
-                      </span>
-                    ))}
-                  </div>
                 </div>
               </td>
               <td className="px-4 py-3.5 text-right text-cream-500">›</td>

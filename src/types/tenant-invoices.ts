@@ -20,14 +20,17 @@ export interface InvoiceLandingRow {
   invoice_number: string;
   buyer_id: string;
   buyer_name: string;
+  place_of_supply: string | null;
   buyer_city: string | null;
   buyer_state: string | null;
   buyer_initials: string;
   buyer_hue: InvoiceAvatarHue;
   order_id: string | null;
   estimate_id: string | null;
+  source_kind: 'buyer_app' | 'converted' | 'direct';
   source_label: string;
   source_detail: string;
+  campaign_name: string | null;
   created_by_label: string | null;
   items_count: number;
   total_amount: number;
@@ -204,6 +207,7 @@ export interface InvoiceDetailTotalsDto {
 }
 
 export interface InvoiceDetailItemDto {
+  id?: string;
   tenant_product_id: string;
   product_name: string;
   sku: string;

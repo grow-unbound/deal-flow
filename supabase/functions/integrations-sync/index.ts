@@ -90,7 +90,7 @@ async function loadIntegration(
 
 async function createPhaseJob(
   admin: ReturnType<typeof createAdminClient>,
-  opts: { tenantId: string; tenantIntegrationId: string; phase: string; jobType: string; triggeredBy: string | null },
+  opts: { tenantId: string; tenantIntegrationId: string; phase: string; jobType: string; triggeredBy: string | null; sinceDate?: string | null },
 ): Promise<string> {
   const { data, error } = await admin
     .schema('app')
@@ -102,6 +102,7 @@ async function createPhaseJob(
       phase: opts.phase,
       status: 'pending',
       progress: {},
+      since_date: opts.sinceDate ?? null,
       triggered_by: opts.triggeredBy,
       created_by: opts.triggeredBy,
       updated_by: opts.triggeredBy,
@@ -236,6 +237,7 @@ Deno.serve(async (req: Request) => {
         phase,
         jobType,
         triggeredBy: actorUserId,
+        sinceDate: since ?? null,
       });
     }
 
@@ -328,6 +330,7 @@ Deno.serve(async (req: Request) => {
         phase: 'analysis',
         jobType,
         triggeredBy: actorUserId,
+        sinceDate: since ?? null,
       });
       jobIds['analysis'] = analysisJobId;
       await admin.schema('app').from('integration_sync_jobs').update({

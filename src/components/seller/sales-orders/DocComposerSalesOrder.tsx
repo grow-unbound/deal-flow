@@ -48,6 +48,7 @@ import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-o
 import { useAuth } from '@/contexts/AuthContext';
 import { composerSubmitFooterLabel, useComposerLeaveGuard } from '@/hooks/useComposerLeaveGuard';
 import { useDocumentBuyerPicker } from '@/hooks/useDocumentBuyerPicker';
+import { useTenantLocations } from '@/hooks/useTenantLocations';
 import {
   useEstimateComposer,
   useEstimatePriceListOptions,
@@ -64,7 +65,7 @@ import {
   useSaveSalesOrderComposer,
 } from '@/hooks/useSalesOrders';
 import { apiPatch, apiPost } from '@/lib/api-fetch';
-import { bumpSecondDateAfterFirst } from '@/lib/date-utils';
+import { bumpSecondDateAfterFirst, isoDateInTimeZone, offsetIsoDateInTimeZone } from '@/lib/date-utils';
 import {
   buildComposerStagedChanges,
   stagedSliceFromSalesOrder,
@@ -83,14 +84,8 @@ import type {
 
 const BASE_PRICING_OPTION = '__base__';
 
-function isoToday() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function defaultExpectedDelivery() {
-  const next = new Date();
-  next.setDate(next.getDate() + 7);
-  return next.toISOString().slice(0, 10);
+  return offsetIsoDateInTimeZone(new Date(), 7);
 }
 
 function buildNewSalesOrderDraft(orderNumber = 'Reserving next number...'): SalesOrderComposerDocument {
@@ -102,7 +97,7 @@ function buildNewSalesOrderDraft(orderNumber = 'Reserving next number...'): Sale
     location_id: null,
     location_name: null,
     available_locations: [],
-    order_date: isoToday(),
+    order_date: isoDateInTimeZone(new Date()),
     expected_delivery: defaultExpectedDelivery(),
     buyer_po_ref: '',
     place_of_supply: '',
@@ -208,6 +203,7 @@ export function DocComposerSalesOrder({
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const salesOrdersFlag = useFlagState('SALES_ORDERS');
   const { data: tenantSettings } = useTenantSettings();
+  const tenantLocationsQuery = useTenantLocations();
   const gstInclusive = tenantSettings?.unified.business_policy.gst_inclusive ?? false;
 
   const [workingId, setWorkingId] = useState<string | null>(orderId ?? null);
@@ -314,7 +310,7 @@ export function DocComposerSalesOrder({
       location_id: est.location_id ?? null,
       location_name: est.location_name ?? null,
       available_locations: est.available_locations ?? [],
-      order_date: isoToday(),
+      order_date: isoDateInTimeZone(new Date()),
       expected_delivery: defaultExpectedDelivery(),
       buyer_po_ref: est.buyer_po_ref ?? '',
       place_of_supply: est.place_of_supply,
@@ -469,6 +465,20 @@ export function DocComposerSalesOrder({
     () => (productSearchQuery.data ?? []).filter((row) => !activeProductIds.has(row.tenant_product_id)),
     [productSearchQuery.data, activeProductIds],
   );
+  const createModeLocationOptions = useMemo(
+    () =>
+      (tenantLocationsQuery.data?.locations ?? [])
+        .filter((location) => location.deleted_at == null)
+        .map((location) => ({
+          id: location.id,
+          name: location.name,
+          is_default: location.is_default,
+        })),
+    [tenantLocationsQuery.data],
+  );
+  const availableLocationOptions = mode === 'create'
+    ? createModeLocationOptions
+    : (documentState?.available_locations ?? []);
   const dirtyGuard = useDirtyCloseGuard({
     isDirty: dirty,
     onConfirmClose: () => router.push(closeTarget),
@@ -822,7 +832,7 @@ export function DocComposerSalesOrder({
             docNumber={documentState.order_number}
             locationId={documentState.location_id}
             locationName={documentState.location_name}
-            availableLocations={documentState.available_locations}
+            availableLocations={availableLocationOptions}
             dateIssued={documentState.order_date}
             secondDate={documentState.expected_delivery}
             buyerPoRef={documentState.buyer_po_ref}
@@ -893,6 +903,14 @@ export function DocComposerSalesOrder({
             productQuery={productQuery}
             productResults={filteredProductSearchResults}
             searchOpen={searchOpen}
+            productSearchLoading={productSearchQuery.isLoading}
+            productSearchFetchingNextPage={productSearchQuery.isFetchingNextPage}
+            productSearchHasMore={productSearchQuery.hasNextPage}
+            onProductSearchLoadMore={() => {
+              if (productSearchQuery.hasNextPage && !productSearchQuery.isFetchingNextPage) {
+                void productSearchQuery.fetchNextPage();
+              }
+            }}
             notesExpanded={false}
             freightExpanded={false}
             internalExpanded={false}

@@ -50,6 +50,8 @@ export async function GET(request: NextRequest) {
     const q = request.nextUrl.searchParams.get('q')?.trim() ?? '';
     const buyerId = request.nextUrl.searchParams.get('buyerId') ?? null;
     const priceListId = request.nextUrl.searchParams.get('priceListId') ?? null;
+    const limitParam = Number.parseInt(request.nextUrl.searchParams.get('limit') ?? '', 10);
+    const requestedLimit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 12;
     const idsParam = request.nextUrl.searchParams.get('ids');
     const requestedIds = idsParam
       ? Array.from(new Set(idsParam.split(',').map((value) => value.trim()).filter(Boolean)))
@@ -63,7 +65,7 @@ export async function GET(request: NextRequest) {
       p_query: q,
       p_buyer_id: buyerId,
       p_price_list_id: priceListId,
-      p_limit: requestedIds.length > 0 ? requestedIds.length : 12,
+      p_limit: requestedIds.length > 0 ? requestedIds.length : requestedLimit + 1,
       p_query_embedding: queryEmbedding,
       p_ids: requestedIds.length > 0 ? requestedIds : null,
     });
@@ -93,7 +95,9 @@ export async function GET(request: NextRequest) {
       ? requestedIds
           .map((id) => rows.find((row) => row.tenant_product_id === id))
           .filter((row): row is NonNullable<typeof row> => Boolean(row))
-      : rows;
+      : rows.slice(0, requestedLimit);
+
+    const hasMore = requestedIds.length > 0 ? false : rows.length > requestedLimit;
 
     const products = orderedRows.map((row, index) => {
       const brandName = row.brand_name || 'Brand';
@@ -115,7 +119,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ products });
+    return NextResponse.json({ products, has_more: hasMore });
   } catch (error) {
     console.error('[GET /api/tenant/products/search]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

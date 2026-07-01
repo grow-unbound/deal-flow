@@ -27,6 +27,7 @@ export interface OrderLandingRow {
   order_id: string;
   buyer_id: string;
   buyer_name: string;
+  place_of_supply: string | null;
   buyer_city: string | null;
   buyer_state: string | null;
   buyer_initials: string;
@@ -34,8 +35,10 @@ export interface OrderLandingRow {
   delivery_city: string;
   delivery_label: string;
   source: string | null;
+  source_kind: 'buyer_app' | 'converted' | 'direct';
   source_label: string;
   source_detail: string;
+  campaign_name: string | null;
   catalog_name: string | null;
   items_count: number;
   gmv: number;

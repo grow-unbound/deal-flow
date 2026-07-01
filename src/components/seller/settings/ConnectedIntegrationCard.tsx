@@ -664,9 +664,6 @@ function getEntityCards(job: IntegrationSyncJob | null, flows: IntegrationDataFl
         metaParts.push(`${formatNumber(effectiveStat.stat.failed)} failed`);
         metaParts.push(`${formatNumber(effectiveStat.stat.pages)} pages`);
       }
-      if (job?.status === 'running' || job?.status === 'queued') {
-        metaParts.push('last poll');
-      }
       const meta = metaParts.length > 0 ? metaParts.join(' · ') : 'No sync yet';
 
       return {
@@ -854,6 +851,8 @@ export function ConnectedIntegrationCard({
     if (!available) return { label: 'Gated', variant: 'outline' as const };
     if (activeJob?.status === 'running') return { label: 'Syncing', variant: 'info' as const };
     if (activeJob?.status === 'queued') return { label: 'Queued', variant: 'info' as const };
+    if (activeJob?.status === 'pending') return { label: 'Pending', variant: 'info' as const };
+    if (activeJob?.status === 'paused') return { label: 'Paused', variant: 'info' as const };
     if (latestFinishedRun?.status === 'cancelled') return { label: 'Cancelled', variant: 'success' as const };
     if (ti.health_status === 'expired' || ti.health_status === 'invalid') return { label: 'Needs attention', variant: 'warning' as const };
     if (ti.status === 'sync_failed') return { label: 'Sync failed', variant: 'warning' as const };
@@ -863,7 +862,7 @@ export function ConnectedIntegrationCard({
   })();
 
   const isSyncFailed = ti.status === 'sync_failed' || activeJob?.status === 'failed';
-  const isSyncInProgress = activeJob?.status === 'running' || activeJob?.status === 'queued';
+  const isSyncInProgress = ['running', 'queued', 'pending', 'paused'].includes(activeJob?.status ?? '');
   const needsReconnect = ti.status === 'disconnected' || ti.health_status === 'expired' || ti.health_status === 'invalid';
   const Icon = getIntegrationIcon(integration);
   const currentRun = activeJob ?? latestVisibleRun;
@@ -1028,7 +1027,7 @@ export function ConnectedIntegrationCard({
 
           <div className="rounded-2xl border border-cream-200 bg-cream-50 p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">
-              {activeJob ? 'Live poll' : 'Latest Sync'}
+              {activeJob ? 'Live Sync' : 'Latest Sync'}
             </div>
             <div className="mt-3 text-lg font-semibold text-cream-900">
               {latestSyncLabel}
@@ -1111,7 +1110,7 @@ export function ConnectedIntegrationCard({
                       ))
                     ) : (
                       <div className="rounded-lg border border-dashed border-cream-300 bg-cream-50 px-3 py-4 text-sm text-cream-700">
-                        Phase tracker will populate once the worker reports its first poll.
+                        Phase tracker will populate once the first update arrives.
                       </div>
                     )}
                   </div>
@@ -1434,8 +1433,12 @@ export function ConnectedIntegrationCard({
               <div className="divide-y divide-cream-200 overflow-hidden rounded-2xl border border-cream-200 bg-white">
                 {sortedHistory.map((job) => {
                   const phaseEntries = getPhaseEntries(job).filter((phase) => phase.stat || phase.state !== 'Not Started');
-                  const scopeLabel = job.summary?.scope ? labelize(job.summary.scope) : 'Unknown';
-                  const sinceLabel = job.summary?.since ? formatIntegrationDateTimeLabel(job.summary.since) : 'Not set';
+                  const scopeLabel = labelize(job.job_type);
+                  const sinceLabel = job.since_date
+                    ? formatIntegrationDateTimeLabel(job.since_date)
+                    : job.summary?.since
+                      ? formatIntegrationDateTimeLabel(job.summary.since)
+                      : 'All time';
                   const completedLabel = formatIntegrationDateTimeLabel(job.summary?.last_synced_at ?? getRunTime(job));
                   return (
                     <details key={job.id} className="group px-4 py-4">
@@ -1455,7 +1458,7 @@ export function ConnectedIntegrationCard({
                             {job.progress?.phase_label ?? job.summary?.note ?? 'No phase details reported yet.'}
                           </p>
                           <p className="mt-2 text-xs uppercase tracking-[0.12em] text-cream-600">
-                            Scope {scopeLabel} · Since {sinceLabel} · Completed {completedLabel}
+                            {scopeLabel} · Since {sinceLabel} · {completedLabel}
                           </p>
                           {job.status === 'cancelled' ? (
                             <p className="mt-2 rounded-lg border border-success-200 bg-success-50 px-3 py-2 text-sm leading-6 text-success-900">

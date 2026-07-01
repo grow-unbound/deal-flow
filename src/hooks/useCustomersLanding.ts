@@ -24,7 +24,11 @@ export interface CustomersLandingBuyer {
   city: string;
   state?: string | null;
   cohort: string;
-  active_price_list?: string | null;
+  active_price_list?: {
+    name: string;
+    source: 'direct' | 'cohort';
+    cohort_name?: string | null;
+  } | null;
   spend_mtd: number;
   spend_prev_mtd: number;
   growth_pct: number;
@@ -157,6 +161,11 @@ export interface TenantCustomerDetailResponse {
     rows: Array<{
       id: string;
       order_number: string | null;
+      location_name: string | null;
+      place_of_supply: string | null;
+      source_kind: 'buyer_app' | 'converted' | 'direct';
+      source_label: string | null;
+      campaign_name: string | null;
       placed_at: string | null;
       items: number;
       gmv: number;
@@ -167,7 +176,14 @@ export interface TenantCustomerDetailResponse {
     rows: Array<{
       id: string;
       number: string | null;
+      location_name: string | null;
+      place_of_supply: string | null;
+      source_kind: 'buyer_app' | 'seller';
+      source_label: string | null;
+      campaign_name: string | null;
       issued_at: string | null;
+      expires_at: string | null;
+      items_count: number;
       total_amount: number;
       status: string;
     }>;
@@ -176,7 +192,15 @@ export interface TenantCustomerDetailResponse {
     rows: Array<{
       id: string;
       number: string | null;
+      location_name: string | null;
+      place_of_supply: string | null;
+      source_kind: 'buyer_app' | 'converted' | 'direct';
+      source_label: string | null;
+      campaign_name: string | null;
       issued_at: string | null;
+      due_date: string | null;
+      items_count: number;
+      outstanding_amount: number;
       total_amount: number;
       status: string;
     }>;

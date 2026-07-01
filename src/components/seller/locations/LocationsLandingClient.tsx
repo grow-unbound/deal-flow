@@ -101,9 +101,6 @@ function LocationsLandingContent({
   const router = useRouter();
   const [sheetOpen, setSheetOpen] = useState(false);
   const { period, setPeriod, horizonLabel, options } = useSellerLandingPeriod(initialPeriod);
-  const { data, isLoading, isError, refetch } = useLocationsLanding(period, initialData);
-  const retainedData = useRetainedValue(data);
-  const landingData = data ?? retainedData;
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-locations-landing',
     scopeKey: period,
@@ -118,15 +115,17 @@ function LocationsLandingContent({
       sortBy: 'GMV (high → low)' as SortOption,
     },
   });
+  const search = routeState.search;
+  const sortBy = routeState.sortBy;
+  const filters = routeState.filters ?? { status: [], stock: [], dues: [] };
+  const { data, isLoading, isError, refetch } = useLocationsLanding(period, { search, status: filters.status, stock: filters.stock, dues: filters.dues }, initialData);
+  const retainedData = useRetainedValue(data);
+  const landingData = data ?? retainedData;
   useRouteScrollRestoration({
     storageKey: 'seller-locations-landing',
     scopeKey: period,
     ready: !isLoading,
   });
-
-  const search = routeState.search;
-  const sortBy = routeState.sortBy;
-  const filters = routeState.filters ?? { status: [], stock: [], dues: [] };
   const groups: FilterBarGroup[] = [
     {
       key: 'status',
@@ -195,7 +194,8 @@ function LocationsLandingContent({
         return (
           row.name.toLowerCase().includes(query) ||
           row.type.toLowerCase().includes(query) ||
-          row.city.toLowerCase().includes(query)
+          row.city.toLowerCase().includes(query) ||
+          row.address_text.toLowerCase().includes(query)
         );
       })
       .sort((a, b) => {
@@ -343,18 +343,18 @@ function LocationsLandingContent({
               }
             />
           ) : (
-            <LandingTable
-              columns={[
-                { label: 'Location', minWidth: 280, className: 'px-5' },
-                { label: 'Phone', minWidth: 140, className: 'px-5' },
-                { label: 'GMV · MTD', align: 'right', minWidth: 140, className: 'px-5' },
-                { label: 'Growth', minWidth: 120, className: 'px-5' },
-                { label: 'Active buyers', align: 'right', minWidth: 120, className: 'px-5' },
-                { label: 'Outstanding dues', align: 'right', minWidth: 150, className: 'px-5' },
-                { label: 'Stock status', minWidth: 180, className: 'px-5' },
+          <LandingTable
+            columns={[
+                { label: 'Location', minWidth: 280, maxWidth: 360, className: 'px-5' },
+                { label: 'Location type', minWidth: 160, maxWidth: 200, className: 'px-5' },
+                { label: 'GMV · MTD', align: 'right', minWidth: 140, maxWidth: 170, className: 'px-5' },
+                { label: 'Growth', minWidth: 120, maxWidth: 140, className: 'px-5' },
+                { label: 'Active buyers', align: 'right', minWidth: 130, maxWidth: 160, className: 'px-5' },
+                { label: 'Outstanding dues', align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
+                { label: 'Stock status', minWidth: 160, maxWidth: 200, className: 'px-5' },
                 { width: 40, className: 'px-4' },
               ]}
-              tableClassName="min-w-[1260px]"
+              tableMinWidth={1260}
             >
               {filtered.map((row) => (
                 <tr
@@ -367,12 +367,12 @@ function LocationsLandingContent({
                       <EntityAvatar size={38} initials={row.initials} hue="teal" />
                       <div className="min-w-0">
                         <p className="truncate text-base font-medium text-cream-900">{row.name}</p>
-                        <p className="mt-0.5 truncate text-xs text-cream-600">{row.type} · {row.city}</p>
+                        <p className="mt-0.5 truncate text-xs text-cream-600">{row.address_text || row.city || '—'}</p>
                       </div>
                     </div>
                   </td>
                   <td className="px-5 py-3.5 text-sm text-cream-700">
-                    {row.phone_number ?? '—'}
+                    {row.type}
                   </td>
                   <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                     {row.gmv_mtd > 0 ? formatCompactInr(row.gmv_mtd) : '—'}

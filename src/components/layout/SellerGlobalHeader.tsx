@@ -109,7 +109,7 @@ export function SellerGlobalHeader({ tenantBranding }: SellerGlobalHeaderProps) 
                   </Avatar>
                   <div className="min-w-0">
                     <p className="truncate text-[15px] font-semibold leading-5 text-[#221E1A]">{userName}</p>
-                    <p className="mt-1 text-[12px] font-medium uppercase tracking-[0.08em] text-cream-600">
+                    <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.08em] text-cream-600">
                       {sellerRoleLabel} · {tenantName}
                     </p>
                   </div>
