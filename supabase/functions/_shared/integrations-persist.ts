@@ -21,6 +21,9 @@ export interface PersistResult {
   created: number;
   updated: number;
   skipped: number;
+  // Non-empty only for customers phase — caller must call search vector rebuild at invocation end
+  pendingSearchVectorBuyerIds: string[];
+  pendingSearchVectorBuyerUserIds: string[];
 }
 
 type AdminClient = Parameters<typeof persistZohoEntityPage>[0];
@@ -343,28 +346,46 @@ async function rebuildProductSearchVectors(
   });
 }
 
-async function rebuildBuyerSearchVectors(
+const SEARCH_VECTOR_CHUNK_SIZE = 500;
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+  return chunks;
+}
+
+export async function rebuildBuyerSearchVectors(
   admin: AdminClient,
   tenantId: string,
   buyerIds: string[],
 ): Promise<void> {
   if (buyerIds.length === 0) return;
-  await admin.schema('app').rpc('rebuild_buyers_search_vectors', {
-    p_tenant_id: tenantId,
-    p_ids: buyerIds,
-  });
+  for (const chunk of chunkArray(buyerIds, SEARCH_VECTOR_CHUNK_SIZE)) {
+    const { error } = await admin.schema('app').rpc('rebuild_buyers_search_vectors', {
+      p_tenant_id: tenantId,
+      p_ids: chunk,
+    });
+    if (error) throw new Error(`rebuild_buyers_search_vectors failed: ${error.message}`);
+  }
 }
 
-async function rebuildBuyerUserSearchVectors(
+export async function rebuildBuyerUserSearchVectors(
   admin: AdminClient,
   buyerIds: string[],
   buyerUserIds: string[],
 ): Promise<void> {
   if (buyerIds.length === 0 && buyerUserIds.length === 0) return;
-  await admin.schema('app').rpc('rebuild_buyer_users_search_vectors', {
-    p_buyer_ids: buyerIds.length > 0 ? buyerIds : null,
-    p_ids: buyerUserIds.length > 0 ? buyerUserIds : null,
-  });
+  // chunk by buyerUserIds; each chunk gets the full buyerIds list (RPC filters by both)
+  const userIdChunks = buyerUserIds.length > 0
+    ? chunkArray(buyerUserIds, SEARCH_VECTOR_CHUNK_SIZE)
+    : [[]];
+  for (const chunk of userIdChunks) {
+    const { error } = await admin.schema('app').rpc('rebuild_buyer_users_search_vectors', {
+      p_buyer_ids: buyerIds.length > 0 ? buyerIds : null,
+      p_ids: chunk.length > 0 ? chunk : null,
+    });
+    if (error) throw new Error(`rebuild_buyer_users_search_vectors failed: ${error.message}`);
+  }
 }
 
 function getEmbeddedLocationRows(rec: Record<string, unknown>): Record<string, unknown>[] {
@@ -701,7 +722,7 @@ async function persistLocations(
   adapter?: ZohoAdapter,
 ): Promise<PersistResult> {
   const isInventory = integrationTypeId === 'zoho_inventory';
-  const result: PersistResult = { created: 0, updated: 0, skipped: 0 };
+  const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
 
   const hasExistingDefault = await (async () => {
     const { count } = await admin
@@ -943,7 +964,7 @@ async function persistBuyers(
   records: Record<string, unknown>[],
   adapter?: ZohoAdapter,
 ): Promise<PersistResult> {
-  const result: PersistResult = { created: 0, updated: 0, skipped: 0 };
+  const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
   const buyerRows: Record<string, unknown>[] = [];
 
   for (const rec of records) {
@@ -1151,13 +1172,161 @@ async function persistBuyers(
     );
   }
 
-  await rebuildBuyerSearchVectors(admin, tenantId, buyerIds);
-  await rebuildBuyerUserSearchVectors(admin, buyerIds, buyerUserIds);
+  result.pendingSearchVectorBuyerIds = buyerIds;
+  result.pendingSearchVectorBuyerUserIds = buyerUserIds;
 
   return result;
 }
 
 // ── Products (categories + brands + products + inventory) ────────────────────
+
+const ITEM_LOC_CONCURRENCY = 5;
+
+async function createLocationFromZoho(
+  admin: AdminClient,
+  tenantId: string,
+  zohoWarehouse: Record<string, unknown>,
+): Promise<string | null> {
+  const externalRef = asStr(zohoWarehouse.warehouse_id);
+  if (!externalRef) return null;
+
+  const name = asStr(zohoWarehouse.warehouse_name) || 'Unknown Warehouse';
+
+  try {
+    const { data, error } = await admin
+      .schema('app')
+      .from('locations')
+      .upsert({
+        external_ref: externalRef,
+        tenant_id: tenantId,
+        name: name,
+        address: '',
+        latitude: null,
+        longitude: null,
+        created_by: 'system',
+        updated_by: 'system',
+      }, {
+        onConflict: 'external_ref,tenant_id',
+        ignoreDuplicates: false,
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      console.warn(`sync-products: Failed to create location ${externalRef}:`, error.message);
+      return null;
+    }
+
+    return data?.id || null;
+  } catch (err) {
+    console.warn(`sync-products: Exception creating location ${externalRef}:`, err);
+    return null;
+  }
+}
+
+async function fetchAndPersistMissingItemLocations(
+  admin: AdminClient,
+  tenantId: string,
+  itemIds: string[],
+  adapter: ZohoAdapter,
+  productIdMap: Map<string, string>,
+  locationIdMap: Map<string, string>,
+): Promise<number> {
+  if (itemIds.length === 0) return 0;
+
+  const inventoryRows: Record<string, unknown>[] = [];
+  let updatedLocationIdMap = new Map(locationIdMap);
+
+  for (let i = 0; i < itemIds.length; i += ITEM_LOC_CONCURRENCY) {
+    const batch = itemIds.slice(i, i + ITEM_LOC_CONCURRENCY);
+    const results = await Promise.allSettled(
+      batch.map((itemId) => adapter.request<{ item: Record<string, unknown> }>({ path: `/items/${itemId}` })),
+    );
+
+    for (let j = 0; j < results.length; j++) {
+      const result = results[j];
+      if (result.status === 'rejected') {
+        console.warn(`sync-products: GET /items/${batch[j]} failed:`, result.reason);
+        continue;
+      }
+
+      const itemId = batch[j];
+      const zohoItem = result.value?.item;
+      if (!zohoItem?.item_id) {
+        console.warn(`sync-products: invalid response for item ${itemId}`);
+        continue;
+      }
+
+      const warehouses = Array.isArray(zohoItem.warehouses) ? zohoItem.warehouses : [];
+      const productId = productIdMap.get(itemId);
+
+      if (!productId) {
+        console.warn(`sync-products: product not found for item ${itemId}`);
+        continue;
+      }
+
+      for (const warehouse of warehouses) {
+        const locationExternalId = asStr(warehouse.warehouse_id);
+        if (!locationExternalId) continue;
+
+        let locationId = updatedLocationIdMap.get(locationExternalId);
+
+        // Failsafe: if location doesn't exist, create it
+        if (!locationId) {
+          try {
+            const newLocationId = await createLocationFromZoho(admin, tenantId, warehouse as Record<string, unknown>);
+            if (newLocationId) {
+              locationId = newLocationId;
+              updatedLocationIdMap.set(locationExternalId, newLocationId);
+              console.log(`sync-products: created missing location ${locationExternalId}`);
+            }
+          } catch (err) {
+            console.warn(`sync-products: failed to create location ${locationExternalId}:`, err);
+            continue;
+          }
+        }
+
+        if (!locationId) {
+          console.warn(`sync-products: could not resolve location ${locationExternalId}`);
+          continue;
+        }
+
+        inventoryRows.push({
+          tenant_product_id: productId,
+          location_id: locationId,
+          qty_available: asNum(warehouse.warehouse_available_stock) || 0,
+          qty_reserved: asNum(warehouse.warehouse_reserved_stock) || 0,
+          reorder_point: asNum(warehouse.reorder_level) || null,
+          updated_at: nowIso(),
+        });
+      }
+    }
+  }
+
+  if (inventoryRows.length === 0) return 0;
+
+  const dedupedRows = dedupeByColumns(inventoryRows, ['tenant_product_id', 'location_id']);
+
+  try {
+    await bulkPersistJsonbRecords(admin, 'tenant_inventory', dedupedRows, ['tenant_product_id', 'location_id']);
+    return dedupedRows.length;
+  } catch (err) {
+    // Fallback: row-by-row
+    let count = 0;
+    for (const row of dedupedRows) {
+      try {
+        await bulkPersistJsonbRecords(admin, 'tenant_inventory', [row], ['tenant_product_id', 'location_id']);
+        count++;
+      } catch (rowErr) {
+        console.warn(
+          `sync-products: inventory upsert failed for ${row.tenant_product_id}/${row.location_id}:`,
+          rowErr,
+        );
+      }
+    }
+    return count;
+  }
+}
 
 async function persistProducts(
   admin: AdminClient,
@@ -1165,8 +1334,9 @@ async function persistProducts(
   actorId: string | null,
   integrationId: string,
   records: Record<string, unknown>[],
+  adapter?: ZohoAdapter,
 ): Promise<PersistResult> {
-  const result: PersistResult = { created: 0, updated: 0, skipped: 0 };
+  const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
 
   // Step A: upsert categories
   const categoryRows = [];
@@ -1377,6 +1547,7 @@ async function persistProducts(
   );
 
   const inventoryRows: Record<string, unknown>[] = [];
+  const needDetailItemIds: string[] = [];
   let inventorySyncError: IntegrationSyncError | null = null;
 
   for (const rec of records) {
@@ -1395,34 +1566,39 @@ async function persistProducts(
     }
 
     const locs = getEmbeddedLocationRows(rec);
-    for (const loc of locs) {
-      const extLocId = getEmbeddedLocationExternalId(loc);
-      if (!extLocId) continue;
+    if (locs.length === 0 && adapter) {
+      // No embedded warehouse data — queue for detail fetch
+      needDetailItemIds.push(extProductId);
+    } else {
+      for (const loc of locs) {
+        const extLocId = getEmbeddedLocationExternalId(loc);
+        if (!extLocId) continue;
 
-      const locationId = locationIdMap.get(extLocId);
-      if (!locationId) {
-        inventorySyncError = new IntegrationSyncError(
-          'tenant_inventory',
-          `Unable to resolve location ${extLocId} for product ${extProductId}.`,
-          extProductId,
-          {
-            product_id: extProductId,
-            location_id: extLocId,
-          },
-        );
-        break;
+        const locationId = locationIdMap.get(extLocId);
+        if (!locationId) {
+          inventorySyncError = new IntegrationSyncError(
+            'tenant_inventory',
+            `Unable to resolve location ${extLocId} for product ${extProductId}.`,
+            extProductId,
+            {
+              product_id: extProductId,
+              location_id: extLocId,
+            },
+          );
+          break;
+        }
+
+        inventoryRows.push({
+          tenant_product_id: productId,
+          location_id: locationId,
+          qty_available: getEmbeddedLocationQty(loc),
+          qty_reserved: 0,
+          updated_at: nowIso(),
+        });
       }
 
-      inventoryRows.push({
-        tenant_product_id: productId,
-        location_id: locationId,
-        qty_available: getEmbeddedLocationQty(loc),
-        qty_reserved: 0,
-        updated_at: nowIso(),
-      });
+      if (inventorySyncError) break;
     }
-
-    if (inventorySyncError) break;
   }
 
   if (inventorySyncError) {
@@ -1437,6 +1613,19 @@ async function persistProducts(
   const dedupedInventoryRows = dedupeByColumns(inventoryRows, ['tenant_product_id', 'location_id']);
   if (dedupedInventoryRows.length > 0) {
     await bulkPersistJsonbRecords(admin, 'tenant_inventory', dedupedInventoryRows, ['tenant_product_id', 'location_id']);
+  }
+
+  // Fetch missing item_locations via detail API if adapter available
+  let detailInventoryCount = 0;
+  if (needDetailItemIds.length > 0 && adapter) {
+    detailInventoryCount = await fetchAndPersistMissingItemLocations(
+      admin,
+      tenantId,
+      needDetailItemIds,
+      adapter,
+      productIdMap,
+      locationIdMap,
+    );
   }
 
   await rebuildProductSearchVectors(
@@ -1672,7 +1861,7 @@ async function persistEstimates(
   integrationId: string,
   records: Record<string, unknown>[],
 ): Promise<PersistResult> {
-  const result: PersistResult = { created: 0, updated: 0, skipped: 0 };
+  const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
 
   const customerExternalIds = records
     .map((r) => asStr(r.customer_id))
@@ -1875,7 +2064,7 @@ async function persistOrders(
   integrationId: string,
   records: Record<string, unknown>[],
 ): Promise<PersistResult> {
-  const result: PersistResult = { created: 0, updated: 0, skipped: 0 };
+  const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
 
   const customerExternalIds = records
     .map((r) => asStr(r.customer_id))
@@ -2074,7 +2263,7 @@ async function persistInvoices(
   integrationId: string,
   records: Record<string, unknown>[],
 ): Promise<PersistResult> {
-  const result: PersistResult = { created: 0, updated: 0, skipped: 0 };
+  const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
 
   const customerExternalIds = records
     .map((r) => asStr(r.customer_id))
@@ -2308,7 +2497,7 @@ export async function persistZohoEntityPage(
       return persistBuyers(admin, tenantId, actorId, integrationId, records, adapter);
 
     case 'products':
-      return persistProducts(admin, tenantId, actorId, integrationId, records);
+      return persistProducts(admin, tenantId, actorId, integrationId, records, adapter);
 
     case 'pricelists':
       return persistPricelists(admin, tenantId, actorId, integrationId, records, adapter);
@@ -2323,6 +2512,6 @@ export async function persistZohoEntityPage(
       return persistInvoices(admin, tenantId, actorId, integrationId, records);
 
     default:
-      return { created: 0, updated: 0, skipped: records.length };
+      return { created: 0, updated: 0, skipped: records.length, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
   }
 }

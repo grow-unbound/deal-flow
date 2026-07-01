@@ -615,6 +615,7 @@ export function createZohoAdapter(
     fetchPricebookDetail,
     fetchPricelists,
     fetchUsers,
+    request,
   };
 }
 
