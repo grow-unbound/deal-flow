@@ -44,6 +44,14 @@ TRUNCATE
   app.products_snapshot,
   app.categories_snapshot,
   app.brands_snapshot,
+  app.reco_bundle_slots,
+  app.reco_bundles,
+  app.reco_bundle_suggestions,
+  app.reco_buyer_profiles,
+  app.reco_category_associations,
+  app.reco_category_profiles,
+  app.reco_product_associations,
+  app.reco_product_popularity,
   app.audit_log,
   app.payments,
   app.credit_notes,
@@ -122,7 +130,7 @@ INSERT INTO auth.users (
   'santosh.phani@gmail.com',
   crypt('Welcome@123', gen_salt('bf')),
   now(),
-  '+919490744841', now(),
+  '9490744841', now(),
   '{"provider":"email","providers":["email","phone"]}',
   '{"name":"Phani Seller"}',
   now(), now(), '', '', '', ''
@@ -135,7 +143,7 @@ INSERT INTO auth.users (
   'ksssp.iiith@gmail.com',
   crypt('Welcome@123', gen_salt('bf')),
   now(),
-  '+918985987350', now(),
+  '8985987350', now(),
   '{"provider":"email","providers":["email","phone"]}',
   '{"name":"Phani Buyer"}',
   now(), now(), '', '', '', ''
@@ -238,6 +246,130 @@ INSERT INTO catalog.products (
 ('550e8400-e29b-41d4-a716-446655440218'::uuid, '550e8400-e29b-41d4-a716-446655440102'::uuid, '550e8400-e29b-41d4-a716-446655440005'::uuid, 'Galaxy Buds3',         'Samsung Galaxy Buds3',              'SAM-GB3',        'unit', 18, true);
 
 -- ──────────────────────────────────────────────────────────────
+-- 4a. Master Catalog — Integration Types (Zoho, Tally, Busy)
+-- ──────────────────────────────────────────────────────────────
+
+INSERT INTO catalog.integration_types (
+  id,
+  display_name,
+  description,
+  logo_url,
+  auth_schema,
+  capabilities,
+  connectivity_mode,
+  is_active
+) VALUES
+  (
+    'zoho_books',
+    'Zoho Books',
+    'Sync products, customers, orders, estimates, and invoices with Zoho Books.',
+    NULL,
+    jsonb_build_object(
+      'oauth', true,
+      'authorize_url', 'https://accounts.zoho.in/oauth/v2/auth',
+      'token_url', 'https://accounts.zoho.in/oauth/v2/token',
+      'scopes', jsonb_build_array('ZohoBooks.fullaccess'),
+      'fields', jsonb_build_array(
+        jsonb_build_object(
+          'key', 'org_id',
+          'label', 'Organization ID',
+          'type', 'text',
+          'required', true,
+          'placeholder', 'e.g., 1234567890',
+          'help', 'Found in Zoho Books Settings → Organization.'
+        )
+      )
+    ),
+    jsonb_build_object(
+      'inbound_reference', jsonb_build_array('locations', 'products', 'customers', 'pricelists'),
+      'inbound_transactional', jsonb_build_array('estimates', 'orders', 'invoices'),
+      'outbound_transactional', jsonb_build_array('orders', 'estimates'),
+      'webhooks', true
+    ),
+    'cloud',
+    true
+  ),
+  (
+    'zoho_inventory',
+    'Zoho Inventory',
+    'Sync warehouses, products, orders, and shipments with Zoho Inventory.',
+    NULL,
+    jsonb_build_object(
+      'oauth', true,
+      'authorize_url', 'https://accounts.zoho.in/oauth/v2/auth',
+      'token_url', 'https://accounts.zoho.in/oauth/v2/token',
+      'scopes', jsonb_build_array('ZohoInventory.fullaccess'),
+      'fields', jsonb_build_array(
+        jsonb_build_object(
+          'key', 'org_id',
+          'label', 'Organization ID',
+          'type', 'text',
+          'required', true,
+          'placeholder', 'e.g., 1234567890',
+          'help', 'Found in Zoho Inventory Settings → Organization.'
+        )
+      )
+    ),
+    jsonb_build_object(
+      'inbound_reference', jsonb_build_array('locations', 'products', 'customers'),
+      'inbound_transactional', jsonb_build_array('orders'),
+      'outbound_transactional', jsonb_build_array('orders'),
+      'webhooks', true
+    ),
+    'cloud',
+    true
+  ),
+  (
+    'tally_prime',
+    'Tally Prime',
+    'Sync products and orders with Tally Prime via the Tally Data Service.',
+    NULL,
+    jsonb_build_object(
+      'oauth', false,
+      'fields', jsonb_build_array(
+        jsonb_build_object(
+          'key', 'api_key',
+          'label', 'API Key',
+          'type', 'password',
+          'required', true,
+          'help', 'Obtain from Tally Data Service portal.'
+        )
+      )
+    ),
+    jsonb_build_object(
+      'inbound_reference', jsonb_build_array('products'),
+      'inbound_transactional', jsonb_build_array('orders'),
+      'outbound_transactional', jsonb_build_array('invoices')
+    ),
+    'local',
+    false
+  ),
+  (
+    'busy',
+    'Busy',
+    'Sync products and orders with Busy ERP.',
+    NULL,
+    jsonb_build_object(
+      'oauth', false,
+      'fields', jsonb_build_array(
+        jsonb_build_object(
+          'key', 'api_key',
+          'label', 'API Key',
+          'type', 'password',
+          'required', true,
+          'help', 'Obtain from Busy Settings → API Keys.'
+        )
+      )
+    ),
+    jsonb_build_object(
+      'inbound_reference', jsonb_build_array('products'),
+      'inbound_transactional', jsonb_build_array('orders')
+    ),
+    'cloud',
+    false
+  );
+
+-- ──────────────────────────────────────────────────────────────
 -- 5. Sample tenant (TechWave Electronics distributor)
 -- ──────────────────────────────────────────────────────────────
 
@@ -260,7 +392,7 @@ INSERT INTO app.tenant_settings (tenant_id, settings, updated_by)
 VALUES (
   '550e8400-e29b-41d4-a716-446655440501'::uuid,
   jsonb_build_object(
-    'delivery_routing_threshold_km', 300,
+    'delivery_routing_threshold_km', 50,
     'business_policy', jsonb_build_object('gst_rate', 18)
   ),
   '550e8400-e29b-41d4-a716-446655440701'::uuid
@@ -385,16 +517,16 @@ INSERT INTO app.buyers (
   id, tenant_id, business_name, contact_name, phone, email, gstin, geography, tier, is_active
 ) VALUES
 ('550e8400-e29b-41d4-a716-446655440601'::uuid, '550e8400-e29b-41d4-a716-446655440501'::uuid,
- 'Kumar Electronics',   'Rajesh Kumar', '+91-9123456789', 'rajesh@kumarelectronics.com',
+ 'Kumar Electronics',   'Rajesh Kumar', '9123456789', 'rajesh@kumarelectronics.com',
  '36AABCT5678H1Z5', '{"city":"Hyderabad","state":"TS"}', 'A', true),
 ('550e8400-e29b-41d4-a716-446655440602'::uuid, '550e8400-e29b-41d4-a716-446655440501'::uuid,
- 'Singh Mobile Store',  'Priya Singh',  '+91-9876541234', 'priya@singhmobilestore.com',
+ 'Singh Mobile Store',  'Priya Singh',  '9876541234', 'priya@singhmobilestore.com',
  '07AABDM1234H1Z2', '{"city":"Delhi","state":"DL"}',     'B', true),
 ('550e8400-e29b-41d4-a716-446655440603'::uuid, '550e8400-e29b-41d4-a716-446655440501'::uuid,
- 'Patel Tech Hub',      'Amit Patel',   '+91-9123454567', 'amit@pateltech.com',
+ 'Patel Tech Hub',      'Amit Patel',   '9123454567', 'amit@pateltech.com',
  '27AABDU5432H1Z8', '{"city":"Mumbai","state":"MH"}',    'C', true),
 ('550e8400-e29b-41d4-a716-446655440604'::uuid, '550e8400-e29b-41d4-a716-446655440501'::uuid,
- 'Phani Mobiles',       'Phani Buyer',  '+918985987350',  'ksssp.iiith@gmail.com',
+ 'Phani Mobiles',       'Phani Buyer',  '8985987350',  'ksssp.iiith@gmail.com',
  NULL,              '{"city":"Hyderabad","state":"TS"}',  'C', true);
 
 -- Link Phani Buyer auth user → Phani Mobiles buyer record
