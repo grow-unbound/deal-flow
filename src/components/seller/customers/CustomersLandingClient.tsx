@@ -3,10 +3,10 @@
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
-import { Send, Plus, Users } from 'lucide-react';
+import { Users } from 'lucide-react';
 
 import { FeatureGate } from '@/components/FeatureGate';
+import { AddCustomerDialog } from '@/components/seller/customers/AddCustomerDialog';
 import {
   EntityAvatar,
   FilterBar,
@@ -20,10 +20,8 @@ import {
   V3CalloutPanel,
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn, formatCompactInr } from '@/lib/utils';
-import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
@@ -36,16 +34,6 @@ import {
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
-
-const InviteUserDialog = dynamic(
-  () => import('@/components/seller/InviteUserDialog').then((m) => m.InviteUserDialog),
-  { ssr: false },
-);
-
-const AddCustomerDialog = dynamic(
-  () => import('@/components/seller/customers/AddCustomerDialog').then((m) => m.AddCustomerDialog),
-  { ssr: false },
-);
 
 type SortOption = 'Spend (high → low)' | 'Spend (low → high)' | 'Growth (high → low)' | 'Recent activity';
 const SORT_OPTIONS: SortOption[] = ['Spend (high → low)', 'Spend (low → high)', 'Growth (high → low)', 'Recent activity'];
@@ -63,52 +51,53 @@ function CustomersLoadingSkeleton() {
   return (
     <PageWrap>
       <div className="space-y-5">
-        <div className="space-y-2">
-          <Skeleton className="h-3 w-24" />
-          <Skeleton className="h-10 w-52" />
-          <Skeleton className="h-4 w-[38rem]" />
-          <div className="flex justify-end gap-2">
+        <div className="flex items-end justify-between gap-6">
+          <div className="space-y-2">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-10 w-52" />
+            <Skeleton className="h-4 w-[38rem]" />
+          </div>
+          <div className="flex items-center gap-2">
             <Skeleton className="h-9 w-28 rounded-[8px]" />
             <Skeleton className="h-9 w-32 rounded-[8px]" />
-            <Skeleton className="h-9 w-32 rounded-[8px]" />
           </div>
         </div>
 
-      <div className="grid grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-36 rounded-[14px]" />
-        ))}
-      </div>
+        <div className="grid grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-36 rounded-[14px]" />
+          ))}
+        </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-52 rounded-[14px]" />
-        ))}
-      </div>
+        <div className="grid grid-cols-3 gap-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-52 rounded-[14px]" />
+          ))}
+        </div>
 
-      <div className="space-y-2">
-        <Skeleton className="h-14 rounded-[14px]" />
-        <div className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-          <div className="border-b border-cream-200 p-3">
-            <div className="grid grid-cols-[320px_repeat(7,minmax(0,1fr))_40px] gap-3">
-              {Array.from({ length: 9 }).map((_, i) => (
-                <Skeleton key={`head-${i}`} className="h-3 w-full" />
-              ))}
+        <div className="space-y-2">
+          <Skeleton className="h-14 rounded-[14px]" />
+          <div className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
+            <div className="border-b border-cream-200 p-3">
+              <div className="grid grid-cols-[340px_180px_220px_130px_120px_150px_130px_130px_160px_40px] gap-3">
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <Skeleton key={`head-${i}`} className="h-3 w-full" />
+                ))}
+              </div>
             </div>
-          </div>
-          <div className="p-3">
-            <div className="space-y-3">
-              {Array.from({ length: 6 }).map((_, rowIndex) => (
-                <div key={`row-${rowIndex}`} className="grid grid-cols-[320px_repeat(7,minmax(0,1fr))_40px] gap-3">
-                  {Array.from({ length: 9 }).map((_, colIndex) => (
-                    <Skeleton key={`cell-${rowIndex}-${colIndex}`} className="h-10 rounded-md" />
-                  ))}
-                </div>
-              ))}
+            <div className="p-3">
+              <div className="space-y-3">
+                {Array.from({ length: 6 }).map((_, rowIndex) => (
+                  <div key={`row-${rowIndex}`} className="grid grid-cols-[340px_180px_220px_130px_120px_150px_130px_130px_160px_40px] gap-3">
+                    {Array.from({ length: 9 }).map((_, colIndex) => (
+                      <Skeleton key={`cell-${rowIndex}-${colIndex}`} className="h-10 rounded-md" />
+                    ))}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
-      </div>
       </div>
     </PageWrap>
   );
@@ -162,12 +151,10 @@ function CustomersLandingContent({
   initialPeriod: SellerLandingPeriod;
 }) {
   const router = useRouter();
-  const { creditEnabled } = useBusinessPolicy();
+  const [addBuyerOpen, setAddBuyerOpen] = useState(false);
   const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
   const summaryQuery = useCustomersLanding(period, initialData);
   const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-customers-landing',
     scopeKey: period,
@@ -245,9 +232,8 @@ function CustomersLandingContent({
         period={period}
         periodOptions={options}
         onPeriodChange={setPeriod}
-        secondary={{ label: 'Invite buyer', icon: <Send size={13} />, onClick: () => setInviteOpen(true) }}
-        primary="Add a customer"
-        onPrimaryClick={() => setAddOpen(true)}
+        primary="Add a Buyer"
+        onPrimaryClick={() => setAddBuyerOpen(true)}
       />
 
       {showRefreshingState ? (
@@ -358,29 +344,31 @@ function CustomersLandingContent({
                 ? 'Try a different search or filter combination.'
                 : 'Add your first customer to start customer groups and pricing.'
             }
-            action={
-              <Button variant="primary" onClick={() => setAddOpen(true)} className="gap-1.5">
-                <Plus size={13} />
-                Add a customer
-              </Button>
-            }
           />
         }
         columns={[
-          { label: 'Buyer', minWidth: 260, className: 'px-5' },
-          { label: 'Customer group', minWidth: 160, className: 'px-5' },
-          { label: `Spend · ${metricSuffix}`, align: 'right', minWidth: 140, className: 'px-5' },
-          { label: 'Growth', minWidth: 120, className: 'px-5' },
-          { label: 'Orders', align: 'right', minWidth: 100, className: 'px-5' },
-          { label: 'Last order', minWidth: 140, className: 'px-5' },
-          ...(creditEnabled ? [{ label: 'Credit', className: 'px-5' }] : []),
-          { label: 'Status', minWidth: 160, className: 'px-5' },
+          { label: 'Buyer', width: '400px', minWidth: 340, maxWidth: 420, className: 'px-5' },
+          { label: 'Customer Group', minWidth: 180, maxWidth: 240, className: 'px-5' },
+          { label: 'Pricelist', minWidth: 220, maxWidth: 280, className: 'px-5' },
+          { label: `Spend · ${metricSuffix}`, align: 'right', minWidth: 130, maxWidth: 160, className: 'px-5' },
+          { label: 'Growth', minWidth: 120, maxWidth: 140, className: 'px-5' },
+          { label: 'Outstanding Due', align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
+          { label: 'Last Order', minWidth: 130, maxWidth: 150, className: 'px-5' },
+          { label: 'Credit Used', align: 'right', minWidth: 130, maxWidth: 170, className: 'px-5' },
+          { label: 'Status', minWidth: 160, maxWidth: 200, className: 'px-5' },
           { width: 40, className: 'px-4' },
         ]}
+        tableMinWidth={1540}
       >
         {filtered.map((buyer: CustomersLandingBuyer) => {
           const creditRatio = buyer.credit_limit > 0 ? buyer.credit_used / buyer.credit_limit : 0;
-          const tier = buyer.tier ? `Tier ${buyer.tier}` : null;
+          const priceListLabel = buyer.active_price_list?.name ?? 'No price list';
+          const priceListSubtext =
+            buyer.active_price_list?.source === 'direct'
+              ? 'Direct to buyer'
+              : buyer.active_price_list?.cohort_name
+                ? `Through ${buyer.active_price_list.cohort_name}`
+                : '';
           return (
             <tr
               key={buyer.id}
@@ -391,12 +379,7 @@ function CustomersLandingContent({
                 <div className="ent flex items-center gap-3">
                   <EntityAvatar initials={buyer.avatar.initials} hue={buyer.avatar.hue} size={38} />
                   <div className="min-w-0">
-                    <p className="truncate text-base font-medium text-cream-900">
-                      {buyer.business_name}
-                      {tier ? (
-                        <span className="ml-2 rounded bg-ember-50 px-1.5 text-xs font-medium uppercase tracking-[0.06em] text-ember-700">{tier}</span>
-                      ) : null}
-                    </p>
+                    <p className="truncate text-base font-medium text-cream-900">{buyer.business_name}</p>
                     <p className="ent-sub mt-0.5 truncate text-xs uppercase tracking-[0.05em] text-cream-500">
                       {buyer.city}{buyer.phone ? ` · ${buyer.phone}` : ''}
                     </p>
@@ -404,32 +387,35 @@ function CustomersLandingContent({
                 </div>
               </td>
               <td className="px-5 py-3.5 text-sm text-cream-800">
-                <div>
-                  <p>{buyer.cohort}</p>
-                  <p className="mt-1 text-xs text-cream-500">{buyer.active_price_list ?? 'No price list'}</p>
+                <div className="min-w-0">
+                  <p className="truncate text-sm text-cream-900">{buyer.cohort}</p>
+                </div>
+              </td>
+              <td className="px-5 py-3.5 text-right">
+                <div className="min-w-0 text-left">
+                  <p className="truncate text-sm text-cream-900">{priceListLabel}</p>
+                  <p className="mt-1 truncate text-xs text-cream-500">{priceListSubtext}</p>
                 </div>
               </td>
               <td className="px-5 py-3.5 text-right">
                 <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatCompactInr(buyer.spend_mtd)}</span>
               </td>
               <td className="px-5 py-3.5"><GrowthPill value={buyer.growth_pct} /></td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{buyer.orders_mtd}</td>
+              <td className="px-5 py-3.5 text-right text-sm text-cream-800"><span className="tabular-inline">{formatCompactInr(buyer.dues)}</span></td>
               <td className="px-5 py-3.5 text-sm text-cream-800"><span className="tabular-inline">{formatDate(buyer.last_order_at)}</span></td>
-              {creditEnabled ? (
-                <td className="px-5 py-3.5">
-                  <div className="flex flex-col gap-1">
-                    <div className="h-[5px] w-[140px] overflow-hidden rounded-full bg-cream-200">
-                      <div
-                        className={cn('h-[5px] rounded-full', creditRatio > 0.75 ? 'bg-warning-500' : 'bg-teal-500')}
-                        style={{ width: `${Math.min(100, Math.round(creditRatio * 100))}%` }}
-                      />
-                    </div>
-                    <span className="text-xs text-cream-700">
-                      <span className="tabular-inline">{formatCompactInr(buyer.credit_used)}</span> / <span className="tabular-inline">{formatCompactInr(buyer.credit_limit)}</span>
-                    </span>
+              <td className="px-5 py-3.5">
+                <div className="flex flex-col gap-1">
+                  <div className="h-[5px] w-[140px] overflow-hidden rounded-full bg-cream-200">
+                    <div
+                      className={cn('h-[5px] rounded-full', creditRatio > 0.75 ? 'bg-warning-500' : 'bg-teal-500')}
+                      style={{ width: `${Math.min(100, Math.round(creditRatio * 100))}%` }}
+                    />
                   </div>
-                </td>
-              ) : null}
+                  <span className="text-xs text-cream-700">
+                    <span className="tabular-inline">{formatCompactInr(buyer.credit_used)}</span> / <span className="tabular-inline">{formatCompactInr(buyer.credit_limit)}</span>
+                  </span>
+                </div>
+              </td>
               <td className="px-5 py-3.5">
                 <StatusTag label={buyer.status.label} tone={buyer.status.tone} />
               </td>
@@ -447,8 +433,12 @@ function CustomersLandingContent({
         </div>
       )}
 
-      <InviteUserDialog open={inviteOpen} onOpenChange={setInviteOpen} />
-      <AddCustomerDialog open={addOpen} onOpenChange={setAddOpen} />
+      {addBuyerOpen ? (
+        <AddCustomerDialog
+          open={addBuyerOpen}
+          onOpenChange={setAddBuyerOpen}
+        />
+      ) : null}
     </PageWrap>
   );
 }

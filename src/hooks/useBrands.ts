@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tansta
 import { toast } from 'sonner';
 import type { BrandCreateInput, CreateBrandInput, TenantBrandUpdateInput } from '@/lib/zod';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
+import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
@@ -99,6 +100,12 @@ export interface TenantBrandsResponse {
     top_risers: TopRiserItem[];
   };
   period?: SellerLandingPeriodMeta;
+}
+
+export interface TenantBrandsLandingFilters {
+  search?: string;
+  categories?: string[];
+  cohorts?: string[];
 }
 
 export interface SearchBrandsResponse {
@@ -287,11 +294,19 @@ function restoreQuerySnapshots(
   });
 }
 
-export function useTenantBrands(period: SellerLandingPeriod = 'month', initialData?: TenantBrandsResponse) {
+export function useTenantBrands(
+  period: SellerLandingPeriod = 'month',
+  filters: TenantBrandsLandingFilters = {},
+  initialData?: TenantBrandsResponse,
+) {
   return useQuery({
-    queryKey: ['tenant-brands', period],
+    queryKey: ['tenant-brands', period, filters],
     queryFn: async (): Promise<TenantBrandsResponse> => {
-      const res = await apiFetch(`/api/tenant/brands?period=${period}`);
+      const params = new URLSearchParams({ period });
+      if (filters.search?.trim()) params.set('search', filters.search.trim());
+      appendArrayParam(params, 'categories', filters.categories);
+      appendArrayParam(params, 'cohorts', filters.cohorts);
+      const res = await apiFetch(`/api/tenant/brands?${params.toString()}`);
       if (!res.ok) {
         throw new Error('Failed to fetch brands');
       }

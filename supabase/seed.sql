@@ -88,7 +88,8 @@ TRUNCATE
   catalog.product_aliases,
   catalog.products,
   catalog.brands,
-  catalog.categories
+  catalog.categories,
+  catalog.integration_types
 RESTART IDENTITY CASCADE;
 
 -- Remove only the two test auth users (leave Supabase system users intact)

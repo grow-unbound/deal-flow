@@ -46,7 +46,7 @@ function buildSnapshot(activeJob: IntegrationSyncJob) {
     progress?.items_total != null
       ? `${progress.items_processed ?? 0} / ${progress.items_total} items`
       : countParts.length > 0
-        ? `Last poll: ${countParts.join(' · ')}`
+        ? countParts.join(' · ')
         : null,
     progress?.pages_processed != null ? `${progress.pages_processed} pages` : null,
     progress?.items_failed != null ? `${progress.items_failed} failed` : null,
@@ -75,7 +75,6 @@ export function IntegrationJobLiveLog({
   onJobUpdate?: () => void;
 }) {
   const [log, setLog] = useState<LogEntry[]>([]);
-  const [isRealtime, setIsRealtime] = useState(false);
   const lastJobIdRef = useRef<string | null>(null);
   const lastSignatureRef = useRef<string | null>(null);
   const seenErrorsRef = useRef(new Set<string>());
@@ -99,9 +98,7 @@ export function IntegrationJobLiveLog({
           onJobUpdate?.();
         },
       )
-      .subscribe((status: string) => {
-        setIsRealtime(status === 'SUBSCRIBED');
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -204,11 +201,11 @@ export function IntegrationJobLiveLog({
             <span className="text-sm font-semibold text-cream-900">Live sync log</span>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-info-50 px-2 py-0.5 text-xs font-medium text-info-700">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-info-500" />
-              {isRealtime ? 'Live updates' : 'Polling every 30s'}
+              Live updates
             </span>
           </div>
           <p className="mt-1 text-sm text-cream-700">
-            {latestEntry?.detail ?? activeJob.progress?.phase_label ?? 'Waiting for the first poll update.'}
+            {latestEntry?.detail ?? activeJob.progress?.phase_label ?? 'Waiting for first update…'}
           </p>
         </div>
         <div className="shrink-0 text-right text-xs text-cream-600">

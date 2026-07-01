@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DocComposerInvoice } from '@/components/seller/invoices/DocComposerInvoice';
@@ -13,9 +13,11 @@ const useInvoiceComposerMock = vi.fn();
 const useSaveInvoiceComposerMock = vi.fn();
 const useSendInvoiceMock = vi.fn();
 const useNextInvoiceNumberMock = vi.fn();
+const useInvoiceDetailMock = vi.fn();
 const apiPostMock = vi.fn();
 const apiPatchMock = vi.fn();
 const useEstimateProductSearchMock = vi.fn();
+const useTenantLocationsMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
@@ -36,6 +38,14 @@ vi.mock('@/hooks/useInvoices', () => ({
   useNextInvoiceNumber: (...args: unknown[]) => useNextInvoiceNumberMock(...args),
   useSaveInvoiceComposer: (...args: unknown[]) => useSaveInvoiceComposerMock(...args),
   useSendInvoice: (...args: unknown[]) => useSendInvoiceMock(...args),
+}));
+
+vi.mock('@/hooks/useInvoiceDetail', () => ({
+  useInvoiceDetail: (...args: unknown[]) => useInvoiceDetailMock(...args),
+}));
+
+vi.mock('@/hooks/useTenantLocations', () => ({
+  useTenantLocations: (...args: unknown[]) => useTenantLocationsMock(...args),
 }));
 
 vi.mock('@/hooks/useEstimates', () => ({
@@ -153,6 +163,16 @@ describe('DocComposerInvoice', () => {
     useSaveInvoiceComposerMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
     useSendInvoiceMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
     useNextInvoiceNumberMock.mockReturnValue({ data: 'INV-100', isLoading: false });
+    useInvoiceDetailMock.mockReturnValue({ data: null, isLoading: false, isError: false, error: null });
+    useTenantLocationsMock.mockReturnValue({
+      data: {
+        locations: [
+          { id: 'loc-1', name: 'Main warehouse', is_default: true, deleted_at: null },
+          { id: 'loc-2', name: 'North depot', is_default: false, deleted_at: null },
+        ],
+      },
+      isLoading: false,
+    });
     useInvoiceComposerMock.mockImplementation((id: string | null) => ({
       data: id ? baseDocument() : undefined,
       isLoading: false,
@@ -172,8 +192,23 @@ describe('DocComposerInvoice', () => {
 
     expect(await screen.findByPlaceholderText(/Search buyer/i)).toBeInTheDocument();
     expect(screen.getByText('Invoice #')).toBeInTheDocument();
-    expect(screen.getByText('INV-100')).toBeInTheDocument();
+    expect(screen.getAllByText('INV-100').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /Send invoice/i })).toBeDisabled();
+  });
+
+  it('shows the IST create date and loads location options', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-30T20:30:00.000Z'));
+
+    try {
+      renderComposer({ mode: 'create' });
+
+      expect(screen.getByText('01/07/2026')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('combobox'));
+      expect(screen.getByText('Main warehouse')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('renders edit shell with preview PDF and save actions when lines exist', async () => {
@@ -237,8 +272,113 @@ describe('DocComposerInvoice', () => {
     expect(screen.getByRole('button', { name: /Send invoice/i })).toBeEnabled();
     expect(screen.getAllByDisplayValue(String(line.qty))[0]).toBeInTheDocument();
     expect(screen.getByText('Quantity')).toBeInTheDocument();
-    expect(screen.getByText('BASE PRICE')).toBeInTheDocument();
+    expect(screen.getByText('Price/Unit')).toBeInTheDocument();
+    expect(screen.getByText(/Base Price ₹1,200/i)).toBeInTheDocument();
+    expect(screen.queryByText(/HSN/i)).not.toBeInTheDocument();
     expect(screen.queryByText('Disc %')).not.toBeInTheDocument();
     expect(screen.queryByText(/Resolved price check/i)).not.toBeInTheDocument();
+  });
+
+  it('falls back to invoice detail data when the composer payload is empty', () => {
+    useInvoiceComposerMock.mockReturnValue({
+      data: baseDocument({ buyer_id: 'buyer-1', items: [] }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+    useInvoiceDetailMock.mockReturnValue({
+      data: {
+        id: 'inv-1',
+        doc_number: 'INV-100',
+        location_id: 'loc-1',
+        location_name: 'Main warehouse',
+        db_status: 'draft',
+        status: 'draft',
+        version: 1,
+        invoice_date: '2026-06-01',
+        due_date: '2026-06-20',
+        sent_at: null,
+        viewed_at: null,
+        viewed_by_name: null,
+        paid_at: null,
+        payment_method: null,
+        payment_reference: null,
+        amount_outstanding: 11_800,
+        amount_paid: 0,
+        voided_at: null,
+        last_reminder_at: null,
+        gstin_locked: true,
+        hsn_locked: true,
+        place_of_supply: 'Delhi',
+        buyer_po_ref: 'PO-1',
+        intra_state_tax: true,
+        buyer_id: 'buyer-1',
+        buyer: {
+          id: 'buyer-1',
+          name: 'Acme Retail',
+          gstin: '07AAAAA0000A1Z5',
+          gstin_state_code: '07',
+          city: 'Delhi',
+          credit_limit: 50_000,
+          credit_used: 2000,
+          payment_terms_days: 21,
+          contact_name: 'Priya',
+          phone: '9999999999',
+          email: 'buyer@example.com',
+          bill_address: 'Delhi, 110001',
+          state: 'Delhi',
+          pincode: '110001',
+          place_of_supply: 'Delhi',
+          seller_state: 'Maharashtra',
+          active_pricelist: { id: 'pl-1', name: 'North Delhi A-class' },
+          sales_agent_name: 'Phani',
+        },
+        items: [
+          {
+            id: 'line-1',
+            tenant_product_id: 'tp-1',
+            product_name: 'Vinikus Shiraz Reserve',
+            sku: 'SKU-001',
+            brand_name: 'Vinikus',
+            brand_initials: 'VI',
+            brand_hue: 'teal',
+            hsn: '2204',
+            qty: 1,
+            unit: 'bottle',
+            rate: 1180,
+            mrp: 1500,
+            discount_pct: 0,
+            line_total: 1392,
+            tax_pct: 18,
+          },
+        ],
+        totals: {
+          subtotal: 1180,
+          discount_amt: 0,
+          taxable: 1180,
+          tax_amount: 212.4,
+          freight: 0,
+          round_off: 0,
+          grand_total: 1392.4,
+          gst_rows: [],
+        },
+        order_id: null,
+        estimate_id: null,
+        linked_order_number: null,
+        linked_estimate_number: null,
+        viewer_role: 'seller_admin',
+        seller_note: '',
+        payments: [],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+
+    renderComposer({ mode: 'edit', invoiceId: 'inv-1' });
+
+    expect(screen.getAllByText('INV-100').length).toBeGreaterThan(0);
+    expect(screen.getByText('Vinikus Shiraz Reserve')).toBeInTheDocument();
+    expect(screen.getAllByDisplayValue('1')[0]).toBeInTheDocument();
   });
 });

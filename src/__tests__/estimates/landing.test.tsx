@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 
 const pushMock = vi.fn();
 const useTenantEstimatesMock = vi.fn();
+const useTenantEstimatesInfiniteMock = vi.fn();
 const useFlagMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
@@ -12,11 +13,23 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/hooks/useEstimates', () => ({
   useTenantEstimates: () => useTenantEstimatesMock(),
+  useTenantEstimatesInfinite: (...args: unknown[]) => useTenantEstimatesInfiniteMock(...args),
 }));
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlag: (...args: unknown[]) => useFlagMock(...args),
   useFlagState: (...args: unknown[]) => useFlagMock(...args),
+}));
+
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ currentTenantId: 'tenant-1' }),
+}));
+
+vi.mock('@/contexts/SellerRealtimeContext', () => ({
+  useSellerRealtimeContext: () => ({
+    newEntityIds: new Set<string>(),
+    markSeen: vi.fn(),
+  }),
 }));
 
 import { EstimatesLandingClient } from '@/components/seller/estimates/EstimatesLandingClient';
@@ -67,9 +80,11 @@ function mockEstimatesData() {
         buyer_name: 'Buyer One',
         buyer_city: 'Mumbai',
         buyer_state: 'MH',
+        place_of_supply: 'Maharashtra',
         buyer_initials: 'BO',
         buyer_hue: 'teal' as const,
         source: 'buyer_app' as const,
+        source_kind: 'buyer_app' as const,
         source_label: 'Buyer App',
         source_detail: 'Submitted via Buyer App',
         catalog_name: 'Summer 2026 Retail',
@@ -91,9 +106,11 @@ function mockEstimatesData() {
         buyer_name: 'Buyer Two',
         buyer_city: 'Delhi',
         buyer_state: 'DL',
+        place_of_supply: 'Delhi',
         buyer_initials: 'BT',
         buyer_hue: 'ember' as const,
         source: 'seller' as const,
+        source_kind: 'seller' as const,
         source_label: 'created by Priya Shah',
         source_detail: 'Manual seller entry',
         catalog_name: 'Clearance Push',
@@ -104,7 +121,7 @@ function mockEstimatesData() {
         created_at: '2026-06-09T10:00:00.000Z',
         accepted_at: '2026-06-09T12:00:00.000Z',
         sent_at: null,
-        status: { value: 'converted' as const, label: 'Converted to SO', tone: 'success' as const, filter_chip: 'Converted' as const },
+        status: { value: 'converted' as const, label: 'Converted', tone: 'success' as const, filter_chip: 'Converted' as const },
       },
       {
         id: 'e3',
@@ -115,9 +132,11 @@ function mockEstimatesData() {
         buyer_name: 'Buyer Two',
         buyer_city: 'Delhi',
         buyer_state: 'DL',
+        place_of_supply: 'Delhi',
         buyer_initials: 'BT',
         buyer_hue: 'ember' as const,
         source: 'buyer_app' as const,
+        source_kind: 'buyer_app' as const,
         source_label: 'Buyer App',
         source_detail: 'Submitted via Buyer App',
         catalog_name: null,
@@ -146,12 +165,21 @@ describe('estimates landing page', () => {
 
     pushMock.mockReset();
     useTenantEstimatesMock.mockReset();
+    useTenantEstimatesInfiniteMock.mockReset();
     useFlagMock.mockReset();
     useFlagMock.mockReturnValue(true);
     useTenantEstimatesMock.mockReturnValue({
       isLoading: false,
       isError: false,
       data: mockEstimatesData(),
+    });
+    useTenantEstimatesInfiniteMock.mockReturnValue({
+      data: { pages: [mockEstimatesData()] },
+      isLoading: false,
+      isError: false,
+      fetchNextPage: vi.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
     });
   });
 
@@ -172,31 +200,28 @@ describe('estimates landing page', () => {
     expect(kpiArticles[1]).toHaveTextContent('GMV');
     expect(kpiArticles[1]).toHaveTextContent('AOV');
     expect(kpiArticles[2]).toHaveTextContent('Open estimates');
-    expect(kpiArticles[3]).toHaveTextContent('Converted this month');
+    expect(kpiArticles[3]).toHaveTextContent('Converted · MTD');
   });
 
-  it('Converted chip shows converted and invoiced rows', () => {
+  it('shows converted and invoiced rows in the table', () => {
     render(<EstimatesLandingClient initialData={null} initialPeriod="month" />);
-    fireEvent.click(screen.getByRole('button', { name: 'Converted' }));
     expect(screen.getByText('EST-2')).toBeInTheDocument();
     expect(screen.getByText('EST-3')).toBeInTheDocument();
-    expect(screen.queryByText('EST-1')).not.toBeInTheDocument();
+    expect(screen.getByText('Converted')).toBeInTheDocument();
+    expect(screen.getByText('Invoiced')).toBeInTheDocument();
   });
 
-  it('filters buyer app estimates with the source chips', () => {
+  it('shows buyer app source labels only on buyer app estimates', () => {
     render(<EstimatesLandingClient initialData={null} initialPeriod="month" />);
-    fireEvent.click(screen.getByRole('button', { name: 'Buyer App' }));
-    expect(screen.getByText('EST-1')).toBeInTheDocument();
-    expect(screen.getByText('EST-3')).toBeInTheDocument();
-    expect(screen.queryByText('EST-2')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Buyer App').length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText('created by Priya Shah')).not.toBeInTheDocument();
   });
 
-  it('renders buyer geography, catalog and source details in the landing table', () => {
+  it('renders place of supply, catalog and buyer-app source labels in the landing table', () => {
     render(<EstimatesLandingClient initialData={null} initialPeriod="month" />);
-    expect(screen.getByText('Mumbai, MH')).toBeInTheDocument();
+    expect(screen.getByText('Maharashtra')).toBeInTheDocument();
     expect(screen.getByText('Summer 2026 Retail')).toBeInTheDocument();
-    expect(screen.getByText('created by Priya Shah')).toBeInTheDocument();
-    expect(screen.getAllByText('Submitted via Buyer App')).toHaveLength(2);
+    expect(screen.getAllByText('Buyer App').length).toBeGreaterThan(0);
   });
 
   it('navigates to estimate detail on row click', () => {

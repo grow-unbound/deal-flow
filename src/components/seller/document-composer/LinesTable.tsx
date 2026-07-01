@@ -44,6 +44,10 @@ export function LinesTable({
   productQuery,
   productResults,
   searchOpen,
+  productSearchLoading = false,
+  productSearchFetchingNextPage = false,
+  productSearchHasMore = false,
+  onProductSearchLoadMore,
   notesExpanded,
   freightExpanded,
   internalExpanded,
@@ -78,6 +82,10 @@ export function LinesTable({
   productQuery: string;
   productResults: EstimateComposerProductSearchRow[];
   searchOpen: boolean;
+  productSearchLoading?: boolean;
+  productSearchFetchingNextPage?: boolean;
+  productSearchHasMore?: boolean;
+  onProductSearchLoadMore?: () => void;
   notesExpanded: boolean;
   freightExpanded: boolean;
   internalExpanded: boolean;
@@ -106,10 +114,9 @@ export function LinesTable({
   onToggleInternal: () => void;
 }) {
   const activeLines = lines.filter((line) => line.diff !== 'removed');
-  const colCount = readOnly ? 6 : 7;
+  const colCount = readOnly ? 5 : 6;
   const bodyLines = readOnly ? activeLines : lines;
   const showDualNotes = !singleNoteMode;
-  const topSearchAnchorRef = useRef<HTMLDivElement | null>(null);
   const productSearchInputRef = useRef<HTMLInputElement | null>(null);
   const quantityInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const listboxId = useId();
@@ -231,26 +238,24 @@ export function LinesTable({
               <col className="w-[42%]" />
               <col className="w-[5.75rem]" />
               <col className="w-[6.5rem]" />
-              <col className="w-[4.5rem]" />
-              <col className="w-[6.5rem]" />
+              <col className="w-[6.75rem]" />
               {!readOnly ? <col className="w-8" /> : null}
             </colgroup>
             <thead>
               <tr className="sticky top-0 z-[1] border-b border-cream-200 bg-white">
-                <th className="table-label px-5 py-2 text-cream-700">#</th>
+                <th className="table-label pl-6 pr-5 py-2 text-cream-700">#</th>
                 <th className="table-label px-3 py-2 text-cream-700">Product</th>
                 <th className="table-label num px-2 py-2 text-right text-cream-700">Quantity</th>
-                <th className="table-label num px-2 py-2 text-right text-cream-700">BASE PRICE</th>
-                <th className="table-label num px-2 py-2 text-right text-cream-700">Pricelist</th>
-                <th className="table-label num px-2 py-2 text-right text-cream-700">Amount</th>
-                {!readOnly ? <th className="table-label px-1 py-2 text-cream-700" /> : null}
+                <th className="table-label num px-2 py-2 text-right text-cream-700">Price/Unit</th>
+                <th className="table-label num px-2 pr-6 py-2 text-right text-cream-700">Amount</th>
+                {!readOnly ? <th className="table-label pl-1 pr-3 py-2 text-cream-700" /> : null}
               </tr>
             </thead>
           <tbody>
             {showBottomProductSearch ? (
-              <tr className="sticky top-[41px] z-[2] border-b border-cream-200 bg-white">
+              <tr className="sticky top-[36px] z-[2] border-b border-cream-200 bg-white">
                 <td colSpan={colCount} className="p-0">
-                  <div ref={topSearchAnchorRef} className="relative px-4 py-2">
+                  <div className="relative px-4 py-2">
                     <Search className="pointer-events-none absolute left-7 top-1/2 h-4 w-4 -translate-y-1/2 text-cream-500" />
                     <Input
                       ref={productSearchInputRef}
@@ -268,16 +273,20 @@ export function LinesTable({
                         window.setTimeout(() => onSearchOpenChange(false), 120);
                       }}
                       onKeyDown={handleProductSearchKeyDown}
-                      className="h-10 border-cream-300 pl-10 shadow-none"
+                      className="h-9 border-cream-300 pl-10 shadow-none"
                       placeholder="Search product, SKU, or brand to add a line"
                     />
                     <ProductSearchDropdown
                       open={searchOpen}
-                      anchorRef={topSearchAnchorRef}
+                      anchorRef={productSearchInputRef}
                       results={productResults}
                       highlightedIndex={highlightedProductIndex}
                       onHighlightChange={setHighlightedProductIndex}
                       listboxId={listboxId}
+                      loading={productSearchLoading}
+                      isFetchingNextPage={productSearchFetchingNextPage}
+                      hasMore={productSearchHasMore}
+                      onLoadMore={onProductSearchLoadMore}
                       onSelect={(row) => {
                         onAddProduct(row);
                         onProductQueryChange('');
@@ -286,6 +295,12 @@ export function LinesTable({
                     />
                   </div>
                 </td>
+              </tr>
+            ) : null}
+
+            {showBottomProductSearch && visibleLines.length > 0 ? (
+              <tr aria-hidden="true">
+                <td colSpan={colCount} className="h-3 p-0" />
               </tr>
             ) : null}
 
@@ -305,7 +320,7 @@ export function LinesTable({
               if (!readOnly && line.diff === 'removed') {
                 return (
                   <tr key={line.id} className={cn('border-b border-cream-50', lineRowClass(line, readOnly))}>
-                    <td className="px-5 py-3 text-cream-400">{index + 1}</td>
+                    <td className="pl-6 pr-5 py-3 text-cream-400">{index + 1}</td>
                     <td colSpan={colCount - 1} className="px-3 py-3 text-cream-500 line-through">
                       {line.product_name} (removed)
                     </td>
@@ -315,7 +330,7 @@ export function LinesTable({
 
               return (
                 <tr key={line.id} className={cn('border-b border-cream-50', lineRowClass(line, readOnly))}>
-                  <td className="px-5 py-3 tabular-nums text-cream-600">{index + 1}</td>
+                  <td className="pl-6 pr-5 py-3 tabular-nums text-cream-600">{index + 1}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-start gap-3">
                       <EntityAvatar initials={line.brand_initials} hue={line.brand_hue} size={32} />
@@ -325,7 +340,7 @@ export function LinesTable({
                           {line.sku}
                           {(line.mrp ?? 0) > 0 ? ` · MRP ${formatInr(line.mrp)}` : ''}
                           {kind === 'estimate' ? ` · Stock ${line.on_hand}` : ''}
-                          {line.hsn_code ? ` · HSN ${line.hsn_code}` : ''}
+                          {line.base_selling_price != null ? ` · Base Price ${formatInr(line.base_selling_price)}` : ''}
                         </p>
                       </div>
                     </div>
@@ -351,34 +366,18 @@ export function LinesTable({
                       </div>
                     )}
                   </td>
-                  <td className="num px-2 py-3 text-right font-mono text-sm tabular-nums text-cream-700">
-                    {formatInr(line.base_selling_price ?? 0)}
-                  </td>
                   <td className="num px-2 py-3 text-right">
                     {readOnly ? (
-                      <span className="field-value font-mono tabular-nums">{formatInr(line.unit_price)}</span>
+                      <span className="field-value font-mono tabular-nums">{formatInr(line.unit_price ?? line.base_selling_price ?? 0)}</span>
                     ) : (
-                      <div className="editable relative w-full min-w-[5.5rem]">
-                        <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 font-mono text-xs text-cream-500">
-                          ₹
-                        </span>
-                        <Input
-                          className="h-8 w-full pl-6 text-right font-mono text-sm tabular-nums"
-                          inputMode="numeric"
-                          value={formatNumberForInput(line.unit_price)}
-                          onChange={(event) => {
-                            const next = parseCurrencyDigits(event.target.value);
-                            onLineChange(line.id, { unit_price: next });
-                          }}
-                        />
-                      </div>
+                      <span className="field-value font-mono tabular-nums">{formatInr(line.unit_price ?? line.base_selling_price ?? 0)}</span>
                     )}
                   </td>
-                  <td className="num-display px-2 py-3 text-right font-mono text-sm tabular-nums text-cream-900">
+                  <td className="num-display px-2 pr-6 py-3 text-right font-mono text-sm tabular-nums text-cream-900">
                     {formatInr(line.line_total)}
                   </td>
                   {!readOnly ? (
-                    <td className="px-1 py-3 text-right">
+                    <td className="pl-1 pr-3 py-3 text-right">
                       <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-cream-500" onClick={() => onRemoveLine(line.id)} aria-label="Remove line">
                         <X className="h-4 w-4" />
                       </Button>

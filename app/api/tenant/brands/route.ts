@@ -5,6 +5,7 @@ import { getFlag } from '@/lib/flags';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { createTenantBrand } from '@/lib/server/tenant-brand-create';
 import { getPostHogClient } from '@/lib/posthog-server';
+import { readArrayParam } from '@/lib/landing-filter-params';
 
 type TenantBrandLandingRow = {
   id: string;
@@ -66,9 +67,12 @@ export async function GET(req: NextRequest) {
     const db = supabaseAdmin as any;
     const tenantId = claims.tenant_id;
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
+    const search = req.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '';
+    const categoryFilter = readArrayParam(req.nextUrl.searchParams, 'categories');
+    const cohortFilter = readArrayParam(req.nextUrl.searchParams, 'cohorts');
 
     // ── Parallel fetch: brands list + static snapshot + per-brand KPI daily ──
-    const [brandsRes, snapshotRes, customersSnapshotRes, currentKpiRes, prevKpiRes, categoriesRes, cohortsRes] = await Promise.all([
+    const [brandsRes, snapshotRes, customersSnapshotRes, currentKpiRes, prevKpiRes, categoriesRes, cohortsRes, buyersRes, cohortMembersRes] = await Promise.all([
       db
         .schema('app')
         .from('tenant_brands')
@@ -120,14 +124,24 @@ export async function GET(req: NextRequest) {
       db
         .schema('app')
         .from('cohorts')
-        .select('id, name, deleted_at')
+        .select('id, name, deleted_at, allowed_tenant_brand_ids')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .order('name', { ascending: true }),
+      db
+        .schema('app')
+        .from('buyers')
+        .select('id, default_cohort_id')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null),
+      db
+        .schema('app')
+        .from('cohort_members')
+        .select('buyer_id, cohort_id'),
     ]);
 
-    if (brandsRes.error || categoriesRes.error || cohortsRes.error) {
-      const err = brandsRes.error ?? categoriesRes.error ?? cohortsRes.error;
+    if (brandsRes.error || categoriesRes.error || cohortsRes.error || buyersRes.error || cohortMembersRes.error) {
+      const err = brandsRes.error ?? categoriesRes.error ?? cohortsRes.error ?? buyersRes.error ?? cohortMembersRes.error;
       console.error('[GET /api/tenant/brands] query error:', err?.code, err?.message);
       return NextResponse.json({ error: 'Failed to fetch brands' }, { status: 500 });
     }
@@ -140,6 +154,37 @@ export async function GET(req: NextRequest) {
     const activeCohorts = (cohortsRes.data ?? [])
       .map((row: { id: string; name: string }) => ({ id: row.id, name: row.name }))
       .filter((row: { id: string; name: string }) => Boolean(row.id && row.name));
+    const cohortAccessById = new Map(
+      (cohortsRes.data ?? []).map((row: { id: string; allowed_tenant_brand_ids: string[] | null }) => [row.id, row.allowed_tenant_brand_ids]),
+    );
+    const buyerMembershipsByBuyerId = new Map<string, Set<string>>();
+    for (const row of (cohortMembersRes.data ?? []) as Array<{ buyer_id: string; cohort_id: string }>) {
+      const set = buyerMembershipsByBuyerId.get(row.buyer_id) ?? new Set<string>();
+      set.add(row.cohort_id);
+      buyerMembershipsByBuyerId.set(row.buyer_id, set);
+    }
+    const buyerAccessCountByBrand = new Map<string, number>();
+    for (const brandId of brandIds) buyerAccessCountByBrand.set(brandId, 0);
+    for (const buyer of (buyersRes.data ?? []) as Array<{ id: string; default_cohort_id: string | null }>) {
+      const cohortIds = new Set<string>(buyerMembershipsByBuyerId.get(buyer.id) ?? []);
+      if (buyer.default_cohort_id) cohortIds.add(buyer.default_cohort_id);
+      if (cohortIds.size === 0) continue;
+      const allowedSets = Array.from(cohortIds)
+        .map((cohortId) => cohortAccessById.get(cohortId))
+        .filter((value): value is string[] | null => value !== undefined);
+      if (allowedSets.length === 0) continue;
+      if (allowedSets.some((value) => value === null)) {
+        for (const brandId of brandIds) {
+          buyerAccessCountByBrand.set(brandId, (buyerAccessCountByBrand.get(brandId) ?? 0) + 1);
+        }
+        continue;
+      }
+      const allowedBrandIds = new Set(allowedSets.flatMap((value) => value ?? []));
+      for (const brandId of allowedBrandIds) {
+        if (!buyerAccessCountByBrand.has(brandId)) continue;
+        buyerAccessCountByBrand.set(brandId, (buyerAccessCountByBrand.get(brandId) ?? 0) + 1);
+      }
+    }
 
     // Aggregate kpi_brand_daily rows by brand ID for current and prev periods.
     const currentKpiByBrand = new Map<string, { gmv: number; orders_count: number; buyers_count: number; units_sold: number }>();
@@ -338,7 +383,7 @@ export async function GET(req: NextRequest) {
           portfolio_share_pct: portfolioSharePct,
           sku_count:          skuCountByBrand.get(row.id) ?? 0,
           active_buyers_mtd:  kpi?.buyers_count ?? 0,
-          total_buyers:       totalBuyers,
+          total_buyers:       buyerAccessCountByBrand.get(row.id) ?? totalBuyers,
           catalog_days_ago:   catalogDaysAgo,
           categories:         Array.from(categorySetByBrand.get(row.id) ?? ['Uncategorized']),
           catalog_name:       latestCatalog?.name ?? null,
@@ -350,6 +395,16 @@ export async function GET(req: NextRequest) {
     const byGmv    = [...brands].sort((a, b) => b.gmv_mtd - a.gmv_mtd);
     const byGrowth = [...brands].sort((a, b) => b.growth_pct - a.growth_pct);
     const categories = Array.from(new Set([...activeCategories, ...brands.flatMap((b) => b.categories)])).sort((a: string, b: string) => a.localeCompare(b));
+
+    const filteredBrands = brands.filter((brand) => {
+      const categoryOk = categoryFilter.length === 0 || categoryFilter.some((value) => brand.categories.includes(value));
+      const cohortOk = cohortFilter.length === 0 || (brand.default_cohort_id ? cohortFilter.includes(brand.default_cohort_id) : false);
+      const searchOk =
+        !search ||
+        [brand.display_name_override ?? brand.master_brand?.name ?? '', ...brand.categories, brand.catalog_name ?? '']
+          .some((value) => value.toLowerCase().includes(search));
+      return categoryOk && cohortOk && searchOk;
+    });
 
     const needsAttentionCount     = brands.filter((b) => b.alerts.length > 0).length;
     const catalogFreshnessCount   = brands.filter((b) => (catalogTouchesMtdByBrand.get(b.id) ?? 0) > 0).length;
@@ -385,7 +440,7 @@ export async function GET(req: NextRequest) {
       },
       cohorts: activeCohorts,
       categories,
-      brands,
+      brands: filteredBrands,
     });
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

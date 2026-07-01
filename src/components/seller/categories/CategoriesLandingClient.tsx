@@ -33,17 +33,6 @@ const STATUS_OPTIONS = ['Active', 'Inactive'] as const;
 const PRODUCT_OPTIONS = ['Has Products', 'Empty'] as const;
 const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'Name (A → Z)', 'OOS SKUs (high → low)'];
 
-function DaysCoverBadge({ value }: { value: number | null }) {
-  if (value === null) return <span className="text-cream-400">—</span>;
-  const cls =
-    value < 7
-      ? 'text-danger-600 font-semibold'
-      : value < 14
-        ? 'text-amber-600 font-medium'
-        : 'text-cream-700';
-  return <span className={cls}>{value}d</span>;
-}
-
 function CategoriesLoadingSkeleton() {
   return (
     <PageWrap>
@@ -94,10 +83,6 @@ function CategoriesLandingContent({
   const queryClient = useQueryClient();
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const { period, setPeriod, horizonLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
-  const { data, isLoading, isError } = useCategoryLanding(period, initialData);
-  const retainedData = useRetainedValue(data);
-  const landingData = data ?? retainedData;
-
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-categories-landing',
     scopeKey: period,
@@ -111,14 +96,16 @@ function CategoriesLandingContent({
       sortBy: 'GMV (high → low)' as SortOption,
     },
   });
+  const { search, sortBy } = routeState;
+  const filters = routeState.filters ?? { status: [], products: [] };
+  const { data, isLoading, isError } = useCategoryLanding(period, { search, status: filters.status, products: filters.products }, initialData);
+  const retainedData = useRetainedValue(data);
+  const landingData = data ?? retainedData;
   useRouteScrollRestoration({
     storageKey: 'seller-categories-landing',
     scopeKey: period,
     ready: !isLoading,
   });
-
-  const { search, sortBy } = routeState;
-  const filters = routeState.filters ?? { status: [], products: [] };
   const groups: FilterBarGroup[] = [
     {
       key: 'status',
@@ -286,14 +273,15 @@ function CategoriesLandingContent({
           />
 
           <LandingTable
-            columns={[
-              { label: 'Category', minWidth: 260, className: 'px-5' },
-              { label: `GMV · ${metricSuffix}`, align: 'right', minWidth: 140, className: 'px-5' },
-              { label: 'Growth', align: 'right', minWidth: 120, className: 'px-5' },
-              { label: 'SKUs', align: 'right', minWidth: 120, className: 'px-5' },
-              { label: 'Avg days cover', align: 'right', minWidth: 140, className: 'px-5' },
+          columns={[
+              { label: 'Category', minWidth: 280, maxWidth: 360, className: 'px-5' },
+              { label: 'Brands', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
+              { label: `GMV · ${metricSuffix}`, align: 'right', minWidth: 140, maxWidth: 160, className: 'px-5' },
+              { label: 'Growth', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
+              { label: 'SKUs', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
               { width: 40, className: 'px-4' },
             ]}
+            tableMinWidth={1080}
             showEmptyState={filtered.length === 0}
             emptyState={
               <EmptyState
@@ -323,11 +311,11 @@ function CategoriesLandingContent({
                     <EntityAvatar initials={row.initials} hue={row.is_active ? 'teal' : 'cream'} size={38} />
                     <div className="min-w-0">
                       <p className="truncate text-base font-medium text-cream-900">{row.name}</p>
-                      <p className="mt-0.5 truncate text-xs text-cream-500">
-                        {row.brand_count} brand{row.brand_count !== 1 ? 's' : ''}
-                      </p>
                     </div>
                   </div>
+                </td>
+                <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                  {row.brand_count}
                 </td>
                 <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                   {row.gmv_mtd > 0 ? formatCompactInr(row.gmv_mtd) : '—'}
@@ -340,9 +328,6 @@ function CategoriesLandingContent({
                   {row.oos_sku_count > 0 && (
                     <span className="ml-1 text-xs text-danger-600">({row.oos_sku_count} OOS)</span>
                   )}
-                </td>
-                <td className="px-5 py-3.5 text-right text-sm">
-                  <DaysCoverBadge value={row.avg_days_cover} />
                 </td>
                 <td className="px-4 py-3.5 text-right text-cream-400">
                   <ChevronRight size={16} />

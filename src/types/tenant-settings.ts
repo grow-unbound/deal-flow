@@ -99,7 +99,7 @@ export const CatalogSettingsSchema = z.object({
 });
 
 export const DeliveryRoutingSchema = z.object({
-  threshold_km: z.number().int().min(1).max(5000).default(300),
+  threshold_km: z.number().int().min(1).max(5000).default(50),
 });
 export type DeliveryRouting = z.infer<typeof DeliveryRoutingSchema>;
 

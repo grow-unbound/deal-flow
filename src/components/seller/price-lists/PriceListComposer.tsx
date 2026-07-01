@@ -19,6 +19,7 @@ import {
 } from '@/components/seller/composer/ComposerLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-overlay';
 import {
@@ -197,6 +198,7 @@ export function PriceListComposer({
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
 
   const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
   const [validFrom, setValidFrom] = useState(isoDateInput(new Date()));
   const [validTo, setValidTo] = useState('');
   const [priority, setPriority] = useState('0');
@@ -223,6 +225,7 @@ export function PriceListComposer({
         : [];
 
     setName(detail?.name ?? '');
+    setDescription(detail?.description ?? '');
     setValidFrom(detail?.valid_from ? detail.valid_from.slice(0, 10) : isoDateInput(new Date()));
     setValidTo(detail?.valid_to ? detail.valid_to.slice(0, 10) : '');
     setPriority(String(detail?.priority ?? 0));
@@ -347,6 +350,10 @@ export function PriceListComposer({
       items.push({ label: 'Name', value: name.trim() || 'Untitled pricelist' });
     }
 
+    if (detail && (detail.description ?? '') !== description) {
+      items.push({ label: 'Description', value: description.trim() || '—' });
+    }
+
     const detailValidFrom = detail?.valid_from?.slice(0, 10) ?? '';
     const detailValidTo = detail?.valid_to?.slice(0, 10) ?? '';
     if (validFrom !== detailValidFrom || validTo !== detailValidTo) {
@@ -412,6 +419,7 @@ export function PriceListComposer({
 
   const serializedState = useMemo(() => JSON.stringify({
     name,
+    description,
     validFrom,
     validTo,
     priority,
@@ -456,6 +464,7 @@ export function PriceListComposer({
 
     const result = await saveMutation.mutateAsync({
       name,
+      description: description.trim() || undefined,
       currency: 'INR',
       valid_from: new Date(`${validFrom}T00:00:00`),
       valid_to: validTo ? new Date(`${validTo}T23:59:59`) : undefined,
@@ -514,7 +523,7 @@ export function PriceListComposer({
   return (
     <>
       <PageWrap className={cn('flex flex-col', composerPageMinHeightClass, 'pt-7 pb-6')}>
-        <ComposerShell>
+      <ComposerShell>
           <div className="flex min-h-0 flex-1 flex-col gap-4">
           <ComposerBreadcrumbs
             items={[
@@ -543,7 +552,7 @@ export function PriceListComposer({
             }
           />
 
-          <ComposerBasicsStrip>
+          <ComposerBasicsStrip columnsClassName="lg:grid-cols-[1.4fr_1fr_0.9fr_1fr_1.4fr]">
             <ComposerBasicsField label="Name">
               <Input
                 value={name}
@@ -579,6 +588,15 @@ export function PriceListComposer({
                   pricingStrategy === 'edit_each' ? null : Number(strategyValue || 0),
                 )}
               </div>
+            </ComposerBasicsField>
+
+            <ComposerBasicsField label="Description">
+              <Textarea
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Optional description"
+                className="min-h-[4.5rem] resize-none border-0 bg-transparent px-0 py-0 text-base text-cream-950 shadow-none focus-visible:ring-0"
+              />
             </ComposerBasicsField>
           </ComposerBasicsStrip>
 

@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { toast } from 'sonner';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
+import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots, type OptimisticSnapshot } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type {
@@ -18,6 +19,7 @@ import type {
 export interface PriceList {
   id: string;
   name: string;
+  description: string | null;
   currency: string;
   valid_from: string | null;
   valid_to: string | null;
@@ -52,6 +54,7 @@ export type PriceListLandingStatusTone = 'success' | 'warning' | 'neutral';
 export interface PriceListLandingRow {
   id: string;
   name: string;
+  description: string | null;
   priority: number;
   currency: string;
   valid_from: string | null;
@@ -113,6 +116,11 @@ export interface PriceListsLandingResponse {
     draft: number;
     expired: number;
   };
+}
+
+export interface PriceListsLandingFilters {
+  search?: string;
+  status?: string[];
 }
 
 export interface PriceListItem {
@@ -189,11 +197,17 @@ export function usePriceLists() {
   });
 }
 
-export function usePriceListsLanding(initialData?: PriceListsLandingResponse | null) {
+export function usePriceListsLanding(
+  filters: PriceListsLandingFilters = {},
+  initialData?: PriceListsLandingResponse | null,
+) {
   return useQuery({
-    queryKey: ['price-lists-landing'],
+    queryKey: ['price-lists-landing', filters],
     queryFn: async (): Promise<PriceListsLandingResponse> => {
-      const res = await apiFetch('/api/price-lists');
+      const params = new URLSearchParams();
+      if (filters.search?.trim()) params.set('search', filters.search.trim());
+      appendArrayParam(params, 'status', filters.status);
+      const res = await apiFetch(`/api/price-lists${params.toString() ? `?${params.toString()}` : ''}`);
       if (!res.ok) {
         throw new Error('Failed to fetch price lists landing');
       }
@@ -238,6 +252,7 @@ export function useCreatePriceList() {
           {
             id: `optimistic-${Date.now()}`,
             name: data.name,
+            description: 'description' in data ? (data.description ?? null) : null,
             currency: data.currency,
             valid_from: data.valid_from ? new Date(data.valid_from).toISOString() : null,
             valid_to: data.valid_to ? new Date(data.valid_to).toISOString() : null,

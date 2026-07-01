@@ -280,6 +280,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ?? null;
     const unit = (product?.default_uom as string | null | undefined)?.trim() || '—';
     return {
+      id: String(row.id),
       tenant_product_id: String(row.tenant_product_id ?? product?.id ?? ''),
       product_name: displayName || String(row.sku ?? 'Line item'),
       sku,
@@ -309,7 +310,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const geo = (buyer?.geography as Record<string, unknown> | null | undefined) ?? null;
   const sellerState = (tenant?.primary_state as string | null | undefined) ?? null;
-  const placeOfSupply = computePlaceOfSupplyFromBuyer(geo, (buyer?.gstin as string | null | undefined) ?? null);
+  const storedPlaceOfSupply = typeof inv.place_of_supply === 'string' ? inv.place_of_supply.trim() : '';
+  const placeOfSupply = storedPlaceOfSupply || computePlaceOfSupplyFromBuyer(geo, (buyer?.gstin as string | null | undefined) ?? null);
 
   const buyerDto: InvoiceDetailBuyerDto = {
     id: String(buyer?.id ?? buyerId ?? ''),
@@ -505,7 +507,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (p.freight !== undefined) updatePayload.freight = p.freight;
     if (p.round_off !== undefined) updatePayload.round_off = p.round_off;
     if (p.place_of_supply !== undefined) {
-      updatePayload.intra_state_tax = p.place_of_supply === (existing.composerPayload.buyer_context?.seller_state ?? '');
+      const nextPlaceOfSupply = p.place_of_supply.trim() || existing.composerPayload.place_of_supply || 'Unknown';
+      updatePayload.place_of_supply = nextPlaceOfSupply;
+      updatePayload.intra_state_tax = nextPlaceOfSupply === (existing.composerPayload.buyer_context?.seller_state ?? '');
     }
 
     const { error: updateErr } = await db
@@ -525,12 +529,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
       for (const staleId of existingItemIds) {
         if (!nextIds.has(staleId)) {
-          await db
+          const { error: deleteErr } = await db
             .schema('app')
             .from('invoice_items')
             .update({ deleted_at: new Date().toISOString(), updated_by: claims.sub, updated_at: new Date().toISOString() })
             .eq('id', staleId)
             .eq('invoice_id', id);
+          if (deleteErr) {
+            console.error('[PATCH invoice save] delete item error', deleteErr);
+            return NextResponse.json({ error: 'Failed to save invoice line items' }, { status: 500 });
+          }
         }
       }
 
@@ -538,11 +546,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         const discounted = item.qty * item.unit_price * (1 - item.disc_pct / 100);
         const patch = {
           invoice_id: id,
-          tenant_id: claims.tenant_id,
           tenant_product_id: item.tenant_product_id,
           sku: null,
           qty: item.qty,
           unit_price: item.unit_price,
+          tax_rate: item.tax_pct,
           disc_pct: item.disc_pct,
           tax_pct: item.tax_pct,
           line_total: discounted + discounted * (item.tax_pct / 100),
@@ -553,9 +561,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         };
 
         if (item.id && existingItemIds.has(item.id)) {
-          await db.schema('app').from('invoice_items').update(patch).eq('id', item.id).eq('invoice_id', id);
+          const { error: updateErr } = await db.schema('app').from('invoice_items').update(patch).eq('id', item.id).eq('invoice_id', id);
+          if (updateErr) {
+            console.error('[PATCH invoice save] update item error', updateErr);
+            return NextResponse.json({ error: 'Failed to save invoice line items' }, { status: 500 });
+          }
         } else {
-          await db.schema('app').from('invoice_items').insert({ ...patch, created_by: claims.sub });
+          const { error: insertErr } = await db.schema('app').from('invoice_items').insert({ ...patch, created_by: claims.sub });
+          if (insertErr) {
+            console.error('[PATCH invoice save] insert item error', insertErr);
+            return NextResponse.json({ error: 'Failed to save invoice line items' }, { status: 500 });
+          }
         }
       }
     }

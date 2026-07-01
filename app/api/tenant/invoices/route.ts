@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
+import { isoDateInTimeZone } from '@/lib/date-utils';
 import { getFlag } from '@/lib/flags';
 import { getInAppCreateFlags } from '@/lib/server/seller-features';
 import { effectiveInvoiceStatus } from '@/lib/invoice-status';
@@ -47,6 +48,7 @@ interface InvoiceDbRow {
   invoice_date: string;
   due_date: string | null;
   paid_at: string | null;
+  place_of_supply: string | null;
   created_by: string | null;
   created_at: string;
 }
@@ -61,11 +63,13 @@ interface OrderRow {
   id: string;
   order_number: string;
   source?: string | null;
+  campaign_id?: string | null;
 }
 
 interface EstimateRow {
   id: string;
   estimate_number: string | null;
+  campaign_id?: string | null;
 }
 
 interface InvoiceItemRow {
@@ -202,7 +206,7 @@ export async function GET(request: NextRequest) {
             .schema('app')
             .from('invoices')
             .select(
-              'id, location_id, invoice_number, buyer_id, order_id, estimate_id, status, total_amount, outstanding_balance, invoice_date, due_date, paid_at, created_by, created_at',
+              'id, location_id, invoice_number, buyer_id, order_id, estimate_id, status, total_amount, outstanding_balance, invoice_date, due_date, paid_at, place_of_supply, created_by, created_at',
             )
             .eq('tenant_id', tenantId)
             .is('deleted_at', null)
@@ -234,10 +238,10 @@ export async function GET(request: NextRequest) {
 
     const [{ data: orderRows }, { data: estimateRows }] = await Promise.all([
       linkedOrderIds.length > 0
-        ? db.schema('app').from('orders').select('id, order_number, source').in('id', linkedOrderIds).is('deleted_at', null)
+        ? db.schema('app').from('orders').select('id, order_number, source, campaign_id').in('id', linkedOrderIds).is('deleted_at', null)
         : Promise.resolve({ data: [] as OrderRow[], error: null }),
       linkedEstimateIds.length > 0
-        ? db.schema('app').from('estimates').select('id, estimate_number').in('id', linkedEstimateIds).is('deleted_at', null)
+        ? db.schema('app').from('estimates').select('id, estimate_number, campaign_id').in('id', linkedEstimateIds).is('deleted_at', null)
         : Promise.resolve({ data: [] as EstimateRow[], error: null }),
     ]);
 
@@ -269,6 +273,19 @@ export async function GET(request: NextRequest) {
     const buyerById = new Map(buyers.map((b) => [b.id, b]));
     const orderById = new Map(orders.map((o) => [o.id, o]));
     const estimateById = new Map(estimates.map((e) => [e.id, e]));
+    const campaignIds = Array.from(
+      new Set([
+        ...orders.map((o) => o.campaign_id).filter((value): value is string => Boolean(value)),
+        ...estimates.map((e) => e.campaign_id).filter((value): value is string => Boolean(value)),
+      ]),
+    );
+    const campaignsRes = campaignIds.length > 0
+      ? await db.schema('app').from('campaigns').select('id, name').in('id', campaignIds).is('deleted_at', null)
+      : { data: [] as Array<{ id: string; name: string }>, error: null };
+    if (campaignsRes.error) {
+      return timedJson({ error: 'Failed to fetch invoices' }, { status: 500 });
+    }
+    const catalogsById = new Map(((campaignsRes.data ?? []) as Array<{ id: string; name: string }>).map((row) => [row.id, row.name]));
 
     const availableLocations = await loadAccessibleSellerLocations(db as any, claims.tenant_id, claims);
     const locationNameById = new Map(availableLocations.map((location) => [location.id, location.name]));
@@ -305,14 +322,11 @@ export async function GET(request: NextRequest) {
       const createdByLabel = creatorMap.get(row.created_by ?? '') ?? 'Team member';
       const linked = buildLinked(row, orderById, estimateById);
       const linkedOrder = row.order_id ? orderById.get(row.order_id) : null;
-      const sourceLabel = linked.type === 'direct' ? 'seller_app' : linked.label;
+      const sourceKind = linked.type === 'direct' ? 'direct' : linkedOrder?.source === 'buyer_app' ? 'buyer_app' : 'converted';
+      const sourceLabel = sourceKind === 'buyer_app' ? 'Buyer App' : linked.label;
       const sourceDetail = linked.type === 'direct' ? `Created by ${createdByLabel}` : `Converted by ${createdByLabel}`;
-      const sourceCategory =
-        linked.type === 'direct'
-          ? 'Direct'
-          : linkedOrder?.source === 'buyer_app'
-            ? 'Buyer App'
-            : 'Converted';
+      const campaignId = linkedOrder?.campaign_id ?? (row.estimate_id ? estimateById.get(row.estimate_id)?.campaign_id ?? null : null);
+      const campaignName = campaignId ? catalogsById.get(campaignId) ?? null : null;
       return {
         id: row.id,
         location_id: row.location_id,
@@ -320,14 +334,17 @@ export async function GET(request: NextRequest) {
         invoice_number: row.invoice_number,
         buyer_id: row.buyer_id,
         buyer_name: buyerName,
+        place_of_supply: toText(row.place_of_supply) ?? buyerCity ?? buyerState ?? null,
         buyer_city: buyerCity,
         buyer_state: buyerState,
         buyer_initials: getInitials(buyerName),
         buyer_hue: getHue(index),
         order_id: row.order_id,
         estimate_id: row.estimate_id,
+        source_kind: sourceKind,
         source_label: sourceLabel,
         source_detail: sourceDetail,
+        campaign_name: campaignName,
         created_by_label: createdByLabel,
         items_count: itemsCountByInvoice.get(row.id) ?? 0,
         total_amount: Number(row.total_amount ?? 0),
@@ -343,11 +360,10 @@ export async function GET(request: NextRequest) {
           filter_chip: meta.filter_chip,
         },
         linked,
-        source_category: sourceCategory,
       };
     });
     const filteredRows = landingRows.filter((row) => {
-      const sourceMatch = sourceParams.length === 0 || sourceParams.includes((row as typeof row & { source_category: string }).source_category);
+      const sourceMatch = sourceParams.length === 0 || sourceParams.includes(row.source_kind === 'buyer_app' ? 'Buyer App' : row.source_kind === 'converted' ? 'Converted' : 'Direct');
       const statusMatch = statusParams.length === 0 || statusParams.includes(row.status.label);
       const dueMatch =
         dueParams.length === 0 ||
@@ -538,7 +554,7 @@ export async function POST(request: NextRequest) {
     }
 
     const db = supabaseAdmin as DbClient;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = isoDateInTimeZone(new Date());
 
     const { data: invoiceNumberRow } = await db
       .schema('app')

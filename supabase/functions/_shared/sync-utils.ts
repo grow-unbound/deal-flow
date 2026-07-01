@@ -9,7 +9,11 @@ import type { ZohoIntegrationTypeId } from '../../../src/lib/integrations/contra
 import { ZOHO_INTEGRATION_TYPE_IDS } from '../../../src/lib/integrations/contracts.ts';
 import type { IntegrationSyncPhaseDefinition, ZohoTokenCacheProvider } from './integrations-zoho.ts';
 import { createZohoAdapter } from './integrations-zoho.ts';
-import { persistZohoEntityPage } from './integrations-persist.ts';
+import {
+  persistZohoEntityPage,
+  rebuildBuyerSearchVectors,
+  rebuildBuyerUserSearchVectors,
+} from './integrations-persist.ts';
 import type { PersistResult } from './integrations-persist.ts';
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -121,6 +125,7 @@ export async function upsertPhaseJob(
     phase: string;
     jobType: string;
     triggeredBy: string | null;
+    sinceDate?: string | null;
   },
 ): Promise<string> {
   const { data, error } = await admin
@@ -133,6 +138,7 @@ export async function upsertPhaseJob(
       phase: opts.phase,
       status: 'pending',
       progress: {},
+      since_date: opts.sinceDate ?? null,
       triggered_by: opts.triggeredBy ?? null,
       created_by: opts.triggeredBy ?? null,
       updated_by: opts.triggeredBy ?? null,
@@ -155,6 +161,7 @@ export async function updatePhaseJob(
     started_at?: string | null;
     completed_at?: string | null;
     progress?: Record<string, unknown>;
+    summary?: Record<string, unknown>;
   },
 ): Promise<void> {
   const update: Record<string, unknown> = {
@@ -165,6 +172,8 @@ export async function updatePhaseJob(
   if (patch.records_synced !== undefined) update.records_synced = patch.records_synced;
   if (patch.started_at !== undefined) update.started_at = patch.started_at;
   if (patch.completed_at !== undefined) update.completed_at = patch.completed_at;
+  if (patch.summary !== undefined) update.summary = patch.summary;
+
   if (patch.progress !== undefined) update.progress = patch.progress;
 
   if (patch.next_cursor !== undefined) {
@@ -256,7 +265,23 @@ export function createDbTokenCache(
 // resume cursor. Supabase hard limit is 150s — this leaves a 50s safety buffer.
 const TIME_BUDGET_MS = 100_000;
 const DEFAULT_PER_PAGE = 200;
-const INTER_PAGE_DELAY_MS = 100;
+
+// Converts snake_case entity type to Title Case label
+function labelizeEntity(value: string): string {
+  if (value === 'orders') return 'Sales Orders';
+  return value.split('_').filter(Boolean).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+}
+
+// Maps entity type to its phase group for the 3-phase UI model
+function getPhaseGroup(entityType: string): { group: string; groupLabel: string } {
+  if (['locations', 'products', 'pricelists', 'customers'].includes(entityType)) {
+    return { group: 'reference', groupLabel: 'Reference Data' };
+  }
+  if (['estimates', 'orders', 'invoices'].includes(entityType)) {
+    return { group: 'transactional', groupLabel: 'Transactions' };
+  }
+  return { group: 'analysis', groupLabel: 'Analysis' };
+}
 
 export async function runPhaseSync(
   admin: ReturnType<typeof createAdminClient>,
@@ -276,6 +301,7 @@ export async function runPhaseSync(
 
   const startedAt = new Date().toISOString();
   const budgetStart = Date.now();
+  const { group: phaseGroup, groupLabel: phaseGroupLabel } = getPhaseGroup(phase.entityType);
   if (opts.jobId) {
     await updatePhaseJob(admin, opts.jobId, { status: 'running', started_at: startedAt });
   }
@@ -292,7 +318,35 @@ export async function runPhaseSync(
     : null;
 
   let totalSynced = 0;
+  let totalFailed = 0;
   let pagesFetched = 0;
+
+  // Accumulated across pages — rebuilt once at invocation end instead of after every page
+  const allBuyerIds: string[] = [];
+  const allBuyerUserIds: string[] = [];
+
+  // Build the progress object written after every page
+  function buildProgress(extra: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      phase: phase.entityType,
+      phase_label: labelizeEntity(phase.entityType),
+      phase_group: phaseGroup,
+      phase_group_label: phaseGroupLabel,
+      phases: [phase.entityType],
+      pages_fetched: pagesFetched,
+      records_synced: totalSynced,
+      items_processed: totalSynced + totalFailed,
+      counts: {
+        [phase.entityType]: {
+          entity_type: phase.entityType,
+          processed: totalSynced,
+          failed: totalFailed,
+          pages: pagesFetched,
+        },
+      },
+      ...extra,
+    };
+  }
 
   while (true) {
     // Time-budget check: stop before Supabase's 150s hard limit
@@ -311,7 +365,17 @@ export async function runPhaseSync(
         page.records,
         adapter,
       );
-      totalSynced += result.created + result.updated;
+      const pageSynced = result.created + result.updated;
+      totalSynced += pageSynced;
+      // Records not created/updated/skipped are treat as failed
+      totalFailed += Math.max(0, page.records.length - pageSynced - result.skipped);
+
+      if (result.pendingSearchVectorBuyerIds.length > 0) {
+        allBuyerIds.push(...result.pendingSearchVectorBuyerIds);
+      }
+      if (result.pendingSearchVectorBuyerUserIds.length > 0) {
+        allBuyerUserIds.push(...result.pendingSearchVectorBuyerUserIds);
+      }
     }
 
     pagesFetched++;
@@ -321,39 +385,74 @@ export async function runPhaseSync(
       await updatePhaseJob(admin, opts.jobId, {
         status: 'running',
         records_synced: totalSynced,
-        progress: { pages_fetched: pagesFetched, records_synced: totalSynced },
+        progress: buildProgress(),
       });
     }
 
     if (!page.hasMore || !page.nextCursor) {
+      await flushBuyerSearchVectors(admin, integration.tenant_id, allBuyerIds, allBuyerUserIds);
+      const completedAt = new Date().toISOString();
       if (opts.jobId) {
+        const durationMs = Date.now() - new Date(startedAt).getTime();
         await updatePhaseJob(admin, opts.jobId, {
           status: 'completed',
           records_synced: totalSynced,
-          completed_at: new Date().toISOString(),
-          progress: { pages_fetched: pagesFetched, records_synced: totalSynced },
+          completed_at: completedAt,
+          progress: buildProgress(),
+          summary: {
+            since: opts.since ?? null,
+            phases_completed: [phase.entityType],
+            counts: {
+              [phase.entityType]: {
+                entity_type: phase.entityType,
+                processed: totalSynced,
+                failed: totalFailed,
+                pages: pagesFetched,
+              },
+            },
+            last_synced_at: completedAt,
+            note: `${labelizeEntity(phase.entityType)}: ${totalSynced} synced${totalFailed > 0 ? `, ${totalFailed} failed` : ''} across ${pagesFetched} page${pagesFetched !== 1 ? 's' : ''}`,
+            duration_ms: durationMs,
+            total_processed: totalSynced,
+            total_failed: totalFailed,
+          },
         });
       }
       return { ok: true, phase: phase.id, records_synced: totalSynced, has_more: false, next_cursor: null };
     }
 
     cursor = page.nextCursor;
-
-    // Natural throttle between Zoho API pages — keeps us well under 60 calls/min
-    await new Promise<void>((r) => setTimeout(r, INTER_PAGE_DELAY_MS));
   }
 
-  // Time budget exceeded — persist cursor so orchestrator can resume
+  // Time budget exceeded — rebuild accumulated search vectors then pause
+  await flushBuyerSearchVectors(admin, integration.tenant_id, allBuyerIds, allBuyerUserIds);
   const nextCursorRecord = cursor as Record<string, unknown> | null;
   if (opts.jobId) {
     await updatePhaseJob(admin, opts.jobId, {
       status: 'paused',
       records_synced: totalSynced,
       next_cursor: nextCursorRecord,
-      progress: { pages_fetched: pagesFetched, records_synced: totalSynced },
+      progress: buildProgress({ next_cursor: nextCursorRecord }),
     });
   }
   return { ok: true, phase: phase.id, records_synced: totalSynced, has_more: true, next_cursor: nextCursorRecord };
+}
+
+// ── Search vector flush ───────────────────────────────────────────────────────
+
+// No-op for non-customer phases (arrays will be empty)
+async function flushBuyerSearchVectors(
+  admin: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  buyerIds: string[],
+  buyerUserIds: string[],
+): Promise<void> {
+  if (buyerIds.length > 0) {
+    await rebuildBuyerSearchVectors(admin, tenantId, buyerIds);
+  }
+  if (buyerUserIds.length > 0) {
+    await rebuildBuyerUserSearchVectors(admin, buyerIds, buyerUserIds);
+  }
 }
 
 // ── Response helpers ──────────────────────────────────────────────────────────

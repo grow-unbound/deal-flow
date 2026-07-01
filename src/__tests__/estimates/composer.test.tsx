@@ -15,6 +15,7 @@ const useEstimatePriceListOptionsMock = vi.fn();
 const useEstimateProductPricingMock = vi.fn();
 const useEstimateProductSearchMock = vi.fn();
 const useNextEstimateNumberMock = vi.fn();
+const useTenantLocationsMock = vi.fn();
 const apiFetchMock = vi.fn();
 const apiPatchMock = vi.fn();
 const apiPostMock = vi.fn();
@@ -25,6 +26,10 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlagState: (...args: unknown[]) => useFlagStateMock(...args),
+}));
+
+vi.mock('@/hooks/useTenantLocations', () => ({
+  useTenantLocations: (...args: unknown[]) => useTenantLocationsMock(...args),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -217,6 +222,15 @@ describe('DocComposerEstimate', () => {
     useEstimateProductPricingMock.mockReturnValue({ data: {}, isLoading: false });
     useEstimateProductSearchMock.mockReturnValue({ data: [], isLoading: false });
     useNextEstimateNumberMock.mockReturnValue({ data: 'EST-2026-00001', isLoading: false });
+    useTenantLocationsMock.mockReturnValue({
+      data: {
+        locations: [
+          { id: 'loc-1', name: 'Main warehouse', is_default: true, deleted_at: null },
+          { id: 'loc-2', name: 'North depot', is_default: false, deleted_at: null },
+        ],
+      },
+      isLoading: false,
+    });
     useBuyerEstimateContextMock.mockReturnValue({ data: null, isLoading: false });
     useEstimateComposerMock.mockImplementation((id: string | null) => ({
       data: id ? baseDocument() : undefined,
@@ -232,6 +246,64 @@ describe('DocComposerEstimate', () => {
     expect(await screen.findByPlaceholderText(/Search buyer/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Send estimate/i })).toBeDisabled();
     expect(apiPostMock).not.toHaveBeenCalled();
+  });
+
+  it('shows the IST create date and loads location options', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-30T20:30:00.000Z'));
+
+    try {
+      renderComposer({ mode: 'create' });
+
+      expect(screen.getByText('01/07/2026')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('combobox'));
+      expect(screen.getByText('Main warehouse')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows matching products in the search dropdown', async () => {
+    useBuyerEstimateContextMock.mockImplementation((buyerId: string | null) => ({
+      data: buyerId ? baseBuyer() : null,
+      isLoading: false,
+    }));
+    useEstimateProductSearchMock.mockImplementation((query: string) => ({
+      data: query ? [searchRow] : [],
+      isLoading: false,
+    }));
+
+    renderComposer({ mode: 'create' });
+
+    fireEvent.focus(screen.getByPlaceholderText(/Search buyer/i));
+    fireEvent.click(await screen.findByRole('button', { name: /Acme Retail/i }, { timeout: 8000 }));
+    await screen.findByText(/Credit headroom/i);
+
+    fireEvent.change(screen.getByPlaceholderText(/Search product/i), { target: { value: 'Shiraz' } });
+    expect(await screen.findByRole('option', { name: /Vinikus Shiraz Reserve/i })).toBeInTheDocument();
+  });
+
+  it('shows a search loader while product results are still loading', async () => {
+    useBuyerEstimateContextMock.mockImplementation((buyerId: string | null) => ({
+      data: buyerId ? baseBuyer() : null,
+      isLoading: false,
+    }));
+    useEstimateProductSearchMock.mockReturnValue({
+      data: [],
+      isLoading: true,
+      isFetchingNextPage: false,
+      hasNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+
+    renderComposer({ mode: 'create' });
+
+    fireEvent.focus(screen.getByPlaceholderText(/Search buyer/i));
+    fireEvent.click(await screen.findByRole('button', { name: /Acme Retail/i }, { timeout: 8000 }));
+    await screen.findByText(/Credit headroom/i);
+
+    fireEvent.change(screen.getByPlaceholderText(/Search product/i), { target: { value: 'Shi' } });
+    expect(await screen.findByText(/Searching products/i)).toBeInTheDocument();
   });
 
   it('hydrates buyer card and over-limit warning after buyer + line selection', async () => {
@@ -264,7 +336,9 @@ describe('DocComposerEstimate', () => {
       { timeout: 12_000 },
     );
     expect(screen.getByText('Quantity')).toBeInTheDocument();
-    expect(screen.getByText('BASE PRICE')).toBeInTheDocument();
+    expect(screen.getByText('Price/Unit')).toBeInTheDocument();
+    expect(screen.getByText(/Base Price ₹1,180/i)).toBeInTheDocument();
+    expect(screen.queryByText(/HSN/i)).not.toBeInTheDocument();
     expect(screen.queryByText('Disc %')).not.toBeInTheDocument();
     expect(screen.queryByText(/Resolved price check/i)).not.toBeInTheDocument();
   }, 15_000);

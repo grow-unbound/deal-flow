@@ -96,7 +96,7 @@ export function buildGeneralSettingsView(
   const delivery_routing_threshold_km =
     typeof rawThreshold === 'number' && rawThreshold >= 1 && rawThreshold <= 5000
       ? rawThreshold
-      : 300;
+      : DEFAULT_TENANT_SETTINGS_STORED.delivery_routing_threshold_km;
 
   return {
     business: businessParsed.success

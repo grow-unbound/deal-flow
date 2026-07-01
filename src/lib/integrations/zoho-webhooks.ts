@@ -92,7 +92,8 @@ export function buildZohoWebhookRegistrationPayload(input: {
       param_name: 'x-zoho-webhook-token',
       param_value: input.secret,  // always sent — never empty
     }],
-    body_type: 'json',
+    body_type: 'application/json',
+    raw_data: '${JSONString}',
   };
 }
 

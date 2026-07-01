@@ -1,5 +1,6 @@
 import { computePlaceOfSupplyFromBuyer } from '@/lib/sales-orders/compute-place-of-supply';
 import type { JWTClaims } from '@/lib/auth';
+import { isoDateInTimeZone } from '@/lib/date-utils';
 import {
   canAccessDocumentLocation,
   loadAccessibleSellerLocations,
@@ -316,7 +317,6 @@ export async function loadEstimateDocument(
     viewer_role: viewerRole,
   };
 
-  const fallbackDate = String(estimate.created_at).slice(0, 10);
   const geo = (buyer?.geography as Record<string, unknown> | null | undefined) ?? null;
   const buyerContext = buyer
     ? {
@@ -349,8 +349,8 @@ export async function loadEstimateDocument(
     location_id: locationId ?? defaultLocationId,
     location_name: (locationRes.data?.name as string | null | undefined) ?? null,
     available_locations: availableLocations,
-    estimate_date: isoDateValue(estimate.estimate_date as string | null | undefined, fallbackDate),
-    valid_until: isoDateValue(estimate.valid_until as string | null | undefined, fallbackDate),
+    estimate_date: isoDateValue(estimate.estimate_date as string | null | undefined, isoDateInTimeZone(new Date())),
+    valid_until: isoDateValue(estimate.valid_until as string | null | undefined, isoDateInTimeZone(new Date())),
     buyer_po_ref: String(estimate.buyer_po_ref ?? ''),
     place_of_supply: String(estimate.place_of_supply ?? ''),
     seller_note: String(estimate.notes ?? ''),
