@@ -21,3 +21,27 @@ verify_jwt = false
 
 [functions.integrations-sync-worker]
 verify_jwt = false
+
+[functions.integrations-sync]
+verify_jwt = false
+
+[functions.sync-locations]
+verify_jwt = false
+
+[functions.sync-products]
+verify_jwt = false
+
+[functions.sync-pricelists]
+verify_jwt = false
+
+[functions.sync-customers]
+verify_jwt = false
+
+[functions.sync-estimates]
+verify_jwt = false
+
+[functions.sync-orders]
+verify_jwt = false
+
+[functions.sync-invoices]
+verify_jwt = false
