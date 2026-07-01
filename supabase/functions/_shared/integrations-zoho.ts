@@ -470,11 +470,13 @@ export function createZohoAdapter(
     const dateStart = TRANSACTIONAL_ENTITY_TYPES.has(phase.entityType)
       ? (since ?? financialYearStart())
       : undefined;
-    const lastModified = !TRANSACTIONAL_ENTITY_TYPES.has(phase.entityType) &&
+    const lastModifiedDate = !TRANSACTIONAL_ENTITY_TYPES.has(phase.entityType) &&
       LAST_MODIFIED_SUPPORTED_TYPES.has(phase.entityType) &&
       since != null
       ? since
       : undefined;
+    // Zoho requires last_modified_time as "YYYY-MM-DD HH:mm:ss" — not a bare date
+    const lastModified = lastModifiedDate ? `${lastModifiedDate} 00:00:00` : undefined;
 
     const query = {
       page,
