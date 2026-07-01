@@ -3,13 +3,7 @@
 import type { FC } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  ChevronLeft,
-  ChevronRight,
-  LogOut,
-} from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
-import { useTenant } from '@/contexts/TenantContext';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useIdleRoutePrefetch } from '@/hooks/useIdleRoutePrefetch';
 import { Pressable } from '@/components/ui/pressable';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
@@ -143,13 +137,6 @@ export function collectPrefetchHrefs(
     .map((item) => item.href);
 }
 
-const ROLE_LABELS: Record<string, string> = {
-  seller_admin: 'Seller admin',
-  seller_assistant: 'Seller assistant',
-  buyer_admin: 'Buyer admin',
-  buyer_assistant: 'Buyer assistant',
-};
-
 interface SellerSidebarProps {
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
@@ -164,8 +151,6 @@ export function SellerSidebar({
   featureAvailability,
 }: SellerSidebarProps) {
   const pathname = usePathname();
-  const { user, signOut } = useAuth();
-  const { currentTenant } = useTenant();
   const { isSellerAssistant, role } = useRole();
   const sellerRole = role === ROLES.SELLER_ADMIN || role === ROLES.SELLER_ASSISTANT ? role : null;
 
@@ -199,10 +184,6 @@ export function SellerSidebar({
 
   const prefetchHrefs = sellerRole ? collectPrefetchHrefs(navGroups, { role: sellerRole, getFlag }) : [];
   useIdleRoutePrefetch(prefetchHrefs);
-
-  async function handleLogout() {
-    await signOut();
-  }
 
   function renderNavItem(item: NavItem) {
     // /settings is exact-match only — sub-pages have their own nav items in Group 3
@@ -283,31 +264,6 @@ export function SellerSidebar({
           })
         )}
       </nav>
-
-      <div className="mt-auto shrink-0 px-4 py-4">
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="mb-3 flex w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left text-body-sm font-medium text-cream-800 transition-colors duration-fast hover:bg-[var(--yk-hover-tint)] hover:text-cream-900"
-          title={isCollapsed ? 'Log out' : undefined}
-        >
-          <LogOut size={16} className="text-cream-600" />
-          {!isCollapsed && 'Log out'}
-        </button>
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-100">
-            <span className="text-caption font-medium uppercase text-teal-600">
-              {(user?.displayName ?? user?.email)?.[0]?.toUpperCase() ?? '?'}
-            </span>
-          </div>
-          {!isCollapsed && (
-            <div className="min-w-0">
-              <p className="truncate text-body-sm font-medium text-cream-900">{user?.displayName ?? user?.email ?? '—'}</p>
-              <p className="mt-0.5 truncate text-caption text-cream-600">{currentTenant?.business_name ?? 'Tenant'}</p>
-            </div>
-          )}
-        </div>
-      </div>
     </aside>
   );
 }
@@ -489,6 +445,3 @@ function RecommendationsIcon({ size = 16, className = '' }) {
     </svg>
   );
 }
-
-// Suppress "declared but never read" for ROLE_LABELS — kept for future use
-void ROLE_LABELS;

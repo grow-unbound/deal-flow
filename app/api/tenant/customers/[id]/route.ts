@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
+import { loadAccessibleSellerLocations } from '@/lib/server/seller-location-access';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
 
@@ -223,7 +224,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     scopeByAccessibleLocations(db
       .schema('app')
       .from('orders')
-      .select('id, order_number, buyer_id, status, total_amount, placed_at, created_at, campaign_id, location_id')
+      .select('id, order_number, buyer_id, status, source, total_amount, placed_at, created_at, campaign_id, location_id, estimate_id, place_of_supply')
       .eq('tenant_id', claims.tenant_id)
       .eq('buyer_id', id)
       .is('deleted_at', null)
@@ -362,7 +363,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const tenantBrandById = new Map<string, string>(tenantBrands.map((row: any) => [String(row.id), String(row.master_brand_id)]));
   const masterBrandById = new Map<string, string>(((masterBrandsRes.error ? [] : masterBrandsRes.data) ?? []).map((row: any) => [String(row.id), String(row.name)]));
 
-  const invoices = await optionalSelect(db, 'invoices', 'id, invoice_number, invoice_date, created_at, status, outstanding_balance, total_amount, location_id', claims.tenant_id, id);
+  const invoices = await optionalSelect(db, 'invoices', 'id, invoice_number, invoice_date, created_at, status, outstanding_balance, total_amount, location_id, order_id, estimate_id, place_of_supply, due_date', claims.tenant_id, id);
   const payments = await optionalSelect(db, 'payments', 'id, paid_at, created_at, amount, status, mode', claims.tenant_id, id);
   const creditNotes = await optionalSelect(db, 'credit_notes', 'id, issued_at, created_at, amount, reason, status', claims.tenant_id, id);
   const catalogViews = await optionalSelect(db, 'catalog_views', 'id, viewed_at, created_at, campaign_id', claims.tenant_id, id);
@@ -373,7 +374,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     db
       .schema('app')
       .from('estimates')
-      .select('id, estimate_number, estimate_date, created_at, status, total_amount, location_id')
+      .select('id, estimate_number, estimate_date, created_at, status, total_amount, location_id, campaign_id, source, place_of_supply, expires_at')
       .eq('tenant_id', claims.tenant_id)
       .eq('buyer_id', id)
       .is('deleted_at', null)
@@ -384,6 +385,66 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: 'Failed to fetch customer detail data' }, { status: 500 });
   }
   const estimateRows = estimatesRes.data ?? [];
+  const accessibleLocations = await loadAccessibleSellerLocations(db as any, claims.tenant_id, claims);
+  const locationNameById = new Map(accessibleLocations.map((location) => [location.id, location.name]));
+
+  const campaignIds = Array.from(
+    new Set([
+      ...allOrders.map((order: { campaign_id?: string | null }) => order.campaign_id),
+      ...estimateRows.map((estimate: { campaign_id?: string | null }) => estimate.campaign_id),
+      ...scopedInvoices.map((invoice: { order_id?: string | null }) => {
+        const linkedOrder = allOrders.find((order: any) => order.id === invoice.order_id);
+        return linkedOrder?.campaign_id ?? null;
+      }),
+    ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0)),
+  );
+  const campaignsRes = campaignIds.length > 0
+    ? await db.schema('app').from('campaigns').select('id, name').in('id', campaignIds).is('deleted_at', null)
+    : { data: [] as Array<{ id: string; name: string }>, error: null };
+  if (campaignsRes.error) {
+    return NextResponse.json({ error: 'Failed to fetch customer detail data' }, { status: 500 });
+  }
+  const catalogById = new Map<string, string>(((campaignsRes.data ?? []) as Array<{ id: string; name: string }>).map((row) => [row.id, row.name]));
+
+  const estimateIds = estimateRows.map((estimate: any) => estimate.id);
+  const invoiceIds = scopedInvoices.map((invoice: any) => invoice.id);
+  const [estimateItemsRes, invoiceItemsRes] = await Promise.all([
+    estimateIds.length
+      ? db
+          .schema('app')
+          .from('estimate_items')
+          .select('id, estimate_id')
+          .in('estimate_id', estimateIds)
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [] as Array<{ id: string; estimate_id: string }>, error: null }),
+    invoiceIds.length
+      ? db
+          .schema('app')
+          .from('invoice_items')
+          .select('id, invoice_id')
+          .in('invoice_id', invoiceIds)
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [] as Array<{ id: string; invoice_id: string }>, error: null }),
+  ]);
+
+  if (estimateItemsRes.error || invoiceItemsRes.error) {
+    return NextResponse.json({ error: 'Failed to fetch customer detail data' }, { status: 500 });
+  }
+
+  const estimateItemCountByEstimate = new Map<string, number>();
+  for (const item of estimateItemsRes.data ?? []) {
+    estimateItemCountByEstimate.set(
+      item.estimate_id,
+      (estimateItemCountByEstimate.get(item.estimate_id) ?? 0) + 1,
+    );
+  }
+  const invoiceItemCountByInvoice = new Map<string, number>();
+  for (const item of invoiceItemsRes.data ?? []) {
+    invoiceItemCountByInvoice.set(
+      item.invoice_id,
+      (invoiceItemCountByInvoice.get(item.invoice_id) ?? 0) + 1,
+    );
+  }
 
   const activeCohortRows = (cohortMembersRes.data ?? []).filter((row: any) => row.cohorts?.name && !row.cohorts?.deleted_at);
   const activeCohortIds = activeCohortRows.map((row: any) => row.cohort_id);
@@ -896,6 +957,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       rows: allOrders.map((order: any) => ({
         id: order.id,
         order_number: order.order_number,
+        buyer_name: buyer.business_name,
+        location_name: order.location_id ? locationNameById.get(String(order.location_id)) ?? null : null,
+        place_of_supply: typeof order.place_of_supply === 'string' && order.place_of_supply.trim().length > 0
+          ? order.place_of_supply.trim()
+          : buyer.geography?.city ?? null,
+        source_kind: order.estimate_id
+          ? 'converted'
+          : order.source === 'buyer_app'
+            ? 'buyer_app'
+            : 'direct',
+        source_label: order.estimate_id
+          ? (estimateRows.find((estimate: any) => estimate.id === order.estimate_id)?.estimate_number ?? null)
+          : order.source === 'buyer_app'
+            ? 'Buyer App'
+            : null,
+        campaign_name: order.campaign_id ? catalogById.get(order.campaign_id) ?? null : null,
         placed_at: order.placed_at,
         items: itemCountByOrder.get(order.id) ?? 0,
         gmv: Number(order.total_amount ?? 0),
@@ -906,7 +983,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       rows: estimateRows.map((estimate: any) => ({
         id: estimate.id,
         number: estimate.estimate_number,
+        location_name: estimate.location_id ? locationNameById.get(String(estimate.location_id)) ?? null : null,
+        place_of_supply: typeof estimate.place_of_supply === 'string' && estimate.place_of_supply.trim().length > 0
+          ? estimate.place_of_supply.trim()
+          : buyer.geography?.city ?? null,
+        source_kind: estimate.source === 'buyer_app' ? 'buyer_app' : 'seller',
+        source_label: estimate.source === 'buyer_app' ? 'Buyer App' : null,
+        campaign_name: estimate.campaign_id ? catalogById.get(estimate.campaign_id) ?? null : null,
         issued_at: estimate.estimate_date ?? estimate.created_at,
+        expires_at: estimate.expires_at ?? null,
+        items_count: estimateItemCountByEstimate.get(estimate.id) ?? 0,
         total_amount: Number(estimate.total_amount ?? 0),
         status: estimate.status,
       })),
@@ -915,7 +1001,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       rows: scopedInvoices.map((invoice: any) => ({
         id: invoice.id,
         number: invoice.invoice_number ?? null,
+        location_name: invoice.location_id ? locationNameById.get(String(invoice.location_id)) ?? null : null,
+        place_of_supply: typeof invoice.place_of_supply === 'string' && invoice.place_of_supply.trim().length > 0
+          ? invoice.place_of_supply.trim()
+          : buyer.geography?.city ?? null,
+        source_kind: invoice.order_id
+          ? (allOrders.find((order: any) => order.id === invoice.order_id)?.source === 'buyer_app' ? 'buyer_app' : 'converted')
+          : 'direct',
+        source_label: invoice.order_id
+          ? (allOrders.find((order: any) => order.id === invoice.order_id)?.source === 'buyer_app'
+            ? 'Buyer App'
+            : allOrders.find((order: any) => order.id === invoice.order_id)?.order_number ?? null)
+          : null,
+        campaign_name: invoice.order_id
+          ? catalogById.get(String(allOrders.find((order: any) => order.id === invoice.order_id)?.campaign_id ?? '')) ?? null
+          : null,
         issued_at: invoice.invoice_date ?? invoice.created_at,
+        due_date: invoice.due_date ?? null,
+        items_count: invoiceItemCountByInvoice.get(invoice.id) ?? 0,
+        outstanding_amount: Number(invoice.outstanding_balance ?? 0),
         total_amount: Number(invoice.total_amount ?? 0),
         status: invoice.status ?? 'issued',
       })),

@@ -1,7 +1,10 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { toast } from 'sonner';
+
+import { supabase } from '@/lib/supabase';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
@@ -23,7 +26,7 @@ export type TenantIntegrationStatus = 'pending_setup' | 'connected' | 'syncing' 
 export type IntegrationHealthStatus = 'ok' | 'expired' | 'invalid' | null;
 export type IntegrationRunOrigin = 'manual' | 'scheduled' | 'webhook' | null;
 export type IntegrationSyncJobType = 'initial_reference' | 'initial_transactional' | 'incremental' | 'manual';
-export type IntegrationSyncJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type IntegrationSyncJobStatus = 'pending' | 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 export type IntegrationTriggerType = 'webhook' | 'scheduled' | 'event';
 export type IntegrationDirection = 'inbound' | 'outbound' | 'bidirectional';
 
@@ -94,9 +97,11 @@ export interface IntegrationSyncError {
 export interface IntegrationSyncJob {
   id: string;
   job_type: IntegrationSyncJobType;
+  phase?: string | null;
   status: IntegrationSyncJobStatus;
   run_origin?: IntegrationRunOrigin;
   sync_window?: string | null;
+  since_date?: string | null;
   progress?: IntegrationSyncProgress | null;
   error_log?: IntegrationSyncError[] | null;
   summary?: IntegrationJobSummary | null;
@@ -218,7 +223,7 @@ interface ApiEnvelope<T> {
   error?: { code?: string; message?: string } | null;
 }
 
-const ACTIVE_STATUSES: IntegrationSyncJobStatus[] = ['queued', 'running'];
+const ACTIVE_STATUSES: IntegrationSyncJobStatus[] = ['pending', 'queued', 'running', 'paused'];
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -325,6 +330,7 @@ function parseSyncJob(value: unknown): IntegrationSyncJob | null {
   return {
     id: asString(value.id),
     job_type: (asString(value.job_type) || 'manual') as IntegrationSyncJobType,
+    phase: asNullableString(value.phase) ?? null,
     status: (asString(value.status) || 'queued') as IntegrationSyncJobStatus,
     run_origin: runOrigin,
     sync_window: syncWindow,
@@ -377,6 +383,7 @@ function parseSyncJob(value: unknown): IntegrationSyncJob | null {
       )
       .filter((entry): entry is IntegrationSyncError => entry !== null),
     summary,
+    since_date: asNullableString(value.since_date),
     started_at: asNullableString(value.started_at),
     completed_at: asNullableString(value.completed_at),
     created_at: asString(value.created_at, new Date(0).toISOString()),
@@ -685,9 +692,32 @@ export function useIntegrationsSettings(initialData?: IntegrationSettingsPayload
     queryFn: fetchSettings,
     initialData: initialData ? parseSettingsView(initialData) : undefined,
     retry: transientQueryRetry,
-    refetchInterval: (queryInfo) => (hasActiveJob(queryInfo.state.data as IntegrationsSettingsView | undefined) ? 30000 : false),
-    refetchIntervalInBackground: true,
   });
+
+  // Realtime: invalidate query whenever any active sync job updates
+  const activeIntegrationIds = (query.data?.integrations ?? [])
+    .map((i) => (i.tenant_integration?.active_job ? i.tenant_integration.id : null))
+    .filter((id): id is string => Boolean(id));
+
+  useEffect(() => {
+    if (activeIntegrationIds.length === 0) return;
+
+    const channels = activeIntegrationIds.map((tiId) =>
+      supabase
+        .channel(`sync-job-main-${tiId}`)
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'app', table: 'integration_sync_jobs', filter: `tenant_integration_id=eq.${tiId}` },
+          () => { void queryClient.invalidateQueries({ queryKey }); },
+        )
+        .subscribe(),
+    );
+
+    return () => {
+      channels.forEach((ch) => supabase.removeChannel(ch));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIntegrationIds.join(','), queryClient]);
 
   const testMutation = useMutation({
     mutationFn: postTest,

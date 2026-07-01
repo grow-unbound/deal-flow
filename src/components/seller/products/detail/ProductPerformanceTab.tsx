@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { PerformanceCard } from '@/components/seller/detail';
 import { formatCompactInr, formatCurrency } from '@/lib/utils';
 import type { ProductDetailResponse } from '@/hooks/useProducts';
 
@@ -44,12 +45,10 @@ export function ProductPerformanceTab({ performance }: ProductPerformanceTabProp
   return (
     <section className="mt-5 space-y-4">
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
-        <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-          <div className="flex items-start justify-between border-b border-cream-300 px-5 py-4">
-            <div>
-              <h3 className="font-display text-md text-cream-950">Units sold</h3>
-              <p className="text-base text-cream-700">{periodLabel(period)}</p>
-            </div>
+        <PerformanceCard
+          title="Units sold"
+          subtitle={periodLabel(period)}
+          actions={(
             <div className="inline-flex rounded-[10px] bg-cream-200 p-1">
               <button
                 type="button"
@@ -73,8 +72,9 @@ export function ProductPerformanceTab({ performance }: ProductPerformanceTabProp
                 3 mo
               </button>
             </div>
-          </div>
-
+          )}
+          bodyClassName="p-0"
+        >
           <div className="border-b border-cream-200 px-5 py-4">
             <div className="flex items-end gap-3">
               <p className="font-display text-3xl leading-none text-cream-950">{performance.units_snapshot.units_mtd}</p>
@@ -112,12 +112,9 @@ export function ProductPerformanceTab({ performance }: ProductPerformanceTabProp
               </LineChart>
             </ResponsiveContainer>
           </div>
-        </article>
+        </PerformanceCard>
 
-        <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-          <div className="border-b border-cream-300 px-5 py-4">
-            <h3 className="font-display text-2xl leading-none text-cream-950">Inventory &amp; ops</h3>
-          </div>
+        <PerformanceCard title="Inventory &amp; ops" bodyClassName="p-0">
           <div className="grid grid-cols-2 gap-y-4 px-5 py-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">On hand</p>
@@ -142,15 +139,11 @@ export function ProductPerformanceTab({ performance }: ProductPerformanceTabProp
               <p className="mt-1 text-sm text-cream-700">{performance.inventory_ops.last_ordered_buyer ?? 'No buyer yet'}</p>
             </div>
           </div>
-        </article>
+        </PerformanceCard>
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-          <div className="border-b border-cream-300 px-5 py-4">
-            <h3 className="font-display text-2xl leading-none text-cream-950">Top buyers</h3>
-            <p className="text-base text-cream-700">Who&apos;s been buying this SKU</p>
-          </div>
+        <PerformanceCard title="Top buyers" subtitle="Who&apos;s been buying this SKU" bodyClassName="p-0">
           <div>
             {performance.top_buyers.map((buyer, index) => (
               <div key={buyer.buyer_id} className="grid grid-cols-[26px_1fr_auto] items-center gap-3 border-b border-cream-300 px-5 py-3.5 last:border-b-0">
@@ -166,13 +159,9 @@ export function ProductPerformanceTab({ performance }: ProductPerformanceTabProp
               <p className="px-5 py-8 text-center text-base text-cream-700">No buyer activity yet.</p>
             ) : null}
           </div>
-        </article>
+        </PerformanceCard>
 
-        <article className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-          <div className="border-b border-cream-300 px-5 py-4">
-            <h3 className="font-display text-2xl leading-none text-cream-950">Price by customer group</h3>
-            <p className="text-base text-cream-700">Base + overrides</p>
-          </div>
+        <PerformanceCard title="Price by customer group" subtitle="Base + overrides" bodyClassName="p-0">
           <table className="w-full">
             <thead className="border-b border-cream-300 bg-cream-100 text-left text-xs uppercase tracking-[0.08em] text-cream-700">
               <tr>
@@ -204,7 +193,7 @@ export function ProductPerformanceTab({ performance }: ProductPerformanceTabProp
               ) : null}
             </tbody>
           </table>
-        </article>
+        </PerformanceCard>
       </div>
     </section>
   );

@@ -46,7 +46,9 @@ export async function GET(req: NextRequest): Promise<NextResponse<GlobalSearchRe
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (db as any).rpc('global_search', {
+  const { data, error } = await (db as any)
+    .schema('app')
+    .rpc('global_search', {
     p_query: q,
     p_tenant_id: claims.tenant_id,
     p_role: claims.role,

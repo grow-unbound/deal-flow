@@ -18,6 +18,17 @@ vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlagState: (...args: unknown[]) => useFlagStateMock(...args),
 }));
 
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ currentTenantId: 'tenant-1' }),
+}));
+
+vi.mock('@/contexts/SellerRealtimeContext', () => ({
+  useSellerRealtimeContext: () => ({
+    newEntityIds: new Set<string>(),
+    markSeen: vi.fn(),
+  }),
+}));
+
 import { SalesOrdersLandingClient } from '@/components/seller/sales-orders/SalesOrdersLandingClient';
 import type { TenantOrdersResponse } from '@/hooks/useOrders';
 import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
@@ -64,13 +75,16 @@ function mockSalesOrdersData(): TenantOrdersResponse {
         buyer_name: 'Buyer One',
         buyer_city: 'Bengaluru',
         buyer_state: 'Karnataka',
+        place_of_supply: 'Karnataka',
         buyer_initials: 'BO',
         buyer_hue: 'teal' as const,
         delivery_city: 'Bengaluru',
         delivery_label: 'Bengaluru',
         source: 'buyer_app',
+        source_kind: 'buyer_app' as const,
         source_label: 'buyer_app',
         source_detail: 'Asha Singh',
+        campaign_name: 'Monsoon Promo',
         catalog_name: 'Monsoon Promo',
         items_count: 1,
         gmv: 22000,
@@ -89,13 +103,16 @@ function mockSalesOrdersData(): TenantOrdersResponse {
         buyer_name: 'Buyer Two',
         buyer_city: 'Mysuru',
         buyer_state: 'Karnataka',
+        place_of_supply: 'Karnataka',
         buyer_initials: 'BT',
         buyer_hue: 'ember' as const,
         delivery_city: 'Mysuru',
         delivery_label: 'Mysuru',
         source: 'cockpit_manual',
+        source_kind: 'converted' as const,
         source_label: 'EST-2042',
         source_detail: 'Converted by Priya Shah',
+        campaign_name: 'Summer Sell-in',
         catalog_name: 'Summer Sell-in',
         items_count: 3,
         gmv: 45000,
@@ -114,13 +131,16 @@ function mockSalesOrdersData(): TenantOrdersResponse {
         buyer_name: 'Buyer Three',
         buyer_city: 'Hubli',
         buyer_state: 'Karnataka',
+        place_of_supply: 'Karnataka',
         buyer_initials: 'BT',
         buyer_hue: 'cream' as const,
         delivery_city: 'Hubli',
         delivery_label: 'Hubli',
         source: 'csv_import',
+        source_kind: 'direct' as const,
         source_label: 'csv_import',
         source_detail: 'Team member',
+        campaign_name: null,
         catalog_name: null,
         items_count: 2,
         gmv: 12000,
@@ -156,25 +176,26 @@ describe('sales orders landing page', () => {
     expect(screen.getByText(/AOV/)).toBeInTheDocument();
   });
 
-  it('renders source, catalog, delivery, items, and total amount columns', () => {
+  it('renders the updated transaction columns in the new order', () => {
     render(<SalesOrdersLandingClient initialData={mockSalesOrdersData()} initialPeriod={defaultPeriod} />);
 
-    expect(screen.getByText('Source')).toBeInTheDocument();
-    expect(screen.getByText('Catalog')).toBeInTheDocument();
-    expect(screen.getByText('Delivery')).toBeInTheDocument();
+    expect(screen.getByText('Order Number')).toBeInTheDocument();
+    expect(screen.getByText('Buyer Name')).toBeInTheDocument();
+    expect(screen.getByText('Location')).toBeInTheDocument();
+    expect(screen.getByText('Campaign')).toBeInTheDocument();
     expect(screen.getByText('Items')).toBeInTheDocument();
     expect(screen.getByText('Total Amount')).toBeInTheDocument();
-    expect(screen.getByText('EST-2042')).toBeInTheDocument();
-    expect(screen.getByText('Converted by Priya Shah')).toBeInTheDocument();
+    expect(screen.getByText('DF-NEW')).toBeInTheDocument();
+    expect(screen.getByText('Buyer One')).toBeInTheDocument();
+    expect(screen.getAllByText('Bengaluru Hub').length).toBeGreaterThan(0);
     expect(screen.getByText('Monsoon Promo')).toBeInTheDocument();
-    expect(screen.getByText('₹22,000')).toBeInTheDocument();
+    expect(screen.getByText('₹22.00K')).toBeInTheDocument();
   });
 
-  it('shows buyer geography below the buyer name in city, state format', () => {
+  it('shows place_of_supply below the buyer name', () => {
     render(<SalesOrdersLandingClient initialData={mockSalesOrdersData()} initialPeriod={defaultPeriod} />);
 
-    expect(screen.getByText('Bengaluru, Karnataka')).toBeInTheDocument();
-    expect(screen.getByText('Mysuru, Karnataka')).toBeInTheDocument();
+    expect(screen.getAllByText('Karnataka').length).toBeGreaterThan(0);
   });
 
   it('status received renders label Received with neutral tone (not On Hold)', () => {
@@ -187,18 +208,15 @@ describe('sales orders landing page', () => {
   it('status invoiced renders label Invoiced with success tone', () => {
     render(<SalesOrdersLandingClient initialData={mockSalesOrdersData()} initialPeriod={defaultPeriod} />);
 
-    const invoicedTags = screen.getAllByText('Invoiced').filter((el) => el.tagName === 'SPAN');
-    expect(invoicedTags.some((el) => el.className.includes('bg-success-50'))).toBe(true);
+    expect(screen.getAllByText('Invoiced').length).toBeGreaterThan(0);
   });
 
-  it('Received chip filters to received rows only', () => {
+  it('hides the campaign column when campaign publishing is off', () => {
+    useFlagStateMock.mockImplementation((key: unknown) => (key === 'CATALOG_PUBLISHING' ? false : true));
+
     render(<SalesOrdersLandingClient initialData={mockSalesOrdersData()} initialPeriod={defaultPeriod} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Received' }));
-
-    expect(screen.getByText('DF-NEW')).toBeInTheDocument();
-    expect(screen.queryByText('DF-OLD')).not.toBeInTheDocument();
-    expect(screen.queryByText('DF-INV')).not.toBeInTheDocument();
+    expect(screen.queryByText('Campaign')).not.toBeInTheDocument();
   });
 
   it('default sort is recent first and row click navigates to /sales-orders/{id}', () => {

@@ -71,6 +71,17 @@ function decodeJwtPayloadClient(token: string): Record<string, unknown> | null {
   }
 }
 
+function resolveUserPhone(user: Session['user']): string | undefined {
+  const metadata = user.user_metadata as Record<string, unknown> | undefined;
+  const metadataPhone = typeof metadata?.phone === 'string' ? metadata.phone.trim() : '';
+  if (metadataPhone.length > 0) return metadataPhone;
+
+  const metadataPhoneNumber = typeof metadata?.phone_number === 'string' ? metadata.phone_number.trim() : '';
+  if (metadataPhoneNumber.length > 0) return metadataPhoneNumber;
+
+  return user.phone?.trim() || undefined;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -256,7 +267,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               currentSession.user.email,
               currentSession.user.email || 'Team member',
             ),
-            phone: currentSession.user.phone,
+            phone: resolveUserPhone(currentSession.user),
           });
           const claims = primeWorkspaceFromToken(currentSession);
           claimsKeyRef.current = `${claims.tenantId ?? ''}:${claims.role ?? ''}:${claims.buyerId ?? ''}`;
@@ -288,7 +299,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             newSession.user.email,
             newSession.user.email || 'Team member',
           ),
-          phone: newSession.user.phone,
+          phone: resolveUserPhone(newSession.user),
         });
         const previousClaimsKey = claimsKeyRef.current;
         const claims = primeWorkspaceFromToken(newSession);

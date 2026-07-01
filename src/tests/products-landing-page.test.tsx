@@ -5,6 +5,39 @@ const useTenantProductsMock = vi.fn();
 const useTenantProductsInfiniteMock = vi.fn();
 const useFlagMock = vi.fn();
 const useRoleMock = vi.fn();
+let landingProducts: Array<any> = [];
+const productFilterGroups = [
+  {
+    key: 'brand',
+    label: 'Brand',
+    options: [
+      { value: 'Alpha', label: 'Alpha' },
+      { value: 'Beta', label: 'Beta' },
+    ],
+  },
+  {
+    key: 'category',
+    label: 'Category',
+    options: [{ value: 'Beverages', label: 'Beverages' }],
+  },
+  {
+    key: 'status',
+    label: 'Status',
+    options: [
+      { value: 'Active', label: 'Active' },
+      { value: 'Inactive', label: 'Inactive' },
+    ],
+  },
+  {
+    key: 'stock',
+    label: 'Stock',
+    options: [
+      { value: 'In stock', label: 'In stock' },
+      { value: 'Low stock', label: 'Low stock' },
+      { value: 'Out of stock', label: 'Out of stock' },
+    ],
+  },
+];
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -25,6 +58,13 @@ vi.mock('@/hooks/useRole', () => ({
   useRole: () => useRoleMock(),
 }));
 
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({
+    tenantProfile: { role: 'seller_admin' },
+    currentTenantId: 'tenant-1',
+  }),
+}));
+
 vi.mock('@/components/seller/products/AddProductSheet', () => ({
   AddProductSheet: () => null,
 }));
@@ -37,6 +77,7 @@ describe('products landing integration', () => {
     useTenantProductsInfiniteMock.mockReset();
     useFlagMock.mockReset();
     useRoleMock.mockReset();
+    landingProducts = [];
   });
 
   it('renders flag-off empty state and does not fetch data when disabled', () => {
@@ -70,23 +111,17 @@ describe('products landing integration', () => {
           { id: 'p2', display_name: 'Beta Juice', brand_name: 'Beta', on_hand: 5, days_cover: 12 },
         ],
         brands: ['Alpha', 'Beta'],
-        filters: {
-          groups: [
-            {
-              key: 'brand',
-              label: 'Brand',
-              options: [
-                { value: 'Alpha', label: 'Alpha' },
-                { value: 'Beta', label: 'Beta' },
-              ],
-            },
-          ],
-        },
+        filters: { groups: productFilterGroups },
         todays_read: { needs_attention: [], top_performers: [], top_risers: [] },
       },
     });
-    useTenantProductsInfiniteMock.mockImplementation((_period: unknown, filters: { brand?: string[] }) => {
+    landingProducts = [
+      { id: 'p1', display_name: 'Alpha Water', brand_name: 'Alpha', category_name: 'Beverages', on_hand: 10, days_cover: 30, gmv_mtd: 1000, is_active: true },
+      { id: 'p2', display_name: 'Beta Juice', brand_name: 'Beta', category_name: 'Beverages', on_hand: 5, days_cover: 12, gmv_mtd: 500, is_active: false },
+    ];
+    useTenantProductsInfiniteMock.mockImplementation((_period: unknown, filters: { brand?: string[]; status?: string[] }) => {
       const alphaOnly = filters?.brand?.includes('Alpha');
+      const inactiveOnly = filters?.status?.includes('Inactive');
       return {
         isLoading: false,
         isError: false,
@@ -94,11 +129,15 @@ describe('products landing integration', () => {
           pages: [
             {
               products: alphaOnly
-                ? [{ id: 'p1', display_name: 'Alpha Water', brand_name: 'Alpha', on_hand: 10, days_cover: 30 }]
-                : [
+                ? [
                     { id: 'p1', display_name: 'Alpha Water', brand_name: 'Alpha', on_hand: 10, days_cover: 30 },
-                    { id: 'p2', display_name: 'Beta Juice', brand_name: 'Beta', on_hand: 5, days_cover: 12 },
-                  ],
+                  ]
+                : inactiveOnly
+                  ? []
+                  : [
+                      { id: 'p1', display_name: 'Alpha Water', brand_name: 'Alpha', on_hand: 10, days_cover: 30 },
+                      { id: 'p2', display_name: 'Beta Juice', brand_name: 'Beta', on_hand: 5, days_cover: 12 },
+                    ],
               kpis: {
                 active_skus: 2,
                 total_skus: 2,
@@ -110,7 +149,7 @@ describe('products landing integration', () => {
                 revenue_growth_pct: 100,
               },
               nextCursor: null,
-              total: alphaOnly ? 1 : 2,
+              total: alphaOnly || inactiveOnly ? 0 : 2,
             },
           ],
         },
@@ -132,6 +171,10 @@ describe('products landing integration', () => {
     expect(screen.getByText('2 SKUs across 2 brands. 0 out of stock, 0 running low — those are the ones to chase this week.')).toBeInTheDocument();
     expect(screen.getByText('Alpha Water')).toBeInTheDocument();
     expect(screen.queryByText('Beta Juice')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Status: All' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Inactive' }));
+    expect(useTenantProductsInfiniteMock).toHaveBeenLastCalledWith('month', expect.objectContaining({ status: ['Inactive'] }));
   });
 
   it('deduplicates repeated products before rendering rows', () => {

@@ -1,25 +1,22 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Upload, Plus, FileText } from 'lucide-react';
+import { Plus, FileText } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { toast } from 'sonner';
 import { useSellerRealtimeContext } from '@/contexts/SellerRealtimeContext';
-import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
 import {
-  EntityAvatar,
   FilterBar,
   type FilterBarGroup,
   InsightStrip4,
-  LandingTable,
   PageHeader,
   PageWrap,
   StatusTag,
   V3CalloutPanel,
 } from '@/components/seller/layout';
+import { TransactionTable } from '@/components/seller/transactional';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useTenantEstimates, useTenantEstimatesInfinite, type EstimateLandingRow, type TenantEstimatesResponse } from '@/hooks/useEstimates';
@@ -151,6 +148,7 @@ function EstimatesLandingContent({
   const metricSuffix = sellerLandingMetricSuffix(period);
   const summaryQuery = useTenantEstimates(period, initialData);
   const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
+  const showCampaignColumn = useFlagState('CATALOG_PUBLISHING') === true;
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-estimates-landing',
     scopeKey: period,
@@ -344,9 +342,8 @@ function EstimatesLandingContent({
               onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
             />
 
-            <LandingTable
-              showEmptyState={filteredRows.length === 0}
-              emptyState={
+            <div className="overflow-x-auto">
+              {filteredRows.length === 0 ? (
                 <EmptyState
                   icon={<FileText size={28} strokeWidth={1.5} />}
                   heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching estimates' : 'No estimates yet'}
@@ -364,79 +361,37 @@ function EstimatesLandingContent({
                     </Button>
                   }
                 />
-              }
-              tableClassName="v2-table"
-              columns={[
-                { label: 'Estimate Number', width: 160, className: 'px-5' },
-                { label: 'Buyer', width: 270, className: 'px-5' },
-                { label: 'Source', className: 'px-5' },
-                { label: 'Location', className: 'px-5' },
-                { label: 'Campaign', className: 'px-5' },
-                { label: 'Items', align: 'right', className: 'px-5' },
-                { label: 'Total Amount', align: 'right', className: 'px-5' },
-                { label: 'Status', className: 'px-5' },
-                { label: 'Created', className: 'px-5' },
-                { label: 'Expires', className: 'px-5' },
-                { width: 40, className: 'px-4' },
-              ]}
-            >
-                {filteredRows.map((row) => {
-                const expiringSoon =
-                  row.expires_at &&
-                  isOpenStatusValue(row.status.value) &&
-                  new Date(row.expires_at).getTime() < Date.now() + 7 * DAY_MS;
-                return (
-                  <tr
-                    key={row.id}
-                    className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
-                    onClick={() => { markSeen(row.id); router.push(`/estimates/${row.id}`); }}
-                  >
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-2">
-                        <p className="font-mono text-sm font-medium text-cream-900">{row.estimate_number}</p>
-                        {newEntityIds.has(row.id) && <RealtimeBadge type="new" />}
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <div className="ent flex items-center gap-3">
-                        <EntityAvatar initials={row.buyer_initials} hue={row.buyer_hue} size={32} />
-                        <div className="ent-meta min-w-0">
-                          <p className="truncate font-mono text-sm font-medium text-cream-900">{row.buyer_name}</p>
-                          <p className="ent-sub truncate">{buyerGeographyLabel(row)}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <p className="truncate text-sm text-cream-900">{sourceLabel(row)}</p>
-                      <p className="mt-0.5 truncate text-xs text-cream-600">
-                        {row.source_detail}
-                      </p>
-                    </td>
-                    <td className="px-5 py-3.5 text-sm text-cream-900">{row.location_name ?? '—'}</td>
-                    <td className="px-5 py-3.5">
-                      <p className="truncate text-sm text-cream-900">{row.catalog_name ?? '—'}</p>
-                    </td>
-                    <td className="num px-5 py-3.5 text-base text-cream-900">{row.items_count}</td>
-                    <td className="num num-display px-5 py-3.5 text-right text-cream-900">
-                      {formatCompactInr(row.total_amount)}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <StatusTag label={row.status.label} tone={row.status.tone} />
-                    </td>
-                    <td className="px-5 py-3.5 font-mono text-sm text-cream-700">{formatDate(row.created_at)}</td>
-                    <td
-                      className={cn(
-                        'px-5 py-3.5 font-mono text-sm',
-                        expiringSoon ? 'text-danger-700' : 'text-cream-900',
-                      )}
-                    >
-                      {row.expires_at ? formatDate(row.expires_at) : '—'}
-                    </td>
-                    <td className="chev px-4 py-3.5 pr-4 text-right text-md text-cream-500">›</td>
-                  </tr>
-                );
-              })}
-            </LandingTable>
+              ) : (
+                <TransactionTable
+                  kind="estimate"
+                  showCampaignColumn={showCampaignColumn}
+                  tableMinWidth={showCampaignColumn ? 1450 : 1230}
+                  rows={filteredRows.map((row) => ({
+                    id: row.id,
+                    href: `/estimates/${row.id}`,
+                    document_number: row.estimate_number,
+                    source_kind: row.source_kind,
+                    source_label: row.source_label,
+                    buyer_name: row.buyer_name,
+                    buyer_place_of_supply: row.place_of_supply ?? buyerGeographyLabel(row),
+                    buyer_initials: row.buyer_initials,
+                    buyer_hue: row.buyer_hue,
+                    location_name: row.location_name,
+                    campaign_name: row.campaign_name ?? row.catalog_name,
+                    items_count: row.items_count,
+                    total_amount: row.total_amount,
+                    status_label: row.status.label,
+                    status_tone: row.status.tone,
+                    created_at: row.created_at,
+                    expires_at: row.expires_at,
+                  }))}
+                  onRowClick={(row) => {
+                    markSeen(row.id);
+                    router.push(row.href);
+                  }}
+                />
+              )}
+            </div>
 
             {/* Scroll sentinel — triggers next-page fetch 400px before list end */}
             <div ref={sentinelRef} className="h-px" aria-hidden />

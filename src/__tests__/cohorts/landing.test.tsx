@@ -7,6 +7,7 @@ const useFlagMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
+  usePathname: () => '/customer-groups',
 }));
 
 vi.mock('@/hooks/useCohorts', () => ({
@@ -15,9 +16,10 @@ vi.mock('@/hooks/useCohorts', () => ({
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlag: (...args: unknown[]) => useFlagMock(...args),
+  useFlagState: (...args: unknown[]) => useFlagMock(...args),
 }));
 
-import CohortsPage from '../../../app/(seller)/customer-groups/page';
+import { CohortsLandingClient } from '@/components/seller/cohorts/CohortsLandingClient';
 
 describe('cohorts landing page', () => {
   beforeEach(() => {
@@ -46,13 +48,13 @@ describe('cohorts landing page', () => {
       },
     });
 
-    render(<CohortsPage />);
+    render(<CohortsLandingClient initialData={null} initialPeriod="month" />);
 
     expect(screen.getByText('Uncategorised')).toBeInTheDocument();
     expect(screen.getByText('2')).toBeInTheDocument();
   });
 
-  it('cohort tile click navigates to /cohorts/{id}', () => {
+  it('cohort tile click navigates to /customer-groups/{id}', () => {
     useCohortsLandingMock.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -84,13 +86,14 @@ describe('cohorts landing page', () => {
             status_tone: 'success',
           },
         ],
+        brands: [{ id: 'brand-1', name: 'Brand One' }],
       },
     });
 
-    render(<CohortsPage />);
+    render(<CohortsLandingClient initialData={null} initialPeriod="month" />);
     fireEvent.click(screen.getByText('South Tier-A'));
 
-    expect(pushMock).toHaveBeenCalledWith('/cohorts/coh-1');
+    expect(pushMock).toHaveBeenCalledWith('/customer-groups/coh-1');
   });
 
   it('avg conversion is rendered with one decimal place', () => {
@@ -109,11 +112,75 @@ describe('cohorts landing page', () => {
         },
         todays_read: { low_conversion: [], top_performers: [], top_risers: [] },
         cohorts: [],
+        brands: [{ id: 'brand-1', name: 'Brand One' }],
       },
     });
 
-    render(<CohortsPage />);
+    render(<CohortsLandingClient initialData={null} initialPeriod="month" />);
     expect(screen.getByText('12.0%')).toBeInTheDocument();
   });
-});
 
+  it('filters customer groups by selected brand', () => {
+    useCohortsLandingMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        kpis: {
+          total_cohorts: 2,
+          covered_members: 8,
+          total_buyers: 10,
+          combined_gmv_mtd: 250000,
+          growth_pct: 12,
+          avg_conversion_pct: 17.4,
+          uncategorised_buyers: 2,
+        },
+        todays_read: { low_conversion: [], top_performers: [], top_risers: [] },
+        brands: [
+          { id: 'brand-1', name: 'Brand One' },
+          { id: 'brand-2', name: 'Brand Two' },
+        ],
+        cohorts: [
+          {
+            id: 'coh-1',
+            name: 'Brand One Cohort',
+            description: null,
+            type: 'Brand affinity',
+            focus_chips: ['Brand One'],
+            allowed_tenant_brand_ids: ['brand-1'],
+            gmv_mtd: 100000,
+            growth_pct: 11,
+            active_members: 3,
+            total_members: 4,
+            conversion_pct: 19.7,
+            live_catalogs_count: 1,
+            status_label: 'Dynamic',
+            status_tone: 'success',
+          },
+          {
+            id: 'coh-2',
+            name: 'Brand Two Cohort',
+            description: null,
+            type: 'Brand affinity',
+            focus_chips: ['Brand Two'],
+            allowed_tenant_brand_ids: ['brand-2'],
+            gmv_mtd: 50000,
+            growth_pct: 3,
+            active_members: 2,
+            total_members: 4,
+            conversion_pct: 9.7,
+            live_catalogs_count: 1,
+            status_label: 'Dynamic',
+            status_tone: 'success',
+          },
+        ],
+      },
+    });
+
+    render(<CohortsLandingClient initialData={null} initialPeriod="month" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Brands: All' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Brand One' }));
+
+    expect(screen.getByText('Brand One Cohort')).toBeInTheDocument();
+    expect(screen.queryByText('Brand Two Cohort')).not.toBeInTheDocument();
+  });
+});

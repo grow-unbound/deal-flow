@@ -9,6 +9,7 @@ import { FeatureGate } from '@/components/FeatureGate';
 import {
   EntityAvatar,
   FilterBar,
+  type FilterBarGroup,
   InsightStrip4,
   LandingTable,
   PageHeader,
@@ -25,10 +26,10 @@ import { usePriceListsLanding, type PriceListLandingRow, type PriceListsLandingR
 import { cn, formatDate } from '@/lib/utils';
 import { formatStrategySummary } from '@/lib/price-list-strategy';
 
-type LandingChip = 'All' | 'Active' | 'Draft' | 'Expired';
+type LandingChip = 'Active' | 'Draft' | 'Expired';
 type SortOption = 'Recently updated' | 'Name (A-Z)' | 'Products (high → low)' | 'Validity (latest end date)' | 'Priority (high → low)';
 
-const CHIPS: LandingChip[] = ['All', 'Active', 'Draft', 'Expired'];
+const STATUS_OPTIONS: LandingChip[] = ['Draft', 'Active', 'Expired'];
 const SORT_OPTIONS: SortOption[] = ['Recently updated', 'Name (A-Z)', 'Products (high → low)', 'Validity (latest end date)', 'Priority (high → low)'];
 
 function PriceListsLandingSkeleton() {
@@ -85,32 +86,52 @@ function entityHue(index: number): 'teal' | 'ember' | 'cream' {
 function PriceListsLandingContent({ initialData }: { initialData: PriceListsLandingResponse | null }) {
   const router = useRouter();
   const { isSellerAssistant } = useRole();
-  const { data, isLoading, isError, refetch } = usePriceListsLanding(initialData);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-price-lists-landing',
+    version: 2,
     initialState: {
       search: '',
-      activeChip: 'All' as LandingChip,
+      filters: {
+        status: [] as string[],
+      },
       sortBy: 'Recently updated' as SortOption,
     },
   });
+  const search = routeState.search;
+  const sortBy = routeState.sortBy;
+  const filters = routeState.filters ?? { status: [] };
+  const { data, isLoading, isError, refetch } = usePriceListsLanding({ search, status: filters.status }, initialData);
   useRouteScrollRestoration({
     storageKey: 'seller-price-lists-landing',
     ready: !isLoading,
   });
-  const search = routeState.search;
-  const activeChip = routeState.activeChip;
-  const sortBy = routeState.sortBy;
+  const statusFilter = filters.status ?? [];
+  const groups: FilterBarGroup[] = [
+    {
+      key: 'status',
+      label: 'Status',
+      options: STATUS_OPTIONS.map((value) => ({ value, label: value })),
+      values: statusFilter,
+      onChange: (values) =>
+        setRouteState((current) => ({
+          ...current,
+          filters: { ...(current.filters ?? filters), status: values },
+        })),
+    },
+  ];
   const allRows = data?.price_lists ?? [];
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
 
     const statusFiltered = allRows.filter((row) => {
-      if (activeChip === 'All') return true;
-      if (activeChip === 'Active') return row.status === 'active';
-      if (activeChip === 'Draft') return row.status === 'draft';
-      return row.status === 'expired';
+      if (statusFilter.length === 0 || statusFilter.includes('All')) return true;
+      return statusFilter.some((value) => {
+        if (value === 'Active') return row.status === 'active';
+        if (value === 'Draft') return row.status === 'draft';
+        if (value === 'Expired') return row.status === 'expired';
+        return false;
+      });
     });
 
     const searched = statusFiltered.filter((row) => {
@@ -128,7 +149,7 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
       }
       return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
     });
-  }, [activeChip, allRows, search, sortBy]);
+  }, [allRows, search, sortBy, statusFilter]);
 
   if (isLoading) return <PriceListsLandingSkeleton />;
 
@@ -232,13 +253,13 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
         <FilterBar
           count={`${filteredRows.length} price lists`}
           searchPlaceholder="Search price list or cohort…"
-          chips={CHIPS}
-          activeChip={activeChip}
+          chips={[]}
+          activeChip=""
           sortBy={sortBy}
           hideViewToggle
+          groups={groups}
           searchValue={search}
           onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-          onChipChange={(chip) => setRouteState((current) => ({ ...current, activeChip: chip as LandingChip }))}
           sortOptions={SORT_OPTIONS}
           onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
         />
@@ -248,9 +269,9 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
           emptyState={
             <EmptyState
               icon={<ListOrdered size={28} strokeWidth={1.5} />}
-              heading={search.trim() || activeChip !== 'All' ? 'No matching price lists' : 'No price lists yet'}
+              heading={search.trim() || statusFilter.length > 0 ? 'No matching price lists' : 'No price lists yet'}
               description={
-                search.trim() || activeChip !== 'All'
+                search.trim() || statusFilter.length > 0
                   ? 'Try a different search or status filter.'
                   : isSellerAssistant
                     ? 'No price lists are available yet.'
@@ -267,22 +288,20 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
             />
           }
           columns={[
-            { label: 'Price list', width: 280, className: 'px-5' },
-            { label: 'Customer group(s)', className: 'px-5' },
-            { label: 'Priority', align: 'center', className: 'px-5' },
-            { label: 'Products', align: 'center', className: 'px-5' },
-            { label: 'Validity', className: 'px-5' },
-            { label: 'Avg discount', align: 'right', className: 'px-5' },
-            ...(isSellerAssistant ? [] : [{ label: 'Avg margin', align: 'right' as const, className: 'px-5' }]),
-            { label: 'Status', className: 'px-5' },
+            { label: 'Price list', minWidth: 280, maxWidth: 360, className: 'px-5' },
+            { label: 'Pricing strategy', minWidth: 180, maxWidth: 220, className: 'px-5' },
+            { label: 'Priority', align: 'center', minWidth: 120, maxWidth: 140, className: 'px-5' },
+            { label: 'Products', align: 'center', minWidth: 120, maxWidth: 140, className: 'px-5' },
+            { label: 'Validity', minWidth: 200, maxWidth: 260, className: 'px-5' },
+            { label: 'Avg discount', align: 'right', minWidth: 140, maxWidth: 160, className: 'px-5' },
+            ...(isSellerAssistant ? [] : [{ label: 'Avg margin', align: 'right' as const, minWidth: 140, maxWidth: 160, className: 'px-5' }]),
+            { label: 'Status', minWidth: 140, maxWidth: 180, className: 'px-5' },
             { width: 40, className: 'px-4' },
           ]}
+          tableMinWidth={1240}
         >
-          {filteredRows.map((row, index) => {
+          {filteredRows.map((row) => {
             const validity = `${formatDate(row.valid_from ?? row.created_at)} → ${row.valid_to ? formatDate(row.valid_to) : 'Open'}`;
-            const cohortText = row.cohort_names.length <= 1
-              ? row.cohort_names[0] ?? '—'
-              : `${row.cohort_names[0]} +${row.cohort_names.length - 1} more`;
             const isExpired = row.status === 'expired';
             const strategySub = formatStrategySummary(row.pricing_strategy, row.strategy_value);
 
@@ -297,14 +316,14 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
                     <EntityAvatar initials={getInitials(row.name)} hue="teal" size={38} />
                     <div className="min-w-0">
                       <p className="ent-name truncate text-base font-medium text-cream-900">{row.name}</p>
-                      <p className="ent-sub mt-0.5 font-mono text-xs text-cream-500">
-                        {strategySub}
+                      <p className="ent-sub mt-0.5 truncate text-xs text-cream-500">
+                        {row.description ?? strategySub}
                       </p>
                     </div>
                   </div>
                 </td>
                 <td className="px-5 py-3.5 text-sm text-cream-800">
-                  {cohortText}
+                  {strategySub}
                 </td>
                 <td className="px-5 py-3.5 text-center font-mono text-base font-semibold text-cream-900 tabular-nums">
                   {row.priority}

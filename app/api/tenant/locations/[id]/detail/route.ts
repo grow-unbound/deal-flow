@@ -113,13 +113,14 @@ export async function GET(
     prevOrdersRes,
     trendRes,
     inventoryRes,
+    estimatesRes,
     invoicesRes,
     activityRes,
   ] = await Promise.all([
     db
       .schema('app')
       .from('orders')
-      .select('id, buyer_id, total_amount, status, placed_at')
+      .select('id, order_number, buyer_id, location_id, total_amount, status, source, campaign_id, estimate_id, place_of_supply, placed_at, created_at')
       .eq('tenant_id', claims.tenant_id)
       .eq('location_id', id)
       .not('status', 'in', '("cancelled","draft")')
@@ -156,8 +157,19 @@ export async function GET(
 
     db
       .schema('app')
+      .from('estimates')
+      .select('id, estimate_number, buyer_id, location_id, status, source, campaign_id, place_of_supply, total_amount, estimate_date, created_at, expires_at')
+      .eq('tenant_id', claims.tenant_id)
+      .eq('location_id', id)
+      .is('deleted_at', null)
+      .gte('estimate_date', period.current_start)
+      .lt('estimate_date', period.current_end_exclusive)
+      .order('estimate_date', { ascending: false }),
+
+    db
+      .schema('app')
       .from('invoices')
-      .select('id, outstanding_balance, status, invoice_date')
+      .select('id, invoice_number, buyer_id, location_id, order_id, estimate_id, outstanding_balance, status, invoice_date, due_date, created_at, created_by, place_of_supply, total_amount')
       .eq('tenant_id', claims.tenant_id)
       .eq('location_id', id)
       .in('status', ['issued', 'partially_paid'])
@@ -175,7 +187,20 @@ export async function GET(
   ]);
 
   // Period GMV
-  const currentOrders: Array<{ id: string; buyer_id: string; total_amount: number }> =
+  const currentOrders: Array<{
+    id: string;
+    order_number: string;
+    buyer_id: string;
+    location_id: string | null;
+    total_amount: number;
+    status: string;
+    source: string | null;
+    campaign_id: string | null;
+    estimate_id: string | null;
+    place_of_supply: string | null;
+    placed_at: string;
+    created_at: string;
+  }> =
     currentOrdersRes.data ?? [];
   const prevOrders: Array<{ id: string; total_amount: number }> =
     prevOrdersRes.data ?? [];
@@ -330,8 +355,36 @@ export async function GET(
     };
   });
 
+  const campaignIds = Array.from(
+    new Set([
+      ...(currentOrders as Array<{ campaign_id?: string | null }>).map((row) => row.campaign_id).filter((value: string | null | undefined): value is string => Boolean(value)),
+      ...(estimatesRes.data ?? []).map((row: { campaign_id?: string | null }) => row.campaign_id).filter((value: string | null | undefined): value is string => Boolean(value)),
+      ...(invoicesRes.data ?? []).map((row: { order_id?: string | null; estimate_id?: string | null }) => {
+        const order = (currentOrders as Array<{ id: string; campaign_id?: string | null }>).find((o) => o.id === row.order_id);
+        if (order?.campaign_id) return order.campaign_id;
+        return null;
+      }).filter((value: string | null): value is string => Boolean(value)),
+    ]),
+  );
+  const campaignsRes = campaignIds.length > 0
+    ? await db.schema('app').from('campaigns').select('id, name').in('id', campaignIds).is('deleted_at', null)
+    : { data: [] as Array<{ id: string; name: string }>, error: null };
+  if (campaignsRes.error) {
+    return timedJson({ error: 'Failed to fetch location detail data' }, { status: 500 });
+  }
+  const campaignById = new Map(((campaignsRes.data ?? []) as Array<{ id: string; name: string }>).map((row) => [row.id, row.name]));
+
   // Orders tab — current period orders with buyer name
-  const allOrdersFull = currentOrders as Array<{ id: string; buyer_id: string; total_amount: number }>;
+  const allOrdersFull = currentOrders as Array<{
+    id: string;
+    buyer_id: string;
+    total_amount: number;
+    source: string | null;
+    campaign_id: string | null;
+    estimate_id: string | null;
+    place_of_supply: string | null;
+    location_id: string | null;
+  }>;
   // Fetch order items count + order number in one query
   const orderIds = allOrdersFull.map((o) => o.id);
   const [orderDetailRes, orderItemCountRes] = await Promise.all([
@@ -367,6 +420,10 @@ export async function GET(
     );
   }
 
+  const estimateNumberByIdForOrders = new Map<string, string | null>(
+    (estimatesRes.data ?? []).map((row: { id: string; estimate_number: string | null }) => [row.id, row.estimate_number]),
+  );
+
   const orders: LocationDetailOrder[] = allOrdersFull.map((o) => {
     const detail = orderDetails.get(o.id);
     const buyerName = buyerMap.get(o.buyer_id)?.business_name ?? 'Unknown';
@@ -375,11 +432,82 @@ export async function GET(
       order_number: detail?.order_number ?? o.id.slice(0, 8),
       placed_at: detail?.placed_at ?? new Date().toISOString(),
       buyer_name: buyerName,
+      place_of_supply: o.place_of_supply?.trim() || null,
+      location_name: location.name,
+      source_kind: o.estimate_id ? 'converted' : o.source === 'buyer_app' ? 'buyer_app' : 'direct',
+      source_label: o.estimate_id ? estimateNumberByIdForOrders.get(o.estimate_id) ?? null : o.source === 'buyer_app' ? 'Buyer App' : null,
+      campaign_name: o.campaign_id ? campaignById.get(o.campaign_id) ?? null : null,
       items_count: itemsCountByOrder.get(o.id) ?? 0,
       total_amount: Number(o.total_amount ?? 0),
       status: detail?.status ?? 'draft',
     };
   });
+
+  const locationEstimates = (estimatesRes.data ?? []) as Array<{
+    id: string;
+    estimate_number: string;
+    buyer_id: string;
+    location_id: string | null;
+    status: string;
+    source: string | null;
+    campaign_id: string | null;
+    place_of_supply: string | null;
+    total_amount: number;
+    estimate_date: string;
+    created_at: string;
+    expires_at: string | null;
+  }>;
+  const locationInvoices = (invoicesRes.data ?? []) as Array<{
+    id: string;
+    invoice_number: string;
+    buyer_id: string;
+    location_id: string | null;
+    order_id: string | null;
+    estimate_id: string | null;
+    outstanding_balance: number | null;
+    status: string;
+    invoice_date: string;
+    due_date: string | null;
+    created_at: string;
+    created_by: string | null;
+    place_of_supply: string | null;
+    total_amount: number;
+  }>;
+
+  const [estimateItemCountRes, invoiceItemCountRes] = await Promise.all([
+    locationEstimates.length
+      ? db
+          .schema('app')
+          .from('estimate_items')
+          .select('estimate_id')
+          .in('estimate_id', locationEstimates.map((row) => row.id))
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [] as Array<{ estimate_id: string }>, error: null }),
+    locationInvoices.length
+      ? db
+          .schema('app')
+          .from('invoice_items')
+          .select('invoice_id')
+          .in('invoice_id', locationInvoices.map((row) => row.id))
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [] as Array<{ invoice_id: string }>, error: null }),
+  ]);
+
+  if (estimateItemCountRes.error || invoiceItemCountRes.error) {
+    return timedJson({ error: 'Failed to fetch location detail data' }, { status: 500 });
+  }
+
+  const estimateItemsCountById = new Map<string, number>();
+  for (const row of estimateItemCountRes.data ?? []) {
+    estimateItemsCountById.set(row.estimate_id, (estimateItemsCountById.get(row.estimate_id) ?? 0) + 1);
+  }
+  const invoiceItemsCountById = new Map<string, number>();
+  for (const row of invoiceItemCountRes.data ?? []) {
+    invoiceItemsCountById.set(row.invoice_id, (invoiceItemsCountById.get(row.invoice_id) ?? 0) + 1);
+  }
+  const estimateNumberById = new Map(locationEstimates.map((row) => [row.id, row.estimate_number]));
+  const estimateCampaignById = new Map(locationEstimates.map((row) => [row.id, row.campaign_id]));
+  const invoiceById = new Map(locationInvoices.map((row) => [row.id, row]));
 
   // Inventory tab rows
   const inventory: LocationDetailInventoryItem[] = invRows
@@ -454,12 +582,71 @@ export async function GET(
       top_buyers,
     },
     customers,
-    orders,
+    orders: currentOrders.map((order) => ({
+      order_id: order.id,
+      order_number: order.order_number,
+      placed_at: order.placed_at,
+      buyer_name: buyerMap.get(order.buyer_id)?.business_name ?? 'Unknown',
+      place_of_supply: order.place_of_supply?.trim() || null,
+      location_name: location.name,
+      source_kind: order.estimate_id ? 'converted' : order.source === 'buyer_app' ? 'buyer_app' : 'direct',
+      source_label: order.estimate_id ? estimateNumberById.get(order.estimate_id) ?? null : order.source === 'buyer_app' ? 'Buyer App' : null,
+      campaign_name: order.campaign_id ? campaignById.get(order.campaign_id) ?? null : null,
+      items_count: itemsCountByOrder.get(order.id) ?? 0,
+      total_amount: Number(order.total_amount ?? 0),
+      status: order.status,
+    })),
+    estimates: locationEstimates.map((estimate) => ({
+      estimate_id: estimate.id,
+      estimate_number: estimate.estimate_number,
+      issued_at: estimate.estimate_date ?? estimate.created_at,
+      buyer_name: buyerMap.get(estimate.buyer_id)?.business_name ?? 'Unknown',
+      place_of_supply: estimate.place_of_supply?.trim() || null,
+      location_name: location.name,
+      source_kind: estimate.source === 'buyer_app' ? 'buyer_app' : 'seller',
+      source_label: estimate.source === 'buyer_app' ? 'Buyer App' : null,
+      campaign_name: estimate.campaign_id ? campaignById.get(estimate.campaign_id) ?? null : null,
+      items_count: estimateItemsCountById.get(estimate.id) ?? 0,
+      total_amount: Number(estimate.total_amount ?? 0),
+      expires_at: estimate.expires_at ?? null,
+      status: estimate.status,
+    })),
+    invoices: locationInvoices.map((invoice) => {
+      const linkedOrder = invoice.order_id ? currentOrders.find((order) => order.id === invoice.order_id) ?? null : null;
+      const linkedEstimate = invoice.estimate_id ? locationEstimates.find((estimate) => estimate.id === invoice.estimate_id) ?? null : null;
+      const sourceKind = linkedOrder?.source === 'buyer_app'
+        ? 'buyer_app'
+        : linkedOrder || linkedEstimate
+          ? 'converted'
+          : 'direct';
+      const sourceLabel = sourceKind === 'buyer_app'
+        ? 'Buyer App'
+        : linkedEstimate?.estimate_number ?? linkedOrder?.order_number ?? null;
+      const campaignId = linkedOrder?.campaign_id ?? linkedEstimate?.campaign_id ?? null;
+      return {
+        invoice_id: invoice.id,
+        invoice_number: invoice.invoice_number,
+        issued_at: invoice.invoice_date ?? invoice.created_at,
+        buyer_name: buyerMap.get(invoice.buyer_id)?.business_name ?? 'Unknown',
+        place_of_supply: invoice.place_of_supply?.trim() || null,
+        location_name: location.name,
+        source_kind: sourceKind,
+        source_label: sourceLabel,
+        campaign_name: campaignId ? campaignById.get(campaignId) ?? null : null,
+        items_count: invoiceItemsCountById.get(invoice.id) ?? 0,
+        total_amount: Number(invoice.total_amount ?? 0),
+        outstanding_amount: Number(invoice.outstanding_balance ?? 0),
+        due_date: invoice.due_date ?? null,
+        status: invoice.status,
+      };
+    }),
     inventory,
     activity,
     tab_badges: {
       customers: allBuyerIds.length,
       orders_mtd: currentOrders.length,
+      estimates_mtd: locationEstimates.length,
+      invoices_mtd: locationInvoices.length,
       low_stock_skus: low_stock_skus_count,
     },
   };

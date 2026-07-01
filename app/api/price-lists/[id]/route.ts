@@ -479,6 +479,7 @@ export async function PATCH(
     .from('price_lists')
     .update({
       name: payload.name,
+      description: payload.description?.trim() ? payload.description.trim() : null,
       currency: payload.currency,
       valid_from: payload.valid_from.toISOString(),
       valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
@@ -571,6 +572,7 @@ export async function PATCH(
         max_qty: item.max_qty ?? null,
         created_by: claims.sub,
         updated_by: claims.sub,
+        deleted_at: null,
       });
 
     if (itemInsertError) {

@@ -117,17 +117,16 @@ async function updateWebhookEventResult(
     errorMessage?: string;
   },
 ): Promise<void> {
-  try {
-    await admin.schema('app').from('integration_webhook_events').update({
-      processing_status: opts.status,
-      processed_at: new Date().toISOString(),
-      runtime_meta: {
-        delta: opts.delta,
-        error: opts.errorMessage,
-      },
-    }).eq('id', opts.eventId);
-  } catch (e) {
-    console.error(`[webhook-events] failed to update event: ${String(e)}`);
+  const { error } = await admin.schema('app').from('integration_webhook_events').update({
+    processing_status: opts.status,
+    processed_at: new Date().toISOString(),
+    runtime_meta: {
+      delta: opts.delta,
+      error: opts.errorMessage,
+    },
+  }).eq('id', opts.eventId);
+  if (error) {
+    console.error(`[webhook-events] failed to update event ${opts.eventId} to ${opts.status}: ${error.message}`);
   }
 }
 
@@ -168,6 +167,14 @@ Deno.serve(async (req: Request) => {
   console.log(`[${traceId}] webhook start | method=${req.method}`);
 
   let eventId: string | null = null;
+  let catchCtx: {
+    admin: SupabaseClient;
+    tenantId: string;
+    tenantIntegrationId: string;
+    webhookId: string;
+    entityType: string;
+    externalId: string | null;
+  } | null = null;
 
   try {
     if (req.method !== 'POST') {
@@ -347,6 +354,15 @@ Deno.serve(async (req: Request) => {
       return ok('skipped_no_payload');
     }
 
+    catchCtx = {
+      admin,
+      tenantId: webhook.tenant_id,
+      tenantIntegrationId: webhook.tenant_integration_id,
+      webhookId: webhook.id,
+      entityType,
+      externalId: externalId ?? null,
+    };
+
     console.log(`[${traceId}] calling persistZohoEntityPage...`);
     const persistResult = await persistZohoEntityPage(
       admin,
@@ -357,31 +373,7 @@ Deno.serve(async (req: Request) => {
       integrationTypeId,
       [entityPayload],
     );
-    console.log(`[${traceId}] persistZohoEntityPage returned | result.created=${persistResult.created} | result.updated=${persistResult.updated} | result.failed=${persistResult.failed}`);
-
-    if (persistResult.failed && persistResult.failed > 0) {
-      console.error(`[${traceId}] PERSIST FAILED: ${persistResult.failed} records failed`);
-      if (eventId) {
-        await updateWebhookEventResult(admin, {
-          eventId,
-          status: 'failed',
-          delta: { reason: 'persist_failed', failed_count: persistResult.failed },
-          errorMessage: 'Webhook entity persistence failed',
-        });
-      }
-      await logWebhookError(admin, {
-        tenantId: webhook.tenant_id,
-        tenantIntegrationId: webhook.tenant_integration_id,
-        webhookId: webhook.id,
-        eventId,
-        entityType,
-        externalRef: externalId,
-        stage: 'persist',
-        reasonCode: 'PERSIST_FAILED',
-        message: `Persistence failed for ${persistResult.failed} records`,
-      });
-      return ok('persist_error');
-    }
+    console.log(`[${traceId}] persistZohoEntityPage returned | result.created=${persistResult.created} | result.updated=${persistResult.updated}`);
 
     await touchWebhookLastReceived(admin, webhook.id);
     if (eventId) {
@@ -402,16 +394,33 @@ Deno.serve(async (req: Request) => {
     return ok('processed');
   } catch (err) {
     console.error(`[${traceId}] EXCEPTION: ${String(err)}`);
+    const freshAdmin = catchCtx?.admin ?? createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
     if (eventId) {
-      await createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-        { auth: { autoRefreshToken: false, persistSession: false } },
-      ).schema('app').from('integration_webhook_events').update({
+      const { error: updateErr } = await freshAdmin.schema('app').from('integration_webhook_events').update({
         processing_status: 'failed',
         processed_at: new Date().toISOString(),
         runtime_meta: { error: String(err) },
-      }).eq('id', eventId).catch(() => {});
+      }).eq('id', eventId);
+      if (updateErr) {
+        console.error(`[${traceId}] failed to mark event failed: ${updateErr.message}`);
+      }
+    }
+    if (catchCtx) {
+      await logWebhookError(freshAdmin, {
+        tenantId: catchCtx.tenantId,
+        tenantIntegrationId: catchCtx.tenantIntegrationId,
+        webhookId: catchCtx.webhookId,
+        eventId,
+        entityType: catchCtx.entityType,
+        externalRef: catchCtx.externalId,
+        stage: 'persist',
+        reasonCode: 'EXCEPTION',
+        message: String(err),
+      });
     }
     return ok('error');
   }

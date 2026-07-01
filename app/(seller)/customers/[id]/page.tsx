@@ -232,23 +232,23 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
         {activeTab === 'details' ? <CustomerDetailsTab id={id} details={data.details} onEdit={() => setEditOpen(true)} /> : null}
         {activeTab === 'performance' ? <CustomerPerformanceTab performance={data.performance} performanceV2={data.performance_v2} /> : null}
-        {activeTab === 'orders' ? <CustomerOrdersTab orders={data.orders.rows} /> : null}
+        {activeTab === 'orders' ? <CustomerOrdersTab kind="order" orders={data.orders.rows} /> : null}
         {activeTab === 'estimates' ? (
           <CustomerOrdersTab
+            kind="estimate"
             orders={data.estimates.rows}
             title="Estimates"
             description="Drafted and sent estimates visible to this role."
             routeBase="/estimates"
-            amountLabel="Total"
           />
         ) : null}
         {activeTab === 'invoices' ? (
           <CustomerOrdersTab
+            kind="invoice"
             orders={data.invoices.rows}
             title="Invoices"
             description="Issued invoices visible to this role."
             routeBase="/invoices"
-            amountLabel="Total"
           />
         ) : null}
         {activeTab === 'cohorts' ? (

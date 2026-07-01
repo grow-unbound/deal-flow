@@ -7,16 +7,15 @@ import { Plus, Receipt } from 'lucide-react';
 
 import { FeatureDisabledState } from '@/components/FeatureGate';
 import {
-  EntityAvatar,
   FilterBar,
   type FilterBarGroup,
   InsightStrip4,
-  LandingTable,
   PageHeader,
   PageWrap,
   StatusTag,
   V3CalloutPanel,
 } from '@/components/seller/layout';
+import { TransactionTable } from '@/components/seller/transactional';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useTenantInvoices, useTenantInvoicesInfinite, type TenantInvoicesResponse } from '@/hooks/useInvoices';
@@ -100,6 +99,7 @@ function InvoicesLandingContent({
   const metricSuffix = sellerLandingMetricSuffix(period);
   const summaryQuery = useTenantInvoices(period, initialData);
   const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
+  const showCampaignColumn = useFlagState('CATALOG_PUBLISHING') === true;
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-invoices-landing',
     scopeKey: period,
@@ -281,9 +281,8 @@ function InvoicesLandingContent({
               onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
             />
 
-          <LandingTable
-            showEmptyState={displayRows.length === 0 && !isLoading}
-            emptyState={
+          <div className="overflow-x-auto">
+            {displayRows.length === 0 && !isLoading ? (
               <EmptyState
                 icon={<Receipt size={28} strokeWidth={1.5} />}
                 heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching invoices' : 'No invoices yet'}
@@ -301,58 +300,35 @@ function InvoicesLandingContent({
                   </Button>
                 }
               />
-            }
-            tableClassName="v2-table"
-            columns={[
-              { label: 'Invoice #', width: 140, className: 'px-5' },
-              { label: 'Buyer', width: 240, className: 'px-5' },
-              { label: 'Source', className: 'px-5' },
-              { label: 'Location', className: 'px-5' },
-              { label: 'Items', align: 'right', className: 'px-5' },
-              { label: 'Value', align: 'right', className: 'px-5' },
-              { label: 'Status', className: 'px-5' },
-              { label: 'Created', className: 'px-5' },
-              { label: 'Due', className: 'px-5' },
-              { width: 40, className: 'px-4' },
-            ]}
-          >
-            {displayRows.map((row) => (
-              <tr
-                key={row.id}
-                className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
-                onClick={() => router.push(`/invoices/${row.id}`)}
-              >
-                <td className="px-5 py-3.5 font-mono text-sm text-cream-800">{row.invoice_number}</td>
-                <td className="px-5 py-3.5 text-base text-cream-900">
-                  <div className="ent flex items-center gap-3">
-                    <EntityAvatar initials={row.buyer_initials} hue={row.buyer_hue} size={30} />
-                    <div className="min-w-0">
-                      <p className="truncate text-base font-medium text-cream-900">{row.buyer_name}</p>
-                      <p className="mt-0.5 truncate text-xs text-cream-600">{buyerGeographyLabel(row)}</p>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-5 py-3.5">
-                  <p className="truncate text-sm text-cream-900">{row.source_label}</p>
-                  <p className="mt-0.5 truncate text-xs text-cream-600">{row.source_detail}</p>
-                </td>
-                <td className="px-5 py-3.5 text-sm text-cream-900">{row.location_name ?? '—'}</td>
-                <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{row.items_count}</td>
-                <td className="num num-display px-5 py-3.5 text-right text-cream-900">
-                  <p className="font-mono text-sm text-cream-900">{formatInr(row.total_amount)}</p>
-                  {row.outstanding_amount > 0 ? <p className="mt-0.5 text-xs text-cream-600">{formatInr(row.outstanding_amount)} due</p> : null}
-                </td>
-                <td className="px-5 py-3.5">
-                  <StatusTag label={row.status.label} tone={row.status.tone} />
-                </td>
-                <td className="px-5 py-3.5 font-mono text-sm text-cream-700">{formatDate(row.created_at)}</td>
-                <td className="px-5 py-3.5 font-mono text-sm text-cream-700">
-                  {row.due_date ? formatDate(row.due_date) : '—'}
-                </td>
-                <td className="chev px-4 py-3.5 pr-4 text-right text-md text-cream-500">›</td>
-              </tr>
-            ))}
-          </LandingTable>
+            ) : (
+              <TransactionTable
+                kind="invoice"
+                showCampaignColumn={showCampaignColumn}
+                tableMinWidth={showCampaignColumn ? 1480 : 1260}
+                rows={displayRows.map((row) => ({
+                  id: row.id,
+                  href: `/invoices/${row.id}`,
+                  document_number: row.invoice_number,
+                  source_kind: row.source_kind,
+                  source_label: row.source_label,
+                  buyer_name: row.buyer_name,
+                  buyer_place_of_supply: row.place_of_supply ?? buyerGeographyLabel(row),
+                  buyer_initials: row.buyer_initials,
+                  buyer_hue: row.buyer_hue,
+                  location_name: row.location_name,
+                  campaign_name: row.campaign_name,
+                  items_count: row.items_count,
+                  total_amount: row.total_amount,
+                  amount_subtext: row.outstanding_amount > 0 ? `${formatInr(row.outstanding_amount)} due` : null,
+                  status_label: row.status.label,
+                  status_tone: row.status.tone,
+                  created_at: row.created_at,
+                  due_at: row.due_date,
+                }))}
+                onRowClick={(row) => router.push(row.href)}
+              />
+            )}
+          </div>
 
           {/* Scroll sentinel — triggers next-page fetch when within 400px of viewport */}
           <div ref={sentinelRef} className="h-px" aria-hidden />

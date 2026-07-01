@@ -12,11 +12,15 @@ import type { SellerShellFeatureAvailability } from '@/lib/server/seller-feature
 interface SellerShellProps {
   children: ReactNode;
   featureAvailability: SellerShellFeatureAvailability;
+  tenantBranding: {
+    tenantName: string;
+    tenantLogoUrl: string | null;
+  };
 }
 
 const LARGE_SCREEN_QUERY = '(min-width: 1536px)';
 
-export function SellerShell({ children, featureAvailability }: SellerShellProps) {
+export function SellerShell({ children, featureAvailability, tenantBranding }: SellerShellProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isLargeScreen, setIsLargeScreen] = useState(false);
 
@@ -49,7 +53,7 @@ export function SellerShell({ children, featureAvailability }: SellerShellProps)
           className="min-h-screen pt-16 transition-[margin-left] duration-base"
           style={{ marginLeft: 'var(--sidebar-w)' }}
         >
-          <SellerGlobalHeader />
+          <SellerGlobalHeader tenantBranding={tenantBranding} />
           {children}
         </main>
       </div>

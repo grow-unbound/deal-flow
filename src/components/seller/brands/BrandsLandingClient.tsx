@@ -44,6 +44,7 @@ interface BrandVm {
   totalBuyers: number;
   daysSinceCatalog: number;
   catalogName: string | null;
+  default_cohort_id: string | null;
   alerts: string[];
   initials: string;
   hue: 'teal' | 'ember' | 'cream';
@@ -134,6 +135,7 @@ function toBrandVm(brand: TenantBrand, index: number): BrandVm {
     totalBuyers: brand.total_buyers ?? 0,
     daysSinceCatalog,
     catalogName: brand.catalog_name ?? null,
+    default_cohort_id: brand.default_cohort_id ?? null,
     alerts,
     initials: getInitials(name),
     hue: index % 3 === 0 ? 'teal' : index % 3 === 1 ? 'ember' : 'cream',
@@ -150,28 +152,31 @@ function BrandLandingContent({
 }) {
   const router = useRouter();
   const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
-  const { data, isLoading, isError } = useTenantBrands(period, initialData ?? undefined);
-  const retainedData = useRetainedValue(data);
-  const landingData = data ?? retainedData;
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-brands-landing',
     scopeKey: period,
+    version: 2,
     initialState: {
       search: '',
-      activeChip: 'All categories',
+      filters: {
+        categories: [] as string[],
+        cohorts: [] as string[],
+      },
       sortBy: 'GMV (high → low)' as SortOption,
       visibleCount: PAGE_SIZE,
     },
   });
+  const search = routeState.search;
+  const sortBy = routeState.sortBy;
+  const filters = routeState.filters ?? { categories: [], cohorts: [] };
+  const { data, isLoading, isError } = useTenantBrands(period, { search, categories: filters.categories, cohorts: filters.cohorts }, initialData ?? undefined);
+  const retainedData = useRetainedValue(data);
+  const landingData = data ?? retainedData;
   useRouteScrollRestoration({
     storageKey: 'seller-brands-landing',
     scopeKey: period,
     ready: !isLoading,
   });
-  const dynamicChips = useMemo(() => ['All categories', ...(landingData?.categories ?? []), 'At risk'], [landingData?.categories]);
-  const search = routeState.search;
-  const activeChip = routeState.activeChip;
-  const sortBy = routeState.sortBy;
   const [inviteOpen, setInviteOpen] = useState(false);
   const [addBrandOpen, setAddBrandOpen] = useState(false);
   const visibleCount = routeState.visibleCount;
@@ -186,28 +191,35 @@ function BrandLandingContent({
     [brands, portfolioGmv]
   );
 
+  const categoryOptions = useMemo(() => {
+    const values = Array.from(new Set(['Uncategorized', ...(landingData?.categories ?? [])]));
+    return values.sort((a, b) => a.localeCompare(b));
+  }, [landingData?.categories]);
+  const cohortOptions = useMemo(
+    () => (landingData?.cohorts ?? []).map((cohort) => ({ value: cohort.id, label: cohort.name })),
+    [landingData?.cohorts],
+  );
+
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const byChip = updatedBrands.filter((brand) => {
-      if (activeChip === 'All categories') return true;
-      if (activeChip === 'At risk') return brand.alerts.length > 0;
-      return brand.category === activeChip;
-    });
-    const bySearch = byChip.filter((brand) => {
+    return updatedBrands
+      .filter((brand) => filters.categories.length === 0 || filters.categories.includes(brand.category || 'Uncategorized'))
+      .filter((brand) => filters.cohorts.length === 0 || (brand.default_cohort_id ? filters.cohorts.includes(brand.default_cohort_id) : false))
+      .filter((brand) => {
       if (!query) return true;
       return brand.name.toLowerCase().includes(query) || brand.category.toLowerCase().includes(query);
-    });
-    return bySearch.sort((a, b) => {
+      })
+      .sort((a, b) => {
       if (sortBy === 'GMV (high → low)') return b.gmv - a.gmv;
       if (sortBy === 'GMV (low → high)') return a.gmv - b.gmv;
       if (sortBy === 'Growth (high → low)') return b.growth - a.growth;
       return a.daysSinceCatalog - b.daysSinceCatalog;
-    });
-  }, [activeChip, search, sortBy, updatedBrands]);
+      });
+  }, [filters.categories, filters.cohorts, search, sortBy, updatedBrands]);
 
   useEffect(() => {
     setRouteState((current) => ({ ...current, visibleCount: PAGE_SIZE }));
-  }, [activeChip, search, sortBy]);
+  }, [filters.categories, filters.cohorts, search, sortBy]);
   const visibleRows = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
   const hasMore = visibleCount < filtered.length;
   const { sentinelRef } = useInfiniteScroll({
@@ -359,13 +371,34 @@ function BrandLandingContent({
       <FilterBar
         count={`${filtered.length} brands`}
         searchPlaceholder="Search brand or category…"
-        chips={dynamicChips}
-        activeChip={activeChip}
+        chips={[]}
+        activeChip=""
         sortBy={sortBy}
         hideViewToggle
+        groups={[
+          {
+            key: 'categories',
+            label: 'Categories',
+            options: categoryOptions.map((value) => ({ value, label: value })),
+            values: filters.categories,
+            onChange: (values) => setRouteState((current) => ({
+              ...current,
+              filters: { ...(current.filters ?? filters), categories: values, cohorts: current.filters?.cohorts ?? filters.cohorts },
+            })),
+          },
+          {
+            key: 'cohorts',
+            label: 'Customer Groups',
+            options: cohortOptions,
+            values: filters.cohorts,
+            onChange: (values) => setRouteState((current) => ({
+              ...current,
+              filters: { ...(current.filters ?? filters), categories: current.filters?.categories ?? filters.categories, cohorts: values },
+            })),
+          },
+        ]}
         searchValue={search}
         onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-        onChipChange={(chip) => setRouteState((current) => ({ ...current, activeChip: chip }))}
         sortOptions={[...SORT_OPTIONS]}
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
@@ -376,12 +409,12 @@ function BrandLandingContent({
           <EmptyState
             icon={<Layers size={28} strokeWidth={1.5} />}
             heading={
-              search.trim() || activeChip !== 'All categories'
+              search.trim() || filters.categories.length > 0 || filters.cohorts.length > 0
                 ? 'No matching brands'
                 : 'No brands in your portfolio'
             }
             description={
-              search.trim() || activeChip !== 'All categories'
+              search.trim() || filters.categories.length > 0 || filters.cohorts.length > 0
                 ? 'Try a different search or filter.'
                 : 'Add your first brand to start building your catalog and pricing.'
             }
@@ -394,14 +427,15 @@ function BrandLandingContent({
           />
         }
         columns={[
-          { label: 'Brand', width: 320, className: 'px-5' },
-          { label: `GMV · ${metricSuffix}`, className: 'px-5' },
-          { label: 'Growth', className: 'px-5' },
-          { label: 'Share of portfolio', className: 'px-5' },
-          { label: 'Active buyers', align: 'right', className: 'px-5' },
-          { label: 'Campaign', className: 'px-5' },
+          { label: 'Brand', minWidth: 320, maxWidth: 420, className: 'px-5' },
+          { label: `GMV · ${metricSuffix}`, align: 'right', minWidth: 140, maxWidth: 180, className: 'px-5' },
+          { label: 'Growth', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
+          { label: 'Share of portfolio', align: 'right', minWidth: 160, maxWidth: 200, className: 'px-5' },
+          { label: 'Active buyers', align: 'right', minWidth: 150, maxWidth: 190, className: 'px-5' },
+          { label: 'Campaign', minWidth: 220, maxWidth: 280, className: 'px-5' },
           { width: 40, className: 'px-4' },
         ]}
+        tableMinWidth={1400}
       >
         {visibleRows.map((brand) => (
           <tr
@@ -414,19 +448,17 @@ function BrandLandingContent({
                 <EntityAvatar initials={brand.initials} hue={brand.hue} imageUrl={brand.logoUrl} size={38} />
                 <div className="min-w-0">
                   <p className="truncate text-base font-medium text-cream-900">{brand.name}</p>
-                  <p className="mt-0.5 font-mono text-xs uppercase tracking-[0.04em] text-cream-700">
-                    {brand.category.toUpperCase()} · {brand.region.toUpperCase()} · {brand.skus} SKUs
-                  </p>
+                  <p className="mt-0.5 font-mono text-xs uppercase tracking-[0.04em] text-cream-700">{brand.skus} SKUs</p>
                 </div>
               </div>
             </td>
-            <td className="px-5 py-3.5 text-base text-cream-900">
+            <td className="px-5 py-3.5 text-right text-base text-cream-900">
               <span className="font-display text-md font-medium text-cream-900 tabular-nums">{formatCompactInr(brand.gmv)}</span>
             </td>
-            <td className="px-5 py-3.5 text-base text-cream-900">
+            <td className="px-5 py-3.5 text-right text-base text-cream-900">
               <GrowthPill value={brand.growth} />
             </td>
-            <td className="px-5 py-3.5 text-base text-cream-900">
+            <td className="px-5 py-3.5 text-right text-base text-cream-900">
               <div className="mb-1 h-[5px] w-[184px] overflow-hidden rounded-full bg-cream-200">
                 <div
                   className={`h-[5px] rounded-full ${brand.hue === 'ember' ? 'bg-ember-400' : brand.hue === 'cream' ? 'bg-cream-600' : 'bg-teal-500'}`}
@@ -439,13 +471,7 @@ function BrandLandingContent({
               {brand.activeBuyers}<span className="text-cream-600"> / {brand.totalBuyers}</span>
             </td>
             <td className="px-5 py-3.5 text-base text-cream-900">
-              <div className="space-y-1">
-                <p className="truncate text-sm text-cream-900">{brand.catalogName ?? 'No published catalog'}</p>
-                <StatusTag
-                  tone={brand.daysSinceCatalog <= 14 ? 'success' : 'warning'}
-                  label={brand.daysSinceCatalog < 999 ? `${brand.daysSinceCatalog}d ago` : 'n/a'}
-                />
-              </div>
+              <p className="truncate text-sm text-cream-900">{brand.catalogName ?? 'No published campaign'}</p>
             </td>
             <td className="chev px-4 py-3.5 pr-4 text-right text-md text-cream-500">›</td>
           </tr>

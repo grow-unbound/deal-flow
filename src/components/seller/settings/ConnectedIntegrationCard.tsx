@@ -102,6 +102,61 @@ const GROUP_BY_PHASE_ID: Record<string, EntityGroupKey> = {
   invoices: 'transactions',
 };
 
+// ── 3-phase structure ──────────────────────────────────────────────────────────
+
+interface SyncPhaseGroup {
+  id: string;
+  label: string;
+  description: string;
+  subPhases: Array<{ id: string; label: string; aliases: string[] }>;
+  /** Entity types (from integration_entity_map) that belong to this phase */
+  errorEntityTypes: string[];
+  syncWindowLabel: string;
+  canSyncAgain: boolean;
+}
+
+const SYNC_PHASE_GROUPS: SyncPhaseGroup[] = [
+  {
+    id: 'reference',
+    label: 'Phase 1 — Reference Data',
+    description: 'Locations, Products, Pricelists, Customers',
+    subPhases: [
+      { id: 'locations', label: 'Locations', aliases: ['locations', 'warehouses'] },
+      { id: 'products', label: 'Products', aliases: ['products', 'brands', 'categories'] },
+      { id: 'pricelists', label: 'Pricelists', aliases: ['pricelists', 'price_lists'] },
+      { id: 'customers', label: 'Customers', aliases: ['customers'] },
+    ],
+    errorEntityTypes: ['locations', 'warehouses', 'products', 'brands', 'categories', 'pricelists', 'price_lists', 'price_list_items', 'customers'],
+    syncWindowLabel: 'Products & Customers: filtered by selected date. Locations & Pricelists: always full sync (Zoho API limitation).',
+    canSyncAgain: true,
+  },
+  {
+    id: 'transactional',
+    label: 'Phase 2 — Transactions',
+    description: 'Estimates, Sales Orders, Invoices',
+    subPhases: [
+      { id: 'estimates', label: 'Estimates', aliases: ['estimates'] },
+      { id: 'orders', label: 'Sales Orders', aliases: ['orders', 'salesorders'] },
+      { id: 'invoices', label: 'Invoices', aliases: ['invoices'] },
+    ],
+    errorEntityTypes: ['estimates', 'orders', 'salesorders', 'invoices'],
+    syncWindowLabel: 'All transaction data filtered by the selected date window.',
+    canSyncAgain: true,
+  },
+  {
+    id: 'analysis',
+    label: 'Phase 3 — Analysis',
+    description: 'KPI summary, recommendations, snapshots',
+    subPhases: [
+      { id: 'kpi_summary', label: 'KPI Summary', aliases: ['kpi_summary'] },
+      { id: 'recommendations', label: 'Recommendations', aliases: ['reco'] },
+    ],
+    errorEntityTypes: ['analysis', 'kpi_summary', 'reco'],
+    syncWindowLabel: 'Computed automatically after Phase 2 completes.',
+    canSyncAgain: false,
+  },
+];
+
 function getEntityGroup(key: EntityGroupKey) {
   return ENTITY_GROUPS.find((group) => group.key === key) ?? ENTITY_GROUPS[0];
 }
@@ -609,9 +664,6 @@ function getEntityCards(job: IntegrationSyncJob | null, flows: IntegrationDataFl
         metaParts.push(`${formatNumber(effectiveStat.stat.failed)} failed`);
         metaParts.push(`${formatNumber(effectiveStat.stat.pages)} pages`);
       }
-      if (job?.status === 'running' || job?.status === 'queued') {
-        metaParts.push('last poll');
-      }
       const meta = metaParts.length > 0 ? metaParts.join(' · ') : 'No sync yet';
 
       return {
@@ -701,6 +753,35 @@ function getProgressText(job: IntegrationSyncJob) {
   return { percent, numerator, denominator: knownDenominator };
 }
 
+function PhaseErrorFlyout({ errors }: { errors: IntegrationEntityError[] }) {
+  const [open, setOpen] = useState(false);
+  if (errors.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-danger-200 bg-danger-50">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between px-3 py-2 text-sm"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span className="font-medium text-danger-800">{errors.length} row{errors.length !== 1 ? 's' : ''} skipped</span>
+        <ChevronDown className={cn('h-3.5 w-3.5 text-danger-600 transition-transform', open ? 'rotate-180' : '')} />
+      </button>
+      {open ? (
+        <div className="border-t border-danger-200 px-3 pb-2 pt-1 space-y-1">
+          {errors.map((e, i) => (
+            <div key={`${e.entity_type}-${e.external_id ?? i}`} className="text-xs text-danger-900">
+              <span className="font-medium">{labelizePhase(e.entity_type)}</span>
+              {e.external_id ? <span className="text-danger-600"> · {e.external_id}</span> : null}
+              {e.error_reason ? <span className="text-danger-700"> — {e.error_reason}</span> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 type TabId = 'overview' | 'flows' | 'history';
 
 interface ConnectedIntegrationCardProps {
@@ -770,6 +851,8 @@ export function ConnectedIntegrationCard({
     if (!available) return { label: 'Gated', variant: 'outline' as const };
     if (activeJob?.status === 'running') return { label: 'Syncing', variant: 'info' as const };
     if (activeJob?.status === 'queued') return { label: 'Queued', variant: 'info' as const };
+    if (activeJob?.status === 'pending') return { label: 'Pending', variant: 'info' as const };
+    if (activeJob?.status === 'paused') return { label: 'Paused', variant: 'info' as const };
     if (latestFinishedRun?.status === 'cancelled') return { label: 'Cancelled', variant: 'success' as const };
     if (ti.health_status === 'expired' || ti.health_status === 'invalid') return { label: 'Needs attention', variant: 'warning' as const };
     if (ti.status === 'sync_failed') return { label: 'Sync failed', variant: 'warning' as const };
@@ -779,7 +862,7 @@ export function ConnectedIntegrationCard({
   })();
 
   const isSyncFailed = ti.status === 'sync_failed' || activeJob?.status === 'failed';
-  const isSyncInProgress = activeJob?.status === 'running' || activeJob?.status === 'queued';
+  const isSyncInProgress = ['running', 'queued', 'pending', 'paused'].includes(activeJob?.status ?? '');
   const needsReconnect = ti.status === 'disconnected' || ti.health_status === 'expired' || ti.health_status === 'invalid';
   const Icon = getIntegrationIcon(integration);
   const currentRun = activeJob ?? latestVisibleRun;
@@ -840,7 +923,8 @@ export function ConnectedIntegrationCard({
       telemetry,
     };
   });
-  const recentEntityErrors = ((integration.recent_entity_errors ?? ti.recent_entity_errors ?? []) as IntegrationEntityError[]).slice(0, 4);
+  const allEntityErrors = (integration.recent_entity_errors ?? ti.recent_entity_errors ?? []) as IntegrationEntityError[];
+  const recentEntityErrors = allEntityErrors.slice(0, 4);
 
   function openFullSyncDialog() {
     setSyncDialog({ open: true, mode: 'full' });
@@ -943,7 +1027,7 @@ export function ConnectedIntegrationCard({
 
           <div className="rounded-2xl border border-cream-200 bg-cream-50 p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">
-              {activeJob ? 'Live poll' : 'Latest Sync'}
+              {activeJob ? 'Live Sync' : 'Latest Sync'}
             </div>
             <div className="mt-3 text-lg font-semibold text-cream-900">
               {latestSyncLabel}
@@ -1026,7 +1110,7 @@ export function ConnectedIntegrationCard({
                       ))
                     ) : (
                       <div className="rounded-lg border border-dashed border-cream-300 bg-cream-50 px-3 py-4 text-sm text-cream-700">
-                        Phase tracker will populate once the worker reports its first poll.
+                        Phase tracker will populate once the first update arrives.
                       </div>
                     )}
                   </div>
@@ -1034,64 +1118,156 @@ export function ConnectedIntegrationCard({
               </details>
             ) : null}
 
-            <div className="rounded-2xl border border-cream-200 bg-white p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-cream-900">Sync coverage</div>
-                  <div className="mt-1 text-sm text-cream-700">
-                    Live totals for the current tenant. Products groups Products, Brands, Categories, and Pricelists together.
-                  </div>
-                </div>
-              </div>
-              <div className="mt-4 grid gap-3 xl:grid-cols-4">
-                {overviewCards.map((card) => {
-                  const disabled = isSyncingNow || (ti.status !== 'connected' && ti.status !== 'sync_failed') || !card.phaseAction;
-                  return (
-                    <div
-                      key={card.key}
-                      className="group/card rounded-2xl border border-cream-200 bg-cream-50 px-4 pt-4 pb-3 shadow-xs"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">
-                            {card.label}
-                          </div>
-                          <div className="mt-2 flex items-end gap-2">
-                            <span className="text-2xl font-display text-cream-900">{formatNumber(card.total)}</span>
-                            <span className="text-sm text-cream-600">{getGroupCountLabel(card.key, card.total)} total</span>
-                          </div>
-                          <div className="mt-1 text-sm text-cream-700">{getGroupAsOfLabel(card.lastRunAt)}</div>
-                        </div>
-                        <div className="flex shrink-0 flex-col items-end gap-2 text-right">
-                          <StatusPill label={card.state} variant={getPhaseStateVariant(card.state)} />
-                          {card.phaseAction ? (
-                            <Button
-                              type="button"
-                              variant="primary"
-                              size="sm"
-                              className="opacity-0 transition-opacity duration-200 group-hover/card:opacity-100"
-                              onClick={() => openPhaseSyncDialog(card.phaseAction!.id, card.phaseAction!.label)}
-                              disabled={disabled}
-                              aria-label={`Sync now for ${card.label}`}
-                            >
-                              {isSyncingNow && syncTargetPhase === card.key ? 'Syncing…' : 'Sync now'}
-                            </Button>
-                          ) : null}
+            <div className="space-y-3">
+              <div className="text-sm font-semibold text-cream-900">Sync phases</div>
+              {SYNC_PHASE_GROUPS.map((phaseGroup) => {
+                const canSync = isSellerAdmin && available && !isSyncingNow &&
+                  (ti.status === 'connected' || ti.status === 'sync_failed') && phaseGroup.canSyncAgain;
+
+                // Aggregate sub-phase counts and status from coverage totals
+                const subPhaseRows = phaseGroup.subPhases.map((sub) => {
+                  const count = (() => {
+                    switch (sub.id) {
+                      case 'locations': return coverageTotals.locations ?? 0;
+                      case 'products': return (coverageTotals.products ?? 0) + (coverageTotals.brands ?? 0) + (coverageTotals.categories ?? 0);
+                      case 'pricelists': return coverageTotals.pricelists ?? 0;
+                      case 'customers': return coverageTotals.customers ?? 0;
+                      case 'estimates': return coverageTotals.estimates ?? 0;
+                      case 'orders': return coverageTotals.orders ?? 0;
+                      case 'invoices': return coverageTotals.invoices ?? 0;
+                      default: return 0;
+                    }
+                  })();
+
+                  // Find the most recent job that touched this sub-phase
+                  const relevantGroup = GROUP_BY_PHASE_ID[sub.id];
+                  const latestJob = relevantGroup ? getGroupRelevantJob(runHistory, relevantGroup as EntityGroupKey) : null;
+                  const isSyncing = isSyncingNow && latestJob?.status === 'running';
+                  const pagesNote = isSyncing && latestJob?.progress
+                    ? (() => {
+                        const pg = (latestJob.progress as { pages_fetched?: number }).pages_fetched;
+                        return pg ? `page ${pg}` : null;
+                      })()
+                    : null;
+
+                  return { ...sub, count, isSyncing, pagesNote };
+                });
+
+                const phaseTotal = subPhaseRows.reduce((s, r) => s + r.count, 0);
+                const anyActive = subPhaseRows.some((r) => r.isSyncing);
+
+                // For Phase 3 (analysis), find the dedicated analysis job
+                const analysisJob = phaseGroup.id === 'analysis'
+                  ? runHistory.find((j) => j.phase === 'analysis') ?? null
+                  : null;
+                const analysisStatus = analysisJob?.status ?? null;
+                const analysisRunning = analysisStatus === 'running';
+                const analysisComplete = analysisStatus === 'completed';
+                const analysisFailed = analysisStatus === 'failed';
+                const phaseIsOpen = anyActive || analysisRunning;
+
+                return (
+                  <details key={phaseGroup.id} className="group/phase overflow-hidden rounded-2xl border border-cream-200 bg-white" open={phaseIsOpen}>
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <ChevronDown className="h-4 w-4 shrink-0 text-cream-500 transition-transform group-open/phase:rotate-180" />
+                        <div>
+                          <div className="text-sm font-semibold text-cream-900">{phaseGroup.label}</div>
+                          <div className="text-xs text-cream-600">{phaseGroup.description}</div>
                         </div>
                       </div>
-                      <div className="mt-3 space-y-2">
-                        {Object.entries(card.items).map(([label, count]) => (
-                          <div key={`${card.key}-${label}`} className="flex items-center justify-between gap-3 text-sm text-cream-700">
-                            <span>{label}</span>
-                            <span className="font-medium text-cream-900">{formatNumber(Number(count))}</span>
-                          </div>
-                        ))}
+                      <div className="flex shrink-0 items-center gap-2">
+                        {anyActive || analysisRunning ? (
+                          <StatusPill label="Running" variant="info" />
+                        ) : analysisFailed ? (
+                          <StatusPill label="Failed" variant="danger" />
+                        ) : analysisComplete || phaseTotal > 0 ? (
+                          <StatusPill label="Done" variant="success" />
+                        ) : null}
+                        {!analysisComplete && !analysisRunning && phaseTotal > 0 && phaseGroup.id !== 'analysis' ? (
+                          <span className="text-sm font-medium text-cream-900">{formatNumber(phaseTotal)} records</span>
+                        ) : null}
+                        {phaseGroup.canSyncAgain ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              openPhaseSyncDialog(phaseGroup.id, phaseGroup.label.replace(/^Phase \d+ — /, ''));
+                            }}
+                            disabled={!canSync}
+                          >
+                            <RefreshCw className="h-3.5 w-3.5" />
+                            {isSyncingNow && syncTargetPhase === phaseGroup.id ? 'Syncing…' : 'Sync Again'}
+                          </Button>
+                        ) : null}
                       </div>
-                      <div className="mt-3 text-sm leading-6 text-cream-700">{getGroupNextRunLabel(card.nextRunAt)}</div>
+                    </summary>
+
+                    <div className="border-t border-cream-200 bg-cream-50 px-4 py-3">
+                      <div className="space-y-2">
+                        {phaseGroup.id === 'analysis' ? (
+                          <div className="space-y-2">
+                            {analysisRunning ? (
+                              <div className="flex items-center gap-2 text-sm text-info-700">
+                                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                Computing snapshots and KPI tables…
+                              </div>
+                            ) : analysisFailed ? (
+                              <div className="text-sm text-danger-700">
+                                Analysis failed: {analysisJob?.progress?.phase_label ?? 'check sync logs for details'}
+                              </div>
+                            ) : analysisComplete ? (
+                              <>
+                                <div className="flex items-center justify-between gap-3 rounded-lg border border-cream-200 bg-white px-3 py-2 text-sm">
+                                  <span className="text-cream-900">Snapshots</span>
+                                  <span className="text-success-700 font-medium">Ready</span>
+                                </div>
+                                <div className="flex items-center justify-between gap-3 rounded-lg border border-cream-200 bg-white px-3 py-2 text-sm">
+                                  <span className="text-cream-900">KPI tables</span>
+                                  <span className="text-success-700 font-medium">Ready</span>
+                                </div>
+                                <div className="flex items-center justify-between gap-3 rounded-lg border border-cream-200 bg-white px-3 py-2 text-sm">
+                                  <span className="text-cream-900">Recommendations</span>
+                                  <span className="text-success-700 font-medium">Ready</span>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-sm text-cream-700">
+                                Triggered automatically after Phase 2 completes.
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <>
+                            {subPhaseRows.map((sub) => (
+                              <div key={sub.id} className="flex items-center justify-between gap-3 rounded-lg border border-cream-200 bg-white px-3 py-2">
+                                <div className="text-sm text-cream-900">{sub.label}</div>
+                                <div className="flex items-center gap-2 text-sm">
+                                  {sub.isSyncing ? (
+                                    <span className="text-info-700">
+                                      {sub.pagesNote ? `syncing ${sub.pagesNote}…` : 'syncing…'}
+                                    </span>
+                                  ) : sub.count > 0 ? (
+                                    <span className="font-medium text-cream-900">{formatNumber(sub.count)}</span>
+                                  ) : (
+                                    <span className="text-cream-500">—</span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                            <PhaseErrorFlyout
+                              errors={allEntityErrors.filter((e) => phaseGroup.errorEntityTypes.includes(e.entity_type))}
+                            />
+                            <p className="pt-1 text-xs text-cream-500">{phaseGroup.syncWindowLabel}</p>
+                          </>
+                        )}
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
+                  </details>
+                );
+              })}
             </div>
 
             {failedRun ? (
@@ -1180,16 +1356,30 @@ export function ConnectedIntegrationCard({
                     Webhooks are Zoho&apos;s instant signals that something changed. We capture CREATE, UPDATE, and DELETE events as they arrive.
                   </p>
                 </div>
-                <StatusPill
-                  data-testid="webhooks-status-label"
-                  label={webhookStateLabel}
-                  variant={webhookTelemetry?.status === 'active'
-                    ? 'success'
-                    : webhookTelemetry?.status === 'failed'
-                      ? 'warning'
-                      : 'info'}
-                  icon={<Webhook className="h-3.5 w-3.5" />}
-                />
+                <div className="flex items-center gap-2">
+                  {webhookTelemetry?.status !== 'active' && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={onRetryWebhooks}
+                      disabled={isRetryingWebhooks}
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${isRetryingWebhooks ? 'animate-spin' : ''}`} />
+                      {isRetryingWebhooks ? 'Setting up…' : 'Setup Webhooks'}
+                    </Button>
+                  )}
+                  <StatusPill
+                    data-testid="webhooks-status-label"
+                    label={webhookStateLabel}
+                    variant={webhookTelemetry?.status === 'active'
+                      ? 'success'
+                      : webhookTelemetry?.status === 'failed'
+                        ? 'warning'
+                        : 'info'}
+                    icon={<Webhook className="h-3.5 w-3.5" />}
+                  />
+                </div>
               </div>
 
               <div className="mt-4 grid gap-3 xl:grid-cols-4">
@@ -1243,8 +1433,12 @@ export function ConnectedIntegrationCard({
               <div className="divide-y divide-cream-200 overflow-hidden rounded-2xl border border-cream-200 bg-white">
                 {sortedHistory.map((job) => {
                   const phaseEntries = getPhaseEntries(job).filter((phase) => phase.stat || phase.state !== 'Not Started');
-                  const scopeLabel = job.summary?.scope ? labelize(job.summary.scope) : 'Unknown';
-                  const sinceLabel = job.summary?.since ? formatIntegrationDateTimeLabel(job.summary.since) : 'Not set';
+                  const scopeLabel = labelize(job.job_type);
+                  const sinceLabel = job.since_date
+                    ? formatIntegrationDateTimeLabel(job.since_date)
+                    : job.summary?.since
+                      ? formatIntegrationDateTimeLabel(job.summary.since)
+                      : 'All time';
                   const completedLabel = formatIntegrationDateTimeLabel(job.summary?.last_synced_at ?? getRunTime(job));
                   return (
                     <details key={job.id} className="group px-4 py-4">
@@ -1264,7 +1458,7 @@ export function ConnectedIntegrationCard({
                             {job.progress?.phase_label ?? job.summary?.note ?? 'No phase details reported yet.'}
                           </p>
                           <p className="mt-2 text-xs uppercase tracking-[0.12em] text-cream-600">
-                            Scope {scopeLabel} · Since {sinceLabel} · Completed {completedLabel}
+                            {scopeLabel} · Since {sinceLabel} · {completedLabel}
                           </p>
                           {job.status === 'cancelled' ? (
                             <p className="mt-2 rounded-lg border border-success-200 bg-success-50 px-3 py-2 text-sm leading-6 text-success-900">

@@ -104,7 +104,7 @@ export function InvoiceDetailPage({ id }: { id: string }) {
   const diffLines: EstimateComposerLineRow[] = useMemo(() => {
     if (!data) return [];
     return data.items.map((line, index) => ({
-      id: line.tenant_product_id ? `inv-line-${line.tenant_product_id}` : `inv-line-${index}`,
+      id: line.id ?? (line.tenant_product_id ? `inv-line-${line.tenant_product_id}` : `inv-line-${index}`),
       tenant_product_id: line.tenant_product_id,
       product_name: line.product_name,
       sku: line.sku,

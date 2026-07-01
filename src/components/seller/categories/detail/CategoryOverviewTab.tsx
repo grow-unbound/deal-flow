@@ -10,6 +10,7 @@ import {
   Cell,
 } from 'recharts';
 import { useRouter } from 'next/navigation';
+import { PerformanceCard } from '@/components/seller/detail';
 import type { CategoryDetailOverview } from '@/hooks/useCategories';
 import { formatCompactInr } from '@/lib/utils';
 
@@ -40,12 +41,8 @@ export function CategoryOverviewTab({ overview }: CategoryOverviewTabProps) {
 
   return (
     <div className="mt-6 grid grid-cols-5 gap-4">
-      {/* Left: revenue trend chart */}
       <div className="col-span-3 space-y-4">
-        <div className="rounded-[14px] border border-cream-200 bg-white p-5">
-          <p className="text-sm font-medium text-cream-700">Revenue trend</p>
-          <p className="mb-4 text-xs text-cream-400">6-week rolling window</p>
-
+        <PerformanceCard title="Revenue trend" subtitle="6-week rolling window" bodyClassName="p-5">
           {hasChart ? (
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={trend_weekly} barSize={28} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
@@ -81,14 +78,10 @@ export function CategoryOverviewTab({ overview }: CategoryOverviewTabProps) {
               No orders in this period
             </div>
           )}
-        </div>
+        </PerformanceCard>
 
-        {/* Top brands mini-table */}
         {top_brands.length > 0 && (
-          <div className="rounded-[14px] border border-cream-200 bg-white">
-            <div className="border-b border-cream-200 px-5 py-3">
-              <p className="text-sm font-medium text-cream-700">Top brands in category</p>
-            </div>
+          <PerformanceCard title="Top brands in category" bodyClassName="p-0">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-cream-100">
@@ -120,11 +113,10 @@ export function CategoryOverviewTab({ overview }: CategoryOverviewTabProps) {
                 ))}
               </tbody>
             </table>
-          </div>
+          </PerformanceCard>
         )}
       </div>
 
-      {/* Right: 2×2 stock health grid */}
       <div className="col-span-2 space-y-3">
         <p className="text-sm font-medium text-cream-700">Stock health</p>
         <div className="grid grid-cols-2 gap-3">
