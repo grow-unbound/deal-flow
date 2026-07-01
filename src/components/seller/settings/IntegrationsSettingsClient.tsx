@@ -457,7 +457,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
           title="Integrations"
           subtitle="Connect accounting and ERP tools."
           action={
-            isSellerAdmin && unconnectedAvailable.length > 0 ? (
+            isSellerAdmin && (unconnectedAvailable.length > 0 || integrations.length === 0) ? (
               <Button type="button" variant="primary" size="sm" onClick={() => setPickerOpen(true)}>
                 <Plus className="h-4 w-4" />
                 Add integration
@@ -472,6 +472,14 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
             icon={<Link2 className="h-7 w-7" strokeWidth={1.5} />}
             heading="No integrations configured yet"
             description="Once the integration catalog is seeded for this workspace, setup and sync details will show up here."
+            action={
+              isSellerAdmin ? (
+                <Button type="button" variant="accent" onClick={() => setPickerOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                  Add Integration
+                </Button>
+              ) : null
+            }
           />
         ) : connectedIntegrations.length > 0 ? (
           <div className="space-y-6">
