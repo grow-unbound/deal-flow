@@ -364,6 +364,7 @@ export const IntegrationJobRecordSchema = z
     id: z.string().uuid(),
     tenant_integration_id: z.string().uuid(),
     job_type: IntegrationSyncJobTypeSchema,
+    phase: z.string().trim().min(1).max(120).nullable().optional(),
     status: IntegrationSyncJobStatusSchema,
     run_origin: IntegrationRunOriginSchema.nullable().optional(),
     sync_window: z.string().trim().min(1).max(200).nullable().optional(),
