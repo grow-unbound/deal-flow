@@ -1357,16 +1357,30 @@ export function ConnectedIntegrationCard({
                     Webhooks are Zoho&apos;s instant signals that something changed. We capture CREATE, UPDATE, and DELETE events as they arrive.
                   </p>
                 </div>
-                <StatusPill
-                  data-testid="webhooks-status-label"
-                  label={webhookStateLabel}
-                  variant={webhookTelemetry?.status === 'active'
-                    ? 'success'
-                    : webhookTelemetry?.status === 'failed'
-                      ? 'warning'
-                      : 'info'}
-                  icon={<Webhook className="h-3.5 w-3.5" />}
-                />
+                <div className="flex items-center gap-2">
+                  {webhookTelemetry?.status !== 'active' && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={onRetryWebhooks}
+                      disabled={isRetryingWebhooks}
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${isRetryingWebhooks ? 'animate-spin' : ''}`} />
+                      {isRetryingWebhooks ? 'Setting up…' : 'Setup Webhooks'}
+                    </Button>
+                  )}
+                  <StatusPill
+                    data-testid="webhooks-status-label"
+                    label={webhookStateLabel}
+                    variant={webhookTelemetry?.status === 'active'
+                      ? 'success'
+                      : webhookTelemetry?.status === 'failed'
+                        ? 'warning'
+                        : 'info'}
+                    icon={<Webhook className="h-3.5 w-3.5" />}
+                  />
+                </div>
               </div>
 
               <div className="mt-4 grid gap-3 xl:grid-cols-4">
