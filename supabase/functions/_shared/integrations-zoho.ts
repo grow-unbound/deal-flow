@@ -475,8 +475,8 @@ export function createZohoAdapter(
       since != null
       ? since
       : undefined;
-    // Zoho requires last_modified_time as "YYYY-MM-DD HH:mm:ss" — not a bare date
-    const lastModified = lastModifiedDate ? `${lastModifiedDate} 00:00:00` : undefined;
+    // Zoho requires last_modified_time as "YYYY-MM-DDTHH:mm:ss+0530" (IST) — not a bare date
+    const lastModified = lastModifiedDate ? `${lastModifiedDate}T00:00:00+0530` : undefined;
 
     const query = {
       page,
