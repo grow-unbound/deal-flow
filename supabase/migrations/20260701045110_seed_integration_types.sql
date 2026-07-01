@@ -23,6 +23,9 @@ INSERT INTO catalog.integration_types (
     NULL,
     jsonb_build_object(
       'oauth', true,
+      'authorize_url', 'https://accounts.zoho.in/oauth/v2/auth',
+      'token_url', 'https://accounts.zoho.in/oauth/v2/token',
+      'scopes', jsonb_build_array('ZohoBooks.fullaccess'),
       'fields', jsonb_build_array(
         jsonb_build_object(
           'key', 'org_id',
@@ -37,7 +40,7 @@ INSERT INTO catalog.integration_types (
     jsonb_build_object(
       'inbound_reference', jsonb_build_array('locations', 'products', 'customers', 'pricelists'),
       'inbound_transactional', jsonb_build_array('estimates', 'orders', 'invoices'),
-      'outbound', jsonb_build_array('orders'),
+      'outbound_transactional', jsonb_build_array('orders', 'estimates'),
       'webhooks', true
     ),
     'cloud',
@@ -50,6 +53,9 @@ INSERT INTO catalog.integration_types (
     NULL,
     jsonb_build_object(
       'oauth', true,
+      'authorize_url', 'https://accounts.zoho.in/oauth/v2/auth',
+      'token_url', 'https://accounts.zoho.in/oauth/v2/token',
+      'scopes', jsonb_build_array('ZohoInventory.fullaccess'),
       'fields', jsonb_build_array(
         jsonb_build_object(
           'key', 'org_id',
@@ -64,7 +70,7 @@ INSERT INTO catalog.integration_types (
     jsonb_build_object(
       'inbound_reference', jsonb_build_array('locations', 'products', 'customers'),
       'inbound_transactional', jsonb_build_array('orders'),
-      'outbound', jsonb_build_array('orders'),
+      'outbound_transactional', jsonb_build_array('orders'),
       'webhooks', true
     ),
     'cloud',
@@ -90,7 +96,7 @@ INSERT INTO catalog.integration_types (
     jsonb_build_object(
       'inbound_reference', jsonb_build_array('products'),
       'inbound_transactional', jsonb_build_array('orders'),
-      'outbound', jsonb_build_array('invoices')
+      'outbound_transactional', jsonb_build_array('invoices')
     ),
     'local',
     false
