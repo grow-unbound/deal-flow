@@ -898,60 +898,7 @@ async function persistLocations(
     );
   }
 
-  // Geocode any newly-added locations that don't have coordinates yet
-  await geocodeNewLocations(admin, tenantId);
-
   return result;
-}
-
-// Calls Google Geocoding REST API for locations that have an address but no lat/lng.
-// Uses the location name as additional context to improve accuracy.
-async function geocodeNewLocations(admin: AdminClient, tenantId: string) {
-  const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
-  if (!apiKey) return;
-
-  const { data: rows, error } = await admin
-    .schema('app')
-    .from('locations')
-    .select('id, name, address')
-    .eq('tenant_id', tenantId)
-    .is('lat', null)
-    .not('address', 'is', null)
-    .is('deleted_at', null);
-
-  if (error || !rows?.length) return;
-
-  for (const row of rows) {
-    const addr = (row.address ?? {}) as Record<string, unknown>;
-    const parts = [
-      row.name,
-      (addr.address ?? addr.street_address1 ?? addr.street ?? '') as string,
-      (addr.street_address2 ?? '') as string,
-      (addr.city ?? '') as string,
-      (addr.state ?? addr.state_code ?? '') as string,
-      (addr.country ?? '') as string,
-      (addr.zip ?? addr.postal_code ?? '') as string,
-    ].filter(Boolean);
-
-    if (parts.length < 2) continue;
-
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(parts.join(', '))}&key=${apiKey}`;
-    try {
-      const res = await fetch(url);
-      if (!res.ok) continue;
-      const data = await res.json() as { status: string; results?: Array<{ geometry?: { location?: { lat: number; lng: number } } }> };
-      const loc = data.results?.[0]?.geometry?.location;
-      if (data.status === 'OK' && loc) {
-        await admin
-          .schema('app')
-          .from('locations')
-          .update({ lat: loc.lat, lng: loc.lng, updated_at: new Date().toISOString() })
-          .eq('id', row.id);
-      }
-    } catch {
-      // skip this location; it can be geocoded on the next sync
-    }
-  }
 }
 
 // ── Buyers (contacts) + buyer_contacts (contact persons) ────────────────────
