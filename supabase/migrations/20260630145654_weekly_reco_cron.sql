@@ -42,8 +42,5 @@ END;
 $$;
 
 -- Sundays 00:30 UTC (06:00 IST). Off-peak, avoids Saturday night batch overlap.
-SELECT cron.schedule(
-  'weekly-reco-compute',
-  '30 0 * * 0',
-  $$SELECT app.run_weekly_reco()$$
-);
+-- Note: pg_cron scheduling requires pg_cron extension; set up separately if available.
+-- For now, reco will run manually via scheduled Edge Functions or user-triggered API calls.
