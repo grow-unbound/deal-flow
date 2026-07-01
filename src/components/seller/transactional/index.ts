@@ -19,3 +19,5 @@ export type {
   TransactionalPageHeadDangerAction,
 } from './TransactionalPageHead';
 export { TransactionalDetailSkeleton } from './TransactionalDetailSkeleton';
+export { TransactionTable } from './TransactionTable';
+export type { TransactionTableKind, TransactionTableProps, TransactionTableRow, TransactionSourceKind } from './TransactionTable';

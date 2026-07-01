@@ -4,6 +4,8 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { createTimer } from '@/lib/server-timing';
 import { getAuthUserEmailMap } from '@/lib/server/auth-user-directory';
+import { readArrayParam } from '@/lib/landing-filter-params';
+import { formatStrategySummary } from '@/lib/price-list-strategy';
 import { PriceListComposerPayloadSchema, type PriceListFilterState } from '@/lib/zod';
 
 type LandingStatus = 'active' | 'draft' | 'expired';
@@ -13,6 +15,7 @@ type PriceListRow = {
   id: string;
   tenant_id: string;
   name: string;
+  description: string | null;
   currency: string;
   valid_from: string | null;
   valid_to: string | null;
@@ -151,6 +154,8 @@ export async function GET(request: NextRequest) {
   const now = new Date();
   const nowTs = now.getTime();
   const withinSevenDaysTs = nowTs + 7 * 24 * 60 * 60 * 1000;
+  const search = request.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '';
+  const statusFilter = readArrayParam(request.nextUrl.searchParams, 'status');
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabaseAdmin as any;
@@ -159,7 +164,7 @@ export async function GET(request: NextRequest) {
     db
       .schema('app')
       .from('price_lists')
-      .select('id, tenant_id, name, currency, valid_from, valid_to, priority, is_active, pricing_strategy, strategy_value, filters, created_at, updated_at, created_by')
+      .select('id, tenant_id, name, description, currency, valid_from, valid_to, priority, is_active, pricing_strategy, strategy_value, filters, created_at, updated_at, created_by')
       .eq('tenant_id', claims.tenant_id)
       .is('deleted_at', null)
       .order('updated_at', { ascending: false }),
@@ -338,6 +343,7 @@ export async function GET(request: NextRequest) {
     return {
       id: pl.id,
       name: pl.name,
+      description: pl.description ?? null,
       priority: pl.priority,
       currency: pl.currency,
       valid_from: pl.valid_from,
@@ -356,6 +362,22 @@ export async function GET(request: NextRequest) {
       pricing_strategy: pl.pricing_strategy,
       strategy_value: pl.strategy_value,
     };
+  });
+
+  const filteredRows = rowModels.filter((row) => {
+    const statusOk =
+      statusFilter.length === 0 ||
+      statusFilter.some((value) => {
+        if (value === 'Active') return row.status === 'active';
+        if (value === 'Draft') return row.status === 'draft';
+        if (value === 'Expired') return row.status === 'expired';
+        return false;
+      });
+    const searchOk =
+      !search ||
+      [row.name, row.description ?? '', row.cohort_names.join(' '), row.created_by_label, formatStrategySummary(row.pricing_strategy, row.strategy_value)]
+        .some((value) => value.toLowerCase().includes(search));
+    return statusOk && searchOk;
   });
 
   const mostCoverage = [...rowModels]
@@ -411,7 +433,7 @@ export async function GET(request: NextRequest) {
         member_count: cohort.member_count,
       })),
     },
-    price_lists: rowModels,
+      price_lists: filteredRows,
     cohorts_total: cohorts.length,
     counts: {
       active: activeLists.length,
@@ -486,6 +508,7 @@ export async function POST(request: NextRequest) {
     .insert({
       tenant_id: claims.tenant_id,
       name: data.name,
+      description: data.description?.trim() ? data.description.trim() : null,
       currency: data.currency,
       valid_from: data.valid_from.toISOString(),
       valid_to: data.valid_to ? data.valid_to.toISOString() : null,

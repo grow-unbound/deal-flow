@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api-fetch';
+import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { CohortCreateInput, CohortRules, CohortUpdateInput } from '@/lib/zod';
@@ -40,10 +41,12 @@ export interface CohortsLandingRow {
   id: string;
   name: string;
   description: string | null;
+  is_static?: boolean;
   type: CohortType;
   focus_chips: string[];
   allowed_brands_count: number | null;
   allowed_brands_label: string;
+  allowed_tenant_brand_ids?: string[] | null;
   gmv_mtd: number;
   growth_pct: number;
   active_members: number;
@@ -62,7 +65,16 @@ export interface CohortsLandingResponse {
     top_risers: CohortsLandingCalloutRow[];
   };
   cohorts: CohortsLandingRow[];
+  brands: Array<{
+    id: string;
+    name: string;
+  }>;
   period: SellerLandingPeriodMeta;
+}
+
+export interface CohortsLandingFilters {
+  search?: string;
+  brands?: string[];
 }
 
 export interface TenantCohortOption {
@@ -226,11 +238,18 @@ export interface CohortMembersResponse {
   }>;
 }
 
-export function useCohortsLanding(period: SellerLandingPeriod = 'month', initialData?: CohortsLandingResponse | null) {
+export function useCohortsLanding(
+  period: SellerLandingPeriod = 'month',
+  filters: CohortsLandingFilters = {},
+  initialData?: CohortsLandingResponse | null,
+) {
   return useQuery({
-    queryKey: ['cohorts-landing', period],
+    queryKey: ['cohorts-landing', period, filters],
     queryFn: async (): Promise<CohortsLandingResponse> => {
-      const res = await apiFetch(`/api/tenant/cohorts?period=${period}`);
+      const params = new URLSearchParams({ period });
+      if (filters.search?.trim()) params.set('search', filters.search.trim());
+      appendArrayParam(params, 'brands', filters.brands);
+      const res = await apiFetch(`/api/tenant/cohorts?${params.toString()}`);
       if (!res.ok) {
         throw new Error('Failed to fetch cohorts landing');
       }

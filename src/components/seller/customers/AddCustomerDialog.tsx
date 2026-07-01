@@ -174,7 +174,7 @@ export function AddCustomerDialog({
           description={
             isEditMode
               ? 'Update the buyer details used in your workspace.'
-              : 'You can add team members and shipping addresses after the buyer is created.'
+              : 'You can add the Buyer team member after the buyer is created.'
           }
         />
 

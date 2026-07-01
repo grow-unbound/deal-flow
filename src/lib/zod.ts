@@ -264,6 +264,7 @@ export type CohortRules = z.infer<typeof CohortRulesSchema>;
 export const PriceListSchema = z
   .object({
     name: z.string().min(1, 'Price list name is required'),
+    description: z.string().trim().optional().or(z.literal('')),
     currency: z.string().default('INR'),
     valid_from: z.coerce.date(),
     valid_to: z.coerce.date().optional(),
@@ -300,6 +301,7 @@ export type PriceListFilterState = z.infer<typeof PriceListFilterStateSchema>;
 export const PriceListComposerPayloadSchema = z
   .object({
     name: z.string().min(1, 'Price list name is required'),
+    description: z.string().trim().optional().or(z.literal('')),
     currency: z.string().default('INR'),
     valid_from: z.coerce.date(),
     valid_to: z.coerce.date().optional(),

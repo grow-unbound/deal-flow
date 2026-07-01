@@ -21,7 +21,7 @@ async function loadTenantRoutingThreshold(db: SupabaseClient, tenantId: string):
 
   return typeof settingsRow?.settings?.delivery_routing_threshold_km === 'number'
     ? settingsRow.settings.delivery_routing_threshold_km
-    : 300;
+    : 50;
 }
 
 async function loadWarehouseLocations(db: SupabaseClient, tenantId: string) {

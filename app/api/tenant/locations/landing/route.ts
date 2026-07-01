@@ -5,6 +5,7 @@ import { getFlag } from '@/lib/flags';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { SELLER_LANDING_PERIOD_OPTIONS } from '@/lib/seller-period';
+import { readArrayParam } from '@/lib/landing-filter-params';
 import type {
   LocationsLandingKpis,
   LocationsLandingRow,
@@ -32,6 +33,15 @@ function getCity(address: unknown): string {
   return '';
 }
 
+function getAddressText(address: unknown): string {
+  if (!address || typeof address !== 'object') return '';
+  const addr = address as Record<string, unknown>;
+  const parts = [addr.line1, addr.line2, addr.city, addr.state, addr.pincode]
+    .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
+    .map((part) => part.trim());
+  return parts.join(', ');
+}
+
 async function getLocationsLandingPayload(
   tenantId: string,
   periodInput?: string | null,
@@ -39,7 +49,7 @@ async function getLocationsLandingPayload(
   const db = supabaseAdmin as any;
   const period = getSellerLandingPeriodMeta(periodInput);
 
-  const [locationsRes, snapshotRes, currentOrdersRes, prevOrdersRes] = await Promise.all([
+  const [locationsRes, snapshotRes, currentOrdersRes, prevOrdersRes, currentEstimatesRes, currentInvoicesRes] = await Promise.all([
     db
       .schema('app')
       .from('locations')
@@ -72,9 +82,28 @@ async function getLocationsLandingPayload(
       .is('deleted_at', null)
       .gte('placed_at', period.previous_start)
       .lt('placed_at', period.previous_end_exclusive),
+    db
+      .schema('app')
+      .from('estimates')
+      .select('id, location_id, buyer_id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .gte('issued_at', period.current_start)
+      .lt('issued_at', period.current_end_exclusive),
+    db
+      .schema('app')
+      .from('invoices')
+      .select('id, location_id, buyer_id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .gte('issued_at', period.current_start)
+      .lt('issued_at', period.current_end_exclusive),
   ]);
 
   if (locationsRes.error) throw locationsRes.error;
+  if (currentOrdersRes.error || prevOrdersRes.error || currentEstimatesRes.error || currentInvoicesRes.error) {
+    throw currentOrdersRes.error ?? prevOrdersRes.error ?? currentEstimatesRes.error ?? currentInvoicesRes.error;
+  }
 
   const rawLocations:
     Array<{ id: string; name: string; type: string; address: unknown; deleted_at: string | null }> =
@@ -84,6 +113,8 @@ async function getLocationsLandingPayload(
     currentOrdersRes.data ?? [];
   const prevOrders: Array<{ id: string; location_id: string | null; total_amount: number }> =
     prevOrdersRes.data ?? [];
+  const currentEstimates: Array<{ id: string; location_id: string | null; buyer_id: string }> = currentEstimatesRes.data ?? [];
+  const currentInvoices: Array<{ id: string; location_id: string | null; buyer_id: string }> = currentInvoicesRes.data ?? [];
 
   const locationIds = rawLocations.map((loc) => loc.id);
   let extraById = new Map<
@@ -130,6 +161,20 @@ async function getLocationsLandingPayload(
     set.add(o.buyer_id);
     buyersByLocation.set(loc, set);
   }
+  for (const estimate of currentEstimates) {
+    const loc = estimate.location_id;
+    if (!loc) continue;
+    const set = buyersByLocation.get(loc) ?? new Set<string>();
+    set.add(estimate.buyer_id);
+    buyersByLocation.set(loc, set);
+  }
+  for (const invoice of currentInvoices) {
+    const loc = invoice.location_id;
+    if (!loc) continue;
+    const set = buyersByLocation.get(loc) ?? new Set<string>();
+    set.add(invoice.buyer_id);
+    buyersByLocation.set(loc, set);
+  }
 
   // Aggregate previous-period GMV by location
   const gmvPrevByLocation = new Map<string, number>();
@@ -157,6 +202,7 @@ async function getLocationsLandingPayload(
       name: loc.name,
       type: loc.type,
       city: getCity(loc.address),
+      address_text: getAddressText(loc.address),
       phone_number: extra?.phone_number ?? null,
       initials: getInitials(loc.name),
       gmv_mtd,
@@ -262,11 +308,41 @@ export async function GET(request: NextRequest) {
   if (!flagEnabled) return timedJson({ error: 'Feature not enabled' }, { status: 403 });
 
   try {
+    const search = request.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '';
+    const statusFilter = readArrayParam(request.nextUrl.searchParams, 'status');
+    const stockFilter = readArrayParam(request.nextUrl.searchParams, 'stock');
+    const duesFilter = readArrayParam(request.nextUrl.searchParams, 'dues');
     const payload = await getLocationsLandingPayload(
       claims.tenant_id,
       request.nextUrl.searchParams.get('period'),
     );
-    return timedJson(payload);
+    const filteredLocations = payload.locations.filter((row) => {
+      const statusOk =
+        statusFilter.length === 0 ||
+        statusFilter.some((value) => {
+          if (value === 'Active') return row.is_active;
+          if (value === 'Inactive') return !row.is_active;
+          return false;
+        });
+      const stockOk =
+        stockFilter.length === 0 ||
+        stockFilter.some((value) => {
+          if (value === 'In Stock') return row.stock_status === 'clear';
+          if (value === 'Low Stock') return row.stock_status === 'low_stock';
+          if (value === 'Out of Stock') return row.stock_status === 'out_of_stock';
+          return false;
+        });
+      const duesOk =
+        duesFilter.length === 0 ||
+        duesFilter.some((value) => {
+          if (value === 'Due') return row.outstanding_dues > 0;
+          if (value === 'Overdue') return row.outstanding_dues > 0 && (row.oldest_unpaid_days ?? 0) > 30;
+          return false;
+        });
+      const searchOk = !search || [row.name, row.type, row.city, row.address_text].some((value) => value.toLowerCase().includes(search));
+      return statusOk && stockOk && duesOk && searchOk;
+    });
+    return timedJson({ ...payload, locations: filteredLocations });
   } catch (error: any) {
     console.error('[GET /api/tenant/locations/landing]', error?.code, error?.message);
     return timedJson({ error: 'Failed to fetch locations landing' }, { status: 500 });

@@ -15,6 +15,7 @@ import {
   StatusTag,
   V3CalloutPanel,
 } from '@/components/seller/layout';
+import { PerformanceCard } from '@/components/seller/detail';
 import { ErrorState } from '@/components/ui/empty-state';
 import { formatCompactInr, formatInr } from '@/lib/utils';
 import { cn } from '@/lib/utils';
@@ -139,17 +140,17 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
         }))}
       />
       <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <section className="rounded-[14px] border border-cream-300 bg-white">
-          <div className="flex items-center justify-between border-b border-cream-200 px-5 py-4">
-            <div>
-              <h2 className="text-md font-semibold text-cream-900">Brand performance</h2>
-              <p className="text-sm text-cream-600">Revenue share for the selected period</p>
-            </div>
+        <PerformanceCard
+          title="Brand performance"
+          subtitle="Revenue share for the selected period"
+          actions={(
             <Link href="/brands" className="text-sm font-semibold text-teal-700 no-underline">
               All brands
             </Link>
-          </div>
-          <div className="space-y-3 p-5">
+          )}
+          bodyClassName="p-5"
+        >
+          <div className="space-y-3">
             {admin.top_brands.length === 0 ? (
               <p className="text-sm text-cream-600">No brand data yet.</p>
             ) : (
@@ -169,7 +170,7 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
               ))
             )}
           </div>
-        </section>
+        </PerformanceCard>
         <section className="rounded-[14px] border border-cream-300 bg-white">
           <div className="flex items-center justify-between border-b border-cream-200 px-5 py-4">
             <div>

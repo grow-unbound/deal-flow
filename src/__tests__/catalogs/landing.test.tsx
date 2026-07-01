@@ -7,6 +7,7 @@ const useFlagMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
+  usePathname: () => '/campaigns',
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -16,9 +17,10 @@ vi.mock('@/hooks/useCatalogs', () => ({
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlag: (...args: unknown[]) => useFlagMock(...args),
+  useFlagState: (...args: unknown[]) => useFlagMock(...args),
 }));
 
-import CatalogsPage from '../../../app/(seller)/campaigns/page';
+import { CatalogsLandingClient } from '@/components/seller/catalogs/CatalogsLandingClient';
 
 describe('catalogs landing page', () => {
   beforeEach(() => {
@@ -48,56 +50,79 @@ describe('catalogs landing page', () => {
       },
     });
 
-    render(<CatalogsPage />);
+    render(<CatalogsLandingClient initialData={null} initialPeriod="month" />);
 
-    expect(screen.getByText('Live catalogs')).toBeInTheDocument();
+    expect(screen.getByText('Live campaigns')).toBeInTheDocument();
     expect(screen.getByText('3')).toBeInTheDocument();
   });
 
-  it('shows draft badge style on draft tile', () => {
+  it('filters campaigns by status dropdown options', () => {
     useTenantCatalogsMock.mockReturnValue({
       isLoading: false,
       isError: false,
       data: {
         kpis: {
-          live_catalogs: 0,
+          live_catalogs: 1,
           draft_catalogs: 1,
           ended_catalogs: 0,
-          gmv_mtd: 0,
-          gmv_prev_mtd: 0,
-          gmv_growth_pct: 0,
-          avg_conversion_pct: 0,
-          orders_attributed_mtd: 0,
+          gmv_mtd: 10000,
+          gmv_prev_mtd: 8000,
+          gmv_growth_pct: 25,
+          avg_conversion_pct: 2.1,
+          orders_attributed_mtd: 4,
         },
         todays_read: { needs_attention: [], top_performers: [], top_risers: [] },
         catalogs: [
           {
-            id: 'cat-draft',
-            name: 'Draft Catalog',
-            initials: 'DC',
+            id: 'live-1',
+            name: 'Live Campaign',
+            initials: 'LC',
             hue: 'teal',
-            status: { value: 'draft', label: 'Draft', tone: 'warning' },
+            status: { value: 'published', label: 'Live', tone: 'success' },
             cohort_name: 'Tier A',
             products_count: 10,
-            brands_count: 4,
+            brands_count: 2,
+            gmv: 12000,
+            orders: 5,
+            views: 0,
+            conversion_pct: 0,
+            valid_from: '2026-05-01T00:00:00Z',
+            valid_to: '2026-06-10T00:00:00Z',
+            valid_until_label: '10 Jun',
+            days_left: 10,
+            created_at: '2026-05-20T00:00:00Z',
+            growth_pct: 20,
+          },
+          {
+            id: 'draft-1',
+            name: 'Draft Campaign',
+            initials: 'DC',
+            hue: 'ember',
+            status: { value: 'draft', label: 'Draft', tone: 'warning' },
+            cohort_name: 'Tier B',
+            products_count: 4,
+            brands_count: 1,
             gmv: 0,
             orders: 0,
             views: 0,
             conversion_pct: 0,
-            valid_from: '2026-05-01T00:00:00Z',
-            valid_to: '2026-06-01T00:00:00Z',
-            valid_until_label: '01 Jun',
-            days_left: 2,
-            created_at: '2026-05-20T00:00:00Z',
+            valid_from: '2026-05-03T00:00:00Z',
+            valid_to: '2026-06-03T00:00:00Z',
+            valid_until_label: '03 Jun',
+            days_left: 3,
+            created_at: '2026-05-22T00:00:00Z',
             growth_pct: 0,
           },
         ],
       },
     });
 
-    render(<CatalogsPage />);
+    render(<CatalogsLandingClient initialData={null} initialPeriod="month" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Status: All' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Draft' }));
 
-    expect(screen.getByText('DRAFT')).toHaveClass('bg-amber-100');
+    expect(screen.getByText('Draft Campaign')).toBeInTheDocument();
+    expect(screen.queryByText('Live Campaign')).not.toBeInTheDocument();
   });
 
   it('renders expiring soon row in Needs attention callout', () => {
@@ -141,55 +166,9 @@ describe('catalogs landing page', () => {
       },
     });
 
-    render(<CatalogsPage />);
+    render(<CatalogsLandingClient initialData={null} initialPeriod="month" />);
 
     expect(screen.getByText(/Expires in 3d/i)).toBeInTheDocument();
   });
 
-  it('navigates to catalog detail on tile click', () => {
-    useTenantCatalogsMock.mockReturnValue({
-      isLoading: false,
-      isError: false,
-      data: {
-        kpis: {
-          live_catalogs: 1,
-          draft_catalogs: 0,
-          ended_catalogs: 0,
-          gmv_mtd: 10000,
-          gmv_prev_mtd: 8000,
-          gmv_growth_pct: 25,
-          avg_conversion_pct: 0,
-          orders_attributed_mtd: 2,
-        },
-        todays_read: { needs_attention: [], top_performers: [], top_risers: [] },
-        catalogs: [
-          {
-            id: 'cat-123',
-            name: 'Summer Pours',
-            initials: 'SP',
-            hue: 'teal',
-            status: { value: 'published', label: 'Live', tone: 'success' },
-            cohort_name: 'Tier A',
-            products_count: 5,
-            brands_count: 2,
-            gmv: 10000,
-            orders: 2,
-            views: 0,
-            conversion_pct: 0,
-            valid_from: '2026-05-01T00:00:00Z',
-            valid_to: '2026-06-01T00:00:00Z',
-            valid_until_label: '01 Jun',
-            days_left: 4,
-            created_at: '2026-05-20T00:00:00Z',
-            growth_pct: 5,
-          },
-        ],
-      },
-    });
-
-    render(<CatalogsPage />);
-    fireEvent.click(screen.getByText('Summer Pours'));
-
-    expect(pushMock).toHaveBeenCalledWith('/catalogs/cat-123');
-  });
 });

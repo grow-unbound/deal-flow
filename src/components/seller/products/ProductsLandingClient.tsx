@@ -130,6 +130,7 @@ function ProductsLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-products-landing',
     scopeKey: period,
+    version: 2,
     initialState: {
       search: '',
       sortBy: 'GMV (high → low)' as SortOption,
@@ -147,7 +148,7 @@ function ProductsLandingContent({
   const [addProductOpen, setAddProductOpen] = useState(false);
 
   const debouncedSearch = useDebounce(search, 300);
-  const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantProductsInfinite(
+  const { data, isLoading, isError, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantProductsInfinite(
     period,
     { search: debouncedSearch, ...filters },
   );
@@ -265,7 +266,7 @@ function ProductsLandingContent({
           ...(isSellerAssistant
             ? [{
                 label: `Units moved · ${metricSuffix}`,
-                value: `${allProducts.reduce((sum: number, product: TenantProduct) => sum + Number(product.units_mtd ?? 0), 0)}`,
+                value: `${summaryProducts.reduce((sum: number, product: TenantProduct) => sum + Number(product.units_mtd ?? 0), 0)}`,
                 sub: 'Operational volume this period',
               }]
             : [{
@@ -281,8 +282,8 @@ function ProductsLandingContent({
           {
             kind: 'risk' as const,
             eyebrow: 'Needs attention',
-            hint: `${firstPage?.todays_read?.needs_attention?.length ?? 0}`,
-            rows: (firstPage?.todays_read?.needs_attention ?? []).map((row) => ({
+            hint: `${summaryData?.todays_read?.needs_attention?.length ?? 0}`,
+            rows: (summaryData?.todays_read?.needs_attention ?? []).map((row) => ({
               initials: row.brand_initials,
               hue: row.brand_hue,
               name: row.name,
@@ -294,7 +295,7 @@ function ProductsLandingContent({
             kind: 'info' as const,
             eyebrow: 'Top performers',
             hint: 'by GMV',
-            rows: (firstPage?.todays_read?.top_performers ?? []).map((row) => ({
+            rows: (summaryData?.todays_read?.top_performers ?? []).map((row) => ({
               initials: row.brand_initials,
               hue: row.brand_hue,
               name: row.name,
@@ -306,7 +307,7 @@ function ProductsLandingContent({
             kind: 'opportunity' as const,
             eyebrow: 'Top risers',
             hint: 'fastest growth',
-            rows: (firstPage?.todays_read?.top_risers ?? []).map((row) => ({
+            rows: (summaryData?.todays_read?.top_risers ?? []).map((row) => ({
               initials: row.brand_initials,
               hue: row.brand_hue,
               name: row.name,
@@ -326,8 +327,9 @@ function ProductsLandingContent({
         hideViewToggle
         groups={groups}
         searchValue={search}
+        searchLoading={Boolean(debouncedSearch.trim()) && (isFetching || isFetchingNextPage)}
         onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-        sortOptions={isSellerAssistant ? ['On hand (low → high)'] : [...SORT_OPTIONS]}
+        sortOptions={[...SORT_OPTIONS]}
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
         </>
@@ -355,18 +357,18 @@ function ProductsLandingContent({
           />
         }
         columns={[
-          { label: 'Product', width: 340, className: 'px-5' },
-          { label: 'Brand', className: 'px-5' },
-          { label: 'On hand', align: 'right', className: 'px-5' },
-          { label: 'Days cover', align: 'right', className: 'px-5' },
-          { label: `Units · ${metricSuffix}`, align: 'right', className: 'px-5' },
-          ...(isSellerAssistant ? [] : [
-            { label: 'Revenue', align: 'right' as const, className: 'px-5' },
-            { label: 'Growth', className: 'px-5' },
-          ]),
-          { label: 'Status', className: 'px-5' },
+          { label: 'Product', width: 320, minWidth: 320, maxWidth: 420, className: 'px-5' },
+          { label: 'Brand', width: 200, minWidth: 200, maxWidth: 260, className: 'px-5' },
+          { label: 'Category', width: 150, minWidth: 150, maxWidth: 220, className: 'px-5' },
+          { label: 'Stock Available', align: 'right', width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
+          { label: 'Days Cover', align: 'right', width: 130, minWidth: 130, maxWidth: 160, className: 'px-5' },
+          { label: `Units Sold · ${metricSuffix}`, align: 'right', width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
+          { label: 'Revenue', align: 'right' as const, width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
+          { label: 'Growth', width: 120, minWidth: 120, maxWidth: 150, className: 'px-5' },
+          { label: 'Status', width: 150, minWidth: 150, maxWidth: 190, className: 'px-5' },
           { width: 40, className: 'px-4' },
         ]}
+        tableMinWidth={1640}
       >
         {displayRows.map((product: TenantProduct, index: number) => {
           const brandName = product.brand_name ?? 'Unknown brand';
@@ -377,6 +379,7 @@ function ProductsLandingContent({
           const growthPct = Number(product.growth_pct ?? 0);
           const sku = product.master_product?.master_sku ?? product.internal_sku;
           const category = product.category_name ?? 'Uncategorized';
+          const uom = product.default_uom ?? 'units';
           const tone = product.status_tone ?? (onHand === 0 ? 'danger' : daysCover < 14 ? 'warning' : 'success');
           const label = product.status_label ?? (onHand === 0 ? 'Out of stock' : daysCover < 14 ? 'Low stock' : 'On pace');
 
@@ -397,7 +400,7 @@ function ProductsLandingContent({
                   <div className="min-w-0">
                     <p className="truncate text-base font-medium text-cream-900">{product.display_name}</p>
                     <p className="mt-0.5 text-sm text-cream-700">
-                      {sku} · {toLabelCase(category)}
+                      {sku}
                     </p>
                   </div>
                 </div>
@@ -408,27 +411,33 @@ function ProductsLandingContent({
                   <span className="text-sm text-cream-900">{brandName}</span>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{onHand}</td>
+              <td className="px-5 py-3.5 text-base text-cream-900">
+                <span className="text-sm text-cream-900">{toLabelCase(category)}</span>
+              </td>
+              <td className="px-5 py-3.5 text-right">
+                <div className="flex flex-col items-end">
+                  <span className="font-mono text-base tabular-nums text-cream-900">{onHand}</span>
+                  <span className="mt-1 text-xs text-cream-500">{uom}</span>
+                </div>
+              </td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
-                {daysCover === 0 ? (
-                  <span className="font-semibold text-danger-700">0d</span>
-                ) : daysCover < 7 ? (
-                  <span className="font-semibold text-warning-700">{daysCover}d</span>
-                ) : (
-                  <span>{daysCover}d</span>
-                )}
+                <div className="flex flex-col items-end">
+                  {daysCover === 0 ? (
+                    <span className="font-semibold text-danger-700">0d</span>
+                  ) : daysCover < 7 ? (
+                    <span className="font-semibold text-warning-700">{daysCover}d</span>
+                  ) : (
+                    <span>{daysCover}d</span>
+                  )}
+                </div>
               </td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{unitsMtd}</td>
-              {!isSellerAssistant ? (
-                <>
-                  <td className="px-5 py-3.5 text-right text-base text-cream-900">
-                    <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatCompactInr(gmvMtd)}</span>
-                  </td>
-                  <td className="px-5 py-3.5 text-base text-cream-900">
-                    <GrowthPill value={growthPct} />
-                  </td>
-                </>
-              ) : null}
+              <td className="px-5 py-3.5 text-right text-base text-cream-900">
+                <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatCompactInr(gmvMtd)}</span>
+              </td>
+              <td className="px-5 py-3.5 text-base text-cream-900">
+                <GrowthPill value={growthPct} />
+              </td>
               <td className="px-5 py-3.5 text-base text-cream-900">
                 <StatusTag tone={tone} label={label} />
               </td>

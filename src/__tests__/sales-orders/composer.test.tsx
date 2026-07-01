@@ -17,6 +17,7 @@ const useEstimateProductSearchMock = vi.fn();
 const useDebouncedSalesOrderStockCheckMock = vi.fn();
 const useNextSalesOrderNumberMock = vi.fn();
 const useEstimateComposerSOMock = vi.fn();
+const useTenantLocationsMock = vi.fn();
 const apiPostMock = vi.fn();
 const apiPatchMock = vi.fn();
 
@@ -46,6 +47,10 @@ vi.mock('@/hooks/useDocumentBuyerPicker', () => ({
     data: [{ id: 'buyer-1', business_name: 'Acme Retail', place_of_supply: 'Delhi' }],
     isLoading: false,
   }),
+}));
+
+vi.mock('@/hooks/useTenantLocations', () => ({
+  useTenantLocations: (...args: unknown[]) => useTenantLocationsMock(...args),
 }));
 
 vi.mock('@/hooks/useSalesOrders', () => ({
@@ -203,6 +208,15 @@ describe('DocComposerSalesOrder', () => {
     useBuyerSalesOrderContextMock.mockReturnValue({ data: null, isLoading: false });
     useDebouncedSalesOrderStockCheckMock.mockReturnValue({ data: [], isLoading: false });
     useNextSalesOrderNumberMock.mockReturnValue({ data: 'SO-2026-00001', isLoading: false });
+    useTenantLocationsMock.mockReturnValue({
+      data: {
+        locations: [
+          { id: 'loc-1', name: 'Main warehouse', is_default: true, deleted_at: null },
+          { id: 'loc-2', name: 'North depot', is_default: false, deleted_at: null },
+        ],
+      },
+      isLoading: false,
+    });
     useEstimateComposerSOMock.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -230,6 +244,21 @@ describe('DocComposerSalesOrder', () => {
     expect(screen.getByText('Sales order #')).toBeInTheDocument();
     expect(screen.getByText('SO-2026-00001')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Confirm order/i })).toBeDisabled();
+  });
+
+  it('shows the IST create date and loads location options', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-30T20:30:00.000Z'));
+
+    try {
+      renderComposer({ mode: 'create' });
+
+      expect(screen.getByText('01/07/2026')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('combobox'));
+      expect(screen.getByText('Main warehouse')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows stock warning and swaps footer CTA to confirm with backorder', async () => {

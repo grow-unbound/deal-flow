@@ -1,6 +1,7 @@
 import type { SalesOrderComposerDocument, SalesOrderComposerLineInput } from '@/types/sales-order-composer';
 
 import type { JWTClaims } from '@/lib/auth';
+import { isoDateInTimeZone } from '@/lib/date-utils';
 import {
   canAccessDocumentLocation,
   loadAccessibleSellerLocations,
@@ -312,7 +313,7 @@ export async function loadTenantSalesOrderComposer(
   }
 
   const placedAt = (order.placed_at as string | null | undefined) ?? null;
-  const orderDate = placedAt ? placedAt.slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const orderDate = placedAt ? placedAt.slice(0, 10) : isoDateInTimeZone(new Date());
   const expectedDelivery = order.expected_delivery
     ? String(order.expected_delivery).slice(0, 10)
     : orderDate;

@@ -3,6 +3,34 @@ export function isoDateString(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+export const IST_TIME_ZONE = 'Asia/Kolkata';
+
+function getDatePartsInTimeZone(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+
+  const values = new Map(parts.map((part) => [part.type, part.value]));
+  return {
+    year: Number(values.get('year')),
+    month: Number(values.get('month')),
+    day: Number(values.get('day')),
+  };
+}
+
+export function isoDateInTimeZone(date: Date, timeZone = IST_TIME_ZONE): string {
+  const { year, month, day } = getDatePartsInTimeZone(date, timeZone);
+  return isoDateString(new Date(Date.UTC(year, month - 1, day)));
+}
+
+export function offsetIsoDateInTimeZone(date: Date, days: number, timeZone = IST_TIME_ZONE): string {
+  const { year, month, day } = getDatePartsInTimeZone(date, timeZone);
+  return isoDateString(new Date(Date.UTC(year, month - 1, day + days)));
+}
+
 /** Alias used by composer forms — YYYY-MM-DD for native date input compatibility */
 export function isoDateInput(value: Date): string {
   return isoDateString(value);

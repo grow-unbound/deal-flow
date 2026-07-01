@@ -29,6 +29,7 @@ import { FEATURE_FLAGS } from '@/constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useTenantSettings } from '@/hooks/useTenantSettings';
+import { useTenantLocations } from '@/hooks/useTenantLocations';
 import { composerSubmitFooterLabel, useComposerLeaveGuard } from '@/hooks/useComposerLeaveGuard';
 import { useDocumentBuyerPicker } from '@/hooks/useDocumentBuyerPicker';
 import {
@@ -70,16 +71,10 @@ import {
   computeTotals,
   defaultPaymentTerms,
 } from '@/lib/documents/composer-math';
+import { isoDateInTimeZone, offsetIsoDateInTimeZone } from '@/lib/date-utils';
 import { formatCompactInr } from '@/lib/utils';
 
 const BASE_PRICING_OPTION = '__base__';
-
-function isoDateOffset(daysFromToday: number) {
-  const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  date.setDate(date.getDate() + daysFromToday);
-  return date.toISOString().slice(0, 10);
-}
 
 function buildNewEstimateDraft(estimateNumber = 'Estimating next number...'): EstimateComposerDocument {
   return {
@@ -90,8 +85,8 @@ function buildNewEstimateDraft(estimateNumber = 'Estimating next number...'): Es
     location_id: null,
     location_name: null,
     available_locations: [],
-    estimate_date: isoDateOffset(0),
-    valid_until: isoDateOffset(14),
+    estimate_date: isoDateInTimeZone(new Date()),
+    valid_until: offsetIsoDateInTimeZone(new Date(), 14),
     buyer_po_ref: '',
     place_of_supply: '',
     seller_note: '',
@@ -195,6 +190,7 @@ export function DocComposerEstimate({
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const estimatesFlag = useFlagState('ESTIMATES');
   const { data: tenantSettings } = useTenantSettings();
+  const tenantLocationsQuery = useTenantLocations();
   const gstInclusive = tenantSettings?.unified.business_policy.gst_inclusive ?? false;
 
   const [workingId, setWorkingId] = useState<string | null>(estimateId ?? null);
@@ -392,6 +388,20 @@ export function DocComposerEstimate({
     () => (productSearchQuery.data ?? []).filter((row) => !activeProductIds.has(row.tenant_product_id)),
     [productSearchQuery.data, activeProductIds],
   );
+  const createModeLocationOptions = useMemo(
+    () =>
+      (tenantLocationsQuery.data?.locations ?? [])
+        .filter((location) => location.deleted_at == null)
+        .map((location) => ({
+          id: location.id,
+          name: location.name,
+          is_default: location.is_default,
+        })),
+    [tenantLocationsQuery.data],
+  );
+  const availableLocationOptions = mode === 'create'
+    ? createModeLocationOptions
+    : (documentState?.available_locations ?? []);
   const dirtyGuard = useDirtyCloseGuard({
     isDirty: dirty,
     onConfirmClose: () => router.push(closeTarget),
@@ -668,12 +678,6 @@ export function DocComposerEstimate({
         }
         titleActions={(
           <>
-            {diffLines.length > 0 ? (
-              <Button type="button" variant="outline" size="sm" className="gap-2">
-                <Eye className="h-4 w-4" />
-                Preview PDF
-              </Button>
-            ) : null}
             <Button type="button" variant="ghost" className="gap-2" disabled={isSubmitting} onClick={() => dirtyGuard.handleOpenChange(false)}>
               <X className="h-3.5 w-3.5" />
               Close
@@ -686,7 +690,7 @@ export function DocComposerEstimate({
             docNumber={documentState.estimate_number}
             locationId={documentState.location_id}
             locationName={documentState.location_name}
-            availableLocations={documentState.available_locations}
+            availableLocations={availableLocationOptions}
             dateIssued={documentState.estimate_date}
             secondDate={documentState.valid_until}
             buyerPoRef={documentState.buyer_po_ref}
@@ -752,6 +756,14 @@ export function DocComposerEstimate({
             productQuery={productQuery}
             productResults={filteredProductSearchResults}
             searchOpen={searchOpen}
+            productSearchLoading={productSearchQuery.isLoading}
+            productSearchFetchingNextPage={productSearchQuery.isFetchingNextPage}
+            productSearchHasMore={productSearchQuery.hasNextPage}
+            onProductSearchLoadMore={() => {
+              if (productSearchQuery.hasNextPage && !productSearchQuery.isFetchingNextPage) {
+                void productSearchQuery.fetchNextPage();
+              }
+            }}
             notesExpanded={false}
             freightExpanded={false}
             internalExpanded={false}

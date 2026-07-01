@@ -1,9 +1,10 @@
 import { cn } from '@/lib/utils';
+import type { ReactNode } from 'react';
 
 interface InsightTile {
   label: string;
-  value: string;
-  sub?: string;
+  value: ReactNode;
+  sub?: ReactNode;
   delta?: string;
   deltaTone?: 'up' | 'down';
   tone?: 'accent' | 'warn';
@@ -11,9 +12,10 @@ interface InsightTile {
 
 interface InsightStrip4Props {
   tiles: InsightTile[];
+  className?: string;
 }
 
-export function InsightStrip4({ tiles }: InsightStrip4Props) {
+export function InsightStrip4({ tiles, className }: InsightStrip4Props) {
   const columnClass =
     tiles.length <= 1
       ? 'grid-cols-1'
@@ -24,7 +26,7 @@ export function InsightStrip4({ tiles }: InsightStrip4Props) {
           : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-4';
 
   return (
-    <section className={cn('mt-5 mb-0 grid gap-3', columnClass)}>
+    <section className={cn('mt-5 mb-0 grid gap-3', columnClass, className)}>
       {tiles.map((tile, index) => (
         <article
           key={`${tile.label}-${index}`}

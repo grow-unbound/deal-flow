@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { InsightStrip4 } from '@/components/seller/layout';
 
 interface MetaTile {
   label: string;
@@ -16,19 +17,14 @@ export function MetaStrip4({ tiles }: MetaStrip4Props) {
   }
 
   return (
-    <section className="mt-6 mb-0 grid grid-cols-4 gap-3">
-      {tiles.map((tile, index) => (
-        <article key={`${tile.label}-${index}`} className="min-h-[112px] rounded-[14px] border border-cream-300 bg-white px-[18px] py-[14px]">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">{tile.label}</p>
-          <p className="mt-1.5 font-display text-xl font-semibold leading-[1.05] text-[#4A3F35]">{tile.value}</p>
-          {tile.sub ? (
-            <div className="mt-1.5 text-xs leading-[1.35] text-cream-700 [&_.up]:font-semibold [&_.up]:text-success-500 [&_.down]:font-semibold [&_.down]:text-danger-500 [&_.hint]:text-cream-600">
-              {tile.sub}
-            </div>
-          ) : null}
-        </article>
-      ))}
-    </section>
+    <InsightStrip4
+      className="mt-6 mb-0"
+      tiles={tiles.map((tile) => ({
+        label: tile.label,
+        value: tile.value,
+        sub: tile.sub,
+      }))}
+    />
   );
 }
 

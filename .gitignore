@@ -51,3 +51,10 @@ bun.lockb
 
 #Playwright
 .playwright-mcp/
+
+# Agents OpenAI
+.agents/
+
+#Codegraph
+.codegraph/
+skills-lock.json

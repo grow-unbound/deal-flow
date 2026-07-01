@@ -98,7 +98,6 @@ export async function loadTenantSalesOrderDetail(
   const order = orderRow as Record<string, unknown>;
   if (order.tenant_id !== tenantId) return 'forbidden';
   if (viewerClaims && !canAccessDocumentLocation(viewerClaims, order.location_id)) return 'forbidden';
-  if (order.status === 'draft') return 'notfound';
 
   const buyerId = typeof order.buyer_id === 'string' ? order.buyer_id : null;
   const estimateId = typeof order.estimate_id === 'string' ? order.estimate_id : null;

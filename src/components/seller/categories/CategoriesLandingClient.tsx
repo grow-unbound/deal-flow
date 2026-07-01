@@ -14,6 +14,7 @@ import {
   PageWrap,
   V3CalloutPanel,
   FilterBar,
+  type FilterBarGroup,
   GrowthPill,
 } from '@/components/seller/layout';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
@@ -26,22 +27,11 @@ import { CategoryFormSheet } from '@/components/seller/settings/CategoryFormShee
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 
-type FilterChip = 'All' | 'Active' | 'Empty';
 type SortOption = 'GMV (high → low)' | 'Name (A → Z)' | 'OOS SKUs (high → low)';
 
-const FILTER_CHIPS: FilterChip[] = ['All', 'Active', 'Empty'];
+const STATUS_OPTIONS = ['Active', 'Inactive'] as const;
+const PRODUCT_OPTIONS = ['Has Products', 'Empty'] as const;
 const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'Name (A → Z)', 'OOS SKUs (high → low)'];
-
-function DaysCoverBadge({ value }: { value: number | null }) {
-  if (value === null) return <span className="text-cream-400">—</span>;
-  const cls =
-    value < 7
-      ? 'text-danger-600 font-semibold'
-      : value < 14
-        ? 'text-amber-600 font-medium'
-        : 'text-cream-700';
-  return <span className={cls}>{value}d</span>;
-}
 
 function CategoriesLoadingSkeleton() {
   return (
@@ -93,35 +83,68 @@ function CategoriesLandingContent({
   const queryClient = useQueryClient();
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const { period, setPeriod, horizonLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
-  const { data, isLoading, isError } = useCategoryLanding(period, initialData);
-  const retainedData = useRetainedValue(data);
-  const landingData = data ?? retainedData;
-
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-categories-landing',
     scopeKey: period,
+    version: 2,
     initialState: {
       search: '',
-      activeChip: 'All' as FilterChip,
+      filters: {
+        status: [] as string[],
+        products: [] as string[],
+      },
       sortBy: 'GMV (high → low)' as SortOption,
     },
   });
+  const { search, sortBy } = routeState;
+  const filters = routeState.filters ?? { status: [], products: [] };
+  const { data, isLoading, isError } = useCategoryLanding(period, { search, status: filters.status, products: filters.products }, initialData);
+  const retainedData = useRetainedValue(data);
+  const landingData = data ?? retainedData;
   useRouteScrollRestoration({
     storageKey: 'seller-categories-landing',
     scopeKey: period,
     ready: !isLoading,
   });
-
-  const { search, activeChip, sortBy } = routeState;
+  const groups: FilterBarGroup[] = [
+    {
+      key: 'status',
+      label: 'Status',
+      options: STATUS_OPTIONS.map((value) => ({ value, label: value })),
+      values: filters.status ?? [],
+      onChange: (values) => setRouteState((current) => ({
+        ...current,
+        filters: { ...(current.filters ?? filters), status: values },
+      })),
+    },
+    {
+      key: 'products',
+      label: 'Products',
+      options: PRODUCT_OPTIONS.map((value) => ({ value, label: value })),
+      values: filters.products ?? [],
+      onChange: (values) => setRouteState((current) => ({
+        ...current,
+        filters: { ...(current.filters ?? filters), products: values },
+      })),
+    },
+  ];
   const rows = landingData?.rows ?? [];
 
   const filtered = useMemo<CategoryTableRow[]>(() => {
     const q = search.trim().toLowerCase();
     return rows
       .filter((r) => {
-        if (activeChip === 'Active') return r.is_active && r.active_sku_count > 0;
-        if (activeChip === 'Empty') return r.active_sku_count === 0;
-        return true;
+        const statusFilter = filters.status ?? [];
+        const productFilter = filters.products ?? [];
+        const statusOk =
+          statusFilter.length === 0 ||
+          statusFilter.includes('All') ||
+          (statusFilter.includes('Active') ? r.is_active : !r.is_active);
+        const productOk =
+          productFilter.length === 0 ||
+          productFilter.includes('All') ||
+          (productFilter.includes('Has Products') ? r.active_sku_count > 0 : r.active_sku_count === 0);
+        return statusOk && productOk;
       })
       .filter((r) => !q || r.name.toLowerCase().includes(q))
       .sort((a, b) => {
@@ -129,7 +152,7 @@ function CategoriesLandingContent({
         if (sortBy === 'OOS SKUs (high → low)') return b.oos_sku_count - a.oos_sku_count;
         return b.gmv_mtd - a.gmv_mtd;
       });
-  }, [rows, search, activeChip, sortBy]);
+  }, [filters.products, filters.status, rows, search, sortBy]);
 
   if (isLoading && !landingData) return <CategoriesLoadingSkeleton />;
   if (isError && !landingData) {
@@ -238,33 +261,34 @@ function CategoriesLandingContent({
           <FilterBar
             count={`${filtered.length} categories`}
             searchPlaceholder="Search category…"
-            chips={FILTER_CHIPS}
-            activeChip={activeChip}
+            chips={[]}
+            activeChip=""
             sortBy={sortBy}
             hideViewToggle
+            groups={groups}
             searchValue={search}
             onSearchChange={(value) => setRouteState((s) => ({ ...s, search: value }))}
-            onChipChange={(chip) => setRouteState((s) => ({ ...s, activeChip: chip as FilterChip }))}
             sortOptions={SORT_OPTIONS}
             onSortChange={(option) => setRouteState((s) => ({ ...s, sortBy: option as SortOption }))}
           />
 
           <LandingTable
-            columns={[
-              { label: 'Category', minWidth: 260, className: 'px-5' },
-              { label: `GMV · ${metricSuffix}`, align: 'right', minWidth: 140, className: 'px-5' },
-              { label: 'Growth', align: 'right', minWidth: 120, className: 'px-5' },
-              { label: 'SKUs', align: 'right', minWidth: 120, className: 'px-5' },
-              { label: 'Avg days cover', align: 'right', minWidth: 140, className: 'px-5' },
+          columns={[
+              { label: 'Category', minWidth: 280, maxWidth: 360, className: 'px-5' },
+              { label: 'Brands', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
+              { label: `GMV · ${metricSuffix}`, align: 'right', minWidth: 140, maxWidth: 160, className: 'px-5' },
+              { label: 'Growth', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
+              { label: 'SKUs', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
               { width: 40, className: 'px-4' },
             ]}
+            tableMinWidth={1080}
             showEmptyState={filtered.length === 0}
             emptyState={
               <EmptyState
                 icon={<Tag size={28} strokeWidth={1.5} />}
-                heading={search.trim() || activeChip !== 'All' ? 'No matching categories' : 'No categories yet'}
+                heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching categories' : 'No categories yet'}
                 description={
-                  search.trim() || activeChip !== 'All'
+                  search.trim() || groups.some((group) => group.values.length > 0)
                     ? 'Try a different search or filter.'
                     : 'Add your first category to start tracking performance.'
                 }
@@ -287,11 +311,11 @@ function CategoriesLandingContent({
                     <EntityAvatar initials={row.initials} hue={row.is_active ? 'teal' : 'cream'} size={38} />
                     <div className="min-w-0">
                       <p className="truncate text-base font-medium text-cream-900">{row.name}</p>
-                      <p className="mt-0.5 truncate text-xs text-cream-500">
-                        {row.brand_count} brand{row.brand_count !== 1 ? 's' : ''}
-                      </p>
                     </div>
                   </div>
+                </td>
+                <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                  {row.brand_count}
                 </td>
                 <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                   {row.gmv_mtd > 0 ? formatCompactInr(row.gmv_mtd) : '—'}
@@ -304,9 +328,6 @@ function CategoriesLandingContent({
                   {row.oos_sku_count > 0 && (
                     <span className="ml-1 text-xs text-danger-600">({row.oos_sku_count} OOS)</span>
                   )}
-                </td>
-                <td className="px-5 py-3.5 text-right text-sm">
-                  <DaysCoverBadge value={row.avg_days_cover} />
                 </td>
                 <td className="px-4 py-3.5 text-right text-cream-400">
                   <ChevronRight size={16} />

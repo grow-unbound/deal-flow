@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { buildGeneralSettingsView } from '@/lib/tenant-settings/build-general-view';
 import { GstinSchema, TenantSettingsBusinessSchema, TenantSettingsPatchSchema } from '@/types/tenant-settings';
 
 describe('GstinSchema', () => {
@@ -105,5 +106,18 @@ describe('TenantSettingsPatchSchema', () => {
       business_policy: { gst_rate: 99 },
     });
     expect(r.success).toBe(false);
+  });
+});
+
+describe('buildGeneralSettingsView', () => {
+  it('defaults delivery routing threshold to 50km when missing', () => {
+    const view = buildGeneralSettingsView({}, {
+      business_name: 'Acme',
+      gstin: null,
+      primary_state: null,
+      plan: 'starter',
+    });
+
+    expect(view.delivery_routing_threshold_km).toBe(50);
   });
 });

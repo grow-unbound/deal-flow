@@ -4,6 +4,7 @@ import { BrandDetailPage } from '@/components/seller/brands/detail';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => '/brands/b1',
 }));
 
 vi.mock('@/hooks/useBrands', () => ({
@@ -25,6 +26,10 @@ vi.mock('@/hooks/useBrands', () => ({
   }),
   useUpdateTenantBrand: () => ({ mutate: vi.fn(), isPending: false }),
   useArchiveTenantBrand: () => ({ archive: vi.fn() }),
+}));
+
+vi.mock('@/components/seller/brands/AddBrandCommand', () => ({
+  AddBrandCommand: () => null,
 }));
 
 describe('brand-detail-page integration', () => {

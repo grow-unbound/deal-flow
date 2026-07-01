@@ -164,6 +164,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (payload.order_number !== undefined) updatePayload.order_number = payload.order_number;
   if (payload.buyer_id !== undefined) updatePayload.buyer_id = payload.buyer_id;
   if (payload.buyer_po_ref !== undefined) updatePayload.buyer_po_ref = payload.buyer_po_ref || null;
+  if (payload.place_of_supply !== undefined) updatePayload.place_of_supply = payload.place_of_supply || null;
   if (payload.expected_delivery !== undefined) updatePayload.expected_delivery = payload.expected_delivery || null;
   if (payload.discount_flat !== undefined) updatePayload.discount_flat = payload.discount_flat;
   if (payload.freight !== undefined) updatePayload.freight = payload.freight;

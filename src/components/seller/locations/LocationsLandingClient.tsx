@@ -8,6 +8,7 @@ import { FeatureGate } from '@/components/FeatureGate';
 import {
   EntityAvatar,
   FilterBar,
+  type FilterBarGroup,
   GrowthPill,
   InsightStrip4,
   LandingTable,
@@ -31,9 +32,9 @@ import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LocationFormSheet } from '@/components/seller/settings/LocationFormSheet';
 
 type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Outstanding dues (high → low)';
-type ChipOption = 'All' | 'Active' | 'Stock issues' | 'Has dues';
-
-const CHIPS: ChipOption[] = ['All', 'Active', 'Stock issues', 'Has dues'];
+const STATUS_OPTIONS = ['Active', 'Inactive'] as const;
+const STOCK_OPTIONS = ['In Stock', 'Low Stock', 'Out of Stock'] as const;
+const DUE_OPTIONS = ['Due', 'Overdue'] as const;
 const SORT_OPTIONS: SortOption[] = ['GMV (high → low)', 'GMV (low → high)', 'Outstanding dues (high → low)'];
 
 function LocationsLandingSkeleton() {
@@ -100,46 +101,101 @@ function LocationsLandingContent({
   const router = useRouter();
   const [sheetOpen, setSheetOpen] = useState(false);
   const { period, setPeriod, horizonLabel, options } = useSellerLandingPeriod(initialPeriod);
-  const { data, isLoading, isError, refetch } = useLocationsLanding(period, initialData);
-  const retainedData = useRetainedValue(data);
-  const landingData = data ?? retainedData;
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-locations-landing',
     scopeKey: period,
+    version: 2,
     initialState: {
       search: '',
-      activeChip: 'All' as ChipOption,
+      filters: {
+        status: [] as string[],
+        stock: [] as string[],
+        dues: [] as string[],
+      },
       sortBy: 'GMV (high → low)' as SortOption,
     },
   });
+  const search = routeState.search;
+  const sortBy = routeState.sortBy;
+  const filters = routeState.filters ?? { status: [], stock: [], dues: [] };
+  const { data, isLoading, isError, refetch } = useLocationsLanding(period, { search, status: filters.status, stock: filters.stock, dues: filters.dues }, initialData);
+  const retainedData = useRetainedValue(data);
+  const landingData = data ?? retainedData;
   useRouteScrollRestoration({
     storageKey: 'seller-locations-landing',
     scopeKey: period,
     ready: !isLoading,
   });
-
-  const search = routeState.search;
-  const activeChip = routeState.activeChip;
-  const sortBy = routeState.sortBy;
+  const groups: FilterBarGroup[] = [
+    {
+      key: 'status',
+      label: 'Status',
+      options: STATUS_OPTIONS.map((value) => ({ value, label: value })),
+      values: filters.status ?? [],
+      onChange: (values) => setRouteState((current) => ({
+        ...current,
+        filters: { ...(current.filters ?? filters), status: values },
+      })),
+    },
+    {
+      key: 'stock',
+      label: 'Stock',
+      options: STOCK_OPTIONS.map((value) => ({ value, label: value })),
+      values: filters.stock ?? [],
+      onChange: (values) => setRouteState((current) => ({
+        ...current,
+        filters: { ...(current.filters ?? filters), stock: values },
+      })),
+    },
+    {
+      key: 'dues',
+      label: 'Dues',
+      options: DUE_OPTIONS.map((value) => ({ value, label: value })),
+      values: filters.dues ?? [],
+      onChange: (values) => setRouteState((current) => ({
+        ...current,
+        filters: { ...(current.filters ?? filters), dues: values },
+      })),
+    },
+  ];
 
   const filtered = useMemo(() => {
     const rows = landingData?.locations ?? [];
     const query = search.trim().toLowerCase();
+    const statusFilter = filters.status ?? [];
+    const stockFilter = filters.stock ?? [];
+    const duesFilter = filters.dues ?? [];
 
     return rows
       .filter((row) => {
-        if (activeChip === 'All') return true;
-        if (activeChip === 'Active') return row.is_active;
-        if (activeChip === 'Stock issues') return row.stock_status !== 'clear';
-        if (activeChip === 'Has dues') return row.outstanding_dues > 0;
-        return true;
+        const statusOk =
+          statusFilter.length === 0 || statusFilter.includes('All') || (statusFilter.includes('Active') ? row.is_active : !row.is_active);
+        const stockOk =
+          stockFilter.length === 0 ||
+          stockFilter.includes('All') ||
+          stockFilter.some((value) => {
+            if (value === 'In Stock') return row.stock_status === 'clear';
+            if (value === 'Low Stock') return row.stock_status === 'low_stock';
+            if (value === 'Out of Stock') return row.stock_status === 'out_of_stock';
+            return false;
+          });
+        const duesOk =
+          duesFilter.length === 0 ||
+          duesFilter.includes('All') ||
+          duesFilter.some((value) => {
+            if (value === 'Due') return row.outstanding_dues > 0;
+            if (value === 'Overdue') return row.outstanding_dues > 0 && (row.oldest_unpaid_days ?? 0) > 0;
+            return false;
+          });
+        return statusOk && stockOk && duesOk;
       })
       .filter((row) => {
         if (!query) return true;
         return (
           row.name.toLowerCase().includes(query) ||
           row.type.toLowerCase().includes(query) ||
-          row.city.toLowerCase().includes(query)
+          row.city.toLowerCase().includes(query) ||
+          row.address_text.toLowerCase().includes(query)
         );
       })
       .sort((a, b) => {
@@ -147,7 +203,7 @@ function LocationsLandingContent({
         if (sortBy === 'GMV (low → high)') return a.gmv_mtd - b.gmv_mtd;
         return b.outstanding_dues - a.outstanding_dues;
       });
-  }, [activeChip, landingData?.locations, search, sortBy]);
+  }, [filters.dues, filters.status, filters.stock, landingData?.locations, search, sortBy]);
 
   if (isLoading && !landingData) return <LocationsLandingSkeleton />;
 
@@ -265,13 +321,13 @@ function LocationsLandingContent({
           <FilterBar
             count={`${filtered.length} locations`}
             searchPlaceholder="Search location…"
-            chips={CHIPS}
-            activeChip={activeChip}
+            chips={[]}
+            activeChip=""
             sortBy={sortBy}
             hideViewToggle
+            groups={groups}
             searchValue={search}
             onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
-            onChipChange={(chip) => setRouteState((current) => ({ ...current, activeChip: chip as ChipOption }))}
             sortOptions={[...SORT_OPTIONS]}
             onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
           />
@@ -279,26 +335,26 @@ function LocationsLandingContent({
           {filtered.length === 0 ? (
             <EmptyState
               icon={<MapPin size={28} strokeWidth={1.5} />}
-              heading={search.trim() || activeChip !== 'All' ? 'No matching locations' : 'No locations yet'}
+              heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching locations' : 'No locations yet'}
               description={
-                search.trim() || activeChip !== 'All'
+                search.trim() || groups.some((group) => group.values.length > 0)
                   ? 'Try a different search or filter.'
                   : 'Add your branches and godowns to track stock and dues per location.'
               }
             />
           ) : (
-            <LandingTable
-              columns={[
-                { label: 'Location', minWidth: 280, className: 'px-5' },
-                { label: 'Phone', minWidth: 140, className: 'px-5' },
-                { label: 'GMV · MTD', align: 'right', minWidth: 140, className: 'px-5' },
-                { label: 'Growth', minWidth: 120, className: 'px-5' },
-                { label: 'Active buyers', align: 'right', minWidth: 120, className: 'px-5' },
-                { label: 'Outstanding dues', align: 'right', minWidth: 150, className: 'px-5' },
-                { label: 'Stock status', minWidth: 180, className: 'px-5' },
+          <LandingTable
+            columns={[
+                { label: 'Location', minWidth: 280, maxWidth: 360, className: 'px-5' },
+                { label: 'Location type', minWidth: 160, maxWidth: 200, className: 'px-5' },
+                { label: 'GMV · MTD', align: 'right', minWidth: 140, maxWidth: 170, className: 'px-5' },
+                { label: 'Growth', minWidth: 120, maxWidth: 140, className: 'px-5' },
+                { label: 'Active buyers', align: 'right', minWidth: 130, maxWidth: 160, className: 'px-5' },
+                { label: 'Outstanding dues', align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
+                { label: 'Stock status', minWidth: 160, maxWidth: 200, className: 'px-5' },
                 { width: 40, className: 'px-4' },
               ]}
-              tableClassName="min-w-[1260px]"
+              tableMinWidth={1260}
             >
               {filtered.map((row) => (
                 <tr
@@ -311,12 +367,12 @@ function LocationsLandingContent({
                       <EntityAvatar size={38} initials={row.initials} hue="teal" />
                       <div className="min-w-0">
                         <p className="truncate text-base font-medium text-cream-900">{row.name}</p>
-                        <p className="mt-0.5 truncate text-xs text-cream-600">{row.type} · {row.city}</p>
+                        <p className="mt-0.5 truncate text-xs text-cream-600">{row.address_text || row.city || '—'}</p>
                       </div>
                     </div>
                   </td>
                   <td className="px-5 py-3.5 text-sm text-cream-700">
-                    {row.phone_number ?? '—'}
+                    {row.type}
                   </td>
                   <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                     {row.gmv_mtd > 0 ? formatCompactInr(row.gmv_mtd) : '—'}

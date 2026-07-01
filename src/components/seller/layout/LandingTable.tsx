@@ -18,6 +18,8 @@ interface LandingTableProps {
   className?: string;
   /** Merged onto `<table>` (e.g. `v2-table` from design system). */
   tableClassName?: string;
+  /** Optional minimum table width so the shell scrolls instead of compressing columns. */
+  tableMinWidth?: number | string;
   /** When true, render `emptyState` as the sole body row instead of `children`. */
   showEmptyState?: boolean;
   /** Shown when `showEmptyState` is true (e.g. `<EmptyState ... />`). */
@@ -29,6 +31,7 @@ export function LandingTable({
   children,
   className,
   tableClassName,
+  tableMinWidth,
   showEmptyState,
   emptyState,
 }: LandingTableProps) {
@@ -36,7 +39,10 @@ export function LandingTable({
     <ScrollableTableShell
       className={cn('rounded-b-[14px] border border-cream-300 border-t-0 bg-white', className)}
     >
-      <table className={cn('landing-table w-full min-w-[960px] table-fixed border-collapse text-base', tableClassName)}>
+      <table
+        className={cn('landing-table w-full min-w-[960px] table-fixed border-collapse text-base', tableClassName)}
+        style={tableMinWidth != null ? { minWidth: tableMinWidth } : undefined}
+      >
         <thead>
           <tr className="border-y border-cream-300 bg-white">
             {columns.map((column, index) => (

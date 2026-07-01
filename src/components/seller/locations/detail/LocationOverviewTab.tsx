@@ -1,6 +1,7 @@
 'use client';
 
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { PerformanceCard } from '@/components/seller/detail';
 import { EntityAvatar } from '@/components/seller/layout';
 import { formatCompactInr } from '@/lib/utils';
 import type { LocationDetailResponse } from '@/hooks/useLocations';
@@ -14,9 +15,7 @@ export function LocationOverviewTab({ data }: LocationOverviewTabProps) {
 
   return (
     <div className="mt-6 grid grid-cols-2 gap-6">
-      <article className="rounded-[14px] border border-cream-300 bg-white p-5">
-        <p className="text-[13px] font-semibold text-cream-950">Revenue trend</p>
-        <p className="mt-0.5 mb-4 text-[11px] text-cream-500">MTD by week</p>
+      <PerformanceCard title="Revenue trend" subtitle="MTD by week" bodyClassName="p-5">
         {data.gmv_trend.length === 0 ? (
           <div className="flex h-[180px] items-center justify-center text-sm text-cream-400">
             No orders yet
@@ -41,12 +40,9 @@ export function LocationOverviewTab({ data }: LocationOverviewTabProps) {
             </BarChart>
           </ResponsiveContainer>
         )}
-      </article>
+      </PerformanceCard>
 
-      <article className="rounded-[14px] border border-cream-300 bg-white p-5">
-        <p className="text-[13px] font-semibold text-cream-950">Inventory health</p>
-        <p className="mt-0.5 mb-4 text-[11px] text-cream-500">Current stock position</p>
-
+      <PerformanceCard title="Inventory health" subtitle="Current stock position" bodyClassName="p-5">
         <div className="mb-5 grid grid-cols-2 gap-3">
           <div className="rounded-[10px] bg-cream-50 p-3">
             <p className="text-xs text-cream-600">Active SKUs</p>
@@ -96,7 +92,7 @@ export function LocationOverviewTab({ data }: LocationOverviewTabProps) {
             ))}
           </div>
         )}
-      </article>
+      </PerformanceCard>
     </div>
   );
 }

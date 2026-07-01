@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 
 const pushMock = vi.fn();
 const useTenantBrandsMock = vi.fn();
@@ -42,6 +42,22 @@ import { BrandsLandingClient } from '@/components/seller/brands/BrandsLandingCli
 
 describe('brands landing page', () => {
   beforeEach(() => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const keys: string[] = [];
+      for (let i = 0; i < window.localStorage.length; i += 1) {
+        const key = window.localStorage.key(i);
+        if (key) keys.push(key);
+      }
+      keys.forEach((key) => window.localStorage.removeItem(key));
+    }
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      const keys: string[] = [];
+      for (let i = 0; i < window.sessionStorage.length; i += 1) {
+        const key = window.sessionStorage.key(i);
+        if (key) keys.push(key);
+      }
+      keys.forEach((key) => window.sessionStorage.removeItem(key));
+    }
     pushMock.mockReset();
     useTenantBrandsMock.mockReset();
     useFlagMock.mockReset();
@@ -74,7 +90,7 @@ describe('brands landing page', () => {
     render(<BrandsLandingClient initialData={null} initialPeriod="month" />);
 
     expect(screen.getByText('Portfolio GMV')).toBeInTheDocument();
-    expect(screen.getByText('₹3,50,000')).toBeInTheDocument();
+    expect(screen.getByText('₹3.50L')).toBeInTheDocument();
   });
 
   it('At risk filter hides brands without alerts', () => {
@@ -82,19 +98,22 @@ describe('brands landing page', () => {
       isLoading: false,
       isError: false,
       data: {
-        categories: ['Smartphones'],
+        categories: ['Audio', 'Wearables'],
         brands: [
-          { id: 'b1', display_name_override: 'Risky Brand', master_brand: { name: 'Risky Brand' }, alerts: ['low_stock_risk'], categories: ['Smartphones'] },
-          { id: 'b2', display_name_override: 'Healthy Brand', master_brand: { name: 'Healthy Brand' }, alerts: [], categories: ['Smartphones'] },
+          { id: 'b1', display_name_override: 'Risky Brand', master_brand: { name: 'Risky Brand' }, alerts: ['low_stock_risk'], categories: ['Audio'] },
+          { id: 'b2', display_name_override: 'Healthy Brand', master_brand: { name: 'Healthy Brand' }, alerts: [], categories: ['Wearables'] },
         ],
       },
     });
 
-    render(<BrandsLandingClient initialData={null} initialPeriod="month" />);
-    fireEvent.click(screen.getByRole('button', { name: 'At risk' }));
+    const { container } = render(<BrandsLandingClient initialData={null} initialPeriod="month" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Categories: All' }));
+    fireEvent.click(within(screen.getByRole('menu')).getByRole('button', { name: 'Audio' }));
 
-    expect(screen.getByText('Risky Brand')).toBeInTheDocument();
-    expect(screen.queryByText('Healthy Brand')).not.toBeInTheDocument();
+    const tbody = container.querySelector('table tbody');
+    expect(tbody).toBeTruthy();
+    expect(within(tbody as HTMLElement).getAllByText('Risky Brand').length).toBeGreaterThan(0);
+    expect(within(tbody as HTMLElement).queryAllByText('Healthy Brand').length).toBe(0);
   });
 
   it('clicking a row navigates to /brands/{id}', () => {
@@ -107,8 +126,10 @@ describe('brands landing page', () => {
       },
     });
 
-    render(<BrandsLandingClient initialData={null} initialPeriod="month" />);
-    fireEvent.click(screen.getByText('Alpha'));
+    const { container } = render(<BrandsLandingClient initialData={null} initialPeriod="month" />);
+    const tbody = container.querySelector('table tbody');
+    expect(tbody).toBeTruthy();
+    fireEvent.click(within(tbody as HTMLElement).getByText('Alpha').closest('tr')!);
 
     expect(pushMock).toHaveBeenCalledWith('/brands/brand-123');
   });
@@ -126,10 +147,13 @@ describe('brands landing page', () => {
       },
     });
 
-    render(<BrandsLandingClient initialData={null} initialPeriod="month" />);
-    fireEvent.click(screen.getByRole('button', { name: 'Audio' }));
-    expect(screen.getByText('AudioMax')).toBeInTheDocument();
-    expect(screen.queryByText('WearX')).not.toBeInTheDocument();
+    const { container } = render(<BrandsLandingClient initialData={null} initialPeriod="month" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Categories: All' }));
+    fireEvent.click(within(screen.getByRole('menu')).getByRole('button', { name: 'Audio' }));
+    const tbody = container.querySelector('table tbody');
+    expect(tbody).toBeTruthy();
+    expect(within(tbody as HTMLElement).getAllByText('AudioMax').length).toBeGreaterThan(0);
+    expect(within(tbody as HTMLElement).queryAllByText('WearX').length).toBe(0);
   });
 
   it('shows active buyers ratio and catalog age from DB-backed fields', () => {

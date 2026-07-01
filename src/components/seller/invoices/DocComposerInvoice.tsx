@@ -26,7 +26,9 @@ import {
 import { FEATURE_FLAGS } from '@/constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFlagState } from '@/hooks/useFeatureFlag';
+import { useInvoiceDetail } from '@/hooks/useInvoiceDetail';
 import { useTenantSettings } from '@/hooks/useTenantSettings';
+import { useTenantLocations } from '@/hooks/useTenantLocations';
 import { composerSubmitFooterLabel, useComposerLeaveGuard } from '@/hooks/useComposerLeaveGuard';
 import { useDocumentBuyerPicker } from '@/hooks/useDocumentBuyerPicker';
 import {
@@ -53,7 +55,9 @@ import type {
   InvoiceComposerProductSearchRow,
   InvoiceComposerSavePayload,
 } from '@/types/invoice-composer';
+import type { InvoiceDetailResponse } from '@/types/tenant-invoices';
 import { bumpSecondDateAfterFirst } from '@/lib/date-utils';
+import { isoDateInTimeZone } from '@/lib/date-utils';
 import {
   buildComposerStagedChanges,
   stagedSliceFromInvoice,
@@ -65,10 +69,6 @@ type SendChannel = 'whatsapp' | 'email' | 'download';
 
 const BASE_PRICING_OPTION = '__base__';
 
-function isoToday() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function buildNewInvoiceDraft(invoiceNumber = 'Reserving next number...'): InvoiceComposerDocument {
   return {
     id: '',
@@ -78,7 +78,7 @@ function buildNewInvoiceDraft(invoiceNumber = 'Reserving next number...'): Invoi
     location_id: null,
     location_name: null,
     available_locations: [],
-    invoice_date: isoToday(),
+    invoice_date: isoDateInTimeZone(new Date()),
     due_date: null,
     buyer_po_ref: '',
     place_of_supply: '',
@@ -94,6 +94,71 @@ function buildNewInvoiceDraft(invoiceNumber = 'Reserving next number...'): Invoi
     estimate_id: null,
     linked_order_number: null,
     linked_estimate_number: null,
+  };
+}
+
+function invoiceDetailToComposerDocument(detail: InvoiceDetailResponse): InvoiceComposerDocument {
+  return {
+    id: detail.id,
+    invoice_number: detail.doc_number,
+    status: detail.db_status,
+    buyer_id: detail.buyer_id,
+    location_id: detail.location_id,
+    location_name: detail.location_name,
+    available_locations: [],
+    invoice_date: detail.invoice_date,
+    due_date: detail.due_date,
+    buyer_po_ref: detail.buyer_po_ref ?? '',
+    place_of_supply: detail.place_of_supply ?? '',
+    seller_note: detail.seller_note,
+    freight: detail.totals.freight,
+    discount_flat: detail.totals.discount_amt,
+    round_off: detail.totals.round_off,
+    sent_at: detail.sent_at,
+    sent_channel: null,
+    items: detail.items.map((line) => ({
+      id: line.id ?? line.tenant_product_id,
+      tenant_product_id: line.tenant_product_id,
+      product_name: line.product_name,
+      sku: line.sku,
+      brand_name: line.brand_name,
+      brand_initials: line.brand_initials,
+      brand_hue: line.brand_hue,
+      hsn_code: line.hsn,
+      on_hand: 0,
+      qty: line.qty,
+      unit_price: line.rate,
+      mrp: line.mrp,
+      base_selling_price: line.rate,
+      disc_pct: line.discount_pct,
+      tax_pct: line.tax_pct ?? 0,
+      line_total: line.line_total,
+      scheme_tag: null,
+    })),
+    buyer_context: {
+      id: detail.buyer.id,
+      business_name: detail.buyer.name,
+      contact_name: detail.buyer.contact_name,
+      phone: detail.buyer.phone,
+      email: detail.buyer.email,
+      gstin: detail.buyer.gstin,
+      bill_address: detail.buyer.bill_address,
+      city: detail.buyer.city,
+      state: detail.buyer.state,
+      pincode: detail.buyer.pincode,
+      place_of_supply: detail.buyer.place_of_supply,
+      seller_state: detail.buyer.seller_state,
+      payment_terms_days: detail.buyer.payment_terms_days,
+      credit_limit: detail.buyer.credit_limit,
+      credit_used: detail.buyer.credit_used,
+      credit_available: Math.max(detail.buyer.credit_limit - detail.buyer.credit_used, 0),
+      active_pricelist: detail.buyer.active_pricelist,
+      sales_agent_name: detail.buyer.sales_agent_name,
+    },
+    order_id: detail.order_id,
+    estimate_id: detail.estimate_id,
+    linked_order_number: detail.linked_order_number,
+    linked_estimate_number: detail.linked_estimate_number,
   };
 }
 
@@ -182,11 +247,18 @@ export function DocComposerInvoice({
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const invoicesFlag = useFlagState('INVOICES');
   const { data: tenantSettings } = useTenantSettings();
+  const tenantLocationsQuery = useTenantLocations();
   const gstInclusive = tenantSettings?.unified.business_policy.gst_inclusive ?? false;
 
   const [workingId, setWorkingId] = useState<string | null>(invoiceId ?? null);
   const { data, isLoading, isError, error } = useInvoiceComposer(workingId);
+  const detailFallbackQuery = useInvoiceDetail(mode === 'edit' && invoiceId ? invoiceId : '');
   const nextInvoiceNumberQuery = useNextInvoiceNumber(mode === 'create' && !invoiceId);
+  const composerData = useMemo(() => {
+    if (data?.items?.length) return data;
+    if (mode === 'edit' && detailFallbackQuery.data) return invoiceDetailToComposerDocument(detailFallbackQuery.data);
+    return data ?? null;
+  }, [data, detailFallbackQuery.data, mode]);
 
   const [documentState, setDocumentState] = useState<InvoiceComposerDocument | null>(() => (
     mode === 'create' && !invoiceId ? buildNewInvoiceDraft() : null
@@ -256,31 +328,31 @@ export function DocComposerInvoice({
   }, [invoiceId, mode, nextInvoiceNumberQuery.data]);
 
   useEffect(() => {
-    if (!data) return;
-    if (initializedForIdRef.current === data.id) return;
+    if (!composerData) return;
+    if (initializedForIdRef.current === composerData.id) return;
 
     if (mode === 'edit') {
-      salesAgentPinnedRef.current = data.buyer_context?.sales_agent_name ?? null;
+      salesAgentPinnedRef.current = composerData.buyer_context?.sales_agent_name ?? null;
     }
 
-    setDocumentState(data);
-    const mappedLines = (data.items ?? []).map((line) => ({
+    setDocumentState(composerData);
+    const mappedLines = (composerData.items ?? []).map((line) => ({
       ...line,
       diff: 'clean' as const,
       line_total: computeLineTotal(line, gstInclusive),
     }));
     setLineState(mappedLines);
-    setPaymentTermsLabel(defaultPaymentTerms(data.buyer_context?.payment_terms_days ?? 0));
-    setSendRecipient(data.buyer_context?.phone ?? data.buyer_context?.email ?? '');
-    setSelectedPriceListId(data.buyer_context?.active_pricelist?.id ?? null);
-    originalDocumentRef.current = data;
+    setPaymentTermsLabel(defaultPaymentTerms(composerData.buyer_context?.payment_terms_days ?? 0));
+    setSendRecipient(composerData.buyer_context?.phone ?? composerData.buyer_context?.email ?? '');
+    setSelectedPriceListId(composerData.buyer_context?.active_pricelist?.id ?? null);
+    originalDocumentRef.current = composerData;
     originalLinesRef.current = mappedLines;
-    initializedForIdRef.current = data.id;
+    initializedForIdRef.current = composerData.id;
     setAutoSaveMeta({
       label: mode === 'create' ? 'Not saved yet' : 'Draft saved',
       tone: mode === 'create' ? 'draft' : 'saved',
     });
-  }, [data, mode]);
+  }, [composerData, mode, gstInclusive]);
 
   useEffect(() => {
     if (mode !== 'create' || invoiceId || originalDocumentRef.current) return;
@@ -388,6 +460,20 @@ export function DocComposerInvoice({
     () => (productSearchQuery.data ?? []).filter((row) => !activeProductIds.has(row.tenant_product_id)),
     [productSearchQuery.data, activeProductIds],
   );
+  const createModeLocationOptions = useMemo(
+    () =>
+      (tenantLocationsQuery.data?.locations ?? [])
+        .filter((location) => location.deleted_at == null)
+        .map((location) => ({
+          id: location.id,
+          name: location.name,
+          is_default: location.is_default,
+        })),
+    [tenantLocationsQuery.data],
+  );
+  const availableLocationOptions = mode === 'create'
+    ? createModeLocationOptions
+    : ((documentState?.available_locations?.length ?? 0) > 0 ? (documentState?.available_locations ?? []) : createModeLocationOptions);
   const dirtyGuard = useDirtyCloseGuard({
     isDirty: dirty,
     onConfirmClose: () => router.push(closeTarget),
@@ -409,8 +495,8 @@ export function DocComposerInvoice({
   }, [dirty]);
 
   async function createDraftOnDemand(): Promise<InvoiceComposerDocument> {
-    if (workingId && data) {
-      return data;
+    if (workingId && composerData) {
+      return composerData;
     }
 
     const res = await apiPost('/api/tenant/invoices', {});
@@ -667,7 +753,7 @@ export function DocComposerInvoice({
             docNumber={documentState.invoice_number}
             locationId={documentState.location_id}
             locationName={documentState.location_name}
-            availableLocations={documentState.available_locations}
+            availableLocations={availableLocationOptions}
             dateIssued={documentState.invoice_date}
             secondDate={documentState.due_date ?? ''}
             buyerPoRef={documentState.buyer_po_ref}
@@ -735,6 +821,14 @@ export function DocComposerInvoice({
             productQuery={productQuery}
             productResults={filteredProductSearchResults}
             searchOpen={searchOpen}
+            productSearchLoading={productSearchQuery.isLoading}
+            productSearchFetchingNextPage={productSearchQuery.isFetchingNextPage}
+            productSearchHasMore={productSearchQuery.hasNextPage}
+            onProductSearchLoadMore={() => {
+              if (productSearchQuery.hasNextPage && !productSearchQuery.isFetchingNextPage) {
+                void productSearchQuery.fetchNextPage();
+              }
+            }}
             notesExpanded={false}
             freightExpanded={false}
             internalExpanded={false}

@@ -41,6 +41,10 @@ vi.mock('@/lib/auth', () => ({
   getVerifiedClaims: (...args: unknown[]) => getVerifiedClaimsMock(...args),
 }));
 
+vi.mock('@/lib/server/seller-features', () => ({
+  getInAppCreateFlags: vi.fn().mockResolvedValue({ create_sales_orders: true }),
+}));
+
 vi.mock('@/lib/server/auth-user-directory', () => ({
   getAuthUserDisplayNameMap: (...args: unknown[]) => getAuthUserDisplayNameMapMock(...args),
 }));
@@ -201,11 +205,13 @@ describe('sales orders landing API route', () => {
     expect(invoicedRow.status.filter_chip).toBe('Invoiced');
 
     const partialInv = body.orders.find((r: { order_id: string }) => r.order_id === 'DF-7');
-    expect(partialInv.status.label).toBe('Partly invoiced');
-    expect(partialInv.status.tone).toBe('warning');
+    expect(partialInv.status.label).toBe('Invoiced');
+    expect(partialInv.status.tone).toBe('success');
     expect(partialInv.status.filter_chip).toBe('Invoiced');
 
     const convertedRow = body.orders.find((r: { order_id: string }) => r.order_id === 'DF-1');
+    expect(convertedRow.buyer_name).toBe('Buyer One');
+    expect(convertedRow.buyer_initials).toBe('BO');
     expect(convertedRow.source_label).toBe('EST-2042');
     expect(convertedRow.source_detail).toBe('Converted by Priya Shah');
     expect(convertedRow.catalog_name).toBe('Summer Sell-in');
@@ -214,6 +220,7 @@ describe('sales orders landing API route', () => {
     expect(convertedRow.total_amount).toBe(10000);
 
     const buyerAppRow = body.orders.find((r: { order_id: string }) => r.order_id === 'DF-2');
+    expect(buyerAppRow.buyer_name).toBe('Buyer Two');
     expect(buyerAppRow.source_label).toBe('buyer_app');
     expect(buyerAppRow.source_detail).toBe('Asha Singh');
 

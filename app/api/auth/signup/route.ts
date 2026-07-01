@@ -3,7 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getFlag } from '@/lib/flags';
-import { getPostHogClient } from '@/lib/posthog-server';
+import { getPostHogClient, seedTenantFeatureFlags } from '@/lib/posthog-server';
+import { buildSignupTenantSettingsSeed } from '@/lib/tenant-settings/signup-seed';
 
 const SignupBodySchema = z.object({
   full_name: z.string().min(1).optional(),
@@ -85,6 +86,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const userId = created.user.id;
+  const initialSettings = buildSignupTenantSettingsSeed({
+    businessName: business_name,
+    businessPhone: phone ?? '',
+    businessEmail: email,
+    whatsappPhone: phone ?? '',
+  });
 
   // Step 2 — atomically create tenant + seller_admin link via SECURITY DEFINER RPC
   const { data: rpcData, error: rpcError } = await supabaseAdmin
@@ -93,8 +100,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       p_user_id: userId,
       p_slug: slug,
       p_business_name: business_name,
+      p_business_phone: phone ?? '',
+      p_business_email: email,
+      p_whatsapp_phone: phone ?? '',
       p_primary_state: primary_state ?? null,
       p_gstin: gstin ?? null,
+      p_initial_settings: initialSettings,
     });
 
   if (rpcError) {
@@ -166,6 +177,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   });
   if (refreshData.session) {
     finalSession = refreshData.session;
+  }
+
+  try {
+    await seedTenantFeatureFlags(tenantResult.tenant_id);
+  } catch {
+    // Non-fatal: feature-flag seeding should never block signup.
   }
 
   // Step 5 — fire PostHog server-side event for funnel analytics

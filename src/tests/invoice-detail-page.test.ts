@@ -4,6 +4,8 @@ import { NextRequest } from 'next/server';
 const getVerifiedClaimsMock = vi.fn();
 const getFlagMock = vi.fn();
 const rpcMock = vi.fn();
+const savedInvoiceItems: Array<Record<string, unknown>> = [];
+let lastInvoiceUpdatePayload: Record<string, unknown> | null = null;
 
 vi.mock('@/lib/auth', () => ({
   getVerifiedClaims: (...args: unknown[]) => getVerifiedClaimsMock(...args),
@@ -90,11 +92,14 @@ function defaultFromImpl(table: string) {
     };
     return {
       select: vi.fn(() => query),
-      update: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          eq: vi.fn().mockResolvedValue({ error: null }),
-        })),
-      })),
+      update: vi.fn((payload: Record<string, unknown>) => {
+        lastInvoiceUpdatePayload = payload;
+        return {
+          eq: vi.fn(() => ({
+            eq: vi.fn().mockResolvedValue({ error: null }),
+          })),
+        };
+      }),
       insert: vi.fn().mockResolvedValue({ error: null }),
     };
   }
@@ -133,20 +138,76 @@ function defaultFromImpl(table: string) {
   }
   if (table === 'locations') {
     return {
-      select: vi.fn(() =>
-        chainMaybeSingle({
+      select: vi.fn((columns?: string) => {
+        if (typeof columns === 'string' && columns.includes('is_default')) {
+          return {
+            eq: vi.fn(() => ({
+              is: vi.fn(() => ({
+                order: vi.fn(() => ({
+                  order: vi.fn().mockResolvedValue({
+                    data: [{ id: 'loc-1', name: 'Mumbai HQ', is_default: true }],
+                    error: null,
+                  }),
+                })),
+              })),
+            })),
+          };
+        }
+
+        return chainMaybeSingle({
           data: { name: 'Mumbai HQ' },
           error: null,
-        }),
-      ),
+        });
+      }),
     };
   }
   if (table === 'invoice_items') {
     return {
       select: vi.fn(() => ({
         eq: vi.fn(() => ({
-          is: vi.fn(() => chainArray([])),
+          is: vi.fn(() => chainArray(savedInvoiceItems)),
         })),
+      })),
+      insert: vi.fn((payload: Record<string, unknown>) => {
+        savedInvoiceItems.push({ id: 'ii-1', ...payload });
+        return Promise.resolve({ error: null });
+      }),
+      update: vi.fn(() => Promise.resolve({ error: null })),
+    };
+  }
+  if (table === 'tenant_products') {
+    return {
+      select: vi.fn(() => ({
+        in: vi.fn(() => ({
+          eq: vi.fn().mockResolvedValue({
+            data: [
+              {
+                id: '33333333-3333-3333-3333-333333333333',
+                internal_sku: 'SKU-1',
+                name_override: null,
+                master_product_id: null,
+                tenant_brand_id: null,
+                hsn_code: 'HSN-1',
+                gst_rate: 18,
+                default_uom: 'PCS',
+                pack_size: 1,
+                base_selling_price: 500,
+                mrp: 600,
+              },
+            ],
+            error: null,
+          }),
+        })),
+      })),
+    };
+  }
+  if (table === 'tenant_inventory') {
+    return {
+      select: vi.fn(() => ({
+        in: vi.fn().mockResolvedValue({
+          data: [{ tenant_product_id: '33333333-3333-3333-3333-333333333333', qty_available: 12 }],
+          error: null,
+        }),
       })),
     };
   }
@@ -185,6 +246,8 @@ vi.mock('@/lib/supabase', () => ({
 describe('invoice detail API', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    savedInvoiceItems.length = 0;
+    lastInvoiceUpdatePayload = null;
     fromMock.mockImplementation(defaultFromImpl);
     rpcMock.mockResolvedValue({ error: null });
     getVerifiedClaimsMock.mockResolvedValue({
@@ -281,6 +344,164 @@ describe('invoice detail API', () => {
     expect(Array.isArray(json.items)).toBe(true);
     expect(json.viewer_role).toBe('seller_admin');
     expect(Array.isArray(json.payments)).toBe(true);
+  });
+
+  it('GET prefers the stored invoice place of supply over the buyer fallback', async () => {
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'buyers') {
+        return {
+          select: vi.fn(() =>
+            chainMaybeSingle({
+              data: {
+                id: 'buyer-1',
+                business_name: 'Acme',
+                contact_name: null,
+                gstin: null,
+                geography: { state: '36' },
+                credit_limit: 100000,
+                payment_terms_days: 30,
+              },
+              error: null,
+            }),
+          ),
+        };
+      }
+      if (table === 'invoices') {
+        const query = {
+          eq: vi.fn((col: string) => {
+            if (col === 'id') {
+              return {
+                is: vi.fn(() => ({
+                  maybeSingle: vi.fn().mockResolvedValue({
+                    data: { ...invoiceRow, place_of_supply: 'Tamil Nadu' },
+                    error: null,
+                  }),
+                })),
+              };
+            }
+            return query;
+          }),
+          neq: vi.fn(() => query),
+          in: vi.fn(() => query),
+          is: vi.fn().mockResolvedValue({ data: [], error: null }),
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: { ...invoiceRow, place_of_supply: 'Tamil Nadu' },
+            error: null,
+          }),
+        };
+        return {
+          select: vi.fn(() => query),
+          update: vi.fn((payload: Record<string, unknown>) => {
+            lastInvoiceUpdatePayload = payload;
+            return {
+              eq: vi.fn(() => ({
+                eq: vi.fn().mockResolvedValue({ error: null }),
+              })),
+            };
+          }),
+          insert: vi.fn().mockResolvedValue({ error: null }),
+        };
+      }
+      return defaultFromImpl(table);
+    });
+
+    const { GET } = await import('../../app/api/tenant/invoices/[id]/route');
+    const res = await GET(new NextRequest('http://localhost/api/tenant/invoices/inv-1'), {
+      params: Promise.resolve({ id: 'inv-1' }),
+    });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.place_of_supply).toBe('Tamil Nadu');
+    expect(json.buyer.place_of_supply).toBe('Tamil Nadu');
+  });
+
+  it('PATCH save persists invoice line items and reloads them', async () => {
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'invoices') {
+        const query = {
+          eq: vi.fn((col: string) => {
+            if (col === 'id') {
+              return {
+                is: vi.fn(() => ({
+                  maybeSingle: vi.fn().mockResolvedValue({
+                    data: { ...invoiceRow, buyer_id: null, location_id: '22222222-2222-2222-2222-222222222222' },
+                    error: null,
+                  }),
+                })),
+              };
+            }
+            return query;
+          }),
+          neq: vi.fn(() => query),
+          in: vi.fn(() => query),
+          is: vi.fn().mockResolvedValue({ data: [], error: null }),
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: { ...invoiceRow, buyer_id: null, location_id: '22222222-2222-2222-2222-222222222222' },
+            error: null,
+          }),
+        };
+        return {
+          select: vi.fn(() => query),
+          update: vi.fn((payload: Record<string, unknown>) => {
+            lastInvoiceUpdatePayload = payload;
+            return {
+              eq: vi.fn(() => ({
+                eq: vi.fn().mockResolvedValue({ error: null }),
+              })),
+            };
+          }),
+          insert: vi.fn().mockResolvedValue({ error: null }),
+        };
+      }
+      return defaultFromImpl(table);
+    });
+
+    const { PATCH } = await import('../../app/api/tenant/invoices/[id]/route');
+    const res = await PATCH(
+      new NextRequest('http://localhost/api/tenant/invoices/inv-1', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          action: 'save',
+          invoice_number: 'INV-1',
+          buyer_id: '11111111-1111-1111-1111-111111111111',
+          location_id: '22222222-2222-2222-2222-222222222222',
+          invoice_date: '2026-06-01',
+          due_date: '2026-06-15',
+          place_of_supply: 'Goa',
+          seller_note: 'Thanks',
+          freight: 0,
+          discount_flat: 0,
+          round_off: 0,
+          items: [
+            {
+              id: 'draft-line-1',
+              tenant_product_id: '33333333-3333-3333-3333-333333333333',
+              qty: 2,
+              unit_price: 500,
+              disc_pct: 0,
+              tax_pct: 18,
+            },
+          ],
+        }),
+      }),
+      { params: Promise.resolve({ id: 'inv-1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(savedInvoiceItems).toHaveLength(1);
+    expect(savedInvoiceItems[0]).not.toHaveProperty('tenant_id');
+    expect(savedInvoiceItems[0]).toMatchObject({
+      invoice_id: 'inv-1',
+      tenant_product_id: '33333333-3333-3333-3333-333333333333',
+      qty: 2,
+      unit_price: 500,
+      tax_rate: 18,
+      tax_pct: 18,
+    });
+    expect(lastInvoiceUpdatePayload?.place_of_supply).toBe('Goa');
+
+    const json = await res.json();
+    expect(json.data.items).toHaveLength(1);
   });
 });
 

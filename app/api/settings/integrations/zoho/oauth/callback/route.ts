@@ -268,14 +268,19 @@ async function registerZohoWebhook(
         url: url.toString(),
       });
 
-      const webhookResponse = await fetch(url.toString(), {
-        method: 'POST',
-        headers: {
-          Authorization: `Zoho-oauthtoken ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(webhookPayload),
-      });
+      let webhookResponse: Response;
+      try {
+        webhookResponse = await fetch(url.toString(), {
+          method: 'POST',
+          headers: {
+            Authorization: `Zoho-oauthtoken ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(webhookPayload),
+        });
+      } catch (networkError) {
+        throw new Error(`Network error reaching Zoho webhook API for ${entityType} ${ruleType}: ${networkError instanceof Error ? networkError.message : String(networkError)}`);
+      }
       const webhookJson = await webhookResponse.json().catch(() => ({})) as Record<string, unknown>;
       const remoteWebhook = webhookJson.webhook as Record<string, unknown> | undefined;
       const webhookId = remoteWebhook?.webhook_id;
@@ -294,22 +299,27 @@ async function registerZohoWebhook(
       }
       webhookIds[ruleType] = webhookId;
       createdWebhookIds.push(webhookId);
-      const workflowResponse = await fetch(
-        new URL(`/${module}/settings/workflows?organization_id=${encodeURIComponent(orgId)}`, `https://www.zohoapis.${dc}`).toString(),
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Zoho-oauthtoken ${accessToken}`,
-            'Content-Type': 'application/json',
+      let workflowResponse: Response;
+      try {
+        workflowResponse = await fetch(
+          new URL(`/${module}/settings/workflows?organization_id=${encodeURIComponent(orgId)}`, `https://www.zohoapis.${dc}`).toString(),
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Zoho-oauthtoken ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(buildZohoWorkflowRegistrationPayload({
+              entityType,
+              providerEntity,
+              webhookId,
+              ruleType,
+            })),
           },
-          body: JSON.stringify(buildZohoWorkflowRegistrationPayload({
-            entityType,
-            providerEntity,
-            webhookId,
-            ruleType,
-          })),
-        },
-      );
+        );
+      } catch (networkError) {
+        throw new Error(`Network error reaching Zoho workflow API for ${entityType} ${ruleType}: ${networkError instanceof Error ? networkError.message : String(networkError)}`);
+      }
       const workflowJson = await workflowResponse.json().catch(() => ({})) as Record<string, unknown>;
       const workflow = workflowJson.workflow as Record<string, unknown> | undefined;
       const workflowId = workflow?.workflow_id;
@@ -645,46 +655,47 @@ export async function GET(request: NextRequest) {
           ? definition.event_types.filter((e) => e.endsWith('.deleted'))
           : definition.event_types.filter((e) => !e.endsWith('.deleted'));
 
-        const { data: existingWebhook } = await db
+        // PostgREST can't use partial unique indexes with onConflict, so use INSERT + fallback.
+        const { data: insertData, error: insertError } = await db
           .schema('app')
           .from('integration_webhooks')
-          .select('id, endpoint_token, remote_webhook_id, secret, webhook_config')
-          .eq('tenant_integration_id', integrationId)
-          .eq('provider', 'zoho')
-          .eq('entity_type', definition.entity_type)
-          .contains('event_types', rowEventTypes)
-          .is('deleted_at', null)
-          .maybeSingle();
-
-        let webhook: { id: string; endpoint_token: string; remote_webhook_id: string | null; secret: string | null; webhook_config: unknown };
-        if (!existingWebhook) {
-          const { data, error } = await db
-            .schema('app')
-            .from('integration_webhooks')
-            .insert({
-              tenant_id,
-              tenant_integration_id: integrationId,
-              provider: 'zoho',
-              entity_type: definition.entity_type,
-              event_types: rowEventTypes,
-              secret: crypto.randomUUID().replace(/-/g, ''),
-              is_active: false,
-              status: 'pending',
-              created_by: actorUserId,
-              updated_by: actorUserId,
-            })
-            .select('id, endpoint_token, remote_webhook_id, secret, webhook_config')
-            .single();
-          if (error || !data) throw error ?? new Error(`Unable to prepare ${definition.entity_type}/${ruleType} webhook.`);
-          webhook = data;
-        } else {
-          webhook = existingWebhook;
-          await db.schema('app').from('integration_webhooks').update({
+          .insert({
+            tenant_id,
+            tenant_integration_id: integrationId,
+            provider: 'zoho',
+            entity_type: definition.entity_type,
+            rule_type: ruleType,
             event_types: rowEventTypes,
+            secret: crypto.randomUUID().replace(/-/g, ''),
             is_active: false,
             status: 'pending',
+            created_by: actorUserId,
             updated_by: actorUserId,
-          }).eq('id', webhook.id);
+          })
+          .select('id, endpoint_token, remote_webhook_id, secret, webhook_config')
+          .single();
+
+        let webhook: { id: string; endpoint_token: string; remote_webhook_id: string | null; secret: string | null; webhook_config: unknown };
+        if (insertData) {
+          webhook = insertData;
+        } else if (insertError?.code === '23505') {
+          const { data: existing, error: fetchError } = await db
+            .schema('app')
+            .from('integration_webhooks')
+            .select('id, endpoint_token, remote_webhook_id, secret, webhook_config')
+            .eq('tenant_integration_id', integrationId)
+            .eq('provider', 'zoho')
+            .eq('entity_type', definition.entity_type)
+            .eq('rule_type', ruleType)
+            .is('deleted_at', null)
+            .maybeSingle();
+          if (!existing || fetchError) throw fetchError ?? new Error(`Unable to fetch existing ${definition.entity_type}/${ruleType} webhook.`);
+          webhook = existing;
+          await db.schema('app').from('integration_webhooks')
+            .update({ event_types: rowEventTypes, status: 'pending', is_active: false, updated_by: actorUserId })
+            .eq('id', webhook.id);
+        } else {
+          throw insertError ?? new Error(`Unable to prepare ${definition.entity_type}/${ruleType} webhook.`);
         }
 
         // add_edit row is the data-flow anchor (drives upsert syncs)
@@ -796,7 +807,7 @@ export async function GET(request: NextRequest) {
       external_ref: null,
       last_success_at: null,
     };
-    console.error('[zoho/oauth/callback] Webhook setup failed:', setupError instanceof Error ? setupError.message : String(setupError));
+    console.error('[zoho/oauth/callback] Webhook setup failed:', setupError instanceof Error ? setupError.message : JSON.stringify(setupError));
   }
 
   await db

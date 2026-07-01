@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 
 import type { IntegrationSyncJob } from '@/hooks/useIntegrationsSettings';
 import { formatIntegrationJobError } from '@/lib/integrations/job-error-log';
@@ -45,7 +46,7 @@ function buildSnapshot(activeJob: IntegrationSyncJob) {
     progress?.items_total != null
       ? `${progress.items_processed ?? 0} / ${progress.items_total} items`
       : countParts.length > 0
-        ? `Last poll: ${countParts.join(' · ')}`
+        ? countParts.join(' · ')
         : null,
     progress?.pages_processed != null ? `${progress.pages_processed} pages` : null,
     progress?.items_failed != null ? `${progress.items_failed} failed` : null,
@@ -66,11 +67,43 @@ function buildSnapshot(activeJob: IntegrationSyncJob) {
   };
 }
 
-export function IntegrationJobLiveLog({ activeJob }: { activeJob: IntegrationSyncJob }) {
+export function IntegrationJobLiveLog({
+  activeJob,
+  onJobUpdate,
+}: {
+  activeJob: IntegrationSyncJob;
+  onJobUpdate?: () => void;
+}) {
   const [log, setLog] = useState<LogEntry[]>([]);
   const lastJobIdRef = useRef<string | null>(null);
   const lastSignatureRef = useRef<string | null>(null);
   const seenErrorsRef = useRef(new Set<string>());
+
+  // Subscribe to Realtime updates for this job's tenant_integration_id
+  useEffect(() => {
+    const tenantIntegrationId = (activeJob as { tenant_integration_id?: string }).tenant_integration_id;
+    if (!tenantIntegrationId) return;
+
+    const channel = supabase
+      .channel(`sync-jobs-${tenantIntegrationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'app',
+          table: 'integration_sync_jobs',
+          filter: `tenant_integration_id=eq.${tenantIntegrationId}`,
+        },
+        () => {
+          onJobUpdate?.();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [(activeJob as { tenant_integration_id?: string }).tenant_integration_id, onJobUpdate]);
 
   useEffect(() => {
     const signature = [
@@ -168,11 +201,11 @@ export function IntegrationJobLiveLog({ activeJob }: { activeJob: IntegrationSyn
             <span className="text-sm font-semibold text-cream-900">Live sync log</span>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-info-50 px-2 py-0.5 text-xs font-medium text-info-700">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-info-500" />
-              Polling every 30s
+              Live updates
             </span>
           </div>
           <p className="mt-1 text-sm text-cream-700">
-            {latestEntry?.detail ?? activeJob.progress?.phase_label ?? 'Waiting for the first poll update.'}
+            {latestEntry?.detail ?? activeJob.progress?.phase_label ?? 'Waiting for first update…'}
           </p>
         </div>
         <div className="shrink-0 text-right text-xs text-cream-600">

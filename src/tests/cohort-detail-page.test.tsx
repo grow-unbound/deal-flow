@@ -101,9 +101,9 @@ describe('cohort detail page integration', () => {
     expect(screen.queryByRole('button', { name: /Members/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Catalogs/i })).not.toBeInTheDocument();
     expect(screen.getAllByText('30.0%').length).toBeGreaterThanOrEqual(1);
-    const editLink = screen.getByRole('link', { name: /Edit cohort/i });
+    const editLink = screen.getByRole('link', { name: /Edit customer group/i });
     expect(editLink).toBeInTheDocument();
-    expect(editLink).toHaveAttribute('href', '/cohorts/c1/edit');
+    expect(editLink).toHaveAttribute('href', '/customer-groups/c1/edit');
     expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open buyer app preview' })).not.toBeInTheDocument();
   });

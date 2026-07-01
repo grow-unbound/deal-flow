@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
 import { FEATURE_FLAGS } from '@/constants';
 import { loadEstimateDocument } from '@/lib/estimates/load-tenant-estimate-composer';
+import { isoDateInTimeZone, offsetIsoDateInTimeZone } from '@/lib/date-utils';
 import { getFlag } from '@/lib/flags';
 import { getInAppCreateFlags } from '@/lib/server/seller-features';
 import { PAGE_SIZE, encodeCursor, decodeCursor } from '@/lib/pagination';
@@ -50,6 +51,7 @@ interface EstimateDbRow {
   expires_at: string | null;
   source: string | null;
   campaign_id: string | null;
+  place_of_supply: string | null;
   created_by: string | null;
   updated_at?: string | null;
 }
@@ -107,7 +109,7 @@ function statusMeta(status: Exclude<EstimateDbStatus, 'pending'>): {
   if (status === 'accepted') return { label: 'Accepted', tone: 'success', filter_chip: 'Accepted' };
   if (status === 'declined') return { label: 'Declined', tone: 'neutral', filter_chip: 'Declined' };
   if (status === 'expired') return { label: 'Expired', tone: 'neutral', filter_chip: 'Expired' };
-  if (status === 'converted') return { label: 'Converted to SO', tone: 'success', filter_chip: 'Converted' };
+  if (status === 'converted') return { label: 'Converted', tone: 'success', filter_chip: 'Converted' };
   if (status === 'invoiced') return { label: 'Invoiced', tone: 'success', filter_chip: 'Converted' };
   if (status === 'void') return { label: 'Void', tone: 'neutral', filter_chip: 'Draft' };
   return { label: status, tone: 'neutral', filter_chip: 'All' };
@@ -184,7 +186,7 @@ export async function GET(req: NextRequest) {
       .schema('app')
       .from('estimates')
       .select(
-        'id, location_id, estimate_number, buyer_id, status, total_amount, created_at, sent_at, accepted_at, expires_at, source, campaign_id, created_by, updated_at',
+        'id, location_id, estimate_number, buyer_id, status, total_amount, created_at, sent_at, accepted_at, expires_at, source, campaign_id, place_of_supply, created_by, updated_at',
       )
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
@@ -371,6 +373,7 @@ export async function GET(req: NextRequest) {
       const geography = buyer?.geography ?? null;
       const buyerCity = toText(geography?.city);
       const buyerState = toText(geography?.state);
+      const placeOfSupply = toText(row.place_of_supply) ?? buyerCity ?? buyerState ?? null;
       const meta = statusMeta(norm);
       const source: 'buyer_app' | 'seller' = row.source === 'seller' ? 'seller' : 'buyer_app';
       const createdByLabel = source === 'seller' ? creatorMap.get(row.created_by ?? '') ?? 'Team member' : null;
@@ -382,13 +385,16 @@ export async function GET(req: NextRequest) {
         estimate_number: row.estimate_number ?? '—',
         buyer_id: row.buyer_id,
         buyer_name: buyerName,
+        place_of_supply: placeOfSupply,
         buyer_city: buyerCity,
         buyer_state: buyerState,
         buyer_initials: getInitials(buyerName),
         buyer_hue: getHue(index),
         source,
+        source_kind: source,
         source_label: source === 'buyer_app' ? 'Buyer App' : `created by ${createdByLabel ?? 'Team member'}`,
         source_detail: source === 'buyer_app' ? 'Submitted via Buyer App' : 'Manual seller entry',
+        campaign_name: catalogName,
         catalog_name: catalogName,
         created_by_label: createdByLabel,
         items_count: itemCountByEstimate.get(row.id) ?? 0,
@@ -641,18 +647,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create estimate draft' }, { status: 500 });
     }
 
-    const today = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Kolkata',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(new Date());
-    const validUntil = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Kolkata',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000));
+    const today = isoDateInTimeZone(new Date());
+    const validUntil = offsetIsoDateInTimeZone(new Date(), 14);
 
     const estimateNumber = formatEstimateNumber((estimateCountRes.count ?? 0) + 1);
     const availableLocations = await loadAccessibleSellerLocations(db as any, claims.tenant_id, claims);

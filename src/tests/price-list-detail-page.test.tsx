@@ -73,7 +73,7 @@ describe('price-list-detail-page', () => {
   it('renders markup discount in danger color and 4 meta tiles', () => {
     render(<PriceListDetailPage />);
     expect(screen.getByText('Products covered')).toBeInTheDocument();
-    expect(screen.getByText('Cohorts assigned')).toBeInTheDocument();
+    expect(screen.getByText('Customer groups assigned')).toBeInTheDocument();
     expect(screen.getByText('Avg discount')).toBeInTheDocument();
     expect(screen.getByText('Days left')).toBeInTheDocument();
 

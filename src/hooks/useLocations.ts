@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
+import { appendArrayParam } from '@/lib/landing-filter-params';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 
 // ─── Shared ───────────────────────────────────────────────────────────────────
@@ -24,6 +25,7 @@ export interface LocationsLandingRow {
   name: string;
   type: string;
   city: string;
+  address_text: string;
   phone_number: string | null;
   initials: string;
   gmv_mtd: number;
@@ -67,6 +69,13 @@ export interface LocationsLandingResponse {
   refreshed_at: string;
 }
 
+export interface LocationsLandingFilters {
+  search?: string;
+  status?: string[];
+  stock?: string[];
+  dues?: string[];
+}
+
 // ─── Detail page types ────────────────────────────────────────────────────────
 
 export interface LocationDetailGmvWeek {
@@ -108,8 +117,46 @@ export interface LocationDetailOrder {
   order_number: string;
   placed_at: string;
   buyer_name: string;
+  place_of_supply: string | null;
+  location_name: string | null;
+  source_kind: 'buyer_app' | 'converted' | 'direct';
+  source_label: string | null;
+  campaign_name: string | null;
   items_count: number;
   total_amount: number;
+  status: string;
+}
+
+export interface LocationDetailEstimate {
+  estimate_id: string;
+  estimate_number: string;
+  issued_at: string;
+  buyer_name: string;
+  place_of_supply: string | null;
+  location_name: string | null;
+  source_kind: 'buyer_app' | 'seller';
+  source_label: string | null;
+  campaign_name: string | null;
+  items_count: number;
+  total_amount: number;
+  expires_at: string | null;
+  status: string;
+}
+
+export interface LocationDetailInvoice {
+  invoice_id: string;
+  invoice_number: string;
+  issued_at: string;
+  buyer_name: string;
+  place_of_supply: string | null;
+  location_name: string | null;
+  source_kind: 'buyer_app' | 'converted' | 'direct';
+  source_label: string | null;
+  campaign_name: string | null;
+  items_count: number;
+  total_amount: number;
+  outstanding_amount: number;
+  due_date: string | null;
   status: string;
 }
 
@@ -158,11 +205,15 @@ export interface LocationDetailResponse {
   };
   customers: LocationDetailCustomer[];
   orders: LocationDetailOrder[];
+  estimates: LocationDetailEstimate[];
+  invoices: LocationDetailInvoice[];
   inventory: LocationDetailInventoryItem[];
   activity: LocationDetailActivityItem[];
   tab_badges: {
     customers: number;
     orders_mtd: number;
+    estimates_mtd: number;
+    invoices_mtd: number;
     low_stock_skus: number;
   };
 }
@@ -171,16 +222,22 @@ export interface LocationDetailResponse {
 
 export function useLocationsLanding(
   period: SellerLandingPeriod,
+  filters: LocationsLandingFilters = {},
   initialData: LocationsLandingResponse | null,
 ) {
   const { currentTenantId } = useAuth();
 
   const query = useQuery<LocationsLandingResponse>({
-    queryKey: ['locations-landing', currentTenantId, period],
+    queryKey: ['locations-landing', currentTenantId, period, filters],
     enabled: Boolean(currentTenantId),
     staleTime: 60_000,
     queryFn: async () => {
-      const res = await fetch(`/api/tenant/locations/landing?period=${period}`);
+      const params = new URLSearchParams({ period });
+      if (filters.search?.trim()) params.set('search', filters.search.trim());
+      appendArrayParam(params, 'status', filters.status);
+      appendArrayParam(params, 'stock', filters.stock);
+      appendArrayParam(params, 'dues', filters.dues);
+      const res = await fetch(`/api/tenant/locations/landing?${params.toString()}`);
       if (!res.ok) throw new Error(`locations-landing ${res.status}`);
       return res.json() as Promise<LocationsLandingResponse>;
     },

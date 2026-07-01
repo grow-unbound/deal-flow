@@ -10,6 +10,7 @@ export const DEFAULT_TENANT_SETTINGS_STORED = {
     phone: '',
     email: '',
   },
+  delivery_routing_threshold_km: 50,
   product_defaults: {
     uom: 'PCS',
   },
