@@ -438,16 +438,6 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
     );
   }
 
-  if (integrations.length === 0) {
-    return (
-      <EmptyState
-        icon={<Link2 className="h-7 w-7" strokeWidth={1.5} />}
-        heading="No integrations configured yet"
-        description="Once the integration catalog is seeded for this workspace, setup and sync details will show up here."
-      />
-    );
-  }
-
   const connectedIntegrations = integrations.filter((i) => i.tenant_integration !== null);
   const unconnectedAvailable = integrations.filter(
     (i) => !i.tenant_integration && familyAvailability[i.family_flag],
@@ -476,8 +466,14 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
           }
         />
 
-        {/* ── Connected integration cards ───────────────────────────────── */}
-        {connectedIntegrations.length > 0 ? (
+        {/* ── Connected integration cards or empty state ───────────────────────── */}
+        {integrations.length === 0 ? (
+          <EmptyState
+            icon={<Link2 className="h-7 w-7" strokeWidth={1.5} />}
+            heading="No integrations configured yet"
+            description="Once the integration catalog is seeded for this workspace, setup and sync details will show up here."
+          />
+        ) : connectedIntegrations.length > 0 ? (
           <div className="space-y-6">
             {connectedIntegrations.map((integration) => (
               <ConnectedIntegrationCard
