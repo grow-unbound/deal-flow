@@ -645,47 +645,26 @@ export async function GET(request: NextRequest) {
           ? definition.event_types.filter((e) => e.endsWith('.deleted'))
           : definition.event_types.filter((e) => !e.endsWith('.deleted'));
 
-        const { data: existingWebhook } = await db
+        const { data, error } = await db
           .schema('app')
           .from('integration_webhooks')
-          .select('id, endpoint_token, remote_webhook_id, secret, webhook_config')
-          .eq('tenant_integration_id', integrationId)
-          .eq('provider', 'zoho')
-          .eq('entity_type', definition.entity_type)
-          .contains('event_types', rowEventTypes)
-          .is('deleted_at', null)
-          .maybeSingle();
-
-        let webhook: { id: string; endpoint_token: string; remote_webhook_id: string | null; secret: string | null; webhook_config: unknown };
-        if (!existingWebhook) {
-          const { data, error } = await db
-            .schema('app')
-            .from('integration_webhooks')
-            .insert({
-              tenant_id,
-              tenant_integration_id: integrationId,
-              provider: 'zoho',
-              entity_type: definition.entity_type,
-              event_types: rowEventTypes,
-              secret: crypto.randomUUID().replace(/-/g, ''),
-              is_active: false,
-              status: 'pending',
-              created_by: actorUserId,
-              updated_by: actorUserId,
-            })
-            .select('id, endpoint_token, remote_webhook_id, secret, webhook_config')
-            .single();
-          if (error || !data) throw error ?? new Error(`Unable to prepare ${definition.entity_type}/${ruleType} webhook.`);
-          webhook = data;
-        } else {
-          webhook = existingWebhook;
-          await db.schema('app').from('integration_webhooks').update({
+          .upsert({
+            tenant_id,
+            tenant_integration_id: integrationId,
+            provider: 'zoho',
+            entity_type: definition.entity_type,
             event_types: rowEventTypes,
+            secret: crypto.randomUUID().replace(/-/g, ''),
             is_active: false,
             status: 'pending',
+            created_by: actorUserId,
             updated_by: actorUserId,
-          }).eq('id', webhook.id);
-        }
+          }, { onConflict: 'tenant_integration_id,provider,entity_type,event_types' })
+          .select('id, endpoint_token, remote_webhook_id, secret, webhook_config')
+          .single();
+
+        if (error || !data) throw error ?? new Error(`Unable to prepare ${definition.entity_type}/${ruleType} webhook.`);
+        const webhook = data;
 
         // add_edit row is the data-flow anchor (drives upsert syncs)
         if (ruleType === 'add_edit') {
@@ -796,7 +775,7 @@ export async function GET(request: NextRequest) {
       external_ref: null,
       last_success_at: null,
     };
-    console.error('[zoho/oauth/callback] Webhook setup failed:', setupError instanceof Error ? setupError.message : String(setupError));
+    console.error('[zoho/oauth/callback] Webhook setup failed:', setupError instanceof Error ? setupError.message : JSON.stringify(setupError));
   }
 
   await db
