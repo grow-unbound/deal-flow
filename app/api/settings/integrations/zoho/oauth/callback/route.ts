@@ -645,10 +645,11 @@ export async function GET(request: NextRequest) {
           ? definition.event_types.filter((e) => e.endsWith('.deleted'))
           : definition.event_types.filter((e) => !e.endsWith('.deleted'));
 
-        const { data, error: webhookError } = await db
+        // PostgREST can't use partial unique indexes with onConflict, so use INSERT + fallback.
+        const { data: insertData, error: insertError } = await db
           .schema('app')
           .from('integration_webhooks')
-          .upsert({
+          .insert({
             tenant_id,
             tenant_integration_id: integrationId,
             provider: 'zoho',
@@ -660,12 +661,32 @@ export async function GET(request: NextRequest) {
             status: 'pending',
             created_by: actorUserId,
             updated_by: actorUserId,
-          }, { onConflict: 'tenant_integration_id,provider,entity_type,rule_type' })
+          })
           .select('id, endpoint_token, remote_webhook_id, secret, webhook_config')
           .single();
 
-        if (webhookError || !data) throw webhookError ?? new Error(`Unable to prepare ${definition.entity_type}/${ruleType} webhook.`);
-        const webhook = data;
+        let webhook: { id: string; endpoint_token: string; remote_webhook_id: string | null; secret: string | null; webhook_config: unknown };
+        if (insertData) {
+          webhook = insertData;
+        } else if (insertError?.code === '23505') {
+          const { data: existing, error: fetchError } = await db
+            .schema('app')
+            .from('integration_webhooks')
+            .select('id, endpoint_token, remote_webhook_id, secret, webhook_config')
+            .eq('tenant_integration_id', integrationId)
+            .eq('provider', 'zoho')
+            .eq('entity_type', definition.entity_type)
+            .eq('rule_type', ruleType)
+            .is('deleted_at', null)
+            .maybeSingle();
+          if (!existing || fetchError) throw fetchError ?? new Error(`Unable to fetch existing ${definition.entity_type}/${ruleType} webhook.`);
+          webhook = existing;
+          await db.schema('app').from('integration_webhooks')
+            .update({ event_types: rowEventTypes, status: 'pending', is_active: false, updated_by: actorUserId })
+            .eq('id', webhook.id);
+        } else {
+          throw insertError ?? new Error(`Unable to prepare ${definition.entity_type}/${ruleType} webhook.`);
+        }
 
         // add_edit row is the data-flow anchor (drives upsert syncs)
         if (ruleType === 'add_edit') {
