@@ -40,7 +40,7 @@ export function IntegrationPickerDialog({
         <DialogHeader>
           <DialogTitle className="font-display text-cream-900">Add integration</DialogTitle>
           <DialogDescription className="text-cream-700">
-            Choose a tool to connect. Credential verification and the first import happen in one guided flow.
+            Select a tool to connect to Yukti.
           </DialogDescription>
         </DialogHeader>
 

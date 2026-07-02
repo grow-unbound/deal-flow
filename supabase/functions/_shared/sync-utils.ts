@@ -293,6 +293,7 @@ export async function runPhaseSync(
     pageFrom?: number | null;
     perPage?: number | null;
     since?: string | null;
+    jobType?: string | null;
   } = {},
 ): Promise<SyncResult> {
   const zohoTypeId = assertZohoIntegration(integration.integration_type_id);
@@ -352,7 +353,7 @@ export async function runPhaseSync(
     // Time-budget check: stop before Supabase's 150s hard limit
     if (Date.now() - budgetStart > TIME_BUDGET_MS) break;
 
-    const page = await adapter.fetchPhasePage(phase, cursor, opts.since ?? null);
+    const page = await adapter.fetchPhasePage(phase, cursor, opts.since ?? null, opts.jobType ?? undefined);
 
     if (page.records.length > 0) {
       const result: PersistResult = await persistZohoEntityPage(

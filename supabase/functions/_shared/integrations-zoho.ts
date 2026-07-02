@@ -305,12 +305,13 @@ export function getZohoPhasePlan(
   const referencePhases: Record<ZohoIntegrationTypeId, IntegrationSyncPhaseDefinition[]> = {
     zoho_books: [
       { id: 'locations', label: 'Importing locations from Zoho Books', entityType: 'locations', path: '/locations', itemKey: 'locations' },
+      { id: 'warehouses', label: 'Importing warehouses from Zoho Books', entityType: 'warehouses', path: '/warehouses', itemKey: 'warehouses' },
       { id: 'products', label: 'Importing products from Zoho Books', entityType: 'products', path: '/items', itemKey: 'items' },
       { id: 'pricelists', label: 'Importing pricelists from Zoho Books', entityType: 'pricelists', path: '/pricebooks', itemKey: 'pricebooks' },
       { id: 'customers', label: 'Importing customers from Zoho Books', entityType: 'customers', path: '/contacts', itemKey: 'contacts' },
     ],
     zoho_inventory: [
-      { id: 'locations', label: 'Importing warehouses from Zoho Inventory', entityType: 'locations', path: '/warehouses', itemKey: 'warehouses' },
+      { id: 'warehouses', label: 'Importing warehouses from Zoho Inventory', entityType: 'warehouses', path: '/warehouses', itemKey: 'warehouses' },
       { id: 'products', label: 'Importing products from Zoho Inventory', entityType: 'products', path: '/items', itemKey: 'items' },
       { id: 'pricelists', label: 'Importing pricelists from Zoho Inventory', entityType: 'pricelists', path: '/pricebooks', itemKey: 'pricebooks' },
       { id: 'customers', label: 'Importing customers from Zoho Inventory', entityType: 'customers', path: '/contacts', itemKey: 'contacts' },
@@ -459,20 +460,24 @@ export function createZohoAdapter(
     phase: IntegrationSyncPhaseDefinition,
     cursor: IntegrationProgressCursor | null,
     since: string | null,
+    jobType?: string,
   ): Promise<ZohoPhasePage> {
     const page = cursor?.page ?? 1;
     const perPage = cursor?.per_page ?? phase.perPage ?? DEFAULT_PER_PAGE;
 
     // Apply time filters based on entity type and Zoho API support:
-    // - Transactional (estimates/orders/invoices): date_start filter (Zoho date range param)
-    // - Reference with last_modified_time support (products/customers): last_modified_time filter
-    // - Locations and pricelists: always full fetch (Zoho doesn't support these filters)
+    // - Transactional (estimates/orders/invoices): always use date_start
+    // - Reference data (products/customers): last_modified_time only on incremental cron jobs;
+    //   manual and initial syncs always do a full fetch so reference data is complete
+    // - Locations, pricelists, warehouses: always full fetch (Zoho doesn't support these filters)
+    const isIncremental = jobType === 'incremental';
     const dateStart = TRANSACTIONAL_ENTITY_TYPES.has(phase.entityType)
       ? (since ?? financialYearStart())
       : undefined;
     const lastModifiedDate = !TRANSACTIONAL_ENTITY_TYPES.has(phase.entityType) &&
       LAST_MODIFIED_SUPPORTED_TYPES.has(phase.entityType) &&
-      since != null
+      since != null &&
+      isIncremental
       ? since
       : undefined;
     // Zoho requires last_modified_time as "YYYY-MM-DDTHH:mm:ss+0530" (IST) — not a bare date
@@ -514,6 +519,37 @@ export function createZohoAdapter(
       path: `/contacts/${contactId}/contactpersons`,
     });
     return getRecordArray(payload, 'contact_persons');
+  }
+
+  async function fetchContactById(contactId: string): Promise<Record<string, unknown> | null> {
+    try {
+      const payload = await request({ path: `/contacts/${contactId}` });
+      const contact = payload.contact;
+      return isRecord(contact) ? contact : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function fetchItemById(itemId: string): Promise<Record<string, unknown> | null> {
+    try {
+      const payload = await request({ path: `/items/${itemId}` });
+      const item = payload.item;
+      return isRecord(item) ? item : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function fetchLocationById(locationId: string): Promise<Record<string, unknown> | null> {
+    try {
+      const path = credentials.module === 'inventory' ? `/warehouses/${locationId}` : `/locations/${locationId}`;
+      const payload = await request({ path });
+      const location = payload.warehouse ?? payload.location;
+      return isRecord(location) ? location : null;
+    } catch {
+      return null;
+    }
   }
 
   async function fetchPricebookDetail(pricebookId: string): Promise<Record<string, unknown> | null> {
@@ -612,6 +648,9 @@ export function createZohoAdapter(
     testConnection,
     fetchPhasePage,
     fetchContactPersons,
+    fetchContactById,
+    fetchItemById,
+    fetchLocationById,
     fetchPricebookDetail,
     fetchPricelists,
     fetchUsers,
