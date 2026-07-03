@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { Pencil } from 'lucide-react';
 import { PageWrap } from '@/components/seller/layout';
@@ -13,7 +14,11 @@ import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
 import { useCohortDetail } from '@/hooks/useCohorts';
 import { CohortBuyersTab } from './CohortBuyersTab';
-import { CohortPerformanceTab } from './CohortPerformanceTab';
+
+const CohortPerformanceTab = dynamic(
+  () => import('./CohortPerformanceTab').then((m) => m.CohortPerformanceTab),
+  { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
+);
 
 const COHORT_DETAIL_TAB_SNAPSHOT_VERSION = 2;
 

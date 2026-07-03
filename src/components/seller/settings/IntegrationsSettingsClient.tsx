@@ -509,13 +509,16 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
             heading="No integrations setup yet"
             description={
               isSellerAdmin
-                ? (
-                <Button className="mt-2" type="button" variant="accent" onClick={() => setPickerOpen(true)}>
+                ? 'Add your first integration to get started.'
+                : 'A seller admin can set up integrations from this page.'
+            }
+            action={
+              isSellerAdmin && (
+                <Button type="button" variant="accent" onClick={() => setPickerOpen(true)}>
                   <Plus className="h-4 w-4" />
                   Add Integration
                 </Button>
-                )
-                : 'A seller admin can set up integrations from this page.'
+              )
             }
           />
         )}

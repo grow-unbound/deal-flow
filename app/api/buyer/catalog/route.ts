@@ -5,9 +5,34 @@ import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visi
 import { getVisibleBuyerCatalogs, requireBuyerAccessProfile, type BuyerVisibleCatalog } from '@/lib/server/buyer-access';
 import { resolveNearestBuyerLocation } from '@/lib/server/buyer-routing';
 import { getSelectedBuyerDeliveryFromRequest } from '@/lib/server/buyer-location-selection';
+import { BUYER_CACHE_CATALOG } from '@/lib/server/buyer-cache-headers';
 import type { BuyerCatalogResponse, BuyerCatalogSummary } from '@/types/buyer';
 
 const PAGE_LIMIT = 40;
+
+async function resolveMasterProductIdsForCategory(categoryId: string): Promise<string[]> {
+  if (!supabaseAdmin) return [];
+  const { data, error } = await supabaseAdmin
+    .schema('catalog')
+    .from('products')
+    .select('id')
+    .eq('category_id', categoryId);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
+}
+
+async function resolveTenantBrandIdsForMasterBrand(tenantId: string, masterBrandId: string): Promise<string[]> {
+  if (!supabaseAdmin) return [];
+  const { data, error } = await supabaseAdmin
+    .schema('app')
+    .from('tenant_brands')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('master_brand_id', masterBrandId)
+    .is('deleted_at', null);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
+}
 
 async function getCampaignCounts(campaignIds: string[]) {
   if (!supabaseAdmin || campaignIds.length === 0) return new Map<string, number>();
@@ -103,7 +128,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     if (requestedCampaignId) {
       const selectedCampaign = visibleCampaigns.find((campaign) => campaign.id === requestedCampaignId) ?? null;
       if (!selectedCampaign) {
-        return NextResponse.json({ items: [], total: 0, has_more: false, catalogs });
+        return NextResponse.json({ items: [], total: 0, has_more: false, catalogs }, { headers: BUYER_CACHE_CATALOG });
       }
 
       const { data: campaignItems, error: campaignItemsError } = await supabaseAdmin
@@ -114,7 +139,38 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         .is('deleted_at', null);
       if (campaignItemsError) throw new Error(campaignItemsError.message);
 
-      const productIds = ((campaignItems ?? []) as Array<{ tenant_product_id: string }>).map((row) => row.tenant_product_id);
+      let productIds = ((campaignItems ?? []) as Array<{ tenant_product_id: string }>).map((row) => row.tenant_product_id);
+
+      // Push category/brand filters into a tenant_products lookup before hydration —
+      // avoids assembling (image/price joins) items outside the requested filter.
+      if ((categoryId || brandId) && productIds.length > 0) {
+        let filterQuery = supabaseAdmin
+          .schema('app')
+          .from('tenant_products')
+          .select('id, tenant_brand_id, master_product_id')
+          .in('id', productIds);
+
+        if (categoryId) {
+          const matchingMasterProductIds = await resolveMasterProductIdsForCategory(categoryId);
+          if (matchingMasterProductIds.length === 0) {
+            return NextResponse.json({ items: [], total: 0, has_more: false, catalogs }, { headers: BUYER_CACHE_CATALOG });
+          }
+          filterQuery = filterQuery.in('master_product_id', matchingMasterProductIds);
+        }
+        if (brandId) {
+          const matchingTenantBrandIds = await resolveTenantBrandIdsForMasterBrand(tenantId, brandId);
+          if (matchingTenantBrandIds.length === 0) {
+            return NextResponse.json({ items: [], total: 0, has_more: false, catalogs }, { headers: BUYER_CACHE_CATALOG });
+          }
+          filterQuery = filterQuery.in('tenant_brand_id', matchingTenantBrandIds);
+        }
+
+        const { data: filteredProducts, error: filterError } = await filterQuery;
+        if (filterError) throw new Error(filterError.message);
+        productIds = ((filteredProducts ?? []) as Array<{ id: string }>).map((row) => row.id);
+      }
+      if (tenantProductId) productIds = productIds.filter((id) => id === tenantProductId);
+
       const itemMap = await assembleBuyerCatalogItemsForProductIds(supabaseAdmin as any, {
         buyerId,
         productIds,
@@ -130,9 +186,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
       let items = Array.from(itemMap.values());
       if (search) items = items.filter((item) => item.display_name.toLowerCase().includes(search) || item.internal_sku.toLowerCase().includes(search) || (item.brand_name?.toLowerCase().includes(search) ?? false));
-      if (categoryId) items = items.filter((item) => item.category_id === categoryId);
-      if (brandId) items = items.filter((item) => item.brand_id === brandId);
-      if (tenantProductId) items = items.filter((item) => item.tenant_product_id === tenantProductId);
 
       const total = items.length;
       const pageItems = items.slice(offset, offset + limit);
@@ -144,7 +197,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         selected_campaign_id: selectedCampaign.id,
         selected_campaign_name: selectedCampaign.name,
         selected_campaign_valid_until: selectedCampaign.valid_to,
-      } satisfies BuyerCatalogResponse);
+      } satisfies BuyerCatalogResponse, { headers: BUYER_CACHE_CATALOG });
     }
 
     let productsQuery = supabaseAdmin
@@ -155,11 +208,28 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       .eq('is_active', true)
       .is('deleted_at', null);
 
-    if (Array.isArray(allowedTenantBrandIds)) {
-      if (allowedTenantBrandIds.length === 0) {
-        return NextResponse.json({ items: [], total: 0, has_more: false, catalogs } satisfies BuyerCatalogResponse);
+    // Resolve tenant_brand_ids for the requested master brand_id (if any) and intersect
+    // with the buyer's allowed-brand visibility set, so a single .in() covers both.
+    let effectiveTenantBrandIds: string[] | null = Array.isArray(allowedTenantBrandIds) ? allowedTenantBrandIds : null;
+    if (brandId) {
+      const matchingTenantBrandIds = await resolveTenantBrandIdsForMasterBrand(tenantId, brandId);
+      effectiveTenantBrandIds = effectiveTenantBrandIds
+        ? effectiveTenantBrandIds.filter((id) => matchingTenantBrandIds.includes(id))
+        : matchingTenantBrandIds;
+    }
+    if (effectiveTenantBrandIds) {
+      if (effectiveTenantBrandIds.length === 0) {
+        return NextResponse.json({ items: [], total: 0, has_more: false, catalogs } satisfies BuyerCatalogResponse, { headers: BUYER_CACHE_CATALOG });
       }
-      productsQuery = productsQuery.in('tenant_brand_id', allowedTenantBrandIds);
+      productsQuery = productsQuery.in('tenant_brand_id', effectiveTenantBrandIds);
+    }
+
+    if (categoryId) {
+      const matchingMasterProductIds = await resolveMasterProductIdsForCategory(categoryId);
+      if (matchingMasterProductIds.length === 0) {
+        return NextResponse.json({ items: [], total: 0, has_more: false, catalogs } satisfies BuyerCatalogResponse, { headers: BUYER_CACHE_CATALOG });
+      }
+      productsQuery = productsQuery.in('master_product_id', matchingMasterProductIds);
     }
     if (tenantProductId) productsQuery = productsQuery.eq('id', tenantProductId);
 
@@ -180,8 +250,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     let items = Array.from(itemMap.values());
     if (search) items = items.filter((item) => item.display_name.toLowerCase().includes(search) || item.internal_sku.toLowerCase().includes(search) || (item.brand_name?.toLowerCase().includes(search) ?? false) || (item.category_name?.toLowerCase().includes(search) ?? false));
-    if (categoryId) items = items.filter((item) => item.category_id === categoryId);
-    if (brandId) items = items.filter((item) => item.brand_id === brandId);
 
     const total = items.length;
     const pageItems = items.slice(offset, offset + limit);
@@ -193,7 +261,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       selected_campaign_id: null,
       selected_campaign_name: null,
       selected_campaign_valid_until: null,
-    } satisfies BuyerCatalogResponse);
+    } satisfies BuyerCatalogResponse, { headers: BUYER_CACHE_CATALOG });
   } catch (error) {
     console.error('[GET /api/buyer/catalog]', error);
     return NextResponse.json({ error: 'Failed to fetch catalog' }, { status: 500 });

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useQueryClient } from '@tanstack/react-query';
 import { Pencil } from 'lucide-react';
 import { PageWrap } from '@/components/seller/layout';
@@ -14,10 +15,14 @@ import { useCategoryDetail } from '@/hooks/useCategories';
 import { CategoryFormSheet } from '@/components/seller/settings/CategoryFormSheet';
 import { formatCompactInr } from '@/lib/utils';
 import type { TenantCategory } from '@/types/tenant-categories';
-import { CategoryOverviewTab } from './CategoryOverviewTab';
 import { CategoryProductsTab } from './CategoryProductsTab';
 import { CategoryBrandsTab } from './CategoryBrandsTab';
 import { CategoryActivityTab } from './CategoryActivityTab';
+
+const CategoryOverviewTab = dynamic(
+  () => import('./CategoryOverviewTab').then((m) => m.CategoryOverviewTab),
+  { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
+);
 
 type TabId = 'performance' | 'products' | 'brands' | 'activity';
 

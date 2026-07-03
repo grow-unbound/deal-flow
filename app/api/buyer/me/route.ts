@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerAppMode } from '@/types/buyer';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
 import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import { normalizeIndianPhone } from '@/lib/phone';
 import { BUYER_ROLES, SELLER_ROLES } from '@/constants';
@@ -138,7 +139,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         business_policy: businessPolicy,
       };
 
-      return NextResponse.json(payload);
+      return NextResponse.json(payload, { headers: BUYER_CACHE_PERSONAL });
     }
 
     if (!buyerId) {
@@ -203,7 +204,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       business_policy: businessPolicy,
     };
 
-    return NextResponse.json(payload);
+    return NextResponse.json(payload, { headers: BUYER_CACHE_PERSONAL });
   } catch (error) {
     console.error('[GET /api/buyer/me] unexpected error:', error);
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

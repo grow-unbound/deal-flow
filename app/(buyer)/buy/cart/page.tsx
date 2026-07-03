@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { ShoppingCart, Trash2, Minus, Plus, Package, ChevronLeft, MapPin, ChevronRight, Check } from 'lucide-react';
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
@@ -448,12 +449,18 @@ function CartPageItem({
       <div className="flex gap-3 px-4 py-3.5">
         {/* Thumbnail 56×56 */}
         <div
-          className="rounded-lg flex items-center justify-center overflow-hidden shrink-0"
+          className="relative rounded-lg flex items-center justify-center overflow-hidden shrink-0"
           style={{ width: 56, height: 56, background: 'var(--cream-100)' }}
         >
           {item.image_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={item.image_url} alt={item.name} className="h-full w-full object-cover" />
+            <Image
+              src={item.image_url}
+              alt={item.name}
+              fill
+              className="object-cover"
+              sizes="56px"
+              unoptimized
+            />
           ) : (
             <Package className="h-6 w-6" style={{ color: 'var(--cream-400)' }} />
           )}

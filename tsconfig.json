@@ -27,6 +27,7 @@
     "forceConsistentCasingInFileNames": true,
     "allowJs": true,
     "incremental": true,
+    "tsBuildInfoFile": ".next/cache/tsconfig.tsbuildinfo",
     "plugins": [
       {
         "name": "next"

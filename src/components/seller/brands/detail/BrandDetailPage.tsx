@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Archive, Download, Share2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { PageWrap } from '@/components/seller/layout';
@@ -18,12 +19,16 @@ import {
 } from '@/hooks/useBrands';
 import { formatCompactInr } from '@/lib/utils';
 import { BrandDetailsTab } from './BrandDetailsTab';
-import { BrandPerformanceTab } from './BrandPerformanceTab';
 import { BrandProductsTab } from './BrandProductsTab';
 import { BrandBuyersTab } from './BrandBuyersTab';
 import { BrandCatalogsTab } from './BrandCatalogsTab';
 import { BrandActivityTimeline } from './BrandActivityTimeline';
 import { AddBrandCommand } from '../AddBrandCommand';
+
+const BrandPerformanceTab = dynamic(
+  () => import('./BrandPerformanceTab').then((m) => m.BrandPerformanceTab),
+  { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
+);
 
 type TabId = 'details' | 'performance' | 'products' | 'buyers' | 'catalogs' | 'activity';
 
