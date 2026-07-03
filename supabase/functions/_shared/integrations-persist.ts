@@ -615,6 +615,87 @@ export function buildTransactionalSourcePayload(rec: Record<string, unknown>): R
   return omitKeys(rec, ['line_items']);
 }
 
+// ── FK-failsafe ensure helpers ────────────────────────────────────────────────
+// Each helper: resolve from entity_map+table → fetch from Zoho if missing → persist → re-resolve.
+// Only active when adapter is provided (webhook path). Bulk sync callers omit adapter and get
+// the existing graceful-degradation behaviour (null / skip / throw) unchanged.
+
+async function ensureBuyerExists(
+  admin: AdminClient,
+  tenantId: string,
+  actorId: string | null,
+  integrationId: string,
+  zohoTypeId: ZohoIntegrationTypeId,
+  externalContactId: string,
+  adapter: ZohoAdapter,
+): Promise<string | null> {
+  const existing = await resolveInternalIdWithFallback(admin, tenantId, integrationId, 'customers', 'buyers', externalContactId);
+  if (existing) return existing;
+
+  const fetched = await adapter.fetchContactById(externalContactId);
+  if (!fetched) return null;
+
+  await persistBuyers(admin, tenantId, actorId, integrationId, [fetched], adapter, zohoTypeId);
+  return resolveInternalIdWithFallback(admin, tenantId, integrationId, 'customers', 'buyers', externalContactId);
+}
+
+async function ensureProductExists(
+  admin: AdminClient,
+  tenantId: string,
+  actorId: string | null,
+  integrationId: string,
+  zohoTypeId: ZohoIntegrationTypeId,
+  externalItemId: string,
+  adapter: ZohoAdapter,
+): Promise<string | null> {
+  const existing = await resolveInternalIdWithFallback(admin, tenantId, integrationId, 'products', 'tenant_products', externalItemId);
+  if (existing) return existing;
+
+  const fetched = await adapter.fetchItemById(externalItemId);
+  if (!fetched) return null;
+
+  await persistProducts(admin, tenantId, actorId, integrationId, [fetched], adapter);
+  return resolveInternalIdWithFallback(admin, tenantId, integrationId, 'products', 'tenant_products', externalItemId);
+}
+
+async function ensurePricelistExists(
+  admin: AdminClient,
+  tenantId: string,
+  actorId: string | null,
+  integrationId: string,
+  zohoTypeId: ZohoIntegrationTypeId,
+  externalPricebookId: string,
+  adapter: ZohoAdapter,
+): Promise<string | null> {
+  const existing = await resolveInternalIdWithFallback(admin, tenantId, integrationId, 'pricelists', 'price_lists', externalPricebookId);
+  if (existing) return existing;
+
+  const fetched = await adapter.fetchPricebookDetail(externalPricebookId);
+  if (!fetched) return null;
+
+  await persistPricelists(admin, tenantId, actorId, integrationId, [fetched], adapter);
+  return resolveInternalIdWithFallback(admin, tenantId, integrationId, 'pricelists', 'price_lists', externalPricebookId);
+}
+
+async function ensureLocationExists(
+  admin: AdminClient,
+  tenantId: string,
+  actorId: string | null,
+  integrationId: string,
+  zohoTypeId: ZohoIntegrationTypeId,
+  externalLocationId: string,
+  adapter: ZohoAdapter,
+): Promise<string | null> {
+  const existing = await resolveInternalIdWithFallback(admin, tenantId, integrationId, 'locations', 'locations', externalLocationId);
+  if (existing) return existing;
+
+  const fetched = await adapter.fetchLocationById(externalLocationId);
+  if (!fetched) return null;
+
+  await persistLocations(admin, tenantId, actorId, integrationId, zohoTypeId, [fetched], adapter);
+  return resolveInternalIdWithFallback(admin, tenantId, integrationId, 'locations', 'locations', externalLocationId);
+}
+
 function buildLineItemSignature(line: Record<string, unknown>): Record<string, unknown> {
   return {
     item_id: asStr(line.item_id) ?? asStr(line.product_id),
@@ -721,7 +802,6 @@ async function persistLocations(
   records: Record<string, unknown>[],
   adapter?: ZohoAdapter,
 ): Promise<PersistResult> {
-  const isInventory = integrationTypeId === 'zoho_inventory';
   const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
 
   const hasExistingDefault = await (async () => {
@@ -771,10 +851,10 @@ async function persistLocations(
   }
 
   for (const rec of records) {
-    const externalId = asStr(isInventory ? rec.warehouse_id : rec.location_id);
+    const externalId = asStr(rec.location_id);
     if (!externalId) { result.skipped++; continue; }
 
-    const name = asStr(isInventory ? rec.warehouse_name : rec.location_name);
+    const name = asStr(rec.location_name);
     if (!name) { result.skipped++; continue; }
 
     const isPrimary = asBool(rec.is_primary);
@@ -901,6 +981,80 @@ async function persistLocations(
   return result;
 }
 
+// ── Warehouses ───────────────────────────────────────────────────────────────
+
+async function persistWarehouses(
+  admin: AdminClient,
+  tenantId: string,
+  actorId: string | null,
+  integrationId: string,
+  records: Record<string, unknown>[],
+): Promise<PersistResult> {
+  const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
+
+  // Collect location external IDs to resolve location_id FK for each warehouse
+  const locationExternalIds = [
+    ...new Set(
+      records.map((r) => asStr(r.location_id)).filter((x): x is string => x !== null),
+    ),
+  ];
+  const locationIdMap = locationExternalIds.length > 0
+    ? await resolveInternalIdsWithFallback(admin, tenantId, integrationId, 'locations', 'locations', locationExternalIds)
+    : new Map<string, string>();
+
+  const rows: Record<string, unknown>[] = [];
+
+  for (const rec of records) {
+    const externalId = asStr(rec.warehouse_id);
+    if (!externalId) { result.skipped++; continue; }
+
+    const name = asStr(rec.warehouse_name);
+    if (!name) { result.skipped++; continue; }
+
+    const locationExtId = asStr(rec.location_id);
+    const locationId = locationExtId ? (locationIdMap.get(locationExtId) ?? null) : null;
+
+    const rawAddr = rec.address;
+    const address = rawAddr && typeof rawAddr === 'object' ? rawAddr : null;
+    const phoneNumber = sanitizeZohoPhone(rec.phone);
+    const status = asStr(rec.status) ?? (asBool(rec.is_active) === false ? 'inactive' : 'active');
+
+    rows.push({
+      tenant_id: tenantId,
+      external_ref: externalId,
+      name,
+      location_id: locationId,
+      address: address as Record<string, unknown> | null,
+      phone_number: phoneNumber,
+      status,
+      is_default: asBool(rec.is_primary) ?? false,
+      associated_users: [],
+      created_at: asDate(rec.created_time ?? rec.created_at ?? rec.date_created),
+      updated_at: asDate(rec.last_modified_time ?? rec.updated_at ?? rec.updated_time ?? rec.modified_time),
+      created_by: actorId,
+      updated_by: actorId,
+    });
+  }
+
+  const dedupedRows = dedupeByColumns(rows, ['tenant_id', 'external_ref']);
+  const persisted = dedupedRows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'warehouses', dedupedRows, ['tenant_id', 'external_ref'])
+    : [];
+
+  const entityMapPairs = persisted
+    .map((row) => {
+      const externalId = asStr(row.external_ref);
+      const internalId = asStr(row.id);
+      return externalId && internalId ? { externalId, internalId } : null;
+    })
+    .filter((r): r is { externalId: string; internalId: string } => r !== null);
+
+  result.updated += persisted.length;
+  await batchUpsertEntityMap(admin, tenantId, integrationId, 'warehouses', entityMapPairs);
+
+  return result;
+}
+
 // ── Buyers (contacts) + buyer_contacts (contact persons) ────────────────────
 
 async function persistBuyers(
@@ -910,6 +1064,7 @@ async function persistBuyers(
   integrationId: string,
   records: Record<string, unknown>[],
   adapter?: ZohoAdapter,
+  zohoTypeId?: ZohoIntegrationTypeId,
 ): Promise<PersistResult> {
   const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
   const buyerRows: Record<string, unknown>[] = [];
@@ -1010,6 +1165,16 @@ async function persistBuyers(
     'price_lists',
     pricebookExternalIds,
   );
+
+  // FK-failsafe: fetch missing pricelists from Zoho when adapter is present (webhook path)
+  if (adapter && zohoTypeId) {
+    for (const extId of pricebookExternalIds) {
+      if (!pricebookIdMap.has(extId)) {
+        const internalId = await ensurePricelistExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
+        if (internalId) pricebookIdMap.set(extId, internalId);
+      }
+    }
+  }
 
   const remoteContactPersonMap = new Map<string, Record<string, unknown>[]>();
   // contact_persons are embedded in Zoho's list response (per_page=200). No per-contact fetch.
@@ -1129,9 +1294,10 @@ async function persistBuyers(
 
 const ITEM_LOC_CONCURRENCY = 5;
 
-async function createLocationFromZoho(
+async function createWarehouseFromZoho(
   admin: AdminClient,
   tenantId: string,
+  actorId: string | null,
   zohoWarehouse: Record<string, unknown>,
 ): Promise<string | null> {
   const externalRef = asStr(zohoWarehouse.warehouse_id);
@@ -1142,31 +1308,30 @@ async function createLocationFromZoho(
   try {
     const { data, error } = await admin
       .schema('app')
-      .from('locations')
+      .from('warehouses')
       .upsert({
         external_ref: externalRef,
         tenant_id: tenantId,
-        name: name,
-        address: '',
-        latitude: null,
-        longitude: null,
-        created_by: 'system',
-        updated_by: 'system',
+        name,
+        status: 'active',
+        associated_users: [],
+        created_by: actorId,
+        updated_by: actorId,
       }, {
-        onConflict: 'external_ref,tenant_id',
+        onConflict: 'tenant_id,external_ref',
         ignoreDuplicates: false,
       })
       .select('id')
       .single();
 
     if (error) {
-      console.warn(`sync-products: Failed to create location ${externalRef}:`, error.message);
+      console.warn(`sync-products: Failed to create warehouse ${externalRef}:`, error.message);
       return null;
     }
 
     return data?.id || null;
   } catch (err) {
-    console.warn(`sync-products: Exception creating location ${externalRef}:`, err);
+    console.warn(`sync-products: Exception creating warehouse ${externalRef}:`, err);
     return null;
   }
 }
@@ -1174,15 +1339,16 @@ async function createLocationFromZoho(
 async function fetchAndPersistMissingItemLocations(
   admin: AdminClient,
   tenantId: string,
+  actorId: string | null,
   itemIds: string[],
   adapter: ZohoAdapter,
   productIdMap: Map<string, string>,
-  locationIdMap: Map<string, string>,
+  warehouseIdMap: Map<string, string>,
 ): Promise<number> {
   if (itemIds.length === 0) return 0;
 
   const inventoryRows: Record<string, unknown>[] = [];
-  let updatedLocationIdMap = new Map(locationIdMap);
+  let updatedWarehouseIdMap = new Map(warehouseIdMap);
 
   for (let i = 0; i < itemIds.length; i += ITEM_LOC_CONCURRENCY) {
     const batch = itemIds.slice(i, i + ITEM_LOC_CONCURRENCY);
@@ -1213,38 +1379,40 @@ async function fetchAndPersistMissingItemLocations(
       }
 
       for (const warehouse of warehouses) {
-        const locationExternalId = asStr(warehouse.warehouse_id);
-        if (!locationExternalId) continue;
+        const warehouseExternalId = asStr(warehouse.warehouse_id);
+        if (!warehouseExternalId) continue;
 
-        let locationId = updatedLocationIdMap.get(locationExternalId);
+        let warehouseId = updatedWarehouseIdMap.get(warehouseExternalId);
 
-        // Failsafe: if location doesn't exist, create it
-        if (!locationId) {
+        // Failsafe: if warehouse doesn't exist yet, create it
+        if (!warehouseId) {
           try {
-            const newLocationId = await createLocationFromZoho(admin, tenantId, warehouse as Record<string, unknown>);
-            if (newLocationId) {
-              locationId = newLocationId;
-              updatedLocationIdMap.set(locationExternalId, newLocationId);
-              console.log(`sync-products: created missing location ${locationExternalId}`);
+            const newWarehouseId = await createWarehouseFromZoho(admin, tenantId, actorId, warehouse as Record<string, unknown>);
+            if (newWarehouseId) {
+              warehouseId = newWarehouseId;
+              updatedWarehouseIdMap.set(warehouseExternalId, newWarehouseId);
+              console.log(`sync-products: created missing warehouse ${warehouseExternalId}`);
             }
           } catch (err) {
-            console.warn(`sync-products: failed to create location ${locationExternalId}:`, err);
+            console.warn(`sync-products: failed to create warehouse ${warehouseExternalId}:`, err);
             continue;
           }
         }
 
-        if (!locationId) {
-          console.warn(`sync-products: could not resolve location ${locationExternalId}`);
+        if (!warehouseId) {
+          console.warn(`sync-products: could not resolve warehouse ${warehouseExternalId}`);
           continue;
         }
 
         inventoryRows.push({
           tenant_product_id: productId,
-          location_id: locationId,
+          warehouse_id: warehouseId,
           qty_available: asNum(warehouse.warehouse_available_stock) || 0,
           qty_reserved: asNum(warehouse.warehouse_reserved_stock) || 0,
           reorder_point: asNum(warehouse.reorder_level) || null,
           updated_at: nowIso(),
+          created_by: actorId,
+          updated_by: actorId,
         });
       }
     }
@@ -1252,21 +1420,21 @@ async function fetchAndPersistMissingItemLocations(
 
   if (inventoryRows.length === 0) return 0;
 
-  const dedupedRows = dedupeByColumns(inventoryRows, ['tenant_product_id', 'location_id']);
+  const dedupedRows = dedupeByColumns(inventoryRows, ['tenant_product_id', 'warehouse_id']);
 
   try {
-    await bulkPersistJsonbRecords(admin, 'tenant_inventory', dedupedRows, ['tenant_product_id', 'location_id']);
+    await bulkPersistJsonbRecords(admin, 'tenant_inventory', dedupedRows, ['tenant_product_id', 'warehouse_id']);
     return dedupedRows.length;
   } catch (err) {
     // Fallback: row-by-row
     let count = 0;
     for (const row of dedupedRows) {
       try {
-        await bulkPersistJsonbRecords(admin, 'tenant_inventory', [row], ['tenant_product_id', 'location_id']);
+        await bulkPersistJsonbRecords(admin, 'tenant_inventory', [row], ['tenant_product_id', 'warehouse_id']);
         count++;
       } catch (rowErr) {
         console.warn(
-          `sync-products: inventory upsert failed for ${row.tenant_product_id}/${row.location_id}:`,
+          `sync-products: inventory upsert failed for ${row.tenant_product_id}/${row.warehouse_id}:`,
           rowErr,
         );
       }
@@ -1479,8 +1647,8 @@ async function persistProducts(
   result.updated += productMapPairs.length;
   await batchUpsertEntityMap(admin, tenantId, integrationId, 'products', productMapPairs);
 
-  // Step D: upsert inventory from embedded item location snapshots on each item
-  const locationExternalIds = [
+  // Step D: upsert inventory from embedded warehouse snapshots on each item
+  const warehouseExternalIds = [
     ...new Set(
       records.flatMap((r) => {
         const locs = getEmbeddedLocationRows(r);
@@ -1489,8 +1657,8 @@ async function persistProducts(
     ),
   ];
 
-  const locationIdMap = await resolveInternalIdsWithFallback(
-    admin, tenantId, integrationId, 'locations', 'locations', locationExternalIds,
+  const warehouseIdMap = await resolveInternalIdsWithFallback(
+    admin, tenantId, integrationId, 'warehouses', 'warehouses', warehouseExternalIds,
   );
 
   const inventoryRows: Record<string, unknown>[] = [];
@@ -1518,18 +1686,18 @@ async function persistProducts(
       needDetailItemIds.push(extProductId);
     } else {
       for (const loc of locs) {
-        const extLocId = getEmbeddedLocationExternalId(loc);
-        if (!extLocId) continue;
+        const extWarehouseId = getEmbeddedLocationExternalId(loc);
+        if (!extWarehouseId) continue;
 
-        const locationId = locationIdMap.get(extLocId);
-        if (!locationId) {
+        const warehouseId = warehouseIdMap.get(extWarehouseId);
+        if (!warehouseId) {
           inventorySyncError = new IntegrationSyncError(
             'tenant_inventory',
-            `Unable to resolve location ${extLocId} for product ${extProductId}.`,
+            `Unable to resolve warehouse ${extWarehouseId} for product ${extProductId}.`,
             extProductId,
             {
               product_id: extProductId,
-              location_id: extLocId,
+              warehouse_id: extWarehouseId,
             },
           );
           break;
@@ -1537,7 +1705,7 @@ async function persistProducts(
 
         inventoryRows.push({
           tenant_product_id: productId,
-          location_id: locationId,
+          warehouse_id: warehouseId,
           qty_available: getEmbeddedLocationQty(loc),
           qty_reserved: 0,
           updated_at: nowIso(),
@@ -1557,21 +1725,22 @@ async function persistProducts(
     throw inventorySyncError;
   }
 
-  const dedupedInventoryRows = dedupeByColumns(inventoryRows, ['tenant_product_id', 'location_id']);
+  const dedupedInventoryRows = dedupeByColumns(inventoryRows, ['tenant_product_id', 'warehouse_id']);
   if (dedupedInventoryRows.length > 0) {
-    await bulkPersistJsonbRecords(admin, 'tenant_inventory', dedupedInventoryRows, ['tenant_product_id', 'location_id']);
+    await bulkPersistJsonbRecords(admin, 'tenant_inventory', dedupedInventoryRows, ['tenant_product_id', 'warehouse_id']);
   }
 
-  // Fetch missing item_locations via detail API if adapter available
+  // Fetch missing warehouse data via detail API if adapter available
   let detailInventoryCount = 0;
   if (needDetailItemIds.length > 0 && adapter) {
     detailInventoryCount = await fetchAndPersistMissingItemLocations(
       admin,
       tenantId,
+      actorId,
       needDetailItemIds,
       adapter,
       productIdMap,
-      locationIdMap,
+      warehouseIdMap,
     );
   }
 
@@ -1686,6 +1855,17 @@ async function persistPricelists(
         admin, tenantId, integrationId, 'products', 'tenant_products', productExternalIds,
       )
     : new Map<string, string>();
+
+  // FK-failsafe: fetch missing products from Zoho when adapter is present (webhook path)
+  if (adapter) {
+    const zohoTypeId = adapter.integrationTypeId;
+    for (const extId of productExternalIds) {
+      if (!tenantProductIdMap.has(extId)) {
+        const internalId = await ensureProductExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
+        if (internalId) tenantProductIdMap.set(extId, internalId);
+      }
+    }
+  }
 
   const priceListItemRows: Record<string, unknown>[] = [];
   const desiredExternalRefsByPriceListId = new Map<string, Set<string>>();
@@ -1807,6 +1987,8 @@ async function persistEstimates(
   actorId: string | null,
   integrationId: string,
   records: Record<string, unknown>[],
+  adapter?: ZohoAdapter,
+  zohoTypeId?: ZohoIntegrationTypeId,
 ): Promise<PersistResult> {
   const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
 
@@ -1816,6 +1998,15 @@ async function persistEstimates(
   const buyerIdMap = await resolveInternalIdsWithFallback(
     admin, tenantId, integrationId, 'customers', 'buyers', customerExternalIds,
   );
+  // FK-failsafe: fetch missing buyers from Zoho when adapter is present
+  if (adapter && zohoTypeId) {
+    for (const extId of customerExternalIds) {
+      if (!buyerIdMap.has(extId)) {
+        const internalId = await ensureBuyerExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
+        if (internalId) buyerIdMap.set(extId, internalId);
+      }
+    }
+  }
   const locationExternalIds = [...new Set(
     records
       .map((r) => pickString(r.location_id, r.warehouse_id))
@@ -1824,6 +2015,15 @@ async function persistEstimates(
   const locationIdMap = await resolveInternalIdsWithFallback(
     admin, tenantId, integrationId, 'locations', 'locations', locationExternalIds,
   );
+  // FK-failsafe: fetch missing locations from Zoho when adapter is present
+  if (adapter && zohoTypeId) {
+    for (const extId of locationExternalIds) {
+      if (!locationIdMap.has(extId)) {
+        const internalId = await ensureLocationExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
+        if (internalId) locationIdMap.set(extId, internalId);
+      }
+    }
+  }
   const parentRows: Record<string, unknown>[] = [];
   const parentRecords: Array<{ estimateId: string; sourcePayload: Record<string, unknown>; lineItems: Record<string, unknown>[]; resolvedActorId: string | null }> = [];
 
@@ -1924,6 +2124,15 @@ async function persistEstimates(
   const productIdMap = await resolveInternalIdsWithFallback(
     admin, tenantId, integrationId, 'products', 'tenant_products', productExtIds,
   );
+  // FK-failsafe: fetch missing products from Zoho when adapter is present
+  if (adapter && zohoTypeId) {
+    for (const extId of productExtIds) {
+      if (!productIdMap.has(extId)) {
+        const internalId = await ensureProductExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
+        if (internalId) productIdMap.set(extId, internalId);
+      }
+    }
+  }
 
   const lineItemRows: Record<string, unknown>[] = [];
   let estimateItemSyncError: IntegrationSyncError | null = null;
@@ -2010,6 +2219,8 @@ async function persistOrders(
   actorId: string | null,
   integrationId: string,
   records: Record<string, unknown>[],
+  adapter?: ZohoAdapter,
+  zohoTypeId?: ZohoIntegrationTypeId,
 ): Promise<PersistResult> {
   const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
 
@@ -2019,6 +2230,15 @@ async function persistOrders(
   const buyerIdMap = await resolveInternalIdsWithFallback(
     admin, tenantId, integrationId, 'customers', 'buyers', customerExternalIds,
   );
+  // FK-failsafe: fetch missing buyers from Zoho when adapter is present
+  if (adapter && zohoTypeId) {
+    for (const extId of customerExternalIds) {
+      if (!buyerIdMap.has(extId)) {
+        const internalId = await ensureBuyerExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
+        if (internalId) buyerIdMap.set(extId, internalId);
+      }
+    }
+  }
   const locationExternalIds = [...new Set(
     records
       .map((r) => pickString(r.location_id, r.warehouse_id))
@@ -2027,6 +2247,15 @@ async function persistOrders(
   const locationIdMap = await resolveInternalIdsWithFallback(
     admin, tenantId, integrationId, 'locations', 'locations', locationExternalIds,
   );
+  // FK-failsafe: fetch missing locations from Zoho when adapter is present
+  if (adapter && zohoTypeId) {
+    for (const extId of locationExternalIds) {
+      if (!locationIdMap.has(extId)) {
+        const internalId = await ensureLocationExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
+        if (internalId) locationIdMap.set(extId, internalId);
+      }
+    }
+  }
   const parentRows: Record<string, unknown>[] = [];
   const parentRecords: Array<{ orderExternalId: string; sourcePayload: Record<string, unknown>; lineItems: Record<string, unknown>[]; resolvedActorId: string | null }> = [];
 
@@ -2122,6 +2351,15 @@ async function persistOrders(
   const productIdMap = await resolveInternalIdsWithFallback(
     admin, tenantId, integrationId, 'products', 'tenant_products', productExtIds,
   );
+  // FK-failsafe: fetch missing products from Zoho when adapter is present
+  if (adapter && zohoTypeId) {
+    for (const extId of productExtIds) {
+      if (!productIdMap.has(extId)) {
+        const internalId = await ensureProductExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
+        if (internalId) productIdMap.set(extId, internalId);
+      }
+    }
+  }
 
   const lineItemRows: Record<string, unknown>[] = [];
   let orderItemSyncError: IntegrationSyncError | null = null;
@@ -2209,6 +2447,8 @@ async function persistInvoices(
   actorId: string | null,
   integrationId: string,
   records: Record<string, unknown>[],
+  adapter?: ZohoAdapter,
+  zohoTypeId?: ZohoIntegrationTypeId,
 ): Promise<PersistResult> {
   const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
 
@@ -2218,6 +2458,15 @@ async function persistInvoices(
   const buyerIdMap = await resolveInternalIdsWithFallback(
     admin, tenantId, integrationId, 'customers', 'buyers', customerExternalIds,
   );
+  // FK-failsafe: fetch missing buyers from Zoho when adapter is present
+  if (adapter && zohoTypeId) {
+    for (const extId of customerExternalIds) {
+      if (!buyerIdMap.has(extId)) {
+        const internalId = await ensureBuyerExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
+        if (internalId) buyerIdMap.set(extId, internalId);
+      }
+    }
+  }
   const locationExternalIds = [...new Set(
     records
       .map((r) => pickString(r.location_id, r.warehouse_id))
@@ -2226,6 +2475,15 @@ async function persistInvoices(
   const locationIdMap = await resolveInternalIdsWithFallback(
     admin, tenantId, integrationId, 'locations', 'locations', locationExternalIds,
   );
+  // FK-failsafe: fetch missing locations from Zoho when adapter is present
+  if (adapter && zohoTypeId) {
+    for (const extId of locationExternalIds) {
+      if (!locationIdMap.has(extId)) {
+        const internalId = await ensureLocationExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
+        if (internalId) locationIdMap.set(extId, internalId);
+      }
+    }
+  }
   const orderExternalIds = [...new Set(
     records
       .map((r) => pickString(r.salesorder_id, r.order_id))
@@ -2346,6 +2604,15 @@ async function persistInvoices(
   const productIdMap = await resolveInternalIdsWithFallback(
     admin, tenantId, integrationId, 'products', 'tenant_products', productExtIds,
   );
+  // FK-failsafe: fetch missing products from Zoho when adapter is present
+  if (adapter && zohoTypeId) {
+    for (const extId of productExtIds) {
+      if (!productIdMap.has(extId)) {
+        const internalId = await ensureProductExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
+        if (internalId) productIdMap.set(extId, internalId);
+      }
+    }
+  }
 
   const lineItemRows: Record<string, unknown>[] = [];
   let invoiceItemSyncError: IntegrationSyncError | null = null;
@@ -2440,8 +2707,11 @@ export async function persistZohoEntityPage(
     case 'locations':
       return persistLocations(admin, tenantId, actorId, integrationId, integrationTypeId, records, adapter);
 
+    case 'warehouses':
+      return persistWarehouses(admin, tenantId, actorId, integrationId, records);
+
     case 'customers':
-      return persistBuyers(admin, tenantId, actorId, integrationId, records, adapter);
+      return persistBuyers(admin, tenantId, actorId, integrationId, records, adapter, integrationTypeId);
 
     case 'products':
       return persistProducts(admin, tenantId, actorId, integrationId, records, adapter);
@@ -2450,13 +2720,13 @@ export async function persistZohoEntityPage(
       return persistPricelists(admin, tenantId, actorId, integrationId, records, adapter);
 
     case 'estimates':
-      return persistEstimates(admin, tenantId, actorId, integrationId, records);
+      return persistEstimates(admin, tenantId, actorId, integrationId, records, adapter, integrationTypeId);
 
     case 'orders':
-      return persistOrders(admin, tenantId, actorId, integrationId, records);
+      return persistOrders(admin, tenantId, actorId, integrationId, records, adapter, integrationTypeId);
 
     case 'invoices':
-      return persistInvoices(admin, tenantId, actorId, integrationId, records);
+      return persistInvoices(admin, tenantId, actorId, integrationId, records, adapter, integrationTypeId);
 
     default:
       return { created: 0, updated: 0, skipped: records.length, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };

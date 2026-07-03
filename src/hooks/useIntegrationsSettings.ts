@@ -413,7 +413,8 @@ function parseTenantIntegration(value: unknown): TenantIntegrationDetail | null 
     .map(parseSyncJob)
     .filter((job): job is IntegrationSyncJob => job !== null);
 
-  const activeJob = parseSyncJob(value.active_job);
+  const parsedJob = parseSyncJob(value.active_job);
+  const activeJob = parsedJob && ACTIVE_STATUSES.includes(parsedJob.status) ? parsedJob : null;
 
   return {
     id: asString(value.id),
@@ -796,15 +797,36 @@ export function useIntegrationsSettings(initialData?: IntegrationSettingsPayload
 
   const stopSyncMutation = useMutation({
     mutationFn: postStopSync,
-    onSuccess: (data) => {
-      queryClient.setQueryData(queryKey, data);
+    onMutate: async (input) => {
+      const snapshots = await takeSnapshots(queryClient, [queryKey]);
+      queryClient.setQueryData<IntegrationsSettingsView>(queryKey, (current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          integrations: current.integrations.map((integration) => {
+            if (integration.tenant_integration?.id !== input.tenant_integration_id) return integration;
+            return {
+              ...integration,
+              tenant_integration: integration.tenant_integration
+                ? { ...integration.tenant_integration, active_job: null }
+                : null,
+            };
+          }),
+        };
+      });
+      return { snapshots };
+    },
+    onSuccess: () => {
       toast.success('Sync cancelled');
     },
-    onError: (error) => {
+    onError: (error, _input, context) => {
+      rollbackSnapshots(queryClient, context?.snapshots);
       toast.error(error instanceof Error ? error.message : 'Failed to stop sync');
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey });
+      // Delay refetch — phase jobs update asynchronously after cancel RPC; immediate
+      // refetch may still see running status and overwrite the optimistic clear.
+      setTimeout(() => void queryClient.invalidateQueries({ queryKey }), 3000);
     },
   });
 

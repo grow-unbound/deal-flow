@@ -1377,7 +1377,7 @@ async function runWorkerJob(
           since: progress.since,
         };
 
-    const page = await adapter.fetchPhasePage(currentPhase, cursor, progress.since);
+    const page = await adapter.fetchPhasePage(currentPhase, cursor, progress.since, job.job_type);
     let processedCount = 0;
     let failedCount = 0;
 
