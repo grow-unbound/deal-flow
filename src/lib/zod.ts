@@ -184,6 +184,7 @@ export const BuyerCreateSchema = z.object({
   tier: z.enum(['A', 'B', 'C']).optional(),
   external_ref: z.string().optional(),
   default_cohort_id: z.string().uuid('Invalid cohort').optional().nullable(),
+  buyer_app_enabled: z.boolean().optional(),
 });
 export type BuyerCreateInput = z.infer<typeof BuyerCreateSchema>;
 

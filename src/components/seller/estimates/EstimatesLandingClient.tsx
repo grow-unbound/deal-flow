@@ -19,6 +19,7 @@ import {
 import { TransactionTable } from '@/components/seller/transactional';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useFlagState } from '@/hooks/useFeatureFlag';
+import { useCreateFlags } from '@/hooks/useCreateFlags';
 import { useTenantEstimates, useTenantEstimatesInfinite, type EstimateLandingRow, type TenantEstimatesResponse } from '@/hooks/useEstimates';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
@@ -149,6 +150,7 @@ function EstimatesLandingContent({
   const summaryQuery = useTenantEstimates(period, initialData);
   const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
   const showCampaignColumn = useFlagState('CATALOG_PUBLISHING') === true;
+  const { createEstimates } = useCreateFlags();
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-estimates-landing',
     scopeKey: period,
@@ -250,8 +252,8 @@ function EstimatesLandingContent({
           period={period}
           periodOptions={options}
           onPeriodChange={setPeriod}
-          primary="Add an estimate"
-          onPrimaryClick={() => router.push('/estimates/new')}
+          primary={createEstimates ? 'Add an estimate' : undefined}
+          onPrimaryClick={createEstimates ? () => router.push('/estimates/new') : undefined}
         />
 
         {showRefreshingState ? (
@@ -353,12 +355,14 @@ function EstimatesLandingContent({
                       : 'Create an estimate to share pricing with a buyer.'
                   }
                   action={
-                    <Button variant="accent" asChild>
-                      <Link href="/estimates/new" className="inline-flex items-center gap-1.5">
-                        <Plus size={13} />
-                        Add an estimate
-                      </Link>
-                    </Button>
+                    createEstimates ? (
+                      <Button variant="accent" asChild>
+                        <Link href="/estimates/new" className="inline-flex items-center gap-1.5">
+                          <Plus size={13} />
+                          Add an estimate
+                        </Link>
+                      </Button>
+                    ) : undefined
                   }
                 />
               ) : (

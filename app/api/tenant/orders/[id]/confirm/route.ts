@@ -9,6 +9,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 const ConfirmSchema = z.object({
   has_backorder: z.boolean().default(false),
   notify_buyer: z.boolean().optional(),
+  qty_overrides: z.record(z.string().uuid(), z.number().positive()).optional(),
 });
 
 export async function PATCH(
@@ -67,6 +68,22 @@ export async function PATCH(
     }
     if (!['draft', 'received', 'confirmed'].includes(order.status)) {
       return NextResponse.json({ error: "Can't edit after dispatch." }, { status: 400 });
+    }
+
+    const qtyOverrides = parsed.data.qty_overrides;
+    if (qtyOverrides && Object.keys(qtyOverrides).length > 0) {
+      for (const [lineId, qty] of Object.entries(qtyOverrides)) {
+        const { error: lineErr } = await db
+          .schema('app')
+          .from('order_items')
+          .update({ qty, updated_at: new Date().toISOString(), updated_by: claims.sub })
+          .eq('id', lineId)
+          .eq('order_id', id);
+        if (lineErr) {
+          console.error('[PATCH confirm] qty_override update failed', lineErr);
+          return NextResponse.json({ error: 'Failed to update line quantities' }, { status: 500 });
+        }
+      }
     }
 
     const rpcRes = await db.schema('app').rpc('confirm_order', { p_order_id: id });

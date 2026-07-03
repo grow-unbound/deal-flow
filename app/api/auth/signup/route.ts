@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getFlag } from '@/lib/flags';
-import { getPostHogClient, seedTenantFeatureFlags } from '@/lib/posthog-server';
+import { getPostHogClient } from '@/lib/posthog-server';
 import { buildSignupTenantSettingsSeed } from '@/lib/tenant-settings/signup-seed';
 
 const SignupBodySchema = z.object({
@@ -20,6 +20,7 @@ const SignupBodySchema = z.object({
   gstin: z.string().optional(),
   primary_state: z.string().optional(),
   plan: z.enum(['starter', 'growth', 'scale']).default('starter'),
+  turnstile_token: z.string().optional(),
 });
 
 // Postgres unique-violation error code
@@ -68,13 +69,32 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const { full_name, email, password, business_name, slug, phone, gstin, primary_state, plan } = parsed.data;
+  const { full_name, email, password, business_name, slug, phone, gstin, primary_state, plan, turnstile_token } = parsed.data;
+
+  // Turnstile bot-protection check (skip in dev if key is not configured)
+  const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
+  if (turnstileSecret) {
+    if (!turnstile_token) {
+      return NextResponse.json({ error: 'Bot check required. Please complete the challenge.' }, { status: 403 });
+    }
+    const tsRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ secret: turnstileSecret, response: turnstile_token }).toString(),
+    });
+    const tsData = (await tsRes.json()) as { success: boolean };
+    if (!tsData.success) {
+      return NextResponse.json({ error: 'Bot check failed. Please try again.' }, { status: 403 });
+    }
+  }
 
   // Step 1 — create auth user without minting a JWT (avoids hook before tenant exists)
+  // email_confirm: false so Supabase email is unconfirmed until OTP is verified.
+  // We send the OTP separately via signInWithOtp after tenant creation.
   const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
     email,
     password,
-    email_confirm: true,
+    email_confirm: false,
     user_metadata: { phone: phone ?? null, full_name: full_name ?? null },
   });
 
@@ -146,7 +166,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Step 4 — mint session after tenant_users row exists
+  // Step 4 — send email OTP via Supabase Auth (account not yet confirmed)
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!supabaseUrl || !supabaseAnonKey) {
@@ -157,32 +177,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Use anon client to trigger Supabase email OTP delivery.
+  // Supabase will send a 6-digit code if the project is configured for OTP-style email
+  // (Authentication → Email → OTP expiry set, magic link disabled).
   const anonClient = createClient(supabaseUrl, supabaseAnonKey);
-  const { data: signInData, error: signInError } = await anonClient.auth.signInWithPassword({
+  const { error: otpError } = await anonClient.auth.signInWithOtp({
     email,
-    password,
+    options: { shouldCreateUser: false },
   });
 
-  if (signInError || !signInData.session) {
-    await deleteAuthUser(userId);
-    return NextResponse.json(
-      { error: signInError?.message ?? 'Failed to create session' },
-      { status: 500 }
-    );
-  }
-
-  let finalSession = signInData.session;
-  const { data: refreshData } = await anonClient.auth.refreshSession({
-    refresh_token: signInData.session.refresh_token,
-  });
-  if (refreshData.session) {
-    finalSession = refreshData.session;
-  }
-
-  try {
-    await seedTenantFeatureFlags(tenantResult.tenant_id);
-  } catch {
-    // Non-fatal: feature-flag seeding should never block signup.
+  if (otpError) {
+    // OTP send failed — still complete signup but surface the error on the UI
+    // so the user can request a resend. Don't delete the account.
+    console.error('Email OTP send failed after signup:', otpError.message);
   }
 
   // Step 5 — fire PostHog server-side event for funnel analytics
@@ -209,20 +216,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
     await ph.flush();
   } catch {
-    // Non-fatal: analytics failure should not block signup
+    // Non-fatal
   }
 
   return NextResponse.json(
     {
-      success: true,
-      user: { id: userId, email },
+      pending_verification: true,
+      user_id: userId,
+      email,
+      phone: phone ?? null,
       tenant: {
         tenant_id: tenantResult.tenant_id,
         slug: tenantResult.slug,
         subdomain: tenantResult.subdomain,
       },
-      redirect: '/dashboard',
-      session: finalSession,
+      otp_send_failed: !!otpError,
     },
     { status: 201 }
   );

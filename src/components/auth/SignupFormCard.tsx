@@ -7,8 +7,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { usePostHog } from 'posthog-js/react';
+import { Turnstile } from '@marsidev/react-turnstile';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
-import { supabaseBrowser } from '@/lib/supabase-browser';
 
 const SignupFormSchema = z
   .object({
@@ -29,10 +29,12 @@ type SignupFormValues = z.infer<typeof SignupFormSchema>;
 interface SignupResponse {
   code?: string;
   error?: string;
-  user?: { id: string; email: string };
-  tenant?: { slug?: string; business_name?: string };
-  redirect?: string;
-  session?: { access_token: string; refresh_token: string };
+  pending_verification?: boolean;
+  user_id?: string;
+  email?: string;
+  phone?: string | null;
+  tenant?: { tenant_id?: string; slug?: string; subdomain?: string };
+  otp_send_failed?: boolean;
 }
 
 function slugify(name: string): string {
@@ -53,6 +55,8 @@ export function SignupFormCard() {
   const router = useRouter();
   const posthog = usePostHog();
   const [apiError, setApiError] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
   const {
     register,
@@ -92,6 +96,7 @@ export function SignupFormCard() {
           business_name: values.business_name,
           slug: slugify(values.business_name),
           phone: values.phone,
+          turnstile_token: turnstileToken || undefined,
         }),
       });
 
@@ -107,25 +112,22 @@ export function SignupFormCard() {
         return;
       }
 
-      if (!data.session?.access_token || !data.session?.refresh_token) {
-        setApiError('Account was created but session was not established. Please sign in.');
+      if (data.pending_verification) {
+        posthog?.capture('user_signed_up', {
+          tenant_slug: data.tenant?.slug,
+          plan: 'starter',
+        });
+        const params = new URLSearchParams({
+          email: data.email ?? values.email,
+          uid: data.user_id ?? '',
+          ...(data.phone ? { phone: data.phone } : {}),
+          ...(data.tenant?.tenant_id ? { tid: data.tenant.tenant_id } : {}),
+        });
+        router.replace(`/verify-account?${params.toString()}`);
         return;
       }
 
-      await supabaseBrowser.auth.setSession({
-        access_token: data.session.access_token,
-        refresh_token: data.session.refresh_token,
-      });
-
-      posthog?.identify(data.user!.id, { email: data.user!.email });
-      posthog?.capture('user_signed_up', {
-        tenant_slug: data.tenant?.slug,
-        business_name: data.tenant?.business_name,
-        plan: 'starter',
-      });
-
-      router.replace(`${data.redirect ?? '/dashboard'}?first_run=1`);
-      router.refresh();
+      setApiError('Account was created but verification could not be initiated. Please sign in.');
     } catch (err) {
       posthog?.captureException(err);
       setApiError('An unexpected error occurred. Please try again.');
@@ -229,9 +231,18 @@ export function SignupFormCard() {
 
         {apiError && <p className="text-caption text-danger-500 bg-danger-50 px-3 py-2 rounded-md">{apiError}</p>}
 
+        {turnstileSiteKey && (
+          <Turnstile
+            siteKey={turnstileSiteKey}
+            onSuccess={setTurnstileToken}
+            onError={() => setApiError('Bot check failed. Please refresh and try again.')}
+            options={{ theme: 'light' }}
+          />
+        )}
+
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={isSubmitting || (!!turnstileSiteKey && !turnstileToken)}
           className="w-full px-4 py-2.5 rounded-md bg-[#221E1A] hover:bg-[#3D3630] active:bg-[#2E2A26] active:scale-[0.97] text-cream-50 text-body-sm font-semibold transition-all duration-base disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSubmitting ? 'Creating account…' : 'Create Account'}

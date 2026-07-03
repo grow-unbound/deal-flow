@@ -18,6 +18,7 @@ import {
 import { TransactionTable } from '@/components/seller/transactional';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useFlagState } from '@/hooks/useFeatureFlag';
+import { useCreateFlags } from '@/hooks/useCreateFlags';
 import { useTenantInvoices, useTenantInvoicesInfinite, type TenantInvoicesResponse } from '@/hooks/useInvoices';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
@@ -100,6 +101,7 @@ function InvoicesLandingContent({
   const summaryQuery = useTenantInvoices(period, initialData);
   const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
   const showCampaignColumn = useFlagState('CATALOG_PUBLISHING') === true;
+  const { createInvoices } = useCreateFlags();
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-invoices-landing',
     scopeKey: period,
@@ -191,8 +193,8 @@ function InvoicesLandingContent({
         period={period}
         periodOptions={options}
         onPeriodChange={setPeriod}
-        primary="Add an invoice"
-        onPrimaryClick={() => router.push('/invoices/new')}
+        primary={createInvoices ? 'Add an invoice' : undefined}
+        onPrimaryClick={createInvoices ? () => router.push('/invoices/new') : undefined}
       />
 
       {showRefreshingState ? (
@@ -292,12 +294,14 @@ function InvoicesLandingContent({
                     : 'Create an invoice to bill a buyer.'
                 }
                 action={
-                  <Button variant="accent" asChild>
-                    <Link href="/invoices/new" className="inline-flex items-center gap-1.5">
-                      <Plus size={13} />
-                      Add an invoice
-                    </Link>
-                  </Button>
+                  createInvoices ? (
+                    <Button variant="accent" asChild>
+                      <Link href="/invoices/new" className="inline-flex items-center gap-1.5">
+                        <Plus size={13} />
+                        Add an invoice
+                      </Link>
+                    </Button>
+                  ) : undefined
                 }
               />
             ) : (

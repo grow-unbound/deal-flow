@@ -115,11 +115,12 @@ export async function PUT(
   // Build the update payload
   const updateData: Record<string, any> = { ...parsed.data };
 
-  // seller_assistant cannot update financial fields — strip them silently
+  // seller_assistant cannot update financial or access fields — strip them silently
   if (claims.role === 'seller_assistant') {
     delete updateData.credit_limit;
     delete updateData.tier;
     delete updateData.default_cohort_id;
+    delete updateData.buyer_app_enabled;
   }
 
   // external_ref is immutable once set (non-null, non-empty) — remove from update

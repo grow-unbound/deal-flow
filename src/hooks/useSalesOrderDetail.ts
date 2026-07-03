@@ -186,8 +186,8 @@ export function useConfirmSalesOrder(orderId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async () => {
-      const res = await apiPatch(`/api/tenant/orders/${orderId}/confirm`, { has_backorder: false });
+    mutationFn: async (input?: { qty_overrides?: Record<string, number> }) => {
+      const res = await apiPatch(`/api/tenant/orders/${orderId}/confirm`, { has_backorder: false, qty_overrides: input?.qty_overrides });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(typeof err === 'object' && err && 'error' in err ? String((err as { error: string }).error) : 'Confirm failed');

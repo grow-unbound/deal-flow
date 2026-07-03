@@ -12,9 +12,12 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const resetSuccess = searchParams.get('reset') === 'success';
+  const accountVerified = searchParams.get('verified') === '1';
+  const prefillEmail = searchParams.get('email') ?? '';
 
   // 'otp' | 'email'
-  const [view, setView] = useState<'otp' | 'email'>('otp');
+  // Default to email view when arriving from verify-account (email pre-filled)
+  const [view, setView] = useState<'otp' | 'email'>(prefillEmail ? 'email' : 'otp');
 
   // Phone OTP state
   const [phoneLoading, setPhoneLoading] = useState(false);
@@ -22,7 +25,7 @@ function LoginForm() {
   const [unregistered, setUnregistered] = useState(false);
 
   // Email/password state
-  const [identifier, setIdentifier] = useState('');
+  const [identifier, setIdentifier] = useState(prefillEmail);
   const [password, setPassword] = useState('');
   const [emailError, setEmailError] = useState('');
   const [emailLoading, setEmailLoading] = useState(false);
@@ -76,6 +79,10 @@ function LoginForm() {
         redirect?: string;
         user?: { id: string; email: string };
         session?: { access_token: string; refresh_token: string };
+        pending_verification?: boolean;
+        user_id?: string;
+        email?: string;
+        phone?: string | null;
       };
 
       const res = await fetch('/api/auth/signin', {
@@ -92,6 +99,18 @@ function LoginForm() {
 
       if (!res.ok) {
         setEmailError(data.error || 'Login failed');
+        return;
+      }
+
+      // Account exists but email not yet verified — redirect to OTP flow
+      if (data.pending_verification) {
+        const params = new URLSearchParams({
+          email: data.email ?? identifier,
+          uid: data.user_id ?? '',
+          ...(data.phone ? { phone: data.phone } : {}),
+        });
+        shouldResetLoading = false;
+        router.replace(`/verify-account?${params.toString()}`);
         return;
       }
 
@@ -127,6 +146,14 @@ function LoginForm() {
       <div className="mb-7 flex justify-center">
         <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
       </div>
+
+      {accountVerified && (
+        <div className="mb-4 rounded-md bg-teal-50 border border-teal-200 px-4 py-3">
+          <p className="text-body-sm text-teal-800 font-medium">
+            Account verified! Sign in to access your workspace.
+          </p>
+        </div>
+      )}
 
       {resetSuccess && (
         <div className="mb-4 rounded-md bg-green-50 border border-green-200 px-4 py-3">
