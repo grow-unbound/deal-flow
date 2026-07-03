@@ -63,6 +63,7 @@ TRUNCATE
   app.order_items,
   app.orders,
   app.tenant_inventory,
+  app.warehouses,
   app.campaign_items,
   app.campaigns,
   app.price_list_assignments,
@@ -431,7 +432,7 @@ FROM catalog.categories c
 WHERE c.is_public = true;
 
 -- ──────────────────────────────────────────────────────────────
--- 7. Warehouse locations
+-- 7. Locations (transaction-level — used on estimates/orders/invoices)
 -- ──────────────────────────────────────────────────────────────
 
 INSERT INTO app.locations (id, tenant_id, name, address, type, lat, lng, inventory_tracking, is_default) VALUES
@@ -448,6 +449,27 @@ INSERT INTO app.locations (id, tenant_id, name, address, type, lat, lng, invento
   'Branch Store',
   '{"line1":"18 Electronics Hub","city":"Hyderabad","state":"TS","pincode":"500016"}',
   'branch', 17.3850000, 78.4867000, true, false
+);
+
+-- ──────────────────────────────────────────────────────────────
+-- 7a. Warehouses (physical stock locations — used on tenant_inventory)
+--     Each warehouse links back to its canonical location.
+-- ──────────────────────────────────────────────────────────────
+
+INSERT INTO app.warehouses (id, tenant_id, location_id, name, status, is_default, associated_users) VALUES
+(
+  '550e8400-e29b-41d4-a716-446655440811'::uuid,
+  '550e8400-e29b-41d4-a716-446655440501'::uuid,
+  '550e8400-e29b-41d4-a716-446655440801'::uuid,
+  'Main Warehouse',
+  'active', true, '[]'
+),
+(
+  '550e8400-e29b-41d4-a716-446655440812'::uuid,
+  '550e8400-e29b-41d4-a716-446655440501'::uuid,
+  '550e8400-e29b-41d4-a716-446655440802'::uuid,
+  'Branch Store',
+  'active', false, '[]'
 );
 
 -- ──────────────────────────────────────────────────────────────
@@ -543,11 +565,11 @@ VALUES (
 -- ──────────────────────────────────────────────────────────────
 
 INSERT INTO app.tenant_inventory (
-  tenant_product_id, location_id, qty_available, qty_reserved, reorder_point
+  tenant_product_id, warehouse_id, qty_available, qty_reserved, reorder_point
 )
 SELECT
   tp.id,
-  '550e8400-e29b-41d4-a716-446655440801'::uuid,
+  '550e8400-e29b-41d4-a716-446655440811'::uuid,
   CASE p.master_sku
     WHEN 'APL-IP15PM-256' THEN 15  WHEN 'SAM-S24U-512'  THEN 15  WHEN 'GOO-P9P-256'    THEN 15
     WHEN 'APL-IP15-128'   THEN 30  WHEN 'SAM-A54-128'   THEN 30  WHEN 'OP-12-256'       THEN 30  WHEN 'XMI-14U-512'    THEN 30
@@ -564,11 +586,11 @@ JOIN catalog.products p ON p.id = tp.master_product_id
 WHERE tp.tenant_id = '550e8400-e29b-41d4-a716-446655440501'::uuid;
 
 INSERT INTO app.tenant_inventory (
-  tenant_product_id, location_id, qty_available, qty_reserved, reorder_point
+  tenant_product_id, warehouse_id, qty_available, qty_reserved, reorder_point
 )
 SELECT
   tp.id,
-  '550e8400-e29b-41d4-a716-446655440802'::uuid,
+  '550e8400-e29b-41d4-a716-446655440812'::uuid,
   CASE p.master_sku
     WHEN 'APL-IP15PM-256' THEN 5   WHEN 'SAM-S24U-512'   THEN 5   WHEN 'GOO-P9P-256'   THEN 5
     WHEN 'APL-IP15-128'   THEN 12  WHEN 'SAM-A54-128'    THEN 12  WHEN 'OP-12-256'      THEN 12  WHEN 'XMI-14U-512'   THEN 12

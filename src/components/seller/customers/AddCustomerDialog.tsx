@@ -33,6 +33,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { Switch } from '@/components/ui/switch';
 import { BuyerCreateSchema, type BuyerCreateInput } from '@/lib/zod';
 import { INDIAN_STATES } from '@/constants';
 import { apiFetch } from '@/lib/api-fetch';
@@ -97,6 +98,7 @@ export function AddCustomerDialog({
       credit_limit: 0,
       payment_terms_days: 0,
       default_cohort_id: null,
+      buyer_app_enabled: false,
       geography: { city: '', state: '', pincode: '', zone: '' },
       ...defaultValues,
     },
@@ -115,6 +117,7 @@ export function AddCustomerDialog({
       credit_limit: 0,
       payment_terms_days: 0,
       default_cohort_id: null,
+      buyer_app_enabled: false,
       geography: { city: '', state: '', pincode: '', zone: '' },
       ...defaultValues,
     });
@@ -492,6 +495,32 @@ export function AddCustomerDialog({
                   />
                 </FormBlock>
               ) : null}
+
+              {/* Buyer App */}
+              <FormBlock title="Buyer App">
+                <FormField
+                  control={form.control}
+                  name="buyer_app_enabled"
+                  render={({ field }) => (
+                    <FormItem>
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <FormLabel className="text-base">Enable buyer app access</FormLabel>
+                          <p className="mt-0.5 text-sm text-cream-500">
+                            Allow this buyer to log in and place orders via the buyer app.
+                          </p>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value ?? false}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+              </FormBlock>
 
             </form>
           </Form>

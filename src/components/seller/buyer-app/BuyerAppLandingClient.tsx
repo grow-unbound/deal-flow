@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 import { FeatureGate } from '@/components/FeatureGate';
 import {
@@ -217,6 +218,7 @@ function BuyerAppLandingContent({
   initialData: BuyerAppLandingResponse | null;
   initialPeriod: SellerLandingPeriod;
 }) {
+  const router = useRouter();
   const { period, setPeriod, horizonLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
   const { data, isLoading, isError } = useBuyerAppLanding(period, initialData);
   const retainedData = useRetainedValue(data);
@@ -267,8 +269,8 @@ function BuyerAppLandingContent({
         period={period}
         periodOptions={options}
         onPeriodChange={setPeriod}
-        primary="Open buyer app ↗"
-        onPrimaryClick={() => window.open('/buyer', '_blank')}
+        primary="Manage Access"
+        onPrimaryClick={() => router.push('/buyer-app/access')}
       />
 
       <InsightStrip4

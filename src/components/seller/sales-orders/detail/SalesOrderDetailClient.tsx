@@ -42,6 +42,7 @@ import {
   useSendSalesOrder,
   useConfirmSalesOrder,
 } from '@/hooks/useSalesOrderDetail';
+import { useCreateFlags } from '@/hooks/useCreateFlags';
 import { prefetchSalesOrderComposer } from '@/hooks/useSalesOrders';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { mapSalesOrderDetailToComposerLines, formatEstimateChipLabel } from '@/lib/sales-orders/tenant-order-detail';
@@ -52,6 +53,7 @@ import type { EstimateComposerProductSearchRow } from '@/types/estimate-composer
 
 import { ModalCancelOrder } from './ModalCancelOrder';
 import { ModalDispatch } from './ModalDispatch';
+import { ModalConfirmSalesOrder } from './ModalConfirmSalesOrder';
 
 const noop = () => {};
 
@@ -79,6 +81,7 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
   const queryClient = useQueryClient();
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const salesOrdersFlag = useFlagState('SALES_ORDERS');
+  const { createInvoices } = useCreateFlags();
   const { data, isLoading, isError, error } = useSalesOrderDetail(id);
   const dispatchMut = useDispatchSalesOrder(id);
   const deliverMut = useDeliverSalesOrder(id);
@@ -414,32 +417,21 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
         }}
       />
 
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirm this order?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This updates the order status to confirmed. You can undo only by support if you make a mistake.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={confirmMut.isPending}>Back</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={confirmMut.isPending}
-              onClick={(e) => {
-                e.preventDefault();
-                confirmMut.mutate(undefined, {
-                  onSuccess: () => {
-                    setConfirmOpen(false);
-                  },
-                });
-              }}
-            >
-              {confirmMut.isPending ? 'Saving…' : 'Confirm order'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ModalConfirmSalesOrder
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        orderNumber={data.order_number}
+        lines={data.lines}
+        createInvoices={createInvoices}
+        isSubmitting={confirmMut.isPending}
+        onConfirm={(input) => {
+          confirmMut.mutate(input, {
+            onSuccess: () => {
+              setConfirmOpen(false);
+            },
+          });
+        }}
+      />
 
       <AlertDialog open={deliverOpen} onOpenChange={setDeliverOpen}>
         <AlertDialogContent>

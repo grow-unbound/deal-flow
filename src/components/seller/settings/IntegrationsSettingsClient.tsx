@@ -506,10 +506,15 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
         ) : (
           <EmptyState
             icon={<Link2 className="h-7 w-7" strokeWidth={1.5} />}
-            heading="No integrations connected yet"
+            heading="No integrations setup yet"
             description={
               isSellerAdmin
-                ? "Click 'Add integration' above to connect your first tool."
+                ? (
+                <Button className="mt-2" type="button" variant="accent" onClick={() => setPickerOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                  Add Integration
+                </Button>
+                )
                 : 'A seller admin can set up integrations from this page.'
             }
           />
@@ -625,10 +630,10 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
         <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col overflow-hidden border-cream-200 bg-white">
           <DialogHeader>
             <DialogTitle className="font-display text-cream-900">
-              {wizardIntegration ? `${wizardIntegration.display_name} setup` : 'Integration setup'}
+              {wizardIntegration ? `Setup ${wizardIntegration.display_name}` : 'Setup integration'}
             </DialogTitle>
             <DialogDescription className="text-cream-700">
-              Keep discovery, setup, and the first import in one flow. The detail panel updates automatically once the job is queued.
+              Connect to your accounting or ERP tool in one click.
             </DialogDescription>
           </DialogHeader>
 
@@ -679,7 +684,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                         What this import will cover
                       </div>
                       <p className="mt-2 text-sm leading-6 text-cream-700">
-                        The first run imports reference data first, then recent transactional records from the chosen date window.
+                        The first run imports core data first, then recent transactional records from the chosen date.
                       </p>
                     </div>
                     {wizardTopology ? (
@@ -759,7 +764,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                           One-click Zoho login
                         </div>
                         <p className="mt-2 text-sm leading-6 text-cream-700">
-                          Enter your Organization ID to log in with your Zoho account. You&apos;ll be redirected back here automatically.
+                          Enter your Organization ID and log in with your Zoho account. You&apos;ll be redirected back here automatically.
                         </p>
                       </div>
                     ) : null}

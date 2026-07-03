@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useFlagState } from '@/hooks/useFeatureFlag';
+import { useCreateFlags } from '@/hooks/useCreateFlags';
 import { useTenantOrders, type OrderLandingRow, type TenantOrdersResponse } from '@/hooks/useOrders';
 import { formatCompactInr, formatDate, formatInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
@@ -106,6 +107,7 @@ function SalesOrdersLandingContent({
   const summaryQuery = useTenantOrders(period, {}, initialData);
   const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
   const showCampaignColumn = useFlagState('CATALOG_PUBLISHING') === true;
+  const { createSalesOrders } = useCreateFlags();
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-sales-orders-landing',
     scopeKey: period,
@@ -185,8 +187,8 @@ function SalesOrdersLandingContent({
           period={period}
           periodOptions={options}
           onPeriodChange={setPeriod}
-          primary="Add a sales order"
-          onPrimaryClick={() => router.push('/sales-orders/new')}
+          primary={createSalesOrders ? 'Add a sales order' : undefined}
+          onPrimaryClick={createSalesOrders ? () => router.push('/sales-orders/new') : undefined}
         />
 
         {showRefreshingState ? (
@@ -293,12 +295,14 @@ function SalesOrdersLandingContent({
                       : 'Create a sales order to track fulfilment.'
                   }
                   action={
-                    <Button variant="accent" asChild>
-                      <Link href="/sales-orders/new" className="inline-flex items-center gap-1.5">
-                        <Plus size={13} />
-                        Add a sales order
-                      </Link>
-                    </Button>
+                    createSalesOrders ? (
+                      <Button variant="accent" asChild>
+                        <Link href="/sales-orders/new" className="inline-flex items-center gap-1.5">
+                          <Plus size={13} />
+                          Add a sales order
+                        </Link>
+                      </Button>
+                    ) : undefined
                   }
                 />
               ) : (

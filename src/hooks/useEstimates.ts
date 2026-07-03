@@ -146,7 +146,7 @@ export function useEstimateAction(estimateId: string) {
 export function useConvertEstimateToOrder(estimateId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { delivery_date: string; line_ids: string[]; order_number?: string }) => {
+    mutationFn: async (input: { delivery_date: string; line_ids: string[]; qty_overrides?: Record<string, number>; order_number?: string; added_lines?: { tenant_product_id: string; qty: number; unit_price: number; disc_pct: number; tax_pct: number }[] }) => {
       const res = await apiPatch(`/api/tenant/estimates/${estimateId}/convert`, input);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -161,6 +161,29 @@ export function useConvertEstimateToOrder(estimateId: string) {
     },
     onError: (e) => {
       toast.error(e instanceof Error ? e.message : 'Convert failed');
+    },
+  });
+}
+
+export function useConvertEstimateToInvoice(estimateId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { invoice_date: string; line_ids: string[]; qty_overrides?: Record<string, number>; invoice_number?: string; added_lines?: { tenant_product_id: string; qty: number; unit_price: number; disc_pct: number; tax_pct: number }[] }) => {
+      const res = await apiPatch(`/api/tenant/estimates/${estimateId}/convert-to-invoice`, input);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? 'Convert to invoice failed');
+      }
+      return (await res.json()) as { data: Record<string, unknown> };
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['tenant-estimate-detail', estimateId] });
+      void qc.invalidateQueries({ queryKey: ['tenant-estimate-composer', estimateId] });
+      void qc.invalidateQueries({ queryKey: ['tenant-estimates'] });
+      void qc.invalidateQueries({ queryKey: ['tenant-invoices'] });
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : 'Convert to invoice failed');
     },
   });
 }

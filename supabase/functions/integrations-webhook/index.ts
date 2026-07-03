@@ -11,6 +11,12 @@ import {
   resolveExternalId,
   touchWebhookLastReceived,
 } from '../_shared/zoho-webhook-utils.ts';
+import { createZohoAdapter, type ZohoAdapter } from '../_shared/integrations-zoho.ts';
+import {
+  loadIntegrationCredentials,
+  createDbTokenCache,
+  assertZohoIntegration,
+} from '../_shared/sync-utils.ts';
 
 // Maps integration_webhooks.entity_type → persistZohoEntityPage phase param
 const PHASE_BY_ENTITY: Record<string, string> = {
@@ -363,6 +369,19 @@ Deno.serve(async (req: Request) => {
       externalId: externalId ?? null,
     };
 
+    // Build Zoho adapter for FK-failsafe fetching — if credentials can't be loaded,
+    // proceed without adapter (graceful degradation: null buyer/location, throw on missing product).
+    let adapter: ZohoAdapter | undefined;
+    try {
+      const zohoTypeId = assertZohoIntegration(integrationTypeId);
+      const credentials = await loadIntegrationCredentials(admin, webhook.tenant_integration_id, integrationTypeId);
+      const tokenCache = createDbTokenCache(admin, webhook.tenant_integration_id);
+      adapter = createZohoAdapter(zohoTypeId, credentials, tokenCache);
+      console.log(`[${traceId}] adapter created for FK-failsafe fetching`);
+    } catch (adapterErr) {
+      console.warn(`[${traceId}] adapter creation failed, proceeding without FK-failsafe: ${String(adapterErr)}`);
+    }
+
     console.log(`[${traceId}] calling persistZohoEntityPage...`);
     const persistResult = await persistZohoEntityPage(
       admin,
@@ -372,6 +391,7 @@ Deno.serve(async (req: Request) => {
       phase,
       integrationTypeId,
       [entityPayload],
+      adapter,
     );
     console.log(`[${traceId}] persistZohoEntityPage returned | result.created=${persistResult.created} | result.updated=${persistResult.updated}`);
 

@@ -34,18 +34,20 @@ import {
 import { ROLES } from '@/constants';
 import {
   useConvertEstimateToOrder,
+  useConvertEstimateToInvoice,
   useDuplicateEstimate,
   useEstimateDetail,
   useSendEstimate,
   useVoidEstimate,
   seedEstimateComposerCache,
 } from '@/hooks/useEstimates';
+import { useCreateFlags } from '@/hooks/useCreateFlags';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { computeLineTotal, computeTotals, defaultPaymentTerms } from '@/lib/documents/composer-math';
 import type { EstimateComposerProductSearchRow } from '@/types/estimate-composer';
 import { formatCompactInr } from '@/lib/utils';
 
-import { ModalConvertEstimateToSO } from '@/components/seller/estimates/modals/ModalConvertEstimateToSO';
+import { ModalConvertEstimate } from '@/components/seller/estimates/modals/ModalConvertEstimate';
 
 const noop = () => {};
 
@@ -54,8 +56,10 @@ export function EstimateDetailPage({ id }: { id: string }) {
   const queryClient = useQueryClient();
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const estimatesFlag = useFlagState('ESTIMATES');
+  const { createSalesOrders, createInvoices } = useCreateFlags();
   const { data, isLoading, isError, error } = useEstimateDetail(id);
   const convertMut = useConvertEstimateToOrder(id);
+  const convertToInvoiceMut = useConvertEstimateToInvoice(id);
   const voidMut = useVoidEstimate(id);
   const dupMut = useDuplicateEstimate(id);
   const sendMut = useSendEstimate(id);
@@ -114,7 +118,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
   const terminal = data.status === 'converted' || data.status === 'void' || data.status === 'expired';
   const showEdit = !terminal;
   const showVoid = isAdmin && (data.status === 'draft' || data.status === 'sent');
-  const showDuplicate = data.status !== 'void' && data.status !== 'converted';
+  const showDuplicate = false; // data.status !== 'void' && data.status !== 'converted';
   const showSend = data.status === 'draft' || data.status === 'sent';
 
   const overLimitBy = buyer ? totals.grand_total - buyer.credit_available : 0;
@@ -143,7 +147,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
     });
   }
 
-  function handleConvert(payload: { line_ids: string[]; delivery_date: string; order_number?: string }) {
+  function handleConvertToSO(payload: { line_ids: string[]; qty_overrides: Record<string, number>; delivery_date: string; order_number?: string; added_lines?: { tenant_product_id: string; qty: number; unit_price: number; disc_pct: number; tax_pct: number }[] }) {
     convertMut.mutate(payload, {
       onSuccess: (res) => {
         const orderId = typeof res.data.order_id === 'string' ? res.data.order_id : null;
@@ -151,6 +155,21 @@ export function EstimateDetailPage({ id }: { id: string }) {
         toast.success('Sales order created');
         if (orderId) {
           router.push(`/sales-orders/${orderId}`);
+        } else {
+          router.push(`/estimates/${id}`);
+        }
+      },
+    });
+  }
+
+  function handleConvertToInvoice(payload: { line_ids: string[]; qty_overrides: Record<string, number>; invoice_date: string; invoice_number?: string; added_lines?: { tenant_product_id: string; qty: number; unit_price: number; disc_pct: number; tax_pct: number }[] }) {
+    convertToInvoiceMut.mutate(payload, {
+      onSuccess: (res) => {
+        const invoiceId = typeof res.data.invoice_id === 'string' ? res.data.invoice_id : null;
+        setConvertOpen(false);
+        toast.success('Invoice created');
+        if (invoiceId) {
+          router.push(`/invoices/${invoiceId}`);
         } else {
           router.push(`/estimates/${id}`);
         }
@@ -228,10 +247,10 @@ export function EstimateDetailPage({ id }: { id: string }) {
               </Button>
             ) : null}
             
-            {(bandStatus === 'sent' || bandStatus === 'accepted') && orderManagement ? (
-              <Button type="button" variant="accent" disabled={convertMut.isPending} size="sm" className="gap-2" onClick={() => setConvertOpen(true)}>
+            {(data.status === 'draft' || data.status === 'sent') && orderManagement && (createSalesOrders || createInvoices) ? (
+              <Button type="button" variant="accent" disabled={convertMut.isPending || convertToInvoiceMut.isPending} size="sm" className="gap-2" onClick={() => setConvertOpen(true)}>
                 <ArrowRightCircle className="h-4 w-4" />
-                Convert to SO
+                Convert Estimate
               </Button>
             ) : null}
           </>
@@ -318,14 +337,18 @@ export function EstimateDetailPage({ id }: { id: string }) {
         )}
       />
 
-      <ModalConvertEstimateToSO
+      <ModalConvertEstimate
         open={convertOpen}
         onOpenChange={setConvertOpen}
         estimateNumber={data.estimate_number}
         buyerName={buyer?.business_name ?? 'Buyer'}
+        buyerId={data.buyer_id ?? null}
         lines={data.items}
-        isSubmitting={convertMut.isPending}
-        onConfirm={handleConvert}
+        createSalesOrders={createSalesOrders}
+        createInvoices={createInvoices}
+        isSubmitting={convertMut.isPending || convertToInvoiceMut.isPending}
+        onConfirmSO={handleConvertToSO}
+        onConfirmInvoice={handleConvertToInvoice}
       />
 
       <ModalSendDocument
