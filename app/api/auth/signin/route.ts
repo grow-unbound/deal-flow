@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { LoginSchema } from '@/lib/zod';
-import { getPostHogClient } from '@/lib/posthog-server';
+import { getPostHogClient, seedTenantFeatureFlags } from '@/lib/posthog-server';
 
 function isPhone(value: string) {
   return /^[0-9]{10}$/.test(value.trim());
@@ -134,6 +135,46 @@ export async function POST(request: NextRequest) {
     }
 
     if (workspace.workspace_type === 'seller') {
+      // Check email verification — unverified sellers must verify before accessing the app
+      if (workspace.tenant_id && supabaseAdmin) {
+        const { data: tenantRow } = await supabaseAdmin
+          .schema('app')
+          .from('tenants')
+          .select('email_verified_at')
+          .eq('id', workspace.tenant_id)
+          .single();
+
+        if (!tenantRow?.email_verified_at) {
+          // Send a fresh email OTP and redirect to verification
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+          const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+          if (supabaseUrl && supabaseAnonKey) {
+            const anonClient = createClient(supabaseUrl, supabaseAnonKey);
+            await anonClient.auth.signInWithOtp({
+              email: authData.user.email!,
+              options: { shouldCreateUser: false },
+            });
+          }
+
+          const phone = (authData.user.user_metadata?.phone as string | null) ?? null;
+          return NextResponse.json({
+            pending_verification: true,
+            user_id: authData.user.id,
+            email: authData.user.email,
+            phone,
+          });
+        }
+      }
+
+      // Seed feature flags on first successful login if not already seeded
+      if (workspace.tenant_id) {
+        try {
+          await seedTenantFeatureFlags(workspace.tenant_id);
+        } catch {
+          // Non-fatal
+        }
+      }
+
       return NextResponse.json({
         success: true,
         user: { id: authData.user.id, email: authData.user.email },

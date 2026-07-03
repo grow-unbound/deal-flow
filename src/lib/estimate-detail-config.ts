@@ -1,12 +1,12 @@
 import type { LucideIcon } from 'lucide-react';
 import {
+  ArrowRightCircle,
   Copy,
   FileText,
   ListChecks,
   Mail,
   Pencil,
   Send,
-  ShoppingCart,
   ThumbsDown,
   ThumbsUp,
 } from 'lucide-react';
@@ -18,8 +18,7 @@ export type EstimateDetailActionKind =
   | 'send'
   | 'accept'
   | 'decline'
-  | 'convert_order'
-  | 'convert_invoice'
+  | 'convert_estimate'
   | 'duplicate'
   | 'view_sales_order'
   | 'view_invoice'
@@ -36,7 +35,7 @@ export interface EstimateDetailCta {
 export interface EstimateDetailStateConfig {
   steps: TransactionalStatusBandStep[];
   whatsNext: string;
-  primary: EstimateDetailCta;
+  primary: EstimateDetailCta | null;
   secondaries: EstimateDetailCta[];
   danger: EstimateDetailCta | null;
 }
@@ -55,6 +54,7 @@ export function buildEstimateStateConfig(
     sentAt: string | null;
     acceptedAt: string | null;
   },
+  flags?: { createSalesOrders?: boolean; createInvoices?: boolean },
 ): EstimateDetailStateConfig {
   const { createdAt, sentAt, acceptedAt, orderNumber, invoiceNumber } = ctx;
 
@@ -89,19 +89,31 @@ export function buildEstimateStateConfig(
         ],
         danger: { kind: 'decline', label: 'Mark declined', icon: ThumbsDown },
       };
-    case 'accepted':
+    case 'accepted': {
+      const canSO  = flags?.createSalesOrders !== false;
+      const canInv = flags?.createInvoices !== false;
+      const canConvert = canSO || canInv;
+      const whatsNextMsg = canSO && canInv
+        ? 'Buyer accepted. Convert to a Sales Order or directly to an Invoice.'
+        : canSO
+          ? 'Buyer accepted. Convert to a Sales Order.'
+          : canInv
+            ? 'Buyer accepted. Convert directly to an Invoice.'
+            : 'Buyer accepted. Proceed in your external system.';
       return {
         steps: baseSteps(
           { label: 'Draft', state: 'done', timestamp: fmtShort(createdAt) },
           { label: 'Sent', state: 'done', timestamp: fmtShort(sentAt) },
           { label: 'Accepted', state: 'current', timestamp: fmtShort(acceptedAt) },
         ),
-        whatsNext:
-          'Buyer accepted. Convert to a Sales Order or directly to an Invoice.',
-        primary: { kind: 'convert_order', label: 'Convert to Sales Order', icon: ShoppingCart },
-        secondaries: [{ kind: 'convert_invoice', label: 'Convert to Invoice', icon: FileText }],
+        whatsNext: whatsNextMsg,
+        primary: canConvert
+          ? { kind: 'convert_estimate', label: 'Convert Estimate', icon: ArrowRightCircle }
+          : null,
+        secondaries: [],
         danger: null,
       };
+    }
     case 'declined':
       return {
         steps: baseSteps(

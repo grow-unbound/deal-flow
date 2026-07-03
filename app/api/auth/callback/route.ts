@@ -2,6 +2,28 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import type { Database } from '@/types/database';
+import { supabaseAdmin } from '@/lib/supabase';
+
+// Idempotent — sets email_verified_at only if not already set.
+// Called when a signup confirmation link is clicked (link-based flow fallback).
+async function markTenantVerified(userId: string): Promise<void> {
+  if (!supabaseAdmin) return;
+  const { data: tuRow } = await supabaseAdmin
+    .schema('app')
+    .from('tenant_users')
+    .select('tenant_id')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .limit(1)
+    .single();
+  if (!tuRow?.tenant_id) return;
+  await supabaseAdmin
+    .schema('app')
+    .from('tenants')
+    .update({ email_verified_at: new Date().toISOString() })
+    .eq('id', tuRow.tenant_id)
+    .is('email_verified_at', null);
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -14,19 +36,22 @@ export async function GET(request: NextRequest) {
 
   // Token-hash flow: modern Supabase email links use ?token_hash=&type= directly
   if (token_hash && type) {
-    const { error } = await supabase.auth.verifyOtp({
+    const { data: otpData, error } = await supabase.auth.verifyOtp({
       token_hash,
       type: type as 'recovery' | 'invite' | 'signup' | 'email',
     });
     if (!error) {
-      // Route based on the auth type
+      // Email confirmation via link — mark tenant verified (link-based fallback path)
+      if ((type === 'signup' || type === 'email' || type === 'magiclink') && otpData?.user?.id) {
+        await markTenantVerified(otpData.user.id).catch(() => {});
+      }
       const next =
         type === 'invite'
           ? '/setup-password'
           : type === 'recovery'
             ? '/reset-password'
-            : type === 'signup'
-              ? '/signup'
+            : (type === 'signup' || type === 'email' || type === 'magiclink')
+              ? '/login?verified=1'
               : explicitNext ?? '/dashboard';
       return NextResponse.redirect(`${origin}${next}`);
     }
@@ -37,10 +62,14 @@ export async function GET(request: NextRequest) {
   if (code) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error && data.session?.user) {
-      // When next was explicitly passed (the happy path), honour it directly.
-      // When next is absent (Supabase stripped the path from redirect_to), infer
-      // the destination from user metadata set at invite time.
-      const next = explicitNext ?? inferNextFromUser(data.session.user);
+      const user = data.session.user;
+      // If this is a signup/email confirmation (not invite/recovery), mark tenant verified
+      const isConfirmation = !user.user_metadata?.tenant_id && !explicitNext?.includes('setup-password');
+      if (isConfirmation) {
+        await markTenantVerified(user.id).catch(() => {});
+        return NextResponse.redirect(`${origin}/login?verified=1`);
+      }
+      const next = explicitNext ?? inferNextFromUser(user);
       return NextResponse.redirect(`${origin}${next}`);
     }
     // If code exchange fails, fall through to error handling
