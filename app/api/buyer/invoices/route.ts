@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, supabase } from '@/lib/supabase';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
 
 export interface BuyerInvoice {
   id: string;
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerInvoi
       due_date: inv.due_date ?? null,
     }));
 
-    return NextResponse.json({ invoices });
+    return NextResponse.json({ invoices }, { headers: BUYER_CACHE_PERSONAL });
   } catch (err) {
     console.error('[buyer/invoices] Unexpected error:', err);
     return NextResponse.json({ invoices: [] });

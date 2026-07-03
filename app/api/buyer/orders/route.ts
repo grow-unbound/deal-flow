@@ -6,6 +6,7 @@ import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { getInAppCreateFlags } from '@/lib/server/seller-features';
 import { fetchWhatsappNotificationContext } from '@/lib/server/notification-context';
 import { sendOrderReceivedBuyer, sendOrderReceivedSeller } from '@/lib/server/whatsapp';
+import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
 import { PAGE_SIZE, encodeCursor, decodeCursor } from '@/lib/pagination';
 
 export interface BuyerOrderPlaceRequest {
@@ -287,7 +288,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         total: null,
         seller_preview: true,
       };
-      return NextResponse.json(payload);
+      return NextResponse.json(payload, { headers: BUYER_CACHE_PERSONAL });
     }
 
     // Real buyer or seller with linked buyer account — fetch real orders
@@ -392,7 +393,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       total: countRes.count ?? null,
     };
 
-    return NextResponse.json(payload);
+    return NextResponse.json(payload, { headers: BUYER_CACHE_PERSONAL });
   } catch (error) {
     console.error('[GET /api/buyer/orders] unexpected error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

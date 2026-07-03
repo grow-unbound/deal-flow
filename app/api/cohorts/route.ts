@@ -106,7 +106,8 @@ export async function getCohortsLandingPayload(tenantId: string, periodInput?: s
     .select('id, name, description, rules, is_static, cached_member_count, created_at, allowed_tenant_brand_ids')
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(500); // safety cap — this route has no pagination UI yet, fetches the full list
 
   if (cohortsError) throw cohortsError;
 
