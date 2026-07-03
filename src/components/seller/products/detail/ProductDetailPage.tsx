@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Archive, PencilLine } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { PageWrap } from '@/components/seller/layout';
@@ -13,10 +14,14 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Button } from '@/components/ui/button';
 import { useProductDetail, useUpdateProduct } from '@/hooks/useProducts';
 import { ProductDetailsTab } from './ProductDetailsTab';
-import { ProductPerformanceTab } from './ProductPerformanceTab';
 import { ProductPricingTab } from './ProductPricingTab';
 import { ProductActivityTimeline } from './ProductActivityTimeline';
 import { AddProductSheet } from '../AddProductSheet';
+
+const ProductPerformanceTab = dynamic(
+  () => import('./ProductPerformanceTab').then((m) => m.ProductPerformanceTab),
+  { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
+);
 
 type TabId = 'details' | 'performance' | 'pricing' | 'activity';
 

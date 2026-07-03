@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+import { BUYER_CACHE_CATALOG } from '@/lib/server/buyer-cache-headers';
 import type { BuyerCategoriesResponse } from '@/types/buyer';
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
@@ -26,7 +27,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       .is('deleted_at', null);
 
     if (Array.isArray(allowedTenantBrandIds)) {
-      if (allowedTenantBrandIds.length === 0) return NextResponse.json({ categories: [] } satisfies BuyerCategoriesResponse);
+      if (allowedTenantBrandIds.length === 0) {
+        return NextResponse.json({ categories: [] } satisfies BuyerCategoriesResponse, { headers: BUYER_CACHE_CATALOG });
+      }
       tenantProductsQuery = tenantProductsQuery.in('tenant_brand_id', allowedTenantBrandIds);
     }
 
@@ -36,7 +39,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const masterProductIds = ((tenantProducts ?? []) as Array<{ master_product_id: string | null }>)
       .map((row) => row.master_product_id)
       .filter((value): value is string => Boolean(value));
-    if (masterProductIds.length === 0) return NextResponse.json({ categories: [] } satisfies BuyerCategoriesResponse);
+    if (masterProductIds.length === 0) {
+      return NextResponse.json({ categories: [] } satisfies BuyerCategoriesResponse, { headers: BUYER_CACHE_CATALOG });
+    }
 
     const { data: catalogProducts, error: catalogProductsError } = await supabaseAdmin
       .schema('catalog')
@@ -65,7 +70,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       }))
       .sort((a, b) => b.product_count - a.product_count);
 
-    return NextResponse.json({ categories } satisfies BuyerCategoriesResponse);
+    return NextResponse.json({ categories } satisfies BuyerCategoriesResponse, { headers: BUYER_CACHE_CATALOG });
   } catch (err) {
     console.error('[GET /api/buyer/categories]', err);
     return NextResponse.json({ error: 'Failed to fetch categories' }, { status: 500 });

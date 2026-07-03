@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+import { BUYER_CACHE_CATALOG } from '@/lib/server/buyer-cache-headers';
 import type { BuyerBrandsResponse } from '@/types/buyer';
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
@@ -26,7 +27,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       .is('deleted_at', null);
 
     if (Array.isArray(allowedTenantBrandIds)) {
-      if (allowedTenantBrandIds.length === 0) return NextResponse.json({ brands: [] } satisfies BuyerBrandsResponse);
+      if (allowedTenantBrandIds.length === 0) {
+        return NextResponse.json({ brands: [] } satisfies BuyerBrandsResponse, { headers: BUYER_CACHE_CATALOG });
+      }
       productsQuery = productsQuery.in('tenant_brand_id', allowedTenantBrandIds);
     }
 
@@ -40,7 +43,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
 
     const tenantBrandIds = Array.from(countByTenantBrand.keys());
-    if (tenantBrandIds.length === 0) return NextResponse.json({ brands: [] } satisfies BuyerBrandsResponse);
+    if (tenantBrandIds.length === 0) {
+      return NextResponse.json({ brands: [] } satisfies BuyerBrandsResponse, { headers: BUYER_CACHE_CATALOG });
+    }
 
     const { data: tenantBrands, error: tenantBrandsError } = await supabaseAdmin
       .schema('app')
@@ -67,7 +72,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       }))
       .sort((a, b) => b.product_count - a.product_count);
 
-    return NextResponse.json({ brands } satisfies BuyerBrandsResponse);
+    return NextResponse.json({ brands } satisfies BuyerBrandsResponse, { headers: BUYER_CACHE_CATALOG });
   } catch (err) {
     console.error('[GET /api/buyer/brands]', err);
     return NextResponse.json({ error: 'Failed to fetch brands' }, { status: 500 });

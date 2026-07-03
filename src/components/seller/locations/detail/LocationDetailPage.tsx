@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { PageWrap } from '@/components/seller/layout';
 import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
@@ -12,13 +13,17 @@ import { useLocationDetail } from '@/hooks/useLocations';
 import { useTenantLocations } from '@/hooks/useTenantLocations';
 import { LocationFormSheet } from '@/components/seller/settings/LocationFormSheet';
 import { formatCompactInr } from '@/lib/utils';
-import { LocationOverviewTab } from './LocationOverviewTab';
 import { LocationCustomersTab } from './LocationCustomersTab';
 import { LocationOrdersTab } from './LocationOrdersTab';
 import { LocationEstimatesTab } from './LocationEstimatesTab';
 import { LocationInvoicesTab } from './LocationInvoicesTab';
 import { LocationInventoryTab } from './LocationInventoryTab';
 import { LocationActivityTab } from './LocationActivityTab';
+
+const LocationOverviewTab = dynamic(
+  () => import('./LocationOverviewTab').then((m) => m.LocationOverviewTab),
+  { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
+);
 
 type TabId = 'performance' | 'customers' | 'orders' | 'estimates' | 'invoices' | 'inventory' | 'activity';
 

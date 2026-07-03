@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { loadBuyerActivityFeed } from '@/lib/server/buyer-activity';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       cursor,
     });
 
-    return NextResponse.json(payload);
+    return NextResponse.json(payload, { headers: BUYER_CACHE_PERSONAL });
   } catch (error) {
     console.error('[GET /api/buyer/activity]', error);
     return NextResponse.json({ items: [], next_cursor: null }, { status: 500 });

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { ExternalLink, Link2, PencilLine, Send } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -27,8 +28,12 @@ import {
 import { formatCompactInr } from '@/lib/utils';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { CatalogCompositionTab } from './CatalogCompositionTab';
-import { CatalogPerformanceTab } from './CatalogPerformanceTab';
 import { CatalogBuyersTab } from './CatalogBuyersTab';
+
+const CatalogPerformanceTab = dynamic(
+  () => import('./CatalogPerformanceTab').then((m) => m.CatalogPerformanceTab),
+  { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
+);
 
 type TabId = 'products' | 'performance' | 'buyers';
 
