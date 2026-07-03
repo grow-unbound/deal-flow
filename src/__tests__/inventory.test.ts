@@ -4,6 +4,7 @@ import { computeSellable, isLowStock } from '@/hooks/useInventory';
 const TENANT_ID = 'tenant-uuid-001';
 const PRODUCT_ID = 'product-uuid-001';
 const LOCATION_ID = 'location-uuid-001';
+const WAREHOUSE_ID = 'warehouse-uuid-001';
 
 // ---------------------------------------------------------------------------
 // Pure function unit tests
@@ -183,12 +184,12 @@ describe('GET /api/tenant/inventory', () => {
     const inventoryRow = {
       id: 'inv-001',
       tenant_product_id: PRODUCT_ID,
-      location_id: LOCATION_ID,
+      warehouse_id: WAREHOUSE_ID,
       qty_available: 20,
       qty_reserved: 5,
       reorder_point: 10,
       updated_at: new Date().toISOString(),
-      locations: { id: LOCATION_ID, name: 'Main Warehouse', is_default: true },
+      warehouse: { id: WAREHOUSE_ID, name: 'Main Warehouse', is_default: true, location_id: LOCATION_ID },
     };
 
     fetchMock.mockImplementationOnce((url: string) => {
@@ -205,7 +206,7 @@ describe('GET /api/tenant/inventory', () => {
     const data = await res.json() as any;
     expect(data.inventory).toHaveLength(1);
     expect(data.inventory[0].qty_available).toBe(20);
-    expect(data.inventory[0].locations.name).toBe('Main Warehouse');
+    expect(data.inventory[0].warehouse.name).toBe('Main Warehouse');
   });
 
   it('missing product_id → 400', async () => {
@@ -237,7 +238,7 @@ describe('POST /api/tenant/inventory', () => {
     const inventoryRecord = {
       id: 'inv-001',
       tenant_product_id: PRODUCT_ID,
-      location_id: LOCATION_ID,
+      warehouse_id: WAREHOUSE_ID,
       qty_available: 50,
       qty_reserved: 5,
       reorder_point: 10,
@@ -254,7 +255,7 @@ describe('POST /api/tenant/inventory', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tenant_product_id: PRODUCT_ID,
-        location_id: LOCATION_ID,
+        warehouse_id: WAREHOUSE_ID,
         qty_available: 50,
         qty_reserved: 5,
         reorder_point: 10,
@@ -296,7 +297,7 @@ describe('POST /api/tenant/inventory', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tenant_product_id: PRODUCT_ID,
-        location_id: LOCATION_ID,
+        warehouse_id: WAREHOUSE_ID,
         qty_available: 10,
         qty_reserved: 0,
       }),

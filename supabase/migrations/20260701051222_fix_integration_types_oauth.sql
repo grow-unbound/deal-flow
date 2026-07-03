@@ -5,7 +5,7 @@ UPDATE catalog.integration_types SET
     'oauth', true,
     'authorize_url', 'https://accounts.zoho.in/oauth/v2/auth',
     'token_url', 'https://accounts.zoho.in/oauth/v2/token',
-    'scopes', jsonb_build_array('ZohoBooks.fullaccess'),
+    'scopes', jsonb_build_array('ZohoBooks.fullaccess.all', 'ZohoInventory.settings.READ'),
     'fields', jsonb_build_array(
       jsonb_build_object(
         'key', 'org_id',
@@ -31,7 +31,7 @@ UPDATE catalog.integration_types SET
     'oauth', true,
     'authorize_url', 'https://accounts.zoho.in/oauth/v2/auth',
     'token_url', 'https://accounts.zoho.in/oauth/v2/token',
-    'scopes', jsonb_build_array('ZohoInventory.fullaccess'),
+    'scopes', jsonb_build_array('ZohoInventory.fullaccess.all', 'ZohoInventory.settings.READ'),
     'fields', jsonb_build_array(
       jsonb_build_object(
         'key', 'org_id',

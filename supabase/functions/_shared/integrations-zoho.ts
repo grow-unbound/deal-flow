@@ -60,6 +60,7 @@ interface ZohoRequestInit {
   path: string;
   query?: Record<string, string | number | boolean | undefined | null>;
   body?: unknown;
+  baseUrl?: string;
 }
 
 interface NormalizedZohoCredentials {
@@ -69,11 +70,12 @@ interface NormalizedZohoCredentials {
   organizationId: string;
   accountsBaseUrl: string;
   apiBaseUrl: string;
+  warehouseApiBaseUrl: string;
   module: 'books' | 'inventory';
 }
 
 const DEFAULT_PER_PAGE = 200;
-const DEFAULT_REGION = 'com';
+const DEFAULT_REGION = 'in';
 
 const TRANSACTIONAL_ENTITY_TYPES = new Set(['estimates', 'orders', 'invoices']);
 // Zoho supports last_modified_time filter on these endpoints; locations and pricelists always do full fetch
@@ -147,6 +149,12 @@ export function normalizeZohoCredentials(
   const accountsBaseUrl = asString(raw.accounts_base_url) ?? buildAccountsDomain(region);
   const apiBaseUrl = asString(raw.api_base_url)
     ?? `${buildZohoDomain(region)}/${module === 'inventory' ? 'inventory/v1' : 'books/v3'}`;
+  const normalizedApiBaseUrl = apiBaseUrl.replace(/\/+$/, '');
+  const warehouseApiBaseUrl = normalizedApiBaseUrl.includes('/inventory/v1')
+    ? normalizedApiBaseUrl
+    : normalizedApiBaseUrl.includes('/books/v3')
+      ? normalizedApiBaseUrl.replace(/\/books\/v3$/, '/inventory/v1')
+      : `${buildZohoDomain(region)}/inventory/v1`;
 
   return {
     clientId,
@@ -154,7 +162,8 @@ export function normalizeZohoCredentials(
     refreshToken,
     organizationId,
     accountsBaseUrl,
-    apiBaseUrl: apiBaseUrl.replace(/\/+$/, ''),
+    apiBaseUrl: normalizedApiBaseUrl,
+    warehouseApiBaseUrl,
     module,
   };
 }
@@ -305,13 +314,13 @@ export function getZohoPhasePlan(
   const referencePhases: Record<ZohoIntegrationTypeId, IntegrationSyncPhaseDefinition[]> = {
     zoho_books: [
       { id: 'locations', label: 'Importing locations from Zoho Books', entityType: 'locations', path: '/locations', itemKey: 'locations' },
-      { id: 'warehouses', label: 'Importing warehouses from Zoho Books', entityType: 'warehouses', path: '/warehouses', itemKey: 'warehouses' },
+      { id: 'warehouses', label: 'Importing warehouses from Zoho Books', entityType: 'warehouses', path: '/settings/warehouses', itemKey: 'warehouses' },
       { id: 'products', label: 'Importing products from Zoho Books', entityType: 'products', path: '/items', itemKey: 'items' },
       { id: 'pricelists', label: 'Importing pricelists from Zoho Books', entityType: 'pricelists', path: '/pricebooks', itemKey: 'pricebooks' },
       { id: 'customers', label: 'Importing customers from Zoho Books', entityType: 'customers', path: '/contacts', itemKey: 'contacts' },
     ],
     zoho_inventory: [
-      { id: 'warehouses', label: 'Importing warehouses from Zoho Inventory', entityType: 'warehouses', path: '/warehouses', itemKey: 'warehouses' },
+      { id: 'warehouses', label: 'Importing warehouses from Zoho Inventory', entityType: 'warehouses', path: '/settings/warehouses', itemKey: 'warehouses' },
       { id: 'products', label: 'Importing products from Zoho Inventory', entityType: 'products', path: '/items', itemKey: 'items' },
       { id: 'pricelists', label: 'Importing pricelists from Zoho Inventory', entityType: 'pricelists', path: '/pricebooks', itemKey: 'pricebooks' },
       { id: 'customers', label: 'Importing customers from Zoho Inventory', entityType: 'customers', path: '/contacts', itemKey: 'contacts' },
@@ -407,7 +416,8 @@ export function createZohoAdapter(
     retryOnUnauthorized = true,
   ): Promise<T> {
     const token = cachedToken ?? await refreshAccessToken();
-    const url = new URL(init.path.replace(/^\/+/, ''), `${credentials.apiBaseUrl}/`);
+    const baseUrl = (init.baseUrl ?? credentials.apiBaseUrl).replace(/\/+$/, '');
+    const url = new URL(init.path.replace(/^\/+/, ''), `${baseUrl}/`);
     const query = init.query ?? {};
 
     for (const [key, value] of Object.entries(query)) {
@@ -489,6 +499,9 @@ export function createZohoAdapter(
       ...(dateStart ? { date_start: dateStart } : {}),
       ...(lastModified ? { last_modified_time: lastModified } : {}),
     };
+    const baseUrl = phase.entityType === 'warehouses'
+      ? credentials.warehouseApiBaseUrl
+      : credentials.apiBaseUrl;
     let payload: Record<string, unknown>;
     if (phase.id === 'pricelists') {
       payload = await requestPricelistsPage(query);
@@ -496,6 +509,7 @@ export function createZohoAdapter(
       payload = await request({
         path: phase.path,
         query,
+        baseUrl,
       });
     }
 
@@ -543,8 +557,13 @@ export function createZohoAdapter(
 
   async function fetchLocationById(locationId: string): Promise<Record<string, unknown> | null> {
     try {
-      const path = credentials.module === 'inventory' ? `/warehouses/${locationId}` : `/locations/${locationId}`;
-      const payload = await request({ path });
+      const path = credentials.module === 'inventory'
+        ? `/settings/warehouses/${locationId}`
+        : `/locations/${locationId}`;
+      const payload = await request({
+        path,
+        baseUrl: credentials.module === 'inventory' ? credentials.warehouseApiBaseUrl : credentials.apiBaseUrl,
+      });
       const location = payload.warehouse ?? payload.location;
       return isRecord(location) ? location : null;
     } catch {

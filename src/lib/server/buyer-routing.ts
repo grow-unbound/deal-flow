@@ -4,6 +4,7 @@ import { haversineKm } from '@/lib/haversine';
 import { deriveBuyerPlaceOfSupply, hasBuyerDeliveryCoordinates, type BuyerDeliveryAddress } from '@/lib/buyer-routing';
 
 export interface BuyerResolvedRouting {
+  warehouseId: string | null;
   locationId: string | null;
   locationName: string | null;
   distanceKm: number | null;
@@ -25,22 +26,22 @@ async function loadTenantRoutingThreshold(db: SupabaseClient, tenantId: string):
 }
 
 async function loadWarehouseLocations(db: SupabaseClient, tenantId: string) {
-  const { data: locs } = await (db as any)
+  const { data: warehouses } = await (db as any)
     .schema('app')
-    .from('locations')
-    .select('id, name, lat, lng, is_default')
+    .from('warehouses')
+    .select('id, name, lat, lng, is_default, location_id')
     .eq('tenant_id', tenantId)
-    .eq('type', 'warehouse')
     .is('deleted_at', null)
     .not('lat', 'is', null)
     .not('lng', 'is', null);
 
-  return (locs ?? []) as Array<{
+  return (warehouses ?? []) as Array<{
     id: string;
     name: string;
     lat: number;
     lng: number;
     is_default: boolean;
+    location_id: string | null;
   }>;
 }
 
@@ -78,8 +79,10 @@ export async function resolveNearestBuyerLocation(
   }
 
   if (nearest) {
+    const warehouse = warehouses.find((candidate) => candidate.id === nearest?.id) ?? null;
     return {
-      locationId: nearest.id,
+      warehouseId: nearest.id,
+      locationId: warehouse?.location_id ?? null,
       locationName: nearest.name,
       distanceKm: Math.round(nearest.distanceKm),
       fallback: false,
@@ -92,6 +95,7 @@ export async function resolveNearestBuyerLocation(
   }
 
   return {
+    warehouseId: null,
     locationId: fallbackLocation.id,
     locationName: fallbackLocation.name,
     distanceKm: null,

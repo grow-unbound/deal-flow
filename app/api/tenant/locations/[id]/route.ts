@@ -3,9 +3,7 @@ import { z } from 'zod';
 
 import { getVerifiedClaims } from '@/lib/auth';
 import {
-  hasBlockingStockAtLocation,
   normalizeLocationAddress,
-  wouldRemoveLastTrackedLocation,
 } from '@/lib/locations/location-deactivate-guards';
 import { normalizeLocationAssociatedUsers, syncLocationAssignees } from '@/lib/location-assignees';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -20,58 +18,6 @@ function jsonError(status: number, message: string, code?: string) {
     { data: null, error: { code: code ?? 'ERROR', message } },
     { status },
   );
-}
-
-async function tenantHasAnyInventoryRow(db: any, tenantId: string): Promise<boolean> {
-  const { data: locs, error: locErr } = await db
-    .schema('app')
-    .from('locations')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .limit(500);
-  if (locErr) {
-    console.error('[locations/[id]] tenantHasAnyInventoryRow/locs', locErr);
-    return true;
-  }
-  const ids = (locs ?? []).map((l: { id: string }) => l.id);
-  if (ids.length === 0) return false;
-  const { data, error } = await db
-    .schema('app')
-    .from('tenant_inventory')
-    .select('id')
-    .in('location_id', ids)
-    .limit(1);
-  if (error) {
-    console.error('[locations/[id]] tenantHasAnyInventoryRow', error);
-    return true;
-  }
-  return (data?.length ?? 0) > 0;
-}
-
-async function loadActiveLocations(db: any, tenantId: string) {
-  const { data, error } = await db
-    .schema('app')
-    .from('locations')
-    .select('id, inventory_tracking, deleted_at, is_default, created_at')
-    .eq('tenant_id', tenantId)
-    .is('deleted_at', null);
-  if (error) throw new Error(error.message);
-  return data ?? [];
-}
-
-async function stockAtLocation(db: any, locationId: string) {
-  const { data, error } = await db
-    .schema('app')
-    .from('tenant_inventory')
-    .select('qty_available, qty_reserved')
-    .eq('location_id', locationId)
-    .or('qty_available.gt.0,qty_reserved.gt.0')
-    .limit(1);
-  if (error) {
-    console.error('[locations/[id]] stockAtLocation', error);
-    return null;
-  }
-  return data?.[0] as { qty_available: number; qty_reserved: number } | undefined;
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -161,30 +107,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       );
     }
 
-    if (patch.inventory_tracking === false && row.inventory_tracking === true) {
-      const active = await loadActiveLocations(db, claims.tenant_id);
-      const hasRows = await tenantHasAnyInventoryRow(db, claims.tenant_id);
-      const simulated = active.map((l: { id: string; inventory_tracking: boolean; deleted_at: null }) => ({
-        id: l.id,
-        inventory_tracking: l.id === id ? false : l.inventory_tracking,
-        deleted_at: null,
-      }));
-      if (
-        wouldRemoveLastTrackedLocation({
-          targetLocationId: id,
-          targetInventoryTracking: true,
-          allActiveLocations: simulated,
-          tenantHasInventoryRows: hasRows,
-        })
-      ) {
-        return jsonError(
-          409,
-          'Cannot turn off inventory tracking on the last tracked location while inventory rows exist. Add another tracked location first.',
-          'CONFLICT',
-        );
-      }
-    }
-
     if (patch.is_default === true) {
       await db
         .schema('app')
@@ -207,9 +129,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       updated_by: claims.sub,
     };
     if (patch.name !== undefined) updatePayload.name = patch.name;
-    if (patch.type !== undefined) updatePayload.type = patch.type;
     if (patch.address !== undefined) updatePayload.address = nextAddr;
-    if (patch.inventory_tracking !== undefined) updatePayload.inventory_tracking = patch.inventory_tracking;
     if (patch.is_default !== undefined) updatePayload.is_default = patch.is_default;
     if (patch.external_ref !== undefined) {
       updatePayload.external_ref =
@@ -308,36 +228,6 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     if (loadErr || !row) {
       return jsonError(404, 'Location not found', 'NOT_FOUND');
-    }
-
-    const invRow = await stockAtLocation(db, id);
-    if (hasBlockingStockAtLocation(invRow)) {
-      return jsonError(
-        409,
-        'Cannot deactivate this location while it still has available or reserved stock. Move or zero stock first.',
-        'CONFLICT',
-      );
-    }
-
-    const active = await loadActiveLocations(db, claims.tenant_id);
-    const hasRows = await tenantHasAnyInventoryRow(db, claims.tenant_id);
-    if (
-      wouldRemoveLastTrackedLocation({
-        targetLocationId: id,
-        targetInventoryTracking: row.inventory_tracking,
-        allActiveLocations: active.map((l: { id: string; inventory_tracking: boolean; deleted_at: null }) => ({
-          id: l.id,
-          inventory_tracking: l.inventory_tracking,
-          deleted_at: null,
-        })),
-        tenantHasInventoryRows: hasRows,
-      })
-    ) {
-      return jsonError(
-        409,
-        'Cannot deactivate the last inventory-tracked location while inventory rows exist. Add another tracked location first.',
-        'CONFLICT',
-      );
     }
 
     if (row.is_default) {

@@ -62,7 +62,7 @@ export async function GET(
   const { data: baseLocation, error: locationError } = await db
     .schema('app')
     .from('locations')
-    .select('id, tenant_id, name, type, address, deleted_at, created_at')
+    .select('id, tenant_id, name, address, deleted_at, created_at')
     .eq('id', id)
     .single();
 
@@ -152,8 +152,9 @@ export async function GET(
     db
       .schema('app')
       .from('tenant_inventory')
-      .select('tenant_product_id, qty_available, reorder_point, updated_at, tenant_products(name, daily_sales_rate, deleted_at, tenant_brands(name))')
-      .eq('location_id', id),
+      .select('tenant_product_id, qty_available, reorder_point, updated_at, warehouses!inner(location_id), tenant_products(name, daily_sales_rate, deleted_at, tenant_brands(name))')
+      .eq('warehouses.location_id', id)
+      .is('deleted_at', null),
 
     db
       .schema('app')
@@ -560,7 +561,6 @@ export async function GET(
   const response: LocationDetailResponse = {
     id: location.id,
     name: location.name,
-    type: location.type,
     city,
     phone_number: location.phone_number ?? null,
     status: location.status ?? 'active',

@@ -193,7 +193,6 @@ function LocationsLandingContent({
         if (!query) return true;
         return (
           row.name.toLowerCase().includes(query) ||
-          row.type.toLowerCase().includes(query) ||
           row.city.toLowerCase().includes(query) ||
           row.address_text.toLowerCase().includes(query)
         );
@@ -372,7 +371,7 @@ function LocationsLandingContent({
                     </div>
                   </td>
                   <td className="px-5 py-3.5 text-sm text-cream-700">
-                    {row.type}
+                    Branch
                   </td>
                   <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                     {row.gmv_mtd > 0 ? formatCompactInr(row.gmv_mtd) : '—'}
