@@ -7,6 +7,7 @@
     "dev": "next dev --turbo",
     "dev:turbo": "next dev --turbo",
     "build": "next build",
+    "analyze": "ANALYZE=true next build",
     "start": "next start",
     "perf:smoke": "node scripts/perf-smoke.mjs",
     "upload:tenant-images": "node scripts/upload-tenant-images.mjs",
@@ -59,6 +60,7 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@next/bundle-analyzer": "^15.5.20",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/google.maps": "^3.65.2",

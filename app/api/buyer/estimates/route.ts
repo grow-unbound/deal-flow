@@ -6,6 +6,7 @@ import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { getInAppCreateFlags } from '@/lib/server/seller-features';
 import { fetchWhatsappNotificationContext } from '@/lib/server/notification-context';
 import { sendRequestReceivedBuyer, sendRequestReceivedSeller } from '@/lib/server/whatsapp';
+import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
 import { PAGE_SIZE, encodeCursor, decodeCursor } from '@/lib/pagination';
 
 // Exported types consumed by checkout/page.tsx and EnquiriesTab
@@ -258,7 +259,7 @@ export async function GET(request: NextRequest) {
     const context = profile.context;
 
     if (context.mode === 'preview' && !context.buyer_id) {
-      return NextResponse.json({ estimates: [] });
+      return NextResponse.json({ estimates: [] }, { headers: BUYER_CACHE_PERSONAL });
     }
 
     if (!profile.buyer?.id) {
@@ -324,7 +325,10 @@ export async function GET(request: NextRequest) {
       notes: e.notes ?? null,
     }));
 
-    return NextResponse.json({ estimates, nextCursor, total: (countRes as { count: number | null }).count ?? null });
+    return NextResponse.json(
+      { estimates, nextCursor, total: (countRes as { count: number | null }).count ?? null },
+      { headers: BUYER_CACHE_PERSONAL },
+    );
   } catch (err) {
     console.error('[buyer/estimates] GET unexpected error:', err);
     return NextResponse.json({ estimates: [], nextCursor: null, total: null });

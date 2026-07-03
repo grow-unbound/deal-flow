@@ -167,7 +167,8 @@ export async function GET(request: NextRequest) {
       .select('id, tenant_id, name, description, currency, valid_from, valid_to, priority, is_active, pricing_strategy, strategy_value, filters, created_at, updated_at, created_by')
       .eq('tenant_id', claims.tenant_id)
       .is('deleted_at', null)
-      .order('updated_at', { ascending: false }),
+      .order('updated_at', { ascending: false })
+      .limit(500), // safety cap — this route has no pagination UI yet, fetches the full list
     db
       .schema('app')
       .from('tenant_products')

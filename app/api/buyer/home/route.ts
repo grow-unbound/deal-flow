@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import type { BuyerHomeResponse } from '@/lib/buyer-home-types';
+import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
 import { loadBuyerActivityFeed } from '@/lib/server/buyer-activity';
 import { assembleBuyerCatalogItemsForProductIds } from '@/lib/server/buyer-assemble-catalog-items';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
         buy_again: [],
         preview_message: 'Preview mode — buyer-specific numbers show as 0.',
       };
-      return NextResponse.json(previewPayload);
+      return NextResponse.json(previewPayload, { headers: BUYER_CACHE_PERSONAL });
     }
 
     const tenantId = context.tenant_id!;
@@ -255,7 +256,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
       buy_again: buyAgain,
     };
 
-    return NextResponse.json(payload);
+    return NextResponse.json(payload, { headers: BUYER_CACHE_PERSONAL });
   } catch (error) {
     console.error('[GET /api/buyer/home]', error);
     return NextResponse.json({ error: 'Failed to load buyer home' }, { status: 500 });

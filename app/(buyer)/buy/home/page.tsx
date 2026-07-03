@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
+import Image from 'next/image';
 import Link from 'next/link';
 import { Bell, ChevronRight } from 'lucide-react';
 
@@ -8,7 +10,11 @@ import type { BuyerActivityFeedResponse, BuyerActivityItem, BuyerHomeResponse } 
 import { apiFetch } from '@/lib/api-fetch';
 import { ErrorState } from '@/components/ui/empty-state';
 import { BuyerHomeLandingHeader } from '@/components/buyer/layout/BuyerHomeLandingHeader';
-import { BuyerNotificationDrawer } from '@/components/buyer/layout/BuyerNotificationDrawer';
+
+const BuyerNotificationDrawer = dynamic(
+  () => import('@/components/buyer/layout/BuyerNotificationDrawer').then((m) => m.BuyerNotificationDrawer),
+  { ssr: false },
+);
 import { ActivityCardShell } from '@/components/buyer/orders/ActivityCardShell';
 import { RecoSection } from '@/components/buyer/catalog/RecoSection';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
@@ -345,7 +351,7 @@ export default function HomePage() {
                 className="w-[178px] shrink-0 overflow-hidden rounded-[28px] border border-[var(--border-1)] bg-[var(--bg-surface)] no-underline shadow-[0_1px_0_rgba(34,30,26,0.03)]"
               >
                 <div
-                  className="flex h-[220px] items-center justify-center p-5"
+                  className="relative flex h-[220px] items-center justify-center p-5"
                   style={{
                     background: item.brand_name?.toLowerCase().includes('chenin')
                       ? 'linear-gradient(180deg, #e8f0ec 0%, #dfece8 100%)'
@@ -355,8 +361,14 @@ export default function HomePage() {
                   }}
                 >
                   {item.image_urls[0] ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={item.image_urls[0]} alt={item.display_name} className="h-full w-full object-contain" />
+                    <Image
+                      src={item.image_urls[0]}
+                      alt={item.display_name}
+                      fill
+                      className="object-contain"
+                      sizes="178px"
+                      unoptimized
+                    />
                   ) : (
                     <div className="h-40 w-20 rounded-[14px] bg-[var(--teal-900)]" />
                   )}

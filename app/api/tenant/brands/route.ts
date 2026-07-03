@@ -86,7 +86,8 @@ export async function GET(req: NextRequest) {
         .eq('tenant_id', tenantId)
         .eq('is_active', true)
         .is('deleted_at', null)
-        .order('created_at', { ascending: false }),
+        .order('created_at', { ascending: false })
+        .limit(500), // safety cap — this route has no pagination UI yet, fetches the full list
       db
         .schema('app')
         .from('brands_snapshot')

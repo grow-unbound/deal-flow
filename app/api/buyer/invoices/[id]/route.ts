@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, supabase } from '@/lib/supabase';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
 
 export interface BuyerInvoiceItem {
   tenant_product_id: string;
@@ -95,7 +96,7 @@ export async function GET(
       items: rawItems,
     };
 
-    return NextResponse.json({ invoice: detail });
+    return NextResponse.json({ invoice: detail }, { headers: BUYER_CACHE_PERSONAL });
   } catch (err) {
     console.error('[buyer/invoices/[id]] GET error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

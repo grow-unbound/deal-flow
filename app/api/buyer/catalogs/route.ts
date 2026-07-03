@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVisibleBuyerCatalogs, requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+import { BUYER_CACHE_CATALOG } from '@/lib/server/buyer-cache-headers';
 
 interface CatalogItem {
   id: string;
@@ -90,7 +91,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       })),
     };
 
-    return NextResponse.json(payload);
+    return NextResponse.json(payload, { headers: BUYER_CACHE_CATALOG });
   } catch (error) {
     console.error('[GET /api/buyer/catalogs] unexpected error:', error);
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

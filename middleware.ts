@@ -19,8 +19,14 @@ const PUBLIC_PREFIXES = [
   '/brand', // Static brand assets (logo SVGs etc) — must be public for auth pages
   '/ingest', // PostHog analytics proxy — must be public so rewrites can forward it
   '/api/debug', // Diagnostic endpoint — remove from PUBLIC_PREFIXES before going to production
+  '/manifest.webmanifest', // PWA manifest — browsers fetch it unauthenticated
+  '/buyer-sw.js', // PWA service worker — must be reachable before any buyer session exists
 ];
 
+// NOTE: the matcher's extension-based exclusions below (e.g. `\.js`) only match paths
+// that literally start with those strings, not paths ending in them — regex negative
+// lookaheads anchor at the start of the remaining path. Root-level static files (like
+// /buyer-sw.js) still reach this middleware and must be listed explicitly above.
 function isPublicRoute(pathname: string): boolean {
   return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }

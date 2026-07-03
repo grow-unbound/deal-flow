@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Download, Share2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
@@ -10,8 +11,15 @@ import { ErrorState } from '@/components/ui/empty-state';
 import { PageWrap } from '@/components/seller/layout';
 import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
 import { ResolvedPriceLookupCard } from '@/components/seller/pricing/ResolvedPriceLookupCard';
-import { CustomerActivityTab, CustomerDetailsTab, CustomerOrdersTab, CustomerPerformanceTab } from '@/components/seller/customers/detail';
+import { CustomerActivityTab } from '@/components/seller/customers/detail/CustomerActivityTab';
+import { CustomerDetailsTab } from '@/components/seller/customers/detail/CustomerDetailsTab';
+import { CustomerOrdersTab } from '@/components/seller/customers/detail/CustomerOrdersTab';
 import { AddCustomerDialog } from '@/components/seller/customers/AddCustomerDialog';
+
+const CustomerPerformanceTab = dynamic(
+  () => import('@/components/seller/customers/detail/CustomerPerformanceTab').then((m) => m.CustomerPerformanceTab),
+  { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
+);
 import { useRole } from '@/hooks/useRole';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useTenantCustomerDetail, useToggleCustomerStatusOptimistic } from '@/hooks/useCustomersLanding';
