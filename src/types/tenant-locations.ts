@@ -1,8 +1,5 @@
 import { z } from 'zod';
 
-export const LocationTypeSchema = z.enum(['warehouse', 'dispatch_point', 'branch']);
-export type LocationType = z.infer<typeof LocationTypeSchema>;
-
 export const LocationStatusSchema = z.enum(['active', 'inactive']);
 export type LocationStatus = z.infer<typeof LocationStatusSchema>;
 
@@ -27,9 +24,7 @@ export type LocationAddress = z.infer<typeof LocationAddressSchema>;
 
 export const CreateLocationInputSchema = z.object({
   name: z.string().min(1, 'Location name is required').max(200),
-  type: LocationTypeSchema.optional().default('warehouse'),
   address: LocationAddressSchema.optional(),
-  inventory_tracking: z.boolean().optional().default(true),
   is_default: z.boolean().optional().default(false),
   external_ref: z.string().max(200).optional(),
   phone_number: z.string().trim().regex(/^[0-9]{10}$/, 'Phone number must be 10 digits').nullable().optional(),
@@ -44,9 +39,7 @@ export type CreateLocationInput = z.infer<typeof CreateLocationInputSchema>;
 export const UpdateLocationInputSchema = z
   .object({
     name: z.string().min(1).max(200).optional(),
-    type: LocationTypeSchema.optional(),
     address: LocationAddressSchema.partial().optional(),
-    inventory_tracking: z.boolean().optional(),
     is_default: z.boolean().optional(),
     external_ref: z.string().max(200).nullable().optional(),
     phone_number: z.string().trim().regex(/^[0-9]{10}$/, 'Phone number must be 10 digits').nullable().optional(),
@@ -65,11 +58,9 @@ export interface TenantLocation {
   id: string;
   tenant_id: string;
   name: string;
-  type: LocationType;
   address: LocationAddress;
   phone_number: string | null;
   status: LocationStatus;
-  inventory_tracking: boolean;
   is_default: boolean;
   external_ref: string | null;
   associated_users: LocationAssociatedUser[];

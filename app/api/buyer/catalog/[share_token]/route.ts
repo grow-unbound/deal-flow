@@ -110,7 +110,7 @@ export async function GET(
     catalog.tenant_id,
     selectedDelivery,
   );
-  const inventoryLocationId = resolvedRouting?.locationId ?? null;
+  const inventoryWarehouseId = resolvedRouting?.warehouseId ?? null;
 
   // Fetch tenant products
   const { data: tenantProducts, error: productsError } = await db
@@ -239,12 +239,12 @@ export async function GET(
   let inventoryQuery = db
     .schema('app')
     .from('tenant_inventory')
-    .select('tenant_product_id, qty_available, location_id')
+    .select('tenant_product_id, qty_available, warehouse_id')
     .in('tenant_product_id', tenantProductIds)
     .is('deleted_at', null);
 
-  if (inventoryLocationId) {
-    inventoryQuery = inventoryQuery.eq('location_id', inventoryLocationId);
+  if (inventoryWarehouseId) {
+    inventoryQuery = inventoryQuery.eq('warehouse_id', inventoryWarehouseId);
   }
 
   const { data: inventoryData } = await inventoryQuery;

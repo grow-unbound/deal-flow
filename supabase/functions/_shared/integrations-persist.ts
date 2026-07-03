@@ -568,6 +568,51 @@ function mapPersistedRowsByExternalRef(rows: Record<string, unknown>[]): Array<{
     .filter((row): row is { externalId: string; internalId: string } => row !== null);
 }
 
+function buildPersistedAuditUpdates(
+  persisted: Record<string, unknown>[],
+  sourceByExternalRef: Map<string, Record<string, unknown>>,
+  actorId: string | null,
+): Array<{ id: string; updatePayload: Record<string, unknown> }> {
+  return persisted.flatMap((row) => {
+    const id = asStr(row.id);
+    const externalId = asStr(row.external_ref);
+    const source = externalId ? sourceByExternalRef.get(externalId) ?? null : null;
+    if (!id || !source) return [];
+
+    const updatePayload: Record<string, unknown> = {
+      updated_by: actorId,
+    };
+
+    const createdAt = asStr(source.created_at);
+    const updatedAt = asStr(source.updated_at);
+    const createdBy = asStr(source.created_by);
+    const updatedBy = asStr(source.updated_by);
+
+    if (createdAt) updatePayload.created_at = createdAt;
+    if (updatedAt) updatePayload.updated_at = updatedAt;
+    if (createdBy) updatePayload.created_by = createdBy;
+    else if (actorId) updatePayload.created_by = actorId;
+    if (updatedBy) updatePayload.updated_by = updatedBy;
+    else if (actorId) updatePayload.updated_by = actorId;
+
+    return [{ id, updatePayload }];
+  });
+}
+
+async function applyPersistedAuditUpdates(
+  admin: AdminClient,
+  table: string,
+  updates: Array<{ id: string; updatePayload: Record<string, unknown> }>,
+): Promise<void> {
+  for (const item of updates) {
+    await admin
+      .schema('app')
+      .from(table)
+      .update(item.updatePayload)
+      .eq('id', item.id);
+  }
+}
+
 export async function resolveInternalIdsWithFallback(
   admin: AdminClient,
   tenantId: string,
@@ -926,38 +971,8 @@ async function persistLocations(
       .filter((entry): entry is readonly [string, Record<string, unknown>] => entry !== null),
   );
 
-  const auditUpdates = persisted.flatMap((row) => {
-    const id = asStr(row.id);
-    const externalId = asStr(row.external_ref);
-    const source = externalId ? sourceByExternalRef.get(externalId) ?? null : null;
-    if (!id || !source) return [];
-
-    const updatePayload: Record<string, unknown> = {
-      updated_by: actorId,
-    };
-
-    const createdAt = asStr(source.created_at);
-    const updatedAt = asStr(source.updated_at);
-    const createdBy = asStr(source.created_by);
-    const updatedBy = asStr(source.updated_by);
-
-    if (createdAt) updatePayload.created_at = createdAt;
-    if (updatedAt) updatePayload.updated_at = updatedAt;
-    if (createdBy) updatePayload.created_by = createdBy;
-    else if (actorId) updatePayload.created_by = actorId;
-    if (updatedBy) updatePayload.updated_by = updatedBy;
-    else if (actorId) updatePayload.updated_by = actorId;
-
-    return [{ id, updatePayload }];
-  });
-
-  for (const item of auditUpdates) {
-    await admin
-      .schema('app')
-      .from('locations')
-      .update(item.updatePayload)
-      .eq('id', item.id);
-  }
+  const auditUpdates = buildPersistedAuditUpdates(persisted, sourceByExternalRef, actorId);
+  await applyPersistedAuditUpdates(admin, 'locations', auditUpdates);
 
   const assignments = persisted.flatMap((row) => {
     const id = asStr(row.id);
@@ -1051,6 +1066,18 @@ async function persistWarehouses(
 
   result.updated += persisted.length;
   await batchUpsertEntityMap(admin, tenantId, integrationId, 'warehouses', entityMapPairs);
+
+  const sourceByExternalRef = new Map(
+    rows
+      .map((row) => {
+        const externalRef = asStr(row.external_ref);
+        return externalRef ? [externalRef, row] as const : null;
+      })
+      .filter((entry): entry is readonly [string, Record<string, unknown>] => entry !== null),
+  );
+
+  const auditUpdates = buildPersistedAuditUpdates(persisted, sourceByExternalRef, actorId);
+  await applyPersistedAuditUpdates(admin, 'warehouses', auditUpdates);
 
   return result;
 }

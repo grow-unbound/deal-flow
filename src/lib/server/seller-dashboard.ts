@@ -7,6 +7,7 @@ import type { JWTClaims } from '@/lib/auth';
 import { sellerLandingPeriodLabel, type SellerLandingPeriodMeta } from '@/lib/seller-period';
 import {
   applySellerLocationScope,
+  getSellerLocationScope,
   loadAccessibleSellerLocations,
   locationScopeCacheKey,
 } from '@/lib/server/seller-location-access';
@@ -80,9 +81,12 @@ type CatalogRow = {
 
 type InventoryRow = {
   tenant_product_id: string;
-  location_id: string | null;
+  warehouse_id: string | null;
   qty_available: number | null;
   reorder_point: number | null;
+  warehouses?: {
+    location_id: string | null;
+  } | null;
 };
 
 type KpiTenantDailyRow = {
@@ -332,6 +336,21 @@ async function fetchSellerDashboardData(
 
   const locationNames = accessibleLocations.map((location) => location.name);
   const tenant = buildTenantSummary((tenantRes.data as TenantRow | null) ?? null, locationNames);
+  const scopedLocationIds = accessibleLocations.map((location) => location.id);
+
+  let inventoryQuery = db
+    .schema('app')
+    .from('tenant_inventory')
+    .select('tenant_product_id, warehouse_id, qty_available, reorder_point, warehouses!inner(location_id, tenant_id)')
+    .eq('warehouses.tenant_id', tenantId)
+    .is('deleted_at', null);
+
+  const scope = getSellerLocationScope(claims);
+  if (scope.mode === 'subset') {
+    inventoryQuery = inventoryQuery.in('warehouses.location_id', scopedLocationIds);
+  } else if (scope.mode === 'none') {
+    inventoryQuery = inventoryQuery.eq('warehouse_id', '00000000-0000-0000-0000-000000000000');
+  }
 
   const [buyersRes, catalogsRes, inventoryRes, ordersRes, estimatesRes, invoicesRes, kpiCurrentRes, kpiPreviousRes] = await Promise.all([
     db
@@ -346,15 +365,7 @@ async function fetchSellerDashboardData(
       .select('id, name, status, valid_to, updated_at')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null),
-    applySellerLocationScope(
-      db
-        .schema('app')
-        .from('tenant_inventory')
-        .select('tenant_product_id, location_id, qty_available, reorder_point')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null),
-      claims,
-    ),
+    inventoryQuery,
     applySellerLocationScope(
       db
         .schema('app')

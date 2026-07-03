@@ -20,7 +20,7 @@ const WAREHOUSES_PHASE = {
   id: 'warehouses',
   label: 'Importing warehouses from Zoho',
   entityType: 'warehouses',
-  path: '/warehouses',
+  path: '/settings/warehouses',
   itemKey: 'warehouses',
 } as const;
 
@@ -41,7 +41,7 @@ Deno.serve(async (req: Request) => {
     };
 
     if (integration.integration_type_id === 'zoho_books') {
-      // Zoho Books: locations (transaction-level) then warehouses (inventory stock locations)
+      // Zoho Books: locations (transaction-level) then inventory warehouses
       // Warehouses must come after locations so their location_id FK can be resolved
       const locResult = await runPhaseSync(admin, integration, credentials, LOCATIONS_PHASE, syncOpts);
       const whResult = await runPhaseSync(admin, integration, credentials, WAREHOUSES_PHASE, {

@@ -270,7 +270,7 @@ INSERT INTO catalog.integration_types (
       'oauth', true,
       'authorize_url', 'https://accounts.zoho.in/oauth/v2/auth',
       'token_url', 'https://accounts.zoho.in/oauth/v2/token',
-      'scopes', jsonb_build_array('ZohoBooks.fullaccess'),
+      'scopes', jsonb_build_array('ZohoBooks.fullaccess.all', 'ZohoInventory.settings.READ'),
       'fields', jsonb_build_array(
         jsonb_build_object(
           'key', 'org_id',
@@ -300,7 +300,7 @@ INSERT INTO catalog.integration_types (
       'oauth', true,
       'authorize_url', 'https://accounts.zoho.in/oauth/v2/auth',
       'token_url', 'https://accounts.zoho.in/oauth/v2/token',
-      'scopes', jsonb_build_array('ZohoInventory.fullaccess'),
+      'scopes', jsonb_build_array('ZohoInventory.fullaccess.all', 'ZohoInventory.settings.READ'),
       'fields', jsonb_build_array(
         jsonb_build_object(
           'key', 'org_id',
@@ -435,20 +435,20 @@ WHERE c.is_public = true;
 -- 7. Locations (transaction-level — used on estimates/orders/invoices)
 -- ──────────────────────────────────────────────────────────────
 
-INSERT INTO app.locations (id, tenant_id, name, address, type, lat, lng, inventory_tracking, is_default) VALUES
+INSERT INTO app.locations (id, tenant_id, name, address, lat, lng, is_default) VALUES
 (
   '550e8400-e29b-41d4-a716-446655440801'::uuid,
   '550e8400-e29b-41d4-a716-446655440501'::uuid,
   'Main Warehouse',
   '{"line1":"42 Industrial Area","city":"Bangalore","state":"KA","pincode":"560058"}',
-  'warehouse', 12.9716000, 77.5946000, true, true
+  12.9716000, 77.5946000, true
 ),
 (
   '550e8400-e29b-41d4-a716-446655440802'::uuid,
   '550e8400-e29b-41d4-a716-446655440501'::uuid,
   'Branch Store',
   '{"line1":"18 Electronics Hub","city":"Hyderabad","state":"TS","pincode":"500016"}',
-  'branch', 17.3850000, 78.4867000, true, false
+  17.3850000, 78.4867000, false
 );
 
 -- ──────────────────────────────────────────────────────────────
@@ -456,20 +456,22 @@ INSERT INTO app.locations (id, tenant_id, name, address, type, lat, lng, invento
 --     Each warehouse links back to its canonical location.
 -- ──────────────────────────────────────────────────────────────
 
-INSERT INTO app.warehouses (id, tenant_id, location_id, name, status, is_default, associated_users) VALUES
+INSERT INTO app.warehouses (id, tenant_id, location_id, name, address, status, is_default, associated_users, lat, lng) VALUES
 (
   '550e8400-e29b-41d4-a716-446655440811'::uuid,
   '550e8400-e29b-41d4-a716-446655440501'::uuid,
   '550e8400-e29b-41d4-a716-446655440801'::uuid,
   'Main Warehouse',
-  'active', true, '[]'
+  '{"line1":"42 Industrial Area","city":"Bangalore","state":"KA","pincode":"560058"}',
+  'active', true, '[]', 12.9716000, 77.5946000
 ),
 (
   '550e8400-e29b-41d4-a716-446655440812'::uuid,
   '550e8400-e29b-41d4-a716-446655440501'::uuid,
   '550e8400-e29b-41d4-a716-446655440802'::uuid,
   'Branch Store',
-  'active', false, '[]'
+  '{"line1":"18 Electronics Hub","city":"Hyderabad","state":"TS","pincode":"500016"}',
+  'active', false, '[]', 17.3850000, 78.4867000
 );
 
 -- ──────────────────────────────────────────────────────────────

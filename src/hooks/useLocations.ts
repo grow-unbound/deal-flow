@@ -23,7 +23,6 @@ export interface LocationsLandingKpis {
 export interface LocationsLandingRow {
   id: string;
   name: string;
-  type: string;
   city: string;
   address_text: string;
   phone_number: string | null;
@@ -182,7 +181,6 @@ export interface LocationDetailActivityItem {
 export interface LocationDetailResponse {
   id: string;
   name: string;
-  type: string;
   city: string;
   phone_number: string | null;
   status: 'active' | 'inactive';

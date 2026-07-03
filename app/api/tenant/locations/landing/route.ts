@@ -53,7 +53,7 @@ async function getLocationsLandingPayload(
     db
       .schema('app')
       .from('locations')
-      .select('id, name, type, address, deleted_at')
+      .select('id, name, address, deleted_at')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: true }),
 
@@ -106,7 +106,7 @@ async function getLocationsLandingPayload(
   }
 
   const rawLocations:
-    Array<{ id: string; name: string; type: string; address: unknown; deleted_at: string | null }> =
+    Array<{ id: string; name: string; address: unknown; deleted_at: string | null }> =
     locationsRes.data ?? [];
   const snapshots: Array<Record<string, unknown>> = snapshotRes.data ?? [];
   const currentOrders: Array<{ id: string; location_id: string | null; buyer_id: string; total_amount: number }> =
@@ -200,7 +200,6 @@ async function getLocationsLandingPayload(
     return {
       id: loc.id,
       name: loc.name,
-      type: loc.type,
       city: getCity(loc.address),
       address_text: getAddressText(loc.address),
       phone_number: extra?.phone_number ?? null,
@@ -339,7 +338,7 @@ export async function GET(request: NextRequest) {
           if (value === 'Overdue') return row.outstanding_dues > 0 && (row.oldest_unpaid_days ?? 0) > 30;
           return false;
         });
-      const searchOk = !search || [row.name, row.type, row.city, row.address_text].some((value) => value.toLowerCase().includes(search));
+      const searchOk = !search || [row.name, row.city, row.address_text].some((value) => value.toLowerCase().includes(search));
       return statusOk && stockOk && duesOk && searchOk;
     });
     return timedJson({ ...payload, locations: filteredLocations });

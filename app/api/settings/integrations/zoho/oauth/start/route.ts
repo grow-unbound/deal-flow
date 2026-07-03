@@ -3,16 +3,8 @@ import { randomUUID } from 'crypto';
 
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag, FLAGS } from '@/lib/flags';
+import { getZohoOAuthScopes } from '@/lib/integrations/zoho-oauth';
 import { supabaseAdmin } from '@/lib/supabase';
-
-const ZOHO_SCOPES = [
-  'ZohoBooks.contacts.ALL',
-  'ZohoBooks.items.ALL',
-  'ZohoBooks.salesorders.ALL',
-  'ZohoBooks.invoices.ALL',
-  'ZohoBooks.estimates.ALL',
-  'ZohoBooks.settings.ALL',
-].join(',');
 
 function jsonError(status: number, message: string, code = 'ERROR') {
   return NextResponse.json({ data: null, error: { code, message } }, { status });
@@ -102,7 +94,7 @@ export async function POST(request: NextRequest) {
     const authUrl = new URL('/oauth/v2/auth', getZohoAccountsBaseUrl());
     authUrl.searchParams.set('client_id', clientId);
     authUrl.searchParams.set('response_type', 'code');
-    authUrl.searchParams.set('scope', ZOHO_SCOPES);
+    authUrl.searchParams.set('scope', getZohoOAuthScopes(integrationTypeId as 'zoho_books' | 'zoho_inventory'));
     authUrl.searchParams.set('redirect_uri', redirectUri);
     authUrl.searchParams.set('access_type', 'offline');
     authUrl.searchParams.set('prompt', 'consent');

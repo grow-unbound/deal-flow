@@ -10,6 +10,7 @@ import {
   loadAccessibleSellerLocations,
   resolveDefaultSellerLocationId,
 } from '@/lib/server/seller-location-access';
+import { loadInventoryAvailabilityMap } from '@/lib/server/warehouse-inventory';
 import { loadTenantSalesOrderComposer } from '@/lib/sales-orders/load-tenant-sales-order-composer';
 import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -588,19 +589,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (estimateRows.length > 0) {
-      const inventoryRes = await db
-        .schema('app')
-        .from('tenant_inventory')
-        .select('tenant_product_id, qty_available')
-        .in('tenant_product_id', estimateRows.map((row) => row.tenant_product_id));
-
-      const onHandByProduct = new Map<string, number>();
-      for (const inventoryRow of (inventoryRes.data ?? []) as Array<{ tenant_product_id: string; qty_available: number | null }>) {
-        onHandByProduct.set(
-          inventoryRow.tenant_product_id,
-          (onHandByProduct.get(inventoryRow.tenant_product_id) ?? 0) + Number(inventoryRow.qty_available ?? 0),
-        );
-      }
+      const onHandByProduct = await loadInventoryAvailabilityMap(
+        db,
+        estimateRows
+          .map((row) => row.tenant_product_id)
+          .filter((value): value is string => typeof value === 'string'),
+        resolvedLocationId,
+      );
 
       const { error: itemsInsertError } = await db
         .schema('app')

@@ -210,7 +210,7 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
         }
         subtitle={[
           data.city || '—',
-          data.type,
+          'Branch',
           data.phone_number ?? 'No phone',
           `${data.associated_users.length} associated users`,
           `${data.tab_badges.customers} buyers`,

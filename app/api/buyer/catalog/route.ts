@@ -72,25 +72,22 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const tenantId = profile.context.tenant_id;
     const buyerId = profile.buyer?.id ?? null;
     // Prefer buyer's stored geography over session-selected delivery location
-    let inventoryLocationId: string | null = null;
+    let inventoryWarehouseId: string | null = null;
     if (profile.buyer?.geography) {
-      // If buyer has stored geography, resolve location based on that
-      // For now, fall back to default location as geography doesn't have coordinates
-      const { data: defaultLoc } = await supabaseAdmin
+      const { data: defaultWarehouse } = await supabaseAdmin
         .schema('app')
-        .from('locations')
+        .from('warehouses')
         .select('id')
         .eq('tenant_id', tenantId)
         .eq('is_default', true)
         .is('deleted_at', null)
         .limit(1)
         .maybeSingle();
-      inventoryLocationId = (defaultLoc as { id: string } | null)?.id ?? null;
+      inventoryWarehouseId = (defaultWarehouse as { id: string } | null)?.id ?? null;
     } else {
-      // Fall back to delivery-based resolution
       const selectedDelivery = getSelectedBuyerDeliveryFromRequest(req);
       const resolvedRouting = await resolveNearestBuyerLocation(supabaseAdmin as any, tenantId, selectedDelivery);
-      inventoryLocationId = resolvedRouting?.locationId ?? null;
+      inventoryWarehouseId = resolvedRouting?.warehouseId ?? null;
     }
 
     let visibleCampaigns: BuyerVisibleCatalog[] = [];
@@ -181,7 +178,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         priceOverrides: new Map(
           ((campaignItems ?? []) as Array<{ tenant_product_id: string; price_override: number | null }>).map((row) => [row.tenant_product_id, row.price_override]),
         ),
-        inventoryLocationId,
+        inventoryWarehouseId,
       });
 
       let items = Array.from(itemMap.values());
@@ -245,7 +242,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       campaignName: null,
       campaignValidUntil: null,
       priceOverrides: new Map(),
-      inventoryLocationId,
+      inventoryWarehouseId,
     });
 
     let items = Array.from(itemMap.values());

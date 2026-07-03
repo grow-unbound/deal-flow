@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { loadInventoryAvailabilityMap } from '@/lib/server/warehouse-inventory';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(
@@ -35,7 +36,7 @@ export async function GET(
     const { data: order, error: orderError } = await db
       .schema('app')
       .from('orders')
-      .select('id, tenant_id')
+      .select('id, tenant_id, location_id')
       .eq('id', id)
       .is('deleted_at', null)
       .maybeSingle();
@@ -59,22 +60,12 @@ export async function GET(
 
     const items = (itemsRes.data ?? []) as Array<{ id: string; tenant_product_id: string; qty: number }>;
     const productIds = items.map((item) => item.tenant_product_id);
-    const [inventoryRes, productsRes] = await Promise.all([
-      productIds.length > 0
-        ? db.schema('app').from('tenant_inventory').select('tenant_product_id, qty_available').in('tenant_product_id', productIds)
-        : Promise.resolve({ data: [], error: null }),
+    const [onHandByProduct, productsRes] = await Promise.all([
+      loadInventoryAvailabilityMap(db, productIds, order.location_id ?? null),
       productIds.length > 0
         ? db.schema('app').from('tenant_products').select('id, internal_sku, name_override').in('id', productIds).eq('tenant_id', claims.tenant_id)
         : Promise.resolve({ data: [], error: null }),
     ]);
-
-    const onHandByProduct = new Map<string, number>();
-    for (const row of (inventoryRes.data ?? []) as Array<{ tenant_product_id: string; qty_available: number | null }>) {
-      onHandByProduct.set(
-        row.tenant_product_id,
-        (onHandByProduct.get(row.tenant_product_id) ?? 0) + Number(row.qty_available ?? 0),
-      );
-    }
     const productById = new Map(((productsRes.data ?? []) as Array<{ id: string; internal_sku: string; name_override: string | null }>).map((row) => [row.id, row]));
 
     return NextResponse.json({
