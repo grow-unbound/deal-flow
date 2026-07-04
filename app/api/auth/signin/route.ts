@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { LoginSchema } from '@/lib/zod';
 import { getPostHogClient, seedTenantFeatureFlags } from '@/lib/posthog-server';
+import { stampSellerImplicitWhatsappConsent } from '@/lib/server/whatsapp-consent';
 
 function isPhone(value: string) {
   return /^[0-9]{10}$/.test(value.trim());
@@ -173,6 +174,10 @@ export async function POST(request: NextRequest) {
         } catch {
           // Non-fatal
         }
+
+        // WhatsApp Broadcast Phase C (§4.8): implicit seller-side consent,
+        // stamped silently alongside other first-login bookkeeping above.
+        await stampSellerImplicitWhatsappConsent(workspace.tenant_id, authData.user.id);
       }
 
       return NextResponse.json({

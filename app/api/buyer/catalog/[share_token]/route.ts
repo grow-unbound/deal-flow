@@ -116,7 +116,7 @@ export async function GET(
   const { data: tenantProducts, error: productsError } = await db
     .schema('app')
     .from('tenant_products')
-    .select('id, internal_sku, name_override, tenant_brand_id, master_product_id, mrp, base_selling_price, default_uom, pack_size, image_urls')
+    .select('id, internal_sku, name_override, tenant_brand_id, master_product_id, mrp, base_selling_price, gst_rate, default_uom, pack_size, image_urls')
     .in('id', tenantProductIds)
     .is('deleted_at', null);
 
@@ -133,6 +133,7 @@ export async function GET(
     master_product_id: string | null;
     mrp: number | null;
     base_selling_price: number | null;
+    gst_rate: number | null;
     default_uom: string | null;
     pack_size: number | null;
     image_urls: string[] | null;
@@ -202,7 +203,7 @@ export async function GET(
     const { data: masterProducts } = await db
       .schema('catalog')
       .from('products')
-      .select('id, category_id, image_urls')
+      .select('id, category_id, image_urls, gst_rate')
       .in('id', masterProductIds)
       .is('deleted_at', null);
 
@@ -304,6 +305,7 @@ export async function GET(
         brand_name: brandName,
         category_id: masterProduct?.category_id ?? null,
         category_name: masterProduct?.category_name ?? null,
+        gst_rate: product.gst_rate ?? null,
         price,
         resolved_price: resolvedPrice,
         campaign_price: campaignPrice,

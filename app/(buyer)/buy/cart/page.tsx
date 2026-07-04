@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { ShoppingCart, Trash2, Minus, Plus, Package, ChevronLeft, MapPin, ChevronRight, Check } from 'lucide-react';
@@ -14,6 +14,7 @@ import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location';
+import { computeBuyerCartTotals } from '@/lib/gst';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
 interface NearestLocationResponse {
@@ -27,6 +28,7 @@ type CartLineItem = {
   tenant_product_id: string;
   qty: number;
   unit_price: number;
+  gst_rate?: number | null;
   product_name?: string;
 };
 
@@ -71,12 +73,14 @@ const STICKY_HEADER: React.CSSProperties = {
 
 export default function CartPage() {
   const router = useRouter();
-  const { items, itemCount, subtotal, removeItem, updateQty, clearCart, addItem } = useCart();
+  const { items, itemCount, removeItem, updateQty, clearCart, addItem } = useCart();
   const delivery = useBuyerDeliveryOptional();
   const { data: meData } = useBuyerMe();
   const { data: cartBundlesData } = useCartBundles();
   const tenantId = meData?.tenant.id ?? '';
   const selectedDelivery = delivery?.selected ?? null;
+  const gstInclusive = meData?.business_policy.gst_inclusive ?? false;
+  const gstRate = meData?.business_policy.gst_rate ?? 18;
   const [placingOrder, setPlacingOrder] = useState(false);
   const [requestingQuote, setRequestingQuote] = useState(false);
   const [error, setError] = useState('');
@@ -99,9 +103,21 @@ export default function CartPage() {
     return () => { cancelled = true; };
   }, [selectedDelivery]);
 
-  const gstAmount = Math.round(subtotal * 0.18);
   const deliveryFee = 0;
-  const total = subtotal + gstAmount + deliveryFee;
+  const totals = useMemo(
+    () => computeBuyerCartTotals(
+      items.map((item) => ({
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        disc_pct: 0,
+        gst_rate: item.gst_rate ?? gstRate,
+      })),
+      gstInclusive,
+      gstRate,
+    ),
+    [items, gstInclusive, gstRate],
+  );
+  const total = totals.total + deliveryFee;
   const isBusy = placingOrder || requestingQuote;
 
   function buildLineItems(): CartLineItem[] {
@@ -109,6 +125,7 @@ export default function CartPage() {
       tenant_product_id: i.tenant_product_id,
       qty: i.quantity,
       unit_price: i.unit_price,
+      gst_rate: i.gst_rate ?? gstRate,
       product_name: i.name,
     }));
   }
@@ -296,6 +313,7 @@ export default function CartPage() {
                 internal_sku: product.internal_sku,
                 image_url: product.image_urls[0],
                 unit_price: product.price,
+                gst_rate: product.gst_rate ?? gstRate,
                 unit: product.default_uom ?? undefined,
                 quantity: 1,
                 line_total: product.price,
@@ -308,8 +326,8 @@ export default function CartPage() {
         {/* Totals card */}
         <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
           <div className="px-4 py-3.5 space-y-2.5">
-            <TotalsRow label="Subtotal" value={formatCurrency(subtotal)} />
-            <TotalsRow label="GST · 18%" value={formatCurrency(gstAmount)} />
+            <TotalsRow label="Subtotal" value={formatCurrency(totals.subtotal)} />
+            <TotalsRow label={gstInclusive ? 'GST included in prices' : 'GST'} value={gstInclusive ? 'Included' : formatCurrency(totals.tax_amount)} isText={gstInclusive} />
             <TotalsRow label="Delivery" value={deliveryFee === 0 ? 'Included' : formatCurrency(deliveryFee)} isText />
           </div>
           <div className="px-4 py-3 flex items-center justify-between" style={{ borderTop: '1px solid var(--border-1)' }}>

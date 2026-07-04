@@ -192,7 +192,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { data: buyer, error: buyerError } = await db
     .schema('app')
     .from('buyers')
-    .select('id, tenant_id, business_name, contact_name, phone, email, gstin, gst_treatment, status, billing_address, shipping_address, is_active, buyer_app_enabled, credit_limit, payment_terms_days, default_cohort_id, geography, created_at, updated_at')
+    .select('id, tenant_id, business_name, contact_name, phone, email, gstin, gst_treatment, status, billing_address, shipping_address, is_active, buyer_app_enabled, credit_limit, payment_terms_days, default_cohort_id, geography, created_at, updated_at, whatsapp_opt_out_at')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .is('deleted_at', null)
@@ -897,6 +897,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       status_label: statusLabel,
       status_tone: statusTone,
       buyer_app_enabled: Boolean(buyer.buyer_app_enabled),
+      whatsapp_opted_out: Boolean(buyer.whatsapp_opt_out_at),
       city: buyer.geography?.city ?? 'Unknown',
       buyer_since: buyer.created_at,
       years_label: yearsLoyalLabel(buyer.created_at),

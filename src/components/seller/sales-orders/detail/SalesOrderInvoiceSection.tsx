@@ -2,6 +2,7 @@
 
 import { Package } from 'lucide-react';
 import { StatusTag } from '@/components/seller/layout';
+import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
 import { formatCurrency } from '@/lib/utils';
 import type { SalesOrderDetail } from '@/types/tenant-sales-orders';
 
@@ -26,6 +27,7 @@ export function SalesOrderInvoiceSection({
   deliveryAddress,
   fleetMode,
 }: SalesOrderInvoiceSectionProps) {
+  const { gstInclusive, gstRate } = useBusinessPolicy();
   if (uiStatus === 'received' || uiStatus === 'cancelled') {
     return (
       <div className="flex items-center gap-3 p-5 text-base text-cream-600">
@@ -54,7 +56,7 @@ export function SalesOrderInvoiceSection({
         <div>
           <div className="font-mono text-base font-semibold text-cream-900">{invNo}</div>
           <div className="mt-0.5 text-sm text-cream-700">
-            Raised <span className="tabular-inline">{invDate}</span> · {terms} · IGST (inter-state)
+            Raised <span className="tabular-inline">{invDate}</span> · {terms} · {gstInclusive ? 'GST included in prices' : 'GST'}
           </div>
         </div>
         <StatusTag label="Tax invoice" tone="accent" />
@@ -83,10 +85,17 @@ export function SalesOrderInvoiceSection({
           <span>Taxable value</span>
           <span className="font-mono">{formatCurrency(subtotal)}</span>
         </div>
-        <div className="mt-1 flex justify-between text-base text-cream-800">
-          <span>IGST @ 18%</span>
-          <span className="font-mono">{formatCurrency(tax)}</span>
-        </div>
+        {gstInclusive ? (
+          <div className="mt-1 flex justify-between text-base text-cream-800">
+            <span>GST included in prices</span>
+            <span className="font-mono">Included</span>
+          </div>
+        ) : (
+          <div className="mt-1 flex justify-between text-base text-cream-800">
+            <span>GST</span>
+            <span className="font-mono">{formatCurrency(tax || Math.round(subtotal * (gstRate / 100)))}</span>
+          </div>
+        )}
         <div className="mt-2 flex justify-between font-display text-lg font-semibold text-cream-950">
           <span>Invoice total</span>
           <span>{formatCurrency(total)}</span>

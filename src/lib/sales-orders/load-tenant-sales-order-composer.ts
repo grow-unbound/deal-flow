@@ -11,6 +11,7 @@ import { loadInventoryAvailabilityMap } from '@/lib/server/warehouse-inventory';
 import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import { computePlaceOfSupplyFromBuyer } from '@/lib/sales-orders/compute-place-of-supply';
 import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
+import { computeLineTaxableAmount } from '@/lib/gst';
 import { productDisplayName } from '@/lib/sales-orders/tenant-order-detail';
 
 type DbClient = {
@@ -184,8 +185,11 @@ export async function loadTenantSalesOrderComposer(
         .slice(0, 2)
         .toUpperCase() || '—';
     const hue = (['teal', 'ember', 'cream'][index % 3] ?? 'teal') as 'teal' | 'ember' | 'cream';
-    const discounted = Number(row.qty ?? 0) * Number(row.unit_price ?? 0) * (1 - Number(row.disc_pct ?? 0) / 100);
-    const lineTotal = Number(row.line_total ?? discounted + discounted * (taxPct / 100));
+    const lineTotal = computeLineTaxableAmount({
+      qty: Number(row.qty ?? 0),
+      unit_price: Number(row.unit_price ?? 0),
+      disc_pct: Number(row.disc_pct ?? 0),
+    });
     return {
       id: String(row.id),
       tenant_product_id: String(row.tenant_product_id),

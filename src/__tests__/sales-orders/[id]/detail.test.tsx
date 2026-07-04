@@ -9,6 +9,7 @@ const useDispatchMock = vi.fn();
 const useDeliverMock = vi.fn();
 const useCancelMock = vi.fn();
 const useFlagStateMock = vi.fn();
+const useCreateFlagsMock = vi.fn();
 const prefetchSalesOrderComposerMock = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('next/navigation', () => ({
@@ -35,6 +36,25 @@ vi.mock('@/hooks/useSalesOrderDetail', () => ({
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlagState: (...args: unknown[]) => useFlagStateMock(...args),
+}));
+
+vi.mock('@/hooks/useCreateFlags', () => ({
+  useCreateFlags: (...args: unknown[]) => useCreateFlagsMock(...args),
+}));
+
+vi.mock('@/hooks/useTenantSettings', () => ({
+  useTenantSettings: () => ({
+    data: { modules: { business_policy: { credit_enabled: true, gst_inclusive: false, gst_rate: 18 } } },
+    isLoading: false,
+    isError: false,
+    error: null,
+    save: vi.fn(),
+    isSaving: false,
+  }),
+}));
+
+vi.mock('@/hooks/useBusinessPolicy', () => ({
+  useBusinessPolicy: () => ({ creditEnabled: true, gstInclusive: false, gstRate: 18 }),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -162,6 +182,7 @@ describe('SalesOrderDetailClient (EP-17-005 composer view)', () => {
     pushMock.mockReset();
     prefetchSalesOrderComposerMock.mockReset();
     useFlagStateMock.mockReturnValue(true);
+    useCreateFlagsMock.mockReturnValue({ createSalesOrders: true, createInvoices: true });
     useDispatchMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
     useDeliverMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
     useCancelMock.mockReturnValue({ mutate: vi.fn(), isPending: false });

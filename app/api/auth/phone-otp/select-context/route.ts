@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate } from '@/lib/server/buyer-access';
 import { buyerOtpStore, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
+import { stampSellerImplicitWhatsappConsent } from '@/lib/server/whatsapp-consent';
 
 /**
  * POST /api/auth/phone-otp/select-context
@@ -67,14 +68,32 @@ export async function POST(request: NextRequest) {
     buyerOtpStore.delete(ref_id);
 
     if (candidate.kind === 'seller') {
-      const { session } = await mintSellerSession(
+      const { session, user } = await mintSellerSession(
         candidate as LoginOtpCandidate & { kind: 'seller' },
       );
+      await stampSellerImplicitWhatsappConsent(candidate.tenant_id, user.id);
       return NextResponse.json({ success: true, redirect: '/dashboard', session });
     }
 
     const { session } = await mintBuyerSession(toBuyerLoginCandidate(candidate));
-    return NextResponse.json({ success: true, redirect: '/buy/home', session });
+    // WhatsApp Broadcast Phase C (§4.8, §9): force first-time buyers through
+    // the consent checkbox before /buy/home.
+    let redirect = '/buy/home';
+    if (candidate.buyer_id) {
+      const { supabaseAdmin } = await import('@/lib/supabase');
+      if (supabaseAdmin) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const db = supabaseAdmin as any;
+        const { data } = await db
+          .schema('app')
+          .from('buyers')
+          .select('whatsapp_consent_at')
+          .eq('id', candidate.buyer_id)
+          .maybeSingle();
+        if (data && !data.whatsapp_consent_at) redirect = '/consent';
+      }
+    }
+    return NextResponse.json({ success: true, redirect, session });
   } catch (err) {
     console.error('[phone-otp/select-context] unexpected error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

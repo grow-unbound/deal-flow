@@ -9,6 +9,7 @@ import {
 import { loadInventoryAvailabilityMap } from '@/lib/server/warehouse-inventory';
 import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
+import { computeLineTaxableAmount } from '@/lib/gst';
 import type { EstimateComposerDocument } from '@/types/estimate-composer';
 import type { EstimateDetailActivity, EstimateDetailLineItem, EstimateDetailPayload } from '@/types/tenant-estimate-detail';
 import type { EstimateDbStatus, EstimateStatusTone } from '@/types/tenant-estimates';
@@ -208,7 +209,11 @@ export async function loadEstimateDocument(
       base_selling_price: Number(product?.base_selling_price ?? 0),
       disc_pct: Number(row.disc_pct ?? row.discount_pct ?? 0),
       tax_pct: Number(row.tax_pct ?? row.tax_rate ?? (product as any)?.gst_rate ?? (master as any)?.gst_rate ?? 0),
-      line_total: Number(row.line_total ?? 0),
+      line_total: computeLineTaxableAmount({
+        qty: Number(row.qty ?? 0),
+        unit_price: Number(row.unit_price ?? 0),
+        disc_pct: Number(row.disc_pct ?? row.discount_pct ?? 0),
+      }),
       item_order: Number(row.item_order ?? index + 1),
       scheme_tag: (row.scheme_tag as string | null | undefined) ?? null,
     };

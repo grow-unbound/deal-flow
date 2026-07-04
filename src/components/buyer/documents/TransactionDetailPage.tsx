@@ -183,6 +183,7 @@ function ReorderButton({ items, docType }: { items: TransactionLineItem[]; docTy
         unit: item.unit ?? undefined,
         quantity: item.qty,
         line_total: item.line_total,
+        gst_rate: item.tax_rate ?? null,
       };
       addItem(cartItem);
     });

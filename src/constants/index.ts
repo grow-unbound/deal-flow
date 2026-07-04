@@ -36,6 +36,7 @@ export const FEATURE_FLAGS = {
   ZOHO_INTEGRATION: 'df_zoho_integration',
   TALLY_INTEGRATION: 'df_tally_integration',
   BUSY_INTEGRATION: 'df_busy_integration',
+  WHATSAPP_BROADCAST: 'df_whatsapp_broadcast',
   // Phase 2 (default off)
   AI_INTAKE: 'df_ai_intake',
   REPLENISHMENT: 'df_replenishment',
