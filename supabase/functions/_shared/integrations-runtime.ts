@@ -2332,6 +2332,7 @@ async function applyDirectWebhookEntity(
     throw new HttpError(409, 'Webhook identifiers resolved to conflicting internal records.', before.details);
   }
 
+  // Shared persister handles the same natural-key collision policy for direct webhooks and scheduled syncs.
   const persistResult = await persistZohoEntityPage(
     admin,
     integration.tenant_id,

@@ -66,10 +66,12 @@ export interface CalendarProps {
   onChange?: (date: Date) => void;
   minDate?: Date;
   maxDate?: Date;
+  rangeStart?: Date | null;
+  rangeEnd?: Date | null;
   className?: string;
 }
 
-export function Calendar({ value, onChange, minDate, maxDate, className }: CalendarProps) {
+export function Calendar({ value, onChange, minDate, maxDate, rangeStart, rangeEnd, className }: CalendarProps) {
   const [viewDate, setViewDate] = useState(() => {
     if (value) return new Date(value.getFullYear(), value.getMonth(), 1);
     const today = new Date();
@@ -133,6 +135,17 @@ export function Calendar({ value, onChange, minDate, maxDate, className }: Calen
       <div className="grid grid-cols-7 gap-0.5">
         {calendarDays.map((dayObj) => {
           const isSelected = value ? isSameDay(value, dayObj.date) : false;
+          const dayTs = startOfDay(dayObj.date).getTime();
+          const rangeStartTs = rangeStart ? startOfDay(rangeStart).getTime() : null;
+          const rangeEndTs = rangeEnd ? startOfDay(rangeEnd).getTime() : null;
+          const isRangeEndpoint =
+            (rangeStart ? isSameDay(rangeStart, dayObj.date) : false) ||
+            (rangeEnd ? isSameDay(rangeEnd, dayObj.date) : false);
+          const isInRange =
+            rangeStartTs != null &&
+            rangeEndTs != null &&
+            dayTs > Math.min(rangeStartTs, rangeEndTs) &&
+            dayTs < Math.max(rangeStartTs, rangeEndTs);
           const isToday = isSameDay(today, dayObj.date);
           const isDisabled = !dayObj.isCurrentMonth || !isDateInRange(dayObj.date, minDate, maxDate);
 
@@ -147,6 +160,8 @@ export function Calendar({ value, onChange, minDate, maxDate, className }: Calen
                 dayObj.isCurrentMonth ? 'text-cream-900' : 'border-transparent bg-transparent text-cream-300',
                 isDisabled && dayObj.isCurrentMonth && 'cursor-not-allowed bg-cream-50 text-cream-400',
                 !isDisabled && dayObj.isCurrentMonth && 'border-transparent bg-white hover:bg-cream-50',
+                isInRange && !isSelected && 'bg-teal-50 text-teal-800 hover:bg-teal-100',
+                isRangeEndpoint && 'border-teal-500 bg-teal-500 font-semibold text-cream-50 hover:bg-teal-500',
                 isSelected && 'border-teal-500 bg-teal-500 font-semibold text-cream-50 hover:bg-teal-500',
                 isToday && !isSelected && 'border-ember-400 text-ember-500',
               )}

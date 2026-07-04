@@ -175,14 +175,14 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
           onClick={() => markBuyerNavigationForward()}
           className="flex flex-1 flex-col gap-1 p-2.5 no-underline"
         >
-          <p className="pt-2 line-clamp-2 border-t border-[var(--border-1)] font-medium leading-snug text-[var(--fg-1)]" style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-label)', letterSpacing: '-0.01em' }}>
-            {item.display_name}
-          </p>
-          <p className="truncate text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-sub)' }}>
-            {item.internal_sku}
-          </p>
-          <div className="pt-2">
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="border-t border-[var(--border-1)] pt-2">
+            <p className="line-clamp-2 font-medium leading-snug text-[var(--fg-1)]" style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-body)', letterSpacing: '-0.01em' }}>
+              {item.display_name}
+            </p>
+            <p className="truncate text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-sub)' }}>
+              {item.internal_sku}
+            </p>
+            <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
               <span className="font-semibold tabular-nums text-[var(--fg-1)]" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-price)', fontVariantNumeric: 'tabular-nums' }}>
                 {formatCurrency(item.price)}
               </span>

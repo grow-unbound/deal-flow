@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check, ChevronDown, RotateCcw, Save, Search, Send, SlidersHorizontal, TriangleAlert, X } from 'lucide-react';
+import { Check, Percent, RotateCcw, Save, Search, Send, SlidersHorizontal, TriangleAlert, Users, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { EntityAvatar, PageWrap } from '@/components/seller/layout';
 import {
@@ -23,6 +23,8 @@ import { Input } from '@/components/ui/input';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Textarea } from '@/components/ui/textarea';
 import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-overlay';
 import {
   Dialog,
@@ -39,10 +41,10 @@ import {
   useSaveCatalogComposer,
   type CatalogComposerProduct,
 } from '@/hooks/useCatalogs';
-import { cn, formatDate, formatInr } from '@/lib/utils';
+import { cn, formatDate, formatInr, formatInrInput, parseInrInput } from '@/lib/utils';
 import { isoDateInput } from '@/lib/date-utils';
 import { composerPageMinHeightClass, composerThreePanelGridClass } from '@/lib/composer-viewport-classes';
-import { CatalogComposerPayloadSchema, type CatalogComposerAvailability, type CatalogComposerTag } from '@/lib/zod';
+import { CatalogComposerPayloadSchema, type CatalogComposerAvailability, type CatalogComposerPriceSource, type CatalogComposerTag } from '@/lib/zod';
 
 type ComposerMode = 'create' | 'edit';
 
@@ -56,6 +58,8 @@ type CatalogComposerFieldErrors = {
   cohortId?: string;
   validFrom?: string;
   validTo?: string;
+  priceListId?: string;
+  buyers?: string;
   products?: string;
 };
 
@@ -69,6 +73,7 @@ const AVAILABILITY_OPTIONS: Array<{ value: CatalogComposerAvailability; label: s
 
 const TAG_OPTIONS: Array<{ value: CatalogComposerTag | 'auto'; label: string }> = [
   { value: 'auto', label: 'Automatic tag' },
+  { value: 'none', label: 'No Tag' },
   { value: 'new', label: 'Mark as New' },
   { value: 'new_stock', label: 'Mark as New Stock' },
   { value: 'old_stock', label: 'Mark as Old Stock' },
@@ -76,6 +81,11 @@ const TAG_OPTIONS: Array<{ value: CatalogComposerTag | 'auto'; label: string }> 
 
 const UNCATEGORIZED_FILTER_LABEL = 'Uncategorized';
 const ALL_BUYERS_SCOPE_VALUE = '__all_buyers__';
+const SELECT_BUYERS_SCOPE_VALUE = '__select_buyers__';
+const SETUP_CAMPAIGN_PRICES_VALUE = '__setup_campaign_prices__';
+
+type PricingMode = 'edit_each' | 'percent_off_base' | 'flat_off_base';
+type BuyerQuickFilter = 'all' | 'tier_a' | 'tier_b' | 'with_orders' | 'no_orders';
 
 function normalizeFilterLabel(value: string | null | undefined) {
   const trimmed = value?.trim();
@@ -113,6 +123,7 @@ function matchesAvailability(product: CatalogComposerProduct, availability: Cata
 }
 
 function tagLabel(tag: CatalogComposerProduct['tag']) {
+  if (tag === 'none') return null;
   if (tag === 'new') return 'NEW';
   if (tag === 'new_stock') return 'NEW STOCK';
   if (tag === 'old_stock') return 'OLD STOCK';
@@ -136,6 +147,11 @@ function BuyerCountPill({ count }: { count: number }) {
       {count} buyers
     </span>
   );
+}
+
+function priceListStatusPillClasses(status: 'active' | 'draft') {
+  if (status === 'active') return 'border-teal-200 bg-teal-50 text-teal-700';
+  return 'border-amber-200 bg-amber-50 text-amber-700';
 }
 
 export function CatalogComposerSkeleton() {
@@ -191,6 +207,9 @@ export function CatalogComposer({
 
   const products = bootstrap?.products ?? [];
   const cohorts = bootstrap?.cohorts ?? [];
+  const buyers = bootstrap?.buyers ?? [];
+  const priceLists = bootstrap?.price_lists ?? [];
+  const priceListItems = bootstrap?.price_list_items ?? [];
   const buyerCount = bootstrap?.buyer_count ?? 0;
   const detailComposer = detail?.composer;
   const isLoading = bootstrapLoading || (mode === 'edit' && detailLoading);
@@ -206,8 +225,18 @@ export function CatalogComposer({
 
   const [name, setName] = useState('');
   const [cohortId, setCohortId] = useState('');
+  const [selectedBuyerIds, setSelectedBuyerIds] = useState<string[]>([]);
+  const [buyerSheetOpen, setBuyerSheetOpen] = useState(false);
+  const [buyerSearch, setBuyerSearch] = useState('');
+  const [buyerQuickFilter, setBuyerQuickFilter] = useState<BuyerQuickFilter>('all');
+  const [noteToBuyers, setNoteToBuyers] = useState('');
   const [validFrom, setValidFrom] = useState(isoDateInput(new Date()));
   const [validTo, setValidTo] = useState('');
+  const [priceSource, setPriceSource] = useState<CatalogComposerPriceSource>('manual');
+  const [priceListId, setPriceListId] = useState<string | null>(null);
+  const [pricingMode, setPricingMode] = useState<PricingMode>('edit_each');
+  const [pricingValue, setPricingValue] = useState('');
+  const [campaignPrices, setCampaignPrices] = useState<Record<string, number | null>>({});
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [availability, setAvailability] = useState<CatalogComposerAvailability>('show_everything');
@@ -227,14 +256,25 @@ export function CatalogComposer({
     if (mode === 'edit') {
       if (!detailComposer) return;
 
-      const nextBrands = detailComposer.filters.brand_names.length > 0 ? detailComposer.filters.brand_names : allBrandNames;
-      const nextCategories = detailComposer.filters.category_names.length > 0 ? detailComposer.filters.category_names : allCategoryNames;
+      const nextBrands = detailComposer.filters.brand_names;
+      const nextCategories = detailComposer.filters.category_names;
       const nextSelectedIds = new Set(detailComposer.items.map((item) => item.tenant_product_id));
 
       setName(detailComposer.name);
-      setCohortId(detailComposer.scope_type === 'all' ? ALL_BUYERS_SCOPE_VALUE : (detailComposer.cohort_id ?? ''));
+      setCohortId(
+        detailComposer.scope_type === 'all'
+          ? ALL_BUYERS_SCOPE_VALUE
+          : detailComposer.scope_type === 'buyer'
+            ? SELECT_BUYERS_SCOPE_VALUE
+            : (detailComposer.cohort_id ?? ''),
+      );
+      setSelectedBuyerIds(detailComposer.buyer_ids ?? []);
+      setNoteToBuyers(detailComposer.message ?? '');
       setValidFrom(detailComposer.valid_from.slice(0, 10));
       setValidTo(detailComposer.valid_to ? detailComposer.valid_to.slice(0, 10) : '');
+      setPriceSource(detailComposer.price_source ?? 'manual');
+      setPriceListId(detailComposer.price_list_id ?? null);
+      setCampaignPrices(Object.fromEntries(detailComposer.items.map((item) => [item.tenant_product_id, item.price_override ?? null])));
       setSelectedBrands(nextBrands);
       setSelectedCategories(nextCategories);
       setAvailability(detailComposer.filters.availability);
@@ -249,10 +289,17 @@ export function CatalogComposer({
     const nextSelectedIds = new Set(products.map((product) => product.id));
     setName('');
     setCohortId(cohorts[0]?.id ?? ALL_BUYERS_SCOPE_VALUE);
+    setSelectedBuyerIds([]);
+    setNoteToBuyers('');
     setValidFrom(isoDateInput(new Date()));
     setValidTo('');
-    setSelectedBrands(allBrandNames);
-    setSelectedCategories(allCategoryNames);
+    setPriceSource('manual');
+    setPriceListId(null);
+    setPricingMode('edit_each');
+    setPricingValue('');
+    setCampaignPrices({});
+    setSelectedBrands([]);
+    setSelectedCategories([]);
     setAvailability('show_everything');
     setSelectedIds(nextSelectedIds);
     setTagOverrides({});
@@ -265,14 +312,12 @@ export function CatalogComposer({
 
   const filteredProducts = useMemo(() => {
     const lowered = search.trim().toLowerCase();
-    const allBrandsSelected = selectedBrands.length === allBrandNames.length;
-    const allCategoriesSelected = selectedCategories.length === allCategoryNames.length;
 
     return products.filter((product) => {
       const brandName = normalizeFilterLabel(product.brand_name);
       const categoryName = normalizeFilterLabel(product.category_name);
-      const matchesBrand = allBrandsSelected || selectedBrands.includes(brandName);
-      const matchesCategory = allCategoriesSelected || selectedCategories.includes(categoryName);
+      const matchesBrand = selectedBrands.length === 0 || selectedBrands.includes(brandName);
+      const matchesCategory = selectedCategories.length === 0 || selectedCategories.includes(categoryName);
       const productWithEffectiveTag = { ...product, tag: tagOverrides[product.id] ?? product.tag };
       const matchesAvailabilityValue = matchesAvailability(productWithEffectiveTag, availability);
       if (!matchesBrand || !matchesCategory || !matchesAvailabilityValue) return false;
@@ -283,12 +328,45 @@ export function CatalogComposer({
         brandName.toLowerCase().includes(lowered)
       );
     });
-  }, [allBrandNames.length, allCategoryNames.length, availability, products, search, selectedBrands, selectedCategories, tagOverrides]);
+  }, [availability, products, search, selectedBrands, selectedCategories, tagOverrides]);
 
   const selectedProducts = useMemo(
     () => products.filter((product) => selectedIds.has(product.id)),
     [products, selectedIds],
   );
+
+  const priceListPriceMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!priceListId) return map;
+    for (const item of priceListItems) {
+      if (item.price_list_id === priceListId) map.set(item.tenant_product_id, item.price);
+    }
+    return map;
+  }, [priceListId, priceListItems]);
+
+  function basePrice(product: CatalogComposerProduct) {
+    return Number(product.base_selling_price ?? product.mrp ?? 0);
+  }
+
+  function resolvedCampaignPrice(product: CatalogComposerProduct) {
+    if (priceSource === 'price_list') {
+      return priceListPriceMap.get(product.id) ?? basePrice(product);
+    }
+    return campaignPrices[product.id] ?? basePrice(product);
+  }
+
+  function discountPct(product: CatalogComposerProduct) {
+    const base = basePrice(product);
+    if (base <= 0) return null;
+    return ((base - resolvedCampaignPrice(product)) / base) * 100;
+  }
+
+  function marginPct(product: CatalogComposerProduct) {
+    const price = resolvedCampaignPrice(product);
+    const cost = product.cost_price;
+    if (price <= 0 || cost == null) return null;
+    return ((price - Number(cost)) / price) * 100;
+  }
 
   const filteredSelectedProducts = useMemo(
     () => filteredProducts.filter((product) => selectedIds.has(product.id)),
@@ -305,9 +383,32 @@ export function CatalogComposer({
   const oldStockCount = filteredSelectedProducts.filter((product) => effectiveTag(product) === 'old_stock').length;
   const selectedCohort = cohorts.find((cohort) => cohort.id === cohortId) ?? null;
   const isAllBuyersScope = cohortId === ALL_BUYERS_SCOPE_VALUE;
-  const selectedAudienceName = isAllBuyersScope ? 'All Buyers' : (selectedCohort?.name ?? 'Choose a cohort');
-  const selectedAudienceCount = isAllBuyersScope ? buyerCount : (selectedCohort?.member_count ?? 0);
+  const isSelectedBuyersScope = cohortId === SELECT_BUYERS_SCOPE_VALUE;
+  const selectedAudienceName = isAllBuyersScope ? 'All Buyers' : isSelectedBuyersScope ? 'Selected buyers' : (selectedCohort?.name ?? 'Choose a customer group');
+  const selectedAudienceCount = isAllBuyersScope ? buyerCount : isSelectedBuyersScope ? selectedBuyerIds.length : (selectedCohort?.member_count ?? 0);
   const overriddenTagCount = Object.values(tagOverrides).filter((value) => value != null).length;
+  const priceOverrideCount = filteredSelectedProducts.filter((product) => resolvedCampaignPrice(product) !== basePrice(product)).length;
+  const avgDiscountPct = filteredSelectedProducts.length > 0
+    ? filteredSelectedProducts.reduce((sum, product) => sum + Math.max(0, discountPct(product) ?? 0), 0) / filteredSelectedProducts.length
+    : 0;
+  const selectedBuyerSet = useMemo(() => new Set(selectedBuyerIds), [selectedBuyerIds]);
+  const visibleBuyerRows = useMemo(() => {
+    const lowered = buyerSearch.trim().toLowerCase();
+    return buyers.filter((buyer) => {
+      if (buyerQuickFilter === 'tier_a' && buyer.tier !== 'A') return false;
+      if (buyerQuickFilter === 'tier_b' && buyer.tier !== 'B') return false;
+      if (buyerQuickFilter === 'with_orders' && buyer.orders_30d <= 0) return false;
+      if (buyerQuickFilter === 'no_orders' && buyer.orders_30d > 0) return false;
+      if (!lowered) return true;
+      return [
+        buyer.business_name,
+        buyer.contact_name ?? '',
+        buyer.external_ref ?? '',
+        buyer.geography_label,
+      ].some((value) => value.toLowerCase().includes(lowered));
+    });
+  }, [buyerQuickFilter, buyerSearch, buyers]);
+  const visibleBuyerSelectedCount = visibleBuyerRows.filter((buyer) => selectedBuyerSet.has(buyer.id)).length;
   const pendingPublishSummary = [
     { label: 'Name', value: name || 'Untitled campaign' },
     { label: 'Audience', value: `${selectedAudienceName} (${selectedAudienceCount} buyers)` },
@@ -319,15 +420,20 @@ export function CatalogComposer({
     () => JSON.stringify({
       name,
       cohortId,
+      selectedBuyerIds: [...selectedBuyerIds].sort(),
+      noteToBuyers,
       validFrom,
       validTo,
+      priceSource,
+      priceListId,
+      campaignPrices,
       selectedBrands,
       selectedCategories,
       availability,
       selectedIds: Array.from(selectedIds).sort(),
       tagOverrides,
     }),
-    [availability, cohortId, name, selectedBrands, selectedCategories, selectedIds, tagOverrides, validFrom, validTo],
+    [availability, campaignPrices, cohortId, name, noteToBuyers, priceListId, priceSource, selectedBrands, selectedBuyerIds, selectedCategories, selectedIds, tagOverrides, validFrom, validTo],
   );
 
   useEffect(() => {
@@ -354,7 +460,7 @@ export function CatalogComposer({
   });
 
   function toggleMany(current: string[], allValues: string[], setter: (values: string[]) => void) {
-    setter(current.length === allValues.length ? [] : allValues);
+    setter(current.length > 0 ? [] : allValues);
   }
 
   function clearFieldError(field: keyof CatalogComposerFieldErrors) {
@@ -384,6 +490,27 @@ export function CatalogComposer({
     setTagOverrides({ ...initialTagOverrides });
   }
 
+  function applyPricingToProducts(ids: string[], mode: PricingMode, rawValue: string) {
+    const value = Number(rawValue);
+    if ((mode === 'percent_off_base' || mode === 'flat_off_base') && (!Number.isFinite(value) || value < 0)) return;
+    setCampaignPrices((current) => {
+      const next = { ...current };
+      for (const id of ids) {
+        const product = products.find((item) => item.id === id);
+        if (!product) continue;
+        const base = basePrice(product);
+        if (mode === 'edit_each') {
+          if (!(id in next)) next[id] = base;
+        } else if (mode === 'percent_off_base') {
+          next[id] = Math.max(0, Math.round(base * (1 - value / 100) * 100) / 100);
+        } else {
+          next[id] = Math.max(0, Math.round((base - value) * 100) / 100);
+        }
+      }
+      return next;
+    });
+  }
+
   function applyTagOverride(ids: string[], value: CatalogComposerTag | 'auto') {
     setTagOverrides((current) => {
       const next = { ...current };
@@ -398,10 +525,14 @@ export function CatalogComposer({
   function buildSavePayload(saveMode: 'draft' | 'publish') {
     return {
       name: name.trim(),
-      scope_type: isAllBuyersScope ? 'all' : 'cohort',
-      cohort_id: isAllBuyersScope ? null : cohortId || null,
+      scope_type: isAllBuyersScope ? 'all' : isSelectedBuyersScope ? 'buyer' : 'cohort',
+      cohort_id: isAllBuyersScope || isSelectedBuyersScope ? null : cohortId || null,
+      buyer_ids: isSelectedBuyersScope ? selectedBuyerIds : [],
       valid_from: validFrom ? `${validFrom}T00:00:00` : '',
       valid_to: validTo ? `${validTo}T23:59:59` : undefined,
+      message: noteToBuyers.trim(),
+      price_source: priceSource,
+      price_list_id: priceSource === 'price_list' ? priceListId : null,
       filters: {
         brand_names: selectedBrands,
         category_names: selectedCategories,
@@ -411,6 +542,7 @@ export function CatalogComposer({
       items: filteredSelectedProducts.map((product, index) => ({
         tenant_product_id: product.id,
         display_order: index,
+        price_override: resolvedCampaignPrice(product),
       })),
       save_mode: saveMode,
     };
@@ -426,6 +558,8 @@ export function CatalogComposer({
         const path = String(issue.path[0] ?? '');
         if (path === 'name') nextErrors.name = issue.message;
         else if (path === 'cohort_id') nextErrors.cohortId = issue.message;
+        else if (path === 'buyer_ids') nextErrors.buyers = issue.message;
+        else if (path === 'price_list_id') nextErrors.priceListId = issue.message;
         else if (path === 'valid_from') nextErrors.validFrom = issue.message;
         else if (path === 'valid_to') nextErrors.validTo = issue.message;
       }
@@ -509,8 +643,8 @@ export function CatalogComposer({
             }
           />
 
-          <ComposerBasicsStrip columnsClassName="lg:grid-cols-[1.4fr_1fr_1fr]">
-            <ComposerBasicsField label="Name">
+          <ComposerBasicsStrip columnsClassName="lg:grid-cols-[1.25fr_1fr_1fr_1fr]">
+            <ComposerBasicsField label="Campaign Name">
               <Input
                 value={name}
                 onChange={(event) => {
@@ -524,12 +658,34 @@ export function CatalogComposer({
               />
             </ComposerBasicsField>
 
+            <ComposerBasicsField label="Validity">
+              <DateRangePicker
+                validFrom={validFrom}
+                validTo={validTo}
+                error={fieldErrors.validFrom && !fieldErrors.validTo ? fieldErrors.validFrom : undefined}
+                onValidFromChange={(next) => {
+                  setValidFrom(next);
+                  clearFieldError('validFrom');
+                  clearFieldError('validTo');
+                  setSubmitError(null);
+                }}
+                onValidToChange={(next) => {
+                  setValidTo(next);
+                  clearFieldError('validTo');
+                  setSubmitError(null);
+                }}
+              />
+              {fieldErrors.validTo ? <p className="mt-1 text-sm text-danger-500">{fieldErrors.validTo}</p> : null}
+            </ComposerBasicsField>
+
             <ComposerBasicsField label="Customer group">
               <Select
                 value={cohortId}
                 onValueChange={(value) => {
                   setCohortId(value);
+                  if (value === SELECT_BUYERS_SCOPE_VALUE) setBuyerSheetOpen(true);
                   clearFieldError('cohortId');
+                  clearFieldError('buyers');
                   setSubmitError(null);
                 }}
               >
@@ -561,28 +717,52 @@ export function CatalogComposer({
                       </div>
                     </SelectItem>
                   ))}
+                  <SelectItem value={SELECT_BUYERS_SCOPE_VALUE} className="py-2.5">
+                    <div className="flex min-w-0 items-center justify-between gap-4 pr-6">
+                      <div className="min-w-0 truncate font-medium">Select buyers for campaign</div>
+                      <BuyerCountPill count={selectedBuyerIds.length} />
+                    </div>
+                  </SelectItem>
                 </SelectContent>
               </Select>
+              {fieldErrors.buyers ? <p className="mt-1 text-sm text-danger-500">{fieldErrors.buyers}</p> : null}
             </ComposerBasicsField>
 
-            <ComposerBasicsField label="Validity">
-              <DateRangePicker
-                validFrom={validFrom}
-                validTo={validTo}
-                error={fieldErrors.validFrom && !fieldErrors.validTo ? fieldErrors.validFrom : undefined}
-                onValidFromChange={(next) => {
-                  setValidFrom(next);
-                  clearFieldError('validFrom');
-                  clearFieldError('validTo');
+            <ComposerBasicsField label="Pricelist">
+              <Select
+                value={priceSource === 'manual' ? SETUP_CAMPAIGN_PRICES_VALUE : (priceListId ?? '')}
+                onValueChange={(value) => {
+                  if (value === SETUP_CAMPAIGN_PRICES_VALUE) {
+                    setPriceSource('manual');
+                    setPriceListId(null);
+                  } else {
+                    setPriceSource('price_list');
+                    setPriceListId(value);
+                  }
+                  clearFieldError('priceListId');
                   setSubmitError(null);
                 }}
-                onValidToChange={(next) => {
-                  setValidTo(next);
-                  clearFieldError('validTo');
-                  setSubmitError(null);
-                }}
-              />
-              {fieldErrors.validTo ? <p className="mt-1 text-sm text-danger-500">{fieldErrors.validTo}</p> : null}
+              >
+                <SelectTrigger
+                  error={fieldErrors.priceListId}
+                  className="h-auto border-0 bg-transparent px-0 py-0 text-base font-medium text-cream-950 shadow-none focus:ring-0"
+                >
+                  <SelectValue placeholder="Select pricelist" />
+                </SelectTrigger>
+                <SelectContent>
+                  {priceLists.map((priceList) => (
+                    <SelectItem key={priceList.id} value={priceList.id}>
+                      <div className="flex min-w-0 items-center justify-between gap-3 pr-6">
+                        <span className="min-w-0 truncate font-medium">{priceList.name}</span>
+                        <span className={cn('inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 font-mono text-xs font-semibold uppercase tracking-[0.06em]', priceListStatusPillClasses(priceList.status))}>
+                          {priceList.status === 'active' ? 'Active' : 'Draft'}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                  <SelectItem value={SETUP_CAMPAIGN_PRICES_VALUE}>Setup campaign prices</SelectItem>
+                </SelectContent>
+              </Select>
             </ComposerBasicsField>
           </ComposerBasicsStrip>
 
@@ -623,7 +803,7 @@ export function CatalogComposer({
                         className="text-sm font-medium text-teal-700 hover:text-teal-800"
                         onClick={() => toggleMany(selectedBrands, allBrandNames, setSelectedBrands)}
                       >
-                        {selectedBrands.length === allBrandNames.length ? 'Clear all' : 'Select all'}
+                        {selectedBrands.length > 0 ? 'Clear all' : 'Select all'}
                       </button>
                     </div>
                     <div className="space-y-2">
@@ -658,7 +838,7 @@ export function CatalogComposer({
                         className="text-sm font-medium text-teal-700 hover:text-teal-800"
                         onClick={() => toggleMany(selectedCategories, allCategoryNames, setSelectedCategories)}
                       >
-                        {selectedCategories.length === allCategoryNames.length ? 'Clear all' : 'Select all'}
+                        {selectedCategories.length > 0 ? 'Clear all' : 'Select all'}
                       </button>
                     </div>
                     <div className="space-y-2">
@@ -713,7 +893,7 @@ export function CatalogComposer({
                       {filteredProducts.length} products match the filters
                     </div>
                     <div className="text-sm text-cream-700">
-                      Uncheck products to exclude.
+                      Select products and setup campaign pricing.
                     </div>
                   </div>
                   <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -730,7 +910,7 @@ export function CatalogComposer({
                       <PopoverTrigger asChild>
                         <Button type="button" variant="secondary">
                           <SlidersHorizontal className="h-3.5 w-3.5" />
-                          Bulk adjust
+                          Bulk tags
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent align="end" className="w-56 border-cream-300 bg-white p-2">
@@ -753,7 +933,7 @@ export function CatalogComposer({
                       </PopoverContent>
                     </Popover>
                     <Button type="button" variant="ghost" onClick={resetOverrides} disabled={overriddenTagCount === 0}>
-                      Reset overrides
+                    Reset tags
                     </Button>
                   </div>
                 </div>
@@ -765,6 +945,63 @@ export function CatalogComposer({
                     </Alert>
                   </div>
                 ) : null}
+
+                {priceSource === 'manual' ? (
+                  <div className="flex flex-wrap items-center gap-3 border-b border-cream-300 bg-white px-4 py-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-cream-800">
+                      Campaign pricing
+                    </div>
+                    <Select value={pricingMode} onValueChange={(value) => setPricingMode(value as PricingMode)}>
+                      <SelectTrigger className="h-9 w-[220px] border-cream-300 bg-white text-sm font-medium text-cream-900">
+                        <SelectValue placeholder="Pricing mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="edit_each">Edit each price</SelectItem>
+                        <SelectItem value="percent_off_base">% off base price</SelectItem>
+                        <SelectItem value="flat_off_base">Flat discount off base price</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {pricingMode !== 'edit_each' ? (
+                      <div className="relative w-28">
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-cream-700">
+                          {pricingMode === 'percent_off_base' ? '%' : '₹'}
+                        </span>
+                        <Input
+                          value={pricingValue}
+                          onChange={(event) => {
+                            const next = pricingMode === 'percent_off_base'
+                              ? event.target.value.replace(/[^\d.]/g, '')
+                              : formatInrInput(event.target.value);
+                            setPricingValue(next);
+                          }}
+                          placeholder={pricingMode === 'percent_off_base' ? 'Discount' : 'Flat amount'}
+                          className="h-9 pl-7 pr-3 text-right font-mono"
+                          inputMode="decimal"
+                        />
+                      </div>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => applyPricingToProducts(Array.from(selectedIds), pricingMode, pricingValue)}
+                      disabled={selectedIds.size === 0 || (pricingMode !== 'edit_each' && !pricingValue.trim())}
+                    >
+                      Apply to selected
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => applyPricingToProducts(filteredProducts.map((product) => product.id), pricingMode, pricingValue)}
+                      disabled={filteredProducts.length === 0 || (pricingMode !== 'edit_each' && !pricingValue.trim())}
+                    >
+                      Apply to filtered
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="border-b border-cream-300 bg-teal-50 px-4 py-3 text-sm text-teal-800">
+                    Campaign prices are populated from {priceLists.find((priceList) => priceList.id === priceListId)?.name ?? 'selected pricelist'}; products without a pricelist item use base selling price.
+                  </div>
+                )}
 
                 {filteredProducts.length === 0 ? (
                   <div className="flex flex-1 items-center justify-center px-8 py-16 text-base text-cream-700">
@@ -783,13 +1020,12 @@ export function CatalogComposer({
                               className="accent-teal-500"
                             />
                           </th>
-                          <th className="border-b border-cream-300 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Product Name</th>
-                          <th className="border-b border-cream-300 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Brand</th>
-                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Stock</th>
-                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">MRP</th>
-                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Selling Base Price</th>
-                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Units Sold MTD</th>
-                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Days Cover</th>
+                          <th className="min-w-[300px] border-b border-cream-300 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Product</th>
+                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Cost price</th>
+                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Base selling price</th>
+                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Campaign price</th>
+                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Discount</th>
+                          <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Margin</th>
                           <th className="border-b border-cream-300 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-700">Tag</th>
                         </tr>
                       </thead>
@@ -798,6 +1034,10 @@ export function CatalogComposer({
                           const isSelected = selectedIds.has(product.id);
                           const currentTag = effectiveTag(product);
                           const tag = tagLabel(currentTag);
+                          const base = basePrice(product);
+                          const campaignPrice = resolvedCampaignPrice(product);
+                          const discount = discountPct(product);
+                          const margin = marginPct(product);
                           return (
                             <ComposerSelectableRow
                               key={product.id}
@@ -834,18 +1074,45 @@ export function CatalogComposer({
                                   />
                                   <div className="min-w-0">
                                     <p className="truncate text-base font-medium text-cream-900">{product.display_name}</p>
-                                    <p className="mt-0.5 truncate font-mono text-xs text-cream-700">{product.internal_sku}</p>
+                                    <p className="mt-0.5 truncate text-xs text-cream-700">
+                                      <span className="font-mono">{product.internal_sku}</span>
+                                      {' · '}
+                                      {product.brand_name}
+                                      {' · '}
+                                      <span className={stockTextClasses(product.stock_tone)}>Stock {product.stock_label}</span>
+                                    </p>
                                   </div>
                                 </div>
                               </td>
-                              <td className="px-4 py-3 text-cream-900">{product.brand_name}</td>
-                              <td className={cn('px-4 py-3 text-right font-mono font-medium', stockTextClasses(product.stock_tone))}>
-                                {product.stock_label}
+                              <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{product.cost_price != null ? formatInr(product.cost_price) : '—'}</td>
+                              <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{base > 0 ? formatInr(base) : '—'}</td>
+                              <td className="px-4 py-3 text-right">
+                                {priceSource === 'manual' ? (
+                                  <div className="ml-auto flex w-[140px] items-center rounded-[8px] border border-cream-300 bg-white px-3 py-2">
+                                    <span className="shrink-0 font-mono text-sm text-cream-600">₹</span>
+                                    <Input
+                                      value={campaignPrice == null ? '' : formatInrInput(String(campaignPrice))}
+                                      onChange={(event) => {
+                                        const next = parseInrInput(formatInrInput(event.target.value));
+                                        setCampaignPrices((current) => ({
+                                          ...current,
+                                          [product.id]: next,
+                                        }));
+                                      }}
+                                      className="h-auto border-0 bg-transparent p-0 text-right font-mono text-sm shadow-none focus-visible:ring-0"
+                                      data-row-click-ignore="true"
+                                    />
+                                  </div>
+                                ) : (
+                                  <span className="font-mono font-semibold text-cream-900">{formatInr(campaignPrice)}</span>
+                                )}
                               </td>
-                              <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{product.mrp != null ? formatInr(product.mrp) : '—'}</td>
-                              <td className="px-4 py-3 text-right font-mono font-medium text-cream-900">{product.base_selling_price != null ? formatInr(product.base_selling_price) : '—'}</td>
-                              <td className="px-4 py-3 text-right font-mono text-cream-900">{product.units_mtd}</td>
-                              <td className="px-4 py-3 text-right font-mono text-cream-900">{product.days_cover == null ? '—' : `${product.days_cover}d`}</td>
+                              <td className="px-4 py-3 text-right font-mono text-cream-900">
+                                {discount == null ? '—' : `${Math.max(0, discount).toFixed(1)}%`}
+                              </td>
+                              <td className="px-4 py-3 text-right font-mono text-cream-900">
+                                {margin == null ? '—' : `${margin.toFixed(1)}%`}
+                              </td>
                               <td className="px-4 py-3 text-right">
                                 <Select
                                   value={tagOverrides[product.id] ?? 'auto'}
@@ -936,6 +1203,14 @@ export function CatalogComposer({
                       <span className="text-cream-700">Manual tag overrides</span>
                       <span className="font-mono font-medium text-cream-900">{overriddenTagCount}</span>
                     </div>
+                    <div className="flex items-center justify-between text-base">
+                      <span className="text-cream-700">Price overrides</span>
+                      <span className="font-mono font-medium text-cream-900">{priceOverrideCount}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-base">
+                      <span className="text-cream-700">Avg. discount</span>
+                      <span className="font-mono font-medium text-cream-900">{avgDiscountPct.toFixed(1)}%</span>
+                    </div>
                   </div>
 
                   <div className="h-px bg-cream-300" />
@@ -954,6 +1229,18 @@ export function CatalogComposer({
                       <span className="font-mono font-medium text-cream-900">{validTo ? formatDate(validTo) : 'Open ended'}</span>
                     </div>
                   </div>
+
+                  <div className="h-px bg-cream-300" />
+
+                  <Textarea
+                    label="Short note to buyers"
+                    value={noteToBuyers}
+                    onChange={(event) => setNoteToBuyers(event.target.value.slice(0, 50))}
+                    maxLength={50}
+                    placeholder="Short buyer-facing note"
+                    hint={`${noteToBuyers.length}/50 characters`}
+                    className="min-h-[92px] resize-none"
+                  />
 
                   {isPublishedEdit ? (
                     <>
@@ -1018,7 +1305,7 @@ export function CatalogComposer({
                 </Button>
                 <Button
                   type="button"
-                  variant="accent"
+                  variant="primary"
                   onClick={() => void handleActionClick('draft')}
                   disabled={saveMutation.isPending}
                 >
@@ -1027,7 +1314,7 @@ export function CatalogComposer({
                 </Button>
                 <Button
                   type="button"
-                  className="cockpit-btn cockpit-btn-primary"
+                  variant="accent"
                   onClick={() => void handleActionClick('publish')}
                   disabled={saveMutation.isPending}
                 >
@@ -1045,6 +1332,132 @@ export function CatalogComposer({
         onOpenChange={dirtyGuard.setDiscardOpen}
         onDiscard={dirtyGuard.confirmDiscard}
       />
+
+      <Sheet open={buyerSheetOpen} onOpenChange={setBuyerSheetOpen}>
+        <SheetContent side="right" className="flex w-full max-w-[620px] flex-col p-0">
+          <SheetHeader className="pr-12">
+            <SheetTitle>Select buyers for campaign</SheetTitle>
+            <div className="mt-2 flex items-center gap-2 text-sm text-cream-700">
+              <Users className="h-4 w-4 text-teal-700" />
+              <span>{selectedBuyerIds.length} buyers selected</span>
+            </div>
+          </SheetHeader>
+          <SheetBody className="space-y-4 px-5 py-4">
+            <div className="flex items-center gap-2 rounded-[8px] border border-cream-300 bg-white px-3 py-2 text-base text-cream-700">
+              <Search className="h-4 w-4 shrink-0 text-cream-600" />
+              <input
+                value={buyerSearch}
+                onChange={(event) => setBuyerSearch(event.target.value)}
+                placeholder="Search buyer, contact, city"
+                className="w-full bg-transparent outline-none placeholder:text-cream-600"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                ['all', 'All'],
+                ['tier_a', 'Tier A'],
+                ['tier_b', 'Tier B'],
+                ['with_orders', 'Ordered 30d'],
+                ['no_orders', 'No orders 30d'],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setBuyerQuickFilter(value as BuyerQuickFilter)}
+                  className={cn(
+                    'rounded-full border px-3 py-1.5 text-sm font-medium',
+                    buyerQuickFilter === value
+                      ? 'border-teal-500 bg-teal-50 text-teal-800'
+                      : 'border-cream-300 bg-white text-cream-700 hover:bg-cream-50',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center justify-between rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-2">
+              <span className="text-sm font-medium text-cream-800">
+                {visibleBuyerRows.length} buyers visible · {visibleBuyerSelectedCount} selected here
+              </span>
+              <button
+                type="button"
+                className="text-sm font-semibold text-teal-700 hover:text-teal-800"
+                onClick={() => {
+                  const visibleIds = visibleBuyerRows.map((buyer) => buyer.id);
+                  setSelectedBuyerIds((current) => {
+                    const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => current.includes(id));
+                    if (allVisibleSelected) return current.filter((id) => !visibleIds.includes(id));
+                    return Array.from(new Set([...current, ...visibleIds]));
+                  });
+                }}
+              >
+                {visibleBuyerRows.length > 0 && visibleBuyerRows.every((buyer) => selectedBuyerSet.has(buyer.id)) ? 'Clear visible' : 'Select visible'}
+              </button>
+            </div>
+            <div className="overflow-hidden rounded-[12px] border border-cream-300">
+              <div className="max-h-[58vh] overflow-auto">
+                {visibleBuyerRows.length === 0 ? (
+                  <div className="px-4 py-12 text-center text-base text-cream-700">No buyers match the current search and filters.</div>
+                ) : (
+                  visibleBuyerRows.map((buyer) => {
+                    const checked = selectedBuyerSet.has(buyer.id);
+                    return (
+                      <label
+                        key={buyer.id}
+                        className={cn(
+                          'flex cursor-pointer items-center gap-3 border-b border-cream-200 px-4 py-3 last:border-b-0 hover:bg-cream-50',
+                          checked && 'bg-teal-50/70',
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(event) => {
+                            setSelectedBuyerIds((current) =>
+                              event.target.checked
+                                ? Array.from(new Set([...current, buyer.id]))
+                                : current.filter((id) => id !== buyer.id),
+                            );
+                            clearFieldError('buyers');
+                          }}
+                          className="accent-teal-500"
+                        />
+                        <EntityAvatar initials={buyer.initials} hue={buyer.hue} size={32} className="rounded-[8px]" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-base font-medium text-cream-900">{buyer.business_name}</p>
+                          <p className="mt-0.5 truncate text-xs text-cream-700">
+                            {[buyer.contact_name, buyer.geography_label, buyer.tier ? `Tier ${buyer.tier}` : 'Unsorted'].filter(Boolean).join(' · ')}
+                          </p>
+                        </div>
+                        <div className="text-right font-mono text-xs text-cream-700">
+                          <div>{buyer.orders_30d} orders</div>
+                          <div>Net {buyer.payment_terms_days}</div>
+                        </div>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </SheetBody>
+          <SheetFooter className="justify-between">
+            <Button type="button" variant="ghost" onClick={() => setSelectedBuyerIds([])}>
+              Clear selection
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setCohortId(SELECT_BUYERS_SCOPE_VALUE);
+                setBuyerSheetOpen(false);
+                clearFieldError('buyers');
+              }}
+            >
+              <Check className="h-3.5 w-3.5" />
+              Use {selectedBuyerIds.length} buyers
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       <Dialog open={confirmAction !== null} onOpenChange={(open) => setConfirmAction(open ? confirmAction : null)}>
         <DialogContent className="max-w-[440px]">

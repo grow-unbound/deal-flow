@@ -190,7 +190,7 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
     const q = locationSearchQuery.trim().toLowerCase();
     if (!q) return availableLocations;
     return availableLocations.filter((location) =>
-      [location.name, location.address.city, location.address.state, location.type]
+      [location.name, location.address.city, location.address.state]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(q)),
     );
@@ -479,7 +479,7 @@ export function InviteUserDialog({ open, onOpenChange, member }: InviteUserDialo
                                     <p className="mt-0.5 text-sm text-cream-700">
                                       {location.address.city
                                         ? `${location.address.city}${location.address.state ? `, ${location.address.state}` : ''}`
-                                        : location.type.replace(/_/g, ' ')}
+                                        : 'Branch'}
                                     </p>
                                   </div>
                                   <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">

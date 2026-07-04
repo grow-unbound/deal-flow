@@ -38,7 +38,6 @@ import { getMapsLoader } from '@/lib/google-maps-loader';
 import {
   CreateLocationInputSchema,
   LocationStatusSchema,
-  LocationTypeSchema,
   LocationAssociatedUserSchema,
   type TenantLocation,
 } from '@/types/tenant-locations';
@@ -219,7 +218,6 @@ function MapsAddressSearch({ selectedLabel, onSelect }: MapsAddressSearchProps) 
 
 const FormSchema = z.object({
   name: z.string().min(1, 'Location name is required').max(200),
-  type: LocationTypeSchema,
   phone_number: z.string().trim().regex(/^[0-9]{10}$/, 'Phone number must be 10 digits').optional().or(z.literal('')),
   status: LocationStatusSchema,
   line1: z.string().max(500),
@@ -227,7 +225,6 @@ const FormSchema = z.object({
   city: z.string().max(200),
   state: z.string().max(2),
   pincode: z.string().max(10),
-  inventory_tracking: z.boolean(),
   is_default: z.boolean(),
   external_ref: z.string().max(200).optional(),
   associated_users: z.array(LocationAssociatedUserSchema).default([]),
@@ -241,7 +238,6 @@ function defaultsFromLocation(loc: TenantLocation | null): FormValues {
   if (!loc) {
     return {
       name: '',
-      type: 'warehouse',
       phone_number: '',
       status: 'active',
       line1: '',
@@ -249,7 +245,6 @@ function defaultsFromLocation(loc: TenantLocation | null): FormValues {
       city: '',
       state: '',
       pincode: '',
-      inventory_tracking: true,
       is_default: false,
       external_ref: '',
       associated_users: [],
@@ -257,7 +252,6 @@ function defaultsFromLocation(loc: TenantLocation | null): FormValues {
   }
   return {
     name: loc.name,
-    type: loc.type,
     phone_number: loc.phone_number ?? '',
     status: loc.status,
     line1: loc.address?.line1 ?? '',
@@ -265,7 +259,6 @@ function defaultsFromLocation(loc: TenantLocation | null): FormValues {
     city: loc.address?.city ?? '',
     state: loc.address?.state ?? '',
     pincode: loc.address?.pincode ?? '',
-    inventory_tracking: loc.inventory_tracking,
     is_default: loc.is_default,
     external_ref: loc.external_ref ?? '',
     associated_users: loc.associated_users ?? [],
@@ -345,7 +338,7 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
     () =>
       isEdit
         ? "Update this location's details."
-        : 'Add a warehouse or branch. Inventory can be tracked per location.',
+        : 'Add a branch location for documents, routing, and team access.',
     [isEdit],
   );
 
@@ -434,7 +427,6 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
   async function onSubmit(values: FormValues) {
     const payload = {
       name: values.name.trim(),
-      type: values.type,
       phone_number: values.phone_number?.trim() ? values.phone_number.trim() : null,
       status: values.status,
       address: {
@@ -444,7 +436,6 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
         state: values.state.trim().toUpperCase().slice(0, 2),
         pincode: values.pincode.trim(),
       },
-      inventory_tracking: values.inventory_tracking,
       is_default: values.is_default,
       external_ref: values.external_ref?.trim() ? values.external_ref.trim() : undefined,
       associated_users: values.associated_users,
@@ -463,11 +454,9 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
         id: editingLocation.id,
         patch: {
           name: parsedCreate.data.name,
-          type: parsedCreate.data.type,
           phone_number: parsedCreate.data.phone_number ?? null,
           status: parsedCreate.data.status,
           address: parsedCreate.data.address,
-          inventory_tracking: parsedCreate.data.inventory_tracking,
           is_default: parsedCreate.data.is_default,
           external_ref: parsedCreate.data.external_ref ?? null,
           associated_users: parsedCreate.data.associated_users,
@@ -498,28 +487,6 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
                     <FormControl>
                       <Input {...field} placeholder="e.g. Mumbai Warehouse" autoComplete="off" />
                     </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Type</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select type" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="warehouse">Warehouse — holds stock</SelectItem>
-                        <SelectItem value="branch">Branch — sales or admin office</SelectItem>
-                      </SelectContent>
-                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -747,22 +714,6 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
 
               <FormField
                 control={form.control}
-                name="inventory_tracking"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border border-cream-200 p-4">
-                    <FormControl>
-                      <Checkbox checked={field.value} onCheckedChange={(v) => field.onChange(v === true)} />
-                    </FormControl>
-                    <div className="space-y-1 leading-none">
-                      <FormLabel>Track inventory at this location</FormLabel>
-                      <p className="text-body-sm text-cream-600">Stock levels are maintained per SKU for tracked locations.</p>
-                    </div>
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
                 name="is_default"
                 render={({ field }) => (
                   <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border border-cream-200 p-4">
@@ -771,7 +722,7 @@ export function LocationFormSheet({ open, onOpenChange, editingLocation }: Locat
                     </FormControl>
                     <div className="space-y-1 leading-none">
                       <FormLabel>Default location</FormLabel>
-                      <p className="text-body-sm text-cream-600">Used as the preferred location for new inventory rows where applicable.</p>
+                      <p className="text-body-sm text-cream-600">Used as the default branch for new documents and fallback routing.</p>
                     </div>
                   </FormItem>
                 )}

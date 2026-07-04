@@ -21,15 +21,26 @@ function createDb(settings: Record<string, unknown>, warehouseRows: Array<Record
           };
         }
 
+        if (table === 'warehouses') {
+          return {
+            select: () => ({
+              eq: () => ({
+                is: () => ({
+                  not: () => ({
+                    not: async () => ({ data: warehouseRows, error: null }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+
         if (table === 'locations') {
           return {
             select: () => ({
               eq: () => ({
                 eq: () => ({
                   is: () => ({
-                    not: () => ({
-                      not: async () => ({ data: warehouseRows, error: null }),
-                    }),
                     limit: async () => ({ data: defaultRows, error: null }),
                   }),
                 }),
@@ -55,6 +66,7 @@ describe('resolveNearestBuyerLocation', () => {
           lat: 0.6,
           lng: 0.6,
           is_default: false,
+          location_id: 'branch-1',
         },
       ],
       [{ id: 'default-location', name: 'Default Warehouse' }],
@@ -63,6 +75,7 @@ describe('resolveNearestBuyerLocation', () => {
     const resolved = await resolveNearestBuyerLocation(db as never, 'tenant-1', { lat: 0, lng: 0 });
 
     expect(resolved).toEqual({
+      warehouseId: null,
       locationId: 'default-location',
       locationName: 'Default Warehouse',
       distanceKm: null,
@@ -80,6 +93,7 @@ describe('resolveNearestBuyerLocation', () => {
           lat: 0.3,
           lng: 0.3,
           is_default: false,
+          location_id: 'branch-1',
         },
       ],
       [{ id: 'default-location', name: 'Default Warehouse' }],
@@ -87,7 +101,8 @@ describe('resolveNearestBuyerLocation', () => {
 
     const resolved = await resolveNearestBuyerLocation(db as never, 'tenant-1', { lat: 0, lng: 0 });
 
-    expect(resolved?.locationId).toBe('warehouse-1');
+    expect(resolved?.warehouseId).toBe('warehouse-1');
+    expect(resolved?.locationId).toBe('branch-1');
     expect(resolved?.locationName).toBe('Near Warehouse');
     expect(resolved?.fallback).toBe(false);
     expect(resolved?.distanceKm).toEqual(expect.any(Number));

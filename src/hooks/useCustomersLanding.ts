@@ -71,7 +71,7 @@ export interface TenantCustomerDetailResponse {
     hue: AvatarHue;
     status_label: string;
     status_tone: StatusTone;
-    tier: 'A' | 'B' | 'C' | null;
+    buyer_app_enabled: boolean;
     city: string;
     buyer_since: string | null;
     years_label: string;
@@ -95,7 +95,6 @@ export interface TenantCustomerDetailResponse {
     email: string | null;
     gstin: string | null;
     gst_treatment: string | null;
-    zoho_status: string | null;
     city: string | null;
     state: string | null;
     pincode: string | null;
@@ -104,8 +103,21 @@ export interface TenantCustomerDetailResponse {
     shipping_address: Record<string, unknown> | null;
     payment_terms_days: number | null;
     credit_limit: number | null;
-    external_ref: string | null;
+    default_price_list_id: string | null;
     assigned_price_list: string | null;
+    buyer_users: Array<{
+      id: string;
+      user_id: string | null;
+      first_name: string;
+      last_name: string;
+      full_name: string;
+      phone: string | null;
+      email: string | null;
+      designation: string | null;
+      department: string | null;
+      is_active: boolean;
+      status: 'Active' | 'Inactive' | 'Pending invite';
+    }>;
     contacts: Array<{
       id: string;
       name: string;
@@ -116,9 +128,9 @@ export interface TenantCustomerDetailResponse {
       is_active: boolean;
     }>;
     default_cohort_id?: string | null;
-    tier?: 'A' | 'B' | 'C' | null;
     cohorts: string[];
     is_active: boolean;
+    buyer_app_enabled: boolean;
   };
   performance: {
     monthly_spend_trend: Array<{ month: string; spend: number }>;
@@ -410,7 +422,7 @@ export function useCreateCustomerOptimistic() {
         const optimisticBuyer: CustomersLandingBuyer = {
           id: `optimistic-${Date.now()}`,
           business_name: payload.business_name,
-          tier: payload.tier ?? null,
+          tier: null,
           phone: payload.phone ?? null,
           gst_treatment: null,
           zoho_status: null,

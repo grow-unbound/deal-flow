@@ -50,6 +50,30 @@ describe('BuyerUpdateSchema', () => {
     }
   });
 
+  it('accepts default pricelist updates', () => {
+    const result = BuyerUpdateSchema.safeParse({
+      default_price_list_id: '550e8400-e29b-41d4-a716-446655440000',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.default_price_list_id).toBe('550e8400-e29b-41d4-a716-446655440000');
+    }
+  });
+
+  it('omits tier and external_ref from update payloads', () => {
+    const result = BuyerUpdateSchema.safeParse({
+      tier: 'B',
+      external_ref: 'ER-1',
+    } as unknown as Record<string, unknown>);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty('tier');
+      expect(result.data).not.toHaveProperty('external_ref');
+    }
+  });
+
   it('seller_assistant cannot update financial fields — role check strips them', () => {
     const incoming = {
       business_name: 'Test Co.',

@@ -100,14 +100,19 @@ function buildCatalogScopeValue(input: {
   scopeType: 'cohort' | 'buyer' | 'geography' | 'all';
   cohortId?: string | null;
   buyerId?: string | null;
+  buyerIds?: string[];
   geography?: { state?: string; city?: string; zone?: string } | null;
   filters: CatalogComposerFilterState;
   tagOverrides?: Record<string, CatalogComposerTag | null>;
+  priceSource?: 'price_list' | 'manual';
+  priceListId?: string | null;
 }) {
   const scope: Record<string, unknown> = {
     composer: {
       filters: input.filters,
       tag_overrides: input.tagOverrides ?? {},
+      price_source: input.priceSource ?? 'manual',
+      price_list_id: input.priceListId ?? null,
     },
   };
 
@@ -115,6 +120,8 @@ function buildCatalogScopeValue(input: {
     scope.cohort_id = input.cohortId;
   } else if (input.scopeType === 'buyer' && input.buyerId) {
     scope.buyer_id = input.buyerId;
+  } else if (input.scopeType === 'buyer' && input.buyerIds && input.buyerIds.length > 0) {
+    scope.buyer_ids = input.buyerIds;
   } else if (input.scopeType === 'geography' && input.geography) {
     scope.geography = input.geography;
   }
@@ -148,6 +155,38 @@ async function ensureTenantProducts(
   }
 
   return new Set<string>(((data ?? []) as Array<{ id: string }>).map((row) => row.id));
+}
+
+async function ensureTenantBuyers(db: any, tenantId: string, buyerIds: string[]) {
+  if (buyerIds.length === 0) return new Set<string>();
+
+  const { data, error } = await db
+    .schema('app')
+    .from('buyers')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .in('id', buyerIds)
+    .is('deleted_at', null);
+
+  if (error) throw new Error('Failed to validate selected buyers');
+  return new Set<string>(((data ?? []) as Array<{ id: string }>).map((row) => row.id));
+}
+
+async function ensureTenantPriceList(db: any, tenantId: string, priceListId: string | null | undefined) {
+  if (!priceListId) return true;
+
+  const { data, error } = await db
+    .schema('app')
+    .from('price_lists')
+    .select('id')
+    .eq('id', priceListId)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (error) throw new Error('Failed to validate price list');
+  return Boolean(data);
 }
 
 export async function GET(req: NextRequest) {
@@ -456,6 +495,20 @@ export async function POST(request: NextRequest) {
     if (!cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 400 });
   }
 
+  if (payload.scope_type === 'buyer') {
+    const validBuyerIds = await ensureTenantBuyers(db, claims.tenant_id, payload.buyer_ids);
+    if (validBuyerIds.size !== payload.buyer_ids.length) {
+      return NextResponse.json({ error: 'One or more selected buyers are invalid' }, { status: 400 });
+    }
+  }
+
+  if (payload.price_source === 'price_list') {
+    const priceListOk = await ensureTenantPriceList(db, claims.tenant_id, payload.price_list_id);
+    if (!priceListOk) {
+      return NextResponse.json({ error: 'Pricelist not found' }, { status: 400 });
+    }
+  }
+
   const tenantProductIds = payload.items.map((item) => item.tenant_product_id);
   const validProductIds = await ensureTenantProducts(db, claims.tenant_id, tenantProductIds);
   if (validProductIds.size !== tenantProductIds.length) {
@@ -475,11 +528,15 @@ export async function POST(request: NextRequest) {
       scope_value: buildCatalogScopeValue({
         scopeType: payload.scope_type,
         cohortId: payload.cohort_id,
+        buyerIds: payload.buyer_ids,
         filters: payload.filters,
         tagOverrides: payload.tag_overrides,
+        priceSource: payload.price_source,
+        priceListId: payload.price_list_id,
       }),
       valid_from: payload.valid_from.toISOString(),
       valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
+      message: payload.message?.trim() || null,
       status,
       share_token: shareToken,
       created_by: claims.sub,
@@ -502,6 +559,7 @@ export async function POST(request: NextRequest) {
           campaign_id: insertedCatalog.id,
           tenant_product_id: item.tenant_product_id,
           display_order: item.display_order,
+          price_override: item.price_override ?? null,
           created_by: claims.sub,
           updated_by: claims.sub,
         })),

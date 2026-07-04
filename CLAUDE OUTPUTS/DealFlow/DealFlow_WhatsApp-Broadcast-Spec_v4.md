@@ -5,6 +5,8 @@
 
 **v4 changelog:** buyer consent copy now includes "you can opt out anytime," carried into marketing-template footers too (§4.8, §12); first-broadcast manual review dropped entirely — templates are preapproved and hard limits do the guardrail work, so nothing gates a tenant's first send (§4.2, §7.2, §8); billing redesigned around flat tenant-facing credits with per-category credit-weighting internally, after flagging that your proposed flat ₹0.75/message would sell marketing messages below Meta's actual cost (§4.6, §11) — two options given, recommendation made, final number still yours to set; WABA confirmed already live and functional, removing what would've been the real critical-path risk (§3.2, §11); added §12 with 5 ready-to-register sample templates covering every in-scope use case.
 
+**§12 revision (same v4, templates finalized in place):** payment reminder and beat-route now use Field:Value blocks for scannable facts, matching the existing-template convention, instead of prose; collapsed `{{seller_name}}` + `{{seller_location}}` into a single server-composed `{{seller_name}}` variable per your direction (plain name for single-location tenants and marketing sends, "Name (Location)" for multi-location tenants in routing-relevant contexts) — implies a new "Business name in WhatsApp communication" tenant field, flagged inline; every body now works the word "app" in explicitly; added a sixth template, `campaign_announcement`, as the generic catch-all for any campaign type beyond "new stock"; fixed two templates that previously ended on a variable (Meta doesn't allow this) by moving the phone number into the data block instead of the closing sentence.
+
 **v2 changelog (from customer-validated scope cut):** dropped AR/ledger and beat-route tables entirely for MVP — geography filtering on existing `app.buyers.geography` covers targeting; overdue-payment reminder use case deferred (no data source yet, not simulated); wallet billing simplified to synchronous deduct-on-send with hard block-on-empty, no async Meta-webhook cost reconciliation dependency; markup reframed as the price of *targeting convenience*, not the broadcast infrastructure itself; added implied opt-in-at-first-login consent mechanism; broadcast repositioned as an early acquisition/stickiness feature, not a deferred post-MVP add-on — this is now informed by direct customer pull ("even with 100 features, this is what we'd use daily"), not a hypothesis.
 
 **v3 changelog (implementation-detail corrections from you):** shared number confirmed as the model, per-tenant "WhatsApp Business Number" field repurposed as a buyer-facing callback/contact number, not a WABA (§3.1a); provider is direct Meta Cloud API, no BSP, `AISEMSY_AUTH_TOKEN` is dead weight to remove (§3.2); payment-reminder (use case #1) is **back in scope** — `app.invoices` already exists with real AR data (§3.3, §4.4); templates are entirely platform-managed by you, no tenant self-serve template submission for MVP (§4.1); broadcast job table renamed `app.whatsapp_broadcasts` to avoid clashing with "Campaigns" terminology, `linked_campaign_id` replaces `linked_catalog_id` (§4.2); wallet fields fold into `app.tenants` directly rather than a separate wallet table (§4.6); opt-outs now surfaced proactively in the Customers UI, not just filtered silently at send time, and the 1-marketing-message/buyer/day cap is a hard rule, not a recommendation (§7.2); added tenant-facing quality-rating communication design (§7.3); resolved UI placement — Customers-page CTA over a dedicated nav route for MVP (§9); consent design finalized — explicit checkbox for buyers, implicit for seller users (§4.8). **Two factual flags from checking the actual codebase, not assumed** — see the callouts in §3.3 and §4.6.
@@ -485,9 +487,17 @@ Everything from v3's open list is now resolved:
 
 ---
 
-## 12. Sample templates — the 5 to register first
+## 12. Sample templates — the 6 to register first
 
-These correspond to phase D in §10, and to the "In scope" use cases in §3.3. Written in the same format as your existing `whatsapp_notification_templates.md` so they drop into `app.whatsapp_templates` consistently with what's already live. Every template includes `{{buyer_name}}` and `{{seller_name}}` per your instruction — since every send comes from the same shared Yukti number, `{{seller_name}}` is what tells the buyer *which* distributor is actually messaging them, and it should never be omitted. `{{seller_phone_number}}` appears only where a buyer would plausibly want to act on it directly (payment queries, beat-route coordination) — for pure marketing/nudge templates it's dropped in favor of the in-app CTA button, since a phone number invites a call/WhatsApp reply outside the app, which doesn't route anywhere useful for those use cases.
+These correspond to phase D in §10, and to the "In scope" use cases in §3.3. Final pass, incorporating your feedback: Field:Value blocks for anything with scannable facts, narrative for pure marketing, every template ends on static text (never a variable, per Meta's rule), and every body works the word "app" in naturally so the message itself nudges buyers toward the product, not just the CTA button.
+
+**Single `{{seller_name}}` variable, not `{{seller_name}}` + `{{seller_location}}` — composed server-side, per your direction.** Every template below uses one variable for the seller's identity. The display string itself is built in the backend, not hardcoded per template: a single-location tenant renders as just their name ("Wine Yard"); a multi-location tenant renders with the relevant location appended in a routing-relevant context ("Wine Yard (Boduppal)") — e.g. for payment reminders and beat-route arrivals, where "which office" matters — and without it for pure marketing sends, where it doesn't. This means `payment_reminder` and `beat_route_arrival` get location awareness "for free" through this shared rule rather than carrying their own location variable, which is why neither lists a separate location field below.
+
+**New Settings field this implies, flagged here since it's a direct consequence of this section, even though the schema/UI edit itself belongs in §4.6/§9:** add a **"Business name in WhatsApp communication"** text field (e.g. `app.tenants.whatsapp_display_name`) so `seller_admin` can set this explicitly rather than have it derived by tokenizing `business_name` — a legal entity name like "Sri Venkateswara Electricals And Electronics Distributors Pvt Ltd" is a bad default for a WhatsApp greeting. Fall back to `business_name` if unset. This field is the actual source for every `{{seller_name}}` render described above.
+
+**One new template added per your request:** `campaign_announcement`, generic across any campaign type a seller creates (Flash Sale, Clearance, Discount, Latest Arrivals) — `new_stock_marketing` stays as its own template rather than being folded in, since "new stock arrived" is common and specific enough to earn its own punchier copy; `campaign_announcement` is the flexible catch-all for everything else, pulling the actual campaign name a seller set up rather than hardcoding an angle.
+
+**One enum addition needed, not made here since it's out of this section's scope:** add `'campaign_announcement'` to the `use_case` CHECK/comment list on `app.whatsapp_templates` in §4.1.
 
 Bodies are drafts to register and refine with Meta, not final copy — Meta's template review can be picky about exact wording (especially "promotional-sounding" language landing templates in Marketing when you intended Utility), so treat the category noted for each as your target, and adjust wording if Meta pushes back on classification.
 
@@ -503,24 +513,27 @@ Bodies are drafts to register and refine with Meta, not final copy — Meta's te
 ```
 Hi {{buyer_name}},
 
-This is a reminder from {{seller_name}} regarding your account.
+This is a payment reminder from {{seller_name}}.
 
-Outstanding balance: ₹{{outstanding_amount}}
+Amount due: ₹{{outstanding_amount}}
 Overdue by: {{overdue_days}} days
+Contact: {{seller_phone_number}}
 
-Please arrange payment at your earliest convenience. For any questions, reach us at {{seller_phone_number}}.
+View and pay your dues anytime in the app.
 ```
 
 **Button URL:** `https://app.yukti.so/buy/invoices/{{1}}` (links to the buyer's outstanding invoices in the buyer app)
 
 | Variable | Description |
 |---|---|
-| `{{buyer_name}}` | Buyer's contact name or business name |
-| `{{seller_name}}` | Distributor's business name |
+| `{{buyer_name}}` | Buyer's first name (§ consent/copy discussion — truncated at render time, not full contact/business name) |
+| `{{seller_name}}` | Server-composed display name — plain name, or "Name (Location)" for multi-location tenants (see intro above) |
 | `{{outstanding_amount}}` | Sum of `app.invoices.outstanding_balance` for this buyer, INR |
 | `{{overdue_days}}` | Days since `invoice_date + payment_terms_days`, computed at send time |
 | `{{seller_phone_number}}` | Distributor's contact number (§3.1a — the repurposed Settings field) |
 | `{{1}}` | Buyer ID or invoice list reference (button URL) |
+
+Contact number now sits inside the Field:Value block rather than the closing sentence — fixes the earlier draft's "ends on a variable" issue and reads more scannably at the same time, per your note.
 
 ---
 
@@ -536,7 +549,7 @@ Hi {{buyer_name}},
 
 {{seller_name}} just added new stock — {{highlight_text}}
 
-Check out the latest arrivals and place your order before it's gone.
+Check out the latest arrivals and place your order in the app before it's gone.
 
 Reply STOP to stop marketing messages.
 ```
@@ -545,12 +558,42 @@ Reply STOP to stop marketing messages.
 
 | Variable | Description |
 |---|---|
-| `{{buyer_name}}` | Buyer's contact name or business name |
-| `{{seller_name}}` | Distributor's business name |
-| `{{highlight_text}}` | Short free-text line the seller fills in per broadcast, e.g. "New Flash Sale on Brand X CCTV cameras" |
+| `{{buyer_name}}` | Buyer's first name |
+| `{{seller_name}}` | Server-composed display name (plain — no location for marketing sends) |
+| `{{highlight_text}}` | Short free-text line the seller fills in per broadcast, e.g. "New arrivals in Brand X CCTV cameras" |
 | `{{1}}` | Campaign ID (button URL) |
 
-Note the "Reply STOP" footer per the consent decision in §4.8 — this is the pattern to reuse on every marketing-category template, not unique to this one.
+Only change from the last draft: "in the app" added to the closing sentence. Reply STOP footer unchanged — reuse this pattern on every marketing-category template.
+
+---
+
+### `campaign_announcement` — new
+
+**Category:** Marketing
+**Use case key:** `campaign_announcement`
+**Locale:** `en`
+
+**Message body:**
+```
+Hi {{buyer_name}},
+
+{{seller_name}} has a new campaign live — {{campaign_title}}
+
+Check it out and place your order in the app.
+
+Reply STOP to stop marketing messages.
+```
+
+**Button URL:** `https://app.yukti.so/buy/campaigns/{{1}}` (links to the specific published Campaign)
+
+| Variable | Description |
+|---|---|
+| `{{buyer_name}}` | Buyer's first name |
+| `{{seller_name}}` | Server-composed display name (plain — no location for marketing sends) |
+| `{{campaign_title}}` | The actual name/title of the Campaign the seller published — e.g. "Monsoon Clearance Sale" or "Flat 15% Off — Brand X" — pulled straight from `app.published_catalogs.name`, not free-typed per send |
+| `{{1}}` | Campaign ID (button URL) |
+
+Difference from `new_stock_marketing`: that one is a fixed, punchy angle for the single most common case ("new stock arrived"). This one is the generic vehicle for anything else a seller sets up as a Campaign — Flash Sale, Clearance, Discount, Latest Arrivals, or whatever they name it — without needing a new template registered (and re-approved by Meta) every time they invent a new campaign type.
 
 ---
 
@@ -564,20 +607,22 @@ Note the "Reply STOP" footer per the consent decision in §4.8 — this is the p
 ```
 Hi {{buyer_name}},
 
-Our team from {{seller_name}} will be visiting your area ({{geography_label}}) around {{visit_window}}.
+Our team from {{seller_name}} will be visiting you soon.
 
-Please keep your payments and any new stock requirements ready. For queries, reach us at {{seller_phone_number}}.
+Visit window: {{visit_window}}
+Contact: {{seller_phone_number}}
+
+Keep your payments and any new stock requirements ready. You can also place orders anytime in the app.
 ```
 
 **Button URL:** none — this is a heads-up, not a click-through action.
 
 | Variable | Description |
 |---|---|
-| `{{buyer_name}}` | Buyer's contact name or business name |
-| `{{seller_name}}` | Distributor's business name |
-| `{{geography_label}}` | The geography value the broadcast was filtered on, e.g. "Nashik" or "West Zone" |
+| `{{buyer_name}}` | Buyer's first name |
+| `{{seller_name}}` | Server-composed display name — this is exactly the routing scenario where the location suffix earns its keep, so no separate location variable is needed here (see intro above; the earlier draft's `{{geography_label}}` is dropped entirely per your note) |
 | `{{visit_window}}` | Free-text the seller fills in per broadcast, e.g. "Tuesday" or "the next 2–3 days" |
-| `{{seller_phone_number}}` | Distributor's contact number — required here since this is exactly the "call to coordinate" use case |
+| `{{seller_phone_number}}` | Distributor's contact number — this is exactly the "call to coordinate" use case |
 
 ---
 
@@ -591,7 +636,7 @@ Please keep your payments and any new stock requirements ready. For queries, rea
 ```
 Hi {{buyer_name}},
 
-You can now order directly from {{seller_name}} anytime — see live stock, prices, and place orders in seconds from your phone.
+You can now order directly from {{seller_name}} anytime through the app — see live stock, prices, and place orders in seconds.
 
 Tap below to get started.
 ```
@@ -600,11 +645,11 @@ Tap below to get started.
 
 | Variable | Description |
 |---|---|
-| `{{buyer_name}}` | Buyer's contact name or business name |
-| `{{seller_name}}` | Distributor's business name |
+| `{{buyer_name}}` | Buyer's first name |
+| `{{seller_name}}` | Server-composed display name (plain — no location needed, this isn't a routing context) |
 | `{{1}}` | Buyer app access link reference (button URL) |
 
-No phone number here — the CTA button is the intended action, and a phone number would invite a call that doesn't actually help the buyer get into the app.
+No phone number here — the CTA button is the intended action, and a phone number would invite a call that doesn't actually help the buyer get into the app. Only change from the last draft: "through the app" made explicit in the body rather than only implied by the button.
 
 ---
 
@@ -620,7 +665,7 @@ Hi {{buyer_name}},
 
 It's been a while! {{seller_name}} has new arrivals and fresh pricing waiting for you.
 
-Check out what's new and place your next order today.
+Check out what's new and place your next order in the app today.
 
 Reply STOP to stop marketing messages.
 ```
@@ -629,8 +674,8 @@ Reply STOP to stop marketing messages.
 
 | Variable | Description |
 |---|---|
-| `{{buyer_name}}` | Buyer's contact name or business name |
-| `{{seller_name}}` | Distributor's business name |
+| `{{buyer_name}}` | Buyer's first name |
+| `{{seller_name}}` | Server-composed display name (plain — no location for marketing sends) |
 | `{{1}}` | Catalog/campaign reference (button URL) |
 
 ---

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, supabase } from '@/lib/supabase';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
+import { loadBuyerDocumentLineItems } from '@/lib/buyer-documents/load-buyer-transaction-detail';
 
 export interface BuyerEstimateItem {
   tenant_product_id: string;
@@ -20,6 +21,7 @@ export interface BuyerEstimateDetail {
   status: string;
   notes: string | null;
   created_at: string;
+  place_of_supply: string | null;
   total_amount: number;
   subtotal: number;
   tax_total: number;
@@ -49,39 +51,20 @@ export async function GET(
     const { data: estimate, error } = await (db as any)
       .schema('app')
       .from('estimates')
-      .select(`
-        id, estimate_number, status, notes, created_at, total_amount,
-        estimate_items (
-          tenant_product_id, qty, unit_price, tax_rate, line_total,
-          tenant_products ( name, internal_sku, unit )
-        )
-      `)
+      .select('id, estimate_number, status, notes, created_at, place_of_supply, total_amount, subtotal, tax_amount')
       .eq('id', id)
       .eq('tenant_id', tenant_id)
       .eq('buyer_id', buyer_id)
       .is('deleted_at', null)
-      .single();
+      .maybeSingle();
 
     if (error || !estimate) {
       return NextResponse.json({ error: 'Estimate not found' }, { status: 404 });
     }
 
-    const rawItems: BuyerEstimateItem[] = ((estimate.estimate_items as any[]) ?? [])
-      .filter((ei: any) => !ei.deleted_at)
-      .map((ei: any) => ({
-        tenant_product_id: ei.tenant_product_id,
-        product_name: ei.tenant_products?.name ?? 'Unknown product',
-        internal_sku: ei.tenant_products?.internal_sku ?? null,
-        unit: ei.tenant_products?.unit ?? null,
-        qty: Number(ei.qty),
-        unit_price: Number(ei.unit_price),
-        tax_rate: ei.tax_rate != null ? Number(ei.tax_rate) : null,
-        line_total: Number(ei.line_total),
-      }));
-
-    const subtotal = rawItems.reduce((sum, i) => sum + i.line_total, 0);
-    // Estimates don't have tax applied; keep tax_total = 0 unless total differs
-    const tax_total = Math.max(0, Number(estimate.total_amount) - subtotal);
+    const rawItems = await loadBuyerDocumentLineItems(db as any, tenant_id, 'estimates', id);
+    const subtotal = Number(estimate.subtotal ?? rawItems.reduce((sum, i) => sum + i.line_total, 0));
+    const tax_total = Number(estimate.tax_amount ?? Math.max(0, Number(estimate.total_amount) - subtotal));
 
     const detail: BuyerEstimateDetail = {
       id: estimate.id,
@@ -89,6 +72,7 @@ export async function GET(
       status: estimate.status,
       notes: estimate.notes ?? null,
       created_at: estimate.created_at,
+      place_of_supply: estimate.place_of_supply ?? null,
       total_amount: Number(estimate.total_amount),
       subtotal,
       tax_total,

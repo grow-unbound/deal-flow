@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
-import { getFlag } from '@/lib/flags';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { SELLER_LANDING_PERIOD_OPTIONS } from '@/lib/seller-period';
@@ -53,7 +52,7 @@ async function getLocationsLandingPayload(
     db
       .schema('app')
       .from('locations')
-      .select('id, name, type, address, deleted_at')
+      .select('id, name, address, deleted_at')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: true }),
 
@@ -85,19 +84,19 @@ async function getLocationsLandingPayload(
     db
       .schema('app')
       .from('estimates')
-      .select('id, location_id, buyer_id')
+      .select('id, location_id, buyer_id, estimate_date')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
-      .gte('issued_at', period.current_start)
-      .lt('issued_at', period.current_end_exclusive),
+      .gte('estimate_date', period.current_start)
+      .lt('estimate_date', period.current_end_exclusive),
     db
       .schema('app')
       .from('invoices')
-      .select('id, location_id, buyer_id')
+      .select('id, location_id, buyer_id, invoice_date')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
-      .gte('issued_at', period.current_start)
-      .lt('issued_at', period.current_end_exclusive),
+      .gte('invoice_date', period.current_start)
+      .lt('invoice_date', period.current_end_exclusive),
   ]);
 
   if (locationsRes.error) throw locationsRes.error;
@@ -106,7 +105,7 @@ async function getLocationsLandingPayload(
   }
 
   const rawLocations:
-    Array<{ id: string; name: string; type: string; address: unknown; deleted_at: string | null }> =
+    Array<{ id: string; name: string; address: unknown; deleted_at: string | null }> =
     locationsRes.data ?? [];
   const snapshots: Array<Record<string, unknown>> = snapshotRes.data ?? [];
   const currentOrders: Array<{ id: string; location_id: string | null; buyer_id: string; total_amount: number }> =
@@ -200,7 +199,6 @@ async function getLocationsLandingPayload(
     return {
       id: loc.id,
       name: loc.name,
-      type: loc.type,
       city: getCity(loc.address),
       address_text: getAddressText(loc.address),
       phone_number: extra?.phone_number ?? null,
@@ -302,10 +300,7 @@ export async function GET(request: NextRequest) {
   const claims = await getVerifiedClaims(request);
 
   if (!claims.tenant_id) return timedJson({ error: 'Unauthorized' }, { status: 401 });
-  if (!claims.role?.startsWith('seller_')) return timedJson({ error: 'Forbidden' }, { status: 403 });
-
-  const flagEnabled = await getFlag('df_brand_product_master', claims.tenant_id);
-  if (!flagEnabled) return timedJson({ error: 'Feature not enabled' }, { status: 403 });
+  if (claims.role !== 'seller_admin') return timedJson({ error: 'Forbidden' }, { status: 403 });
 
   try {
     const search = request.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '';
@@ -339,7 +334,7 @@ export async function GET(request: NextRequest) {
           if (value === 'Overdue') return row.outstanding_dues > 0 && (row.oldest_unpaid_days ?? 0) > 30;
           return false;
         });
-      const searchOk = !search || [row.name, row.type, row.city, row.address_text].some((value) => value.toLowerCase().includes(search));
+      const searchOk = !search || [row.name, row.city, row.address_text].some((value) => value.toLowerCase().includes(search));
       return statusOk && stockOk && duesOk && searchOk;
     });
     return timedJson({ ...payload, locations: filteredLocations });

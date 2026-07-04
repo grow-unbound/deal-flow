@@ -205,6 +205,12 @@ export interface SearchProductsResponse {
   products: MasterProduct[];
 }
 
+export interface ProductSkuAvailabilityResponse {
+  available: boolean;
+  duplicate: boolean;
+  product: Pick<TenantProduct, 'id' | 'internal_sku' | 'name_override' | 'master_product_id'> | null;
+}
+
 export interface AddProductPayload {
   master_product_id: string;
   internal_sku: string;
@@ -285,6 +291,27 @@ export function useSearchMasterProducts(query: string) {
     },
     enabled: query.length >= 1,
     staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useTenantProductSkuAvailability(internalSku: string, excludeId?: string | null) {
+  const normalizedSku = internalSku.trim();
+
+  return useQuery({
+    queryKey: ['tenant-product-sku-availability', normalizedSku, excludeId ?? null],
+    queryFn: async (): Promise<ProductSkuAvailabilityResponse> => {
+      const params = new URLSearchParams({ internal_sku: normalizedSku });
+      if (excludeId) params.set('exclude_id', excludeId);
+      const res = await apiFetch(`/api/tenant/products/sku?${params.toString()}`);
+      if (!res.ok) {
+        throw new Error('Failed to check SKU availability');
+      }
+      return res.json() as Promise<ProductSkuAvailabilityResponse>;
+    },
+    enabled: normalizedSku.length > 0,
+    staleTime: 0,
     gcTime: NAVIGATION_QUERY_GC_TIME,
     placeholderData: (previous) => previous,
   });

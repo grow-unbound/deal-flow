@@ -4,46 +4,36 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { apiFetch, apiPost } from '@/lib/api-fetch';
-
-export interface Location {
-  id: string;
-  name: string;
-  address?: Record<string, string>;
-  is_default: boolean;
-  tenant_id: string;
-  type?: string;
-  inventory_tracking?: boolean;
-  deleted_at?: string | null;
-}
+import type { TenantWarehouse, WarehouseAddress, WarehouseAssociatedUser } from '@/types/tenant-warehouses';
 
 export interface InventoryRow {
   id: string;
   tenant_product_id: string;
-  location_id: string;
+  warehouse_id: string;
   qty_available: number;
   qty_reserved: number;
   reorder_point?: number | null;
   updated_at: string;
-  locations?: { id: string; name: string; is_default: boolean } | null;
+  warehouse?: { id: string; name: string; is_default: boolean; location_id: string | null } | null;
 }
 
 export interface UpsertInventoryInput {
   tenant_product_id: string;
-  location_id: string;
+  warehouse_id: string;
   qty_available: number;
   qty_reserved: number;
   reorder_point?: number | null;
 }
 
-function parseLocationsPayload(json: unknown): { locations: Location[] } {
+function parseWarehousesPayload(json: unknown): { warehouses: TenantWarehouse[] } {
   const o = json as Record<string, unknown>;
-  if (o.data && typeof o.data === 'object' && o.data !== null && 'locations' in o.data) {
-    return { locations: (o.data as { locations: Location[] }).locations };
+  if (o.data && typeof o.data === 'object' && o.data !== null && 'warehouses' in o.data) {
+    return { warehouses: (o.data as { warehouses: TenantWarehouse[] }).warehouses };
   }
-  if ('locations' in o && Array.isArray(o.locations)) {
-    return { locations: o.locations as Location[] };
+  if ('warehouses' in o && Array.isArray(o.warehouses)) {
+    return { warehouses: o.warehouses as TenantWarehouse[] };
   }
-  return { locations: [] };
+  return { warehouses: [] };
 }
 
 /**
@@ -66,13 +56,13 @@ export function isLowStock(row: {
   return sellable < row.reorder_point;
 }
 
-export function useLocations() {
+export function useWarehouses() {
   return useQuery({
-    queryKey: ['locations'],
+    queryKey: ['warehouses'],
     queryFn: async () => {
-      const res = await apiFetch('/api/tenant/locations');
-      if (!res.ok) throw new Error('Failed to fetch locations');
-      return parseLocationsPayload(await res.json());
+      const res = await apiFetch('/api/tenant/warehouses');
+      if (!res.ok) throw new Error('Failed to fetch warehouses');
+      return parseWarehousesPayload(await res.json());
     },
   });
 }
@@ -106,26 +96,36 @@ export function useUpsertInventory() {
   });
 }
 
-export function useCreateLocation() {
+export function useCreateWarehouse() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { name: string; address?: object; is_default?: boolean }) => {
-      const res = await apiPost('/api/tenant/locations', data);
-      const json = (await res.json()) as { data?: { location: Location }; error?: { message?: string } };
+    mutationFn: async (data: {
+      name: string;
+      address?: Partial<WarehouseAddress>;
+      phone_number?: string | null;
+      location_id?: string | null;
+      status?: 'active' | 'inactive';
+      is_default?: boolean;
+      external_ref?: string | null;
+      associated_users?: WarehouseAssociatedUser[];
+      lat?: number | null;
+      lng?: number | null;
+    }) => {
+      const res = await apiPost('/api/tenant/warehouses', data);
+      const json = (await res.json()) as { data?: { warehouse: TenantWarehouse }; error?: { message?: string } };
       if (!res.ok) {
-        throw new Error(json.error?.message ?? 'Failed to create location');
+        throw new Error(json.error?.message ?? 'Failed to create warehouse');
       }
-      if (!json.data?.location) {
+      if (!json.data?.warehouse) {
         throw new Error('Invalid response');
       }
-      return json.data.location;
+      return json.data.warehouse;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['locations'] });
-      queryClient.invalidateQueries({ queryKey: ['tenant-locations'] });
+      queryClient.invalidateQueries({ queryKey: ['warehouses'] });
     },
     onError: (e) => {
-      toast.error(e instanceof Error ? e.message : 'Failed to create location');
+      toast.error(e instanceof Error ? e.message : 'Failed to create warehouse');
     },
   });
 }

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const apiFetchMock = vi.fn();
 const setRefreshFnMock = vi.fn();
+const useCartMock = vi.fn();
 
 vi.mock('@/lib/api-fetch', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
@@ -20,6 +21,10 @@ vi.mock('@/contexts/BuyerRealtimeContext', () => ({
 
 vi.mock('@/components/buyer/layout/BuyerNotificationDrawer', () => ({
   BuyerNotificationDrawer: () => null,
+}));
+
+vi.mock('@/contexts/BuyerCartContext', () => ({
+  useCart: (...args: unknown[]) => useCartMock(...args),
 }));
 
 vi.mock('@/hooks/useInfiniteScroll', () => ({
@@ -40,6 +45,12 @@ describe('buyer home page', () => {
     window.sessionStorage.clear();
     apiFetchMock.mockReset();
     setRefreshFnMock.mockReset();
+    useCartMock.mockReset();
+    useCartMock.mockReturnValue({
+      items: [],
+      addItem: vi.fn(),
+      updateQty: vi.fn(),
+    });
     (globalThis as typeof globalThis & { IntersectionObserver?: typeof IntersectionObserver }).IntersectionObserver = class IntersectionObserver {
       observe() {}
       disconnect() {}

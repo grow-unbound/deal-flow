@@ -27,6 +27,50 @@ const bootstrap = {
     { id: 'cohort-1', name: 'North Delhi · A-class', member_count: 12 },
     { id: 'cohort-2', name: 'South Delhi · A-class', member_count: 8 },
   ],
+  buyer_count: 2,
+  can_view_cost: true,
+  buyers: [
+    {
+      id: 'buyer-1',
+      business_name: 'Bharat Stores',
+      contact_name: 'Ravi',
+      external_ref: 'B-001',
+      city: 'Delhi',
+      state: 'NCR',
+      geography_label: 'Delhi, NCR',
+      tier: 'A' as const,
+      credit_limit: 100000,
+      payment_terms_days: 21,
+      orders_30d: 2,
+      gmv_30d: 50000,
+      last_order_at: '2026-06-01T00:00:00.000Z',
+      initials: 'BS',
+      hue: 'teal' as const,
+    },
+    {
+      id: 'buyer-2',
+      business_name: 'Kumar Wines',
+      contact_name: 'Anil',
+      external_ref: 'B-002',
+      city: 'Gurgaon',
+      state: 'HR',
+      geography_label: 'Gurgaon, HR',
+      tier: 'B' as const,
+      credit_limit: 80000,
+      payment_terms_days: 14,
+      orders_30d: 0,
+      gmv_30d: 0,
+      last_order_at: null,
+      initials: 'KW',
+      hue: 'ember' as const,
+    },
+  ],
+  buyer_filters: {
+    geographies: [{ value: 'Delhi, NCR', label: 'Delhi, NCR', count: 1 }],
+    tiers: [{ value: 'A', label: 'A', count: 1 }],
+  },
+  price_lists: [{ id: 'pl-1', name: 'North A draft', status: 'draft' as const, valid_from: null, valid_to: null }],
+  price_list_items: [{ price_list_id: 'pl-1', tenant_product_id: 'p-1', price: 700 }],
   products: [
     {
       id: 'p-1',
@@ -36,6 +80,7 @@ const bootstrap = {
       category_name: 'Red wine',
       mrp: 1000,
       base_selling_price: 750,
+      cost_price: 500,
       qty_available: 42,
       reorder_point: 10,
       units_mtd: 8,
@@ -53,6 +98,7 @@ const bootstrap = {
       category_name: 'White wine',
       mrp: 900,
       base_selling_price: 680,
+      cost_price: 450,
       qty_available: 6,
       reorder_point: 8,
       units_mtd: 4,
@@ -70,6 +116,7 @@ const bootstrap = {
       category_name: 'Red wine',
       mrp: 1200,
       base_selling_price: 880,
+      cost_price: 650,
       qty_available: 0,
       reorder_point: 4,
       units_mtd: 0,
@@ -115,6 +162,12 @@ describe('CatalogComposer', () => {
     useCatalogComposerBootstrapMock.mockReturnValue({
       data: {
         cohorts: bootstrap.cohorts,
+        buyer_count: bootstrap.buyer_count,
+        can_view_cost: bootstrap.can_view_cost,
+        buyers: bootstrap.buyers,
+        buyer_filters: bootstrap.buyer_filters,
+        price_lists: bootstrap.price_lists,
+        price_list_items: bootstrap.price_list_items,
         products: bootstrap.products.map((product) => ({ ...product, category_name: null })),
       },
       isLoading: false,
@@ -129,14 +182,14 @@ describe('CatalogComposer', () => {
     });
   });
 
-  it('brand/category filters support select all and affect the table', async () => {
+  it('brand/category filters are filter-out and affect the table', async () => {
     render(<CatalogComposer mode="create" />);
 
-    const clearAllButtons = screen.getAllByRole('button', { name: /Clear all/i });
-    fireEvent.click(clearAllButtons[0]);
+    fireEvent.click(screen.getByLabelText(/Luna Cellars/i));
 
     await waitFor(() => {
-      expect(screen.getByText(/No products match the current filters and search/i)).toBeInTheDocument();
+      expect(screen.getByText('Luna Blanc 750ml')).toBeInTheDocument();
+      expect(screen.queryByText('Solar Reserve 750ml')).not.toBeInTheDocument();
     });
   });
 
@@ -208,7 +261,7 @@ describe('CatalogComposer', () => {
     render(<CatalogComposer mode="edit" catalogId="cat-1" />);
 
     expect(screen.getByDisplayValue('Saved Catalog')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Bulk adjust/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Bulk tags/i }));
     fireEvent.click(screen.getByRole('button', { name: /Mark as New Stock/i }));
 
     await waitFor(() => {
@@ -225,7 +278,7 @@ describe('CatalogComposer', () => {
   it('bulk adjust applies a tag override to selected rows', async () => {
     render(<CatalogComposer mode="create" />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Bulk adjust/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Bulk tags/i }));
     fireEvent.click(screen.getByRole('button', { name: /Mark as Old Stock/i }));
 
     await waitFor(() => {

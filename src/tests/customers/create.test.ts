@@ -53,10 +53,9 @@ describe('BuyerCreateSchema', () => {
       phone: '9876543210',
       email: 'raj@mumbairetail.com',
       gstin: '27AABCU9603R1ZX',
-      tier: 'A',
       credit_limit: 50000,
       payment_terms_days: 30,
-      external_ref: 'MRC-001',
+      default_price_list_id: '550e8400-e29b-41d4-a716-446655440000',
       geography: {
         city: 'Mumbai',
         state: 'Maharashtra',
@@ -68,8 +67,22 @@ describe('BuyerCreateSchema', () => {
     if (result.success) {
       expect(result.data.business_name).toBe('Mumbai Retail Co.');
       expect(result.data.phone).toBe('9876543210');
-      expect(result.data.tier).toBe('A');
+      expect(result.data.default_price_list_id).toBe('550e8400-e29b-41d4-a716-446655440000');
       expect(result.data.credit_limit).toBe(50000);
+    }
+  });
+
+  it('accepts payloads without tier and external_ref fields', () => {
+    const result = BuyerCreateSchema.safeParse({
+      business_name: 'Lean Traders',
+      phone: '9123456789',
+      default_price_list_id: null,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty('tier');
+      expect(result.data).not.toHaveProperty('external_ref');
     }
   });
 });

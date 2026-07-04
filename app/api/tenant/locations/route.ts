@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
       .schema('app')
       .from('locations')
       .select(
-        'id, tenant_id, name, address, is_default, type, inventory_tracking, external_ref, deleted_at, created_at, updated_at',
+        'id, tenant_id, name, address, is_default, external_ref, deleted_at, created_at, updated_at',
       )
       .eq('tenant_id', claims.tenant_id);
     if (!includeDeleted) {
@@ -148,8 +148,6 @@ export async function POST(req: NextRequest) {
       name,
       address,
       is_default,
-      type,
-      inventory_tracking,
       external_ref,
       lat,
       lng,
@@ -181,8 +179,6 @@ export async function POST(req: NextRequest) {
         name,
         address: addr,
         is_default: is_default ?? false,
-        type: type ?? 'warehouse',
-        inventory_tracking: inventory_tracking ?? true,
         external_ref: external_ref?.trim() ? external_ref.trim() : null,
         phone_number: phone_number?.trim() ? phone_number.trim() : null,
         status: status ?? 'active',
@@ -223,7 +219,7 @@ export async function POST(req: NextRequest) {
       entity_type: 'location',
       entity_id: inserted.id,
       action: 'create',
-      diff: { name, type: type ?? 'warehouse', is_default: is_default ?? false },
+      diff: { name, is_default: is_default ?? false },
       ts: nowIso,
     });
     if (auditError) {

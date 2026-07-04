@@ -148,6 +148,178 @@ function dedupeByColumns(
   return [...deduped.values()];
 }
 
+function getRowNaturalKey(row: Record<string, unknown>, columns: string[]): string | null {
+  const parts: string[] = [];
+  for (const column of columns) {
+    const value = asStr(row[column]);
+    if (!value) return null;
+    parts.push(value);
+  }
+  return parts.join('::');
+}
+
+function dedupeByExternalOrNaturalKey(
+  rows: Record<string, unknown>[],
+  naturalKeyColumns: string[],
+): Record<string, unknown>[] {
+  const keyToGroup = new Map<string, number>();
+  const groupRows: Array<Record<string, unknown> | null> = [];
+  const groupKeys: string[][] = [];
+
+  for (const row of rows) {
+    const keys = new Set<string>();
+    const externalRef = asStr(row.external_ref);
+    const naturalKey = getRowNaturalKey(row, naturalKeyColumns);
+
+    if (externalRef) keys.add(`external_ref:${externalRef}`);
+    if (naturalKey) keys.add(`natural:${naturalKey}`);
+    if (keys.size === 0) continue;
+
+    const attachedGroups = [...keys]
+      .map((key) => keyToGroup.get(key))
+      .filter((value): value is number => typeof value === 'number');
+
+    const targetGroup = attachedGroups.length > 0 ? Math.min(...attachedGroups) : groupRows.length;
+    if (attachedGroups.length === 0) {
+      groupRows.push(null);
+      groupKeys.push([]);
+    }
+
+    groupRows[targetGroup] = row;
+
+    for (const attachedGroup of attachedGroups) {
+      if (attachedGroup === targetGroup) continue;
+      for (const key of groupKeys[attachedGroup]) {
+        keyToGroup.set(key, targetGroup);
+        if (!groupKeys[targetGroup].includes(key)) {
+          groupKeys[targetGroup].push(key);
+        }
+      }
+      groupRows[attachedGroup] = null;
+      groupKeys[attachedGroup] = [];
+    }
+
+    for (const key of keys) {
+      keyToGroup.set(key, targetGroup);
+      if (!groupKeys[targetGroup].includes(key)) {
+        groupKeys[targetGroup].push(key);
+      }
+    }
+  }
+
+  return groupRows.filter((row): row is Record<string, unknown> => row !== null);
+}
+
+type NaturalKeyCollision = {
+  externalRef: string | null;
+  naturalKey: string | null;
+  reason: string;
+};
+
+async function resolveRowsByExternalRefOrNaturalKey(
+  admin: AdminClient,
+  opts: {
+    table: string;
+    tenantId: string;
+    rows: Record<string, unknown>[];
+    naturalKeyColumns: string[];
+  },
+): Promise<{ rows: Record<string, unknown>[]; conflicts: NaturalKeyCollision[] }> {
+  const dedupedRows = dedupeByExternalOrNaturalKey(opts.rows, opts.naturalKeyColumns);
+  if (dedupedRows.length === 0) {
+    return { rows: [], conflicts: [] };
+  }
+
+  const externalRefs = [...new Set(
+    dedupedRows
+      .map((row) => asStr(row.external_ref))
+      .filter((value): value is string => value !== null),
+  )];
+  const naturalKeys = [...new Set(
+    dedupedRows
+      .map((row) => getRowNaturalKey(row, opts.naturalKeyColumns))
+      .filter((value): value is string => value !== null),
+  )];
+
+  const columns = ['id', 'external_ref', ...opts.naturalKeyColumns, 'deleted_at'].join(', ');
+  const [existingByExternalRef, existingByNaturalKey] = await Promise.all([
+    externalRefs.length > 0
+      ? admin.schema('app').from(opts.table).select(columns).eq('tenant_id', opts.tenantId).in('external_ref', externalRefs)
+      : Promise.resolve({ data: [] as Record<string, unknown>[], error: null as { message?: string } | null }),
+    naturalKeys.length > 0
+      ? admin.schema('app').from(opts.table).select(columns).eq('tenant_id', opts.tenantId).in(opts.naturalKeyColumns[0], naturalKeys)
+      : Promise.resolve({ data: [] as Record<string, unknown>[], error: null as { message?: string } | null }),
+  ]);
+
+  if (existingByExternalRef.error) throw new Error(existingByExternalRef.error.message ?? `Failed to resolve ${opts.table} by external_ref`);
+  if (existingByNaturalKey.error) throw new Error(existingByNaturalKey.error.message ?? `Failed to resolve ${opts.table} by natural key`);
+
+  const externalRefMap = new Map<string, Array<Record<string, unknown>>>();
+  for (const row of (existingByExternalRef.data ?? []) as Record<string, unknown>[]) {
+    const externalRef = asStr(row.external_ref);
+    if (!externalRef) continue;
+    const entries = externalRefMap.get(externalRef) ?? [];
+    entries.push(row);
+    externalRefMap.set(externalRef, entries);
+  }
+
+  const naturalKeyMap = new Map<string, Array<Record<string, unknown>>>();
+  for (const row of (existingByNaturalKey.data ?? []) as Record<string, unknown>[]) {
+    const naturalKey = getRowNaturalKey(row, opts.naturalKeyColumns);
+    if (!naturalKey) continue;
+    const entries = naturalKeyMap.get(naturalKey) ?? [];
+    entries.push(row);
+    naturalKeyMap.set(naturalKey, entries);
+  }
+
+  const conflicts: NaturalKeyCollision[] = [];
+  const resolvedRows: Record<string, unknown>[] = [];
+
+  for (const row of dedupedRows) {
+    const externalRef = asStr(row.external_ref);
+    const naturalKey = getRowNaturalKey(row, opts.naturalKeyColumns);
+    const externalMatches = externalRef ? (externalRefMap.get(externalRef) ?? []) : [];
+    const naturalMatches = naturalKey ? (naturalKeyMap.get(naturalKey) ?? []) : [];
+    const pickMatch = (matches: Record<string, unknown>[]) => {
+      if (matches.length === 0) return null;
+      const active = matches.find((match) => match.deleted_at === null || match.deleted_at === undefined);
+      return active ?? matches[0] ?? null;
+    };
+
+    const externalMatch = pickMatch(externalMatches);
+    const naturalMatch = pickMatch(naturalMatches);
+    const activeExternalMatches = externalMatches.filter((match) => match.deleted_at === null || match.deleted_at === undefined);
+    const activeNaturalMatches = naturalMatches.filter((match) => match.deleted_at === null || match.deleted_at === undefined);
+
+    if (activeExternalMatches.length > 1 || activeNaturalMatches.length > 1) {
+      conflicts.push({
+        externalRef,
+        naturalKey,
+        reason: `multiple existing ${opts.table} rows matched the same key`,
+      });
+      continue;
+    }
+
+    if (externalMatch && naturalMatch && asStr(externalMatch.id) !== asStr(naturalMatch.id)) {
+      conflicts.push({
+        externalRef,
+        naturalKey,
+        reason: `external_ref matched ${asStr(externalMatch.id)} but natural key matched ${asStr(naturalMatch.id)}`,
+      });
+      continue;
+    }
+
+    const resolvedId = asStr(externalMatch?.id) ?? asStr(naturalMatch?.id);
+    resolvedRows.push(
+      resolvedId
+        ? { ...row, id: resolvedId }
+        : row,
+    );
+  }
+
+  return { rows: resolvedRows, conflicts };
+}
+
 async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
@@ -544,7 +716,7 @@ async function upsertImportedPriceList(
     is_active: true,
     created_by: actorId,
     updated_by: actorId,
-  }], ['tenant_id', 'name']);
+  }], ['tenant_id', 'external_ref']);
 
   const priceListId = persisted[0] ?? null;
   if (!priceListId) {
@@ -566,6 +738,81 @@ function mapPersistedRowsByExternalRef(rows: Record<string, unknown>[]): Array<{
       return externalId && internalId ? { externalId, internalId } : null;
     })
     .filter((row): row is { externalId: string; internalId: string } => row !== null);
+}
+
+function buildPersistedRowPairsFromSourceRows(
+  sourceRows: Record<string, unknown>[],
+  persistedRows: Record<string, unknown>[],
+  naturalKeyColumns: string[],
+): Array<{ externalId: string; internalId: string }> {
+  const persistedByExternalRef = new Map<string, string>();
+  const persistedByNaturalKey = new Map<string, string>();
+
+  for (const row of persistedRows) {
+    const externalId = asStr(row.external_ref);
+    const internalId = asStr(row.id);
+    const naturalKey = getRowNaturalKey(row, naturalKeyColumns);
+    if (externalId && internalId) persistedByExternalRef.set(externalId, internalId);
+    if (naturalKey && internalId) persistedByNaturalKey.set(naturalKey, internalId);
+  }
+
+  const pairs = new Map<string, string>();
+  for (const row of sourceRows) {
+    const externalId = asStr(row.external_ref);
+    if (!externalId) continue;
+    const naturalKey = getRowNaturalKey(row, naturalKeyColumns);
+    const internalId = persistedByExternalRef.get(externalId) ?? (naturalKey ? persistedByNaturalKey.get(naturalKey) ?? null : null);
+    if (internalId) {
+      pairs.set(externalId, internalId);
+    }
+  }
+
+  return [...pairs.entries()].map(([externalId, internalId]) => ({ externalId, internalId }));
+}
+
+function buildPersistedAuditUpdates(
+  persisted: Record<string, unknown>[],
+  sourceByExternalRef: Map<string, Record<string, unknown>>,
+  actorId: string | null,
+): Array<{ id: string; updatePayload: Record<string, unknown> }> {
+  return persisted.flatMap((row) => {
+    const id = asStr(row.id);
+    const externalId = asStr(row.external_ref);
+    const source = externalId ? sourceByExternalRef.get(externalId) ?? null : null;
+    if (!id || !source) return [];
+
+    const updatePayload: Record<string, unknown> = {
+      updated_by: actorId,
+    };
+
+    const createdAt = asStr(source.created_at);
+    const updatedAt = asStr(source.updated_at);
+    const createdBy = asStr(source.created_by);
+    const updatedBy = asStr(source.updated_by);
+
+    if (createdAt) updatePayload.created_at = createdAt;
+    if (updatedAt) updatePayload.updated_at = updatedAt;
+    if (createdBy) updatePayload.created_by = createdBy;
+    else if (actorId) updatePayload.created_by = actorId;
+    if (updatedBy) updatePayload.updated_by = updatedBy;
+    else if (actorId) updatePayload.updated_by = actorId;
+
+    return [{ id, updatePayload }];
+  });
+}
+
+async function applyPersistedAuditUpdates(
+  admin: AdminClient,
+  table: string,
+  updates: Array<{ id: string; updatePayload: Record<string, unknown> }>,
+): Promise<void> {
+  for (const item of updates) {
+    await admin
+      .schema('app')
+      .from(table)
+      .update(item.updatePayload)
+      .eq('id', item.id);
+  }
 }
 
 export async function resolveInternalIdsWithFallback(
@@ -891,6 +1138,7 @@ async function persistLocations(
       phone_number: phoneNumber,
       status,
       associated_users: associatedUsers,
+      deleted_at: null,
       ...(isDefault ? { is_default: true } : {}),
       created_at: asDate(rec.created_time ?? rec.created_at ?? rec.date_created),
       updated_at: asDate(rec.last_modified_time ?? rec.updated_at ?? rec.updated_time ?? rec.modified_time),
@@ -900,7 +1148,7 @@ async function persistLocations(
     rows.push(row);
   }
 
-  const dedupedLocationRows = dedupeByExternalRef(rows);
+  const dedupedLocationRows = dedupeByColumns(rows, ['tenant_id', 'external_ref']);
   const persisted = dedupedLocationRows.length > 0
     ? await bulkPersistJsonbRecords(admin, 'locations', dedupedLocationRows, ['tenant_id', 'external_ref'])
     : [];
@@ -926,38 +1174,8 @@ async function persistLocations(
       .filter((entry): entry is readonly [string, Record<string, unknown>] => entry !== null),
   );
 
-  const auditUpdates = persisted.flatMap((row) => {
-    const id = asStr(row.id);
-    const externalId = asStr(row.external_ref);
-    const source = externalId ? sourceByExternalRef.get(externalId) ?? null : null;
-    if (!id || !source) return [];
-
-    const updatePayload: Record<string, unknown> = {
-      updated_by: actorId,
-    };
-
-    const createdAt = asStr(source.created_at);
-    const updatedAt = asStr(source.updated_at);
-    const createdBy = asStr(source.created_by);
-    const updatedBy = asStr(source.updated_by);
-
-    if (createdAt) updatePayload.created_at = createdAt;
-    if (updatedAt) updatePayload.updated_at = updatedAt;
-    if (createdBy) updatePayload.created_by = createdBy;
-    else if (actorId) updatePayload.created_by = actorId;
-    if (updatedBy) updatePayload.updated_by = updatedBy;
-    else if (actorId) updatePayload.updated_by = actorId;
-
-    return [{ id, updatePayload }];
-  });
-
-  for (const item of auditUpdates) {
-    await admin
-      .schema('app')
-      .from('locations')
-      .update(item.updatePayload)
-      .eq('id', item.id);
-  }
+  const auditUpdates = buildPersistedAuditUpdates(persisted, sourceByExternalRef, actorId);
+  await applyPersistedAuditUpdates(admin, 'locations', auditUpdates);
 
   const assignments = persisted.flatMap((row) => {
     const id = asStr(row.id);
@@ -1029,6 +1247,7 @@ async function persistWarehouses(
       status,
       is_default: asBool(rec.is_primary) ?? false,
       associated_users: [],
+      deleted_at: null,
       created_at: asDate(rec.created_time ?? rec.created_at ?? rec.date_created),
       updated_at: asDate(rec.last_modified_time ?? rec.updated_at ?? rec.updated_time ?? rec.modified_time),
       created_by: actorId,
@@ -1051,6 +1270,18 @@ async function persistWarehouses(
 
   result.updated += persisted.length;
   await batchUpsertEntityMap(admin, tenantId, integrationId, 'warehouses', entityMapPairs);
+
+  const sourceByExternalRef = new Map(
+    rows
+      .map((row) => {
+        const externalRef = asStr(row.external_ref);
+        return externalRef ? [externalRef, row] as const : null;
+      })
+      .filter((entry): entry is readonly [string, Record<string, unknown>] => entry !== null),
+  );
+
+  const auditUpdates = buildPersistedAuditUpdates(persisted, sourceByExternalRef, actorId);
+  await applyPersistedAuditUpdates(admin, 'warehouses', auditUpdates);
 
   return result;
 }
@@ -1106,6 +1337,7 @@ async function persistBuyers(
       payment_terms_days: asNum(rec.payment_terms) ?? asNum(rec.payment_terms_days),
       geography: geo,
       is_active: (asStr(rec.status) ?? 'active') === 'active',
+      deleted_at: null,
       created_by: actorId,
       updated_by: actorId,
       ...(pickSanitizedPhone(
@@ -1132,9 +1364,8 @@ async function persistBuyers(
     buyerRows.push(row);
   }
 
-  const dedupedBuyerRows = dedupeByExternalRef(buyerRows);
-  const persistedBuyers = dedupedBuyerRows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'buyers', dedupedBuyerRows, ['tenant_id', 'external_ref'])
+  const persistedBuyers = buyerRows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'buyers', dedupeByExternalRef(buyerRows), ['tenant_id', 'external_ref'])
     : [];
 
   const buyerMapPairs = persistedBuyers
@@ -1336,10 +1567,56 @@ async function createWarehouseFromZoho(
   }
 }
 
+async function ensureWarehouseExists(
+  admin: AdminClient,
+  tenantId: string,
+  actorId: string | null,
+  integrationId: string,
+  zohoTypeId: ZohoIntegrationTypeId,
+  warehouseExternalId: string,
+  adapter?: ZohoAdapter,
+  sourceWarehouse?: Record<string, unknown>,
+): Promise<string | null> {
+  const existing = await resolveInternalIdsWithFallback(
+    admin,
+    tenantId,
+    integrationId,
+    'warehouses',
+    'warehouses',
+    [warehouseExternalId],
+  );
+  const resolved = existing.get(warehouseExternalId) ?? null;
+  if (resolved) return resolved;
+
+  if (sourceWarehouse) {
+    const created = await createWarehouseFromZoho(admin, tenantId, actorId, sourceWarehouse);
+    if (created) {
+      return created;
+    }
+  }
+
+  if (!adapter) return null;
+
+  const fetched = await adapter.fetchLocationById(warehouseExternalId);
+  if (!fetched) return null;
+
+  await persistWarehouses(admin, tenantId, actorId, integrationId, [fetched]);
+  const afterCreate = await resolveInternalIdsWithFallback(
+    admin,
+    tenantId,
+    integrationId,
+    'warehouses',
+    'warehouses',
+    [warehouseExternalId],
+  );
+  return afterCreate.get(warehouseExternalId) ?? null;
+}
+
 async function fetchAndPersistMissingItemLocations(
   admin: AdminClient,
   tenantId: string,
   actorId: string | null,
+  integrationId: string,
   itemIds: string[],
   adapter: ZohoAdapter,
   productIdMap: Map<string, string>,
@@ -1384,10 +1661,18 @@ async function fetchAndPersistMissingItemLocations(
 
         let warehouseId = updatedWarehouseIdMap.get(warehouseExternalId);
 
-        // Failsafe: if warehouse doesn't exist yet, create it
         if (!warehouseId) {
           try {
-            const newWarehouseId = await createWarehouseFromZoho(admin, tenantId, actorId, warehouse as Record<string, unknown>);
+            const newWarehouseId = await ensureWarehouseExists(
+              admin,
+              tenantId,
+              actorId,
+              integrationId,
+              adapter.integrationTypeId,
+              warehouseExternalId,
+              adapter,
+              warehouse as Record<string, unknown>,
+            );
             if (newWarehouseId) {
               warehouseId = newWarehouseId;
               updatedWarehouseIdMap.set(warehouseExternalId, newWarehouseId);
@@ -1411,6 +1696,7 @@ async function fetchAndPersistMissingItemLocations(
           qty_reserved: asNum(warehouse.warehouse_reserved_stock) || 0,
           reorder_point: asNum(warehouse.reorder_level) || null,
           updated_at: nowIso(),
+          deleted_at: null,
           created_by: actorId,
           updated_by: actorId,
         });
@@ -1474,20 +1760,26 @@ async function persistProducts(
         : {}),
       is_active: true,
       review_status: 'draft' as const,
+      deleted_at: null,
       created_by: actorId,
       updated_by: actorId,
     });
   }
 
-  const categoryMap = new Map<string, string>(); // source category identity → tenant_category_id
-
   if (categoryRows.length > 0) {
-    const catRowsPersisted = await bulkPersistJsonbRecords(
-      admin,
-      'tenant_categories',
-      dedupeByExternalRef(categoryRows),
-      ['tenant_id', 'external_ref'],
-    );
+    const categoryResolution = await resolveRowsByExternalRefOrNaturalKey(admin, {
+      table: 'tenant_categories',
+      tenantId,
+      rows: categoryRows,
+      naturalKeyColumns: ['slug'],
+    });
+    if (categoryResolution.conflicts.length > 0) {
+      console.warn('[persistProducts] category collision conflicts:', categoryResolution.conflicts);
+      result.skipped += categoryResolution.conflicts.length;
+    }
+    const catRowsPersisted = categoryResolution.rows.length > 0
+      ? await bulkPersistJsonbRecords(admin, 'tenant_categories', categoryResolution.rows, ['id'])
+      : [];
     for (const cat of catRowsPersisted) {
       if (typeof cat.id === 'string') {
         if (typeof cat.external_ref === 'string') {
@@ -1501,9 +1793,7 @@ async function persistProducts(
 
     await batchUpsertEntityMap(
       admin, tenantId, integrationId, 'categories',
-      catRowsPersisted
-        .filter((c) => typeof c.external_ref === 'string' && typeof c.id === 'string')
-        .map((c) => ({ externalId: String(c.external_ref), internalId: String(c.id) })),
+      buildPersistedRowPairsFromSourceRows(categoryRows, catRowsPersisted, ['slug']),
     );
   }
 
@@ -1523,6 +1813,7 @@ async function persistProducts(
       display_name_override: name,
       slug: slugify(name),
       is_active: true,
+      deleted_at: null,
       created_by: actorId,
       updated_by: actorId,
     })),
@@ -1532,6 +1823,7 @@ async function persistProducts(
       display_name_override: 'Unknown Brand',
       slug: 'unknown-brand',
       is_active: true,
+      deleted_at: null,
       created_by: actorId,
       updated_by: actorId,
     },
@@ -1540,12 +1832,19 @@ async function persistProducts(
   const brandMap = new Map<string, string>(); // zohoName → tenant_brand_id
   let fallbackBrandId: string | null = null;
 
-  const brandData = await bulkPersistJsonbRecords(
-    admin,
-    'tenant_brands',
-    dedupeByExternalRef(allBrandRows),
-    ['tenant_id', 'external_ref'],
-  );
+  const brandResolution = await resolveRowsByExternalRefOrNaturalKey(admin, {
+    table: 'tenant_brands',
+    tenantId,
+    rows: allBrandRows,
+    naturalKeyColumns: ['slug'],
+  });
+  if (brandResolution.conflicts.length > 0) {
+    console.warn('[persistProducts] brand collision conflicts:', brandResolution.conflicts);
+    result.skipped += brandResolution.conflicts.length;
+  }
+  const brandData = brandResolution.rows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'tenant_brands', brandResolution.rows, ['id'])
+    : [];
   for (const b of brandData) {
     if (typeof b.external_ref === 'string' && typeof b.id === 'string') {
       if (b.external_ref === fallbackBrandExtRef) {
@@ -1558,9 +1857,7 @@ async function persistProducts(
 
   await batchUpsertEntityMap(
     admin, tenantId, integrationId, 'brands',
-    brandData
-      .filter((b) => typeof b.external_ref === 'string' && typeof b.id === 'string')
-      .map((b) => ({ externalId: String(b.external_ref), internalId: String(b.id) })),
+    buildPersistedRowPairsFromSourceRows(allBrandRows, brandData, ['slug']),
   );
 
   // Step C: upsert products in one batch
@@ -1634,14 +1931,24 @@ async function persistProducts(
       ]),
       created_by: actorId,
       updated_by: actorId,
+      deleted_at: null,
     });
   }
 
-  const dedupedProductRows = dedupeByExternalRef(productRows);
-  const persistedProducts = dedupedProductRows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'tenant_products', dedupedProductRows, ['tenant_id', 'external_ref'])
+  const productResolution = await resolveRowsByExternalRefOrNaturalKey(admin, {
+    table: 'tenant_products',
+    tenantId,
+    rows: productRows,
+    naturalKeyColumns: ['internal_sku'],
+  });
+  if (productResolution.conflicts.length > 0) {
+    console.warn('[persistProducts] product collision conflicts:', productResolution.conflicts);
+    result.skipped += productResolution.conflicts.length;
+  }
+  const persistedProducts = productResolution.rows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'tenant_products', productResolution.rows, ['id'])
     : [];
-  const productMapPairs = mapPersistedRowsByExternalRef(persistedProducts);
+  const productMapPairs = buildPersistedRowPairsFromSourceRows(productRows, persistedProducts, ['internal_sku']);
   const productIdMap = new Map(productMapPairs.map((row) => [row.externalId, row.internalId] as const));
 
   result.updated += productMapPairs.length;
@@ -1689,18 +1996,28 @@ async function persistProducts(
         const extWarehouseId = getEmbeddedLocationExternalId(loc);
         if (!extWarehouseId) continue;
 
-        const warehouseId = warehouseIdMap.get(extWarehouseId);
+        let warehouseId = warehouseIdMap.get(extWarehouseId) ?? null;
         if (!warehouseId) {
-          inventorySyncError = new IntegrationSyncError(
-            'tenant_inventory',
-            `Unable to resolve warehouse ${extWarehouseId} for product ${extProductId}.`,
-            extProductId,
-            {
-              product_id: extProductId,
-              warehouse_id: extWarehouseId,
-            },
+          warehouseId = await ensureWarehouseExists(
+            admin,
+            tenantId,
+            actorId,
+            integrationId,
+            adapter?.integrationTypeId ?? 'zoho_books',
+            extWarehouseId,
+            adapter,
+            loc,
           );
-          break;
+          if (warehouseId) {
+            warehouseIdMap.set(extWarehouseId, warehouseId);
+          }
+        }
+
+        if (!warehouseId) {
+          console.warn(
+            `sync-products: unable to resolve warehouse ${extWarehouseId} for product ${extProductId}, skipping inventory row`,
+          );
+          continue;
         }
 
         inventoryRows.push({
@@ -1709,10 +2026,9 @@ async function persistProducts(
           qty_available: getEmbeddedLocationQty(loc),
           qty_reserved: 0,
           updated_at: nowIso(),
+          deleted_at: null,
         });
       }
-
-      if (inventorySyncError) break;
     }
   }
 
@@ -1731,12 +2047,12 @@ async function persistProducts(
   }
 
   // Fetch missing warehouse data via detail API if adapter available
-  let detailInventoryCount = 0;
   if (needDetailItemIds.length > 0 && adapter) {
-    detailInventoryCount = await fetchAndPersistMissingItemLocations(
+    await fetchAndPersistMissingItemLocations(
       admin,
       tenantId,
       actorId,
+      integrationId,
       needDetailItemIds,
       adapter,
       productIdMap,
@@ -2099,14 +2415,23 @@ async function persistEstimates(
   const guardedEstimateRows = await applyImmediateEchoGuards(
     admin, tenantId, integrationId, 'estimates', 'estimates', parentRows,
   );
-  const dedupedEstimateRows = dedupeByExternalRef(guardedEstimateRows);
-  const persistedEstimates = dedupedEstimateRows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'estimates', dedupedEstimateRows, ['tenant_id', 'external_ref'])
+  const estimateResolution = await resolveRowsByExternalRefOrNaturalKey(admin, {
+    table: 'estimates',
+    tenantId,
+    rows: guardedEstimateRows,
+    naturalKeyColumns: ['estimate_number'],
+  });
+  if (estimateResolution.conflicts.length > 0) {
+    console.warn('[persistEstimates] estimate collision conflicts:', estimateResolution.conflicts);
+    result.skipped += estimateResolution.conflicts.length;
+  }
+  const persistedEstimates = estimateResolution.rows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'estimates', estimateResolution.rows, ['id'])
     : [];
   const sourcePayloadByExternalRef = new Map(
     parentRecords.map((e) => [e.estimateId, e.sourcePayload] as const),
   );
-  const estimateMapPairs = mapPersistedRowsByExternalRef(persistedEstimates).map((p) => ({
+  const estimateMapPairs = buildPersistedRowPairsFromSourceRows(parentRows, persistedEstimates, ['estimate_number']).map((p) => ({
     ...p,
     sourcePayload: sourcePayloadByExternalRef.get(p.externalId) ?? null,
   }));
@@ -2326,14 +2651,23 @@ async function persistOrders(
   const guardedOrderRows = await applyImmediateEchoGuards(
     admin, tenantId, integrationId, 'orders', 'orders', parentRows,
   );
-  const dedupedOrderRows = dedupeByExternalRef(guardedOrderRows);
-  const persistedOrders = dedupedOrderRows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'orders', dedupedOrderRows, ['tenant_id', 'external_ref'])
+  const orderResolution = await resolveRowsByExternalRefOrNaturalKey(admin, {
+    table: 'orders',
+    tenantId,
+    rows: guardedOrderRows,
+    naturalKeyColumns: ['order_number'],
+  });
+  if (orderResolution.conflicts.length > 0) {
+    console.warn('[persistOrders] order collision conflicts:', orderResolution.conflicts);
+    result.skipped += orderResolution.conflicts.length;
+  }
+  const persistedOrders = orderResolution.rows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'orders', orderResolution.rows, ['id'])
     : [];
   const sourcePayloadByOrderRef = new Map(
     parentRecords.map((e) => [e.orderExternalId, e.sourcePayload] as const),
   );
-  const orderMapPairs = mapPersistedRowsByExternalRef(persistedOrders).map((p) => ({
+  const orderMapPairs = buildPersistedRowPairsFromSourceRows(parentRows, persistedOrders, ['order_number']).map((p) => ({
     ...p,
     sourcePayload: sourcePayloadByOrderRef.get(p.externalId) ?? null,
   }));
@@ -2579,14 +2913,23 @@ async function persistInvoices(
   const guardedInvoiceRows = await applyImmediateEchoGuards(
     admin, tenantId, integrationId, 'invoices', 'invoices', parentRows,
   );
-  const dedupedInvoiceRows = dedupeByExternalRef(guardedInvoiceRows);
-  const persistedInvoices = dedupedInvoiceRows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'invoices', dedupedInvoiceRows, ['tenant_id', 'external_ref'])
+  const invoiceResolution = await resolveRowsByExternalRefOrNaturalKey(admin, {
+    table: 'invoices',
+    tenantId,
+    rows: guardedInvoiceRows,
+    naturalKeyColumns: ['invoice_number'],
+  });
+  if (invoiceResolution.conflicts.length > 0) {
+    console.warn('[persistInvoices] invoice collision conflicts:', invoiceResolution.conflicts);
+    result.skipped += invoiceResolution.conflicts.length;
+  }
+  const persistedInvoices = invoiceResolution.rows.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'invoices', invoiceResolution.rows, ['id'])
     : [];
   const sourcePayloadByInvoiceRef = new Map(
     parentRecords.map((e) => [e.invoiceExternalId, e.sourcePayload] as const),
   );
-  const invoiceMapPairs = mapPersistedRowsByExternalRef(persistedInvoices).map((p) => ({
+  const invoiceMapPairs = buildPersistedRowPairsFromSourceRows(parentRows, persistedInvoices, ['invoice_number']).map((p) => ({
     ...p,
     sourcePayload: sourcePayloadByInvoiceRef.get(p.externalId) ?? null,
   }));

@@ -5,7 +5,6 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Heart, Minus, Package, Plus, ShoppingCart } from 'lucide-react';
-import posthog from 'posthog-js';
 import { apiFetch } from '@/lib/api-fetch';
 import { formatCurrency, cn } from '@/lib/utils';
 import { markBuyerNavigationBack, markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
@@ -79,26 +78,6 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   function handleBack(): void {
     markBuyerNavigationBack();
     router.back();
-  }
-
-  function handleRecoAddToCart(recoItem: BuyerCatalogItem, widget: string, sourceProductId: string | undefined): void {
-    addItem({
-      tenant_product_id: recoItem.tenant_product_id,
-      name: recoItem.display_name,
-      brand: recoItem.brand_name ?? undefined,
-      internal_sku: recoItem.internal_sku,
-      image_url: recoItem.image_urls[0],
-      unit_price: recoItem.price,
-      unit: recoItem.default_uom ?? undefined,
-      quantity: 1,
-      line_total: recoItem.price,
-      tenant_category_id: recoItem.category_id ?? undefined,
-    });
-    posthog.capture('reco_add_to_cart', {
-      widget,
-      source_product_id: sourceProductId,
-      added_product_id: recoItem.tenant_product_id,
-    });
   }
 
   function handleAddToCart(): void {
@@ -302,7 +281,6 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
         widget="co_order"
         items={recos.co_order}
         sourceProductId={tenantProductId}
-        onAddToCart={handleRecoAddToCart}
       />
 
       {/* W3 — People Also Bought */}
@@ -311,7 +289,6 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
         widget="co_buyer"
         items={recos.co_buyer}
         sourceProductId={tenantProductId}
-        onAddToCart={handleRecoAddToCart}
       />
 
       {/* More from brand carousel */}
@@ -368,7 +345,6 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
         widget="same_category"
         items={recos.same_category}
         sourceProductId={tenantProductId}
-        onAddToCart={handleRecoAddToCart}
       />
 
       {/* Sticky footer — qty stepper + Add to cart */}

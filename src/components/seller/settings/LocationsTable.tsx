@@ -1,12 +1,10 @@
 'use client';
 
-import { Check, MapPin, Pencil, RotateCcw, UserX } from 'lucide-react';
+import { Building2, MapPin, Pencil, RotateCcw, UserX } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { TenantLocation } from '@/types/tenant-locations';
-
-import { LocationTypeBadge, LocationTypeIcon } from './LocationTypeBadge';
 
 interface LocationsTableRowsProps {
   locations: TenantLocation[];
@@ -43,12 +41,9 @@ export function LocationsTableRows({
             <td className="px-4 py-3.5 align-top">
               <div className="flex gap-3">
                 <div
-                  className={cn(
-                    'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                    loc.type === 'warehouse' ? 'bg-teal-50 text-teal-600' : 'bg-cream-100 text-cream-600',
-                  )}
+                  className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cream-100 text-cream-600"
                 >
-                  <LocationTypeIcon type={loc.type} className="h-4 w-4" />
+                  <Building2 className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 max-w-[220px]">
                   <div className="flex flex-wrap items-center gap-2">
@@ -65,24 +60,11 @@ export function LocationsTableRows({
                 </div>
               </div>
             </td>
-            <td className="px-4 py-3.5 align-top">
-              <LocationTypeBadge type={loc.type} />
-            </td>
             <td className="px-4 py-3.5 align-top text-base text-cream-700 whitespace-nowrap">
               <span className="inline-flex items-center gap-1">
                 <MapPin className="h-3.5 w-3.5 shrink-0 text-cream-500" aria-hidden />
                 {[loc.address?.city, loc.address?.state].filter(Boolean).join(', ') || '—'}
               </span>
-            </td>
-            <td className="px-4 py-3.5 align-top text-base whitespace-nowrap">
-              {loc.inventory_tracking ? (
-                <span className="inline-flex items-center gap-1 text-success-700">
-                  <Check className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
-                  Tracked
-                </span>
-              ) : (
-                <span className="text-cream-500">Not tracked</span>
-              )}
             </td>
             <td className="px-4 py-3.5 align-top whitespace-nowrap">
               {inactive ? (

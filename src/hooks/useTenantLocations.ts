@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRole } from '@/hooks/useRole';
 import { apiDelete, apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
-import type { CreateLocationInput, LocationType, TenantLocation, UpdateLocationInput } from '@/types/tenant-locations';
+import type { CreateLocationInput, TenantLocation, UpdateLocationInput } from '@/types/tenant-locations';
 
 function parseLocationsResponse(json: unknown): { locations: TenantLocation[] } {
   const o = json as Record<string, unknown>;
@@ -55,7 +55,6 @@ export function useTenantLocations() {
         id: `temp-${Date.now()}`,
         tenant_id: currentTenantId ?? '',
         name: input.name,
-        type: (input.type ?? 'warehouse') as LocationType,
         address: {
           line1: input.address?.line1 ?? '',
           line2: input.address?.line2 ?? '',
@@ -66,7 +65,6 @@ export function useTenantLocations() {
         phone_number: input.phone_number ?? null,
         status: input.status ?? 'active',
         associated_users: input.associated_users ?? [],
-        inventory_tracking: input.inventory_tracking ?? true,
         is_default: input.is_default ?? false,
         external_ref: input.external_ref?.trim() ? input.external_ref.trim() : null,
         lat: input.lat ?? null,
@@ -118,11 +116,9 @@ export function useTenantLocations() {
       if (idx >= 0) {
         const cur = { ...locs[idx] };
         if (patch.name !== undefined) cur.name = patch.name;
-        if (patch.type !== undefined) cur.type = patch.type;
         if (patch.address) {
           cur.address = { ...cur.address, ...patch.address };
         }
-        if (patch.inventory_tracking !== undefined) cur.inventory_tracking = patch.inventory_tracking;
         if (patch.phone_number !== undefined) cur.phone_number = patch.phone_number;
         if (patch.status !== undefined) cur.status = patch.status;
         if (patch.associated_users !== undefined) cur.associated_users = patch.associated_users;

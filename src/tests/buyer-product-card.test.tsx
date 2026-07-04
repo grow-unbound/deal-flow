@@ -49,8 +49,11 @@ describe('buyer product card', () => {
           category_name: null,
           mrp: 14200,
           price: 12400,
+          has_campaign_price: true,
+          resolved_price: 14200,
           default_uom: 'box',
           pack_size: null,
+          campaign_valid_until: '2026-07-31T00:00:00.000Z',
           image_urls: [],
           stock_status: 'available',
           on_hand: 10,
@@ -61,6 +64,7 @@ describe('buyer product card', () => {
     expect(screen.getByText('2mp IP Bullet Camera 60m Motorized CP Plus')).toBeInTheDocument();
     expect(screen.getByText('CP-UNC-TC21ZL6C-VMDS')).toBeInTheDocument();
     expect(screen.getByText('₹12,400')).toBeInTheDocument();
+    expect(screen.getByText('₹14,200')).toBeInTheDocument();
     expect(screen.queryByText('Your price')).not.toBeInTheDocument();
     expect(screen.queryByText('MRP')).not.toBeInTheDocument();
     expect(screen.queryByText('CP Plus')).not.toBeInTheDocument();

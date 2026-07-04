@@ -208,9 +208,23 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
         }}
         titleActions={(
           <>
+          {showCancel ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive gap-2"
+              onClick={() => setCancelOpen(true)}
+              disabled={cancelMut.isPending}
+            >
+              <X className="h-4 w-4" />
+              Cancel order
+            </Button>
+            ) : null} 
             {showEdit ? (
               <Button
                 type="button"
+                variant="ghost"
                 size="sm"
                 className="gap-2"
                 onClick={() => {
@@ -225,40 +239,14 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
             {showSend ? (
               <Button
                 type="button"
-                variant="outline"
+                variant="primary"
                 size="sm"
                 className="gap-2"
                 onClick={() => setSendOpen(true)}
                 disabled={sendMut.isPending}
               >
                 {sendMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                Send sales order
-              </Button>
-            ) : null}
-            {showConfirm ? (
-              <Button
-                type="button"
-                variant="accent"
-                size="sm"
-                className="gap-2"
-                onClick={() => setConfirmOpen(true)}
-                disabled={confirmMut.isPending}
-              >  
-                <Truck className="h-4 w-4" />
-                Confirm order
-              </Button>
-            ) : null}
-            {showCancel ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-destructive hover:text-destructive gap-2"
-                onClick={() => setCancelOpen(true)}
-                disabled={cancelMut.isPending}
-              >
-                <X className="h-4 w-4" />
-                Cancel order
+                Send order
               </Button>
             ) : null}
             {ui === 'confirmed' ? (
@@ -275,9 +263,22 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
               </Button>
             ) : null}
             {ui === 'dispatched' ? (
-              <Button type="button" size="sm" className="gap-2" onClick={() => setDeliverOpen(true)} disabled={deliverMut.isPending}>
+              <Button type="button" variant="accent" size="sm" className="gap-2" onClick={() => setDeliverOpen(true)} disabled={deliverMut.isPending}>
                 <PackageCheck className="h-4 w-4" />
                 Mark delivered
+              </Button>
+            ) : null}
+            {showConfirm ? (
+              <Button
+                type="button"
+                variant="accent"
+                size="sm"
+                className="gap-2"
+                onClick={() => setConfirmOpen(true)}
+                disabled={confirmMut.isPending}
+              >  
+                <Truck className="h-4 w-4" />
+                Confirm order
               </Button>
             ) : null}
           </>

@@ -7,25 +7,25 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  useLocations,
+  useWarehouses,
   useInventoryByProduct,
   useUpsertInventory,
-  useCreateLocation,
+  useCreateWarehouse,
   computeSellable,
   isLowStock,
-  type Location,
   type InventoryRow,
 } from '@/hooks/useInventory';
+import type { TenantWarehouse } from '@/types/tenant-warehouses';
 import { useRole } from '@/hooks/useRole';
 import { cn } from '@/lib/utils';
 
-interface LocationRowProps {
-  location: Location;
+interface WarehouseRowProps {
+  warehouse: TenantWarehouse;
   inventoryRow: InventoryRow | undefined;
   productId: string;
 }
 
-function LocationRow({ location, inventoryRow, productId }: LocationRowProps) {
+function WarehouseRow({ warehouse, inventoryRow, productId }: WarehouseRowProps) {
   const [qtyAvailable, setQtyAvailable] = useState<number>(inventoryRow?.qty_available ?? 0);
   const [qtyReserved, setQtyReserved] = useState<number>(inventoryRow?.qty_reserved ?? 0);
   const [reorderPoint, setReorderPoint] = useState<number | ''>(inventoryRow?.reorder_point ?? '');
@@ -42,12 +42,12 @@ function LocationRow({ location, inventoryRow, productId }: LocationRowProps) {
     try {
       await upsert.mutateAsync({
         tenant_product_id: productId,
-        location_id: location.id,
+        warehouse_id: warehouse.id,
         qty_available: qtyAvailable,
         qty_reserved: qtyReserved,
         reorder_point: reorderPoint === '' ? null : reorderPoint,
       });
-      toast.success(`Inventory updated for ${location.name}`);
+      toast.success(`Inventory updated for ${warehouse.name}`);
     } catch {
       toast.error('Failed to update inventory');
     }
@@ -58,8 +58,8 @@ function LocationRow({ location, inventoryRow, productId }: LocationRowProps) {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <MapPin size={14} className="text-cream-500 shrink-0" />
-          <span className="font-sans text-cream-900 text-sm font-medium">{location.name}</span>
-          {location.is_default && (
+          <span className="font-sans text-cream-900 text-sm font-medium">{warehouse.name}</span>
+          {warehouse.is_default && (
             <span className="inline-flex items-center rounded-full bg-teal-50 text-teal-700 px-2 py-0.5 text-xs font-medium">
               Default
             </span>
@@ -126,32 +126,32 @@ function LocationRow({ location, inventoryRow, productId }: LocationRowProps) {
   );
 }
 
-interface AddLocationFormProps {
+interface AddWarehouseFormProps {
   onCancel: () => void;
 }
 
-function AddLocationForm({ onCancel }: AddLocationFormProps) {
+function AddWarehouseForm({ onCancel }: AddWarehouseFormProps) {
   const [name, setName] = useState('');
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
-  const createLocation = useCreateLocation();
+  const createWarehouse = useCreateWarehouse();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
     try {
-      await createLocation.mutateAsync({
+      await createWarehouse.mutateAsync({
         name: name.trim(),
         address:
           city || state
             ? { city: city.trim() || undefined, state: state.trim() || undefined }
             : undefined,
       });
-      toast.success(`Location "${name.trim()}" created`);
+      toast.success(`Warehouse "${name.trim()}" created`);
       onCancel();
     } catch {
-      toast.error('Failed to create location');
+      toast.error('Failed to create warehouse');
     }
   };
 
@@ -160,7 +160,7 @@ function AddLocationForm({ onCancel }: AddLocationFormProps) {
       onSubmit={handleSubmit}
       className="bg-cream-100 rounded-md border border-cream-200 p-4 mb-3"
     >
-      <p className="text-sm font-medium text-cream-900 mb-3">New location</p>
+      <p className="text-sm font-medium text-cream-900 mb-3">New warehouse</p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 mb-4">
         <div>
           <Label className="text-xs text-cream-600 mb-1 block">
@@ -212,10 +212,10 @@ function AddLocationForm({ onCancel }: AddLocationFormProps) {
           type="submit"
           size="sm"
           className="bg-teal-500 text-cream-50 gap-1.5"
-          disabled={createLocation.isPending || !name.trim()}
+          disabled={createWarehouse.isPending || !name.trim()}
         >
           <Plus size={13} />
-          {createLocation.isPending ? 'Creating…' : 'Add location'}
+          {createWarehouse.isPending ? 'Creating…' : 'Add warehouse'}
         </Button>
       </div>
     </form>
@@ -229,17 +229,16 @@ interface InventoryTabProps {
 export function InventoryTab({ productId }: InventoryTabProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const { isSellerAdmin } = useRole();
-  const { data: locationsData, isLoading: locationsLoading } = useLocations();
+  const { data: warehousesData, isLoading: warehousesLoading } = useWarehouses();
   const { data: inventoryData, isLoading: inventoryLoading } = useInventoryByProduct(productId);
 
-  const locations = locationsData?.locations ?? [];
+  const warehouses = warehousesData?.warehouses ?? [];
   const inventory = inventoryData?.inventory ?? [];
 
-  const isLoading = locationsLoading || inventoryLoading;
+  const isLoading = warehousesLoading || inventoryLoading;
 
-  // Build a map from location_id → inventory row
-  const inventoryByLocation = Object.fromEntries(
-    inventory.map((row) => [row.location_id, row]),
+  const inventoryByWarehouse = Object.fromEntries(
+    inventory.map((row) => [row.warehouse_id, row]),
   );
 
   if (isLoading) {
@@ -264,16 +263,14 @@ export function InventoryTab({ productId }: InventoryTabProps) {
             onClick={() => setShowAddForm(true)}
           >
             <MapPin size={14} />
-            Add location
+            Add warehouse
           </Button>
         </div>
       )}
 
-      {/* Inline add form */}
-      {showAddForm && <AddLocationForm onCancel={() => setShowAddForm(false)} />}
+      {showAddForm && <AddWarehouseForm onCancel={() => setShowAddForm(false)} />}
 
-      {/* Empty state */}
-      {locations.length === 0 && !showAddForm && (
+      {warehouses.length === 0 && !showAddForm && (
         <div className="flex flex-col items-center justify-center min-h-[28vh] text-center px-6">
           <span className="w-14 h-14 rounded-full bg-cream-200 flex items-center justify-center mb-4">
             <MapPin size={24} className="text-cream-500" />
@@ -281,8 +278,8 @@ export function InventoryTab({ productId }: InventoryTabProps) {
           <p className="font-display text-lg text-cream-900 mb-1">No warehouse locations yet</p>
           <p className="text-cream-600 text-sm max-w-sm">
             {isSellerAdmin
-              ? 'Add your first location to start tracking inventory.'
-              : 'No warehouse locations have been configured for this tenant.'}
+              ? 'Add your first warehouse to start tracking inventory.'
+              : 'No warehouses have been configured for this tenant.'}
           </p>
           {isSellerAdmin && (
             <Button
@@ -292,18 +289,17 @@ export function InventoryTab({ productId }: InventoryTabProps) {
               onClick={() => setShowAddForm(true)}
             >
               <MapPin size={14} />
-              Add location
+              Add warehouse
             </Button>
           )}
         </div>
       )}
 
-      {/* Location rows */}
-      {locations.map((location) => (
-        <LocationRow
-          key={location.id}
-          location={location}
-          inventoryRow={inventoryByLocation[location.id]}
+      {warehouses.map((warehouse) => (
+        <WarehouseRow
+          key={warehouse.id}
+          warehouse={warehouse}
+          inventoryRow={inventoryByWarehouse[warehouse.id]}
           productId={productId}
         />
       ))}

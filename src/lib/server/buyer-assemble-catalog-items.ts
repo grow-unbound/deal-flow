@@ -37,7 +37,7 @@ export async function assembleBuyerCatalogItemsForProductIds(
     campaignName: string | null;
     campaignValidUntil: string | null;
     priceOverrides: Map<string, number | null>;
-    inventoryLocationId?: string | null;
+    inventoryWarehouseId?: string | null;
   },
 ): Promise<Map<string, BuyerCatalogItem>> {
   const {
@@ -48,7 +48,7 @@ export async function assembleBuyerCatalogItemsForProductIds(
     campaignName,
     campaignValidUntil,
     priceOverrides,
-    inventoryLocationId = null,
+    inventoryWarehouseId = null,
   } = params;
   const out = new Map<string, BuyerCatalogItem>();
 
@@ -174,12 +174,12 @@ export async function assembleBuyerCatalogItemsForProductIds(
   let inventoryQuery = db
     .schema('app')
     .from('tenant_inventory')
-    .select('tenant_product_id, qty_available, location_id')
+    .select('tenant_product_id, qty_available, warehouse_id')
     .in('tenant_product_id', productIds)
     .is('deleted_at', null);
 
-  if (inventoryLocationId) {
-    inventoryQuery = inventoryQuery.eq('location_id', inventoryLocationId);
+  if (inventoryWarehouseId) {
+    inventoryQuery = inventoryQuery.eq('warehouse_id', inventoryWarehouseId);
   }
 
   const { data: inventoryRows, error: inventoryError } = await inventoryQuery;
