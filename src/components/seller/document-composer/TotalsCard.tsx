@@ -16,6 +16,7 @@ export function TotalsCard({
   taxRows,
   stagedChanges,
   stagedCallout,
+  gstInclusiveOverride,
 }: {
   title?: string;
   totals: EstimateComposerTotals;
@@ -26,8 +27,10 @@ export function TotalsCard({
   taxRows?: Array<{ label: string; value: number; previous?: number | null; rowClassName?: string }>;
   stagedChanges?: Array<{ label: string; value: string }>;
   stagedCallout?: ReactNode;
+  gstInclusiveOverride?: boolean;
 }) {
   const { creditEnabled, gstInclusive } = useBusinessPolicy();
+  const showGstInclusive = gstInclusiveOverride ?? gstInclusive;
 
   const resolvedTaxRows = taxRows && taxRows.length > 0
     ? taxRows
@@ -54,10 +57,13 @@ export function TotalsCard({
         <div className="mt-4 space-y-3 text-sm text-cream-700">
           <TotalRow label={`Subtotal (${lineCount} line${lineCount === 1 ? '' : 's'})`} value={formatInr(totals.subtotal)} previous={previousTotals?.subtotal ?? null} />
           <TotalRow label="Document discount" value={formatInr(totals.discount_flat)} previous={previousTotals?.discount_flat ?? null} />
-          {gstInclusive ? (
-            <div className="flex items-center justify-between gap-4 text-xs text-cream-500 italic">
-              <span>All prices inclusive of GST</span>
-            </div>
+          {showGstInclusive ? (
+            <TotalRow
+              label="GST"
+              value="Included in prices"
+              previous={null}
+              rowClassName="text-cream-500"
+            />
           ) : (
             resolvedTaxRows.map((row) => (
               <TotalRow

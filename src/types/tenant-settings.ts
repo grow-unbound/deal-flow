@@ -82,6 +82,14 @@ export const OrdersSettingsSchema = z.object({
 export const BuyerAppSettingsSchema = z.object({
   enabled: z.boolean(),
   whatsapp_number: z.string().max(40),
+  /**
+   * "Business name in WhatsApp communication" (spec: DealFlow_WhatsApp-Broadcast-Spec_v4.md §12).
+   * Server-composed {{seller_name}} template variable source — falls back to
+   * business.company_name when unset. Plain display name only; the
+   * "Name (Location)" routing-context suffix is composed at send time by the
+   * (not-yet-built) send pipeline, not stored here.
+   */
+  whatsapp_display_name: z.string().max(200).default(''),
   share_link_expiry_enabled: z.boolean(),
   share_link_expiry_days: z.number().int().min(1).max(3650),
   credit_limit_visible: z.boolean(),
@@ -157,6 +165,7 @@ export const TenantSettingsPatchSchema = z.object({
     .object({
       enabled: z.boolean().optional(),
       whatsapp_number: z.string().max(40).optional(),
+      whatsapp_display_name: z.string().max(200).optional(),
     })
     .optional(),
   catalog: z
@@ -204,7 +213,7 @@ export interface ModuleSettingsView {
 export interface UnifiedSettingsView {
   business: TenantSettingsBusiness;
   business_policy: BusinessPolicy;
-  buyer_app: Pick<BuyerAppSettings, 'enabled' | 'whatsapp_number'>;
+  buyer_app: Pick<BuyerAppSettings, 'enabled' | 'whatsapp_number' | 'whatsapp_display_name'>;
   notifications: TenantSettingsNotifications;
   orders: OrdersSettings;
   catalog: CatalogSettings;

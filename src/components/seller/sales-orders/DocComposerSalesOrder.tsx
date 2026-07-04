@@ -70,7 +70,8 @@ import {
   buildComposerStagedChanges,
   stagedSliceFromSalesOrder,
 } from '@/lib/documents/composer-staged-changes';
-import { computeLineTotal, computeTotals, defaultPaymentTerms } from '@/lib/documents/composer-math';
+import { computeTotals, defaultPaymentTerms } from '@/lib/documents/composer-math';
+import { computeLineTaxableAmount } from '@/lib/gst';
 import { formatCompactInr } from '@/lib/utils';
 import type {
   EstimateComposerBuyerContext,
@@ -300,7 +301,7 @@ export function DocComposerSalesOrder({
     const mappedLines = (est.items ?? []).map((line) => ({
       ...line,
       diff: 'clean' as const,
-      line_total: computeLineTotal(line, gstInclusive),
+      line_total: computeLineTaxableAmount(line),
     }));
     const doc: SalesOrderComposerDocument = {
       id: '',
@@ -352,7 +353,7 @@ export function DocComposerSalesOrder({
     const mappedLines = (data.items ?? []).map((line) => ({
       ...line,
       diff: 'clean' as const,
-      line_total: computeLineTotal(line, gstInclusive),
+      line_total: computeLineTaxableAmount(line),
     }));
     setLineState(mappedLines);
     setPaymentTermsLabel(defaultPaymentTerms(data.buyer_context?.payment_terms_days ?? 0));
@@ -407,7 +408,7 @@ export function DocComposerSalesOrder({
         const nextPrice = pricingQuery.data[line.tenant_product_id];
         if (nextPrice == null || nextPrice === line.unit_price) return line;
         const next = { ...line, unit_price: nextPrice };
-        return { ...next, line_total: computeLineTotal(next, gstInclusive) };
+        return { ...next, line_total: computeLineTaxableAmount(next) };
       }),
     );
     lastAppliedPricingKeyRef.current = pricingKey;
@@ -685,7 +686,7 @@ export function DocComposerSalesOrder({
         base_selling_price: product.base_selling_price,
         disc_pct: 0,
         tax_pct: product.tax_pct ?? 0,
-        line_total: computeLineTotal({ qty: 1, unit_price: product.unit_price, disc_pct: 0, tax_pct: product.tax_pct ?? 0 }, gstInclusive),
+        line_total: computeLineTaxableAmount({ qty: 1, unit_price: product.unit_price, disc_pct: 0 }),
         scheme_tag: null,
         diff: 'added',
       },
@@ -700,7 +701,7 @@ export function DocComposerSalesOrder({
         const next = { ...line, ...patch };
         return {
           ...next,
-          line_total: computeLineTotal(next),
+          line_total: computeLineTaxableAmount(next),
         };
       }),
     );
@@ -730,7 +731,7 @@ export function DocComposerSalesOrder({
         };
         return {
           ...next,
-          line_total: computeLineTotal(next),
+          line_total: computeLineTaxableAmount(next),
         };
       }),
     );
@@ -767,7 +768,7 @@ export function DocComposerSalesOrder({
         const savedLines = doc.items.map((line) => ({
           ...line,
           diff: 'clean' as const,
-          line_total: computeLineTotal(line, gstInclusive),
+          line_total: computeLineTaxableAmount(line),
         }));
         setDocumentState(doc);
         setLineState(savedLines);

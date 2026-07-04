@@ -43,6 +43,7 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
       internal_sku: item.internal_sku,
       image_url: item.image_urls[0],
       unit_price: item.price,
+      gst_rate: item.gst_rate ?? null,
       unit: item.default_uom ?? undefined,
       quantity: 1,
       line_total: item.price,

@@ -314,7 +314,6 @@ export function getZohoPhasePlan(
   const referencePhases: Record<ZohoIntegrationTypeId, IntegrationSyncPhaseDefinition[]> = {
     zoho_books: [
       { id: 'locations', label: 'Importing locations from Zoho Books', entityType: 'locations', path: '/locations', itemKey: 'locations' },
-      { id: 'warehouses', label: 'Importing warehouses from Zoho Books', entityType: 'warehouses', path: '/settings/warehouses', itemKey: 'warehouses' },
       { id: 'products', label: 'Importing products from Zoho Books', entityType: 'products', path: '/items', itemKey: 'items' },
       { id: 'pricelists', label: 'Importing pricelists from Zoho Books', entityType: 'pricelists', path: '/pricebooks', itemKey: 'pricebooks' },
       { id: 'customers', label: 'Importing customers from Zoho Books', entityType: 'customers', path: '/contacts', itemKey: 'contacts' },

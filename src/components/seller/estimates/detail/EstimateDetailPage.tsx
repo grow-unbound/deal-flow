@@ -43,7 +43,7 @@ import {
 } from '@/hooks/useEstimates';
 import { useCreateFlags } from '@/hooks/useCreateFlags';
 import { useFlagState } from '@/hooks/useFeatureFlag';
-import { computeLineTotal, computeTotals, defaultPaymentTerms } from '@/lib/documents/composer-math';
+import { defaultPaymentTerms } from '@/lib/documents/composer-math';
 import type { EstimateComposerProductSearchRow } from '@/types/estimate-composer';
 import { formatCompactInr } from '@/lib/utils';
 
@@ -70,19 +70,43 @@ export function EstimateDetailPage({ id }: { id: string }) {
 
   const diffLines: EstimateComposerLineRow[] = useMemo(() => {
     if (!data) return [];
-    return data.items.map((line) => ({
+    return data.items.map((line, index) => ({
       ...line,
       diff: 'clean' as const,
-      line_total: computeLineTotal(line),
+      line_total: data.historical_items?.[index]?.line_total ?? line.line_total,
     }));
   }, [data]);
 
   const totals = useMemo(() => {
     if (!data) {
-      return computeTotals([], 0, 0, 0);
+      return {
+        subtotal: 0,
+        discount_flat: 0,
+        freight: 0,
+        taxable_amount: 0,
+        tax_amount: 0,
+        round_off: 0,
+        grand_total: 0,
+        total_units: 0,
+        gst_inclusive: false,
+      };
     }
-    return computeTotals(diffLines, data.discount_flat, data.freight, data.round_off);
-  }, [data, diffLines]);
+    const subtotal = data.subtotal ?? 0;
+    const discountFlat = data.discount_flat ?? 0;
+    const freight = data.freight ?? 0;
+    const roundOff = data.round_off ?? 0;
+    return {
+      subtotal,
+      discount_flat: discountFlat,
+      freight,
+      taxable_amount: Math.max(subtotal - discountFlat, 0),
+      tax_amount: data.tax_amount ?? 0,
+      grand_total: data.total_amount ?? 0,
+      round_off: roundOff,
+      total_units: data.items.reduce((sum, line) => sum + line.qty, 0),
+      gst_inclusive: (data.tax_amount ?? 0) === 0,
+    };
+  }, [data]);
 
   if (orderManagement === false || estimatesFlag === false) {
     return <FeatureDisabledState />;
@@ -332,7 +356,14 @@ export function EstimateDetailPage({ id }: { id: string }) {
         )}
         right={(
           <div className="space-y-4">
-            <TotalsCard totals={totals} previousTotals={null} creditWarning={creditWarning} isInterState={isInterState} lineCount={diffLines.length} />
+            <TotalsCard
+              totals={totals}
+              previousTotals={null}
+              creditWarning={creditWarning}
+              isInterState={isInterState}
+              lineCount={diffLines.length}
+              gstInclusiveOverride={data.tax_amount === 0}
+            />
           </div>
         )}
       />

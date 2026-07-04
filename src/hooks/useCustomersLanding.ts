@@ -39,6 +39,7 @@ export interface CustomersLandingBuyer {
   dues: number;
   status: { label: string; tone: StatusTone };
   avatar: { initials: string; hue: AvatarHue };
+  whatsapp_opted_out?: boolean;
 }
 
 export interface CustomersLandingResponse {
@@ -72,6 +73,7 @@ export interface TenantCustomerDetailResponse {
     status_label: string;
     status_tone: StatusTone;
     buyer_app_enabled: boolean;
+    whatsapp_opted_out: boolean;
     city: string;
     buyer_since: string | null;
     years_label: string;

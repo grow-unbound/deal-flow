@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate } from '@/lib/server/buyer-access';
 import { buyerOtpStore, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
+import { stampSellerImplicitWhatsappConsent } from '@/lib/server/whatsapp-consent';
 
 const MAX_ATTEMPTS = 5;
 
@@ -97,12 +98,37 @@ async function mintCandidateSession(
   candidate: LoginOtpCandidate,
 ): Promise<{ session: unknown; redirect: string }> {
   if (candidate.kind === 'seller') {
-    const { session } = await mintSellerSession(
+    const { session, user } = await mintSellerSession(
       candidate as LoginOtpCandidate & { kind: 'seller' },
     );
+    await stampSellerImplicitWhatsappConsent(candidate.tenant_id, user.id);
     return { session, redirect: '/dashboard' };
   }
 
   const { session } = await mintBuyerSession(toBuyerLoginCandidate(candidate));
-  return { session, redirect: '/buy/home' };
+  // WhatsApp Broadcast Phase C (§4.8, §9): route first-time buyers through the
+  // forced consent checkbox before /buy/home. requireBuyerConsentRedirect
+  // checks app.buyers.whatsapp_consent_at directly rather than trusting any
+  // client-supplied state.
+  const redirect = await requireBuyerConsentRedirect(candidate.buyer_id) ?? '/buy/home';
+  return { session, redirect };
+}
+
+async function requireBuyerConsentRedirect(buyerId: string | null): Promise<string | null> {
+  if (!buyerId) return null;
+  try {
+    const { supabaseAdmin } = await import('@/lib/supabase');
+    if (!supabaseAdmin) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabaseAdmin as any;
+    const { data } = await db
+      .schema('app')
+      .from('buyers')
+      .select('whatsapp_consent_at')
+      .eq('id', buyerId)
+      .maybeSingle();
+    return data && !data.whatsapp_consent_at ? '/consent' : null;
+  } catch {
+    return null;
+  }
 }

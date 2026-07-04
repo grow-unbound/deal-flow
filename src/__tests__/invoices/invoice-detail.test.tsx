@@ -21,6 +21,21 @@ vi.mock('@/hooks/useInvoices', () => ({
   prefetchInvoiceComposer: (...args: unknown[]) => prefetchInvoiceComposerMock(...args),
 }));
 
+vi.mock('@/hooks/useTenantSettings', () => ({
+  useTenantSettings: () => ({
+    data: { modules: { business_policy: { credit_enabled: true, gst_inclusive: false, gst_rate: 18 } } },
+    isLoading: false,
+    isError: false,
+    error: null,
+    save: vi.fn(),
+    isSaving: false,
+  }),
+}));
+
+vi.mock('@/hooks/useBusinessPolicy', () => ({
+  useBusinessPolicy: () => ({ creditEnabled: true, gstInclusive: false, gstRate: 18 }),
+}));
+
 vi.mock('@/hooks/useInvoiceDetail', () => ({
   useInvoiceDetail: (...args: unknown[]) => useInvoiceDetailMock(...args),
   useMarkInvoicePaid: () => ({ mutateAsync: payMutateAsync, isPending: false }),

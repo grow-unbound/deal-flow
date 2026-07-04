@@ -63,4 +63,6 @@ export interface EstimateDetailPayload {
 }
 
 /** Merged GET `/api/tenant/estimates/[id]` payload (detail KPIs + composer document). */
-export type TenantEstimateDetailResponse = Omit<EstimateDetailPayload, 'items'> & EstimateComposerDocument;
+export type TenantEstimateDetailResponse = Omit<EstimateDetailPayload, 'items'> & EstimateComposerDocument & {
+  historical_items?: EstimateDetailLineItem[];
+};

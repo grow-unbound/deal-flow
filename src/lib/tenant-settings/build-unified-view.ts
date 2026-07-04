@@ -18,6 +18,7 @@ export function buildUnifiedSettingsView(
     buyer_app: {
       enabled: modules.buyer_app.enabled,
       whatsapp_number: modules.buyer_app.whatsapp_number,
+      whatsapp_display_name: modules.buyer_app.whatsapp_display_name,
     },
     notifications: general.notifications,
     orders: modules.orders,

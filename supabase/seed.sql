@@ -270,7 +270,14 @@ INSERT INTO catalog.integration_types (
       'oauth', true,
       'authorize_url', 'https://accounts.zoho.in/oauth/v2/auth',
       'token_url', 'https://accounts.zoho.in/oauth/v2/token',
-      'scopes', jsonb_build_array('ZohoBooks.fullaccess.all', 'ZohoInventory.settings.READ'),
+      'scopes', jsonb_build_array(
+        'ZohoBooks.contacts.ALL',
+        'ZohoBooks.items.ALL',
+        'ZohoBooks.salesorders.ALL',
+        'ZohoBooks.invoices.ALL',
+        'ZohoBooks.estimates.ALL',
+        'ZohoBooks.settings.ALL'
+      ),
       'fields', jsonb_build_array(
         jsonb_build_object(
           'key', 'org_id',

@@ -3,7 +3,6 @@
 import { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { useState } from 'react';
-import { Toaster } from 'sonner';
 import { SellerSidebar } from './SellerSidebar';
 import { SellerGlobalHeader } from './SellerGlobalHeader';
 import { SellerRealtimeProvider } from '@/contexts/SellerRealtimeContext';
@@ -57,7 +56,6 @@ export function SellerShell({ children, featureAvailability, tenantBranding }: S
           {children}
         </main>
       </div>
-      <Toaster position="top-right" richColors />
     </SellerRealtimeProvider>
   );
 }
