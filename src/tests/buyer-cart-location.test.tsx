@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 const useRouterMock = vi.fn();
 const useCartMock = vi.fn();
+const useCartBundlesMock = vi.fn();
 const useBuyerDeliveryOptionalMock = vi.fn();
+const useBuyerMeMock = vi.fn();
 const apiFetchMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
@@ -14,8 +16,16 @@ vi.mock('@/contexts/BuyerCartContext', () => ({
   useCart: (...args: unknown[]) => useCartMock(...args),
 }));
 
+vi.mock('@/hooks/useCartBundles', () => ({
+  useCartBundles: (...args: unknown[]) => useCartBundlesMock(...args),
+}));
+
 vi.mock('@/contexts/BuyerDeliveryContext', () => ({
   useBuyerDeliveryOptional: (...args: unknown[]) => useBuyerDeliveryOptionalMock(...args),
+}));
+
+vi.mock('@/hooks/useBuyerMe', () => ({
+  useBuyerMe: (...args: unknown[]) => useBuyerMeMock(...args),
 }));
 
 vi.mock('@/lib/api-fetch', () => ({
@@ -41,6 +51,12 @@ describe('buyer cart location details', () => {
       updateQty: vi.fn(),
       clearCart: vi.fn(),
     });
+    useCartBundlesMock.mockReturnValue({
+      data: null,
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
     useBuyerDeliveryOptionalMock.mockReturnValue({
       selected: {
         place_id: 'place-1',
@@ -50,6 +66,12 @@ describe('buyer cart location details', () => {
         pincode: '400058',
         lat: 19.12,
         lng: 72.84,
+      },
+    });
+    useBuyerMeMock.mockReturnValue({
+      data: {
+        tenant: { id: 'tenant-1', name: 'Tenant', slug: 'tenant' },
+        business_policy: { gst_inclusive: false, gst_rate: 18 },
       },
     });
     apiFetchMock.mockResolvedValue({

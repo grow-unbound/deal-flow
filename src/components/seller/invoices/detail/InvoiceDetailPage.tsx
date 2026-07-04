@@ -119,7 +119,7 @@ export function InvoiceDetailPage({ id }: { id: string }) {
       base_selling_price: line.rate,
       disc_pct: line.discount_pct,
       tax_pct: line.tax_pct ?? 0,
-      line_total: line.line_total,
+      line_total: line.line_total ?? line.qty * line.rate,
       scheme_tag: null,
       diff: 'clean' as const,
     }));
@@ -138,15 +138,14 @@ export function InvoiceDetailPage({ id }: { id: string }) {
         total_units: 0,
       };
     }
-    const t = data.totals;
     return {
-      subtotal: t.subtotal,
-      discount_flat: t.discount_amt,
-      freight: t.freight,
-      taxable_amount: t.taxable,
-      tax_amount: t.tax_amount,
-      round_off: t.round_off,
-      grand_total: t.grand_total,
+      subtotal: data.totals.subtotal,
+      discount_flat: data.totals.discount_amt,
+      freight: data.totals.freight,
+      taxable_amount: data.totals.taxable,
+      tax_amount: data.totals.tax_amount,
+      round_off: data.totals.round_off,
+      grand_total: data.totals.grand_total,
       total_units: diffLines.reduce((sum, line) => sum + line.qty, 0),
     };
   }, [data, diffLines]);
@@ -370,6 +369,7 @@ export function InvoiceDetailPage({ id }: { id: string }) {
               isInterState={isInterState}
               lineCount={diffLines.length}
               taxRows={taxRows}
+              gstInclusiveOverride={data.totals.tax_amount === 0}
             />
             <InvoicePaymentsCard payments={data.payments} amountOutstanding={data.amount_outstanding} />
           </div>

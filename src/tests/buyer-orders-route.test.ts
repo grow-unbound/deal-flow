@@ -57,6 +57,18 @@ vi.mock('@/lib/supabase', () => ({
             insert: vi.fn(async () => ({ error: null })),
           };
         }
+        if (table === 'tenant_settings') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({
+                  data: { settings: { business_policy: { gst_inclusive: false, gst_rate: 18 } } },
+                  error: null,
+                })),
+              })),
+            })),
+          };
+        }
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
