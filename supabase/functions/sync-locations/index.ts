@@ -41,17 +41,12 @@ Deno.serve(async (req: Request) => {
     };
 
     if (integration.integration_type_id === 'zoho_books') {
-      // Zoho Books: locations (transaction-level) then inventory warehouses
-      // Warehouses must come after locations so their location_id FK can be resolved
+      // Zoho Books: keep this sync limited to locations only.
+      // Warehouses are now derived during product sync from item location snapshots.
       const locResult = await runPhaseSync(admin, integration, credentials, LOCATIONS_PHASE, syncOpts);
-      const whResult = await runPhaseSync(admin, integration, credentials, WAREHOUSES_PHASE, {
-        perPage: syncOpts.perPage,
-        since: syncOpts.since,
-      });
       return jsonResponse({
         ...locResult,
-        phase: 'locations+warehouses',
-        records_synced: locResult.records_synced + whResult.records_synced,
+        phase: 'locations',
       });
     }
 

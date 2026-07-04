@@ -2,8 +2,12 @@ export type ZohoOAuthIntegrationTypeId = 'zoho_books' | 'zoho_inventory';
 
 export const ZOHO_OAUTH_SCOPES_BY_INTEGRATION: Record<ZohoOAuthIntegrationTypeId, string> = {
   zoho_books: [
-    'ZohoBooks.fullaccess.all',
-    'ZohoInventory.settings.READ',
+    'ZohoBooks.contacts.ALL',
+    'ZohoBooks.items.ALL',
+    'ZohoBooks.salesorders.ALL',
+    'ZohoBooks.invoices.ALL',
+    'ZohoBooks.estimates.ALL',
+    'ZohoBooks.settings.ALL',
   ].join(','),
   zoho_inventory: [
     'ZohoInventory.fullaccess.all',
