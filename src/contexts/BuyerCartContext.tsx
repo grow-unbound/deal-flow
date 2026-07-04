@@ -12,6 +12,7 @@ export interface BuyerCartItem {
   internal_sku?: string;
   image_url?: string;
   unit_price: number;
+  gst_rate?: number | null;
   unit?: string;
   quantity: number;
   line_total: number;
@@ -39,7 +40,7 @@ function cartReducer(state: CartState, action: CartAction): CartState {
         return {
           items: state.items.map((i) =>
             i.tenant_product_id === action.item.tenant_product_id
-              ? { ...i, quantity: newQty, line_total: newQty * i.unit_price }
+            ? { ...i, quantity: newQty, line_total: newQty * i.unit_price }
               : i
           ),
         };
@@ -120,6 +121,7 @@ export function BuyerCartProvider({ children }: { children: ReactNode }) {
         product_name: item.name,
         brand: item.brand,
         unit_price: item.unit_price,
+        gst_rate: item.gst_rate ?? null,
         quantity: item.quantity,
       });
     },

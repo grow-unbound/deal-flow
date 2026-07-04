@@ -83,8 +83,8 @@ export function useTenantEstimatesInfinite(
   });
 }
 
-async function fetchTenantEstimateDetail(estimateId: string): Promise<TenantEstimateDetailResponse> {
-  const res = await apiFetch(`/api/tenant/estimates/${estimateId}`);
+async function fetchTenantEstimateDetail(estimateId: string, view: 'detail' | 'composer' = 'detail'): Promise<TenantEstimateDetailResponse> {
+  const res = await apiFetch(`/api/tenant/estimates/${estimateId}?view=${view}`);
   if (res.status === 404) throw new Error('not_found');
   if (res.status === 403) throw new Error('forbidden');
   if (!res.ok) throw new Error('Failed to fetch estimate');
@@ -95,7 +95,7 @@ async function fetchTenantEstimateDetail(estimateId: string): Promise<TenantEsti
 export function tenantEstimateComposerQueryOptions(estimateId: string) {
   return {
     queryKey: ['tenant-estimate-composer', estimateId] as const,
-    queryFn: () => fetchTenantEstimateDetail(estimateId),
+    queryFn: () => fetchTenantEstimateDetail(estimateId, 'composer'),
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
   };
@@ -112,7 +112,7 @@ export function seedEstimateComposerCache(qc: QueryClient, estimateId: string, d
 export function useEstimateDetail(estimateId: string) {
   return useQuery({
     queryKey: ['tenant-estimate-detail', estimateId],
-    queryFn: () => fetchTenantEstimateDetail(estimateId),
+    queryFn: () => fetchTenantEstimateDetail(estimateId, 'detail'),
     enabled: Boolean(estimateId),
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,

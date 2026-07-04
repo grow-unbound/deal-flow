@@ -5,9 +5,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 const pushMock = vi.fn();
 const useEstimateDetailMock = vi.fn();
 const useConvertMock = vi.fn();
+const useConvertInvoiceMock = vi.fn();
+const useEstimateProductSearchMock = vi.fn();
 const useVoidMock = vi.fn();
 const useDupMock = vi.fn();
 const useFlagStateMock = vi.fn();
+const useCreateFlagsMock = vi.fn();
 const seedEstimateComposerCacheMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
@@ -18,6 +21,8 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/hooks/useEstimates', () => ({
   useEstimateDetail: (...args: unknown[]) => useEstimateDetailMock(...args),
   useConvertEstimateToOrder: (...args: unknown[]) => useConvertMock(...args),
+  useConvertEstimateToInvoice: (...args: unknown[]) => useConvertInvoiceMock(...args),
+  useEstimateProductSearch: (...args: unknown[]) => useEstimateProductSearchMock(...args),
   useVoidEstimate: (...args: unknown[]) => useVoidMock(...args),
   useDuplicateEstimate: (...args: unknown[]) => useDupMock(...args),
   useSendEstimate: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -26,6 +31,25 @@ vi.mock('@/hooks/useEstimates', () => ({
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlagState: (...args: unknown[]) => useFlagStateMock(...args),
+}));
+
+vi.mock('@/hooks/useCreateFlags', () => ({
+  useCreateFlags: (...args: unknown[]) => useCreateFlagsMock(...args),
+}));
+
+vi.mock('@/hooks/useTenantSettings', () => ({
+  useTenantSettings: () => ({
+    data: { modules: { business_policy: { credit_enabled: true, gst_inclusive: false, gst_rate: 18 } } },
+    isLoading: false,
+    isError: false,
+    error: null,
+    save: vi.fn(),
+    isSaving: false,
+  }),
+}));
+
+vi.mock('@/hooks/useBusinessPolicy', () => ({
+  useBusinessPolicy: () => ({ creditEnabled: true, gstInclusive: false, gstRate: 18 }),
 }));
 
 import type { ReactElement } from 'react';
@@ -141,7 +165,10 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
     pushMock.mockReset();
     seedEstimateComposerCacheMock.mockReset();
     useFlagStateMock.mockReturnValue(true);
+    useCreateFlagsMock.mockReturnValue({ createSalesOrders: true, createInvoices: true, createEstimates: true });
     useConvertMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useConvertInvoiceMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useEstimateProductSearchMock.mockReturnValue({ data: [], isLoading: false, isError: false, error: null });
     useVoidMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
     useDupMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
     useEstimateDetailMock.mockReturnValue({
@@ -240,9 +267,9 @@ describe('EstimateDetailPage (EP-17-004 composer view)', () => {
       error: null,
     });
     renderWithQueryClient(<EstimateDetailPage id="est-1" />);
-    fireEvent.click(screen.getByRole('button', { name: /convert to so/i }));
+    fireEvent.click(screen.getByRole('button', { name: /convert estimate/i }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText(/convert to sales order/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/convert estimate/i)).toBeInTheDocument();
   });
 
   it('hides void for seller_assistant', () => {

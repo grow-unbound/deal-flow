@@ -66,6 +66,7 @@ export async function assembleBuyerCatalogItemsForProductIds(
         name_override,
         mrp,
         base_selling_price,
+        gst_rate,
         default_uom,
         pack_size,
         image_urls,
@@ -95,6 +96,7 @@ export async function assembleBuyerCatalogItemsForProductIds(
     name_override: string | null;
     mrp: number | null;
     base_selling_price: number | null;
+    gst_rate: number | null;
     default_uom: string | null;
     pack_size: number | null;
     image_urls: string[] | null;
@@ -113,7 +115,7 @@ export async function assembleBuyerCatalogItemsForProductIds(
       ? db
           .schema('catalog')
           .from('products')
-          .select('id, name, image_urls, category_id, brand_id, categories(id, name, slug, image_url)')
+          .select('id, name, image_urls, category_id, brand_id, gst_rate, categories(id, name, slug, image_url)')
           .in('id', masterProductIds)
       : Promise.resolve({ data: [], error: null }),
     tenantBrandIds.length > 0
@@ -143,6 +145,7 @@ export async function assembleBuyerCatalogItemsForProductIds(
       name: string;
       image_urls: string[] | null;
       brand_id: string;
+      gst_rate: number | null;
       categories: { id: string; name: string; slug: string; image_url: string | null } | null;
     }>).map((product) => [product.id, product]),
   );
@@ -227,6 +230,7 @@ export async function assembleBuyerCatalogItemsForProductIds(
       display_name: product.name_override ?? master?.name ?? product.internal_sku,
       brand_id: tenantBrand?.master_brand_id ?? null,
       brand_name: brandName,
+      gst_rate: product.gst_rate ?? master?.gst_rate ?? null,
       category_id: master?.categories?.id ?? null,
       category_name: master?.categories?.name ?? null,
       mrp: Number(product.mrp ?? 0),

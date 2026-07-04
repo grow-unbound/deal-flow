@@ -33,6 +33,7 @@ interface BuyerMeResponse {
   business_policy: {
     credit_enabled: boolean;
     gst_inclusive: boolean;
+    gst_rate: number;
   };
   // WhatsApp Broadcast Phase C (§4.8): true when this buyer has never completed
   // the explicit consent checkbox — the buyer-side client redirects to /consent
@@ -112,6 +113,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const businessPolicy = {
       credit_enabled: rawPolicy.credit_enabled !== false,
       gst_inclusive: rawPolicy.gst_inclusive === true,
+      gst_rate: typeof rawPolicy.gst_rate === 'number' ? rawPolicy.gst_rate : 18,
     };
 
     // Pure seller preview (no linked buyer account)
@@ -131,11 +133,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         credit_limit: 0,
         credit_used: 0,
         open_orders_count: 0,
-      seller_preview: true,
-      support_whatsapp_number: process.env.WHATSAPP_ADMIN_NUMBER ?? null,
-      tenant: {
-        id: tenant.id,
-        name: tenant.business_name,
+        seller_preview: true,
+        support_whatsapp_number: process.env.WHATSAPP_ADMIN_NUMBER ?? null,
+        tenant: {
+          id: tenant.id,
+          name: tenant.business_name,
           slug: tenant.slug,
         },
         greeting_name: 'Preview',
