@@ -749,7 +749,7 @@ export function useIntegrationsSettings(initialData?: IntegrationSettingsPayload
       return { snapshots };
     },
     onSuccess: () => {
-      toast.success('Import started');
+      toast.success('Sync started');
     },
     onError: (error, _input, context) => {
       rollbackSnapshots(queryClient, context?.snapshots);

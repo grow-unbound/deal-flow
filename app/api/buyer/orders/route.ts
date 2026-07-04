@@ -150,8 +150,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
     }
 
     const tenant_id = context.tenant_id;
-    const buyer_id = profile.buyer.id;
     const placed_by = context.sub;
+    if (!tenant_id || !placed_by) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const buyer_id = profile.buyer.id;
     const db = supabaseAdmin ?? supabase;
     const policy = await loadBuyerBusinessPolicy(db as typeof supabaseAdmin, tenant_id);
     const subtotal = items.reduce((sum, item) => sum + item.qty * item.unit_price, 0);

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronRight, MapPin } from 'lucide-react';
+import { ChevronRight, MapPin, ShoppingBag } from 'lucide-react';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
@@ -26,6 +26,20 @@ export default function CheckoutPage() {
   const selectedDelivery = delivery?.selected ?? null;
   const gstInclusive = meData?.business_policy.gst_inclusive ?? false;
   const gstRate = meData?.business_policy.gst_rate ?? 18;
+  const totals = useMemo(
+    () =>
+      computeBuyerCartTotals(
+        items.map((item) => ({
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          disc_pct: 0,
+          gst_rate: item.gst_rate ?? gstRate,
+        })),
+        gstInclusive,
+        gstRate,
+      ),
+    [items, gstInclusive, gstRate],
+  );
   const [notes, setNotes] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -306,16 +320,3 @@ export default function CheckoutPage() {
     </div>
   );
 }
-  const totals = useMemo(
-    () => computeBuyerCartTotals(
-      items.map((item) => ({
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        disc_pct: 0,
-        gst_rate: item.gst_rate ?? gstRate,
-      })),
-      gstInclusive,
-      gstRate,
-    ),
-    [items, gstInclusive, gstRate],
-  );
