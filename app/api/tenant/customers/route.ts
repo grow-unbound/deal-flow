@@ -36,6 +36,7 @@ type BuyerRow = {
     source: 'direct' | 'cohort';
     cohort_name?: string | null;
   } | null;
+  whatsapp_opted_out: boolean;
 };
 
 type PriceListAssignmentRow = {
@@ -149,7 +150,7 @@ export async function GET(req: NextRequest) {
     const { data: buyers, error: buyersError } = await db
       .schema('app')
       .from('buyers')
-      .select('id, business_name, tier, phone, gst_treatment, status, credit_limit, is_active, geography, deleted_at')
+      .select('id, business_name, tier, phone, gst_treatment, status, credit_limit, is_active, geography, deleted_at, whatsapp_opt_out_at')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
       .order('business_name', { ascending: true })
@@ -433,6 +434,7 @@ export async function GET(req: NextRequest) {
           initials: getInitials(buyer.business_name),
           hue: index % 3 === 0 ? 'teal' : index % 3 === 1 ? 'ember' : 'cream',
         },
+        whatsapp_opted_out: Boolean(buyer.whatsapp_opt_out_at),
       };
     });
 

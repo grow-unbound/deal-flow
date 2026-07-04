@@ -63,6 +63,7 @@ export function applyTenantSettingsPatch(prev: TenantSettingsApiPayload, patch: 
       buyer_app: {
         enabled: patchedModules.buyer_app.enabled,
         whatsapp_number: patchedModules.buyer_app.whatsapp_number,
+        whatsapp_display_name: patchedModules.buyer_app.whatsapp_display_name,
       },
       catalog: patchedModules.catalog,
       plan: prev.unified.plan,

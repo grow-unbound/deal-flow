@@ -113,6 +113,7 @@ export async function middleware(request: NextRequest) {
   // Guard 2: buyers must stay in /buy — redirect them away from seller/root pages
   const isBuyerSafeZone =
     pathname.startsWith('/buy') ||
+    pathname.startsWith('/consent') ||
     pathname.startsWith('/api') ||
     pathname.startsWith('/auth') ||
     isPublicRoute(pathname);

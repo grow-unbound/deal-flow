@@ -107,5 +107,7 @@ export async function fetchWhatsappNotificationContext(
     buyerPhone,
     buyerName,
     etaHours,
+    tenantId,
+    buyerId,
   };
 }

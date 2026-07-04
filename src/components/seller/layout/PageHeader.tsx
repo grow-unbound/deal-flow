@@ -15,6 +15,8 @@ interface HeaderAction {
   label: string;
   icon: ReactNode;
   onClick?: () => void;
+  disabled?: boolean;
+  title?: string;
 }
 
 interface PageHeaderProps {
@@ -82,7 +84,12 @@ export function PageHeader({
           </button>
         )}
         {secondary ? (
-          <Button variant="secondary" onClick={secondary.onClick}>
+          <Button
+            variant="secondary"
+            onClick={secondary.onClick}
+            disabled={secondary.disabled}
+            title={secondary.title}
+          >
             {secondary.icon}
             {secondary.label}
           </Button>
