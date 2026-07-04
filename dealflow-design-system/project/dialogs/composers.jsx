@@ -925,7 +925,7 @@ function InlineTeamRows() {
                       <td>
                         <div className="person">
                           <div className="b-av b-av--ember" style={{ width: 28, height: 28, borderRadius: 6, fontSize: 10 }}>SB</div>
-                          <span className="name">Suresh Bharat</span>
+                          <span className="name">Full name</span>
                         </div>
                       </td>
                       <td className="mono">+91 98101 22433</td>

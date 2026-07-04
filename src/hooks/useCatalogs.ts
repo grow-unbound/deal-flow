@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api-fetch';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
-import type { CatalogComposerFilterState, CatalogComposerPayload, CatalogComposerTag } from '@/lib/zod';
+import type { CatalogComposerFilterState, CatalogComposerPayload, CatalogComposerPriceSource, CatalogComposerTag } from '@/lib/zod';
 import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
 
 export type CatalogDisplayStatus = 'Live' | 'Draft' | 'Ended';
@@ -197,13 +197,18 @@ export interface CatalogDetailResponse {
     has_unpublished_changes: boolean;
     valid_from: string;
     valid_to: string | null;
-    scope_type: 'cohort' | 'all';
+    scope_type: 'cohort' | 'buyer' | 'all';
     cohort_id: string | null;
+    buyer_ids?: string[];
+    message?: string | null;
+    price_source?: CatalogComposerPriceSource;
+    price_list_id?: string | null;
     filters: CatalogComposerFilterState;
     tag_overrides: Record<string, CatalogComposerTag | null>;
     items: Array<{
       tenant_product_id: string;
       display_order: number;
+      price_override?: number | null;
     }>;
   };
 }
@@ -216,6 +221,7 @@ export interface CatalogComposerProduct {
   category_name: string | null;
   mrp: number | null;
   base_selling_price: number | null;
+  cost_price: number | null;
   qty_available: number;
   reorder_point: number;
   units_mtd: number;
@@ -233,6 +239,40 @@ export interface CatalogComposerBootstrapResponse {
     member_count: number;
   }>;
   buyer_count: number;
+  can_view_cost: boolean;
+  buyers: Array<{
+    id: string;
+    business_name: string;
+    contact_name: string | null;
+    external_ref: string | null;
+    city: string | null;
+    state: string | null;
+    geography_label: string;
+    tier: 'A' | 'B' | 'C' | null;
+    credit_limit: number;
+    payment_terms_days: number;
+    orders_30d: number;
+    gmv_30d: number;
+    last_order_at: string | null;
+    initials: string;
+    hue: 'teal' | 'ember' | 'cream';
+  }>;
+  buyer_filters: {
+    geographies: Array<{ value: string; label: string; count: number }>;
+    tiers: Array<{ value: string; label: string; count: number }>;
+  };
+  price_lists: Array<{
+    id: string;
+    name: string;
+    status: 'active' | 'draft';
+    valid_from: string | null;
+    valid_to: string | null;
+  }>;
+  price_list_items: Array<{
+    price_list_id: string;
+    tenant_product_id: string;
+    price: number;
+  }>;
   products: CatalogComposerProduct[];
 }
 
@@ -330,7 +370,7 @@ export function useSaveCatalogComposer(catalogId?: string) {
       return res.json() as Promise<{ catalog: { id: string; status: 'draft' | 'published' | 'archived' } }>;
     },
     onSuccess: (_data, _payload) => {
-      toast.success('Catalog saved');
+      toast.success('Campaign saved');
       queryClient.invalidateQueries({ queryKey: ['tenant-catalogs'] });
       queryClient.invalidateQueries({ queryKey: ['catalog-composer-bootstrap'] });
       if (catalogId) {

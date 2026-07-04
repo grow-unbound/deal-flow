@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import Image from 'next/image';
 import Link from 'next/link';
 import { Bell, ChevronRight } from 'lucide-react';
 
@@ -10,6 +9,7 @@ import type { BuyerActivityFeedResponse, BuyerActivityItem, BuyerHomeResponse } 
 import { apiFetch } from '@/lib/api-fetch';
 import { ErrorState } from '@/components/ui/empty-state';
 import { BuyerHomeLandingHeader } from '@/components/buyer/layout/BuyerHomeLandingHeader';
+import { ProductCard } from '@/components/buyer/catalog/ProductCard';
 
 const BuyerNotificationDrawer = dynamic(
   () => import('@/components/buyer/layout/BuyerNotificationDrawer').then((m) => m.BuyerNotificationDrawer),
@@ -344,44 +344,7 @@ export default function HomePage() {
             ))
           ) : reorderItems.length > 0 ? (
             reorderItems.map((item) => (
-              <Link
-                key={item.tenant_product_id}
-                href={`/buy/product/${item.tenant_product_id}`}
-                onClick={() => markBuyerNavigationForward()}
-                className="w-[178px] shrink-0 overflow-hidden rounded-[28px] border border-[var(--border-1)] bg-[var(--bg-surface)] no-underline shadow-[0_1px_0_rgba(34,30,26,0.03)]"
-              >
-                <div
-                  className="relative flex h-[220px] items-center justify-center p-5"
-                  style={{
-                    background: item.brand_name?.toLowerCase().includes('chenin')
-                      ? 'linear-gradient(180deg, #e8f0ec 0%, #dfece8 100%)'
-                      : item.brand_name?.toLowerCase().includes('pale')
-                        ? 'linear-gradient(180deg, #f7e2c2 0%, #f4d6ab 100%)'
-                        : 'linear-gradient(180deg, #f7f3ea 0%, #f3ece0 100%)',
-                  }}
-                >
-                  {item.image_urls[0] ? (
-                    <Image
-                      src={item.image_urls[0]}
-                      alt={item.display_name}
-                      fill
-                      className="object-contain"
-                      sizes="178px"
-                      unoptimized
-                    />
-                  ) : (
-                    <div className="h-40 w-20 rounded-[14px] bg-[var(--teal-900)]" />
-                  )}
-                </div>
-                <div className="bg-white px-4 py-4">
-                  <p className="line-clamp-2 text-[var(--b-text-section)] font-semibold leading-7 tracking-[-0.015em] text-[var(--cream-900)]">
-                    {item.display_name}
-                  </p>
-                  <p className="mt-2 font-mono text-[var(--b-text-header)] font-medium tabular-nums text-[var(--cream-900)]">
-                    {inr(item.price)} <span className="font-sans text-[var(--cream-700)]">/ unit</span>
-                  </p>
-                </div>
-              </Link>
+              <ProductCard key={item.tenant_product_id} item={item} className="w-[178px] shrink-0" />
             ))
           ) : (
             <p className="px-1 text-[var(--b-text-body)] font-medium tracking-[-0.01em] text-[var(--cream-600)]">No previous orders yet.</p>

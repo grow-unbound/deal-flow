@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { apiFetch, apiPost } from '@/lib/api-fetch';
-import type { TenantWarehouse } from '@/types/tenant-warehouses';
+import type { TenantWarehouse, WarehouseAddress, WarehouseAssociatedUser } from '@/types/tenant-warehouses';
 
 export interface InventoryRow {
   id: string;
@@ -99,7 +99,18 @@ export function useUpsertInventory() {
 export function useCreateWarehouse() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { name: string; address?: object; is_default?: boolean }) => {
+    mutationFn: async (data: {
+      name: string;
+      address?: Partial<WarehouseAddress>;
+      phone_number?: string | null;
+      location_id?: string | null;
+      status?: 'active' | 'inactive';
+      is_default?: boolean;
+      external_ref?: string | null;
+      associated_users?: WarehouseAssociatedUser[];
+      lat?: number | null;
+      lng?: number | null;
+    }) => {
       const res = await apiPost('/api/tenant/warehouses', data);
       const json = (await res.json()) as { data?: { warehouse: TenantWarehouse }; error?: { message?: string } };
       if (!res.ok) {

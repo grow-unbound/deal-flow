@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
+import { FilterBar } from '@/components/seller/layout';
 import { formatCompactInr } from '@/lib/utils';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { TransactionTable, type TransactionTableKind } from '@/components/seller/transactional';
@@ -35,6 +37,28 @@ interface CustomerOrdersTabProps {
   routeBase?: string;
 }
 
+type SortOption = 'Newest first' | 'Oldest first' | 'Amount (high → low)' | 'Amount (low → high)' | 'Status (A → Z)';
+
+function getChips(kind: TransactionTableKind) {
+  if (kind === 'estimate') {
+    return ['All estimates', 'Draft', 'Sent', 'Accepted', 'Converted', 'Declined', 'Expired'];
+  }
+  if (kind === 'invoice') {
+    return ['All invoices', 'Draft', 'Sent', 'Paid', 'Overdue', 'Void'];
+  }
+  return ['All orders', 'Received', 'Confirmed', 'In transit', 'Delivered', 'Cancelled'];
+}
+
+function getSortOptions(kind: TransactionTableKind): SortOption[] {
+  if (kind === 'estimate') {
+    return ['Newest first', 'Oldest first', 'Amount (high → low)', 'Amount (low → high)', 'Status (A → Z)'];
+  }
+  if (kind === 'invoice') {
+    return ['Newest first', 'Oldest first', 'Amount (high → low)', 'Amount (low → high)', 'Status (A → Z)'];
+  }
+  return ['Newest first', 'Oldest first', 'Amount (high → low)', 'Amount (low → high)', 'Status (A → Z)'];
+}
+
 function statusTone(kind: TransactionTableKind, status: string): 'success' | 'warning' | 'danger' | 'neutral' {
   if (kind === 'order') {
     if (['confirmed', 'dispatched', 'delivered', 'invoiced', 'partially_invoiced'].includes(status)) return 'success';
@@ -67,23 +91,97 @@ export function CustomerOrdersTab({
   routeBase = '/sales-orders',
 }: CustomerOrdersTabProps) {
   const showCampaignColumn = useFlagState('CATALOG_PUBLISHING') === true;
+  const [search, setSearch] = useState('');
+  const [activeChip, setActiveChip] = useState(getChips(kind)[0]);
+  const [sortBy, setSortBy] = useState<SortOption>('Newest first');
+
+  const chips = useMemo(() => getChips(kind), [kind]);
+  const sortOptions = useMemo(() => getSortOptions(kind), [kind]);
+
+  useEffect(() => {
+    setActiveChip(chips[0]);
+    setSortBy('Newest first');
+  }, [chips, kind]);
+
+  const filteredOrders = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const rowTime = (row: (typeof orders)[number]) =>
+      new Date(row.created_at ?? row.issued_at ?? row.placed_at ?? 0).getTime();
+
+    return orders
+      .filter((row) => {
+        const label = titleCase(row.status);
+        if (activeChip === chips[0]) return true;
+        if (kind === 'order') {
+          if (activeChip === 'In transit') return ['dispatched', 'partially_dispatched'].includes(row.status);
+          if (activeChip === 'Cancelled') return row.status === 'cancelled';
+          return label === activeChip || row.status === activeChip.toLowerCase();
+        }
+        if (kind === 'estimate') {
+          if (activeChip === 'Draft') return row.status === 'draft';
+          if (activeChip === 'Sent') return row.status === 'sent';
+          if (activeChip === 'Accepted') return row.status === 'accepted';
+          if (activeChip === 'Converted') return row.status === 'converted';
+          if (activeChip === 'Declined') return row.status === 'declined';
+          if (activeChip === 'Expired') return row.status === 'expired';
+          return true;
+        }
+        if (activeChip === 'Draft') return row.status === 'draft';
+        if (activeChip === 'Sent') return row.status === 'sent';
+        if (activeChip === 'Paid') return row.status === 'paid';
+        if (activeChip === 'Overdue') return row.status === 'overdue';
+        if (activeChip === 'Void') return row.status === 'void';
+        return true;
+      })
+      .filter((row) => {
+        if (!query) return true;
+        return [
+          row.document_number,
+          row.buyer_name,
+          row.location_name,
+          row.campaign_name,
+          row.source_label,
+          row.status_label,
+        ]
+          .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+          .some((value) => value.toLowerCase().includes(query));
+      })
+      .sort((a, b) => {
+        if (sortBy === 'Newest first') return rowTime(b) - rowTime(a);
+        if (sortBy === 'Oldest first') return rowTime(a) - rowTime(b);
+        if (sortBy === 'Amount (high → low)') return Number(b.total_amount ?? 0) - Number(a.total_amount ?? 0);
+        if (sortBy === 'Amount (low → high)') return Number(a.total_amount ?? 0) - Number(b.total_amount ?? 0);
+        return a.status_label.localeCompare(b.status_label) || a.document_number.localeCompare(b.document_number);
+      });
+  }, [activeChip, chips, kind, orders, search, sortBy]);
 
   return (
-    <section className="mt-5 overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-      <div className="border-b border-cream-300 px-5 py-4">
-        <h3 className="font-display text-lg text-cream-950">{title}</h3>
-        <p className="text-base text-cream-700">{description}</p>
-      </div>
+    <section className="mt-5 space-y-4">
+      <FilterBar
+        count={`${filteredOrders.length} ${title.toLowerCase()}`}
+        searchPlaceholder={`Search ${title.toLowerCase().slice(0, -1)}, buyer, location…`}
+        chips={chips}
+        activeChip={activeChip}
+        sortBy={sortBy}
+        hideViewToggle
+        searchValue={search}
+        onSearchChange={setSearch}
+        onChipChange={setActiveChip}
+        sortOptions={sortOptions}
+        onSortChange={(option) => setSortBy(option as SortOption)}
+      />
 
-      {orders.length === 0 ? (
-        <div className="py-12 text-center text-sm text-cream-500">No {title.toLowerCase()} found for this buyer.</div>
+      {filteredOrders.length === 0 ? (
+        <div className="rounded-[14px] border border-cream-300 bg-white py-12 text-center text-sm text-cream-500">
+          No {title.toLowerCase()} found for this buyer.
+        </div>
       ) : (
         <TransactionTable
           kind={kind}
           showCampaignColumn={showCampaignColumn}
           className="rounded-none border-0"
           tableMinWidth={showCampaignColumn ? (kind === 'invoice' ? 1480 : kind === 'estimate' ? 1450 : 1380) : kind === 'invoice' ? 1260 : kind === 'estimate' ? 1230 : 1180}
-          rows={orders.map((row) => {
+          rows={filteredOrders.map((row) => {
             const documentNumber =
               row.order_number ?? row.number ?? row.estimate_number ?? row.invoice_number ?? row.id.slice(0, 8);
             const itemsCount = row.items_count ?? row.items ?? 0;

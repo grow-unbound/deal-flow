@@ -18,10 +18,18 @@ vi.mock('@/components/FeatureGate', () => ({
   FeatureGate: ({ children }: { children: import('react').ReactNode }) => <>{children}</>,
 }));
 
+vi.mock('@/components/seller/customers/AddCustomerDialog', () => ({
+  AddCustomerDialog: () => null,
+}));
+
 const useRoleMock = vi.fn(() => ({ isSellerAdmin: true, isSellerAssistant: false }));
 
 vi.mock('@/hooks/useRole', () => ({
   useRole: () => useRoleMock(),
+}));
+
+vi.mock('@/hooks/useBusinessPolicy', () => ({
+  useBusinessPolicy: () => ({ creditEnabled: true }),
 }));
 
 vi.mock('@/hooks/useCustomersLanding', () => ({
@@ -36,7 +44,7 @@ vi.mock('@/hooks/useCustomersLanding', () => ({
         hue: 'teal',
         status_label: 'Active',
         status_tone: 'success',
-        tier: 'A',
+        buyer_app_enabled: true,
         city: 'Bengaluru',
         buyer_since: '2021-05-10T00:00:00Z',
         years_label: '5 yrs loyal',
@@ -65,9 +73,26 @@ vi.mock('@/hooks/useCustomersLanding', () => ({
         zone: 'South',
         payment_terms_days: 21,
         credit_limit: 100000,
-        external_ref: 'ER-1',
+        default_price_list_id: 'pl-1',
+        assigned_price_list: 'North Premium Pricing',
+        buyer_app_enabled: true,
         cohorts: ['Premium'],
         is_active: true,
+        buyer_users: [
+          {
+            id: 'user-1',
+            user_id: 'auth-1',
+            first_name: 'Amit',
+            last_name: 'Sharma',
+            full_name: 'Amit Sharma',
+            phone: '9876543210',
+            email: 'amit@example.com',
+            designation: 'Owner',
+            department: null,
+            is_active: true,
+            status: 'Active',
+          },
+        ],
       },
       performance: {
         monthly_spend_trend: [],
@@ -177,7 +202,7 @@ describe('customers/[id] detail shell', () => {
     expect(screen.getByRole('button', { name: /Orders/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Estimates/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Invoices/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Cohorts/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Customer Groups/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Price Lists/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Activity/i })).toBeInTheDocument();
   });
@@ -186,7 +211,8 @@ describe('customers/[id] detail shell', () => {
     renderPage();
 
     expect(screen.getByText(/Buyer since May 2021 · 5 yrs loyal/i)).toBeInTheDocument();
-    expect(screen.queryByText(/Buyer since/i, { selector: 'p' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Buyer app enabled/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Tier/i)).not.toBeInTheDocument();
   });
 
   it('shows credit used tile with backend percentage and orders badge', () => {
@@ -205,10 +231,6 @@ describe('customers/[id] detail shell', () => {
     renderPage();
 
     expect(screen.getByRole('button', { name: /Performance/i })).toHaveClass('border-teal-500');
-    expect(screen.getByText('Spend trend')).toBeInTheDocument();
-    expect(screen.getByText('Brand mix')).toBeInTheDocument();
-    expect(screen.getByText('Top SKUs')).toBeInTheDocument();
-    expect(screen.getByText('Credit & ops')).toBeInTheDocument();
   });
 
   it('hides Performance tab for seller assistants', () => {
@@ -229,5 +251,27 @@ describe('customers/[id] detail shell', () => {
     expect(screen.getByText(/Cohort · Premium/i)).toBeInTheDocument();
     expect(screen.getByText(/Validity/i)).toBeInTheDocument();
     expect(screen.getByText(/Resolved price lookup/i)).toBeInTheDocument();
+  });
+
+  it('shows header actions and buyer user table in the details tab', () => {
+    useRoleMock.mockReturnValue({ isSellerAdmin: true, isSellerAssistant: false });
+    renderPage();
+
+    expect(screen.getByText(/Send Message/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Edit Buyer/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Delete Buyer/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Details/i }));
+
+    expect(screen.getByText('Buyer details')).toBeInTheDocument();
+    expect(screen.getByText('Default pricelist')).toBeInTheDocument();
+    expect(screen.getByText('Buyer app')).toBeInTheDocument();
+    expect(screen.getByText('Buyer users')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Add User/i })).toBeInTheDocument();
+    expect(screen.getByText('Amit')).toBeInTheDocument();
+    expect(screen.getByText('Sharma')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Invite/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Deactivate$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Reactivate$/i })).not.toBeInTheDocument();
   });
 });

@@ -215,7 +215,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
         actions={
           <div className="flex items-center gap-2 pt-1">
             {isSellerAdmin ? (
-              <Button type="button" variant="accent" size="sm" onClick={() => router.push(`/campaigns/${id}/edit`)}>
+              <Button type="button" variant="ghost" size="sm" onClick={() => router.push(`/campaigns/${id}/edit`)}>
                 <PencilLine size={14} />
                 Edit Campaign
               </Button>
@@ -223,9 +223,9 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
 
             {isDraft ? (
               <Dialog open={publishConfirmOpen} onOpenChange={setPublishConfirmOpen}>
-                <Button type="button" size="sm" onClick={() => setPublishConfirmOpen(true)} disabled={publishMutation.isPending}>
+                <Button type="button" variant="accent" size="sm" onClick={() => setPublishConfirmOpen(true)} disabled={publishMutation.isPending}>
                   <Send size={14} />
-                  Publish Catalog
+                  Publish Campaign
                 </Button>
                 <DialogContent className="max-w-[420px]">
                   <DialogHeader>
@@ -241,7 +241,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
                     <Button type="button" variant="ghost" onClick={() => setPublishConfirmOpen(false)}>
                       Cancel
                     </Button>
-                    <Button type="button" onClick={() => void handlePublishCatalog()} disabled={publishMutation.isPending}>
+                    <Button type="button" variant="accent" onClick={() => void handlePublishCatalog()} disabled={publishMutation.isPending}>
                       Confirm publish
                     </Button>
                   </DialogFooter>

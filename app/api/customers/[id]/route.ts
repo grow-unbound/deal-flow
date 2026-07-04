@@ -4,6 +4,65 @@ import { getVerifiedClaims, decodeJWTPayload } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { BuyerUpdateSchema } from '@/lib/zod';
 
+async function syncDefaultPriceListAssignment(
+  db: any,
+  tenantId: string,
+  buyerId: string,
+  defaultPriceListId: string | null | undefined,
+  actorUserId: string | null,
+) {
+  const { error: deleteError } = await db
+    .schema('app')
+    .from('price_list_assignments')
+    .update({ deleted_at: new Date().toISOString(), updated_by: actorUserId })
+    .eq('target_type', 'buyer')
+    .eq('target_id', buyerId)
+    .is('deleted_at', null);
+
+  if (deleteError) {
+    throw new Error(deleteError.message);
+  }
+
+  if (!defaultPriceListId) {
+    return null;
+  }
+
+  const { data: priceList, error: priceListError } = await db
+    .schema('app')
+    .from('price_lists')
+    .select('id')
+    .eq('id', defaultPriceListId)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (priceListError) {
+    throw new Error(priceListError.message);
+  }
+  if (!priceList) {
+    throw new Error('Selected pricelist is invalid for this tenant.');
+  }
+
+  const { data: assignment, error: insertError } = await db
+    .schema('app')
+    .from('price_list_assignments')
+    .insert({
+      price_list_id: defaultPriceListId,
+      target_type: 'buyer',
+      target_id: buyerId,
+      created_by: actorUserId,
+      updated_by: actorUserId,
+    })
+    .select()
+    .single();
+
+  if (insertError) {
+    throw new Error(insertError.message);
+  }
+
+  return assignment;
+}
+
 // ─── GET /api/customers/[id] ────────────────────────────────────────────────
 
 export async function GET(
@@ -118,18 +177,8 @@ export async function PUT(
   // seller_assistant cannot update financial or access fields — strip them silently
   if (claims.role === 'seller_assistant') {
     delete updateData.credit_limit;
-    delete updateData.tier;
     delete updateData.default_cohort_id;
     delete updateData.buyer_app_enabled;
-  }
-
-  // external_ref is immutable once set (non-null, non-empty) — remove from update
-  if (
-    existing.external_ref &&
-    existing.external_ref.trim() !== '' &&
-    'external_ref' in updateData
-  ) {
-    delete updateData.external_ref;
   }
 
   // Phone uniqueness check (if phone is being changed)
@@ -169,6 +218,31 @@ export async function PUT(
       );
     }
   }
+
+  if ('default_price_list_id' in updateData) {
+    const nextPriceListId = updateData.default_price_list_id ?? null;
+    if (nextPriceListId) {
+      const { data: priceList } = await db
+        .schema('app')
+        .from('price_lists')
+        .select('id')
+        .eq('id', nextPriceListId)
+        .eq('tenant_id', claims.tenant_id)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (!priceList) {
+        return NextResponse.json(
+          { error: 'Selected pricelist is invalid for this tenant.' },
+          { status: 400 },
+        );
+      }
+    }
+  }
+
+  const nextDefaultPriceListId =
+    'default_price_list_id' in updateData ? updateData.default_price_list_id ?? null : undefined;
+  delete updateData.default_price_list_id;
 
   // Compute diff for audit log (field name → new value for changed fields only)
   const diff: Record<string, any> = {};
@@ -215,6 +289,23 @@ export async function PUT(
         .delete()
         .eq('cohort_id', existing.default_cohort_id)
         .eq('buyer_id', id);
+    }
+  }
+
+  if (nextDefaultPriceListId !== undefined) {
+    try {
+      await syncDefaultPriceListAssignment(
+        db,
+        claims.tenant_id,
+        id,
+        nextDefaultPriceListId,
+        claims.sub ?? null,
+      );
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Failed to assign pricelist' },
+        { status: 400 },
+      );
     }
   }
 

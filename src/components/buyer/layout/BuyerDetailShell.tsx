@@ -10,13 +10,26 @@ import { useBuyerScrollCollapse } from '@/hooks/useBuyerScrollCollapse';
 import { markBuyerNavigationBack } from '@/hooks/useBuyerNavigationDirection';
 
 export interface BuyerDetailShellProps {
-  title: string;
+  title: React.ReactNode;
   /** When set, show search pill linking to fullscreen search with these query params. */
   searchHref?: string;
+  /** Optional right-aligned content in the main title row. */
+  rightSlot?: React.ReactNode;
+  /** Optional row shown below the title row. */
+  subtitle?: React.ReactNode;
+  /** Hide the buyer location control for detail screens. */
+  showLocationControl?: boolean;
   children: React.ReactNode;
 }
 
-export function BuyerDetailShell({ title, searchHref, children }: BuyerDetailShellProps) {
+export function BuyerDetailShell({
+  title,
+  searchHref,
+  rightSlot,
+  subtitle,
+  showLocationControl,
+  children,
+}: BuyerDetailShellProps) {
   const router = useRouter();
   const { collapsed, sentinelRef } = useBuyerScrollCollapse();
 
@@ -36,7 +49,7 @@ export function BuyerDetailShell({ title, searchHref, children }: BuyerDetailShe
           WebkitBackdropFilter: 'blur(14px)',
         }}
       >
-        <div className="flex items-center gap-2 px-3 py-2.5">
+        <div className="flex items-start gap-2 px-3 pt-2.5">
           <button
             type="button"
             onClick={handleBack}
@@ -45,17 +58,23 @@ export function BuyerDetailShell({ title, searchHref, children }: BuyerDetailShe
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
-          <h1
-            className="min-w-0 flex-1 font-semibold text-[var(--fg-1)] leading-tight"
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 'var(--b-text-header)',
-              letterSpacing: '-0.01em',
-            }}
-          >
-            {title}
-          </h1>
-          <BuyerLocationControl />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start gap-2">
+              <h1
+                className="min-w-0 flex-1 font-semibold text-[var(--fg-1)] leading-tight"
+                style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 'var(--b-text-header)',
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                {title}
+              </h1>
+              {rightSlot ? <div className="shrink-0 pt-0.5">{rightSlot}</div> : null}
+            </div>
+            {subtitle ? <div className="mt-1">{subtitle}</div> : null}
+          </div>
+          {showLocationControl ? <BuyerLocationControl /> : null}
           {searchHref ? <BuyerSearchIconButton href={searchHref} /> : null}
         </div>
       </header>

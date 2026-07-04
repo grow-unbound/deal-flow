@@ -5,6 +5,65 @@ import { getFlag } from '@/lib/flags';
 import { BuyerCreateSchema } from '@/lib/zod';
 import { getPostHogClient } from '@/lib/posthog-server';
 
+async function syncDefaultPriceListAssignment(
+  db: any,
+  tenantId: string,
+  buyerId: string,
+  defaultPriceListId: string | null | undefined,
+  actorUserId: string | null,
+) {
+  const { error: deleteError } = await db
+    .schema('app')
+    .from('price_list_assignments')
+    .update({ deleted_at: new Date().toISOString(), updated_by: actorUserId })
+    .eq('target_type', 'buyer')
+    .eq('target_id', buyerId)
+    .is('deleted_at', null);
+
+  if (deleteError) {
+    throw new Error(deleteError.message);
+  }
+
+  if (!defaultPriceListId) {
+    return null;
+  }
+
+  const { data: priceList, error: priceListError } = await db
+    .schema('app')
+    .from('price_lists')
+    .select('id')
+    .eq('id', defaultPriceListId)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (priceListError) {
+    throw new Error(priceListError.message);
+  }
+  if (!priceList) {
+    throw new Error('Selected pricelist is invalid for this tenant.');
+  }
+
+  const { data: assignment, error: insertError } = await db
+    .schema('app')
+    .from('price_list_assignments')
+    .insert({
+      price_list_id: defaultPriceListId,
+      target_type: 'buyer',
+      target_id: buyerId,
+      created_by: actorUserId,
+      updated_by: actorUserId,
+    })
+    .select()
+    .single();
+
+  if (insertError) {
+    throw new Error(insertError.message);
+  }
+
+  return assignment;
+}
+
 export async function GET(request: NextRequest) {
   const claims = await getVerifiedClaims(request);
 
@@ -107,25 +166,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // external_ref uniqueness check per tenant (only if provided)
-  if (data.external_ref && data.external_ref.trim() !== '') {
-    const { data: refMatch } = await db
-      .schema('app')
-      .from('buyers')
-      .select('id')
-      .eq('tenant_id', claims.tenant_id)
-      .eq('external_ref', data.external_ref.trim())
-      .is('is_active', true)
-      .maybeSingle();
-
-    if (refMatch) {
-      return NextResponse.json(
-        { error: 'A buyer with this ERP reference already exists.' },
-        { status: 409 },
-      );
-    }
-  }
-
   if (data.default_cohort_id) {
     const { data: cohort } = await db
       .schema('app')
@@ -144,6 +184,24 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  if (data.default_price_list_id) {
+    const { data: priceList } = await db
+      .schema('app')
+      .from('price_lists')
+      .select('id')
+      .eq('id', data.default_price_list_id)
+      .eq('tenant_id', claims.tenant_id)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (!priceList) {
+      return NextResponse.json(
+        { error: 'Selected pricelist is invalid for this tenant.' },
+        { status: 400 },
+      );
+    }
+  }
+
   const { data: buyer, error: insertError } = await db
     .schema('app')
     .from('buyers')
@@ -157,9 +215,8 @@ export async function POST(request: NextRequest) {
       geography: data.geography ?? null,
       credit_limit: data.credit_limit,
       payment_terms_days: data.payment_terms_days,
-      tier: data.tier ?? null,
-      external_ref: data.external_ref?.trim() || null,
       default_cohort_id: data.default_cohort_id ?? null,
+      buyer_app_enabled: data.buyer_app_enabled ?? false,
       is_active: true,
     })
     .select()
@@ -181,6 +238,24 @@ export async function POST(request: NextRequest) {
       .throwOnError();
   }
 
+  if (buyer) {
+    try {
+      await syncDefaultPriceListAssignment(
+        db,
+        claims.tenant_id,
+        buyer.id,
+        data.default_price_list_id ?? null,
+        claims.sub ?? null,
+      );
+    } catch (error) {
+      console.error('[POST /api/customers] failed to sync default pricelist:', error);
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Failed to assign pricelist' },
+        { status: 400 },
+      );
+    }
+  }
+
   try {
     const ph = getPostHogClient();
     ph.capture({
@@ -189,9 +264,9 @@ export async function POST(request: NextRequest) {
       properties: {
         tenant_id: claims.tenant_id,
         buyer_id: buyer?.id,
-        tier: data.tier ?? null,
         has_credit_limit: (data.credit_limit ?? 0) > 0,
         has_cohort: Boolean(data.default_cohort_id),
+        has_default_price_list: Boolean(data.default_price_list_id),
       },
     });
     await ph.flush();

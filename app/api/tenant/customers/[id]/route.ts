@@ -98,6 +98,18 @@ function isRecoverableOptionalError(error: { code?: string; message?: string } |
   );
 }
 
+function isVisibleOrderTransaction(order: { status: string }) {
+  return order.status !== 'draft' && order.status !== 'cancelled';
+}
+
+function isVisibleEstimateTransaction(estimate: { status: string }) {
+  return estimate.status !== 'pending' && estimate.status !== 'void';
+}
+
+function isVisibleInvoiceTransaction(invoice: { status: string }) {
+  return invoice.status !== 'draft' && invoice.status !== 'void';
+}
+
 async function optionalSelect(
   db: any,
   table: string,
@@ -180,7 +192,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { data: buyer, error: buyerError } = await db
     .schema('app')
     .from('buyers')
-    .select('id, tenant_id, business_name, contact_name, phone, email, gstin, gst_treatment, status, billing_address, shipping_address, tier, is_active, credit_limit, payment_terms_days, external_ref, default_cohort_id, geography, created_at, updated_at')
+    .select('id, tenant_id, business_name, contact_name, phone, email, gstin, gst_treatment, status, billing_address, shipping_address, is_active, buyer_app_enabled, credit_limit, payment_terms_days, default_cohort_id, geography, created_at, updated_at')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .is('deleted_at', null)
@@ -244,7 +256,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     db
       .schema('app')
       .from('buyer_users')
-      .select('id, first_name, last_name, email, phone, designation, department, is_active')
+      .select('id, user_id, first_name, last_name, email, phone, designation, department, is_active, created_at')
       .eq('buyer_id', id)
       .is('deleted_at', null)
       .order('created_at', { ascending: true }),
@@ -258,8 +270,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const prevOrders = prevOrdersRes.data ?? [];
   const allOrders = allOrdersRes.data ?? [];
   const auditRows = auditRes.data ?? [];
+  const visibleMonthOrders = monthOrders.filter(isVisibleOrderTransaction);
+  const visiblePrevOrders = prevOrders.filter(isVisibleOrderTransaction);
+  const visibleOrders = allOrders.filter(isVisibleOrderTransaction);
 
-  const orderIds = allOrders.map((order: { id: string }) => order.id);
+  const orderIds = visibleOrders.map((order: { id: string }) => order.id);
 
   const orderItemsRes = orderIds.length
     ? await db
@@ -370,6 +385,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const scopedInvoices = claims.role === 'seller_assistant' && (claims.location_ids?.length ?? 0) > 0
     ? invoices.filter((invoice: any) => invoice.location_id && claims.location_ids?.includes(String(invoice.location_id)))
     : invoices;
+  const visibleInvoices = scopedInvoices.filter(isVisibleInvoiceTransaction);
   const estimatesRes = await scopeByAccessibleLocations(
     db
       .schema('app')
@@ -385,15 +401,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: 'Failed to fetch customer detail data' }, { status: 500 });
   }
   const estimateRows = estimatesRes.data ?? [];
+  const visibleEstimates = estimateRows.filter(isVisibleEstimateTransaction);
   const accessibleLocations = await loadAccessibleSellerLocations(db as any, claims.tenant_id, claims);
   const locationNameById = new Map(accessibleLocations.map((location) => [location.id, location.name]));
 
   const campaignIds = Array.from(
     new Set([
-      ...allOrders.map((order: { campaign_id?: string | null }) => order.campaign_id),
-      ...estimateRows.map((estimate: { campaign_id?: string | null }) => estimate.campaign_id),
-      ...scopedInvoices.map((invoice: { order_id?: string | null }) => {
-        const linkedOrder = allOrders.find((order: any) => order.id === invoice.order_id);
+      ...visibleOrders.map((order: { campaign_id?: string | null }) => order.campaign_id),
+      ...visibleEstimates.map((estimate: { campaign_id?: string | null }) => estimate.campaign_id),
+      ...visibleInvoices.map((invoice: { order_id?: string | null }) => {
+        const linkedOrder = visibleOrders.find((order: any) => order.id === invoice.order_id);
         return linkedOrder?.campaign_id ?? null;
       }),
     ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0)),
@@ -406,8 +423,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
   const catalogById = new Map<string, string>(((campaignsRes.data ?? []) as Array<{ id: string; name: string }>).map((row) => [row.id, row.name]));
 
-  const estimateIds = estimateRows.map((estimate: any) => estimate.id);
-  const invoiceIds = scopedInvoices.map((invoice: any) => invoice.id);
+  const estimateIds = visibleEstimates.map((estimate: any) => estimate.id);
+  const invoiceIds = visibleInvoices.map((invoice: any) => invoice.id);
   const [estimateItemsRes, invoiceItemsRes] = await Promise.all([
     estimateIds.length
       ? db
@@ -453,7 +470,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     .schema('app')
     .from('price_list_assignments')
     .select('id, price_list_id, target_type, target_id, created_at')
-    .is('deleted_at', null);
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true });
 
   const assignmentsRes = activeCohortIds.length > 0
     ? await assignmentQuery.or(
@@ -473,6 +491,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .filter((value: string | null | undefined): value is string => typeof value === 'string'),
     ),
   );
+  const buyerSpecificAssignments = assignmentRows.filter((assignment: { target_type: string }) => assignment.target_type === 'buyer');
+  const primaryBuyerAssignment = buyerSpecificAssignments[buyerSpecificAssignments.length - 1] ?? null;
 
   const [priceListsRes, assignmentBuyersRes, priceListItemsRes] = await Promise.all([
     applicablePriceListIds.length > 0
@@ -646,12 +666,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
   }
 
-  const spendMtd = monthOrders.reduce((sum: number, order: any) => sum + Number(order.total_amount ?? 0), 0);
-  const prevSpendMtd = prevOrders.reduce((sum: number, order: any) => sum + Number(order.total_amount ?? 0), 0);
-  const ordersMtd = monthOrders.length;
+  const spendMtd = visibleMonthOrders.reduce((sum: number, order: any) => sum + Number(order.total_amount ?? 0), 0);
+  const prevSpendMtd = visiblePrevOrders.reduce((sum: number, order: any) => sum + Number(order.total_amount ?? 0), 0);
+  const ordersMtd = visibleMonthOrders.length;
   const aovMtd = ordersMtd > 0 ? spendMtd / ordersMtd : 0;
 
-  const latestOrder = allOrders[0] ?? null;
+  const latestOrder = visibleOrders[0] ?? null;
 
   const itemCountByOrder = new Map<string, number>();
   const lineByOrder = new Map<string, any[]>();
@@ -692,7 +712,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const freqMap = new Map<string, number>();
   const brandSpendMap = new Map<string, number>();
 
-  for (const order of allOrders) {
+  for (const order of visibleOrders) {
     if (order.status === 'cancelled' || !order.placed_at) continue;
     const date = new Date(order.placed_at);
     const monthKey = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
@@ -791,7 +811,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     });
   }
 
-  for (const invoice of scopedInvoices) {
+  for (const invoice of visibleInvoices) {
     activityEvents.push({
       id: `invoice-${invoice.id}`,
       at: invoice.invoice_date ?? invoice.created_at ?? new Date().toISOString(),
@@ -861,8 +881,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }).length;
 
   const lastOrderValue = latestOrder ? Number(latestOrder.total_amount ?? 0) : 0;
-  const issuedInvoiceCount = scopedInvoices.length;
-  const paidInvoiceCount = scopedInvoices.filter((invoice: any) => Number(invoice.outstanding_balance ?? 0) <= 0).length;
+  const issuedInvoiceCount = visibleInvoices.length;
+  const paidInvoiceCount = visibleInvoices.filter((invoice: any) => Number(invoice.outstanding_balance ?? 0) <= 0).length;
   const paymentBehaviorSummary =
     issuedInvoiceCount > 0
       ? `Payment behavior — On time · ${paidInvoiceCount} of ${issuedInvoiceCount} invoices`
@@ -876,7 +896,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       hue: pickHue(buyer.business_name),
       status_label: statusLabel,
       status_tone: statusTone,
-      tier: buyer.tier,
+      buyer_app_enabled: Boolean(buyer.buyer_app_enabled),
       city: buyer.geography?.city ?? 'Unknown',
       buyer_since: buyer.created_at,
       years_label: yearsLoyalLabel(buyer.created_at),
@@ -900,7 +920,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       email: buyer.email,
       gstin: buyer.gstin,
       gst_treatment: buyer.gst_treatment ?? null,
-      zoho_status: buyer.status ?? null,
       city: buyer.geography?.city ?? null,
       state: buyer.geography?.state ?? null,
       pincode: buyer.geography?.pincode ?? null,
@@ -909,8 +928,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       shipping_address: buyer.shipping_address ?? null,
       payment_terms_days: buyer.payment_terms_days,
       credit_limit: buyer.credit_limit,
-      external_ref: buyer.external_ref,
+      default_price_list_id: primaryBuyerAssignment?.price_list_id ?? null,
       assigned_price_list: primaryAssignedPriceList?.name ?? null,
+      buyer_users: (buyerUsersRes.data ?? []).map((contact: any) => ({
+        id: contact.id,
+        user_id: contact.user_id ?? null,
+        first_name: contact.first_name ?? '',
+        last_name: contact.last_name ?? '',
+        full_name: [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Buyer user',
+        phone: contact.phone ?? null,
+        email: contact.email ?? null,
+        designation: contact.designation ?? null,
+        department: contact.department ?? null,
+        is_active: Boolean(contact.is_active),
+        status: !contact.is_active
+          ? 'Inactive'
+          : contact.user_id
+            ? 'Active'
+            : 'Pending invite',
+      })),
       contacts: (buyerUsersRes.data ?? []).map((contact: any) => ({
         id: contact.id,
         name: [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Buyer user',
@@ -921,9 +957,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         is_active: Boolean(contact.is_active),
       })),
       default_cohort_id: buyer.default_cohort_id,
-      tier: buyer.tier,
       cohorts: activeCohorts,
       is_active: buyer.is_active,
+      buyer_app_enabled: Boolean(buyer.buyer_app_enabled),
     },
     performance: {
       monthly_spend_trend: monthlyTrend,
@@ -954,7 +990,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     },
     orders: {
       badge_count_mtd: ordersMtd,
-      rows: allOrders.map((order: any) => ({
+      rows: visibleOrders.map((order: any) => ({
         id: order.id,
         order_number: order.order_number,
         buyer_name: buyer.business_name,
@@ -968,7 +1004,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             ? 'buyer_app'
             : 'direct',
         source_label: order.estimate_id
-          ? (estimateRows.find((estimate: any) => estimate.id === order.estimate_id)?.estimate_number ?? null)
+          ? (visibleEstimates.find((estimate: any) => estimate.id === order.estimate_id)?.estimate_number ?? null)
           : order.source === 'buyer_app'
             ? 'Buyer App'
             : null,
@@ -980,9 +1016,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       })),
     },
     estimates: {
-      rows: estimateRows.map((estimate: any) => ({
+      rows: visibleEstimates.map((estimate: any) => ({
         id: estimate.id,
         number: estimate.estimate_number,
+        buyer_name: buyer.business_name,
         location_name: estimate.location_id ? locationNameById.get(String(estimate.location_id)) ?? null : null,
         place_of_supply: typeof estimate.place_of_supply === 'string' && estimate.place_of_supply.trim().length > 0
           ? estimate.place_of_supply.trim()
@@ -998,23 +1035,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       })),
     },
     invoices: {
-      rows: scopedInvoices.map((invoice: any) => ({
+      rows: visibleInvoices.map((invoice: any) => ({
         id: invoice.id,
         number: invoice.invoice_number ?? null,
+        buyer_name: buyer.business_name,
         location_name: invoice.location_id ? locationNameById.get(String(invoice.location_id)) ?? null : null,
         place_of_supply: typeof invoice.place_of_supply === 'string' && invoice.place_of_supply.trim().length > 0
           ? invoice.place_of_supply.trim()
           : buyer.geography?.city ?? null,
         source_kind: invoice.order_id
-          ? (allOrders.find((order: any) => order.id === invoice.order_id)?.source === 'buyer_app' ? 'buyer_app' : 'converted')
+          ? (visibleOrders.find((order: any) => order.id === invoice.order_id)?.source === 'buyer_app' ? 'buyer_app' : 'converted')
           : 'direct',
         source_label: invoice.order_id
-          ? (allOrders.find((order: any) => order.id === invoice.order_id)?.source === 'buyer_app'
+          ? (visibleOrders.find((order: any) => order.id === invoice.order_id)?.source === 'buyer_app'
             ? 'Buyer App'
-            : allOrders.find((order: any) => order.id === invoice.order_id)?.order_number ?? null)
+            : visibleOrders.find((order: any) => order.id === invoice.order_id)?.order_number ?? null)
           : null,
         campaign_name: invoice.order_id
-          ? catalogById.get(String(allOrders.find((order: any) => order.id === invoice.order_id)?.campaign_id ?? '')) ?? null
+          ? catalogById.get(String(visibleOrders.find((order: any) => order.id === invoice.order_id)?.campaign_id ?? '')) ?? null
           : null,
         issued_at: invoice.invoice_date ?? invoice.created_at,
         due_date: invoice.due_date ?? null,

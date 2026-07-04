@@ -13,8 +13,9 @@ export default function CustomerDetailLoading() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="h-9 w-20 animate-pulse rounded-[8px] bg-cream-200" />
             <div className="h-9 w-28 animate-pulse rounded-[8px] bg-cream-200" />
+            <div className="h-9 w-24 animate-pulse rounded-[8px] bg-cream-200" />
+            <div className="h-9 w-24 animate-pulse rounded-[8px] bg-cream-200" />
           </div>
         </div>
       </div>

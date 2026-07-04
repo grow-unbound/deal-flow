@@ -196,6 +196,131 @@ describe('zoho customer and transaction persistence', () => {
   });
 
   it.each([
+    {
+      label: 'estimate number collision',
+      entityType: 'estimates',
+      idField: 'estimate_id',
+      numberField: 'estimate_number',
+      existingRows: {
+        estimates: [
+          {
+            id: 'estimate-existing',
+            tenant_id: 'tenant-1',
+            external_ref: 'EST-legacy',
+            estimate_number: 'EST-2026-0001',
+            deleted_at: null,
+          },
+        ],
+      },
+      records: [
+        {
+          estimate_id: 'EST-A',
+          estimate_number: 'EST-2026-0001',
+          status: 'draft',
+          date: '2026-06-25',
+          line_items: [],
+        },
+        {
+          estimate_id: 'EST-B',
+          estimate_number: 'EST-2026-0001',
+          status: 'draft',
+          date: '2026-06-25',
+          line_items: [],
+        },
+      ],
+      expectedId: 'estimate-existing',
+    },
+    {
+      label: 'order number collision',
+      entityType: 'orders',
+      idField: 'salesorder_id',
+      numberField: 'salesorder_number',
+      existingRows: {
+        orders: [
+          {
+            id: 'order-existing',
+            tenant_id: 'tenant-1',
+            external_ref: 'SO-legacy',
+            order_number: 'SO-2026-0001',
+            deleted_at: null,
+          },
+        ],
+      },
+      records: [
+        {
+          salesorder_id: 'SO-A',
+          salesorder_number: 'SO-2026-0001',
+          status: 'open',
+          date: '2026-06-25',
+          line_items: [],
+        },
+        {
+          salesorder_id: 'SO-B',
+          salesorder_number: 'SO-2026-0001',
+          status: 'open',
+          date: '2026-06-25',
+          line_items: [],
+        },
+      ],
+      expectedId: 'order-existing',
+    },
+    {
+      label: 'invoice number collision',
+      entityType: 'invoices',
+      idField: 'invoice_id',
+      numberField: 'invoice_number',
+      existingRows: {
+        invoices: [
+          {
+            id: 'invoice-existing',
+            tenant_id: 'tenant-1',
+            external_ref: 'INV-legacy',
+            invoice_number: 'INV-2026-0001',
+            deleted_at: null,
+          },
+        ],
+      },
+      records: [
+        {
+          invoice_id: 'INV-A',
+          invoice_number: 'INV-2026-0001',
+          status: 'sent',
+          date: '2026-06-25',
+          line_items: [],
+        },
+        {
+          invoice_id: 'INV-B',
+          invoice_number: 'INV-2026-0001',
+          status: 'sent',
+          date: '2026-06-25',
+          line_items: [],
+        },
+      ],
+      expectedId: 'invoice-existing',
+    },
+  ] as const)('reuses the existing row for $label', async ({ existingRows, records, entityType, expectedId }) => {
+    const admin = createAdminStub({
+      tableRows: existingRows,
+    });
+
+    await persistZohoEntityPage(
+      admin.client as never,
+      'tenant-1',
+      'user-1',
+      'integration-1',
+      entityType,
+      'zoho_books',
+      records as Array<Record<string, unknown>>,
+    );
+
+    const persistedCall = admin.rpcCalls.find((call) => call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === entityType);
+    expect(persistedCall).toBeTruthy();
+    const persistedRows = Array.isArray(persistedCall?.args.p_rows) ? persistedCall?.args.p_rows as Array<Record<string, unknown>> : [];
+    expect(persistedRows).toHaveLength(1);
+    expect(persistedRows[0]?.id).toBe(expectedId);
+  });
+
+  it.each([
     ['estimates', 'estimate_id', 'EST-1'],
     ['orders', 'salesorder_id', 'SO-1'],
     ['invoices', 'invoice_id', 'INV-1'],
@@ -231,11 +356,11 @@ describe('zoho customer and transaction persistence', () => {
   it('dedupes repeated product and inventory rows within the same sync page', async () => {
     const admin = createAdminStub({
       tableRows: {
-        locations: [
+        warehouses: [
           {
             tenant_id: 'tenant-1',
             external_ref: 'LOC-1',
-            id: 'location-1',
+            id: 'warehouse-1',
             deleted_at: null,
           },
         ],

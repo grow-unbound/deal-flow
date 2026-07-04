@@ -145,10 +145,12 @@ describe('POST /api/tenant/products', () => {
     expect(response.status).toBe(201);
     expect(body.product.tenant_brand_id).toBe('tenant-brand-1');
     expect(body.product.tenant_category_id).toBe('tenant-category-1');
+    expect(body.product.name_override).toBe('Imported Product');
     expect(state.insertedProductPayload).toMatchObject({
       tenant_id: 'tenant-1',
       tenant_brand_id: 'tenant-brand-1',
       tenant_category_id: 'tenant-category-1',
+      name_override: 'Imported Product',
       created_by: 'user-1',
       updated_by: 'user-1',
     });

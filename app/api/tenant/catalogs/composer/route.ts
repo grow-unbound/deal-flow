@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = supabaseAdmin ?? getRequestSupabaseClient();
-    const payload = await getCatalogComposerPayload(db as any, claims.tenant_id);
+    const payload = await getCatalogComposerPayload(db as any, claims.tenant_id, claims.role);
     return timedJson(payload);
   } catch (error: any) {
     console.error('[GET /api/tenant/catalogs/composer] failed for tenant=%s code=%s message=%s', claims.tenant_id, error?.code ?? 'n/a', error?.message ?? String(error));
