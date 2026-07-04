@@ -107,6 +107,8 @@ export function CustomerOrdersTab({
     const query = search.trim().toLowerCase();
     const rowTime = (row: (typeof orders)[number]) =>
       new Date(row.created_at ?? row.issued_at ?? row.placed_at ?? 0).getTime();
+    const documentNumber = (row: (typeof orders)[number]) =>
+      row.order_number ?? row.number ?? row.estimate_number ?? row.invoice_number ?? row.id.slice(0, 8);
 
     return orders
       .filter((row) => {
@@ -136,12 +138,12 @@ export function CustomerOrdersTab({
       .filter((row) => {
         if (!query) return true;
         return [
-          row.document_number,
+          documentNumber(row),
           row.buyer_name,
           row.location_name,
           row.campaign_name,
           row.source_label,
-          row.status_label,
+          titleCase(row.status),
         ]
           .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
           .some((value) => value.toLowerCase().includes(query));
@@ -151,7 +153,7 @@ export function CustomerOrdersTab({
         if (sortBy === 'Oldest first') return rowTime(a) - rowTime(b);
         if (sortBy === 'Amount (high → low)') return Number(b.total_amount ?? 0) - Number(a.total_amount ?? 0);
         if (sortBy === 'Amount (low → high)') return Number(a.total_amount ?? 0) - Number(b.total_amount ?? 0);
-        return a.status_label.localeCompare(b.status_label) || a.document_number.localeCompare(b.document_number);
+        return titleCase(a.status).localeCompare(titleCase(b.status)) || documentNumber(a).localeCompare(documentNumber(b));
       });
   }, [activeChip, chips, kind, orders, search, sortBy]);
 
