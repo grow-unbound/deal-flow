@@ -114,8 +114,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     }
 
     const tenant_id = context.tenant_id;
+    const sub = context.sub;
+    if (!tenant_id || !sub) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
     const buyer_id = profile.buyer.id;
-    const { sub } = context;
     const db = supabaseAdmin ?? supabase;
     const policy = await loadBuyerBusinessPolicy(db as typeof supabaseAdmin, tenant_id);
     const subtotal = items.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
