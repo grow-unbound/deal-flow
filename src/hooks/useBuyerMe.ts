@@ -26,6 +26,7 @@ export interface BuyerMeData {
     credit_enabled: boolean;
     gst_inclusive: boolean;
   };
+  whatsapp_consent_required: boolean;
 }
 
 export function useBuyerMe() {

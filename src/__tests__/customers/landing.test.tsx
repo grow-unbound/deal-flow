@@ -54,6 +54,16 @@ vi.mock('@/contexts/AuthContext', () => ({
 
 vi.mock('@/components/seller/InviteUserDialog', () => ({ InviteUserDialog: () => null }));
 
+// WhatsApp Broadcast (Phase E) — out of scope for this landing-page test
+// suite, which renders without a QueryClientProvider. Stub the composer/
+// history components and the data hooks they'd otherwise call.
+vi.mock('@/components/seller/customers/BroadcastComposerSheet', () => ({
+  BroadcastComposerSheet: () => null,
+}));
+vi.mock('@/components/seller/customers/BroadcastHistorySection', () => ({
+  BroadcastHistorySection: () => null,
+}));
+
 import { CustomersLandingClient } from '@/components/seller/customers/CustomersLandingClient';
 
 let landingBuyers: Array<any> = [];

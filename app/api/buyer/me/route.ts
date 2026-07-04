@@ -34,6 +34,10 @@ interface BuyerMeResponse {
     credit_enabled: boolean;
     gst_inclusive: boolean;
   };
+  // WhatsApp Broadcast Phase C (§4.8): true when this buyer has never completed
+  // the explicit consent checkbox — the buyer-side client redirects to /consent
+  // until this clears. Always false for seller preview (no real buyer row).
+  whatsapp_consent_required: boolean;
 }
 
 const OPEN_STATUSES = ['draft', 'received', 'confirmed', 'partially_dispatched', 'dispatched'];
@@ -137,6 +141,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         greeting_name: 'Preview',
         order_features: orderFeatures,
         business_policy: businessPolicy,
+        whatsapp_consent_required: false,
       };
 
       return NextResponse.json(payload, { headers: BUYER_CACHE_PERSONAL });
@@ -202,6 +207,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       greeting_name: profile.greeting_name,
       order_features: orderFeatures,
       business_policy: businessPolicy,
+      whatsapp_consent_required: !buyer.whatsapp_consent_at,
     };
 
     return NextResponse.json(payload, { headers: BUYER_CACHE_PERSONAL });

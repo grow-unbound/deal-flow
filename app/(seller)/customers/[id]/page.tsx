@@ -87,6 +87,18 @@ function BuyerAppPill({ enabled }: { enabled: boolean }) {
   );
 }
 
+// WhatsApp Broadcast Phase C (§7.2, §9): display-only opted-out indicator.
+// Excluding opted-out buyers from the composer's audience preview/manual
+// picker is Phase E's job (the composer doesn't exist yet) — this badge just
+// needs to be visible and correct now.
+function WhatsappOptedOutPill() {
+  return (
+    <span className="rounded-full bg-cream-200 px-2 py-0.5 text-xs font-medium text-cream-700">
+      WhatsApp: opted out
+    </span>
+  );
+}
+
 function formatValidityWindow(validFrom: string | null, validTo: string | null) {
   const formatDate = (value: string | null) =>
     value ? new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Open';
@@ -216,6 +228,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           status={{ label: data.header.status_label, tone: data.header.status_tone }}
           subtitle={[
             <BuyerAppPill key="app" enabled={data.header.buyer_app_enabled} />,
+            ...(data.header.whatsapp_opted_out ? [<WhatsappOptedOutPill key="whatsapp-opt-out" />] : []),
             data.header.city,
             buyerSinceLabel(data.header.buyer_since, data.header.years_label),
             `Net ${data.header.net_terms_days} terms`,

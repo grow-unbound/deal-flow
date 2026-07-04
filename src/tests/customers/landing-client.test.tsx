@@ -49,6 +49,23 @@ vi.mock('@/hooks/useInfiniteScroll', () => ({
   useInfiniteScroll: (...args: unknown[]) => useInfiniteScrollMock(...args),
 }));
 
+// WhatsApp Broadcast (Phase E) — out of scope for this test suite, which
+// doesn't provide an AuthContext/QueryClient wrapper. Keep the flag off so
+// neither the composer sheet nor the history section mount.
+vi.mock('@/hooks/useFeatureFlag', () => ({
+  useFlag: () => false,
+  useFlagState: () => false,
+}));
+vi.mock('@/hooks/useRole', () => ({
+  useRole: () => ({ isSellerAssistant: false, isSellerAdmin: true }),
+}));
+vi.mock('@/components/seller/customers/BroadcastComposerSheet', () => ({
+  BroadcastComposerSheet: () => null,
+}));
+vi.mock('@/components/seller/customers/BroadcastHistorySection', () => ({
+  BroadcastHistorySection: () => null,
+}));
+
 import { CustomersLandingClient } from '@/components/seller/customers/CustomersLandingClient';
 
 describe('customers landing client', () => {
