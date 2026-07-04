@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -18,6 +18,7 @@ import {
 import { StackedPickerField, type PickerItem } from '@/components/ui/stacked-picker-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SearchOverlayPicker } from '@/components/ui/search-overlay-picker';
 import {
   Select,
   SelectContent,
@@ -40,15 +41,23 @@ import { apiFetch } from '@/lib/api-fetch';
 import { formatInrInput, parseInrInput } from '@/lib/utils';
 import { useCreateCustomerOptimistic } from '@/hooks/useCustomersLanding';
 import { useTenantCohortOptions } from '@/hooks/useCohorts';
+import { usePriceLists } from '@/hooks/usePriceLists';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useRole } from '@/hooks/useRole';
 import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
 
-const TIER_OPTIONS = [
-  { value: 'A' as const, label: 'Tier A' },
-  { value: 'B' as const, label: 'Tier B' },
-  { value: 'C' as const, label: 'Tier C' },
-];
+function formatPriceListValidity(validFrom: string | null, validTo: string | null) {
+  const formatDate = (value: string | null) =>
+    value
+      ? new Date(value).toLocaleDateString('en-IN', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        })
+      : 'Open';
+
+  return `${formatDate(validFrom)} → ${formatDate(validTo)}`;
+}
 
 export function AddCustomerDialog({
   open,
@@ -73,6 +82,10 @@ export function AddCustomerDialog({
   const cohortsEnabled = cohortsFlag === true;
   const { data: cohortOptions = [], isLoading: cohortsLoading } =
     useTenantCohortOptions(cohortsEnabled);
+  const { data: priceListsResponse } = usePriceLists();
+  const priceLists = priceListsResponse?.price_lists ?? [];
+  const [priceListSearchOpen, setPriceListSearchOpen] = useState(false);
+  const [priceListSearchQuery, setPriceListSearchQuery] = useState('');
 
   const cohortItems = useMemo<PickerItem[]>(
     () =>
@@ -85,6 +98,16 @@ export function AddCustomerDialog({
     [cohortOptions],
   );
 
+  const filteredPriceLists = useMemo(() => {
+    const q = priceListSearchQuery.trim().toLowerCase();
+    if (!q) return priceLists;
+    return priceLists.filter((priceList) =>
+      [priceList.name, priceList.description, priceList.pricing_strategy]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(q)),
+    );
+  }, [priceListSearchQuery, priceLists]);
+
   const form = useForm<BuyerCreateInput>({
     resolver: zodResolver(BuyerCreateSchema),
     defaultValues: {
@@ -93,11 +116,10 @@ export function AddCustomerDialog({
       phone: '',
       email: '',
       gstin: '',
-      external_ref: '',
-      tier: undefined,
       credit_limit: 0,
       payment_terms_days: 0,
       default_cohort_id: null,
+      default_price_list_id: null,
       buyer_app_enabled: false,
       geography: { city: '', state: '', pincode: '', zone: '' },
       ...defaultValues,
@@ -112,16 +134,23 @@ export function AddCustomerDialog({
       phone: '',
       email: '',
       gstin: '',
-      external_ref: '',
-      tier: undefined,
       credit_limit: 0,
       payment_terms_days: 0,
       default_cohort_id: null,
+      default_price_list_id: null,
       buyer_app_enabled: false,
       geography: { city: '', state: '', pincode: '', zone: '' },
       ...defaultValues,
     });
+    setPriceListSearchOpen(false);
+    setPriceListSearchQuery('');
   }, [defaultValues, form, open]);
+
+  const selectedPriceListId = form.watch('default_price_list_id');
+  const selectedPriceList = useMemo(
+    () => priceLists.find((priceList) => priceList.id === selectedPriceListId) ?? null,
+    [priceLists, selectedPriceListId],
+  );
 
   const dirtyGuard = useDirtyCloseGuard({
     isDirty: form.formState.isDirty,
@@ -130,6 +159,10 @@ export function AddCustomerDialog({
       onOpenChange(false);
     },
   });
+
+  const {
+    formState: { isSubmitting },
+  } = form;
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
@@ -197,7 +230,7 @@ export function AddCustomerDialog({
                           Business name <span className="text-ember-400">*</span>
                         </FormLabel>
                         <FormControl>
-                          <Input {...field} placeholder="Bharat Stores" />
+                          <Input {...field} placeholder="Bharat Electronics" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -211,7 +244,7 @@ export function AddCustomerDialog({
                       <FormItem className="space-y-2">
                         <FormLabel>City</FormLabel>
                         <FormControl>
-                          <Input {...field} value={field.value ?? ''} placeholder="Karol Bagh, Delhi" />
+                          <Input {...field} value={field.value ?? ''} placeholder="Gachibowli, Hyderabad" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -251,7 +284,7 @@ export function AddCustomerDialog({
                           <Input
                             {...field}
                             value={field.value ?? ''}
-                            placeholder="110005"
+                            placeholder="500032"
                             maxLength={6}
                             className="font-mono"
                           />
@@ -275,30 +308,6 @@ export function AddCustomerDialog({
                     )}
                   />
 
-                  {!isSellerAssistant ? (
-                    <FormField
-                      control={form.control}
-                      name="tier"
-                      render={({ field }) => (
-                        <FormItem className="space-y-2">
-                          <FormLabel>Tier</FormLabel>
-                          <Select value={field.value ?? ''} onValueChange={field.onChange}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select tier" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {TIER_OPTIONS.map((t) => (
-                                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  ) : null}
                 </FormSectionGrid>
               </FormBlock>
 
@@ -312,7 +321,7 @@ export function AddCustomerDialog({
                       <FormItem className="space-y-2">
                         <FormLabel>Name</FormLabel>
                         <FormControl>
-                          <Input {...field} value={field.value ?? ''} placeholder="Suresh Bharat" />
+                          <Input {...field} value={field.value ?? ''} placeholder="Full name" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -336,7 +345,7 @@ export function AddCustomerDialog({
                               {...field}
                               type="tel"
                               inputMode="numeric"
-                              placeholder="98101 22433"
+                              placeholder="9876543210"
                               maxLength={10}
                               className="rounded-l-none font-mono tracking-wide"
                               onChange={(e) => {
@@ -361,7 +370,7 @@ export function AddCustomerDialog({
                             {...field}
                             value={field.value ?? ''}
                             type="email"
-                            placeholder="optional"
+                            placeholder="abc@gmail.com"
                             className="font-mono"
                           />
                         </FormControl>
@@ -396,17 +405,74 @@ export function AddCustomerDialog({
 
                   <FormField
                     control={form.control}
-                    name="external_ref"
+                    name="default_price_list_id"
                     render={({ field }) => (
-                      <FormItem className="space-y-2">
-                        <FormLabel>ERP reference</FormLabel>
+                      <FormItem className="space-y-2 md:col-span-2">
+                        <FormLabel>Default pricelist</FormLabel>
                         <FormControl>
-                          <Input
-                            {...field}
-                            value={field.value ?? ''}
-                            placeholder="Tally / Zoho ledger code"
-                            className="font-mono"
-                          />
+                          <SearchOverlayPicker
+                            open={priceListSearchOpen}
+                            onOpenChange={(next) => {
+                              setPriceListSearchOpen(next);
+                              if (!next) {
+                                setPriceListSearchQuery('');
+                              }
+                            }}
+                            title="Pick a pricelist"
+                            eyebrow="Pricing"
+                            description="Set the buyer-specific default pricelist assignment."
+                            triggerTitle={selectedPriceList?.name ?? 'Select pricelist'}
+                            triggerDescription={
+                              selectedPriceList
+                                ? formatPriceListValidity(selectedPriceList.valid_from, selectedPriceList.valid_to)
+                                : 'This will become the buyer-specific default.'
+                            }
+                            searchValue={priceListSearchQuery}
+                            onSearchValueChange={setPriceListSearchQuery}
+                            searchPlaceholder="Search pricelists…"
+                            loading={!priceListsResponse}
+                            className="max-w-[540px]"
+                          >
+                            {filteredPriceLists.length > 0 ? (
+                              <div className="space-y-0.5">
+                                {filteredPriceLists.map((priceList) => {
+                                  const selected = field.value === priceList.id;
+                                  return (
+                                    <button
+                                      key={priceList.id}
+                                      type="button"
+                                      onClick={() => {
+                                        field.onChange(priceList.id);
+                                        setPriceListSearchOpen(false);
+                                      }}
+                                      className={[
+                                        'flex w-full items-start justify-between rounded-[8px] px-3 py-2 text-left transition-colors',
+                                        selected ? 'border border-ember-100 bg-ember-50' : 'hover:bg-cream-100',
+                                      ].join(' ')}
+                                    >
+                                      <div className="min-w-0">
+                                        <p className="text-base font-medium text-cream-900">{priceList.name}</p>
+                                        <p className="mt-0.5 text-sm text-cream-700">
+                                          {priceList.description ?? formatPriceListValidity(priceList.valid_from, priceList.valid_to)}
+                                        </p>
+                                      </div>
+                                      <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.06em] text-cream-500">
+                                        {selected ? 'Selected' : 'Choose'}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ) : priceListSearchQuery.trim() ? (
+                              <p className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-500">
+                                No pricelists match this search.
+                              </p>
+                            ) : (
+                              <p className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-500">
+                                Start typing to search pricelists.
+                              </p>
+                            )}
+                          </SearchOverlayPicker>
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -526,21 +592,21 @@ export function AddCustomerDialog({
           </Form>
         </FormOverlayBody>
 
-        <FormOverlayFooter>
+        <FormOverlayFooter className="justify-end gap-2">
           <Button
             type="button"
-            variant="ghost"
+            variant="secondary"
             onClick={() => dirtyGuard.handleOpenChange(false)}
+            disabled={isSubmitting}
           >
             Cancel
           </Button>
-          <div className="flex-1" />
           <Button
             type="submit"
             form="add-buyer-form"
-            disabled={createMutation.isPending}
+            disabled={isSubmitting}
           >
-            {createMutation.isPending ? 'Saving…' : isEditMode ? 'Save changes' : 'Save buyer'}
+            {isSubmitting ? 'Saving…' : isEditMode ? 'Save changes' : 'Create'}
           </Button>
         </FormOverlayFooter>
       </FormOverlay>

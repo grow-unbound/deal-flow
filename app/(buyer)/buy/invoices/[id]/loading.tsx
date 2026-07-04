@@ -1,12 +1,13 @@
 export default function BuyerInvoiceDetailLoading() {
   return (
-    <div className="space-y-3 p-4" role="status" aria-label="Loading invoice">
-      <div className="h-10 w-full animate-pulse rounded-xl border border-cream-200 bg-cream-100" />
-      <div className="h-32 animate-pulse rounded-2xl border border-cream-200 bg-cream-100" />
-      <div className="grid grid-cols-2 gap-3">
-        <div className="h-32 animate-pulse rounded-2xl border border-cream-200 bg-cream-100" />
-        <div className="h-32 animate-pulse rounded-2xl border border-cream-200 bg-cream-100" />
+    <div className="space-y-3 px-4 py-4" role="status" aria-label="Loading invoice">
+      <div className="px-1">
+        <div className="h-3 w-36 animate-pulse rounded-full bg-cream-200" />
+        <div className="mt-2 h-7 w-52 animate-pulse rounded-full bg-cream-200" />
       </div>
+      <div className="h-40 animate-pulse rounded-2xl border border-cream-200 bg-cream-100" />
+      <div className="h-28 animate-pulse rounded-2xl border border-cream-200 bg-cream-100" />
+      <div className="h-12 animate-pulse rounded-xl border border-cream-200 bg-cream-100" />
     </div>
   );
 }

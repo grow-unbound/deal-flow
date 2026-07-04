@@ -159,10 +159,8 @@ export const BuyerSchema = z.object({
   phone: z.string().regex(/^[0-9]{10}$/, 'Phone must be 10 digits').optional(),
   email: z.string().email().optional(),
   gstin: z.string().optional(),
-  tier: z.enum(['A', 'B', 'C']).optional(),
   credit_limit: z.coerce.number().default(0),
   payment_terms_days: z.coerce.number().default(0),
-  external_ref: z.string().optional(),
 });
 
 export const BuyerGeographySchema = z.object({
@@ -181,19 +179,27 @@ export const BuyerCreateSchema = z.object({
   geography: BuyerGeographySchema.optional(),
   credit_limit: z.coerce.number().default(0),
   payment_terms_days: z.coerce.number().default(0),
-  tier: z.enum(['A', 'B', 'C']).optional(),
-  external_ref: z.string().optional(),
   default_cohort_id: z.string().uuid('Invalid cohort').optional().nullable(),
+  default_price_list_id: z.string().uuid('Invalid price list').optional().nullable(),
   buyer_app_enabled: z.boolean().optional(),
 });
 export type BuyerCreateInput = z.infer<typeof BuyerCreateSchema>;
 
-// Buyer update schema — partial, phone optional on edit, external_ref excluded from override
+// Buyer update schema — partial, phone optional on edit, removed create-only fields stay omitted
 export const BuyerUpdateSchema = BuyerCreateSchema.partial().extend({
   // allow empty string for email/gstin to clear them; phone stays regex-validated when provided
   phone: z.string().regex(/^[0-9]{10}$/, 'Phone must be 10 digits').optional(),
 });
 export type BuyerUpdateInput = z.infer<typeof BuyerUpdateSchema>;
+
+export const BuyerUserSchema = z.object({
+  first_name: z.string().min(1, 'First name is required'),
+  last_name: z.string().min(1, 'Last name is required'),
+  phone: z.string().regex(/^[0-9]{10}$/, 'Phone must be 10 digits'),
+  email: OptionalEmailSchema,
+  designation: z.string().trim().optional().or(z.literal('')),
+});
+export type BuyerUserInput = z.infer<typeof BuyerUserSchema>;
 
 // Cohort schemas
 export const CohortSchema = z.object({
@@ -388,8 +394,11 @@ export const CatalogComposerAvailabilitySchema = z.enum([
 ]);
 export type CatalogComposerAvailability = z.infer<typeof CatalogComposerAvailabilitySchema>;
 
-export const CatalogComposerTagSchema = z.enum(['new', 'new_stock', 'old_stock']);
+export const CatalogComposerTagSchema = z.enum(['new', 'new_stock', 'old_stock', 'none']);
 export type CatalogComposerTag = z.infer<typeof CatalogComposerTagSchema>;
+
+export const CatalogComposerPriceSourceSchema = z.enum(['price_list', 'manual']);
+export type CatalogComposerPriceSource = z.infer<typeof CatalogComposerPriceSourceSchema>;
 
 export const CatalogComposerFilterStateSchema = z.object({
   brand_names: z.array(z.string()).default([]),
@@ -401,16 +410,21 @@ export type CatalogComposerFilterState = z.infer<typeof CatalogComposerFilterSta
 export const CatalogComposerItemSchema = z.object({
   tenant_product_id: z.string().uuid('Invalid product ID'),
   display_order: z.coerce.number().int().min(0).default(0),
+  price_override: z.coerce.number().nonnegative('Campaign price cannot be negative').nullable().optional(),
 });
 export type CatalogComposerItemInput = z.infer<typeof CatalogComposerItemSchema>;
 
 export const CatalogComposerPayloadSchema = z
   .object({
     name: z.string().min(1, 'Catalog name is required'),
-    scope_type: z.enum(['cohort', 'all']).default('cohort'),
+    scope_type: z.enum(['cohort', 'buyer', 'all']).default('cohort'),
     cohort_id: z.string().uuid('Cohort is required').nullable().optional(),
+    buyer_ids: z.array(z.string().uuid('Invalid buyer ID')).default([]),
     valid_from: z.coerce.date(),
     valid_to: z.coerce.date().optional(),
+    message: z.string().max(50, 'Note to buyers must be 50 characters or fewer').optional().or(z.literal('')),
+    price_source: CatalogComposerPriceSourceSchema.default('manual'),
+    price_list_id: z.string().uuid('Invalid price list').nullable().optional(),
     filters: CatalogComposerFilterStateSchema.default({
       brand_names: [],
       category_names: [],
@@ -420,9 +434,17 @@ export const CatalogComposerPayloadSchema = z
     items: z.array(CatalogComposerItemSchema).default([]),
     save_mode: z.enum(['draft', 'publish']).default('draft'),
   })
-  .refine((data) => data.scope_type === 'all' || Boolean(data.cohort_id), {
+  .refine((data) => data.scope_type !== 'cohort' || Boolean(data.cohort_id), {
     message: 'Cohort is required',
     path: ['cohort_id'],
+  })
+  .refine((data) => data.scope_type !== 'buyer' || data.buyer_ids.length > 0, {
+    message: 'Select at least one buyer',
+    path: ['buyer_ids'],
+  })
+  .refine((data) => data.price_source !== 'price_list' || Boolean(data.price_list_id), {
+    message: 'Pricelist is required',
+    path: ['price_list_id'],
   })
   .refine(
     (data) => {

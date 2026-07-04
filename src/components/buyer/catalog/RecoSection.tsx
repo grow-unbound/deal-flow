@@ -11,10 +11,9 @@ interface RecoSectionProps {
   widget: string;
   items: BuyerCatalogItem[];
   sourceProductId?: string;
-  onAddToCart?: (item: BuyerCatalogItem, widget: string, sourceProductId: string | undefined) => void;
 }
 
-export function RecoSection({ title, widget, items, sourceProductId, onAddToCart }: RecoSectionProps): React.ReactNode {
+export function RecoSection({ title, widget, items, sourceProductId }: RecoSectionProps): React.ReactNode {
   const fired = React.useRef(false);
 
   React.useEffect(() => {
@@ -39,9 +38,6 @@ export function RecoSection({ title, widget, items, sourceProductId, onAddToCart
       </h2>
       <RecoCarousel
         items={items}
-        widget={widget}
-        sourceProductId={sourceProductId}
-        onAddToCart={onAddToCart}
       />
     </div>
   );

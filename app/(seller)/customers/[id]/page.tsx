@@ -2,7 +2,7 @@
 
 import { use, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Download, Share2 } from 'lucide-react';
+import { MailPlus, PencilLine, Trash2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -15,6 +15,7 @@ import { CustomerActivityTab } from '@/components/seller/customers/detail/Custom
 import { CustomerDetailsTab } from '@/components/seller/customers/detail/CustomerDetailsTab';
 import { CustomerOrdersTab } from '@/components/seller/customers/detail/CustomerOrdersTab';
 import { AddCustomerDialog } from '@/components/seller/customers/AddCustomerDialog';
+import { toast } from 'sonner';
 
 const CustomerPerformanceTab = dynamic(
   () => import('@/components/seller/customers/detail/CustomerPerformanceTab').then((m) => m.CustomerPerformanceTab),
@@ -42,8 +43,9 @@ function CustomerDetailSkeleton() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Skeleton className="h-9 w-20 rounded-[8px]" />
               <Skeleton className="h-9 w-28 rounded-[8px]" />
+              <Skeleton className="h-9 w-24 rounded-[8px]" />
+              <Skeleton className="h-9 w-24 rounded-[8px]" />
             </div>
           </div>
         </div>
@@ -72,9 +74,17 @@ function buyerSinceLabel(value: string | null, yearsLabel: string) {
   return `Buyer since ${since} · ${yearsLabel}`;
 }
 
-function TierPill({ tier }: { tier: 'A' | 'B' | 'C' | null }) {
-  if (!tier) return <span className="text-xs text-cream-700">Tier —</span>;
-  return <span className="rounded-full bg-ember-50 px-2 py-0.5 text-xs font-medium text-ember-700">Tier {tier}</span>;
+function BuyerAppPill({ enabled }: { enabled: boolean }) {
+  return (
+    <span
+      className={[
+        'rounded-full px-2 py-0.5 text-xs font-medium',
+        enabled ? 'bg-success-50 text-success-700' : 'bg-cream-200 text-cream-700',
+      ].join(' ')}
+    >
+      Buyer app {enabled ? 'enabled' : 'disabled'}
+    </span>
+  );
 }
 
 function formatValidityWindow(validFrom: string | null, validTo: string | null) {
@@ -107,14 +117,14 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     initialState: isSellerAssistant ? 'details' : 'performance',
   });
   const { data, isLoading, isError, error } = useTenantCustomerDetail(id);
-  const statusMutation = useToggleCustomerStatusOptimistic(id);
+  const deleteMutation = useToggleCustomerStatusOptimistic(id);
   const [editOpen, setEditOpen] = useState(false);
   const tabs = useMemo(
     () => [
       { id: 'details', label: 'Details' },
       ...(isSellerAssistant ? [] : [{ id: 'performance', label: 'Performance' }]),
-      { id: 'orders', label: 'Orders', badge: data?.orders.badge_count_mtd ?? 0 },
       { id: 'estimates', label: 'Estimates', badge: data?.estimates.rows.length ?? 0 },
+      { id: 'orders', label: 'Orders', badge: data?.orders.badge_count_mtd ?? 0 },
       { id: 'invoices', label: 'Invoices', badge: data?.invoices.rows.length ?? 0 },
       { id: 'cohorts', label: 'Customer Groups', badge: data?.cohorts_summary.rows.length ?? 0 },
       { id: 'price-lists', label: 'Price Lists', badge: data?.price_lists.assigned.length ?? 0 },
@@ -205,27 +215,66 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           title={data.header.buyer_name}
           status={{ label: data.header.status_label, tone: data.header.status_tone }}
           subtitle={[
-            <TierPill key="tier" tier={data.header.tier} />,
+            <BuyerAppPill key="app" enabled={data.header.buyer_app_enabled} />,
             data.header.city,
             buyerSinceLabel(data.header.buyer_since, data.header.years_label),
             `Net ${data.header.net_terms_days} terms`,
           ]}
           actions={
             <div className="flex items-center gap-2 pt-1">
-              <button
-                type="button"
-                aria-label="Share"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] text-cream-700 hover:bg-cream-100"
-              >
-                <Share2 size={14} />
-              </button>
-              <Button type="button" className="h-9 gap-1.5 border border-cream-400 bg-white px-4 text-base font-medium text-teal-700 hover:bg-cream-100">
-                <Download size={14} />
-                Export
-              </Button>
-              <Button size="sm">
-                Open buyer app preview
-              </Button>
+              {isSellerAdmin ? (
+                <>
+                  {data.details.is_active ? (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button type="button" variant="ghost" size="sm" className="text-danger-700 hover:text-danger-800">
+                          <Trash2 size={16} />
+                          Delete Buyer
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete buyer?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will soft-delete the buyer by marking it inactive. The record remains in the database.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            disabled={deleteMutation.isPending}
+                            onClick={() => {
+                              deleteMutation.mutate('deactivate');
+                            }}
+                          >
+                            {deleteMutation.isPending ? 'Saving…' : 'Delete Buyer'}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  ) : null}
+
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditOpen(true)}
+                  >
+                    <PencilLine size={16} />
+                    Edit Buyer
+                  </Button>
+                </>
+              ) : null}
+
+            <Button
+              type="button"
+              variant="accent"
+              size="sm"
+              onClick={() => toast.info('Send Message will be added in a later phase.')}
+            >
+              <MailPlus size={16} />
+              Send Message
+            </Button>
             </div>
           }
         />
@@ -238,9 +287,8 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           onChange={(value) => setTab(value as TabId)}
         />
 
-        {activeTab === 'details' ? <CustomerDetailsTab id={id} details={data.details} onEdit={() => setEditOpen(true)} /> : null}
+        {activeTab === 'details' ? <CustomerDetailsTab id={id} details={data.details} /> : null}
         {activeTab === 'performance' ? <CustomerPerformanceTab performance={data.performance} performanceV2={data.performance_v2} /> : null}
-        {activeTab === 'orders' ? <CustomerOrdersTab kind="order" orders={data.orders.rows} /> : null}
         {activeTab === 'estimates' ? (
           <CustomerOrdersTab
             kind="estimate"
@@ -250,6 +298,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             routeBase="/estimates"
           />
         ) : null}
+        {activeTab === 'orders' ? <CustomerOrdersTab kind="order" orders={data.orders.rows} /> : null}
         {activeTab === 'invoices' ? (
           <CustomerOrdersTab
             kind="invoice"
@@ -316,38 +365,6 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         ) : null}
         {activeTab === 'activity' ? <CustomerActivityTab activity={data.activity} /> : null}
 
-        {isSellerAdmin && activeTab === 'details' ? (
-          <div className="mt-4 flex items-center gap-2">
-            <Button type="button" variant="secondary" size="sm" onClick={() => setEditOpen(true)}>Edit</Button>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button type="button" variant="destructive" size="sm">
-                  {data.details.is_active ? 'Deactivate' : 'Reactivate'}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>{data.details.is_active ? 'Deactivate customer?' : 'Reactivate customer?'}</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {data.details.is_active
-                      ? 'The buyer will no longer be able to place new orders until reactivated.'
-                      : 'The buyer will be able to place orders again.'}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel disabled={statusMutation.isPending}>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    disabled={statusMutation.isPending}
-                    onClick={() => statusMutation.mutate(data.details.is_active ? 'deactivate' : 'reactivate')}
-                  >
-                    {statusMutation.isPending ? 'Saving…' : 'Confirm'}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
-        ) : null}
-
         <AddCustomerDialog
           open={editOpen}
           onOpenChange={setEditOpen}
@@ -359,11 +376,11 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             phone: data.details.phone ?? '',
             email: data.details.email ?? '',
             gstin: data.details.gstin ?? '',
-            external_ref: data.details.external_ref ?? '',
             credit_limit: data.details.credit_limit ?? 0,
             payment_terms_days: data.details.payment_terms_days ?? 0,
-            tier: data.details.tier ?? data.header.tier ?? undefined,
             default_cohort_id: data.details.default_cohort_id ?? null,
+            default_price_list_id: data.details.default_price_list_id ?? null,
+            buyer_app_enabled: data.details.buyer_app_enabled,
             geography: {
               city: data.details.city ?? '',
               state: data.details.state ?? '',

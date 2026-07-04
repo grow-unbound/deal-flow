@@ -85,7 +85,8 @@ export const navGroups: NavGroup[] = [
       { label: 'Customer Groups', href: '/customer-groups', icon: CohortsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_cohorts' },
       { label: 'Pricelists', href: '/price-lists', icon: PriceListsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_pricing_engine' },
       { label: 'Brands', href: '/brands', icon: BrandsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_brand_product_master' },
-      { label: 'Locations', href: '/locations', icon: LocationsIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_brand_product_master' },
+      { label: 'Locations', href: '/locations', icon: LocationsIcon, roles: [ROLES.SELLER_ADMIN] },
+      { label: 'Warehouses', href: '/warehouses', icon: WarehousesIcon, roles: [ROLES.SELLER_ADMIN] },
       { label: 'Categories', href: '/categories', icon: TagIcon, roles: [ROLES.SELLER_ADMIN], flagKey: 'df_brand_product_master' },
     ],
   },
@@ -426,6 +427,15 @@ function LocationsIcon({ size = 16, className = '' }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
       <circle cx="12" cy="10" r="3" />
+    </svg>
+  );
+}
+function WarehousesIcon({ size = 16, className = '' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M3 10.5 12 4l9 6.5" />
+      <path d="M5 9.25V20h14V9.25" />
+      <path d="M9 20v-6h6v6" />
     </svg>
   );
 }

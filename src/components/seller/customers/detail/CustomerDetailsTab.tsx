@@ -1,14 +1,13 @@
 'use client';
 
-import { useRole } from '@/hooks/useRole';
 import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
 import type { TenantCustomerDetailResponse } from '@/hooks/useCustomersLanding';
 import { formatCurrency } from '@/lib/utils';
+import { BuyerUsersSection } from './BuyerUsersSection';
 
 interface CustomerDetailsTabProps {
   id: string;
   details: TenantCustomerDetailResponse['details'];
-  onEdit?: () => void;
 }
 
 function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
@@ -35,31 +34,24 @@ function formatAddress(value: Record<string, unknown> | null | undefined) {
   return parts.length > 0 ? parts.join(', ') : '—';
 }
 
-export function CustomerDetailsTab({ id: _id, details, onEdit }: CustomerDetailsTabProps) {
-  const { isSellerAdmin } = useRole();
+export function CustomerDetailsTab({ id, details }: CustomerDetailsTabProps) {
   const { creditEnabled } = useBusinessPolicy();
 
   return (
     <section className="mt-5 space-y-4">
       <article className="rounded-[14px] border border-cream-300 bg-white p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-display text-lg text-cream-950">Buyer details</h3>
-          {isSellerAdmin ? (
-            <button type="button" onClick={onEdit} className="text-base font-medium text-teal-700 hover:text-teal-800">
-              Edit
-            </button>
-          ) : null}
-        </div>
+        <h3 className="font-display text-md text-cream-950">Buyer details</h3>
 
-        <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+        <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4">
           <Row label="Business name" value={details.business_name} />
           <Row label="Contact name" value={details.contact_name ?? '—'} />
           <Row label="Phone" value={details.phone ?? '—'} mono />
           <Row label="Email" value={details.email ?? '—'} />
           <Row label="GSTIN" value={details.gstin ?? '—'} mono />
           <Row label="GST treatment" value={details.gst_treatment ?? '—'} />
-          <Row label="Zoho status" value={details.zoho_status ?? '—'} />
-          <Row label="ERP ID" value={details.external_ref ?? '—'} mono />
+          <Row label="Status" value={details.is_active ? 'Active' : 'Inactive'} />
+          <Row label="Customer group" value={details.cohorts.length ? details.cohorts.join(', ') : '—'} />
+          <Row label="Buyer app" value={details.buyer_app_enabled ? 'Enabled' : 'Disabled'} />
         </div>
       </article>
 
@@ -90,33 +82,12 @@ export function CustomerDetailsTab({ id: _id, details, onEdit }: CustomerDetails
               label="Payment terms"
               value={details.payment_terms_days != null ? `Net ${details.payment_terms_days} days` : '—'}
             />
-            <Row
-              label="Customer group assignment"
-              value={details.cohorts.length ? details.cohorts.join(', ') : '—'}
-            />
-            <Row label="Price list assignment" value={details.assigned_price_list ?? '—'} />
-            <Row label="Status" value={details.is_active ? 'Active' : 'Inactive'} />
+            <Row label="Default pricelist" value={details.assigned_price_list ?? '—'} />
           </div>
         </article>
       </div>
 
-      <article className="rounded-[14px] border border-cream-300 bg-white p-5">
-        <h3 className="font-display text-md text-cream-950">Buyer users</h3>
-        <div className="mt-4 grid grid-cols-2 gap-4">
-          {details.contacts.length > 0 ? details.contacts.map((contact) => (
-            <div key={contact.id} className="rounded-[12px] border border-cream-200 bg-cream-50 p-4">
-              <p className="text-base font-medium text-cream-900">{contact.name}</p>
-              <p className="mt-1 text-sm text-cream-700">
-                {[contact.designation, contact.department].filter(Boolean).join(' · ') || '—'}
-              </p>
-              <p className="mt-2 font-mono text-sm text-cream-800">{contact.phone ?? '—'}</p>
-              <p className="text-sm text-cream-700">{contact.email ?? '—'}</p>
-            </div>
-          )) : (
-            <p className="text-sm text-cream-700">No buyer users synced yet.</p>
-          )}
-        </div>
-      </article>
+      <BuyerUsersSection buyerId={id} users={details.buyer_users} />
     </section>
   );
 }

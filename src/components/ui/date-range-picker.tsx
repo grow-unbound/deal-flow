@@ -30,10 +30,28 @@ export function DateRangePicker({
   className,
 }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
+  const [selectingEnd, setSelectingEnd] = useState(false);
 
   const summary = validFrom
     ? `${formatDate(validFrom)} → ${validTo ? formatDate(validTo) : 'Open ended'}`
     : emptyLabel;
+
+  const fromDate = parseIsoDate(validFrom);
+  const toDate = parseIsoDate(validTo);
+
+  function handleDateSelect(date: Date) {
+    const next = isoDateString(date);
+    if (!validFrom || !selectingEnd || (fromDate && date < fromDate)) {
+      onValidFromChange(next);
+      onValidToChange('');
+      setSelectingEnd(true);
+      return;
+    }
+
+    onValidToChange(next);
+    setSelectingEnd(false);
+    setOpen(false);
+  }
 
   return (
     <div className={cn('flex flex-col gap-1', className)}>
@@ -58,22 +76,33 @@ export function DateRangePicker({
           onCloseAutoFocus={(event) => event.preventDefault()}
           className={cn('w-[320px] space-y-4 border-cream-300 bg-white p-4 shadow-md', popoverMotion)}
         >
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">From date</p>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Validity range</p>
+                <p className="mt-1 text-sm text-cream-700">
+                  {selectingEnd && validFrom ? 'Select an end date' : 'Select a start date'}
+                </p>
+              </div>
+              {validFrom ? (
+                <button
+                  type="button"
+                  className="text-sm font-medium text-teal-700 hover:text-teal-800"
+                  onClick={() => {
+                    onValidFromChange('');
+                    onValidToChange('');
+                    setSelectingEnd(false);
+                  }}
+                >
+                  Clear
+                </button>
+              ) : null}
+            </div>
             <Calendar
-              value={parseIsoDate(validFrom)}
-              onChange={(date) => onValidFromChange(isoDateString(date))}
-            />
-          </div>
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">To date</p>
-            <Calendar
-              value={parseIsoDate(validTo)}
-              minDate={parseIsoDate(validFrom) ?? undefined}
-              onChange={(date) => {
-                onValidToChange(isoDateString(date));
-                setOpen(false);
-              }}
+              value={toDate ?? fromDate}
+              onChange={handleDateSelect}
+              rangeStart={fromDate}
+              rangeEnd={toDate}
             />
           </div>
         </PopoverContent>

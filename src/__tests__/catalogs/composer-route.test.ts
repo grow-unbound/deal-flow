@@ -57,6 +57,6 @@ describe('catalog composer route', () => {
 
     expect(res.status).toBe(200);
     expect(getRequestSupabaseClientMock).toHaveBeenCalledTimes(1);
-    expect(getCatalogComposerPayloadMock).toHaveBeenCalledWith(requestDb, 'tenant-a');
+    expect(getCatalogComposerPayloadMock).toHaveBeenCalledWith(requestDb, 'tenant-a', 'seller_admin');
   });
 });

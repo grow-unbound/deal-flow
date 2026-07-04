@@ -518,11 +518,15 @@ function buyerMatchesCatalog(
 
   const scopeValue = (catalog.scope_value ?? {}) as {
     buyer_id?: string;
+    buyer_ids?: string[];
     cohort_id?: string;
     geography?: { state?: string; city?: string; zone?: string };
   };
 
   if (catalog.scope_type === 'buyer') {
+    if (Array.isArray(scopeValue.buyer_ids) && scopeValue.buyer_ids.length > 0) {
+      return scopeValue.buyer_ids.includes(buyerId);
+    }
     return scopeValue.buyer_id === buyerId;
   }
 

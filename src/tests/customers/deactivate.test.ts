@@ -2,15 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { BuyerCreateSchema } from '@/lib/zod';
 
 // Pure unit tests for EP-03-004 (Deactivate / Reactivate Buyer)
-// No DB or API calls — test logic / schema / tier badge mapping only.
-
-// ─── Tier badge class mapping (mirrors app/(seller)/customers/[id]/page.tsx) ──
-
-const TIER_BADGE_CLASS: Record<string, string> = {
-  A: 'bg-teal-100 text-teal-800',
-  B: 'bg-cream-200 text-cream-700',
-  C: 'bg-cream-100 text-cream-500',
-};
+// No DB or API calls — test logic / schema / status helper mapping only.
 
 // ─── Deactivate / reactivate action helper (mirrors PATCH route logic) ────────
 
@@ -47,24 +39,6 @@ describe('reactivate action', () => {
   });
 });
 
-describe('tier badge class', () => {
-  it('returns teal classes for Tier A', () => {
-    expect(TIER_BADGE_CLASS['A']).toBe('bg-teal-100 text-teal-800');
-  });
-
-  it('returns cream classes for Tier B', () => {
-    expect(TIER_BADGE_CLASS['B']).toBe('bg-cream-200 text-cream-700');
-  });
-
-  it('returns muted cream classes for Tier C', () => {
-    expect(TIER_BADGE_CLASS['C']).toBe('bg-cream-100 text-cream-500');
-  });
-
-  it('returns undefined for an unknown tier', () => {
-    expect(TIER_BADGE_CLASS['X']).toBeUndefined();
-  });
-});
-
 describe('PATCH action validation', () => {
   it('accepts "deactivate" as a valid action', () => {
     const validActions = ['deactivate', 'reactivate'] as const;
@@ -89,9 +63,9 @@ describe('buyer schema for deactivate context', () => {
     const result = BuyerCreateSchema.safeParse({
       business_name: 'Test Co.',
       phone: '9876543210',
-      tier: 'A',
       credit_limit: 10000,
       payment_terms_days: 30,
+      buyer_app_enabled: true,
     });
     expect(result.success).toBe(true);
   });

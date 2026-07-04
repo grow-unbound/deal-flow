@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
-import { getFlag } from '@/lib/flags';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { SELLER_LANDING_PERIOD_OPTIONS } from '@/lib/seller-period';
@@ -85,19 +84,19 @@ async function getLocationsLandingPayload(
     db
       .schema('app')
       .from('estimates')
-      .select('id, location_id, buyer_id')
+      .select('id, location_id, buyer_id, estimate_date')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
-      .gte('issued_at', period.current_start)
-      .lt('issued_at', period.current_end_exclusive),
+      .gte('estimate_date', period.current_start)
+      .lt('estimate_date', period.current_end_exclusive),
     db
       .schema('app')
       .from('invoices')
-      .select('id, location_id, buyer_id')
+      .select('id, location_id, buyer_id, invoice_date')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
-      .gte('issued_at', period.current_start)
-      .lt('issued_at', period.current_end_exclusive),
+      .gte('invoice_date', period.current_start)
+      .lt('invoice_date', period.current_end_exclusive),
   ]);
 
   if (locationsRes.error) throw locationsRes.error;
@@ -301,10 +300,7 @@ export async function GET(request: NextRequest) {
   const claims = await getVerifiedClaims(request);
 
   if (!claims.tenant_id) return timedJson({ error: 'Unauthorized' }, { status: 401 });
-  if (!claims.role?.startsWith('seller_')) return timedJson({ error: 'Forbidden' }, { status: 403 });
-
-  const flagEnabled = await getFlag('df_brand_product_master', claims.tenant_id);
-  if (!flagEnabled) return timedJson({ error: 'Feature not enabled' }, { status: 403 });
+  if (claims.role !== 'seller_admin') return timedJson({ error: 'Forbidden' }, { status: 403 });
 
   try {
     const search = request.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '';

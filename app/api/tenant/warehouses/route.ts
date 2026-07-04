@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
       return jsonError(401, 'Login required', 'UNAUTHORIZED');
     }
 
-    if (!claims.role?.startsWith('seller_')) {
+    if (claims.role !== 'seller_admin') {
       return jsonError(403, 'Forbidden', 'FORBIDDEN');
     }
 

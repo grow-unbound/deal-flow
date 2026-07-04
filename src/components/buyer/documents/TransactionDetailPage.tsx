@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { ShoppingCart } from 'lucide-react';
+import { MapPin, Package, ShoppingCart } from 'lucide-react';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { ErrorState } from '@/components/ui/empty-state';
 import { StatusPill, type StatusTone } from '@/components/ui/status-pill';
@@ -60,6 +60,7 @@ export interface TransactionDoc {
   total_amount: number;
   /** Extra amount shown below total (e.g. outstanding balance on invoices) */
   outstandingBalance?: number | null;
+  placeOfSupply: string | null;
   items: TransactionLineItem[];
 }
 
@@ -100,9 +101,12 @@ function getStatusBadge(status: string): { tone: StatusTone; label: string } {
 
 function LineItemRow({ item }: { item: TransactionLineItem }) {
   return (
-    <div className="flex items-start justify-between gap-3 py-3">
+    <div className="flex items-start gap-3 py-3">
+      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[14px] border border-cream-200 bg-cream-100">
+        <Package className="h-5 w-5 text-[var(--cream-400)]" />
+      </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[var(--b-text-body)] font-medium text-[var(--cream-900)]">
+        <p className="truncate text-[var(--b-text-body)] font-semibold text-[var(--cream-900)]">
           {item.product_name}
         </p>
         {item.internal_sku && (
@@ -110,7 +114,7 @@ function LineItemRow({ item }: { item: TransactionLineItem }) {
             {item.internal_sku}
           </p>
         )}
-        <p className="mt-0.5 text-[var(--b-text-sub)] text-[var(--cream-600)]">
+        <p className="mt-1 text-[var(--b-text-sub)] text-[var(--cream-600)]">
           {item.qty} {item.unit ?? 'unit'} × {inr(item.unit_price)}
         </p>
       </div>
@@ -200,7 +204,7 @@ function ReorderButton({ items, docType }: { items: TransactionLineItem[]; docTy
       <button
         type="button"
         onClick={handleReorder}
-        className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-[var(--b-text-body)] font-semibold text-white transition-opacity active:opacity-80"
+        className="flex w-full items-center justify-center gap-2 rounded-lg py-3.5 text-[var(--b-text-body)] font-semibold text-white transition-opacity active:opacity-80"
         style={{ background: 'var(--teal-500)' }}
       >
         <ShoppingCart className="h-4 w-4" />
@@ -268,15 +272,35 @@ export function TransactionDetailPage({
   }, [endpoint, id]);
 
   const badge = doc ? getStatusBadge(doc.status) : null;
+const totalUnits = doc?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0;
+  const headerSubtitle = doc ? (
+    <div className="space-y-1">
+      <p className="font-mono text-sm text-[var(--cream-700)]">
+        {fmtDate(doc.primaryDate)}
+      </p>
+      {doc.notes && <p className="text-sm leading-5 text-[var(--cream-800)]">{doc.notes}</p>}
+    </div>
+  ) : null;
+  const deliveryPlace = doc?.placeOfSupply?.trim() ?? '';
 
   return (
     <div className="flex min-h-[50vh] flex-col pb-[var(--tab-bar)]">
-      <BuyerDetailShell title={title}>
+      <BuyerDetailShell
+        title={doc?.docNumber ?? title}
+        subtitle={headerSubtitle}
+        rightSlot={badge ? <StatusPill label={badge.label} tone={badge.tone} /> : null}
+        showLocationControl={false}
+      >
         {loading ? (
           <div className="space-y-3 px-4 py-4">
-            <div className="h-10 animate-pulse rounded-xl border border-cream-200 bg-cream-100" />
+            <div className="space-y-1">
+              <div className="h-3 w-32 animate-pulse rounded-full bg-cream-200" />
+              <div className="h-7 w-48 animate-pulse rounded-full bg-cream-200" />
+              <div className="h-4 w-52 animate-pulse rounded-full bg-cream-200" />
+            </div>
             <div className="h-40 animate-pulse rounded-2xl border border-cream-200 bg-cream-100" />
             <div className="h-28 animate-pulse rounded-2xl border border-cream-200 bg-cream-100" />
+            <div className="h-24 animate-pulse rounded-2xl border border-cream-200 bg-cream-100" />
           </div>
         ) : fetchError ? (
           <div className="p-4">
@@ -293,53 +317,36 @@ export function TransactionDetailPage({
         ) : !doc ? (
           <div className="px-4 py-8 text-center text-sm text-[var(--fg-3)]">{title} not found.</div>
         ) : (
-          <div className="space-y-3 px-4 py-4">
-            {/* Header card — doc number + status + date */}
+          <div className="flex min-h-[calc(100dvh-140px)] flex-col space-y-3 px-4 py-4">
+            <div className="px-1">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--cream-600)]">
+                {doc.items.length} product{doc.items.length !== 1 ? 's' : ''} · {totalUnits} unit{totalUnits !== 1 ? 's' : ''}
+              </p>
+              <h2 className="mt-1 font-[var(--font-display)] text-[var(--b-text-page)] font-semibold leading-tight text-[var(--cream-900)]">
+                {docType === 'invoice' ? 'Invoice items' : docType === 'order' ? 'Order items' : 'Estimate items'}
+              </h2>
+            </div>
+
             <div
               className="rounded-2xl border border-[var(--border-1)] px-4 py-4"
               style={{ background: 'white' }}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-mono text-[var(--b-text-body)] text-[var(--cream-600)]">
-                    {doc.docNumber}
-                  </p>
-                  <p className="mt-1 text-[var(--b-text-sub)] text-[var(--cream-600)]">
-                    {doc.primaryDateLabel}: {fmtDate(doc.primaryDate)}
-                  </p>
-                  {doc.notes && (
-                    <p className="mt-1.5 text-[var(--b-text-body)] text-[var(--cream-800)]">
-                      {doc.notes}
-                    </p>
-                  )}
+              {doc.items.length > 0 ? (
+                <div>
+                  {doc.items.map((item, idx) => (
+                    <React.Fragment key={item.tenant_product_id + idx}>
+                      <LineItemRow item={item} />
+                      {idx < doc.items.length - 1 && <div className="h-px bg-[var(--border-1)]" />}
+                    </React.Fragment>
+                  ))}
                 </div>
-                {badge && <StatusPill label={badge.label} tone={badge.tone} />}
-              </div>
+              ) : (
+                <div className="py-2 text-center text-[var(--b-text-sub)] text-[var(--cream-600)]">
+                  No items found.
+                </div>
+              )}
             </div>
 
-            {/* Line items */}
-            {doc.items.length > 0 ? (
-              <div
-                className="rounded-2xl border border-[var(--border-1)] px-4"
-                style={{ background: 'white' }}
-              >
-                {doc.items.map((item, idx) => (
-                  <React.Fragment key={item.tenant_product_id + idx}>
-                    <LineItemRow item={item} />
-                    {idx < doc.items.length - 1 && (
-                      <div className="h-px bg-[var(--border-1)]" />
-                    )}
-                  </React.Fragment>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-[var(--border-1)] px-4 py-6 text-center text-[var(--b-text-sub)] text-[var(--cream-600)]"
-                style={{ background: 'white' }}>
-                No items found.
-              </div>
-            )}
-
-            {/* Totals */}
             <TotalsBlock
               subtotal={doc.subtotal}
               tax_total={doc.tax_total}
@@ -347,7 +354,26 @@ export function TransactionDetailPage({
               outstandingBalance={doc.outstandingBalance}
             />
 
-            {/* Reorder CTA */}
+            {deliveryPlace ? (
+              <div className="rounded-2xl border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] border border-cream-200 bg-cream-100">
+                    <MapPin className="h-4 w-4 text-[var(--teal-500)]" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium uppercase tracking-[0.14em] text-[var(--cream-600)]">
+                      Delivery to
+                    </p>
+                    <p className="mt-1 font-semibold text-[var(--cream-900)]">
+                      {deliveryPlace}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="flex-1" />
+
             {doc.items.length > 0 && (
               <ReorderButton items={doc.items} docType={docType} />
             )}

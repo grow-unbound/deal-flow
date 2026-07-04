@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
-import { getFlag } from '@/lib/flags';
 import { normalizeLocationAssociatedUsers } from '@/lib/location-assignees';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
@@ -51,10 +50,7 @@ export async function GET(
   const claims = await getVerifiedClaims(request);
 
   if (!claims.tenant_id) return timedJson({ error: 'Unauthorized' }, { status: 401 });
-  if (!claims.role?.startsWith('seller_')) return timedJson({ error: 'Forbidden' }, { status: 403 });
-
-  const flagEnabled = await getFlag('df_brand_product_master', claims.tenant_id);
-  if (!flagEnabled) return timedJson({ error: 'Feature not enabled' }, { status: 403 });
+  if (claims.role !== 'seller_admin') return timedJson({ error: 'Forbidden' }, { status: 403 });
 
   const db = supabaseAdmin as any;
 
