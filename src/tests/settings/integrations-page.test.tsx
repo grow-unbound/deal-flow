@@ -405,6 +405,55 @@ describe('integrations settings client', () => {
     });
   });
 
+  it('closes the setup wizard immediately after starting a sync', async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse(buildIntegrationsPayload()));
+
+    let resolveSyncResponse!: (value: Response) => void;
+    const syncResponse = new Promise<Response>((resolve) => {
+      resolveSyncResponse = resolve;
+    });
+
+    apiPostMock.mockImplementation(async (url: string) => {
+      if (url === '/api/settings/integrations/connect') {
+        return jsonResponse(buildIntegrationsPayload({ includeSummary: true }));
+      }
+
+      if (url === '/api/settings/integrations/sync') {
+        return syncResponse;
+      }
+
+      throw new Error(`Unexpected POST ${url}`);
+    });
+
+    renderWithQueryClient(<IntegrationsSettingsClient />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Add integration' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Zoho Books/ }));
+
+    await screen.findByRole('heading', { name: 'Setup Zoho Books' });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    fireEvent.change(await screen.findByLabelText('Client ID'), { target: { value: 'client-id' } });
+    fireEvent.change(await screen.findByLabelText('Client Secret'), { target: { value: 'client-secret' } });
+    fireEvent.change(await screen.findByLabelText('Refresh Token'), { target: { value: 'refresh-token' } });
+    fireEvent.change(await screen.findByLabelText('Organization ID'), { target: { value: 'org-123' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByRole('button', { name: 'Start syncing' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start syncing' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'Setup Zoho Books' })).not.toBeInTheDocument();
+    });
+
+    resolveSyncResponse(jsonResponse({ job_id: 'job-123' }));
+
+    await waitFor(() => {
+      expect(toastSuccessMock).toHaveBeenCalledWith('Sync started');
+    });
+  });
+
   it('starts a phase-scoped sync for a single entity', async () => {
     apiFetchMock.mockImplementation(async () => jsonResponse(buildIntegrationsPayload({ includeSummary: true })));
 

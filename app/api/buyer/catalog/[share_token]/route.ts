@@ -17,6 +17,7 @@ interface GuestCatalogItem {
   brand_name: string;
   category_id: string | null;
   category_name: string | null;
+  gst_rate: number | null;
   price: number;
   resolved_price: number;
   campaign_price: number | null;
