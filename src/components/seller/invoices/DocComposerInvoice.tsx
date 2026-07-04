@@ -62,7 +62,8 @@ import {
   buildComposerStagedChanges,
   stagedSliceFromInvoice,
 } from '@/lib/documents/composer-staged-changes';
-import { computeLineTotal, computeTotals, defaultPaymentTerms } from '@/lib/documents/composer-math';
+import { computeTotals, defaultPaymentTerms } from '@/lib/documents/composer-math';
+import { computeLineTaxableAmount } from '@/lib/gst';
 import { formatCompactInr } from '@/lib/utils';
 
 type SendChannel = 'whatsapp' | 'email' | 'download';
@@ -132,7 +133,11 @@ function invoiceDetailToComposerDocument(detail: InvoiceDetailResponse): Invoice
       base_selling_price: line.rate,
       disc_pct: line.discount_pct,
       tax_pct: line.tax_pct ?? 0,
-      line_total: line.line_total,
+      line_total: computeLineTaxableAmount({
+        qty: line.qty,
+        unit_price: line.rate,
+        disc_pct: line.discount_pct,
+      }),
       scheme_tag: null,
     })),
     buyer_context: {
@@ -339,7 +344,7 @@ export function DocComposerInvoice({
     const mappedLines = (composerData.items ?? []).map((line) => ({
       ...line,
       diff: 'clean' as const,
-      line_total: computeLineTotal(line, gstInclusive),
+      line_total: computeLineTaxableAmount(line),
     }));
     setLineState(mappedLines);
     setPaymentTermsLabel(defaultPaymentTerms(composerData.buyer_context?.payment_terms_days ?? 0));
@@ -403,7 +408,7 @@ export function DocComposerInvoice({
         const nextPrice = pricingQuery.data[line.tenant_product_id];
         if (nextPrice == null || nextPrice === line.unit_price) return line;
         const next = { ...line, unit_price: nextPrice };
-        return { ...next, line_total: computeLineTotal(next, gstInclusive) };
+        return { ...next, line_total: computeLineTaxableAmount(next) };
       }),
     );
     lastAppliedPricingKeyRef.current = pricingKey;
@@ -614,7 +619,7 @@ export function DocComposerInvoice({
         base_selling_price: product.base_selling_price,
         disc_pct: 0,
         tax_pct: product.tax_pct ?? 0,
-        line_total: computeLineTotal({ qty: 1, unit_price: product.unit_price, disc_pct: 0, tax_pct: product.tax_pct ?? 0 }, gstInclusive),
+        line_total: computeLineTaxableAmount({ qty: 1, unit_price: product.unit_price, disc_pct: 0 }),
         scheme_tag: null,
         diff: 'added',
       },
@@ -627,7 +632,7 @@ export function DocComposerInvoice({
       current.map((line) => {
         if (line.id !== lineId) return line;
         const next = { ...line, ...patch };
-        return { ...next, line_total: computeLineTotal(next, gstInclusive) };
+        return { ...next, line_total: computeLineTaxableAmount(next) };
       }),
     );
   }
@@ -656,7 +661,7 @@ export function DocComposerInvoice({
         };
         return {
           ...next,
-          line_total: computeLineTotal(next),
+          line_total: computeLineTaxableAmount(next),
         };
       }),
     );

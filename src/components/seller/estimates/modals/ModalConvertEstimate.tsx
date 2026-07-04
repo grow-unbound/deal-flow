@@ -14,7 +14,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
 import { useEstimateProductSearch } from '@/hooks/useEstimates';
+import { computeLineGrossAmount, computeLineTaxableAmount } from '@/lib/gst';
 import type { EstimateComposerLineInput, EstimateComposerProductSearchRow } from '@/types/estimate-composer';
 import { formatCompactInr } from '@/lib/utils';
 
@@ -34,9 +36,8 @@ export interface AddedLinePayload {
   tax_pct: number;
 }
 
-function lineAmount(unit_price: number, qty: number, disc_pct: number, tax_pct: number) {
-  const taxable = qty * unit_price * (1 - disc_pct / 100);
-  return taxable + taxable * (tax_pct / 100);
+function lineAmount(unit_price: number, qty: number, disc_pct: number, tax_pct: number, gstInclusive: boolean) {
+  return computeLineGrossAmount({ qty, unit_price, disc_pct, tax_pct }, gstInclusive);
 }
 
 export function ModalConvertEstimate({
@@ -77,6 +78,7 @@ export function ModalConvertEstimate({
   const [productQuery, setProductQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  const { gstInclusive } = useBusinessPolicy();
 
   const productSearchResult = useEstimateProductSearch(productQuery, buyerId ?? null, searchOpen);
   const allSearchProducts: EstimateComposerProductSearchRow[] = productSearchResult.data ?? [];
@@ -142,16 +144,33 @@ export function ModalConvertEstimate({
       const overrideStr = qtyOverrides[l.id];
       const override = overrideStr !== undefined ? parseFloat(overrideStr) : undefined;
       const qty = override && override > 0 ? override : l.qty;
-      return sum + lineAmount(l.unit_price, qty, l.disc_pct, l.tax_pct);
+      return sum + lineAmount(l.unit_price, qty, l.disc_pct, l.tax_pct, gstInclusive);
     }, 0);
     const addedTotal = addedLines.reduce((sum, al) => {
       const overrideStr = addedQtyOverrides[al.id];
       const override = overrideStr !== undefined ? parseFloat(overrideStr) : undefined;
       const qty = override && override > 0 ? override : al.qty;
-      return sum + lineAmount(al.product.unit_price, qty, 0, al.product.tax_pct ?? 0);
+      return sum + lineAmount(al.product.unit_price, qty, 0, al.product.tax_pct ?? 0, gstInclusive);
     }, 0);
     return existingTotal + addedTotal;
+  }, [existingIncluded, qtyOverrides, addedLines, addedQtyOverrides, gstInclusive]);
+
+  const subtotal = useMemo(() => {
+    const existingSubtotal = existingIncluded.reduce((sum, l) => {
+      const overrideStr = qtyOverrides[l.id];
+      const override = overrideStr !== undefined ? parseFloat(overrideStr) : undefined;
+      const qty = override && override > 0 ? override : l.qty;
+      return sum + computeLineTaxableAmount({ qty, unit_price: l.unit_price, disc_pct: l.disc_pct });
+    }, 0);
+    const addedSubtotal = addedLines.reduce((sum, al) => {
+      const overrideStr = addedQtyOverrides[al.id];
+      const override = overrideStr !== undefined ? parseFloat(overrideStr) : undefined;
+      const qty = override && override > 0 ? override : al.qty;
+      return sum + computeLineTaxableAmount({ qty, unit_price: al.product.unit_price, disc_pct: 0 });
+    }, 0);
+    return existingSubtotal + addedSubtotal;
   }, [existingIncluded, qtyOverrides, addedLines, addedQtyOverrides]);
+  const taxTotal = useMemo(() => total - subtotal, [total, subtotal]);
 
   function toggle(id: string, checked: boolean) {
     setSelected((prev) => ({ ...prev, [id]: checked }));
@@ -319,7 +338,7 @@ export function ModalConvertEstimate({
                     />
                   </div>
                   <p className="text-right font-mono text-base tabular-nums text-cream-900">
-                    {on ? formatCompactInr(lineAmount(line.unit_price, effectiveQty, line.disc_pct, line.tax_pct)) : '—'}
+                    {on ? formatCompactInr(lineAmount(line.unit_price, effectiveQty, line.disc_pct, line.tax_pct, gstInclusive)) : '—'}
                   </p>
                 </div>
               );
@@ -360,7 +379,7 @@ export function ModalConvertEstimate({
                     />
                   </div>
                   <p className="text-right font-mono text-base tabular-nums text-cream-900">
-                    {formatCompactInr(lineAmount(al.product.unit_price, effectiveQty, 0, al.product.tax_pct ?? 0))}
+                    {formatCompactInr(lineAmount(al.product.unit_price, effectiveQty, 0, al.product.tax_pct ?? 0, gstInclusive))}
                   </p>
                 </div>
               );
@@ -440,12 +459,26 @@ export function ModalConvertEstimate({
           </div>
 
           {/* Summary */}
-          <div className="flex items-baseline justify-between rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-2.5 text-base">
-            <span className="text-cream-700">
-              {totalLineCount} line{totalLineCount === 1 ? '' : 's'}
-              {addedLines.length > 0 ? <span className="ml-1 text-xs text-teal-600">({addedLines.length} added)</span> : null}
-            </span>
-            <span className="font-mono font-medium tabular-nums text-cream-900">{formatCompactInr(total)}</span>
+          <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3">
+            <div className="flex items-baseline justify-between text-base">
+              <span className="text-cream-700">
+                {totalLineCount} line{totalLineCount === 1 ? '' : 's'}
+                {addedLines.length > 0 ? <span className="ml-1 text-xs text-teal-600">({addedLines.length} added)</span> : null}
+              </span>
+              <span className="font-mono font-medium tabular-nums text-cream-900">{formatCompactInr(total)}</span>
+            </div>
+            <div className="mt-3 space-y-2 text-sm">
+              <SummaryRow label="Subtotal" value={formatCompactInr(subtotal)} />
+              {gstInclusive ? (
+                <SummaryRow label="GST" value="Included in prices" />
+              ) : (
+                <SummaryRow label="Tax total" value={formatCompactInr(taxTotal)} />
+              )}
+              <div className="flex items-center justify-between border-t border-cream-200 pt-2 text-base">
+                <span className="font-medium text-cream-900">Total</span>
+                <span className="font-mono font-semibold text-cream-950">{formatCompactInr(total)}</span>
+              </div>
+            </div>
           </div>
         </DialogBody>
 
@@ -465,5 +498,14 @@ export function ModalConvertEstimate({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-cream-700">{label}</span>
+      <span className="font-mono text-cream-900">{value}</span>
+    </div>
   );
 }

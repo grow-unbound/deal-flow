@@ -3,6 +3,7 @@
 import type { SalesOrderLine } from '@/types/tenant-sales-orders';
 import { formatCurrency } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
 
 interface SalesOrderItemsSectionProps {
   lines: SalesOrderLine[];
@@ -10,9 +11,9 @@ interface SalesOrderItemsSectionProps {
 }
 
 export function SalesOrderItemsSection({ lines, showStock }: SalesOrderItemsSectionProps) {
+  const { gstInclusive, gstRate } = useBusinessPolicy();
   const taxable = lines.reduce((s, l) => s + l.line_total, 0);
-  const igstRate = 0.18;
-  const igst = Math.round(taxable * igstRate);
+  const igst = gstInclusive ? 0 : Math.round(taxable * (gstRate / 100));
   const total = taxable + igst;
 
   return (
@@ -51,10 +52,17 @@ export function SalesOrderItemsSection({ lines, showStock }: SalesOrderItemsSect
           <span>Taxable value</span>
           <span className="font-mono">{formatCurrency(taxable)}</span>
         </div>
-        <div className="mt-1 flex justify-between text-base text-cream-800">
-          <span>IGST @ 18%</span>
-          <span className="font-mono">{formatCurrency(igst)}</span>
-        </div>
+        {gstInclusive ? (
+          <div className="mt-1 flex justify-between text-base text-cream-800">
+            <span>GST included in prices</span>
+            <span className="font-mono">Included</span>
+          </div>
+        ) : (
+          <div className="mt-1 flex justify-between text-base text-cream-800">
+            <span>GST</span>
+            <span className="font-mono">{formatCurrency(igst)}</span>
+          </div>
+        )}
         <div className="mt-2 flex justify-between border-t border-cream-100 pt-2 font-display text-lg font-semibold text-cream-950">
           <span>Order total</span>
           <span>{formatCurrency(total)}</span>

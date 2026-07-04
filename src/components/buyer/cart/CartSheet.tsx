@@ -2,11 +2,14 @@
 
 import Link from 'next/link';
 import { ShoppingCart, Trash2, Minus, Plus, Package } from 'lucide-react';
+import { useMemo } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
+import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Pressable } from '@/components/ui/pressable';
+import { computeBuyerCartTotals } from '@/lib/gst';
 
 interface CartSheetProps {
   open: boolean;
@@ -14,7 +17,23 @@ interface CartSheetProps {
 }
 
 export function CartSheet({ open, onClose }: CartSheetProps) {
-  const { items, itemCount, subtotal, removeItem, updateQty } = useCart();
+  const { items, itemCount, removeItem, updateQty } = useCart();
+  const { data: meData } = useBuyerMe();
+  const gstInclusive = meData?.business_policy.gst_inclusive ?? false;
+  const gstRate = meData?.business_policy.gst_rate ?? 18;
+  const totals = useMemo(
+    () => computeBuyerCartTotals(
+      items.map((item) => ({
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        disc_pct: 0,
+        gst_rate: item.gst_rate ?? gstRate,
+      })),
+      gstInclusive,
+      gstRate,
+    ),
+    [items, gstInclusive, gstRate],
+  );
 
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -78,7 +97,23 @@ export function CartSheet({ open, onClose }: CartSheetProps) {
                 className="text-base font-semibold"
                 style={{ color: 'var(--fg-1, var(--cream-900))', fontFamily: 'var(--font-mono)' }}
               >
-                {formatCurrency(subtotal)}
+                {formatCurrency(totals.subtotal)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm" style={{ color: 'var(--fg-3, var(--cream-700))' }}>
+              <span>{gstInclusive ? 'GST included in prices' : 'GST'}</span>
+              <span className="font-mono" style={{ color: 'var(--fg-1, var(--cream-900))' }}>
+                {gstInclusive ? 'Included' : formatCurrency(totals.tax_amount)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm" style={{ color: 'var(--fg-3, var(--cream-700))' }}>
+              <span>Delivery</span>
+              <span className="font-mono" style={{ color: 'var(--fg-1, var(--cream-900))' }}>Included</span>
+            </div>
+            <div className="flex items-center justify-between pt-2" style={{ borderTop: '1px solid var(--border-1)' }}>
+              <span className="text-sm font-semibold" style={{ color: 'var(--fg-1, var(--cream-900))' }}>Total</span>
+              <span className="text-base font-semibold" style={{ color: 'var(--fg-1, var(--cream-900))', fontFamily: 'var(--font-mono)' }}>
+                {formatCurrency(totals.total)}
               </span>
             </div>
             <Pressable asChild haptic>

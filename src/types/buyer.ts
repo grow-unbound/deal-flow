@@ -15,6 +15,7 @@ export interface BuyerCatalogItem {
   resolved_price?: number | null;
   campaign_price?: number | null;
   has_campaign_price?: boolean;
+  gst_rate?: number | null;
   default_uom: string | null;
   pack_size: number | null;
   image_urls: string[];

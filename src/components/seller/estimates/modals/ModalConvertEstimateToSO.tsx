@@ -14,12 +14,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { useBusinessPolicy } from '@/hooks/useBusinessPolicy';
+import { computeLineGrossAmount, computeLineTaxableAmount } from '@/lib/gst';
 import type { EstimateComposerLineInput } from '@/types/estimate-composer';
 import { formatCompactInr } from '@/lib/utils';
 
-function lineAmount(line: Pick<EstimateComposerLineInput, 'qty' | 'unit_price' | 'disc_pct' | 'tax_pct'>) {
-  const taxable = line.qty * line.unit_price * (1 - line.disc_pct / 100);
-  return taxable + taxable * (line.tax_pct / 100);
+function lineAmount(line: Pick<EstimateComposerLineInput, 'qty' | 'unit_price' | 'disc_pct' | 'tax_pct'>, gstInclusive: boolean) {
+  return computeLineGrossAmount(line, gstInclusive);
 }
 
 export function ModalConvertEstimateToSO({
@@ -42,6 +43,7 @@ export function ModalConvertEstimateToSO({
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [deliveryDate, setDeliveryDate] = useState('');
   const [orderNumber, setOrderNumber] = useState('');
+  const { gstInclusive } = useBusinessPolicy();
 
   useEffect(() => {
     if (!open) return;
@@ -57,7 +59,12 @@ export function ModalConvertEstimateToSO({
   }, [open, lines]);
 
   const included = useMemo(() => lines.filter((line) => selected[line.id]), [lines, selected]);
-  const total = useMemo(() => included.reduce((sum, line) => sum + lineAmount(line), 0), [included]);
+  const total = useMemo(() => included.reduce((sum, line) => sum + lineAmount(line, gstInclusive), 0), [included, gstInclusive]);
+  const subtotal = useMemo(
+    () => included.reduce((sum, line) => sum + computeLineTaxableAmount(line), 0),
+    [included],
+  );
+  const taxTotal = useMemo(() => total - subtotal, [total, subtotal]);
 
   function toggle(lineId: string, checked: boolean) {
     setSelected((prev) => ({ ...prev, [lineId]: checked }));
@@ -117,7 +124,7 @@ export function ModalConvertEstimateToSO({
                     <p className="truncate font-mono text-xs text-cream-600">{line.sku}</p>
                   </div>
                   <p className="text-right text-base tabular-nums text-cream-800">{line.qty}</p>
-                  <p className="text-right font-mono text-base tabular-nums text-cream-900">{formatCompactInr(lineAmount(line))}</p>
+                  <p className="text-right font-mono text-base tabular-nums text-cream-900">{formatCompactInr(lineAmount(line, gstInclusive))}</p>
                 </div>
               );
             })}
@@ -139,11 +146,25 @@ export function ModalConvertEstimateToSO({
             </div>
           </div>
 
-          <div className="flex items-baseline justify-between rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-2.5 text-base">
-            <span className="text-cream-700">
-              {included.length} of {lines.length} lines
-            </span>
-            <span className="font-mono font-medium tabular-nums text-cream-900">{formatCompactInr(total)}</span>
+          <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-3">
+            <div className="flex items-baseline justify-between text-base">
+              <span className="text-cream-700">
+                {included.length} of {lines.length} lines
+              </span>
+              <span className="font-mono font-medium tabular-nums text-cream-900">{formatCompactInr(total)}</span>
+            </div>
+            <div className="mt-3 space-y-2 text-sm">
+              <SummaryRow label="Subtotal" value={formatCompactInr(subtotal)} />
+              {gstInclusive ? (
+                <SummaryRow label="GST" value="Included in prices" />
+              ) : (
+                <SummaryRow label="Tax total" value={formatCompactInr(taxTotal)} />
+              )}
+              <div className="flex items-center justify-between border-t border-cream-200 pt-2 text-base">
+                <span className="font-medium text-cream-900">Total</span>
+                <span className="font-mono font-semibold text-cream-950">{formatCompactInr(total)}</span>
+              </div>
+            </div>
           </div>
         </DialogBody>
 
@@ -163,5 +184,14 @@ export function ModalConvertEstimateToSO({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-cream-700">{label}</span>
+      <span className="font-mono text-cream-900">{value}</span>
+    </div>
   );
 }

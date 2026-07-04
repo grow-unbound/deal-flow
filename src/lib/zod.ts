@@ -585,3 +585,53 @@ export type CreateBrandInput = z.infer<typeof CreateBrandSchema>;
 export type ImportedBrandCreateInput = z.infer<typeof ImportedBrandCreateSchema>;
 export type CustomBrandCreateInput = z.infer<typeof CustomBrandCreateSchema>;
 export type TenantProductInput = z.infer<typeof TenantProductSchema>;
+
+// WhatsApp Broadcast composer (Phase E) — see
+// CLAUDE OUTPUTS/DealFlow/DealFlow_WhatsApp-Broadcast-Spec_v4.md §4.2, §9.
+// target_filter shape is validated per target_type in the API route (not
+// here) since it varies: {city|state|pincode|zone} for geography_filter,
+// {dormant_days_gt} for dormant_filter, {overdue_days_gt}? for dues_filter.
+export const WhatsAppBroadcastTargetTypeSchema = z.enum([
+  'cohort',
+  'buyer_selection',
+  'geography_filter',
+  'dormant_filter',
+  'dues_filter',
+  'all_buyers',
+]);
+export type WhatsAppBroadcastTargetType = z.infer<typeof WhatsAppBroadcastTargetTypeSchema>;
+
+export const WhatsAppBroadcastCreateSchema = z
+  .object({
+    name: z.string().min(1, 'Broadcast name is required').max(200),
+    whatsapp_template_id: z.string().uuid('Select a template'),
+    use_case: z.string().min(1),
+    target_type: WhatsAppBroadcastTargetTypeSchema,
+    target_cohort_id: z.string().uuid().optional().nullable(),
+    target_filter: z.record(z.union([z.string(), z.number()])).optional().nullable(),
+    target_buyer_ids: z.array(z.string().uuid()).optional().nullable(),
+    linked_campaign_id: z.string().uuid().optional().nullable(),
+    variable_bindings: z.record(z.string()).optional().default({}),
+    scheduled_for: z.string().datetime().optional().nullable(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.target_type === 'cohort' && !val.target_cohort_id) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Select a customer group', path: ['target_cohort_id'] });
+    }
+    if (val.target_type === 'buyer_selection' && (!val.target_buyer_ids || val.target_buyer_ids.length === 0)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Select at least one buyer', path: ['target_buyer_ids'] });
+    }
+    if (val.target_type === 'geography_filter' && (!val.target_filter || Object.keys(val.target_filter).length === 0)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Select a geography filter', path: ['target_filter'] });
+    }
+  });
+export type WhatsAppBroadcastCreateInput = z.infer<typeof WhatsAppBroadcastCreateSchema>;
+
+export const WhatsAppBroadcastAudiencePreviewSchema = z.object({
+  target_type: WhatsAppBroadcastTargetTypeSchema,
+  target_cohort_id: z.string().uuid().optional().nullable(),
+  target_filter: z.record(z.union([z.string(), z.number()])).optional().nullable(),
+  target_buyer_ids: z.array(z.string().uuid()).optional().nullable(),
+  meta_category: z.enum(['marketing', 'utility', 'authentication']).optional(),
+});
+export type WhatsAppBroadcastAudiencePreviewInput = z.infer<typeof WhatsAppBroadcastAudiencePreviewSchema>;

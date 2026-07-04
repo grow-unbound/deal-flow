@@ -1,12 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronRight, MapPin, ShoppingBag } from 'lucide-react';
+import { ChevronRight, MapPin } from 'lucide-react';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
+import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { apiFetch } from '@/lib/api-fetch';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
+import { computeBuyerCartTotals } from '@/lib/gst';
 import posthog from 'posthog-js';
 
 function inr(n: number): string {
@@ -19,8 +21,11 @@ function inr(n: number): string {
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, clearCart, subtotal } = useCart();
+  const { data: meData } = useBuyerMe();
   const delivery = useBuyerDeliveryOptional();
   const selectedDelivery = delivery?.selected ?? null;
+  const gstInclusive = meData?.business_policy.gst_inclusive ?? false;
+  const gstRate = meData?.business_policy.gst_rate ?? 18;
   const [notes, setNotes] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +64,7 @@ export default function CheckoutPage() {
             tenant_product_id: i.tenant_product_id,
             qty: i.quantity,
             unit_price: i.unit_price,
+            gst_rate: i.gst_rate ?? gstRate,
             product_name: i.name,
           })),
           notes: notes.trim() || undefined,
@@ -73,6 +79,7 @@ export default function CheckoutPage() {
           estimate_number: data.estimate_number,
           item_count: items.length,
           subtotal,
+          tax_amount: totals.tax_amount,
         });
         clearCart();
         router.replace(`/buy/orders?tab=inquiries&highlight=${data.estimate_id}`);
@@ -118,10 +125,10 @@ export default function CheckoutPage() {
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {/* Cart summary */}
-        <div
-          className="rounded-xl p-4 space-y-3"
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-1)' }}
-        >
+          <div
+            className="rounded-xl p-4 space-y-3"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-1)' }}
+          >
           <p
             className="text-xs font-semibold uppercase tracking-widest"
             style={{ color: 'var(--cream-600)', fontFamily: 'var(--font-mono)' }}
@@ -162,7 +169,34 @@ export default function CheckoutPage() {
               className="text-base font-bold"
               style={{ color: 'var(--cream-900)', fontFamily: 'var(--font-mono)' }}
             >
-              {inr(subtotal)}
+              {inr(totals.subtotal)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm" style={{ color: 'var(--fg-3, var(--cream-700))' }}>
+              {gstInclusive ? 'GST included in prices' : 'GST'}
+            </span>
+            <span
+              className="text-base font-semibold"
+              style={{ color: 'var(--fg-1, var(--cream-900))', fontFamily: 'var(--font-mono)' }}
+            >
+              {gstInclusive ? 'Included' : inr(totals.tax_amount)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm" style={{ color: 'var(--fg-3, var(--cream-700))' }}>
+              Delivery
+            </span>
+            <span className="text-base font-semibold" style={{ color: 'var(--fg-1, var(--cream-900))', fontFamily: 'var(--font-mono)' }}>
+              Included
+            </span>
+          </div>
+          <div className="flex items-center justify-between pt-3" style={{ borderTop: '1px solid var(--border-1)' }}>
+            <span className="text-sm font-semibold" style={{ color: 'var(--cream-900)' }}>
+              Total
+            </span>
+            <span className="text-base font-bold" style={{ color: 'var(--cream-900)', fontFamily: 'var(--font-mono)' }}>
+              {inr(totals.total)}
             </span>
           </div>
         </div>
@@ -272,3 +306,16 @@ export default function CheckoutPage() {
     </div>
   );
 }
+  const totals = useMemo(
+    () => computeBuyerCartTotals(
+      items.map((item) => ({
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        disc_pct: 0,
+        gst_rate: item.gst_rate ?? gstRate,
+      })),
+      gstInclusive,
+      gstRate,
+    ),
+    [items, gstInclusive, gstRate],
+  );
