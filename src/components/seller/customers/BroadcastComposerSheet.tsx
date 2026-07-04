@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { MessageCircle, Users2, MapPin, Clock, Wallet, CheckCircle2 } from 'lucide-react';
+import { MessageCircle, Users2, MapPin, Clock, Wallet, CheckCircle2, Info } from 'lucide-react';
 import {
   FormOverlay,
   FormOverlayHeader,
@@ -17,8 +17,10 @@ import {
   useWhatsAppTemplates,
   useAudiencePreview,
   useCreateWhatsAppBroadcast,
+  useWhatsAppPlatformStatus,
   type WhatsAppTemplateOption,
 } from '@/hooks/useWhatsAppBroadcasts';
+import { WHATSAPP_QUALITY_BANNER_COPY } from '@/constants/whatsapp-quality-banner';
 import type { WhatsAppBroadcastTargetType } from '@/lib/zod';
 
 // Numeric step union, mirrors the CsvImportFlow.tsx convention (0-indexed
@@ -53,8 +55,15 @@ export function BroadcastComposerSheet({
 
   const { data: templates, isLoading: templatesLoading } = useWhatsAppTemplates(open);
   const { data: cohorts } = useTenantCohortOptions(open);
+  const { data: platformStatus } = useWhatsAppPlatformStatus(open);
   const audiencePreview = useAudiencePreview();
   const createBroadcast = useCreateWhatsAppBroadcast();
+
+  // Phase F (§7.3) — quality-rating banner copy is a config value
+  // (src/constants/whatsapp-quality-banner.ts), not hardcoded here.
+  const qualityBanner = platformStatus
+    ? WHATSAPP_QUALITY_BANNER_COPY[platformStatus.quality_rating_state]
+    : null;
 
   const manualBuyerIds = useMemo(
     () =>
@@ -137,6 +146,13 @@ export function BroadcastComposerSheet({
       />
 
       <FormOverlayBody>
+        {qualityBanner?.showBanner ? (
+          <div className="mb-4 flex items-start gap-2 rounded-[10px] border border-warning-300 bg-warning-50 px-3 py-2.5 text-sm text-warning-800">
+            <Info size={16} className="mt-0.5 shrink-0" />
+            <p>{qualityBanner.message}</p>
+          </div>
+        ) : null}
+
         {step === 0 ? (
           <div className="space-y-3">
             <p className="text-sm text-cream-700">Choose a message template.</p>
