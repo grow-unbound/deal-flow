@@ -32,6 +32,7 @@ export const DEFAULT_TENANT_SETTINGS_STORED = {
   buyer_app: {
     enabled: false,
     whatsapp_number: '',
+    whatsapp_display_name: '',
     share_link_expiry_enabled: false,
     share_link_expiry_days: 90,
     credit_limit_visible: true,

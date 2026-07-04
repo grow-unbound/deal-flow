@@ -1,12 +1,13 @@
 'use client';
 
-import { ReactNode, useRef } from 'react';
-import { usePathname } from 'next/navigation';
+import { ReactNode, useEffect, useRef } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { isBuyerCartPillRoute, isBuyerDeepRoute, isBuyerLandingRoute } from '@/lib/buyer-routes';
 import { BuyerScrollRootContext } from '@/contexts/BuyerScrollContext';
 import { BuyerScrollChromeProvider, useBuyerScrollChromeState } from '@/contexts/BuyerScrollChromeContext';
 import { BuyerRealtimeProvider } from '@/contexts/BuyerRealtimeContext';
+import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { BuyerPreviewBootstrap } from './BuyerPreviewBootstrap';
 import { BuyerTabBar } from './BuyerTabBar';
 import { CartBar } from '@/components/buyer/cart/CartBar';
@@ -46,7 +47,19 @@ function BuyerShellMain({
 
 export function BuyerShell({ children }: BuyerShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const scrollRootRef = useRef<HTMLDivElement | null>(null);
+  const { data: me } = useBuyerMe();
+
+  // WhatsApp Broadcast Phase C (§4.8, §9): forced, one-time consent gate.
+  // Defense-in-depth alongside the redirect already issued right after OTP
+  // verify — covers direct navigation/back-button/deep-links into /buy/*
+  // before the checkbox has ever been confirmed for this buyer.
+  useEffect(() => {
+    if (me?.whatsapp_consent_required) {
+      router.replace('/consent');
+    }
+  }, [me?.whatsapp_consent_required, router]);
 
   return (
     <BuyerRealtimeProvider>

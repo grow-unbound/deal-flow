@@ -39,6 +39,8 @@ interface BuyerRow {
   gstin: string | null;
   buyer_app_enabled: boolean | null;
   geography?: { state?: string; city?: string; zone?: string } | null;
+  whatsapp_consent_at?: string | null;
+  whatsapp_opt_out_at?: string | null;
 }
 
 interface TenantRow {
@@ -450,7 +452,7 @@ export async function requireBuyerAccessProfile(request: NextRequest): Promise<B
     db
       .schema('app')
       .from('buyers')
-      .select('id, tenant_id, business_name, contact_name, credit_limit, phone, gstin, buyer_app_enabled, geography')
+      .select('id, tenant_id, business_name, contact_name, credit_limit, phone, gstin, buyer_app_enabled, geography, whatsapp_consent_at, whatsapp_opt_out_at')
       .eq('id', context.buyer_id)
       .eq('tenant_id', context.tenant_id)
       .eq('is_active', true)

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { assertTenantClaim, AuthorizationError, getVerifiedClaims } from '@/lib/auth';
-import { buildBillingView } from '@/lib/billing/build-billing-view';
+import { buildBillingView, buildWhatsAppUsageHistory } from '@/lib/billing/build-billing-view';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -26,11 +26,20 @@ export async function GET(request: NextRequest) {
     const db = supabaseAdmin as any;
     const tenantId = claims.tenant_id;
 
+    // Usage history window: last 30 days of sent/delivered/read messages,
+    // grouped by (date, trigger_source, meta_category). Phase E's
+    // app.whatsapp_broadcasts table will let this group by broadcast name
+    // instead — for now trigger_source/meta_category is the closest we have.
+    const historyWindowStart = new Date();
+    historyWindowStart.setDate(historyWindowStart.getDate() - 30);
+
     const [
       { data: tenantRow, error: tenantErr },
       { count: cohortCount, error: cohortErr },
       { count: priceListCount, error: plErr },
       { count: catalogCount, error: catErr },
+      { data: pricingRow, error: pricingErr },
+      { data: messageRows, error: messagesErr },
     ] = await Promise.all([
       db
         .schema('app')
@@ -57,6 +66,22 @@ export async function GET(request: NextRequest) {
         .eq('tenant_id', tenantId)
         .eq('status', 'published')
         .is('deleted_at', null),
+      db
+        .schema('app')
+        .from('whatsapp_credit_pricing')
+        .select('credit_price_inr')
+        .is('deleted_at', null)
+        .order('effective_from', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      db
+        .schema('app')
+        .from('whatsapp_messages')
+        .select('sent_at, created_at, trigger_source, meta_category, credits_charged')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .gte('created_at', historyWindowStart.toISOString())
+        .not('credits_charged', 'is', null),
     ]);
 
     if (tenantErr || !tenantRow || cohortErr || plErr || catErr) {
@@ -67,6 +92,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    if (pricingErr || messagesErr) {
+      console.error('[GET /api/settings/billing] whatsapp usage', pricingErr, messagesErr);
+    }
+
+    const usageHistory = buildWhatsAppUsageHistory(messageRows ?? []);
+
     const view = buildBillingView({
       plan: (tenantRow.plan as string) ?? 'starter',
       usage: {
@@ -76,6 +107,8 @@ export async function GET(request: NextRequest) {
       },
       whatsappBalance: Number(tenantRow.whatsapp_credits_balance ?? 1000),
       whatsappPurchased: Number(tenantRow.whatsapp_credits_purchased ?? 1000),
+      whatsappCreditPriceInr: Number(pricingRow?.credit_price_inr ?? 0.25),
+      whatsappUsageHistory: usageHistory,
     });
 
     return NextResponse.json({ data: view, error: null }, { status: 200 });
