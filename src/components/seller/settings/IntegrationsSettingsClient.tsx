@@ -239,14 +239,14 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
       tenantIntegrationId = connectedIntegration.id;
     }
 
-    await startSync({
+    setWizard((current) => ({ ...current, open: false }));
+
+    void startSync({
       integration_type_id: wizardIntegration.id,
       tenant_integration_id: tenantIntegrationId,
       credentials: wizard.credentials,
       import_start_date: wizard.importStartDate,
-    });
-
-    setWizard((current) => ({ ...current, open: false }));
+    }).catch(() => undefined);
   }
 
   async function runDisconnectIntegration(integration: IntegrationCatalogItem) {
@@ -904,7 +904,7 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
               ) : (
                 <Button
                   type="button"
-                  onClick={() => void runStartImport()}
+                  onClick={() => void runStartImport().catch(() => undefined)}
                   disabled={
                     !isSellerAdmin ||
                     !wizardIntegration ||
