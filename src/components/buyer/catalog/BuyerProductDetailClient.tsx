@@ -90,6 +90,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
       internal_sku: item.internal_sku,
       image_url: item.image_urls[0],
       unit_price: item.price,
+      gst_rate: item.gst_rate ?? null,
       unit: item.default_uom ?? undefined,
       quantity: q,
       line_total: item.price * q,

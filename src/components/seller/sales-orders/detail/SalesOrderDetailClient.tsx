@@ -46,7 +46,7 @@ import { useCreateFlags } from '@/hooks/useCreateFlags';
 import { prefetchSalesOrderComposer } from '@/hooks/useSalesOrders';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { mapSalesOrderDetailToComposerLines, formatEstimateChipLabel } from '@/lib/sales-orders/tenant-order-detail';
-import { computeLineTotal, computeTotals, defaultPaymentTerms } from '@/lib/documents/composer-math';
+import { defaultPaymentTerms } from '@/lib/documents/composer-math';
 import { formatCompactInr } from '@/lib/utils';
 import type { SalesOrderUiStatus } from '@/types/tenant-sales-orders';
 import type { EstimateComposerProductSearchRow } from '@/types/estimate-composer';
@@ -99,14 +99,40 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
     if (!data) return [];
     return mapSalesOrderDetailToComposerLines(data).map((line) => ({
       ...line,
-      line_total: computeLineTotal(line),
+      line_total: line.line_total,
     }));
   }, [data]);
 
   const totals = useMemo(() => {
-    if (!data) return computeTotals([], 0, 0, 0);
-    return computeTotals(diffLines, data.discount_flat, data.freight, data.round_off);
-  }, [data, diffLines]);
+    if (!data) {
+      return {
+        subtotal: 0,
+        discount_flat: 0,
+        freight: 0,
+        taxable_amount: 0,
+        tax_amount: 0,
+        grand_total: 0,
+        round_off: 0,
+        total_units: 0,
+        gst_inclusive: false,
+      };
+    }
+    const subtotal = data.subtotal ?? 0;
+    const discountFlat = data.discount_flat ?? 0;
+    const freight = data.freight ?? 0;
+    const roundOff = data.round_off ?? 0;
+    return {
+      subtotal,
+      discount_flat: discountFlat,
+      freight,
+      taxable_amount: Math.max(subtotal - discountFlat, 0),
+      tax_amount: data.tax_amount ?? 0,
+      grand_total: data.total_amount ?? 0,
+      round_off: roundOff,
+      total_units: data.lines.reduce((sum, line) => sum + line.qty, 0),
+      gst_inclusive: (data.tax_amount ?? 0) === 0,
+    };
+  }, [data]);
 
   const orderMeta = useMemo(() => {
     if (!data) return null;
@@ -370,7 +396,14 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
         )}
         right={(
           <div className="space-y-4">
-            <TotalsCard totals={totals} previousTotals={null} creditWarning={creditWarning} isInterState={isInterState} lineCount={diffLines.length} />
+            <TotalsCard
+              totals={totals}
+              previousTotals={null}
+              creditWarning={creditWarning}
+              isInterState={isInterState}
+              lineCount={diffLines.length}
+              gstInclusiveOverride={data.tax_amount === 0}
+            />
           </div>
         )}
       />

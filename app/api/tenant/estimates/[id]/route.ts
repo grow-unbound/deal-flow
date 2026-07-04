@@ -75,10 +75,10 @@ export async function GET(
     if (result === 'forbidden') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-
     return NextResponse.json({
       data: {
         ...result.detailPayload,
+        historical_items: result.detailPayload.items,
         ...result.composerPayload,
       },
     });

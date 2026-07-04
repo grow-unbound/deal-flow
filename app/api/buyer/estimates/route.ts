@@ -15,6 +15,7 @@ export interface EstimateRequest {
     tenant_product_id: string;
     qty: number;
     unit_price: number;
+    gst_rate?: number | null;
     product_name?: string;
   }>;
   notes?: string;
@@ -38,6 +39,21 @@ interface EstimateRow {
   total_amount: number;
   created_at: string;
   notes: string | null;
+}
+
+async function loadBuyerBusinessPolicy(db: any, tenantId: string) {
+  const { data } = await db
+    .schema('app')
+    .from('tenant_settings')
+    .select('settings')
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  const rawSettings = (data as { settings?: Record<string, unknown> } | null)?.settings ?? {};
+  const rawPolicy = (rawSettings.business_policy ?? {}) as Record<string, unknown>;
+  return {
+    gst_inclusive: rawPolicy.gst_inclusive === true,
+    gst_rate: typeof rawPolicy.gst_rate === 'number' ? rawPolicy.gst_rate : 18,
+  };
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse<EstimateResponse>> {
@@ -77,9 +93,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
       }
     }
 
-    const subtotal = items.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
-    const total_amount = subtotal;
-
     if (context.mode === 'preview' && !context.buyer_id) {
       return NextResponse.json({
         success: true,
@@ -104,6 +117,15 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     const buyer_id = profile.buyer.id;
     const { sub } = context;
     const db = supabaseAdmin ?? supabase;
+    const policy = await loadBuyerBusinessPolicy(db as typeof supabaseAdmin, tenant_id);
+    const subtotal = items.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
+    const tax_amount = policy.gst_inclusive
+      ? 0
+      : items.reduce((sum, item) => {
+          const rate = Number(item.gst_rate ?? policy.gst_rate);
+          return sum + item.qty * item.unit_price * (Number.isFinite(rate) ? rate / 100 : 0);
+        }, 0);
+    const total_amount = subtotal + tax_amount;
 
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -112,7 +134,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
       || 'Unknown';
     const cart_hash = createHash('sha256')
       .update(JSON.stringify({
-        items: sortedItems.map((i) => ({ id: i.tenant_product_id, qty: i.qty, price: i.unit_price })),
+          items: sortedItems.map((i) => ({ id: i.tenant_product_id, qty: i.qty, price: i.unit_price })),
         location_id,
         place_of_supply: placeOfSupply,
       }))
@@ -180,6 +202,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
       tenant_product_id: item.tenant_product_id,
       qty: item.qty,
       unit_price: item.unit_price,
+      tax_rate: item.gst_rate ?? policy.gst_rate,
       line_total: item.qty * item.unit_price,
     }));
 
