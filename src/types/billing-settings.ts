@@ -32,6 +32,15 @@ export interface BillingWarning {
   message: string;
 }
 
+export interface WhatsAppUsageHistoryEntry {
+  /** Bucketed date (YYYY-MM-DD) this row summarizes. */
+  date: string;
+  /** trigger_source or meta_category grouping (broadcast-level granularity lands in Phase E). */
+  use_case: string;
+  recipient_count: number;
+  credits_spent: number;
+}
+
 export interface BillingSettingsView {
   plan: PlanTier;
   usage: BillingUsage;
@@ -39,6 +48,9 @@ export interface BillingSettingsView {
   whatsapp: {
     balance: number;
     purchased: number;
+    credit_price_inr: number;
+    usage_history: WhatsAppUsageHistoryEntry[];
+    low_balance: boolean;
   };
   warnings: BillingWarning[];
 }

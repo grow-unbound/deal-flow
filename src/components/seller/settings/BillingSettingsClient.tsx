@@ -15,6 +15,7 @@ import { UpgradePlanCard } from './UpgradePlanCard';
 import { UpgradePlanDialog } from './UpgradePlanDialog';
 import { UsageWarningBanner } from './UsageWarningBanner';
 import { WhatsAppCreditsCard } from './WhatsAppCreditsCard';
+import { WhatsAppUsageHistoryCard } from './WhatsAppUsageHistoryCard';
 
 export function BillingSettingsClient() {
   const { data, isLoading, isError, error, refetch, requestUpgrade, requestTopUp, isRequestingUpgrade, isRequestingTopUp } =
@@ -55,12 +56,15 @@ export function BillingSettingsClient() {
         <WhatsAppCreditsCard
           balance={data.whatsapp.balance}
           purchased={data.whatsapp.purchased}
+          lowBalance={data.whatsapp.low_balance}
           onTopUp={() => void requestTopUp()}
           isTopUpPending={isRequestingTopUp}
         />
       </div>
 
       <UsageWarningBanner warnings={data.warnings} />
+
+      <WhatsAppUsageHistoryCard history={data.whatsapp.usage_history} />
 
       <UpgradePlanCard
         currentPlan={data.plan}

@@ -417,7 +417,14 @@ function CustomersLandingContent({
                 </div>
               </td>
               <td className="px-5 py-3.5">
-                <StatusTag label={buyer.status.label} tone={buyer.status.tone} />
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <StatusTag label={buyer.status.label} tone={buyer.status.tone} />
+                  {buyer.whatsapp_opted_out ? (
+                    <span className="rounded-full bg-cream-200 px-2 py-0.5 text-xs font-medium text-cream-700">
+                      WhatsApp: opted out
+                    </span>
+                  ) : null}
+                </div>
               </td>
               <td className="chev px-4 py-3.5 pr-4 text-right text-md text-cream-500">›</td>
             </tr>
