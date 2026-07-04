@@ -6,6 +6,7 @@ import {
   loadAccessibleSellerLocations,
   resolveDefaultSellerLocationId,
 } from '@/lib/server/seller-location-access';
+import { loadInventoryAvailabilityMap } from '@/lib/server/warehouse-inventory';
 import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
 import type { EstimateComposerDocument } from '@/types/estimate-composer';
@@ -133,16 +134,8 @@ export async function loadEstimateDocument(
         .in('id', productIds).eq('tenant_id', tenantId)
     : { data: [] as Array<Record<string, unknown>> };
 
-  const inventoryRows = productIds.length > 0
-    ? await d.schema('app').from('tenant_inventory')
-        .select('tenant_product_id, qty_available').in('tenant_product_id', productIds)
-    : { data: [] as Array<Record<string, unknown>> };
-
   const productMap = new Map((tenantProducts ?? []).map((row: Record<string, unknown>) => [row.id as string, row]));
-  const inventoryMap = new Map<string, number>();
-  for (const row of (inventoryRows.data ?? []) as Array<Record<string, unknown>>) {
-    inventoryMap.set(row.tenant_product_id as string, (inventoryMap.get(row.tenant_product_id as string) ?? 0) + Number(row.qty_available ?? 0));
-  }
+  const inventoryMap = await loadInventoryAvailabilityMap(d, productIds, locationId);
 
   const masterProductIds = Array.from(new Set(
     (tenantProducts ?? []).map((row: Record<string, unknown>) => row.master_product_id).filter((v: unknown): v is string => typeof v === 'string'),

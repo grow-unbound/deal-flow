@@ -14,10 +14,9 @@ describe('BuyerCreateSchema — detail page context', () => {
       phone: '9876543210',
       email: 'arun@wineyard.in',
       gstin: '29AABCW1234A1ZX',
-      tier: 'A',
       credit_limit: 200000,
       payment_terms_days: 45,
-      external_ref: 'WY-0001',
+      default_price_list_id: '550e8400-e29b-41d4-a716-446655440000',
       geography: {
         city: 'Bangalore',
         state: 'Karnataka',
@@ -28,8 +27,7 @@ describe('BuyerCreateSchema — detail page context', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.business_name).toBe('WineYard Distributors');
-      expect(result.data.tier).toBe('A');
-      expect(result.data.external_ref).toBe('WY-0001');
+      expect(result.data.default_price_list_id).toBe('550e8400-e29b-41d4-a716-446655440000');
     }
   });
 
@@ -121,11 +119,11 @@ describe('BuyerUpdateSchema', () => {
     }
   });
 
-  it('accepts tier update alone', () => {
-    const result = BuyerUpdateSchema.safeParse({ tier: 'B' });
+  it('accepts default pricelist update alone', () => {
+    const result = BuyerUpdateSchema.safeParse({ default_price_list_id: '550e8400-e29b-41d4-a716-446655440000' });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.tier).toBe('B');
+      expect(result.data.default_price_list_id).toBe('550e8400-e29b-41d4-a716-446655440000');
     }
   });
 });

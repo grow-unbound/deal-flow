@@ -4,6 +4,7 @@ import { SalesOrderDetailSchema } from '@/types/tenant-sales-orders';
 import type { JWTClaims } from '@/lib/auth';
 import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import { canAccessDocumentLocation } from '@/lib/server/seller-location-access';
+import { loadInventoryAvailabilityMap } from '@/lib/server/warehouse-inventory';
 import { computePlaceOfSupplyFromBuyer } from '@/lib/sales-orders/compute-place-of-supply';
 import {
   buildActivityFromAudit,
@@ -167,19 +168,8 @@ export async function loadTenantSalesOrderDetail(
           .is('deleted_at', null)
       : { data: [] as Array<Record<string, unknown>> };
 
-  const inventoryRows =
-    productIds.length > 0
-      ? await d.schema('app').from('tenant_inventory').select('tenant_product_id, qty_available').in('tenant_product_id', productIds)
-      : { data: [] as Array<Record<string, unknown>> };
-
   const productMap = new Map((tenantProducts ?? []).map((row: Record<string, unknown>) => [row.id as string, row]));
-  const inventoryMap = new Map<string, number>();
-  for (const row of (inventoryRows.data ?? []) as Array<Record<string, unknown>>) {
-    inventoryMap.set(
-      row.tenant_product_id as string,
-      (inventoryMap.get(row.tenant_product_id as string) ?? 0) + Number(row.qty_available ?? 0),
-    );
-  }
+  const inventoryMap = await loadInventoryAvailabilityMap(d, productIds, locationId);
 
   const masterProductIds = Array.from(
     new Set(

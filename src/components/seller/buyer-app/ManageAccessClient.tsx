@@ -585,7 +585,7 @@ function ManageAccessContent({ initialData }: { initialData: AccessPageResponse 
           Manage Access
         </h1>
         <p className="mt-1 text-sm text-cream-600">
-          Enable or disable buyer access to the buyer app. Changes apply immediately.
+          Select buyers to enable or disable access to the buyer app. Changes apply immediately.
         </p>
       </header>
 

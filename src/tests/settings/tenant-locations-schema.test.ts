@@ -2,18 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   CreateLocationInputSchema,
   LocationAddressSchema,
-  LocationTypeSchema,
   UpdateLocationInputSchema,
 } from '@/types/tenant-locations';
-
-describe('LocationTypeSchema', () => {
-  it('accepts warehouse', () => {
-    expect(LocationTypeSchema.safeParse('warehouse').success).toBe(true);
-  });
-  it('rejects invalid', () => {
-    expect(LocationTypeSchema.safeParse('hq').success).toBe(false);
-  });
-});
 
 describe('LocationAddressSchema', () => {
   it('defaults empty address', () => {
@@ -30,10 +20,6 @@ describe('CreateLocationInputSchema', () => {
   it('parses minimal create', () => {
     const r = CreateLocationInputSchema.safeParse({ name: 'WH1' });
     expect(r.success).toBe(true);
-    if (r.success) {
-      expect(r.data.type).toBe('warehouse');
-      expect(r.data.inventory_tracking).toBe(true);
-    }
   });
 
   it('rejects empty name', () => {

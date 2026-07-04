@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 const UpsertInventorySchema = z.object({
   tenant_product_id: z.string().uuid('Invalid product ID'),
-  location_id: z.string().uuid('Invalid location ID'),
+  warehouse_id: z.string().uuid('Invalid warehouse ID'),
   qty_available: z.number().min(0, 'qty_available must be >= 0'),
   qty_reserved: z.number().min(0, 'qty_reserved must be >= 0'),
   reorder_point: z.number().min(0).optional().nullable(),
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
       .select(`
         id,
         tenant_product_id,
-        location_id,
+        warehouse_id,
         qty_available,
         qty_reserved,
         reorder_point,
@@ -68,34 +68,34 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch inventory' }, { status: 500 });
     }
 
-    // Fetch locations separately to join
-    const locationIds = (data ?? []).map((row: { location_id: string }) => row.location_id);
-    let locationsMap: Record<string, { id: string; name: string; is_default: boolean }> = {};
+    const warehouseIds = (data ?? []).map((row: { warehouse_id: string }) => row.warehouse_id);
+    let warehousesMap: Record<string, { id: string; name: string; is_default: boolean; location_id: string | null }> = {};
 
-    if (locationIds.length > 0) {
-      const { data: locs } = await db
+    if (warehouseIds.length > 0) {
+      const { data: warehouses } = await db
         .schema('app')
-        .from('locations')
-        .select('id, name, is_default')
-        .in('id', locationIds)
-        .eq('tenant_id', claims.tenant_id);
+        .from('warehouses')
+        .select('id, name, is_default, location_id')
+        .in('id', warehouseIds)
+        .eq('tenant_id', claims.tenant_id)
+        .is('deleted_at', null);
 
-      locationsMap = Object.fromEntries(
-        (locs ?? []).map((l: { id: string; name: string; is_default: boolean }) => [l.id, l]),
+      warehousesMap = Object.fromEntries(
+        (warehouses ?? []).map((warehouse: { id: string; name: string; is_default: boolean; location_id: string | null }) => [warehouse.id, warehouse]),
       );
     }
 
     const inventory = (data ?? []).map((row: {
       id: string;
       tenant_product_id: string;
-      location_id: string;
+      warehouse_id: string;
       qty_available: number;
       qty_reserved: number;
       reorder_point: number | null;
       updated_at: string;
     }) => ({
       ...row,
-      locations: locationsMap[row.location_id] ?? null,
+      warehouse: warehousesMap[row.warehouse_id] ?? null,
     }));
 
     return NextResponse.json({ inventory });
@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { tenant_product_id, location_id, qty_available, qty_reserved, reorder_point } = parsed.data;
+    const { tenant_product_id, warehouse_id, qty_available, qty_reserved, reorder_point } = parsed.data;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabaseAdmin as any;
@@ -148,17 +148,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Product not found' }, { status: 404 });
     }
 
-    // Verify the location belongs to this tenant
-    const { data: location, error: locationError } = await db
+    const { data: warehouse, error: warehouseError } = await db
       .schema('app')
-      .from('locations')
+      .from('warehouses')
       .select('id')
-      .eq('id', location_id)
+      .eq('id', warehouse_id)
       .eq('tenant_id', claims.tenant_id)
+      .is('deleted_at', null)
       .maybeSingle();
 
-    if (locationError || !location) {
-      return NextResponse.json({ error: 'Location not found' }, { status: 404 });
+    if (warehouseError || !warehouse) {
+      return NextResponse.json({ error: 'Warehouse not found' }, { status: 404 });
     }
 
     // Check if row exists (upsert manually since we don't know the constraint name)
@@ -167,7 +167,7 @@ export async function POST(req: NextRequest) {
       .from('tenant_inventory')
       .select('id')
       .eq('tenant_product_id', tenant_product_id)
-      .eq('location_id', location_id)
+      .eq('warehouse_id', warehouse_id)
       .maybeSingle();
 
     let result;
@@ -198,7 +198,7 @@ export async function POST(req: NextRequest) {
         .from('tenant_inventory')
         .insert({
           tenant_product_id,
-          location_id,
+          warehouse_id,
           qty_available,
           qty_reserved,
           reorder_point: reorder_point ?? null,

@@ -12,6 +12,7 @@ function pickDoc(payload: any): TransactionDoc | null {
     primaryDate: inv.invoice_date,
     primaryDateLabel: 'Invoice date',
     notes: inv.due_date ? `Due ${new Date(inv.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}` : null,
+    placeOfSupply: inv.place_of_supply ?? null,
     subtotal: inv.subtotal,
     tax_total: inv.tax_total,
     total_amount: inv.total_amount,

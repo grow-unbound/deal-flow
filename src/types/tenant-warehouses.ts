@@ -1,0 +1,75 @@
+import { z } from 'zod';
+
+export const WarehouseStatusSchema = z.enum(['active', 'inactive']);
+export type WarehouseStatus = z.infer<typeof WarehouseStatusSchema>;
+
+export const WarehouseAddressSchema = z.object({
+  line1: z.string().max(500).default(''),
+  line2: z.string().max(500).default('').optional(),
+  city: z.string().max(200).default(''),
+  state: z.string().max(2).default(''),
+  pincode: z.string().max(10).default(''),
+});
+
+export type WarehouseAddress = z.infer<typeof WarehouseAddressSchema>;
+
+export const WarehouseAssociatedUserSchema = z.object({
+  email: z.string().trim().email('Valid email required'),
+  user_name: z.string().trim().nullable().optional(),
+  user_id: z.string().trim().nullable().optional(),
+});
+
+export type WarehouseAssociatedUser = z.infer<typeof WarehouseAssociatedUserSchema>;
+
+export const CreateWarehouseInputSchema = z.object({
+  name: z.string().min(1, 'Warehouse name is required').max(200),
+  location_id: z.string().uuid().nullable().optional(),
+  address: WarehouseAddressSchema.optional(),
+  phone_number: z.string().trim().regex(/^[0-9]{10}$/, 'Phone number must be 10 digits').nullable().optional(),
+  status: WarehouseStatusSchema.optional().default('active'),
+  is_default: z.boolean().optional().default(false),
+  external_ref: z.string().max(200).nullable().optional(),
+  associated_users: z.array(WarehouseAssociatedUserSchema).optional().default([]),
+  lat: z.number().nullable().optional(),
+  lng: z.number().nullable().optional(),
+});
+
+export type CreateWarehouseInput = z.infer<typeof CreateWarehouseInputSchema>;
+
+export const UpdateWarehouseInputSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  location_id: z.string().uuid().nullable().optional(),
+  address: WarehouseAddressSchema.partial().optional(),
+  phone_number: z.string().trim().regex(/^[0-9]{10}$/, 'Phone number must be 10 digits').nullable().optional(),
+  status: WarehouseStatusSchema.optional(),
+  is_default: z.boolean().optional(),
+  external_ref: z.string().max(200).nullable().optional(),
+  associated_users: z.array(WarehouseAssociatedUserSchema).optional(),
+  lat: z.number().nullable().optional(),
+  lng: z.number().nullable().optional(),
+}).strict();
+
+export type UpdateWarehouseInput = z.infer<typeof UpdateWarehouseInputSchema>;
+
+export interface TenantWarehouse {
+  id: string;
+  tenant_id: string;
+  location_id: string | null;
+  name: string;
+  address: WarehouseAddress;
+  phone_number: string | null;
+  status: WarehouseStatus;
+  is_default: boolean;
+  external_ref: string | null;
+  associated_users: WarehouseAssociatedUser[];
+  lat: number | null;
+  lng: number | null;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+  location: {
+    id: string;
+    name: string;
+    is_default: boolean;
+  } | null;
+}

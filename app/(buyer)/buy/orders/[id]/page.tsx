@@ -12,6 +12,7 @@ function pickDoc(payload: any): TransactionDoc | null {
     primaryDate: o.placed_at,
     primaryDateLabel: 'Placed',
     notes: o.notes ?? null,
+    placeOfSupply: o.place_of_supply ?? null,
     subtotal: o.subtotal,
     tax_total: o.tax_total,
     total_amount: o.total_amount,

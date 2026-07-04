@@ -12,7 +12,7 @@ type DbClient = NonNullable<typeof supabaseAdmin>;
 type CatalogStatus = 'draft' | 'published' | 'archived';
 
 type ScopeType = 'cohort' | 'buyer' | 'geography' | 'all';
-type ComposerScopeType = 'cohort' | 'all';
+type ComposerScopeType = 'cohort' | 'buyer' | 'all';
 
 type CatalogDraftSnapshot = {
   name: string;
@@ -20,11 +20,16 @@ type CatalogDraftSnapshot = {
   valid_to: string | null;
   scope_type: ComposerScopeType;
   cohort_id: string | null;
+  buyer_ids: string[];
+  message: string | null;
+  price_source: 'price_list' | 'manual';
+  price_list_id: string | null;
   filters: CatalogComposerFilterState;
   tag_overrides: Record<string, CatalogComposerTag | null>;
   items: Array<{
     tenant_product_id: string;
     display_order: number;
+    price_override?: number | null;
   }>;
 };
 
@@ -59,17 +64,23 @@ function defaultCatalogFilters(): CatalogComposerFilterState {
 }
 
 function buildCatalogScopeValue(input: {
-  scopeType: 'cohort' | 'all';
+  scopeType: ComposerScopeType;
   cohortId?: string | null;
+  buyerIds?: string[];
   filters: CatalogComposerFilterState;
   tagOverrides?: Record<string, CatalogComposerTag | null>;
+  priceSource?: 'price_list' | 'manual';
+  priceListId?: string | null;
   draft?: CatalogDraftSnapshot | null;
 }) {
   return {
     ...(input.scopeType === 'cohort' && input.cohortId ? { cohort_id: input.cohortId } : {}),
+    ...(input.scopeType === 'buyer' && input.buyerIds && input.buyerIds.length > 0 ? { buyer_ids: input.buyerIds } : {}),
     composer: {
       filters: input.filters,
       tag_overrides: input.tagOverrides ?? {},
+      price_source: input.priceSource ?? 'manual',
+      price_list_id: input.priceListId ?? null,
     },
     ...(input.draft ? { composer_draft: input.draft } : {}),
   };
@@ -90,6 +101,10 @@ function buildCatalogDraftSnapshot(payload: z.infer<typeof CatalogComposerPayloa
     valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
     scope_type: payload.scope_type,
     cohort_id: payload.scope_type === 'cohort' ? (payload.cohort_id ?? null) : null,
+    buyer_ids: payload.scope_type === 'buyer' ? payload.buyer_ids : [],
+    message: payload.message?.trim() || null,
+    price_source: payload.price_source,
+    price_list_id: payload.price_source === 'price_list' ? (payload.price_list_id ?? null) : null,
     filters: payload.filters,
     tag_overrides: payload.tag_overrides,
     items: payload.items,
@@ -118,6 +133,38 @@ async function ensureTenantProducts(
   }
 
   return new Set<string>(((data ?? []) as Array<{ id: string }>).map((row) => row.id));
+}
+
+async function ensureTenantBuyers(db: DbClient, tenantId: string, buyerIds: string[]) {
+  if (buyerIds.length === 0) return new Set<string>();
+
+  const { data, error } = await db
+    .schema('app')
+    .from('buyers')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .in('id', buyerIds)
+    .is('deleted_at', null);
+
+  if (error) throw new Error('Failed to validate selected buyers');
+  return new Set<string>(((data ?? []) as Array<{ id: string }>).map((row) => row.id));
+}
+
+async function ensureTenantPriceList(db: DbClient, tenantId: string, priceListId: string | null | undefined) {
+  if (!priceListId) return true;
+
+  const { data, error } = await db
+    .schema('app')
+    .from('price_lists')
+    .select('id')
+    .eq('id', priceListId)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (error) throw new Error('Failed to validate price list');
+  return Boolean(data);
 }
 
 function getDisplayStatus(status: CatalogStatus, validTo: string | null): { label: 'Live' | 'Draft' | 'Ended'; tone: 'success' | 'warning' | 'neutral' } {
@@ -278,7 +325,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     db
       .schema('app')
       .from('campaigns')
-      .select('id, tenant_id, name, scope_type, scope_value, valid_from, valid_to, status, share_token, created_by, created_at')
+      .select('id, tenant_id, name, scope_type, scope_value, valid_from, valid_to, status, share_token, message, created_by, created_at')
       .eq('id', id)
       .eq('tenant_id', claims.tenant_id)
       .is('deleted_at', null)
@@ -297,7 +344,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .eq('tenant_id', claims.tenant_id)
       .eq('campaign_id', id)
       .is('deleted_at', null),
-    getCatalogComposerPayload(db, claims.tenant_id),
+    getCatalogComposerPayload(db, claims.tenant_id, claims.role),
   ]);
 
   if (catalogRes.error) return NextResponse.json({ error: 'Catalog not found' }, { status: 404 });
@@ -313,6 +360,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     valid_to: string | null;
     status: CatalogStatus;
     share_token: string | null;
+    message: string | null;
     created_by: string | null;
     created_at: string;
   };
@@ -334,12 +382,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     created_at: string | null;
   }>;
 
-  const scopeValue = (catalog.scope_value ?? {}) as { cohort_id?: string; buyer_id?: string };
+  const scopeValue = (catalog.scope_value ?? {}) as { cohort_id?: string; buyer_id?: string; buyer_ids?: string[] };
   const composerScopeValue = (catalog.scope_value ?? {}) as {
     cohort_id?: string;
+    buyer_ids?: string[];
     composer?: {
       filters?: ReturnType<typeof defaultCatalogFilters>;
       tag_overrides?: Record<string, CatalogComposerTag | null>;
+      price_source?: 'price_list' | 'manual';
+      price_list_id?: string | null;
     };
     composer_draft?: CatalogDraftSnapshot;
   };
@@ -365,6 +416,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     scopedBuyerIds = [scopeValue.buyer_id];
     const buyerRes = await db.schema('app').from('buyers').select('business_name').eq('id', scopeValue.buyer_id).maybeSingle();
     if (!buyerRes.error && buyerRes.data?.business_name) selectedCohortName = buyerRes.data.business_name;
+  } else if (catalog.scope_type === 'buyer' && scopeValue.buyer_ids && scopeValue.buyer_ids.length > 0) {
+    scopedBuyerIds = scopeValue.buyer_ids;
+    selectedCohortName = 'Selected buyers';
   } else {
     const allBuyersRes = await db
       .schema('app')
@@ -698,13 +752,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       has_unpublished_changes: Boolean(composerDraft),
       valid_from: composerDraft?.valid_from ?? catalog.valid_from,
       valid_to: composerDraft?.valid_to ?? catalog.valid_to,
-      scope_type: composerDraft?.scope_type ?? (catalog.scope_type === 'all' ? 'all' : 'cohort'),
+      message: composerDraft?.message ?? catalog.message ?? '',
+      price_source: composerDraft?.price_source ?? composerScopeValue.composer?.price_source ?? 'manual',
+      price_list_id: composerDraft?.price_list_id ?? composerScopeValue.composer?.price_list_id ?? null,
+      scope_type: composerDraft?.scope_type ?? (catalog.scope_type === 'all' ? 'all' : catalog.scope_type === 'buyer' ? 'buyer' : 'cohort'),
       cohort_id: composerDraft?.cohort_id ?? composerScopeValue.cohort_id ?? null,
+      buyer_ids: composerDraft?.buyer_ids ?? composerScopeValue.buyer_ids ?? (scopeValue.buyer_id ? [scopeValue.buyer_id] : []),
       filters: composerDraft?.filters ?? filters,
       tag_overrides: composerDraft?.tag_overrides ?? tagOverrides,
       items: (composerDraft?.items ?? catalogItems.map((item) => ({
         tenant_product_id: item.tenant_product_id,
         display_order: item.display_order ?? 0,
+        price_override: item.price_override ?? null,
       }))),
     },
   });
@@ -886,6 +945,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 400 });
   }
 
+  if (payload.scope_type === 'buyer') {
+    const validBuyerIds = await ensureTenantBuyers(db, claims.tenant_id, payload.buyer_ids);
+    if (validBuyerIds.size !== payload.buyer_ids.length) {
+      return NextResponse.json({ error: 'One or more selected buyers are invalid' }, { status: 400 });
+    }
+  }
+
+  if (payload.price_source === 'price_list') {
+    const priceListOk = await ensureTenantPriceList(db, claims.tenant_id, payload.price_list_id);
+    if (!priceListOk) {
+      return NextResponse.json({ error: 'Pricelist not found' }, { status: 400 });
+    }
+  }
+
   const tenantProductIds = payload.items.map((item) => item.tenant_product_id);
   const validProductIds = await ensureTenantProducts(db, claims.tenant_id, tenantProductIds);
   if (validProductIds.size !== tenantProductIds.length) {
@@ -894,21 +967,35 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   if (globalCatalog.status === 'published' && payload.save_mode === 'draft') {
     const liveScopeValue = (globalCatalog.scope_value ?? {}) as {
+      cohort_id?: string;
+      buyer_id?: string;
+      buyer_ids?: string[];
       composer?: {
         filters?: CatalogComposerFilterState;
         tag_overrides?: Record<string, CatalogComposerTag | null>;
+        price_source?: 'price_list' | 'manual';
+        price_list_id?: string | null;
       };
     };
+
+    const liveScopeType = (globalCatalog.scope_type as ComposerScopeType) === 'all'
+      ? 'all'
+      : (globalCatalog.scope_type as ComposerScopeType) === 'buyer'
+        ? 'buyer'
+        : 'cohort';
 
     const { data: savedDraft, error: saveDraftError } = await db
       .schema('app')
       .from('campaigns')
       .update({
         scope_value: buildCatalogScopeValue({
-          scopeType: (globalCatalog.scope_type as ComposerScopeType) === 'all' ? 'all' : 'cohort',
-          cohortId: ((globalCatalog.scope_value ?? {}) as { cohort_id?: string }).cohort_id ?? null,
+          scopeType: liveScopeType,
+          cohortId: liveScopeValue.cohort_id ?? null,
+          buyerIds: liveScopeValue.buyer_ids ?? (liveScopeValue.buyer_id ? [liveScopeValue.buyer_id] : []),
           filters: liveScopeValue.composer?.filters ?? defaultCatalogFilters(),
           tagOverrides: liveScopeValue.composer?.tag_overrides ?? {},
+          priceSource: liveScopeValue.composer?.price_source ?? 'manual',
+          priceListId: liveScopeValue.composer?.price_list_id ?? null,
           draft: buildCatalogDraftSnapshot(payload),
         }),
         updated_by: claims.sub,
@@ -940,12 +1027,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       scope_value: buildCatalogScopeValue({
         scopeType: payload.scope_type,
         cohortId: payload.cohort_id,
+        buyerIds: payload.buyer_ids,
         filters: payload.filters,
         tagOverrides: payload.tag_overrides,
+        priceSource: payload.price_source,
+        priceListId: payload.price_list_id,
         draft: null,
       }),
       valid_from: payload.valid_from.toISOString(),
       valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
+      message: payload.message?.trim() || null,
       status: nextStatus,
       share_token: nextStatus === 'published' ? globalCatalog.share_token ?? generateShareToken() : globalCatalog.share_token,
       updated_by: claims.sub,
@@ -981,6 +1072,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           campaign_id: id,
           tenant_product_id: item.tenant_product_id,
           display_order: item.display_order,
+          price_override: item.price_override ?? null,
           deleted_at: null,
           created_by: claims.sub,
           updated_by: claims.sub,

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
-import { getFlag } from '@/lib/flags';
 import { normalizeLocationAssociatedUsers } from '@/lib/location-assignees';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
@@ -51,10 +50,7 @@ export async function GET(
   const claims = await getVerifiedClaims(request);
 
   if (!claims.tenant_id) return timedJson({ error: 'Unauthorized' }, { status: 401 });
-  if (!claims.role?.startsWith('seller_')) return timedJson({ error: 'Forbidden' }, { status: 403 });
-
-  const flagEnabled = await getFlag('df_brand_product_master', claims.tenant_id);
-  if (!flagEnabled) return timedJson({ error: 'Feature not enabled' }, { status: 403 });
+  if (claims.role !== 'seller_admin') return timedJson({ error: 'Forbidden' }, { status: 403 });
 
   const db = supabaseAdmin as any;
 
@@ -62,7 +58,7 @@ export async function GET(
   const { data: baseLocation, error: locationError } = await db
     .schema('app')
     .from('locations')
-    .select('id, tenant_id, name, type, address, deleted_at, created_at')
+    .select('id, tenant_id, name, address, deleted_at, created_at')
     .eq('id', id)
     .single();
 
@@ -152,8 +148,9 @@ export async function GET(
     db
       .schema('app')
       .from('tenant_inventory')
-      .select('tenant_product_id, qty_available, reorder_point, updated_at, tenant_products(name, daily_sales_rate, deleted_at, tenant_brands(name))')
-      .eq('location_id', id),
+      .select('tenant_product_id, qty_available, reorder_point, updated_at, warehouses!inner(location_id), tenant_products(name, daily_sales_rate, deleted_at, tenant_brands(name))')
+      .eq('warehouses.location_id', id)
+      .is('deleted_at', null),
 
     db
       .schema('app')
@@ -560,7 +557,6 @@ export async function GET(
   const response: LocationDetailResponse = {
     id: location.id,
     name: location.name,
-    type: location.type,
     city,
     phone_number: location.phone_number ?? null,
     status: location.status ?? 'active',

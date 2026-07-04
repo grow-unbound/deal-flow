@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, supabase } from '@/lib/supabase';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
+import { loadBuyerDocumentLineItems } from '@/lib/buyer-documents/load-buyer-transaction-detail';
 
 export interface BuyerInvoiceItem {
   tenant_product_id: string;
@@ -20,6 +21,7 @@ export interface BuyerInvoiceDetail {
   status: string;
   invoice_date: string;
   due_date: string | null;
+  place_of_supply: string | null;
   total_amount: number;
   outstanding_balance: number | null;
   subtotal: number;
@@ -50,38 +52,20 @@ export async function GET(
     const { data: invoice, error } = await (db as any)
       .schema('app')
       .from('invoices')
-      .select(`
-        id, invoice_number, status, invoice_date, due_date, total_amount, outstanding_balance,
-        invoice_items (
-          tenant_product_id, qty, unit_price, tax_rate, line_total,
-          tenant_products ( name, internal_sku, unit )
-        )
-      `)
+      .select('id, invoice_number, status, invoice_date, due_date, place_of_supply, total_amount, outstanding_balance, subtotal, tax_amount')
       .eq('id', id)
       .eq('tenant_id', tenant_id)
       .eq('buyer_id', buyer_id)
       .is('deleted_at', null)
-      .single();
+      .maybeSingle();
 
     if (error || !invoice) {
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
     }
 
-    const rawItems: BuyerInvoiceItem[] = ((invoice.invoice_items as any[]) ?? [])
-      .filter((ii: any) => !ii.deleted_at)
-      .map((ii: any) => ({
-        tenant_product_id: ii.tenant_product_id,
-        product_name: ii.tenant_products?.name ?? 'Unknown product',
-        internal_sku: ii.tenant_products?.internal_sku ?? null,
-        unit: ii.tenant_products?.unit ?? null,
-        qty: Number(ii.qty),
-        unit_price: Number(ii.unit_price),
-        tax_rate: ii.tax_rate != null ? Number(ii.tax_rate) : null,
-        line_total: Number(ii.line_total),
-      }));
-
-    const subtotal = rawItems.reduce((sum, i) => sum + i.line_total, 0);
-    const tax_total = Math.max(0, Number(invoice.total_amount) - subtotal);
+    const rawItems = await loadBuyerDocumentLineItems(db as any, tenant_id, 'invoices', id);
+    const subtotal = Number(invoice.subtotal ?? rawItems.reduce((sum, i) => sum + i.line_total, 0));
+    const tax_total = Number(invoice.tax_amount ?? Math.max(0, Number(invoice.total_amount) - subtotal));
 
     const detail: BuyerInvoiceDetail = {
       id: invoice.id,
@@ -89,6 +73,7 @@ export async function GET(
       status: invoice.status,
       invoice_date: invoice.invoice_date,
       due_date: invoice.due_date ?? null,
+      place_of_supply: invoice.place_of_supply ?? null,
       total_amount: Number(invoice.total_amount),
       outstanding_balance: invoice.outstanding_balance != null ? Number(invoice.outstanding_balance) : null,
       subtotal,

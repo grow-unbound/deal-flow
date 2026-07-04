@@ -41,6 +41,7 @@ import { SearchOverlayPicker } from '@/components/ui/search-overlay-picker';
 
 import {
   useSearchMasterProducts,
+  useTenantProductSkuAvailability,
   useCreateCustomProduct,
   useUpdateProduct,
   type TenantProduct,
@@ -59,11 +60,11 @@ import { uploadEntityFile } from '@/lib/upload-client';
 
 const GST_RATES = ['0', '5', '12', '18', '28'] as const;
 const INLINE_RESULTS = 5;
+const DUPLICATE_SKU_ERROR = 'This SKU already exists in your product list.';
 
 // ─── Form schema ────────────────────────────────────────────────────────────
 
 const AddProductFormSchema = z.object({
-  name: z.string().min(1, 'Product name is required'),
   name_override: z.string().min(1, 'Product name override is required'),
   // optional at schema level — required for custom products, auto-resolved for imported
   tenant_brand_id: z.string().optional(),
@@ -215,6 +216,7 @@ export function AddProductSheet({
   const [inputValue, setInputValue] = useState('');
   const [productSearchOpen, setProductSearchOpen] = useState(false);
   const [customProductNameSelected, setCustomProductNameSelected] = useState<string | null>(null);
+  const [isNameOverrideManuallyEdited, setIsNameOverrideManuallyEdited] = useState(false);
   const [stagedImage, setStagedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [priceListAmounts, setPriceListAmounts] = useState<Record<string, string>>({});
@@ -222,13 +224,11 @@ export function AddProductSheet({
 
   const { isSellerAdmin } = useRole();
   const { gstInclusive, gstRate } = useBusinessPolicy();
-  const { data: searchData, isLoading: isSearching } = useSearchMasterProducts(debouncedSearch);
+  const isEditMode = mode === 'edit' && !!product;
   const { data: brandsData, isLoading: brandsLoading } = useTenantBrands();
   const { data: priceListsData } = usePriceLists();
   const { data: categoriesData } = useTenantCategories();
-  const createProduct = useCreateCustomProduct();
-  const updateProduct = useUpdateProduct();
-  const isEditMode = mode === 'edit' && !!product;
+  const { data: searchData, isLoading: isSearching } = useSearchMasterProducts(debouncedSearch);
 
   const priceLists = useMemo(() => priceListsData?.price_lists ?? [], [priceListsData]);
   const activeCategories = useMemo(
@@ -244,7 +244,6 @@ export function AddProductSheet({
   const form = useForm<AddProductFormValues>({
     resolver: zodResolver(AddProductFormSchema),
     defaultValues: {
-      name: '',
       name_override: '',
       tenant_brand_id: '',
       tenant_category_id: undefined,
@@ -261,6 +260,15 @@ export function AddProductSheet({
       attributes: [],
     },
   });
+
+  const internalSku = form.watch('internal_sku');
+  const debouncedInternalSku = useDebounce(internalSku ?? '', 350);
+  const { data: skuAvailability, isFetching: isCheckingSku } = useTenantProductSkuAvailability(
+    debouncedInternalSku,
+    isEditMode && product ? product.id : null,
+  );
+  const createProduct = useCreateCustomProduct();
+  const updateProduct = useUpdateProduct();
 
   const { fields: attrFields, append: appendAttr, remove: removeAttr } = useFieldArray({
     control: form.control,
@@ -285,6 +293,7 @@ export function AddProductSheet({
     setSelectedMaster(null);
     setInputValue('');
     setCustomProductNameSelected(null);
+    setIsNameOverrideManuallyEdited(false);
     setStagedImage(null);
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
@@ -311,9 +320,9 @@ export function AddProductSheet({
     setSelectedMaster(null);
     setInputValue(product.display_name ?? '');
     setCustomProductNameSelected(null);
+    setIsNameOverrideManuallyEdited(false);
     setPriceListAmounts({});
     form.reset({
-      name: product.display_name ?? '',
       name_override: product.name_override ?? product.display_name ?? '',
       tenant_brand_id: product.tenant_brand_id ?? '',
       tenant_category_id: (product as any).tenant_category_id ?? undefined,
@@ -344,12 +353,12 @@ export function AddProductSheet({
   function applyMasterProduct(product: MasterProduct) {
     setSelectedMaster(product);
     setCustomProductNameSelected(null);
+    setIsNameOverrideManuallyEdited(false);
     setInputValue(product.name);
     setProductSearchOpen(false);
     form.reset(
       {
         ...form.getValues(),
-        name: product.name,
         name_override: product.name,
         internal_sku: product.master_sku,
         hsn_code: product.hsn_code ?? '',
@@ -366,7 +375,7 @@ export function AddProductSheet({
   function clearMasterProduct() {
     setSelectedMaster(null);
     setInputValue('');
-    form.setValue('name', '', { shouldDirty: true });
+    setIsNameOverrideManuallyEdited(false);
     form.setValue('name_override', '', { shouldDirty: true });
     form.setValue('internal_sku', '');
     form.setValue('hsn_code', '');
@@ -384,7 +393,7 @@ export function AddProductSheet({
 
   function selectCustomProductName(name: string) {
     setCustomProductNameSelected(name);
-    form.setValue('name', name, { shouldDirty: true });
+    setIsNameOverrideManuallyEdited(false);
     form.setValue('name_override', name, { shouldDirty: true });
     setProductSearchOpen(false);
   }
@@ -392,7 +401,7 @@ export function AddProductSheet({
   function clearCustomProductName() {
     setCustomProductNameSelected(null);
     setProductSearchOpen(false);
-    form.setValue('name', '');
+    setIsNameOverrideManuallyEdited(false);
     form.setValue('name_override', '');
   }
 
@@ -403,32 +412,42 @@ export function AddProductSheet({
   }, [customProductNameSelected, productSearchOpen, selectedMaster?.name]);
 
   const productSearchTriggerTitle = isEditMode
-    ? product?.display_name ?? form.getValues('name') ?? 'Product name'
-    : selectedMaster?.name ?? customProductNameSelected ?? 'Search products';
+    ? product?.display_name ?? product?.name_override ?? 'Selected product'
+    : selectedMaster?.name ?? customProductNameSelected ?? 'Search master catalog';
   const productSearchTriggerDescription = isEditMode
-    ? 'Update the existing product details below.'
+    ? 'This product is already selected. Update the details below.'
     : selectedMaster
       ? `Imported from the master catalog · ${selectedMaster.master_sku}`
       : customProductNameSelected
         ? 'Creating a private catalog product.'
         : 'Search the master catalog or create a custom product.';
 
-  // Sync search term to form name field when not imported
   useEffect(() => {
-    if (!selectedMaster && !customProductNameSelected) {
-      form.setValue('name', inputValue, { shouldDirty: inputValue.length > 0 });
-    }
-  }, [form, inputValue, selectedMaster, customProductNameSelected]);
+    if (isEditMode || selectedMaster || customProductNameSelected || isNameOverrideManuallyEdited) return;
+
+    form.setValue('name_override', inputValue, { shouldDirty: inputValue.length > 0 });
+  }, [form, inputValue, isEditMode, selectedMaster, customProductNameSelected, isNameOverrideManuallyEdited]);
 
   useEffect(() => {
-    if (isEditMode || selectedMaster || customProductNameSelected) return;
+    const sku = debouncedInternalSku.trim();
+    const fieldError = form.getFieldState('internal_sku').error?.message;
 
-    const currentName = form.getValues('name');
-    const currentOverride = form.getValues('name_override');
-    if (!currentOverride || currentOverride === currentName) {
-      form.setValue('name_override', inputValue, { shouldDirty: inputValue.length > 0 });
+    if (!sku) {
+      if (fieldError === DUPLICATE_SKU_ERROR) {
+        form.clearErrors('internal_sku');
+      }
+      return;
     }
-  }, [form, inputValue, isEditMode, selectedMaster, customProductNameSelected]);
+
+    if (skuAvailability?.available === false) {
+      form.setError('internal_sku', { message: DUPLICATE_SKU_ERROR });
+      return;
+    }
+
+    if (fieldError === DUPLICATE_SKU_ERROR) {
+      form.clearErrors('internal_sku');
+    }
+  }, [debouncedInternalSku, skuAvailability?.available, form]);
 
   const onSubmit: SubmitHandler<AddProductFormValues> = async (values) => {
     // For custom products, brand selection is required
@@ -476,8 +495,8 @@ export function AddProductSheet({
             master_product_id: selectedMaster?.id ?? null,
             ...(values.tenant_brand_id ? { tenant_brand_id: values.tenant_brand_id } : {}),
             internal_sku: values.internal_sku,
-            name: values.name,
             name_override: values.name_override,
+            name: values.name_override,
             mrp,
             base_selling_price: bsp,
             cost_price: costPrice ?? undefined,
@@ -573,7 +592,7 @@ export function AddProductSheet({
           description={
             isEditMode
               ? 'Update the tenant-facing product details used in your catalog.'
-              : 'Start with the name — we\'ll match it against the master catalog.'
+              : 'Search the master catalog to import a product, or type a new display name.'
           }
         />
 
@@ -582,6 +601,22 @@ export function AddProductSheet({
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
 
               {/* State banners */}
+              {isEditMode && product ? (
+                <div className="flex items-center gap-3 rounded-[12px] border border-cream-200 bg-cream-50 px-[14px] py-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-cream-100 text-cream-700">
+                    <Package size={16} strokeWidth={1.75} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-base font-medium text-cream-900">
+                      Selected product · {product.display_name ?? product.name_override ?? product.internal_sku}
+                    </p>
+                    <p className="text-sm text-cream-700">
+                      Update the saved display name and catalog details below.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+
               {selectedMaster ? (
                 <div className="flex items-center gap-3 rounded-[12px] border border-teal-100 bg-teal-50 px-[14px] py-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-teal-100 text-teal-700">
@@ -625,109 +660,99 @@ export function AddProductSheet({
               {/* ── Identity ── */}
               <FormBlock title="Identity">
 
-                {/* Name + search overlay */}
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem className="space-y-2">
-                      <FormLabel>Product name</FormLabel>
-                      <FormControl>
-                        <SearchOverlayPicker
-                          open={isEditMode ? false : productSearchOpen}
-                          onOpenChange={(next) => {
-                            if (isEditMode) return;
-                            setProductSearchOpen(next);
-                            if (!next) {
-                              setInputValue(selectedMaster?.name ?? customProductNameSelected ?? '');
-                            }
-                          }}
-                          triggerDisabled={isEditMode}
-                          title="Search products"
-                          eyebrow="Products"
-                          description="Match against the master catalog, or create a custom product if no match fits."
-                          triggerTitle={productSearchTriggerTitle}
-                          triggerDescription={productSearchTriggerDescription}
-                          searchValue={inputValue}
-                          onSearchValueChange={(value) => {
-                            if (isEditMode) return;
-                            setInputValue(value);
-                            setCustomProductNameSelected(null);
-                            field.onChange(value);
-                          }}
-                          searchPlaceholder="Search master products…"
-                          loading={isPending}
-                          footer={isEditMode || !inputValue.trim() ? null : (
-                            <button
-                              type="button"
-                              onClick={() => selectCustomProductName(inputValue.trim())}
-                              className="flex w-full items-center gap-1.5 rounded-[8px] border border-cream-200 bg-cream-50 px-4 py-[10px] text-left text-sm text-cream-700 transition-colors hover:bg-cream-100"
-                            >
-                              <Plus size={13} className="shrink-0 text-cream-700" />
-                              <span>
-                                Create new product{' '}
-                                <strong className="font-medium text-cream-900">&ldquo;{inputValue.trim()}&rdquo;</strong>
-                              </span>
-                            </button>
-                          )}
-                        >
-                          {isEditMode ? (
-                            <p className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-500">
-                              Editing an existing product.
-                            </p>
-                          ) : isPending ? (
-                            <div className="space-y-1">
-                              <div className="h-10 animate-pulse rounded-[8px] bg-cream-100" />
-                              <div className="h-10 animate-pulse rounded-[8px] bg-cream-100" />
-                              <div className="h-10 animate-pulse rounded-[8px] bg-cream-100" />
-                            </div>
-                          ) : masterResults.length > 0 ? (
-                            <div className="space-y-0.5">
-                              <div className="px-[14px] pb-[6px] pt-[10px] text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">
-                                Master catalog · import &amp; prefill
-                              </div>
-                              {masterResults.map((masterProduct) => (
-                                <button
-                                  key={masterProduct.id}
-                                  type="button"
-                                  onClick={() => applyMasterProduct(masterProduct)}
-                                  className="mx-1 flex w-[calc(100%-8px)] items-center rounded-[8px] px-3 py-2 text-left transition-colors hover:bg-cream-100"
-                                >
-                                  <MasterProductRow product={masterProduct} />
-                                </button>
-                              ))}
-                            </div>
-                          ) : inputValue.trim() ? (
-                            <p className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-500">
-                              No master product matches this search.
-                            </p>
-                          ) : (
-                            <p className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-500">
-                              Start typing to search the master catalog.
-                            </p>
-                          )}
-                        </SearchOverlayPicker>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <div className="space-y-2">
+                  <FormLabel>Search master catalog</FormLabel>
+                  <SearchOverlayPicker
+                    open={isEditMode ? false : productSearchOpen}
+                    onOpenChange={(next) => {
+                      if (isEditMode) return;
+                      setProductSearchOpen(next);
+                      if (!next) {
+                        setInputValue(selectedMaster?.name ?? customProductNameSelected ?? '');
+                      }
+                    }}
+                    triggerDisabled={isEditMode}
+                    title="Search master catalog"
+                    eyebrow="Products"
+                    description="Find a master product to import, or type a new name to create a private product."
+                    triggerTitle={productSearchTriggerTitle}
+                    triggerDescription={productSearchTriggerDescription}
+                    searchValue={inputValue}
+                    onSearchValueChange={(value) => {
+                      if (isEditMode) return;
+                      setInputValue(value);
+                      setCustomProductNameSelected(null);
+                    }}
+                    searchPlaceholder="Search master products…"
+                    loading={isPending}
+                    footer={isEditMode || !inputValue.trim() ? null : (
+                      <button
+                        type="button"
+                        onClick={() => selectCustomProductName(inputValue.trim())}
+                        className="flex w-full items-center gap-1.5 rounded-[8px] border border-cream-200 bg-cream-50 px-4 py-[10px] text-left text-sm text-cream-700 transition-colors hover:bg-cream-100"
+                      >
+                        <Plus size={13} className="shrink-0 text-cream-700" />
+                        <span>
+                          Create new product{' '}
+                          <strong className="font-medium text-cream-900">&ldquo;{inputValue.trim()}&rdquo;</strong>
+                        </span>
+                      </button>
+                    )}
+                  >
+                    {isEditMode ? (
+                      <p className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-500">
+                        This product is already selected.
+                      </p>
+                    ) : isPending ? (
+                      <div className="space-y-1">
+                        <div className="h-10 animate-pulse rounded-[8px] bg-cream-100" />
+                        <div className="h-10 animate-pulse rounded-[8px] bg-cream-100" />
+                        <div className="h-10 animate-pulse rounded-[8px] bg-cream-100" />
+                      </div>
+                    ) : masterResults.length > 0 ? (
+                      <div className="space-y-0.5">
+                        <div className="px-[14px] pb-[6px] pt-[10px] text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">
+                          Master catalog · import &amp; prefill
+                        </div>
+                        {masterResults.map((masterProduct) => (
+                          <button
+                            key={masterProduct.id}
+                            type="button"
+                            onClick={() => applyMasterProduct(masterProduct)}
+                            className="mx-1 flex w-[calc(100%-8px)] items-center rounded-[8px] px-3 py-2 text-left transition-colors hover:bg-cream-100"
+                          >
+                            <MasterProductRow product={masterProduct} />
+                          </button>
+                        ))}
+                      </div>
+                    ) : inputValue.trim() ? (
+                      <p className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-500">
+                        No master product matches this search.
+                      </p>
+                    ) : (
+                      <p className="rounded-[8px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-500">
+                        Start typing to search the master catalog.
+                      </p>
+                    )}
+                  </SearchOverlayPicker>
+                </div>
 
                 <FormField
                   control={form.control}
                   name="name_override"
                   render={({ field }) => (
                     <FormItem className="space-y-2">
-                      <FormLabel>Product name override</FormLabel>
+                      <FormLabel>Display name</FormLabel>
                       <FormControl>
                         <Input
                           {...field}
                           placeholder="Used in catalog, price lists, and buyer views"
+                          onChange={(event) => {
+                            setIsNameOverrideManuallyEdited(true);
+                            field.onChange(event);
+                          }}
                         />
                       </FormControl>
-                      <p className="text-sm text-cream-700">
-                        Defaults to the selected product name for master imports, and is prefilled for new products.
-                      </p>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -809,9 +834,26 @@ export function AddProductSheet({
                     render={({ field }) => (
                       <FormItem className="space-y-2">
                         <FormLabel>Internal SKU <span className="text-red-500">*</span></FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="e.g. PRW-750" className="font-mono" />
+                      <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="e.g. PRW-750"
+                            className="font-mono"
+                            onChange={(event) => {
+                              field.onChange(event);
+                              if (form.getFieldState('internal_sku').error?.message === DUPLICATE_SKU_ERROR) {
+                                form.clearErrors('internal_sku');
+                              }
+                            }}
+                          />
                         </FormControl>
+                        <p className="text-sm text-cream-700">
+                          {isCheckingSku
+                            ? 'Checking SKU availability...'
+                            : skuAvailability?.available === false
+                              ? 'This SKU is already used by another product in this tenant.'
+                              : 'SKU must be unique within this tenant.'}
+                        </p>
                         <FormMessage />
                       </FormItem>
                     )}

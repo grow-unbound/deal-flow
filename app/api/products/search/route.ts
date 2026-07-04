@@ -23,6 +23,18 @@ export async function GET(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabaseAdmin as any;
 
+    const { data: importedRows } = await db
+      .schema('app')
+      .from('tenant_products')
+      .select('master_product_id')
+      .eq('tenant_id', claims.tenant_id)
+      .is('deleted_at', null)
+      .not('master_product_id', 'is', null);
+
+    const importedMasterIds = Array.from(
+      new Set((importedRows ?? []).map((row: { master_product_id: string | null }) => row.master_product_id).filter(Boolean)),
+    ) as string[];
+
     let query = db
       .schema('catalog')
       .from('products')
@@ -31,6 +43,11 @@ export async function GET(req: NextRequest) {
       )
       .eq('is_public', true)
       .limit(20);
+
+    if (importedMasterIds.length > 0) {
+      const excludedIds = importedMasterIds.map((id: string) => `"${id}"`).join(',');
+      query = query.not('id', 'in', `(${excludedIds})`);
+    }
 
     if (q.trim()) {
       query = query.or(`name.ilike.%${q}%,master_sku.ilike.%${q}%`);
