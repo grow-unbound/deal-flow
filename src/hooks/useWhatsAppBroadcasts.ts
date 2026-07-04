@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { WhatsAppBroadcastCreateInput, WhatsAppBroadcastTargetType } from '@/lib/zod';
+import type { WhatsAppQualityRatingState } from '@/constants/whatsapp-quality-banner';
 
 export interface WhatsAppTemplateOption {
   id: string;
@@ -42,6 +43,32 @@ export interface AudiencePreviewResponse {
   credits_per_message: number;
   estimated_credits: number;
   estimated_inr: number;
+}
+
+export interface WhatsAppPlatformStatus {
+  broadcast_sending_paused: boolean;
+  quality_rating_state: WhatsAppQualityRatingState;
+}
+
+/**
+ * Phase F — read-only platform kill-switch / quality-rating status, used to
+ * pick the right composer banner copy (§7.3). Polled lightly (short stale
+ * time) since a Yellow/Red transition should surface to an open composer
+ * without requiring a full page reload.
+ */
+export function useWhatsAppPlatformStatus(enabled = true) {
+  return useQuery({
+    queryKey: ['whatsapp-platform-status'],
+    queryFn: async (): Promise<WhatsAppPlatformStatus> => {
+      const res = await apiFetch('/api/whatsapp/platform-status');
+      if (res.status === 403) return { broadcast_sending_paused: false, quality_rating_state: 'green' };
+      if (!res.ok) throw new Error('Failed to fetch WhatsApp platform status');
+      return res.json();
+    },
+    enabled,
+    staleTime: 60_000,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+  });
 }
 
 export function useWhatsAppTemplates(enabled = true) {
