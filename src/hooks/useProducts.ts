@@ -383,10 +383,6 @@ export function useAddProductToTenant() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-products'] });
     },
-
-    onSuccess: () => {
-      toast.success('Product added to your catalog');
-    },
   });
 }
 

@@ -2,7 +2,6 @@
 
 import { ReactNode, useRef } from 'react';
 import { usePathname } from 'next/navigation';
-import { Toaster } from 'sonner';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { isBuyerCartPillRoute, isBuyerDeepRoute, isBuyerLandingRoute } from '@/lib/buyer-routes';
 import { BuyerScrollRootContext } from '@/contexts/BuyerScrollContext';
@@ -68,7 +67,6 @@ export function BuyerShell({ children }: BuyerShellProps) {
         </div>
       </div>
       <BuyerSearchOverlay />
-      <Toaster position="top-center" richColors />
     </BuyerRealtimeProvider>
   );
 }

@@ -7,11 +7,23 @@ const seedMigrationSql = readFileSync(path.join(process.cwd(), 'supabase/migrati
 const oauthMigrationSql = readFileSync(path.join(process.cwd(), 'supabase/migrations/20260701051222_fix_integration_types_oauth.sql'), 'utf8');
 
 describe('zoho oauth seed config', () => {
-  it('advertises the warehouse-capable scopes for both Zoho integration seeds', () => {
+  it('keeps Zoho Books on books-only access while leaving inventory scopes intact', () => {
     for (const sql of [seedSql, seedMigrationSql, oauthMigrationSql]) {
-      expect(sql).toContain('ZohoBooks.fullaccess.all');
-      expect(sql).toContain('ZohoInventory.settings.READ');
+      expect(sql).toContain('ZohoBooks.contacts.ALL');
+      expect(sql).toContain('ZohoBooks.items.ALL');
+      expect(sql).toContain('ZohoBooks.salesorders.ALL');
+      expect(sql).toContain('ZohoBooks.invoices.ALL');
+      expect(sql).toContain('ZohoBooks.estimates.ALL');
+      expect(sql).toContain('ZohoBooks.settings.ALL');
       expect(sql).toContain('ZohoInventory.fullaccess.all');
     }
+
+    expect(seedSql).toContain(`'zoho_books',`);
+    expect(seedSql).toContain(`jsonb_build_array(`);
+    expect(seedSql).toContain(`'ZohoBooks.contacts.ALL'`);
+    expect(seedSql).toContain(`jsonb_build_array('ZohoInventory.fullaccess.all', 'ZohoInventory.settings.READ')`);
+
+    expect(seedMigrationSql).toContain(`'ZohoBooks.contacts.ALL'`);
+    expect(oauthMigrationSql).toContain(`'ZohoBooks.contacts.ALL'`);
   });
 });

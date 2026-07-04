@@ -8,7 +8,12 @@ describe('zoho warehouse sync', () => {
     vi.restoreAllMocks();
   });
 
-  it('builds the inventory settings warehouse endpoint for warehouse syncs', async () => {
+  it('keeps Zoho Books reference sync on the books API and excludes warehouses', async () => {
+    const phaseIds = getZohoPhasePlan('zoho_books', 'reference').map((phase) => phase.id);
+    expect(phaseIds).toEqual(['locations', 'products', 'pricelists', 'customers']);
+  });
+
+  it('builds the books locations endpoint for Zoho Books location syncs', async () => {
     const seenUrls: URL[] = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url);
@@ -22,7 +27,7 @@ describe('zoho warehouse sync', () => {
       }
 
       return new Response(JSON.stringify({
-        warehouses: [],
+        locations: [],
         page_context: { has_more_page: false },
       }), {
         status: 200,
@@ -39,14 +44,14 @@ describe('zoho warehouse sync', () => {
       api_base_url: 'https://www.zohoapis.in/books/v3',
     });
 
-    const phase = getZohoPhasePlan('zoho_books', 'reference').find((entry) => entry.id === 'warehouses');
+    const phase = getZohoPhasePlan('zoho_books', 'reference').find((entry) => entry.id === 'locations');
     expect(phase).toBeTruthy();
     if (!phase) return;
 
     await adapter.fetchPhasePage(phase, null, null);
 
     const dataRequest = seenUrls.find((url) => !url.pathname.includes('/oauth/v2/token'));
-    expect(dataRequest?.toString()).toContain('https://www.zohoapis.in/inventory/v1/settings/warehouses');
+    expect(dataRequest?.toString()).toContain('https://www.zohoapis.in/books/v3/locations');
     expect(dataRequest?.searchParams.get('organization_id')).toBe('org-1');
   });
 
@@ -92,7 +97,9 @@ describe('zoho warehouse sync', () => {
   });
 
   it('publishes the right OAuth scopes per Zoho integration type', () => {
-    expect(getZohoOAuthScopes('zoho_books')).toBe('ZohoBooks.fullaccess.all,ZohoInventory.settings.READ');
+    expect(getZohoOAuthScopes('zoho_books')).toBe(
+      'ZohoBooks.contacts.ALL,ZohoBooks.items.ALL,ZohoBooks.salesorders.ALL,ZohoBooks.invoices.ALL,ZohoBooks.estimates.ALL,ZohoBooks.settings.ALL',
+    );
     expect(getZohoOAuthScopes('zoho_inventory')).toBe('ZohoInventory.fullaccess.all,ZohoInventory.settings.READ');
   });
 });

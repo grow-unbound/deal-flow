@@ -373,7 +373,9 @@ export function AddBrandCommand({
           imageType: 'logo',
         })
           .then(() => {
-            toast.success(isEditMode ? 'Brand updated' : 'Brand added');
+            if (!isEditMode) {
+              toast.success('Brand added');
+            }
           })
           .catch((uploadError) => {
             toast.warning(
@@ -385,7 +387,9 @@ export function AddBrandCommand({
             );
           });
       } else {
-        toast.success(isEditMode ? 'Brand updated' : 'Brand added');
+        if (!isEditMode) {
+          toast.success('Brand added');
+        }
       }
     } catch (error) {
       const err = error as { status?: number; error?: string; details?: { fieldErrors?: Record<string, string[]> } };

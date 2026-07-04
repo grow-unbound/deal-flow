@@ -58,7 +58,14 @@ describe('IntegrationAuthSchemaSchema', () => {
   it('requires oauth definitions to declare an auth endpoint', () => {
     const result = IntegrationAuthSchemaSchema.safeParse({
       oauth: true,
-      scopes: ['ZohoBooks.fullaccess.all'],
+      scopes: [
+        'ZohoBooks.contacts.ALL',
+        'ZohoBooks.items.ALL',
+        'ZohoBooks.salesorders.ALL',
+        'ZohoBooks.invoices.ALL',
+        'ZohoBooks.estimates.ALL',
+        'ZohoBooks.settings.ALL',
+      ],
       fields: [],
     });
 
