@@ -3,10 +3,14 @@
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Users } from 'lucide-react';
+import { Users, MessageCircle } from 'lucide-react';
 
 import { FeatureGate } from '@/components/FeatureGate';
 import { AddCustomerDialog } from '@/components/seller/customers/AddCustomerDialog';
+import { BroadcastComposerSheet } from '@/components/seller/customers/BroadcastComposerSheet';
+import { BroadcastHistorySection } from '@/components/seller/customers/BroadcastHistorySection';
+import { useFlag } from '@/hooks/useFeatureFlag';
+import { useRole } from '@/hooks/useRole';
 import {
   EntityAvatar,
   FilterBar,
@@ -152,6 +156,9 @@ function CustomersLandingContent({
 }) {
   const router = useRouter();
   const [addBuyerOpen, setAddBuyerOpen] = useState(false);
+  const [broadcastOpen, setBroadcastOpen] = useState(false);
+  const whatsappBroadcastEnabled = useFlag('WHATSAPP_BROADCAST');
+  const { isSellerAssistant } = useRole();
   const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
   const summaryQuery = useCustomersLanding(period, initialData);
   const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
@@ -232,6 +239,17 @@ function CustomersLandingContent({
         period={period}
         periodOptions={options}
         onPeriodChange={setPeriod}
+        secondary={
+          whatsappBroadcastEnabled
+            ? {
+                label: 'Broadcast message',
+                icon: <MessageCircle size={13} />,
+                onClick: () => setBroadcastOpen(true),
+                disabled: isSellerAssistant,
+                title: isSellerAssistant ? 'Only admins can send broadcasts' : undefined,
+              }
+            : undefined
+        }
         primary="Add a Buyer"
         onPrimaryClick={() => setAddBuyerOpen(true)}
       />
@@ -440,11 +458,21 @@ function CustomersLandingContent({
         </div>
       )}
 
+      {whatsappBroadcastEnabled ? (
+        <div className="mt-5">
+          <BroadcastHistorySection />
+        </div>
+      ) : null}
+
       {addBuyerOpen ? (
         <AddCustomerDialog
           open={addBuyerOpen}
           onOpenChange={setAddBuyerOpen}
         />
+      ) : null}
+
+      {whatsappBroadcastEnabled && broadcastOpen ? (
+        <BroadcastComposerSheet open={broadcastOpen} onOpenChange={setBroadcastOpen} />
       ) : null}
     </PageWrap>
   );
