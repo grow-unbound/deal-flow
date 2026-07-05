@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { SELLER_CACHE_NONE } from '@/lib/server/bounded-get';
 import { loadInventoryAvailabilityMap } from '@/lib/server/warehouse-inventory';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -83,7 +84,7 @@ export async function GET(
           shortfall,
         };
       }),
-    });
+    }, { headers: SELLER_CACHE_NONE });
   } catch (error) {
     console.error('[GET /api/tenant/orders/[id]/stock-check]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

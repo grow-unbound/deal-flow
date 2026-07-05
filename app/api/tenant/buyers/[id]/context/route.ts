@@ -4,6 +4,7 @@ import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { supabaseAdmin } from '@/lib/supabase';
 
 function formatAddress(geography: Record<string, unknown> | null | undefined) {
@@ -159,7 +160,7 @@ export async function GET(
         active_pricelist: activePriceList,
         sales_agent_name: null,
       },
-    });
+    }, { headers: SELLER_CACHE_PERSONAL });
   } catch (error) {
     console.error('[GET /api/tenant/buyers/[id]/context]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

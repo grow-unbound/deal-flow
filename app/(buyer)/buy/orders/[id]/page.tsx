@@ -10,7 +10,7 @@ function pickDoc(payload: any): TransactionDoc | null {
     docNumber: o.order_number,
     status: o.status,
     primaryDate: o.placed_at,
-    primaryDateLabel: 'Placed',
+    secondaryDate: null,
     notes: o.notes ?? null,
     placeOfSupply: o.place_of_supply ?? null,
     subtotal: o.subtotal,

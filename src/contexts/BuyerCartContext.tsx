@@ -26,11 +26,13 @@ type CartAction =
   | { type: 'REMOVE_ITEM'; tenant_product_id: string }
   | { type: 'UPDATE_QTY'; tenant_product_id: string; quantity: number }
   | { type: 'CLEAR_CART' }
+  | { type: 'REPLACE_ITEMS'; items: BuyerCartItem[] }
   | { type: 'HYDRATE'; items: BuyerCartItem[] };
 
 function cartReducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {
     case 'HYDRATE':
+    case 'REPLACE_ITEMS':
       return { items: action.items };
 
     case 'ADD_ITEM': {
@@ -80,6 +82,7 @@ export interface CartContextValue {
   removeItem: (tenant_product_id: string) => void;
   updateQty: (tenant_product_id: string, quantity: number) => void;
   clearCart: () => void;
+  replaceItems: (items: BuyerCartItem[]) => void;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -128,6 +131,7 @@ export function BuyerCartProvider({ children }: { children: ReactNode }) {
     removeItem: (tenant_product_id) => dispatch({ type: 'REMOVE_ITEM', tenant_product_id }),
     updateQty: (tenant_product_id, quantity) => dispatch({ type: 'UPDATE_QTY', tenant_product_id, quantity }),
     clearCart: () => dispatch({ type: 'CLEAR_CART' }),
+    replaceItems: (items) => dispatch({ type: 'REPLACE_ITEMS', items }),
   };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

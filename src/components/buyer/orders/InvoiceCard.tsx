@@ -34,16 +34,18 @@ function formatDate(iso: string): string {
   });
 }
 
-type InvoiceStatusKey = 'paid' | 'due' | 'overdue';
+type InvoiceStatusKey = 'draft' | 'sent' | 'paid' | 'overdue' | 'void';
 
 const statusBadge: Record<InvoiceStatusKey, { tone: StatusTone; label: string }> = {
+  draft:   { tone: 'info', label: 'Draft' },
+  sent:    { tone: 'warning', label: 'Due' },
   paid:    { tone: 'success', label: 'Paid' },
-  due:     { tone: 'warning', label: 'Due' },
   overdue: { tone: 'danger', label: 'Overdue' },
+  void:    { tone: 'danger', label: 'Void' },
 };
 
 function getBadge(status: string): { tone: StatusTone; label: string } {
-  return statusBadge[status as InvoiceStatusKey] ?? statusBadge.due;
+  return statusBadge[status as InvoiceStatusKey] ?? { tone: 'warning', label: 'Due' };
 }
 
 export function InvoiceCard({ invoice, href }: InvoiceCardProps) {

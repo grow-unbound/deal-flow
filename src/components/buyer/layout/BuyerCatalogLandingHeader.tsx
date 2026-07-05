@@ -1,41 +1,31 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { SearchBar } from '@/components/buyer/catalog/SearchBar';
-import { BuyerLocationControl } from '@/components/buyer/layout/BuyerLocationControl';
+import { BuyerCatalogLocationLink } from '@/components/buyer/layout/BuyerCatalogLocationLink';
+import { BuyerCatalogSearchInput } from '@/components/buyer/layout/BuyerCatalogSearchInput';
 import { useBuyerScrollCollapse } from '@/hooks/useBuyerScrollCollapse';
-import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
-import { buildBuyerSearchHref } from '@/lib/buyer-routes';
 
 interface BuyerCatalogLandingHeaderProps {
+  categoryChips?: React.ReactNode;
+  searchPlaceholder?: string;
   searchValue: string;
   onSearchChange: (value: string) => void;
-  searchPlaceholder?: string;
 }
 
 export function BuyerCatalogLandingHeader({
+  categoryChips = null,
+  searchPlaceholder = 'Search products, SKU, brand…',
   searchValue,
   onSearchChange,
-  searchPlaceholder = 'Search products, SKU, brand…',
 }: BuyerCatalogLandingHeaderProps) {
   const { collapsed, sentinelRef } = useBuyerScrollCollapse();
-  const router = useRouter();
-
-  function handleSearchSubmit(e: React.FormEvent): void {
-    e.preventDefault();
-    const q = searchValue.trim();
-    if (!q) return;
-    markBuyerNavigationForward();
-    router.push(buildBuyerSearchHref({ scope: 'catalog', q }));
-  }
 
   return (
     <>
       <header
         className={cn(
-          'sticky top-0 z-[15] border-b border-[var(--border-1)] bg-[var(--bg-base)]/95 backdrop-blur-md transition-shadow',
+          'sticky top-0 z-[15] border-b border-[var(--border-1)] bg-[var(--bg-base)] transition-shadow',
           collapsed && 'shadow-sm',
         )}
       >
@@ -46,26 +36,43 @@ export function BuyerCatalogLandingHeader({
           )}
         >
           <div className="overflow-hidden">
-            <div className="flex items-start justify-between px-4 pb-2 pt-5">
-              <div>
-                <p className="mb-0.5 text-xs font-semibold uppercase tracking-widest text-[var(--cream-500)]">
+            <div className="flex items-start justify-between gap-3 px-4 pb-2 pt-6">
+              <div className="min-w-0 shrink-0">
+                <p
+                  className="font-semibold uppercase text-[var(--cream-700)]"
+                  style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.18em' }}
+                >
                   Browse
                 </p>
                 <h1
-                  className="text-2xl font-bold leading-tight"
-                  style={{ fontFamily: 'var(--font-display)', color: 'var(--fg-1, var(--cream-900))' }}
+                  className="mt-1.5 font-semibold leading-[0.96] text-[var(--cream-900)]"
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 'var(--b-text-page-sm)',
+                    letterSpacing: '-0.022em',
+                  }}
                 >
                   Catalog
                 </h1>
               </div>
-              <BuyerLocationControl className="mt-1" />
+              <BuyerCatalogLocationLink className="max-w-[58%] pt-0.5" />
             </div>
           </div>
         </div>
 
-        <form onSubmit={handleSearchSubmit} className="px-4 pb-3 pt-1">
-          <SearchBar value={searchValue} onChange={onSearchChange} placeholder={searchPlaceholder} />
-        </form>
+        <div className={cn('px-4 pb-2', collapsed ? 'pt-2' : 'pt-0')}>
+          <BuyerCatalogSearchInput
+            value={searchValue}
+            onChange={onSearchChange}
+            placeholder={searchPlaceholder}
+          />
+        </div>
+
+        {categoryChips ? (
+          <div className="border-t border-[var(--border-1)] bg-[var(--bg-base)] pb-2 pt-2.5">
+            {categoryChips}
+          </div>
+        ) : null}
       </header>
       <div ref={sentinelRef} className="h-px w-full shrink-0 bg-transparent" aria-hidden />
     </>

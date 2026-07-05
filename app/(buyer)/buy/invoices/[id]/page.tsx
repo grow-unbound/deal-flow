@@ -2,16 +2,17 @@
 
 import { use } from 'react';
 import { TransactionDetailPage, type TransactionDoc } from '@/components/buyer/documents/TransactionDetailPage';
+import { effectiveInvoiceStatus } from '@/lib/invoice-status';
 
 function pickDoc(payload: any): TransactionDoc | null {
   const inv = payload?.invoice;
   if (!inv) return null;
   return {
     docNumber: inv.invoice_number,
-    status: inv.status,
+    status: effectiveInvoiceStatus({ status: inv.status, due_date: inv.due_date }),
     primaryDate: inv.invoice_date,
-    primaryDateLabel: 'Invoice date',
-    notes: inv.due_date ? `Due ${new Date(inv.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}` : null,
+    secondaryDate: inv.due_date ?? null,
+    notes: null,
     placeOfSupply: inv.place_of_supply ?? null,
     subtotal: inv.subtotal,
     tax_total: inv.tax_total,

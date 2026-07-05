@@ -23,8 +23,8 @@ export function CategoryFilter({ categories, selected, onChange }: CategoryFilte
         className={cn(
           'flex-shrink-0 rounded-full px-3 py-1.5 font-medium transition-colors whitespace-nowrap',
           selected === null
-            ? 'bg-[var(--teal-500)] text-white'
-            : 'bg-[var(--bg-recessed)] text-[var(--fg-2)] border border-[var(--cream-400)]',
+            ? 'border border-[var(--teal-100)] bg-[var(--teal-50)] text-[var(--teal-700)]'
+            : 'border border-[var(--border-1)] bg-[var(--bg-surface)] text-[var(--fg-2)]',
         )}
         style={{ fontSize: 'var(--b-text-label)' }}
         aria-pressed={selected === null}
@@ -38,8 +38,8 @@ export function CategoryFilter({ categories, selected, onChange }: CategoryFilte
           className={cn(
             'flex-shrink-0 rounded-full px-3 py-1.5 font-medium transition-colors whitespace-nowrap',
             selected === cat.id
-              ? 'bg-[var(--teal-500)] text-white'
-              : 'bg-[var(--bg-recessed)] text-[var(--fg-2)] border border-[var(--cream-400)]',
+              ? 'border border-[var(--teal-100)] bg-[var(--teal-50)] text-[var(--teal-700)]'
+              : 'border border-[var(--border-1)] bg-[var(--bg-surface)] text-[var(--fg-2)]',
           )}
           style={{ fontSize: 'var(--b-text-label)' }}
           aria-pressed={selected === cat.id}
@@ -49,7 +49,7 @@ export function CategoryFilter({ categories, selected, onChange }: CategoryFilte
             <span
               className={cn(
                 'ml-1.5',
-                selected === cat.id ? 'text-white/75' : 'text-[var(--fg-3)]',
+                selected === cat.id ? 'text-[var(--teal-600)]' : 'text-[var(--fg-3)]',
               )}
               style={{ fontSize: 'var(--b-text-eyebrow)' }}
             >

@@ -1,6 +1,7 @@
 'use client';
 
 import { useInfiniteQuery, keepPreviousData } from '@tanstack/react-query';
+import { apiFetch } from '@/lib/api-fetch';
 import { PAGE_SIZE } from '@/lib/pagination';
 import type { BuyerAppMode } from '@/types/buyer';
 
@@ -31,7 +32,7 @@ export function useBuyerOrdersInfinite() {
     queryFn: async ({ pageParam }): Promise<BuyerOrdersPage> => {
       const params = new URLSearchParams({ limit: String(PAGE_SIZE.BUYER) });
       if (pageParam) params.set('cursor', pageParam as string);
-      const res = await fetch(`/api/buyer/orders?${params.toString()}`);
+      const res = await apiFetch(`/api/buyer/orders?${params.toString()}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };
         throw new Error(body.error ?? `HTTP ${res.status}`);

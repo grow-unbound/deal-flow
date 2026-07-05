@@ -4,6 +4,8 @@ import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { supabaseAdmin } from '@/lib/supabase';
+import { PAGE_SIZE } from '@/lib/pagination';
+import { parseOptionsLimit, SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,7 +32,7 @@ export async function GET(request: NextRequest) {
     }
 
     const query = (request.nextUrl.searchParams.get('q') ?? '').trim();
-    const limit = Math.min(Number(request.nextUrl.searchParams.get('limit') ?? '8'), 12);
+    const limit = parseOptionsLimit(request.nextUrl.searchParams.get('limit'), PAGE_SIZE.SEARCH);
     const db = supabaseAdmin as any;
 
     let builder = db
@@ -44,7 +46,7 @@ export async function GET(request: NextRequest) {
       .limit(limit);
 
     if (query.length > 0) {
-      builder = builder.ilike('business_name', `%${query}%`);
+      builder = builder.textSearch('search_vector', query, { type: 'websearch' });
     }
 
     const { data, error } = await builder;
@@ -65,7 +67,7 @@ export async function GET(request: NextRequest) {
         : 'Unknown',
     }));
 
-    return NextResponse.json({ buyers });
+    return NextResponse.json({ buyers }, { headers: SELLER_CACHE_REFERENCE });
   } catch (error) {
     console.error('[GET /api/tenant/buyers/search]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

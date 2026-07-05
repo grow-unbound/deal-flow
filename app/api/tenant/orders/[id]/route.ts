@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import {
   canAccessDocumentLocation,
   isSellerLocationSelectionAllowed,
@@ -68,14 +69,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const composer = await loadTenantSalesOrderComposer(supabaseAdmin as any, claims.tenant_id, id, claims);
     if (composer === 'forbidden') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     if (composer === 'notfound') return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    return NextResponse.json(composer);
+    return NextResponse.json(composer, { headers: SELLER_CACHE_PERSONAL });
   }
 
   const detail = await loadTenantSalesOrderDetail(supabaseAdmin as any, claims.tenant_id, id, claims.role ?? null, claims);
   if (detail === 'forbidden') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   if (detail === 'notfound') return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  return NextResponse.json(detail);
+  return NextResponse.json(detail, { headers: SELLER_CACHE_PERSONAL });
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

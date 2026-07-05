@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 import { AlertTriangle, Check, RotateCcw, Save, Search, Send, SlidersHorizontal, Upload, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { EntityAvatar, PageWrap } from '@/components/seller/layout';
@@ -899,9 +900,12 @@ export function PriceListComposer({
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-3">
                                 {imageUrl ? (
-                                  <img
+                                  <Image
                                     src={imageUrl}
                                     alt={product.display_name}
+                                    width={32}
+                                    height={32}
+                                    unoptimized
                                     className="h-8 w-8 rounded-[8px] border border-cream-300 object-cover"
                                   />
                                 ) : (

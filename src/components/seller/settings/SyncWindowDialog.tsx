@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Check } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -13,17 +13,27 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
-import { SYNC_WINDOW_OPTIONS, type SyncWindowId } from '@/lib/integrations/sync-window';
+import { Switch } from '@/components/ui/switch';
+
+export interface SyncConfirmOptions {
+  since: string | null;
+  forceFullRefresh: boolean;
+}
 
 interface SyncWindowDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirm: (windowId: SyncWindowId) => void;
+  onConfirm: (options: SyncConfirmOptions) => void;
   title: string;
   description: string;
   confirmLabel: string;
-  defaultWindow?: SyncWindowId;
+}
+
+function toDateOnly(value: Date): string {
+  const year = value.getFullYear();
+  const month = `${value.getMonth() + 1}`.padStart(2, '0');
+  const day = `${value.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 export function SyncWindowDialog({
@@ -33,15 +43,18 @@ export function SyncWindowDialog({
   title,
   description,
   confirmLabel,
-  defaultWindow = 'financial_year_to_date',
 }: SyncWindowDialogProps) {
-  const [selectedWindow, setSelectedWindow] = useState<SyncWindowId>(defaultWindow);
+  const [forceFullRefresh, setForceFullRefresh] = useState(false);
+  const [sinceDate, setSinceDate] = useState('');
 
   useEffect(() => {
     if (open) {
-      setSelectedWindow(defaultWindow);
+      setForceFullRefresh(false);
+      setSinceDate(toDateOnly(new Date()));
     }
-  }, [defaultWindow, open]);
+  }, [open]);
+
+  const canConfirm = !forceFullRefresh || sinceDate.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -51,36 +64,43 @@ export function SyncWindowDialog({
           <DialogDescription className="text-cream-700">{description}</DialogDescription>
         </DialogHeader>
 
-        <DialogBody className="space-y-3">
-          {SYNC_WINDOW_OPTIONS.map((option) => {
-            const selected = option.id === selectedWindow;
-            return (
-              <button
-                key={option.id}
-                type="button"
-                className={cn(
-                  'flex w-full items-start gap-3 rounded-2xl border px-4 py-4 text-left transition-colors',
-                  selected
-                    ? 'border-teal-300 bg-teal-50/70 shadow-xs'
-                    : 'border-cream-200 bg-white hover:border-teal-200 hover:bg-teal-50/40',
-                )}
-                onClick={() => setSelectedWindow(option.id)}
-              >
-                <span
-                  className={cn(
-                    'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border',
-                    selected ? 'border-teal-500 bg-teal-500 text-white' : 'border-cream-300 bg-white text-transparent',
-                  )}
-                >
-                  <Check className="h-3.5 w-3.5" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-cream-900">{option.label}</span>
-                  <span className="mt-1 block text-sm leading-6 text-cream-600">{option.description}</span>
-                </span>
-              </button>
-            );
-          })}
+        <DialogBody className="space-y-4">
+          <div className="rounded-2xl border border-teal-200 bg-teal-50/60 px-4 py-4">
+            <p className="text-sm font-semibold text-cream-900">Pick up from last sync (default)</p>
+            <p className="mt-1 text-sm leading-6 text-cream-700">
+              Only syncs what's changed since each phase's last successful run — fast, and safe to run any time.
+              Anything already up to date is skipped automatically.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-cream-200 bg-white px-4 py-4">
+            <Switch
+              checked={forceFullRefresh}
+              onCheckedChange={setForceFullRefresh}
+              label="Full historical refresh instead"
+            />
+            {forceFullRefresh ? (
+              <div className="mt-3 space-y-3">
+                <div>
+                  <label htmlFor="sync-since-date" className="mb-1 block text-xs font-medium text-cream-700">
+                    Sync everything from
+                  </label>
+                  <input
+                    id="sync-since-date"
+                    type="date"
+                    value={sinceDate}
+                    onChange={(e) => setSinceDate(e.target.value)}
+                    max={toDateOnly(new Date())}
+                    className="w-full rounded-lg border border-cream-300 bg-white px-3 py-2 text-sm text-cream-900 focus:border-teal-400 focus:outline-none"
+                  />
+                </div>
+                <div className="flex items-start gap-2 rounded-lg border border-warning-200 bg-warning-50 px-3 py-2 text-xs text-warning-800">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>Re-fetches everything from this date regardless of what's already synced — this can take up to 30 minutes depending on data volume.</span>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </DialogBody>
 
         <DialogFooter>
@@ -90,8 +110,12 @@ export function SyncWindowDialog({
           <Button
             type="button"
             variant="primary"
+            disabled={!canConfirm}
             onClick={() => {
-              onConfirm(selectedWindow);
+              onConfirm({
+                since: forceFullRefresh ? sinceDate : null,
+                forceFullRefresh,
+              });
               onOpenChange(false);
             }}
           >

@@ -34,6 +34,8 @@ export interface AccessBuyer {
 export interface AccessPageResponse {
   kpis: AccessKpis;
   buyers: AccessBuyer[];
+  has_more?: boolean;
+  limit?: number;
 }
 
 export function useAccessList(initialData?: AccessPageResponse | null) {
@@ -89,7 +91,7 @@ export function useToggleBuyerAccess() {
               }
             : b,
         );
-        return { kpis: recomputeKpis(updatedBuyers), buyers: updatedBuyers };
+        return { ...old, kpis: recomputeKpis(updatedBuyers), buyers: updatedBuyers };
       });
 
       return { snapshots };

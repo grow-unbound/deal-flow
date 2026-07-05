@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 
 import { apiFetch, apiPatch, apiPost } from '@/lib/api-fetch';
 import { appendArrayParam } from '@/lib/landing-filter-params';
+import { PAGE_SIZE } from '@/lib/pagination';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import { getSellerLandingInitialData, type SellerLandingPeriod } from '@/lib/seller-period';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -516,9 +517,9 @@ export function useBuyerEstimatesInfinite() {
   return useInfiniteQuery({
     queryKey: ['buyer-estimates-infinite'],
     queryFn: async ({ pageParam }): Promise<BuyerEstimatesPage> => {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE.BUYER) });
       if (pageParam) params.set('cursor', pageParam as string);
-      const res = await fetch(`/api/buyer/estimates?${params.toString()}`);
+      const res = await apiFetch(`/api/buyer/estimates?${params.toString()}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res.json() as Promise<BuyerEstimatesPage>;
     },

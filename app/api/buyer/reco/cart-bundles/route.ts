@@ -53,6 +53,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<CartBundle
     const enriched =
       allProductIds.length > 0
         ? await assembleBuyerCatalogItemsForProductIds(supabaseAdmin as any, {
+            tenantId,
             buyerId,
             productIds: allProductIds,
             allowedTenantBrandIds,

@@ -580,6 +580,39 @@ export function createZohoAdapter(
     }
   }
 
+  async function fetchEstimateById(estimateId: string): Promise<Record<string, unknown> | null> {
+    try {
+      const payload = await request({ path: `/estimates/${estimateId}` });
+      const estimate = payload.estimate;
+      return isRecord(estimate) ? estimate : null;
+    } catch (error) {
+      if (error instanceof ZohoApiError && error.status !== 404) throw error;
+      return null;
+    }
+  }
+
+  async function fetchSalesOrderById(salesOrderId: string): Promise<Record<string, unknown> | null> {
+    try {
+      const payload = await request({ path: `/salesorders/${salesOrderId}` });
+      const salesOrder = payload.salesorder;
+      return isRecord(salesOrder) ? salesOrder : null;
+    } catch (error) {
+      if (error instanceof ZohoApiError && error.status !== 404) throw error;
+      return null;
+    }
+  }
+
+  async function fetchInvoiceById(invoiceId: string): Promise<Record<string, unknown> | null> {
+    try {
+      const payload = await request({ path: `/invoices/${invoiceId}` });
+      const invoice = payload.invoice;
+      return isRecord(invoice) ? invoice : null;
+    } catch (error) {
+      if (error instanceof ZohoApiError && error.status !== 404) throw error;
+      return null;
+    }
+  }
+
   async function fetchUsers(): Promise<Record<string, unknown>[]> {
     const allUsers: Record<string, unknown>[] = [];
     let page = 1;
@@ -670,6 +703,9 @@ export function createZohoAdapter(
     fetchItemById,
     fetchLocationById,
     fetchPricebookDetail,
+    fetchEstimateById,
+    fetchSalesOrderById,
+    fetchInvoiceById,
     fetchPricelists,
     fetchUsers,
     request,

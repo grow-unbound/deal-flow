@@ -5,6 +5,8 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { createProductQueryEmbedding } from '@/lib/server/product-search';
 import { supabaseAdmin } from '@/lib/supabase';
+import { PAGE_SIZE } from '@/lib/pagination';
+import { parseOptionsLimit, SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
 
 function getInitials(name: string) {
   return name
@@ -51,7 +53,10 @@ export async function GET(request: NextRequest) {
     const buyerId = request.nextUrl.searchParams.get('buyerId') ?? null;
     const priceListId = request.nextUrl.searchParams.get('priceListId') ?? null;
     const limitParam = Number.parseInt(request.nextUrl.searchParams.get('limit') ?? '', 10);
-    const requestedLimit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 12;
+    const requestedLimit = parseOptionsLimit(
+      Number.isFinite(limitParam) && limitParam > 0 ? String(limitParam) : null,
+      PAGE_SIZE.SEARCH,
+    );
     const idsParam = request.nextUrl.searchParams.get('ids');
     const requestedIds = idsParam
       ? Array.from(new Set(idsParam.split(',').map((value) => value.trim()).filter(Boolean)))
@@ -119,7 +124,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ products, has_more: hasMore });
+    return NextResponse.json({ products, has_more: hasMore }, { headers: SELLER_CACHE_REFERENCE });
   } catch (error) {
     console.error('[GET /api/tenant/products/search]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

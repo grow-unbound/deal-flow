@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { getAuthUserEmailMap } from '@/lib/server/auth-user-directory';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { PriceListComposerPayloadSchema } from '@/lib/zod';
 
 type PriceListStatus = 'active' | 'draft' | 'expired';
@@ -352,7 +353,7 @@ export async function GET(
         days_left: daysLeft,
       },
     },
-  });
+  }, { headers: SELLER_CACHE_PERSONAL });
 }
 
 export async function PATCH(

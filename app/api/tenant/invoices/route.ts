@@ -17,6 +17,7 @@ import {
 import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
 import { PAGE_SIZE } from '@/lib/pagination';
+import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 
 type DbClient = any;
@@ -42,6 +43,7 @@ interface InvoiceDbRow {
   buyer_id: string;
   order_id: string | null;
   estimate_id: string | null;
+  is_buyer_app_invoice: boolean;
   status: string;
   total_amount: number;
   outstanding_balance: number | null;
@@ -152,9 +154,7 @@ function growthPct(current: number, previous: number): number {
 export async function GET(request: NextRequest) {
   const timer = createTimer();
   const timedJson = (body: unknown, init?: ResponseInit) => {
-    const response = NextResponse.json(body, init);
-    response.headers.set('Server-Timing', timer.header('invoices_api'));
-    return response;
+    return jsonWithServerTiming(body, timer, 'invoices_api', init, APP_GET_CACHE_CONTROL);
   };
 
   try {
@@ -189,10 +189,7 @@ export async function GET(request: NextRequest) {
     // without a second unbounded query.
     const periodStart = period.previous_start; // earliest date we need
     const periodEndExclusive = period.current_end_exclusive; // latest date we need (exclusive)
-    const reqLimit = Math.min(
-      Number(searchParams.get('limit') || PAGE_SIZE.SELLER),
-      PAGE_SIZE.MAX,
-    );
+    const reqLimit = parseRowsLimit(searchParams.get('limit'), PAGE_SIZE.SELLER);
     const sourceParams = readArrayParam(searchParams, 'source');
     const statusParams = readArrayParam(searchParams, 'status');
     const dueParams = readArrayParam(searchParams, 'due');
@@ -206,7 +203,7 @@ export async function GET(request: NextRequest) {
             .schema('app')
             .from('invoices')
             .select(
-              'id, location_id, invoice_number, buyer_id, order_id, estimate_id, status, total_amount, outstanding_balance, invoice_date, due_date, paid_at, place_of_supply, created_by, created_at',
+              'id, location_id, invoice_number, buyer_id, order_id, estimate_id, is_buyer_app_invoice, status, total_amount, outstanding_balance, invoice_date, due_date, paid_at, place_of_supply, created_by, created_at',
             )
             .eq('tenant_id', tenantId)
             .is('deleted_at', null)
@@ -218,8 +215,7 @@ export async function GET(request: NextRequest) {
         ) as any,
       ]);
 
-    // Scope linked-doc lookups to only the IDs referenced by the fetched invoices
-    // to avoid full-table scans on orders and estimates.
+    // Scope linked-doc lookups to only the IDs referenced by the fetched invoices.
     const allInvoiceRows = (invoiceRows ?? []) as InvoiceDbRow[];
     const linkedOrderIds = Array.from(
       new Set(
@@ -322,7 +318,7 @@ export async function GET(request: NextRequest) {
       const createdByLabel = creatorMap.get(row.created_by ?? '') ?? 'Team member';
       const linked = buildLinked(row, orderById, estimateById);
       const linkedOrder = row.order_id ? orderById.get(row.order_id) : null;
-      const sourceKind = linked.type === 'direct' ? 'direct' : linkedOrder?.source === 'buyer_app' ? 'buyer_app' : 'converted';
+      const sourceKind = linked.type === 'direct' ? 'direct' : row.is_buyer_app_invoice ? 'buyer_app' : 'converted';
       const sourceLabel = sourceKind === 'buyer_app' ? 'Buyer App' : linked.label;
       const sourceDetail = linked.type === 'direct' ? `Created by ${createdByLabel}` : `Converted by ${createdByLabel}`;
       const campaignId = linkedOrder?.campaign_id ?? (row.estimate_id ? estimateById.get(row.estimate_id)?.campaign_id ?? null : null);
