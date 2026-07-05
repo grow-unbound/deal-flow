@@ -34,18 +34,21 @@ function formatDate(iso: string): string {
   });
 }
 
-type EnquiryStatusKey = 'pending' | 'accepted' | 'declined';
+type EnquiryStatusKey = 'draft' | 'sent' | 'accepted' | 'declined' | 'expired' | 'converted' | 'invoiced' | 'void';
 
 const statusBadge: Record<EnquiryStatusKey, { tone: StatusTone; label: string }> = {
-  pending:  { tone: 'info', label: 'Pending' },
-  accepted: { tone: 'success', label: 'Accepted' },
-  declined: { tone: 'danger', label: 'Declined' },
+  draft:     { tone: 'info', label: 'Draft' },
+  sent:      { tone: 'warning', label: 'Sent' },
+  accepted:  { tone: 'success', label: 'Accepted' },
+  declined:  { tone: 'danger', label: 'Declined' },
+  expired:   { tone: 'info', label: 'Expired' },
+  converted: { tone: 'success', label: 'Converted' },
+  invoiced:  { tone: 'success', label: 'Invoiced' },
+  void:      { tone: 'danger', label: 'Void' },
 };
 
 function getBadge(status: string): { tone: StatusTone; label: string } {
-  return (
-    statusBadge[status as EnquiryStatusKey] ?? statusBadge.pending
-  );
+  return statusBadge[status as EnquiryStatusKey] ?? { tone: 'info', label: status.replace(/_/g, ' ') };
 }
 
 export function EnquiryCard({ estimate, href, highlighted }: EnquiryCardProps) {

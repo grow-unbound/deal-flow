@@ -4,6 +4,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { BuyerCreateSchema } from '@/lib/zod';
 import { getPostHogClient } from '@/lib/posthog-server';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 
 async function syncDefaultPriceListAssignment(
   db: any,
@@ -104,7 +105,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ buyers: rows ?? [] });
+  return NextResponse.json({ buyers: rows ?? [] }, { headers: SELLER_CACHE_PERSONAL });
 }
 
 export async function POST(request: NextRequest) {

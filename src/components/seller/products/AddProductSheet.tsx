@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import { Check, Package, Plus, X } from 'lucide-react';
 import { useForm, useFieldArray, useController, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -154,8 +155,14 @@ function MasterProductRow({ product }: { product: MasterProduct }) {
   return (
     <div className="flex items-center gap-3">
       {firstImage ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={firstImage} alt={product.name} className="h-8 w-8 shrink-0 rounded-[8px] border border-cream-200 object-cover" />
+        <Image
+          src={firstImage}
+          alt={product.name}
+          width={32}
+          height={32}
+          unoptimized
+          className="h-8 w-8 shrink-0 rounded-[8px] border border-cream-200 object-cover"
+        />
       ) : (
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] border border-cream-200 bg-cream-100 text-cream-400">
           <Package size={14} />

@@ -6,7 +6,6 @@ import Image from 'next/image';
 import { Minus, Plus, Package } from 'lucide-react';
 import { Pressable } from '@/components/ui/pressable';
 import { cn, formatCurrency } from '@/lib/utils';
-import { StockBadge } from './StockBadge';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 import type { BuyerCatalogItem } from '@/types/buyer';
@@ -14,6 +13,23 @@ import type { BuyerCatalogItem } from '@/types/buyer';
 interface ProductCardProps {
   item: BuyerCatalogItem;
   className?: string;
+}
+
+function ProductStockCornerBadge({ status }: { status: 'limited' | 'out_of_stock' }): React.ReactNode {
+  const isLimited = status === 'limited';
+  return (
+    <span
+      className={cn(
+        'absolute right-2 top-2 z-[1] rounded-full border px-2 py-0.5 font-semibold uppercase tracking-[0.08em]',
+        isLimited
+          ? 'border-[var(--warning-50)] bg-[var(--warning-50)] text-[var(--warning-500)]'
+          : 'border-[var(--danger-50)] bg-[var(--danger-50)] text-[var(--danger-500)]',
+      )}
+      style={{ fontSize: 'var(--b-text-eyebrow)' }}
+    >
+      {isLimited ? 'Low stock' : 'Out of stock'}
+    </span>
+  );
 }
 
 export function ProductCard({ item, className }: ProductCardProps): React.ReactNode {
@@ -24,7 +40,6 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
 
   const cartItem = items.find((i) => i.tenant_product_id === item.tenant_product_id);
   const isOos = item.stock_status === 'out_of_stock';
-  const showStockBadge = item.stock_status === 'limited' || item.stock_status === 'out_of_stock';
   const productHref = `/buy/product/${item.tenant_product_id}`;
 
   const productImg = !productImgError && item.image_urls.length > 0 ? item.image_urls[0] : null;
@@ -68,12 +83,18 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
   return (
     <div
       className={cn(
-        'relative flex flex-col overflow-hidden rounded-xl border border-[var(--border-1)] bg-[var(--bg-surface)] shadow-xs transition-all hover:-translate-y-px hover:border-[var(--border-2)] hover:shadow-md',
-        isOos && 'opacity-60',
+        'relative flex flex-col overflow-hidden rounded-xl border border-[var(--border-1)] bg-[var(--bg-surface)]',
+        'shadow-[0_1px_3px_rgba(34,30,26,0.06),0_4px_12px_rgba(34,30,26,0.05)]',
+        'transition-all hover:-translate-y-px hover:shadow-[0_4px_16px_rgba(34,30,26,0.08),0_2px_6px_rgba(34,30,26,0.05)]',
         className,
       )}
     >
-      <div className="relative flex aspect-square items-center justify-center overflow-hidden bg-[var(--bg-surface)]">
+      <div
+        className={cn(
+          'relative flex aspect-square items-center justify-center overflow-hidden bg-[var(--bg-surface)]',
+          isOos && 'opacity-80 saturate-[0.85]',
+        )}
+      >
         <Pressable asChild haptic>
           <Link
             href={productHref}
@@ -86,10 +107,8 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
                 New
               </span>
             ) : null}
-            {item.stock_status === 'limited' ? (
-              <span className="absolute right-2 top-2 z-[1] rounded bg-amber-500 px-2 py-0.5 font-bold uppercase tracking-wide text-white" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
-                Low stock
-              </span>
+            {item.stock_status === 'limited' || item.stock_status === 'out_of_stock' ? (
+              <ProductStockCornerBadge status={item.stock_status} />
             ) : null}
             {activeImg ? (
               <>
@@ -98,7 +117,7 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
                     src={productImg}
                     alt=""
                     fill
-                    className="object-contain p-2.5"
+                    className="object-contain p-3.5"
                     sizes="(max-width: 640px) 50vw, 200px"
                     onError={() => setProductImgError(true)}
                     unoptimized
@@ -108,7 +127,7 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
                     src={brandImg}
                     alt=""
                     fill
-                    className="object-contain p-3"
+                    className="object-contain p-3.5"
                     sizes="(max-width: 640px) 50vw, 200px"
                     onError={() => setBrandImgError(true)}
                     unoptimized
@@ -118,7 +137,7 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
                     src={categoryImg}
                     alt=""
                     fill
-                    className="object-contain p-3"
+                    className="object-contain p-3.5"
                     sizes="(max-width: 640px) 50vw, 200px"
                     onError={() => setCategoryImgError(true)}
                     unoptimized
@@ -131,7 +150,6 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
           </Link>
         </Pressable>
 
-        {/* Cart control — bottom-right */}
         {cartItem ? (
           <div className="absolute bottom-2 right-2 z-[2] flex h-9 items-center overflow-hidden rounded-lg bg-[#1C1C1E] shadow-md">
             <button
@@ -174,21 +192,38 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
         <Link
           href={productHref}
           onClick={() => markBuyerNavigationForward()}
-          className="flex flex-1 flex-col gap-1 p-2.5 no-underline"
+          className="flex flex-1 flex-col no-underline"
         >
-          <div className="border-t border-[var(--border-1)] pt-2">
-            <p className="line-clamp-2 font-medium leading-snug text-[var(--fg-1)]" style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-body)', letterSpacing: '-0.01em' }}>
+          <div className="bg-[var(--cream-50)] px-3 pb-3 pt-2.5">
+            <p
+              className="line-clamp-2 font-medium leading-[1.2] text-[var(--fg-1)]"
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 'var(--b-text-body)',
+                fontWeight: 500,
+                letterSpacing: '-0.005em',
+              }}
+            >
               {item.display_name}
             </p>
-            <p className="truncate text-[var(--fg-3)]" style={{ fontSize: 'var(--b-text-sub)' }}>
+            <p className="mt-0.5 truncate text-[var(--cream-700)]" style={{ fontSize: 'var(--b-text-sub)' }}>
               {item.internal_sku}
             </p>
             <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-              <span className="font-semibold tabular-nums text-[var(--fg-1)]" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-price)', fontVariantNumeric: 'tabular-nums' }}>
+              <span
+                className="font-medium tabular-nums text-[var(--fg-1)]"
+                style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 'var(--b-text-price)',
+                  fontVariantNumeric: 'tabular-nums',
+                  fontWeight: 500,
+                  letterSpacing: '-0.01em',
+                }}
+              >
                 {formatCurrency(item.price)}
               </span>
               {item.has_campaign_price && item.resolved_price != null ? (
-                <span className="text-xs line-through text-[var(--fg-3)]" style={{ fontFamily: 'var(--font-mono)' }}>
+                <span className="text-xs line-through text-[var(--fg-3)]">
                   {formatCurrency(item.resolved_price)}
                 </span>
               ) : null}
@@ -199,7 +234,6 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
               </p>
             ) : null}
           </div>
-          {showStockBadge ? <StockBadge status={item.stock_status} /> : null}
         </Link>
       </Pressable>
     </div>

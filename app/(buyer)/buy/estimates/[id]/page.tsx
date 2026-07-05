@@ -10,7 +10,7 @@ function pickDoc(payload: any): TransactionDoc | null {
     docNumber: e.estimate_number ?? `ENQ-${e.id.slice(0, 6).toUpperCase()}`,
     status: e.status,
     primaryDate: e.created_at,
-    primaryDateLabel: 'Created',
+    secondaryDate: e.valid_until ?? null,
     notes: e.notes ?? null,
     placeOfSupply: e.place_of_supply ?? null,
     subtotal: e.subtotal,
@@ -25,7 +25,7 @@ export default function BuyerEstimateDetailPage({ params }: { params: Promise<{ 
   return (
     <TransactionDetailPage
       id={id}
-      title="Enquiry"
+      title="Estimate"
       endpoint={`/api/buyer/estimates/${id}`}
       docType="estimate"
       pickDoc={pickDoc}

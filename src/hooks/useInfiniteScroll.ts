@@ -8,6 +8,13 @@ interface UseInfiniteScrollOptions {
   onLoadMore: () => void;
 }
 
+/** Index after which to place the prefetch sentinel (0-based). */
+export function getSentinelInsertIndex(itemCount: number, prefetchAtRatio = 0.75): number {
+  if (itemCount <= 0) return -1;
+  if (itemCount < 4) return itemCount - 1;
+  return Math.max(0, Math.floor(itemCount * prefetchAtRatio) - 1);
+}
+
 export function useInfiniteScroll({
   hasMore,
   isLoading = false,
@@ -16,6 +23,8 @@ export function useInfiniteScroll({
   onLoadMore,
 }: UseInfiniteScrollOptions) {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const onLoadMoreRef = useRef(onLoadMore);
+  onLoadMoreRef.current = onLoadMore;
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -25,16 +34,15 @@ export function useInfiniteScroll({
       (entries) => {
         const entry = entries[0];
         if (entry?.isIntersecting) {
-          onLoadMore();
+          onLoadMoreRef.current();
         }
       },
-      { root: null, rootMargin, threshold }
+      { root: null, rootMargin, threshold },
     );
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMore, isLoading, onLoadMore, rootMargin, threshold]);
+  }, [hasMore, isLoading, rootMargin, threshold]);
 
   return { sentinelRef };
 }
-

@@ -17,6 +17,7 @@ import {
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
 import { apiFetch } from '@/lib/api-fetch';
+import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -47,13 +48,13 @@ export interface TransactionLineItem {
 }
 
 export interface TransactionDoc {
-  /** Document identifier shown in header (order_number, estimate_number, invoice_number) */
+  /** Document identifier shown in body title row */
   docNumber: string;
   status: string;
-  /** ISO date string shown as the primary date */
+  /** ISO date string — created / placed / invoice date */
   primaryDate: string;
-  /** Label for the primary date field */
-  primaryDateLabel: string;
+  /** Due date (invoices) or valid-until date (estimates) */
+  secondaryDate?: string | null;
   notes: string | null;
   subtotal: number;
   tax_total: number;
@@ -86,18 +87,34 @@ const orderStatusBadge: Record<string, { tone: StatusTone; label: string }> = {
   delivered:           { tone: 'success', label: 'Delivered' },
   cancelled:           { tone: 'danger', label: 'Cancelled' },
   pending:             { tone: 'info', label: 'Pending' },
+  sent:                { tone: 'warning', label: 'Sent' },
   accepted:            { tone: 'success', label: 'Accepted' },
   declined:            { tone: 'danger', label: 'Declined' },
+  expired:             { tone: 'info', label: 'Expired' },
+  converted:           { tone: 'success', label: 'Converted' },
+  invoiced:            { tone: 'success', label: 'Invoiced' },
   paid:                { tone: 'success', label: 'Paid' },
   due:                 { tone: 'warning', label: 'Due' },
   overdue:             { tone: 'danger', label: 'Overdue' },
+  void:                { tone: 'danger', label: 'Void' },
 };
 
 function getStatusBadge(status: string): { tone: StatusTone; label: string } {
   return orderStatusBadge[status] ?? { tone: 'neutral', label: status };
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+const CARD_RADIUS = 'rounded-[12px]';
+
+function formatDocSubtitle(doc: TransactionDoc, docType: DocType): string {
+  const created = fmtDate(doc.primaryDate);
+  if (docType === 'invoice' && doc.secondaryDate) {
+    return `${created} · due ${fmtDate(doc.secondaryDate)}`;
+  }
+  if (docType === 'estimate' && doc.secondaryDate) {
+    return `${created} · valid until ${fmtDate(doc.secondaryDate)}`;
+  }
+  return created;
+}
 
 function LineItemRow({ item }: { item: TransactionLineItem }) {
   return (
@@ -138,7 +155,7 @@ function TotalsBlock({
 }) {
   return (
     <div
-      className="rounded-2xl border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4"
+      className={`${CARD_RADIUS} border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4`}
       style={{ background: 'white' }}
     >
       <div className="flex justify-between text-[var(--b-text-body)] text-[var(--cream-700)]">
@@ -170,8 +187,6 @@ function ReorderButton({ items, docType }: { items: TransactionLineItem[]; docTy
   const { items: cartItems, clearCart, addItem } = useCart();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
 
-  if (docType === 'invoice') return null;
-
   function fillCart() {
     clearCart();
     items.forEach((item) => {
@@ -199,13 +214,14 @@ function ReorderButton({ items, docType }: { items: TransactionLineItem[]; docTy
   }
 
   const cartCount = cartItems.reduce((s, i) => s + i.quantity, 0);
+  const sourceLabel = docType === 'order' ? 'order' : 'estimate';
 
   return (
     <>
       <button
         type="button"
         onClick={handleReorder}
-        className="flex w-full items-center justify-center gap-2 rounded-lg py-3.5 text-[var(--b-text-body)] font-semibold text-white transition-opacity active:opacity-80"
+        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl text-[var(--b-text-body)] font-semibold text-white transition-opacity active:opacity-80"
         style={{ background: 'var(--teal-500)' }}
       >
         <ShoppingCart className="h-4 w-4" />
@@ -217,8 +233,7 @@ function ReorderButton({ items, docType }: { items: TransactionLineItem[]; docTy
           <AlertDialogHeader>
             <AlertDialogTitle>Replace cart?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove {cartCount} item{cartCount !== 1 ? 's' : ''} currently in your cart and replace them with items from this{' '}
-              {docType === 'order' ? 'order' : 'enquiry'}.
+              This will remove {cartCount} item{cartCount !== 1 ? 's' : ''} currently in your cart and replace them with items from this {sourceLabel}.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -235,6 +250,24 @@ function ReorderButton({ items, docType }: { items: TransactionLineItem[]; docTy
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+function TransactionDetailStickyFooter({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="fixed bottom-0 left-1/2 z-20 w-full -translate-x-1/2 px-4 py-3"
+      style={{
+        maxWidth: BUYER_PREVIEW_MAX_WIDTH,
+        paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))',
+        background: 'rgba(253,251,247,0.96)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        borderTop: '1px solid var(--border-1)',
+      }}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -273,35 +306,30 @@ export function TransactionDetailPage({
   }, [endpoint, id]);
 
   const badge = doc ? getStatusBadge(doc.status) : null;
-const totalUnits = doc?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0;
-  const headerSubtitle = doc ? (
-    <div className="space-y-1">
-      <p className="font-mono text-sm text-[var(--cream-700)]">
-        {fmtDate(doc.primaryDate)}
-      </p>
-      {doc.notes && <p className="text-sm leading-5 text-[var(--cream-800)]">{doc.notes}</p>}
-    </div>
-  ) : null;
+  const totalUnits = doc?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0;
   const deliveryPlace = doc?.placeOfSupply?.trim() ?? '';
+  const showReorderFooter = Boolean(doc && doc.items.length > 0 && docType !== 'invoice');
 
   return (
     <div className="flex min-h-[50vh] flex-col pb-[var(--tab-bar)]">
       <BuyerDetailShell
-        title={doc?.docNumber ?? title}
-        subtitle={headerSubtitle}
-        rightSlot={badge ? <StatusPill label={badge.label} tone={badge.tone} /> : null}
+        title={title}
+        hideSearch
         showLocationControl={false}
       >
         {loading ? (
-          <div className="space-y-3 px-4 py-4">
-            <div className="space-y-1">
+          <div className="space-y-3 px-4 py-4 pb-24">
+            <div className="space-y-2 px-1">
               <div className="h-3 w-32 animate-pulse rounded-full bg-cream-200" />
-              <div className="h-7 w-48 animate-pulse rounded-full bg-cream-200" />
+              <div className="flex items-start justify-between gap-3">
+                <div className="h-8 w-40 animate-pulse rounded bg-cream-200" />
+                <div className="h-6 w-20 animate-pulse rounded-full bg-cream-200" />
+              </div>
               <div className="h-4 w-52 animate-pulse rounded-full bg-cream-200" />
             </div>
-            <div className="h-40 animate-pulse rounded-2xl border border-cream-200 bg-cream-100" />
-            <div className="h-28 animate-pulse rounded-2xl border border-cream-200 bg-cream-100" />
-            <div className="h-24 animate-pulse rounded-2xl border border-cream-200 bg-cream-100" />
+            <div className={`h-40 animate-pulse border border-cream-200 bg-cream-100 ${CARD_RADIUS}`} />
+            <div className={`h-28 animate-pulse border border-cream-200 bg-cream-100 ${CARD_RADIUS}`} />
+            <div className={`h-24 animate-pulse border border-cream-200 bg-cream-100 ${CARD_RADIUS}`} />
           </div>
         ) : fetchError ? (
           <div className="p-4">
@@ -318,18 +346,27 @@ const totalUnits = doc?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0;
         ) : !doc ? (
           <div className="px-4 py-8 text-center text-sm text-[var(--fg-3)]">{title} not found.</div>
         ) : (
-          <div className="flex min-h-[calc(100dvh-140px)] flex-col space-y-3 px-4 py-4">
+          <div className={`flex flex-col space-y-3 px-4 py-4 ${showReorderFooter ? 'pb-24' : 'pb-6'}`}>
             <div className="px-1">
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--cream-600)]">
                 {doc.items.length} product{doc.items.length !== 1 ? 's' : ''} · {totalUnits} unit{totalUnits !== 1 ? 's' : ''}
               </p>
-              <h2 className="mt-1 font-[var(--font-display)] text-[var(--b-text-page)] font-semibold leading-tight text-[var(--cream-900)]">
-                {docType === 'invoice' ? 'Invoice items' : docType === 'order' ? 'Order items' : 'Estimate items'}
-              </h2>
+              <div className="mt-1 flex items-start justify-between gap-3">
+                <h2 className="min-w-0 flex-1 font-mono text-[var(--b-text-page)] font-semibold leading-tight text-[var(--cream-900)]">
+                  {doc.docNumber}
+                </h2>
+                {badge ? <StatusPill label={badge.label} tone={badge.tone} /> : null}
+              </div>
+              <p className="mt-1 text-[var(--b-text-sub)] text-[var(--cream-600)]">
+                {formatDocSubtitle(doc, docType)}
+              </p>
+              {doc.notes ? (
+                <p className="mt-2 text-sm leading-5 text-[var(--cream-800)]">{doc.notes}</p>
+              ) : null}
             </div>
 
             <div
-              className="rounded-2xl border border-[var(--border-1)] px-4 py-4"
+              className={`${CARD_RADIUS} border border-[var(--border-1)] px-4 py-4`}
               style={{ background: 'white' }}
             >
               {doc.items.length > 0 ? (
@@ -356,9 +393,9 @@ const totalUnits = doc?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0;
             />
 
             {deliveryPlace ? (
-              <div className="rounded-2xl border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4">
+              <div className={`${CARD_RADIUS} border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4`}>
                 <div className="flex items-start gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] border border-cream-200 bg-cream-100">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-cream-200 bg-cream-100">
                     <MapPin className="h-4 w-4 text-[var(--teal-500)]" />
                   </div>
                   <div className="min-w-0">
@@ -372,15 +409,15 @@ const totalUnits = doc?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0;
                 </div>
               </div>
             ) : null}
-
-            <div className="flex-1" />
-
-            {doc.items.length > 0 && (
-              <ReorderButton items={doc.items} docType={docType} />
-            )}
           </div>
         )}
       </BuyerDetailShell>
+
+      {showReorderFooter && doc ? (
+        <TransactionDetailStickyFooter>
+          <ReorderButton items={doc.items} docType={docType} />
+        </TransactionDetailStickyFooter>
+      ) : null}
     </div>
   );
 }

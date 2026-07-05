@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ total: null }, { status: 404 });
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json(data, { headers: SELLER_CACHE_PERSONAL });
   } catch (e) {
     console.error('[GET /api/tenant/products/summary]', e);
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

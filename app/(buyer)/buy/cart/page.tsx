@@ -8,6 +8,7 @@ import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
 import { useCartBundles } from '@/hooks/useCartBundles';
+import { useBuyerResolvedProducts } from '@/hooks/useBuyerProducts';
 import { CartGapWidget } from '@/components/buyer/cart/CartGapWidget';
 import { formatCurrency } from '@/lib/utils';
 import { apiFetch } from '@/lib/api-fetch';
@@ -73,7 +74,7 @@ const STICKY_HEADER: React.CSSProperties = {
 
 export default function CartPage() {
   const router = useRouter();
-  const { items, itemCount, removeItem, updateQty, clearCart, addItem } = useCart();
+  const { items, itemCount, removeItem, updateQty, clearCart, addItem, replaceItems } = useCart();
   const delivery = useBuyerDeliveryOptional();
   const { data: meData } = useBuyerMe();
   const { data: cartBundlesData } = useCartBundles();
@@ -86,6 +87,39 @@ export default function CartPage() {
   const [error, setError] = useState('');
   const [nearestLoc, setNearestLoc] = useState<NearestLocationResponse | null>(null);
   const [nearestLoading, setNearestLoading] = useState(false);
+  const reconcileQuery = useBuyerResolvedProducts(
+    items.map((item) => ({
+      tenant_product_id: item.tenant_product_id,
+      qty: item.quantity,
+    })),
+  );
+
+  useEffect(() => {
+    if (!reconcileQuery.data) return;
+    const nextItems = reconcileQuery.data.items.map((product) => {
+      const existing = items.find((item) => item.tenant_product_id === product.tenant_product_id);
+      const quantity = existing?.quantity ?? 1;
+      return {
+        tenant_product_id: product.tenant_product_id,
+        name: product.display_name,
+        brand: product.brand_name ?? undefined,
+        internal_sku: product.internal_sku,
+        image_url: product.image_urls[0],
+        unit_price: product.price,
+        gst_rate: product.gst_rate ?? gstRate,
+        unit: product.default_uom ?? undefined,
+        quantity,
+        line_total: product.price * quantity,
+        tenant_category_id: product.category_id ?? undefined,
+      } satisfies BuyerCartItem;
+    });
+
+    const currentSignature = JSON.stringify(items);
+    const nextSignature = JSON.stringify(nextItems);
+    if (currentSignature !== nextSignature) {
+      replaceItems(nextItems);
+    }
+  }, [gstRate, items, reconcileQuery.data, replaceItems]);
 
   useEffect(() => {
     const loc = selectedDelivery;

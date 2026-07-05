@@ -64,6 +64,25 @@ export function formatBuyerSelectedLocationLabel(
   return trimText(location?.label) || trimText(location?.city) || fallback;
 }
 
+/** Compact label for tight header slots — locality or city, never the full formatted address. */
+export function formatBuyerCompactLocationLabel(
+  location: Pick<BuyerDeliveryLocation, 'label' | 'city'> | null | undefined,
+  fallback = 'Select location',
+): string {
+  if (!location) return fallback;
+
+  const city = trimText(location.city);
+  const label = trimText(location.label);
+  const primary = label.split(',')[0]?.trim() ?? '';
+
+  if (primary.length > 0 && primary.length <= 24) return primary;
+  if (city) return city;
+  if (primary.length > 0) {
+    return primary.length > 26 ? `${primary.slice(0, 24)}…` : primary;
+  }
+  return fallback;
+}
+
 export function buildSetCookieHeader(payload: BuyerDeliveryCookiePayload): string {
   const body = serializeDeliveryCookie(payload);
   return `${DELIVERY_COOKIE_NAME}=${body}; Path=/; Max-Age=${COOKIE_MAX_AGE}; SameSite=Lax`;

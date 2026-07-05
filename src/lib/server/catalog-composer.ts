@@ -1,4 +1,5 @@
 import type { CatalogComposerTag } from '@/lib/zod';
+import { PAGE_SIZE } from '@/lib/pagination';
 
 type StockTone = 'success' | 'warning' | 'neutral';
 
@@ -131,9 +132,9 @@ export async function getCatalogComposerPayload(db: any, tenantId: string, role?
   // Phase 1: fetch data that doesn't depend on each other.
   // cohort_members is intentionally excluded here — it must be scoped to this
   // tenant's cohort IDs, which we only know after the cohorts query resolves.
-  const PRODUCTS_LIMIT = 2000;
-  const BUYERS_LIMIT = 2000;
-  const PRICE_LISTS_LIMIT = 500;
+  const PRODUCTS_LIMIT = PAGE_SIZE.MAX;
+  const BUYERS_LIMIT = PAGE_SIZE.MAX;
+  const PRICE_LISTS_LIMIT = PAGE_SIZE.MAX;
   const canViewCost = role === 'seller_admin';
 
   const [productsRes, cohortsRes, recentOrdersRes, monthOrdersRes, buyersCountRes, buyersRes, priceListsRes] = await Promise.all([

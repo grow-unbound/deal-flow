@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { useBuyerScrollRoot } from '@/contexts/BuyerScrollContext';
 
 type StorageMode = 'session' | 'local';
 
@@ -165,11 +166,28 @@ export function useRouteScrollRestoration({
   scopeKey?: string;
 }) {
   const pathname = usePathname();
+  const scrollContext = useBuyerScrollRoot();
+  const scrollRoot = scrollContext?.scrollRoot ?? null;
   const resolvedStorageKey = useMemo(
     () => buildStorageKey(ROUTE_SCROLL_PREFIX, storageKey, pathname, scopeKey),
     [pathname, scopeKey, storageKey],
   );
   const restoredRef = useRef(false);
+
+  const readScrollY = useCallback((): number => {
+    return scrollRoot?.scrollTop ?? window.scrollY;
+  }, [scrollRoot]);
+
+  const writeScrollY = useCallback(
+    (scrollY: number) => {
+      if (scrollRoot) {
+        scrollRoot.scrollTo({ top: scrollY, behavior: 'auto' });
+        return;
+      }
+      window.scrollTo({ top: scrollY, behavior: 'auto' });
+    },
+    [scrollRoot],
+  );
 
   useClientLayoutEffect(() => {
     if (!enabled || !ready || restoredRef.current) return;
@@ -186,12 +204,12 @@ export function useRouteScrollRestoration({
       const parsed = JSON.parse(raw) as { scrollY?: number };
       restoredRef.current = true;
       requestAnimationFrame(() => {
-        window.scrollTo({ top: parsed.scrollY ?? 0, behavior: 'auto' });
+        writeScrollY(parsed.scrollY ?? 0);
       });
     } catch {
       restoredRef.current = true;
     }
-  }, [enabled, ready, resolvedStorageKey]);
+  }, [enabled, ready, resolvedStorageKey, writeScrollY]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -204,7 +222,7 @@ export function useRouteScrollRestoration({
       frame = window.requestAnimationFrame(() => {
         frame = 0;
         try {
-          storage.setItem(resolvedStorageKey, JSON.stringify({ scrollY: window.scrollY }));
+          storage.setItem(resolvedStorageKey, JSON.stringify({ scrollY: readScrollY() }));
         } catch {
           // Ignore storage availability issues.
         }
@@ -213,22 +231,23 @@ export function useRouteScrollRestoration({
 
     const flush = () => {
       try {
-        storage.setItem(resolvedStorageKey, JSON.stringify({ scrollY: window.scrollY }));
+        storage.setItem(resolvedStorageKey, JSON.stringify({ scrollY: readScrollY() }));
       } catch {
         // Ignore storage availability issues.
       }
     };
 
-    window.addEventListener('scroll', persist, { passive: true });
+    const scrollTarget: HTMLElement | Window = scrollRoot ?? window;
+    scrollTarget.addEventListener('scroll', persist, { passive: true });
     window.addEventListener('pagehide', flush);
 
     return () => {
-      window.removeEventListener('scroll', persist);
+      scrollTarget.removeEventListener('scroll', persist);
       window.removeEventListener('pagehide', flush);
       flush();
       if (frame) window.cancelAnimationFrame(frame);
     };
-  }, [enabled, resolvedStorageKey]);
+  }, [enabled, resolvedStorageKey, readScrollY, scrollRoot]);
 }
 
 export function usePersistedDraftState<T>({

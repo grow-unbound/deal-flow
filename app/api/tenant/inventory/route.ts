@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
+import { SELLER_CACHE_NONE } from '@/lib/server/bounded-get';
 import { z } from 'zod';
 
 const UpsertInventorySchema = z.object({
@@ -98,7 +99,7 @@ export async function GET(req: NextRequest) {
       warehouse: warehousesMap[row.warehouse_id] ?? null,
     }));
 
-    return NextResponse.json({ inventory });
+    return NextResponse.json({ inventory }, { headers: SELLER_CACHE_NONE });
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

@@ -45,3 +45,6 @@ verify_jwt = false
 
 [functions.sync-invoices]
 verify_jwt = false
+
+[functions.sync-transaction-line-items]
+verify_jwt = false

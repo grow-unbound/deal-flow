@@ -19,7 +19,7 @@ import {
   getVerifiedClaims,
   type JWTClaims,
 } from '@/lib/auth';
-import { createBuyerPreviewToken, verifyBuyerPreviewToken } from '@/lib/buyer-preview';
+import { createBuyerPreviewToken, verifyBuyerPreviewToken, BUYER_PREVIEW_TTL_SECONDS } from '@/lib/buyer-preview';
 
 // A real JWT fixture (header.payload.sig) with known claims
 const FIXTURE_PAYLOAD = {
@@ -134,7 +134,7 @@ describe('buyer preview tokens', () => {
 
   it('rejects expired preview tokens', async () => {
     const token = await createBuyerPreviewToken({ tenantId: 'tenant-abc', now: 100 });
-    await expect(verifyBuyerPreviewToken(token, 1000)).resolves.toBeNull();
+    await expect(verifyBuyerPreviewToken(token, 100 + BUYER_PREVIEW_TTL_SECONDS + 1)).resolves.toBeNull();
   });
 
   it('prefers real buyer claims over preview mode', async () => {

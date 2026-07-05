@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { PriceListItemCreateSchema } from '@/lib/zod';
 
 export async function GET(
@@ -150,7 +151,7 @@ export async function GET(
     }),
   );
 
-  return NextResponse.json({ items: enrichedItems });
+  return NextResponse.json({ items: enrichedItems }, { headers: SELLER_CACHE_PERSONAL });
 }
 
 export async function POST(

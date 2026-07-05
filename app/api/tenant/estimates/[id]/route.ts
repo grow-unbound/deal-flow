@@ -5,6 +5,7 @@ import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { loadEstimateDocument } from '@/lib/estimates/load-tenant-estimate-composer';
 import { getFlag } from '@/lib/flags';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import {
   isSellerLocationSelectionAllowed,
   loadAccessibleSellerLocations,
@@ -81,7 +82,7 @@ export async function GET(
         historical_items: result.detailPayload.items,
         ...result.composerPayload,
       },
-    });
+    }, { headers: SELLER_CACHE_PERSONAL });
   } catch (error) {
     console.error('[GET /api/tenant/estimates/[id]]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

@@ -93,9 +93,13 @@ export async function loadBuyerActivityFeed(
       .limit(60),
   ]);
 
-  const firstError = ordersRes.error ?? invoicesRes.error ?? estimatesRes.error ?? paymentsRes.error;
+  const firstError = ordersRes.error ?? invoicesRes.error ?? estimatesRes.error;
   if (firstError) {
     throw new Error(firstError.message ?? 'Failed to load buyer activity');
+  }
+
+  if (paymentsRes.error) {
+    console.warn('[buyer-activity] payments query failed:', paymentsRes.error.message);
   }
 
   const rows: BuyerActivityItem[] = [
@@ -151,7 +155,7 @@ export async function loadBuyerActivityFeed(
       href: `/buy/estimates/${row.id}`,
       meta: 'Estimate',
     })),
-    ...((paymentsRes.data ?? []) as Array<{
+    ...(paymentsRes.error ? [] : (paymentsRes.data ?? []) as Array<{
       id: string;
       invoice_id: string | null;
       amount: number | null;

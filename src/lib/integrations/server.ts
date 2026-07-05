@@ -587,14 +587,27 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
   const coverageTotals = buildCoverageTotals(coverageCounts);
 
   const integrationMap = new Map((integrations ?? []).map((row: Record<string, unknown>) => [String(row.integration_type_id), row]));
+  // A sync run creates one job row PER PHASE, all with near-identical created_at.
+  // The "active" job must be the one actually in progress, not just whichever
+  // phase row happens to sort first — otherwise the UI can end up representing
+  // an in-flight run with a phase that hasn't started yet (still 'pending').
+  const JOB_STATUS_PRIORITY: Record<string, number> = { running: 0, queued: 1, pending: 1, paused: 2 };
+  // Recent history needs to cover multiple resume attempts across 7 phases —
+  // 10 was tight enough that a single run's fresh rows could push out the
+  // "last completed" rows the UI needs for per-phase fallback counts.
+  const RECENT_JOBS_LIMIT = 60;
   const latestJobMap = new Map<string, Record<string, unknown>>();
   const recentJobsMap = new Map<string, Record<string, unknown>[]>();
   for (const row of jobs ?? []) {
     const key = String((row as Record<string, unknown>).tenant_integration_id ?? '');
-    if (key && !latestJobMap.has(key)) latestJobMap.set(key, row as Record<string, unknown>);
     if (key) {
+      const existing = latestJobMap.get(key);
+      const rowPriority = JOB_STATUS_PRIORITY[String((row as Record<string, unknown>).status ?? '')] ?? 3;
+      const existingPriority = existing ? JOB_STATUS_PRIORITY[String(existing.status ?? '')] ?? 3 : 4;
+      if (!existing || rowPriority < existingPriority) latestJobMap.set(key, row as Record<string, unknown>);
+
       const bucket = recentJobsMap.get(key) ?? [];
-      if (bucket.length < 10) bucket.push(row as Record<string, unknown>);
+      if (bucket.length < RECENT_JOBS_LIMIT) bucket.push(row as Record<string, unknown>);
       recentJobsMap.set(key, bucket);
     }
   }

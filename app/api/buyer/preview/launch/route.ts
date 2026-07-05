@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
-import { createBuyerPreviewToken, BUYER_PREVIEW_TTL_SECONDS } from '@/lib/buyer-preview';
 import { findBuyerLoginCandidates } from '@/lib/server/buyer-access';
+import { setBuyerPreviewCookies } from '@/lib/server/buyer-preview-session';
 import { supabaseAdmin } from '@/lib/supabase';
 import { SELLER_ROLES } from '@/constants';
 
@@ -48,29 +48,13 @@ export async function GET(request: NextRequest) {
       ? await findLinkedBuyerId(claims.sub, claims.tenant_id)
       : null;
 
-    const now = Math.floor(Date.now() / 1000);
-    const previewToken = await createBuyerPreviewToken({
-      tenantId: claims.tenant_id,
-      shareToken,
-      buyerId,
-      now,
-    });
-
     const redirectPath = '/buy/home';
     const response = NextResponse.redirect(new URL(redirectPath, request.url));
 
-    const cookieOptions = {
-      httpOnly: true,
-      path: '/',
-      maxAge: BUYER_PREVIEW_TTL_SECONDS,
-      sameSite: 'lax' as const,
-      secure: process.env.NODE_ENV === 'production',
-    };
-    response.cookies.set('buyer_preview', previewToken, cookieOptions);
-    // Non-httpOnly companion so the client can show the expiry overlay without decoding the token.
-    response.cookies.set('buyer_preview_exp', String(now + BUYER_PREVIEW_TTL_SECONDS), {
-      ...cookieOptions,
-      httpOnly: false,
+    await setBuyerPreviewCookies(response, {
+      tenantId: claims.tenant_id,
+      shareToken,
+      buyerId,
     });
 
     return response;

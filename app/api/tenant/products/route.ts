@@ -6,6 +6,7 @@ import { resolveImportedProductTenantLinks } from '@/lib/server/tenant-product-s
 import { z } from 'zod';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { PAGE_SIZE } from '@/lib/pagination';
+import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 
 const AddProductSchema = z.object({
@@ -31,9 +32,7 @@ const AddProductSchema = z.object({
 export async function GET(req: NextRequest) {
   const timer = createTimer();
   const timedJson = (body: unknown, init?: ResponseInit) => {
-    const response = NextResponse.json(body, init);
-    response.headers.set('Server-Timing', timer.header('products_api'));
-    return response;
+    return jsonWithServerTiming(body, timer, 'products_api', init, APP_GET_CACHE_CONTROL);
   };
   try {
     const claims = await getVerifiedClaims(req);
@@ -52,10 +51,8 @@ export async function GET(req: NextRequest) {
 
     const db = supabaseAdmin as any; // supabase client typed generically for multi-schema queries
 
-    const reqLimit = Math.min(
-      Number(req.nextUrl.searchParams.get('limit') || PAGE_SIZE.SELLER),
-      PAGE_SIZE.MAX,
-    );
+    const reqLimit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
+    const cursorParam = req.nextUrl.searchParams.get('cursor');
     const search = req.nextUrl.searchParams.get('search')?.trim() || null;
     const brandId = req.nextUrl.searchParams.get('brand_id') || null;
     const brandParams = readArrayParam(req.nextUrl.searchParams, 'brand');
@@ -88,13 +85,24 @@ export async function GET(req: NextRequest) {
       .eq('tenant_id', claims.tenant_id)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
       .limit(reqLimit + 1); // +1 to detect hasNextPage
 
     if (search) {
       productsQuery = productsQuery.textSearch('search_vector', search, { type: 'websearch' });
     }
+    if (cursorParam) {
+      const parsed = JSON.parse(Buffer.from(cursorParam, 'base64url').toString()) as { t: string; i: string };
+      productsQuery = productsQuery.or(`created_at.lt.${parsed.t},and(created_at.eq.${parsed.t},id.lt.${parsed.i})`);
+    }
     if (brandId) {
       productsQuery = productsQuery.eq('tenant_brand_id', brandId);
+    }
+    if (statusParams.length > 0) {
+      const wantsActive = statusParams.includes('Active');
+      const wantsInactive = statusParams.includes('Inactive');
+      if (wantsActive && !wantsInactive) productsQuery = productsQuery.eq('is_active', true);
+      if (wantsInactive && !wantsActive) productsQuery = productsQuery.eq('is_active', false);
     }
 
     const { data, error } = await productsQuery;

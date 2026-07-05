@@ -169,7 +169,7 @@
   --b-text-label:    calc(var(--b-base) * 0.867);  /* 13px  — filter chips, table labels */
   --b-text-body:     var(--b-base);                 /* 15px  — body copy */
   --b-text-header:   calc(var(--b-base) * 1.133);  /* 17px  — sticky header title */
-  --b-text-price:    calc(var(--b-base) * 1.133);  /* 17px  — product grid price */
+  --b-text-price:    calc(var(--b-base) * 1.067);  /* 16px  — product grid price */
   --b-text-section:  calc(var(--b-base) * 1.267);  /* 19px  — section row title */
   --b-text-total:    calc(var(--b-base) * 1.467);  /* 22px  — cart subtotal, catalog hero */
   --b-text-kpi:      calc(var(--b-base) * 1.600);  /* 24px  — normal KPI value */

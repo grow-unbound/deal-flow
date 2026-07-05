@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { CohortUpdateSchema } from '@/lib/zod';
 import { buildCohortRulesSummary } from '@/lib/cohort-rules-summary';
 import { getAuthUserEmailMap } from '@/lib/server/auth-user-directory';
@@ -551,7 +552,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     },
     buyers: buyersPayload,
     rules_summary,
-  });
+  }, { headers: SELLER_CACHE_PERSONAL });
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

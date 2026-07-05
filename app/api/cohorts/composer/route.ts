@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { getCohortComposerPayload } from '@/lib/server/cohort-composer';
 import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
 
@@ -24,7 +25,7 @@ export async function GET(_request: NextRequest) {
   try {
     const db = supabaseAdmin ?? getRequestSupabaseClient();
     const payload = await getCohortComposerPayload(db as any, claims.tenant_id);
-    return NextResponse.json(payload);
+    return NextResponse.json(payload, { headers: SELLER_CACHE_PERSONAL });
   } catch (error: any) {
     console.error('[GET /api/cohorts/composer]', error?.code, error?.message);
     return NextResponse.json({ error: 'Failed to load cohort composer' }, { status: 500 });

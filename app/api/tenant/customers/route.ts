@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
-import { loadBuyerCreditSnapshots } from '@/lib/server/buyer-credit';
 import { PAGE_SIZE } from '@/lib/pagination';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
+import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 
 type StatusTone = 'success' | 'warning' | 'danger' | 'neutral';
@@ -37,6 +37,20 @@ type BuyerRow = {
     cohort_name?: string | null;
   } | null;
   whatsapp_opted_out: boolean;
+};
+
+type CustomersLandingBuyerDbRow = {
+  id: string;
+  business_name: string;
+  tier: 'A' | 'B' | 'C' | null;
+  phone: string | null;
+  gst_treatment: string | null;
+  status: string | null;
+  credit_limit: number | null;
+  is_active: boolean;
+  geography: { city?: string; state?: string } | null;
+  deleted_at: string | null;
+  whatsapp_opt_out_at: string | null;
 };
 
 type PriceListAssignmentRow = {
@@ -90,9 +104,7 @@ function decodeCursor(cursor: string): { business_name: string; id: string } {
 export async function GET(req: NextRequest) {
   const timer = createTimer();
   const timedJson = (body: unknown, init?: ResponseInit) => {
-    const response = NextResponse.json(body, init);
-    response.headers.set('Server-Timing', timer.header('customers_api'));
-    return response;
+    return jsonWithServerTiming(body, timer, 'customers_api', init, APP_GET_CACHE_CONTROL);
   };
   try {
     const claims = await getVerifiedClaims(req);
@@ -123,7 +135,7 @@ export async function GET(req: NextRequest) {
     dormantCutoff.setDate(dormantCutoff.getDate() - 30);
     const dormantCutoffIso = dormantCutoff.toISOString();
 
-    const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? String(PAGE_SIZE.SELLER)), PAGE_SIZE.MAX);
+    const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
     const cursorParam = req.nextUrl.searchParams.get('cursor');
     const search = req.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '';
     const statusParams = readArrayParam(req.nextUrl.searchParams, 'status');
@@ -147,28 +159,65 @@ export async function GET(req: NextRequest) {
       return timedJson(cached.payload);
     }
 
-    const { data: buyers, error: buyersError } = await db
-      .schema('app')
-      .from('buyers')
-      .select('id, business_name, tier, phone, gst_treatment, status, credit_limit, is_active, geography, deleted_at, whatsapp_opt_out_at')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .order('business_name', { ascending: true })
-      .order('id', { ascending: true });
+    const buildBuyerQuery = (mode: 'rows' | 'count') => {
+      let query = db
+        .schema('app')
+        .from('buyers')
+        .select(
+          mode === 'count'
+            ? 'id'
+            : 'id, business_name, tier, phone, gst_treatment, status, credit_limit, is_active, geography, deleted_at, whatsapp_opt_out_at',
+          mode === 'count' ? { count: 'exact', head: true } : undefined,
+        )
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .order('business_name', { ascending: true })
+        .order('id', { ascending: true });
 
-    if (buyersError) {
-      return timedJson({ error: 'Failed to fetch buyers' }, { status: 500 });
+      if (search) {
+        query = query.textSearch('search_vector', search, { type: 'websearch' });
+      }
+      if (statusParams.length > 0 && !statusParams.includes('Dormant')) {
+        const wantsActive = statusParams.includes('Active');
+        const wantsInactive = statusParams.includes('Inactive');
+        if (wantsActive && !wantsInactive) query = query.eq('is_active', true);
+        if (wantsInactive && !wantsActive) query = query.eq('is_active', false);
+      }
+      if (cursorParam && mode === 'rows') {
+        const cursor = decodeCursor(cursorParam);
+        query = query.or(`business_name.gt.${cursor.business_name},and(business_name.eq.${cursor.business_name},id.gt.${cursor.id})`);
+      }
+      if (mode === 'rows') query = query.limit(limit + 1);
+      return query;
+    };
+
+    const [buyerRowsRes, buyerCountRes, customersSnapshotRes] = await Promise.all([
+      buildBuyerQuery('rows'),
+      buildBuyerQuery('count'),
+      db
+        .schema('app')
+        .from('customers_snapshot')
+        .select('total_count, active_count')
+        .eq('tenant_id', tenantId)
+        .maybeSingle(),
+    ]);
+
+    if (buyerRowsRes.error || buyerCountRes.error) {
+      console.error('[GET /api/tenant/customers] buyers query failure', buyerRowsRes.error || buyerCountRes.error);
+      return timedJson({ error: 'Failed to fetch customers landing data' }, { status: 500 });
     }
 
-    const buyerRows = buyers ?? [];
-    const buyerIds = buyerRows.map((b: { id: string }) => b.id);
+    const fetchedBuyerRows = (buyerRowsRes.data ?? []) as CustomersLandingBuyerDbRow[];
+    const hasNextPage = fetchedBuyerRows.length > limit;
+    const buyerRows = hasNextPage ? fetchedBuyerRows.slice(0, limit) : fetchedBuyerRows;
+    const buyerIds = buyerRows.map((b) => b.id);
     const buyerIdSet = new Set(buyerIds);
 
     if (buyerRows.length === 0) {
       const emptyPayload = {
         period,
         kpis: {
-          total: 0,
+          total: buyerCountRes.count ?? customersSnapshotRes.data?.total_count ?? 0,
           cohort_count: 0,
           active: 0,
           active_pct: 0,
@@ -185,7 +234,7 @@ export async function GET(req: NextRequest) {
         },
         buyers: [],
         nextCursor: null,
-        total: 0,
+        total: buyerCountRes.count ?? customersSnapshotRes.data?.total_count ?? 0,
       };
 
       customersLandingCache.set(cacheKey, {
@@ -208,6 +257,7 @@ export async function GET(req: NextRequest) {
         .from('orders')
         .select('id, buyer_id, total_amount, placed_at, status, deleted_at')
         .eq('tenant_id', tenantId)
+        .in('buyer_id', buyerIds)
         .is('deleted_at', null)
         .neq('status', 'cancelled')
         .gte('placed_at', period.current_start)
@@ -217,6 +267,7 @@ export async function GET(req: NextRequest) {
         .from('orders')
         .select('id, buyer_id, total_amount, placed_at, status, deleted_at')
         .eq('tenant_id', tenantId)
+        .in('buyer_id', buyerIds)
         .is('deleted_at', null)
         .neq('status', 'cancelled')
         .gte('placed_at', period.previous_start)
@@ -227,6 +278,7 @@ export async function GET(req: NextRequest) {
         .from('orders')
         .select('id, buyer_id, placed_at, status, deleted_at')
         .eq('tenant_id', tenantId)
+        .in('buyer_id', buyerIds)
         .is('deleted_at', null)
         .neq('status', 'cancelled')
         .gte('placed_at', ninetyDaysAgoIso)
@@ -234,12 +286,14 @@ export async function GET(req: NextRequest) {
       db
         .schema('app')
         .from('cohort_members')
-        .select('buyer_id, cohort_id, cohort:cohorts(id, name, deleted_at)'),
+        .select('buyer_id, cohort_id, cohort:cohorts(id, name, deleted_at)')
+        .in('buyer_id', buyerIds),
       db
         .schema('app')
         .from('invoices')
         .select('buyer_id, status, outstanding_balance, deleted_at')
         .eq('tenant_id', tenantId)
+        .in('buyer_id', buyerIds)
         .is('deleted_at', null)
         .in('status', ['sent', 'overdue']),
       db
@@ -330,19 +384,16 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    let creditSnapshots = new Map<string, { outstanding_dues: number }>();
-    try {
-      creditSnapshots = await loadBuyerCreditSnapshots(supabaseAdmin as any, {
-        tenantId,
-        buyerIds: buyerRows.map((buyer: any) => buyer.id),
-        creditLimitByBuyerId: new Map(
-          buyerRows.map((buyer: any) => [buyer.id, Number(buyer.credit_limit ?? 0)]),
-        ),
+    const creditSnapshots = new Map<string, { outstanding_dues: number }>();
+    for (const buyer of buyerRows as Array<{ id: string; credit_limit: number | null }>) {
+      creditSnapshots.set(buyer.id, {
+        outstanding_dues: 0,
       });
-    } catch (error) {
-      console.warn('[GET /api/tenant/customers] credit snapshot enrichment failed; defaulting dues to zero.', {
-        error,
-      });
+    }
+    for (const invoice of invoices as Array<{ buyer_id: string; outstanding_balance: number | null }>) {
+      const snapshot = creditSnapshots.get(invoice.buyer_id);
+      if (!snapshot) continue;
+      snapshot.outstanding_dues += Number(invoice.outstanding_balance ?? 0);
     }
 
     const cohortMap = new Map<string, string>();
@@ -476,21 +527,13 @@ export async function GET(req: NextRequest) {
           : true,
       );
 
-    const pagedRows = cursorParam
-      ? (() => {
-          const cursor = decodeCursor(cursorParam);
-          const index = filteredRows.findIndex(
-            (row) => row.business_name > cursor.business_name || (row.business_name === cursor.business_name && row.id > cursor.id),
-          );
-          return index >= 0 ? filteredRows.slice(index) : [];
-        })()
-      : filteredRows;
-
-    const pageItems = pagedRows.slice(0, limit);
+    const pageItems = filteredRows.slice(0, limit);
     const lastItem = pageItems.at(-1);
-    const nextCursor = pagedRows.length > limit && lastItem ? encodeCursor({ business_name: lastItem.business_name, id: lastItem.id }) : null;
+    const nextCursor = hasNextPage && lastItem ? encodeCursor({ business_name: lastItem.business_name, id: lastItem.id }) : null;
 
-    const total = filteredRows.length;
+    const total = dueParams.length > 0 || statusParams.includes('Dormant')
+      ? filteredRows.length
+      : buyerCountRes.count ?? customersSnapshotRes.data?.total_count ?? filteredRows.length;
     const active = filteredRows.filter((row) => row.orders_mtd > 0).length;
     const spend_mtd = filteredRows.reduce((sum, row) => sum + row.spend_mtd, 0);
     const spend_prev_mtd = filteredRows.reduce((sum, row) => sum + row.spend_prev_mtd, 0);

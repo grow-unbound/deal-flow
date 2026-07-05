@@ -58,3 +58,6 @@ bun.lockb
 #Codegraph
 .codegraph/
 skills-lock.json
+
+#Media files
+media/

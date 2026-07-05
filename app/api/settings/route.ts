@@ -3,6 +3,7 @@ import { assertTenantClaim, AuthorizationError, getVerifiedClaims } from '@/lib/
 import { assembleTenantSettingsPayload } from '@/lib/tenant-settings/assemble-tenant-settings-payload';
 import { syncTenantFeatureFlags } from '@/lib/posthog-server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { TenantSettingsPatchSchema } from '@/types/tenant-settings';
 
 export async function GET(request: NextRequest) {
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
       plan: (tenantRow.plan as string) ?? 'starter',
     });
 
-    return NextResponse.json({ data: payload, error: null }, { status: 200 });
+    return NextResponse.json({ data: payload, error: null }, { status: 200, headers: SELLER_CACHE_PERSONAL });
   } catch (e) {
     if (e instanceof AuthorizationError) {
       return NextResponse.json({ data: null, error: { code: 'FORBIDDEN', message: e.message } }, { status: 403 });

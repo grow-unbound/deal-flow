@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { SELLER_CACHE_NONE } from '@/lib/server/bounded-get';
 import { supabaseAdmin } from '@/lib/supabase';
 
 function formatEstimateNumber(sequence: number): string {
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       estimate_number: formatEstimateNumber((estimateCountRes.count ?? 0) + 1),
-    });
+    }, { headers: SELLER_CACHE_NONE });
   } catch (error) {
     console.error('[GET /api/tenant/estimates/next-number]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

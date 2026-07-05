@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
+import { SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 import { getCatalogComposerPayload } from '@/lib/server/catalog-composer';
 import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
 
@@ -10,6 +11,9 @@ export async function GET(request: NextRequest) {
   const timedJson = (body: unknown, init?: ResponseInit) => {
     const response = NextResponse.json(body, init);
     response.headers.set('Server-Timing', timer.header('catalogs_composer_api'));
+    if (!init?.status || (init.status >= 200 && init.status < 300)) {
+      response.headers.set('Cache-Control', SELLER_GET_CACHE_CONTROL);
+    }
     return response;
   };
 

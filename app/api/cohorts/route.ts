@@ -7,6 +7,8 @@ import { CohortCreateSchema } from '@/lib/zod';
 import { getCohortComposerPayload, resolveBuyerIdsForRules } from '@/lib/server/cohort-composer';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { readArrayParam } from '@/lib/landing-filter-params';
+import { PAGE_SIZE } from '@/lib/pagination';
+import { SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 
 type CohortType = 'Geo-based' | 'Tier-based' | 'Brand affinity';
 
@@ -99,6 +101,7 @@ async function getCatalogViewsByCohort(
 export async function getCohortsLandingPayload(tenantId: string, periodInput?: string | null) {
   const db = supabaseAdmin as any;
   const period = getSellerLandingPeriodMeta(periodInput);
+  const limit = PAGE_SIZE.MAX;
 
   const { data: cohorts, error: cohortsError } = await db
     .schema('app')
@@ -107,7 +110,7 @@ export async function getCohortsLandingPayload(tenantId: string, periodInput?: s
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
-    .limit(500); // safety cap — this route has no pagination UI yet, fetches the full list
+    .limit(limit + 1);
 
   if (cohortsError) throw cohortsError;
 
@@ -293,6 +296,8 @@ export async function getCohortsLandingPayload(tenantId: string, periodInput?: s
   const topPerformers = [...cohortRows].sort((a, b) => b.gmv_mtd - a.gmv_mtd).slice(0, 2);
   const topRisers = [...cohortRows].sort((a, b) => b.growth_pct - a.growth_pct).slice(0, 2);
 
+  const pageRows = cohortRows.slice(0, limit);
+
   return {
     brands: brands.map((brand: { id: string; display_name_override: string | null; master_brand_id: string | null }) => ({
       id: brand.id,
@@ -312,7 +317,9 @@ export async function getCohortsLandingPayload(tenantId: string, periodInput?: s
       top_performers: topPerformers,
       top_risers: topRisers,
     },
-    cohorts: cohortRows,
+    cohorts: pageRows,
+    total: cohortRows.length,
+    nextCursor: null,
     period,
   };
 }
@@ -322,6 +329,9 @@ export async function GET(request: NextRequest) {
   const timedJson = (body: unknown, init?: ResponseInit) => {
     const response = NextResponse.json(body, init);
     response.headers.set('Server-Timing', timer.header('cohorts_api'));
+    if (!init?.status || (init.status >= 200 && init.status < 300)) {
+      response.headers.set('Cache-Control', SELLER_GET_CACHE_CONTROL);
+    }
     return response;
   };
   const claims = await getVerifiedClaims(request);

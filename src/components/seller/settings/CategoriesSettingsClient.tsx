@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Image from 'next/image';
 import { Pencil, Plus, RotateCcw, Tag, UserX } from 'lucide-react';
 
 import {
@@ -19,6 +20,7 @@ import { SellerTopbar } from '@/components/layout/SellerTopbar';
 import { FilterBar, LandingTable } from '@/components/seller/layout';
 import { useTenantCategories } from '@/hooks/useTenantCategories';
 import { useRole } from '@/hooks/useRole';
+import { r2Url } from '@/lib/r2-url';
 import { cn } from '@/lib/utils';
 import type { TenantCategory } from '@/types/tenant-categories';
 
@@ -152,9 +154,7 @@ export function CategoriesSettingsClient() {
             ) : (
               categories.map((cat) => {
                 const inactive = Boolean(cat.deleted_at);
-                const thumbUrl = cat.r2_image_thumb_key
-                  ? `/api/r2/image/${encodeURIComponent(cat.r2_image_thumb_key)}`
-                  : null;
+                const thumbUrl = r2Url(cat.r2_image_thumb_key);
                 return (
                   <tr
                     key={cat.id}
@@ -166,9 +166,12 @@ export function CategoriesSettingsClient() {
                     <td className="px-4 py-3.5 align-middle">
                       <div className="flex items-center gap-3">
                         {thumbUrl ? (
-                          <img
+                          <Image
                             src={thumbUrl}
                             alt=""
+                            width={32}
+                            height={32}
+                            unoptimized
                             className="h-8 w-8 shrink-0 rounded-lg object-cover ring-1 ring-cream-200"
                           />
                         ) : (

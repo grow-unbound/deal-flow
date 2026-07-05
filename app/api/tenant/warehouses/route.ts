@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedClaims } from '@/lib/auth';
-import { normalizeLocationAddress } from '@/lib/locations/location-deactivate-guards';
+import { SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
+import { hydrateWarehouse } from '@/lib/server/warehouse-data';
 import { supabaseAdmin } from '@/lib/supabase';
 import {
   CreateWarehouseInputSchema,
-  type TenantWarehouse,
 } from '@/types/tenant-warehouses';
 
 export const dynamic = 'force-dynamic';
@@ -15,36 +15,6 @@ function jsonError(status: number, message: string, code?: string) {
     { data: null, error: { code: code ?? 'ERROR', message } },
     { status },
   );
-}
-
-function hydrateWarehouse(row: Record<string, unknown>): TenantWarehouse {
-  const location = row.locations;
-  const locationRecord = location && typeof location === 'object'
-    ? {
-        id: typeof (location as Record<string, unknown>).id === 'string' ? String((location as Record<string, unknown>).id) : '',
-        name: typeof (location as Record<string, unknown>).name === 'string' ? String((location as Record<string, unknown>).name) : '',
-        is_default: (location as Record<string, unknown>).is_default === true,
-      }
-    : null;
-
-  return {
-    id: String(row.id),
-    tenant_id: String(row.tenant_id),
-    location_id: typeof row.location_id === 'string' ? row.location_id : null,
-    name: String(row.name ?? ''),
-    address: normalizeLocationAddress(row.address),
-    phone_number: typeof row.phone_number === 'string' ? row.phone_number : null,
-    status: row.status === 'inactive' ? 'inactive' : 'active',
-    is_default: row.is_default === true,
-    external_ref: typeof row.external_ref === 'string' ? row.external_ref : null,
-    associated_users: Array.isArray(row.associated_users) ? row.associated_users as TenantWarehouse['associated_users'] : [],
-    lat: typeof row.lat === 'number' ? row.lat : null,
-    lng: typeof row.lng === 'number' ? row.lng : null,
-    deleted_at: typeof row.deleted_at === 'string' ? row.deleted_at : null,
-    created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
-    updated_at: typeof row.updated_at === 'string' ? row.updated_at : new Date().toISOString(),
-    location: locationRecord?.id ? locationRecord : null,
-  };
 }
 
 export async function GET(req: NextRequest) {
@@ -86,7 +56,7 @@ export async function GET(req: NextRequest) {
     }
 
     const warehouses = ((data ?? []) as Record<string, unknown>[]).map(hydrateWarehouse);
-    return NextResponse.json({ data: { warehouses }, error: null }, { status: 200 });
+    return NextResponse.json({ data: { warehouses }, error: null }, { status: 200, headers: SELLER_CACHE_REFERENCE });
   } catch {
     return jsonError(401, 'Unauthorized', 'UNAUTHORIZED');
   }

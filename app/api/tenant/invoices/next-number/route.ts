@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { SELLER_CACHE_NONE } from '@/lib/server/bounded-get';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
     const nextNum = String(lastNum + 1).padStart(4, '0');
     const invoice_number = `INV-${nextNum}`;
 
-    return NextResponse.json({ invoice_number });
+    return NextResponse.json({ invoice_number }, { headers: SELLER_CACHE_NONE });
   } catch (error) {
     console.error('[GET /api/tenant/invoices/next-number]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

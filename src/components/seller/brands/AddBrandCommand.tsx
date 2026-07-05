@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 import { Check, Plus, Search } from 'lucide-react';
 import { z } from 'zod';
 import { useForm, type SubmitHandler } from 'react-hook-form';
@@ -98,10 +99,12 @@ function BrandAvatar({ brand }: { brand: MasterBrand }) {
 
   if (brand.logo_url) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
+      <Image
         src={brand.logo_url}
         alt={brand.name}
+        width={32}
+        height={32}
+        unoptimized
         className="h-8 w-8 shrink-0 rounded-[8px] border border-cream-200 bg-white object-contain"
       />
     );

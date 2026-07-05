@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { TenantBrandUpdateSchema } from '@/lib/zod';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
@@ -147,7 +148,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .select('id, entity_type, entity_id, action, ts, diff')
       .eq('tenant_id', claims.tenant_id)
       .order('ts', { ascending: false })
-      .limit(250),
+      .limit(100),
   ]);
 
   const catalogIds = Array.from(new Set((catalogsItemsRes.data ?? []).map((item: { campaign_id: string }) => item.campaign_id)));
@@ -443,7 +444,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     buyers: buyersRows,
     catalogs: catalogsRows,
     activity,
-  });
+  }, { headers: SELLER_CACHE_PERSONAL });
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

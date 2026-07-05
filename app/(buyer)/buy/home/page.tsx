@@ -1,27 +1,30 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
 import { Bell, ChevronRight } from 'lucide-react';
 
-import type { BuyerActivityFeedResponse, BuyerActivityItem, BuyerHomeResponse } from '@/lib/buyer-home-types';
+import type { BuyerHomeResponse } from '@/lib/buyer-home-types';
 import { apiFetch } from '@/lib/api-fetch';
 import { ErrorState } from '@/components/ui/empty-state';
 import { BuyerHomeLandingHeader } from '@/components/buyer/layout/BuyerHomeLandingHeader';
 import { ProductCard } from '@/components/buyer/catalog/ProductCard';
+import { ActivityCardShell } from '@/components/buyer/orders/ActivityCardShell';
+import { BuyerTransactionCardSkeleton } from '@/components/buyer/orders/BuyerTransactionCardSkeleton';
+import { RecoSection } from '@/components/buyer/catalog/RecoSection';
+import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { useRouteScrollRestoration } from '@/hooks/useRouteSnapshot';
+import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
+import { useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
+import { useBuyerActivityInfinite } from '@/hooks/useBuyerActivity';
+import type { StatusTone } from '@/components/ui/status-pill';
 
 const BuyerNotificationDrawer = dynamic(
   () => import('@/components/buyer/layout/BuyerNotificationDrawer').then((m) => m.BuyerNotificationDrawer),
   { ssr: false },
 );
-import { ActivityCardShell } from '@/components/buyer/orders/ActivityCardShell';
-import { RecoSection } from '@/components/buyer/catalog/RecoSection';
-import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
-import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
-import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
-import { useBuyerRealtimeContext } from '@/contexts/BuyerRealtimeContext';
-import type { StatusTone } from '@/components/ui/status-pill';
 
 function inr(n: number): string {
   const s = Math.round(n).toString();
@@ -74,8 +77,10 @@ function activityStatusTone(status: string): StatusTone {
       return 'success';
     case 'dispatched':
     case 'pending':
+    case 'sent':
       return 'warning';
     case 'cancelled':
+    case 'void':
       return 'danger';
     case 'confirmed':
       return 'accent';
@@ -121,85 +126,58 @@ const promotionHues = [
   'linear-gradient(135deg, #6B6760 0%, #3D3A35 100%)',
 ];
 
+async function fetchBuyerHome(): Promise<BuyerHomeResponse> {
+  const response = await apiFetch('/api/buyer/home');
+  if (!response.ok) throw new Error('Failed to fetch buyer home');
+  return response.json() as Promise<BuyerHomeResponse>;
+}
+
 export default function HomePage() {
   const [notifOpen, setNotifOpen] = useState(false);
   const { unreadCount, setRefreshFn } = useBuyerRealtimeContext();
-  const { state, setState } = useRouteSnapshot({
-    storageKey: 'buyer-home-page',
-    initialState: {
-      homeData: null as BuyerHomeResponse | null,
-      activityItems: [] as BuyerActivityItem[],
-      nextCursor: null as string | null,
-    },
+
+  const {
+    data: homeData,
+    isLoading: homeLoading,
+    isError: homeError,
+    refetch: refetchHome,
+  } = useQuery({
+    queryKey: ['buyer-home'],
+    queryFn: fetchBuyerHome,
+    staleTime: 0,
   });
-  const homeData = state.homeData;
-  const activityItems = state.activityItems;
-  const nextCursor = state.nextCursor;
-  const [loading, setLoading] = useState(!homeData);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [loadFailed, setLoadFailed] = useState(false);
+
+  const {
+    data: activityData,
+    isLoading: activityLoading,
+    isError: activityError,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    refetch: refetchActivity,
+  } = useBuyerActivityInfinite();
+
+  const activityItems = useMemo(
+    () => activityData?.pages.flatMap((p) => p.items) ?? [],
+    [activityData?.pages],
+  );
+
+  const loading = homeLoading || (activityLoading && activityItems.length === 0);
   useRouteScrollRestoration({ storageKey: 'buyer-home-page', ready: !loading });
 
-  async function loadHome() {
-    const response = await apiFetch('/api/buyer/home');
-    if (!response.ok) throw new Error('Failed to fetch buyer home');
-    const payload = await response.json() as BuyerHomeResponse;
-    setState((current) => ({
-      ...current,
-      homeData: payload,
-      activityItems: payload.recent_activity.items,
-      nextCursor: payload.recent_activity.next_cursor,
-    }));
-  }
-
-  async function loadMoreActivity() {
-    if (!nextCursor || loadingMore) return;
-    setLoadingMore(true);
-    try {
-      const response = await apiFetch(`/api/buyer/activity?limit=10&cursor=${encodeURIComponent(nextCursor)}`);
-      if (!response.ok) throw new Error('Failed to fetch activity');
-      const payload = await response.json() as BuyerActivityFeedResponse;
-      setState((current) => ({
-        ...current,
-        activityItems: [...current.activityItems, ...payload.items],
-        nextCursor: payload.next_cursor,
-      }));
-    } finally {
-      setLoadingMore(false);
-    }
-  }
+  const sentinelIndex = getSentinelInsertIndex(activityItems.length);
+  const { sentinelRef } = useInfiniteScroll({
+    hasMore: hasNextPage ?? false,
+    isLoading: isFetchingNextPage,
+    onLoadMore: () => { void fetchNextPage(); },
+  });
 
   useEffect(() => {
     setRefreshFn(() => async () => {
-      await loadHome();
+      await Promise.all([refetchHome(), refetchActivity()]);
     });
     return () => setRefreshFn(null);
-  }, [setRefreshFn]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (homeData) {
-      setLoading(false);
-      return;
-    }
-    setLoadFailed(false);
-    loadHome()
-      .catch(() => {
-        if (!cancelled) setLoadFailed(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [homeData]);
-
-  const { sentinelRef } = useInfiniteScroll({
-    hasMore: Boolean(nextCursor),
-    isLoading: loadingMore,
-    onLoadMore: () => { void loadMoreActivity(); },
-  });
+  }, [refetchActivity, refetchHome, setRefreshFn]);
 
   const greetingName = useMemo(() => {
     const raw = homeData?.greeting_name?.trim();
@@ -208,17 +186,13 @@ export default function HomePage() {
     return 'there';
   }, [homeData?.greeting_name, homeData?.preview_message]);
 
-  if (loadFailed) {
+  if (homeError) {
     return (
       <div className="px-4 py-8">
         <ErrorState
           heading="Couldn't load home"
           description="Check your connection and try again."
-          onRetry={() => {
-            setLoading(true);
-            setLoadFailed(false);
-            void loadHome().finally(() => setLoading(false));
-          }}
+          onRetry={() => { void refetchHome(); }}
         />
       </div>
     );
@@ -322,7 +296,6 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* W4 — Buy Again (logged-in buyers with purchase history) */}
       {buyAgain.length > 0 && (
         <div className="pt-10">
           <RecoSection title="Buy Again" widget="buy_again" items={buyAgain} />
@@ -352,7 +325,6 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* W1 — Bestsellers */}
       {bestsellers.length > 0 && (
         <div className="pt-10">
           <RecoSection title="Bestsellers this month" widget="bestsellers" items={bestsellers} />
@@ -366,7 +338,7 @@ export default function HomePage() {
             Array.from({ length: 3 }).map((_, index) => (
               <div key={index} className="w-[280px] shrink-0 overflow-hidden rounded-[28px] border border-cream-200 bg-cream-50">
                 <div className="h-[170px] animate-pulse bg-cream-100" />
-                <div className="space-y-2 px-4 py-4">
+                <div className="space-y-2 px-6 py-4">
                   <div className="h-4 w-3/4 animate-pulse rounded bg-cream-200" />
                   <div className="h-4 w-1/2 animate-pulse rounded bg-cream-200" />
                 </div>
@@ -401,7 +373,7 @@ export default function HomePage() {
       </div>
 
       <div className="pt-10">
-        <SectionRow title="Recent activity" href="/buy/orders?tab=orders" linkLabel="See orders" />
+        <SectionRow title="Recent activity" href="/buy/orders" linkLabel="See all" />
         <div className="space-y-2 px-4">
           {loading ? (
             <>
@@ -409,32 +381,39 @@ export default function HomePage() {
               <SkeletonBlock className="h-[88px]" />
               <SkeletonBlock className="h-[88px]" />
             </>
+          ) : activityError ? (
+            <ErrorState
+              heading="Couldn't load activity"
+              description="Try again in a moment."
+              onRetry={() => { void refetchActivity(); }}
+            />
           ) : activityItems.length > 0 ? (
-            activityItems.map((item) => (
-              <ActivityCardShell
-                key={item.id}
-                href={item.href}
-                onClick={() => markBuyerNavigationForward()}
-                documentNumber={item.title}
-                statusLabel={String(item.status).replace(/_/g, ' ')}
-                statusTone={activityStatusTone(item.status)}
-                middleLeft={item.meta ?? item.status}
-                middleRight={(
-                  <span>
-                    {item.secondary_label ? `${item.secondary_label} · ` : ''}
-                    <span className="tabular-inline">{formatRelativeTime(item.timestamp)}</span>
-                  </span>
-                )}
-                amount={<span className="tabular-inline font-mono">{inr(item.amount)}</span>}
-              />
+            activityItems.map((item, index) => (
+              <Fragment key={item.id}>
+                <ActivityCardShell
+                  href={item.href}
+                  onClick={() => markBuyerNavigationForward()}
+                  documentNumber={item.title}
+                  statusLabel={String(item.status).replace(/_/g, ' ')}
+                  statusTone={activityStatusTone(item.status)}
+                  middleLeft={item.meta ?? item.status}
+                  middleRight={(
+                    <span>
+                      {item.secondary_label ? `${item.secondary_label} · ` : ''}
+                      <span className="tabular-inline">{formatRelativeTime(item.timestamp)}</span>
+                    </span>
+                  )}
+                  amount={<span className="tabular-inline font-mono">{inr(item.amount)}</span>}
+                />
+                {index === sentinelIndex ? <div ref={sentinelRef} className="h-px" aria-hidden /> : null}
+              </Fragment>
             ))
           ) : (
             <div className="rounded-[12px] border border-[var(--border-1)] bg-white px-4 py-5 text-center text-[var(--b-text-body)] font-medium tracking-[-0.01em] text-[var(--cream-600)]">
               No recent activity yet.
             </div>
           )}
-          {loadingMore ? <p className="py-2 text-center text-sm text-[var(--cream-500)]">Loading more…</p> : null}
-          <div ref={sentinelRef} className="h-2" aria-hidden />
+          {isFetchingNextPage ? <BuyerTransactionCardSkeleton count={2} /> : null}
         </div>
       </div>
 

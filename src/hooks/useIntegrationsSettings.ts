@@ -212,6 +212,7 @@ export interface SyncNowInput {
   phase?: string;
   max_pages?: number;
   since?: string;
+  force_full_refresh?: boolean;
 }
 
 export interface StopSyncInput {
@@ -590,6 +591,7 @@ async function postSyncNow(body: SyncNowInput): Promise<StartImportResult> {
     ...(body.phase ? { phase: body.phase } : {}),
     ...(body.since ? { since: body.since } : {}),
     ...(typeof body.max_pages === 'number' ? { max_pages: body.max_pages } : {}),
+    force_full_refresh: body.force_full_refresh ?? false,
   });
   const json = await parseEnvelope<{ job_id?: string }>(res);
   if (!json.data) throw new Error('Sync did not start');
