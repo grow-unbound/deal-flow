@@ -282,7 +282,7 @@ function getPhaseGroup(entityType: string): { group: string; groupLabel: string 
   if (['locations', 'products', 'pricelists', 'customers'].includes(entityType)) {
     return { group: 'reference', groupLabel: 'Reference Data' };
   }
-  if (['estimates', 'orders', 'invoices'].includes(entityType)) {
+  if (['estimates', 'orders', 'invoices', 'transaction_line_items'].includes(entityType)) {
     return { group: 'transactional', groupLabel: 'Transactions' };
   }
   return { group: 'analysis', groupLabel: 'Analysis' };

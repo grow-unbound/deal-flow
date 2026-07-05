@@ -61,6 +61,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerProdu
     const enriched =
       allIds.length > 0
         ? await assembleBuyerCatalogItemsForProductIds(supabaseAdmin as any, {
+            tenantId,
             buyerId,
             productIds: allIds,
             allowedTenantBrandIds,

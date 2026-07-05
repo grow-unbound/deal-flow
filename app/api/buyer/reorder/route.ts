@@ -93,6 +93,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerReord
     const productIds = Array.from(productIdSet);
 
     const itemMap = await assembleBuyerCatalogItemsForProductIds(db, {
+      tenantId,
       buyerId,
       productIds,
       allowedTenantBrandIds,

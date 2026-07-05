@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { loadAccessibleSellerLocations } from '@/lib/server/seller-location-access';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
@@ -252,7 +253,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .select('id, ts, action, entity_type, entity_id, diff')
       .eq('tenant_id', claims.tenant_id)
       .order('ts', { ascending: false })
-      .limit(250),
+      .limit(100),
     db
       .schema('app')
       .from('buyer_users')
@@ -1088,7 +1089,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     },
   };
 
-    return NextResponse.json(response);
+    return NextResponse.json(response, { headers: SELLER_CACHE_PERSONAL });
   } catch (error) {
     console.error('[GET /api/tenant/customers/[id]] unexpected error', error);
     return NextResponse.json({ error: 'Unexpected server error' }, { status: 500 });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedClaims } from '@/lib/auth';
+import { SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -42,7 +43,7 @@ export async function GET(
     .order('display_order');
 
   if (error) return jsonError(500, error.message);
-  return NextResponse.json({ slots: data ?? [] });
+  return NextResponse.json({ slots: data ?? [] }, { headers: SELLER_CACHE_REFERENCE });
 }
 
 export async function POST(

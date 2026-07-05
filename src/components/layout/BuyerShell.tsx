@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useEffect, useRef } from 'react';
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { isBuyerCartPillRoute, isBuyerDeepRoute, isBuyerLandingRoute } from '@/lib/buyer-routes';
@@ -22,7 +22,7 @@ function BuyerShellMain({
   scrollRootRef,
 }: {
   children: ReactNode;
-  scrollRootRef: React.RefObject<HTMLDivElement>;
+  scrollRootRef: React.RefCallback<HTMLDivElement>;
 }) {
   const pathname = usePathname();
   const isDeep = isBuyerDeepRoute(pathname);
@@ -33,7 +33,7 @@ function BuyerShellMain({
   return (
     <main
       ref={scrollRootRef}
-      className="flex-1 overflow-y-auto"
+      className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
       style={{
         paddingBottom: showTabBarPadding
           ? 'calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px))'
@@ -49,12 +49,19 @@ export function BuyerShell({ children }: BuyerShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const scrollRootRef = useRef<HTMLDivElement | null>(null);
+  const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
   const { data: me } = useBuyerMe();
 
-  // WhatsApp Broadcast Phase C (§4.8, §9): forced, one-time consent gate.
-  // Defense-in-depth alongside the redirect already issued right after OTP
-  // verify — covers direct navigation/back-button/deep-links into /buy/*
-  // before the checkbox has ever been confirmed for this buyer.
+  const handleScrollRootRef = useCallback((node: HTMLDivElement | null) => {
+    scrollRootRef.current = node;
+    setScrollRoot(node);
+  }, []);
+
+  const scrollRootContextValue = useMemo(
+    () => ({ scrollRootRef, scrollRoot }),
+    [scrollRoot],
+  );
+
   useEffect(() => {
     if (me?.whatsapp_consent_required) {
       router.replace('/consent');
@@ -63,15 +70,15 @@ export function BuyerShell({ children }: BuyerShellProps) {
 
   return (
     <BuyerRealtimeProvider>
-      <div data-app="buyer" className="min-h-screen bg-[var(--bg-page)] md:px-4 md:py-6">
+      <div data-app="buyer" className="min-h-dvh bg-[var(--bg-page)] md:px-4 md:py-6">
         <div
-          className="mx-auto flex min-h-screen w-full flex-col bg-[var(--bg-page)] md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[28px] md:border md:border-[var(--cream-300)] md:bg-[var(--bg-page)] md:shadow-[0_20px_60px_rgba(20,40,35,0.08)]"
+          className="mx-auto flex h-dvh w-full flex-col overflow-hidden bg-[var(--bg-page)] md:h-[calc(100dvh-3rem)] md:rounded-[28px] md:border md:border-[var(--cream-300)] md:shadow-[0_20px_60px_rgba(20,40,35,0.08)]"
           style={{ maxWidth: `${BUYER_PREVIEW_MAX_WIDTH}px` }}
         >
           <BuyerPreviewBootstrap>
-            <BuyerScrollRootContext.Provider value={scrollRootRef}>
+            <BuyerScrollRootContext.Provider value={scrollRootContextValue}>
               <BuyerScrollChromeProvider>
-                <BuyerShellMain scrollRootRef={scrollRootRef}>{children}</BuyerShellMain>
+                <BuyerShellMain scrollRootRef={handleScrollRootRef}>{children}</BuyerShellMain>
                 {isBuyerCartPillRoute(pathname) ? <CartBar /> : null}
                 <BuyerTabBar />
               </BuyerScrollChromeProvider>

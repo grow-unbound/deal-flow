@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
+import { SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
 import { normalizeLocationAddress } from '@/lib/locations/location-deactivate-guards';
 import {
   normalizeLocationAssociatedUsers,
@@ -102,7 +103,7 @@ export async function GET(req: NextRequest) {
         return String(a.created_at).localeCompare(String(b.created_at));
       });
 
-    return NextResponse.json({ data: { locations }, error: null }, { status: 200 });
+    return NextResponse.json({ data: { locations }, error: null }, { status: 200, headers: SELLER_CACHE_REFERENCE });
   } catch {
     return jsonError(401, 'Unauthorized', 'UNAUTHORIZED');
   }

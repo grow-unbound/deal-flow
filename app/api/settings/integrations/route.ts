@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag, FLAGS } from '@/lib/flags';
 import { loadIntegrationsSettingsPayload } from '@/lib/integrations/server';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 
 function jsonError(status: number, message: string, code = 'ERROR') {
   return NextResponse.json({ data: null, error: { code, message } }, { status });
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
     if (!flagEnabled && !payload.catalog.some((integration) => integration.integration !== null)) {
       return jsonError(403, 'Integrations are not enabled for this tenant', 'FEATURE_OFF');
     }
-    return NextResponse.json({ data: payload, error: null }, { status: 200 });
+    return NextResponse.json({ data: payload, error: null }, { status: 200, headers: SELLER_CACHE_PERSONAL });
   } catch (error) {
     console.error('[GET /api/settings/integrations]', error);
     return jsonError(500, error instanceof Error ? error.message : 'Failed to load integrations', 'LOAD_FAILED');

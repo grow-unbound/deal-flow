@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
+import { SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
 
 export async function GET(req: NextRequest) {
   try {
@@ -39,7 +40,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to search brands' }, { status: 500 });
     }
 
-    return NextResponse.json({ brands: data ?? [] });
+    return NextResponse.json({ brands: data ?? [] }, { headers: SELLER_CACHE_REFERENCE });
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

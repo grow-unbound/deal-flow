@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { FEATURE_FLAGS } from '@/constants';
+import { SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
 
 /**
  * WhatsApp Broadcast Phase E — platform-managed template list.
@@ -45,5 +46,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to fetch templates' }, { status: 500 });
   }
 
-  return NextResponse.json({ templates: rows ?? [] });
+  return NextResponse.json({ templates: rows ?? [] }, { headers: SELLER_CACHE_REFERENCE });
 }

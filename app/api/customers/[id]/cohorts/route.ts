@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 
 export async function GET(
   request: NextRequest,
@@ -68,7 +69,7 @@ export async function GET(
 
     if (staticError) {
       // Table likely doesn't exist yet
-      return NextResponse.json({ cohorts: [] });
+      return NextResponse.json({ cohorts: [] }, { headers: SELLER_CACHE_PERSONAL });
     }
 
     const staticCohorts = ((staticRows ?? []) as Array<{ cohort: CohortRow | null }>)
@@ -95,7 +96,7 @@ export async function GET(
 
     if (dynamicError) {
       // Return only static if dynamic query fails
-      return NextResponse.json({ cohorts: staticCohorts });
+      return NextResponse.json({ cohorts: staticCohorts }, { headers: SELLER_CACHE_PERSONAL });
     }
 
     // Evaluate dynamic cohort rules against buyer attributes
@@ -124,9 +125,9 @@ export async function GET(
         matched_by: 'dynamic' as const,
       }));
 
-    return NextResponse.json({ cohorts: [...staticCohorts, ...dynamicCohorts] });
+    return NextResponse.json({ cohorts: [...staticCohorts, ...dynamicCohorts] }, { headers: SELLER_CACHE_PERSONAL });
   } catch {
     // Cohorts feature not implemented yet — return empty gracefully
-    return NextResponse.json({ cohorts: [] });
+    return NextResponse.json({ cohorts: [] }, { headers: SELLER_CACHE_PERSONAL });
   }
 }

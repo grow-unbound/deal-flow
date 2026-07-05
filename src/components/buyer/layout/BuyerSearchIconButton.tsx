@@ -1,20 +1,31 @@
 'use client';
 
 import * as React from 'react';
+import { useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { openBuyerSearch } from './BuyerSearchOverlay';
+import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 
 export interface BuyerSearchIconButtonProps {
   href?: string;
   className?: string;
 }
 
-export function BuyerSearchIconButton({ className }: BuyerSearchIconButtonProps): React.ReactNode {
+export function BuyerSearchIconButton({
+  href = '/buy/search',
+  className,
+}: BuyerSearchIconButtonProps): React.ReactNode {
+  const router = useRouter();
+
+  function handleClick(): void {
+    markBuyerNavigationForward();
+    router.push(href);
+  }
+
   return (
     <button
       type="button"
-      onClick={() => openBuyerSearch()}
+      onClick={handleClick}
       className={cn(
         'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[var(--border-1)] bg-[var(--cream-200)] text-[var(--cream-700)]',
         className,

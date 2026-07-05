@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { FEATURE_FLAGS, ROLES } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { buildInvoiceGstRows } from '@/lib/invoice-detail-gst-rows';
 import { effectiveInvoiceStatus } from '@/lib/invoice-status';
 import { loadInvoiceDocument } from '@/lib/invoices/load-tenant-invoice-composer';
@@ -95,7 +96,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const result = await loadInvoiceDocument(supabaseAdmin as DbClient, claims.tenant_id, id, claims.role ?? null, claims);
     if (!result) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
     if (result === 'forbidden') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    return NextResponse.json({ data: result.composerPayload });
+    return NextResponse.json({ data: result.composerPayload }, { headers: SELLER_CACHE_PERSONAL });
   }
 
   const db = supabaseAdmin;
@@ -439,7 +440,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     payments,
   };
 
-  return NextResponse.json(payload);
+  return NextResponse.json(payload, { headers: SELLER_CACHE_PERSONAL });
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

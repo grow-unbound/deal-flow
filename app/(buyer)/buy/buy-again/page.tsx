@@ -5,8 +5,8 @@ import * as React from 'react';
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { ErrorState } from '@/components/ui/empty-state';
-import { apiFetch } from '@/lib/api-fetch';
 import { buildBuyerSearchHref } from '@/lib/buyer-routes';
+import { useBuyerReorderData } from '@/hooks/useBuyerProducts';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
@@ -49,8 +49,9 @@ export default function BuyAgainPage() {
     },
   });
   const payload = state.payload;
-  const [loading, setLoading] = React.useState(!payload);
-  const [error, setError] = React.useState(false);
+  const reorderQuery = useBuyerReorderData();
+  const loading = !payload && reorderQuery.isLoading;
+  const error = reorderQuery.isError;
 
   useRouteScrollRestoration({
     storageKey: 'buyer-buy-again-page',
@@ -58,28 +59,10 @@ export default function BuyAgainPage() {
   });
 
   React.useEffect(() => {
-    if (payload) {
-      setLoading(false);
-      return;
+    if (!payload && reorderQuery.data) {
+      setState((current) => ({ ...current, payload: reorderQuery.data as ReorderPayload }));
     }
-    let cancelled = false;
-    setError(false);
-    apiFetch('/api/buyer/reorder')
-      .then((response) => response.json() as Promise<ReorderPayload>)
-      .then((data) => {
-        if (cancelled) return;
-        setState((current) => ({ ...current, payload: data }));
-      })
-      .catch(() => {
-        if (!cancelled) setError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [payload, setState]);
+  }, [payload, reorderQuery.data, setState]);
 
   const items = React.useMemo(() => mergeReorderItems(payload), [payload]);
 
@@ -102,8 +85,7 @@ export default function BuyAgainPage() {
               description="Check your connection and try again."
               onRetry={() => {
                 setState((current) => ({ ...current, payload: null }));
-                setLoading(true);
-                setError(false);
+                void reorderQuery.refetch();
               }}
             />
           </div>

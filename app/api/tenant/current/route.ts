@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, supabaseAdmin } from '@/lib/supabase';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
@@ -69,5 +70,5 @@ export async function GET(request: NextRequest) {
     tenant,
     role: workspace.role as string,
     workspace_type: workspace.workspace_type as string,
-  });
+  }, { headers: SELLER_CACHE_PERSONAL });
 }

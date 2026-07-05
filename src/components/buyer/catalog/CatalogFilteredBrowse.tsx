@@ -1,13 +1,18 @@
 'use client';
 
 import * as React from 'react';
-import { apiFetch } from '@/lib/api-fetch';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
+import { BuyerEntityChipNav } from '@/components/buyer/catalog/BuyerEntityChipNav';
+import { CampaignSummaryBlock } from '@/components/buyer/catalog/CampaignSummaryBlock';
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { LoadingSkeleton } from '@/components/buyer/catalog/LoadingSkeleton';
 import { ErrorState } from '@/components/ui/empty-state';
 import { buildBuyerSearchHref } from '@/lib/buyer-routes';
-import type { BuyerCatalogItem, BuyerCatalogResponse } from '@/types/buyer';
+import {
+  useBuyerBrands,
+  useBuyerCatalogList,
+  useBuyerCategories,
+} from '@/hooks/useBuyerProducts';
 
 export type CatalogFilteredMode = 'category' | 'brand' | 'list';
 
@@ -16,19 +21,13 @@ interface CatalogFilteredBrowseProps {
   id: string;
 }
 
-const PAGE_SIZE = 40;
-
 export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps): React.ReactNode {
-  const [title, setTitle] = React.useState<string>(
-    mode === 'category' ? 'Category' : mode === 'brand' ? 'Brand' : 'Catalog',
-  );
-  const [items, setItems] = React.useState<BuyerCatalogItem[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState(false);
+  const [campaignTitle, setCampaignTitle] = React.useState('Catalog');
+  const [campaignTitleResolved, setCampaignTitleResolved] = React.useState(false);
   const [retryNonce, setRetryNonce] = React.useState(0);
-  const [offset, setOffset] = React.useState(0);
-  const [hasMore, setHasMore] = React.useState(false);
-  const [loadingMore, setLoadingMore] = React.useState(false);
+
+  const categoriesQuery = useBuyerCategories();
+  const brandsQuery = useBuyerBrands();
 
   const searchHref = React.useMemo(() => {
     if (mode === 'category') return buildBuyerSearchHref({ category_id: id });
@@ -36,76 +35,59 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     return buildBuyerSearchHref({ campaign_id: id });
   }, [mode, id]);
 
+  const listQuery = useBuyerCatalogList(mode, id);
+  const pages = listQuery.data?.pages ?? [];
+  const items = React.useMemo(() => pages.flatMap((page) => page.items ?? []), [pages]);
+  const hasMore = pages.at(-1)?.has_more ?? false;
+  const loading = listQuery.isLoading;
+  const error = listQuery.isError;
+  const loadingMore = listQuery.isFetchingNextPage;
+
+  const firstPage = pages[0];
+  const campaignMessage = mode === 'list' ? (firstPage?.selected_campaign_message ?? null) : null;
+  const campaignValidUntil = mode === 'list' ? (firstPage?.selected_campaign_valid_until ?? null) : null;
+
   React.useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(false);
-    setItems([]);
-    setOffset(0);
-    setHasMore(false);
+    if (mode !== 'list' || campaignTitleResolved) return;
+    const page = pages[0];
+    if (!page?.selected_campaign_name) return;
+    setCampaignTitle(page.selected_campaign_name);
+    setCampaignTitleResolved(true);
+  }, [mode, pages, campaignTitleResolved]);
 
-    const params = new URLSearchParams({
-      limit: String(PAGE_SIZE),
-      offset: '0',
-    });
-    if (mode === 'category') params.set('category_id', id);
-    if (mode === 'brand') params.set('brand_id', id);
-    if (mode === 'list') params.set('campaign_id', id);
-
-    apiFetch(`/api/buyer/catalog?${params.toString()}`)
-      .then((r) => r.json() as Promise<BuyerCatalogResponse>)
-      .then((data) => {
-        if (cancelled) return;
-        const next = data.items ?? [];
-        setItems(next);
-        setOffset(next.length);
-        setHasMore(data.has_more ?? false);
-        if (mode === 'list' && data.selected_campaign_name) {
-          setTitle(data.selected_campaign_name);
-        } else {
-          const first = next[0];
-          if (mode === 'category' && first?.category_name) setTitle(first.category_name);
-          if (mode === 'brand' && first?.brand_name) setTitle(first.brand_name);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
+  React.useEffect(() => {
+    if (mode !== 'list') return;
+    setCampaignTitle('Catalog');
+    setCampaignTitleResolved(false);
   }, [mode, id, retryNonce]);
+
+  const title = mode === 'category' ? 'Category' : mode === 'brand' ? 'Brand' : campaignTitle;
+
+  const stickyToolbar =
+    mode === 'category' ? (
+      <BuyerEntityChipNav
+        kind="category"
+        categories={categoriesQuery.data ?? []}
+        selectedId={id}
+        mode="detail"
+      />
+    ) : mode === 'brand' ? (
+      <BuyerEntityChipNav
+        kind="brand"
+        brands={brandsQuery.data ?? []}
+        selectedId={id}
+        mode="detail"
+      />
+    ) : null;
 
   function handleLoadMore(): void {
     if (!hasMore || loadingMore) return;
-    setLoadingMore(true);
-    const params = new URLSearchParams({
-      limit: String(PAGE_SIZE),
-      offset: String(offset),
-    });
-    if (mode === 'category') params.set('category_id', id);
-    if (mode === 'brand') params.set('brand_id', id);
-    if (mode === 'list') params.set('campaign_id', id);
-
-    apiFetch(`/api/buyer/catalog?${params.toString()}`)
-      .then((r) => r.json() as Promise<BuyerCatalogResponse>)
-      .then((data) => {
-        const next = data.items ?? [];
-        setItems((prev) => [...prev, ...next]);
-        setOffset((o) => o + next.length);
-        setHasMore(data.has_more ?? false);
-      })
-      .catch(() => setError(true))
-      .finally(() => setLoadingMore(false));
+    void listQuery.fetchNextPage();
   }
 
   return (
-    <div className="flex min-h-[50vh] flex-col pb-[var(--tab-bar)]">
-      <BuyerDetailShell title={title} searchHref={searchHref}>
+    <div className="flex min-h-[50vh] flex-col pb-8">
+      <BuyerDetailShell title={title} searchHref={searchHref} stickyToolbar={stickyToolbar}>
         {loading ? (
           <LoadingSkeleton count={6} />
         ) : error ? (
@@ -113,35 +95,23 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
             <ErrorState
               heading="Couldn't load products"
               description="Check your connection and try again."
-              onRetry={() => setRetryNonce((n) => n + 1)}
+              onRetry={() => {
+                setRetryNonce((n) => n + 1);
+                void listQuery.refetch();
+              }}
             />
           </div>
         ) : (
           <>
-            {/* Toolbar row — count + sort */}
-            {items.length > 0 && (
-              <div
-                className="flex items-center justify-between px-2 pb-2 pt-2"
-                style={{ borderBottom: '1px solid var(--border-1)' }}
-              >
-                <span className="text-xs font-medium" style={{ color: 'var(--fg-3)' }}>
-                  {items.length + (hasMore ? '+' : '')} products
-                </span>
-                <button
-                  type="button"
-                  className="flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold"
-                  style={{ border: '1px solid var(--border-1)', color: 'var(--fg-2)', background: 'var(--bg-surface)' }}
-                >
-                  Sort: Default ▾
-                </button>
-              </div>
-            )}
-            <div className="px-2 pt-2">
+            {mode === 'list' ? (
+              <CampaignSummaryBlock message={campaignMessage} validUntil={campaignValidUntil} />
+            ) : null}
+            <div className="px-2">
               <ProductGrid items={items} />
             </div>
             {items.length === 0 ? (
               <p className="px-2 py-8 text-center text-sm" style={{ color: 'var(--fg-3)' }}>
-                No products in this view.
+                No products found.
               </p>
             ) : null}
             {hasMore ? (

@@ -170,6 +170,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
       .filter((row) => orderIds.includes(row.order_id));
     const previewProductIds = Array.from(new Set(recentOrderItems.map((row) => row.tenant_product_id))).slice(0, 5);
     const reorderPreviewMap = await assembleBuyerCatalogItemsForProductIds(supabaseAdmin as any, {
+      tenantId,
       buyerId,
       productIds: previewProductIds,
       allowedTenantBrandIds,
@@ -195,6 +196,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
         const [bestsellerMap, buyAgainMap] = await Promise.all([
           bestsellerIds.length > 0
             ? assembleBuyerCatalogItemsForProductIds(supabaseAdmin as any, {
+                tenantId,
                 buyerId,
                 productIds: bestsellerIds,
                 allowedTenantBrandIds,
@@ -206,6 +208,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
             : Promise.resolve(new Map<string, import('@/types/buyer').BuyerCatalogItem>()),
           buyAgainIds.length > 0
             ? assembleBuyerCatalogItemsForProductIds(supabaseAdmin as any, {
+                tenantId,
                 buyerId,
                 productIds: buyAgainIds,
                 allowedTenantBrandIds,

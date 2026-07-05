@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { normalizeLocationAssociatedUsers } from '@/lib/location-assignees';
 import { createTimer } from '@/lib/server-timing';
+import { SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import type {
   LocationDetailResponse,
@@ -43,6 +44,9 @@ export async function GET(
   const timedJson = (body: unknown, init?: ResponseInit) => {
     const response = NextResponse.json(body, init);
     response.headers.set('Server-Timing', timer.header('location_detail'));
+    if (!init?.status || (init.status >= 200 && init.status < 300)) {
+      response.headers.set('Cache-Control', SELLER_GET_CACHE_CONTROL);
+    }
     return response;
   };
 

@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getFlag } from '@/lib/flags';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { FEATURE_FLAGS } from '@/constants';
+import { SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 import { createTimer } from '@/lib/server-timing';
 import type { BuyerAppLandingResponse } from '@/hooks/useBuyerApp';
 
@@ -13,6 +14,9 @@ export async function GET(request: NextRequest) {
   const timedJson = (body: unknown, init?: ResponseInit) => {
     const response = NextResponse.json(body, init);
     response.headers.set('Server-Timing', timer.header('buyer_app_api'));
+    if (!init?.status || (init.status >= 200 && init.status < 300)) {
+      response.headers.set('Cache-Control', SELLER_GET_CACHE_CONTROL);
+    }
     return response;
   };
 

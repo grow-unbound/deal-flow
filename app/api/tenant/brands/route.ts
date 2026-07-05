@@ -6,6 +6,8 @@ import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { createTenantBrand } from '@/lib/server/tenant-brand-create';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { readArrayParam } from '@/lib/landing-filter-params';
+import { PAGE_SIZE } from '@/lib/pagination';
+import { parseRowsLimit, SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 
 type TenantBrandLandingRow = {
   id: string;
@@ -70,6 +72,7 @@ export async function GET(req: NextRequest) {
     const search = req.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '';
     const categoryFilter = readArrayParam(req.nextUrl.searchParams, 'categories');
     const cohortFilter = readArrayParam(req.nextUrl.searchParams, 'cohorts');
+    const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
 
     // ── Parallel fetch: brands list + static snapshot + per-brand KPI daily ──
     const [brandsRes, snapshotRes, customersSnapshotRes, currentKpiRes, prevKpiRes, categoriesRes, cohortsRes, buyersRes, cohortMembersRes] = await Promise.all([
@@ -87,7 +90,7 @@ export async function GET(req: NextRequest) {
         .eq('is_active', true)
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
-        .limit(500), // safety cap — this route has no pagination UI yet, fetches the full list
+        .limit(limit + 1), // +1 to detect whether the UI should request another page
       db
         .schema('app')
         .from('brands_snapshot')
@@ -407,6 +410,7 @@ export async function GET(req: NextRequest) {
       return categoryOk && cohortOk && searchOk;
     });
 
+    const pageBrands = filteredBrands.slice(0, limit);
     const needsAttentionCount     = brands.filter((b) => b.alerts.length > 0).length;
     const catalogFreshnessCount   = brands.filter((b) => (catalogTouchesMtdByBrand.get(b.id) ?? 0) > 0).length;
     const monthCatalogDates       = publishedCatalogs
@@ -441,8 +445,10 @@ export async function GET(req: NextRequest) {
       },
       cohorts: activeCohorts,
       categories,
-      brands: filteredBrands,
-    });
+      brands: pageBrands,
+      total: filteredBrands.length,
+      nextCursor: null,
+    }, { headers: { 'Cache-Control': SELLER_GET_CACHE_CONTROL } });
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

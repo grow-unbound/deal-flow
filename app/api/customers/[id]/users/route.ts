@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { BuyerUserSchema } from '@/lib/zod';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 
 async function ensureBuyerExists(db: any, tenantId: string, buyerId: string) {
   const { data, error } = await db
@@ -64,7 +65,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: 'Failed to fetch buyer users' }, { status: 500 });
   }
 
-  return NextResponse.json({ users: users ?? [] });
+  return NextResponse.json({ users: users ?? [] }, { headers: SELLER_CACHE_PERSONAL });
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

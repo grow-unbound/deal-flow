@@ -6,8 +6,12 @@ import { ChevronRight } from 'lucide-react';
 import { Pressable } from '@/components/ui/pressable';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { useBuyerScrollChromeState } from '@/contexts/BuyerScrollChromeContext';
+import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
 import { isBuyerLandingRoute } from '@/lib/buyer-routes';
 import { formatCurrency } from '@/lib/utils';
+
+/** Product detail sticky footer: button row + padding + safe-area buffer. */
+const PRODUCT_STICKY_FOOTER_LIFT = 'calc(5.5rem + env(safe-area-inset-bottom, 0px) + 12px)';
 
 export function CartBar() {
   const pathname = usePathname();
@@ -18,14 +22,18 @@ export function CartBar() {
 
   if (itemCount === 0) return null;
 
-  const bottomOffset = tabBarShown
-    ? 'calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px) + 12px)'
-    : 'calc(24px + env(safe-area-inset-bottom, 0px))';
+  const hasStickyFooter = pathname.startsWith('/buy/product/');
+
+  const bottomOffset = hasStickyFooter
+    ? PRODUCT_STICKY_FOOTER_LIFT
+    : tabBarShown
+      ? 'calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px) + 12px)'
+      : 'calc(24px + env(safe-area-inset-bottom, 0px))';
 
   return (
     <div
-      className="pointer-events-none fixed left-0 right-0 z-40 flex justify-center px-4"
-      style={{ bottom: bottomOffset }}
+      className="pointer-events-none fixed left-1/2 z-40 flex w-full -translate-x-1/2 justify-center px-4"
+      style={{ bottom: bottomOffset, maxWidth: BUYER_PREVIEW_MAX_WIDTH }}
     >
       <Pressable asChild haptic>
         <Link

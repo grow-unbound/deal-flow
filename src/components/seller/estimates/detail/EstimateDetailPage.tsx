@@ -242,23 +242,10 @@ export function EstimateDetailPage({ id }: { id: string }) {
                 Duplicate
               </Button>
             ) : null}
-            {showSend ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={() => setSendOpen(true)}
-                disabled={sendMut.isPending}
-              >
-                {sendMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                Send estimate
-              </Button>
-            ) : null}
             {showEdit ? (
               <Button
                 type="button"
-                variant={data.status === 'draft' ? 'accent' : 'ghost'}
+                variant={data.status === 'draft' ? 'outline' : 'ghost'}
                 size="sm"
                 className="gap-2"
                 onClick={() => {
@@ -268,6 +255,19 @@ export function EstimateDetailPage({ id }: { id: string }) {
               >
                 <Edit2 className="h-4 w-4" />
                 Edit estimate
+              </Button>
+            ) : null}
+            {showSend ? (
+              <Button
+                type="button"
+                variant="accent"
+                size="sm"
+                className="gap-2"
+                onClick={() => setSendOpen(true)}
+                disabled={sendMut.isPending}
+              >
+                {sendMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Send estimate
               </Button>
             ) : null}
             

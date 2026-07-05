@@ -1,173 +1,157 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
-import { Plus, RefreshCw, Warehouse as WarehouseIcon } from 'lucide-react';
-import { toast } from 'sonner';
+import { useMemo, useState } from 'react';
+import { ChevronRight, Package2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
-import { ErrorState } from '@/components/ui/empty-state';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { PageHeader, PageWrap } from '@/components/seller/layout';
-import { useCreateWarehouse, useWarehouses } from '@/hooks/useInventory';
+import {
+  EntityAvatar,
+  FilterBar,
+  type FilterBarGroup,
+  InsightStrip4,
+  LandingTable,
+  PageHeader,
+  PageWrap,
+  StatusTag,
+  V3CalloutPanel,
+} from '@/components/seller/layout';
+import { EmptyState, ErrorState } from '@/components/ui/empty-state';
+import { Skeleton } from '@/components/ui/skeleton';
+import { WarehouseFormSheet } from '@/components/seller/warehouses/WarehouseFormSheet';
+import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
+import { useWarehousesLanding } from '@/hooks/useWarehouses';
 import { formatDate } from '@/lib/utils';
+import type { SellerLandingPeriod } from '@/lib/seller-period';
+import type { WarehousesLandingResponse, WarehouseStockStatus } from '@/types/tenant-warehouses';
 
-function WarehouseStats({
-  total,
-  active,
-  defaultCount,
-  linkedLocations,
+type SortOption = 'Tracked SKUs (high → low)' | 'Sellable units (high → low)' | 'Idle stock SKUs (high → low)';
+
+const STATUS_OPTIONS = ['Active', 'Inactive'] as const;
+const STOCK_OPTIONS = ['In Stock', 'Low Stock', 'Out of Stock'] as const;
+const SORT_OPTIONS: SortOption[] = [
+  'Tracked SKUs (high → low)',
+  'Sellable units (high → low)',
+  'Idle stock SKUs (high → low)',
+];
+
+function WarehousesLandingSkeleton() {
+  return (
+    <PageWrap>
+      <div className="space-y-5">
+        <div className="space-y-3">
+          <Skeleton className="h-7 w-44" />
+          <Skeleton className="h-4 w-[34rem]" />
+        </div>
+        <div className="grid grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-36 rounded-[14px]" />
+          ))}
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-52 rounded-[14px]" />
+          ))}
+        </div>
+        <Skeleton className="h-14 rounded-[14px]" />
+        <Skeleton className="h-[320px] rounded-[14px]" />
+      </div>
+    </PageWrap>
+  );
+}
+
+function stockTone(status: WarehouseStockStatus): 'success' | 'warning' | 'danger' {
+  if (status === 'out_of_stock') return 'danger';
+  if (status === 'low_stock') return 'warning';
+  return 'success';
+}
+
+function stockLabel(status: WarehouseStockStatus) {
+  if (status === 'out_of_stock') return 'Out of stock';
+  if (status === 'low_stock') return 'Low stock';
+  return 'Clear';
+}
+
+export function WarehousesLandingClient({
+  initialData,
+  initialPeriod,
 }: {
-  total: number;
-  active: number;
-  defaultCount: number;
-  linkedLocations: number;
+  initialData: WarehousesLandingResponse | null;
+  initialPeriod: SellerLandingPeriod;
 }) {
-  const cards = [
-    { label: 'Total warehouses', value: total },
-    { label: 'Active', value: active },
-    { label: 'Default', value: defaultCount },
-    { label: 'Linked locations', value: linkedLocations },
+  const router = useRouter();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const { period, setPeriod, horizonLabel, options } = useSellerLandingPeriod(initialPeriod);
+  const { state: routeState, setState: setRouteState } = useRouteSnapshot({
+    storageKey: 'seller-warehouses-landing',
+    scopeKey: period,
+    version: 1,
+    initialState: {
+      search: '',
+      filters: {
+        status: [] as string[],
+        stock: [] as string[],
+      },
+      sortBy: 'Tracked SKUs (high → low)' as SortOption,
+    },
+  });
+
+  const filters = routeState.filters ?? { status: [], stock: [] };
+  const { data, isLoading, isError, refetch } = useWarehousesLanding(
+    period,
+    {
+      search: routeState.search,
+      status: filters.status,
+      stock: filters.stock,
+    },
+    initialData,
+  );
+
+  useRouteScrollRestoration({
+    storageKey: 'seller-warehouses-landing',
+    scopeKey: period,
+    ready: !isLoading,
+  });
+
+  const groups: FilterBarGroup[] = [
+    {
+      key: 'status',
+      label: 'Status',
+      options: STATUS_OPTIONS.map((value) => ({ value, label: value })),
+      values: filters.status,
+      onChange: (values) =>
+        setRouteState((current) => ({
+          ...current,
+          filters: { ...(current.filters ?? filters), status: values },
+        })),
+    },
+    {
+      key: 'stock',
+      label: 'Stock',
+      options: STOCK_OPTIONS.map((value) => ({ value, label: value })),
+      values: filters.stock,
+      onChange: (values) =>
+        setRouteState((current) => ({
+          ...current,
+          filters: { ...(current.filters ?? filters), stock: values },
+        })),
+    },
   ];
 
-  return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-      {cards.map((card) => (
-        <div key={card.label} className="rounded-[14px] border border-cream-200 bg-white p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-500">{card.label}</p>
-          <p className="mt-2 font-display text-3xl font-bold tracking-[-0.02em] text-cream-900">{card.value}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
+  const filtered = useMemo(() => {
+    const rows = [...(data?.warehouses ?? [])];
+    if (routeState.sortBy === 'Sellable units (high → low)') {
+      rows.sort((a, b) => b.sellable_units - a.sellable_units);
+    } else if (routeState.sortBy === 'Idle stock SKUs (high → low)') {
+      rows.sort((a, b) => b.idle_stock_skus - a.idle_stock_skus);
+    } else {
+      rows.sort((a, b) => b.tracked_skus - a.tracked_skus);
+    }
+    return rows;
+  }, [data?.warehouses, routeState.sortBy]);
 
-function WarehouseCreateForm({
-  onCancel,
-  onCreated,
-}: {
-  onCancel: () => void;
-  onCreated: () => void;
-}) {
-  const [name, setName] = useState('');
-  const [city, setCity] = useState('');
-  const [state, setState] = useState('');
-  const [phone, setPhone] = useState('');
-  const createWarehouse = useCreateWarehouse();
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!name.trim()) return;
-
-    await createWarehouse.mutateAsync({
-      name: name.trim(),
-      phone_number: phone.trim() || undefined,
-      address:
-        city.trim() || state.trim()
-          ? { city: city.trim(), state: state.trim() }
-          : undefined,
-    });
-
-    toast.success(`Warehouse "${name.trim()}" created`);
-    setName('');
-    setCity('');
-    setState('');
-    setPhone('');
-    onCreated();
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="rounded-[14px] border border-cream-200 bg-white p-4">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div className="space-y-2">
-          <Label htmlFor="warehouse-name">Name</Label>
-          <Input
-            id="warehouse-name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Main warehouse"
-            required
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="warehouse-city">City</Label>
-          <Input
-            id="warehouse-city"
-            value={city}
-            onChange={(event) => setCity(event.target.value)}
-            placeholder="Mumbai"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="warehouse-state">State</Label>
-          <Input
-            id="warehouse-state"
-            value={state}
-            onChange={(event) => setState(event.target.value)}
-            placeholder="MH"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="warehouse-phone">Phone</Label>
-          <Input
-            id="warehouse-phone"
-            value={phone}
-            onChange={(event) => setPhone(event.target.value)}
-            placeholder="10 digit phone"
-            inputMode="numeric"
-          />
-        </div>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onCancel} className="gap-1.5">
-          <RefreshCw size={14} />
-          Cancel
-        </Button>
-        <Button type="submit" disabled={createWarehouse.isPending || !name.trim()} className="gap-1.5">
-          <Plus size={14} />
-          {createWarehouse.isPending ? 'Creating…' : 'Add warehouse'}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-export function WarehousesLandingClient() {
-  const [formOpen, setFormOpen] = useState(false);
-  const { data, isLoading, isError, refetch } = useWarehouses();
-  const warehouses = data?.warehouses ?? [];
-
-  const total = warehouses.length;
-  const active = warehouses.filter((warehouse) => warehouse.status === 'active' && warehouse.deleted_at === null).length;
-  const defaultCount = warehouses.filter((warehouse) => warehouse.is_default).length;
-  const linkedLocations = warehouses.filter((warehouse) => warehouse.location_id != null).length;
-
-  if (isLoading && warehouses.length === 0) {
-    return (
-      <PageWrap>
-        <div className="space-y-5">
-          <div className="space-y-3">
-            <div className="h-7 w-44 animate-pulse rounded bg-cream-200" />
-            <div className="h-4 w-[34rem] animate-pulse rounded bg-cream-200" />
-          </div>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-28 animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-            ))}
-          </div>
-          <div className="h-28 animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-          <div className="space-y-3">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-24 animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-            ))}
-          </div>
-        </div>
-      </PageWrap>
-    );
-  }
-
-  if (isError && warehouses.length === 0) {
+  if (isLoading && !data) return <WarehousesLandingSkeleton />;
+  if (isError && !data) {
     return (
       <PageWrap>
         <ErrorState
@@ -178,101 +162,167 @@ export function WarehousesLandingClient() {
       </PageWrap>
     );
   }
+  if (!data) return <WarehousesLandingSkeleton />;
 
   return (
     <PageWrap>
       <PageHeader
         eyebrow="Inventory"
         title="Warehouses"
-        subtitle="Manage stock locations, default fulfillment routing, and the warehouse records linked to your tenant."
-        horizon="All time"
+        subtitle="Track stock nodes, identify idle inventory, and manage warehouse-level inventory posture."
+        horizon={horizonLabel}
+        period={period}
+        periodOptions={options}
+        onPeriodChange={setPeriod}
         primary="Add warehouse"
-        onPrimaryClick={() => setFormOpen(true)}
+        onPrimaryClick={() => setSheetOpen(true)}
       />
 
-      <WarehouseStats
-        total={total}
-        active={active}
-        defaultCount={defaultCount}
-        linkedLocations={linkedLocations}
+      <InsightStrip4
+        tiles={[
+          {
+            label: 'Active warehouses',
+            value: `${data.kpis.active_warehouses}`,
+            sub: `${data.warehouses.length} total in view`,
+          },
+          {
+            label: 'Tracked SKUs',
+            value: `${data.kpis.tracked_skus}`,
+            sub: 'warehouse-product rows',
+          },
+          {
+            label: 'Low-stock warehouses',
+            value: `${data.kpis.low_stock_warehouses}`,
+            sub: 'need replenishment attention',
+            tone: data.kpis.low_stock_warehouses > 0 ? 'warn' : undefined,
+          },
+          {
+            label: 'Idle stock SKUs',
+            value: `${data.kpis.idle_stock_skus}`,
+            sub: 'positive stock with no recent demand',
+            tone: data.kpis.idle_stock_skus > 0 ? 'warn' : undefined,
+          },
+        ]}
       />
 
-      {formOpen ? (
-        <div className="mt-4">
-          <WarehouseCreateForm onCancel={() => setFormOpen(false)} onCreated={() => setFormOpen(false)} />
-        </div>
-      ) : null}
+      <V3CalloutPanel
+        items={[
+          {
+            kind: 'risk',
+            eyebrow: 'Stock attention',
+            hint: `${data.callouts.stock_attention.length} warehouses`,
+            rows: data.callouts.stock_attention.map((row) => ({
+              initials: row.initials,
+              hue: 'ember' as const,
+              name: row.name,
+              reason: `${row.value} low / stockout SKUs`,
+              trailing: <StatusTag tone="warning" label="Review" />,
+            })),
+          },
+          {
+            kind: 'risk',
+            eyebrow: 'Idle stock',
+            hint: `${data.callouts.idle_stock.length} warehouses`,
+            rows: data.callouts.idle_stock.map((row) => ({
+              initials: row.initials,
+              hue: 'ember' as const,
+              name: row.name,
+              reason: `${row.value} idle SKUs`,
+              trailing: <StatusTag tone="warning" label="Idle" />,
+            })),
+          },
+          {
+            kind: 'info',
+            eyebrow: 'Recently replenished',
+            hint: 'latest inventory updates',
+            rows: data.callouts.recently_replenished.map((row) => ({
+              initials: row.initials,
+              hue: 'teal' as const,
+              name: row.name,
+              reason: row.last_updated ? `Updated ${formatDate(row.last_updated)}` : 'Recently updated',
+              trailing: `${row.value} tracked SKUs`,
+            })),
+          },
+        ]}
+      />
 
-      <div className="mt-5 space-y-3">
-        {warehouses.length === 0 ? (
-          <div className="flex min-h-[18rem] items-center justify-center rounded-[14px] border border-dashed border-cream-300 bg-cream-50 px-8 py-10 text-center">
-            <div className="max-w-md">
-              <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-cream-200 text-cream-500">
-                <WarehouseIcon size={22} />
-              </span>
-              <p className="font-display text-xl font-medium tracking-[-0.01em] text-cream-900">No warehouses yet</p>
-              <p className="mt-2 text-sm leading-6 text-cream-700">
-                Create a warehouse to start routing inventory and tracking stock at this level.
-              </p>
-              {!formOpen ? (
-                <Button className="mt-6 gap-1.5" onClick={() => setFormOpen(true)}>
-                  <Plus size={14} />
-                  Add warehouse
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          warehouses.map((warehouse) => (
-            <div key={warehouse.id} className="rounded-[14px] border border-cream-200 bg-white p-4">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0 space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] border border-cream-200 bg-cream-100 text-cream-700">
-                      <WarehouseIcon size={16} />
-                    </span>
-                    <h3 className="font-display text-lg font-semibold tracking-[-0.01em] text-cream-900">{warehouse.name}</h3>
-                    {warehouse.is_default ? (
-                      <span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700">Default</span>
-                    ) : null}
-                    <span
-                      className={[
-                        'rounded-full px-2.5 py-1 text-xs font-semibold',
-                        warehouse.status === 'active'
-                          ? 'bg-emerald-50 text-emerald-700'
-                          : 'bg-cream-100 text-cream-600',
-                      ].join(' ')}
-                    >
-                      {warehouse.status === 'active' ? 'Active' : 'Inactive'}
-                    </span>
-                  </div>
-                  <div className="space-y-1 text-sm text-cream-700">
-                    <p>
-                      {[
-                        warehouse.address.line1,
-                        warehouse.address.line2,
-                        warehouse.address.city,
-                        warehouse.address.state,
-                        warehouse.address.pincode,
-                      ]
-                        .filter(Boolean)
-                        .join(', ') || 'No address set'}
+      <FilterBar
+        count={`${filtered.length} warehouses`}
+        searchPlaceholder="Search warehouse…"
+        chips={[]}
+        activeChip=""
+        sortBy={routeState.sortBy}
+        hideViewToggle
+        groups={groups}
+        searchValue={routeState.search}
+        onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+        sortOptions={[...SORT_OPTIONS]}
+        onSortChange={(value) => setRouteState((current) => ({ ...current, sortBy: value as SortOption }))}
+      />
+
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon={<Package2 size={28} strokeWidth={1.5} />}
+          heading={routeState.search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching warehouses' : 'No warehouses yet'}
+          description={
+            routeState.search.trim() || groups.some((group) => group.values.length > 0)
+              ? 'Try a different search or filter.'
+              : 'Add your first warehouse to start tracking stock at the warehouse level.'
+          }
+        />
+      ) : (
+        <LandingTable
+          columns={[
+            { label: 'Warehouse', minWidth: 280, maxWidth: 360, className: 'px-5' },
+            { label: 'Linked location', minWidth: 180, maxWidth: 220, className: 'px-5' },
+            { label: 'Status', minWidth: 130, maxWidth: 160, className: 'px-5' },
+            { label: 'Tracked SKUs', align: 'right', minWidth: 130, maxWidth: 150, className: 'px-5' },
+            { label: 'Sellable units', align: 'right', minWidth: 140, maxWidth: 170, className: 'px-5' },
+            { label: 'Low stock', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
+            { label: 'Idle stock SKUs', align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
+            { label: 'Last updated', minWidth: 130, maxWidth: 160, className: 'px-5' },
+            { width: 40, className: 'px-4' },
+          ]}
+          tableMinWidth={1360}
+        >
+          {filtered.map((row) => (
+            <tr
+              key={row.id}
+              onClick={() => router.push(`/warehouses/${row.id}`)}
+              className="cursor-pointer border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
+            >
+              <td className="px-5 py-3.5">
+                <div className="flex items-center gap-3">
+                  <EntityAvatar size={38} initials={row.initials} hue="teal" />
+                  <div className="min-w-0">
+                    <p className="truncate text-base font-medium text-cream-900">
+                      {row.name}
+                      {row.is_default ? ' · Default' : ''}
                     </p>
-                    <p>Phone: {warehouse.phone_number ?? '—'}</p>
-                    <p>External ref: {warehouse.external_ref ?? '—'}</p>
+                    <p className="mt-0.5 truncate text-xs text-cream-600">
+                      {[row.city, row.state].filter(Boolean).join(', ') || '—'}
+                    </p>
                   </div>
                 </div>
+              </td>
+              <td className="px-5 py-3.5 text-sm text-cream-700">{row.linked_location_name ?? '—'}</td>
+              <td className="px-5 py-3.5">
+                <StatusTag tone={stockTone(row.stock_status)} label={`${row.status === 'active' ? 'Active' : 'Inactive'} · ${stockLabel(row.stock_status)}`} />
+              </td>
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{row.tracked_skus}</td>
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{row.sellable_units.toLocaleString('en-IN')}</td>
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{row.low_stock_skus + row.stockout_skus}</td>
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{row.idle_stock_skus}</td>
+              <td className="px-5 py-3.5 text-sm text-cream-700">{formatDate(row.last_updated)}</td>
+              <td className="px-4 py-3.5 text-right text-cream-500">
+                <ChevronRight size={14} className="text-cream-400" />
+              </td>
+            </tr>
+          ))}
+        </LandingTable>
+      )}
 
-                <div className="flex shrink-0 flex-col items-end gap-2 text-right text-sm text-cream-700">
-                  <p>Linked location: {warehouse.location?.name ?? '—'}</p>
-                  <p>Associated users: {warehouse.associated_users.length}</p>
-                  <p>Updated {formatDate(warehouse.updated_at)}</p>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
+      <WarehouseFormSheet open={sheetOpen} onOpenChange={setSheetOpen} editingWarehouse={null} />
     </PageWrap>
   );
 }

@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { BuyerLocationControl } from '@/components/buyer/layout/BuyerLocationControl';
 import { BuyerSearchIconButton } from '@/components/buyer/layout/BuyerSearchIconButton';
 import { useBuyerScrollCollapse } from '@/hooks/useBuyerScrollCollapse';
+import { buildBuyerSearchHref } from '@/lib/buyer-routes';
 import { markBuyerNavigationBack } from '@/hooks/useBuyerNavigationDirection';
 
 export interface BuyerDetailShellProps {
@@ -17,17 +18,23 @@ export interface BuyerDetailShellProps {
   rightSlot?: React.ReactNode;
   /** Optional row shown below the title row. */
   subtitle?: React.ReactNode;
+  /** Sticky chip/filter row pinned below title row inside the header. */
+  stickyToolbar?: React.ReactNode;
   /** Hide the buyer location control for detail screens. */
   showLocationControl?: boolean;
+  /** Hide the search icon in the header row. */
+  hideSearch?: boolean;
   children: React.ReactNode;
 }
 
 export function BuyerDetailShell({
   title,
-  searchHref,
+  searchHref = buildBuyerSearchHref({}),
   rightSlot,
   subtitle,
-  showLocationControl,
+  stickyToolbar,
+  showLocationControl = false,
+  hideSearch = false,
   children,
 }: BuyerDetailShellProps) {
   const router = useRouter();
@@ -49,19 +56,24 @@ export function BuyerDetailShell({
           WebkitBackdropFilter: 'blur(14px)',
         }}
       >
-        <div className="flex items-start gap-2 px-3 pt-2.5">
+        <div
+          className={cn(
+            'flex items-center gap-2 px-3',
+            subtitle ? 'min-h-16 py-2.5' : 'min-h-14 py-2',
+          )}
+        >
           <button
             type="button"
             onClick={handleBack}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-none border-0 bg-transparent p-0 text-[var(--fg-2)]"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-none border-0 bg-transparent p-0 text-[var(--fg-2)]"
             aria-label="Back"
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
           <div className="min-w-0 flex-1">
-            <div className="flex items-start gap-2">
+            <div className="flex items-center gap-2">
               <h1
-                className="min-w-0 flex-1 font-semibold text-[var(--fg-1)] leading-tight"
+                className="min-w-0 flex-1 truncate font-semibold text-[var(--fg-1)] leading-tight"
                 style={{
                   fontFamily: 'var(--font-display)',
                   fontSize: 'var(--b-text-header)',
@@ -70,16 +82,21 @@ export function BuyerDetailShell({
               >
                 {title}
               </h1>
-              {rightSlot ? <div className="shrink-0 pt-0.5">{rightSlot}</div> : null}
+              {rightSlot ? <div className="shrink-0">{rightSlot}</div> : null}
             </div>
-            {subtitle ? <div className="mt-1">{subtitle}</div> : null}
+            {subtitle ? <div className="mt-0.5">{subtitle}</div> : null}
           </div>
           {showLocationControl ? <BuyerLocationControl /> : null}
-          {searchHref ? <BuyerSearchIconButton href={searchHref} /> : null}
+          {hideSearch ? null : <BuyerSearchIconButton href={searchHref} />}
         </div>
+        {stickyToolbar ? (
+          <div className="border-t border-[var(--border-1)] bg-[var(--bg-base)] pb-2 pt-1">
+            {stickyToolbar}
+          </div>
+        ) : null}
       </header>
       <div ref={sentinelRef} className="h-px w-full shrink-0" aria-hidden />
-      {children}
+      <div className="pt-3">{children}</div>
     </>
   );
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { assertTenantClaim, AuthorizationError, getVerifiedClaims } from '@/lib/auth';
 import { buildBillingView, buildWhatsAppUsageHistory } from '@/lib/billing/build-billing-view';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -111,7 +112,7 @@ export async function GET(request: NextRequest) {
       whatsappUsageHistory: usageHistory,
     });
 
-    return NextResponse.json({ data: view, error: null }, { status: 200 });
+    return NextResponse.json({ data: view, error: null }, { status: 200, headers: SELLER_CACHE_PERSONAL });
   } catch (e) {
     if (e instanceof AuthorizationError) {
       return NextResponse.json({ data: null, error: { code: 'FORBIDDEN', message: e.message } }, { status: 403 });

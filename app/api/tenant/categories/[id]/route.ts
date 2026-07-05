@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { supabaseAdmin } from '@/lib/supabase';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { UpdateCategoryInputSchema } from '@/types/tenant-categories';
 import type { CategoryDetailResponse } from '@/hooks/useCategories';
@@ -297,7 +298,7 @@ export async function GET(
     activity,
   };
 
-  return NextResponse.json({ data: payload, error: null });
+  return NextResponse.json({ data: payload, error: null }, { headers: SELLER_CACHE_PERSONAL });
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

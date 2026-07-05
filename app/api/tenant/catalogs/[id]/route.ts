@@ -5,6 +5,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { getPostHogQueryClient, getPostHogClient } from '@/lib/posthog-server';
 import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
 import { getCatalogComposerPayload } from '@/lib/server/catalog-composer';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { CatalogComposerPayloadSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
@@ -766,7 +767,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         price_override: item.price_override ?? null,
       }))),
     },
-  });
+  }, { headers: SELLER_CACHE_PERSONAL });
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

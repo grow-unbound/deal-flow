@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { createTimer } from '@/lib/server-timing';
+import { SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { readArrayParam } from '@/lib/landing-filter-params';
 import type {
@@ -28,6 +29,9 @@ export async function GET(request: NextRequest) {
   const timedJson = (body: unknown, init?: ResponseInit) => {
     const response = NextResponse.json(body, init);
     response.headers.set('Server-Timing', timer.header('categories_landing'));
+    if (!init?.status || (init.status >= 200 && init.status < 300)) {
+      response.headers.set('Cache-Control', SELLER_GET_CACHE_CONTROL);
+    }
     return response;
   };
 

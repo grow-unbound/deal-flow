@@ -22,6 +22,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { MutationButton } from '@/components/ui/mutation-button';
 import { useTenantCategories } from '@/hooks/useTenantCategories';
+import { r2Url } from '@/lib/r2-url';
 import { uploadEntityFile } from '@/lib/upload-client';
 import { CreateCategoryInputSchema, type TenantCategory } from '@/types/tenant-categories';
 
@@ -58,9 +59,7 @@ function defaultsFromCategory(cat: TenantCategory | null): FormValues {
     description: cat.description ?? '',
     display_order: cat.display_order,
     external_ref: cat.external_ref ?? '',
-    image_preview_url: cat.r2_image_thumb_key
-      ? `/api/r2/image/${encodeURIComponent(cat.r2_image_thumb_key)}`
-      : '',
+    image_preview_url: r2Url(cat.r2_image_thumb_key) ?? '',
   };
 }
 
@@ -181,9 +180,7 @@ export function CategoryFormSheet({ open, onOpenChange, editingCategory, onSucce
     onSuccess?.();
   }
 
-  const currentImageUrl = editingCategory?.r2_image_thumb_key
-    ? `/api/r2/image/${encodeURIComponent(editingCategory.r2_image_thumb_key)}`
-    : null;
+  const currentImageUrl = r2Url(editingCategory?.r2_image_thumb_key);
 
   return (
     <>

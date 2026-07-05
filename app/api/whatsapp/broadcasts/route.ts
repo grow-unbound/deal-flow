@@ -5,6 +5,7 @@ import { getFlag } from '@/lib/flags';
 import { FEATURE_FLAGS } from '@/constants';
 import { WhatsAppBroadcastCreateSchema } from '@/lib/zod';
 import { resolveBroadcastAudience } from '@/lib/server/whatsapp-broadcast-audience';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 
 /**
  * WhatsApp Broadcast Phase E — broadcast job list + create.
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to fetch broadcasts' }, { status: 500 });
   }
 
-  return NextResponse.json({ broadcasts: rows ?? [] });
+  return NextResponse.json({ broadcasts: rows ?? [] }, { headers: SELLER_CACHE_PERSONAL });
 }
 
 export async function POST(request: NextRequest) {
