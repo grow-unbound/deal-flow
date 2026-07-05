@@ -429,8 +429,79 @@ function resolveLineOrder(line: Record<string, unknown>, lineIndex: number): num
   return pickNumber(line.item_order) ?? (lineIndex + 1);
 }
 
-function resolveImportedActorId(actorId: string | null, _salespersonId: string | null): string | null {
+function resolveImportedActorId(
+  actorId: string | null,
+  salespersonId: string | null,
+  salespersonActorMap: Map<string, string>,
+): string | null {
+  if (salespersonId) {
+    const mapped = salespersonActorMap.get(salespersonId);
+    if (mapped) return mapped;
+  }
   return actorId;
+}
+
+function normalizeEmail(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+async function buildZohoSalespersonActorMap(
+  admin: AdminClient,
+  tenantId: string,
+  adapter?: ZohoAdapter,
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (!adapter) return map;
+
+  const zohoUsers = await adapter.fetchUsers();
+  const zohoEmailById = new Map<string, string>();
+  for (const user of zohoUsers) {
+    const id = asStr(user.user_id);
+    const email = asStr(user.email);
+    if (id && email) zohoEmailById.set(id, normalizeEmail(email));
+  }
+  if (zohoEmailById.size === 0) return map;
+
+  const { data: tenantUserRows } = await admin
+    .schema('app')
+    .from('tenant_users')
+    .select('user_id')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true);
+
+  const tenantUserIds = new Set(
+    (tenantUserRows ?? [])
+      .map((row) => asStr((row as { user_id: string }).user_id))
+      .filter((value): value is string => value !== null),
+  );
+  if (tenantUserIds.size === 0) return map;
+
+  const { data: authList } = await admin.auth.admin.listUsers({ perPage: 1000 });
+  const authUserByEmail = new Map<string, string>();
+  for (const user of authList?.users ?? []) {
+    const email = asStr(user.email);
+    if (!email || !tenantUserIds.has(user.id)) continue;
+    authUserByEmail.set(normalizeEmail(email), user.id);
+  }
+
+  for (const [zohoUserId, email] of zohoEmailById) {
+    const authId = authUserByEmail.get(email);
+    if (authId) map.set(zohoUserId, authId);
+  }
+
+  return map;
+}
+
+function presentNumberFields(...entries: Array<readonly [string, number | null]>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of entries) {
+    if (value !== null) out[key] = value;
+  }
+  return out;
+}
+
+function presentStringField(key: string, value: string | null): Record<string, unknown> {
+  return value ? { [key]: value } : {};
 }
 
 async function sha256Hex(value: string): Promise<string> {
@@ -1361,6 +1432,55 @@ async function persistWarehouses(
 
 // ── Buyers (contacts) + buyer_contacts (contact persons) ────────────────────
 
+const CONTACT_ENRICH_CONCURRENCY = 5;
+
+async function enrichBuyerRecords(
+  records: Record<string, unknown>[],
+  adapter?: ZohoAdapter,
+): Promise<Record<string, unknown>[]> {
+  if (!adapter) return records;
+
+  const enriched: Record<string, unknown>[] = [];
+  for (let i = 0; i < records.length; i += CONTACT_ENRICH_CONCURRENCY) {
+    const batch = records.slice(i, i + CONTACT_ENRICH_CONCURRENCY);
+    const batchResults = await Promise.all(batch.map(async (rec) => {
+      const externalId = asStr(rec.contact_id);
+      if (!externalId) return rec;
+
+      const embeddedContactPersons = asRecordArray(rec.contact_persons);
+      const hasCustomFields = Array.isArray(rec.custom_fields) && rec.custom_fields.length > 0;
+      const hasPricebook = Boolean(asStr(rec.pricebook_id) ?? asStr(rec.price_list_id));
+      const needsDetail = embeddedContactPersons.length === 0 || !hasCustomFields || !hasPricebook;
+
+      let merged = rec;
+      if (needsDetail) {
+        const detail = await adapter.fetchContactById(externalId);
+        if (detail) {
+          merged = {
+            ...rec,
+            ...detail,
+            contact_id: externalId,
+          };
+        }
+      }
+
+      const contactPersons = asRecordArray(merged.contact_persons);
+      if (contactPersons.length > 0) return merged;
+
+      const fetchedPersons = await adapter.fetchContactPersons(externalId);
+      if (fetchedPersons.length === 0) return merged;
+
+      return {
+        ...merged,
+        contact_persons: fetchedPersons,
+      };
+    }));
+    enriched.push(...batchResults);
+  }
+
+  return enriched;
+}
+
 async function persistBuyers(
   admin: AdminClient,
   tenantId: string,
@@ -1373,8 +1493,9 @@ async function persistBuyers(
   const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
   const buyerRows: Record<string, unknown>[] = [];
   const customerFieldMappings = await loadFieldMappings(admin, integrationId, 'customers');
+  const hydratedRecords = await enrichBuyerRecords(records, adapter);
 
-  for (const rec of records) {
+  for (const rec of hydratedRecords) {
     const externalId = asStr(rec.contact_id);
     if (!externalId) { result.skipped++; continue; }
 
@@ -1461,7 +1582,7 @@ async function persistBuyers(
   const buyerAssignmentRows: Record<string, unknown>[] = [];
   const pricebookExternalIds = [
     ...new Set(
-      records
+      hydratedRecords
         .map((rec) => asStr(rec.pricebook_id) ?? asStr(rec.price_list_id))
         .filter((value): value is string => value !== null),
     ),
@@ -1485,10 +1606,7 @@ async function persistBuyers(
     }
   }
 
-  const remoteContactPersonMap = new Map<string, Record<string, unknown>[]>();
-  // contact_persons are embedded in Zoho's list response (per_page=200). No per-contact fetch.
-
-  for (const rec of records) {
+  for (const rec of hydratedRecords) {
     const externalId = asStr(rec.contact_id);
     if (!externalId) continue;
 
@@ -1496,9 +1614,7 @@ async function persistBuyers(
     if (!buyerId) continue;
 
     const embeddedContactPersons = asRecordArray((rec as Record<string, unknown>).contact_persons);
-    const contactPersons = embeddedContactPersons.length > 0
-      ? embeddedContactPersons
-      : remoteContactPersonMap.get(externalId) ?? [];
+    const contactPersons = embeddedContactPersons;
 
     for (const cp of contactPersons) {
       const cpId = asStr(cp.contact_person_id);
@@ -1564,7 +1680,20 @@ async function persistBuyers(
     .map((row) => asStr(row.id))
     .filter((value): value is string => value !== null);
 
-  if (buyerIds.length > 0) {
+  const dedupedBuyerAssignmentRows = dedupeByColumns(
+    buyerAssignmentRows,
+    ['price_list_id', 'target_type', 'target_id', 'external_ref'],
+  );
+
+  const buyerIdsWithAssignments = [
+    ...new Set(
+      dedupedBuyerAssignmentRows
+        .map((row) => asStr(row.target_id))
+        .filter((value): value is string => value !== null),
+    ),
+  ];
+
+  if (buyerIdsWithAssignments.length > 0) {
     await admin
       .schema('app')
       .from('price_list_assignments')
@@ -1574,15 +1703,10 @@ async function persistBuyers(
         updated_by: actorId,
       })
       .eq('target_type', 'buyer')
-      .in('target_id', buyerIds)
+      .in('target_id', buyerIdsWithAssignments)
       .like('external_ref', 'zoho_buyer_pricebook:%')
       .is('deleted_at', null);
   }
-
-  const dedupedBuyerAssignmentRows = dedupeByColumns(
-    buyerAssignmentRows,
-    ['price_list_id', 'target_type', 'target_id', 'external_ref'],
-  );
 
   if (dedupedBuyerAssignmentRows.length > 0) {
     await bulkPersistJsonbRecords(
@@ -1977,36 +2101,6 @@ async function persistProducts(
       default_uom: asStr(rec.unit),
       hsn_code: asStr(rec.hsn_or_sac) ?? asStr(rec.hsn_sac),
       is_active: (asStr(rec.status) ?? 'active') === 'active',
-      attributes_override: omitKeys(rec, [
-        'item_id',
-        'sku',
-        'cf_sku',
-        'name',
-        'description',
-        'rate',
-        'purchase_rate',
-        'pricebook_rate',
-        'unit',
-        'hsn_or_sac',
-        'hsn_sac',
-        'tax_percentage',
-        'tax_id',
-        'tax_name',
-        'gst_rate',
-        'status',
-        'brand',
-        'manufacturer',
-        'category_id',
-        'category_ref',
-        'category_external_id',
-        'category_name',
-        'category',
-        'pack_size',
-        'pack_quantity',
-        'unit_conversion',
-        'image_urls',
-        'images',
-      ]),
       created_by: actorId,
       updated_by: actorId,
       deleted_at: null,
@@ -2023,8 +2117,18 @@ async function persistProducts(
     console.warn('[persistProducts] product collision conflicts:', productResolution.conflicts);
     result.skipped += productResolution.conflicts.length;
   }
-  const persistedProducts = productResolution.rows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'tenant_products', productResolution.rows, ['id'])
+  const productRowsForPersist = productResolution.rows.map((row) => {
+    if (asStr(row.id)) {
+      const { attributes_override: _ignored, ...rest } = row;
+      return rest;
+    }
+    return {
+      ...row,
+      attributes_override: {},
+    };
+  });
+  const persistedProducts = productRowsForPersist.length > 0
+    ? await bulkPersistJsonbRecords(admin, 'tenant_products', productRowsForPersist, ['id'])
     : [];
   const productMapPairs = buildPersistedRowPairsFromSourceRows(productRows, persistedProducts, ['internal_sku']);
   const productIdMap = new Map(productMapPairs.map((row) => [row.externalId, row.internalId] as const));
@@ -2386,6 +2490,7 @@ async function persistEstimates(
 ): Promise<PersistResult> {
   const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
   const estimateFieldMappings = await loadFieldMappings(admin, integrationId, 'estimates');
+  const salespersonActorMap = await buildZohoSalespersonActorMap(admin, tenantId, adapter);
 
   const customerExternalIds = records
     .map((r) => asStr(r.customer_id))
@@ -2432,14 +2537,24 @@ async function persistEstimates(
     const locationId = locationExternalId ? (locationIdMap.get(locationExternalId) ?? null) : null;
     const lineItems = Array.isArray(rec.line_items) ? rec.line_items as Record<string, unknown>[] : [];
     const salespersonId = asStr(rec.salesperson_id);
-    const resolvedActorId = resolveImportedActorId(actorId, salespersonId);
+    const resolvedActorId = resolveImportedActorId(actorId, salespersonId, salespersonActorMap);
+    const subtotal = pickNumber(rec.sub_total, rec.subtotal);
+    const taxAmount = pickNumber(rec.tax_total, rec.tax_amount);
+    const placeOfSupply = pickString(
+      rec.place_of_supply,
+      rec.place_of_contact,
+      rec.state,
+      rec.billing_state,
+      rec.shipping_state,
+    );
+    const estimateUrl = asStr(rec.estimate_url);
     const cartHash = await sha256Hex(JSON.stringify({
       estimateId: externalId,
       buyerId,
       locationId,
       estimateNumber: asStr(rec.estimate_number),
-      subtotal: pickNumber(rec.sub_total, rec.subtotal),
-      taxAmount: pickNumber(rec.tax_total, rec.tax_amount),
+      subtotal,
+      taxAmount,
       totalAmount: pickNumber(rec.total, rec.total_amount),
       lineItems: lineItems.map((li) => ({
         itemId: pickString(li.item_id, li.product_id),
@@ -2464,12 +2579,15 @@ async function persistEstimates(
       custom_fields: customFields,
       ...applyFieldMappings(customFields, estimateFieldMappings),
       currency: asStr(rec.currency) ?? asStr(rec.currency_code) ?? 'INR',
-      subtotal: pickNumber(rec.sub_total, rec.subtotal),
-      tax_amount: pickNumber(rec.tax_total, rec.tax_amount),
+      ...presentNumberFields(
+        ['subtotal', subtotal],
+        ['tax_amount', taxAmount],
+      ),
       total_amount: pickNumber(rec.total, rec.total_amount),
       notes: pickString(rec.notes, rec.terms, rec.description),
       seller_note: pickString(rec.seller_note, rec.note),
-      place_of_supply: pickString(rec.place_of_supply, rec.state, rec.billing_state, rec.shipping_state) ?? 'Unknown',
+      ...presentStringField('place_of_supply', placeOfSupply),
+      ...presentStringField('estimate_url', estimateUrl),
       cart_hash: cartHash,
       buyer_po_ref: pickString(rec.reference_number, rec.buyer_po_ref),
       discount_flat: pickNumber(rec.discount_flat, rec.discount) ?? 0,
@@ -2631,6 +2749,7 @@ async function persistOrders(
   zohoTypeId?: ZohoIntegrationTypeId,
 ): Promise<PersistResult> {
   const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
+  const salespersonActorMap = await buildZohoSalespersonActorMap(admin, tenantId, adapter);
 
   const customerExternalIds = records
     .map((r) => asStr(r.customer_id))
@@ -2682,7 +2801,16 @@ async function persistOrders(
       : null;
     const lineItems = Array.isArray(rec.line_items) ? rec.line_items as Record<string, unknown>[] : [];
     const salespersonId = asStr(rec.salesperson_id);
-    const resolvedActorId = resolveImportedActorId(actorId, salespersonId);
+    const resolvedActorId = resolveImportedActorId(actorId, salespersonId, salespersonActorMap);
+    const subtotal = pickNumber(rec.sub_total, rec.subtotal);
+    const taxAmount = pickNumber(rec.tax_total, rec.tax_amount);
+    const placeOfSupply = pickString(
+      rec.place_of_supply,
+      rec.place_of_contact,
+      rec.state,
+      rec.billing_state,
+      rec.shipping_state,
+    );
 
     parentRows.push({
       tenant_id: tenantId,
@@ -2696,11 +2824,13 @@ async function persistOrders(
       estimate_id: asStr(rec.estimate_id)
         ? (await resolveInternalIdWithFallback(admin, tenantId, integrationId, 'estimates', 'estimates', asStr(rec.estimate_id) ?? ''))
         : null,
-      subtotal: pickNumber(rec.sub_total, rec.subtotal),
-      tax_amount: pickNumber(rec.tax_total, rec.tax_amount),
+      ...presentNumberFields(
+        ['subtotal', subtotal],
+        ['tax_amount', taxAmount],
+      ),
       total_amount: pickNumber(rec.total, rec.total_amount),
       delivery_address: deliveryAddress as Record<string, unknown> | null,
-      place_of_supply: pickString(rec.place_of_supply, rec.state, rec.billing_state, rec.shipping_state) ?? 'Unknown',
+      ...presentStringField('place_of_supply', placeOfSupply),
       notes: pickString(rec.notes, rec.seller_note, rec.description),
       seller_note: pickString(rec.seller_note, rec.note),
       buyer_po_ref: pickString(rec.reference_number, rec.buyer_po_ref),
@@ -2869,6 +2999,7 @@ async function persistInvoices(
 ): Promise<PersistResult> {
   const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
   const invoiceFieldMappings = await loadFieldMappings(admin, integrationId, 'invoices');
+  const salespersonActorMap = await buildZohoSalespersonActorMap(admin, tenantId, adapter);
 
   const customerExternalIds = records
     .map((r) => asStr(r.customer_id))
@@ -2944,7 +3075,16 @@ async function persistInvoices(
       : null;
     const lineItems = Array.isArray(rec.line_items) ? rec.line_items as Record<string, unknown>[] : [];
     const salespersonId = asStr(rec.salesperson_id);
-    const resolvedActorId = resolveImportedActorId(actorId, salespersonId);
+    const resolvedActorId = resolveImportedActorId(actorId, salespersonId, salespersonActorMap);
+    const subtotal = pickNumber(rec.sub_total, rec.subtotal);
+    const taxAmount = pickNumber(rec.tax_total, rec.tax_amount);
+    const placeOfSupply = pickString(
+      rec.place_of_supply,
+      rec.place_of_contact,
+      rec.state,
+      rec.billing_state,
+      rec.shipping_state,
+    );
 
     const total = asNum(rec.total) ?? 0;
     const balance = asNum(rec.balance) ?? 0;
@@ -2962,13 +3102,15 @@ async function persistInvoices(
       invoice_number: asStr(rec.invoice_number) ?? externalId,
       invoice_date: invoiceDate,
       status: asStr(rec.status) ?? 'sent',
-      subtotal: pickNumber(rec.sub_total, rec.subtotal),
-      tax_amount: pickNumber(rec.tax_total, rec.tax_amount),
+      ...presentNumberFields(
+        ['subtotal', subtotal],
+        ['tax_amount', taxAmount],
+      ),
       total_amount: total,
       outstanding_balance: balance,
       amount_paid: amountPaid,
       delivery_address: deliveryAddress as Record<string, unknown> | null,
-      place_of_supply: pickString(rec.place_of_supply, rec.state, rec.billing_state, rec.shipping_state) ?? 'Unknown',
+      ...presentStringField('place_of_supply', placeOfSupply),
       notes: pickString(rec.notes, rec.seller_note),
       notes_for_buyer: pickString(rec.notes_for_buyer, rec.notes),
       seller_note: pickString(rec.seller_note),

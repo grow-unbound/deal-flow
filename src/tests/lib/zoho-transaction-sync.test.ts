@@ -20,6 +20,20 @@ describe('zoho transactional sync windowing', () => {
     expect(source).toContain("transactional: ['estimates', 'orders', 'invoices', 'transaction_line_items']");
     expect(source).toContain("opts.phase === 'transaction_line_items'");
     expect(source).toContain("'sync-transaction-line-items'");
+    expect(source).toContain('resolvePhaseSince');
+    expect(source).toContain('since: phaseSince');
+    expect(source).toContain('sync_run_id');
+    expect(source).toContain("dependsOnPhase: phase === 'transaction_line_items' ? 'invoices' : null");
+  });
+
+  it('scopes line-item hydration to the same transaction date window', () => {
+    const source = readFileSync('supabase/functions/sync-transaction-line-items/index.ts', 'utf8');
+
+    expect(source).toContain("since_date: opts.sinceDate ?? null");
+    expect(source).toContain("query.gte(dateColumn, sinceDate)");
+    expect(source).toContain("estimate_date");
+    expect(source).toContain("placed_at");
+    expect(source).toContain("invoice_date");
   });
 
   it.each([

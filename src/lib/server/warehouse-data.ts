@@ -1,7 +1,17 @@
 import { normalizeLocationAddress } from '@/lib/locations/location-deactivate-guards';
 import { computeSellableUnits, computeWarehouseInitials, computeWarehouseStockStatus, isIdleStockSku } from '@/lib/server/warehouse-metrics';
-import type { TenantWarehouse } from '@/types/tenant-warehouses';
-import type { WarehouseDetailResponse } from '@/types/tenant-warehouses';
+import type { TenantWarehouse, WarehouseDetailInventoryItem, WarehouseDetailResponse, WarehouseInventoryTrendWeek } from '@/types/tenant-warehouses';
+
+/** PostgREST `.in()` filters are serialized into the URL; keep chunks under ~16KB. */
+export const POSTGREST_IN_CHUNK_SIZE = 80;
+
+export function chunkArray<T>(values: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
 
 export interface WarehouseInventoryRow {
   warehouse_id: string;
@@ -82,23 +92,27 @@ export async function loadWarehouseInventoryRows(
   db: any,
   warehouseIds: string[],
   includeProductMeta = false,
+  preloadedRows?: Array<Record<string, unknown>>,
 ) {
   if (warehouseIds.length === 0) return [] as WarehouseInventoryRow[];
 
-  const select = 'warehouse_id, tenant_product_id, qty_available, qty_reserved, reorder_point, updated_at';
+  let rawRows = preloadedRows;
+  if (!rawRows) {
+    const select = 'warehouse_id, tenant_product_id, qty_available, qty_reserved, reorder_point, updated_at';
+    const { data, error } = await db
+      .schema('app')
+      .from('tenant_inventory')
+      .select(select)
+      .in('warehouse_id', warehouseIds)
+      .is('deleted_at', null);
 
-  const { data, error } = await db
-    .schema('app')
-    .from('tenant_inventory')
-    .select(select)
-    .in('warehouse_id', warehouseIds)
-    .is('deleted_at', null);
-
-  if (error) {
-    throw error;
+    if (error) {
+      throw error;
+    }
+    rawRows = (data ?? []) as Array<Record<string, unknown>>;
   }
 
-  const baseRows: WarehouseInventoryRow[] = ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+  const baseRows: WarehouseInventoryRow[] = rawRows.map((row) => ({
     warehouse_id: String(row.warehouse_id),
     tenant_product_id: String(row.tenant_product_id),
     qty_available: Number(row.qty_available ?? 0),
@@ -112,23 +126,68 @@ export async function loadWarehouseInventoryRows(
   }
 
   const productIds = Array.from(new Set(baseRows.map((row) => row.tenant_product_id)));
-  const { data: products, error: productsError } = await db
-    .schema('app')
-    .from('tenant_products')
-    .select('id, name, tenant_brands(name)')
-    .in('id', productIds)
-    .is('deleted_at', null);
+  const products: Array<Record<string, unknown>> = [];
+  for (const productChunk of chunkArray(productIds, POSTGREST_IN_CHUNK_SIZE)) {
+    const { data, error } = await db
+      .schema('app')
+      .from('tenant_products')
+      .select('id, name_override, tenant_brand_id')
+      .in('id', productChunk)
+      .is('deleted_at', null);
 
-  if (productsError) {
-    throw productsError;
+    if (error) {
+      throw error;
+    }
+
+    products.push(...((data ?? []) as Array<Record<string, unknown>>));
+  }
+
+  const tenantBrandIds = Array.from(
+    new Set(
+      ((products ?? []) as Array<Record<string, unknown>>)
+        .map((row) => (typeof row.tenant_brand_id === 'string' ? row.tenant_brand_id : null))
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+
+  let brandNameById = new Map<string, string>();
+  if (tenantBrandIds.length > 0) {
+    const brands: Array<Record<string, unknown>> = [];
+    for (const brandChunk of chunkArray(tenantBrandIds, POSTGREST_IN_CHUNK_SIZE)) {
+      const { data, error } = await db
+        .schema('app')
+        .from('tenant_brands')
+        .select('id, name, display_name_override')
+        .in('id', brandChunk)
+        .is('deleted_at', null);
+
+      if (error) {
+        throw error;
+      }
+
+      brands.push(...((data ?? []) as Array<Record<string, unknown>>));
+    }
+
+    brandNameById = new Map(
+      brands.map((row) => {
+        const brandId = String(row.id);
+        const brandName =
+          typeof row.display_name_override === 'string' && row.display_name_override.trim()
+            ? row.display_name_override.trim()
+            : typeof row.name === 'string'
+              ? row.name
+              : '—';
+        return [brandId, brandName];
+      }),
+    );
   }
 
   const productMeta = new Map<string, { product_name?: string; brand_name?: string }>();
-  for (const row of (products ?? []) as Array<Record<string, unknown>>) {
-    const brand = row.tenant_brands as Record<string, unknown> | null | undefined;
+  for (const row of products) {
+    const brandId = typeof row.tenant_brand_id === 'string' ? row.tenant_brand_id : null;
     productMeta.set(String(row.id), {
-      product_name: typeof row.name === 'string' ? row.name : undefined,
-      brand_name: typeof brand?.name === 'string' ? brand.name : undefined,
+      product_name: typeof row.name_override === 'string' ? row.name_override : undefined,
+      brand_name: brandId ? brandNameById.get(brandId) : undefined,
     });
   }
 
@@ -147,22 +206,129 @@ export async function loadWarehouseInventoryRows(
   });
 }
 
-export async function loadWarehouseDetail(
+export interface WarehouseSnapshotRow {
+  warehouse_id: string;
+  tenant_id: string;
+  tracked_skus: number;
+  sellable_units: number;
+  low_stock_skus: number;
+  stockout_skus: number;
+  idle_stock_skus: number;
+  last_inventory_update: string | null;
+  refreshed_at: string;
+}
+
+export interface WarehouseStockPageResult {
+  items: WarehouseDetailInventoryItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  has_more: boolean;
+}
+
+export function bucketWarehouseInventoryTrend(
+  dailyRows: Array<{
+    day: string;
+    tracked_skus: number;
+    sellable_units: number;
+    low_stock_skus: number;
+    stockout_skus: number;
+  }>,
+): WarehouseInventoryTrendWeek[] {
+  const weekBuckets = new Map<string, WarehouseInventoryTrendWeek>();
+
+  for (const row of dailyRows) {
+    const d = new Date(row.day);
+    const dow = d.getDay();
+    const monday = new Date(d);
+    monday.setDate(d.getDate() - ((dow + 6) % 7));
+    const key = monday.toISOString().split('T')[0]!;
+    const existing = weekBuckets.get(key) ?? {
+      week_label: monday.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+      week_start: key,
+      tracked_skus: 0,
+      sellable_units: 0,
+      low_stock_skus: 0,
+      stockout_skus: 0,
+    };
+    existing.tracked_skus = Math.max(existing.tracked_skus, row.tracked_skus);
+    existing.sellable_units = Math.max(existing.sellable_units, row.sellable_units);
+    existing.low_stock_skus = Math.max(existing.low_stock_skus, row.low_stock_skus);
+    existing.stockout_skus = Math.max(existing.stockout_skus, row.stockout_skus);
+    weekBuckets.set(key, existing);
+  }
+
+  return [...weekBuckets.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-6)
+    .map(([, value]) => value);
+}
+
+export async function loadWarehouseSnapshot(
   db: any,
   tenantId: string,
   warehouseId: string,
-): Promise<WarehouseDetailResponse | null> {
-  const warehouses = await loadTenantWarehouses(db, tenantId, { id: warehouseId });
-  const warehouse = warehouses[0];
-  if (!warehouse) return null;
+): Promise<WarehouseSnapshotRow | null> {
+  const { data, error } = await db
+    .schema('app')
+    .from('warehouses_snapshot')
+    .select('warehouse_id, tenant_id, tracked_skus, sellable_units, low_stock_skus, stockout_skus, idle_stock_skus, last_inventory_update, refreshed_at')
+    .eq('tenant_id', tenantId)
+    .eq('warehouse_id', warehouseId)
+    .maybeSingle();
 
-  const inventoryRows = await loadWarehouseInventoryRows(db, [warehouse.id], true);
-  const latestDemandByProduct = await loadLatestDemandByProduct(
-    db,
-    Array.from(new Set(inventoryRows.map((row) => row.tenant_product_id))),
+  if (error) throw error;
+  if (!data) return null;
+
+  return {
+    warehouse_id: String(data.warehouse_id),
+    tenant_id: String(data.tenant_id),
+    tracked_skus: Number(data.tracked_skus ?? 0),
+    sellable_units: Number(data.sellable_units ?? 0),
+    low_stock_skus: Number(data.low_stock_skus ?? 0),
+    stockout_skus: Number(data.stockout_skus ?? 0),
+    idle_stock_skus: Number(data.idle_stock_skus ?? 0),
+    last_inventory_update: typeof data.last_inventory_update === 'string' ? data.last_inventory_update : null,
+    refreshed_at: typeof data.refreshed_at === 'string' ? data.refreshed_at : new Date().toISOString(),
+  };
+}
+
+export async function loadWarehouseInventoryTrend(
+  db: any,
+  tenantId: string,
+  warehouseId: string,
+): Promise<WarehouseInventoryTrendWeek[]> {
+  const sixWeeksAgo = new Date();
+  sixWeeksAgo.setDate(sixWeeksAgo.getDate() - 42);
+  const sixWeeksIso = sixWeeksAgo.toISOString().split('T')[0]!;
+
+  const { data, error } = await db
+    .schema('app')
+    .from('kpi_warehouse_daily')
+    .select('day, tracked_skus, sellable_units, low_stock_skus, stockout_skus')
+    .eq('tenant_id', tenantId)
+    .eq('warehouse_id', warehouseId)
+    .gte('day', sixWeeksIso)
+    .order('day', { ascending: true });
+
+  if (error) throw error;
+
+  return bucketWarehouseInventoryTrend(
+    ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+      day: String(row.day),
+      tracked_skus: Number(row.tracked_skus ?? 0),
+      sellable_units: Number(row.sellable_units ?? 0),
+      low_stock_skus: Number(row.low_stock_skus ?? 0),
+      stockout_skus: Number(row.stockout_skus ?? 0),
+    })),
   );
+}
 
-  const stock = inventoryRows
+async function hydrateInventoryItems(
+  baseRows: WarehouseInventoryRow[],
+  latestDemandByProduct: Map<string, string>,
+): Promise<WarehouseDetailInventoryItem[]> {
+  return baseRows
     .map((row) => {
       const sellableUnits = computeSellableUnits(row.qty_available, row.qty_reserved);
       const lastDemandAt = latestDemandByProduct.get(row.tenant_product_id) ?? null;
@@ -181,17 +347,123 @@ export async function loadWarehouseDetail(
       };
     })
     .sort((a, b) => a.product_name.localeCompare(b.product_name));
+}
 
-  const trackedSkus = stock.length;
-  const sellableUnits = stock.reduce((sum, row) => sum + row.sellable_units, 0);
-  const lowStockSkus = stock.filter((row) => row.stock_status === 'low_stock').length;
-  const stockoutSkus = stock.filter((row) => row.stock_status === 'out_of_stock').length;
-  const idleStockSkus = stock.filter((row) => row.is_idle).length;
+export async function loadWarehouseStockPage(
+  db: any,
+  warehouseId: string,
+  options?: { page?: number; pageSize?: number },
+): Promise<WarehouseStockPageResult> {
+  const page = Math.max(1, options?.page ?? 1);
+  const pageSize = Math.min(100, Math.max(1, options?.pageSize ?? 50));
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  const { count, error: countError } = await db
+    .schema('app')
+    .from('tenant_inventory')
+    .select('id', { count: 'exact', head: true })
+    .eq('warehouse_id', warehouseId)
+    .is('deleted_at', null);
+
+  if (countError) throw countError;
+
+  const { data, error } = await db
+    .schema('app')
+    .from('tenant_inventory')
+    .select('warehouse_id, tenant_product_id, qty_available, qty_reserved, reorder_point, updated_at')
+    .eq('warehouse_id', warehouseId)
+    .is('deleted_at', null)
+    .order('updated_at', { ascending: false })
+    .range(from, to);
+
+  if (error) throw error;
+
+  const baseRows = await loadWarehouseInventoryRows(db, [warehouseId], true, (data ?? []) as Array<Record<string, unknown>>);
+  const productIds = Array.from(new Set(baseRows.map((row) => row.tenant_product_id)));
+  const latestDemandByProduct = await loadLatestDemandByProduct(db, productIds);
+  const items = await hydrateInventoryItems(baseRows, latestDemandByProduct);
+  const total = Number(count ?? 0);
+
+  return {
+    items,
+    total,
+    page,
+    page_size: pageSize,
+    has_more: from + items.length < total,
+  };
+}
+
+export async function loadWarehousePerformanceHighlights(
+  db: any,
+  warehouseId: string,
+): Promise<{
+  idle_stock: WarehouseDetailResponse['performance']['idle_stock'];
+  recent_replenishment: WarehouseDetailResponse['performance']['recent_replenishment'];
+}> {
+  const { data, error } = await db
+    .schema('app')
+    .from('tenant_inventory')
+    .select('tenant_product_id, qty_available, qty_reserved, updated_at')
+    .eq('warehouse_id', warehouseId)
+    .is('deleted_at', null)
+    .order('updated_at', { ascending: false })
+    .limit(100);
+
+  if (error) throw error;
+
+  const baseRows = await loadWarehouseInventoryRows(db, [warehouseId], true, (data ?? []) as Array<Record<string, unknown>>);
+  const productIds = Array.from(new Set(baseRows.map((row) => row.tenant_product_id)));
+  const latestDemandByProduct = await loadLatestDemandByProduct(db, productIds);
+  const items = await hydrateInventoryItems(baseRows, latestDemandByProduct);
+
+  return {
+    idle_stock: items
+      .filter((row) => row.is_idle)
+      .sort((a, b) => b.sellable_units - a.sellable_units)
+      .slice(0, 5)
+      .map((row) => ({
+        tenant_product_id: row.tenant_product_id,
+        product_name: row.product_name,
+        brand_name: row.brand_name,
+        sellable_units: row.sellable_units,
+        last_demand_at: row.last_demand_at,
+      })),
+    recent_replenishment: [...items]
+      .sort((a, b) => b.last_updated.localeCompare(a.last_updated))
+      .slice(0, 5)
+      .map((row) => ({
+        tenant_product_id: row.tenant_product_id,
+        product_name: row.product_name,
+        brand_name: row.brand_name,
+        qty_available: row.qty_available,
+        qty_reserved: row.qty_reserved,
+        updated_at: row.last_updated,
+      })),
+  };
+}
+
+export async function loadWarehouseSummary(
+  db: any,
+  tenantId: string,
+  warehouseId: string,
+): Promise<WarehouseDetailResponse | null> {
+  const warehouses = await loadTenantWarehouses(db, tenantId, { id: warehouseId });
+  const warehouse = warehouses[0];
+  if (!warehouse) return null;
+
+  const [snapshot, inventoryTrend, highlights] = await Promise.all([
+    loadWarehouseSnapshot(db, tenantId, warehouseId),
+    loadWarehouseInventoryTrend(db, tenantId, warehouseId),
+    loadWarehousePerformanceHighlights(db, warehouseId),
+  ]);
+
+  const trackedSkus = snapshot?.tracked_skus ?? 0;
+  const sellableUnits = snapshot?.sellable_units ?? 0;
+  const lowStockSkus = snapshot?.low_stock_skus ?? 0;
+  const stockoutSkus = snapshot?.stockout_skus ?? 0;
+  const idleStockSkus = snapshot?.idle_stock_skus ?? 0;
   const reorderTriggeredSkus = lowStockSkus + stockoutSkus;
-  const lastInventoryUpdate = stock.reduce<string | null>((latest, row) => {
-    if (!latest || row.last_updated > latest) return row.last_updated;
-    return latest;
-  }, null);
 
   return {
     id: warehouse.id,
@@ -210,6 +482,7 @@ export async function loadWarehouseDetail(
     associated_users: warehouse.associated_users,
     created_at: warehouse.created_at,
     updated_at: warehouse.updated_at,
+    tracked_skus_count: trackedSkus,
     meta_strip: {
       tracked_skus: trackedSkus,
       sellable_units: sellableUnits,
@@ -220,7 +493,7 @@ export async function loadWarehouseDetail(
       associated_users_count: warehouse.associated_users.length,
       stockout_skus: stockoutSkus,
       reorder_triggered_skus: reorderTriggeredSkus,
-      last_inventory_update: lastInventoryUpdate,
+      last_inventory_update: snapshot?.last_inventory_update ?? null,
     },
     performance: {
       inventory_health: {
@@ -235,30 +508,10 @@ export async function loadWarehouseDetail(
         is_default: warehouse.is_default,
         linked_location_name: warehouse.location?.name ?? null,
       },
-      idle_stock: stock
-        .filter((row) => row.is_idle)
-        .sort((a, b) => b.sellable_units - a.sellable_units)
-        .slice(0, 5)
-        .map((row) => ({
-          tenant_product_id: row.tenant_product_id,
-          product_name: row.product_name,
-          brand_name: row.brand_name,
-          sellable_units: row.sellable_units,
-          last_demand_at: row.last_demand_at,
-        })),
-      recent_replenishment: [...stock]
-        .sort((a, b) => b.last_updated.localeCompare(a.last_updated))
-        .slice(0, 5)
-        .map((row) => ({
-          tenant_product_id: row.tenant_product_id,
-          product_name: row.product_name,
-          brand_name: row.brand_name,
-          qty_available: row.qty_available,
-          qty_reserved: row.qty_reserved,
-          updated_at: row.last_updated,
-        })),
+      inventory_trend: inventoryTrend,
+      idle_stock: highlights.idle_stock,
+      recent_replenishment: highlights.recent_replenishment,
     },
-    stock,
   };
 }
 
@@ -268,24 +521,31 @@ export async function loadLatestDemandByProduct(
 ) {
   if (tenantProductIds.length === 0) return new Map<string, string>();
 
-  const { data, error } = await db
-    .schema('app')
-    .from('order_items')
-    .select('tenant_product_id, created_at')
-    .in('tenant_product_id', tenantProductIds)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    throw error;
-  }
-
   const latest = new Map<string, string>();
-  for (const row of (data ?? []) as Array<Record<string, unknown>>) {
-    const productId = typeof row.tenant_product_id === 'string' ? row.tenant_product_id : null;
-    const createdAt = typeof row.created_at === 'string' ? row.created_at : null;
-    if (!productId || !createdAt || latest.has(productId)) continue;
-    latest.set(productId, createdAt);
+  for (const productChunk of chunkArray(tenantProductIds, POSTGREST_IN_CHUNK_SIZE)) {
+    const { data, error } = await db
+      .schema('app')
+      .from('order_items')
+      .select('tenant_product_id, created_at')
+      .in('tenant_product_id', productChunk)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+      const productId = typeof row.tenant_product_id === 'string' ? row.tenant_product_id : null;
+      const createdAt = typeof row.created_at === 'string' ? row.created_at : null;
+      if (!productId || !createdAt) continue;
+
+      const existing = latest.get(productId);
+      if (!existing || createdAt > existing) {
+        latest.set(productId, createdAt);
+      }
+    }
   }
+
   return latest;
 }

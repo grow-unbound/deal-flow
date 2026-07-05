@@ -4,9 +4,16 @@ import { persistZohoEntityPage } from '../../../supabase/functions/_shared/integ
 
 function createAdminStub(options?: {
   tableRows?: Record<string, Array<Record<string, unknown>>>;
+  fieldMappings?: Array<Record<string, unknown>>;
+  authUsers?: Array<{ id: string; email: string | null }>;
+  tenantUsers?: Array<{ user_id: string }>;
 }) {
   const rpcCalls: Array<{ fn: string; args: Record<string, unknown> }> = [];
+  const updateCalls: Array<{ table: string; payload: Record<string, unknown>; filters: Record<string, unknown> }> = [];
   const tableRows = options?.tableRows ?? {};
+  const fieldMappings = options?.fieldMappings ?? [];
+  const authUsers = options?.authUsers ?? [];
+  const tenantUsers = options?.tenantUsers ?? [];
 
   function filterRows(tableName: string, state: {
     eq: Record<string, unknown>;
@@ -59,6 +66,8 @@ function createAdminStub(options?: {
       gt: null,
     };
 
+    let updatePayload: Record<string, unknown> = {};
+
     const chain: any = {
       select: () => chain,
       eq: (column: string, value: unknown) => {
@@ -82,12 +91,44 @@ function createAdminStub(options?: {
         return chain;
       },
       maybeSingle: async () => {
-        const rows = filterRows(tableName, state);
+        const rows = tableName === 'tenant_field_mappings'
+          ? fieldMappings.filter((row) => {
+            for (const [column, value] of Object.entries(state.eq)) {
+              if (row[column] !== value) return false;
+            }
+            return true;
+          })
+          : filterRows(tableName, state);
         return { data: rows[0] ?? null, error: null };
       },
-      update: () => chain,
+      update: (payload: Record<string, unknown>) => {
+        updatePayload = payload;
+        return chain;
+      },
       then: (resolve: (result: { data: Array<Record<string, unknown>>; error: null }) => void) => {
-        resolve({ data: filterRows(tableName, state), error: null });
+        if (Object.keys(updatePayload).length > 0) {
+          updateCalls.push({
+            table: tableName,
+            payload: updatePayload,
+            filters: { ...state.eq, in: state.in, is: state.is, like: state.like },
+          });
+        }
+        const rows = tableName === 'tenant_field_mappings'
+          ? fieldMappings.filter((row) => {
+            for (const [column, value] of Object.entries(state.eq)) {
+              if ((row as Record<string, unknown>)[column] !== value) return false;
+            }
+            return true;
+          })
+          : tableName === 'tenant_users'
+            ? tenantUsers.filter((row) => {
+              for (const [column, value] of Object.entries(state.eq)) {
+                if ((row as Record<string, unknown>)[column] !== value) return false;
+              }
+              return true;
+            })
+          : filterRows(tableName, state);
+        resolve({ data: rows, error: null });
       },
     };
 
@@ -96,7 +137,17 @@ function createAdminStub(options?: {
 
   return {
     rpcCalls,
+    updateCalls,
     client: {
+      auth: {
+        admin: {
+          listUsers: async () => ({
+            data: {
+              users: authUsers,
+            },
+          }),
+        },
+      },
       schema: () => ({
         rpc: async (fn: string, args: Record<string, unknown>) => {
           rpcCalls.push({ fn, args });
@@ -110,7 +161,7 @@ function createAdminStub(options?: {
 
             return {
               data: rows.map((row, index) => ({
-                id: `${String(args.p_table)}-${index + 1}`,
+                id: typeof row.id === 'string' ? row.id : `${String(args.p_table)}-${index + 1}`,
                 ...row,
               })),
               error: null,
@@ -324,7 +375,7 @@ describe('zoho customer and transaction persistence', () => {
     ['estimates', 'estimate_id', 'EST-1'],
     ['orders', 'salesorder_id', 'SO-1'],
     ['invoices', 'invoice_id', 'INV-1'],
-  ] as const)('falls back place_of_supply to Unknown for %s', async (entityType, idField, externalId) => {
+  ] as const)('omits place_of_supply when Zoho payload has no POS fields for %s', async (entityType, idField, externalId) => {
     const admin = createAdminStub();
 
     await persistZohoEntityPage(
@@ -350,7 +401,7 @@ describe('zoho customer and transaction persistence', () => {
     ));
 
     expect(persistCall).toBeTruthy();
-    expect((persistCall?.args.p_rows as Array<Record<string, unknown>>)[0]?.place_of_supply).toBe('Unknown');
+    expect((persistCall?.args.p_rows as Array<Record<string, unknown>>)[0]?.place_of_supply).toBeUndefined();
   });
 
   it('dedupes repeated product and inventory rows within the same sync page', async () => {
@@ -560,5 +611,251 @@ describe('zoho customer and transaction persistence', () => {
     expect(String((errorMapCall?.args.p_rows as Array<Record<string, unknown>>)[0]?.error_reason ?? '')).toContain(
       'Unable to resolve product ITEM-404 for order SO-1.',
     );
+  });
+
+  it('maps cf_online_catalogue_status to buyer_app_enabled', async () => {
+    const admin = createAdminStub({
+      fieldMappings: [
+        {
+          tenant_integration_id: 'integration-1',
+          entity_type: 'customers',
+          is_active: true,
+          zoho_field_name: 'cf_online_catalogue_status',
+          target_column: 'buyer_app_enabled',
+          transform_type: 'boolean_from_zoho',
+        },
+      ],
+    });
+
+    await persistZohoEntityPage(
+      admin.client as never,
+      'tenant-1',
+      'user-1',
+      'integration-1',
+      'customers',
+      'zoho_books',
+      [
+        {
+          contact_id: 'CUST-2',
+          company_name: 'Beta Retail',
+          custom_fields: [
+            { api_name: 'cf_online_catalogue_status', value: 'true' },
+          ],
+          contact_persons: [],
+        },
+      ],
+    );
+
+    const buyersCall = admin.rpcCalls.find((call) => (
+      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'buyers'
+    ));
+    const buyerRow = (buyersCall?.args.p_rows as Array<Record<string, unknown>>)[0];
+    expect(buyerRow?.buyer_app_enabled).toBe(true);
+  });
+
+  it('does not soft-delete price list assignments when contact has no pricebook', async () => {
+    const admin = createAdminStub();
+
+    await persistZohoEntityPage(
+      admin.client as never,
+      'tenant-1',
+      'user-1',
+      'integration-1',
+      'customers',
+      'zoho_books',
+      [
+        {
+          contact_id: 'CUST-3',
+          company_name: 'No Pricebook Buyer',
+          contact_persons: [],
+        },
+      ],
+    );
+
+    expect(admin.updateCalls.filter((call) => call.table === 'price_list_assignments')).toHaveLength(0);
+    const assignmentsCall = admin.rpcCalls.find((call) => (
+      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'price_list_assignments'
+    ));
+    expect(assignmentsCall).toBeUndefined();
+  });
+
+  it('hydrates contact persons when list payload omits them', async () => {
+    const admin = createAdminStub();
+    const adapter = {
+      fetchContactById: async () => null,
+      fetchContactPersons: async () => ([
+        {
+          contact_person_id: 'CP-2',
+          first_name: 'Ravi',
+          last_name: 'Kumar',
+          email: 'ravi@example.com',
+        },
+      ]),
+      fetchUsers: async () => [],
+    };
+
+    await persistZohoEntityPage(
+      admin.client as never,
+      'tenant-1',
+      'user-1',
+      'integration-1',
+      'customers',
+      'zoho_books',
+      [
+        {
+          contact_id: 'CUST-4',
+          company_name: 'Gamma Retail',
+        },
+      ],
+      adapter as never,
+    );
+
+    const buyerUsersCall = admin.rpcCalls.find((call) => (
+      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'buyer_users'
+    ));
+    const buyerUserRow = (buyerUsersCall?.args.p_rows as Array<Record<string, unknown>>)[0];
+    expect(buyerUserRow?.first_name).toBe('Ravi');
+    expect(buyerUserRow?.last_name).toBe('Kumar');
+  });
+
+  it('omits attributes_override when updating an existing product', async () => {
+    const admin = createAdminStub({
+      tableRows: {
+        tenant_products: [
+          {
+            id: 'product-existing',
+            tenant_id: 'tenant-1',
+            external_ref: 'ITEM-9',
+            internal_sku: 'ITEM-9',
+            deleted_at: null,
+            attributes_override: { colour: 'red' },
+          },
+        ],
+        tenant_brands: [
+          {
+            id: 'brand-1',
+            tenant_id: 'tenant-1',
+            external_ref: 'zoho_brand:acme',
+            display_name_override: 'Acme',
+            slug: 'acme',
+            deleted_at: null,
+          },
+        ],
+      },
+    });
+
+    await persistZohoEntityPage(
+      admin.client as never,
+      'tenant-1',
+      'user-1',
+      'integration-1',
+      'products',
+      'zoho_books',
+      [
+        {
+          item_id: 'ITEM-9',
+          name: 'Updated Switch',
+          brand: 'Acme',
+          sku: 'ITEM-9',
+        },
+      ],
+    );
+
+    const productsCall = admin.rpcCalls.find((call) => (
+      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'tenant_products'
+    ));
+    const productRow = (productsCall?.args.p_rows as Array<Record<string, unknown>>)[0];
+    expect(productRow?.id).toBe('product-existing');
+    expect(productRow?.attributes_override).toBeUndefined();
+  });
+
+  it('persists estimate_url, financials, and buyer-app flag from detail payload', async () => {
+    const admin = createAdminStub({
+      fieldMappings: [
+        {
+          tenant_integration_id: 'integration-1',
+          entity_type: 'estimates',
+          is_active: true,
+          zoho_field_name: 'cf_catalog_estimate',
+          target_column: 'is_buyer_app_estimate',
+          transform_type: 'boolean_from_zoho',
+        },
+      ],
+    });
+
+    await persistZohoEntityPage(
+      admin.client as never,
+      'tenant-1',
+      'user-actor',
+      'integration-1',
+      'estimates',
+      'zoho_books',
+      [
+        {
+          estimate_id: 'EST-DETAIL',
+          estimate_number: 'EST-2026-0099',
+          status: 'sent',
+          date: '2026-06-25',
+          sub_total: 1000,
+          tax_total: 180,
+          place_of_supply: 'Maharashtra',
+          estimate_url: 'https://books.zoho.in/portal/estimate/EST-DETAIL',
+          custom_fields: [
+            { api_name: 'cf_catalog_estimate', value: 'yes' },
+          ],
+          line_items: [],
+        },
+      ],
+    );
+
+    const persistCall = admin.rpcCalls.find((call) => (
+      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'estimates'
+    ));
+    const row = (persistCall?.args.p_rows as Array<Record<string, unknown>>)[0];
+    expect(row?.estimate_url).toBe('https://books.zoho.in/portal/estimate/EST-DETAIL');
+    expect(row?.subtotal).toBe(1000);
+    expect(row?.tax_amount).toBe(180);
+    expect(row?.place_of_supply).toBe('Maharashtra');
+    expect(row?.is_buyer_app_estimate).toBe(true);
+    expect(row?.created_by).toBe('user-actor');
+  });
+
+  it('resolves salesperson_id to a tenant user for transactional imports', async () => {
+    const admin = createAdminStub({
+      tenantUsers: [{ user_id: 'seller-user-1', tenant_id: 'tenant-1', is_active: true }],
+      authUsers: [{ id: 'seller-user-1', email: 'seller@example.com' }],
+    });
+    const adapter = {
+      fetchUsers: async () => ([
+        { user_id: 'ZOHO-SP-1', email: 'seller@example.com' },
+      ]),
+    };
+
+    await persistZohoEntityPage(
+      admin.client as never,
+      'tenant-1',
+      'connected-user',
+      'integration-1',
+      'orders',
+      'zoho_books',
+      [
+        {
+          salesorder_id: 'SO-SP',
+          salesorder_number: 'SO-SP-1',
+          status: 'open',
+          date: '2026-06-25',
+          salesperson_id: 'ZOHO-SP-1',
+          line_items: [],
+        },
+      ],
+      adapter as never,
+    );
+
+    const persistCall = admin.rpcCalls.find((call) => (
+      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'orders'
+    ));
+    const row = (persistCall?.args.p_rows as Array<Record<string, unknown>>)[0];
+    expect(row?.created_by).toBe('seller-user-1');
+    expect(row?.updated_by).toBe('seller-user-1');
   });
 });

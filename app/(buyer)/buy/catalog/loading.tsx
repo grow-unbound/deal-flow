@@ -48,10 +48,15 @@ export default function CatalogLoading() {
           <div className="mb-3 h-5 w-24 animate-pulse rounded bg-cream-200" />
           <div className="grid grid-cols-3 gap-2">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="flex flex-col gap-2 rounded-lg px-2 py-3 shadow-sm">
-                <div className="aspect-square animate-pulse rounded-md bg-cream-100" />
-                <div className="mx-auto h-3 w-12 animate-pulse rounded bg-cream-200" />
-                <div className="mx-auto h-2.5 w-16 animate-pulse rounded bg-cream-200" />
+              <div
+                key={i}
+                className="overflow-hidden rounded-xl border border-cream-200 bg-[var(--bg-surface)] shadow-[0_1px_3px_rgba(34,30,26,0.06),0_4px_12px_rgba(34,30,26,0.05)]"
+              >
+                <div className="aspect-square animate-pulse bg-cream-100" />
+                <div className="bg-cream-50 px-3 pb-3 pt-2.5">
+                  <div className="h-3.5 w-20 animate-pulse rounded bg-cream-200" />
+                  <div className="mt-1.5 h-3 w-14 animate-pulse rounded bg-cream-200" />
+                </div>
               </div>
             ))}
           </div>

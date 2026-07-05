@@ -21,7 +21,7 @@ export function CatalogPageHeader({
   onSelectCatalog,
 }: CatalogPageHeaderProps) {
   return (
-    <div className="bg-[var(--bg-surface)] border-b border-[var(--border-1)] px-4 py-3">
+    <div className="border-b border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-3" style={{ backgroundColor: 'var(--bg-surface)' }}>
       {catalogs.length > 1 && onSelectCatalog ? (
         <label className="mb-2 block">
           <span className="mb-1 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--fg-3)]">

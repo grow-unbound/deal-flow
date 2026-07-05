@@ -6,6 +6,7 @@ import {
   jsonResponse,
   loadIntegrationCredentials,
   loadTenantIntegration,
+  resolveSyncImportActorId,
   updatePhaseJob,
 } from '../_shared/sync-utils.ts';
 import { createZohoAdapter } from '../_shared/integrations-zoho.ts';
@@ -19,6 +20,7 @@ interface SyncLineItemRequest {
   job_id?: string | null;
   page_from?: number | null;
   batch_size?: number | null;
+  since?: string | null;
 }
 
 interface LocalTransactionRow {
@@ -64,12 +66,13 @@ async function parseRequest(req: Request): Promise<SyncLineItemRequest> {
     job_id: typeof body.job_id === 'string' ? body.job_id : null,
     page_from: typeof body.page_from === 'number' ? body.page_from : null,
     batch_size: typeof body.batch_size === 'number' ? body.batch_size : null,
+    since: typeof body.since === 'string' ? body.since : null,
   };
 }
 
 async function createLineItemJob(
   admin: AdminClient,
-  opts: { tenantId: string; tenantIntegrationId: string },
+  opts: { tenantId: string; tenantIntegrationId: string; sinceDate?: string | null },
 ): Promise<string> {
   const { data, error } = await admin
     .schema('app')
@@ -81,12 +84,34 @@ async function createLineItemJob(
       phase: PHASE,
       status: 'pending',
       progress: {},
+      since_date: opts.sinceDate ?? null,
     })
     .select('id')
     .single();
 
   if (error) throw new Error(`Unable to create transaction line-item job: ${error.message}`);
   return data.id as string;
+}
+
+async function loadLineItemJob(
+  admin: AdminClient,
+  jobId: string,
+): Promise<{ id: string; since_date: string | null }> {
+  const { data, error } = await admin
+    .schema('app')
+    .from('integration_sync_jobs')
+    .select('id, since_date')
+    .eq('id', jobId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (error) throw new Error(`Unable to load transaction line-item job: ${error.message}`);
+  if (!data) throw new Error('Transaction line-item job not found');
+
+  return {
+    id: String(data.id),
+    since_date: typeof data.since_date === 'string' ? data.since_date : null,
+  };
 }
 
 async function setIntegrationStatus(
@@ -101,8 +126,14 @@ async function setIntegrationStatus(
     .eq('id', integrationId);
 }
 
-async function countRows(admin: AdminClient, table: TransactionKind, tenantId: string): Promise<number> {
-  const { count, error } = await admin
+async function countRows(
+  admin: AdminClient,
+  table: TransactionKind,
+  tenantId: string,
+  sinceDate: string | null,
+): Promise<number> {
+  const dateColumn = getDocumentDateColumn(table);
+  const query = admin
     .schema('app')
     .from(table)
     .select('id', { count: 'exact', head: true })
@@ -110,8 +141,25 @@ async function countRows(admin: AdminClient, table: TransactionKind, tenantId: s
     .not('external_ref', 'is', null)
     .is('deleted_at', null);
 
+  if (sinceDate) {
+    query.gte(dateColumn, sinceDate);
+  }
+
+  const { count, error } = await query;
+
   if (error) throw new Error(`Unable to count ${table}: ${error.message}`);
   return count ?? 0;
+}
+
+function getDocumentDateColumn(kind: TransactionKind): string {
+  switch (kind) {
+    case 'estimates':
+      return 'estimate_date';
+    case 'orders':
+      return 'placed_at';
+    case 'invoices':
+      return 'invoice_date';
+  }
 }
 
 async function loadRowsForKind(
@@ -120,17 +168,25 @@ async function loadRowsForKind(
   tenantId: string,
   offset: number,
   limit: number,
+  sinceDate: string | null,
 ): Promise<LocalTransactionRow[]> {
   if (limit <= 0) return [];
 
-  const { data, error } = await admin
+  const dateColumn = getDocumentDateColumn(table);
+  const query = admin
     .schema('app')
     .from(table)
     .select('id, external_ref')
     .eq('tenant_id', tenantId)
     .not('external_ref', 'is', null)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: true })
+    .is('deleted_at', null);
+
+  if (sinceDate) {
+    query.gte(dateColumn, sinceDate);
+  }
+
+  const { data, error } = await query
+    .order(dateColumn, { ascending: true })
     .order('id', { ascending: true })
     .range(offset, offset + limit - 1);
 
@@ -150,11 +206,12 @@ async function loadTransactionBatch(
   tenantId: string,
   page: number,
   batchSize: number,
+  sinceDate: string | null,
 ): Promise<{ rows: LocalTransactionRow[]; total: number; counts: Record<TransactionKind, number> }> {
   const counts = {
-    estimates: await countRows(admin, 'estimates', tenantId),
-    orders: await countRows(admin, 'orders', tenantId),
-    invoices: await countRows(admin, 'invoices', tenantId),
+    estimates: await countRows(admin, 'estimates', tenantId, sinceDate),
+    orders: await countRows(admin, 'orders', tenantId, sinceDate),
+    invoices: await countRows(admin, 'invoices', tenantId, sinceDate),
   };
   const total = counts.estimates + counts.orders + counts.invoices;
   let remainingOffset = (page - 1) * batchSize;
@@ -168,7 +225,7 @@ async function loadTransactionBatch(
       continue;
     }
 
-    const kindRows = await loadRowsForKind(admin, kind, tenantId, remainingOffset, remainingLimit);
+    const kindRows = await loadRowsForKind(admin, kind, tenantId, remainingOffset, remainingLimit, sinceDate);
     rows.push(...kindRows);
     remainingLimit -= kindRows.length;
     remainingOffset = 0;
@@ -243,7 +300,10 @@ Deno.serve(async (req: Request) => {
     jobId = input.job_id ?? await createLineItemJob(admin, {
       tenantId: integration.tenant_id,
       tenantIntegrationId: integration.id,
+      sinceDate: input.since ?? null,
     });
+    const job = await loadLineItemJob(admin, jobId);
+    const sinceDate = input.since ?? job.since_date;
 
     const page = normalizePositiveInt(input.page_from, 1);
     const batchSize = Math.min(normalizePositiveInt(input.batch_size, DEFAULT_BATCH_SIZE), 100);
@@ -272,7 +332,7 @@ Deno.serve(async (req: Request) => {
       }),
     });
 
-    const batch = await loadTransactionBatch(admin, integration.tenant_id, page, batchSize);
+    const batch = await loadTransactionBatch(admin, integration.tenant_id, page, batchSize, sinceDate);
     const recordsByKind: Record<TransactionKind, Record<string, unknown>[]> = {
       estimates: [],
       orders: [],
@@ -303,12 +363,13 @@ Deno.serve(async (req: Request) => {
     }
 
     let persisted = 0;
+    const importActorId = resolveSyncImportActorId(integration);
     for (const kind of KIND_ORDER) {
       if (recordsByKind[kind].length === 0) continue;
       const result = await persistZohoEntityPage(
         admin,
         integration.tenant_id,
-        null,
+        importActorId,
         integration.id,
         kind,
         zohoTypeId,
@@ -369,7 +430,7 @@ Deno.serve(async (req: Request) => {
       completed_at: completedAt,
       progress,
       summary: {
-        since: null,
+        since: sinceDate,
         phases_completed: [PHASE],
         counts: progress.counts as Record<string, unknown>,
         last_synced_at: completedAt,

@@ -138,6 +138,23 @@ export interface WarehouseDetailInventoryItem {
   is_idle: boolean;
 }
 
+export interface WarehouseInventoryTrendWeek {
+  week_label: string;
+  week_start: string;
+  tracked_skus: number;
+  sellable_units: number;
+  low_stock_skus: number;
+  stockout_skus: number;
+}
+
+export interface WarehouseStockPageResponse {
+  items: WarehouseDetailInventoryItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  has_more: boolean;
+}
+
 export interface WarehouseDetailResponse {
   id: string;
   name: string;
@@ -159,6 +176,7 @@ export interface WarehouseDetailResponse {
   associated_users: WarehouseAssociatedUser[];
   created_at: string;
   updated_at: string;
+  tracked_skus_count: number;
   meta_strip: {
     tracked_skus: number;
     sellable_units: number;
@@ -184,6 +202,7 @@ export interface WarehouseDetailResponse {
       is_default: boolean;
       linked_location_name: string | null;
     };
+    inventory_trend: WarehouseInventoryTrendWeek[];
     idle_stock: Array<{
       tenant_product_id: string;
       product_name: string;
@@ -200,5 +219,4 @@ export interface WarehouseDetailResponse {
       updated_at: string;
     }>;
   };
-  stock: WarehouseDetailInventoryItem[];
 }

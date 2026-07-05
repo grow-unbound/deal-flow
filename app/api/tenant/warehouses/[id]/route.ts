@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { getVerifiedClaims } from '@/lib/auth';
-import { loadWarehouseDetail } from '@/lib/server/warehouse-data';
+import { loadWarehouseSummary } from '@/lib/server/warehouse-data';
 import { hydrateWarehouse } from '@/lib/server/warehouse-data';
 import { supabaseAdmin } from '@/lib/supabase';
 import { UpdateWarehouseInputSchema } from '@/types/tenant-warehouses';
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (!supabaseAdmin) return jsonError(500, 'Server configuration error', 'SERVER_ERROR');
 
     const db = supabaseAdmin as any;
-    const detail = await loadWarehouseDetail(db, claims.tenant_id, id);
+    const detail = await loadWarehouseSummary(db, claims.tenant_id, id);
     if (!detail) return jsonError(404, 'Warehouse not found', 'NOT_FOUND');
 
     return NextResponse.json(detail, { status: 200 });

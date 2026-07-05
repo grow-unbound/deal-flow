@@ -28,6 +28,7 @@ export function BuyerCatalogLandingHeader({
           'sticky top-0 z-[15] border-b border-[var(--border-1)] bg-[var(--bg-base)] transition-shadow',
           collapsed && 'shadow-sm',
         )}
+        style={{ backgroundColor: 'var(--bg-base)', isolation: 'isolate' }}
       >
         <div
           className={cn(

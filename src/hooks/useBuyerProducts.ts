@@ -84,9 +84,10 @@ export function useBuyerCatalogLandingData() {
   };
 }
 
-export function useBuyerCatalogList(mode: FilterMode, id: string) {
+export function useBuyerCatalogList(mode: FilterMode, id: string, search = '') {
+  const trimmedSearch = search.trim();
   return useInfiniteQuery<BuyerCatalogResponse>({
-    queryKey: ['buyer-catalog-list', mode, id],
+    queryKey: ['buyer-catalog-list', mode, id, trimmedSearch],
     queryFn: async ({ pageParam = 0 }) => {
       const params = new URLSearchParams({
         limit: String(PAGE_SIZE),
@@ -95,6 +96,7 @@ export function useBuyerCatalogList(mode: FilterMode, id: string) {
       if (mode === 'category') params.set('category_id', id);
       if (mode === 'brand') params.set('brand_id', id);
       if (mode === 'list') params.set('campaign_id', id);
+      if (trimmedSearch) params.set('search', trimmedSearch);
       return fetchJson<BuyerCatalogResponse>(`/api/buyer/catalog?${params.toString()}`);
     },
     initialPageParam: 0,

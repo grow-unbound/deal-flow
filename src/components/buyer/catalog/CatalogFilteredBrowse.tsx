@@ -6,8 +6,9 @@ import { BuyerEntityChipNav } from '@/components/buyer/catalog/BuyerEntityChipNa
 import { CampaignSummaryBlock } from '@/components/buyer/catalog/CampaignSummaryBlock';
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { LoadingSkeleton } from '@/components/buyer/catalog/LoadingSkeleton';
+import { BuyerCatalogSearchInput } from '@/components/buyer/layout/BuyerCatalogSearchInput';
 import { ErrorState } from '@/components/ui/empty-state';
-import { buildBuyerSearchHref } from '@/lib/buyer-routes';
+import { useDebounce } from '@/hooks/useDebounce';
 import {
   useBuyerBrands,
   useBuyerCatalogList,
@@ -25,17 +26,13 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
   const [campaignTitle, setCampaignTitle] = React.useState('Catalog');
   const [campaignTitleResolved, setCampaignTitleResolved] = React.useState(false);
   const [retryNonce, setRetryNonce] = React.useState(0);
+  const [search, setSearch] = React.useState('');
+  const debouncedSearch = useDebounce(search, 300);
 
   const categoriesQuery = useBuyerCategories();
   const brandsQuery = useBuyerBrands();
 
-  const searchHref = React.useMemo(() => {
-    if (mode === 'category') return buildBuyerSearchHref({ category_id: id });
-    if (mode === 'brand') return buildBuyerSearchHref({ brand_id: id });
-    return buildBuyerSearchHref({ campaign_id: id });
-  }, [mode, id]);
-
-  const listQuery = useBuyerCatalogList(mode, id);
+  const listQuery = useBuyerCatalogList(mode, id, debouncedSearch);
   const pages = listQuery.data?.pages ?? [];
   const items = React.useMemo(() => pages.flatMap((page) => page.items ?? []), [pages]);
   const hasMore = pages.at(-1)?.has_more ?? false;
@@ -87,7 +84,18 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
 
   return (
     <div className="flex min-h-[50vh] flex-col pb-8">
-      <BuyerDetailShell title={title} searchHref={searchHref} stickyToolbar={stickyToolbar}>
+      <BuyerDetailShell
+        title={title}
+        hideSearch
+        headerSearch={
+          <BuyerCatalogSearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder={`Search ${mode === 'brand' ? 'products in this brand' : 'products in this category'}`}
+          />
+        }
+        stickyToolbar={stickyToolbar}
+      >
         {loading ? (
           <LoadingSkeleton count={6} />
         ) : error ? (
