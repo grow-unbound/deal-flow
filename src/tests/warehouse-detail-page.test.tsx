@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 
 const useWarehouseDetailMock = vi.fn();
 const useWarehouseReferenceMock = vi.fn();
+const useWarehouseStockMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -11,6 +12,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/hooks/useWarehouses', () => ({
   useWarehouseDetail: () => useWarehouseDetailMock(),
   useWarehouseReference: () => useWarehouseReferenceMock(),
+  useWarehouseStock: () => useWarehouseStockMock(),
 }));
 
 vi.mock('@/hooks/useRouteSnapshot', () => ({
@@ -26,6 +28,12 @@ import { WarehouseDetailPage } from '@/components/seller/warehouses/detail/Wareh
 describe('warehouse detail page', () => {
   it('renders the standard details tabs and edit CTA', () => {
     useWarehouseReferenceMock.mockReturnValue({ data: null });
+    useWarehouseStockMock.mockReturnValue({
+      data: { pages: [{ items: [], total: 0, page: 1, page_size: 50, has_more: false }] },
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
     useWarehouseDetailMock.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -47,6 +55,7 @@ describe('warehouse detail page', () => {
         associated_users: [],
         created_at: '2026-07-01T10:00:00.000Z',
         updated_at: '2026-07-05T10:00:00.000Z',
+        tracked_skus_count: 14,
         meta_strip: {
           tracked_skus: 14,
           sellable_units: 120,
@@ -72,10 +81,10 @@ describe('warehouse detail page', () => {
             is_default: true,
             linked_location_name: 'Mumbai Branch',
           },
+          inventory_trend: [],
           idle_stock: [],
           recent_replenishment: [],
         },
-        stock: [],
       },
     });
 

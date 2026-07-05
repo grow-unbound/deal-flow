@@ -30,13 +30,15 @@ BEGIN
         'tenant_integration_id', ti.id,
         'job_id', j.id,
         'page_from', (j.progress->'next_cursor'->>'page')::int,
-        'batch_size', COALESCE((j.progress->'next_cursor'->>'per_page')::int, 25)
+        'batch_size', COALESCE((j.progress->'next_cursor'->>'per_page')::int, 25),
+        'since', j.since_date
       )
       ELSE jsonb_build_object(
         'tenant_integration_id', ti.id,
         'job_type', 'incremental',
         'phase', j.phase,
-        'page_from', (j.progress->'next_cursor'->>'page')::int
+        'page_from', (j.progress->'next_cursor'->>'page')::int,
+        'since', j.since_date
       )
     END
   )

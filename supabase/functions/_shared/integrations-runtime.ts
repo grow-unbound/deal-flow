@@ -84,6 +84,7 @@ interface IntegrationSyncJobRow {
   tenant_id: string;
   tenant_integration_id: string;
   job_type: IntegrationJobType;
+  since_date: string | null;
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   progress: JsonRecord;
   error_log: JsonRecord | null;
@@ -841,7 +842,7 @@ async function loadSyncJob(
   const { data, error } = await admin
     .schema('app')
     .from('integration_sync_jobs')
-    .select('*')
+    .select('id, tenant_id, tenant_integration_id, job_type, since_date, status, progress, error_log, summary, started_at, completed_at, triggered_by, created_at, updated_at, created_by, updated_by, deleted_at, external_ref')
     .eq('id', jobId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -1248,7 +1249,8 @@ async function runWorkerJob(
     const plan = isZohoIntegrationTypeId(integration.integration_type_id)
       ? getZohoPhasePlan(integration.integration_type_id, scope)
       : [];
-    const progress = hydrateProgress(job.progress, scope, normalizeSince((job.progress as JsonRecord)?.since), plan);
+    const storedSince = normalizeSince((job.progress as JsonRecord)?.since) ?? normalizeSince(job.since_date);
+    const progress = hydrateProgress(job.progress, scope, storedSince, plan);
     return {
       jobId: job.id,
       status: 'noop',
@@ -1263,7 +1265,9 @@ async function runWorkerJob(
     : await loadTenantIntegrationSecret(admin, integration.id, integration.integration_type_id);
   const adapter = createAdapterForIntegration(integration, credentials);
   const scope = resolveScope(job.job_type, (payload.progress as JsonRecord | null)?.scope);
-  const since = normalizeSince((payload.progress as JsonRecord | null)?.since) ?? normalizeSince((job.progress as JsonRecord)?.since);
+  const since = normalizeSince((payload.progress as JsonRecord | null)?.since)
+    ?? normalizeSince((job.progress as JsonRecord)?.since)
+    ?? normalizeSince(job.since_date);
   const plan = getZohoPhasePlan(adapter.integrationTypeId, scope);
   let progress = hydrateProgress(payload.progress ?? job.progress, scope, since, plan);
   const maxPages = getProgressMaxPages(progress);

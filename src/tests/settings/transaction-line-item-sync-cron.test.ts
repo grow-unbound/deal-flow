@@ -12,12 +12,14 @@ describe('transaction line item sync cron migration', () => {
     expect(migrationSql).toContain("WHEN j.phase = 'transaction_line_items' THEN '/sync-transaction-line-items'");
     expect(migrationSql).toContain("'job_id', j.id");
     expect(migrationSql).toContain("'batch_size', COALESCE((j.progress->'next_cursor'->>'per_page')::int, 25)");
+    expect(migrationSql).toContain("'since', j.since_date");
   });
 
   it('keeps normal paused sync phases routed through the sync orchestrator', () => {
     expect(migrationSql).toContain("ELSE '/integrations-sync'");
     expect(migrationSql).toContain("'phase', j.phase");
     expect(migrationSql).toContain("'page_from', (j.progress->'next_cursor'->>'page')::int");
+    expect(migrationSql).toContain("'since', j.since_date");
   });
 
   it('defers initial transactional rebuilds until line items are hydrated', () => {

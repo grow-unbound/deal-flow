@@ -10,7 +10,7 @@ import {
 
 // Customers phase: fetches /contacts and persists:
 //   - app.buyers (one row per Zoho contact)
-//   - app.buyer_users (contact_persons, via adapter.fetchContactPersons inside persist layer)
+//   - app.buyer_users (contact_persons — embedded or fetched via /contactpersons)
 //   - app.price_list_assignments (pricebook_id on contact → buyer-level assignment)
 //
 // Must run AFTER sync-pricelists so pricebook FK exists when assignments are written.
