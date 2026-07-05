@@ -50,6 +50,7 @@ interface EstimateDbRow {
   accepted_at: string | null;
   expires_at: string | null;
   source: string | null;
+  is_buyer_app_estimate: boolean;
   campaign_id: string | null;
   place_of_supply: string | null;
   created_by: string | null;
@@ -186,7 +187,7 @@ export async function GET(req: NextRequest) {
       .schema('app')
       .from('estimates')
       .select(
-        'id, location_id, estimate_number, buyer_id, status, total_amount, created_at, sent_at, accepted_at, expires_at, source, campaign_id, place_of_supply, created_by, updated_at',
+        'id, location_id, estimate_number, buyer_id, status, total_amount, created_at, sent_at, accepted_at, expires_at, source, is_buyer_app_estimate, campaign_id, place_of_supply, created_by, updated_at',
       )
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
@@ -204,10 +205,17 @@ export async function GET(req: NextRequest) {
       baseEstimatesQuery = baseEstimatesQuery.ilike('estimate_number', `%${searchParam}%`);
     }
     if (sourceParams.length > 0) {
-      baseEstimatesQuery = baseEstimatesQuery.in(
-        'source',
-        sourceParams.map((value) => (value === 'Direct' ? 'seller' : 'buyer_app')),
-      );
+      // "Buyer App" / "Direct" are keyed off is_buyer_app_estimate (not raw
+      // `source`) so Zoho-imported buyer-app estimates (source = 'zoho_import',
+      // is_buyer_app_estimate = true from cf_catalog_estimate) still bucket
+      // correctly instead of falling outside both filter options.
+      const wantsBuyerApp = sourceParams.includes('Buyer App');
+      const wantsDirect = sourceParams.includes('Direct');
+      if (wantsBuyerApp && !wantsDirect) {
+        baseEstimatesQuery = baseEstimatesQuery.eq('is_buyer_app_estimate', true);
+      } else if (wantsDirect && !wantsBuyerApp) {
+        baseEstimatesQuery = baseEstimatesQuery.eq('is_buyer_app_estimate', false);
+      }
     }
     if (statusParams.length > 0) {
       baseEstimatesQuery = baseEstimatesQuery.in('status', estimateStatusesForFilters(statusParams));
@@ -317,7 +325,7 @@ export async function GET(req: NextRequest) {
     const creatorIds = Array.from(
       new Set(
         rawEstimates
-          .filter((row) => row.source === 'seller' && row.created_by)
+          .filter((row) => !row.is_buyer_app_estimate && row.created_by)
           .map((row) => row.created_by as string),
       ),
     );
@@ -375,7 +383,7 @@ export async function GET(req: NextRequest) {
       const buyerState = toText(geography?.state);
       const placeOfSupply = toText(row.place_of_supply) ?? buyerCity ?? buyerState ?? null;
       const meta = statusMeta(norm);
-      const source: 'buyer_app' | 'seller' = row.source === 'seller' ? 'seller' : 'buyer_app';
+      const source: 'buyer_app' | 'seller' = row.is_buyer_app_estimate ? 'buyer_app' : 'seller';
       const createdByLabel = source === 'seller' ? creatorMap.get(row.created_by ?? '') ?? 'Team member' : null;
       const catalogName = row.campaign_id ? catalogById.get(row.campaign_id) ?? null : null;
       const landing: EstimateLandingRow = {
@@ -480,7 +488,7 @@ export async function GET(req: NextRequest) {
 
     const buyerAppCreatedThisPeriod = openRows.filter(
       (n) =>
-        (n.row.source === 'buyer_app' || n.row.source === null) &&
+        n.row.is_buyer_app_estimate &&
         inPeriod(n.row.created_at, period.current_start, period.current_end_exclusive),
     ).length;
 

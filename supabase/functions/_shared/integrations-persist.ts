@@ -478,6 +478,79 @@ function extractCustomField(rec: Record<string, unknown>, apiName: string): stri
   return null;
 }
 
+// ── Generic Zoho custom field (cf_*) capture + tenant-configured mapping ────
+// See app.tenant_field_mappings (migration 20260705040222). Every cf_* field
+// on a Zoho record is captured into the row's `custom_fields` jsonb column
+// unconditionally; a tenant's active mapping rows additionally "promote" a
+// handful of those fields onto real typed columns used by app logic.
+
+function buildCustomFieldsJson(rec: Record<string, unknown>): Record<string, string | null> {
+  const fields = rec.custom_fields;
+  if (!Array.isArray(fields)) return {};
+  const out: Record<string, string | null> = {};
+  for (const f of fields) {
+    if (typeof f === 'object' && f !== null && !Array.isArray(f)) {
+      const field = f as Record<string, unknown>;
+      const apiName = asStr(field.api_name);
+      if (apiName) out[apiName] = asStr(field.value);
+    }
+  }
+  return out;
+}
+
+function coerceZohoBoolean(value: string | null): boolean | null {
+  if (value === null) return null;
+  const normalized = value.trim().toLowerCase();
+  if (['true', '1', 'yes'].includes(normalized)) return true;
+  if (['false', '0', 'no'].includes(normalized)) return false;
+  return null;
+}
+
+interface TenantFieldMappingRow {
+  zoho_field_name: string;
+  target_column: string;
+  transform_type: string;
+}
+
+type FieldMappingEntityType = 'customers' | 'estimates' | 'invoices';
+
+async function loadFieldMappings(
+  admin: AdminClient,
+  tenantIntegrationId: string,
+  entityType: FieldMappingEntityType,
+): Promise<TenantFieldMappingRow[]> {
+  const { data, error } = await admin
+    .schema('app')
+    .from('tenant_field_mappings')
+    .select('zoho_field_name, target_column, transform_type')
+    .eq('tenant_integration_id', tenantIntegrationId)
+    .eq('entity_type', entityType)
+    .eq('is_active', true);
+
+  if (error) throw new Error(`loadFieldMappings failed: ${error.message}`);
+  return (data ?? []) as TenantFieldMappingRow[];
+}
+
+function applyFieldMappings(
+  customFields: Record<string, string | null>,
+  mappings: TenantFieldMappingRow[],
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const mapping of mappings) {
+    if (!(mapping.zoho_field_name in customFields)) continue;
+    const raw = customFields[mapping.zoho_field_name];
+    if (mapping.transform_type === 'boolean_from_zoho') {
+      const bool = coerceZohoBoolean(raw);
+      if (bool !== null) out[mapping.target_column] = bool;
+    } else if (mapping.transform_type === 'copy') {
+      out[mapping.target_column] = raw;
+    }
+    // 'enum_map' reserved for future transform_config-driven lookups; no
+    // tenant uses it yet.
+  }
+  return out;
+}
+
 function normalizeZohoStrategy(value: unknown): string {
   const raw = asStr(value)?.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
   if (!raw) return 'per_item';
@@ -1299,6 +1372,7 @@ async function persistBuyers(
 ): Promise<PersistResult> {
   const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
   const buyerRows: Record<string, unknown>[] = [];
+  const customerFieldMappings = await loadFieldMappings(admin, integrationId, 'customers');
 
   for (const rec of records) {
     const externalId = asStr(rec.contact_id);
@@ -1322,6 +1396,8 @@ async function persistBuyers(
       };
     })();
 
+    const customFields = buildCustomFieldsJson(rec);
+
     const row = {
       tenant_id: tenantId,
       external_ref: externalId,
@@ -1337,6 +1413,8 @@ async function persistBuyers(
       payment_terms_days: asNum(rec.payment_terms) ?? asNum(rec.payment_terms_days),
       geography: geo,
       is_active: (asStr(rec.status) ?? 'active') === 'active',
+      custom_fields: customFields,
+      ...applyFieldMappings(customFields, customerFieldMappings),
       deleted_at: null,
       created_by: actorId,
       updated_by: actorId,
@@ -2307,6 +2385,7 @@ async function persistEstimates(
   zohoTypeId?: ZohoIntegrationTypeId,
 ): Promise<PersistResult> {
   const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
+  const estimateFieldMappings = await loadFieldMappings(admin, integrationId, 'estimates');
 
   const customerExternalIds = records
     .map((r) => asStr(r.customer_id))
@@ -2373,6 +2452,8 @@ async function persistEstimates(
       })),
     }));
 
+    const customFields = buildCustomFieldsJson(rec);
+
     parentRows.push({
       tenant_id: tenantId,
       external_ref: externalId,
@@ -2380,6 +2461,8 @@ async function persistEstimates(
       estimate_number: asStr(rec.estimate_number),
       status: asStr(rec.status) ?? 'draft',
       location_id: locationId,
+      custom_fields: customFields,
+      ...applyFieldMappings(customFields, estimateFieldMappings),
       currency: asStr(rec.currency) ?? asStr(rec.currency_code) ?? 'INR',
       subtotal: pickNumber(rec.sub_total, rec.subtotal),
       tax_amount: pickNumber(rec.tax_total, rec.tax_amount),
@@ -2785,6 +2868,7 @@ async function persistInvoices(
   zohoTypeId?: ZohoIntegrationTypeId,
 ): Promise<PersistResult> {
   const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
+  const invoiceFieldMappings = await loadFieldMappings(admin, integrationId, 'invoices');
 
   const customerExternalIds = records
     .map((r) => asStr(r.customer_id))
@@ -2865,6 +2949,7 @@ async function persistInvoices(
     const total = asNum(rec.total) ?? 0;
     const balance = asNum(rec.balance) ?? 0;
     const amountPaid = asNum(rec.payment_made) ?? (total - balance);
+    const customFields = buildCustomFieldsJson(rec);
 
     parentRows.push({
       tenant_id: tenantId,
@@ -2872,6 +2957,8 @@ async function persistInvoices(
       buyer_id: buyerId,
       location_id: locationId,
       order_id: orderId,
+      custom_fields: customFields,
+      ...applyFieldMappings(customFields, invoiceFieldMappings),
       invoice_number: asStr(rec.invoice_number) ?? externalId,
       invoice_date: invoiceDate,
       status: asStr(rec.status) ?? 'sent',

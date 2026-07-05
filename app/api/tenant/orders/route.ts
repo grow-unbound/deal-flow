@@ -54,6 +54,7 @@ interface OrderRow {
   buyer_id: string;
   status: string;
   source: string | null;
+  is_buyer_app_order: boolean;
   campaign_id: string | null;
   estimate_id: string | null;
   place_of_supply: string | null;
@@ -123,9 +124,9 @@ function sourceLabel(source: string | null): string {
   return '—';
 }
 
-function orderSourceCategory(order: Pick<OrderRow, 'source' | 'estimate_id'>): string {
+function orderSourceCategory(order: Pick<OrderRow, 'is_buyer_app_order' | 'estimate_id'>): string {
   if (order.estimate_id) return 'Converted Estimate';
-  if (order.source === 'buyer_app') return 'Buyer App';
+  if (order.is_buyer_app_order) return 'Buyer App';
   return 'Direct';
 }
 
@@ -165,7 +166,7 @@ export async function GET(req: NextRequest) {
       db
         .schema('app')
         .from('orders')
-        .select('id, order_number, buyer_id, location_id, status, source, campaign_id, estimate_id, place_of_supply, placed_by, subtotal, tax_amount, total_amount, placed_at, created_at')
+        .select('id, order_number, buyer_id, location_id, status, source, is_buyer_app_order, campaign_id, estimate_id, place_of_supply, placed_by, subtotal, tax_amount, total_amount, placed_at, created_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .gte('placed_at', period.current_start)
@@ -322,7 +323,7 @@ export async function GET(req: NextRequest) {
       const sourceLineSecondary =
         estimateNumber && estimateNumber.trim().length > 0 ? `Converted by ${actorLabel}` : actorLabel;
       const sourceCategory = orderSourceCategory(order);
-      const sourceKind = estimateNumber ? 'converted' : order.source === 'buyer_app' ? 'buyer_app' : 'direct';
+      const sourceKind = estimateNumber ? 'converted' : order.is_buyer_app_order ? 'buyer_app' : 'direct';
 
       return {
         id: order.id,

@@ -116,7 +116,7 @@ export async function GET(
     db
       .schema('app')
       .from('orders')
-      .select('id, order_number, buyer_id, location_id, total_amount, status, source, campaign_id, estimate_id, place_of_supply, placed_at, created_at')
+      .select('id, order_number, buyer_id, location_id, total_amount, status, source, is_buyer_app_order, campaign_id, estimate_id, place_of_supply, placed_at, created_at')
       .eq('tenant_id', claims.tenant_id)
       .eq('location_id', id)
       .not('status', 'in', '("cancelled","draft")')
@@ -155,7 +155,7 @@ export async function GET(
     db
       .schema('app')
       .from('estimates')
-      .select('id, estimate_number, buyer_id, location_id, status, source, campaign_id, place_of_supply, total_amount, estimate_date, created_at, expires_at')
+      .select('id, estimate_number, buyer_id, location_id, status, source, is_buyer_app_estimate, campaign_id, place_of_supply, total_amount, estimate_date, created_at, expires_at')
       .eq('tenant_id', claims.tenant_id)
       .eq('location_id', id)
       .is('deleted_at', null)
@@ -166,7 +166,7 @@ export async function GET(
     db
       .schema('app')
       .from('invoices')
-      .select('id, invoice_number, buyer_id, location_id, order_id, estimate_id, outstanding_balance, status, invoice_date, due_date, created_at, created_by, place_of_supply, total_amount')
+      .select('id, invoice_number, buyer_id, location_id, order_id, estimate_id, is_buyer_app_invoice, outstanding_balance, status, invoice_date, due_date, created_at, created_by, place_of_supply, total_amount')
       .eq('tenant_id', claims.tenant_id)
       .eq('location_id', id)
       .in('status', ['issued', 'partially_paid'])
@@ -192,6 +192,7 @@ export async function GET(
     total_amount: number;
     status: string;
     source: string | null;
+    is_buyer_app_order: boolean;
     campaign_id: string | null;
     estimate_id: string | null;
     place_of_supply: string | null;
@@ -377,6 +378,7 @@ export async function GET(
     buyer_id: string;
     total_amount: number;
     source: string | null;
+    is_buyer_app_order: boolean;
     campaign_id: string | null;
     estimate_id: string | null;
     place_of_supply: string | null;
@@ -431,8 +433,8 @@ export async function GET(
       buyer_name: buyerName,
       place_of_supply: o.place_of_supply?.trim() || null,
       location_name: location.name,
-      source_kind: o.estimate_id ? 'converted' : o.source === 'buyer_app' ? 'buyer_app' : 'direct',
-      source_label: o.estimate_id ? estimateNumberByIdForOrders.get(o.estimate_id) ?? null : o.source === 'buyer_app' ? 'Buyer App' : null,
+      source_kind: o.estimate_id ? 'converted' : o.is_buyer_app_order ? 'buyer_app' : 'direct',
+      source_label: o.estimate_id ? estimateNumberByIdForOrders.get(o.estimate_id) ?? null : o.is_buyer_app_order ? 'Buyer App' : null,
       campaign_name: o.campaign_id ? campaignById.get(o.campaign_id) ?? null : null,
       items_count: itemsCountByOrder.get(o.id) ?? 0,
       total_amount: Number(o.total_amount ?? 0),
@@ -447,6 +449,7 @@ export async function GET(
     location_id: string | null;
     status: string;
     source: string | null;
+    is_buyer_app_estimate: boolean;
     campaign_id: string | null;
     place_of_supply: string | null;
     total_amount: number;
@@ -461,6 +464,7 @@ export async function GET(
     location_id: string | null;
     order_id: string | null;
     estimate_id: string | null;
+    is_buyer_app_invoice: boolean;
     outstanding_balance: number | null;
     status: string;
     invoice_date: string;
@@ -585,8 +589,8 @@ export async function GET(
       buyer_name: buyerMap.get(order.buyer_id)?.business_name ?? 'Unknown',
       place_of_supply: order.place_of_supply?.trim() || null,
       location_name: location.name,
-      source_kind: order.estimate_id ? 'converted' : order.source === 'buyer_app' ? 'buyer_app' : 'direct',
-      source_label: order.estimate_id ? estimateNumberById.get(order.estimate_id) ?? null : order.source === 'buyer_app' ? 'Buyer App' : null,
+      source_kind: order.estimate_id ? 'converted' : order.is_buyer_app_order ? 'buyer_app' : 'direct',
+      source_label: order.estimate_id ? estimateNumberById.get(order.estimate_id) ?? null : order.is_buyer_app_order ? 'Buyer App' : null,
       campaign_name: order.campaign_id ? campaignById.get(order.campaign_id) ?? null : null,
       items_count: itemsCountByOrder.get(order.id) ?? 0,
       total_amount: Number(order.total_amount ?? 0),
@@ -599,8 +603,8 @@ export async function GET(
       buyer_name: buyerMap.get(estimate.buyer_id)?.business_name ?? 'Unknown',
       place_of_supply: estimate.place_of_supply?.trim() || null,
       location_name: location.name,
-      source_kind: estimate.source === 'buyer_app' ? 'buyer_app' : 'seller',
-      source_label: estimate.source === 'buyer_app' ? 'Buyer App' : null,
+      source_kind: estimate.is_buyer_app_estimate ? 'buyer_app' : 'seller',
+      source_label: estimate.is_buyer_app_estimate ? 'Buyer App' : null,
       campaign_name: estimate.campaign_id ? campaignById.get(estimate.campaign_id) ?? null : null,
       items_count: estimateItemsCountById.get(estimate.id) ?? 0,
       total_amount: Number(estimate.total_amount ?? 0),
@@ -610,7 +614,7 @@ export async function GET(
     invoices: locationInvoices.map((invoice) => {
       const linkedOrder = invoice.order_id ? currentOrders.find((order) => order.id === invoice.order_id) ?? null : null;
       const linkedEstimate = invoice.estimate_id ? locationEstimates.find((estimate) => estimate.id === invoice.estimate_id) ?? null : null;
-      const sourceKind = linkedOrder?.source === 'buyer_app'
+      const sourceKind = invoice.is_buyer_app_invoice
         ? 'buyer_app'
         : linkedOrder || linkedEstimate
           ? 'converted'

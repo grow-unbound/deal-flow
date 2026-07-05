@@ -42,6 +42,7 @@ interface InvoiceDbRow {
   buyer_id: string;
   order_id: string | null;
   estimate_id: string | null;
+  is_buyer_app_invoice: boolean;
   status: string;
   total_amount: number;
   outstanding_balance: number | null;
@@ -206,7 +207,7 @@ export async function GET(request: NextRequest) {
             .schema('app')
             .from('invoices')
             .select(
-              'id, location_id, invoice_number, buyer_id, order_id, estimate_id, status, total_amount, outstanding_balance, invoice_date, due_date, paid_at, place_of_supply, created_by, created_at',
+              'id, location_id, invoice_number, buyer_id, order_id, estimate_id, is_buyer_app_invoice, status, total_amount, outstanding_balance, invoice_date, due_date, paid_at, place_of_supply, created_by, created_at',
             )
             .eq('tenant_id', tenantId)
             .is('deleted_at', null)
@@ -322,7 +323,7 @@ export async function GET(request: NextRequest) {
       const createdByLabel = creatorMap.get(row.created_by ?? '') ?? 'Team member';
       const linked = buildLinked(row, orderById, estimateById);
       const linkedOrder = row.order_id ? orderById.get(row.order_id) : null;
-      const sourceKind = linked.type === 'direct' ? 'direct' : linkedOrder?.source === 'buyer_app' ? 'buyer_app' : 'converted';
+      const sourceKind = linked.type === 'direct' ? 'direct' : row.is_buyer_app_invoice ? 'buyer_app' : 'converted';
       const sourceLabel = sourceKind === 'buyer_app' ? 'Buyer App' : linked.label;
       const sourceDetail = linked.type === 'direct' ? `Created by ${createdByLabel}` : `Converted by ${createdByLabel}`;
       const campaignId = linkedOrder?.campaign_id ?? (row.estimate_id ? estimateById.get(row.estimate_id)?.campaign_id ?? null : null);

@@ -1,4 +1,5 @@
 import type { CohortRules } from '@/lib/zod';
+import { fetchAllRows } from '@/lib/server/fetch-all-rows';
 
 type DbClient = {
   schema: (name: 'app' | 'catalog') => {
@@ -181,6 +182,11 @@ function buildOptionCounts(values: Array<string | null | undefined>) {
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 
+function logComposerQueryError(label: string, error: { code?: string; message?: string } | null | undefined) {
+  if (!error) return;
+  console.error(`[cohort-composer] ${label}`, error.code ?? 'unknown', error.message ?? 'unknown error');
+}
+
 export function deriveLastOrderBucket(lastOrderAt: string | null, now = new Date()) {
   if (!lastOrderAt) return 'dormant_90_plus_days' as const;
   const diffMs = now.getTime() - new Date(lastOrderAt).getTime();
@@ -300,15 +306,19 @@ export function resolveBuyerIdsForRules(
 }
 
 export async function getCohortComposerPayload(db: DbClient, tenantId: string): Promise<CohortComposerPayload> {
-  const [buyersRes, brandsRes] = await Promise.all([
-    db
-      .schema('app')
-      .from('buyers')
-      .select('id, business_name, contact_name, geography, tier, payment_terms_days, credit_limit, external_ref')
-      .eq('tenant_id', tenantId)
-      .eq('is_active', true)
-      .is('deleted_at', null)
-      .order('business_name', { ascending: true }),
+  const [buyerRows, brandsRes] = await Promise.all([
+    fetchAllRows<BuyerDbRow>((from, to) =>
+      db
+        .schema('app')
+        .from('buyers')
+        .select('id, business_name, contact_name, geography, tier, payment_terms_days, credit_limit, external_ref')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .order('business_name', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to),
+    ),
     db
       .schema('app')
       .from('tenant_brands')
@@ -319,7 +329,6 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
       .order('created_at', { ascending: true }),
   ]);
 
-  if (buyersRes.error) throw buyersRes.error;
   if (brandsRes.error) throw brandsRes.error;
 
   const tenantBrands = (brandsRes.data ?? []) as Array<{
@@ -333,7 +342,9 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
   const masterBrandsRes = masterBrandIds.length > 0
     ? await db.schema('catalog').from('brands').select('id, name').in('id', masterBrandIds)
     : { data: [], error: null };
-  if (masterBrandsRes.error) throw masterBrandsRes.error;
+  if (masterBrandsRes.error) {
+    logComposerQueryError('master brands lookup failed', masterBrandsRes.error);
+  }
   const masterBrandMap = new Map(
     ((masterBrandsRes.data ?? []) as Array<{ id: string; name: string }>).map((brand) => [brand.id, brand.name]),
   );
@@ -342,7 +353,6 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
     label: brand.display_name_override ?? (brand.master_brand_id ? masterBrandMap.get(brand.master_brand_id) ?? 'Unnamed brand' : 'Unnamed brand'),
   }));
 
-  const buyerRows = (buyersRes.data ?? []) as BuyerDbRow[];
   const buyerIds = buyerRows.map((buyer) => buyer.id);
   if (buyerIds.length === 0) {
     return {
@@ -359,6 +369,7 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
 
   const { currentStartIso, nextStartIso } = getIstMonthBounds();
   const ninetyDaysAgoIso = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  const buyerIdSet = new Set(buyerIds);
 
   const [allOrdersRes, mtdOrdersRes, invoicesRes] = await Promise.all([
     db
@@ -366,7 +377,6 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
       .from('orders')
       .select('buyer_id, total_amount, placed_at, status')
       .eq('tenant_id', tenantId)
-      .in('buyer_id', buyerIds)
       .is('deleted_at', null)
       .neq('status', 'cancelled')
       .gte('placed_at', ninetyDaysAgoIso) // limit to 90-day window (only gmv_90d is shown)
@@ -376,7 +386,6 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
       .from('orders')
       .select('buyer_id, total_amount, placed_at, status')
       .eq('tenant_id', tenantId)
-      .in('buyer_id', buyerIds)
       .is('deleted_at', null)
       .neq('status', 'cancelled')
       .gte('placed_at', currentStartIso)
@@ -387,13 +396,14 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
       .select('buyer_id, outstanding_balance')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
-      .in('buyer_id', buyerIds)
       .in('status', ['sent', 'overdue']),
   ]);
 
   if (allOrdersRes.error) throw allOrdersRes.error;
   if (mtdOrdersRes.error) throw mtdOrdersRes.error;
-  if (invoicesRes.error && !isInvoiceTableMissing(invoicesRes.error)) throw invoicesRes.error;
+  if (invoicesRes.error && !isInvoiceTableMissing(invoicesRes.error)) {
+    logComposerQueryError('invoice lookup failed', invoicesRes.error);
+  }
 
   const allOrders = (allOrdersRes.data ?? []) as OrderDbRow[];
   const mtdOrders = (mtdOrdersRes.data ?? []) as OrderDbRow[];
@@ -406,6 +416,7 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
   const creditUsedByBuyer = new Map<string, number>();
 
   for (const order of allOrders) {
+    if (!buyerIdSet.has(order.buyer_id)) continue;
     if (order.placed_at && !lastOrderByBuyer.has(order.buyer_id)) {
       lastOrderByBuyer.set(order.buyer_id, order.placed_at);
     }
@@ -415,11 +426,13 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
   }
 
   for (const order of mtdOrders) {
+    if (!buyerIdSet.has(order.buyer_id)) continue;
     mtdSpendByBuyer.set(order.buyer_id, (mtdSpendByBuyer.get(order.buyer_id) ?? 0) + Number(order.total_amount ?? 0));
     ordersMtdByBuyer.set(order.buyer_id, (ordersMtdByBuyer.get(order.buyer_id) ?? 0) + 1);
   }
 
   for (const invoice of invoices) {
+    if (!buyerIdSet.has(invoice.buyer_id)) continue;
     creditUsedByBuyer.set(invoice.buyer_id, (creditUsedByBuyer.get(invoice.buyer_id) ?? 0) + Number(invoice.outstanding_balance ?? 0));
   }
 

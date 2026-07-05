@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
         .from('orders')
         .select('buyer_id, total_amount, placed_at')
         .eq('tenant_id', tenantId)
-        .eq('source', 'buyer_app')
+        .eq('is_buyer_app_order', true)
         .gte('placed_at', ninetyDaysAgo)
         .is('deleted_at', null),
       db
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
         .from('orders')
         .select('buyer_id, total_amount')
         .eq('tenant_id', tenantId)
-        .neq('source', 'buyer_app')
+        .eq('is_buyer_app_order', false)
         .gte('placed_at', ninetyDaysAgo)
         .is('deleted_at', null),
     ]);

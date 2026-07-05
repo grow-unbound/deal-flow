@@ -76,7 +76,8 @@ export default function WhatsappConsentPage() {
             className="mt-0.5 h-4 w-4 shrink-0 rounded border-cream-400 text-teal-600 focus:ring-teal-400/30"
           />
           <span className="text-body-sm text-cream-800">
-            I agree to receive WhatsApp communication from {sellerName}, including order updates and marketing messages. You can opt out anytime by replying STOP.
+            I agree to receive WhatsApp communication from {sellerName}, including order updates and marketing messages. 
+            You can opt out anytime by replying STOP.
           </span>
         </label>
 

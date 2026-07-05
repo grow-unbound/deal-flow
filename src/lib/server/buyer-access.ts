@@ -456,7 +456,7 @@ export async function requireBuyerAccessProfile(request: NextRequest): Promise<B
       .eq('id', context.buyer_id)
       .eq('tenant_id', context.tenant_id)
       .eq('is_active', true)
-      .eq('buyer_app_enabled', true)
+      .or('buyer_app_enabled.eq.true,buyer_app_enabled.is.null')
       .is('deleted_at', null)
       .maybeSingle(),
     tenantPromise,

@@ -41,6 +41,7 @@ import type { IntegrationSettingsPayload } from '@/types/integrations';
 
 import { ConnectedIntegrationCard } from './ConnectedIntegrationCard';
 import { IntegrationPickerDialog } from './IntegrationPickerDialog';
+import type { SyncConfirmOptions } from './SyncWindowDialog';
 import { IntegrationsSettingsContentSkeleton } from './IntegrationsSettingsSkeleton';
 
 type WizardState = {
@@ -282,21 +283,22 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
     setStopSyncDialogIntegration(null);
   }
 
-  async function runSyncNowIntegration(integration: IntegrationCatalogItem, since?: string) {
+  async function runSyncNowIntegration(integration: IntegrationCatalogItem, options: SyncConfirmOptions) {
     const tenantIntegrationId = integration.tenant_integration?.id;
     if (!tenantIntegrationId) return;
     setSyncingPhaseTarget(null);
     try {
       await syncNowIntegration({
         tenant_integration_id: tenantIntegrationId,
-        ...(since ? { since } : {}),
+        ...(options.since ? { since: options.since } : {}),
+        force_full_refresh: options.forceFullRefresh,
       });
     } finally {
       setSyncingPhaseTarget((current) => (current === null ? null : current));
     }
   }
 
-  async function runSyncPhaseIntegration(integration: IntegrationCatalogItem, phase: string, since?: string) {
+  async function runSyncPhaseIntegration(integration: IntegrationCatalogItem, phase: string, options: SyncConfirmOptions) {
     const tenantIntegrationId = integration.tenant_integration?.id;
     if (!tenantIntegrationId) return;
     setSyncingPhaseTarget(phase);
@@ -304,7 +306,8 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
       await syncNowIntegration({
         tenant_integration_id: tenantIntegrationId,
         phase,
-        ...(since ? { since } : {}),
+        ...(options.since ? { since: options.since } : {}),
+        force_full_refresh: options.forceFullRefresh,
       });
     } finally {
       setSyncingPhaseTarget((current) => (current === phase ? null : current));

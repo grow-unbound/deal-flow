@@ -236,7 +236,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     scopeByAccessibleLocations(db
       .schema('app')
       .from('orders')
-      .select('id, order_number, buyer_id, status, source, total_amount, placed_at, created_at, campaign_id, location_id, estimate_id, place_of_supply')
+      .select('id, order_number, buyer_id, status, source, is_buyer_app_order, total_amount, placed_at, created_at, campaign_id, location_id, estimate_id, place_of_supply')
       .eq('tenant_id', claims.tenant_id)
       .eq('buyer_id', id)
       .is('deleted_at', null)
@@ -378,7 +378,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const tenantBrandById = new Map<string, string>(tenantBrands.map((row: any) => [String(row.id), String(row.master_brand_id)]));
   const masterBrandById = new Map<string, string>(((masterBrandsRes.error ? [] : masterBrandsRes.data) ?? []).map((row: any) => [String(row.id), String(row.name)]));
 
-  const invoices = await optionalSelect(db, 'invoices', 'id, invoice_number, invoice_date, created_at, status, outstanding_balance, total_amount, location_id, order_id, estimate_id, place_of_supply, due_date', claims.tenant_id, id);
+  const invoices = await optionalSelect(db, 'invoices', 'id, invoice_number, invoice_date, created_at, status, outstanding_balance, total_amount, location_id, order_id, estimate_id, is_buyer_app_invoice, place_of_supply, due_date', claims.tenant_id, id);
   const payments = await optionalSelect(db, 'payments', 'id, paid_at, created_at, amount, status, mode', claims.tenant_id, id);
   const creditNotes = await optionalSelect(db, 'credit_notes', 'id, issued_at, created_at, amount, reason, status', claims.tenant_id, id);
   const catalogViews = await optionalSelect(db, 'catalog_views', 'id, viewed_at, created_at, campaign_id', claims.tenant_id, id);
@@ -390,7 +390,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     db
       .schema('app')
       .from('estimates')
-      .select('id, estimate_number, estimate_date, created_at, status, total_amount, location_id, campaign_id, source, place_of_supply, expires_at')
+      .select('id, estimate_number, estimate_date, created_at, status, total_amount, location_id, campaign_id, source, is_buyer_app_estimate, place_of_supply, expires_at')
       .eq('tenant_id', claims.tenant_id)
       .eq('buyer_id', id)
       .is('deleted_at', null)
@@ -1001,12 +1001,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           : buyer.geography?.city ?? null,
         source_kind: order.estimate_id
           ? 'converted'
-          : order.source === 'buyer_app'
+          : order.is_buyer_app_order
             ? 'buyer_app'
             : 'direct',
         source_label: order.estimate_id
           ? (visibleEstimates.find((estimate: any) => estimate.id === order.estimate_id)?.estimate_number ?? null)
-          : order.source === 'buyer_app'
+          : order.is_buyer_app_order
             ? 'Buyer App'
             : null,
         campaign_name: order.campaign_id ? catalogById.get(order.campaign_id) ?? null : null,
@@ -1025,8 +1025,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         place_of_supply: typeof estimate.place_of_supply === 'string' && estimate.place_of_supply.trim().length > 0
           ? estimate.place_of_supply.trim()
           : buyer.geography?.city ?? null,
-        source_kind: estimate.source === 'buyer_app' ? 'buyer_app' : 'seller',
-        source_label: estimate.source === 'buyer_app' ? 'Buyer App' : null,
+        source_kind: estimate.is_buyer_app_estimate ? 'buyer_app' : 'seller',
+        source_label: estimate.is_buyer_app_estimate ? 'Buyer App' : null,
         campaign_name: estimate.campaign_id ? catalogById.get(estimate.campaign_id) ?? null : null,
         issued_at: estimate.estimate_date ?? estimate.created_at,
         expires_at: estimate.expires_at ?? null,
@@ -1045,10 +1045,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           ? invoice.place_of_supply.trim()
           : buyer.geography?.city ?? null,
         source_kind: invoice.order_id
-          ? (visibleOrders.find((order: any) => order.id === invoice.order_id)?.source === 'buyer_app' ? 'buyer_app' : 'converted')
+          ? (invoice.is_buyer_app_invoice ? 'buyer_app' : 'converted')
           : 'direct',
         source_label: invoice.order_id
-          ? (visibleOrders.find((order: any) => order.id === invoice.order_id)?.source === 'buyer_app'
+          ? (invoice.is_buyer_app_invoice
             ? 'Buyer App'
             : visibleOrders.find((order: any) => order.id === invoice.order_id)?.order_number ?? null)
           : null,
