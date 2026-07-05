@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
 import { createProductQueryEmbedding } from '@/lib/server/product-search';
+import { SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<GlobalSearchRe
 
   const q = req.nextUrl.searchParams.get('q')?.trim() ?? '';
   if (!q) {
-    return NextResponse.json({ groups: [], total: 0 });
+    return NextResponse.json({ groups: [], total: 0 }, { headers: SELLER_CACHE_REFERENCE });
   }
 
   const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? '5'), 10);
@@ -83,5 +84,5 @@ export async function GET(req: NextRequest): Promise<NextResponse<GlobalSearchRe
     .map((t) => ({ entity_type: t, items: map.get(t)! }));
 
   const total = rows.length;
-  return NextResponse.json({ groups, total });
+  return NextResponse.json({ groups, total }, { headers: SELLER_CACHE_REFERENCE });
 }

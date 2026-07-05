@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -180,8 +181,14 @@ export function GeneralSettingsForm({
             <div className="flex flex-col gap-4 border-b border-cream-200 pb-5 sm:flex-row sm:items-start">
               <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-[14px] border-2 border-dashed border-cream-400 bg-cream-50">
                 {logoUrls[0] ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={logoUrls[0]} alt="Company logo" className="h-full w-full object-cover" />
+                  <Image
+                    src={logoUrls[0]}
+                    alt="Company logo"
+                    fill
+                    sizes="72px"
+                    unoptimized
+                    className="object-cover"
+                  />
                 ) : (
                   <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-cream-500">
                     <span className="text-sm">No logo</span>

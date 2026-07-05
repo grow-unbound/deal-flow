@@ -1,4 +1,5 @@
 import * as React from 'react';
+import Image from 'next/image';
 import { Package, MoreHorizontal } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -48,12 +49,15 @@ function ProductCard({ product, selected, onSelect, onMenuClick, className }: Pr
       )}
 
       {/* Image */}
-      <div className="aspect-[4/3] bg-cream-100 flex items-center justify-center overflow-hidden">
+      <div className="relative aspect-[4/3] bg-cream-100 flex items-center justify-center overflow-hidden">
         {product.imageUrl ? (
-          <img
+          <Image
             src={product.imageUrl}
             alt={product.name}
-            className="w-full h-full object-cover"
+            fill
+            sizes="(max-width: 768px) 50vw, 260px"
+            unoptimized
+            className="object-cover"
           />
         ) : (
           <Package className="h-10 w-10 text-cream-400" />

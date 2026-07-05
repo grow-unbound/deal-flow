@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedClaims } from '@/lib/auth';
+import { SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
 import { supabaseAdmin } from '@/lib/supabase';
 import { CreateCategoryInputSchema } from '@/types/tenant-categories';
 
@@ -59,7 +60,7 @@ export async function GET(req: NextRequest) {
       },
     );
 
-    return NextResponse.json({ data: { categories }, error: null }, { status: 200 });
+    return NextResponse.json({ data: { categories }, error: null }, { status: 200, headers: SELLER_CACHE_REFERENCE });
   } catch {
     return jsonError(401, 'Unauthorized', 'UNAUTHORIZED');
   }

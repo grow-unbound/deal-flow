@@ -148,14 +148,13 @@ export function BuyerSearchPageClient() {
           aria-label="Search"
         />
       </header>
-      <p className="px-4 pt-2 text-xs text-[var(--fg-3)]">
-        Scope: <span className="font-medium text-[var(--fg-2)]">{scope}</span>
-      </p>
       <div className="flex-1 px-0 pt-2">
         {loading ? (
           <div className="px-4 py-8 text-center text-sm text-[var(--fg-3)]">Searching…</div>
         ) : error ? (
           <div className="px-4 py-8 text-center text-sm text-[var(--danger-500)]">Could not load results.</div>
+        ) : shownItems.length === 0 && !debounced ? (
+          <div className="px-4 py-8 text-center text-sm text-[var(--fg-3)]">Type to search products</div>
         ) : shownItems.length === 0 ? (
           <div className="px-4 py-8 text-center text-sm text-[var(--fg-3)]">No matches. Try another term.</div>
         ) : (

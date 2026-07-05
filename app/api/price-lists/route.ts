@@ -7,6 +7,8 @@ import { getAuthUserEmailMap } from '@/lib/server/auth-user-directory';
 import { readArrayParam } from '@/lib/landing-filter-params';
 import { formatStrategySummary } from '@/lib/price-list-strategy';
 import { PriceListComposerPayloadSchema, type PriceListFilterState } from '@/lib/zod';
+import { PAGE_SIZE } from '@/lib/pagination';
+import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 
 type LandingStatus = 'active' | 'draft' | 'expired';
 type LandingStatusTone = 'success' | 'warning' | 'neutral';
@@ -128,9 +130,7 @@ async function ensureTenantProducts(
 export async function GET(request: NextRequest) {
   const timer = createTimer();
   const timedJson = (body: unknown, init?: ResponseInit) => {
-    const response = NextResponse.json(body, init);
-    response.headers.set('Server-Timing', timer.header('price_lists_api'));
-    return response;
+    return jsonWithServerTiming(body, timer, 'price_lists_api', init, APP_GET_CACHE_CONTROL);
   };
   const claims = await getVerifiedClaims(request);
 
@@ -156,6 +156,7 @@ export async function GET(request: NextRequest) {
   const withinSevenDaysTs = nowTs + 7 * 24 * 60 * 60 * 1000;
   const search = request.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '';
   const statusFilter = readArrayParam(request.nextUrl.searchParams, 'status');
+  const limit = parseRowsLimit(request.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabaseAdmin as any;
@@ -168,7 +169,7 @@ export async function GET(request: NextRequest) {
       .eq('tenant_id', claims.tenant_id)
       .is('deleted_at', null)
       .order('updated_at', { ascending: false })
-      .limit(500), // safety cap — this route has no pagination UI yet, fetches the full list
+      .limit(limit + 1),
     db
       .schema('app')
       .from('tenant_products')
@@ -180,7 +181,8 @@ export async function GET(request: NextRequest) {
       .from('cohorts')
       .select('id, name')
       .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null),
+      .is('deleted_at', null)
+      .limit(PAGE_SIZE.MAX),
   ]);
 
   if (
@@ -434,7 +436,9 @@ export async function GET(request: NextRequest) {
         member_count: cohort.member_count,
       })),
     },
-      price_lists: filteredRows,
+      price_lists: filteredRows.slice(0, limit),
+    total: filteredRows.length,
+    nextCursor: null,
     cohorts_total: cohorts.length,
     counts: {
       active: activeLists.length,

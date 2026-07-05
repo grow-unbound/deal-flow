@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
+import { SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(req: NextRequest) {
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
     const excludeId = req.nextUrl.searchParams.get('exclude_id')?.trim() || null;
 
     if (!internalSku) {
-      return NextResponse.json({ available: true, duplicate: false, product: null });
+      return NextResponse.json({ available: true, duplicate: false, product: null }, { headers: SELLER_CACHE_REFERENCE });
     }
 
     const db = supabaseAdmin as any;
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest) {
       available: !duplicate,
       duplicate,
       product: data ?? null,
-    });
+    }, { headers: SELLER_CACHE_REFERENCE });
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

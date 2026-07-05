@@ -3,6 +3,8 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
+import { PAGE_SIZE } from '@/lib/pagination';
+import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { CatalogComposerPayloadSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
 import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
 
@@ -192,9 +194,7 @@ async function ensureTenantPriceList(db: any, tenantId: string, priceListId: str
 export async function GET(req: NextRequest) {
   const timer = createTimer();
   const timedJson = (body: unknown, init?: ResponseInit) => {
-    const response = NextResponse.json(body, init);
-    response.headers.set('Server-Timing', timer.header('catalogs_api'));
-    return response;
+    return jsonWithServerTiming(body, timer, 'catalogs_api', init, APP_GET_CACHE_CONTROL);
   };
 
   try {
@@ -217,7 +217,7 @@ export async function GET(req: NextRequest) {
     const now = new Date();
     const nowTs = now.getTime();
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'), now);
-    const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? '200'), 500);
+    const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
 
     const [catalogsRes, ordersRes, prevOrdersRes, cohortsRes] = await Promise.all([
       db

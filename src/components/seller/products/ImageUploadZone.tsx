@@ -51,6 +51,7 @@ function SortableImageItem({ id, url, index, onRemove }: SortableImageItemProps)
       className="relative flex-shrink-0 w-20 h-20 rounded-md shadow-xs overflow-hidden group border border-cream-200"
     >
       {/* Thumbnail image */}
+      {/* seller-image-raw-exempt: transient local object/blob previews are rendered before upload. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={url} alt={`Product image ${index + 1}`} className="w-full h-full object-cover" />
 

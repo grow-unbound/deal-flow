@@ -2,19 +2,18 @@
 
 import * as React from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Heart, Minus, Package, Plus, ShoppingCart } from 'lucide-react';
-import { apiFetch } from '@/lib/api-fetch';
+import { ChevronDown, ChevronUp, Minus, Package, Plus } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
-import { markBuyerNavigationBack, markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
+import { markBuyerNavigationBack } from '@/hooks/useBuyerNavigationDirection';
 import { useCart } from '@/contexts/BuyerCartContext';
-import { StockBadge } from '@/components/buyer/catalog/StockBadge';
 import { RecoSection } from '@/components/buyer/catalog/RecoSection';
-import { BuyerLocationControl } from '@/components/buyer/layout/BuyerLocationControl';
+import { ProductDetailLoadingSkeleton } from '@/components/buyer/catalog/ProductDetailLoadingSkeleton';
+import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { buildBuyerSearchHref } from '@/lib/buyer-routes';
+import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
+import { useBuyerProductDetail } from '@/hooks/useBuyerProducts';
 import type { BuyerCatalogItem } from '@/types/buyer';
-import type { BuyerProductPageRecos } from '@/lib/buyer-home-types';
 
 interface BuyerProductDetailClientProps {
   tenantProductId: string;
@@ -22,58 +21,23 @@ interface BuyerProductDetailClientProps {
 
 export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetailClientProps): React.ReactNode {
   const router = useRouter();
-  const { addItem, items: cartItems } = useCart();
-  const [item, setItem] = React.useState<BuyerCatalogItem | null>(null);
-  const [brandItems, setBrandItems] = React.useState<BuyerCatalogItem[]>([]);
-  const [recos, setRecos] = React.useState<BuyerProductPageRecos>({ co_order: [], co_buyer: [], same_category: [] });
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState(false);
+  const { addItem, updateQty, items: cartItems } = useCart();
+  const { item, brandItems, recos, isLoading: loading, isError: error } = useBuyerProductDetail(tenantProductId);
   const [imgError, setImgError] = React.useState(false);
-  const [qty, setQty] = React.useState(1);
-  const [wishlisted, setWishlisted] = React.useState(false);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(false);
-    // Fetch product + recommendations in parallel; recos are non-critical
-    const recoFetch = apiFetch(`/api/buyer/recommendations?product_id=${encodeURIComponent(tenantProductId)}`)
-      .then((r) => r.json() as Promise<BuyerProductPageRecos>)
-      .then((data) => { if (!cancelled) setRecos(data); })
-      .catch(() => { /* recos are non-critical — silent fail */ });
-
-    apiFetch(`/api/buyer/catalog?tenant_product_id=${encodeURIComponent(tenantProductId)}&limit=1&offset=0`)
-      .then((r) => r.json() as Promise<{ items?: BuyerCatalogItem[] }>)
-      .then((data) => {
-        if (cancelled) return;
-        const first = data.items?.[0] ?? null;
-        setItem(first);
-        if (!first) {
-          setError(true);
-          return;
-        }
-        if (first.brand_id) {
-          return apiFetch(`/api/buyer/catalog?brand_id=${encodeURIComponent(first.brand_id)}&limit=8&offset=0`)
-            .then((r) => r.json() as Promise<{ items?: BuyerCatalogItem[] }>)
-            .then((bd) => {
-              if (!cancelled) {
-                setBrandItems((bd.items ?? []).filter((i) => i.tenant_product_id !== tenantProductId).slice(0, 6));
-              }
-            });
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    void recoFetch;
-    return () => { cancelled = true; };
-  }, [tenantProductId]);
+  const [brandImgError, setBrandImgError] = React.useState(false);
+  const [detailsOpen, setDetailsOpen] = React.useState(true);
 
   const cartLine = item ? cartItems.find((i) => i.tenant_product_id === item.tenant_product_id) : undefined;
+
+  const similarProducts = React.useMemo(() => {
+    const map = new Map<string, BuyerCatalogItem>();
+    for (const candidate of [...recos.co_buyer, ...brandItems]) {
+      if (candidate.tenant_product_id !== tenantProductId) {
+        map.set(candidate.tenant_product_id, candidate);
+      }
+    }
+    return Array.from(map.values()).slice(0, 12);
+  }, [recos.co_buyer, brandItems, tenantProductId]);
 
   function handleBack(): void {
     markBuyerNavigationBack();
@@ -82,7 +46,6 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
 
   function handleAddToCart(): void {
     if (!item) return;
-    const q = Math.max(1, qty);
     addItem({
       tenant_product_id: item.tenant_product_id,
       name: item.display_name,
@@ -92,327 +55,256 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
       unit_price: item.price,
       gst_rate: item.gst_rate ?? null,
       unit: item.default_uom ?? undefined,
-      quantity: q,
-      line_total: item.price * q,
+      quantity: 1,
+      line_total: item.price,
       tenant_category_id: item.category_id ?? undefined,
     });
-    setQty(1);
   }
 
-  const firstImage = !imgError && item && item.image_urls.length > 0 ? item.image_urls[0] : null;
+  function handleDecrement(): void {
+    if (!item || !cartLine) return;
+    updateQty(item.tenant_product_id, cartLine.quantity - 1);
+  }
+
+  function handleIncrement(): void {
+    if (!item || !cartLine) return;
+    updateQty(item.tenant_product_id, cartLine.quantity + 1);
+  }
+
   const searchHref = item
     ? buildBuyerSearchHref({
-        q: item.display_name,
         category_id: item.category_id ?? undefined,
         brand_id: item.brand_id ?? undefined,
       })
-    : '/buy/search';
-
-  const savePct =
-    item && item.mrp > 0 && item.mrp > item.price
-      ? Math.round(((item.mrp - item.price) / item.mrp) * 100)
-      : 0;
+    : buildBuyerSearchHref({});
 
   if (loading) {
-    return (
-      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-2 px-4 py-12 text-sm" style={{ color: 'var(--fg-3)' }}>
-        Loading product…
-      </div>
-    );
+    return <ProductDetailLoadingSkeleton />;
   }
 
   if (error || !item) {
     return (
-      <div className="flex flex-col gap-4 px-4 py-8">
-        <p className="text-sm" style={{ color: 'var(--fg-2)' }}>Product not found or unavailable.</p>
-        <button
-          type="button"
-          onClick={handleBack}
-          className="w-fit rounded-full border px-4 py-2 text-sm font-semibold"
-          style={{ borderColor: 'var(--border-1)', color: 'var(--fg-2)' }}
-        >
-          Go back
-        </button>
+      <div className="flex min-h-[50vh] flex-col" style={{ background: 'var(--bg-base)' }}>
+        <BuyerDetailShell title="Product" searchHref={buildBuyerSearchHref({})}>
+          <div className="flex flex-col gap-4 px-4 py-8">
+            <p className="text-sm" style={{ color: 'var(--fg-2)' }}>Product not found or unavailable.</p>
+            <button
+              type="button"
+              onClick={handleBack}
+              className="w-fit rounded-full border px-4 py-2 text-sm font-semibold"
+              style={{ borderColor: 'var(--border-1)', color: 'var(--fg-2)' }}
+            >
+              Go back
+            </button>
+          </div>
+        </BuyerDetailShell>
       </div>
     );
   }
 
+  const firstImage = !imgError && item.image_urls.length > 0 ? item.image_urls[0] : null;
+  const brandLogo = !brandImgError && item.brand_logo_url ? item.brand_logo_url : null;
+  const metaParts = [item.internal_sku, item.category_name].filter(Boolean);
+  const stockLabel =
+    item.stock_status === 'out_of_stock'
+      ? '0 units'
+      : item.on_hand > 0
+        ? `${item.on_hand} units`
+        : item.stock_status === 'limited'
+          ? 'Limited'
+          : 'Available';
+  const taxLabel = item.gst_rate != null ? `${item.gst_rate}% GST` : '—';
+  const showStockOverlay = item.stock_status === 'limited' || item.stock_status === 'out_of_stock';
+
   return (
     <div className="flex min-h-[50vh] flex-col pb-28" style={{ background: 'var(--bg-base)' }}>
-      {/* Sticky header */}
-      <header
-        className="sticky top-0 z-20 flex items-center gap-2 px-3 py-2"
-        style={{
-          background: 'rgba(253,251,247,0.95)',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          borderBottom: '1px solid var(--border-1)',
-        }}
-      >
-        <button
-          type="button"
-          onClick={handleBack}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-none border-0 bg-transparent p-0 text-[var(--fg-2)]"
-          aria-label="Back"
+      <BuyerDetailShell title="Product" searchHref={searchHref}>
+        {/* Hero image */}
+        <div
+          className="relative -mx-3 w-[calc(100%+1.5rem)] bg-[var(--bg-surface)]"
+          style={{ paddingTop: '69%' }}
         >
-          <ChevronLeft className="h-5 w-5" />
-        </button>
-        <span className="min-w-0 flex-1 truncate font-semibold" style={{ fontSize: 'var(--b-text-header)', fontFamily: 'var(--font-display)', color: 'var(--fg-1)' }}>
-          Product
-        </span>
-        <BuyerLocationControl />
-        <Link
-          href={searchHref}
-          onClick={() => markBuyerNavigationForward()}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
-          style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface)', color: 'var(--fg-2)' }}
-          aria-label="Search"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-        </Link>
-      </header>
-
-      {/* Hero image — 1.45:1 aspect ratio */}
-      <div className="relative w-full" style={{ paddingTop: '69%', background: 'var(--bg-recessed)' }}>
-        {firstImage ? (
-          <Image
-            src={firstImage}
-            alt={item.display_name}
-            fill
-            className="object-contain p-6"
-            sizes="100vw"
-            onError={() => setImgError(true)}
-            unoptimized
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Package className="h-16 w-16" style={{ color: 'var(--fg-3)' }} />
+          <div className="absolute inset-0">
+            {firstImage ? (
+              <Image
+                src={firstImage}
+                alt={item.display_name}
+                fill
+                className="object-contain p-6"
+                sizes="100vw"
+                onError={() => setImgError(true)}
+                unoptimized
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <Package className="h-16 w-16" style={{ color: 'var(--fg-3)' }} />
+              </div>
+            )}
+            {brandLogo ? (
+              <div className="absolute left-3 top-3 z-[2] flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-white/90 p-1 shadow-sm">
+                <Image
+                  src={brandLogo}
+                  alt={item.brand_name ?? 'Brand'}
+                  width={32}
+                  height={32}
+                  className="object-contain"
+                  onError={() => setBrandImgError(true)}
+                  unoptimized
+                />
+              </div>
+            ) : null}
+            {showStockOverlay ? (
+              <ProductHeroStockLabel
+                status={item.stock_status === 'limited' ? 'limited' : 'out_of_stock'}
+              />
+            ) : null}
           </div>
-        )}
-        {/* Heart wishlist button */}
-        <button
-          type="button"
-          onClick={() => setWishlisted((v) => !v)}
-          className="absolute top-3 right-3 flex items-center justify-center w-8 h-8 rounded-full"
-          style={{ background: 'rgba(255,255,255,0.9)', boxShadow: '0 1px 4px rgba(0,0,0,0.12)' }}
-          aria-label={wishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
-        >
-          <Heart
-            className="w-4 h-4"
-            style={{ color: wishlisted ? '#dc2626' : 'var(--cream-500)', fill: wishlisted ? '#dc2626' : 'none' }}
-          />
-        </button>
-      </div>
+        </div>
 
-      {/* Product info */}
-      <div className="space-y-4 px-4 py-4">
-        {item.brand_name && (
-          <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--fg-3)' }}>
-            {item.brand_name}
-          </p>
-        )}
-        <h1 className="text-xl font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--fg-1)' }}>
-          {item.display_name}
-        </h1>
-        {item.internal_sku && (
-          <p className="text-xs" style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
-            {item.internal_sku}
-          </p>
-        )}
-
-        {/* Price row */}
-        <div className="flex flex-wrap items-baseline gap-2">
-          <span className="text-xl font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-1)' }}>
-            {formatCurrency(item.price)}
-          </span>
-          {item.has_campaign_price && item.resolved_price != null ? (
-            <span className="text-sm line-through" style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-3)' }}>
-              {formatCurrency(item.resolved_price)}
-            </span>
+        {/* Title block */}
+        <div className="space-y-2 px-4 py-4">
+          {item.brand_name ? (
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--fg-3)' }}>
+              {item.brand_name}
+            </p>
           ) : null}
-          {item.mrp > 0 && item.mrp > item.price && (
-            <span className="text-sm line-through" style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-3)' }}>
-              {formatCurrency(item.mrp)}
-            </span>
-          )}
-          {savePct > 0 && (
-            <span
-              className="text-xs font-bold px-2 py-0.5 rounded-full"
-              style={{ background: '#F5E1D3', color: '#874720' }}
-            >
-              Save {savePct}%
-            </span>
-          )}
-        </div>
-
-        {item.has_campaign_price && item.campaign_valid_until ? (
-          <p className="text-sm text-amber-700">
-            Valid until {new Date(item.campaign_valid_until).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-          </p>
-        ) : null}
-
-        <StockBadge status={item.stock_status} />
-
-        {/* Attributes 2×2 mini grid */}
-        <div className="grid grid-cols-2 gap-2">
-          <AttrCard label="Pack size" value={item.pack_size ? `${item.pack_size} units` : '—'} />
-          <AttrCard label="Min order" value={item.default_uom ? `1 ${item.default_uom}` : '1 unit'} />
-          <AttrCard
-            label="In stock"
-            value={item.stock_status === 'out_of_stock' ? 'Out of stock' : item.stock_status === 'limited' ? 'Limited' : 'Available'}
-          />
-          <AttrCard label="Delivery" value="2–3 working days" />
-        </div>
-
-        {/* Spec list */}
-        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-1)' }}>
-          {item.category_name && <SpecRow label="Category" value={item.category_name} />}
-          {item.default_uom && <SpecRow label="Unit" value={item.default_uom} />}
-          {item.pack_size && <SpecRow label="Pack size" value={String(item.pack_size)} />}
-          <SpecRow label="SKU" value={item.internal_sku} mono />
-          {item.campaign_name && <SpecRow label="Campaign" value={item.campaign_name} />}
-        </div>
-      </div>
-
-      {/* W2 — Frequently Bought Together */}
-      <RecoSection
-        title="Frequently Bought Together"
-        widget="co_order"
-        items={recos.co_order}
-        sourceProductId={tenantProductId}
-      />
-
-      {/* W3 — People Also Bought */}
-      <RecoSection
-        title="People Also Bought"
-        widget="co_buyer"
-        items={recos.co_buyer}
-        sourceProductId={tenantProductId}
-      />
-
-      {/* More from brand carousel */}
-      {brandItems.length > 0 && (
-        <div className="px-4 pb-4">
-          <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--cream-500)' }}>
-            More from {item.brand_name ?? 'brand'}
+          <h2 className="text-xl font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--fg-1)' }}>
+            {item.display_name}
           </h2>
-          <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 scrollbar-none">
-            {brandItems.map((b) => (
-              <Link
-                key={b.tenant_product_id}
-                href={`/buy/product/${b.tenant_product_id}`}
-                onClick={() => markBuyerNavigationForward()}
-                className="shrink-0 rounded-xl no-underline"
-                style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)', width: 120 }}
-              >
-                <div
-                  className="rounded-t-xl overflow-hidden relative"
-                  style={{ paddingTop: '72%', background: 'var(--cream-100)' }}
-                >
-                  {b.image_urls[0] ? (
-                    <Image
-                      src={b.image_urls[0]}
-                      alt={b.display_name}
-                      fill
-                      className="object-contain p-2"
-                      sizes="120px"
-                      unoptimized
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Package className="w-6 h-6" style={{ color: 'var(--cream-400)' }} />
-                    </div>
-                  )}
-                </div>
-                <div className="px-2 py-2">
-                  <p className="text-xs font-medium leading-tight line-clamp-2" style={{ color: 'var(--fg-1)' }}>
-                    {b.display_name}
-                  </p>
-                  <p className="text-xs mt-1 font-semibold" style={{ color: 'var(--fg-1)', fontFamily: 'var(--font-mono)' }}>
-                    {formatCurrency(b.price)}
-                  </p>
-                </div>
-              </Link>
-            ))}
-          </div>
+          {metaParts.length > 0 ? (
+            <p className="text-sm" style={{ color: 'var(--fg-3)' }}>
+              {metaParts.join(' · ')}
+            </p>
+          ) : null}
+          <p className="text-xl font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-1)' }}>
+            {formatCurrency(item.price)}
+          </p>
+          {item.has_campaign_price && item.campaign_valid_until ? (
+            <p className="text-sm text-amber-700">
+              Valid until{' '}
+              {new Date(item.campaign_valid_until).toLocaleDateString('en-IN', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+              })}
+            </p>
+          ) : null}
         </div>
-      )}
 
-      {/* W5 — More from this Category */}
-      <RecoSection
-        title="More from this Category"
-        widget="same_category"
-        items={recos.same_category}
-        sourceProductId={tenantProductId}
-      />
+        {/* Product Details accordion */}
+        <div className="px-4 pb-4">
+          <button
+            type="button"
+            onClick={() => setDetailsOpen((open) => !open)}
+            className="flex w-full items-center justify-between py-2 text-left"
+            aria-expanded={detailsOpen}
+          >
+            <span className="text-base font-semibold" style={{ color: 'var(--fg-1)' }}>
+              Product Details
+            </span>
+            {detailsOpen ? (
+              <ChevronUp className="h-5 w-5 shrink-0" style={{ color: 'var(--fg-3)' }} />
+            ) : (
+              <ChevronDown className="h-5 w-5 shrink-0" style={{ color: 'var(--fg-3)' }} />
+            )}
+          </button>
+          {detailsOpen ? (
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-1)' }}>
+              <SpecRow label="SKU" value={item.internal_sku} mono />
+              {item.brand_name ? <SpecRow label="Brand" value={item.brand_name} /> : null}
+              {item.category_name ? <SpecRow label="Category" value={item.category_name} /> : null}
+              <SpecRow label="Tax" value={taxLabel} />
+              <SpecRow label="Stock" value={stockLabel} isLast />
+            </div>
+          ) : null}
+        </div>
 
-      {/* Sticky footer — qty stepper + Add to cart */}
+        <RecoSection
+          title="Frequently Bought Together"
+          widget="co_order"
+          items={recos.co_order}
+          sourceProductId={tenantProductId}
+          titleVariant="detail"
+          alwaysShow
+        />
+
+        <RecoSection
+          title={item.category_name ? `More in ${item.category_name}` : 'More in this category'}
+          widget="same_category"
+          items={recos.same_category}
+          sourceProductId={tenantProductId}
+          titleVariant="detail"
+          alwaysShow
+        />
+
+        <RecoSection
+          title="Other similar products"
+          widget="similar_products"
+          items={similarProducts}
+          sourceProductId={tenantProductId}
+          titleVariant="detail"
+          alwaysShow
+        />
+      </BuyerDetailShell>
+
+      {/* Sticky footer — price + Add / qty stepper */}
       <div
-        className="fixed bottom-0 left-1/2 z-20 w-full px-4 py-3"
+        className="fixed bottom-0 left-1/2 z-20 w-full -translate-x-1/2 px-4 py-3"
         style={{
-          transform: 'translateX(-50%)',
-          maxWidth: 468,
-          paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom,0px))',
+          maxWidth: BUYER_PREVIEW_MAX_WIDTH,
+          paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))',
           background: 'rgba(253,251,247,0.96)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
           borderTop: '1px solid var(--border-1)',
         }}
       >
-        <div className="flex items-center gap-3">
-          <div
-            className="flex items-center rounded-xl overflow-hidden"
-            style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface)' }}
-          >
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-xl font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-1)' }}>
+            {formatCurrency(item.price)}
+          </span>
+          {cartLine ? (
+            <div
+              className="flex min-h-11 items-center overflow-hidden rounded-xl"
+              style={{ background: 'var(--teal-500)' }}
+            >
+              <button
+                type="button"
+                className="flex h-11 w-11 items-center justify-center text-white"
+                aria-label="Decrease quantity"
+                onClick={handleDecrement}
+              >
+                <Minus className="h-4 w-4" />
+              </button>
+              <span
+                className="min-w-[2rem] text-center text-sm font-semibold text-white"
+                style={{ fontFamily: 'var(--font-mono)' }}
+              >
+                {cartLine.quantity}
+              </span>
+              <button
+                type="button"
+                className="flex h-11 w-11 items-center justify-center text-white"
+                aria-label="Increase quantity"
+                onClick={handleIncrement}
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
             <button
               type="button"
-              className="flex h-11 w-11 items-center justify-center"
-              style={{ color: 'var(--fg-2)' }}
-              aria-label="Decrease quantity"
-              onClick={() => setQty((q) => Math.max(1, q - 1))}
+              disabled={item.stock_status === 'out_of_stock'}
+              onClick={handleAddToCart}
+              className={cn(
+                'flex min-h-11 min-w-[7rem] items-center justify-center gap-1.5 rounded-xl px-5 text-sm font-semibold text-white',
+                item.stock_status === 'out_of_stock' ? 'cursor-not-allowed opacity-50' : '',
+              )}
+              style={{ background: item.stock_status === 'out_of_stock' ? 'var(--fg-3)' : 'var(--teal-500)' }}
             >
-              <Minus className="h-4 w-4" />
+              <Plus className="h-4 w-4" aria-hidden />
+              Add
             </button>
-            <span
-              className="min-w-[2rem] text-center text-sm font-semibold"
-              style={{ color: 'var(--fg-1)', fontFamily: 'var(--font-mono)' }}
-            >
-              {qty}
-            </span>
-            <button
-              type="button"
-              className="flex h-11 w-11 items-center justify-center"
-              style={{ color: 'var(--fg-2)' }}
-              aria-label="Increase quantity"
-              onClick={() => setQty((q) => q + 1)}
-            >
-              <Plus className="h-4 w-4" />
-            </button>
-          </div>
-          <button
-            type="button"
-            disabled={item.stock_status === 'out_of_stock'}
-            onClick={handleAddToCart}
-            className={cn(
-              'flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl font-semibold text-white text-sm',
-              item.stock_status === 'out_of_stock' ? 'cursor-not-allowed opacity-50' : '',
-            )}
-            style={{ background: item.stock_status === 'out_of_stock' ? 'var(--fg-3)' : 'var(--teal-500)' }}
-          >
-            <ShoppingCart className="h-4 w-4" aria-hidden />
-            Add · {formatCurrency(item.price * qty)}
-          </button>
-          {cartLine && (
-            <Link
-              href="/buy/cart"
-              onClick={() => markBuyerNavigationForward()}
-              className="rounded-xl px-3 py-2 text-xs font-semibold no-underline"
-              style={{ border: '1px solid var(--border-1)', color: 'var(--fg-2)' }}
-            >
-              In cart ({cartLine.quantity})
-            </Link>
           )}
         </div>
       </div>
@@ -420,27 +312,38 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
   );
 }
 
-function AttrCard({ label, value }: { label: string; value: string }) {
+function ProductHeroStockLabel({ status }: { status: 'limited' | 'out_of_stock' }) {
+  const isLimited = status === 'limited';
   return (
-    <div
-      className="rounded-xl px-3 py-3"
-      style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}
+    <span
+      className={cn(
+        'absolute right-3 top-3 z-[2] rounded-full border px-3 py-1 font-semibold uppercase tracking-[0.08em] shadow-sm',
+        isLimited
+          ? 'border-[var(--warning-50)] bg-[var(--warning-50)] text-[var(--warning-500)]'
+          : 'border-[var(--danger-50)] bg-[var(--danger-50)] text-[var(--danger-500)]',
+      )}
+      style={{ fontSize: 'var(--b-text-label)' }}
     >
-      <p className="text-xs mb-0.5" style={{ color: 'var(--fg-3)' }}>
-        {label}
-      </p>
-      <p className="text-sm font-semibold" style={{ color: 'var(--fg-1)' }}>
-        {value}
-      </p>
-    </div>
+      {isLimited ? 'Low stock' : 'Out of stock'}
+    </span>
   );
 }
 
-function SpecRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function SpecRow({
+  label,
+  value,
+  mono,
+  isLast,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  isLast?: boolean;
+}) {
   return (
     <div
       className="flex items-center justify-between px-4 py-3"
-      style={{ borderBottom: '1px solid var(--border-1)' }}
+      style={{ borderBottom: isLast ? undefined : '1px solid var(--border-1)' }}
     >
       <span className="text-sm" style={{ color: 'var(--fg-3)' }}>
         {label}

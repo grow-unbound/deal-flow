@@ -3,6 +3,9 @@ import { z } from 'zod';
 export const WarehouseStatusSchema = z.enum(['active', 'inactive']);
 export type WarehouseStatus = z.infer<typeof WarehouseStatusSchema>;
 
+export const WarehouseStockStatusSchema = z.enum(['clear', 'low_stock', 'out_of_stock']);
+export type WarehouseStockStatus = z.infer<typeof WarehouseStockStatusSchema>;
+
 export const WarehouseAddressSchema = z.object({
   line1: z.string().max(500).default(''),
   line2: z.string().max(500).default('').optional(),
@@ -72,4 +75,130 @@ export interface TenantWarehouse {
     name: string;
     is_default: boolean;
   } | null;
+}
+
+export interface WarehousesLandingKpis {
+  active_warehouses: number;
+  tracked_skus: number;
+  low_stock_warehouses: number;
+  idle_stock_skus: number;
+}
+
+export interface WarehousesLandingRow {
+  id: string;
+  name: string;
+  initials: string;
+  city: string;
+  state: string;
+  linked_location_name: string | null;
+  status: WarehouseStatus;
+  is_default: boolean;
+  tracked_skus: number;
+  sellable_units: number;
+  low_stock_skus: number;
+  stockout_skus: number;
+  idle_stock_skus: number;
+  stock_status: WarehouseStockStatus;
+  last_updated: string;
+  associated_users_count: number;
+}
+
+export interface WarehousesLandingCalloutRow {
+  id: string;
+  name: string;
+  initials: string;
+  city: string;
+  value: number;
+  last_updated?: string;
+}
+
+export interface WarehousesLandingResponse {
+  kpis: WarehousesLandingKpis;
+  callouts: {
+    stock_attention: WarehousesLandingCalloutRow[];
+    idle_stock: WarehousesLandingCalloutRow[];
+    recently_replenished: WarehousesLandingCalloutRow[];
+  };
+  warehouses: WarehousesLandingRow[];
+  period: string;
+  refreshed_at: string;
+}
+
+export interface WarehouseDetailInventoryItem {
+  tenant_product_id: string;
+  product_name: string;
+  brand_name: string;
+  qty_available: number;
+  qty_reserved: number;
+  sellable_units: number;
+  reorder_point: number | null;
+  stock_status: WarehouseStockStatus;
+  last_updated: string;
+  last_demand_at: string | null;
+  is_idle: boolean;
+}
+
+export interface WarehouseDetailResponse {
+  id: string;
+  name: string;
+  initials: string;
+  status: WarehouseStatus;
+  is_default: boolean;
+  city: string;
+  state: string;
+  phone_number: string | null;
+  external_ref: string | null;
+  lat: number | null;
+  lng: number | null;
+  linked_location: {
+    id: string;
+    name: string;
+    is_default: boolean;
+  } | null;
+  address: WarehouseAddress;
+  associated_users: WarehouseAssociatedUser[];
+  created_at: string;
+  updated_at: string;
+  meta_strip: {
+    tracked_skus: number;
+    sellable_units: number;
+    low_stock_skus: number;
+    idle_stock_skus: number;
+  };
+  details: {
+    associated_users_count: number;
+    stockout_skus: number;
+    reorder_triggered_skus: number;
+    last_inventory_update: string | null;
+  };
+  performance: {
+    inventory_health: {
+      active_skus: number;
+      low_stock_skus: number;
+      stockout_skus: number;
+      avg_sellable_per_sku: number | null;
+    };
+    stock_posture: {
+      sellable_units: number;
+      reorder_triggered_skus: number;
+      is_default: boolean;
+      linked_location_name: string | null;
+    };
+    idle_stock: Array<{
+      tenant_product_id: string;
+      product_name: string;
+      brand_name: string;
+      sellable_units: number;
+      last_demand_at: string | null;
+    }>;
+    recent_replenishment: Array<{
+      tenant_product_id: string;
+      product_name: string;
+      brand_name: string;
+      qty_available: number;
+      qty_reserved: number;
+      updated_at: string;
+    }>;
+  };
+  stock: WarehouseDetailInventoryItem[];
 }

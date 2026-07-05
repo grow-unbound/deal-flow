@@ -16,7 +16,9 @@ import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
+import { PAGE_SIZE } from '@/lib/pagination';
 import { FEATURE_FLAGS } from '@/constants';
+import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 
 const CreateSalesOrderDraftSchema = z.object({
@@ -133,9 +135,7 @@ function orderSourceCategory(order: Pick<OrderRow, 'is_buyer_app_order' | 'estim
 export async function GET(req: NextRequest) {
   const timer = createTimer();
   const timedJson = (body: unknown, init?: ResponseInit) => {
-    const response = NextResponse.json(body, init);
-    response.headers.set('Server-Timing', timer.header('orders_api'));
-    return response;
+    return jsonWithServerTiming(body, timer, 'orders_api', init, APP_GET_CACHE_CONTROL);
   };
   try {
     const claims = await getVerifiedClaims(req);
@@ -161,7 +161,7 @@ export async function GET(req: NextRequest) {
 
     const db = supabaseAdmin;
 
-    const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? '200'), 500);
+    const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
     const scopedCurrentOrdersQuery = applySellerLocationScope(
       db
         .schema('app')

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedClaims } from '@/lib/auth';
+import { SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -48,5 +49,5 @@ export async function GET(req: NextRequest) {
     category_names: (s.category_ids ?? []).map((id: string) => categoryNames[id] ?? id),
   }));
 
-  return NextResponse.json({ suggestions });
+  return NextResponse.json({ suggestions }, { headers: SELLER_CACHE_REFERENCE });
 }

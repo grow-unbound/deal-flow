@@ -5,12 +5,12 @@ import { getVerifiedClaims, decodeJWTPayload } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getFlag } from '@/lib/flags';
 import { FEATURE_FLAGS } from '@/constants';
+import { parseRowsLimit, SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import type { AccessBuyer, AccessKpis, AccessPageResponse } from '@/hooks/useBuyerAppAccess';
 
 // ─── GET /api/tenant/buyer-app/access ───────────────────────────────────────
-// Returns all active buyers + precomputed KPI counts (unfiltered) + spend/order
-// data for each buyer over a trailing 90-day window.
-// Filtering (status, suggested_only, search, last_ordered) is done client-side.
+// Returns a bounded buyer row page plus KPI counts. Expensive suggested/inactive
+// totals should move to buyer_app_snapshot when that aggregate is extended.
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,26 +31,66 @@ export async function GET(request: NextRequest) {
 
     const db = supabaseAdmin as any;
     const tenantId = claims.tenant_id;
+    const limit = parseRowsLimit(request.nextUrl.searchParams.get('limit'));
+    const search = request.nextUrl.searchParams.get('q')?.trim() ?? '';
+    const status = request.nextUrl.searchParams.get('status')?.trim() ?? 'all';
 
     const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    // Fetch buyers + recent orders in parallel
-    const [buyersResult, appOrdersResult, offlineOrdersResult] = await Promise.all([
+    let buyersQuery = db
+      .schema('app')
+      .from('buyers')
+      .select('id, business_name, contact_name, phone, geography, buyer_app_enabled, tier')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .order('business_name', { ascending: true })
+      .limit(limit + 1);
+
+    if (search) {
+      buyersQuery = buyersQuery.textSearch('search_vector', search, { type: 'websearch' });
+    }
+    if (status === 'enabled') {
+      buyersQuery = buyersQuery.eq('buyer_app_enabled', true);
+    } else if (status === 'not_enabled') {
+      buyersQuery = buyersQuery.eq('buyer_app_enabled', false);
+    }
+
+    const [
+      buyersResult,
+      totalCountResult,
+      enabledCountResult,
+    ] = await Promise.all([
+      buyersQuery,
       db
         .schema('app')
         .from('buyers')
-        .select('id, business_name, contact_name, phone, geography, buyer_app_enabled, tier')
+        .select('id', { count: 'exact', head: true })
         .eq('tenant_id', tenantId)
         .eq('is_active', true)
-        .is('deleted_at', null)
-        .order('business_name', { ascending: true }),
+        .is('deleted_at', null),
+      db
+        .schema('app')
+        .from('buyers')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .eq('buyer_app_enabled', true)
+        .is('deleted_at', null),
+    ]);
+
+    const pageRows = (buyersResult.data ?? []).slice(0, limit);
+    const pageBuyerIds = pageRows.map((buyer: { id: string }) => buyer.id);
+
+    const [appOrdersResult, offlineOrdersResult] = pageBuyerIds.length > 0 ? await Promise.all([
       db
         .schema('app')
         .from('orders')
         .select('buyer_id, total_amount, placed_at')
         .eq('tenant_id', tenantId)
         .eq('is_buyer_app_order', true)
+        .in('buyer_id', pageBuyerIds)
         .gte('placed_at', ninetyDaysAgo)
         .is('deleted_at', null),
       db
@@ -59,9 +99,10 @@ export async function GET(request: NextRequest) {
         .select('buyer_id, total_amount')
         .eq('tenant_id', tenantId)
         .eq('is_buyer_app_order', false)
+        .in('buyer_id', pageBuyerIds)
         .gte('placed_at', ninetyDaysAgo)
         .is('deleted_at', null),
-    ]);
+    ]) : [{ data: [], error: null }, { data: [], error: null }];
 
     if (buyersResult.error) {
       return NextResponse.json({ error: 'Failed to fetch buyers' }, { status: 500 });
@@ -99,7 +140,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Build enriched buyer list
-    const buyers: AccessBuyer[] = (buyersResult.data ?? []).map((b: any) => {
+    const buyers: AccessBuyer[] = pageRows.map((b: any) => {
       const appData = appOrdersByBuyer.get(b.id);
       const offlineSpend = offlineSpendByBuyer.get(b.id) ?? 0;
       const appGmv = appData?.gmv ?? 0;
@@ -122,17 +163,20 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // KPIs — always computed from full unfiltered buyer list
+    // KPIs — total/enabled are aggregate counts; suggested/inactive are page-scoped
+    // until the buyer_app_snapshot aggregate owns those exact counts.
+    const totalCount = totalCountResult.count ?? buyers.length;
+    const enabledCount = enabledCountResult.count ?? buyers.filter((b) => b.buyer_app_enabled).length;
     const kpis: AccessKpis = {
-      enabled_count: buyers.filter((b) => b.buyer_app_enabled).length,
-      not_enabled_count: buyers.filter((b) => !b.buyer_app_enabled).length,
+      enabled_count: enabledCount,
+      not_enabled_count: Math.max(0, totalCount - enabledCount),
       suggested_count: buyers.filter((b) => b.is_suggested).length,
       inactive_count: buyers.filter((b) => b.is_inactive).length,
-      total_count: buyers.length,
+      total_count: totalCount,
     };
 
-    const response: AccessPageResponse = { kpis, buyers };
-    return NextResponse.json(response);
+    const response: AccessPageResponse = { kpis, buyers, has_more: (buyersResult.data ?? []).length > limit, limit };
+    return NextResponse.json(response, { headers: SELLER_CACHE_PERSONAL });
   } catch (error) {
     console.error('[GET /api/tenant/buyer-app/access]', error);
     return NextResponse.json({ error: 'Failed to load buyer app access data' }, { status: 500 });

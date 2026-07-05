@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
+import { SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
 
 export async function GET(req: NextRequest) {
   try {
@@ -91,7 +92,7 @@ export async function GET(req: NextRequest) {
       })
     );
 
-    return NextResponse.json({ products });
+    return NextResponse.json({ products }, { headers: SELLER_CACHE_REFERENCE });
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -25,9 +26,12 @@ export function EntityAvatar({ initials, hue, size = 38, imageUrl, className }: 
 
   if (showImage) {
     return (
-      <img
+      <Image
         src={imageUrl}
         alt={initials}
+        width={size}
+        height={size}
+        unoptimized
         onError={() => setImgError(true)}
         className={cn('shrink-0 rounded-[10px] border border-cream-200 object-contain bg-white', className)}
         style={{ width: size, height: size }}

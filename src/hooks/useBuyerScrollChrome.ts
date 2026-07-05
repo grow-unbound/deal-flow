@@ -16,7 +16,8 @@ export function useBuyerScrollChrome(): {
   isAtTop: boolean;
 } {
   const pathname = usePathname();
-  const scrollRootRef = useBuyerScrollRoot();
+  const scrollContext = useBuyerScrollRoot();
+  const scrollRoot = scrollContext?.scrollRoot ?? null;
   const [tabBarVisible, setTabBarVisible] = useState(true);
   const [isAtTop, setIsAtTop] = useState(true);
 
@@ -55,21 +56,20 @@ export function useBuyerScrollChrome(): {
   );
 
   useEffect(() => {
-    const root = scrollRootRef?.current;
-    if (!root || !enabled) return;
+    if (!scrollRoot || !enabled) return;
 
-    let lastScrollTop = root.scrollTop;
+    let lastScrollTop = scrollRoot.scrollTop;
     updateFromScroll(lastScrollTop, lastScrollTop);
 
     const onScroll = () => {
-      const scrollTop = root.scrollTop;
+      const scrollTop = scrollRoot.scrollTop;
       updateFromScroll(scrollTop, lastScrollTop);
       lastScrollTop = scrollTop;
     };
 
-    root.addEventListener('scroll', onScroll, { passive: true });
-    return () => root.removeEventListener('scroll', onScroll);
-  }, [scrollRootRef, enabled, pathname, updateFromScroll]);
+    scrollRoot.addEventListener('scroll', onScroll, { passive: true });
+    return () => scrollRoot.removeEventListener('scroll', onScroll);
+  }, [scrollRoot, enabled, pathname, updateFromScroll]);
 
   return { tabBarVisible: enabled ? tabBarVisible : true, isAtTop };
 }

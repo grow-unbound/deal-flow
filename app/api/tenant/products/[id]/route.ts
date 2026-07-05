@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { resolveImportedProductTenantLinks } from '@/lib/server/tenant-product-source-resolution';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { z } from 'zod';
 
 const UpdateProductSchema = z.object({
@@ -209,7 +210,7 @@ export async function GET(
         .select('id, ts, action, entity_type, entity_id, diff')
         .eq('tenant_id', claims.tenant_id)
         .order('ts', { ascending: false })
-        .limit(200),
+        .limit(100),
       db
         .schema('app')
         .from('price_lists')
@@ -498,7 +499,7 @@ export async function GET(
         })()
       : product;
 
-    return NextResponse.json({ product: responseProduct, detail: detailResponse });
+    return NextResponse.json({ product: responseProduct, detail: detailResponse }, { headers: SELLER_CACHE_PERSONAL });
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

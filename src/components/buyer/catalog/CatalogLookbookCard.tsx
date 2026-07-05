@@ -42,7 +42,7 @@ export function CatalogLookbookCard({
     <Link
       href={href}
       onClick={() => markBuyerNavigationForward()}
-      className="block shrink-0 overflow-hidden rounded-xl border border-[var(--border-1)] no-underline"
+      className="block shrink-0 overflow-hidden rounded-lg no-underline shadow-[var(--shadow-sm)]"
       style={{ width: 200 }}
     >
       <div className="relative flex h-[220px] items-end overflow-hidden p-3.5">

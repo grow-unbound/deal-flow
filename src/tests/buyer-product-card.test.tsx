@@ -71,4 +71,45 @@ describe('buyer product card', () => {
 
     expect(screen.getByRole('button', { name: /add to cart/i })).toHaveClass('h-8', 'w-8');
   });
+
+  it('shows readable out-of-stock badge without dimming the details panel', () => {
+    useCartMock.mockReset();
+    useCartMock.mockReturnValue({
+      items: [],
+      addItem: vi.fn(),
+      updateQty: vi.fn(),
+    });
+
+    const { container } = render(
+      <ProductCard
+        item={{
+          id: '2',
+          tenant_product_id: 'tp-2',
+          campaign_id: null,
+          catalog_name: null,
+          catalog_valid_until: null,
+          internal_sku: 'CP-OOS-001',
+          display_name: 'Unavailable Camera',
+          brand_id: null,
+          brand_name: 'CP Plus',
+          category_id: null,
+          category_name: null,
+          mrp: 10000,
+          price: 9000,
+          has_campaign_price: false,
+          resolved_price: null,
+          default_uom: 'box',
+          pack_size: null,
+          campaign_valid_until: null,
+          image_urls: [],
+          stock_status: 'out_of_stock',
+          on_hand: 0,
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Out of stock')).toHaveClass('text-[var(--danger-500)]');
+    expect(container.firstChild).not.toHaveClass('opacity-60');
+    expect(screen.getByRole('button', { name: /add to cart/i })).toBeDisabled();
+  });
 });

@@ -2,7 +2,12 @@ import { ROLES } from '@/constants';
 
 export const BUYER_PREVIEW_HEADER = 'x-buyer-preview';
 export const BUYER_PREVIEW_TOKEN_VERSION = 'buyer_preview_v1';
-export const BUYER_PREVIEW_TTL_SECONDS = 15 * 60;
+/** Close preview after this much idle time (no pointer/keyboard/scroll activity). */
+export const BUYER_PREVIEW_INACTIVITY_SECONDS = 60 * 60;
+/** Signed preview token lifetime — slightly longer than inactivity so active sessions can refresh. */
+export const BUYER_PREVIEW_TTL_SECONDS = BUYER_PREVIEW_INACTIVITY_SECONDS + 5 * 60;
+/** Refresh the server token when activity resumes and less than this remains. */
+export const BUYER_PREVIEW_ACTIVITY_REFRESH_BUFFER_SECONDS = 5 * 60;
 export const BUYER_PREVIEW_MAX_WIDTH = 840;
 
 export interface BuyerPreviewTokenPayload {

@@ -2,8 +2,14 @@
 
 import { createContext, useContext, type RefObject } from 'react';
 
-export const BuyerScrollRootContext = createContext<RefObject<HTMLElement | null> | null>(null);
+export interface BuyerScrollRootContextValue {
+  scrollRootRef: RefObject<HTMLElement | null>;
+  /** Set via callback ref on `<main>` so scroll hooks re-subscribe once the scrollport mounts. */
+  scrollRoot: HTMLElement | null;
+}
 
-export function useBuyerScrollRoot(): RefObject<HTMLElement | null> | null {
+export const BuyerScrollRootContext = createContext<BuyerScrollRootContextValue | null>(null);
+
+export function useBuyerScrollRoot(): BuyerScrollRootContextValue | null {
   return useContext(BuyerScrollRootContext);
 }

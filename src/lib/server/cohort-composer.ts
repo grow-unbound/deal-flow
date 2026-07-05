@@ -1,5 +1,5 @@
 import type { CohortRules } from '@/lib/zod';
-import { fetchAllRows } from '@/lib/server/fetch-all-rows';
+import { PAGE_SIZE } from '@/lib/pagination';
 
 type DbClient = {
   schema: (name: 'app' | 'catalog') => {
@@ -306,9 +306,8 @@ export function resolveBuyerIdsForRules(
 }
 
 export async function getCohortComposerPayload(db: DbClient, tenantId: string): Promise<CohortComposerPayload> {
-  const [buyerRows, brandsRes] = await Promise.all([
-    fetchAllRows<BuyerDbRow>((from, to) =>
-      db
+  const [buyersRes, brandsRes] = await Promise.all([
+    db
         .schema('app')
         .from('buyers')
         .select('id, business_name, contact_name, geography, tier, payment_terms_days, credit_limit, external_ref')
@@ -317,8 +316,7 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
         .is('deleted_at', null)
         .order('business_name', { ascending: true })
         .order('id', { ascending: true })
-        .range(from, to),
-    ),
+        .limit(PAGE_SIZE.MAX),
     db
       .schema('app')
       .from('tenant_brands')
@@ -329,7 +327,10 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
       .order('created_at', { ascending: true }),
   ]);
 
+  if (buyersRes.error) throw buyersRes.error;
   if (brandsRes.error) throw brandsRes.error;
+
+  const buyerRows = (buyersRes.data ?? []) as BuyerDbRow[];
 
   const tenantBrands = (brandsRes.data ?? []) as Array<{
     id: string;

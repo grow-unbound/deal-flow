@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedClaims } from '@/lib/auth';
+import { SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
 import { supabaseAdmin } from '@/lib/supabase';
 
 function jsonError(status: number, message: string, code = 'ERROR') {
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
       return jsonError(500, 'Failed to load field mappings', 'LOAD_FAILED');
     }
 
-    return NextResponse.json({ data: data ?? [], error: null }, { status: 200 });
+    return NextResponse.json({ data: data ?? [], error: null }, { status: 200, headers: SELLER_CACHE_REFERENCE });
   } catch (error) {
     console.error('[GET /api/settings/integrations/field-mappings]', error);
     return jsonError(500, error instanceof Error ? error.message : 'Failed to load field mappings', 'LOAD_FAILED');

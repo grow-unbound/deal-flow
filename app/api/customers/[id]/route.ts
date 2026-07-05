@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims, decodeJWTPayload } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { BuyerUpdateSchema } from '@/lib/zod';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 
 async function syncDefaultPriceListAssignment(
   db: any,
@@ -107,7 +108,7 @@ export async function GET(
     return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
   }
 
-  return NextResponse.json({ buyer });
+  return NextResponse.json({ buyer }, { headers: SELLER_CACHE_PERSONAL });
 }
 
 // ─── PUT /api/customers/[id] ─────────────────────────────────────────────────

@@ -32,6 +32,7 @@ const ALL_PHASES = [
   'estimates',
   'orders',
   'invoices',
+  'transaction_line_items',
 ] as const;
 
 type PhaseName = (typeof ALL_PHASES)[number];
@@ -154,7 +155,10 @@ async function dispatchPhase(opts: {
   pageFrom?: number | null;
   since?: string | null;
 }): Promise<PhaseResult> {
-  const url = `${getFunctionsBaseUrl()}/sync-${opts.phase}`;
+  const functionName = opts.phase === 'transaction_line_items'
+    ? 'sync-transaction-line-items'
+    : `sync-${opts.phase}`;
+  const url = `${getFunctionsBaseUrl()}/${functionName}`;
   const secret = getDispatchSecret();
 
   const response = await fetch(url, {
@@ -269,7 +273,7 @@ Deno.serve(async (req: Request) => {
     // their real constituent phases before building phasesToRun.
     const PHASE_GROUP_EXPANSION: Record<string, PhaseName[]> = {
       reference: ['locations', 'products', 'pricelists', 'customers'],
-      transactional: ['estimates', 'orders', 'invoices'],
+      transactional: ['estimates', 'orders', 'invoices', 'transaction_line_items'],
     };
     const requestedPhaseRaw = typeof body.phase === 'string' ? body.phase : null;
     const requestedPhase = requestedPhaseRaw && (ALL_PHASES as readonly string[]).includes(requestedPhaseRaw)

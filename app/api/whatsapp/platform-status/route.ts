@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { FEATURE_FLAGS } from '@/constants';
+import { SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
 
 /**
  * WhatsApp Broadcast Phase F — read-only platform kill-switch / quality
@@ -50,5 +51,5 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     broadcast_sending_paused: row?.broadcast_sending_paused ?? false,
     quality_rating_state: row?.quality_rating_state ?? 'green',
-  });
+  }, { headers: SELLER_CACHE_REFERENCE });
 }

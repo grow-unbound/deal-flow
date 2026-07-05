@@ -3,6 +3,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { FEATURE_FLAGS } from '@/constants';
 import { getFlag } from '@/lib/flags';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ total_count: null }, { status: 404 });
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json(data, { headers: SELLER_CACHE_PERSONAL });
   } catch (e) {
     console.error('[GET /api/tenant/estimates/summary]', e);
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

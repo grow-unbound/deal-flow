@@ -24,18 +24,19 @@ export function BuyerTabBar() {
 
   return (
     <nav
+      aria-hidden={!tabBarVisible}
       className={cn(
-        'sticky bottom-0 z-20 flex w-full items-stretch pb-safe transition-transform duration-300 ease-out',
-        !tabBarVisible && 'translate-y-full',
+        'z-20 flex w-full shrink-0 overflow-hidden border-t border-[var(--border-1)] bg-[var(--bg-base)] transition-[height] duration-300 ease-out',
+        !tabBarVisible && 'pointer-events-none border-transparent',
       )}
       style={{
-        height: 'calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px))',
-        background: 'rgba(250, 247, 242, 0.94)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
-        borderTop: '1px solid rgba(212, 204, 192, 0.6)',
+        height: tabBarVisible
+          ? 'calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px))'
+          : 0,
+        paddingBottom: tabBarVisible ? 'env(safe-area-inset-bottom, 0px)' : 0,
       }}
     >
+      <div className="flex min-h-[var(--tab-bar-h)] w-full items-stretch">
       {tabs.map(({ label, href, icon: Icon }) => {
         const active = pathname === href || (href !== '/' && pathname.startsWith(href));
         return (
@@ -61,6 +62,7 @@ export function BuyerTabBar() {
           </Pressable>
         );
       })}
+      </div>
     </nav>
   );
 }

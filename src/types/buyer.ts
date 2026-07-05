@@ -65,10 +65,16 @@ export interface BuyerCatalogResponse {
   selected_campaign_id?: string | null;
   selected_campaign_name?: string | null;
   selected_campaign_valid_until?: string | null;
+  selected_campaign_message?: string | null;
 }
 
 export interface BuyerCategoriesResponse {
   categories: BuyerCategory[];
+}
+
+export interface BuyerResolvedProductsResponse {
+  items: BuyerCatalogItem[];
+  missing_ids: string[];
 }
 
 export type BuyerAppMode = 'buyer' | 'preview';

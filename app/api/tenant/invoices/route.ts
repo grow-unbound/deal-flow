@@ -17,6 +17,7 @@ import {
 import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
 import { PAGE_SIZE } from '@/lib/pagination';
+import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 
 type DbClient = any;
@@ -153,9 +154,7 @@ function growthPct(current: number, previous: number): number {
 export async function GET(request: NextRequest) {
   const timer = createTimer();
   const timedJson = (body: unknown, init?: ResponseInit) => {
-    const response = NextResponse.json(body, init);
-    response.headers.set('Server-Timing', timer.header('invoices_api'));
-    return response;
+    return jsonWithServerTiming(body, timer, 'invoices_api', init, APP_GET_CACHE_CONTROL);
   };
 
   try {
@@ -190,10 +189,7 @@ export async function GET(request: NextRequest) {
     // without a second unbounded query.
     const periodStart = period.previous_start; // earliest date we need
     const periodEndExclusive = period.current_end_exclusive; // latest date we need (exclusive)
-    const reqLimit = Math.min(
-      Number(searchParams.get('limit') || PAGE_SIZE.SELLER),
-      PAGE_SIZE.MAX,
-    );
+    const reqLimit = parseRowsLimit(searchParams.get('limit'), PAGE_SIZE.SELLER);
     const sourceParams = readArrayParam(searchParams, 'source');
     const statusParams = readArrayParam(searchParams, 'status');
     const dueParams = readArrayParam(searchParams, 'due');
@@ -219,8 +215,7 @@ export async function GET(request: NextRequest) {
         ) as any,
       ]);
 
-    // Scope linked-doc lookups to only the IDs referenced by the fetched invoices
-    // to avoid full-table scans on orders and estimates.
+    // Scope linked-doc lookups to only the IDs referenced by the fetched invoices.
     const allInvoiceRows = (invoiceRows ?? []) as InvoiceDbRow[];
     const linkedOrderIds = Array.from(
       new Set(

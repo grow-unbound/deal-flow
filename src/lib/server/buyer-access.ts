@@ -63,6 +63,7 @@ export interface BuyerVisibleCatalog {
   name: string;
   share_token: string;
   valid_to: string | null;
+  message: string | null;
   created_at: string;
   scope_type: 'cohort' | 'buyer' | 'geography' | 'all';
   scope_value: Record<string, unknown> | null;
@@ -720,7 +721,7 @@ export async function getVisibleBuyerCatalogs(tenantId: string, buyerId: string)
     db
       .schema('app')
       .from('campaigns')
-      .select('id, tenant_id, name, share_token, valid_to, created_at, scope_type, scope_value, hero_image_url')
+      .select('id, tenant_id, name, share_token, valid_to, message, created_at, scope_type, scope_value, hero_image_url')
       .eq('tenant_id', tenantId)
       .eq('status', 'published')
       .is('deleted_at', null)

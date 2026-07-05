@@ -15,6 +15,7 @@ import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
+import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -153,9 +154,7 @@ function estimateStatusesForFilters(values: string[]) {
 export async function GET(req: NextRequest) {
   const timer = createTimer();
   const timedJson = (body: unknown, init?: ResponseInit) => {
-    const response = NextResponse.json(body, init);
-    response.headers.set('Server-Timing', timer.header('estimates_api'));
-    return response;
+    return jsonWithServerTiming(body, timer, 'estimates_api', init, APP_GET_CACHE_CONTROL);
   };
 
   try {
@@ -176,7 +175,7 @@ export async function GET(req: NextRequest) {
     const tenantId = claims.tenant_id;
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
     const db = supabaseAdmin;
-    const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? String(PAGE_SIZE.SELLER)), PAGE_SIZE.MAX);
+    const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
     const cursorParam = req.nextUrl.searchParams.get('cursor');
     const searchParam = req.nextUrl.searchParams.get('search')?.trim();
     const sourceParams = readArrayParam(req.nextUrl.searchParams, 'source');

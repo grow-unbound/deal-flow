@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
+import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { z } from 'zod';
 
 const AddMembersSchema = z.object({
@@ -49,7 +50,7 @@ export async function GET(
     return NextResponse.json({ error: 'Failed to fetch members' }, { status: 500 });
   }
 
-  return NextResponse.json({ members: members ?? [] });
+  return NextResponse.json({ members: members ?? [] }, { headers: SELLER_CACHE_PERSONAL });
 }
 
 // POST: add buyers to a static cohort
