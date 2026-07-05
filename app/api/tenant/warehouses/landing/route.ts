@@ -3,14 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
 import { PAGE_SIZE } from '@/lib/pagination';
 import { SELLER_CACHE_REFERENCE, parseRowsLimit } from '@/lib/server/bounded-get';
-import { loadLatestDemandByProduct, loadTenantWarehouses, loadWarehouseInventoryRows } from '@/lib/server/warehouse-data';
 import { getSellerLandingPeriodFromRequest } from '@/lib/server/seller-period';
-import {
-  computeSellableUnits,
-  computeWarehouseInitials,
-  computeWarehouseStockStatus,
-  isIdleStockSku,
-} from '@/lib/server/warehouse-metrics';
+import { computeWarehouseInitials } from '@/lib/server/warehouse-metrics';
+import { hydrateWarehouse } from '@/lib/server/warehouse-data';
 import { supabaseAdmin } from '@/lib/supabase';
 import type {
   WarehousesLandingResponse,
@@ -47,6 +42,16 @@ function matchesStockFilter(stockStatus: WarehouseStockStatus, filters: string[]
   });
 }
 
+interface WarehouseSnapshotRow {
+  warehouse_id: string;
+  tracked_skus: number;
+  sellable_units: number;
+  low_stock_skus: number;
+  stockout_skus: number;
+  idle_stock_skus: number;
+  last_inventory_update: string | null;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const claims = await getVerifiedClaims(request);
@@ -67,42 +72,49 @@ export async function GET(request: NextRequest) {
     const limit = parseRowsLimit(request.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
     const db = supabaseAdmin as any;
 
-    const warehouses = await loadTenantWarehouses(db, claims.tenant_id, { limit });
-    const warehouseIds = warehouses.map((warehouse) => warehouse.id);
-    const inventoryRows = await loadWarehouseInventoryRows(db, warehouseIds);
-    const latestDemandByProduct = await loadLatestDemandByProduct(
-      db,
-      Array.from(new Set(inventoryRows.map((row) => row.tenant_product_id))),
-    );
+    const [warehousesRes, snapshotRes] = await Promise.all([
+      db
+        .schema('app')
+        .from('warehouses')
+        .select('id, tenant_id, location_id, name, address, phone_number, status, is_default, external_ref, associated_users, lat, lng, deleted_at, created_at, updated_at, locations(id, name, is_default)')
+        .eq('tenant_id', claims.tenant_id)
+        .is('deleted_at', null)
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: true })
+        .limit(limit),
+      db
+        .schema('app')
+        .from('warehouses_snapshot')
+        .select('warehouse_id, tracked_skus, sellable_units, low_stock_skus, stockout_skus, idle_stock_skus, last_inventory_update')
+        .eq('tenant_id', claims.tenant_id),
+    ]);
 
-    const inventoryByWarehouse = new Map<string, typeof inventoryRows>();
-    for (const row of inventoryRows) {
-      const current = inventoryByWarehouse.get(row.warehouse_id) ?? [];
-      current.push(row);
-      inventoryByWarehouse.set(row.warehouse_id, current);
+    if (warehousesRes.error) throw warehousesRes.error;
+    if (snapshotRes.error) throw snapshotRes.error;
+
+    const snapshotByWarehouse = new Map<string, WarehouseSnapshotRow>();
+    for (const row of (snapshotRes.data ?? []) as Array<Record<string, unknown>>) {
+      snapshotByWarehouse.set(String(row.warehouse_id), {
+        warehouse_id: String(row.warehouse_id),
+        tracked_skus: Number(row.tracked_skus ?? 0),
+        sellable_units: Number(row.sellable_units ?? 0),
+        low_stock_skus: Number(row.low_stock_skus ?? 0),
+        stockout_skus: Number(row.stockout_skus ?? 0),
+        idle_stock_skus: Number(row.idle_stock_skus ?? 0),
+        last_inventory_update: typeof row.last_inventory_update === 'string' ? row.last_inventory_update : null,
+      });
     }
 
+    const warehouses = ((warehousesRes.data ?? []) as Record<string, unknown>[]).map(hydrateWarehouse);
+
     const rows: WarehousesLandingRow[] = warehouses.map((warehouse) => {
-      const items = inventoryByWarehouse.get(warehouse.id) ?? [];
-      let trackedSkus = 0;
-      let sellableUnits = 0;
-      let lowStockSkus = 0;
-      let stockoutSkus = 0;
-      let idleStockSkus = 0;
-      let lastUpdated = warehouse.updated_at;
-
-      for (const item of items) {
-        trackedSkus += 1;
-        const sellable = computeSellableUnits(item.qty_available, item.qty_reserved);
-        const status = computeWarehouseStockStatus(item.qty_available, item.qty_reserved, item.reorder_point);
-        sellableUnits += sellable;
-        if (status === 'out_of_stock') stockoutSkus += 1;
-        else if (status === 'low_stock') lowStockSkus += 1;
-
-        const lastDemandAt = latestDemandByProduct.get(item.tenant_product_id) ?? null;
-        if (isIdleStockSku(sellable, lastDemandAt)) idleStockSkus += 1;
-        if (item.updated_at > lastUpdated) lastUpdated = item.updated_at;
-      }
+      const snapshot = snapshotByWarehouse.get(warehouse.id);
+      const trackedSkus = snapshot?.tracked_skus ?? 0;
+      const sellableUnits = snapshot?.sellable_units ?? 0;
+      const lowStockSkus = snapshot?.low_stock_skus ?? 0;
+      const stockoutSkus = snapshot?.stockout_skus ?? 0;
+      const idleStockSkus = snapshot?.idle_stock_skus ?? 0;
+      const lastUpdated = snapshot?.last_inventory_update ?? warehouse.updated_at;
 
       return {
         id: warehouse.id,

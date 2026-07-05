@@ -449,7 +449,7 @@ export async function requireBuyerAccessProfile(request: NextRequest): Promise<B
     return null;
   }
 
-  const [buyerRes, tenantRes, settingsRes, authUserRes] = await Promise.all([
+  const [buyerRes, tenantRes, settingsRes] = await Promise.all([
     db
       .schema('app')
       .from('buyers')
@@ -467,33 +467,28 @@ export async function requireBuyerAccessProfile(request: NextRequest): Promise<B
       .select('tenant_id, settings')
       .eq('tenant_id', context.tenant_id)
       .maybeSingle(),
-    context.sub ? supabaseAdmin.auth.admin.getUserById(context.sub) : Promise.resolve({ data: { user: null }, error: null }),
   ]);
 
   if (buyerRes.error) throw new Error(buyerRes.error.message);
   if (tenantRes.error) throw new Error(tenantRes.error.message);
   if (settingsRes.error) throw new Error(settingsRes.error.message);
-  if (authUserRes.error) throw new Error(authUserRes.error.message);
 
   if (!buyerRes.data) {
     return null;
   }
 
-    const tenantSettingsEnabled = buyerAppEnabledFromSettings(
-      (settingsRes.data as TenantSettingsRow | null)?.settings
-      ?? (tenantRes.data?.settings as Record<string, unknown> | null | undefined),
-    );
+  const tenantSettingsEnabled = buyerAppEnabledFromSettings(
+    (settingsRes.data as TenantSettingsRow | null)?.settings
+    ?? (tenantRes.data?.settings as Record<string, unknown> | null | undefined),
+  );
 
   if (!tenantSettingsEnabled) {
     return null;
   }
 
-  const authUser = authUserRes.data.user;
-  const userMetadata = (authUser?.user_metadata ?? {}) as Record<string, unknown>;
   const greetingName =
-    (typeof userMetadata.first_name === 'string' && userMetadata.first_name.trim())
-    || firstNameFromValue(typeof userMetadata.full_name === 'string' ? userMetadata.full_name : null)
-    || firstNameFromValue(buyerRes.data.contact_name)
+    firstNameFromValue(buyerRes.data.contact_name)
+    || buyerRes.data.contact_name?.trim()
     || buyerRes.data.business_name;
 
   return {

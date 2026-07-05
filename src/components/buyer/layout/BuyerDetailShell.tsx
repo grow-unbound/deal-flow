@@ -18,6 +18,8 @@ export interface BuyerDetailShellProps {
   rightSlot?: React.ReactNode;
   /** Optional row shown below the title row. */
   subtitle?: React.ReactNode;
+  /** Optional full-width control row shown below the title row. */
+  headerSearch?: React.ReactNode;
   /** Sticky chip/filter row pinned below title row inside the header. */
   stickyToolbar?: React.ReactNode;
   /** Hide the buyer location control for detail screens. */
@@ -32,6 +34,7 @@ export function BuyerDetailShell({
   searchHref = buildBuyerSearchHref({}),
   rightSlot,
   subtitle,
+  headerSearch,
   stickyToolbar,
   showLocationControl = false,
   hideSearch = false,
@@ -51,9 +54,9 @@ export function BuyerDetailShell({
         className={cn('sticky top-0 z-[15] transition-shadow', collapsed && 'shadow-sm')}
         style={{
           borderBottom: '1px solid rgba(212, 204, 192, 0.6)',
-          background: 'rgba(250, 247, 242, 0.92)',
-          backdropFilter: 'blur(14px)',
-          WebkitBackdropFilter: 'blur(14px)',
+          background: 'var(--bg-base)',
+          backdropFilter: 'none',
+          WebkitBackdropFilter: 'none',
         }}
       >
         <div
@@ -89,6 +92,11 @@ export function BuyerDetailShell({
           {showLocationControl ? <BuyerLocationControl /> : null}
           {hideSearch ? null : <BuyerSearchIconButton href={searchHref} />}
         </div>
+        {headerSearch ? (
+          <div className="border-t border-[var(--border-1)] bg-[var(--bg-base)] px-4 py-2.5">
+            {headerSearch}
+          </div>
+        ) : null}
         {stickyToolbar ? (
           <div className="border-t border-[var(--border-1)] bg-[var(--bg-base)] pb-2 pt-1">
             {stickyToolbar}

@@ -91,7 +91,16 @@ async function loadIntegration(
 
 async function createPhaseJob(
   admin: ReturnType<typeof createAdminClient>,
-  opts: { tenantId: string; tenantIntegrationId: string; phase: string; jobType: string; triggeredBy: string | null; sinceDate?: string | null },
+  opts: {
+    tenantId: string;
+    tenantIntegrationId: string;
+    phase: string;
+    jobType: string;
+    triggeredBy: string | null;
+    sinceDate?: string | null;
+    syncRunId: string;
+    dependsOnPhase?: string | null;
+  },
 ): Promise<string> {
   const { data, error } = await admin
     .schema('app')
@@ -102,7 +111,12 @@ async function createPhaseJob(
       job_type: opts.jobType,
       phase: opts.phase,
       status: 'pending',
-      progress: {},
+      progress: {
+        meta: {
+          sync_run_id: opts.syncRunId,
+          depends_on_phase: opts.dependsOnPhase ?? null,
+        },
+      },
       since_date: opts.sinceDate ?? null,
       triggered_by: opts.triggeredBy,
       created_by: opts.triggeredBy,
@@ -230,6 +244,38 @@ async function resolvePhaseResumePage(
   return null;
 }
 
+// Reuse the historical window from the latest real attempt for this phase.
+// Resume calls may arrive without an explicit `since` when the scheduler or
+// orchestrator is continuing a paused run, so recover it from job state rather
+// than letting transactional phases fall back to FY start.
+async function resolvePhaseSince(
+  admin: ReturnType<typeof createAdminClient>,
+  opts: { tenantIntegrationId: string; phase: string; excludeJobId: string },
+): Promise<string | null> {
+  const { data } = await admin
+    .schema('app')
+    .from('integration_sync_jobs')
+    .select('since_date, progress')
+    .eq('tenant_integration_id', opts.tenantIntegrationId)
+    .eq('phase', opts.phase)
+    .neq('id', opts.excludeJobId)
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  for (const row of data ?? []) {
+    if (typeof row.since_date === 'string' && row.since_date.trim().length > 0) {
+      return row.since_date.trim();
+    }
+
+    const progress = (row.progress ?? {}) as Record<string, unknown>;
+    if (typeof progress.since === 'string' && progress.since.trim().length > 0) {
+      return progress.since.trim();
+    }
+  }
+
+  return null;
+}
+
 // "Pick up from last sync" (the default, non-force-refresh path): if a phase's
 // most recent real attempt already completed, there's nothing new to fetch —
 // skip calling Zoho for it entirely rather than re-crawling everything from
@@ -305,6 +351,7 @@ Deno.serve(async (req: Request) => {
 
     const admin = createAdminClient();
     const integration = await loadIntegration(admin, tenantIntegrationId);
+    const syncRunId = crypto.randomUUID();
 
     // Concurrent-start guard — atomic claim, not read-then-write. A separate
     // "check status, then UPDATE" has a race window: the 30s cron tick and a
@@ -346,6 +393,8 @@ Deno.serve(async (req: Request) => {
         jobType,
         triggeredBy: actorUserId,
         sinceDate: since ?? null,
+        syncRunId,
+        dependsOnPhase: phase === 'transaction_line_items' ? 'invoices' : null,
       });
     }
 
@@ -409,6 +458,11 @@ Deno.serve(async (req: Request) => {
           excludeJobId: jobIds[phase],
         });
       }
+      const phaseSince = since ?? await resolvePhaseSince(admin, {
+        tenantIntegrationId: integration.id,
+        phase,
+        excludeJobId: jobIds[phase],
+      });
 
       try {
         const result = await dispatchPhase({
@@ -416,7 +470,7 @@ Deno.serve(async (req: Request) => {
           tenantIntegrationId: integration.id,
           jobId: jobIds[phase],
           pageFrom: phasePageFrom,
-          since,
+          since: phaseSince,
         });
 
         results.push(result);

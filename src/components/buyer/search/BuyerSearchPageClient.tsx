@@ -150,7 +150,7 @@ export function BuyerSearchPageClient() {
       </header>
       <div className="flex-1 px-0 pt-2">
         {loading ? (
-          <div className="px-4 py-8 text-center text-sm text-[var(--fg-3)]">Searching…</div>
+          <ProductGrid items={[]} loading />
         ) : error ? (
           <div className="px-4 py-8 text-center text-sm text-[var(--danger-500)]">Could not load results.</div>
         ) : shownItems.length === 0 && !debounced ? (
