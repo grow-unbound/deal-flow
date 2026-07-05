@@ -11,7 +11,7 @@ import { WarehouseDetailsTab } from './WarehouseDetailsTab';
 import { WarehousePerformanceTab } from './WarehousePerformanceTab';
 import { WarehouseStockTab } from './WarehouseStockTab';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
-import { useWarehouseDetail, useWarehouseReference } from '@/hooks/useWarehouses';
+import { useWarehouseDetail, useWarehouseReference, useWarehouseStock } from '@/hooks/useWarehouses';
 import type { TenantWarehouse } from '@/types/tenant-warehouses';
 
 type TabId = 'details' | 'performance' | 'stock';
@@ -58,6 +58,9 @@ export function WarehouseDetailPage({ id }: { id: string }) {
   });
   const { data, isLoading, isError, refetch } = useWarehouseDetail(id);
   const { data: editingWarehouse } = useWarehouseReference(id);
+  const stockQuery = useWarehouseStock(id, tab === 'stock');
+  const stock = stockQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const stockTotal = stockQuery.data?.pages[0]?.total ?? data?.tracked_skus_count ?? 0;
 
   if (isLoading) return <WarehouseDetailSkeleton />;
   if (isError || !data) {
@@ -145,7 +148,7 @@ export function WarehouseDetailPage({ id }: { id: string }) {
         tabs={[
           { id: 'details', label: 'Details' },
           { id: 'performance', label: 'Performance' },
-          { id: 'stock', label: 'Stock', badge: data.stock.length || undefined },
+          { id: 'stock', label: 'Stock', badge: data.tracked_skus_count || undefined },
         ]}
         active={tab}
         onChange={(value) => setTab(value as TabId)}
@@ -153,7 +156,15 @@ export function WarehouseDetailPage({ id }: { id: string }) {
 
       {tab === 'details' ? <WarehouseDetailsTab data={data} /> : null}
       {tab === 'performance' ? <WarehousePerformanceTab data={data.performance} /> : null}
-      {tab === 'stock' ? <WarehouseStockTab stock={data.stock} /> : null}
+      {tab === 'stock' ? (
+        <WarehouseStockTab
+          stock={stock}
+          total={stockTotal}
+          hasMore={Boolean(stockQuery.hasNextPage)}
+          isLoadingMore={stockQuery.isFetchingNextPage}
+          onLoadMore={() => void stockQuery.fetchNextPage()}
+        />
+      ) : null}
 
       <WarehouseFormSheet open={sheetOpen} onOpenChange={setSheetOpen} editingWarehouse={warehouseForEdit} />
     </PageWrap>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,6 +12,7 @@ import type {
   TenantWarehouse,
   UpdateWarehouseInput,
   WarehouseDetailResponse,
+  WarehouseStockPageResponse,
   WarehousesLandingResponse,
 } from '@/types/tenant-warehouses';
 
@@ -61,6 +62,30 @@ export function useWarehouseDetail(id: string) {
   });
 }
 
+export function useWarehouseStock(warehouseId: string, enabled = true) {
+  const { currentTenantId } = useAuth();
+
+  return useInfiniteQuery<WarehouseStockPageResponse>({
+    queryKey: ['warehouse-stock', currentTenantId, warehouseId],
+    enabled: Boolean(currentTenantId) && Boolean(warehouseId) && enabled,
+    staleTime: 30_000,
+    initialPageParam: 1,
+    queryFn: async ({ pageParam }) => {
+      const params = new URLSearchParams({
+        page: String(pageParam),
+        page_size: '50',
+      });
+      const res = await apiFetch(`/api/tenant/warehouses/${warehouseId}/stock?${params.toString()}`);
+      if (res.status === 404) throw new Error('not_found');
+      if (!res.ok) throw new Error(`warehouse-stock ${res.status}`);
+      const json = (await res.json()) as { data: WarehouseStockPageResponse; error: unknown };
+      if (!json.data) throw new Error('Invalid response');
+      return json.data;
+    },
+    getNextPageParam: (lastPage) => (lastPage.has_more ? lastPage.page + 1 : undefined),
+  });
+}
+
 export function useCreateWarehouseMutation() {
   const queryClient = useQueryClient();
 
@@ -102,6 +127,7 @@ export function useUpdateWarehouse() {
       void queryClient.invalidateQueries({ queryKey: ['warehouses'] });
       void queryClient.invalidateQueries({ queryKey: ['warehouses-landing'] });
       void queryClient.invalidateQueries({ queryKey: ['warehouse-detail'] });
+      void queryClient.invalidateQueries({ queryKey: ['warehouse-stock'] });
       toast.success('Warehouse updated');
     },
     onError: (error) => {

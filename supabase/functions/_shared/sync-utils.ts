@@ -64,12 +64,20 @@ export function isAuthorizedInternal(req: Request): boolean {
 
 // ── Integration loading ───────────────────────────────────────────────────────
 
-interface TenantIntegrationRow {
+export interface TenantIntegrationRow {
   id: string;
   tenant_id: string;
   integration_type_id: string;
   vault_secret_id: string | null;
   status: string;
+  connected_by: string | null;
+}
+
+export function resolveSyncImportActorId(
+  integration: Pick<TenantIntegrationRow, 'connected_by'>,
+  explicitActorId?: string | null,
+): string | null {
+  return explicitActorId ?? integration.connected_by ?? null;
 }
 
 export async function loadTenantIntegration(
@@ -79,7 +87,7 @@ export async function loadTenantIntegration(
   const { data, error } = await admin
     .schema('app')
     .from('tenant_integrations')
-    .select('id, tenant_id, integration_type_id, vault_secret_id, status')
+    .select('id, tenant_id, integration_type_id, vault_secret_id, status, connected_by')
     .eq('id', tenantIntegrationId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -361,10 +369,11 @@ export async function runPhaseSync(
     const page = await adapter.fetchPhasePage(phase, cursor, opts.since ?? null, opts.jobType ?? undefined);
 
     if (page.records.length > 0) {
+      const importActorId = resolveSyncImportActorId(integration);
       const result: PersistResult = await persistZohoEntityPage(
         admin,
         integration.tenant_id,
-        null,
+        importActorId,
         integration.id,
         phase.entityType,
         zohoTypeId,

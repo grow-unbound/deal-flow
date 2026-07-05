@@ -83,6 +83,7 @@
     --fg-accent: var(--ember-400);
 
     /* Semantic surface tokens */
+    --bg-base: var(--yk-paper);
     --bg-page: var(--yk-paper);
     --bg-surface: var(--yk-card);
     --bg-recessed: var(--cream-200);
@@ -159,6 +160,7 @@
   --success-500: #2F5733;
   --danger-500:  #C93D27;
 
+  --bg-base:    #FAF7F2;
   --bg-page:    #FAF7F2;
   --bg-surface: #FFFFFF;
 
