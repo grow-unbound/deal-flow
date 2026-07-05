@@ -261,9 +261,14 @@ export function createDbTokenCache(
 
 // ── Core sync loop ────────────────────────────────────────────────────────────
 
-// Each sync-* Edge Function invocation runs for up to 100s before returning a
-// resume cursor. Supabase hard limit is 150s — this leaves a 50s safety buffer.
-const TIME_BUDGET_MS = 100_000;
+// Each sync-* Edge Function invocation runs for up to 120s before returning a
+// resume cursor. Supabase hard limit is ~150s — 30s safety buffer. Now safe to
+// raise from the previous 100s because the orchestrator no longer re-dispatches
+// the SAME phase a second time within one invocation (that used to compound
+// two ~100s calls past the platform's hard limit and get force-killed mid-call
+// — see the comment in integrations-sync/index.ts). A single call using more
+// of its own budget now gets strictly more real work done per invocation.
+const TIME_BUDGET_MS = 120_000;
 const DEFAULT_PER_PAGE = 200;
 
 // Converts snake_case entity type to Title Case label
@@ -391,7 +396,6 @@ export async function runPhaseSync(
     }
 
     if (!page.hasMore || !page.nextCursor) {
-      await flushBuyerSearchVectors(admin, integration.tenant_id, allBuyerIds, allBuyerUserIds);
       const completedAt = new Date().toISOString();
       if (opts.jobId) {
         const durationMs = Date.now() - new Date(startedAt).getTime();
@@ -419,14 +423,14 @@ export async function runPhaseSync(
           },
         });
       }
+      flushBuyerSearchVectorsInBackground(admin, integration.tenant_id, allBuyerIds, allBuyerUserIds);
       return { ok: true, phase: phase.id, records_synced: totalSynced, has_more: false, next_cursor: null };
     }
 
     cursor = page.nextCursor;
   }
 
-  // Time budget exceeded — rebuild accumulated search vectors then pause
-  await flushBuyerSearchVectors(admin, integration.tenant_id, allBuyerIds, allBuyerUserIds);
+  // Time budget exceeded — pause first, rebuild accumulated search vectors in background
   const nextCursorRecord = cursor as Record<string, unknown> | null;
   if (opts.jobId) {
     await updatePhaseJob(admin, opts.jobId, {
@@ -436,6 +440,7 @@ export async function runPhaseSync(
       progress: buildProgress({ next_cursor: nextCursorRecord }),
     });
   }
+  flushBuyerSearchVectorsInBackground(admin, integration.tenant_id, allBuyerIds, allBuyerUserIds);
   return { ok: true, phase: phase.id, records_synced: totalSynced, has_more: true, next_cursor: nextCursorRecord };
 }
 
@@ -454,6 +459,25 @@ async function flushBuyerSearchVectors(
   if (buyerUserIds.length > 0) {
     await rebuildBuyerUserSearchVectors(admin, buyerIds, buyerUserIds);
   }
+}
+
+// Search vectors are a read-side optimization, not sync-correctness — a slow or
+// failing rebuild must never block the phase's completed/paused status write, or
+// throw and abandon the job at status='running' (see reap_stale_sync_jobs).
+// Runs after the job status is already persisted, via EdgeRuntime.waitUntil so
+// it still completes after the response returns instead of being cut off.
+function flushBuyerSearchVectorsInBackground(
+  admin: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  buyerIds: string[],
+  buyerUserIds: string[],
+): void {
+  if (buyerIds.length === 0 && buyerUserIds.length === 0) return;
+  const task = flushBuyerSearchVectors(admin, tenantId, buyerIds, buyerUserIds).catch((err) => {
+    console.error('[sync] buyer search vector rebuild failed (non-fatal, phase already completed):', err);
+  });
+  const edgeRuntime = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
+  edgeRuntime?.waitUntil(task);
 }
 
 // ── Response helpers ──────────────────────────────────────────────────────────

@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
-import { loadBuyerCreditSnapshots } from '@/lib/server/buyer-credit';
 import { PAGE_SIZE } from '@/lib/pagination';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
+import { fetchAllRows } from '@/lib/server/fetch-all-rows';
 import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 
 type StatusTone = 'success' | 'warning' | 'danger' | 'neutral';
@@ -37,6 +37,20 @@ type BuyerRow = {
     cohort_name?: string | null;
   } | null;
   whatsapp_opted_out: boolean;
+};
+
+type CustomersLandingBuyerDbRow = {
+  id: string;
+  business_name: string;
+  tier: 'A' | 'B' | 'C' | null;
+  phone: string | null;
+  gst_treatment: string | null;
+  status: string | null;
+  credit_limit: number | null;
+  is_active: boolean;
+  geography: { city?: string; state?: string } | null;
+  deleted_at: string | null;
+  whatsapp_opt_out_at: string | null;
 };
 
 type PriceListAssignmentRow = {
@@ -147,21 +161,18 @@ export async function GET(req: NextRequest) {
       return timedJson(cached.payload);
     }
 
-    const { data: buyers, error: buyersError } = await db
-      .schema('app')
-      .from('buyers')
-      .select('id, business_name, tier, phone, gst_treatment, status, credit_limit, is_active, geography, deleted_at, whatsapp_opt_out_at')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .order('business_name', { ascending: true })
-      .order('id', { ascending: true });
-
-    if (buyersError) {
-      return timedJson({ error: 'Failed to fetch buyers' }, { status: 500 });
-    }
-
-    const buyerRows = buyers ?? [];
-    const buyerIds = buyerRows.map((b: { id: string }) => b.id);
+    const buyerRows = await fetchAllRows<CustomersLandingBuyerDbRow>((from, to) =>
+      db
+        .schema('app')
+        .from('buyers')
+        .select('id, business_name, tier, phone, gst_treatment, status, credit_limit, is_active, geography, deleted_at, whatsapp_opt_out_at')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .order('business_name', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to),
+    );
+    const buyerIds = buyerRows.map((b) => b.id);
     const buyerIdSet = new Set(buyerIds);
 
     if (buyerRows.length === 0) {
@@ -330,19 +341,16 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    let creditSnapshots = new Map<string, { outstanding_dues: number }>();
-    try {
-      creditSnapshots = await loadBuyerCreditSnapshots(supabaseAdmin as any, {
-        tenantId,
-        buyerIds: buyerRows.map((buyer: any) => buyer.id),
-        creditLimitByBuyerId: new Map(
-          buyerRows.map((buyer: any) => [buyer.id, Number(buyer.credit_limit ?? 0)]),
-        ),
+    const creditSnapshots = new Map<string, { outstanding_dues: number }>();
+    for (const buyer of buyerRows as Array<{ id: string; credit_limit: number | null }>) {
+      creditSnapshots.set(buyer.id, {
+        outstanding_dues: 0,
       });
-    } catch (error) {
-      console.warn('[GET /api/tenant/customers] credit snapshot enrichment failed; defaulting dues to zero.', {
-        error,
-      });
+    }
+    for (const invoice of invoices as Array<{ buyer_id: string; outstanding_balance: number | null }>) {
+      const snapshot = creditSnapshots.get(invoice.buyer_id);
+      if (!snapshot) continue;
+      snapshot.outstanding_dues += Number(invoice.outstanding_balance ?? 0);
     }
 
     const cohortMap = new Map<string, string>();

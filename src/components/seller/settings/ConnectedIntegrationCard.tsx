@@ -33,10 +33,10 @@ import {
   isZohoDailySyncSchedule,
 } from '@/lib/integrations/schedule';
 import { formatIntegrationDateTimeLabel } from '@/lib/integrations/format';
-import { resolveSyncWindowSince, type SyncWindowId } from '@/lib/integrations/sync-window';
 import { cn } from '@/lib/utils';
+import { FieldMappingsPanel } from './FieldMappingsPanel';
 import { IntegrationJobLiveLog } from './IntegrationJobLiveLog';
-import { SyncWindowDialog } from './SyncWindowDialog';
+import { SyncWindowDialog, type SyncConfirmOptions } from './SyncWindowDialog';
 
 function labelize(value: string) {
   return value
@@ -197,6 +197,55 @@ function getGroupSummaryTotals(totals: NonNullable<IntegrationCatalogItem['cover
     default:
       return null;
   }
+}
+
+// Every job row carries its own authoritative `phase` column (set once, at
+// creation) — dedup by that directly instead of inferring phase from
+// progress/summary fields, which are empty until a phase actually starts
+// running and otherwise silently fall back to a stale historical row.
+function getLatestJobByPhase(jobs: IntegrationSyncJob[]) {
+  const map = new Map<string, IntegrationSyncJob>();
+  for (const job of jobs) {
+    if (job.phase && !map.has(job.phase)) map.set(job.phase, job);
+  }
+  return map;
+}
+
+function getLastCompletedJobByPhase(jobs: IntegrationSyncJob[]) {
+  const map = new Map<string, IntegrationSyncJob>();
+  for (const job of jobs) {
+    if (job.phase && job.status === 'completed' && !map.has(job.phase)) map.set(job.phase, job);
+  }
+  return map;
+}
+
+// Each resumed attempt of a phase is its OWN job row with its OWN counters
+// starting at 0 — a phase that took 3 paused/resumed attempts before finally
+// finishing shows "0 processed" then "347 processed" then "0" again if you
+// only look at any single row. Walk back from newest (guaranteed to be the
+// currently in-progress row — this is only called while a phase is actively
+// syncing/paused) and sum each attempt's own count. A resumed dispatch only
+// ever continues from a 'paused'/'failed'/'cancelled' predecessor — never
+// from 'completed' (see resolvePhaseResumePage in integrations-sync) — so
+// hitting a 'completed' row means everything before it belongs to a wholly
+// separate, already-finished run and must NOT be folded into this total.
+function getCumulativePhaseStat(jobs: IntegrationSyncJob[], phaseId: string): IntegrationSyncPhaseStats | null {
+  let processed = 0;
+  let failed = 0;
+  let pages = 0;
+  let sawAny = false;
+  for (const job of jobs) {
+    if (job.phase !== phaseId) continue;
+    if (job.status === 'completed') break;
+    const stat = job.progress?.counts?.[phaseId] ?? job.summary?.counts?.[phaseId] ?? null;
+    if (stat) {
+      processed += stat.processed ?? 0;
+      failed += stat.failed ?? 0;
+      pages += stat.pages ?? 0;
+      sawAny = true;
+    }
+  }
+  return sawAny ? { entity_type: phaseId, processed, failed, pages } : null;
 }
 
 function getGroupRelevantJob(jobs: IntegrationSyncJob[], key: EntityGroupKey) {
@@ -469,18 +518,40 @@ function sortJobsDesc(jobs: IntegrationSyncJob[]) {
   return [...jobs].sort((a, b) => getJobTimestamp(b) - getJobTimestamp(a));
 }
 
-type PhaseState = 'Not Started' | 'Syncing' | 'Successful' | 'Failed';
+type PhaseState = 'Not Started' | 'Syncing' | 'Paused' | 'Successful' | 'Failed';
 
 function getPhaseStateVariant(state: PhaseState) {
   switch (state) {
     case 'Successful':
       return 'success' as const;
     case 'Syncing':
+    case 'Paused':
       return 'info' as const;
     case 'Failed':
       return 'warning' as const;
     default:
       return 'outline' as const;
+  }
+}
+
+// Maps a job row's own status straight to a PhaseState — the real, current
+// state of that specific phase, independent of any client-side "is my click
+// still in flight" flag.
+function jobStatusToPhaseState(job: IntegrationSyncJob | null | undefined): PhaseState {
+  if (!job) return 'Not Started';
+  switch (job.status) {
+    case 'running':
+    case 'queued':
+    case 'pending':
+      return 'Syncing';
+    case 'paused':
+      return 'Paused';
+    case 'failed':
+      return 'Failed';
+    case 'completed':
+      return 'Successful';
+    default:
+      return 'Not Started';
   }
 }
 
@@ -753,6 +824,24 @@ function getProgressText(job: IntegrationSyncJob) {
   return { percent, numerator, denominator: knownDenominator };
 }
 
+// The new per-phase job model never sets items_total/phases_total (those are
+// legacy fields from the old monolithic sync), so getProgressText above
+// always returns null for a real in-progress run — this computes a real,
+// monotonically-increasing progress fraction instead: how many of the 7
+// canonical sync phases have actually completed in the current run.
+const CANONICAL_SYNC_PHASE_IDS = SYNC_PHASE_GROUPS.filter((g) => g.canSyncAgain).flatMap((g) => g.subPhases.map((s) => s.id));
+
+function getOverallRunProgress(jobs: IntegrationSyncJob[]) {
+  const latestByPhase = getLatestJobByPhase(jobs);
+  const relevant = CANONICAL_SYNC_PHASE_IDS.map((phaseId) => latestByPhase.get(phaseId) ?? null);
+  const anyStarted = relevant.some((job) => job !== null);
+  if (!anyStarted) return null;
+
+  const completed = relevant.filter((job) => job?.status === 'completed').length;
+  const percent = Math.max(4, Math.min(100, Math.round((completed / CANONICAL_SYNC_PHASE_IDS.length) * 100)));
+  return { percent, numerator: completed, denominator: CANONICAL_SYNC_PHASE_IDS.length };
+}
+
 function PhaseErrorFlyout({ errors }: { errors: IntegrationEntityError[] }) {
   const [open, setOpen] = useState(false);
   if (errors.length === 0) return null;
@@ -790,8 +879,8 @@ interface ConnectedIntegrationCardProps {
   isSellerAdmin: boolean;
   onOpenWizard: () => void;
   onDisconnect: () => void;
-  onSyncNow: (since: string) => void;
-  onSyncPhase: (phaseId: string, since: string) => void;
+  onSyncNow: (options: SyncConfirmOptions) => void;
+  onSyncPhase: (phaseId: string, options: SyncConfirmOptions) => void;
   onStopSync: () => void;
   onRefresh: () => void;
   onRetryWebhooks: () => void;
@@ -866,12 +955,31 @@ export function ConnectedIntegrationCard({
   const needsReconnect = ti.status === 'disconnected' || ti.health_status === 'expired' || ti.health_status === 'invalid';
   const Icon = getIntegrationIcon(integration);
   const currentRun = activeJob ?? latestVisibleRun;
-  const currentRunPhaseEntries = currentRun
-    ? getPhaseEntries(currentRun).filter((phase) => phase.stat && ((phase.stat.processed ?? 0) > 0 || (phase.stat.failed ?? 0) > 0 || (phase.stat.pages ?? 0) > 0))
-    : [];
-  const currentRunProgress = currentRun ? getProgressText(currentRun) : null;
   const syncablePhaseActions = getSyncablePhaseActions(integration);
   const runHistory = activeJob ? [activeJob, ...sortedHistory.filter((job) => job.id !== activeJob.id)] : sortedHistory;
+  // A phase's own progress counters reset to 0 on every resumed attempt (each
+  // resume is a fresh job row) — sum across the whole attempt-chain via
+  // getCumulativePhaseStat instead of reading a single job's own counters, so
+  // this doesn't visibly reset every time a phase pauses and resumes.
+  const currentRunPhaseEntries = (() => {
+    const latestByPhase = getLatestJobByPhase(runHistory);
+    return CANONICAL_SYNC_PHASE_IDS
+      .map((phaseId) => {
+        const job = latestByPhase.get(phaseId);
+        if (!job || !['running', 'queued', 'pending', 'paused'].includes(job.status)) return null;
+        const stat = getCumulativePhaseStat(runHistory, phaseId);
+        if (!stat || (stat.processed <= 0 && stat.failed <= 0 && stat.pages <= 0)) return null;
+        return { id: phaseId, label: labelizePhase(phaseId), state: jobStatusToPhaseState(job), stat };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+  })();
+  // While a sync is actually in progress, prefer the real "phases completed /
+  // 7" fraction — the new per-phase job model never populates the legacy
+  // items_total/phases_total fields getProgressText relies on, so that would
+  // otherwise render nothing (or a stale value from an old legacy job).
+  const currentRunProgress = isSyncInProgress
+    ? getOverallRunProgress(runHistory) ?? (currentRun ? getProgressText(currentRun) : null)
+    : currentRun ? getProgressText(currentRun) : null;
   const overviewCards = ENTITY_GROUPS.map((group) => {
     const totals = getGroupSummaryTotals(coverageTotals, group.key);
     const latestGroupRun = getGroupRelevantJob(runHistory, group.key);
@@ -934,13 +1042,12 @@ export function ConnectedIntegrationCard({
     setSyncDialog({ open: true, mode: 'phase', phaseId, phaseLabel });
   }
 
-  function handleSyncWindowConfirm(windowId: SyncWindowId) {
-    const since = resolveSyncWindowSince(windowId);
+  function handleSyncWindowConfirm(options: SyncConfirmOptions) {
     if (syncDialog.mode === 'phase' && syncDialog.phaseId) {
-      onSyncPhase(syncDialog.phaseId, since);
+      onSyncPhase(syncDialog.phaseId, options);
       return;
     }
-    onSyncNow(since);
+    onSyncNow(options);
   }
 
   return (
@@ -1124,7 +1231,13 @@ export function ConnectedIntegrationCard({
                 const canSync = isSellerAdmin && available && !isSyncingNow &&
                   (ti.status === 'connected' || ti.status === 'sync_failed') && phaseGroup.canSyncAgain;
 
-                // Aggregate sub-phase counts and status from coverage totals
+                // Aggregate sub-phase counts (always live, from coverageTotals) and
+                // status (from that sub-phase's OWN latest job row — job.phase maps
+                // 1:1 to sub.id, so no alias inference needed, and this reflects
+                // reality regardless of whether the "Sync Again" click's own HTTP
+                // request has already resolved).
+                const latestJobByPhase = getLatestJobByPhase(runHistory);
+                const lastCompletedByPhase = getLastCompletedJobByPhase(runHistory);
                 const subPhaseRows = phaseGroup.subPhases.map((sub) => {
                   const count = (() => {
                     switch (sub.id) {
@@ -1139,22 +1252,32 @@ export function ConnectedIntegrationCard({
                     }
                   })();
 
-                  // Find the most recent job that touched this sub-phase
-                  const relevantGroup = GROUP_BY_PHASE_ID[sub.id];
-                  const latestJob = relevantGroup ? getGroupRelevantJob(runHistory, relevantGroup as EntityGroupKey) : null;
-                  const isSyncing = isSyncingNow && latestJob?.status === 'running';
+                  const latestJob = latestJobByPhase.get(sub.id) ?? null;
+                  const state = jobStatusToPhaseState(latestJob);
+                  const isSyncing = state === 'Syncing' || state === 'Paused';
                   const pagesNote = isSyncing && latestJob?.progress
                     ? (() => {
                         const pg = (latestJob.progress as { pages_fetched?: number }).pages_fetched;
                         return pg ? `page ${pg}` : null;
                       })()
                     : null;
+                  // "This attempt" (cumulative across resumed rows, not reset per
+                  // row) vs. "last completed run" — shown side by side so it's
+                  // clear whether the current number is fresh progress or the
+                  // same total the previous full sync already reached.
+                  const currentSynced = isSyncing ? getCumulativePhaseStat(runHistory, sub.id) : null;
+                  const completedJob = lastCompletedByPhase.get(sub.id) ?? null;
+                  const previousSynced = completedJob && completedJob.id !== latestJob?.id
+                    ? completedJob.progress?.counts?.[sub.id] ?? completedJob.summary?.counts?.[sub.id] ?? null
+                    : null;
 
-                  return { ...sub, count, isSyncing, pagesNote };
+                  return { ...sub, count, state, isSyncing, pagesNote, currentSynced, previousSynced };
                 });
 
                 const phaseTotal = subPhaseRows.reduce((s, r) => s + r.count, 0);
-                const anyActive = subPhaseRows.some((r) => r.isSyncing);
+                const anyActive = subPhaseRows.some((r) => r.state === 'Syncing');
+                const anyPaused = subPhaseRows.some((r) => r.state === 'Paused');
+                const anyFailed = subPhaseRows.some((r) => r.state === 'Failed');
 
                 // For Phase 3 (analysis), find the dedicated analysis job
                 const analysisJob = phaseGroup.id === 'analysis'
@@ -1179,12 +1302,14 @@ export function ConnectedIntegrationCard({
                       <div className="flex shrink-0 items-center gap-2">
                         {anyActive || analysisRunning ? (
                           <StatusPill label="Running" variant="info" />
-                        ) : analysisFailed ? (
+                        ) : anyPaused ? (
+                          <StatusPill label="Paused" variant="info" />
+                        ) : anyFailed || analysisFailed ? (
                           <StatusPill label="Failed" variant="danger" />
                         ) : analysisComplete || phaseTotal > 0 ? (
                           <StatusPill label="Done" variant="success" />
                         ) : null}
-                        {!analysisComplete && !analysisRunning && phaseTotal > 0 && phaseGroup.id !== 'analysis' ? (
+                        {!analysisComplete && !analysisRunning && !anyActive && !anyPaused && phaseTotal > 0 && phaseGroup.id !== 'analysis' ? (
                           <span className="text-sm font-medium text-cream-900">{formatNumber(phaseTotal)} records</span>
                         ) : null}
                         {phaseGroup.canSyncAgain ? (
@@ -1244,16 +1369,28 @@ export function ConnectedIntegrationCard({
                             {subPhaseRows.map((sub) => (
                               <div key={sub.id} className="flex items-center justify-between gap-3 rounded-lg border border-cream-200 bg-white px-3 py-2">
                                 <div className="text-sm text-cream-900">{sub.label}</div>
-                                <div className="flex items-center gap-2 text-sm">
-                                  {sub.isSyncing ? (
-                                    <span className="text-info-700">
-                                      {sub.pagesNote ? `syncing ${sub.pagesNote}…` : 'syncing…'}
-                                    </span>
-                                  ) : sub.count > 0 ? (
-                                    <span className="font-medium text-cream-900">{formatNumber(sub.count)}</span>
-                                  ) : (
-                                    <span className="text-cream-500">—</span>
-                                  )}
+                                <div className="flex items-center gap-3 text-sm">
+                                  <div className="text-right">
+                                    {sub.isSyncing ? (
+                                      <div className="text-info-700">
+                                        {sub.currentSynced
+                                          ? `${formatNumber(sub.currentSynced.processed)} synced so far`
+                                          : sub.pagesNote ? `syncing ${sub.pagesNote}…` : 'syncing…'}
+                                      </div>
+                                    ) : sub.count > 0 ? (
+                                      <div className="font-medium text-cream-900">{formatNumber(sub.count)}</div>
+                                    ) : (
+                                      <div className="text-cream-500">—</div>
+                                    )}
+                                    {sub.isSyncing && sub.previousSynced ? (
+                                      <div className="text-xs text-cream-500">
+                                        last sync: {formatNumber(sub.previousSynced.processed)}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                  {sub.state !== 'Not Started' ? (
+                                    <StatusPill label={sub.state} variant={getPhaseStateVariant(sub.state)} />
+                                  ) : null}
                                 </div>
                               </div>
                             ))}
@@ -1420,6 +1557,10 @@ export function ConnectedIntegrationCard({
                 Placeholder for outbound write-back rules. We&apos;ll use this space later to show which DealFlow changes are pushed into Zoho.
               </p>
             </div>
+
+            {integration.id.startsWith('zoho_') ? (
+              <FieldMappingsPanel tenantIntegrationId={ti.id} />
+            ) : null}
           </div>
         ) : (
           <div className="space-y-4">

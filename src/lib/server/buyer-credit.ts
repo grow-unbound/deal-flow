@@ -25,6 +25,14 @@ interface LoadBuyerCreditSnapshotsArgs {
   creditLimitByBuyerId?: Map<string, number>;
 }
 
+function chunkArray<T>(values: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
 function startOfToday(): Date {
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -49,21 +57,23 @@ export async function loadBuyerCreditSnapshots(
 
   let resolvedCreditLimits = creditLimitByBuyerId;
   if (!resolvedCreditLimits) {
-    const buyersRes = await db
-      .schema('app')
-      .from('buyers')
-      .select('id, credit_limit')
-      .eq('tenant_id', tenantId)
-      .in('id', uniqueBuyerIds)
-      .is('deleted_at', null);
-
-    if (buyersRes.error) {
-      return snapshots;
-    }
-
     resolvedCreditLimits = new Map<string, number>();
-    for (const row of (buyersRes.data ?? []) as Array<{ id: string; credit_limit: number | null }>) {
-      resolvedCreditLimits.set(row.id, Number(row.credit_limit ?? 0));
+    for (const buyerChunk of chunkArray(uniqueBuyerIds, 1000)) {
+      const buyersRes = await db
+        .schema('app')
+        .from('buyers')
+        .select('id, credit_limit')
+        .eq('tenant_id', tenantId)
+        .in('id', buyerChunk)
+        .is('deleted_at', null);
+
+      if (buyersRes.error) {
+        return snapshots;
+      }
+
+      for (const row of (buyersRes.data ?? []) as Array<{ id: string; credit_limit: number | null }>) {
+        resolvedCreditLimits.set(row.id, Number(row.credit_limit ?? 0));
+      }
     }
   }
 
@@ -88,33 +98,35 @@ export async function loadBuyerCreditSnapshots(
     .eq('tenant_id', tenantId)
     .neq('status', 'draft');
 
-  const invoicesRes = uniqueBuyerIds.length === 1
-    ? await invoicesQuery.eq('buyer_id', uniqueBuyerIds[0]).is('deleted_at', null)
-    : await invoicesQuery.in('buyer_id', uniqueBuyerIds).is('deleted_at', null);
+  for (const buyerChunk of chunkArray(uniqueBuyerIds, 1000)) {
+    const invoicesRes = buyerChunk.length === 1
+      ? await invoicesQuery.eq('buyer_id', buyerChunk[0]).is('deleted_at', null)
+      : await invoicesQuery.in('buyer_id', buyerChunk).is('deleted_at', null);
 
-  if (invoicesRes.error) {
-    return snapshots;
-  }
+    if (invoicesRes.error) {
+      return snapshots;
+    }
 
-  for (const row of (invoicesRes.data ?? []) as Array<{
-    buyer_id: string;
-    outstanding_balance: number | null;
-    due_date: string | null;
-    status: string | null;
-  }>) {
-    const snapshot = snapshots.get(row.buyer_id);
-    if (!snapshot) continue;
+    for (const row of (invoicesRes.data ?? []) as Array<{
+      buyer_id: string;
+      outstanding_balance: number | null;
+      due_date: string | null;
+      status: string | null;
+    }>) {
+      const snapshot = snapshots.get(row.buyer_id);
+      if (!snapshot) continue;
 
-    const outstanding = Number(row.outstanding_balance ?? 0);
-    if (outstanding <= 0) continue;
+      const outstanding = Number(row.outstanding_balance ?? 0);
+      if (outstanding <= 0) continue;
 
-    snapshot.outstanding_dues += outstanding;
-    snapshot.credit_used += outstanding;
-    snapshot.open_invoice_count += 1;
+      snapshot.outstanding_dues += outstanding;
+      snapshot.credit_used += outstanding;
+      snapshot.open_invoice_count += 1;
 
-    if (row.due_date) {
-      if (!snapshot.earliest_due_date || new Date(row.due_date).getTime() < new Date(snapshot.earliest_due_date).getTime()) {
-        snapshot.earliest_due_date = row.due_date;
+      if (row.due_date) {
+        if (!snapshot.earliest_due_date || new Date(row.due_date).getTime() < new Date(snapshot.earliest_due_date).getTime()) {
+          snapshot.earliest_due_date = row.due_date;
+        }
       }
     }
   }

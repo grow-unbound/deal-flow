@@ -483,6 +483,7 @@ export const IntegrationSyncRequestSchema = z
     since: z.string().date().optional(),
     import_orders_since: z.string().date().optional(),
     max_pages: z.number().int().min(1).optional(),
+    force_full_refresh: z.boolean().default(false),
   })
   .strict();
 export type IntegrationSyncRequest = z.infer<typeof IntegrationSyncRequestSchema>;

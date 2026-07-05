@@ -21,7 +21,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (!profile.buyer || profile.context.mode === 'preview') {
+    if (!profile.buyer) {
       return NextResponse.json({ error: 'Buyer not found' }, { status: 404 });
     }
 
