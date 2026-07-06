@@ -219,15 +219,12 @@ export async function setIntegrationConnected(
     .eq('id', integrationId);
 }
 
+/** Sync failures are recorded on app.integration_sync_jobs — OAuth stays connected. */
 export async function setIntegrationSyncFailed(
   admin: ReturnType<typeof createAdminClient>,
   integrationId: string,
 ): Promise<void> {
-  await admin
-    .schema('app')
-    .from('tenant_integrations')
-    .update({ status: 'sync_failed', updated_at: new Date().toISOString() })
-    .eq('id', integrationId);
+  await setIntegrationConnected(admin, integrationId);
 }
 
 // ── DB-backed Zoho token cache ─────────────────────────────────────────────────

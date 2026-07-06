@@ -1,9 +1,10 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { apiFetch } from '@/lib/api-fetch';
+import { appendArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { CatalogComposerFilterState, CatalogComposerPayload, CatalogComposerPriceSource, CatalogComposerTag } from '@/lib/zod';
@@ -28,6 +29,7 @@ export interface CatalogLandingRow {
   brands_count: number;
   gmv: number;
   orders: number;
+  conversions?: number;
   views: number;
   conversion_pct: number;
   valid_from: string;
@@ -50,6 +52,7 @@ export interface CatalogsLandingResponse {
     gmv_growth_pct: number;
     avg_conversion_pct: number;
     orders_attributed_mtd: number;
+    conversions_mtd?: number;
   };
   todays_read: {
     needs_attention: CatalogLandingRow[];
@@ -89,6 +92,9 @@ export interface CatalogDetailResponse {
     gmv: number;
     growth_pct: number;
     orders: number;
+    conversions?: number;
+    order_count?: number;
+    estimate_count?: number;
     conversion_rate: number;
     unique_viewers: number;
     cohort_members: number;
@@ -131,6 +137,9 @@ export interface CatalogDetailResponse {
   performance: {
     summary: {
       orders: number;
+      conversions?: number;
+      order_count?: number;
+      estimate_count?: number;
       gmv: number;
       growth_pct: number;
       aov: number;
@@ -143,8 +152,9 @@ export interface CatalogDetailResponse {
     };
     funnel: {
       unique_viewers: number;
-      cart_additions: number;
+      conversions: number;
       orders: number;
+      estimates?: number;
       gmv: number;
     };
     daily: Array<{
@@ -168,7 +178,7 @@ export interface CatalogDetailResponse {
       buyer_id: string;
       buyer_name: string;
       city: string;
-      opened_status: 'Opened' | 'Purchased' | 'Not yet';
+      opened_status: 'Opened' | 'Converted' | 'Not yet';
       orders: number;
       gmv: number;
       last_opened_at: string | null;
@@ -180,7 +190,7 @@ export interface CatalogDetailResponse {
     buyer_name: string;
     city: string;
     cohort_label: string;
-    opened_status: 'Opened' | 'Purchased' | 'Not yet';
+    opened_status: 'Opened' | 'Converted' | 'Not yet';
     spend: number;
     orders: number;
     last_opened_at: string | null;
@@ -276,6 +286,38 @@ export interface CatalogComposerBootstrapResponse {
   products: CatalogComposerProduct[];
 }
 
+export interface CatalogComposerBuyerPickerRow {
+  id: string;
+  business_name: string;
+  city: string;
+  spend_mtd: number;
+  outstanding_due: number;
+  last_order_at: string | null;
+  ordered_30d: boolean;
+  overdue: boolean;
+  avatar: {
+    initials: string;
+    hue: 'teal' | 'ember' | 'cream';
+  };
+}
+
+export interface CatalogComposerBuyerPickerResponse {
+  buyers: CatalogComposerBuyerPickerRow[];
+  selected_buyers: CatalogComposerBuyerPickerRow[];
+  filters: LandingFilterMeta;
+  nextCursor: string | null;
+}
+
+export interface CatalogComposerBuyerPickerFilters {
+  query?: string;
+  city?: string[];
+  cohort?: string[];
+  orders?: string[];
+  dues?: string[];
+  selectedIds?: string[];
+  limit?: number;
+}
+
 export interface ExtendValidityRequest {
   valid_until: string;
 }
@@ -346,6 +388,41 @@ export function useCatalogComposerDetail(id: string) {
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
+  });
+}
+
+export function useCatalogComposerBuyerPicker({
+  query,
+  city = [],
+  cohort = [],
+  orders = [],
+  dues = [],
+  selectedIds = [],
+  limit = 30,
+  enabled = true,
+}: CatalogComposerBuyerPickerFilters & { enabled?: boolean }) {
+  return useInfiniteQuery({
+    queryKey: ['catalog-composer-buyer-picker', query?.trim() ?? '', city, cohort, orders, dues, selectedIds, limit],
+    queryFn: async ({ pageParam }): Promise<CatalogComposerBuyerPickerResponse> => {
+      const params = new URLSearchParams();
+      if (query?.trim()) params.set('q', query.trim());
+      params.set('limit', String(limit));
+      if (pageParam) params.set('cursor', pageParam as string);
+      appendArrayParam(params, 'city', city);
+      appendArrayParam(params, 'cohort', cohort);
+      appendArrayParam(params, 'orders', orders);
+      appendArrayParam(params, 'dues', dues);
+      appendArrayParam(params, 'selected_id', selectedIds);
+      const res = await apiFetch(`/api/tenant/catalogs/buyer-picker?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to fetch campaign buyers');
+      return res.json();
+    },
+    enabled,
+    placeholderData: keepPreviousData,
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    staleTime: 30_000,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
   });
 }
 

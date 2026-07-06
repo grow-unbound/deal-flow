@@ -2,6 +2,7 @@ import { ROLES } from '@/constants';
 
 export const BUYER_PREVIEW_HEADER = 'x-buyer-preview';
 export const BUYER_PREVIEW_TOKEN_VERSION = 'buyer_preview_v1';
+export const BUYER_PREVIEW_CONFIRMATION_COOKIE = 'buyer_preview_needs_confirmation';
 /** Close preview after this much idle time (no pointer/keyboard/scroll activity). */
 export const BUYER_PREVIEW_INACTIVITY_SECONDS = 60 * 60;
 /** Signed preview token lifetime — slightly longer than inactivity so active sessions can refresh. */
@@ -137,4 +138,3 @@ export async function verifyBuyerPreviewToken(
     return null;
   }
 }
-

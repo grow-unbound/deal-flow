@@ -26,6 +26,8 @@ const eligibleBuyerCandidate = {
   tenant_id: 'tenant-1',
   tenant_name: 'Tenant One',
   tenant_slug: 'tenant-one',
+  tenant_whatsapp_number: '9876500000',
+  tenant_whatsapp_display_name: 'Tenant One',
   buyer_id: 'buyer-1',
   role: 'buyer_admin',
   principal_type: 'buyer',
@@ -44,6 +46,7 @@ describe('buyer phone otp routes', () => {
     findAllLoginCandidatesMock.mockReset();
     findBuyerLoginCandidatesMock.mockReset();
     sendLoginOtpWhatsappMock.mockReset();
+    sendLoginOtpWhatsappMock.mockResolvedValue(undefined);
     mintBuyerSessionMock.mockReset();
     mintSellerSessionMock.mockReset();
   });
@@ -60,6 +63,7 @@ describe('buyer phone otp routes', () => {
 
     expect(response.status).toBe(200);
     expect(body.registered).toBe(true);
+    expect(body.outcome).toBe('otp_sent');
     expect(typeof body.ref_id).toBe('string');
     expect(sendLoginOtpWhatsappMock).toHaveBeenCalledTimes(1);
   });
@@ -77,10 +81,14 @@ describe('buyer phone otp routes', () => {
 
     expect(response.status).toBe(200);
     expect(body.registered).toBe(false);
+    expect(body.outcome).toBe('unregistered');
     expect(body.ref_id).toBeNull();
+    expect(body.message).toBe("We couldn't find your number.");
+    expect(body.seller_name).toBeNull();
+    expect(body.seller_whatsapp_number).toBeNull();
   });
 
-  it('returns tenant blocked message when tenant disabled buyer app', async () => {
+  it('returns seller disabled metadata when tenant disabled buyer app', async () => {
     // findAllLoginCandidates filters out ineligible — returns empty
     findAllLoginCandidatesMock.mockResolvedValue([]);
     // findBuyerLoginCandidates returns the blocked candidate for messaging
@@ -103,12 +111,15 @@ describe('buyer phone otp routes', () => {
 
     expect(response.status).toBe(200);
     expect(body.registered).toBe(false);
+    expect(body.outcome).toBe('seller_disabled');
     expect(body.ref_id).toBeNull();
+    expect(body.seller_name).toBe('Acme Corp');
+    expect(body.seller_whatsapp_number).toBe('9876500000');
     expect(body.message).toContain('Acme Corp');
-    expect(body.message).toContain('does not allow');
+    expect(body.message).toContain('Yukti buyer-app');
   });
 
-  it('returns buyer blocked message when buyer app not enabled by tenant', async () => {
+  it('returns buyer disabled metadata when buyer app is disabled for the buyer', async () => {
     findAllLoginCandidatesMock.mockResolvedValue([]);
     findBuyerLoginCandidatesMock.mockResolvedValue([
       {
@@ -129,9 +140,12 @@ describe('buyer phone otp routes', () => {
 
     expect(response.status).toBe(200);
     expect(body.registered).toBe(false);
+    expect(body.outcome).toBe('buyer_disabled');
     expect(body.ref_id).toBeNull();
+    expect(body.seller_name).toBe('Acme Corp');
+    expect(body.seller_whatsapp_number).toBe('9876500000');
     expect(body.message).toContain('Acme Corp');
-    expect(body.message).toContain('enable');
+    expect(body.message).toContain('buyer-app');
   });
 
   it('verifies OTP and mints a session for a single buyer context', async () => {

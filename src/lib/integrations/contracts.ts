@@ -11,6 +11,36 @@ export const ZOHO_INTEGRATION_TYPE_IDS = ['zoho_books', 'zoho_inventory'] as con
 
 export type ZohoIntegrationTypeId = (typeof ZOHO_INTEGRATION_TYPE_IDS)[number];
 
+/** OAuth handshake succeeded — integration can call provider APIs. */
+export const OAUTH_LIVE_TENANT_INTEGRATION_STATUSES = ['connected', 'syncing'] as const;
+
+export type OAuthLiveTenantIntegrationStatus = (typeof OAUTH_LIVE_TENANT_INTEGRATION_STATUSES)[number];
+
+/**
+ * Includes legacy `sync_failed` rows written before sync health was tracked only
+ * on app.integration_sync_jobs. Prefer OAUTH_LIVE_TENANT_INTEGRATION_STATUSES for new code.
+ */
+export const OUTBOUND_PUSH_TENANT_INTEGRATION_STATUSES = [
+  ...OAUTH_LIVE_TENANT_INTEGRATION_STATUSES,
+  'sync_failed',
+] as const;
+
+export function isOAuthLiveTenantIntegrationStatus(status: string | null | undefined): boolean {
+  if (!status) return false;
+  return (OUTBOUND_PUSH_TENANT_INTEGRATION_STATUSES as readonly string[]).includes(status);
+}
+
+/** Normalize Postgres timestamptz / ISO strings to Zoho date_start format (YYYY-MM-DD). */
+export function normalizeIntegrationSinceDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10);
+}
+
 export const INTEGRATION_JOB_TYPES = [
   'initial_reference',
   'initial_transactional',

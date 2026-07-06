@@ -6,6 +6,7 @@ import { getFlag } from '@/lib/flags';
 import { getInAppCreateFlags } from '@/lib/server/seller-features';
 import {
   applySellerLocationScope,
+  getSellerLocationScope,
   isSellerLocationSelectionAllowed,
   loadAccessibleSellerLocations,
   resolveDefaultSellerLocationId,
@@ -220,6 +221,33 @@ export async function GET(req: NextRequest) {
     }
 
     const mtdOrders = (mtdOrdersRes.data ?? []) as OrderRow[];
+    // #region agent log
+    {
+      const locationScope = getSellerLocationScope(claims);
+      fetch('http://127.0.0.1:7499/ingest/42159701-4a5a-4229-9bc0-a9348f871657', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '56e5c0' },
+        body: JSON.stringify({
+          sessionId: '56e5c0',
+          runId: 'pre-fix',
+          hypothesisId: 'A-period',
+          location: 'app/api/tenant/orders/route.ts:GET',
+          message: 'orders period query result',
+          data: {
+            tenantId,
+            role: claims.role,
+            periodSelected: period.selected,
+            currentStart: period.current_start,
+            currentEndExclusive: period.current_end_exclusive,
+            mtdOrdersCount: mtdOrders.length,
+            locationScopeMode: locationScope.mode,
+            locationScopeIdsCount: locationScope.mode === 'subset' ? locationScope.locationIds.length : null,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
+    // #endregion
     const prevOrders = (prevOrdersRes.data ?? []) as Array<{ id: string; total_amount: number }>;
     const buyerIds = Array.from(new Set(mtdOrders.map((order) => order.buyer_id).filter((value): value is string => Boolean(value))));
     const catalogIds = Array.from(new Set(mtdOrders.map((order) => order.campaign_id).filter((value): value is string => Boolean(value))));

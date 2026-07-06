@@ -50,7 +50,7 @@ describe('warehouse detail page', () => {
         external_ref: 'WH-001',
         lat: null,
         lng: null,
-        linked_location: { id: 'loc-1', name: 'Mumbai Branch', is_default: true },
+        linked_location: { id: 'loc-1', name: 'Mumbai Branch', is_default: true, associated_users: [] },
         address: { line1: 'Main road', line2: '', city: 'Mumbai', state: 'MH', pincode: '400001' },
         associated_users: [],
         created_at: '2026-07-01T10:00:00.000Z',

@@ -140,8 +140,8 @@ export function SignupFormCard() {
         <YuktiLogo variant="stacked-lockup" className="h-14 w-[76px]" priority />
       </div>
 
-      <h1 className="font-display text-h2 text-cream-900 mb-1">Create your account</h1>
-      <p className="text-body-sm text-cream-600 mb-6">Set up your distributor workspace in under a minute.</p>
+      <h1 className="font-display text-h2 text-cream-900 mb-1">Create your seller account</h1>
+      <p className="text-body-sm text-cream-600 mb-6">Set up your seller workspace in under a minute.</p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 max-h-[calc(100vh-280px)] overflow-y-auto pr-1" noValidate>
 

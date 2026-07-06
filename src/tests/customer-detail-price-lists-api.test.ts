@@ -143,7 +143,7 @@ describe('customer detail price-list api', () => {
     dbResponses['app.invoices'] = [{ data: [] }];
     dbResponses['app.payments'] = [{ data: [] }];
     dbResponses['app.credit_notes'] = [{ data: [] }];
-    dbResponses['app.catalog_views'] = [{ data: [] }];
+    dbResponses['app.campaign_views'] = [{ data: [] }];
     dbResponses['app.estimates'] = [{ data: [] }];
     dbResponses['app.price_list_assignments'] = [
       {

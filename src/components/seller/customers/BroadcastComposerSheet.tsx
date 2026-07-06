@@ -1,41 +1,60 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { MessageCircle, Users2, MapPin, Clock, Wallet, CheckCircle2, Info } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Info, MessageCircle, Send } from 'lucide-react';
 import {
   FormOverlay,
-  FormOverlayHeader,
   FormOverlayBody,
   FormOverlayFooter,
+  FormOverlayHeader,
 } from '@/components/ui/form-overlay';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { useTenantCohortOptions } from '@/hooks/useCohorts';
 import {
-  useWhatsAppTemplates,
+  type WhatsAppTemplateOption,
   useAudiencePreview,
+  useBroadcastCampaignOptions,
   useCreateWhatsAppBroadcast,
   useWhatsAppPlatformStatus,
-  type WhatsAppTemplateOption,
+  useWhatsAppTemplates,
 } from '@/hooks/useWhatsAppBroadcasts';
 import { WHATSAPP_QUALITY_BANNER_COPY } from '@/constants/whatsapp-quality-banner';
+import { SellerBuyerPickerOverlay } from '@/components/seller/shared/SellerBuyerPickerOverlay';
 import type { WhatsAppBroadcastTargetType } from '@/lib/zod';
 
-// Numeric step union, mirrors the CsvImportFlow.tsx convention (0-indexed
-// literal steps, not a string enum).
-type Step = 0 | 1 | 2 | 3;
-const STEP_LABELS = ['Template', 'Audience', 'Review & send', 'Done'] as const;
+const MANUAL_TEMPLATE_KEYS = new Set(['highlight_text', 'visit_window']);
+const CAMPAIGN_TEMPLATE_USE_CASES = new Set(['new_stock', 'campaign_announcement']);
+const BUYER_APP_NUDGE_USE_CASE = 'buyer_app_nudge';
+const SELECT_BUYERS_VALUE = '__select_buyers__';
 
-const TARGET_MODES: Array<{ value: WhatsAppBroadcastTargetType; label: string; description: string }> = [
-  { value: 'cohort', label: 'Customer group', description: 'Send to everyone in a saved cohort' },
-  { value: 'geography_filter', label: 'Geography', description: 'Filter by city, e.g. all buyers in Nashik' },
-  { value: 'dues_filter', label: 'Outstanding dues', description: 'Buyers with overdue invoices' },
-  { value: 'dormant_filter', label: 'Dormant buyers', description: "Haven't ordered in a while" },
-  { value: 'buyer_selection', label: 'Manual selection', description: 'Pick specific buyers by ID' },
-  { value: 'all_buyers', label: 'All buyers', description: 'Everyone in your customer list' },
-];
+function combineScheduledAt(dateValue: string, timeValue: string) {
+  if (!dateValue || !timeValue) return null;
+  const [year, month, day] = dateValue.split('-').map((part) => Number(part));
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  const [hours, minutes] = timeValue.split(':').map((part) => Number(part));
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  const parsed = new Date(year, month - 1, day, hours, minutes, 0, 0);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function isTemplateSupported(template: WhatsAppTemplateOption) {
+  return template.meta_template_name !== 'login_otp'
+    && template.meta_template_name !== 'request_received_seller'
+    && template.meta_template_name !== 'request_received_buyer'
+    && template.meta_template_name !== 'order_received_seller'
+    && template.meta_template_name !== 'order_received_buyer'
+    && template.use_case !== BUYER_APP_NUDGE_USE_CASE;
+}
+
+function editableVariables(template: WhatsAppTemplateOption | null) {
+  if (!template) return [];
+  return template.variables.filter((variable) => MANUAL_TEMPLATE_KEYS.has(variable.key));
+}
 
 export function BroadcastComposerSheet({
   open,
@@ -44,346 +63,355 @@ export function BroadcastComposerSheet({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [step, setStep] = useState<Step>(0);
-  const [selectedTemplate, setSelectedTemplate] = useState<WhatsAppTemplateOption | null>(null);
+  const [buyerPickerOpen, setBuyerPickerOpen] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [broadcastName, setBroadcastName] = useState('');
-  const [targetType, setTargetType] = useState<WhatsAppBroadcastTargetType>('all_buyers');
+  const [targetType, setTargetType] = useState<Extract<WhatsAppBroadcastTargetType, 'cohort' | 'buyer_selection'>>('cohort');
   const [targetCohortId, setTargetCohortId] = useState<string | null>(null);
-  const [geographyCity, setGeographyCity] = useState('');
-  const [dormantDays, setDormantDays] = useState('45');
-  const [manualBuyerIdsRaw, setManualBuyerIdsRaw] = useState('');
+  const [selectedBuyerIds, setSelectedBuyerIds] = useState<string[]>([]);
+  const [variableBindings, setVariableBindings] = useState<Record<string, string>>({});
+  const [sendNow, setSendNow] = useState(true);
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [scheduledTime, setScheduledTime] = useState('09:00');
+  const [linkedCampaignId, setLinkedCampaignId] = useState<string | null>(null);
 
-  const { data: templates, isLoading: templatesLoading } = useWhatsAppTemplates(open);
-  const { data: cohorts } = useTenantCohortOptions(open);
+  const { data: rawTemplates = [], isLoading: templatesLoading } = useWhatsAppTemplates(open);
+  const { data: cohorts = [] } = useTenantCohortOptions(open);
   const { data: platformStatus } = useWhatsAppPlatformStatus(open);
+  const { data: campaignOptions = [] } = useBroadcastCampaignOptions(open);
   const audiencePreview = useAudiencePreview();
   const createBroadcast = useCreateWhatsAppBroadcast();
 
-  // Phase F (§7.3) — quality-rating banner copy is a config value
-  // (src/constants/whatsapp-quality-banner.ts), not hardcoded here.
   const qualityBanner = platformStatus
     ? WHATSAPP_QUALITY_BANNER_COPY[platformStatus.quality_rating_state]
     : null;
 
-  const manualBuyerIds = useMemo(
-    () =>
-      manualBuyerIdsRaw
-        .split(/[\s,]+/)
-        .map((s) => s.trim())
-        .filter(Boolean),
-    [manualBuyerIdsRaw],
+  const templates = useMemo(
+    () => rawTemplates.filter(isTemplateSupported),
+    [rawTemplates],
   );
 
-  const targetFilter = useMemo<Record<string, string | number> | null>(() => {
-    if (targetType === 'geography_filter') {
-      return geographyCity.trim() ? { city: geographyCity.trim() } : null;
+  const selectedTemplate = useMemo(
+    () => templates.find((template) => template.id === selectedTemplateId) ?? null,
+    [selectedTemplateId, templates],
+  );
+
+  const selectedCampaign = useMemo(
+    () => campaignOptions.find((campaign) => campaign.id === linkedCampaignId) ?? null,
+    [campaignOptions, linkedCampaignId],
+  );
+
+  const requiresCampaign = Boolean(selectedTemplate && CAMPAIGN_TEMPLATE_USE_CASES.has(selectedTemplate.use_case));
+  const manualVariables = editableVariables(selectedTemplate);
+  const scheduledFor = combineScheduledAt(scheduledDate, scheduledTime);
+  const canPreview = Boolean(selectedTemplate)
+    && ((targetType === 'cohort' && Boolean(targetCohortId)) || (targetType === 'buyer_selection' && selectedBuyerIds.length > 0))
+    && (sendNow || Boolean(scheduledFor))
+    && (!requiresCampaign || Boolean(linkedCampaignId));
+
+  const previewPayloadKey = JSON.stringify({
+    targetType,
+    targetCohortId,
+    selectedBuyerIds,
+    metaCategory: selectedTemplate?.meta_category ?? null,
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    if (!selectedTemplate || !canPreview) {
+      audiencePreview.reset();
+      return;
     }
-    if (targetType === 'dormant_filter') {
-      const n = Number(dormantDays);
-      const days: Record<string, number> = { dormant_days_gt: Number.isFinite(n) && n > 0 ? n : 45 };
-      return days;
-    }
-    return null;
-  }, [targetType, geographyCity, dormantDays]);
+    audiencePreview.mutate({
+      target_type: targetType,
+      target_cohort_id: targetType === 'cohort' ? targetCohortId : null,
+      target_filter: null,
+      target_buyer_ids: targetType === 'buyer_selection' ? selectedBuyerIds : null,
+      meta_category: selectedTemplate.meta_category,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, canPreview, previewPayloadKey]);
 
   function resetAndClose() {
-    setStep(0);
-    setSelectedTemplate(null);
+    setSelectedTemplateId('');
     setBroadcastName('');
-    setTargetType('all_buyers');
+    setTargetType('cohort');
     setTargetCohortId(null);
-    setGeographyCity('');
-    setDormantDays('45');
-    setManualBuyerIdsRaw('');
+    setSelectedBuyerIds([]);
+    setVariableBindings({});
+    setSendNow(true);
+    setScheduledDate('');
+    setScheduledTime('09:00');
+    setLinkedCampaignId(null);
+    setBuyerPickerOpen(false);
     audiencePreview.reset();
     onOpenChange(false);
   }
 
-  function handlePreview() {
-    audiencePreview.mutate({
-      target_type: targetType,
-      target_cohort_id: targetType === 'cohort' ? targetCohortId : null,
-      target_filter: targetFilter,
-      target_buyer_ids: targetType === 'buyer_selection' ? manualBuyerIds : null,
-      meta_category: selectedTemplate?.meta_category,
+  function updateTemplate(nextTemplateId: string) {
+    setSelectedTemplateId(nextTemplateId);
+    const template = templates.find((item) => item.id === nextTemplateId) ?? null;
+    setVariableBindings((current) => {
+      const next: Record<string, string> = {};
+      for (const variable of editableVariables(template)) {
+        next[variable.key] = current[variable.key] ?? '';
+      }
+      return next;
     });
+    if (template && !broadcastName.trim()) {
+      setBroadcastName(`${template.use_case.replace(/_/g, ' ')} broadcast`);
+    }
+    if (!template || !CAMPAIGN_TEMPLATE_USE_CASES.has(template.use_case)) {
+      setLinkedCampaignId(null);
+    }
   }
 
-  function handleSend() {
-    if (!selectedTemplate) return;
+  function updateVariableBinding(key: string, value: string) {
+    setVariableBindings((current) => ({ ...current, [key]: value }));
+  }
+
+  function handleSendBroadcast() {
+    if (!selectedTemplate || !canPreview) return;
+
     createBroadcast.mutate(
       {
-        name: broadcastName.trim() || `${selectedTemplate.use_case} broadcast`,
+        name: broadcastName.trim() || `${selectedTemplate.use_case.replace(/_/g, ' ')} broadcast`,
         whatsapp_template_id: selectedTemplate.id,
         use_case: selectedTemplate.use_case,
         target_type: targetType,
         target_cohort_id: targetType === 'cohort' ? targetCohortId : null,
-        target_filter: targetFilter,
-        target_buyer_ids: targetType === 'buyer_selection' ? manualBuyerIds : null,
-        variable_bindings: {},
+        target_filter: null,
+        target_buyer_ids: targetType === 'buyer_selection' ? selectedBuyerIds : null,
+        linked_campaign_id: requiresCampaign ? linkedCampaignId : null,
+        variable_bindings: variableBindings,
+        scheduled_for: sendNow ? null : scheduledFor,
       },
       {
-        onSuccess: () => setStep(3),
+        onSuccess: () => resetAndClose(),
       },
     );
   }
 
-  const canGoToAudience = Boolean(selectedTemplate);
-  const canPreview =
-    (targetType === 'cohort' && Boolean(targetCohortId)) ||
-    (targetType === 'geography_filter' && Boolean(geographyCity.trim())) ||
-    (targetType === 'buyer_selection' && manualBuyerIds.length > 0) ||
-    targetType === 'dormant_filter' ||
-    targetType === 'dues_filter' ||
-    targetType === 'all_buyers';
+  const previewErrorMessage = audiencePreview.error instanceof Error ? audiencePreview.error.message : null;
+  const targetBuyerValue = targetType === 'buyer_selection' ? SELECT_BUYERS_VALUE : (targetCohortId ?? '');
 
   return (
     <FormOverlay open={open} onOpenChange={(next) => (next ? onOpenChange(true) : resetAndClose())}>
       <FormOverlayHeader
-        eyebrow={`Step ${step + 1} of ${STEP_LABELS.length} · ${STEP_LABELS[step]}`}
+        eyebrow="Broadcast"
         title="Broadcast message"
-        description="Send a WhatsApp message to a group of your customers."
+        description="Choose the audience, message template, and schedule in one clean flow."
       />
 
-      <FormOverlayBody>
+      <FormOverlayBody className="space-y-5">
         {qualityBanner?.showBanner ? (
-          <div className="mb-4 flex items-start gap-2 rounded-[10px] border border-warning-300 bg-warning-50 px-3 py-2.5 text-sm text-warning-800">
+          <div className="flex items-start gap-2 rounded-[10px] border border-warning-300 bg-warning-50 px-3 py-2.5 text-sm text-warning-800">
             <Info size={16} className="mt-0.5 shrink-0" />
             <p>{qualityBanner.message}</p>
           </div>
         ) : null}
 
-        {step === 0 ? (
-          <div className="space-y-3">
-            <p className="text-sm text-cream-700">Choose a message template.</p>
-            {templatesLoading ? (
-              <p className="text-sm text-cream-500">Loading templates…</p>
-            ) : (
-              <div className="space-y-2">
-                {(templates ?? []).map((template) => (
-                  <button
-                    key={template.id}
-                    type="button"
-                    onClick={() => setSelectedTemplate(template)}
-                    className={`w-full rounded-[10px] border px-3 py-3 text-left transition-colors ${
-                      selectedTemplate?.id === template.id
-                        ? 'border-teal-400 bg-teal-50'
-                        : 'border-cream-300 bg-white hover:bg-cream-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-base font-medium text-cream-900">
-                        {template.use_case.replace(/_/g, ' ')}
-                      </p>
-                      <Badge variant={template.meta_category === 'marketing' ? 'ember' : 'teal'}>
-                        {template.meta_category}
-                      </Badge>
-                    </div>
-                    <p className="mt-1 line-clamp-2 text-sm text-cream-700">{template.body}</p>
-                    {template.approval_status !== 'approved' ? (
-                      <p className="mt-1 text-xs text-warning-700">
-                        Awaiting Meta approval — visible for setup, not yet sendable.
-                      </p>
-                    ) : null}
-                  </button>
-                ))}
-              </div>
-            )}
+        <section className="space-y-2">
+          <label className="text-body-sm font-medium text-cream-800">Broadcast name</label>
+          <Input
+            value={broadcastName}
+            onChange={(event) => setBroadcastName(event.target.value)}
+            placeholder="e.g. July new-stock nudge"
+          />
+        </section>
 
-            <div className="pt-2">
-              <label className="text-body-sm font-medium text-cream-800">Broadcast name (internal)</label>
-              <Input
-                value={broadcastName}
-                onChange={(e) => setBroadcastName(e.target.value)}
-                placeholder="e.g. July new-stock nudge"
-                className="mt-1.5"
-              />
-            </div>
-          </div>
-        ) : null}
-
-        {step === 1 ? (
-          <div className="space-y-4">
-            <p className="text-sm text-cream-700">Who should get this message?</p>
-            <RadioGroup value={targetType} onValueChange={(v) => setTargetType(v as WhatsAppBroadcastTargetType)}>
-              {TARGET_MODES.map((mode) => (
-                <label
-                  key={mode.value}
-                  className="flex cursor-pointer items-start gap-3 rounded-[10px] border border-cream-300 bg-white px-3 py-2.5 hover:bg-cream-50"
-                >
-                  <RadioGroupItem value={mode.value} className="mt-1" />
-                  <div>
-                    <p className="text-base font-medium text-cream-900">{mode.label}</p>
-                    <p className="text-sm text-cream-700">{mode.description}</p>
-                  </div>
-                </label>
+        <section className="space-y-2">
+          <label className="text-body-sm font-medium text-cream-800">Target buyers</label>
+          <Select
+            value={targetBuyerValue}
+            onValueChange={(value) => {
+              if (value === SELECT_BUYERS_VALUE) {
+                setTargetType('buyer_selection');
+                setBuyerPickerOpen(true);
+                return;
+              }
+              setTargetType('cohort');
+              setTargetCohortId(value || null);
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Choose a customer group" />
+            </SelectTrigger>
+            <SelectContent>
+              {cohorts.map((cohort) => (
+                <SelectItem key={cohort.id} value={cohort.id}>
+                  {cohort.name} ({cohort.member_count} buyers)
+                </SelectItem>
               ))}
-            </RadioGroup>
-
-            {targetType === 'cohort' ? (
-              <div className="space-y-1.5">
-                <label className="text-body-sm font-medium text-cream-800">Customer group</label>
-                <select
-                  className="w-full rounded-[8px] border border-cream-300 bg-white px-3 py-2 text-sm"
-                  value={targetCohortId ?? ''}
-                  onChange={(e) => setTargetCohortId(e.target.value || null)}
-                >
-                  <option value="">Select a group…</option>
-                  {(cohorts ?? []).map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.member_count})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : null}
-
-            {targetType === 'geography_filter' ? (
-              <div className="space-y-1.5">
-                <label className="text-body-sm font-medium text-cream-800 flex items-center gap-1.5">
-                  <MapPin size={14} /> City
-                </label>
-                <Input
-                  value={geographyCity}
-                  onChange={(e) => setGeographyCity(e.target.value)}
-                  placeholder="e.g. Nashik"
-                />
-              </div>
-            ) : null}
-
-            {targetType === 'dormant_filter' ? (
-              <div className="space-y-1.5">
-                <label className="text-body-sm font-medium text-cream-800 flex items-center gap-1.5">
-                  <Clock size={14} /> Dormant for more than (days)
-                </label>
-                <Input
-                  type="number"
-                  value={dormantDays}
-                  onChange={(e) => setDormantDays(e.target.value)}
-                  min={1}
-                />
-              </div>
-            ) : null}
-
-            {targetType === 'buyer_selection' ? (
-              <div className="space-y-1.5">
-                <label className="text-body-sm font-medium text-cream-800 flex items-center gap-1.5">
-                  <Users2 size={14} /> Buyer IDs (comma or space separated)
-                </label>
-                <textarea
-                  className="w-full rounded-[8px] border border-cream-300 bg-white px-3 py-2 text-sm"
-                  rows={3}
-                  value={manualBuyerIdsRaw}
-                  onChange={(e) => setManualBuyerIdsRaw(e.target.value)}
-                  placeholder="Paste buyer UUIDs"
-                />
-              </div>
-            ) : null}
-
-            <div className="rounded-[10px] border border-cream-300 bg-cream-50 p-3">
-              <Button
+              <SelectItem value={SELECT_BUYERS_VALUE}>
+                Select buyers{targetType === 'buyer_selection' && selectedBuyerIds.length > 0 ? ` (${selectedBuyerIds.length})` : ''}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          {targetType === 'buyer_selection' ? (
+            <div className="space-y-1 flex justify-end items-end">
+              <button
                 type="button"
-                variant="secondary"
-                onClick={handlePreview}
-                disabled={!canPreview || audiencePreview.isPending}
+                onClick={() => setBuyerPickerOpen(true)}
+                className="text-xs font-medium text-teal-700 hover:text-teal-800"
               >
-                {audiencePreview.isPending ? 'Calculating…' : 'Preview audience & cost'}
-              </Button>
+                Change selected buyers
+              </button>
+            </div>
+          ) : null}
+        </section>
 
-              {audiencePreview.data ? (
-                <div className="mt-3 space-y-1 text-sm text-cream-800">
-                  <p>
-                    <strong>{audiencePreview.data.recipient_count}</strong> buyers will receive this message.
-                  </p>
-                  {audiencePreview.data.opted_out_excluded > 0 ? (
-                    <p className="text-cream-600">
-                      {audiencePreview.data.opted_out_excluded} selected buyers are opted out of WhatsApp and were excluded.
-                    </p>
-                  ) : null}
-                  <p className="flex items-center gap-1.5">
-                    <Wallet size={14} />
-                    Estimated cost: <strong>{audiencePreview.data.estimated_credits} credits</strong>
-                    {' '}(₹{audiencePreview.data.estimated_inr.toFixed(2)})
-                  </p>
-                </div>
+        <section className="space-y-2">
+          <label className="text-body-sm font-medium text-cream-800">Select template</label>
+          <Select value={selectedTemplateId} onValueChange={updateTemplate} disabled={templatesLoading}>
+            <SelectTrigger>
+              <SelectValue placeholder={templatesLoading ? 'Loading templates…' : 'Choose a template'} />
+            </SelectTrigger>
+            <SelectContent>
+              {templates.map((template) => (
+                <SelectItem key={template.id} value={template.id}>
+                  {template.use_case.replace(/_/g, ' ')}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {selectedTemplate ? (
+            <div className="rounded-[10px] border border-cream-200 bg-cream-50 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Preview</p>
+                <span className="rounded-full border border-cream-300 bg-white px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.06em] text-cream-700">
+                  {selectedTemplate.meta_category}
+                </span>
+              </div>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-[1.6] text-cream-900">{selectedTemplate.body}</p>
+            </div>
+          ) : null}
+
+          {requiresCampaign ? (
+            <div className="space-y-2">
+              <label className="text-body-sm font-medium text-cream-800">Linked campaign</label>
+              <Select value={linkedCampaignId ?? ''} onValueChange={(value) => setLinkedCampaignId(value || null)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a published campaign" />
+                </SelectTrigger>
+                <SelectContent>
+                  {campaignOptions.map((campaign) => (
+                    <SelectItem key={campaign.id} value={campaign.id}>
+                      {campaign.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedCampaign ? (
+                <p className="text-xs text-cream-500">The CTA button will open this campaign for buyers.</p>
               ) : null}
             </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        {step === 2 ? (
-          <div className="space-y-3">
-            <p className="text-sm text-cream-700">Review before scheduling.</p>
-            <div className="rounded-[10px] border border-cream-300 bg-white p-3 text-sm">
-              <p><span className="text-cream-600">Template:</span> {selectedTemplate?.use_case.replace(/_/g, ' ')}</p>
-              <p><span className="text-cream-600">Audience:</span> {TARGET_MODES.find((m) => m.value === targetType)?.label}</p>
-              <p>
-                <span className="text-cream-600">Recipients:</span>{' '}
-                {audiencePreview.data?.recipient_count ?? '—'}
-              </p>
-              <p>
-                <span className="text-cream-600">Estimated cost:</span>{' '}
-                {audiencePreview.data ? `${audiencePreview.data.estimated_credits} credits` : '—'}
-              </p>
+          {manualVariables.length > 0 ? (
+            <div className="space-y-3">
+              {manualVariables.map((variable) => (
+                <div key={variable.key} className="space-y-1.5">
+                  <label className="text-body-sm font-medium text-cream-800">{variable.key.replace(/_/g, ' ')}</label>
+                  <Input
+                    value={variableBindings[variable.key] ?? ''}
+                    onChange={(event) => updateVariableBinding(variable.key, event.target.value)}
+                    placeholder={variable.description ?? `Enter ${variable.key}`}
+                  />
+                  {variable.description ? (
+                    <p className="text-xs text-cream-500">{variable.description}</p>
+                  ) : null}
+                </div>
+              ))}
             </div>
-            <p className="text-xs text-cream-500">
-              This saves your broadcast and its audience — actual WhatsApp delivery goes out in a
-              later release once the sending pipeline is live. You won&apos;t be charged until then.
-            </p>
-          </div>
-        ) : null}
+          ) : null}
 
-        {step === 3 ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
-            <CheckCircle2 size={40} className="text-teal-500" />
-            <p className="text-base font-medium text-cream-900">Broadcast saved</p>
-            <p className="max-w-sm text-sm text-cream-700">
-              {createBroadcast.data?.note ??
-                'Your broadcast and audience have been saved. Sending goes out in a later release.'}
-            </p>
+          {selectedTemplate && selectedTemplate.approval_status !== 'approved' ? (
+            <Alert variant="warning">
+              <AlertTitle>Template not approved yet</AlertTitle>
+              <AlertDescription>
+                This template can be previewed here, but sending stays blocked until Meta approval is complete.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+        </section>
+
+        <section className="space-y-2">
+          <div className="flex items-center justify-between bg-white py-3">
+            <div className="space-y-0.5">
+              <p className="text-base font-medium text-cream-900">Send broadcast now</p>
+              <p className="text-sm text-cream-700">Turn this off to schedule a future send.</p>
+            </div>
+            <Switch checked={sendNow} onCheckedChange={setSendNow} />
           </div>
+
+          {!sendNow ? (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <DatePicker
+                label="Schedule date"
+                value={scheduledDate}
+                onChange={setScheduledDate}
+                mode="overlay"
+                showSummary={false}
+                triggerClassName="h-[42px] rounded-[10px] border border-cream-400 bg-[var(--bg-surface)] px-3.5 text-base text-cream-900 shadow-[inset_0_1px_0_rgba(20,40,35,0.02)] transition-colors duration-fast ease-standard focus-visible:outline-none focus-visible:border-[#B5642F] focus-visible:ring-2 focus-visible:ring-[#B5642F]/20 disabled:cursor-not-allowed disabled:bg-cream-100 disabled:opacity-50"
+              />
+
+              <div className="space-y-1.5">
+                <label className="text-body-sm font-medium text-cream-800">Schedule time</label>
+                <Input
+                  type="time"
+                  value={scheduledTime}
+                  onChange={(event) => setScheduledTime(event.target.value)}
+                  className="h-[42px] rounded-[10px] border-cream-400 bg-[var(--bg-surface)] px-3.5 text-base text-cream-900 shadow-[inset_0_1px_0_rgba(20,40,35,0.02)] focus-visible:border-[#B5642F] focus-visible:ring-[#B5642F]/20"
+                />
+              </div>
+            </div>
+          ) : null}
+        </section>
+
+        {previewErrorMessage ? (
+          <Alert variant="danger">
+            <AlertTitle>Audience preview failed</AlertTitle>
+            <AlertDescription>{previewErrorMessage}</AlertDescription>
+          </Alert>
         ) : null}
       </FormOverlayBody>
 
-      <FormOverlayFooter>
-        {step === 0 ? (
-          <>
-            <Button variant="ghost" onClick={resetAndClose}>Cancel</Button>
-            <Button variant="primary" onClick={() => setStep(1)} disabled={!canGoToAudience} className="ml-auto">
-              <MessageCircle size={14} /> Next: audience
-            </Button>
-          </>
-        ) : null}
-        {step === 1 ? (
-          <>
-            <Button variant="ghost" onClick={() => setStep(0)}>Back</Button>
-            <Button
-              variant="primary"
-              onClick={() => setStep(2)}
-              disabled={!audiencePreview.data}
-              className="ml-auto"
-            >
-              Next: review
-            </Button>
-          </>
-        ) : null}
-        {step === 2 ? (
-          <>
-            <Button variant="ghost" onClick={() => setStep(1)}>Back</Button>
-            <Button
-              variant="primary"
-              onClick={handleSend}
-              disabled={createBroadcast.isPending}
-              className="ml-auto"
-            >
-              {createBroadcast.isPending ? 'Saving…' : 'Schedule broadcast'}
-            </Button>
-          </>
-        ) : null}
-        {step === 3 ? (
-          <Button variant="primary" onClick={resetAndClose} className="ml-auto">Done</Button>
-        ) : null}
+      <FormOverlayFooter className="justify-end gap-2">
+        <Button variant="ghost" onClick={resetAndClose}>Cancel</Button>
+        <Button
+          variant="primary"
+          onClick={handleSendBroadcast}
+          disabled={
+            !selectedTemplate
+            || !canPreview
+            || !audiencePreview.data
+            || Boolean(previewErrorMessage)
+            || audiencePreview.isPending
+            || createBroadcast.isPending
+            || (requiresCampaign && !linkedCampaignId)
+            || (!sendNow && !scheduledFor)
+          }
+        >
+          {sendNow ? <Send size={14} /> : <MessageCircle size={14} />}
+          {createBroadcast.isPending
+            ? (sendNow ? 'Sending…' : 'Scheduling…')
+            : `Send broadcast ${sendNow ? 'now' : 'later'}`}
+        </Button>
       </FormOverlayFooter>
+
+      <SellerBuyerPickerOverlay
+        open={buyerPickerOpen}
+        onOpenChange={setBuyerPickerOpen}
+        title="Select target buyers"
+        selectedBuyerIds={selectedBuyerIds}
+        onSelectedBuyerIdsChange={setSelectedBuyerIds}
+        applyLabel={`Use ${selectedBuyerIds.length} buyer${selectedBuyerIds.length === 1 ? '' : 's'}`}
+        onApply={() => {
+          setTargetType('buyer_selection');
+        }}
+      />
     </FormOverlay>
   );
 }

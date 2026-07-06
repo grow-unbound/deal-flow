@@ -84,6 +84,49 @@ describe('zoho transactional sync windowing', () => {
     expect(dataRequest?.searchParams.get('date_start')).toBe('2026-06-01');
   });
 
+  it('normalizes Postgres timestamptz since values to YYYY-MM-DD for date_start', async () => {
+    const seenUrls: URL[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url);
+      seenUrls.push(url);
+
+      if (url.pathname.includes('/oauth/v2/token')) {
+        return new Response(JSON.stringify({ access_token: 'token-1' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response(JSON.stringify({
+        invoices: [],
+        page_context: { has_more_page: false },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    const adapter = createZohoAdapter('zoho_books', {
+      client_id: 'client-id',
+      client_secret: 'client-secret',
+      refresh_token: 'refresh-token',
+      organization_id: 'org-1',
+      accounts_base_url: 'https://accounts.zoho.in',
+      api_base_url: 'https://www.zohoapis.in/books/v3',
+    });
+
+    const phase = getZohoPhasePlan('zoho_books', 'transactional').find((entry) => entry.id === 'invoices');
+    expect(phase).toBeTruthy();
+    if (!phase) return;
+
+    await adapter.fetchPhasePage(phase, null, '2026-07-02 00:00:00+00', 'incremental');
+
+    const dataRequest = seenUrls.find((url) => !url.pathname.includes('/oauth/v2/token'));
+    expect(dataRequest?.searchParams.get('date_start')).toBe('2026-07-02');
+  });
+
   it.each([
     ['fetchEstimateById', 'estimate', '/books/v3/estimates/EST-1', 'EST-1'],
     ['fetchSalesOrderById', 'salesorder', '/books/v3/salesorders/SO-1', 'SO-1'],

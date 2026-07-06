@@ -1,4 +1,5 @@
 import { normalizeLocationAddress } from '@/lib/locations/location-deactivate-guards';
+import { normalizeLocationAssociatedUsers } from '@/lib/location-assignees';
 import { computeSellableUnits, computeWarehouseInitials, computeWarehouseStockStatus, isIdleStockSku } from '@/lib/server/warehouse-metrics';
 import type { TenantWarehouse, WarehouseDetailInventoryItem, WarehouseDetailResponse, WarehouseInventoryTrendWeek } from '@/types/tenant-warehouses';
 
@@ -16,6 +17,7 @@ export function chunkArray<T>(values: T[], size: number): T[][] {
 export interface WarehouseInventoryRow {
   warehouse_id: string;
   tenant_product_id: string;
+  sku?: string;
   qty_available: number;
   qty_reserved: number;
   reorder_point: number | null;
@@ -31,6 +33,7 @@ export function hydrateWarehouse(row: Record<string, unknown>): TenantWarehouse 
         id: typeof (location as Record<string, unknown>).id === 'string' ? String((location as Record<string, unknown>).id) : '',
         name: typeof (location as Record<string, unknown>).name === 'string' ? String((location as Record<string, unknown>).name) : '',
         is_default: (location as Record<string, unknown>).is_default === true,
+        associated_users: normalizeLocationAssociatedUsers((location as Record<string, unknown>).associated_users),
       }
     : null;
 
@@ -62,7 +65,7 @@ export async function loadTenantWarehouses(
   let query = db
     .schema('app')
     .from('warehouses')
-    .select('id, tenant_id, location_id, name, address, phone_number, status, is_default, external_ref, associated_users, lat, lng, deleted_at, created_at, updated_at, locations(id, name, is_default)')
+    .select('id, tenant_id, location_id, name, address, phone_number, status, is_default, external_ref, associated_users, lat, lng, deleted_at, created_at, updated_at, locations(id, name, is_default, associated_users)')
     .eq('tenant_id', tenantId);
 
   if (!options?.includeDeleted) {
@@ -131,7 +134,7 @@ export async function loadWarehouseInventoryRows(
     const { data, error } = await db
       .schema('app')
       .from('tenant_products')
-      .select('id, name_override, tenant_brand_id')
+      .select('id, name_override, internal_sku, tenant_brand_id')
       .in('id', productChunk)
       .is('deleted_at', null);
 
@@ -152,12 +155,12 @@ export async function loadWarehouseInventoryRows(
 
   let brandNameById = new Map<string, string>();
   if (tenantBrandIds.length > 0) {
-    const brands: Array<Record<string, unknown>> = [];
+    const tenantBrands: Array<Record<string, unknown>> = [];
     for (const brandChunk of chunkArray(tenantBrandIds, POSTGREST_IN_CHUNK_SIZE)) {
       const { data, error } = await db
         .schema('app')
         .from('tenant_brands')
-        .select('id, name, display_name_override')
+        .select('id, display_name_override, master_brand_id')
         .in('id', brandChunk)
         .is('deleted_at', null);
 
@@ -165,28 +168,62 @@ export async function loadWarehouseInventoryRows(
         throw error;
       }
 
-      brands.push(...((data ?? []) as Array<Record<string, unknown>>));
+      tenantBrands.push(...((data ?? []) as Array<Record<string, unknown>>));
+    }
+
+    const masterBrandIds = Array.from(
+      new Set(
+        tenantBrands
+          .map((row) => (typeof row.master_brand_id === 'string' ? row.master_brand_id : null))
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+
+    let masterBrandNameById = new Map<string, string>();
+    if (masterBrandIds.length > 0) {
+      const masterBrands: Array<Record<string, unknown>> = [];
+      for (const brandChunk of chunkArray(masterBrandIds, POSTGREST_IN_CHUNK_SIZE)) {
+        const { data, error } = await db
+          .schema('catalog')
+          .from('brands')
+          .select('id, name')
+          .in('id', brandChunk);
+
+        if (error) {
+          throw error;
+        }
+
+        masterBrands.push(...((data ?? []) as Array<Record<string, unknown>>));
+      }
+
+      masterBrandNameById = new Map(
+        masterBrands.map((row) => [
+          String(row.id),
+          typeof row.name === 'string' && row.name.trim() ? row.name.trim() : '—',
+        ]),
+      );
     }
 
     brandNameById = new Map(
-      brands.map((row) => {
+      tenantBrands.map((row) => {
         const brandId = String(row.id);
         const brandName =
           typeof row.display_name_override === 'string' && row.display_name_override.trim()
             ? row.display_name_override.trim()
-            : typeof row.name === 'string'
-              ? row.name
+            : typeof row.master_brand_id === 'string'
+              ? masterBrandNameById.get(row.master_brand_id) ?? '—'
               : '—';
         return [brandId, brandName];
       }),
     );
   }
 
-  const productMeta = new Map<string, { product_name?: string; brand_name?: string }>();
+  const productMeta = new Map<string, { product_name?: string; sku?: string; brand_name?: string }>();
   for (const row of products) {
     const brandId = typeof row.tenant_brand_id === 'string' ? row.tenant_brand_id : null;
     productMeta.set(String(row.id), {
       product_name: typeof row.name_override === 'string' ? row.name_override : undefined,
+      sku: typeof row.internal_sku === 'string' ? row.internal_sku : undefined,
       brand_name: brandId ? brandNameById.get(brandId) : undefined,
     });
   }
@@ -196,6 +233,7 @@ export async function loadWarehouseInventoryRows(
     return {
       warehouse_id: String(row.warehouse_id),
       tenant_product_id: row.tenant_product_id,
+      sku: meta?.sku ?? row.tenant_product_id,
       qty_available: row.qty_available,
       qty_reserved: row.qty_reserved,
       reorder_point: row.reorder_point,
@@ -334,6 +372,7 @@ async function hydrateInventoryItems(
       const lastDemandAt = latestDemandByProduct.get(row.tenant_product_id) ?? null;
       return {
         tenant_product_id: row.tenant_product_id,
+        sku: row.sku ?? row.tenant_product_id,
         product_name: row.product_name ?? 'Untitled product',
         brand_name: row.brand_name ?? '—',
         qty_available: row.qty_available,
@@ -452,6 +491,8 @@ export async function loadWarehouseSummary(
   const warehouse = warehouses[0];
   if (!warehouse) return null;
 
+  const mappedLocationUsers = warehouse.location?.associated_users?.length ? warehouse.location.associated_users : [];
+
   const [snapshot, inventoryTrend, highlights] = await Promise.all([
     loadWarehouseSnapshot(db, tenantId, warehouseId),
     loadWarehouseInventoryTrend(db, tenantId, warehouseId),
@@ -477,7 +518,12 @@ export async function loadWarehouseSummary(
     external_ref: warehouse.external_ref,
     lat: warehouse.lat,
     lng: warehouse.lng,
-    linked_location: warehouse.location,
+    linked_location: warehouse.location
+      ? {
+          ...warehouse.location,
+          associated_users: warehouse.location.associated_users,
+        }
+      : null,
     address: warehouse.address,
     associated_users: warehouse.associated_users,
     created_at: warehouse.created_at,
@@ -490,7 +536,7 @@ export async function loadWarehouseSummary(
       idle_stock_skus: idleStockSkus,
     },
     details: {
-      associated_users_count: warehouse.associated_users.length,
+      associated_users_count: mappedLocationUsers.length > 0 ? mappedLocationUsers.length : warehouse.associated_users.length,
       stockout_skus: stockoutSkus,
       reorder_triggered_skus: reorderTriggeredSkus,
       last_inventory_update: snapshot?.last_inventory_update ?? null,

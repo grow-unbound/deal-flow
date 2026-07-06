@@ -26,6 +26,7 @@ export interface BuyerEstimateDetail {
   total_amount: number;
   subtotal: number;
   tax_total: number;
+  document_url: string | null;
   items: BuyerEstimateItem[];
 }
 
@@ -52,7 +53,7 @@ export async function GET(
     const { data: estimate, error } = await (db as any)
       .schema('app')
       .from('estimates')
-      .select('id, estimate_number, status, notes, created_at, valid_until, place_of_supply, total_amount, subtotal, tax_amount')
+      .select('id, estimate_number, status, notes, created_at, valid_until, place_of_supply, total_amount, subtotal, tax_amount, estimate_url')
       .eq('id', id)
       .eq('tenant_id', tenant_id)
       .eq('buyer_id', buyer_id)
@@ -78,6 +79,7 @@ export async function GET(
       total_amount: Number(estimate.total_amount),
       subtotal,
       tax_total,
+      document_url: (estimate as { estimate_url?: string | null }).estimate_url ?? null,
       items: rawItems,
     };
 

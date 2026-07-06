@@ -1,12 +1,46 @@
 'use client';
 
-import { useState, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import Link from 'next/link';
-import { PhoneInput } from '@/components/buyer/auth/PhoneInput';
-import { YuktiLogo } from '@/components/brand/YuktiLogo';
-import { supabaseBrowser as supabase } from '@/lib/supabase-browser';
+import { useRouter, useSearchParams } from 'next/navigation';
 import posthog from 'posthog-js';
+import { YuktiLogo } from '@/components/brand/YuktiLogo';
+import { PhoneInput } from '@/components/buyer/auth/PhoneInput';
+import { supabaseBrowser as supabase } from '@/lib/supabase-browser';
+import {
+  AUTH_LOGIN_COPY,
+  buildInformSellerMessage,
+  buildRequestAccessMessage,
+  buildWhatsAppChatUrl,
+  buildWhatsAppShareUrl,
+} from '@/constants/auth-login-copy';
+
+type LoginView = 'otp' | 'email';
+type LoginResolution =
+  | { kind: 'unregistered' }
+  | {
+      kind: 'blocked';
+      reason: 'seller_disabled' | 'buyer_disabled';
+      sellerName: string;
+      sellerWhatsappNumber: string | null;
+      buyerName: string | null;
+    };
+
+interface PhoneOtpSendResponse {
+  ref_id: string | null;
+  registered: boolean;
+  outcome: 'otp_sent' | 'unregistered' | 'seller_disabled' | 'buyer_disabled';
+  message: string;
+  seller_name: string | null;
+  seller_whatsapp_number: string | null;
+  buyer_name: string | null;
+}
+
+function isPhoneOtpSendResponse(
+  data: PhoneOtpSendResponse | { error?: string },
+): data is PhoneOtpSendResponse {
+  return 'registered' in data;
+}
 
 function LoginForm() {
   const router = useRouter();
@@ -14,17 +48,17 @@ function LoginForm() {
   const resetSuccess = searchParams.get('reset') === 'success';
   const accountVerified = searchParams.get('verified') === '1';
   const prefillEmail = searchParams.get('email') ?? '';
+  const requestedView = searchParams.get('view');
 
-  // 'otp' | 'email'
-  // Default to email view when arriving from verify-account (email pre-filled)
-  const [view, setView] = useState<'otp' | 'email'>(prefillEmail ? 'email' : 'otp');
+  const [view, setView] = useState<LoginView>(
+    requestedView === 'email' || prefillEmail ? 'email' : 'otp',
+  );
 
-  // Phone OTP state
+  const [phoneFormKey, setPhoneFormKey] = useState(0);
   const [phoneLoading, setPhoneLoading] = useState(false);
   const [phoneError, setPhoneError] = useState('');
-  const [unregistered, setUnregistered] = useState(false);
+  const [resolution, setResolution] = useState<LoginResolution | null>(null);
 
-  // Email/password state
   const [identifier, setIdentifier] = useState(prefillEmail);
   const [password, setPassword] = useState('');
   const [emailError, setEmailError] = useState('');
@@ -32,7 +66,7 @@ function LoginForm() {
 
   async function handlePhoneSubmit(phoneNumber: string) {
     setPhoneError('');
-    setUnregistered(false);
+    setResolution(null);
     setPhoneLoading(true);
     let shouldResetLoading = true;
 
@@ -43,23 +77,33 @@ function LoginForm() {
         body: JSON.stringify({ phoneNumber }),
       });
 
-      const data: { ref_id: string | null; registered: boolean; message: string; error?: string } =
-        await res.json();
+      const data = (await res.json()) as PhoneOtpSendResponse | { error?: string };
 
-      if (!res.ok) {
+      if (!isPhoneOtpSendResponse(data)) {
         setPhoneError(data.error ?? 'Something went wrong. Please try again.');
         return;
       }
 
-      if (!data.registered) {
-        setUnregistered(true);
+      if (data.registered) {
+        shouldResetLoading = false;
+        router.push(
+          `/verify?ref_id=${encodeURIComponent(data.ref_id ?? '')}&phone=${encodeURIComponent(phoneNumber)}`,
+        );
         return;
       }
 
-      shouldResetLoading = false;
-      router.push(
-        `/verify?ref_id=${encodeURIComponent(data.ref_id!)}&phone=${encodeURIComponent(phoneNumber)}`,
-      );
+      if (data.outcome === 'unregistered') {
+        setResolution({ kind: 'unregistered' });
+        return;
+      }
+
+      setResolution({
+        kind: 'blocked',
+        reason: data.outcome === 'buyer_disabled' ? 'buyer_disabled' : 'seller_disabled',
+        sellerName: data.seller_name ?? 'this seller',
+        sellerWhatsappNumber: data.seller_whatsapp_number,
+        buyerName: data.buyer_name,
+      });
     } catch {
       setPhoneError('Network error. Please check your connection and try again.');
     } finally {
@@ -102,7 +146,6 @@ function LoginForm() {
         return;
       }
 
-      // Account exists but email not yet verified — redirect to OTP flow
       if (data.pending_verification) {
         const params = new URLSearchParams({
           email: data.email ?? identifier,
@@ -136,6 +179,40 @@ function LoginForm() {
     }
   }
 
+  function resetPhoneEntry() {
+    setResolution(null);
+    setPhoneError('');
+    setPhoneFormKey((current) => current + 1);
+  }
+
+  function handleRequestAccess() {
+    if (!resolution || resolution.kind !== 'blocked' || !resolution.sellerWhatsappNumber) return;
+
+    const message = buildRequestAccessMessage({
+      sellerName: resolution.sellerName,
+      buyerName: resolution.buyerName,
+    });
+
+    window.open(buildWhatsAppChatUrl(resolution.sellerWhatsappNumber, message), '_blank', 'noopener,noreferrer');
+  }
+
+  async function handleInformSeller() {
+    const signupLink = new URL('/signup', window.location.origin).toString();
+    const message = buildInformSellerMessage({
+      sellerName:
+        resolution && resolution.kind === 'blocked'
+          ? resolution.sellerName
+          : 'your seller',
+      signupLink,
+      buyerName:
+        resolution && resolution.kind === 'blocked'
+          ? resolution.buyerName
+          : null,
+    });
+
+    window.open(buildWhatsAppShareUrl(message), '_blank', 'noopener,noreferrer');
+  }
+
   const inputCls =
     'w-full px-3 py-2.5 rounded-md bg-cream-50 border border-cream-300 text-cream-900 placeholder:text-cream-500 text-body-sm focus:outline-none focus:border-ember-400 focus:ring-2 focus:ring-ember-400/20 transition-colors disabled:opacity-50';
   const labelCls =
@@ -166,41 +243,92 @@ function LoginForm() {
       {view === 'otp' ? (
         <>
           <p className="text-body-sm text-cream-600 mb-6">
-            Enter your mobile number to get a WhatsApp OTP.
+            {AUTH_LOGIN_COPY.login.landingBody}
           </p>
 
-          {unregistered ? (
+          {resolution ? (
             <div className="space-y-4">
-              <div className="rounded-md bg-warning-50 border border-warning-200 px-4 py-3">
-                <p className="text-body-sm text-warning-700 font-medium">
-                  This number isn&apos;t registered. Contact your distributor.
-                </p>
+              <div className="rounded-md bg-warning-50 border border-warning-200 px-4 py-3 space-y-2">
+                {resolution.kind === 'unregistered' ? (
+                  <>
+                    <p className="text-body-sm text-warning-700 font-medium">
+                      {AUTH_LOGIN_COPY.resolution.unregistered.title}
+                    </p>
+                    {AUTH_LOGIN_COPY.resolution.unregistered.lines.map((line) => (
+                      <p key={line} className="text-body-sm text-warning-700/90">
+                        {line}
+                      </p>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    <p className="text-body-sm text-warning-700 font-medium">
+                      {resolution.reason === 'seller_disabled'
+                        ? AUTH_LOGIN_COPY.resolution.sellerDisabled.title({ sellerName: resolution.sellerName })
+                        : AUTH_LOGIN_COPY.resolution.buyerDisabled.title({ sellerName: resolution.sellerName })}
+                    </p>
+                    <p className="text-body-sm text-warning-700/90">
+                      {resolution.reason === 'seller_disabled'
+                        ? AUTH_LOGIN_COPY.resolution.sellerDisabled.body
+                        : AUTH_LOGIN_COPY.resolution.buyerDisabled.body}
+                    </p>
+                  </>
+                )}
               </div>
-              <button
-                onClick={() => setUnregistered(false)}
-                className="w-full px-4 py-2.5 rounded-md border border-cream-300 bg-white text-cream-800 text-body-sm font-semibold hover:bg-cream-50 transition-colors"
-              >
-                Try a different number
-              </button>
+
+              <div className="space-y-3">
+                {resolution.kind === 'unregistered' ? (
+                  <>
+                    <Link
+                      href="/signup"
+                      className="w-full inline-flex items-center justify-center px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base"
+                    >
+                      {AUTH_LOGIN_COPY.login.createSellerAccount}
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={handleInformSeller}
+                      className="w-full px-4 py-2.5 rounded-md border border-cream-300 bg-white text-cream-800 text-body-sm font-semibold hover:bg-cream-50 transition-colors"
+                    >
+                      {AUTH_LOGIN_COPY.login.informSeller}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={resetPhoneEntry}
+                      className="w-full px-4 py-2.5 rounded-md border border-cream-300 bg-white text-cream-800 text-body-sm font-semibold hover:bg-cream-50 transition-colors"
+                    >
+                      {AUTH_LOGIN_COPY.login.tryDifferentNumber}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleRequestAccess}
+                      disabled={!resolution.sellerWhatsappNumber}
+                      className="w-full px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {AUTH_LOGIN_COPY.login.requestAccess}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={resetPhoneEntry}
+                      className="w-full px-4 py-2.5 rounded-md border border-cream-300 bg-white text-cream-800 text-body-sm font-semibold hover:bg-cream-50 transition-colors"
+                    >
+                      {AUTH_LOGIN_COPY.login.tryDifferentNumber}
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           ) : (
-            <PhoneInput onSubmit={handlePhoneSubmit} loading={phoneLoading} error={phoneError} />
+            <PhoneInput key={phoneFormKey} onSubmit={handlePhoneSubmit} loading={phoneLoading} error={phoneError} />
           )}
-
-          <div className="mt-6 pt-4 border-t border-cream-200">
-            <button
-              type="button"
-              onClick={() => { setView('email'); setPhoneError(''); setUnregistered(false); }}
-              className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
-            >
-              Login with email
-            </button>
-          </div>
         </>
       ) : (
         <>
           <p className="text-body-sm text-cream-600 mb-6">
-            Sign in with your email and password.
+            {AUTH_LOGIN_COPY.login.emailBody}
           </p>
 
           <form onSubmit={handleEmailSubmit} className="space-y-4">
@@ -212,7 +340,10 @@ function LoginForm() {
                 type="email"
                 placeholder="you@company.com"
                 value={identifier}
-                onChange={(e) => { setIdentifier(e.target.value); setEmailError(''); }}
+                onChange={(e) => {
+                  setIdentifier(e.target.value);
+                  setEmailError('');
+                }}
                 disabled={emailLoading}
                 required
                 autoComplete="username"
@@ -229,7 +360,7 @@ function LoginForm() {
                   className="text-caption font-medium transition-colors"
                   style={{ color: 'var(--ember-400)', fontSize: 'var(--yk-text-xs)' }}
                 >
-                  Forgot password?
+                  {AUTH_LOGIN_COPY.login.forgotPassword}
                 </Link>
               </div>
               <input
@@ -255,17 +386,20 @@ function LoginForm() {
               disabled={emailLoading}
               className="w-full px-4 py-2.5 rounded-md bg-teal-500 hover:bg-teal-600 text-cream-50 text-body-sm font-semibold transition-colors duration-base disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {emailLoading ? 'Signing in…' : 'Sign in'}
+              {emailLoading ? AUTH_LOGIN_COPY.login.signInLoading : AUTH_LOGIN_COPY.login.signIn}
             </button>
           </form>
 
           <div className="mt-6 pt-4 border-t border-cream-200">
             <button
               type="button"
-              onClick={() => { setView('otp'); setEmailError(''); }}
+              onClick={() => {
+                setView('otp');
+                setEmailError('');
+              }}
               className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
             >
-              Login with mobile OTP
+              {AUTH_LOGIN_COPY.login.loginWithMobileOtp}
             </button>
           </div>
         </>
@@ -275,7 +409,7 @@ function LoginForm() {
         <p className="text-caption text-cream-600">
           New here?{' '}
           <Link href="/signup" className="text-ember-400 hover:text-ember-500 font-medium transition-colors">
-            Create account
+            {AUTH_LOGIN_COPY.login.createSellerAccount}
           </Link>
         </p>
       </div>

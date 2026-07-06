@@ -16,6 +16,12 @@ interface BuyerRow {
 
 interface LocationRow {
   name: string;
+  phone_number: string | null;
+}
+
+interface WarehouseRow {
+  name: string;
+  phone_number: string | null;
 }
 
 /**
@@ -33,8 +39,8 @@ export async function fetchWhatsappNotificationContext(
 ): Promise<WhatsappNotificationContext | null> {
   const db = supabaseAdmin ?? supabase;
 
-  // Parallel fetch: tenant settings + buyer info + optional location
-  const [tenantResult, buyerResult, locationResult] = await Promise.all([
+  // Parallel fetch: tenant settings + buyer info + optional location/warehouse
+  const [tenantResult, buyerResult, locationResult, warehouseResult] = await Promise.all([
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (db as any)
       .schema('app')
@@ -56,9 +62,21 @@ export async function fetchWhatsappNotificationContext(
         ((db as any)
           .schema('app')
           .from('locations')
-          .select('name')
-          .eq('id', locationId)
-          .single() as Promise<{ data: LocationRow | null; error: unknown }>)
+      .select('name, phone_number')
+      .eq('id', locationId)
+      .single() as Promise<{ data: LocationRow | null; error: unknown }>)
+      : Promise.resolve({ data: null, error: null }),
+
+    locationId
+      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ((db as any)
+          .schema('app')
+          .from('warehouses')
+          .select('name, phone_number')
+          .eq('location_id', locationId)
+          .is('deleted_at', null)
+          .limit(1)
+          .maybeSingle() as Promise<{ data: WarehouseRow | null; error: unknown }>)
       : Promise.resolve({ data: null, error: null }),
   ]);
 
@@ -85,7 +103,11 @@ export async function fetchWhatsappNotificationContext(
 
   const businessSettings =
     (settings.business as Record<string, unknown> | undefined) ?? {};
-  const sellerPhone = (businessSettings.phone as string | undefined) ?? '';
+  const sellerPhone =
+    warehouseResult.data?.phone_number
+    ?? locationResult.data?.phone_number
+    ?? (businessSettings.phone as string | undefined)
+    ?? '';
   const sellerName =
     (businessSettings.company_name as string | undefined) ?? '';
 
@@ -95,7 +117,7 @@ export async function fetchWhatsappNotificationContext(
 
   // Location name falls back to seller business name so the template is still coherent
   const sellerLocation =
-    locationResult.data?.name ?? sellerName;
+    warehouseResult.data?.name ?? locationResult.data?.name ?? sellerName;
 
   // Don't send if either phone is missing — messages would bounce
   if (!sellerPhone || !buyerPhone) return null;

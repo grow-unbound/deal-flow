@@ -1,14 +1,35 @@
 'use client';
 
+import { useMemo } from 'react';
+import { Package } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
-import { StatusTag } from '@/components/seller/layout';
-import { formatDate } from '@/lib/utils';
+import { EmptyState } from '@/components/ui/empty-state';
+import { EntityAvatar, FilterBar, LandingTable, type FilterBarGroup } from '@/components/seller/layout';
+import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import type { WarehouseDetailInventoryItem } from '@/types/tenant-warehouses';
 
-function stockTone(status: WarehouseDetailInventoryItem['stock_status']): 'success' | 'warning' | 'danger' {
-  if (status === 'out_of_stock') return 'danger';
-  if (status === 'low_stock') return 'warning';
-  return 'success';
+type StockSort = 'Product (A-Z)' | 'On hand (high → low)' | 'Reserved (high → low)' | 'Sellable (high → low)' | 'Reorder point (low → high)';
+
+const STOCK_SORT_OPTIONS: StockSort[] = [
+  'Product (A-Z)',
+  'On hand (high → low)',
+  'Reserved (high → low)',
+  'Sellable (high → low)',
+  'Reorder point (low → high)',
+];
+
+function getInitials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('') || 'SK';
+}
+
+function getHue(index: number): 'teal' | 'ember' | 'cream' {
+  return (['teal', 'ember', 'cream'][index % 3] ?? 'cream') as 'teal' | 'ember' | 'cream';
 }
 
 function stockStatusLabel(status: WarehouseDetailInventoryItem['stock_status']) {
@@ -17,7 +38,22 @@ function stockStatusLabel(status: WarehouseDetailInventoryItem['stock_status']) 
   return 'Clear';
 }
 
+function sortStockRows(rows: WarehouseDetailInventoryItem[], sortBy: StockSort) {
+  return [...rows].sort((a, b) => {
+    if (sortBy === 'On hand (high → low)') return b.qty_available - a.qty_available;
+    if (sortBy === 'Reserved (high → low)') return b.qty_reserved - a.qty_reserved;
+    if (sortBy === 'Sellable (high → low)') return b.sellable_units - a.sellable_units;
+    if (sortBy === 'Reorder point (low → high)') {
+      const aValue = a.reorder_point ?? Number.POSITIVE_INFINITY;
+      const bValue = b.reorder_point ?? Number.POSITIVE_INFINITY;
+      return aValue - bValue;
+    }
+    return a.product_name.localeCompare(b.product_name);
+  });
+}
+
 interface WarehouseStockTabProps {
+  warehouseId: string;
   stock: WarehouseDetailInventoryItem[];
   total: number;
   hasMore: boolean;
@@ -26,53 +62,138 @@ interface WarehouseStockTabProps {
 }
 
 export function WarehouseStockTab({
+  warehouseId,
   stock,
   total,
   hasMore,
   isLoadingMore,
   onLoadMore,
 }: WarehouseStockTabProps) {
+  const { state: routeState, setState: setRouteState } = useRouteSnapshot<{
+    search: string;
+    sortBy: StockSort;
+    filters: { status: string[] };
+  }>({
+    storageKey: 'seller-warehouse-stock',
+    scopeKey: warehouseId,
+    initialState: {
+      search: '',
+      sortBy: 'Product (A-Z)',
+      filters: { status: [] },
+    },
+  });
+
+  const search = routeState.search ?? '';
+  const sortBy = routeState.sortBy ?? 'Product (A-Z)';
+  const statuses = routeState.filters?.status ?? [];
+
+  const filterGroups: FilterBarGroup[] = [
+    {
+      key: 'status',
+      label: 'Status',
+      options: [
+        { value: 'Clear', label: 'Clear' },
+        { value: 'Low stock', label: 'Low stock' },
+        { value: 'Out of stock', label: 'Out of stock' },
+      ],
+      values: statuses,
+      onChange: (values) => setRouteState((current) => ({
+        ...current,
+        filters: { ...(current.filters ?? { status: [] }), status: values },
+      })),
+    },
+  ];
+
+  const filtered = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    const filteredRows = stock.filter((item) => {
+      const matchesSearch =
+        !needle ||
+        item.product_name.toLowerCase().includes(needle) ||
+        item.brand_name.toLowerCase().includes(needle) ||
+        item.sku.toLowerCase().includes(needle);
+      const statusLabel = stockStatusLabel(item.stock_status);
+      const matchesStatus = statuses.length === 0 || statuses.includes(statusLabel);
+      return matchesSearch && matchesStatus;
+    });
+
+    return sortStockRows(filteredRows, sortBy);
+  }, [search, sortBy, statuses, stock]);
+
   return (
-    <div className="mt-6 space-y-4">
-      <div className="overflow-hidden rounded-[14px] border border-cream-300 bg-white">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-cream-200 bg-cream-50">
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.1em] text-cream-600">Product</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.1em] text-cream-600">Brand</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-600">On hand</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-600">Reserved</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-600">Sellable</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.1em] text-cream-600">Reorder point</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.1em] text-cream-600">Status</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.1em] text-cream-600">Last updated</th>
-            </tr>
-          </thead>
-          <tbody>
-            {stock.map((item) => (
-              <tr key={item.tenant_product_id} className="border-b border-cream-100 last:border-0">
-                <td className="px-4 py-3 font-medium text-cream-900">{item.product_name}</td>
-                <td className="px-4 py-3 text-cream-600">{item.brand_name}</td>
-                <td className="px-4 py-3 text-right font-mono text-cream-900">{item.qty_available.toLocaleString('en-IN')}</td>
-                <td className="px-4 py-3 text-right font-mono text-cream-900">{item.qty_reserved.toLocaleString('en-IN')}</td>
-                <td className="px-4 py-3 text-right font-mono text-cream-900">{item.sellable_units.toLocaleString('en-IN')}</td>
-                <td className="px-4 py-3 text-right font-mono text-cream-900">{item.reorder_point != null ? item.reorder_point.toLocaleString('en-IN') : '—'}</td>
-                <td className="px-4 py-3">
-                  <StatusTag tone={stockTone(item.stock_status)} label={stockStatusLabel(item.stock_status)} />
-                </td>
-                <td className="px-4 py-3 text-cream-600">{formatDate(item.last_updated)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {stock.length === 0 ? (
-          <div className="py-12 text-center text-sm text-cream-500">No stock tracked in this warehouse yet.</div>
-        ) : null}
-      </div>
+    <div className="mt-5 space-y-4">
+      <FilterBar
+        count={`${filtered.length} of ${stock.length} SKUs`}
+        searchPlaceholder="Search product, SKU, brand…"
+        chips={[]}
+        activeChip=""
+        sortBy={sortBy}
+        hideViewToggle
+        groups={filterGroups}
+        searchValue={search}
+        onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
+        sortOptions={[...STOCK_SORT_OPTIONS]}
+        onSortChange={(value) => setRouteState((current) => ({ ...current, sortBy: value as StockSort }))}
+      />
+
+      <LandingTable
+        columns={[
+          { label: 'Product', width: 330, minWidth: 330, maxWidth: 420, className: 'px-5' },
+          { label: 'Brand', width: 210, minWidth: 210, maxWidth: 260, className: 'px-5' },
+          { label: 'On hand', align: 'center', width: 120, minWidth: 120, maxWidth: 150, className: 'px-5' },
+          { label: 'Reserved', align: 'center', width: 120, minWidth: 120, maxWidth: 150, className: 'px-5' },
+          { label: 'Sellable', align: 'center', width: 120, minWidth: 120, maxWidth: 150, className: 'px-5' },
+          { label: 'Reorder point', align: 'center', width: 130, minWidth: 130, maxWidth: 160, className: 'px-5' },
+        ]}
+        tableMinWidth={1060}
+        showEmptyState={filtered.length === 0}
+        emptyState={
+          <EmptyState
+            icon={<Package size={28} strokeWidth={1.5} />}
+            heading={search.trim() || statuses.length > 0 ? 'No matching stock rows' : 'No stock tracked in this warehouse yet'}
+            description={
+              search.trim() || statuses.length > 0
+                ? 'Try a different search or filter combination.'
+                : 'This warehouse will show stock rows once products are mapped to it.'
+            }
+            action={
+              <Button variant="outline" size="sm" onClick={() => setRouteState({ search: '', sortBy: 'Product (A-Z)', filters: { status: [] } })}>
+                Clear filters
+              </Button>
+            }
+          />
+        }
+      >
+        {filtered.map((item, index) => (
+          <tr key={item.tenant_product_id} className="border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50">
+            <td className="px-5 py-3.5 text-base text-cream-900">
+              <div className="flex items-center gap-3">
+                <EntityAvatar initials={getInitials(item.product_name)} hue={getHue(index)} size={38} />
+                <div className="min-w-0">
+                  <p className="truncate text-base font-medium text-cream-900">{item.product_name}</p>
+                  <p className="mt-0.5 truncate text-sm text-cream-700">{item.sku}</p>
+                </div>
+              </div>
+            </td>
+            <td className="px-5 py-3.5 text-base text-cream-900">
+              <div className="inline-flex items-center gap-2">
+                <EntityAvatar initials={getInitials(item.brand_name)} hue={getHue(index + 1)} size={22} />
+                <span className="text-sm text-cream-900">{item.brand_name}</span>
+              </div>
+            </td>
+            <td className="px-5 py-3.5 text-center font-mono text-base tabular-nums text-cream-900">{item.qty_available.toLocaleString('en-IN')}</td>
+            <td className="px-5 py-3.5 text-center font-mono text-base tabular-nums text-cream-900">{item.qty_reserved.toLocaleString('en-IN')}</td>
+            <td className="px-5 py-3.5 text-center font-mono text-base tabular-nums text-cream-900">{item.sellable_units.toLocaleString('en-IN')}</td>
+            <td className="px-5 py-3.5 text-center font-mono text-base tabular-nums text-cream-900">
+              {item.reorder_point != null ? item.reorder_point.toLocaleString('en-IN') : '—'}
+            </td>
+          </tr>
+          ))}
+      </LandingTable>
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-cream-600">
-          Showing {stock.length.toLocaleString('en-IN')} of {total.toLocaleString('en-IN')} SKUs
+          Showing {filtered.length.toLocaleString('en-IN')} of {total.toLocaleString('en-IN')} SKUs
         </p>
         {hasMore ? (
           <Button variant="outline" size="sm" onClick={onLoadMore} disabled={isLoadingMore}>
