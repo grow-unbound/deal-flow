@@ -14,7 +14,7 @@ interface CatalogPerformanceTabProps {
 type TrendPeriod = '3m' | '12m' | 'ytd';
 
 function openedTone(status: CatalogDetailResponse['performance']['per_buyer_activity'][number]['opened_status']) {
-  if (status === 'Purchased') return 'success';
+  if (status === 'Converted') return 'success';
   if (status === 'Opened') return 'success';
   return 'warning';
 }
@@ -129,19 +129,19 @@ export function CatalogPerformanceTab({ performance }: CatalogPerformanceTabProp
               <p className="mt-1 text-base text-cream-700">{performance.summary.unique_viewers} unique</p>
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Opens → order</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Opens → conversion</p>
               <p className="mt-1 font-display text-3xl leading-[0.95] tracking-[-0.02em] text-cream-950">{performance.summary.conversion_rate}%</p>
-              <p className="mt-1 text-base text-cream-700">conversion</p>
+              <p className="mt-1 text-base text-cream-700">conversion rate</p>
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">AOV</p>
               <p className="mt-1 font-display text-3xl leading-[0.95] tracking-[-0.02em] text-cream-950">{formatCompactInr(performance.summary.aov, 1)}</p>
-              <p className="mt-1 text-base text-cream-700">across orders</p>
+              <p className="mt-1 text-base text-cream-700">across conversions</p>
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Abandoners</p>
               <p className="mt-1 font-display text-3xl leading-[0.95] tracking-[-0.02em] text-ember-700">{performance.summary.abandoners}</p>
-              <p className="mt-1 text-base text-cream-700">opened, didn&apos;t order</p>
+              <p className="mt-1 text-base text-cream-700">opened, didn&apos;t convert</p>
             </div>
           </div>
         </PerformanceCard>
@@ -237,7 +237,7 @@ export function CatalogPerformanceTab({ performance }: CatalogPerformanceTabProp
         columns={[
           { label: 'Buyer', className: 'px-5' },
           { label: 'Opened', className: 'px-5' },
-          { label: 'Orders', className: 'px-5 text-right' },
+          { label: 'Conversions', className: 'px-5 text-right' },
           { label: 'GMV', className: 'px-5 text-right' },
         ]}
         renderRow={(buyer) => (

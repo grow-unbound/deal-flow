@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { AUTH_LOGIN_COPY } from '@/constants/auth-login-copy';
 import {
   BUYER_PREVIEW_ACTIVITY_REFRESH_BUFFER_SECONDS,
+  BUYER_PREVIEW_CONFIRMATION_COOKIE,
   BUYER_PREVIEW_INACTIVITY_SECONDS,
 } from '@/lib/buyer-preview';
 
@@ -23,6 +25,16 @@ function getPreviewExpFromCookie(): number | null {
 
 function isPreviewSession(): boolean {
   return getPreviewExpFromCookie() !== null;
+}
+
+function getPreviewConfirmationFlag(): boolean {
+  if (typeof document === 'undefined') return false;
+  return document.cookie.includes(`${BUYER_PREVIEW_CONFIRMATION_COOKIE}=1`);
+}
+
+function clearPreviewConfirmationFlag(): void {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${BUYER_PREVIEW_CONFIRMATION_COOKIE}=; Max-Age=0; path=/`;
 }
 
 function Spinner() {
@@ -55,14 +67,45 @@ function PreviewExpiredOverlay({ onRefresh }: { onRefresh: () => void }) {
   );
 }
 
+function PreviewConfirmationOverlay({ onContinue, onCancel }: { onContinue: () => void; onCancel: () => void; }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+        <p className="mb-1 text-base font-semibold text-gray-900">
+          {AUTH_LOGIN_COPY.resolution.previewMode.title}
+        </p>
+        <p className="mb-5 text-sm text-gray-500">
+          {AUTH_LOGIN_COPY.resolution.previewMode.body}
+        </p>
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 rounded-lg border border-cream-300 bg-white px-4 py-2.5 text-sm font-semibold text-cream-700 transition-colors hover:bg-cream-50"
+          >
+            {AUTH_LOGIN_COPY.resolution.previewMode.cancel}
+          </button>
+          <button
+            onClick={onContinue}
+            className="flex-1 rounded-lg bg-teal-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-teal-600"
+          >
+            {AUTH_LOGIN_COPY.resolution.previewMode.continue}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function BuyerPreviewBootstrap({ children }: { children: React.ReactNode }) {
   const [expired, setExpired] = useState(false);
+  const [needsConfirmation, setNeedsConfirmation] = useState(false);
   const lastActivityRef = useRef(Date.now());
   const lastRefreshRef = useRef(0);
   const activityThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!isPreviewSession()) return;
+    setNeedsConfirmation(getPreviewConfirmationFlag());
 
     async function maybeRefreshPreviewToken(): Promise<void> {
       const now = Date.now();
@@ -130,6 +173,19 @@ export function BuyerPreviewBootstrap({ children }: { children: React.ReactNode 
   return (
     <>
       {children}
+      {needsConfirmation && !expired && (
+        <PreviewConfirmationOverlay
+          onCancel={() => {
+            clearPreviewConfirmationFlag();
+            window.close();
+            window.location.href = '/login';
+          }}
+          onContinue={() => {
+            clearPreviewConfirmationFlag();
+            setNeedsConfirmation(false);
+          }}
+        />
+      )}
       {expired && (
         <PreviewExpiredOverlay
           onRefresh={() => {

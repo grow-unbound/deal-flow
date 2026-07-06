@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { BUYER_CACHE_CATALOG } from '@/lib/server/buyer-cache-headers';
+import { recordCampaignView } from '@/lib/server/campaign-engagement';
 import { fetchBuyerCatalogPage, resolveBuyerCatalogContext } from '@/lib/server/buyer-product-data';
 import type { BuyerCatalogResponse } from '@/types/buyer';
 
@@ -39,6 +40,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       limit,
       offset,
     });
+
+    if (offset === 0 && context.buyerId && response.selected_campaign_id) {
+      void recordCampaignView(supabaseAdmin, {
+        tenantId: context.tenantId,
+        buyerId: context.buyerId,
+        campaignId: response.selected_campaign_id,
+        source: 'buyer_app',
+      });
+    }
 
     return NextResponse.json({
       ...response,

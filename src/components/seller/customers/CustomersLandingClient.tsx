@@ -399,7 +399,7 @@ function CustomersLandingContent({
                   <div className="min-w-0">
                     <p className="truncate text-base font-medium text-cream-900">{buyer.business_name}</p>
                     <p className="ent-sub mt-0.5 truncate text-xs uppercase tracking-[0.05em] text-cream-500">
-                      {buyer.city}{buyer.phone ? ` · ${buyer.phone}` : ''}
+                      {buyer.phone ? `${buyer.phone}` : ''}
                     </p>
                   </div>
                 </div>

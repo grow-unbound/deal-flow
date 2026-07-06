@@ -25,6 +25,7 @@ export interface BuyerOrderDetail {
   total_amount: number;
   subtotal: number;
   tax_total: number;
+  document_url: string | null;
   items: BuyerOrderItem[];
 }
 
@@ -48,10 +49,10 @@ export async function GET(
     const db = supabaseAdmin ?? supabase;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: order, error } = await (db as any)
+  const { data: order, error } = await (db as any)
       .schema('app')
       .from('orders')
-      .select('id, order_number, status, notes, placed_at, place_of_supply, total_amount, subtotal, tax_amount')
+      .select('id, order_number, status, notes, placed_at, place_of_supply, total_amount, subtotal, tax_amount, order_url')
       .eq('id', id)
       .eq('tenant_id', tenant_id)
       .eq('buyer_id', buyer_id)
@@ -76,6 +77,7 @@ export async function GET(
       total_amount: Number(order.total_amount),
       subtotal,
       tax_total: Math.max(0, tax_total),
+      document_url: (order as { order_url?: string | null }).order_url ?? null,
       items: rawItems,
     };
 

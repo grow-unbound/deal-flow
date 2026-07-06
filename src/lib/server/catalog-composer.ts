@@ -8,7 +8,6 @@ interface TenantProductRow {
   internal_sku: string;
   name_override: string | null;
   tenant_brand_id: string | null;
-  master_product_id: string | null;
   tenant_category_id: string | null;
   mrp: number | null;
   base_selling_price: number | null;
@@ -19,12 +18,6 @@ interface TenantProductRow {
 interface TenantBrandRow {
   id: string;
   display_name_override: string | null;
-  master_brand_id: string;
-}
-
-interface MasterBrandRow {
-  id: string;
-  name: string;
 }
 
 interface CohortRow {
@@ -141,7 +134,7 @@ export async function getCatalogComposerPayload(db: any, tenantId: string, role?
     db
       .schema('app')
       .from('tenant_products')
-      .select('id, internal_sku, name_override, tenant_brand_id, master_product_id, tenant_category_id, mrp, base_selling_price, cost_price, created_at')
+      .select('id, internal_sku, name_override, tenant_brand_id, tenant_category_id, mrp, base_selling_price, cost_price, created_at')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
@@ -294,7 +287,7 @@ export async function getCatalogComposerPayload(db: any, tenantId: string, role?
     ? await db
         .schema('app')
         .from('tenant_brands')
-        .select('id, display_name_override, master_brand_id')
+        .select('id, display_name_override')
         .in('id', tenantBrandIds)
         .is('deleted_at', null)
     : { data: [], error: null };
@@ -302,40 +295,12 @@ export async function getCatalogComposerPayload(db: any, tenantId: string, role?
   if (tenantBrandsRes.error) throw dbErr('catalog-composer: tenant_brands', tenantBrandsRes.error);
 
   const tenantBrands = (tenantBrandsRes.data ?? []) as TenantBrandRow[];
-  const masterBrandIds = Array.from(new Set(tenantBrands.map((b) => b.master_brand_id)));
-  const masterProductIds = Array.from(new Set(products.map((p) => p.master_product_id).filter(Boolean))) as string[];
-
-  const [masterBrandsRes, masterProductsRes] = await Promise.all([
-    masterBrandIds.length > 0
-      ? db.schema('catalog').from('brands').select('id, name').in('id', masterBrandIds).is('deleted_at', null)
-      : Promise.resolve({ data: [], error: null }),
-    masterProductIds.length > 0
-      ? db.schema('catalog').from('products').select('id, name, category_id').in('id', masterProductIds).is('deleted_at', null)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-
-  if (masterBrandsRes.error) throw dbErr('catalog-composer: master_brands', masterBrandsRes.error);
-  if (masterProductsRes.error) throw dbErr('catalog-composer: master_products', masterProductsRes.error);
-
-  const masterProducts = (masterProductsRes.data ?? []) as Array<{ id: string; name: string; category_id: string | null }>;
-  const masterProductNameById = new Map(masterProducts.map((product) => [product.id, product.name]));
-  const categoryIds = Array.from(new Set(masterProducts.map((product) => product.category_id).filter(Boolean))) as string[];
-  const categoriesRes = categoryIds.length > 0
-    ? await db.schema('catalog').from('categories').select('id, name').in('id', categoryIds).is('deleted_at', null)
-    : { data: [], error: null };
-
-  if (categoriesRes.error) throw dbErr('catalog-composer: master_categories', categoriesRes.error);
-
-  const categoryNameById = new Map(((categoriesRes.data ?? []) as Array<{ id: string; name: string }>).map((category) => [category.id, category.name]));
-  const categoryNameByMasterProductId = new Map(
-    masterProducts
-      .filter((product) => product.category_id)
-      .map((product) => [product.id, categoryNameById.get(product.category_id!) ?? null]),
+  const categoryNameById = new Map(
+    ((tenantCategoriesRes.data ?? []) as Array<{ id: string; name: string | null }>).map((category) => [category.id, category.name]),
   );
 
   // Build lookup maps. Sum qty across locations; keep the latest stock update per product.
   const inventoryByProductId = new Map<string, InventoryRow>();
-  const tenantCategoryNameById = new Map(((tenantCategoriesRes.data ?? []) as Array<{ id: string; name: string | null }>).map((category) => [category.id, category.name]));
   for (const row of (inventoryRes.data ?? []) as InventoryRow[]) {
     const existing = inventoryByProductId.get(row.tenant_product_id);
     if (!existing) {
@@ -349,7 +314,6 @@ export async function getCatalogComposerPayload(db: any, tenantId: string, role?
     if (rowUpdatedTs > existingUpdatedTs) existing.updated_at = row.updated_at;
   }
   const tenantBrandById = new Map(tenantBrands.map((b) => [b.id, b]));
-  const masterBrandById = new Map(((masterBrandsRes.data ?? []) as MasterBrandRow[]).map((b) => [b.id, b.name]));
   const monthOrderIdSet = new Set(monthOrderIds);
   const recentOrderPlacedAtById = new Map(recentOrders.map((o) => [o.id, o.placed_at]));
   const unitsMtdByProductId = new Map<string, number>();
@@ -395,11 +359,10 @@ export async function getCatalogComposerPayload(db: any, tenantId: string, role?
       const reorderPoint = Number(inventory?.reorder_point ?? 0);
       const brand = product.tenant_brand_id ? tenantBrandById.get(product.tenant_brand_id) : null;
       const brandName = brand
-        ? brand.display_name_override ?? masterBrandById.get(brand.master_brand_id) ?? 'Unknown brand'
-        : 'Unknown brand';
+        ? brand.display_name_override?.trim() || 'Brand'
+        : 'Brand';
       const categoryName =
-        (product.tenant_category_id ? tenantCategoryNameById.get(product.tenant_category_id) ?? null : null) ||
-        (product.master_product_id ? categoryNameByMasterProductId.get(product.master_product_id) ?? null : null);
+        product.tenant_category_id ? categoryNameById.get(product.tenant_category_id) ?? null : null;
       const unitsMtd = unitsMtdByProductId.get(product.id) ?? 0;
       const dailyRunRate = unitsMtd > 0 ? unitsMtd / daysElapsed : 0;
       const daysCover = qtyAvailable > 0 && dailyRunRate > 0 ? Math.round((qtyAvailable / dailyRunRate) * 10) / 10 : null;
@@ -421,7 +384,6 @@ export async function getCatalogComposerPayload(db: any, tenantId: string, role?
         id: product.id,
         display_name:
           product.name_override?.trim() ||
-          (product.master_product_id ? masterProductNameById.get(product.master_product_id) : null) ||
           product.internal_sku,
         internal_sku: product.internal_sku,
         brand_name: brandName,

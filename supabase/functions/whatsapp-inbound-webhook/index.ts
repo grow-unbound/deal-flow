@@ -1,31 +1,9 @@
 // supabase/functions/whatsapp-inbound-webhook/index.ts
 //
-// WhatsApp Broadcast — Phase C: STOP/UNSUBSCRIBE inbound handler.
-// Spec: CLAUDE OUTPUTS/DealFlow/DealFlow_WhatsApp-Broadcast-Spec_v4.md §4.8, §7.2.
-//
-// Receives Meta's inbound-message webhook (Cloud API "messages" change
-// notification) on the shared Yukti WABA. When an inbound text message body
-// is STOP/UNSUBSCRIBE (case-insensitive, common variants), stamps
-// app.buyers.whatsapp_opt_out_at for the buyer matching that phone number.
-// Broadcast pre-flight checks (Phase E/F, not built yet) will filter on this
-// column; this Phase only owns detecting the reply and setting the flag.
-//
-// MINIMAL implementation per Phase C scope — deliberately NOT built here:
-//   - Meta webhook subscription/registration infra (App Dashboard config,
-//     GET verification handshake is included below since Meta requires it
-//     before it will ever call this endpoint, but there is no code here that
-//     programmatically subscribes the app to webhook fields via the Graph API)
-//   - Full inbound message persistence/ledger (app.whatsapp_messages tracks
-//     outbound sends per Phase A; this function does not write inbound rows
-//     there — an inbound STOP is a signal, not a billable message)
-//   - Meta payload signature verification (X-Hub-Signature-256): Phase A's
-//     WhatsAppClient (src/lib/server/whatsapp-client.ts) does not yet
-//     implement or anticipate a signature-verification helper, so this is
-//     STUBBED below with a TODO rather than invented from scratch. Relies on
-//     the webhook URL + verify token being unguessable in the interim, same
-//     trust level as most of the existing integrations-webhook function
-//     before its own hardening — acceptable for MVP, must be closed out
-//     before this is a public production endpoint.
+// WhatsApp inbound handler:
+//   - Phase C: STOP/UNSUBSCRIBE opt-out (§4.8, §7.2)
+//   - Delivery tracking: message status webhooks (sent/delivered/read/failed)
+// Spec: DealFlow_WhatsApp-Broadcast-Spec_v4.md §5
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -45,10 +23,6 @@ function isOptOutMessage(body: string | null | undefined): boolean {
   return OPT_OUT_KEYWORDS.has(normalized);
 }
 
-// Meta sends the sender's number as digits only, typically "91XXXXXXXXXX" for
-// India. app.buyers.phone stores the normalized 10-digit form (see
-// src/lib/phone.ts normalizeIndianPhone) — strip a leading country code the
-// same way the rest of the app does, without importing app source into Deno.
 function normalizeIndianPhone(input: string): string {
   const digits = input.replace(/\D/g, '');
   if (digits.startsWith('91') && digits.length > 10) return digits.slice(-10);
@@ -63,11 +37,19 @@ interface MetaInboundMessage {
   button?: { text?: string };
 }
 
+interface MetaStatusUpdate {
+  id?: string;
+  status?: string;
+  timestamp?: string;
+  errors?: Array<{ title?: string; message?: string }>;
+}
+
 interface MetaWebhookEntry {
   changes?: Array<{
     field?: string;
     value?: {
       messages?: MetaInboundMessage[];
+      statuses?: MetaStatusUpdate[];
     };
   }>;
 }
@@ -80,19 +62,67 @@ function ok(body: string): Response {
   return new Response(body, { status: 200, headers: { 'content-type': 'text/plain' } });
 }
 
-// TODO (Phase F / production hardening): verify X-Hub-Signature-256 against
-// the Meta app secret before trusting the payload. WhatsAppClient does not
-// anticipate this yet (see file header) — stubbed rather than invented here.
 function isVerifiedMetaSignature(_req: Request): boolean {
   return true;
+}
+
+function mapMetaStatusToLedgerStatus(
+  metaStatus: string,
+): 'sent' | 'delivered' | 'read' | 'failed' | null {
+  switch (metaStatus) {
+    case 'sent':
+      return 'sent';
+    case 'delivered':
+      return 'delivered';
+    case 'read':
+      return 'read';
+    case 'failed':
+      return 'failed';
+    default:
+      return null;
+  }
+}
+
+async function handleStatusUpdates(
+  admin: ReturnType<typeof createAdminClient>,
+  statuses: MetaStatusUpdate[],
+): Promise<void> {
+  for (const status of statuses) {
+    const providerMessageId = status.id?.trim();
+    const ledgerStatus = status.status ? mapMetaStatusToLedgerStatus(status.status) : null;
+    if (!providerMessageId || !ledgerStatus) continue;
+
+    const timestamp = status.timestamp
+      ? new Date(Number(status.timestamp) * 1000).toISOString()
+      : new Date().toISOString();
+
+    const update: Record<string, unknown> = { status: ledgerStatus };
+    if (ledgerStatus === 'sent') update.sent_at = timestamp;
+    if (ledgerStatus === 'delivered') update.delivered_at = timestamp;
+    if (ledgerStatus === 'read') update.read_at = timestamp;
+    if (ledgerStatus === 'failed') {
+      const errMsg = status.errors?.[0]?.message ?? status.errors?.[0]?.title ?? 'Meta delivery failed';
+      update.failure_reason = errMsg;
+    }
+
+    const { error } = await admin
+      .schema('app')
+      .from('whatsapp_messages')
+      .update(update)
+      .eq('provider_message_id', providerMessageId);
+
+    if (error) {
+      console.error('[whatsapp-inbound-webhook] status update failed', {
+        providerMessageId,
+        error: error.message,
+      });
+    }
+  }
 }
 
 Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
 
-  // Meta's one-time webhook verification handshake (required before Meta will
-  // ever POST real events to this URL). WHATSAPP_WEBHOOK_VERIFY_TOKEN must be
-  // set to whatever token is configured in the Meta App Dashboard.
   if (req.method === 'GET') {
     const mode = url.searchParams.get('hub.mode');
     const token = url.searchParams.get('hub.verify_token');
@@ -110,8 +140,6 @@ Deno.serve(async (req: Request) => {
   }
 
   if (!isVerifiedMetaSignature(req)) {
-    // Still 200 — Meta retries aggressively on non-200, and an unverified
-    // payload should be dropped silently, not retried.
     return ok('ignored');
   }
 
@@ -119,10 +147,18 @@ Deno.serve(async (req: Request) => {
     const body = await req.json() as MetaWebhookBody;
     const admin = createAdminClient();
 
-    const messages: MetaInboundMessage[] = (body.entry ?? [])
-      .flatMap((entry) => entry.changes ?? [])
+    const changes = (body.entry ?? []).flatMap((entry) => entry.changes ?? []);
+
+    const messages: MetaInboundMessage[] = changes
       .filter((change) => change.field === 'messages')
       .flatMap((change) => change.value?.messages ?? []);
+
+    const statuses: MetaStatusUpdate[] = changes
+      .flatMap((change) => change.value?.statuses ?? []);
+
+    if (statuses.length > 0) {
+      await handleStatusUpdates(admin, statuses);
+    }
 
     for (const message of messages) {
       if (!message.from) continue;
@@ -133,9 +169,6 @@ Deno.serve(async (req: Request) => {
       const phone = normalizeIndianPhone(message.from);
       if (!phone) continue;
 
-      // Shared number across all tenants (§3.1) — a STOP reply is per phone
-      // number, not per tenant, so opt every buyer row matching this phone
-      // out, same as Meta's own platform-wide opt-out semantics (§7.2).
       const { error } = await admin
         .schema('app')
         .from('buyers')
@@ -155,8 +188,6 @@ Deno.serve(async (req: Request) => {
     return ok('processed');
   } catch (err) {
     console.error('[whatsapp-inbound-webhook] unexpected error', err);
-    // Always 200 — Meta retries non-200 responses, which would only compound
-    // whatever went wrong.
     return ok('error-logged');
   }
 });

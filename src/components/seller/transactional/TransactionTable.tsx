@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 import { EntityAvatar, LandingTable, StatusTag } from '@/components/seller/layout';
+import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
 import { cn, formatCompactInr, formatDate } from '@/lib/utils';
 
 export type TransactionTableKind = 'estimate' | 'order' | 'invoice';
@@ -29,6 +30,7 @@ export interface TransactionTableRow {
   created_at: string | null;
   expires_at?: string | null;
   due_at?: string | null;
+  realtime_badge?: 'new' | 'updated';
 }
 
 export interface TransactionTableProps {
@@ -146,7 +148,10 @@ export function TransactionTable({
             <td className="px-5 py-3.5">
               <div className="flex items-start gap-2">
                 <div className="min-w-0">
-                  <p className="font-mono text-sm font-medium text-cream-900">{row.document_number}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-mono text-sm font-medium text-cream-900">{row.document_number}</p>
+                    {row.realtime_badge ? <RealtimeBadge type={row.realtime_badge} className="shrink-0" /> : null}
+                  </div>
                   {showSource && row.source_label ? (
                     <p className="mt-0.5 truncate text-xs font-medium uppercase tracking-[0.08em] text-cream-600">
                       {row.source_label}

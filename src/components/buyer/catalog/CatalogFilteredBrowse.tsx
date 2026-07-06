@@ -14,6 +14,7 @@ import {
   useBuyerCatalogList,
   useBuyerCategories,
 } from '@/hooks/useBuyerProducts';
+import { useCart } from '@/contexts/BuyerCartContext';
 
 export type CatalogFilteredMode = 'category' | 'brand' | 'list';
 
@@ -23,6 +24,7 @@ interface CatalogFilteredBrowseProps {
 }
 
 export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps): React.ReactNode {
+  const { setCampaignId } = useCart();
   const [campaignTitle, setCampaignTitle] = React.useState('Catalog');
   const [campaignTitleResolved, setCampaignTitleResolved] = React.useState(false);
   const [retryNonce, setRetryNonce] = React.useState(0);
@@ -50,7 +52,10 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
     if (!page?.selected_campaign_name) return;
     setCampaignTitle(page.selected_campaign_name);
     setCampaignTitleResolved(true);
-  }, [mode, pages, campaignTitleResolved]);
+    if (page.selected_campaign_id) {
+      setCampaignId(page.selected_campaign_id);
+    }
+  }, [mode, pages, campaignTitleResolved, setCampaignId]);
 
   React.useEffect(() => {
     if (mode !== 'list') return;
