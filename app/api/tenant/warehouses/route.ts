@@ -119,7 +119,6 @@ export async function POST(req: NextRequest) {
         phone_number: parsed.data.phone_number ?? null,
         status: parsed.data.status,
         is_default: parsed.data.is_default,
-        external_ref: parsed.data.external_ref ?? null,
         associated_users: parsed.data.associated_users,
         lat: parsed.data.lat ?? null,
         lng: parsed.data.lng ?? null,

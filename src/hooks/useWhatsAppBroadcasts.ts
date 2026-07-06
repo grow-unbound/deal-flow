@@ -50,6 +50,12 @@ export interface WhatsAppPlatformStatus {
   quality_rating_state: WhatsAppQualityRatingState;
 }
 
+export interface BroadcastCampaignOption {
+  id: string;
+  name: string;
+  share_token: string | null;
+}
+
 /**
  * Phase F — read-only platform kill-switch / quality-rating status, used to
  * pick the right composer banner copy (§7.3). Polled lightly (short stale
@@ -76,10 +82,24 @@ export function useWhatsAppTemplates(enabled = true) {
     queryKey: ['whatsapp-templates'],
     queryFn: async (): Promise<WhatsAppTemplateOption[]> => {
       const res = await apiFetch('/api/whatsapp/templates');
-      if (res.status === 403) return [];
       if (!res.ok) throw new Error('Failed to fetch WhatsApp templates');
       const data = (await res.json()) as { templates: WhatsAppTemplateOption[] };
       return data.templates;
+    },
+    enabled,
+    staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+  });
+}
+
+export function useBroadcastCampaignOptions(enabled = true) {
+  return useQuery({
+    queryKey: ['whatsapp-broadcast-campaign-options'],
+    queryFn: async (): Promise<BroadcastCampaignOption[]> => {
+      const res = await apiFetch('/api/whatsapp/broadcasts/campaign-options');
+      if (!res.ok) throw new Error('Failed to fetch campaign options');
+      const data = (await res.json()) as { campaigns: BroadcastCampaignOption[] };
+      return data.campaigns;
     },
     enabled,
     staleTime: NAVIGATION_QUERY_STALE_TIME,
@@ -134,7 +154,7 @@ export function useCreateWhatsAppBroadcast() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-broadcast-history'] });
-      toast.success('Broadcast scheduled');
+      toast.success('Broadcast queued');
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Could not create broadcast');

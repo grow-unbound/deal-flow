@@ -37,6 +37,7 @@ type OrderPlaceResponse = {
   success: boolean;
   order_id?: string;
   order_number?: string | null;
+  document_url?: string | null;
   error?: string;
 };
 
@@ -44,6 +45,7 @@ type EstimateResponse = {
   success: boolean;
   estimate_id?: string;
   estimate_number?: string | null;
+  document_url?: string | null;
   error?: string;
 };
 
@@ -74,7 +76,7 @@ const STICKY_HEADER: React.CSSProperties = {
 
 export default function CartPage() {
   const router = useRouter();
-  const { items, itemCount, removeItem, updateQty, clearCart, addItem, replaceItems } = useCart();
+  const { items, itemCount, removeItem, updateQty, clearCart, addItem, replaceItems, campaignId } = useCart();
   const delivery = useBuyerDeliveryOptional();
   const { data: meData } = useBuyerMe();
   const { data: cartBundlesData } = useCartBundles();
@@ -195,19 +197,26 @@ export default function CartPage() {
       }
       const raw = await apiFetch('/api/buyer/orders', {
         method: 'POST',
-        body: JSON.stringify({ items: buildLineItems(), location_id, place_of_supply }),
+        body: JSON.stringify({
+          items: buildLineItems(),
+          location_id,
+          place_of_supply,
+          campaign_id: campaignId ?? undefined,
+        }),
       });
       const res: OrderPlaceResponse = await raw.json();
       if (!raw.ok || !res.success) {
         setError(res.error ?? 'Could not place order. Please try again.');
         return;
       }
-      clearCart();
       const params = new URLSearchParams({
         order_id: res.order_id ?? '',
         order_number: res.order_number ?? '',
         total: String(total),
       });
+      if (res.document_url) {
+        params.set('document_url', res.document_url);
+      }
       router.replace(`/buy/order-placed?${params.toString()}`);
     } catch {
       setError('Network error. Please check your connection and try again.');
@@ -232,19 +241,27 @@ export default function CartPage() {
       }
       const raw = await apiFetch('/api/buyer/estimates', {
         method: 'POST',
-        body: JSON.stringify({ items: buildLineItems(), location_id, place_of_supply }),
+        body: JSON.stringify({
+          items: buildLineItems(),
+          location_id,
+          place_of_supply,
+          campaign_id: campaignId ?? undefined,
+        }),
       });
       const res: EstimateResponse = await raw.json();
       if (!raw.ok || !res.success) {
         setError(res.error ?? 'Could not request quote. Please try again.');
         return;
       }
-      clearCart();
-      const params = new URLSearchParams({ tab: 'enquiries' });
-      if (res.estimate_number) {
-        params.set('highlight', res.estimate_number);
+      const params = new URLSearchParams({
+        estimate_id: res.estimate_id ?? '',
+        estimate_number: res.estimate_number ?? '',
+        total: String(total),
+      });
+      if (res.document_url) {
+        params.set('document_url', res.document_url);
       }
-      router.replace(`/buy/orders?${params.toString()}`);
+      router.replace(`/buy/estimate-placed?${params.toString()}`);
     } catch {
       setError('Network error. Please check your connection and try again.');
     } finally {

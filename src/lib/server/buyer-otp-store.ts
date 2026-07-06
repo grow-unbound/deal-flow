@@ -5,6 +5,8 @@ export interface LoginOtpContext {
   tenant_id: string;
   tenant_name: string;
   tenant_slug: string;
+  tenant_whatsapp_number: string | null;
+  tenant_whatsapp_display_name: string | null;
   role: string;
   buyer_id: string | null;
 }

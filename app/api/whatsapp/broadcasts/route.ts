@@ -6,6 +6,8 @@ import { FEATURE_FLAGS } from '@/constants';
 import { WhatsAppBroadcastCreateSchema } from '@/lib/zod';
 import { resolveBroadcastAudience } from '@/lib/server/whatsapp-broadcast-audience';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
+import { buildBroadcastMessageQueue } from '@/lib/server/whatsapp-broadcast-send';
+import { enqueueWhatsAppMessage, triggerWhatsAppDispatch } from '@/lib/server/whatsapp-enqueue';
 
 /**
  * WhatsApp Broadcast Phase E — broadcast job list + create.
@@ -18,11 +20,10 @@ import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
  *        the API layer in addition to the RLS INSERT policy (belt+suspenders,
  *        same pattern as app/api/customers/import/route.ts).
  *
- * IMPORTANT — Phase F is NOT built yet: this route only resolves the
- * audience, stores estimated_recipient_count, and creates the row at
- * status='scheduled' (or 'draft' if no scheduled_for is given). It never
- * dispatches a real Meta message and never sets status='completed' or
- * 'sending' — those transitions belong to Phase F's pacing worker.
+ * POST now performs the enqueue-first send handoff:
+ * resolves audience, creates the broadcast row, snapshots the buyer/template
+ * payloads into app.whatsapp_messages + app.whatsapp_send_queue, and triggers
+ * the dispatch worker for immediate sends.
  */
 export async function GET(request: NextRequest) {
   const claims = await getVerifiedClaims(request);
@@ -98,17 +99,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid request', issues: parsed.error.issues }, { status: 400 });
   }
   const input = parsed.data;
+  if (input.scheduled_for && new Date(input.scheduled_for).getTime() <= Date.now()) {
+    return NextResponse.json({ error: 'Scheduled time must be in the future' }, { status: 400 });
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabaseAdmin as any;
 
-  // Validate the template exists, is platform-managed, and pull its
-  // meta_category (needed for the daily-cap snapshot / future Phase F
-  // pre-flight, and for an honest estimated_recipient_count message).
   const { data: template, error: templateError } = await db
     .schema('app')
     .from('whatsapp_templates')
-    .select('id, meta_category, approval_status')
+    .select('id, meta_template_name, meta_category, approval_status, use_case, locale, variables, button_config')
     .eq('id', input.whatsapp_template_id)
     .or(`tenant_id.is.null,tenant_id.eq.${claims.tenant_id}`)
     .is('deleted_at', null)
@@ -116,6 +117,18 @@ export async function POST(request: NextRequest) {
 
   if (templateError || !template) {
     return NextResponse.json({ error: 'Invalid or inaccessible template' }, { status: 400 });
+  }
+  if (template.approval_status !== 'approved') {
+    return NextResponse.json({ error: 'Template is not approved for sending yet' }, { status: 400 });
+  }
+  if ([
+    'login_otp',
+    'request_received_seller',
+    'request_received_buyer',
+    'order_received_seller',
+    'order_received_buyer',
+  ].includes(String(template.meta_template_name))) {
+    return NextResponse.json({ error: 'Transactional templates cannot be used for broadcasts' }, { status: 400 });
   }
 
   try {
@@ -127,10 +140,6 @@ export async function POST(request: NextRequest) {
       targetBuyerIds: input.target_buyer_ids,
     });
 
-    // Snapshot the tenant's current daily cap for audit (§4.2
-    // daily_cap_at_creation) — app.tenant_broadcast_limits doesn't exist yet
-    // (Phase F), so this stays NULL until that table lands; recording NULL
-    // rather than a guessed default keeps the column honest.
     const { data: broadcast, error: insertError } = await db
       .schema('app')
       .from('whatsapp_broadcasts')
@@ -145,17 +154,15 @@ export async function POST(request: NextRequest) {
         target_buyer_ids: input.target_buyer_ids ?? null,
         linked_campaign_id: input.linked_campaign_id ?? null,
         variable_bindings: input.variable_bindings ?? {},
-        // Never 'sending'/'completed' here — Phase F's pacing worker owns
-        // those transitions. 'scheduled' if a future send time was given,
-        // else 'draft' so nothing implies a send has happened.
-        status: input.scheduled_for ? 'scheduled' : 'draft',
+        status: input.scheduled_for ? 'scheduled' : 'sending',
         scheduled_for: input.scheduled_for ?? null,
         estimated_recipient_count: eligibleBuyerIds.length,
+        actual_recipient_count: 0,
         daily_cap_at_creation: null,
         created_by: claims.sub,
         updated_by: claims.sub,
       })
-      .select('id, name, status, estimated_recipient_count, scheduled_for, created_at')
+      .select('id, name, status, estimated_recipient_count, actual_recipient_count, scheduled_for, created_at')
       .single();
 
     if (insertError) {
@@ -163,14 +170,57 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create broadcast' }, { status: 500 });
     }
 
-    return NextResponse.json(
-      {
-        broadcast,
-        recipient_count: eligibleBuyerIds.length,
-        note: 'Broadcast saved. Actual sending happens in a later release — this creates the audience and schedule only.',
+    const queueInputs = await buildBroadcastMessageQueue(db, {
+      tenantId: claims.tenant_id,
+      whatsappBroadcastId: broadcast.id as string,
+      buyerIds: eligibleBuyerIds,
+      template: template as {
+        id: string;
+        meta_template_name: string;
+        meta_category: 'marketing' | 'utility' | 'authentication';
+        approval_status: 'pending' | 'approved' | 'rejected' | 'disabled';
+        use_case: string;
+        locale: string | null;
+        variables: Array<{ key: string; description?: string }>;
+        button_config: { type?: 'url'; variable_source?: string } | null;
       },
-      { status: 201 },
-    );
+      variableBindings: input.variable_bindings ?? {},
+      linkedCampaignId: input.linked_campaign_id ?? null,
+      scheduledSendAt: input.scheduled_for ?? null,
+    });
+
+    for (const queueInput of queueInputs) {
+      const result = await enqueueWhatsAppMessage(queueInput);
+      if (!result.enqueued) {
+        throw new Error('Failed to enqueue one or more broadcast messages');
+      }
+    }
+
+    await db
+      .schema('app')
+      .from('whatsapp_broadcasts')
+      .update({
+        actual_recipient_count: queueInputs.length,
+        estimated_recipient_count: queueInputs.length,
+        updated_by: claims.sub,
+      })
+      .eq('id', broadcast.id);
+
+    if (!input.scheduled_for) {
+      triggerWhatsAppDispatch();
+    }
+
+    return NextResponse.json({
+      broadcast: {
+        ...broadcast,
+        actual_recipient_count: queueInputs.length,
+        estimated_recipient_count: queueInputs.length,
+      },
+      recipient_count: queueInputs.length,
+      note: input.scheduled_for
+        ? 'Broadcast scheduled. Messages are queued and will start sending at the selected time.'
+        : 'Broadcast queued. Messages are now in the WhatsApp dispatch pipeline.',
+    }, { status: 201 });
   } catch (error) {
     console.error('[POST /api/whatsapp/broadcasts] error:', error);
     return NextResponse.json(

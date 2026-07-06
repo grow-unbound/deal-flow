@@ -117,7 +117,7 @@ async function loadLineItemJob(
 async function setIntegrationStatus(
   admin: AdminClient,
   integrationId: string,
-  status: 'connected' | 'sync_failed' | 'syncing',
+  status: 'connected' | 'syncing',
 ): Promise<void> {
   await admin
     .schema('app')
@@ -462,7 +462,7 @@ Deno.serve(async (req: Request) => {
     }
     const failedIntegrationId = loadedIntegrationId ?? tenantIntegrationId;
     if (failedIntegrationId) {
-      await setIntegrationStatus(admin, failedIntegrationId, 'sync_failed').catch(() => {});
+      await setIntegrationStatus(admin, failedIntegrationId, 'connected').catch(() => {});
     }
 
     return errorResponse(message);

@@ -4,8 +4,12 @@ import { getPostHogClient } from '@/lib/posthog-server';
 import type { BuyerAppMode } from '@/types/buyer';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { getInAppCreateFlags } from '@/lib/server/seller-features';
-import { fetchWhatsappNotificationContext } from '@/lib/server/notification-context';
-import { sendOrderReceivedBuyer, sendOrderReceivedSeller } from '@/lib/server/whatsapp';
+import { sendImmediateTransactionNotifications } from '@/lib/server/buyer-transaction-notify-immediate';
+import { tenantDefersTransactionNumber } from '@/lib/server/transaction-outbound-push';
+import {
+  formatProvisionalOrderNumber,
+  nextProvisionalOrderSequence,
+} from '@/lib/server/transaction-numbers';
 import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
 import { PAGE_SIZE, encodeCursor, decodeCursor } from '@/lib/pagination';
 
@@ -27,6 +31,7 @@ export interface BuyerOrderPlaceResponse {
   success: boolean;
   order_id?: string;
   order_number?: string | null;
+  document_url?: string | null;
   whatsapp_sent?: boolean;
   error?: string;
 }
@@ -135,6 +140,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
         success: true,
         order_id: `preview-order-${Date.now()}`,
         order_number: 'PREVIEW-ORDER',
+        document_url: null,
       });
     }
 
@@ -170,16 +176,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
     const placeOfSupply = (typeof body.place_of_supply === 'string' && body.place_of_supply.trim())
       || 'Unknown';
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { count: orderCount } = await (db as any)
-      .schema('app')
-      .from('orders')
-      .select('id', { count: 'exact', head: true })
-      .eq('tenant_id', tenant_id);
+    const deferDocumentNumber = await tenantDefersTransactionNumber(tenant_id, 'orders');
 
-    const year = new Date().getFullYear();
-    const paddedCount = String((orderCount ?? 0) + 1).padStart(4, '0');
-    const order_number = `ORD-${year}-${paddedCount}`;
+    const order_number = deferDocumentNumber
+      ? null
+      : formatProvisionalOrderNumber(await nextProvisionalOrderSequence(db, tenant_id));
     const placed_at = new Date().toISOString();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -211,7 +212,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
       return NextResponse.json({ success: false, error: 'Failed to create order' }, { status: 500 });
     }
 
-    const typed = newOrder as { id: string; order_number: string };
+    const typed = newOrder as { id: string; order_number: string | null };
 
     const orderItemRows = items.map((item) => ({
       order_id: typed.id,
@@ -251,38 +252,30 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
     }
 
     let whatsappSent = false;
-    try {
-      const ctx = await fetchWhatsappNotificationContext(
-        tenant_id!,
-        buyer_id,
-        location_id,
-        'order_placed',
-      );
-      if (ctx) {
-        const notificationResults = await Promise.allSettled([
-          sendOrderReceivedBuyer(ctx, typed.id, typed.order_number, total_amount, items.length),
-          sendOrderReceivedSeller(ctx, typed.id, typed.order_number, total_amount, items.length),
-        ]);
-        whatsappSent = notificationResults.some((result) => result.status === 'fulfilled');
-        if (whatsappSent) {
-          await (db as any)
-            .schema('app')
-            .from('orders')
-            .update({
-              sent_at: new Date().toISOString(),
-              sent_channel: 'whatsapp',
-            })
-            .eq('id', typed.id);
-        }
+    if (!deferDocumentNumber && typed.order_number) {
+      try {
+        whatsappSent = await sendImmediateTransactionNotifications({
+          kind: 'order',
+          tenantId: tenant_id,
+          buyerId: buyer_id,
+          locationId: location_id,
+          documentId: typed.id,
+          documentNumber: typed.order_number,
+          totalAmount: total_amount,
+          itemCount: items.length,
+          db,
+          table: 'orders',
+        });
+      } catch {
+        // non-blocking — order creation already succeeded
       }
-    } catch {
-      // non-blocking — order creation already succeeded
     }
 
     return NextResponse.json({
       success: true,
       order_id: typed.id,
       order_number: typed.order_number,
+      document_url: null,
       whatsapp_sent: whatsappSent,
     });
   } catch (error) {

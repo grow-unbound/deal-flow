@@ -19,6 +19,7 @@ import {
   recordPushSuccess,
   createEchoGuard,
   recordPushFailure,
+  assignProvisionalTransactionNumber,
   verifyPushSecret,
   parseWebhookRecord,
   ok,
@@ -162,6 +163,7 @@ Deno.serve(async (req: Request) => {
     // Pass Yukti's order_number as Zoho reference; Zoho auto-generates its own salesorder_number
     reference_number: order.order_number as string,
     is_inclusive_tax: true,
+    cf_catalog_order: true,
     line_items: items.map((item) => {
       const prod = productMap.get(item.tenant_product_id as string)!;
       return {
@@ -184,6 +186,7 @@ Deno.serve(async (req: Request) => {
   const adapter = buildZohoAdapter(integration, admin);
   let zohoSalesOrderId: string;
   let zohoSalesOrderNumber: string;
+  let zohoSalesOrderUrl: string | null = null;
 
   try {
     const response = await adapter.request<Record<string, unknown>>({
@@ -199,9 +202,25 @@ Deno.serve(async (req: Request) => {
     if (!zohoSalesOrderId) {
       throw new Error(`Zoho did not return salesorder_id. Response: ${JSON.stringify(response).slice(0, 1000)}`);
     }
+
+    const soUrl = (so?.salesorder_url as string | undefined)
+      ?? (so?.order_url as string | undefined)
+      ?? (so?.portal_url as string | undefined)
+      ?? null;
+    zohoSalesOrderUrl = soUrl;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`${FN} Zoho POST /salesorders failed for order ${id}:`, msg);
+    await assignProvisionalTransactionNumber(admin, {
+      entityTable: 'orders',
+      numberField: 'order_number',
+      tenantId,
+      internalId: id,
+      formatNumber: (sequence) => {
+        const year = new Date().getFullYear();
+        return `ORD-${year}-${String(sequence).padStart(4, '0')}`;
+      },
+    });
     await recordPushFailure(admin, {
       tenantId,
       integrationId: integration.integrationId,
@@ -210,6 +229,22 @@ Deno.serve(async (req: Request) => {
       errorReason: msg,
     });
     return ok({ error: 'zoho_push_failed' });
+  }
+
+  if (!zohoSalesOrderUrl) {
+    try {
+      const detail = await adapter.request<Record<string, unknown>>({
+        method: 'GET',
+        path: `/salesorders/${zohoSalesOrderId}`,
+      });
+      const detailSo = detail.salesorder as Record<string, unknown> | undefined;
+      zohoSalesOrderUrl = (detailSo?.salesorder_url as string | undefined)
+        ?? (detailSo?.order_url as string | undefined)
+        ?? (detailSo?.portal_url as string | undefined)
+        ?? null;
+    } catch {
+      console.warn(`${FN} could not fetch salesorder_url for ${zohoSalesOrderId}`);
+    }
   }
 
   // Overwrite Yukti DB with Zoho's canonical order_number
@@ -223,6 +258,7 @@ Deno.serve(async (req: Request) => {
     extraFields: {
       // Zoho's auto-generated SO number overrides Yukti's provisional number
       order_number: zohoSalesOrderNumber,
+      order_url: zohoSalesOrderUrl,
       notes: notesText,
     },
   });
@@ -234,7 +270,7 @@ Deno.serve(async (req: Request) => {
     entityType: 'orders',
     internalId: id,
     externalZohoId: zohoSalesOrderId,
-    protectedFields: ['order_number', 'external_ref'],
+    protectedFields: ['order_number', 'order_url', 'external_ref'],
   });
 
   console.log(`${FN} pushed order ${id} → Zoho ${zohoSalesOrderId} (${zohoSalesOrderNumber})`);

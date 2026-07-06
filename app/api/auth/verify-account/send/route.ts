@@ -76,7 +76,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    await sendLoginOtpWhatsapp(phone, otp, { tenantId: tenant_id });
+    await sendLoginOtpWhatsapp(phone, otp);
   } catch {
     return NextResponse.json({ error: 'Failed to send WhatsApp OTP' }, { status: 500 });
   }

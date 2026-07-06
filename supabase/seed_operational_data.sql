@@ -136,7 +136,7 @@ BEGIN
       app.integration_webhook_echo_guards,
       app.payments,
       app.credit_notes,
-      app.catalog_views,
+      app.campaign_views,
       app.invoice_items,
       app.invoices,
       app.estimate_items,

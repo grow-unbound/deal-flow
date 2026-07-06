@@ -26,6 +26,7 @@ import type {
   IntegrationSyncPhaseStats,
 } from '@/hooks/useIntegrationsSettings';
 import { formatIntegrationJobError } from '@/lib/integrations/job-error-log';
+import { isOAuthLiveTenantIntegrationStatus } from '@/lib/integrations/contracts';
 import {
   estimateZohoDailyNextRun,
   formatZohoDailyNextRun,
@@ -943,14 +944,14 @@ export function ConnectedIntegrationCard({
     if (activeJob?.status === 'pending') return { label: 'Pending', variant: 'info' as const };
     if (activeJob?.status === 'paused') return { label: 'Paused', variant: 'info' as const };
     if (latestFinishedRun?.status === 'cancelled') return { label: 'Cancelled', variant: 'success' as const };
+    if (failedRun) return { label: 'Sync failed', variant: 'warning' as const };
     if (ti.health_status === 'expired' || ti.health_status === 'invalid') return { label: 'Needs attention', variant: 'warning' as const };
-    if (ti.status === 'sync_failed') return { label: 'Sync failed', variant: 'warning' as const };
     if (ti.status === 'disconnected') return { label: 'Disconnected', variant: 'outline' as const };
     if (ti.status === 'connected') return { label: 'Connected', variant: 'success' as const };
     return { label: labelize(ti.status), variant: getStatusVariant(ti.status) };
   })();
 
-  const isSyncFailed = ti.status === 'sync_failed' || activeJob?.status === 'failed';
+  const isSyncFailed = activeJob?.status === 'failed' || failedRun != null;
   const isSyncInProgress = ['running', 'queued', 'pending', 'paused'].includes(activeJob?.status ?? '');
   const needsReconnect = ti.status === 'disconnected' || ti.health_status === 'expired' || ti.health_status === 'invalid';
   const Icon = getIntegrationIcon(integration);
@@ -1085,7 +1086,7 @@ export function ConnectedIntegrationCard({
                   variant="accent"
                   size="sm"
                   onClick={openFullSyncDialog}
-                  disabled={isSyncingNow || (ti.status !== 'connected' && ti.status !== 'sync_failed')}
+                  disabled={isSyncingNow || !isOAuthLiveTenantIntegrationStatus(ti.status)}
                 >
                   <RefreshCw className="h-4 w-4" />
                   {isSyncFailed ? 'Sync Again' : 'Sync now'}
@@ -1229,7 +1230,7 @@ export function ConnectedIntegrationCard({
               <div className="text-sm font-semibold text-cream-900">Sync phases</div>
               {SYNC_PHASE_GROUPS.map((phaseGroup) => {
                 const canSync = isSellerAdmin && available && !isSyncingNow &&
-                  (ti.status === 'connected' || ti.status === 'sync_failed') && phaseGroup.canSyncAgain;
+                  isOAuthLiveTenantIntegrationStatus(ti.status) && phaseGroup.canSyncAgain;
 
                 // Aggregate sub-phase counts (always live, from coverageTotals) and
                 // status (from that sub-phase's OWN latest job row — job.phase maps

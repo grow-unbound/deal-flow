@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { BuyerCatalogItem } from '@/types/buyer';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
+import { recordCampaignView } from '@/lib/server/campaign-engagement';
 import { enrichBuyerProducts } from '@/lib/server/buyer-product-data';
 import { getSelectedBuyerDeliveryFromRequest } from '@/lib/server/buyer-location-selection';
 import { resolveNearestBuyerLocation } from '@/lib/server/buyer-routing';
@@ -100,6 +101,15 @@ export async function GET(
   const guestItems = tenantProductIds
     .map((id) => itemMap.get(id))
     .filter((item): item is BuyerCatalogItem => Boolean(item));
+
+  if (profile?.buyer?.id) {
+    void recordCampaignView(db, {
+      tenantId: catalog.tenant_id,
+      buyerId: profile.buyer.id,
+      campaignId: catalog.id,
+      source: 'guest_link',
+    });
+  }
 
   return NextResponse.json({
     campaign_id: catalog.id,

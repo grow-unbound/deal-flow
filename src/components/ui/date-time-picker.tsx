@@ -78,8 +78,9 @@ export function DateTimePicker({
   }
 
   const triggerClassName = cn(
-    'flex h-10 w-full items-center justify-between gap-2 rounded-[8px] border border-cream-400 bg-white px-3 text-left text-base shadow-[inset_0_1px_0_rgba(20,40,35,0.02)]',
-    'transition-colors focus-visible:outline-none focus-visible:border-ember-400 focus-visible:ring-2 focus-visible:ring-ember-400/20',
+    'flex h-10 w-full items-center justify-between gap-2 rounded-[10px] border border-cream-400 bg-[var(--bg-surface)] px-3.5 text-left text-base',
+    'shadow-[inset_0_1px_0_rgba(20,40,35,0.02)] transition-colors duration-fast ease-standard',
+    'focus-visible:outline-none focus-visible:border-[#B5642F] focus-visible:ring-2 focus-visible:ring-[#B5642F]/20',
     'disabled:cursor-not-allowed disabled:bg-cream-100 disabled:opacity-50',
     inputValue ? 'font-medium text-cream-900' : 'text-cream-600',
     error && 'border-danger-500 focus-visible:border-danger-500 focus-visible:ring-danger-500/20',
@@ -103,7 +104,7 @@ export function DateTimePicker({
             sideOffset={6}
             onOpenAutoFocus={(event) => event.preventDefault()}
             onCloseAutoFocus={(event) => event.preventDefault()}
-            className={cn('w-[320px] space-y-3 border-cream-300 bg-white p-4 shadow-md', popoverMotion)}
+            className={cn('w-[360px] space-y-4 border-cream-300 bg-white p-4 shadow-md', popoverMotion)}
           >
             <Calendar
               value={selectedDate}
@@ -111,7 +112,7 @@ export function DateTimePicker({
               maxDate={maxDate}
               onChange={(date) => emit(date, timeValue, true)}
             />
-            <div className="min-h-9 rounded-[8px] border border-cream-300 bg-cream-50 px-4 py-2.5 font-display text-base text-cream-900">
+            <div className="min-h-9 rounded-[10px] border border-cream-300 bg-cream-50 px-4 py-2.5 text-base text-cream-900">
               {selectedDate ? formatSelectedSummary(selectedDate) : '—'}
             </div>
           </PopoverContent>

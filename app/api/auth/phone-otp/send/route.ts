@@ -4,8 +4,21 @@ import { isValidIndianMobile, normalizeIndianPhone } from '@/lib/phone';
 import { findAllLoginCandidates, findBuyerLoginCandidates } from '@/lib/server/buyer-access';
 import { buyerOtpStore } from '@/lib/server/buyer-otp-store';
 import { sendLoginOtpWhatsapp } from '@/lib/server/whatsapp';
+import { AUTH_LOGIN_COPY, buildRequestAccessMessage } from '@/constants/auth-login-copy';
 
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+type PhoneOtpSendResponse =
+  | { ref_id: string; registered: true; outcome: 'otp_sent'; message: string }
+  | {
+      ref_id: null;
+      registered: false;
+      outcome: 'unregistered' | 'seller_disabled' | 'buyer_disabled';
+      message: string;
+      seller_name: string | null;
+      seller_whatsapp_number: string | null;
+      buyer_name: string | null;
+    };
 
 /**
  * POST /api/auth/phone-otp/send
@@ -17,8 +30,8 @@ const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json() as { phoneNumber?: string };
-    const raw: string = (body?.phoneNumber ?? '').trim();
+    const payload = await request.json() as { phoneNumber?: string };
+    const raw: string = (payload?.phoneNumber ?? '').trim();
 
     if (!raw || !isValidIndianMobile(raw)) {
       return NextResponse.json({ error: 'Invalid phone number' }, { status: 400 });
@@ -32,39 +45,54 @@ export async function POST(request: NextRequest) {
       const buyerCandidates = await findBuyerLoginCandidates(phone);
 
       if (buyerCandidates.length === 0) {
-        return NextResponse.json({
+        const responseBody: PhoneOtpSendResponse = {
           ref_id: null,
           registered: false,
-          message: "This number isn't registered. Contact your distributor.",
-        });
+          outcome: 'unregistered',
+          message: AUTH_LOGIN_COPY.resolution.unregistered.title,
+          seller_name: null,
+          seller_whatsapp_number: null,
+          buyer_name: null,
+        };
+        return NextResponse.json(responseBody);
       }
 
       const tenantBlocked = buyerCandidates.filter((c) => !c.tenant_app_enabled);
       const buyerBlocked = buyerCandidates.filter((c) => c.tenant_app_enabled && !c.buyer_app_enabled);
 
-      if (tenantBlocked.length > 0) {
-        const tenantName = tenantBlocked[0].tenant_name;
-        return NextResponse.json({
+      const blockedCandidate = tenantBlocked[0] ?? buyerBlocked[0] ?? null;
+      if (blockedCandidate) {
+        const sellerName = blockedCandidate.tenant_name;
+        const sellerWhatsappNumber = blockedCandidate.tenant_whatsapp_number ?? null;
+        const buyerName = blockedCandidate.contact_name?.trim() || blockedCandidate.business_name || null;
+        const outcome = tenantBlocked.length > 0 ? 'seller_disabled' : 'buyer_disabled';
+        const message = buildRequestAccessMessage({
+          sellerName,
+          buyerName,
+        });
+
+        const responseBody: PhoneOtpSendResponse = {
           ref_id: null,
           registered: false,
-          message: `Distributor ${tenantName} does not allow buyer app access. Please check with them.`,
-        });
+          outcome,
+          message,
+          seller_name: sellerName,
+          seller_whatsapp_number: sellerWhatsappNumber,
+          buyer_name: buyerName,
+        };
+        return NextResponse.json(responseBody);
       }
 
-      if (buyerBlocked.length > 0) {
-        const tenantName = buyerBlocked[0].tenant_name;
-        return NextResponse.json({
-          ref_id: null,
-          registered: false,
-          message: `Request distributor ${tenantName} to enable buyer app access for your account.`,
-        });
-      }
-
-      return NextResponse.json({
+      const responseBody: PhoneOtpSendResponse = {
         ref_id: null,
         registered: false,
-        message: "This number isn't registered. Contact your distributor.",
-      });
+        outcome: 'unregistered',
+        message: AUTH_LOGIN_COPY.resolution.unregistered.title,
+        seller_name: null,
+        seller_whatsapp_number: null,
+        buyer_name: null,
+      };
+      return NextResponse.json(responseBody);
     }
 
     const otp = String(crypto.randomInt(100000, 999999));
@@ -81,7 +109,8 @@ export async function POST(request: NextRequest) {
 
     await sendLoginOtpWhatsapp(phone, otp);
 
-    return NextResponse.json({ ref_id, registered: true, message: 'OTP sent' });
+    const responseBody: PhoneOtpSendResponse = { ref_id, registered: true, outcome: 'otp_sent', message: 'OTP sent' };
+    return NextResponse.json(responseBody);
   } catch (err) {
     console.error('[phone-otp/send] unexpected error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
