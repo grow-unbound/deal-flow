@@ -8,7 +8,7 @@ interface RealtimeBadgeProps {
 }
 
 const kindConfig = {
-  new: { variant: 'ember', label: 'New' },
+  new: { variant: 'ember', label: 'NEW' },
   updated: { variant: 'warning', label: 'Updated' },
 } as const;
 

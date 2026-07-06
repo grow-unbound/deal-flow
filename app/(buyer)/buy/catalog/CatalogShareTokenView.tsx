@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import posthog from 'posthog-js';
 import { apiFetch } from '@/lib/api-fetch';
 import { CategoryFilter } from '@/components/buyer/catalog/CategoryFilter';
 import { BrandFilter } from '@/components/buyer/catalog/BrandFilter';
@@ -10,12 +9,14 @@ import { BuyerLandingHeader } from '@/components/buyer/layout/BuyerLandingHeader
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { LoadingSkeleton } from '@/components/buyer/catalog/LoadingSkeleton';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useCart } from '@/contexts/BuyerCartContext';
 import { ErrorState } from '@/components/ui/empty-state';
 import type { BuyerCatalogItem, BuyerBrand, BuyerCategory, BuyerCatalogSummary } from '@/types/buyer';
 
 const PAGE_LIMIT = 40;
 
 export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
+  const { setCampaignId } = useCart();
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'buyer-catalog-page',
     initialState: {
@@ -104,12 +105,9 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
             shareCatalogValidUntil: data.valid_until ?? null,
             loadedShareToken: shareToken,
           }));
-          posthog.capture('catalog_viewed', {
-            share_token: shareToken,
-            campaign_id: data.campaign_id,
-            campaign_name: data.name,
-            product_count: data.items?.length ?? 0,
-          });
+          if (data.campaign_id) {
+            setCampaignId(data.campaign_id);
+          }
         })
         .catch(() => {
           if (!cancelled) setListFetchError(true);

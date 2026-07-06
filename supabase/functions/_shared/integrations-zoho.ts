@@ -1,8 +1,9 @@
-import type {
-  IntegrationProgressCursor,
-  IntegrationSyncScope,
-  ZohoCredentialsInput,
-  ZohoIntegrationTypeId,
+import {
+  normalizeIntegrationSinceDate,
+  type IntegrationProgressCursor,
+  type IntegrationSyncScope,
+  type ZohoCredentialsInput,
+  type ZohoIntegrationTypeId,
 } from '../../../src/lib/integrations/contracts.ts';
 
 export interface IntegrationSyncPhaseDefinition {
@@ -480,14 +481,15 @@ export function createZohoAdapter(
     //   manual and initial syncs always do a full fetch so reference data is complete
     // - Locations, pricelists, warehouses: always full fetch (Zoho doesn't support these filters)
     const isIncremental = jobType === 'incremental';
+    const normalizedSince = normalizeIntegrationSinceDate(since);
     const dateStart = TRANSACTIONAL_ENTITY_TYPES.has(phase.entityType)
-      ? (since ?? financialYearStart())
+      ? (normalizedSince ?? financialYearStart())
       : undefined;
     const lastModifiedDate = !TRANSACTIONAL_ENTITY_TYPES.has(phase.entityType) &&
       LAST_MODIFIED_SUPPORTED_TYPES.has(phase.entityType) &&
-      since != null &&
+      normalizedSince != null &&
       isIncremental
-      ? since
+      ? normalizedSince
       : undefined;
     // Zoho requires last_modified_time as "YYYY-MM-DDTHH:mm:ss+0530" (IST) — not a bare date
     const lastModified = lastModifiedDate ? `${lastModifiedDate}T00:00:00+0530` : undefined;

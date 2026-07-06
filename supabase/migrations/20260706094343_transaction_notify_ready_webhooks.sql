@@ -1,0 +1,23 @@
+-- Transaction notify-ready webhooks + realtime UPDATE support
+--
+-- When a tenant has outbound transactional integration, buyer-created estimates/orders
+-- are inserted with a null document number until the push integration assigns the
+-- canonical value (or a provisional fallback on push failure). Seller realtime and
+-- WhatsApp notifications must wait for that number.
+--
+-- Manual setup in Supabase Dashboard (Database → Webhooks → New Webhook):
+--
+-- 1. notify-transaction-estimate-ready
+--    Schema: app | Table: estimates | Event: UPDATE
+--    URL: {APP_URL}/api/internal/transactions/notify-ready
+--    Headers: x-push-secret: <INTEGRATIONS_PUSH_SECRET>
+--
+-- 2. notify-transaction-order-ready
+--    Schema: app | Table: orders | Event: UPDATE
+--    URL: {APP_URL}/api/internal/transactions/notify-ready
+--    Headers: x-push-secret: <INTEGRATIONS_PUSH_SECRET>
+--
+-- Realtime UPDATE handlers compare old/new document numbers. Ensure replica identity
+-- includes old row values for these tables.
+ALTER TABLE app.estimates REPLICA IDENTITY FULL;
+ALTER TABLE app.orders REPLICA IDENTITY FULL;

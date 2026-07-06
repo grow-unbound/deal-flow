@@ -107,7 +107,7 @@ export default function SetupPasswordPage() {
         Welcome{displayName ? `, ${displayName.split(' ')[0]}` : ' to Yukti'}
       </h1>
       <p className="text-body-sm text-cream-600 mb-6">
-        You&apos;ve been invited to your distributor&apos;s workspace. Create a password to get started.
+        You&apos;ve been invited to your seller workspace. Create a password to get started.
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-4">

@@ -112,8 +112,8 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
         ),
       },
       {
-        label: 'Orders',
-        value: `${data.meta_strip_4.orders}`,
+        label: 'Conversions',
+        value: `${data.meta_strip_4.conversions ?? data.meta_strip_4.orders}`,
         sub: `${data.meta_strip_4.conversion_rate}% conversion`,
       },
       {

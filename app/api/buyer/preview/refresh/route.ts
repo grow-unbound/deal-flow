@@ -30,6 +30,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       tenantId: payload.tenant_id,
       shareToken: payload.share_token,
       buyerId: payload.buyer_id ?? null,
+      requiresConfirmation: false,
     });
 
     return response;

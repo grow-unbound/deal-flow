@@ -1141,6 +1141,13 @@ function classifyHealthStatus(error: unknown): IntegrationHealthStatus {
   return null;
 }
 
+/** OAuth connectivity only — sync job failures stay on integration_sync_jobs. */
+function tenantIntegrationStatusAfterWorkerError(error: unknown): 'connected' | 'disconnected' {
+  const health = classifyHealthStatus(error);
+  if (health === 'invalid' || health === 'expired') return 'disconnected';
+  return 'connected';
+}
+
 function getDispatchHeaders(authHeader: string | null): HeadersInit {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -1846,7 +1853,7 @@ export async function handleIntegrationsSync(request: Request): Promise<Response
       const refreshedJob = await loadSyncJob(admin, job.id);
       await appendJobError(admin, refreshedJob, error);
       await updateTenantIntegration(admin, integration.id, {
-        status: 'sync_failed',
+        status: tenantIntegrationStatusAfterWorkerError(error),
         health_status: classifyHealthStatus(error),
         last_health_check_at: nowIso(),
         updated_by: auditActorId,
@@ -1898,7 +1905,7 @@ export async function handleIntegrationsSyncWorker(request: Request): Promise<Re
         const integration = await loadTenantIntegration(admin, job.tenant_integration_id);
         await appendJobError(admin, job, error);
         await updateTenantIntegration(admin, integration.id, {
-          status: 'sync_failed',
+          status: tenantIntegrationStatusAfterWorkerError(error),
           health_status: classifyHealthStatus(error),
           last_health_check_at: nowIso(),
           updated_by: hasValidDispatchSecret(request) ? null : (await requireActor(request, admin)).userId,

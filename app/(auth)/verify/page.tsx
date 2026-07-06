@@ -7,6 +7,7 @@ import { OtpForm } from '@/components/buyer/auth/OtpForm';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import type { LoginOtpContext } from '@/lib/server/buyer-otp-store';
+import { AUTH_LOGIN_COPY } from '@/constants/auth-login-copy';
 
 const SESSION_CONTEXTS_KEY = 'yukti_auth_contexts';
 
@@ -120,15 +121,23 @@ function VerifyOtpForm() {
           href="/login"
           className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors"
         >
-          ← Change number
+          ← {AUTH_LOGIN_COPY.login.changeNumber}
         </Link>
-        <button
-          type="button"
-          onClick={() => router.push('/login')}
-          className="text-caption text-cream-600 hover:text-cream-800 transition-colors"
-        >
-          Resend OTP
-        </button>
+        <div className="flex items-center gap-4">
+          <Link
+            href="/login?view=email"
+            className="text-caption text-cream-600 hover:text-cream-800 transition-colors"
+          >
+            {AUTH_LOGIN_COPY.login.loginWithEmail}
+          </Link>
+          <button
+            type="button"
+            onClick={() => router.push('/login')}
+            className="text-caption text-cream-600 hover:text-cream-800 transition-colors"
+          >
+            {AUTH_LOGIN_COPY.login.resendOtp}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -7,6 +7,13 @@ import { PAGE_SIZE } from '@/lib/pagination';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { CatalogComposerPayloadSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
 import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
+import {
+  aggregateCampaignViewsByCampaign,
+  computeCampaignConversionMetrics,
+  type CampaignEstimateRow,
+  type CampaignOrderRow,
+  type CampaignViewRow,
+} from '@/lib/server/campaign-performance';
 
 type CatalogStatus = 'draft' | 'published' | 'archived';
 type DisplayStatus = 'Live' | 'Draft' | 'Ended';
@@ -67,6 +74,19 @@ interface OrderRow {
   campaign_id: string | null;
   total_amount: number | null;
   placed_at: string | null;
+  created_at: string | null;
+  status: string;
+  buyer_id: string;
+}
+
+interface EstimateRow {
+  id: string;
+  campaign_id: string | null;
+  total_amount: number | null;
+  status: string;
+  converted_to_order_id: string | null;
+  created_at: string | null;
+  buyer_id?: string;
 }
 
 function getHue(index: number): AvatarHue {
@@ -219,7 +239,7 @@ export async function GET(req: NextRequest) {
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'), now);
     const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
 
-    const [catalogsRes, ordersRes, prevOrdersRes, cohortsRes] = await Promise.all([
+    const [catalogsRes, ordersRes, prevOrdersRes, estimatesRes, prevEstimatesRes, viewsRes, cohortsRes] = await Promise.all([
       db
         .schema('app')
         .from('campaigns')
@@ -231,7 +251,7 @@ export async function GET(req: NextRequest) {
       db
         .schema('app')
         .from('orders')
-        .select('id, campaign_id, total_amount, placed_at')
+        .select('id, campaign_id, total_amount, placed_at, created_at, status, buyer_id')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .not('campaign_id', 'is', null)
@@ -240,17 +260,43 @@ export async function GET(req: NextRequest) {
       db
         .schema('app')
         .from('orders')
-        .select('id, campaign_id, total_amount, placed_at')
+        .select('id, campaign_id, total_amount, placed_at, created_at, status, buyer_id')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .not('campaign_id', 'is', null)
         .gte('placed_at', period.previous_start)
         .lt('placed_at', period.previous_end_exclusive),
+      db
+        .schema('app')
+        .from('estimates')
+        .select('id, campaign_id, total_amount, status, converted_to_order_id, created_at, buyer_id')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .not('campaign_id', 'is', null)
+        .gte('created_at', period.current_start)
+        .lt('created_at', period.current_end_exclusive),
+      db
+        .schema('app')
+        .from('estimates')
+        .select('id, campaign_id, total_amount, status, converted_to_order_id, created_at, buyer_id')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .not('campaign_id', 'is', null)
+        .gte('created_at', period.previous_start)
+        .lt('created_at', period.previous_end_exclusive),
+      db
+        .schema('app')
+        .from('campaign_views')
+        .select('campaign_id, buyer_id, viewed_at')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .gte('viewed_at', period.current_start)
+        .lt('viewed_at', period.current_end_exclusive),
       db.schema('app').from('cohorts').select('id, name').eq('tenant_id', tenantId).is('deleted_at', null),
     ]);
 
-    if (catalogsRes.error || ordersRes.error || prevOrdersRes.error || cohortsRes.error) {
-      console.error('[GET /api/tenant/catalogs] query error:', catalogsRes.error || ordersRes.error || prevOrdersRes.error || cohortsRes.error);
+    if (catalogsRes.error || ordersRes.error || prevOrdersRes.error || estimatesRes.error || prevEstimatesRes.error || viewsRes.error || cohortsRes.error) {
+      console.error('[GET /api/tenant/catalogs] query error:', catalogsRes.error || ordersRes.error || prevOrdersRes.error || estimatesRes.error || prevEstimatesRes.error || viewsRes.error || cohortsRes.error);
       return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
     }
 
@@ -273,7 +319,11 @@ export async function GET(req: NextRequest) {
     }
     const orders = (ordersRes.data ?? []) as OrderRow[];
     const prevOrders = (prevOrdersRes.data ?? []) as OrderRow[];
+    const estimates = (estimatesRes.data ?? []) as EstimateRow[];
+    const prevEstimates = (prevEstimatesRes.data ?? []) as EstimateRow[];
+    const campaignViews = (viewsRes.data ?? []) as CampaignViewRow[];
     const cohorts = (cohortsRes.data ?? []) as CohortRow[];
+    const viewsByCampaign = aggregateCampaignViewsByCampaign(campaignViews);
 
     const cohortById = new Map(cohorts.map((cohort) => [cohort.id, cohort.name]));
     const tenantProductIds = Array.from(new Set(items.map((item) => item.tenant_product_id)));
@@ -312,7 +362,13 @@ export async function GET(req: NextRequest) {
         }
 
         tenantBrands = (tenantBrandsRes.data ?? []) as TenantBrandRow[];
-        const masterBrandIds = Array.from(new Set(tenantBrands.map((brand) => brand.master_brand_id)));
+        const masterBrandIds = Array.from(
+          new Set(
+            tenantBrands
+              .map((brand) => brand.master_brand_id)
+              .filter((id): id is string => typeof id === 'string' && id.length > 0),
+          ),
+        );
         if (masterBrandIds.length > 0) {
           const masterBrandsRes = await db
             .schema('catalog')
@@ -340,8 +396,10 @@ export async function GET(req: NextRequest) {
       itemsByCatalog.get(item.campaign_id)?.push(item);
     }
 
-    const ordersByCatalog = new Map<string, OrderRow[]>();
-    const prevOrdersByCatalog = new Map<string, OrderRow[]>();
+    const ordersByCatalog = new Map<string, CampaignOrderRow[]>();
+    const prevOrdersByCatalog = new Map<string, CampaignOrderRow[]>();
+    const estimatesByCatalog = new Map<string, CampaignEstimateRow[]>();
+    const prevEstimatesByCatalog = new Map<string, CampaignEstimateRow[]>();
 
     for (const order of orders) {
       if (!order.campaign_id) continue;
@@ -355,15 +413,30 @@ export async function GET(req: NextRequest) {
       prevOrdersByCatalog.get(order.campaign_id)?.push(order);
     }
 
+    for (const estimate of estimates) {
+      if (!estimate.campaign_id) continue;
+      if (!estimatesByCatalog.has(estimate.campaign_id)) estimatesByCatalog.set(estimate.campaign_id, []);
+      estimatesByCatalog.get(estimate.campaign_id)?.push(estimate as CampaignEstimateRow);
+    }
+
+    for (const estimate of prevEstimates) {
+      if (!estimate.campaign_id) continue;
+      if (!prevEstimatesByCatalog.has(estimate.campaign_id)) prevEstimatesByCatalog.set(estimate.campaign_id, []);
+      prevEstimatesByCatalog.get(estimate.campaign_id)?.push(estimate as CampaignEstimateRow);
+    }
+
     const catalogRows = catalogs.map((catalog, index) => {
       const displayStatus = getDisplayStatus(catalog.status, catalog.valid_to, nowTs);
       const tone = getStatusTone(displayStatus);
       const catalogItems = itemsByCatalog.get(catalog.id) ?? [];
       const ordersForCatalog = ordersByCatalog.get(catalog.id) ?? [];
-      const gmv = ordersForCatalog.reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0);
-      const orderCount = ordersForCatalog.length;
-      const views = 0;
-      const conversionPct = views > 0 ? Number(((orderCount / views) * 100).toFixed(1)) : 0;
+      const estimatesForCatalog = estimatesByCatalog.get(catalog.id) ?? [];
+      const conversionMetrics = computeCampaignConversionMetrics(ordersForCatalog, estimatesForCatalog);
+      const viewMetrics = viewsByCampaign.get(catalog.id);
+      const gmv = conversionMetrics.gmv;
+      const conversionCount = conversionMetrics.conversionCount;
+      const views = viewMetrics?.uniqueViewers ?? 0;
+      const conversionPct = views > 0 ? Number(((conversionCount / views) * 100).toFixed(1)) : 0;
       const brandSet = new Set<string>();
 
       for (const item of catalogItems) {
@@ -396,7 +469,8 @@ export async function GET(req: NextRequest) {
         products_count: catalogItems.length,
         brands_count: brandSet.size,
         gmv,
-        orders: orderCount,
+        orders: conversionCount,
+        conversions: conversionCount,
         views,
         conversion_pct: conversionPct,
         valid_from: catalog.valid_from,
@@ -414,8 +488,10 @@ export async function GET(req: NextRequest) {
     const expiring7d = liveCatalogs.filter(
       (catalog) => catalog.valid_to != null && new Date(catalog.valid_to).getTime() <= nowTs + sevenDaysMs,
     ).length;
-    const gmvMtd = orders.reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0);
-    const gmvPrevMtd = prevOrders.reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0);
+    const periodConversionMetrics = computeCampaignConversionMetrics(orders, estimates as CampaignEstimateRow[]);
+    const prevPeriodConversionMetrics = computeCampaignConversionMetrics(prevOrders, prevEstimates as CampaignEstimateRow[]);
+    const gmvMtd = periodConversionMetrics.gmv;
+    const gmvPrevMtd = prevPeriodConversionMetrics.gmv;
     const gmvGrowthPct = gmvPrevMtd > 0 ? Math.round(((gmvMtd - gmvPrevMtd) / gmvPrevMtd) * 100) : gmvMtd > 0 ? 100 : 0;
     const avgConversion =
       liveCatalogs.length > 0
@@ -453,7 +529,8 @@ export async function GET(req: NextRequest) {
         gmv_prev_mtd: gmvPrevMtd,
         gmv_growth_pct: gmvGrowthPct,
         avg_conversion_pct: avgConversion,
-        orders_attributed_mtd: orders.length,
+        orders_attributed_mtd: periodConversionMetrics.conversionCount,
+        conversions_mtd: periodConversionMetrics.conversionCount,
       },
       todays_read: {
         needs_attention: needsAttention,

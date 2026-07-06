@@ -127,7 +127,7 @@ function setDefaultResponses() {
   dbResponses['app.invoices'] = [{ data: [] }, { data: [] }];
   dbResponses['app.payments'] = [{ data: [] }];
   dbResponses['app.credit_notes'] = [{ data: [] }];
-  dbResponses['app.catalog_views'] = [{ data: [] }];
+  dbResponses['app.campaign_views'] = [{ data: [] }];
   dbResponses['app.estimates'] = [{ data: [] }];
   dbResponses['app.estimate_items'] = [{ data: [] }];
   dbResponses['app.invoice_items'] = [{ data: [] }];

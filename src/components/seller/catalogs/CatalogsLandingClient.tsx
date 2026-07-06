@@ -82,11 +82,11 @@ function CatalogsDataSkeleton() {
 
 function CatalogRowReason(catalog: CatalogLandingRow) {
   if (catalog.status.label === 'Draft') return 'Draft · not yet sent to customer group';
-  if (catalog.status.label === 'Ended') return `Ended ${catalog.valid_until_label} · ${catalog.orders} orders`;
+  if (catalog.status.label === 'Ended') return `Ended ${catalog.valid_until_label} · ${catalog.orders} conversions`;
   if (catalog.days_left != null && catalog.days_left <= 5 && catalog.days_left > 0) {
-    return `Expires in ${catalog.days_left}d · ${catalog.orders} orders`;
+    return `Expires in ${catalog.days_left}d · ${catalog.orders} conversions`;
   }
-  return `${catalog.cohort_name} · ${catalog.orders} orders`;
+  return `${catalog.cohort_name} · ${catalog.orders} conversions`;
 }
 
 function CatalogsLandingContent({
@@ -211,11 +211,11 @@ function CatalogsLandingContent({
           {
             label: 'Avg conversion',
             value: `${landingData.kpis.avg_conversion_pct}%`,
-            sub: 'opens → orders',
+            sub: 'opens → conversions',
           },
           {
-            label: 'Orders attributed',
-            value: `${landingData.kpis.orders_attributed_mtd}`,
+            label: 'Conversions attributed',
+            value: `${landingData.kpis.conversions_mtd ?? landingData.kpis.orders_attributed_mtd}`,
             sub: lowerLabel,
           },
         ]}
@@ -243,7 +243,7 @@ function CatalogsLandingContent({
               initials: catalog.initials,
               hue: catalog.hue,
               name: catalog.name,
-              reason: `${catalog.cohort_name} · ${catalog.orders} orders · ${catalog.conversion_pct}% conv.`,
+              reason: `${catalog.cohort_name} · ${catalog.orders} conversions · ${catalog.conversion_pct}% conv.`,
               trailing: formatCompactInr(catalog.gmv),
             })),
           },
@@ -300,7 +300,7 @@ function CatalogsLandingContent({
             { label: 'Campaign', minWidth: 260, className: 'px-5' },
             { label: 'Customer group', minWidth: 180, className: 'px-5' },
             { label: `GMV · ${metricSuffix}`, align: 'right', minWidth: 140, className: 'px-5' },
-            { label: 'Orders / conversion', align: 'right', minWidth: 160, className: 'px-5' },
+            { label: 'Conversions / conversion', align: 'right', minWidth: 160, className: 'px-5' },
             { label: 'Status', minWidth: 180, className: 'px-5' },
             { width: 40, className: 'px-4' },
           ]}

@@ -4,8 +4,12 @@ import { supabaseAdmin, supabase } from '@/lib/supabase';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { getInAppCreateFlags } from '@/lib/server/seller-features';
-import { fetchWhatsappNotificationContext } from '@/lib/server/notification-context';
-import { sendRequestReceivedBuyer, sendRequestReceivedSeller } from '@/lib/server/whatsapp';
+import { sendImmediateTransactionNotifications } from '@/lib/server/buyer-transaction-notify-immediate';
+import { tenantDefersTransactionNumber } from '@/lib/server/transaction-outbound-push';
+import {
+  formatProvisionalEstimateNumber,
+  nextProvisionalEstimateSequence,
+} from '@/lib/server/transaction-numbers';
 import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
 import { PAGE_SIZE, encodeCursor, decodeCursor } from '@/lib/pagination';
 
@@ -28,6 +32,7 @@ export interface EstimateResponse {
   success: boolean;
   estimate_id?: string;
   estimate_number?: string | null;
+  document_url?: string | null;
   whatsapp_sent?: boolean;
   error?: string;
 }
@@ -98,6 +103,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
         success: true,
         estimate_id: `preview-${Date.now()}`,
         estimate_number: 'PREVIEW-INQUIRY',
+        document_url: null,
         whatsapp_sent: false,
       });
     }
@@ -160,16 +166,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
       return NextResponse.json({ success: true, estimate_id: existing.id, estimate_number: existing.estimate_number, whatsapp_sent: false });
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { count: estimateCount } = await (db as any)
-      .schema('app')
-      .from('estimates')
-      .select('id', { count: 'exact', head: true })
-      .eq('tenant_id', tenant_id);
+    const deferDocumentNumber = await tenantDefersTransactionNumber(tenant_id, 'estimates');
 
-    const year = new Date().getFullYear();
-    const paddedCount = String((estimateCount ?? 0) + 1).padStart(4, '0');
-    const estimate_number = `EST-${year}-${paddedCount}`;
+    const estimate_number = deferDocumentNumber
+      ? null
+      : formatProvisionalEstimateNumber(await nextProvisionalEstimateSequence(db, tenant_id));
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: newEstimate, error: insertError } = await (db as any)
@@ -237,38 +238,30 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     }
 
     let whatsappSent = false;
-    try {
-      const ctx = await fetchWhatsappNotificationContext(
-        tenant_id!,
-        buyer_id,
-        location_id,
-        'enquiry_received',
-      );
-      if (ctx) {
-        const notificationResults = await Promise.allSettled([
-          sendRequestReceivedBuyer(ctx, typed.id, typed.estimate_number ?? '', total_amount, items.length),
-          sendRequestReceivedSeller(ctx, typed.id, typed.estimate_number ?? '', total_amount, items.length),
-        ]);
-        whatsappSent = notificationResults.some((result) => result.status === 'fulfilled');
-        if (whatsappSent) {
-          await (db as any)
-            .schema('app')
-            .from('estimates')
-            .update({
-              sent_at: new Date().toISOString(),
-              sent_channel: 'whatsapp',
-            })
-            .eq('id', typed.id);
-        }
+    if (!deferDocumentNumber && typed.estimate_number) {
+      try {
+        whatsappSent = await sendImmediateTransactionNotifications({
+          kind: 'estimate',
+          tenantId: tenant_id,
+          buyerId: buyer_id,
+          locationId: location_id,
+          documentId: typed.id,
+          documentNumber: typed.estimate_number,
+          totalAmount: total_amount,
+          itemCount: items.length,
+          db,
+          table: 'estimates',
+        });
+      } catch {
+        // non-blocking — estimate creation already succeeded
       }
-    } catch {
-      // non-blocking — estimate creation already succeeded
     }
 
     return NextResponse.json({
       success: true,
       estimate_id: typed.id,
       estimate_number: typed.estimate_number,
+      document_url: null,
       whatsapp_sent: whatsappSent,
     });
   } catch (err) {
