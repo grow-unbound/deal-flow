@@ -55,7 +55,7 @@ TRUNCATE
   app.audit_log,
   app.payments,
   app.credit_notes,
-  app.catalog_views,
+  app.campaign_views,
   app.invoice_items,
   app.invoices,
   app.estimate_items,

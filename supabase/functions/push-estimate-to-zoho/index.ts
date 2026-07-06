@@ -19,6 +19,7 @@ import {
   recordPushSuccess,
   createEchoGuard,
   recordPushFailure,
+  assignProvisionalTransactionNumber,
   verifyPushSecret,
   parseWebhookRecord,
   ok,
@@ -158,6 +159,7 @@ Deno.serve(async (req: Request) => {
     date: today,
     expiry_date: expiry,
     is_inclusive_tax: true,
+    cf_catalog_estimate: true,
     line_items: items.map((item) => {
       const prod = productMap.get(item.tenant_product_id as string)!;
       return {
@@ -202,6 +204,16 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`${FN} Zoho POST /estimates failed for estimate ${id}:`, msg);
+    await assignProvisionalTransactionNumber(admin, {
+      entityTable: 'estimates',
+      numberField: 'estimate_number',
+      tenantId,
+      internalId: id,
+      formatNumber: (sequence) => {
+        const year = new Date().getFullYear();
+        return `EST-${year}-${String(sequence).padStart(4, '0')}`;
+      },
+    });
     await recordPushFailure(admin, {
       tenantId,
       integrationId: integration.integrationId,

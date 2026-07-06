@@ -2,10 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
-import { getPostHogQueryClient, getPostHogClient } from '@/lib/posthog-server';
+import { getPostHogClient } from '@/lib/posthog-server';
 import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
 import { getCatalogComposerPayload } from '@/lib/server/catalog-composer';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
+import {
+  computeCampaignConversionMetrics,
+  computeCampaignViewMetrics,
+  getCampaignBuyerOpenedStatus,
+  isEligibleCampaignEstimate,
+  isEligibleCampaignOrder,
+  rollupSkuMetrics,
+  type CampaignEstimateRow,
+  type CampaignOrderRow,
+  type CampaignViewRow,
+} from '@/lib/server/campaign-performance';
 import { CatalogComposerPayloadSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
@@ -194,110 +205,10 @@ function dayKey(input: string): string {
   return new Date(input).toISOString().slice(0, 10);
 }
 
-function readScalarResult(payload: unknown): number {
-  return Number((payload as { results?: Array<{ [k: string]: unknown }> })?.results?.[0]?.[0] ?? 0);
-}
-
-function readBuyerViewRows(payload: unknown): Array<{ buyerId: string; views: number; lastOpenedAt: string | null }> {
-  const rows = ((payload as { results?: Array<{ [k: string]: unknown }> })?.results ?? []) as Array<unknown>;
-
-  return rows
-    .map((row) => {
-      if (Array.isArray(row)) {
-        return {
-          buyerId: String(row[0] ?? ''),
-          views: Number(row[1] ?? 0),
-          lastOpenedAt: row[2] ? String(row[2]) : null,
-        };
-      }
-
-      const objectRow = row as Record<string, unknown>;
-      return {
-        buyerId: String(objectRow.buyer_id ?? objectRow.buyerId ?? ''),
-        views: Number(objectRow.views ?? 0),
-        lastOpenedAt: objectRow.last_opened_at ? String(objectRow.last_opened_at) : null,
-      };
-    })
-    .filter((row) => row.buyerId);
-}
-
 function extractBuyerCity(geography: unknown): string {
   if (!geography || typeof geography !== 'object') return 'Unknown';
   const city = (geography as { city?: unknown }).city;
   return typeof city === 'string' && city.trim().length > 0 ? city : 'Unknown';
-}
-
-function getOpenedStatus(orderCount: number, lastOpenedAt: string | null): 'Opened' | 'Purchased' | 'Not yet' {
-  if (orderCount > 0) return 'Purchased';
-  if (lastOpenedAt) return 'Opened';
-  return 'Not yet';
-}
-
-type BuyerOpenMetrics = {
-  views: number;
-  lastOpenedAt: string | null;
-};
-
-async function fetchPosthogCatalogFunnel(catalogId: string): Promise<{ uniqueViewers: number; totalViews: number; cartAdds: number; buyerMetrics: Map<string, BuyerOpenMetrics> }> {
-  const projectId = process.env.POSTHOG_PROJECT_ID;
-  const token = process.env.POSTHOG_PERSONAL_API_KEY;
-
-  if (!projectId || !token) {
-    return { uniqueViewers: 0, totalViews: 0, cartAdds: 0, buyerMetrics: new Map() };
-  }
-
-  try {
-    const posthog = getPostHogQueryClient();
-
-    const [cartAdds, buyerViews] = await Promise.all([
-      posthog.query({
-        kind: 'HogQLQuery',
-        query: `
-          SELECT count(*)
-          FROM events
-          WHERE event = 'catalog_item_added_to_cart'
-            AND properties.campaign_id = {campaign_id:String}
-        `,
-        values: { campaign_id: catalogId },
-      } as Record<string, unknown>),
-      posthog.query({
-        kind: 'HogQLQuery',
-        query: `
-          SELECT
-            properties.buyer_id AS buyer_id,
-            count(*) AS views,
-            toString(max(timestamp)) AS last_opened_at
-          FROM events
-          WHERE event = 'catalog_viewed'
-            AND properties.campaign_id = {campaign_id:String}
-            AND properties.buyer_id IS NOT NULL
-          GROUP BY properties.buyer_id
-        `,
-        values: { campaign_id: catalogId },
-      } as Record<string, unknown>),
-    ]);
-
-    const buyerRows = readBuyerViewRows(buyerViews);
-    const buyerMetrics = new Map<string, BuyerOpenMetrics>();
-    let totalViews = 0;
-
-    for (const row of buyerRows) {
-      totalViews += row.views;
-      buyerMetrics.set(row.buyerId, {
-        views: row.views,
-        lastOpenedAt: row.lastOpenedAt,
-      });
-    }
-
-    return {
-      uniqueViewers: buyerMetrics.size,
-      totalViews,
-      cartAdds: readScalarResult(cartAdds),
-      buyerMetrics,
-    };
-  } catch {
-    return { uniqueViewers: 0, totalViews: 0, cartAdds: 0, buyerMetrics: new Map() };
-  }
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -322,7 +233,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!globalCatalog) return NextResponse.json({ error: 'Catalog not found' }, { status: 404 });
   if (globalCatalog.tenant_id !== claims.tenant_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const [catalogRes, itemsRes, ordersRes, composerPayload] = await Promise.all([
+  const [catalogRes, itemsRes, ordersRes, estimatesRes, viewsRes, composerPayload] = await Promise.all([
     db
       .schema('app')
       .from('campaigns')
@@ -345,11 +256,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .eq('tenant_id', claims.tenant_id)
       .eq('campaign_id', id)
       .is('deleted_at', null),
+    db
+      .schema('app')
+      .from('estimates')
+      .select('id, buyer_id, total_amount, status, converted_to_order_id, created_at')
+      .eq('tenant_id', claims.tenant_id)
+      .eq('campaign_id', id)
+      .is('deleted_at', null),
+    db
+      .schema('app')
+      .from('campaign_views')
+      .select('buyer_id, campaign_id, viewed_at, view_date')
+      .eq('tenant_id', claims.tenant_id)
+      .eq('campaign_id', id)
+      .is('deleted_at', null),
     getCatalogComposerPayload(db, claims.tenant_id, claims.role),
   ]);
 
   if (catalogRes.error) return NextResponse.json({ error: 'Catalog not found' }, { status: 404 });
-  if (itemsRes.error || ordersRes.error) return NextResponse.json({ error: 'Failed to load catalog detail' }, { status: 500 });
+  if (itemsRes.error || ordersRes.error || estimatesRes.error || viewsRes.error) {
+    return NextResponse.json({ error: 'Failed to load catalog detail' }, { status: 500 });
+  }
 
   const catalog = catalogRes.data as {
     id: string;
@@ -374,14 +301,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     created_at: string;
   }>;
 
-  const orders = (ordersRes.data ?? []) as Array<{
-    id: string;
-    buyer_id: string;
-    total_amount: number | null;
-    placed_at: string | null;
-    status: string;
-    created_at: string | null;
-  }>;
+  const orders = (ordersRes.data ?? []) as CampaignOrderRow[];
+
+  const estimates = (estimatesRes.data ?? []) as CampaignEstimateRow[];
+
+  const campaignViewRows = (viewsRes.data ?? []) as CampaignViewRow[];
 
   const scopeValue = (catalog.scope_value ?? {}) as { cohort_id?: string; buyer_id?: string; buyer_ids?: string[] };
   const composerScopeValue = (catalog.scope_value ?? {}) as {
@@ -455,69 +379,89 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const tenantProductIds = catalogItems.map((item) => item.tenant_product_id);
   const orderIds = orders.map((order) => order.id);
-  const validOrders = orders.filter((order) => order.status !== 'cancelled');
-  const validOrderIds = new Set(validOrders.map((order) => order.id));
+  const eligibleOrders = orders.filter(isEligibleCampaignOrder);
+  const eligibleEstimates = estimates.filter(isEligibleCampaignEstimate);
+  const validOrderIds = new Set(eligibleOrders.map((order) => order.id));
+  const validEstimateIds = new Set(eligibleEstimates.map((estimate) => estimate.id));
   const productMetaById = new Map(composerPayload.products.map((product) => [product.id, product]));
 
-  const orderItemsRes = orderIds.length && tenantProductIds.length
-    ? await db
-        .schema('app')
-        .from('order_items')
-        .select('order_id, tenant_product_id, qty, line_total, unit_price')
-        .in('order_id', orderIds)
-        .in('tenant_product_id', tenantProductIds)
-        .is('deleted_at', null)
-    : { data: [], error: null };
+  const [orderItemsRes, estimateItemsRes] = await Promise.all([
+    orderIds.length && tenantProductIds.length
+      ? db
+          .schema('app')
+          .from('order_items')
+          .select('order_id, tenant_product_id, qty, line_total, unit_price')
+          .in('order_id', orderIds)
+          .in('tenant_product_id', tenantProductIds)
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [], error: null }),
+    eligibleEstimates.length && tenantProductIds.length
+      ? db
+          .schema('app')
+          .from('estimate_items')
+          .select('estimate_id, tenant_product_id, qty, line_total, unit_price')
+          .in('estimate_id', Array.from(validEstimateIds))
+          .in('tenant_product_id', tenantProductIds)
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
 
-  if (orderItemsRes.error) return NextResponse.json({ error: 'Failed to load order items' }, { status: 500 });
+  if (orderItemsRes.error || estimateItemsRes.error) {
+    return NextResponse.json({ error: 'Failed to load line items' }, { status: 500 });
+  }
 
-  const orderItems = (orderItemsRes.data ?? []) as Array<{
-    order_id: string;
-    tenant_product_id: string;
-    qty: number | null;
-    line_total: number | null;
-    unit_price: number | null;
-  }>;
+  const viewMetrics = computeCampaignViewMetrics(campaignViewRows);
+  const conversionMetrics = computeCampaignConversionMetrics(orders, estimates);
+  const { uniqueViewers, totalViews, lastOpenedAtByBuyer } = viewMetrics;
+  const {
+    conversionCount,
+    orderCount,
+    estimateCount,
+    gmv,
+    convertingBuyerIds,
+    conversionsByBuyer,
+    spendByBuyer,
+    lastConversionAtByBuyer,
+  } = conversionMetrics;
 
-  const { uniqueViewers, totalViews, cartAdds, buyerMetrics } = await fetchPosthogCatalogFunnel(id);
+  const skuMetricsByProduct = rollupSkuMetrics(
+    ((orderItemsRes.data ?? []) as Array<{
+      order_id: string;
+      tenant_product_id: string;
+      qty: number | null;
+      line_total: number | null;
+      unit_price: number | null;
+    }>).map((item) => ({ ...item, parent_id: item.order_id })),
+    ((estimateItemsRes.data ?? []) as Array<{
+      estimate_id: string;
+      tenant_product_id: string;
+      qty: number | null;
+      line_total: number | null;
+      unit_price: number | null;
+    }>).map((item) => ({ ...item, parent_id: item.estimate_id })),
+    validOrderIds,
+    validEstimateIds,
+  );
 
-  const orderCountByBuyer = new Map<string, number>();
-  const spendByBuyer = new Map<string, number>();
-  const lastOrderAtByBuyer = new Map<string, string | null>();
-  const skuMetricsByProduct = new Map<string, { units: number; gmv: number }>();
-  const dailyRollup = new Map<string, { revenue: number; orders: number }>();
+  const dailyRollup = new Map<string, { revenue: number; conversions: number }>();
 
-  for (const order of validOrders) {
-    orderCountByBuyer.set(order.buyer_id, (orderCountByBuyer.get(order.buyer_id) ?? 0) + 1);
-    spendByBuyer.set(order.buyer_id, (spendByBuyer.get(order.buyer_id) ?? 0) + Number(order.total_amount ?? 0));
-
-    const nextLastOrder = order.placed_at ?? order.created_at ?? null;
-    const existingLastOrder = lastOrderAtByBuyer.get(order.buyer_id);
-    if (!existingLastOrder || (nextLastOrder && new Date(nextLastOrder).getTime() > new Date(existingLastOrder).getTime())) {
-      lastOrderAtByBuyer.set(order.buyer_id, nextLastOrder);
-    }
-
+  for (const order of eligibleOrders) {
     if (!order.placed_at) continue;
     const date = dayKey(order.placed_at);
-    const current = dailyRollup.get(date) ?? { revenue: 0, orders: 0 };
+    const current = dailyRollup.get(date) ?? { revenue: 0, conversions: 0 };
     current.revenue += Number(order.total_amount ?? 0);
-    current.orders += 1;
+    current.conversions += 1;
     dailyRollup.set(date, current);
   }
 
-  for (const item of orderItems) {
-    if (!validOrderIds.has(item.order_id)) continue;
-    const current = skuMetricsByProduct.get(item.tenant_product_id) ?? { units: 0, gmv: 0 };
-    const qty = Number(item.qty ?? 0);
-    const lineTotal = Number(item.line_total ?? (qty * Number(item.unit_price ?? 0)));
-    current.units += qty;
-    current.gmv += lineTotal;
-    skuMetricsByProduct.set(item.tenant_product_id, current);
+  for (const estimate of eligibleEstimates) {
+    if (!estimate.created_at) continue;
+    const date = dayKey(estimate.created_at);
+    const current = dailyRollup.get(date) ?? { revenue: 0, conversions: 0 };
+    current.revenue += Number(estimate.total_amount ?? 0);
+    current.conversions += 1;
+    dailyRollup.set(date, current);
   }
-
-  const gmv = validOrders.reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0);
-  const totalOrders = validOrders.length;
-  const aov = totalOrders > 0 ? gmv / totalOrders : 0;
 
   const previousCatalogRes = await db
     .schema('app')
@@ -534,24 +478,40 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   let previousGmv = 0;
   if (!previousCatalogRes.error && previousCatalogRes.data?.id) {
-    const prevOrdersRes = await db
-      .schema('app')
-      .from('orders')
-      .select('total_amount, status')
-      .eq('tenant_id', claims.tenant_id)
-      .eq('campaign_id', previousCatalogRes.data.id)
-      .is('deleted_at', null);
+    const prevCampaignId = previousCatalogRes.data.id;
+    const [prevOrdersRes, prevEstimatesRes] = await Promise.all([
+      db
+        .schema('app')
+        .from('orders')
+        .select('total_amount, status')
+        .eq('tenant_id', claims.tenant_id)
+        .eq('campaign_id', prevCampaignId)
+        .is('deleted_at', null),
+      db
+        .schema('app')
+        .from('estimates')
+        .select('total_amount, status, converted_to_order_id')
+        .eq('tenant_id', claims.tenant_id)
+        .eq('campaign_id', prevCampaignId)
+        .is('deleted_at', null),
+    ]);
 
     if (!prevOrdersRes.error) {
-      previousGmv = ((prevOrdersRes.data ?? []) as Array<{ total_amount: number | null; status: string }>)
-        .filter((order) => order.status !== 'cancelled')
+      previousGmv += ((prevOrdersRes.data ?? []) as CampaignOrderRow[])
+        .filter(isEligibleCampaignOrder)
         .reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0);
+    }
+    if (!prevEstimatesRes.error) {
+      previousGmv += ((prevEstimatesRes.data ?? []) as CampaignEstimateRow[])
+        .filter(isEligibleCampaignEstimate)
+        .reduce((sum, estimate) => sum + Number(estimate.total_amount ?? 0), 0);
     }
   }
 
   const growthPct = previousGmv > 0 ? Number((((gmv - previousGmv) / previousGmv) * 100).toFixed(1)) : gmv > 0 ? 100 : 0;
-  const conversionRate = uniqueViewers > 0 ? Number(((totalOrders / uniqueViewers) * 100).toFixed(1)) : 0;
-  const abandoners = Math.max(0, buyerMetrics.size - new Set(validOrders.map((order) => order.buyer_id)).size);
+  const conversionRate = uniqueViewers > 0 ? Number(((conversionCount / uniqueViewers) * 100).toFixed(1)) : 0;
+  const abandoners = Math.max(0, uniqueViewers - convertingBuyerIds.size);
+  const aov = conversionCount > 0 ? gmv / conversionCount : 0;
   const today = Date.now();
   const daysLeft = catalog.valid_to ? Math.max(0, Math.ceil((new Date(catalog.valid_to).getTime() - today) / (1000 * 60 * 60 * 24))) : 0;
 
@@ -594,7 +554,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     .map(([date, value]) => ({
       date,
       revenue: value.revenue,
-      conversion_rate: uniqueViewers > 0 ? Number(((value.orders / uniqueViewers) * 100).toFixed(2)) : 0,
+      conversion_rate: uniqueViewers > 0 ? Number(((value.conversions / uniqueViewers) * 100).toFixed(2)) : 0,
     }));
 
   const cumulativeOrders = Array.from(dailyRollup.entries())
@@ -603,7 +563,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const previous = acc[acc.length - 1] ?? { orders_cumulative: 0, gmv_cumulative: 0 };
       acc.push({
         date,
-        orders_cumulative: previous.orders_cumulative + value.orders,
+        orders_cumulative: previous.orders_cumulative + value.conversions,
         gmv_cumulative: previous.gmv_cumulative + value.revenue,
       });
       return acc;
@@ -636,22 +596,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const buyers = cohortMemberIds
     .map((buyerId) => {
       const buyer = buyersById.get(buyerId);
-      const buyerOrderCount = orderCountByBuyer.get(buyerId) ?? 0;
+      const buyerConversionCount = conversionsByBuyer.get(buyerId) ?? 0;
       const spend = spendByBuyer.get(buyerId) ?? 0;
-      const openMetrics = buyerMetrics.get(buyerId);
-      const lastOpenedAt = openMetrics?.lastOpenedAt ?? null;
-      const lastOrderAt = lastOrderAtByBuyer.get(buyerId) ?? null;
+      const lastOpenedAt = lastOpenedAtByBuyer.get(buyerId) ?? null;
+      const lastConversionAt = lastConversionAtByBuyer.get(buyerId) ?? null;
 
       return {
         buyer_id: buyerId,
         buyer_name: buyer?.business_name ?? 'Unknown buyer',
         city: extractBuyerCity(buyer?.geography),
         cohort_label: selectedCohortName,
-        opened_status: getOpenedStatus(buyerOrderCount, lastOpenedAt),
+        opened_status: getCampaignBuyerOpenedStatus(buyerConversionCount, lastOpenedAt),
         spend,
-        orders: buyerOrderCount,
+        orders: buyerConversionCount,
         last_opened_at: lastOpenedAt,
-        last_order_at: lastOrderAt,
+        last_order_at: lastConversionAt,
       };
     })
     .sort((a, b) => {
@@ -692,7 +651,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     meta_strip_4: {
       gmv,
       growth_pct: growthPct,
-      orders: totalOrders,
+      orders: conversionCount,
+      conversions: conversionCount,
+      order_count: orderCount,
+      estimate_count: estimateCount,
       conversion_rate: conversionRate,
       unique_viewers: uniqueViewers,
       cohort_members: cohortMemberIds.length,
@@ -710,7 +672,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     products,
     performance: {
       summary: {
-        orders: totalOrders,
+        orders: conversionCount,
+        conversions: conversionCount,
+        order_count: orderCount,
+        estimate_count: estimateCount,
         gmv,
         growth_pct: growthPct,
         aov,
@@ -723,8 +688,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
       funnel: {
         unique_viewers: uniqueViewers,
-        cart_additions: cartAdds,
-        orders: totalOrders,
+        conversions: conversionCount,
+        orders: orderCount,
+        estimates: estimateCount,
         gmv,
       },
       daily: performanceDaily,

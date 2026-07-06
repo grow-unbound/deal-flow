@@ -489,7 +489,7 @@ describe('integrations settings client', () => {
           },
           tenant_integration: {
             id: 'tenant-int-1',
-            status: 'sync_failed',
+            status: 'connected',
             health_status: 'invalid',
             connected_at: '2026-06-10T11:00:00.000Z',
             last_health_check_at: '2026-06-12T08:50:00.000Z',

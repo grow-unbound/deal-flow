@@ -25,7 +25,7 @@ export const BUYER_DEEP_PREFIXES = [
 ] as const;
 
 /** Exact deep roots (and optional deeper paths under them). */
-export const BUYER_DEEP_EXACT_ROOTS = ['/buy/cart', '/buy/checkout', '/buy/order-placed', '/buy/buy-again', '/buy/promotions'] as const;
+export const BUYER_DEEP_EXACT_ROOTS = ['/buy/cart', '/buy/checkout', '/buy/order-placed', '/buy/estimate-placed', '/buy/buy-again', '/buy/promotions'] as const;
 
 
 export function isBuyerDeepRoute(pathname: string): boolean {

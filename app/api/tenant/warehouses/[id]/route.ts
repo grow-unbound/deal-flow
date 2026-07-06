@@ -122,7 +122,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (patch.phone_number !== undefined) updatePayload.phone_number = patch.phone_number?.trim() ? patch.phone_number.trim() : null;
     if (patch.status !== undefined) updatePayload.status = patch.status;
     if (patch.is_default !== undefined) updatePayload.is_default = patch.is_default;
-    if (patch.external_ref !== undefined) updatePayload.external_ref = patch.external_ref?.trim() ? patch.external_ref.trim() : null;
     if (patch.associated_users !== undefined) updatePayload.associated_users = patch.associated_users;
     if (patch.lat !== undefined) updatePayload.lat = patch.lat ?? null;
     if (patch.lng !== undefined) updatePayload.lng = patch.lng ?? null;

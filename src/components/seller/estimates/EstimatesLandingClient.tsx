@@ -374,6 +374,7 @@ function EstimatesLandingContent({
                     id: row.id,
                     href: `/estimates/${row.id}`,
                     document_number: row.estimate_number,
+                    realtime_badge: newEntityIds.has(row.id) ? 'new' : undefined,
                     source_kind: row.source_kind,
                     source_label: row.source_label,
                     buyer_name: row.buyer_name,

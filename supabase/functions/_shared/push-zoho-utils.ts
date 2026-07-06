@@ -4,7 +4,10 @@
  * Used by push-estimate-to-zoho and push-order-to-zoho.
  */
 
-import { ZOHO_INTEGRATION_TYPE_IDS } from '../../../src/lib/integrations/contracts.ts';
+import {
+  OUTBOUND_PUSH_TENANT_INTEGRATION_STATUSES,
+  ZOHO_INTEGRATION_TYPE_IDS,
+} from '../../../src/lib/integrations/contracts.ts';
 import type { ZohoIntegrationTypeId } from '../../../src/lib/integrations/contracts.ts';
 import { createAdminClient, loadIntegrationCredentials, createDbTokenCache } from './sync-utils.ts';
 import { createZohoAdapter } from './integrations-zoho.ts';
@@ -28,7 +31,7 @@ export async function lookupTenantZohoIntegration(
     .from('tenant_integrations')
     .select('id, integration_type_id')
     .eq('tenant_id', tenantId)
-    .eq('status', 'connected')
+    .in('status', [...OUTBOUND_PUSH_TENANT_INTEGRATION_STATUSES])
     .in('integration_type_id', [...ZOHO_INTEGRATION_TYPE_IDS])
     .is('deleted_at', null)
     .order('created_at', { ascending: true })
@@ -204,6 +207,63 @@ interface PushFailureOpts {
   entityType: 'estimates' | 'orders';
   internalId: string;
   errorReason: string;
+}
+
+interface AssignProvisionalNumberOpts {
+  entityTable: 'estimates' | 'orders';
+  numberField: 'estimate_number' | 'order_number';
+  tenantId: string;
+  internalId: string;
+  formatNumber: (sequence: number) => string;
+}
+
+export async function assignProvisionalTransactionNumber(
+  admin: AdminClient,
+  opts: AssignProvisionalNumberOpts,
+): Promise<string | null> {
+  const { data: existing, error: loadError } = await admin
+    .schema('app')
+    .from(opts.entityTable)
+    .select(opts.numberField)
+    .eq('id', opts.internalId)
+    .maybeSingle();
+
+  if (loadError) {
+    console.error('[push-zoho-utils] failed to load provisional number row:', loadError.message);
+    return null;
+  }
+
+  const current = (existing as Record<string, string | null> | null)?.[opts.numberField];
+  if (current?.trim()) return current;
+
+  const { count, error: countError } = await admin
+    .schema('app')
+    .from(opts.entityTable)
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', opts.tenantId);
+
+  if (countError) {
+    console.error('[push-zoho-utils] failed to count provisional sequence:', countError.message);
+    return null;
+  }
+
+  const provisionalNumber = opts.formatNumber((count ?? 0) + 1);
+  const { error: updateError } = await admin
+    .schema('app')
+    .from(opts.entityTable)
+    .update({
+      [opts.numberField]: provisionalNumber,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', opts.internalId)
+    .is(opts.numberField, null);
+
+  if (updateError) {
+    console.error('[push-zoho-utils] failed to assign provisional number:', updateError.message);
+    return null;
+  }
+
+  return provisionalNumber;
 }
 
 export async function recordPushFailure(

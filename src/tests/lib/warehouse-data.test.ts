@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { bucketWarehouseInventoryTrend, loadLatestDemandByProduct } from '@/lib/server/warehouse-data';
+import { bucketWarehouseInventoryTrend, loadLatestDemandByProduct, loadWarehouseInventoryRows } from '@/lib/server/warehouse-data';
 
 function makeUuid(index: number): string {
   return `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
@@ -56,5 +56,104 @@ describe('bucketWarehouseInventoryTrend', () => {
     expect(trend).toHaveLength(2);
     expect(trend[0]?.tracked_skus).toBe(12);
     expect(trend[1]?.sellable_units).toBe(150);
+  });
+});
+
+describe('loadWarehouseInventoryRows', () => {
+  it('resolves brand names without selecting a non-existent tenant_brands.name column', async () => {
+    const selectCalls: string[] = [];
+
+    const db = {
+      schema: (schemaName: string) => ({
+        from: (table: string) => ({
+          select: (columns: string) => {
+            selectCalls.push(`${schemaName}.${table}:${columns}`);
+
+            if (schemaName === 'app' && table === 'tenant_inventory') {
+              return {
+                in: () => ({
+                  is: async () => ({
+                    data: [
+                      {
+                        warehouse_id: 'warehouse-1',
+                        tenant_product_id: 'product-1',
+                        qty_available: 12,
+                        qty_reserved: 2,
+                        reorder_point: 5,
+                        updated_at: '2026-07-06T10:00:00.000Z',
+                      },
+                    ],
+                    error: null,
+                  }),
+                }),
+              };
+            }
+
+            if (schemaName === 'app' && table === 'tenant_products') {
+              return {
+                in: () => ({
+                  is: async () => ({
+                    data: [
+                      {
+                        id: 'product-1',
+                        name_override: 'Waterproof Flashlight',
+                        tenant_brand_id: 'brand-1',
+                      },
+                    ],
+                    error: null,
+                  }),
+                }),
+              };
+            }
+
+            if (schemaName === 'app' && table === 'tenant_brands') {
+              return {
+                in: () => ({
+                  is: async () => ({
+                    data: [
+                      {
+                        id: 'brand-1',
+                        display_name_override: null,
+                        master_brand_id: 'master-brand-1',
+                      },
+                    ],
+                    error: null,
+                  }),
+                }),
+              };
+            }
+
+            if (schemaName === 'catalog' && table === 'brands') {
+              return {
+                in: async () => ({
+                  data: [{ id: 'master-brand-1', name: 'Acme Lighting' }],
+                  error: null,
+                }),
+              };
+            }
+
+            throw new Error(`Unexpected query ${schemaName}.${table}:${columns}`);
+          },
+        }),
+      }),
+    };
+
+    const rows = await loadWarehouseInventoryRows(db as never, ['warehouse-1'], true);
+
+    expect(selectCalls).toContain('app.tenant_brands:id, display_name_override, master_brand_id');
+    expect(selectCalls).toContain('catalog.brands:id, name');
+    expect(rows).toEqual([
+      {
+        warehouse_id: 'warehouse-1',
+        tenant_product_id: 'product-1',
+        sku: 'product-1',
+        qty_available: 12,
+        qty_reserved: 2,
+        reorder_point: 5,
+        updated_at: '2026-07-06T10:00:00.000Z',
+        product_name: 'Waterproof Flashlight',
+        brand_name: 'Acme Lighting',
+      },
+    ]);
   });
 });

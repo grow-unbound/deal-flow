@@ -1,20 +1,53 @@
 export default function OrderPlacedLoading() {
   return (
-    <div className="flex flex-col items-center px-6 pt-12 gap-4 text-center">
-      <div className="w-14 h-14 rounded-full animate-pulse" style={{ background: 'var(--cream-100)' }} />
-      <div className="h-6 w-40 rounded animate-pulse" style={{ background: 'var(--cream-200)' }} />
-      <div className="h-4 w-60 rounded animate-pulse" style={{ background: 'var(--cream-100)' }} />
-      <div className="mt-6 w-full rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border-1)' }}>
-        <div className="h-10 animate-pulse" style={{ background: 'var(--cream-100)' }} />
-        <div className="px-4 py-4 space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="flex justify-between">
-              <div className="h-4 w-20 rounded animate-pulse" style={{ background: 'var(--cream-100)' }} />
-              <div className="h-4 w-28 rounded animate-pulse" style={{ background: 'var(--cream-100)' }} />
+    <div className="flex min-h-screen flex-col bg-[var(--bg-base)]">
+      <header
+        className="sticky top-0 z-20 flex items-center gap-3 px-4"
+        style={{
+          height: 'var(--header-h, 56px)',
+          background: 'rgba(253, 251, 247, 0.92)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          borderBottom: '1px solid var(--border-1)',
+        }}
+      >
+        <div className="h-8 w-8 animate-pulse rounded-full bg-cream-200" />
+        <div className="h-4 w-28 animate-pulse rounded bg-cream-200" />
+      </header>
+
+      <main className="flex flex-1 flex-col px-4 py-6">
+        <div className="mx-auto flex w-full max-w-[520px] flex-1 flex-col items-center justify-center text-center">
+          <div className="mb-6 h-20 w-20 animate-pulse rounded-full border border-cream-200 bg-cream-100" />
+          <div className="h-8 w-64 animate-pulse rounded bg-cream-200" />
+          <div className="mt-3 h-4 w-full max-w-md animate-pulse rounded bg-cream-100" />
+
+          <div className="mt-8 w-full rounded-2xl border border-cream-200 bg-white text-left">
+            <div className="border-b border-cream-200 px-4 py-3">
+              <div className="h-3 w-28 animate-pulse rounded bg-cream-200" />
             </div>
-          ))}
+            <div className="space-y-3 px-4 py-4">
+              <Row />
+              <Row />
+              <Row />
+              <div className="h-4 w-32 animate-pulse rounded bg-cream-100" />
+            </div>
+          </div>
+
+          <div className="mt-6 grid w-full gap-3 sm:grid-cols-2">
+            <div className="h-12 animate-pulse rounded-xl bg-cream-200" />
+            <div className="h-12 animate-pulse rounded-xl bg-cream-200" />
+          </div>
         </div>
-      </div>
+      </main>
+    </div>
+  );
+}
+
+function Row() {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div className="h-4 w-24 animate-pulse rounded bg-cream-100" />
+      <div className="h-4 w-32 animate-pulse rounded bg-cream-100" />
     </div>
   );
 }

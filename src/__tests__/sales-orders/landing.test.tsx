@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 const pushMock = vi.fn();
 const useTenantOrdersMock = vi.fn();
 const useFlagStateMock = vi.fn();
+const useCreateFlagsMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
@@ -16,6 +17,10 @@ vi.mock('@/hooks/useOrders', () => ({
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlagState: (...args: unknown[]) => useFlagStateMock(...args),
+}));
+
+vi.mock('@/hooks/useCreateFlags', () => ({
+  useCreateFlags: () => useCreateFlagsMock(),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -159,8 +164,14 @@ describe('sales orders landing page', () => {
     pushMock.mockReset();
     useTenantOrdersMock.mockReset();
     useFlagStateMock.mockReset();
+    useCreateFlagsMock.mockReset();
 
     useFlagStateMock.mockImplementation(() => true);
+    useCreateFlagsMock.mockReturnValue({
+      createEstimates: true,
+      createSalesOrders: true,
+      createInvoices: true,
+    });
     useTenantOrdersMock.mockReturnValue({
       isLoading: false,
       isError: false,

@@ -31,7 +31,6 @@ export const CreateWarehouseInputSchema = z.object({
   phone_number: z.string().trim().regex(/^[0-9]{10}$/, 'Phone number must be 10 digits').nullable().optional(),
   status: WarehouseStatusSchema.optional().default('active'),
   is_default: z.boolean().optional().default(false),
-  external_ref: z.string().max(200).nullable().optional(),
   associated_users: z.array(WarehouseAssociatedUserSchema).optional().default([]),
   lat: z.number().nullable().optional(),
   lng: z.number().nullable().optional(),
@@ -46,7 +45,6 @@ export const UpdateWarehouseInputSchema = z.object({
   phone_number: z.string().trim().regex(/^[0-9]{10}$/, 'Phone number must be 10 digits').nullable().optional(),
   status: WarehouseStatusSchema.optional(),
   is_default: z.boolean().optional(),
-  external_ref: z.string().max(200).nullable().optional(),
   associated_users: z.array(WarehouseAssociatedUserSchema).optional(),
   lat: z.number().nullable().optional(),
   lng: z.number().nullable().optional(),
@@ -74,6 +72,7 @@ export interface TenantWarehouse {
     id: string;
     name: string;
     is_default: boolean;
+    associated_users: WarehouseAssociatedUser[];
   } | null;
 }
 
@@ -126,6 +125,7 @@ export interface WarehousesLandingResponse {
 
 export interface WarehouseDetailInventoryItem {
   tenant_product_id: string;
+  sku: string;
   product_name: string;
   brand_name: string;
   qty_available: number;
@@ -171,6 +171,7 @@ export interface WarehouseDetailResponse {
     id: string;
     name: string;
     is_default: boolean;
+    associated_users: WarehouseAssociatedUser[];
   } | null;
   address: WarehouseAddress;
   associated_users: WarehouseAssociatedUser[];

@@ -103,7 +103,7 @@ describe('catalog-detail-page integration', () => {
             valid_until_label: '30 Jun 2026',
             published_at_label: '01 May 2026',
           },
-          funnel: { unique_viewers: 120, cart_additions: 50, orders: 15, gmv: 100000 },
+          funnel: { unique_viewers: 120, conversions: 15, orders: 12, estimates: 3, gmv: 100000 },
           daily: [{ date: '2026-05-10', revenue: 10000, conversion_rate: 5 }],
           cumulative_orders: [{ date: '2026-05-10', orders_cumulative: 15, gmv_cumulative: 100000 }],
           top_skus: [],
