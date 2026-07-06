@@ -124,8 +124,9 @@ const baseData = {
     },
     funnel: {
       unique_viewers: 12,
-      cart_additions: 10,
-      orders: 8,
+      conversions: 8,
+      orders: 6,
+      estimates: 2,
       gmv: 100000,
     },
     daily: [

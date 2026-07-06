@@ -22,6 +22,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { MutationButton } from '@/components/ui/mutation-button';
 import { SearchOverlayPicker } from '@/components/ui/search-overlay-picker';
+import { MapsAddressSearch } from '@/components/seller/settings/MapsAddressSearch';
 import {
   Select,
   SelectContent,
@@ -51,7 +52,6 @@ const FormSchema = z.object({
   state: z.string().max(2),
   pincode: z.string().max(10),
   is_default: z.boolean(),
-  external_ref: z.string().max(200).optional(),
   associated_users: z.array(WarehouseAssociatedUserSchema).default([]),
   lat: z.number().optional(),
   lng: z.number().optional(),
@@ -82,7 +82,6 @@ function defaultsFromWarehouse(warehouse: TenantWarehouse | null): FormValues {
       state: '',
       pincode: '',
       is_default: false,
-      external_ref: '',
       associated_users: [],
     };
   }
@@ -98,8 +97,7 @@ function defaultsFromWarehouse(warehouse: TenantWarehouse | null): FormValues {
     state: warehouse.address.state ?? '',
     pincode: warehouse.address.pincode ?? '',
     is_default: warehouse.is_default,
-    external_ref: warehouse.external_ref ?? '',
-    associated_users: warehouse.associated_users ?? [],
+    associated_users: warehouse.associated_users?.length ? warehouse.associated_users : warehouse.location?.associated_users ?? [],
     lat: warehouse.lat ?? undefined,
     lng: warehouse.lng ?? undefined,
   };
@@ -118,6 +116,7 @@ export function WarehouseFormSheet({ open, onOpenChange, editingWarehouse }: War
   const updateWarehouse = useUpdateWarehouse();
   const [userSearchOpen, setUserSearchOpen] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [mapsLabel, setMapsLabel] = useState<string | null>(null);
   const isEdit = Boolean(editingWarehouse?.id);
   const pending = createWarehouse.isPending || updateWarehouse.isPending;
 
@@ -143,6 +142,11 @@ export function WarehouseFormSheet({ open, onOpenChange, editingWarehouse }: War
   useEffect(() => {
     if (open) {
       form.reset(defaultsFromWarehouse(editingWarehouse));
+      setMapsLabel(
+        editingWarehouse?.address?.city
+          ? `${editingWarehouse.address.line1 || editingWarehouse.name}, ${editingWarehouse.address.city}`
+          : null,
+      );
       setUserSearchOpen(false);
       setUserSearchQuery('');
     }
@@ -188,6 +192,19 @@ export function WarehouseFormSheet({ open, onOpenChange, editingWarehouse }: War
     return selectedUsers.length === 1 ? head : `${head} +${selectedUsers.length - 1} more`;
   }, [selectedUsers]);
 
+  const locationOptions = locationsData?.locations ?? [];
+
+  function syncUsersFromLocation(locationId: string | null) {
+    if (!locationId) return;
+    const selectedLocation = locationOptions.find((location) => location.id === locationId);
+    if (!selectedLocation) return;
+    form.setValue('associated_users', selectedLocation.associated_users ?? [], {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    });
+  }
+
   function upsertSelectedUser(member: TeamMemberOption, checked: boolean) {
     const next = checked
       ? [
@@ -218,6 +235,28 @@ export function WarehouseFormSheet({ open, onOpenChange, editingWarehouse }: War
     });
   }
 
+  function handleMapsSelect(details: {
+    lat: number | null;
+    lng: number | null;
+    line1: string;
+    city: string;
+    state: string;
+    pincode: string;
+    formatted_address: string;
+  }) {
+    form.setValue('line1', details.line1, { shouldDirty: true, shouldValidate: true });
+    form.setValue('city', details.city, { shouldDirty: true, shouldValidate: true });
+    form.setValue('state', details.state.slice(0, 2).toUpperCase(), { shouldDirty: true, shouldValidate: true });
+    form.setValue('pincode', details.pincode, { shouldDirty: true, shouldValidate: true });
+    form.setValue('lat', details.lat ?? undefined, { shouldDirty: true, shouldValidate: true });
+    form.setValue('lng', details.lng ?? undefined, { shouldDirty: true, shouldValidate: true });
+    setMapsLabel(
+      details.city
+        ? `${details.line1 || details.formatted_address.split(',')[0]}, ${details.city}`
+        : details.formatted_address,
+    );
+  }
+
   async function onSubmit(values: FormValues) {
     const payload = {
       name: values.name.trim(),
@@ -232,7 +271,6 @@ export function WarehouseFormSheet({ open, onOpenChange, editingWarehouse }: War
         pincode: values.pincode.trim(),
       },
       is_default: values.is_default,
-      external_ref: values.external_ref?.trim() ? values.external_ref.trim() : undefined,
       associated_users: values.associated_users,
       lat: values.lat ?? null,
       lng: values.lng ?? null,
@@ -247,10 +285,7 @@ export function WarehouseFormSheet({ open, onOpenChange, editingWarehouse }: War
     if (isEdit && editingWarehouse) {
       await updateWarehouse.mutateAsync({
         id: editingWarehouse.id,
-        patch: {
-          ...parsed.data,
-          external_ref: parsed.data.external_ref ?? null,
-        },
+        patch: parsed.data,
       });
     } else {
       await createWarehouse.mutateAsync(parsed.data);
@@ -290,7 +325,11 @@ export function WarehouseFormSheet({ open, onOpenChange, editingWarehouse }: War
                       <FormLabel>Linked location</FormLabel>
                       <Select
                         value={field.value ?? '__none__'}
-                        onValueChange={(value) => field.onChange(value === '__none__' ? null : value)}
+                        onValueChange={(value) => {
+                          const nextValue = value === '__none__' ? null : value;
+                          field.onChange(nextValue);
+                          syncUsersFromLocation(nextValue);
+                        }}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -299,7 +338,7 @@ export function WarehouseFormSheet({ open, onOpenChange, editingWarehouse }: War
                         </FormControl>
                         <SelectContent>
                           <SelectItem value="__none__">No linked location</SelectItem>
-                          {(locationsData?.locations ?? []).map((location) => (
+                          {locationOptions.map((location) => (
                             <SelectItem key={location.id} value={location.id}>
                               {location.name}
                             </SelectItem>
@@ -347,20 +386,9 @@ export function WarehouseFormSheet({ open, onOpenChange, editingWarehouse }: War
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
-                  name="external_ref"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>External reference</FormLabel>
-                      <FormControl>
-                        <Input {...field} placeholder="ERP / Zoho warehouse code" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
               </FormSectionGrid>
+
+              <MapsAddressSearch selectedLabel={mapsLabel} onSelect={handleMapsSelect} />
 
               <FormBlock title="Address">
                 <FormSectionGrid>

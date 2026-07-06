@@ -2,17 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mocks must be declared before any imports that trigger module resolution
 const requireBuyerAccessProfileMock = vi.fn();
-const fetchWhatsappNotificationContextMock = vi.fn();
-const sendRequestReceivedBuyerMock = vi.fn().mockResolvedValue(undefined);
-const sendRequestReceivedSellerMock = vi.fn().mockResolvedValue(undefined);
+const sendImmediateTransactionNotificationsMock = vi.fn();
 
 vi.mock('@/lib/server/buyer-access', () => ({
   requireBuyerAccessProfile: (...args: unknown[]) => requireBuyerAccessProfileMock(...args),
-}));
-
-vi.mock('@/lib/server/notification-context', () => ({
-  fetchWhatsappNotificationContext: (...args: unknown[]) =>
-    fetchWhatsappNotificationContextMock(...args),
 }));
 
 vi.mock('@/lib/server/seller-features', () => ({
@@ -21,13 +14,17 @@ vi.mock('@/lib/server/seller-features', () => ({
   }),
 }));
 
-vi.mock('@/lib/server/whatsapp', () => ({
-  sendRequestReceivedBuyer: (...args: unknown[]) => sendRequestReceivedBuyerMock(...args),
-  sendRequestReceivedSeller: (...args: unknown[]) => sendRequestReceivedSellerMock(...args),
+vi.mock('@/lib/server/transaction-outbound-push', () => ({
+  tenantDefersTransactionNumber: vi.fn().mockResolvedValue(false),
 }));
 
+vi.mock('@/lib/server/buyer-transaction-notify-immediate', () => ({
+  sendImmediateTransactionNotifications: (...args: unknown[]) =>
+    sendImmediateTransactionNotificationsMock(...args),
+}));
+
+
 const insertSingleMock = vi.fn();
-const countMock = vi.fn();
 
 vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: {
@@ -45,7 +42,6 @@ vi.mock('@/lib/supabase', () => ({
                   })),
                 })),
               })),
-              count: countMock,
             })),
             insert: vi.fn(() => ({ select: vi.fn(() => ({ single: insertSingleMock })) })),
             update: vi.fn(() => ({ eq: vi.fn(async () => ({ data: null, error: null })) })),
@@ -121,14 +117,15 @@ const VALID_ITEMS = [
 ];
 
 describe('buyer estimates route (POST)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
-    countMock.mockResolvedValue({ count: 0, error: null });
+    const { tenantDefersTransactionNumber } = await import('@/lib/server/transaction-outbound-push');
+    vi.mocked(tenantDefersTransactionNumber).mockResolvedValue(false);
     insertSingleMock.mockResolvedValue({
       data: { id: 'est-abc', estimate_number: 'EST-2026-0001' },
       error: null,
     });
-    fetchWhatsappNotificationContextMock.mockResolvedValue(null);
+    sendImmediateTransactionNotificationsMock.mockResolvedValue(true);
   });
 
   it('returns preview estimate without DB writes in preview mode', async () => {
@@ -165,17 +162,8 @@ describe('buyer estimates route (POST)', () => {
     expect(response.status).toBe(400);
   });
 
-  it('creates estimate and fires whatsapp notifications when context is available', async () => {
+  it('creates estimate and fires whatsapp notifications when integration does not defer numbers', async () => {
     requireBuyerAccessProfileMock.mockResolvedValue(BUYER_PROFILE);
-    const ctx = {
-      sellerPhone: '9001112222',
-      sellerName: 'WineYard Dist.',
-      sellerLocation: 'Mumbai Warehouse',
-      buyerPhone: '9876543210',
-      buyerName: 'Ravi',
-      etaHours: 24,
-    };
-    fetchWhatsappNotificationContextMock.mockResolvedValue(ctx);
 
     const { POST } = await import('../../app/api/buyer/estimates/route');
     const request = new Request('http://localhost/api/buyer/estimates', {
@@ -191,35 +179,24 @@ describe('buyer estimates route (POST)', () => {
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
     expect(body.whatsapp_sent).toBe(true);
-
-    // Allow IIFE to run
-    await new Promise((r) => setTimeout(r, 10));
-
-    expect(fetchWhatsappNotificationContextMock).toHaveBeenCalledWith(
-      'tenant-1',
-      'buyer-1',
-      'loc-1',
-      'enquiry_received',
-    );
-    expect(sendRequestReceivedBuyerMock).toHaveBeenCalledWith(
-      ctx,
-      'est-abc',
-      'EST-2026-0001',
-      expect.any(Number),
-      2,
-    );
-    expect(sendRequestReceivedSellerMock).toHaveBeenCalledWith(
-      ctx,
-      'est-abc',
-      'EST-2026-0001',
-      expect.any(Number),
-      2,
+    expect(sendImmediateTransactionNotificationsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'estimate',
+        documentId: 'est-abc',
+        documentNumber: 'EST-2026-0001',
+        itemCount: 2,
+      }),
     );
   });
 
-  it('does not fire whatsapp when notification context is null (flag disabled or phone missing)', async () => {
+  it('defers whatsapp when outbound integration will assign the document number', async () => {
     requireBuyerAccessProfileMock.mockResolvedValue(BUYER_PROFILE);
-    fetchWhatsappNotificationContextMock.mockResolvedValue(null);
+    const { tenantDefersTransactionNumber } = await import('@/lib/server/transaction-outbound-push');
+    vi.mocked(tenantDefersTransactionNumber).mockResolvedValue(true);
+    insertSingleMock.mockResolvedValue({
+      data: { id: 'est-abc', estimate_number: null },
+      error: null,
+    });
 
     const { POST } = await import('../../app/api/buyer/estimates/route');
     const request = new Request('http://localhost/api/buyer/estimates', {
@@ -229,10 +206,31 @@ describe('buyer estimates route (POST)', () => {
         location_id: 'loc-1',
       }),
     });
-    await POST(request as never);
+    const response = await POST(request as never);
+    const body = await response.json();
 
-    await new Promise((r) => setTimeout(r, 10));
-    expect(sendRequestReceivedBuyerMock).not.toHaveBeenCalled();
-    expect(sendRequestReceivedSellerMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(body.estimate_number).toBeNull();
+    expect(body.whatsapp_sent).toBe(false);
+    expect(sendImmediateTransactionNotificationsMock).not.toHaveBeenCalled();
+  });
+
+  it('does not fire whatsapp when notification helper returns false', async () => {
+    requireBuyerAccessProfileMock.mockResolvedValue(BUYER_PROFILE);
+    sendImmediateTransactionNotificationsMock.mockResolvedValue(false);
+
+    const { POST } = await import('../../app/api/buyer/estimates/route');
+    const request = new Request('http://localhost/api/buyer/estimates', {
+      method: 'POST',
+      body: JSON.stringify({
+        items: VALID_ITEMS,
+        location_id: 'loc-1',
+      }),
+    });
+    const response = await POST(request as never);
+    const body = await response.json();
+
+    expect(body.whatsapp_sent).toBe(false);
+    expect(sendImmediateTransactionNotificationsMock).toHaveBeenCalled();
   });
 });

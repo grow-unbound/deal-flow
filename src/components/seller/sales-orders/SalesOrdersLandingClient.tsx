@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, Package } from 'lucide-react';
@@ -136,6 +136,46 @@ function SalesOrdersLandingContent({
 
   const summaryOrders = summaryData?.orders ?? [];
   const orders = landingData?.orders ?? [];
+
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7499/ingest/42159701-4a5a-4229-9bc0-a9348f871657', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '56e5c0' },
+      body: JSON.stringify({
+        sessionId: '56e5c0',
+        runId: 'pre-fix',
+        hypothesisId: 'C-client-state',
+        location: 'SalesOrdersLandingClient.tsx',
+        message: 'client landing data snapshot',
+        data: {
+          period,
+          initialOrdersCount: initialData?.orders?.length ?? null,
+          summaryOrdersCount: summaryOrders.length,
+          landingOrdersCount: orders.length,
+          isLoading,
+          isError,
+          search: routeState.search,
+          filters,
+          summaryQueryStatus: summaryQuery.status,
+          listQueryFetchStatus: summaryQuery.fetchStatus,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+  }, [
+    period,
+    initialData?.orders?.length,
+    summaryOrders.length,
+    orders.length,
+    isLoading,
+    isError,
+    routeState.search,
+    filters,
+    summaryQuery.status,
+    summaryQuery.fetchStatus,
+  ]);
 
   const filteredRows = useMemo(() => {
     return [...orders].sort((a, b) => {
@@ -314,6 +354,7 @@ function SalesOrdersLandingContent({
                     id: row.id,
                     href: `/sales-orders/${row.id}`,
                     document_number: row.order_id,
+                    realtime_badge: newEntityIds.has(row.id) ? 'new' : undefined,
                     source_kind: row.source_kind,
                     source_label: row.source_label,
                     buyer_name: row.buyer_name,

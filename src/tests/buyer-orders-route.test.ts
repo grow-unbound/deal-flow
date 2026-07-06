@@ -1,11 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const requireBuyerAccessProfileMock = vi.fn();
-const fetchWhatsappNotificationContextMock = vi.fn();
-const sendOrderReceivedBuyerMock = vi.fn().mockResolvedValue(undefined);
-const sendOrderReceivedSellerMock = vi.fn().mockResolvedValue(undefined);
+const sendImmediateTransactionNotificationsMock = vi.fn();
 const insertSingleMock = vi.fn();
-const countMock = vi.fn();
 const orderSelectMock = {
   eq: vi.fn(() => ({
     eq: vi.fn(() => ({
@@ -19,26 +16,25 @@ const orderSelectMock = {
       })),
     })),
   })),
-  count: countMock,
 };
 
 vi.mock('@/lib/server/buyer-access', () => ({
   requireBuyerAccessProfile: (...args: unknown[]) => requireBuyerAccessProfileMock(...args),
 }));
 
-vi.mock('@/lib/server/notification-context', () => ({
-  fetchWhatsappNotificationContext: (...args: unknown[]) => fetchWhatsappNotificationContextMock(...args),
+vi.mock('@/lib/server/transaction-outbound-push', () => ({
+  tenantDefersTransactionNumber: vi.fn().mockResolvedValue(false),
+}));
+
+vi.mock('@/lib/server/buyer-transaction-notify-immediate', () => ({
+  sendImmediateTransactionNotifications: (...args: unknown[]) =>
+    sendImmediateTransactionNotificationsMock(...args),
 }));
 
 vi.mock('@/lib/server/seller-features', () => ({
   getInAppCreateFlags: vi.fn().mockResolvedValue({
     create_sales_orders: true,
   }),
-}));
-
-vi.mock('@/lib/server/whatsapp', () => ({
-  sendOrderReceivedBuyer: (...args: unknown[]) => sendOrderReceivedBuyerMock(...args),
-  sendOrderReceivedSeller: (...args: unknown[]) => sendOrderReceivedSellerMock(...args),
 }));
 
 vi.mock('@/lib/supabase', () => ({
@@ -91,19 +87,11 @@ vi.mock('@/lib/posthog-server', () => ({
 describe('buyer orders route', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    countMock.mockResolvedValue({ count: 0, error: null });
     insertSingleMock.mockResolvedValue({
       data: { id: 'ord-abc', order_number: 'ORD-2026-0001' },
       error: null,
     });
-    fetchWhatsappNotificationContextMock.mockResolvedValue({
-      sellerPhone: '9001112222',
-      sellerName: 'WineYard Dist.',
-      sellerLocation: 'Mumbai Warehouse',
-      buyerPhone: '9876543210',
-      buyerName: 'Ravi',
-      etaHours: 24,
-    });
+    sendImmediateTransactionNotificationsMock.mockResolvedValue(true);
   });
 
   it('returns the preview empty-state message in preview mode', async () => {
@@ -164,13 +152,12 @@ describe('buyer orders route', () => {
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
     expect(body.whatsapp_sent).toBe(true);
-    expect(fetchWhatsappNotificationContextMock).toHaveBeenCalledWith(
-      'tenant-1',
-      'buyer-1',
-      'loc-1',
-      'order_placed',
+    expect(sendImmediateTransactionNotificationsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'order',
+        documentId: 'ord-abc',
+        documentNumber: 'ORD-2026-0001',
+      }),
     );
-    expect(sendOrderReceivedBuyerMock).toHaveBeenCalledTimes(1);
-    expect(sendOrderReceivedSellerMock).toHaveBeenCalledTimes(1);
   });
 });

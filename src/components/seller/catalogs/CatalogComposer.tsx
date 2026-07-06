@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Percent, RotateCcw, Save, Search, Send, SlidersHorizontal, TriangleAlert, Users, X } from 'lucide-react';
+import { Check, Percent, RotateCcw, Save, Search, Send, SlidersHorizontal, TriangleAlert, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { EntityAvatar, PageWrap } from '@/components/seller/layout';
 import {
@@ -19,11 +19,11 @@ import {
 } from '@/components/seller/composer/ComposerLayout';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-overlay';
 import {
@@ -41,6 +41,7 @@ import {
   useSaveCatalogComposer,
   type CatalogComposerProduct,
 } from '@/hooks/useCatalogs';
+import { SellerBuyerPickerOverlay } from '@/components/seller/shared/SellerBuyerPickerOverlay';
 import { cn, formatDate, formatInr, formatInrInput, parseInrInput } from '@/lib/utils';
 import { isoDateInput } from '@/lib/date-utils';
 import { composerPageMinHeightClass, composerThreePanelGridClass } from '@/lib/composer-viewport-classes';
@@ -85,7 +86,6 @@ const SELECT_BUYERS_SCOPE_VALUE = '__select_buyers__';
 const SETUP_CAMPAIGN_PRICES_VALUE = '__setup_campaign_prices__';
 
 type PricingMode = 'edit_each' | 'percent_off_base' | 'flat_off_base';
-type BuyerQuickFilter = 'all' | 'tier_a' | 'tier_b' | 'with_orders' | 'no_orders';
 
 function normalizeFilterLabel(value: string | null | undefined) {
   const trimmed = value?.trim();
@@ -207,7 +207,6 @@ export function CatalogComposer({
 
   const products = bootstrap?.products ?? [];
   const cohorts = bootstrap?.cohorts ?? [];
-  const buyers = bootstrap?.buyers ?? [];
   const priceLists = bootstrap?.price_lists ?? [];
   const priceListItems = bootstrap?.price_list_items ?? [];
   const buyerCount = bootstrap?.buyer_count ?? 0;
@@ -227,8 +226,6 @@ export function CatalogComposer({
   const [cohortId, setCohortId] = useState('');
   const [selectedBuyerIds, setSelectedBuyerIds] = useState<string[]>([]);
   const [buyerSheetOpen, setBuyerSheetOpen] = useState(false);
-  const [buyerSearch, setBuyerSearch] = useState('');
-  const [buyerQuickFilter, setBuyerQuickFilter] = useState<BuyerQuickFilter>('all');
   const [noteToBuyers, setNoteToBuyers] = useState('');
   const [validFrom, setValidFrom] = useState(isoDateInput(new Date()));
   const [validTo, setValidTo] = useState('');
@@ -391,24 +388,6 @@ export function CatalogComposer({
   const avgDiscountPct = filteredSelectedProducts.length > 0
     ? filteredSelectedProducts.reduce((sum, product) => sum + Math.max(0, discountPct(product) ?? 0), 0) / filteredSelectedProducts.length
     : 0;
-  const selectedBuyerSet = useMemo(() => new Set(selectedBuyerIds), [selectedBuyerIds]);
-  const visibleBuyerRows = useMemo(() => {
-    const lowered = buyerSearch.trim().toLowerCase();
-    return buyers.filter((buyer) => {
-      if (buyerQuickFilter === 'tier_a' && buyer.tier !== 'A') return false;
-      if (buyerQuickFilter === 'tier_b' && buyer.tier !== 'B') return false;
-      if (buyerQuickFilter === 'with_orders' && buyer.orders_30d <= 0) return false;
-      if (buyerQuickFilter === 'no_orders' && buyer.orders_30d > 0) return false;
-      if (!lowered) return true;
-      return [
-        buyer.business_name,
-        buyer.contact_name ?? '',
-        buyer.external_ref ?? '',
-        buyer.geography_label,
-      ].some((value) => value.toLowerCase().includes(lowered));
-    });
-  }, [buyerQuickFilter, buyerSearch, buyers]);
-  const visibleBuyerSelectedCount = visibleBuyerRows.filter((buyer) => selectedBuyerSet.has(buyer.id)).length;
   const pendingPublishSummary = [
     { label: 'Name', value: name || 'Untitled campaign' },
     { label: 'Audience', value: `${selectedAudienceName} (${selectedAudienceCount} buyers)` },
@@ -1333,131 +1312,20 @@ export function CatalogComposer({
         onDiscard={dirtyGuard.confirmDiscard}
       />
 
-      <Sheet open={buyerSheetOpen} onOpenChange={setBuyerSheetOpen}>
-        <SheetContent side="right" className="flex w-full max-w-[620px] flex-col p-0">
-          <SheetHeader className="pr-12">
-            <SheetTitle>Select buyers for campaign</SheetTitle>
-            <div className="mt-2 flex items-center gap-2 text-sm text-cream-700">
-              <Users className="h-4 w-4 text-teal-700" />
-              <span>{selectedBuyerIds.length} buyers selected</span>
-            </div>
-          </SheetHeader>
-          <SheetBody className="space-y-4 px-5 py-4">
-            <div className="flex items-center gap-2 rounded-[8px] border border-cream-300 bg-white px-3 py-2 text-base text-cream-700">
-              <Search className="h-4 w-4 shrink-0 text-cream-600" />
-              <input
-                value={buyerSearch}
-                onChange={(event) => setBuyerSearch(event.target.value)}
-                placeholder="Search buyer, contact, city"
-                className="w-full bg-transparent outline-none placeholder:text-cream-600"
-              />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {[
-                ['all', 'All'],
-                ['tier_a', 'Tier A'],
-                ['tier_b', 'Tier B'],
-                ['with_orders', 'Ordered 30d'],
-                ['no_orders', 'No orders 30d'],
-              ].map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setBuyerQuickFilter(value as BuyerQuickFilter)}
-                  className={cn(
-                    'rounded-full border px-3 py-1.5 text-sm font-medium',
-                    buyerQuickFilter === value
-                      ? 'border-teal-500 bg-teal-50 text-teal-800'
-                      : 'border-cream-300 bg-white text-cream-700 hover:bg-cream-50',
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center justify-between rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-2">
-              <span className="text-sm font-medium text-cream-800">
-                {visibleBuyerRows.length} buyers visible · {visibleBuyerSelectedCount} selected here
-              </span>
-              <button
-                type="button"
-                className="text-sm font-semibold text-teal-700 hover:text-teal-800"
-                onClick={() => {
-                  const visibleIds = visibleBuyerRows.map((buyer) => buyer.id);
-                  setSelectedBuyerIds((current) => {
-                    const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => current.includes(id));
-                    if (allVisibleSelected) return current.filter((id) => !visibleIds.includes(id));
-                    return Array.from(new Set([...current, ...visibleIds]));
-                  });
-                }}
-              >
-                {visibleBuyerRows.length > 0 && visibleBuyerRows.every((buyer) => selectedBuyerSet.has(buyer.id)) ? 'Clear visible' : 'Select visible'}
-              </button>
-            </div>
-            <div className="overflow-hidden rounded-[12px] border border-cream-300">
-              <div className="max-h-[58vh] overflow-auto">
-                {visibleBuyerRows.length === 0 ? (
-                  <div className="px-4 py-12 text-center text-base text-cream-700">No buyers match the current search and filters.</div>
-                ) : (
-                  visibleBuyerRows.map((buyer) => {
-                    const checked = selectedBuyerSet.has(buyer.id);
-                    return (
-                      <label
-                        key={buyer.id}
-                        className={cn(
-                          'flex cursor-pointer items-center gap-3 border-b border-cream-200 px-4 py-3 last:border-b-0 hover:bg-cream-50',
-                          checked && 'bg-teal-50/70',
-                        )}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(event) => {
-                            setSelectedBuyerIds((current) =>
-                              event.target.checked
-                                ? Array.from(new Set([...current, buyer.id]))
-                                : current.filter((id) => id !== buyer.id),
-                            );
-                            clearFieldError('buyers');
-                          }}
-                          className="accent-teal-500"
-                        />
-                        <EntityAvatar initials={buyer.initials} hue={buyer.hue} size={32} className="rounded-[8px]" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-base font-medium text-cream-900">{buyer.business_name}</p>
-                          <p className="mt-0.5 truncate text-xs text-cream-700">
-                            {[buyer.contact_name, buyer.geography_label, buyer.tier ? `Tier ${buyer.tier}` : 'Unsorted'].filter(Boolean).join(' · ')}
-                          </p>
-                        </div>
-                        <div className="text-right font-mono text-xs text-cream-700">
-                          <div>{buyer.orders_30d} orders</div>
-                          <div>Net {buyer.payment_terms_days}</div>
-                        </div>
-                      </label>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          </SheetBody>
-          <SheetFooter className="justify-between">
-            <Button type="button" variant="ghost" onClick={() => setSelectedBuyerIds([])}>
-              Clear selection
-            </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                setCohortId(SELECT_BUYERS_SCOPE_VALUE);
-                setBuyerSheetOpen(false);
-                clearFieldError('buyers');
-              }}
-            >
-              <Check className="h-3.5 w-3.5" />
-              Use {selectedBuyerIds.length} buyers
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+      <SellerBuyerPickerOverlay
+        open={buyerSheetOpen}
+        onOpenChange={setBuyerSheetOpen}
+        title="Select buyers for campaign"
+        selectedBuyerIds={selectedBuyerIds}
+        onSelectedBuyerIdsChange={(ids) => {
+          setSelectedBuyerIds(ids);
+          clearFieldError('buyers');
+        }}
+        onApply={() => {
+          setCohortId(SELECT_BUYERS_SCOPE_VALUE);
+          clearFieldError('buyers');
+        }}
+      />
 
       <Dialog open={confirmAction !== null} onOpenChange={(open) => setConfirmAction(open ? confirmAction : null)}>
         <DialogContent className="max-w-[440px]">

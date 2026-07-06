@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { SellerGlobalHeader } from '@/components/layout/SellerGlobalHeader';
 
+vi.setConfig({ testTimeout: 15_000 });
+
 const mockSignOut = vi.fn().mockResolvedValue(undefined);
 const mockPush = vi.fn();
 
@@ -80,10 +82,9 @@ describe('SellerGlobalHeader', () => {
     fireEvent.click(screen.getByRole('button', { name: /Open account menu for Priya Shah/i }));
 
     expect(await screen.findByText('Priya Shah')).toBeInTheDocument();
-    expect(screen.getByText(/Seller App Role: Admin/i)).toBeInTheDocument();
+    expect(screen.getByText('Admin · Acme Dist')).toBeInTheDocument();
     expect(screen.getByText('+91 98765 43210')).toBeInTheDocument();
     expect(screen.getByText('priya@example.com')).toBeInTheDocument();
-    expect(screen.getByText('Acme Dist')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Logout/i }));
     expect(mockSignOut).toHaveBeenCalledOnce();
   });

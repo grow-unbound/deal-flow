@@ -517,7 +517,7 @@ Deno.serve(async (req: Request) => {
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
         await markJobFailed(admin, jobIds[phase], message);
-        await setIntegrationStatus(admin, integration.id, 'sync_failed');
+        await setIntegrationStatus(admin, integration.id, 'connected');
         return json({
           ok: false,
           status: 'failed',

@@ -124,7 +124,7 @@ export function DatePicker({
     return (
       <div className={cn('flex flex-col gap-1.5', disabled && 'pointer-events-none opacity-60', className)}>
         {label ? (
-          <label htmlFor={inputId} className="text-sm font-medium text-cream-800">
+          <label htmlFor={inputId} className="text-body-sm font-medium text-cream-800">
             {label}
           </label>
         ) : null}

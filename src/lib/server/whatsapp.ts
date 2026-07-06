@@ -1,6 +1,11 @@
 import { formatWhatsappDestination } from '@/lib/phone';
-import { whatsAppClient, WhatsAppConfigError } from '@/lib/server/whatsapp-client';
-import { logWhatsAppMessage, type WhatsAppTriggerSource } from '@/lib/server/whatsapp-ledger';
+import {
+  enqueueWhatsAppMessage,
+  getPlatformTenantId,
+  triggerWhatsAppDispatch,
+  type WhatsAppSendPayload,
+} from '@/lib/server/whatsapp-enqueue';
+import type { WhatsAppTriggerSource } from '@/lib/server/whatsapp-ledger';
 
 export interface WhatsappNotificationContext {
   sellerPhone: string;
@@ -9,9 +14,6 @@ export interface WhatsappNotificationContext {
   buyerPhone: string;
   buyerName: string;
   etaHours: number;
-  // Optional: only present when the caller has tenant/buyer context available
-  // (order/estimate notification routes). Used purely for the app.whatsapp_messages
-  // ledger (Phase A instrumentation) — sending still works without these.
   tenantId?: string;
   buyerId?: string;
 }
@@ -25,76 +27,59 @@ const WHATSAPP_TEMPLATE_LOCALE = 'en';
 const WHATSAPP_OTP_TEMPLATE_LOCALE = 'en_US';
 const WHATSAPP_LOGIN_PRODUCT_NAME = 'Login to Yukti';
 
-function getWhatsappConfig() {
-  return {
-    token: process.env.WHATSAPP_TOKEN,
-    phoneNumberId: process.env.NEXT_PUBLIC_WHATSAPP_PHONE_NUMBER_ID,
-  };
-}
-
-interface SendWhatsappTemplateLedgerContext {
-  tenantId?: string;
+interface EnqueueTemplateContext {
+  tenantId: string;
   buyerId?: string;
   metaCategory: 'marketing' | 'utility' | 'authentication' | 'service';
   triggerSource: WhatsAppTriggerSource;
+  relatedEntityType?: 'estimates' | 'orders';
+  relatedEntityId?: string;
 }
 
-/**
- * Sends a WhatsApp template message via WhatsAppClient and records the send
- * in the app.whatsapp_messages ledger (Phase A instrumentation — see
- * DealFlow_WhatsApp-Broadcast-Spec_v4.md §5.4). Behavior is unchanged from
- * before the ledger existed: returns silently if credentials/destination are
- * missing, throws on a failed Meta response.
- */
-async function sendWhatsappTemplate(
+function buildSendPayload(
+  templateName: string,
+  locale: string,
+  bodyParams: WhatsappTemplateBodyParam[],
+  buttonParam: string,
+): WhatsAppSendPayload {
+  return {
+    meta_template_name: templateName,
+    locale,
+    body_params: bodyParams.map((p) => ({
+      text: p.text,
+      ...(p.parameterName ? { parameter_name: p.parameterName } : {}),
+    })),
+    button_params: [{ type: 'url', index: '0', text: buttonParam }],
+  };
+}
+
+async function enqueueWhatsappTemplate(
   to: string,
   templateName: string,
   locale: string,
   bodyParams: WhatsappTemplateBodyParam[],
   buttonParam: string,
-  ledgerCtx: SendWhatsappTemplateLedgerContext,
-): Promise<void> {
-  const { token, phoneNumberId } = getWhatsappConfig();
-  if (!token || !phoneNumberId) return;
-
+  ctx: EnqueueTemplateContext,
+): Promise<boolean> {
   const destination = formatWhatsappDestination(to);
-  if (!destination) return;
+  if (!destination) return false;
 
-  try {
-    const result = await whatsAppClient.sendTemplate({
-      to: destination,
-      templateName,
-      locale,
-      bodyParams,
-      buttonParams: [{ type: 'url', index: '0', text: buttonParam }],
-    });
+  const result = await enqueueWhatsAppMessage({
+    tenantId: ctx.tenantId,
+    buyerId: ctx.buyerId ?? null,
+    recipientPhone: destination,
+    metaCategory: ctx.metaCategory,
+    triggerSource: ctx.triggerSource,
+    sendPayload: buildSendPayload(templateName, locale, bodyParams, buttonParam),
+    relatedEntityType: ctx.relatedEntityType ?? null,
+    relatedEntityId: ctx.relatedEntityId ?? null,
+  });
 
-    if (ledgerCtx.tenantId) {
-      await logWhatsAppMessage({
-        tenantId: ledgerCtx.tenantId,
-        buyerId: ledgerCtx.buyerId ?? null,
-        recipientPhone: destination,
-        metaCategory: ledgerCtx.metaCategory,
-        triggerSource: ledgerCtx.triggerSource,
-        status: 'sent',
-        providerMessageId: result.providerMessageId,
-      });
-    }
-  } catch (error) {
-    if (ledgerCtx.tenantId) {
-      await logWhatsAppMessage({
-        tenantId: ledgerCtx.tenantId,
-        buyerId: ledgerCtx.buyerId ?? null,
-        recipientPhone: destination,
-        metaCategory: ledgerCtx.metaCategory,
-        triggerSource: ledgerCtx.triggerSource,
-        status: 'failed',
-        failureReason: error instanceof Error ? error.message : String(error),
-      });
-    }
-    if (error instanceof WhatsAppConfigError) return;
-    throw error;
+  if (result.enqueued) {
+    triggerWhatsAppDispatch();
   }
+
+  return result.enqueued || result.skipped === 'duplicate';
 }
 
 export async function sendOrderReceivedSeller(
@@ -104,7 +89,8 @@ export async function sendOrderReceivedSeller(
   totalAmount: number,
   itemCount: number,
 ): Promise<void> {
-  await sendWhatsappTemplate(
+  if (!ctx.tenantId) return;
+  await enqueueWhatsappTemplate(
     ctx.sellerPhone,
     'order_received_seller',
     WHATSAPP_TEMPLATE_LOCALE,
@@ -123,6 +109,8 @@ export async function sendOrderReceivedSeller(
       buyerId: ctx.buyerId,
       metaCategory: 'utility',
       triggerSource: 'order_placed',
+      relatedEntityType: 'orders',
+      relatedEntityId: orderId,
     },
   );
 }
@@ -134,7 +122,8 @@ export async function sendOrderReceivedBuyer(
   totalAmount: number,
   itemCount: number,
 ): Promise<void> {
-  await sendWhatsappTemplate(
+  if (!ctx.tenantId) return;
+  await enqueueWhatsappTemplate(
     ctx.buyerPhone,
     'order_received_buyer',
     WHATSAPP_TEMPLATE_LOCALE,
@@ -153,6 +142,8 @@ export async function sendOrderReceivedBuyer(
       buyerId: ctx.buyerId,
       metaCategory: 'utility',
       triggerSource: 'order_placed',
+      relatedEntityType: 'orders',
+      relatedEntityId: orderId,
     },
   );
 }
@@ -164,7 +155,8 @@ export async function sendRequestReceivedSeller(
   totalAmount: number,
   itemCount: number,
 ): Promise<void> {
-  await sendWhatsappTemplate(
+  if (!ctx.tenantId) return;
+  await enqueueWhatsappTemplate(
     ctx.sellerPhone,
     'request_received_seller',
     WHATSAPP_TEMPLATE_LOCALE,
@@ -183,6 +175,8 @@ export async function sendRequestReceivedSeller(
       buyerId: ctx.buyerId,
       metaCategory: 'utility',
       triggerSource: 'enquiry_received',
+      relatedEntityType: 'estimates',
+      relatedEntityId: estimateId,
     },
   );
 }
@@ -194,7 +188,8 @@ export async function sendRequestReceivedBuyer(
   totalAmount: number,
   itemCount: number,
 ): Promise<void> {
-  await sendWhatsappTemplate(
+  if (!ctx.tenantId) return;
+  await enqueueWhatsappTemplate(
     ctx.buyerPhone,
     'request_received_buyer',
     WHATSAPP_TEMPLATE_LOCALE,
@@ -213,71 +208,51 @@ export async function sendRequestReceivedBuyer(
       buyerId: ctx.buyerId,
       metaCategory: 'utility',
       triggerSource: 'enquiry_received',
+      relatedEntityType: 'estimates',
+      relatedEntityId: estimateId,
     },
   );
 }
 
 /**
- * Sends the login OTP template. Ledger writes here are Phase A instrumentation
- * (§3.1 — "retrofitted through the same app.whatsapp_messages ledger so
- * utility/auth consumption is tracked identically to broadcast consumption").
- * tenantId is optional since OTP callers (phone-otp/send) don't always resolve
- * a single tenant before the OTP is sent — when absent, the send still happens
- * exactly as before, just without a ledger row.
+ * Enqueues the login OTP template. Billed to WHATSAPP_PLATFORM_TENANT_ID.
  */
-export async function sendLoginOtpWhatsapp(
-  phone: string,
-  otp: string,
-  ledgerCtx?: { tenantId?: string; buyerId?: string },
-) {
-  const { token, phoneNumberId } = getWhatsappConfig();
+export async function sendLoginOtpWhatsapp(phone: string, otp: string): Promise<void> {
   const adminNumber = process.env.WHATSAPP_ADMIN_NUMBER;
+  const platformTenantId = getPlatformTenantId();
 
-  if (!token || !phoneNumberId || !adminNumber) {
+  if (!adminNumber) {
     throw new Error('Missing WhatsApp OTP configuration');
+  }
+  if (!platformTenantId) {
+    throw new Error('Missing WHATSAPP_PLATFORM_TENANT_ID for OTP billing');
   }
 
   const destination = formatWhatsappDestination(phone);
+  if (!destination) {
+    throw new Error('Invalid phone number for OTP');
+  }
 
-  try {
-    const result = await whatsAppClient.sendTemplate({
-      to: destination,
-      templateName: 'login_otp',
+  const result = await enqueueWhatsAppMessage({
+    tenantId: platformTenantId,
+    recipientPhone: destination,
+    metaCategory: 'authentication',
+    triggerSource: 'otp_login',
+    sendPayload: {
+      meta_template_name: 'login_otp',
       locale: WHATSAPP_OTP_TEMPLATE_LOCALE,
-      bodyParams: [
+      body_params: [
         { text: otp },
         { text: WHATSAPP_LOGIN_PRODUCT_NAME },
         { text: adminNumber },
       ],
-      buttonParams: [{ type: 'url', index: '0', text: otp }],
-    });
+      button_params: [{ type: 'url', index: '0', text: otp }],
+    },
+  });
 
-    if (ledgerCtx?.tenantId) {
-      await logWhatsAppMessage({
-        tenantId: ledgerCtx.tenantId,
-        buyerId: ledgerCtx.buyerId ?? null,
-        recipientPhone: destination,
-        metaCategory: 'authentication',
-        triggerSource: 'otp_login',
-        status: 'sent',
-        providerMessageId: result.providerMessageId,
-      });
-    }
-  } catch (error) {
-    if (ledgerCtx?.tenantId) {
-      await logWhatsAppMessage({
-        tenantId: ledgerCtx.tenantId,
-        buyerId: ledgerCtx.buyerId ?? null,
-        recipientPhone: destination,
-        metaCategory: 'authentication',
-        triggerSource: 'otp_login',
-        status: 'failed',
-        failureReason: error instanceof Error ? error.message : String(error),
-      });
-    }
-    if (error instanceof WhatsAppConfigError) {
-      throw new Error('Missing WhatsApp OTP configuration');
-    }
-    throw error;
+  if (!result.enqueued && result.skipped !== 'duplicate') {
+    throw new Error('Failed to enqueue OTP WhatsApp message');
   }
+
+  triggerWhatsAppDispatch();
 }

@@ -382,7 +382,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const invoices = await optionalSelect(db, 'invoices', 'id, invoice_number, invoice_date, created_at, status, outstanding_balance, total_amount, location_id, order_id, estimate_id, is_buyer_app_invoice, place_of_supply, due_date', claims.tenant_id, id);
   const payments = await optionalSelect(db, 'payments', 'id, paid_at, created_at, amount, status, mode', claims.tenant_id, id);
   const creditNotes = await optionalSelect(db, 'credit_notes', 'id, issued_at, created_at, amount, reason, status', claims.tenant_id, id);
-  const catalogViews = await optionalSelect(db, 'catalog_views', 'id, viewed_at, created_at, campaign_id', claims.tenant_id, id);
+  const catalogViews = await optionalSelect(db, 'campaign_views', 'id, viewed_at, created_at, campaign_id', claims.tenant_id, id);
   const scopedInvoices = claims.role === 'seller_assistant' && (claims.location_ids?.length ?? 0) > 0
     ? invoices.filter((invoice: any) => invoice.location_id && claims.location_ids?.includes(String(invoice.location_id)))
     : invoices;

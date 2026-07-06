@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isSameDay, startOfDay } from '@/lib/date-utils';
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 
 interface CalendarDay {
   day: number;
@@ -22,10 +22,11 @@ function buildCalendarDays(viewDate: Date): CalendarDay[] {
   const month = viewDate.getMonth();
   const daysInMonth = getDaysInMonth(year, month);
   const firstDay = new Date(year, month, 1).getDay();
+  const mondayOffset = (firstDay + 6) % 7;
   const days: CalendarDay[] = [];
 
   const daysInPrevMonth = getDaysInMonth(year, month - 1);
-  for (let i = firstDay - 1; i >= 0; i -= 1) {
+  for (let i = mondayOffset - 1; i >= 0; i -= 1) {
     const day = daysInPrevMonth - i;
     days.push({
       day,
@@ -108,7 +109,7 @@ export function Calendar({ value, onChange, minDate, maxDate, rangeStart, rangeE
         >
           <ChevronLeft size={16} />
         </button>
-        <div className="flex-1 text-center font-display text-base font-semibold tracking-[-0.01em] text-cream-900">
+        <div className="flex-1 text-center text-base font-semibold tracking-[-0.02em] text-cream-900">
           {monthYear}
         </div>
         <button
@@ -125,7 +126,7 @@ export function Calendar({ value, onChange, minDate, maxDate, rangeStart, rangeE
         {WEEKDAYS.map((day) => (
           <div
             key={day}
-            className="px-1 py-2 text-center text-xs font-semibold uppercase tracking-[0.08em] text-cream-700"
+            className="px-1 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-cream-700"
           >
             {day}
           </div>
@@ -156,16 +157,19 @@ export function Calendar({ value, onChange, minDate, maxDate, rangeStart, rangeE
               disabled={isDisabled}
               onClick={() => handleDaySelect(dayObj)}
               className={cn(
-                'flex aspect-square w-full items-center justify-center rounded-[8px] border text-base font-medium transition-colors',
-                dayObj.isCurrentMonth ? 'text-cream-900' : 'border-transparent bg-transparent text-cream-300',
+                'relative flex aspect-square w-full items-center justify-center rounded-[10px] text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B5642F]/20',
+                dayObj.isCurrentMonth ? 'text-cream-900' : 'bg-transparent text-cream-300',
                 isDisabled && dayObj.isCurrentMonth && 'cursor-not-allowed bg-cream-50 text-cream-400',
-                !isDisabled && dayObj.isCurrentMonth && 'border-transparent bg-white hover:bg-cream-50',
-                isInRange && !isSelected && 'bg-teal-50 text-teal-800 hover:bg-teal-100',
-                isRangeEndpoint && 'border-teal-500 bg-teal-500 font-semibold text-cream-50 hover:bg-teal-500',
-                isSelected && 'border-teal-500 bg-teal-500 font-semibold text-cream-50 hover:bg-teal-500',
-                isToday && !isSelected && 'border-ember-400 text-ember-500',
+                !isDisabled && dayObj.isCurrentMonth && 'bg-white hover:bg-[#F7F2EC]',
+                isInRange && !isSelected && 'bg-[#F6E8DA] text-[#5B4635] hover:bg-[#F1DFC8]',
+                isRangeEndpoint && 'border border-[#B5642F] bg-[#B5642F] font-semibold text-white hover:bg-[#B5642F]',
+                isSelected && 'border border-[#B5642F] bg-[#B5642F] font-semibold text-white hover:bg-[#B5642F]',
+                isToday && !isSelected && 'border border-[#D9894C] text-[#5B4635]',
               )}
             >
+              {isToday && !isSelected ? (
+                <span className="absolute bottom-1 h-1 w-1 rounded-full bg-[#B5642F]" aria-hidden />
+              ) : null}
               {dayObj.day}
             </button>
           );

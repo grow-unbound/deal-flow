@@ -1,5 +1,6 @@
 import type { NextResponse } from 'next/server';
 import {
+  BUYER_PREVIEW_CONFIRMATION_COOKIE,
   BUYER_PREVIEW_TTL_SECONDS,
   createBuyerPreviewToken,
 } from '@/lib/buyer-preview';
@@ -9,6 +10,7 @@ interface SetBuyerPreviewCookiesInput {
   shareToken?: string | null;
   buyerId?: string | null;
   now?: number;
+  requiresConfirmation?: boolean;
 }
 
 export async function setBuyerPreviewCookies(
@@ -36,4 +38,16 @@ export async function setBuyerPreviewCookies(
     ...cookieOptions,
     httpOnly: false,
   });
+  if (input.requiresConfirmation) {
+    response.cookies.set(BUYER_PREVIEW_CONFIRMATION_COOKIE, '1', {
+      ...cookieOptions,
+      httpOnly: false,
+    });
+  } else {
+    response.cookies.set(BUYER_PREVIEW_CONFIRMATION_COOKIE, '', {
+      ...cookieOptions,
+      httpOnly: false,
+      maxAge: 0,
+    });
+  }
 }

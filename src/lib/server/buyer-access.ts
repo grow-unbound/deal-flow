@@ -12,6 +12,8 @@ export interface BuyerLoginCandidate {
   tenant_id: string;
   tenant_name: string;
   tenant_slug: string;
+  tenant_whatsapp_number: string | null;
+  tenant_whatsapp_display_name: string | null;
   buyer_id: string;
   role: 'buyer_admin' | 'buyer_assistant';
   principal_type: 'buyer' | 'delegate';
@@ -27,6 +29,12 @@ export interface BuyerLoginCandidate {
 interface TenantSettingsRow {
   tenant_id: string;
   settings: Record<string, unknown> | null;
+}
+
+interface TenantBuyerAppMetadata {
+  enabled: boolean;
+  whatsapp_number: string | null;
+  whatsapp_display_name: string | null;
 }
 
 interface BuyerRow {
@@ -72,13 +80,33 @@ export interface BuyerVisibleCatalog {
 
 const BUYER_SESSION_PASSWORD_LENGTH = 32;
 
-function buyerAppEnabledFromSettings(settings: Record<string, unknown> | null | undefined): boolean {
+function buyerAppMetadataFromSettings(settings: Record<string, unknown> | null | undefined): TenantBuyerAppMetadata {
   const buyerApp = settings?.buyer_app;
   if (buyerApp && typeof buyerApp === 'object' && 'enabled' in buyerApp) {
-    return Boolean((buyerApp as { enabled?: unknown }).enabled);
+    const typedBuyerApp = buyerApp as {
+      enabled?: unknown;
+      whatsapp_number?: unknown;
+      whatsapp_display_name?: unknown;
+    };
+
+    return {
+      enabled: Boolean(typedBuyerApp.enabled),
+      whatsapp_number:
+        typeof typedBuyerApp.whatsapp_number === 'string' && typedBuyerApp.whatsapp_number.trim()
+          ? typedBuyerApp.whatsapp_number.trim()
+          : null,
+      whatsapp_display_name:
+        typeof typedBuyerApp.whatsapp_display_name === 'string' && typedBuyerApp.whatsapp_display_name.trim()
+          ? typedBuyerApp.whatsapp_display_name.trim()
+          : null,
+    };
   }
 
-  return DEFAULT_TENANT_SETTINGS_STORED.buyer_app.enabled;
+  return {
+    enabled: DEFAULT_TENANT_SETTINGS_STORED.buyer_app.enabled,
+    whatsapp_number: DEFAULT_TENANT_SETTINGS_STORED.buyer_app.whatsapp_number || null,
+    whatsapp_display_name: DEFAULT_TENANT_SETTINGS_STORED.buyer_app.whatsapp_display_name || null,
+  };
 }
 
 function randomPassword() {
@@ -90,7 +118,7 @@ function syntheticBuyerEmail(phone: string, buyerId: string) {
   return `buyer-${phone}-${buyerId}@buyers.yukti.local`;
 }
 
-async function loadTenantBuyerAppFlags(tenantIds: string[]): Promise<Map<string, boolean>> {
+async function loadTenantBuyerAppMetadata(tenantIds: string[]): Promise<Map<string, TenantBuyerAppMetadata>> {
   if (!supabaseAdmin || tenantIds.length === 0) return new Map();
 
   const [tenantSettingsRes, tenantsRes] = await Promise.all([
@@ -117,7 +145,7 @@ async function loadTenantBuyerAppFlags(tenantIds: string[]): Promise<Map<string,
   return new Map(
     ((tenantsRes.data ?? []) as Array<{ id: string; settings: Record<string, unknown> | null }>).map((row) => [
       row.id,
-      buyerAppEnabledFromSettings(tenantSettingsById.get(row.id) ?? row.settings),
+      buyerAppMetadataFromSettings(tenantSettingsById.get(row.id) ?? row.settings),
     ]),
   );
 }
@@ -190,6 +218,8 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
         tenant_id: String(row.tenant_id),
         tenant_name: String(tenant.business_name ?? ''),
         tenant_slug: String(tenant.slug ?? ''),
+        tenant_whatsapp_number: null,
+        tenant_whatsapp_display_name: null,
         buyer_id: String(row.id),
         role: 'buyer_admin',
         principal_type: 'buyer',
@@ -217,6 +247,8 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
         tenant_id: String(buyer.tenant_id ?? ''),
         tenant_name: String(tenant.business_name ?? ''),
         tenant_slug: String(tenant.slug ?? ''),
+        tenant_whatsapp_number: null,
+        tenant_whatsapp_display_name: null,
         buyer_id: String(row.buyer_id ?? ''),
         role: (String(row.role ?? 'buyer_assistant') as 'buyer_admin' | 'buyer_assistant'),
         principal_type: 'delegate',
@@ -232,11 +264,13 @@ export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLogi
       return candidate;
     });
 
-  const flagsByTenant = await loadTenantBuyerAppFlags(Array.from(tenantIds));
+  const metadataByTenant = await loadTenantBuyerAppMetadata(Array.from(tenantIds));
 
   return [...ownerCandidates, ...delegateCandidates].map((candidate) => ({
     ...candidate,
-    tenant_app_enabled: flagsByTenant.get(candidate.tenant_id) === true,
+    tenant_app_enabled: metadataByTenant.get(candidate.tenant_id)?.enabled === true,
+    tenant_whatsapp_number: metadataByTenant.get(candidate.tenant_id)?.whatsapp_number ?? null,
+    tenant_whatsapp_display_name: metadataByTenant.get(candidate.tenant_id)?.whatsapp_display_name ?? null,
   }));
 }
 
@@ -477,10 +511,10 @@ export async function requireBuyerAccessProfile(request: NextRequest): Promise<B
     return null;
   }
 
-  const tenantSettingsEnabled = buyerAppEnabledFromSettings(
+  const tenantSettingsEnabled = buyerAppMetadataFromSettings(
     (settingsRes.data as TenantSettingsRow | null)?.settings
     ?? (tenantRes.data?.settings as Record<string, unknown> | null | undefined),
-  );
+  ).enabled;
 
   if (!tenantSettingsEnabled) {
     return null;
@@ -575,6 +609,8 @@ export async function findSellerLoginCandidates(phone: string): Promise<LoginOtp
     tenant_id: row.tenant_id,
     tenant_name: row.tenant_name,
     tenant_slug: row.tenant_slug,
+    tenant_whatsapp_number: null,
+    tenant_whatsapp_display_name: null,
     role: row.role,
     buyer_id: null,
     principal_type: 'seller' as const,
@@ -600,6 +636,8 @@ export async function findAllLoginCandidates(phone: string): Promise<LoginOtpCan
       tenant_id: c.tenant_id,
       tenant_name: c.tenant_name,
       tenant_slug: c.tenant_slug,
+      tenant_whatsapp_number: c.tenant_whatsapp_number,
+      tenant_whatsapp_display_name: c.tenant_whatsapp_display_name,
       role: c.role,
       buyer_id: c.buyer_id,
       principal_type: c.principal_type as 'buyer' | 'delegate',
@@ -626,6 +664,8 @@ export function toBuyerLoginCandidate(c: LoginOtpCandidate): BuyerLoginCandidate
     tenant_id: c.tenant_id,
     tenant_name: c.tenant_name,
     tenant_slug: c.tenant_slug,
+    tenant_whatsapp_number: c.tenant_whatsapp_number,
+    tenant_whatsapp_display_name: c.tenant_whatsapp_display_name,
     buyer_id: c.buyer_id,
     role: c.role as 'buyer_admin' | 'buyer_assistant',
     principal_type: c.principal_type as 'buyer' | 'delegate',

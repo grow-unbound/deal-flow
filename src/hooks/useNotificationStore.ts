@@ -66,6 +66,24 @@ export function useNotificationStore(userId: string | null) {
     });
   }, [userId]);
 
+  const patchByEntityId = useCallback((
+    entityType: AppNotification['entityType'],
+    entityId: string,
+    patch: Pick<AppNotification, 'title' | 'body'>,
+  ) => {
+    setNotifications((prev) => {
+      let changed = false;
+      const next = prev.map((n) => {
+        if (n.entityType !== entityType || n.entityId !== entityId) return n;
+        changed = true;
+        return { ...n, ...patch };
+      });
+      if (!changed) return prev;
+      if (userId) saveToStorage(userId, next);
+      return next;
+    });
+  }, [userId]);
+
   const markRead = useCallback((id: string) => {
     setNotifications((prev) => {
       const next = prev.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n));
@@ -85,5 +103,5 @@ export function useNotificationStore(userId: string | null) {
 
   const unreadCount = notifications.filter((n) => !n.readAt).length;
 
-  return { notifications, add, markRead, markAllRead, unreadCount };
+  return { notifications, add, patchByEntityId, markRead, markAllRead, unreadCount };
 }

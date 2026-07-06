@@ -5,6 +5,7 @@ const pushMock = vi.fn();
 const useTenantEstimatesMock = vi.fn();
 const useTenantEstimatesInfiniteMock = vi.fn();
 const useFlagMock = vi.fn();
+const useCreateFlagsMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
@@ -19,6 +20,10 @@ vi.mock('@/hooks/useEstimates', () => ({
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlag: (...args: unknown[]) => useFlagMock(...args),
   useFlagState: (...args: unknown[]) => useFlagMock(...args),
+}));
+
+vi.mock('@/hooks/useCreateFlags', () => ({
+  useCreateFlags: () => useCreateFlagsMock(),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -167,7 +172,13 @@ describe('estimates landing page', () => {
     useTenantEstimatesMock.mockReset();
     useTenantEstimatesInfiniteMock.mockReset();
     useFlagMock.mockReset();
+    useCreateFlagsMock.mockReset();
     useFlagMock.mockReturnValue(true);
+    useCreateFlagsMock.mockReturnValue({
+      createEstimates: true,
+      createSalesOrders: true,
+      createInvoices: true,
+    });
     useTenantEstimatesMock.mockReturnValue({
       isLoading: false,
       isError: false,

@@ -23,7 +23,7 @@ export function SellerRealtimeProvider({ children }: { children: React.ReactNode
   const tenantId = currentTenantId ?? '';
   const locationIds = tenantProfile?.location_ids ?? null;
 
-  const { notifications, add, markRead, markAllRead, unreadCount } = useNotificationStore(userId);
+  const { notifications, add, patchByEntityId, markRead, markAllRead, unreadCount } = useNotificationStore(userId);
 
   const handleNew = useCallback((n: AppNotification) => {
     add(n);
@@ -38,6 +38,7 @@ export function SellerRealtimeProvider({ children }: { children: React.ReactNode
     tenantId,
     locationIds,
     onNew: handleNew,
+    onPatch: patchByEntityId,
   });
 
   const value = useMemo(

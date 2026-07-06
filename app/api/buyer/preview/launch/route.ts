@@ -55,6 +55,7 @@ export async function GET(request: NextRequest) {
       tenantId: claims.tenant_id,
       shareToken,
       buyerId,
+      requiresConfirmation: !buyerId,
     });
 
     return response;

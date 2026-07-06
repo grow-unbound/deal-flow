@@ -63,7 +63,7 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
       quantity: 1,
       line_total: item.price,
       tenant_category_id: item.category_id ?? undefined,
-    });
+    }, item.campaign_id);
   }
 
   function handleDecrement(e: React.MouseEvent): void {

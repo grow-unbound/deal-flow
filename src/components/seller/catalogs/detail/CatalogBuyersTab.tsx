@@ -5,7 +5,7 @@ import { FilterBar, LandingTable, StatusTag } from '@/components/seller/layout';
 import type { CatalogDetailResponse } from '@/hooks/useCatalogs';
 import { formatCompactInr, formatDate } from '@/lib/utils';
 
-type SortOption = 'GMV (high → low)' | 'Orders (high → low)' | 'Recently opened' | 'Buyer name (A → Z)';
+type SortOption = 'GMV (high → low)' | 'Conversions (high → low)' | 'Recently opened' | 'Buyer name (A → Z)';
 
 interface CatalogBuyersTabProps {
   buyers: CatalogDetailResponse['buyers'];
@@ -13,7 +13,7 @@ interface CatalogBuyersTabProps {
 }
 
 function statusTone(status: CatalogDetailResponse['buyers'][number]['opened_status']) {
-  if (status === 'Purchased') return 'success';
+  if (status === 'Converted') return 'success';
   if (status === 'Opened') return 'success';
   return 'warning';
 }
@@ -25,7 +25,7 @@ export function CatalogBuyersTab({ buyers, selectedCohort }: CatalogBuyersTabPro
 
   const totals = useMemo(() => ({
     opens: buyers.filter((buyer) => buyer.opened_status !== 'Not yet').length,
-    purchasers: buyers.filter((buyer) => buyer.opened_status === 'Purchased').length,
+    converted: buyers.filter((buyer) => buyer.opened_status === 'Converted').length,
     gmv: buyers.reduce((sum, buyer) => sum + buyer.spend, 0),
   }), [buyers]);
 
@@ -33,14 +33,14 @@ export function CatalogBuyersTab({ buyers, selectedCohort }: CatalogBuyersTabPro
     const query = search.trim().toLowerCase();
     return buyers
       .filter((buyer) => {
-        if (activeChip === 'Purchased') return buyer.opened_status === 'Purchased';
+        if (activeChip === 'Converted') return buyer.opened_status === 'Converted';
         if (activeChip === 'Opened') return buyer.opened_status === 'Opened';
         if (activeChip === 'Not yet') return buyer.opened_status === 'Not yet';
         return true;
       })
       .filter((buyer) => !query || buyer.buyer_name.toLowerCase().includes(query) || buyer.city.toLowerCase().includes(query))
       .sort((a, b) => {
-        if (sortBy === 'Orders (high → low)') return b.orders - a.orders;
+        if (sortBy === 'Conversions (high → low)') return b.orders - a.orders;
         if (sortBy === 'Recently opened') {
           return new Date(b.last_opened_at ?? 0).getTime() - new Date(a.last_opened_at ?? 0).getTime();
         }
@@ -66,8 +66,8 @@ export function CatalogBuyersTab({ buyers, selectedCohort }: CatalogBuyersTabPro
               <p className="mt-1 font-display text-2xl leading-none text-cream-950">{totals.opens}</p>
             </div>
             <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-2 text-right">
-              <p className="font-mono text-xs uppercase tracking-[0.08em] text-cream-700">Purchasers</p>
-              <p className="mt-1 font-display text-2xl leading-none text-cream-950">{totals.purchasers}</p>
+              <p className="font-mono text-xs uppercase tracking-[0.08em] text-cream-700">Converted</p>
+              <p className="mt-1 font-display text-2xl leading-none text-cream-950">{totals.converted}</p>
             </div>
             <div className="rounded-[10px] border border-cream-300 bg-cream-50 px-3 py-2 text-right">
               <p className="font-mono text-xs uppercase tracking-[0.08em] text-cream-700">Attributed GMV</p>
@@ -81,14 +81,14 @@ export function CatalogBuyersTab({ buyers, selectedCohort }: CatalogBuyersTabPro
         <FilterBar
           count={`${filtered.length} buyers`}
           searchPlaceholder="Search buyer or city…"
-          chips={['All buyers', 'Purchased', 'Opened', 'Not yet']}
+          chips={['All buyers', 'Converted', 'Opened', 'Not yet']}
           activeChip={activeChip}
           sortBy={sortBy}
           hideViewToggle
           searchValue={search}
           onSearchChange={setSearch}
           onChipChange={setActiveChip}
-          sortOptions={['GMV (high → low)', 'Orders (high → low)', 'Recently opened', 'Buyer name (A → Z)']}
+          sortOptions={['GMV (high → low)', 'Conversions (high → low)', 'Recently opened', 'Buyer name (A → Z)']}
           onSortChange={(value) => setSortBy(value as SortOption)}
         />
 
@@ -97,10 +97,10 @@ export function CatalogBuyersTab({ buyers, selectedCohort }: CatalogBuyersTabPro
             { label: 'Buyer', className: 'px-5' },
             { label: 'Audience', className: 'px-5' },
             { label: 'Opened', className: 'px-5' },
-            { label: 'Orders', align: 'right', className: 'px-5' },
+            { label: 'Conversions', align: 'right', className: 'px-5' },
             { label: 'GMV', align: 'right', className: 'px-5' },
             { label: 'Last opened', className: 'px-5' },
-            { label: 'Last order', className: 'px-5' },
+            { label: 'Last conversion', className: 'px-5' },
           ]}
         >
           {filtered.map((buyer) => (
