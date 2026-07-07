@@ -8,6 +8,7 @@ import {
   loadTenantIntegration,
   resolveSyncImportActorId,
   updatePhaseJob,
+  isSyncJobCancelled,
 } from '../_shared/sync-utils.ts';
 import { createZohoAdapter } from '../_shared/integrations-zoho.ts';
 import { persistZohoEntityPage } from '../_shared/integrations-persist.ts';
@@ -112,18 +113,6 @@ async function loadLineItemJob(
     id: String(data.id),
     since_date: typeof data.since_date === 'string' ? data.since_date : null,
   };
-}
-
-async function setIntegrationStatus(
-  admin: AdminClient,
-  integrationId: string,
-  status: 'connected' | 'syncing',
-): Promise<void> {
-  await admin
-    .schema('app')
-    .from('tenant_integrations')
-    .update({ status, updated_at: nowIso() })
-    .eq('id', integrationId);
 }
 
 async function countRows(
@@ -314,6 +303,10 @@ Deno.serve(async (req: Request) => {
     const startedAt = nowIso();
     const startedMs = Date.now();
 
+    if (await isSyncJobCancelled(admin, jobId)) {
+      return jsonResponse({ ok: false, phase: PHASE, records_synced: 0, has_more: false, next_cursor: null, cancelled: true });
+    }
+
     await updatePhaseJob(admin, jobId, {
       status: 'running',
       started_at: startedAt,
@@ -345,6 +338,10 @@ Deno.serve(async (req: Request) => {
     };
 
     for (const [index, row] of batch.rows.entries()) {
+      if (await isSyncJobCancelled(admin, jobId)) {
+        return jsonResponse({ ok: false, phase: PHASE, records_synced: 0, has_more: false, next_cursor: null, cancelled: true });
+      }
+
       const detail = row.kind === 'estimates'
         ? await adapter.fetchEstimateById(row.external_ref)
         : row.kind === 'orders'
@@ -413,7 +410,6 @@ Deno.serve(async (req: Request) => {
         next_cursor: nextCursor,
         progress,
       });
-      await setIntegrationStatus(admin, integration.id, 'connected');
       return jsonResponse({
         ok: true,
         phase: PHASE,
@@ -440,7 +436,6 @@ Deno.serve(async (req: Request) => {
         by_type: Object.fromEntries(KIND_ORDER.map((kind) => [labelForKind(kind), counts[kind]])),
       },
     });
-    await setIntegrationStatus(admin, integration.id, 'connected');
 
     return jsonResponse({
       ok: true,
@@ -459,10 +454,6 @@ Deno.serve(async (req: Request) => {
         completed_at: nowIso(),
         error_message: message,
       }).catch(() => {});
-    }
-    const failedIntegrationId = loadedIntegrationId ?? tenantIntegrationId;
-    if (failedIntegrationId) {
-      await setIntegrationStatus(admin, failedIntegrationId, 'connected').catch(() => {});
     }
 
     return errorResponse(message);

@@ -152,6 +152,10 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
           selectedCatalogId: data.selected_campaign_id ?? current.selectedCatalogId,
           loadedShareToken: null,
         }));
+        const nextCampaignId = data.selected_campaign_id ?? selectedCatalogId;
+        if (nextCampaignId) {
+          setCampaignId(nextCampaignId);
+        }
       })
       .catch(() => {
         if (!cancelled) setListFetchError(true);

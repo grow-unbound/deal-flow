@@ -42,12 +42,19 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     });
 
     if (offset === 0 && context.buyerId && response.selected_campaign_id) {
-      void recordCampaignView(supabaseAdmin, {
+      // #region agent log
+      fetch('http://127.0.0.1:7499/ingest/42159701-4a5a-4229-9bc0-a9348f871657',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3ff3b0'},body:JSON.stringify({sessionId:'3ff3b0',location:'buyer/catalog/route.ts:record-view',message:'awaiting recordCampaignView',data:{buyerId:context.buyerId,campaignId:response.selected_campaign_id,requestedCampaignId},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      await recordCampaignView(supabaseAdmin, {
         tenantId: context.tenantId,
         buyerId: context.buyerId,
         campaignId: response.selected_campaign_id,
         source: 'buyer_app',
       });
+    } else if (offset === 0) {
+      // #region agent log
+      fetch('http://127.0.0.1:7499/ingest/42159701-4a5a-4229-9bc0-a9348f871657',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3ff3b0'},body:JSON.stringify({sessionId:'3ff3b0',location:'buyer/catalog/route.ts:skip-record-view',message:'skipped recordCampaignView',data:{buyerId:context.buyerId,selectedCampaignId:response.selected_campaign_id,requestedCampaignId,offset},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
     }
 
     return NextResponse.json({

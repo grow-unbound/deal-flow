@@ -4,6 +4,7 @@ import {
   loadIntegrationCredentials,
   assertZohoIntegration,
   updatePhaseJob,
+  isSyncJobCancelled,
   jsonResponse,
   errorResponse,
   parseSyncRequest,
@@ -31,6 +32,9 @@ Deno.serve(async (req: Request) => {
     const adapter = createZohoAdapter(zohoTypeId, credentials);
 
     if (input.job_id) {
+      if (await isSyncJobCancelled(admin, input.job_id)) {
+        return jsonResponse({ ok: false, phase: 'pricelists', records_synced: 0, has_more: false, next_cursor: null, cancelled: true });
+      }
       await updatePhaseJob(admin, input.job_id, {
         status: 'running',
         started_at: new Date().toISOString(),
@@ -56,6 +60,9 @@ Deno.serve(async (req: Request) => {
     }
 
     if (input.job_id) {
+      if (await isSyncJobCancelled(admin, input.job_id)) {
+        return jsonResponse({ ok: false, phase: 'pricelists', records_synced: totalSynced, has_more: false, next_cursor: null, cancelled: true });
+      }
       await updatePhaseJob(admin, input.job_id, {
         status: 'completed',
         records_synced: totalSynced,

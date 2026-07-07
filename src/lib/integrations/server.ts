@@ -592,22 +592,34 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
   // phase row happens to sort first — otherwise the UI can end up representing
   // an in-flight run with a phase that hasn't started yet (still 'pending').
   const JOB_STATUS_PRIORITY: Record<string, number> = { running: 0, queued: 1, pending: 1, paused: 2 };
+  const MASTER_PHASE = 'sync_run';
+  const ACTIVE_MASTER_STATUSES = new Set(['pending', 'running', 'paused']);
   // Recent history needs to cover multiple resume attempts across 7 phases —
   // 10 was tight enough that a single run's fresh rows could push out the
   // "last completed" rows the UI needs for per-phase fallback counts.
   const RECENT_JOBS_LIMIT = 60;
   const latestJobMap = new Map<string, Record<string, unknown>>();
+  const masterJobMap = new Map<string, Record<string, unknown>>();
   const recentJobsMap = new Map<string, Record<string, unknown>[]>();
   for (const row of jobs ?? []) {
     const key = String((row as Record<string, unknown>).tenant_integration_id ?? '');
     if (key) {
+      const rowRecord = row as Record<string, unknown>;
+      const phase = String(rowRecord.phase ?? '');
+      if (phase === MASTER_PHASE && ACTIVE_MASTER_STATUSES.has(String(rowRecord.status ?? ''))) {
+        const existingMaster = masterJobMap.get(key);
+        if (!existingMaster || String(rowRecord.created_at ?? '') > String(existingMaster.created_at ?? '')) {
+          masterJobMap.set(key, rowRecord);
+        }
+      }
+
       const existing = latestJobMap.get(key);
-      const rowPriority = JOB_STATUS_PRIORITY[String((row as Record<string, unknown>).status ?? '')] ?? 3;
+      const rowPriority = JOB_STATUS_PRIORITY[String(rowRecord.status ?? '')] ?? 3;
       const existingPriority = existing ? JOB_STATUS_PRIORITY[String(existing.status ?? '')] ?? 3 : 4;
-      if (!existing || rowPriority < existingPriority) latestJobMap.set(key, row as Record<string, unknown>);
+      if (!existing || rowPriority < existingPriority) latestJobMap.set(key, rowRecord);
 
       const bucket = recentJobsMap.get(key) ?? [];
-      if (bucket.length < RECENT_JOBS_LIMIT) bucket.push(row as Record<string, unknown>);
+      if (bucket.length < RECENT_JOBS_LIMIT) bucket.push(rowRecord);
       recentJobsMap.set(key, bucket);
     }
   }
@@ -659,7 +671,8 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
     catalog: (types ?? []).map((typeRow: Record<string, unknown>) => {
       const integrationRow = integrationMap.get(String(typeRow.id)) ?? null;
       const integrationId = integrationRow ? String(integrationRow.id) : null;
-      const latestJob = integrationId ? latestJobMap.get(integrationId) ?? null : null;
+      const masterJob = integrationId ? masterJobMap.get(integrationId) ?? null : null;
+      const latestJob = masterJob ?? (integrationId ? latestJobMap.get(integrationId) ?? null : null);
       const activeFlows = integrationId ? flowMap.get(integrationId) ?? [] : [];
       const tenantWebhooks = integrationId ? webhookMap.get(integrationId) ?? [] : [];
       const tenantWebhookEvents = integrationId ? webhookEventMap.get(integrationId) ?? [] : [];
