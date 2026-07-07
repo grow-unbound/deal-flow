@@ -43,12 +43,19 @@ export interface CampaignConversionMetrics {
   conversionsByBuyer: Map<string, number>;
   spendByBuyer: Map<string, number>;
   lastConversionAtByBuyer: Map<string, string | null>;
+  attributedGmvByOrderId: Map<string, number>;
+  attributedGmvByEstimateId: Map<string, number>;
 }
 
 export interface CampaignViewMetrics {
   totalViews: number;
   uniqueViewers: number;
   lastOpenedAtByBuyer: Map<string, string>;
+}
+
+export interface CampaignAttributedMetricsOptions {
+  includeOrders?: boolean;
+  includeEstimates?: boolean;
 }
 
 export function isEligibleCampaignOrder(order: Pick<CampaignOrderRow, 'status'>): boolean {
@@ -59,6 +66,27 @@ export function isEligibleCampaignEstimate(
   estimate: Pick<CampaignEstimateRow, 'status' | 'converted_to_order_id'>,
 ): boolean {
   return estimate.status !== 'pending' && estimate.status !== 'void' && estimate.converted_to_order_id == null;
+}
+
+export function lineItemAttributedAmount(item: CampaignLineItemRow): number {
+  const qty = Number(item.qty ?? 0);
+  return Number(item.line_total ?? qty * Number(item.unit_price ?? 0));
+}
+
+export function sumAttributedLineItems(items: CampaignLineItemRow[]): number {
+  return items.reduce((sum, item) => sum + lineItemAttributedAmount(item), 0);
+}
+
+export function groupLineItemsByParent<T extends CampaignLineItemRow>(
+  items: Array<T & { parent_id: string }>,
+): Map<string, CampaignLineItemRow[]> {
+  const byParent = new Map<string, CampaignLineItemRow[]>();
+  for (const item of items) {
+    const current = byParent.get(item.parent_id) ?? [];
+    current.push(item);
+    byParent.set(item.parent_id, current);
+  }
+  return byParent;
 }
 
 export function computeCampaignViewMetrics(rows: CampaignViewRow[]): CampaignViewMetrics {
@@ -77,53 +105,66 @@ export function computeCampaignViewMetrics(rows: CampaignViewRow[]): CampaignVie
   };
 }
 
-export function computeCampaignConversionMetrics(
+export function computeCampaignAttributedMetrics(
   orders: CampaignOrderRow[],
   estimates: CampaignEstimateRow[],
+  orderItemsByParent: Map<string, CampaignLineItemRow[]>,
+  estimateItemsByParent: Map<string, CampaignLineItemRow[]>,
+  options: CampaignAttributedMetricsOptions = {},
 ): CampaignConversionMetrics {
-  const eligibleOrders = orders.filter(isEligibleCampaignOrder);
-  const eligibleEstimates = estimates.filter(isEligibleCampaignEstimate);
+  const includeOrders = options.includeOrders !== false;
+  const includeEstimates = options.includeEstimates !== false;
+
+  const eligibleOrders = includeOrders ? orders.filter(isEligibleCampaignOrder) : [];
+  const eligibleEstimates = includeEstimates ? estimates.filter(isEligibleCampaignEstimate) : [];
 
   const convertingBuyerIds = new Set<string>();
   const conversionsByBuyer = new Map<string, number>();
   const spendByBuyer = new Map<string, number>();
   const lastConversionAtByBuyer = new Map<string, string | null>();
+  const attributedGmvByOrderId = new Map<string, number>();
+  const attributedGmvByEstimateId = new Map<string, number>();
 
   let orderGmv = 0;
   let estimateGmv = 0;
+  let orderCount = 0;
+  let estimateCount = 0;
+
+  const recordConversion = (buyerId: string, amount: number, at: string | null) => {
+    convertingBuyerIds.add(buyerId);
+    conversionsByBuyer.set(buyerId, (conversionsByBuyer.get(buyerId) ?? 0) + 1);
+    spendByBuyer.set(buyerId, (spendByBuyer.get(buyerId) ?? 0) + amount);
+
+    const existing = lastConversionAtByBuyer.get(buyerId);
+    if (!existing || (at && new Date(at).getTime() > new Date(existing).getTime())) {
+      lastConversionAtByBuyer.set(buyerId, at);
+    }
+  };
 
   for (const order of eligibleOrders) {
-    convertingBuyerIds.add(order.buyer_id);
-    conversionsByBuyer.set(order.buyer_id, (conversionsByBuyer.get(order.buyer_id) ?? 0) + 1);
-    const amount = Number(order.total_amount ?? 0);
-    orderGmv += amount;
-    spendByBuyer.set(order.buyer_id, (spendByBuyer.get(order.buyer_id) ?? 0) + amount);
+    const amount = sumAttributedLineItems(orderItemsByParent.get(order.id) ?? []);
+    attributedGmvByOrderId.set(order.id, amount);
+    if (amount <= 0) continue;
 
-    const at = order.placed_at ?? order.created_at ?? null;
-    const existing = lastConversionAtByBuyer.get(order.buyer_id);
-    if (!existing || (at && new Date(at).getTime() > new Date(existing).getTime())) {
-      lastConversionAtByBuyer.set(order.buyer_id, at);
-    }
+    orderGmv += amount;
+    orderCount += 1;
+    recordConversion(order.buyer_id, amount, order.placed_at ?? order.created_at ?? null);
   }
 
   for (const estimate of eligibleEstimates) {
-    convertingBuyerIds.add(estimate.buyer_id);
-    conversionsByBuyer.set(estimate.buyer_id, (conversionsByBuyer.get(estimate.buyer_id) ?? 0) + 1);
-    const amount = Number(estimate.total_amount ?? 0);
-    estimateGmv += amount;
-    spendByBuyer.set(estimate.buyer_id, (spendByBuyer.get(estimate.buyer_id) ?? 0) + amount);
+    const amount = sumAttributedLineItems(estimateItemsByParent.get(estimate.id) ?? []);
+    attributedGmvByEstimateId.set(estimate.id, amount);
+    if (amount <= 0) continue;
 
-    const at = estimate.created_at ?? null;
-    const existing = lastConversionAtByBuyer.get(estimate.buyer_id);
-    if (!existing || (at && new Date(at).getTime() > new Date(existing).getTime())) {
-      lastConversionAtByBuyer.set(estimate.buyer_id, at);
-    }
+    estimateGmv += amount;
+    estimateCount += 1;
+    recordConversion(estimate.buyer_id, amount, estimate.created_at ?? null);
   }
 
   return {
-    conversionCount: eligibleOrders.length + eligibleEstimates.length,
-    orderCount: eligibleOrders.length,
-    estimateCount: eligibleEstimates.length,
+    conversionCount: orderCount + estimateCount,
+    orderCount,
+    estimateCount,
     gmv: orderGmv + estimateGmv,
     orderGmv,
     estimateGmv,
@@ -131,7 +172,87 @@ export function computeCampaignConversionMetrics(
     conversionsByBuyer,
     spendByBuyer,
     lastConversionAtByBuyer,
+    attributedGmvByOrderId,
+    attributedGmvByEstimateId,
   };
+}
+
+/** @deprecated Prefer computeCampaignAttributedMetrics with line items for accurate mixed-cart GMV */
+export function computeCampaignConversionMetrics(
+  orders: CampaignOrderRow[],
+  estimates: CampaignEstimateRow[],
+  options: CampaignAttributedMetricsOptions = {},
+): CampaignConversionMetrics {
+  const includeOrders = options.includeOrders !== false;
+  const includeEstimates = options.includeEstimates !== false;
+
+  const eligibleOrders = includeOrders ? orders.filter(isEligibleCampaignOrder) : [];
+  const eligibleEstimates = includeEstimates ? estimates.filter(isEligibleCampaignEstimate) : [];
+
+  const orderItemsByParent = new Map<string, CampaignLineItemRow[]>();
+  for (const order of eligibleOrders) {
+    orderItemsByParent.set(order.id, [
+      {
+        tenant_product_id: 'header',
+        qty: 1,
+        line_total: Number(order.total_amount ?? 0),
+        unit_price: Number(order.total_amount ?? 0),
+      },
+    ]);
+  }
+
+  const estimateItemsByParent = new Map<string, CampaignLineItemRow[]>();
+  for (const estimate of eligibleEstimates) {
+    estimateItemsByParent.set(estimate.id, [
+      {
+        tenant_product_id: 'header',
+        qty: 1,
+        line_total: Number(estimate.total_amount ?? 0),
+        unit_price: Number(estimate.total_amount ?? 0),
+      },
+    ]);
+  }
+
+  return computeCampaignAttributedMetrics(
+    orders,
+    estimates,
+    orderItemsByParent,
+    estimateItemsByParent,
+    options,
+  );
+}
+
+export function buildCatalogAttributedMetrics(
+  campaignId: string,
+  campaignProductIds: Set<string>,
+  orders: Array<CampaignOrderRow & { campaign_id?: string | null }>,
+  estimates: Array<CampaignEstimateRow & { campaign_id?: string | null }>,
+  orderItemsRaw: Array<{ order_id: string } & CampaignLineItemRow>,
+  estimateItemsRaw: Array<{ estimate_id: string } & CampaignLineItemRow>,
+  options: CampaignAttributedMetricsOptions = {},
+): CampaignConversionMetrics {
+  const campaignOrders = orders.filter((order) => order.campaign_id === campaignId);
+  const campaignEstimates = estimates.filter((estimate) => estimate.campaign_id === campaignId);
+  const orderIds = new Set(campaignOrders.map((order) => order.id));
+  const eligibleEstimateIds = new Set(
+    campaignEstimates.filter(isEligibleCampaignEstimate).map((estimate) => estimate.id),
+  );
+
+  const orderItems = orderItemsRaw
+    .filter((item) => orderIds.has(item.order_id) && campaignProductIds.has(item.tenant_product_id))
+    .map((item) => ({ ...item, parent_id: item.order_id }));
+
+  const estimateItems = estimateItemsRaw
+    .filter((item) => eligibleEstimateIds.has(item.estimate_id) && campaignProductIds.has(item.tenant_product_id))
+    .map((item) => ({ ...item, parent_id: item.estimate_id }));
+
+  return computeCampaignAttributedMetrics(
+    campaignOrders,
+    campaignEstimates,
+    groupLineItemsByParent(orderItems),
+    groupLineItemsByParent(estimateItems),
+    options,
+  );
 }
 
 export function getCampaignBuyerOpenedStatus(
@@ -175,13 +296,13 @@ export function rollupSkuMetrics(
   for (const item of orderItems) {
     if (!validOrderIds.has(item.parent_id)) continue;
     const qty = Number(item.qty ?? 0);
-    addItem(item.tenant_product_id, qty, Number(item.line_total ?? qty * Number(item.unit_price ?? 0)));
+    addItem(item.tenant_product_id, qty, lineItemAttributedAmount(item));
   }
 
   for (const item of estimateItems) {
     if (!validEstimateIds.has(item.parent_id)) continue;
     const qty = Number(item.qty ?? 0);
-    addItem(item.tenant_product_id, qty, Number(item.line_total ?? qty * Number(item.unit_price ?? 0)));
+    addItem(item.tenant_product_id, qty, lineItemAttributedAmount(item));
   }
 
   return skuMetricsByProduct;

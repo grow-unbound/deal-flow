@@ -598,7 +598,7 @@ export function AddProductSheet({
           title={isEditMode ? 'Edit product' : 'Add a product'}
           description={
             isEditMode
-              ? 'Update the tenant-facing product details used in your catalog.'
+              ? 'Update product details used in your catalog.'
               : 'Search the master catalog to import a product, or type a new display name.'
           }
         />
@@ -616,9 +616,6 @@ export function AddProductSheet({
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-base font-medium text-cream-900">
                       Selected product · {product.display_name ?? product.name_override ?? product.internal_sku}
-                    </p>
-                    <p className="text-sm text-cream-700">
-                      Update the saved display name and catalog details below.
                     </p>
                   </div>
                 </div>

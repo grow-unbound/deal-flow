@@ -529,6 +529,7 @@ export function createZohoAdapter(
     };
   }
 
+  /** @deprecated Zoho contact detail includes contact_persons — use fetchContactById instead. */
   async function fetchContactPersons(contactId: string): Promise<Record<string, unknown>[]> {
     const payload = await request({
       path: `/contacts/${contactId}/contactpersons`,
@@ -536,6 +537,7 @@ export function createZohoAdapter(
     return getRecordArray(payload, 'contact_persons');
   }
 
+  /** Single contact fetch — response embeds contact_persons, custom_fields, and pricebook_id. */
   async function fetchContactById(contactId: string): Promise<Record<string, unknown> | null> {
     try {
       const payload = await request({ path: `/contacts/${contactId}` });

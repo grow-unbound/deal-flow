@@ -27,6 +27,12 @@ export const BUYER_DEEP_PREFIXES = [
 /** Exact deep roots (and optional deeper paths under them). */
 export const BUYER_DEEP_EXACT_ROOTS = ['/buy/cart', '/buy/checkout', '/buy/order-placed', '/buy/estimate-placed', '/buy/buy-again', '/buy/promotions'] as const;
 
+/** Seller preview gates — hide tab bar / cart chrome until setup completes. */
+export const BUYER_PREVIEW_SETUP_PREFIX = '/buy/preview/' as const;
+
+export function isBuyerPreviewSetupRoute(pathname: string): boolean {
+  return pathname.startsWith(BUYER_PREVIEW_SETUP_PREFIX);
+}
 
 export function isBuyerDeepRoute(pathname: string): boolean {
   for (const root of BUYER_DEEP_EXACT_ROOTS) {
@@ -37,6 +43,11 @@ export function isBuyerDeepRoute(pathname: string): boolean {
 
 export function isBuyerLandingRoute(pathname: string): boolean {
   return (BUYER_LANDING_ROUTES as readonly string[]).includes(pathname);
+}
+
+/** Hide tab bar / bottom padding (preview gates, not stack "deep" screens). */
+export function isBuyerChromelessRoute(pathname: string): boolean {
+  return isBuyerPreviewSetupRoute(pathname);
 }
 
 const BUYER_CART_PILL_EXACT = ['/buy/home', '/buy/catalog'] as const;

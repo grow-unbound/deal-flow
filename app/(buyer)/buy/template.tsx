@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { usePathname } from 'next/navigation';
-import { isBuyerDeepRoute, isBuyerLandingRoute } from '@/lib/buyer-routes';
+import { isBuyerChromelessRoute, isBuyerDeepRoute, isBuyerLandingRoute } from '@/lib/buyer-routes';
 import { useBuyerNavigationDirection } from '@/hooks/useBuyerNavigationDirection';
 
 /**
@@ -12,20 +12,26 @@ export default function BuyerRouteTemplate({ children }: { children: React.React
   const pathname = usePathname();
   const direction = useBuyerNavigationDirection(pathname);
   const prevPathRef = React.useRef(pathname);
+  const isChromeless = isBuyerChromelessRoute(pathname);
 
   const fromLanding = isBuyerLandingRoute(prevPathRef.current);
   const toDeep = isBuyerDeepRoute(pathname);
   const fromDeep = isBuyerDeepRoute(prevPathRef.current);
   const toLanding = isBuyerLandingRoute(pathname);
 
-  const shouldAnimate =
+  const shouldAnimate = !isChromeless && (
     (fromLanding && toDeep && direction === 'forward')
     || (fromDeep && toLanding && direction === 'back')
-    || (fromDeep && toDeep && prevPathRef.current !== pathname);
+    || (fromDeep && toDeep && prevPathRef.current !== pathname)
+  );
 
   React.useEffect(() => {
     prevPathRef.current = pathname;
   }, [pathname]);
+
+  if (isChromeless) {
+    return <>{children}</>;
+  }
 
   const animClass = shouldAnimate
     ? direction === 'back'

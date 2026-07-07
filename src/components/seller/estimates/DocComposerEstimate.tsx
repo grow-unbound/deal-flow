@@ -818,16 +818,17 @@ export function DocComposerEstimate({
             </Button>
             <Button
               type="button"
-              variant="accent"
+              variant="primary"
               className="gap-2"
               disabled={isSubmitting && submitAction !== 'save'}
               onClick={() => void handleSaveAndClose()}
             >
               {submitAction === 'save' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-              {submitAction === 'save' ? 'Saving…' : 'Save & close'}
+              {submitAction === 'save' ? 'Saving…' : 'Save as draft'}
             </Button>
             <Button
               type="button"
+              variant="accent"
               className={primaryDisabled && submitAction !== 'send' ? 'btn-disabled gap-2' : 'gap-2'}
               disabled={(primaryDisabled || isSubmitting) && submitAction !== 'send'}
               onClick={() => setSendOpen(true)}

@@ -519,7 +519,7 @@ function sortJobsDesc(jobs: IntegrationSyncJob[]) {
   return [...jobs].sort((a, b) => getJobTimestamp(b) - getJobTimestamp(a));
 }
 
-type PhaseState = 'Not Started' | 'Syncing' | 'Paused' | 'Successful' | 'Failed';
+type PhaseState = 'Not Started' | 'Syncing' | 'Paused' | 'Successful' | 'Failed' | 'Cancelled';
 
 function getPhaseStateVariant(state: PhaseState) {
   switch (state) {
@@ -530,6 +530,8 @@ function getPhaseStateVariant(state: PhaseState) {
       return 'info' as const;
     case 'Failed':
       return 'warning' as const;
+    case 'Cancelled':
+      return 'outline' as const;
     default:
       return 'outline' as const;
   }
@@ -549,6 +551,8 @@ function jobStatusToPhaseState(job: IntegrationSyncJob | null | undefined): Phas
       return 'Paused';
     case 'failed':
       return 'Failed';
+    case 'cancelled':
+      return 'Cancelled';
     case 'completed':
       return 'Successful';
     default:
@@ -952,7 +956,9 @@ export function ConnectedIntegrationCard({
   })();
 
   const isSyncFailed = activeJob?.status === 'failed' || failedRun != null;
-  const isSyncInProgress = ['running', 'queued', 'pending', 'paused'].includes(activeJob?.status ?? '');
+  const isSyncInProgress = activeJob?.phase === 'sync_run'
+    ? ['running', 'queued', 'pending', 'paused'].includes(activeJob.status)
+    : ['running', 'queued', 'pending', 'paused'].includes(activeJob?.status ?? '');
   const needsReconnect = ti.status === 'disconnected' || ti.health_status === 'expired' || ti.health_status === 'invalid';
   const Icon = getIntegrationIcon(integration);
   const currentRun = activeJob ?? latestVisibleRun;
@@ -1282,7 +1288,7 @@ export function ConnectedIntegrationCard({
 
                 // For Phase 3 (analysis), find the dedicated analysis job
                 const analysisJob = phaseGroup.id === 'analysis'
-                  ? runHistory.find((j) => j.phase === 'analysis') ?? null
+                  ? getLatestJobByPhase(runHistory).get('analysis') ?? null
                   : null;
                 const analysisStatus = analysisJob?.status ?? null;
                 const analysisRunning = analysisStatus === 'running';

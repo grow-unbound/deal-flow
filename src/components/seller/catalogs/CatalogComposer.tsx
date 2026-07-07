@@ -1289,7 +1289,7 @@ export function CatalogComposer({
                   disabled={saveMutation.isPending}
                 >
                   <Save className="h-3.5 w-3.5" />
-                  {isPublishedEdit ? 'Save changes' : mode === 'edit' ? 'Save as draft' : 'Save & close'}
+                  {isPublishedEdit ? 'Save changes' : 'Save as draft'}
                 </Button>
                 <Button
                   type="button"

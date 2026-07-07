@@ -150,6 +150,38 @@ async function loadTenantBuyerAppMetadata(tenantIds: string[]): Promise<Map<stri
   );
 }
 
+/** Phone on auth.users for seller preview buyer linking. */
+export async function resolveSellerAuthPhone(userId: string): Promise<string | null> {
+  if (!supabaseAdmin) return null;
+
+  const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
+  const user = authUser?.user;
+  const meta = user?.user_metadata as Record<string, unknown> | null | undefined;
+  return (typeof meta?.phone === 'string' && meta.phone ? meta.phone : null)
+    ?? user?.phone
+    ?? null;
+}
+
+/** Deduped buyer rows in a tenant that share the seller's phone (preview only). */
+export async function findTenantBuyerPreviewCandidates(
+  userId: string,
+  tenantId: string,
+): Promise<BuyerLoginCandidate[]> {
+  const phone = await resolveSellerAuthPhone(userId);
+  if (!phone) return [];
+
+  const candidates = await findBuyerLoginCandidates(phone);
+  const byBuyerId = new Map<string, BuyerLoginCandidate>();
+  for (const candidate of candidates) {
+    if (candidate.tenant_id !== tenantId) continue;
+    if (!byBuyerId.has(candidate.buyer_id)) {
+      byBuyerId.set(candidate.buyer_id, candidate);
+    }
+  }
+
+  return Array.from(byBuyerId.values());
+}
+
 export async function findBuyerLoginCandidates(phone: string): Promise<BuyerLoginCandidate[]> {
   if (!supabaseAdmin) {
     throw new Error('Server configuration error');
@@ -450,7 +482,9 @@ export async function requireBuyerAccessProfile(request: NextRequest): Promise<B
   }
 
   const context = await getBuyerAppContext(request);
-  if (!context.tenant_id) return null;
+  if (!context.tenant_id) {
+    return null;
+  }
 
   const db = supabaseAdmin;
   const tenantPromise = db
@@ -483,17 +517,22 @@ export async function requireBuyerAccessProfile(request: NextRequest): Promise<B
     return null;
   }
 
+  let buyerLookup = db
+    .schema('app')
+    .from('buyers')
+    .select('id, tenant_id, business_name, contact_name, credit_limit, phone, gstin, buyer_app_enabled, geography, whatsapp_consent_at, whatsapp_opt_out_at')
+    .eq('id', context.buyer_id)
+    .eq('tenant_id', context.tenant_id)
+    .eq('is_active', true)
+    .is('deleted_at', null);
+
+  // Seller preview bypasses buyer_app_enabled — that gate controls buyer login, not preview.
+  if (context.mode !== 'preview') {
+    buyerLookup = buyerLookup.or('buyer_app_enabled.eq.true,buyer_app_enabled.is.null');
+  }
+
   const [buyerRes, tenantRes, settingsRes] = await Promise.all([
-    db
-      .schema('app')
-      .from('buyers')
-      .select('id, tenant_id, business_name, contact_name, credit_limit, phone, gstin, buyer_app_enabled, geography, whatsapp_consent_at, whatsapp_opt_out_at')
-      .eq('id', context.buyer_id)
-      .eq('tenant_id', context.tenant_id)
-      .eq('is_active', true)
-      .or('buyer_app_enabled.eq.true,buyer_app_enabled.is.null')
-      .is('deleted_at', null)
-      .maybeSingle(),
+    buyerLookup.maybeSingle(),
     tenantPromise,
     db
       .schema('app')
@@ -516,7 +555,7 @@ export async function requireBuyerAccessProfile(request: NextRequest): Promise<B
     ?? (tenantRes.data?.settings as Record<string, unknown> | null | undefined),
   ).enabled;
 
-  if (!tenantSettingsEnabled) {
+  if (!tenantSettingsEnabled && context.mode !== 'preview') {
     return null;
   }
 

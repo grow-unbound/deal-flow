@@ -790,6 +790,7 @@
     animation: buyer-push-enter 0.22s ease-out both;
   }
   .animate-buyer-pop-exit {
-    animation: buyer-pop-exit 0.18s ease-in both;
+    /* No fill-mode: both — final keyframe transform breaks position:sticky in main. */
+    animation: buyer-pop-exit 0.18s ease-in;
   }
 }

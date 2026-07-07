@@ -11,6 +11,7 @@ import {
   nextProvisionalOrderSequence,
 } from '@/lib/server/transaction-numbers';
 import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
+import { inferCampaignIdForBuyerCart } from '@/lib/server/campaign-attribution';
 import { PAGE_SIZE, encodeCursor, decodeCursor } from '@/lib/pagination';
 
 export interface BuyerOrderPlaceRequest {
@@ -163,6 +164,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
 
     const buyer_id = profile.buyer.id;
     const db = supabaseAdmin ?? supabase;
+    const resolvedCampaignId = await inferCampaignIdForBuyerCart(db, {
+      tenantId: tenant_id,
+      buyerId: buyer_id,
+      clientCampaignId: campaign_id,
+      tenantProductIds: items.map((item) => item.tenant_product_id),
+    });
     const policy = await loadBuyerBusinessPolicy(db as typeof supabaseAdmin, tenant_id);
     const subtotal = items.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
     const tax_amount = policy.gst_inclusive
@@ -194,7 +201,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
         order_number,
         status: 'received',
         source: 'buyer_app',
-        campaign_id: campaign_id ?? null,
+        campaign_id: resolvedCampaignId,
         location_id,
         place_of_supply: placeOfSupply,
         subtotal,

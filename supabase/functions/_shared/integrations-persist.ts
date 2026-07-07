@@ -6,6 +6,8 @@
 
 import type { ZohoAdapter } from './integrations-zoho.ts';
 import type { ZohoIntegrationTypeId } from '../../../src/lib/integrations/contracts.ts';
+import type { EntityEnrichmentMode, SyncEnrichmentPolicy } from '../../../src/lib/integrations/sync-orchestration.ts';
+import { enrichmentModeForEntity, resolveSyncEnrichmentPolicy } from '../../../src/lib/integrations/sync-orchestration.ts';
 import {
   bulkPersistJsonbRecords,
   bulkPersistJsonbRecordsWithIds,
@@ -24,6 +26,31 @@ export interface PersistResult {
   // Non-empty only for customers phase — caller must call search vector rebuild at invocation end
   pendingSearchVectorBuyerIds: string[];
   pendingSearchVectorBuyerUserIds: string[];
+}
+
+export interface PersistOptions {
+  enrichmentPolicy?: SyncEnrichmentPolicy;
+  customerEnrichmentMode?: EntityEnrichmentMode;
+}
+
+export const INCREMENTAL_PERSIST_OPTIONS: PersistOptions = {
+  enrichmentPolicy: 'incremental',
+  customerEnrichmentMode: 'detail_when_needed',
+};
+
+export function buildPersistOptions(input: {
+  jobType?: string | null;
+  entityType: string;
+  overrides?: PersistOptions;
+}): PersistOptions {
+  const enrichmentPolicy = input.overrides?.enrichmentPolicy
+    ?? resolveSyncEnrichmentPolicy(input.jobType ?? 'manual');
+  const customerEnrichmentMode = input.overrides?.customerEnrichmentMode
+    ?? enrichmentModeForEntity(enrichmentPolicy, input.entityType);
+  return {
+    enrichmentPolicy,
+    customerEnrichmentMode,
+  };
 }
 
 type AdminClient = Parameters<typeof persistZohoEntityPage>[0];
@@ -1026,7 +1053,16 @@ async function ensureBuyerExists(
   const fetched = await adapter.fetchContactById(externalContactId);
   if (!fetched) return null;
 
-  await persistBuyers(admin, tenantId, actorId, integrationId, [fetched], adapter, zohoTypeId);
+  await persistBuyers(
+    admin,
+    tenantId,
+    actorId,
+    integrationId,
+    [fetched],
+    adapter,
+    zohoTypeId,
+    INCREMENTAL_PERSIST_OPTIONS,
+  );
   return resolveInternalIdWithFallback(admin, tenantId, integrationId, 'customers', 'buyers', externalContactId);
 }
 
@@ -1437,8 +1473,10 @@ const CONTACT_ENRICH_CONCURRENCY = 5;
 async function enrichBuyerRecords(
   records: Record<string, unknown>[],
   adapter?: ZohoAdapter,
+  mode: EntityEnrichmentMode = 'detail_when_needed',
+  needsCustomFieldHydration = false,
 ): Promise<Record<string, unknown>[]> {
-  if (!adapter) return records;
+  if (!adapter || mode === 'list_only') return records;
 
   const enriched: Record<string, unknown>[] = [];
   for (let i = 0; i < records.length; i += CONTACT_ENRICH_CONCURRENCY) {
@@ -1450,29 +1488,19 @@ async function enrichBuyerRecords(
       const embeddedContactPersons = asRecordArray(rec.contact_persons);
       const hasCustomFields = Array.isArray(rec.custom_fields) && rec.custom_fields.length > 0;
       const hasPricebook = Boolean(asStr(rec.pricebook_id) ?? asStr(rec.price_list_id));
-      const needsDetail = embeddedContactPersons.length === 0 || !hasCustomFields || !hasPricebook;
+      const needsDetail = embeddedContactPersons.length === 0
+        || (needsCustomFieldHydration && !hasCustomFields)
+        || !hasPricebook;
 
-      let merged = rec;
-      if (needsDetail) {
-        const detail = await adapter.fetchContactById(externalId);
-        if (detail) {
-          merged = {
-            ...rec,
-            ...detail,
-            contact_id: externalId,
-          };
-        }
-      }
+      if (!needsDetail) return rec;
 
-      const contactPersons = asRecordArray(merged.contact_persons);
-      if (contactPersons.length > 0) return merged;
-
-      const fetchedPersons = await adapter.fetchContactPersons(externalId);
-      if (fetchedPersons.length === 0) return merged;
+      const detail = await adapter.fetchContactById(externalId);
+      if (!detail) return rec;
 
       return {
-        ...merged,
-        contact_persons: fetchedPersons,
+        ...rec,
+        ...detail,
+        contact_id: externalId,
       };
     }));
     enriched.push(...batchResults);
@@ -1489,11 +1517,19 @@ async function persistBuyers(
   records: Record<string, unknown>[],
   adapter?: ZohoAdapter,
   zohoTypeId?: ZohoIntegrationTypeId,
+  persistOptions?: PersistOptions,
 ): Promise<PersistResult> {
   const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
   const buyerRows: Record<string, unknown>[] = [];
   const customerFieldMappings = await loadFieldMappings(admin, integrationId, 'customers');
-  const hydratedRecords = await enrichBuyerRecords(records, adapter);
+  const customerEnrichmentMode = persistOptions?.customerEnrichmentMode ?? 'detail_when_needed';
+  const needsCustomFieldHydration = customerFieldMappings.length > 0;
+  const hydratedRecords = await enrichBuyerRecords(
+    records,
+    adapter,
+    customerEnrichmentMode,
+    needsCustomFieldHydration,
+  );
 
   for (const rec of hydratedRecords) {
     const externalId = asStr(rec.contact_id);
@@ -3274,6 +3310,7 @@ export async function persistZohoEntityPage(
   integrationTypeId: ZohoIntegrationTypeId,
   records: Record<string, unknown>[],
   adapter?: ZohoAdapter,
+  persistOptions?: PersistOptions,
 ): Promise<PersistResult> {
   switch (entityType) {
     case 'locations':
@@ -3283,7 +3320,7 @@ export async function persistZohoEntityPage(
       return persistWarehouses(admin, tenantId, actorId, integrationId, records);
 
     case 'customers':
-      return persistBuyers(admin, tenantId, actorId, integrationId, records, adapter, integrationTypeId);
+      return persistBuyers(admin, tenantId, actorId, integrationId, records, adapter, integrationTypeId, persistOptions);
 
     case 'products':
       return persistProducts(admin, tenantId, actorId, integrationId, records, adapter);
@@ -3292,6 +3329,7 @@ export async function persistZohoEntityPage(
       return persistPricelists(admin, tenantId, actorId, integrationId, records, adapter);
 
     case 'estimates':
+      // List payload only — line items hydrated in transaction_line_items phase.
       return persistEstimates(admin, tenantId, actorId, integrationId, records, adapter, integrationTypeId);
 
     case 'orders':

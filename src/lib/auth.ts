@@ -124,12 +124,13 @@ export async function getBuyerAppContext(request: NextRequest): Promise<BuyerApp
 
   const previewToken = request.headers.get(BUYER_PREVIEW_HEADER);
   const preview = previewToken ? await verifyBuyerPreviewToken(previewToken) : null;
-  if (
+  const previewActivated = Boolean(
     preview
     && claims.tenant_id
     && claims.tenant_id === preview.tenant_id
-    && isSellerRole(claims.role)
-  ) {
+    && isSellerRole(claims.role),
+  );
+  if (previewActivated && preview) {
     return {
       ...claims,
       role: preview.role,
