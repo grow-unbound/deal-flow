@@ -63,6 +63,9 @@ export default function CheckoutPage() {
     }
     setSubmitting(true);
     setError(null);
+    // #region agent log
+    fetch('http://127.0.0.1:7499/ingest/42159701-4a5a-4229-9bc0-a9348f871657',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3ff3b0'},body:JSON.stringify({sessionId:'3ff3b0',location:'checkout/page.tsx:handleSubmit',message:'checkout submit',data:{campaignId,itemCount:items.length},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     try {
       const nearestRes = await apiFetch(`/api/buyer/nearest-location?lat=${selectedDelivery.lat}&lng=${selectedDelivery.lng}`);
       const nearest = await nearestRes.json() as { location_id: string | null };

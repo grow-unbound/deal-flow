@@ -55,9 +55,9 @@ function NotificationRow({ n, onClose }: { n: AppNotification; onClose: () => vo
         <div className="flex flex-wrap items-center gap-1.5">
           <Badge variant="default" className="text-[10px]">{label}</Badge>
         </div>
-        <p className="mt-1 text-sm font-medium leading-snug text-cream-900">{n.title}</p>
-        <p className="mt-0.5 text-xs text-cream-600">{n.body}</p>
-        <p className="mt-1 font-mono text-[11px] tabular-nums text-cream-500">{formatRelTime(n.createdAt)}</p>
+        <p className="mt-2 text-sm font-medium leading-snug text-cream-900">{n.title}</p>
+        <p className="mt-2 text-xs text-cream-600">{n.body}</p>
+        <p className="mt-2 font-mono text-[11px] tabular-nums text-cream-500">{formatRelTime(n.createdAt)}</p>
       </div>
       {isUnread && (
         <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-ember-500" aria-label="Unread" />
