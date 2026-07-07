@@ -178,24 +178,6 @@ export function triggerWhatsAppDispatch(): void {
     body: JSON.stringify({ trigger: 'transactional' }),
   })
     .then(async (res) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7499/ingest/42159701-4a5a-4229-9bc0-a9348f871657', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'e901a3' },
-        body: JSON.stringify({
-          sessionId: 'e901a3',
-          location: 'whatsapp-enqueue.ts:triggerWhatsAppDispatch',
-          message: 'dispatch worker response',
-          data: {
-            status: res.status,
-            ok: res.ok,
-            hasSecret: Boolean(secret),
-            hypothesisId: 'H1-auth',
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
       if (!res.ok) {
         console.error('[whatsapp-enqueue] dispatch trigger non-ok', res.status);
       }

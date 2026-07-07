@@ -264,7 +264,7 @@ function BuyerAppLandingContent({
       <PageHeader
         eyebrow="Engagement"
         title="Buyer App"
-        subtitle="Track how much of your business flows through the buyer portal and who's driving it."
+        subtitle="Track how much of your business flows through the buyer app and who's driving it."
         horizon={horizonLabel}
         period={period}
         periodOptions={options}

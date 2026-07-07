@@ -3,7 +3,8 @@ import { SellerDashboardClient } from '@/components/seller/dashboard/SellerDashb
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { fetchSellerPageBootstrap } from '@/lib/server/seller-page-bootstrap';
 import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
-import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
+import { getSellerServerClaims, requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
+import { isTenantCreatorUser } from '@/lib/server/tenant-creator';
 import type { SellerDashboardResponse } from '@/types/seller-dashboard';
 
 export default async function DashboardPage({
@@ -12,6 +13,8 @@ export default async function DashboardPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const tenantId = await requireSellerServerTenantId();
+  const { sub: userId } = await getSellerServerClaims();
+  const isTenantCreator = await isTenantCreatorUser(tenantId, userId);
 
   const period = await resolveSellerLandingPeriod(searchParams);
   const { data: initialData, status } = await fetchSellerPageBootstrap<SellerDashboardResponse>(
@@ -24,7 +27,7 @@ export default async function DashboardPage({
 
   return (
     <>
-      <DashboardOnboardingBanner tenantId={tenantId} />
+      <DashboardOnboardingBanner tenantId={tenantId} isTenantCreator={isTenantCreator} />
       <SellerDashboardClient initialData={initialData} initialPeriod={period} />
     </>
   );

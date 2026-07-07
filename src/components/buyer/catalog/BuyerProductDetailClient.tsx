@@ -21,7 +21,7 @@ interface BuyerProductDetailClientProps {
 
 export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetailClientProps): React.ReactNode {
   const router = useRouter();
-  const { addItem, updateQty, items: cartItems } = useCart();
+  const { addItem, updateQty, items: cartItems, campaignId } = useCart();
   const { item, brandItems, recos, isLoading: loading, isError: error } = useBuyerProductDetail(tenantProductId);
   const [imgError, setImgError] = React.useState(false);
   const [brandImgError, setBrandImgError] = React.useState(false);
@@ -58,7 +58,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
       quantity: 1,
       line_total: item.price,
       tenant_category_id: item.category_id ?? undefined,
-    });
+    }, item.campaign_id ?? campaignId);
   }
 
   function handleDecrement(): void {

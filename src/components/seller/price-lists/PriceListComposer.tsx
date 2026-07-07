@@ -539,12 +539,6 @@ export function PriceListComposer({
             status={{ label: mode === 'edit' && detail?.status === 'active' ? 'Live' : 'Draft', tone: mode === 'edit' && detail?.status === 'active' ? 'live' : 'draft' }}
             actions={
               <>
-                {mode === 'create' ? (
-                  <Button type="button" variant="secondary">
-                    <Upload className="h-3.5 w-3.5" />
-                    Import from CSV
-                  </Button>
-                ) : null}
                 <Button type="button" variant="ghost" onClick={() => dirtyGuard.handleOpenChange(false)}>
                   <X className="h-3.5 w-3.5" />
                   Close
@@ -1103,16 +1097,16 @@ export function PriceListComposer({
                 </Button>
                 <Button
                   type="button"
-                  variant="accent"
+                  variant="primary"
                   onClick={() => void handleSave('draft')}
                   disabled={saveMutation.isPending}
                 >
                   <Save className="h-3.5 w-3.5" />
-                  {mode === 'edit' ? 'Save as draft' : 'Save & close'}
+                  {mode === 'edit' ? 'Save as draft' : 'Save as draft'}
                 </Button>
                 <Button
                   type="button"
-                  className="cockpit-btn cockpit-btn-primary"
+                  variant="accent"
                   onClick={() => void handleSave('publish')}
                   disabled={saveMutation.isPending || currentMetrics.productCount === 0}
                 >

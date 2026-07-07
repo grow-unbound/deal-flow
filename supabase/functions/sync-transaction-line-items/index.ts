@@ -32,7 +32,7 @@ interface LocalTransactionRow {
 
 const PHASE = 'transaction_line_items';
 const KIND_ORDER: TransactionKind[] = ['estimates', 'orders', 'invoices'];
-const DEFAULT_BATCH_SIZE = 25;
+const DEFAULT_BATCH_SIZE = 50;
 const TIME_BUDGET_MS = 115_000;
 const DEFAULT_PACE_MS = 150;
 

@@ -9,12 +9,13 @@ import type { ZohoIntegrationTypeId } from '../../../src/lib/integrations/contra
 import { ZOHO_INTEGRATION_TYPE_IDS } from '../../../src/lib/integrations/contracts.ts';
 import type { IntegrationSyncPhaseDefinition, ZohoTokenCacheProvider } from './integrations-zoho.ts';
 import { createZohoAdapter } from './integrations-zoho.ts';
+import type { PersistResult, PersistOptions } from './integrations-persist.ts';
 import {
   persistZohoEntityPage,
   rebuildBuyerSearchVectors,
   rebuildBuyerUserSearchVectors,
+  buildPersistOptions,
 } from './integrations-persist.ts';
-import type { PersistResult } from './integrations-persist.ts';
 import { getMasterJobIdFromProgress } from '../../../src/lib/integrations/sync-orchestration.ts';
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -160,6 +161,32 @@ export async function isSyncJobCancelled(
     return true;
   }
   return false;
+}
+
+export async function resolvePersistOptionsForJob(
+  admin: ReturnType<typeof createAdminClient>,
+  jobId: string | null | undefined,
+  entityType: string,
+): Promise<{ jobType: string | null; persistOptions: PersistOptions }> {
+  if (!jobId) {
+    return {
+      jobType: null,
+      persistOptions: buildPersistOptions({ entityType }),
+    };
+  }
+
+  const { data: slave } = await admin
+    .schema('app')
+    .from('integration_sync_jobs')
+    .select('job_type')
+    .eq('id', jobId)
+    .maybeSingle();
+
+  const jobType = typeof slave?.job_type === 'string' ? slave.job_type : null;
+  return {
+    jobType,
+    persistOptions: buildPersistOptions({ jobType, entityType }),
+  };
 }
 
 export async function upsertPhaseJob(
@@ -354,6 +381,12 @@ export async function runPhaseSync(
   const startedAt = new Date().toISOString();
   const budgetStart = Date.now();
   const { group: phaseGroup, groupLabel: phaseGroupLabel } = getPhaseGroup(phase.entityType);
+  const { jobType: resolvedJobType, persistOptions } = await resolvePersistOptionsForJob(
+    admin,
+    opts.jobId,
+    phase.entityType,
+  );
+  const effectiveJobType = opts.jobType ?? resolvedJobType ?? undefined;
 
   if (opts.jobId && await isSyncJobCancelled(admin, opts.jobId)) {
     return { ok: false, phase: phase.id, records_synced: 0, has_more: false, next_cursor: null };
@@ -413,7 +446,7 @@ export async function runPhaseSync(
     // Time-budget check: stop before Supabase's 150s hard limit
     if (Date.now() - budgetStart > TIME_BUDGET_MS) break;
 
-    const page = await adapter.fetchPhasePage(phase, cursor, opts.since ?? null, opts.jobType ?? undefined);
+    const page = await adapter.fetchPhasePage(phase, cursor, opts.since ?? null, effectiveJobType);
 
     if (page.records.length > 0) {
       const importActorId = resolveSyncImportActorId(integration);
@@ -426,6 +459,7 @@ export async function runPhaseSync(
         zohoTypeId,
         page.records,
         adapter,
+        persistOptions,
       );
       const pageSynced = result.created + result.updated;
       totalSynced += pageSynced;

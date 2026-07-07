@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
+import { PencilIcon } from 'lucide-react';
 import { PageWrap } from '@/components/seller/layout';
 import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -217,8 +218,9 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
           skuSubLabel,
         ]}
         actions={
-          <Button variant="ghost" size="sm" onClick={() => setSheetOpen(true)}>
-            Edit
+          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setSheetOpen(true)}>
+            <PencilIcon size={14} />
+            Edit location
           </Button>
         }
       />

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Archive, Download, Share2 } from 'lucide-react';
+import { Archive, PencilIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { PageWrap } from '@/components/seller/layout';
 import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
@@ -154,27 +154,32 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
         subtitle={subtitle(data.header)}
         actions={
           <div className="flex items-center gap-2 pt-1">
-            <Button type="button" className="cockpit-btn cockpit-btn-secondary h-9 px-4" onClick={() => setEditOpen(true)}>
-              Edit
-            </Button>
             <AlertDialog>
-              <AlertDialogTrigger className="cockpit-btn cockpit-btn-secondary h-9 px-4 text-cream-800">
-                <Archive size={14} />
-                Archive
+              <AlertDialogTrigger asChild>
+                <Button type="button" variant="ghost" size="sm" className="gap-2">
+                  <Archive size={14} />
+                  Archive brand
+                </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
                   <AlertDialogTitle>Archive this brand?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This will hide the brand from active views. You can restore it later from admin tools.
+                    The brand will be marked as inactive. The brand history will not be deleted.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => archiveMutation.archive()}>Confirm archive</AlertDialogAction>
+                  <AlertDialogCancel disabled={archiveMutation.isPending}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction disabled={archiveMutation.isPending} onClick={() => archiveMutation.archive()}>
+                    {archiveMutation.isPending ? 'Archiving…' : 'Archive brand'}
+                  </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+            <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setEditOpen(true)}>
+              <PencilIcon size={14} />
+              Edit brand
+            </Button>
           </div>
         }
       />

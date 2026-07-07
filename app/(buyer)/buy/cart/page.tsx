@@ -76,7 +76,7 @@ const STICKY_HEADER: React.CSSProperties = {
 
 export default function CartPage() {
   const router = useRouter();
-  const { items, itemCount, removeItem, updateQty, clearCart, addItem, replaceItems, campaignId } = useCart();
+  const { items, itemCount, removeItem, updateQty, clearCart, addItem, replaceItems, resolvedCampaignId } = useCart();
   const delivery = useBuyerDeliveryOptional();
   const { data: meData } = useBuyerMe();
   const { data: cartBundlesData } = useCartBundles();
@@ -113,6 +113,7 @@ export default function CartPage() {
         quantity,
         line_total: product.price * quantity,
         tenant_category_id: product.category_id ?? undefined,
+        campaign_id: existing?.campaign_id ?? resolvedCampaignId ?? undefined,
       } satisfies BuyerCartItem;
     });
 
@@ -121,7 +122,7 @@ export default function CartPage() {
     if (currentSignature !== nextSignature) {
       replaceItems(nextItems);
     }
-  }, [gstRate, items, reconcileQuery.data, replaceItems]);
+  }, [gstRate, items, reconcileQuery.data, replaceItems, resolvedCampaignId]);
 
   useEffect(() => {
     const loc = selectedDelivery;
@@ -201,7 +202,7 @@ export default function CartPage() {
           items: buildLineItems(),
           location_id,
           place_of_supply,
-          campaign_id: campaignId ?? undefined,
+          campaign_id: resolvedCampaignId ?? undefined,
         }),
       });
       const res: OrderPlaceResponse = await raw.json();
@@ -245,7 +246,7 @@ export default function CartPage() {
           items: buildLineItems(),
           location_id,
           place_of_supply,
-          campaign_id: campaignId ?? undefined,
+          campaign_id: resolvedCampaignId ?? undefined,
         }),
       });
       const res: EstimateResponse = await raw.json();
@@ -369,7 +370,7 @@ export default function CartPage() {
                 quantity: 1,
                 line_total: product.price,
                 tenant_category_id: product.category_id ?? undefined,
-              });
+              }, product.campaign_id ?? resolvedCampaignId);
             }}
           />
         )}

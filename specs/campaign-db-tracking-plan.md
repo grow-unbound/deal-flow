@@ -11,7 +11,7 @@ Postgres owns seller campaign insights. PostHog remains available for behavioral
 | **Opens** | `app.campaign_views` — one row per buyer + campaign + UTC day (`view_date` unique) |
 | **Attribution** | `orders.campaign_id`, `estimates.campaign_id` set at cart submit |
 | **Seller KPIs** | Views → Conversions funnel (2-step); GMV and counts combine orders + estimates |
-| **Dedup** | Estimates with `converted_to_order_id` are excluded from conversion count |
+| **Dedup** | Estimates with `converted_to_order_id` are excluded from conversion count and GMV |
 
 ### Out of scope (this pass)
 
@@ -47,22 +47,52 @@ Helper: `recordCampaignView()` in `src/lib/server/campaign-engagement.ts`
 
 Pure helpers: `src/lib/server/campaign-performance.ts`
 
+### Campaign inference (cart submit)
+
+`inferCampaignIdForBuyerCart()` in `src/lib/server/campaign-attribution.ts`:
+
+1. Use client `campaign_id` when provided (buyer was browsing a campaign).
+2. Else match campaigns where **at least one** cart SKU appears in `campaign_items` (mixed carts allowed).
+3. Restrict to buyer-visible campaigns.
+4. If one match → use it. If multiple → pick campaign with **highest SKU overlap**; tie → `null`.
+
+Header `campaign_id` marks buyer as **Converted** for that campaign. GMV does not use header `total_amount`.
+
+### Attributed GMV (seller metrics)
+
+GMV and conversion counts use **line items intersecting `campaign_items`** for the campaign:
+
+- Mixed carts: only campaign SKUs count toward campaign GMV.
+- Converted estimates: excluded; attributed GMV comes from the resulting order’s campaign line items only.
+- Orders + open estimates are summed for conversion count (with dedup above).
+
+Helpers: `computeCampaignAttributedMetrics()`, `buildCatalogAttributedMetrics()`.
+
+### Tenant channel flags
+
+Seller metrics respect `create_enquiries` / `create_sales_orders` from tenant settings:
+
+- Estimates-only tenant: enquiry conversions/GMV only; UI labels say “enquiries”.
+- Orders-only tenant: order conversions/GMV only.
+- Both enabled: combined conversions with breakdown in performance tab.
+
 ## API changes
 
 | Route | Change |
 |-------|--------|
 | `GET /api/buyer/catalog` | Record view |
 | `GET /api/buyer/catalog/[share_token]` | Record view (auth buyers) |
-| Buyer cart submit | Pass `campaign_id` on orders + estimates |
-| `GET /api/tenant/catalogs` | Real views + combined conversions/GMV |
-| `GET /api/tenant/catalogs/[id]` | Remove PostHog HogQL; Postgres-only metrics |
+| Buyer cart submit | Pass `campaign_id` on orders + estimates; infer when missing |
+| `GET /api/tenant/catalogs` | Line-item attributed GMV + conversions per campaign |
+| `GET /api/tenant/catalogs/[id]` | Attributed GMV; `performance.channels` flags |
 | `GET /api/tenant/customers/[id]` | Query `campaign_views` |
 
 ## Seller UI
 
 - Funnel: **Views → Conversions** (no cart tile)
 - Buyer status: `Converted` | `Opened` | `Not yet` (was `Purchased`)
-- Labels: "conversions" not orders-only where combined metric is shown
+- Labels adapt to enabled channels: conversions / enquiries / orders
+- Performance tab shows enquiry vs order breakdown when both channels are on
 
 ## Migration
 
@@ -70,6 +100,7 @@ Pure helpers: `src/lib/server/campaign-performance.ts`
 
 ## Verification
 
-- `src/tests/lib/campaign-performance.test.ts` — dedup + rollup unit tests
+- `src/tests/lib/campaign-performance.test.ts` — attributed GMV, dedup, channel flags
+- `src/tests/lib/campaign-attribution.test.ts` — partial overlap inference
 - Customer detail mocks use `app.campaign_views`
-- Manual: open campaign in buyer app → row in `campaign_views`; place order/estimate → attributed GMV on seller detail
+- Manual: open campaign in buyer app → row in `campaign_views`; mixed-cart estimate → `campaign_id` set; seller GMV = campaign lines only

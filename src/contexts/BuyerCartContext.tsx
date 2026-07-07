@@ -3,8 +3,12 @@
 import { createContext, useContext, useEffect, useReducer, ReactNode, useCallback } from 'react';
 import posthog from 'posthog-js';
 
+import {
+  BUYER_CART_CAMPAIGN_STORAGE_KEY,
+  resolveBuyerCartCampaignId,
+} from '@/lib/buyer-cart-campaign';
+
 const STORAGE_KEY = 'yukti_buyer_cart';
-const CAMPAIGN_STORAGE_KEY = 'yukti_buyer_cart_campaign';
 
 export interface BuyerCartItem {
   tenant_product_id: string;
@@ -18,6 +22,7 @@ export interface BuyerCartItem {
   quantity: number;
   line_total: number;
   tenant_category_id?: string;
+  campaign_id?: string | null;
 }
 
 type CartState = { items: BuyerCartItem[]; campaignId: string | null };
@@ -28,14 +33,29 @@ type CartAction =
   | { type: 'UPDATE_QTY'; tenant_product_id: string; quantity: number }
   | { type: 'CLEAR_CART' }
   | { type: 'REPLACE_ITEMS'; items: BuyerCartItem[] }
-  | { type: 'HYDRATE'; items: BuyerCartItem[]; campaignId: string | null }
   | { type: 'SET_CAMPAIGN_ID'; campaignId: string | null };
+
+function readInitialCartState(): CartState {
+  if (typeof window === 'undefined') {
+    return { items: [], campaignId: null };
+  }
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const campaignRaw = localStorage.getItem(BUYER_CART_CAMPAIGN_STORAGE_KEY);
+    const items = raw ? (JSON.parse(raw) as BuyerCartItem[]) : [];
+    const campaignId = campaignRaw && campaignRaw !== 'null' ? campaignRaw : null;
+    return {
+      items: Array.isArray(items) ? items : [],
+      campaignId,
+    };
+  } catch {
+    return { items: [], campaignId: null };
+  }
+}
 
 function cartReducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {
-    case 'HYDRATE':
-      return { items: action.items, campaignId: action.campaignId };
-
     case 'SET_CAMPAIGN_ID':
       return { ...state, campaignId: action.campaignId };
 
@@ -50,7 +70,12 @@ function cartReducer(state: CartState, action: CartAction): CartState {
           ...state,
           items: state.items.map((i) =>
             i.tenant_product_id === action.item.tenant_product_id
-            ? { ...i, quantity: newQty, line_total: newQty * i.unit_price }
+            ? {
+                ...i,
+                quantity: newQty,
+                line_total: newQty * i.unit_price,
+                campaign_id: action.item.campaign_id ?? i.campaign_id ?? state.campaignId,
+              }
               : i
           ),
         };
@@ -86,6 +111,7 @@ function cartReducer(state: CartState, action: CartAction): CartState {
 export interface CartContextValue {
   items: BuyerCartItem[];
   campaignId: string | null;
+  resolvedCampaignId: string | null;
   itemCount: number;
   subtotal: number;
   setCampaignId: (campaignId: string | null) => void;
@@ -99,19 +125,7 @@ export interface CartContextValue {
 const CartContext = createContext<CartContextValue | null>(null);
 
 export function BuyerCartProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(cartReducer, { items: [], campaignId: null });
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      const campaignRaw = localStorage.getItem(CAMPAIGN_STORAGE_KEY);
-      const items = raw ? (JSON.parse(raw) as BuyerCartItem[]) : [];
-      const campaignId = campaignRaw && campaignRaw !== 'null' ? campaignRaw : null;
-      if (Array.isArray(items)) dispatch({ type: 'HYDRATE', items, campaignId });
-    } catch {
-      // ignore corrupt storage
-    }
-  }, []);
+  const [state, dispatch] = useReducer(cartReducer, undefined, readInitialCartState);
 
   useEffect(() => {
     try {
@@ -124,9 +138,9 @@ export function BuyerCartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       if (state.campaignId) {
-        localStorage.setItem(CAMPAIGN_STORAGE_KEY, state.campaignId);
+        localStorage.setItem(BUYER_CART_CAMPAIGN_STORAGE_KEY, state.campaignId);
       } else {
-        localStorage.removeItem(CAMPAIGN_STORAGE_KEY);
+        localStorage.removeItem(BUYER_CART_CAMPAIGN_STORAGE_KEY);
       }
     } catch {
       // ignore storage errors
@@ -139,18 +153,25 @@ export function BuyerCartProvider({ children }: { children: ReactNode }) {
 
   const itemCount = state.items.reduce((sum, i) => sum + i.quantity, 0);
   const subtotal = state.items.reduce((sum, i) => sum + i.line_total, 0);
+  const resolvedCampaignId = resolveBuyerCartCampaignId(state.campaignId, state.items);
 
   const value: CartContextValue = {
     items: state.items,
     campaignId: state.campaignId,
+    resolvedCampaignId,
     itemCount,
     subtotal,
     setCampaignId,
     addItem: (item, campaignId) => {
-      if (campaignId) {
-        dispatch({ type: 'SET_CAMPAIGN_ID', campaignId });
+      const effectiveCampaignId = campaignId ?? item.campaign_id ?? state.campaignId ?? null;
+      const stampedItem = effectiveCampaignId
+        ? { ...item, campaign_id: effectiveCampaignId }
+        : item;
+
+      if (effectiveCampaignId) {
+        dispatch({ type: 'SET_CAMPAIGN_ID', campaignId: effectiveCampaignId });
       }
-      dispatch({ type: 'ADD_ITEM', item });
+      dispatch({ type: 'ADD_ITEM', item: stampedItem });
       posthog.capture('catalog_item_added_to_cart', {
         tenant_product_id: item.tenant_product_id,
         product_name: item.name,
@@ -158,6 +179,7 @@ export function BuyerCartProvider({ children }: { children: ReactNode }) {
         unit_price: item.unit_price,
         gst_rate: item.gst_rate ?? null,
         quantity: item.quantity,
+        campaign_id: effectiveCampaignId,
       });
     },
     removeItem: (tenant_product_id) => dispatch({ type: 'REMOVE_ITEM', tenant_product_id }),

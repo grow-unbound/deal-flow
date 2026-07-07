@@ -8,6 +8,7 @@ import {
   jsonResponse,
   errorResponse,
   parseSyncRequest,
+  resolvePersistOptionsForJob,
 } from '../_shared/sync-utils.ts';
 import { createZohoAdapter } from '../_shared/integrations-zoho.ts';
 import { persistZohoEntityPage } from '../_shared/integrations-persist.ts';
@@ -46,6 +47,7 @@ Deno.serve(async (req: Request) => {
 
     let totalSynced = 0;
     if (pricebooks.length > 0) {
+      const { persistOptions } = await resolvePersistOptionsForJob(admin, input.job_id, 'pricelists');
       const result = await persistZohoEntityPage(
         admin,
         integration.tenant_id,
@@ -55,6 +57,7 @@ Deno.serve(async (req: Request) => {
         zohoTypeId,
         pricebooks,
         adapter,
+        persistOptions,
       );
       totalSynced = result.created + result.updated;
     }

@@ -3,7 +3,12 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
-import { isBuyerCartPillRoute, isBuyerDeepRoute, isBuyerLandingRoute } from '@/lib/buyer-routes';
+import {
+  isBuyerCartPillRoute,
+  isBuyerChromelessRoute,
+  isBuyerDeepRoute,
+  isBuyerLandingRoute,
+} from '@/lib/buyer-routes';
 import { BuyerScrollRootContext } from '@/contexts/BuyerScrollContext';
 import { BuyerScrollChromeProvider, useBuyerScrollChromeState } from '@/contexts/BuyerScrollChromeContext';
 import { BuyerRealtimeProvider } from '@/contexts/BuyerRealtimeContext';
@@ -27,8 +32,9 @@ function BuyerShellMain({
   const pathname = usePathname();
   const isDeep = isBuyerDeepRoute(pathname);
   const isLanding = isBuyerLandingRoute(pathname);
+  const isChromeless = isDeep || isBuyerChromelessRoute(pathname);
   const { tabBarVisible } = useBuyerScrollChromeState();
-  const showTabBarPadding = !isDeep && (!isLanding || tabBarVisible);
+  const showTabBarPadding = !isChromeless && (!isLanding || tabBarVisible);
 
   return (
     <main
