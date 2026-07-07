@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { Archive, PencilLine } from 'lucide-react';
+import { Archive, PencilIcon } from 'lucide-react';
 
 import { FeatureGate } from '@/components/FeatureGate';
 import { RoleGuard } from '@/components/auth/RoleGuard';
@@ -122,14 +122,14 @@ export default function PriceListDetailPage() {
                 actions={
                   isSellerAdmin ? (
                     <div className="flex items-center gap-2 pt-1">
-                    <Button type="button" variant="ghost" size="sm" className="h-9 px-4" onClick={() => setArchiveOpen(true)}>
+                    <Button type="button" variant="ghost" size="sm" className="gap-2" onClick={() => setArchiveOpen(true)}>
                       <Archive size={14} aria-hidden />
-                      Archive
+                      Archive pricelist
                     </Button>
-                      <Button variant="accent" size="sm" className="h-9 px-4" asChild>
+                      <Button variant="outline" size="sm" className="gap-2" asChild>
                         <Link href={`/price-lists/${id}/edit`}>
-                          <PencilLine size={14} aria-hidden />
-                          Edit Pricelist
+                          <PencilIcon size={14} aria-hidden />
+                          Edit pricelist
                         </Link>
                       </Button>
                     </div>

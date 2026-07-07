@@ -27,7 +27,7 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 vi.mock('@/lib/server/buyer-access', () => ({
-  findBuyerLoginCandidates: vi.fn().mockResolvedValue([]),
+  findTenantBuyerPreviewCandidates: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('@/lib/server/buyer-preview-session', () => ({
@@ -122,8 +122,8 @@ describe('buyer preview launch route', () => {
       },
     });
 
-    const { findBuyerLoginCandidates } = await import('@/lib/server/buyer-access');
-    vi.mocked(findBuyerLoginCandidates).mockResolvedValueOnce([
+    const { findTenantBuyerPreviewCandidates } = await import('@/lib/server/buyer-access');
+    vi.mocked(findTenantBuyerPreviewCandidates).mockResolvedValueOnce([
       {
         buyer_id: 'buyer-1',
         tenant_id: 'tenant-1',
@@ -147,12 +147,74 @@ describe('buyer preview launch route', () => {
     const response = await GET(new NextRequest('http://localhost/api/buyer/preview/launch'));
 
     expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('http://localhost/buy/home');
     expect(setBuyerPreviewCookiesMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         tenantId: 'tenant-1',
         shareToken: null,
         buyerId: 'buyer-1',
+        requiresConfirmation: false,
+      }),
+    );
+  });
+
+  it('redirects to buyer picker when multiple buyers share the seller phone', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      sub: 'user-1',
+      tenant_id: 'tenant-1',
+      role: 'seller_admin',
+      buyer_id: null,
+    });
+
+    const { findTenantBuyerPreviewCandidates } = await import('@/lib/server/buyer-access');
+    vi.mocked(findTenantBuyerPreviewCandidates).mockResolvedValueOnce([
+      {
+        buyer_id: 'buyer-1',
+        tenant_id: 'tenant-1',
+        tenant_name: 'Acme Corp',
+        tenant_slug: 'acme',
+        tenant_whatsapp_number: null,
+        tenant_whatsapp_display_name: null,
+        role: 'buyer_admin',
+        principal_type: 'buyer',
+        user_id: null,
+        buyer_user_id: null,
+        phone: '9876543210',
+        business_name: 'Buyer One',
+        contact_name: 'Buyer One',
+        buyer_app_enabled: true,
+        tenant_app_enabled: true,
+      },
+      {
+        buyer_id: 'buyer-2',
+        tenant_id: 'tenant-1',
+        tenant_name: 'Acme Corp',
+        tenant_slug: 'acme',
+        tenant_whatsapp_number: null,
+        tenant_whatsapp_display_name: null,
+        role: 'buyer_admin',
+        principal_type: 'buyer',
+        user_id: null,
+        buyer_user_id: null,
+        phone: '9876543210',
+        business_name: 'Buyer Two',
+        contact_name: 'Buyer Two',
+        buyer_app_enabled: false,
+        tenant_app_enabled: true,
+      },
+    ]);
+
+    const { GET } = await import('../../../app/api/buyer/preview/launch/route');
+    const response = await GET(new NextRequest('http://localhost/api/buyer/preview/launch'));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('http://localhost/buy/preview/select-buyer');
+    expect(setBuyerPreviewCookiesMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        buyerId: null,
         requiresConfirmation: false,
       }),
     );

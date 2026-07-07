@@ -39,7 +39,7 @@ import {
   type IntegrationSyncPhaseDefinition,
   ZohoApiError,
 } from './integrations-zoho.ts';
-import { IntegrationSyncError, persistZohoEntityPage, resolveInternalIdWithFallback, type PersistResult } from './integrations-persist.ts';
+import { IntegrationSyncError, persistZohoEntityPage, resolveInternalIdWithFallback, buildPersistOptions, INCREMENTAL_PERSIST_OPTIONS, type PersistResult } from './integrations-persist.ts';
 
 declare const Deno: {
   env: {
@@ -1405,6 +1405,10 @@ async function runWorkerJob(
 
     if (page.records.length > 0) {
       try {
+        const persistOptions = buildPersistOptions({
+          jobType: job.job_type,
+          entityType: currentPhase.entityType,
+        });
         const persistResult = await persistZohoEntityPage(
           admin,
           integration.tenant_id,
@@ -1414,6 +1418,7 @@ async function runWorkerJob(
           integration.integration_type_id as ZohoIntegrationTypeId,
           page.records,
           adapter,
+          persistOptions,
         );
         processedCount = persistResult.created + persistResult.updated;
         failedCount = persistResult.skipped;
@@ -2352,6 +2357,8 @@ async function applyDirectWebhookEntity(
     envelope.phase,
     integration.integration_type_id as ZohoIntegrationTypeId,
     [envelope.entityPayload],
+    undefined,
+    INCREMENTAL_PERSIST_OPTIONS,
   );
 
   const after = await resolveWebhookTargetInternalId(admin, webhook, envelope);

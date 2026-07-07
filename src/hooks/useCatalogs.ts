@@ -135,6 +135,10 @@ export interface CatalogDetailResponse {
     catalog_order: number;
   }>;
   performance: {
+    channels?: {
+      estimates_enabled: boolean;
+      orders_enabled: boolean;
+    };
     summary: {
       orders: number;
       conversions?: number;

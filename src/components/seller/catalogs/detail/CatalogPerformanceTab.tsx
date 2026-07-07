@@ -23,7 +23,42 @@ function dayTick(value: string) {
   return new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
 }
 
+function conversionLabels(performance: CatalogDetailResponse['performance']) {
+  const estimatesEnabled = performance.channels?.estimates_enabled ?? true;
+  const ordersEnabled = performance.channels?.orders_enabled ?? true;
+  const orderCount = performance.summary.order_count ?? performance.funnel.orders;
+  const estimateCount = performance.summary.estimate_count ?? performance.funnel.estimates ?? 0;
+
+  if (estimatesEnabled && !ordersEnabled) {
+    return {
+      cumulativeTitle: 'Cumulative enquiries',
+      conversionSubtitle: 'Enquiry volume since publish',
+    };
+  }
+  if (ordersEnabled && !estimatesEnabled) {
+    return {
+      cumulativeTitle: 'Cumulative orders',
+      conversionSubtitle: 'Order volume since publish',
+    };
+  }
+
+  const breakdown =
+    estimateCount > 0 && orderCount > 0
+      ? `${estimateCount} enquiries · ${orderCount} orders`
+      : estimateCount > 0
+        ? `${estimateCount} enquiries`
+        : orderCount > 0
+          ? `${orderCount} orders`
+          : 'No conversions yet';
+
+  return {
+    cumulativeTitle: 'Cumulative conversions',
+    conversionSubtitle: breakdown,
+  };
+}
+
 export function CatalogPerformanceTab({ performance }: CatalogPerformanceTabProps) {
+  const labels = conversionLabels(performance);
   const [period, setPeriod] = useState<TrendPeriod>('12m');
   const [skusSheetOpen, setSkusSheetOpen] = useState(false);
   const [buyersSheetOpen, setBuyersSheetOpen] = useState(false);
@@ -52,8 +87,8 @@ export function CatalogPerformanceTab({ performance }: CatalogPerformanceTabProp
     <section className="mt-5 space-y-4">
       <div className="grid grid-cols-[1.75fr_1fr] gap-4">
         <PerformanceCard
-          title="Cumulative orders"
-          subtitle={`Since publish · valid until ${performance.summary.valid_until_label}`}
+          title={labels.cumulativeTitle}
+          subtitle={`${labels.conversionSubtitle} · valid until ${performance.summary.valid_until_label}`}
           actions={(
             <div className="inline-flex rounded-[10px] bg-cream-200 p-1">
               {(['3m', '12m', 'ytd'] as TrendPeriod[]).map((option) => (
@@ -127,6 +162,11 @@ export function CatalogPerformanceTab({ performance }: CatalogPerformanceTabProp
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Views</p>
               <p className="mt-1 font-display text-3xl leading-[0.95] tracking-[-0.02em] text-cream-950">{performance.summary.views}</p>
               <p className="mt-1 text-base text-cream-700">{performance.summary.unique_viewers} unique</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Conversions</p>
+              <p className="mt-1 font-display text-3xl leading-[0.95] tracking-[-0.02em] text-cream-950">{performance.summary.conversions ?? performance.summary.orders}</p>
+              <p className="mt-1 text-base text-cream-700">{labels.conversionSubtitle}</p>
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Opens → conversion</p>

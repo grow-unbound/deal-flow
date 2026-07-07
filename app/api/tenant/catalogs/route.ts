@@ -9,11 +9,12 @@ import { CatalogComposerPayloadSchema, type CatalogComposerFilterState, type Cat
 import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
 import {
   aggregateCampaignViewsByCampaign,
-  computeCampaignConversionMetrics,
+  buildCatalogAttributedMetrics,
   type CampaignEstimateRow,
   type CampaignOrderRow,
   type CampaignViewRow,
 } from '@/lib/server/campaign-performance';
+import { getInAppCreateFlags } from '@/lib/server/seller-features';
 
 type CatalogStatus = 'draft' | 'published' | 'archived';
 type DisplayStatus = 'Live' | 'Draft' | 'Ended';
@@ -396,42 +397,75 @@ export async function GET(req: NextRequest) {
       itemsByCatalog.get(item.campaign_id)?.push(item);
     }
 
-    const ordersByCatalog = new Map<string, CampaignOrderRow[]>();
-    const prevOrdersByCatalog = new Map<string, CampaignOrderRow[]>();
-    const estimatesByCatalog = new Map<string, CampaignEstimateRow[]>();
-    const prevEstimatesByCatalog = new Map<string, CampaignEstimateRow[]>();
+    const allOrderIds = Array.from(new Set([...orders, ...prevOrders].map((order) => order.id)));
+    const allEstimateIds = Array.from(new Set([...estimates, ...prevEstimates].map((estimate) => estimate.id)));
 
-    for (const order of orders) {
-      if (!order.campaign_id) continue;
-      if (!ordersByCatalog.has(order.campaign_id)) ordersByCatalog.set(order.campaign_id, []);
-      ordersByCatalog.get(order.campaign_id)?.push(order);
+    const [orderItemsRes, estimateItemsRes, createFlags] = await Promise.all([
+      allOrderIds.length && tenantProductIds.length
+        ? db
+            .schema('app')
+            .from('order_items')
+            .select('order_id, tenant_product_id, qty, line_total, unit_price')
+            .in('order_id', allOrderIds)
+            .in('tenant_product_id', tenantProductIds)
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [], error: null }),
+      allEstimateIds.length && tenantProductIds.length
+        ? db
+            .schema('app')
+            .from('estimate_items')
+            .select('estimate_id, tenant_product_id, qty, line_total, unit_price')
+            .in('estimate_id', allEstimateIds)
+            .in('tenant_product_id', tenantProductIds)
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [], error: null }),
+      getInAppCreateFlags(tenantId),
+    ]);
+
+    if (orderItemsRes.error || estimateItemsRes.error) {
+      console.error('[GET /api/tenant/catalogs] line items error:', orderItemsRes.error || estimateItemsRes.error);
+      return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
     }
 
-    for (const order of prevOrders) {
-      if (!order.campaign_id) continue;
-      if (!prevOrdersByCatalog.has(order.campaign_id)) prevOrdersByCatalog.set(order.campaign_id, []);
-      prevOrdersByCatalog.get(order.campaign_id)?.push(order);
-    }
+    const orderItemsRaw = (orderItemsRes.data ?? []) as Array<{
+      order_id: string;
+      tenant_product_id: string;
+      qty: number | null;
+      line_total: number | null;
+      unit_price: number | null;
+    }>;
+    const estimateItemsRaw = (estimateItemsRes.data ?? []) as Array<{
+      estimate_id: string;
+      tenant_product_id: string;
+      qty: number | null;
+      line_total: number | null;
+      unit_price: number | null;
+    }>;
+    const channelOptions = {
+      includeOrders: createFlags.create_sales_orders,
+      includeEstimates: createFlags.create_enquiries,
+    };
 
-    for (const estimate of estimates) {
-      if (!estimate.campaign_id) continue;
-      if (!estimatesByCatalog.has(estimate.campaign_id)) estimatesByCatalog.set(estimate.campaign_id, []);
-      estimatesByCatalog.get(estimate.campaign_id)?.push(estimate as CampaignEstimateRow);
-    }
-
-    for (const estimate of prevEstimates) {
-      if (!estimate.campaign_id) continue;
-      if (!prevEstimatesByCatalog.has(estimate.campaign_id)) prevEstimatesByCatalog.set(estimate.campaign_id, []);
-      prevEstimatesByCatalog.get(estimate.campaign_id)?.push(estimate as CampaignEstimateRow);
+    const productsByCampaign = new Map<string, Set<string>>();
+    for (const item of items) {
+      if (!productsByCampaign.has(item.campaign_id)) productsByCampaign.set(item.campaign_id, new Set());
+      productsByCampaign.get(item.campaign_id)?.add(item.tenant_product_id);
     }
 
     const catalogRows = catalogs.map((catalog, index) => {
       const displayStatus = getDisplayStatus(catalog.status, catalog.valid_to, nowTs);
       const tone = getStatusTone(displayStatus);
       const catalogItems = itemsByCatalog.get(catalog.id) ?? [];
-      const ordersForCatalog = ordersByCatalog.get(catalog.id) ?? [];
-      const estimatesForCatalog = estimatesByCatalog.get(catalog.id) ?? [];
-      const conversionMetrics = computeCampaignConversionMetrics(ordersForCatalog, estimatesForCatalog);
+      const campaignProductIds = productsByCampaign.get(catalog.id) ?? new Set<string>();
+      const conversionMetrics = buildCatalogAttributedMetrics(
+        catalog.id,
+        campaignProductIds,
+        orders as CampaignOrderRow[],
+        estimates as CampaignEstimateRow[],
+        orderItemsRaw,
+        estimateItemsRaw,
+        channelOptions,
+      );
       const viewMetrics = viewsByCampaign.get(catalog.id);
       const gmv = conversionMetrics.gmv;
       const conversionCount = conversionMetrics.conversionCount;
@@ -488,8 +522,42 @@ export async function GET(req: NextRequest) {
     const expiring7d = liveCatalogs.filter(
       (catalog) => catalog.valid_to != null && new Date(catalog.valid_to).getTime() <= nowTs + sevenDaysMs,
     ).length;
-    const periodConversionMetrics = computeCampaignConversionMetrics(orders, estimates as CampaignEstimateRow[]);
-    const prevPeriodConversionMetrics = computeCampaignConversionMetrics(prevOrders, prevEstimates as CampaignEstimateRow[]);
+    const periodConversionMetrics = catalogs.reduce(
+      (acc, catalog) => {
+        const campaignProductIds = productsByCampaign.get(catalog.id) ?? new Set<string>();
+        const metrics = buildCatalogAttributedMetrics(
+          catalog.id,
+          campaignProductIds,
+          orders as CampaignOrderRow[],
+          estimates as CampaignEstimateRow[],
+          orderItemsRaw,
+          estimateItemsRaw,
+          channelOptions,
+        );
+        acc.gmv += metrics.gmv;
+        acc.conversionCount += metrics.conversionCount;
+        return acc;
+      },
+      { gmv: 0, conversionCount: 0 },
+    );
+    const prevPeriodConversionMetrics = catalogs.reduce(
+      (acc, catalog) => {
+        const campaignProductIds = productsByCampaign.get(catalog.id) ?? new Set<string>();
+        const metrics = buildCatalogAttributedMetrics(
+          catalog.id,
+          campaignProductIds,
+          prevOrders as CampaignOrderRow[],
+          prevEstimates as CampaignEstimateRow[],
+          orderItemsRaw,
+          estimateItemsRaw,
+          channelOptions,
+        );
+        acc.gmv += metrics.gmv;
+        acc.conversionCount += metrics.conversionCount;
+        return acc;
+      },
+      { gmv: 0, conversionCount: 0 },
+    );
     const gmvMtd = periodConversionMetrics.gmv;
     const gmvPrevMtd = prevPeriodConversionMetrics.gmv;
     const gmvGrowthPct = gmvPrevMtd > 0 ? Math.round(((gmvMtd - gmvPrevMtd) / gmvPrevMtd) * 100) : gmvMtd > 0 ? 100 : 0;

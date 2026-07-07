@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Archive, PencilLine } from 'lucide-react';
+import { Archive, PencilIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { PageWrap } from '@/components/seller/layout';
 import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
@@ -156,14 +156,12 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
         ]}
         actions={isSellerAssistant ? null : (
           <div className="flex items-center gap-2 pt-1">
-            <Button type="button" className="cockpit-btn cockpit-btn-secondary h-9 px-4" onClick={() => setEditOpen(true)}>
-              <PencilLine size={14} />
-              Edit
-            </Button>
             <AlertDialog>
-              <AlertDialogTrigger className="cockpit-btn cockpit-btn-secondary h-9 px-4">
-                <Archive size={14} />
-                Archive
+              <AlertDialogTrigger asChild>
+                <Button type="button" variant="ghost" size="sm" className="gap-2 text-destructive hover:text-destructive">
+                  <Archive size={14} />
+                  Archive product
+                </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
@@ -180,6 +178,10 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+            <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setEditOpen(true)}>
+              <PencilIcon size={14} />
+              Edit product
+            </Button>
           </div>
         )}
       />

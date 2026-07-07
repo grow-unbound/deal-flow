@@ -7,9 +7,10 @@ import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
 import { getCatalogComposerPayload } from '@/lib/server/catalog-composer';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import {
-  computeCampaignConversionMetrics,
+  computeCampaignAttributedMetrics,
   computeCampaignViewMetrics,
   getCampaignBuyerOpenedStatus,
+  groupLineItemsByParent,
   isEligibleCampaignEstimate,
   isEligibleCampaignOrder,
   rollupSkuMetrics,
@@ -17,6 +18,7 @@ import {
   type CampaignOrderRow,
   type CampaignViewRow,
 } from '@/lib/server/campaign-performance';
+import { getInAppCreateFlags } from '@/lib/server/seller-features';
 import { CatalogComposerPayloadSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
@@ -385,7 +387,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const validEstimateIds = new Set(eligibleEstimates.map((estimate) => estimate.id));
   const productMetaById = new Map(composerPayload.products.map((product) => [product.id, product]));
 
-  const [orderItemsRes, estimateItemsRes] = await Promise.all([
+  const [orderItemsRes, estimateItemsRes, createFlags] = await Promise.all([
     orderIds.length && tenantProductIds.length
       ? db
           .schema('app')
@@ -404,14 +406,49 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           .in('tenant_product_id', tenantProductIds)
           .is('deleted_at', null)
       : Promise.resolve({ data: [], error: null }),
+    getInAppCreateFlags(claims.tenant_id),
   ]);
 
   if (orderItemsRes.error || estimateItemsRes.error) {
     return NextResponse.json({ error: 'Failed to load line items' }, { status: 500 });
   }
 
+  const orderItemsByParent = groupLineItemsByParent(
+    ((orderItemsRes.data ?? []) as Array<{
+      order_id: string;
+      tenant_product_id: string;
+      qty: number | null;
+      line_total: number | null;
+      unit_price: number | null;
+    }>).map((item) => ({ ...item, parent_id: item.order_id })),
+  );
+  const estimateItemsByParent = groupLineItemsByParent(
+    ((estimateItemsRes.data ?? []) as Array<{
+      estimate_id: string;
+      tenant_product_id: string;
+      qty: number | null;
+      line_total: number | null;
+      unit_price: number | null;
+    }>).map((item) => ({ ...item, parent_id: item.estimate_id })),
+  );
+
+  const channelOptions = {
+    includeOrders: createFlags.create_sales_orders,
+    includeEstimates: createFlags.create_enquiries,
+  };
+  const channelEligibleOrders = channelOptions.includeOrders ? eligibleOrders : [];
+  const channelEligibleEstimates = channelOptions.includeEstimates ? eligibleEstimates : [];
+  const channelValidOrderIds = new Set(channelEligibleOrders.map((order) => order.id));
+  const channelValidEstimateIds = new Set(channelEligibleEstimates.map((estimate) => estimate.id));
+
   const viewMetrics = computeCampaignViewMetrics(campaignViewRows);
-  const conversionMetrics = computeCampaignConversionMetrics(orders, estimates);
+  const conversionMetrics = computeCampaignAttributedMetrics(
+    orders,
+    estimates,
+    orderItemsByParent,
+    estimateItemsByParent,
+    channelOptions,
+  );
   const { uniqueViewers, totalViews, lastOpenedAtByBuyer } = viewMetrics;
   const {
     conversionCount,
@@ -422,6 +459,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     conversionsByBuyer,
     spendByBuyer,
     lastConversionAtByBuyer,
+    attributedGmvByOrderId,
+    attributedGmvByEstimateId,
   } = conversionMetrics;
 
   const skuMetricsByProduct = rollupSkuMetrics(
@@ -439,26 +478,30 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       line_total: number | null;
       unit_price: number | null;
     }>).map((item) => ({ ...item, parent_id: item.estimate_id })),
-    validOrderIds,
-    validEstimateIds,
+    channelValidOrderIds,
+    channelValidEstimateIds,
   );
 
   const dailyRollup = new Map<string, { revenue: number; conversions: number }>();
 
-  for (const order of eligibleOrders) {
+  for (const order of channelEligibleOrders) {
     if (!order.placed_at) continue;
+    const amount = attributedGmvByOrderId.get(order.id) ?? 0;
+    if (amount <= 0) continue;
     const date = dayKey(order.placed_at);
     const current = dailyRollup.get(date) ?? { revenue: 0, conversions: 0 };
-    current.revenue += Number(order.total_amount ?? 0);
+    current.revenue += amount;
     current.conversions += 1;
     dailyRollup.set(date, current);
   }
 
-  for (const estimate of eligibleEstimates) {
+  for (const estimate of channelEligibleEstimates) {
     if (!estimate.created_at) continue;
+    const amount = attributedGmvByEstimateId.get(estimate.id) ?? 0;
+    if (amount <= 0) continue;
     const date = dayKey(estimate.created_at);
     const current = dailyRollup.get(date) ?? { revenue: 0, conversions: 0 };
-    current.revenue += Number(estimate.total_amount ?? 0);
+    current.revenue += amount;
     current.conversions += 1;
     dailyRollup.set(date, current);
   }
@@ -479,32 +522,84 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   let previousGmv = 0;
   if (!previousCatalogRes.error && previousCatalogRes.data?.id) {
     const prevCampaignId = previousCatalogRes.data.id;
-    const [prevOrdersRes, prevEstimatesRes] = await Promise.all([
+    const [prevItemsRes, prevOrdersRes, prevEstimatesRes] = await Promise.all([
+      db
+        .schema('app')
+        .from('campaign_items')
+        .select('tenant_product_id')
+        .eq('campaign_id', prevCampaignId)
+        .is('deleted_at', null),
       db
         .schema('app')
         .from('orders')
-        .select('total_amount, status')
+        .select('id, buyer_id, total_amount, placed_at, status, created_at')
         .eq('tenant_id', claims.tenant_id)
         .eq('campaign_id', prevCampaignId)
         .is('deleted_at', null),
       db
         .schema('app')
         .from('estimates')
-        .select('total_amount, status, converted_to_order_id')
+        .select('id, buyer_id, total_amount, status, converted_to_order_id, created_at')
         .eq('tenant_id', claims.tenant_id)
         .eq('campaign_id', prevCampaignId)
         .is('deleted_at', null),
     ]);
 
-    if (!prevOrdersRes.error) {
-      previousGmv += ((prevOrdersRes.data ?? []) as CampaignOrderRow[])
-        .filter(isEligibleCampaignOrder)
-        .reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0);
-    }
-    if (!prevEstimatesRes.error) {
-      previousGmv += ((prevEstimatesRes.data ?? []) as CampaignEstimateRow[])
-        .filter(isEligibleCampaignEstimate)
-        .reduce((sum, estimate) => sum + Number(estimate.total_amount ?? 0), 0);
+    const prevProductIds = ((prevItemsRes.data ?? []) as Array<{ tenant_product_id: string }>).map(
+      (row) => row.tenant_product_id,
+    );
+    const prevOrders = ((prevOrdersRes.data ?? []) as CampaignOrderRow[]) ?? [];
+    const prevEstimates = ((prevEstimatesRes.data ?? []) as CampaignEstimateRow[]) ?? [];
+    const prevEligibleOrders = prevOrders.filter(isEligibleCampaignOrder);
+    const prevEligibleEstimates = prevEstimates.filter(isEligibleCampaignEstimate);
+    const prevOrderIds = prevOrders.map((order) => order.id);
+
+    const [prevOrderItemsRes, prevEstimateItemsRes] = await Promise.all([
+      prevOrderIds.length && prevProductIds.length
+        ? db
+            .schema('app')
+            .from('order_items')
+            .select('order_id, tenant_product_id, qty, line_total, unit_price')
+            .in('order_id', prevOrderIds)
+            .in('tenant_product_id', prevProductIds)
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [], error: null }),
+      prevEligibleEstimates.length && prevProductIds.length
+        ? db
+            .schema('app')
+            .from('estimate_items')
+            .select('estimate_id, tenant_product_id, qty, line_total, unit_price')
+            .in('estimate_id', prevEligibleEstimates.map((estimate) => estimate.id))
+            .in('tenant_product_id', prevProductIds)
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    if (!prevOrderItemsRes.error && !prevEstimateItemsRes.error) {
+      const prevMetrics = computeCampaignAttributedMetrics(
+        prevOrders,
+        prevEstimates,
+        groupLineItemsByParent(
+          ((prevOrderItemsRes.data ?? []) as Array<{
+            order_id: string;
+            tenant_product_id: string;
+            qty: number | null;
+            line_total: number | null;
+            unit_price: number | null;
+          }>).map((item) => ({ ...item, parent_id: item.order_id })),
+        ),
+        groupLineItemsByParent(
+          ((prevEstimateItemsRes.data ?? []) as Array<{
+            estimate_id: string;
+            tenant_product_id: string;
+            qty: number | null;
+            line_total: number | null;
+            unit_price: number | null;
+          }>).map((item) => ({ ...item, parent_id: item.estimate_id })),
+        ),
+        channelOptions,
+      );
+      previousGmv = prevMetrics.gmv;
     }
   }
 
@@ -671,6 +766,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     },
     products,
     performance: {
+      channels: {
+        estimates_enabled: createFlags.create_enquiries,
+        orders_enabled: createFlags.create_sales_orders,
+      },
       summary: {
         orders: conversionCount,
         conversions: conversionCount,

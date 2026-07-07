@@ -103,7 +103,7 @@ export async function GET(
     .filter((item): item is BuyerCatalogItem => Boolean(item));
 
   if (profile?.buyer?.id) {
-    void recordCampaignView(db, {
+    await recordCampaignView(db, {
       tenantId: catalog.tenant_id,
       buyerId: profile.buyer.id,
       campaignId: catalog.id,
