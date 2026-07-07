@@ -21,7 +21,9 @@ import {
   isRunReadyForAnalysis,
   MASTER_PHASE,
   resolvePhasesToRun,
+  resolvePhasesForPolicy,
   resolveRunProfile,
+  resolveSyncEnrichmentPolicy,
   shouldHaltOnFailure,
   sinceForPhase,
   type CanonicalPhase,
@@ -767,7 +769,11 @@ Deno.serve(async (req: Request) => {
     }
 
     const requestedPhaseRaw = typeof body.phase === 'string' ? body.phase : null;
-    const phasesToRun = resolvePhasesToRun(requestedPhaseRaw) as CanonicalPhase[];
+    const enrichmentPolicy = resolveSyncEnrichmentPolicy(jobType);
+    const phasesToRun = resolvePhasesForPolicy({
+      requestedPhase: requestedPhaseRaw,
+      enrichmentPolicy,
+    }) as CanonicalPhase[];
 
     const transactionSince = forceFullRefresh
       ? sinceInput

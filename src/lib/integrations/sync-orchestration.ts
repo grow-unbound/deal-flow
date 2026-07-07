@@ -260,3 +260,54 @@ export function resolvePhasesToRun(requestedPhaseRaw: string | null): readonly C
   if (isCanonicalPhase(requestedPhaseRaw)) return [requestedPhaseRaw];
   return CANONICAL_PHASES;
 }
+
+/** Full orchestrated import — omits line-item hydration (manual / incremental only). */
+export const FULL_SYNC_PHASES: readonly CanonicalPhase[] = [
+  'locations',
+  'products',
+  'pricelists',
+  'customers',
+  'estimates',
+  'orders',
+  'invoices',
+];
+
+export type SyncEnrichmentPolicy = 'full_sync' | 'incremental';
+
+export function resolveSyncEnrichmentPolicy(jobType: string): SyncEnrichmentPolicy {
+  return jobType === 'incremental' ? 'incremental' : 'full_sync';
+}
+
+export type EntityEnrichmentMode = 'list_only' | 'detail_when_needed' | 'keep_current';
+
+export function enrichmentModeForEntity(
+  policy: SyncEnrichmentPolicy,
+  entityType: string,
+): EntityEnrichmentMode {
+  if (entityType === 'products' || entityType === 'pricelists') {
+    return 'keep_current';
+  }
+  if (entityType === 'customers') {
+    return policy === 'full_sync' ? 'list_only' : 'detail_when_needed';
+  }
+  if (
+    entityType === 'locations'
+    || entityType === 'warehouses'
+    || entityType === 'estimates'
+    || entityType === 'orders'
+    || entityType === 'invoices'
+  ) {
+    return 'list_only';
+  }
+  return 'keep_current';
+}
+
+export function resolvePhasesForPolicy(input: {
+  requestedPhase: string | null;
+  enrichmentPolicy: SyncEnrichmentPolicy;
+}): readonly CanonicalPhase[] {
+  if (input.requestedPhase) {
+    return resolvePhasesToRun(input.requestedPhase);
+  }
+  return input.enrichmentPolicy === 'incremental' ? CANONICAL_PHASES : FULL_SYNC_PHASES;
+}

@@ -106,21 +106,6 @@ export function useTenantOrders(
       appendArrayParam(params, 'source', filters.source);
       appendArrayParam(params, 'status', filters.status);
       appendArrayParam(params, 'location_id', filters.location_id);
-      // #region agent log
-      fetch('http://127.0.0.1:7499/ingest/42159701-4a5a-4229-9bc0-a9348f871657', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '56e5c0' },
-        body: JSON.stringify({
-          sessionId: '56e5c0',
-          runId: 'pre-fix',
-          hypothesisId: 'D-client-fetch',
-          location: 'src/hooks/useOrders.ts:queryFn',
-          message: 'client orders API fetch triggered',
-          data: { period, hasActiveFilters, params: params.toString() },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
       const res = await apiFetch(`/api/tenant/orders?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch orders');
       return res.json();

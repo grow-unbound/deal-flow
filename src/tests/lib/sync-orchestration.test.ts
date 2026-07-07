@@ -1,10 +1,16 @@
+import { readFileSync } from 'fs';
+
 import { describe, expect, it } from 'vitest';
 import {
   buildContinuationPayload,
   buildSyncRunContext,
   dailySinceDateIst,
+  enrichmentModeForEntity,
+  FULL_SYNC_PHASES,
   isRunReadyForAnalysis,
   resolveFailurePolicy,
+  resolvePhasesForPolicy,
+  resolveSyncEnrichmentPolicy,
   sinceForPhase,
   shouldHaltOnFailure,
 } from '@/lib/integrations/sync-orchestration';
@@ -95,5 +101,49 @@ describe('sync-orchestration', () => {
   it('dailySinceDateIst returns previous IST calendar date', () => {
     const istMorning = new Date('2026-07-07T00:30:00.000Z'); // 06:00 IST Jul 7
     expect(dailySinceDateIst(istMorning)).toBe('2026-07-06');
+  });
+
+  it('resolveSyncEnrichmentPolicy distinguishes incremental from full sync', () => {
+    expect(resolveSyncEnrichmentPolicy('incremental')).toBe('incremental');
+    expect(resolveSyncEnrichmentPolicy('manual')).toBe('full_sync');
+    expect(resolveSyncEnrichmentPolicy('initial_reference')).toBe('full_sync');
+  });
+
+  it('resolvePhasesForPolicy omits transaction_line_items on full sync', () => {
+    expect(resolvePhasesForPolicy({
+      requestedPhase: null,
+      enrichmentPolicy: 'full_sync',
+    })).toEqual(FULL_SYNC_PHASES);
+    expect(resolvePhasesForPolicy({
+      requestedPhase: null,
+      enrichmentPolicy: 'incremental',
+    })).toContain('transaction_line_items');
+    expect(resolvePhasesForPolicy({
+      requestedPhase: 'transaction_line_items',
+      enrichmentPolicy: 'full_sync',
+    })).toEqual(['transaction_line_items']);
+  });
+
+  it('enrichmentModeForEntity applies list_only to customers on full sync', () => {
+    expect(enrichmentModeForEntity('full_sync', 'customers')).toBe('list_only');
+    expect(enrichmentModeForEntity('incremental', 'customers')).toBe('detail_when_needed');
+    expect(enrichmentModeForEntity('full_sync', 'products')).toBe('keep_current');
+    expect(enrichmentModeForEntity('full_sync', 'estimates')).toBe('list_only');
+  });
+
+  it('isRunReadyForAnalysis completes full sync without transaction_line_items', () => {
+    const fullSyncPhases = [...FULL_SYNC_PHASES];
+    const slaves = fullSyncPhases.map((phase, index) => ({
+      id: String(index + 1),
+      phase,
+      status: 'completed',
+      progress: {},
+    }));
+    expect(isRunReadyForAnalysis(slaves, fullSyncPhases)).toBe(true);
+  });
+
+  it('transaction line items edge function defaults batch size to 50', () => {
+    const source = readFileSync('supabase/functions/sync-transaction-line-items/index.ts', 'utf8');
+    expect(source).toContain('const DEFAULT_BATCH_SIZE = 50');
   });
 });
