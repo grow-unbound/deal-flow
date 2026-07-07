@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useQueryClient } from '@tanstack/react-query';
-import { Pencil } from 'lucide-react';
+import { PencilIcon } from 'lucide-react';
 import { PageWrap } from '@/components/seller/layout';
 import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
 import { Button } from '@/components/ui/button';
@@ -155,9 +155,9 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
         ].filter(Boolean)}
         actions={
           isSellerAdmin ? (
-            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="flex items-center gap-1.5">
-              <Pencil size={14} />
-              Edit
+            <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setEditOpen(true)}>
+              <PencilIcon size={14} />
+              Edit category
             </Button>
           ) : null
         }

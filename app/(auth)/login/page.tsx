@@ -170,7 +170,12 @@ function LoginForm() {
       posthog.identify(data.user?.id ?? identifier, { email: data.user?.email ?? identifier });
 
       shouldResetLoading = false;
-      router.replace(data.redirect ?? '/dashboard');
+      const baseRedirect = data.redirect ?? '/dashboard';
+      const redirectPath =
+        accountVerified && baseRedirect === '/dashboard'
+          ? '/dashboard?first_run=1'
+          : baseRedirect;
+      router.replace(redirectPath);
       router.refresh();
     } catch {
       setEmailError('An error occurred. Please try again.');

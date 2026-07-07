@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  computeCampaignAttributedMetrics,
   computeCampaignConversionMetrics,
   computeCampaignViewMetrics,
   getCampaignBuyerOpenedStatus,
+  groupLineItemsByParent,
   isEligibleCampaignEstimate,
   isEligibleCampaignOrder,
+  lineItemAttributedAmount,
   rollupSkuMetrics,
+  sumAttributedLineItems,
 } from '@/lib/server/campaign-performance';
 
 describe('campaign-performance', () => {
@@ -84,5 +88,149 @@ describe('campaign-performance', () => {
     );
 
     expect(rollup.get('p1')).toEqual({ units: 3, gmv: 290 });
+  });
+
+  it('uses campaign line items only for attributed GMV on mixed carts', () => {
+    const orderItemsByParent = groupLineItemsByParent([
+      { parent_id: 'o1', tenant_product_id: 'p1', qty: 1, line_total: 300, unit_price: 300 },
+    ]);
+
+    const metrics = computeCampaignAttributedMetrics(
+      [
+        {
+          id: 'o1',
+          buyer_id: 'b1',
+          total_amount: 1000,
+          placed_at: '2026-07-01T10:00:00Z',
+          status: 'received',
+          created_at: '2026-07-01T10:00:00Z',
+        },
+      ],
+      [],
+      orderItemsByParent,
+      new Map(),
+    );
+
+    expect(metrics.gmv).toBe(300);
+    expect(metrics.conversionCount).toBe(1);
+    expect(metrics.attributedGmvByOrderId.get('o1')).toBe(300);
+  });
+
+  it('excludes converted estimates and counts order line GMV only', () => {
+    const orderItemsByParent = groupLineItemsByParent([
+      { parent_id: 'o1', tenant_product_id: 'p1', qty: 1, line_total: 400, unit_price: 400 },
+    ]);
+    const estimateItemsByParent = groupLineItemsByParent([
+      { parent_id: 'e1', tenant_product_id: 'p1', qty: 1, line_total: 500, unit_price: 500 },
+    ]);
+
+    const metrics = computeCampaignAttributedMetrics(
+      [
+        {
+          id: 'o1',
+          buyer_id: 'b1',
+          total_amount: 400,
+          placed_at: '2026-07-01T10:00:00Z',
+          status: 'received',
+          created_at: '2026-07-01T10:00:00Z',
+        },
+      ],
+      [
+        {
+          id: 'e1',
+          buyer_id: 'b1',
+          total_amount: 500,
+          status: 'accepted',
+          converted_to_order_id: 'o1',
+          created_at: '2026-06-30T10:00:00Z',
+        },
+      ],
+      orderItemsByParent,
+      estimateItemsByParent,
+    );
+
+    expect(metrics.conversionCount).toBe(1);
+    expect(metrics.orderCount).toBe(1);
+    expect(metrics.estimateCount).toBe(0);
+    expect(metrics.gmv).toBe(400);
+  });
+
+  it('combines orders and open estimates', () => {
+    const orderItemsByParent = groupLineItemsByParent([
+      { parent_id: 'o1', tenant_product_id: 'p1', qty: 1, line_total: 100, unit_price: 100 },
+    ]);
+    const estimateItemsByParent = groupLineItemsByParent([
+      { parent_id: 'e1', tenant_product_id: 'p1', qty: 1, line_total: 200, unit_price: 200 },
+    ]);
+
+    const metrics = computeCampaignAttributedMetrics(
+      [
+        {
+          id: 'o1',
+          buyer_id: 'b1',
+          total_amount: 100,
+          placed_at: '2026-07-01T10:00:00Z',
+          status: 'received',
+          created_at: '2026-07-01T10:00:00Z',
+        },
+      ],
+      [
+        {
+          id: 'e1',
+          buyer_id: 'b2',
+          total_amount: 200,
+          status: 'accepted',
+          converted_to_order_id: null,
+          created_at: '2026-07-02T10:00:00Z',
+        },
+      ],
+      orderItemsByParent,
+      estimateItemsByParent,
+    );
+
+    expect(metrics.conversionCount).toBe(2);
+    expect(metrics.gmv).toBe(300);
+  });
+
+  it('skips disabled transaction channels', () => {
+    const metrics = computeCampaignAttributedMetrics(
+      [
+        {
+          id: 'o1',
+          buyer_id: 'b1',
+          total_amount: 100,
+          placed_at: '2026-07-01T10:00:00Z',
+          status: 'received',
+          created_at: '2026-07-01T10:00:00Z',
+        },
+      ],
+      [
+        {
+          id: 'e1',
+          buyer_id: 'b2',
+          total_amount: 200,
+          status: 'accepted',
+          converted_to_order_id: null,
+          created_at: '2026-07-02T10:00:00Z',
+        },
+      ],
+      groupLineItemsByParent([
+        { parent_id: 'o1', tenant_product_id: 'p1', qty: 1, line_total: 100, unit_price: 100 },
+      ]),
+      groupLineItemsByParent([
+        { parent_id: 'e1', tenant_product_id: 'p1', qty: 1, line_total: 200, unit_price: 200 },
+      ]),
+      { includeOrders: false, includeEstimates: true },
+    );
+
+    expect(metrics.conversionCount).toBe(1);
+    expect(metrics.estimateCount).toBe(1);
+    expect(metrics.orderCount).toBe(0);
+    expect(metrics.gmv).toBe(200);
+  });
+
+  it('computes line item amount from qty and unit price fallback', () => {
+    expect(lineItemAttributedAmount({ tenant_product_id: 'p1', qty: 2, line_total: null, unit_price: 50 })).toBe(100);
+    expect(sumAttributedLineItems([{ tenant_product_id: 'p1', qty: 1, line_total: 90, unit_price: 90 }])).toBe(90);
   });
 });

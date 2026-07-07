@@ -46,6 +46,13 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
   const campaignMessage = mode === 'list' ? (firstPage?.selected_campaign_message ?? null) : null;
   const campaignValidUntil = mode === 'list' ? (firstPage?.selected_campaign_valid_until ?? null) : null;
 
+  // Bind cart attribution to the campaign route id immediately — don't wait for catalog API.
+  React.useEffect(() => {
+    if (mode === 'list' && id) {
+      setCampaignId(id);
+    }
+  }, [mode, id, setCampaignId]);
+
   React.useEffect(() => {
     if (mode !== 'list' || campaignTitleResolved) return;
     const page = pages[0];

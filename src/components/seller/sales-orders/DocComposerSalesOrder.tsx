@@ -82,6 +82,7 @@ import type {
   SalesOrderComposerDocument,
   SalesOrderComposerSavePayload,
 } from '@/types/sales-order-composer';
+import { AccessControlPolicy$ } from '@aws-sdk/client-s3';
 
 const BASE_PRICING_OPTION = '__base__';
 
@@ -960,17 +961,17 @@ export function DocComposerSalesOrder({
             </Button>
             <Button
               type="button"
-              variant="accent"
+              variant="primary"
               className="gap-2"
               disabled={isSubmitting && submitAction !== 'save'}
               onClick={() => void handleSaveAndClose()}
             >
               {submitAction === 'save' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {submitAction === 'save' ? 'Saving…' : 'Save & close'}
+              {submitAction === 'save' ? 'Saving…' : 'Save as draft'}
             </Button>
             <Button
               type="button"
-              variant={effectiveShortLines.length > 0 ? 'secondary' : 'primary'}
+              variant="accent"
               className={effectiveShortLines.length > 0 ? 'gap-2 border-amber-500 text-amber-700 hover:bg-amber-50' : primaryDisabled && submitAction !== 'confirm' ? 'btn-disabled gap-2' : 'gap-2'}
               disabled={(primaryDisabled || isSubmitting) && submitAction !== 'confirm'}
               onClick={() => void handleConfirmClick()}

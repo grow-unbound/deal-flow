@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { Pressable } from '@/components/ui/pressable';
 import { useIdleRoutePrefetch } from '@/hooks/useIdleRoutePrefetch';
 import { useBuyerScrollChromeState } from '@/contexts/BuyerScrollChromeContext';
-import { isBuyerDeepRoute } from '@/lib/buyer-routes';
+import { isBuyerChromelessRoute, isBuyerDeepRoute } from '@/lib/buyer-routes';
 import { cn } from '@/lib/utils';
 
 const tabs = [
@@ -20,7 +20,7 @@ export function BuyerTabBar() {
   const { tabBarVisible } = useBuyerScrollChromeState();
   useIdleRoutePrefetch(['/buy/home', '/buy/catalog', '/buy/orders', '/buy/profile', '/buy/search', '/buy/location']);
 
-  if (isBuyerDeepRoute(pathname)) return null;
+  if (isBuyerDeepRoute(pathname) || isBuyerChromelessRoute(pathname)) return null;
 
   return (
     <nav

@@ -11,6 +11,7 @@ import {
   nextProvisionalEstimateSequence,
 } from '@/lib/server/transaction-numbers';
 import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
+import { inferCampaignIdForBuyerCart } from '@/lib/server/campaign-attribution';
 import { PAGE_SIZE, encodeCursor, decodeCursor } from '@/lib/pagination';
 
 // Exported types consumed by checkout/page.tsx and EnquiriesTab
@@ -127,6 +128,14 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
 
     const buyer_id = profile.buyer.id;
     const db = supabaseAdmin ?? supabase;
+
+    const resolvedCampaignId = await inferCampaignIdForBuyerCart(db, {
+      tenantId: tenant_id,
+      buyerId: buyer_id,
+      clientCampaignId: campaign_id,
+      tenantProductIds: items.map((item) => item.tenant_product_id),
+    });
+
     const policy = await loadBuyerBusinessPolicy(db as typeof supabaseAdmin, tenant_id);
     const subtotal = items.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
     const tax_amount = policy.gst_inclusive
@@ -154,15 +163,22 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
     const { data: existingRows } = await (db as any)
       .schema('app')
       .from('estimates')
-      .select('id, estimate_number')
+      .select('id, estimate_number, campaign_id')
       .eq('buyer_id', buyer_id)
       .eq('cart_hash', cart_hash)
       .gte('created_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
       .is('deleted_at', null)
       .limit(1);
 
-    const existing = (existingRows as Array<{ id: string; estimate_number: string | null }> | null)?.[0];
+    const existing = (existingRows as Array<{ id: string; estimate_number: string | null; campaign_id: string | null }> | null)?.[0];
     if (existing) {
+      if (!existing.campaign_id && resolvedCampaignId) {
+        await (db as any)
+          .schema('app')
+          .from('estimates')
+          .update({ campaign_id: resolvedCampaignId })
+          .eq('id', existing.id);
+      }
       return NextResponse.json({ success: true, estimate_id: existing.id, estimate_number: existing.estimate_number, whatsapp_sent: false });
     }
 
@@ -187,7 +203,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
         total_amount,
         cart_hash,
         notes: notes ?? null,
-        campaign_id: campaign_id ?? null,
+        campaign_id: resolvedCampaignId,
         location_id,
         place_of_supply: placeOfSupply,
         created_by: sub,

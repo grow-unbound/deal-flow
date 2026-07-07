@@ -260,7 +260,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
             {showSend ? (
               <Button
                 type="button"
-                variant="accent"
+                variant="primary"
                 size="sm"
                 className="gap-2"
                 onClick={() => setSendOpen(true)}
@@ -274,7 +274,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
             {(data.status === 'draft' || data.status === 'sent') && orderManagement && (createSalesOrders || createInvoices) ? (
               <Button type="button" variant="accent" disabled={convertMut.isPending || convertToInvoiceMut.isPending} size="sm" className="gap-2" onClick={() => setConvertOpen(true)}>
                 <ArrowRightCircle className="h-4 w-4" />
-                Convert Estimate
+                Convert estimate
               </Button>
             ) : null}
           </>
@@ -407,7 +407,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
             <DialogTitle>Void this estimate?</DialogTitle>
           </DialogHeader>
           <DialogBody>
-            <p className="text-base text-cream-700">This cannot be undone. The estimate will be marked void.</p>
+            <p className="text-base text-cream-700">This action cannot be undone. The estimate will be marked as void.</p>
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setVoidOpen(false)} disabled={voidMut.isPending}>
