@@ -18,40 +18,48 @@ export async function recordCampaignView(
   const viewedAt = new Date().toISOString();
   const viewDate = utcViewDate();
 
-  const { error } = await db
+  // Partial unique index (deleted_at IS NULL) is not usable with PostgREST upsert — update-then-insert instead.
+  const { data: updatedRows, error: updateError } = await db
     .schema('app')
     .from('campaign_views')
-    .upsert(
-      {
-        tenant_id: input.tenantId,
-        buyer_id: input.buyerId,
-        campaign_id: input.campaignId,
-        view_date: viewDate,
-        viewed_at: viewedAt,
-        source: input.source,
-      },
-      { onConflict: 'tenant_id,buyer_id,campaign_id,view_date', ignoreDuplicates: false },
-    );
+    .update({ viewed_at: viewedAt, source: input.source, updated_at: viewedAt })
+    .eq('tenant_id', input.tenantId)
+    .eq('buyer_id', input.buyerId)
+    .eq('campaign_id', input.campaignId)
+    .eq('view_date', viewDate)
+    .is('deleted_at', null)
+    .select('id');
 
-  if (error) {
-    // Fallback: update viewed_at when upsert shape differs across environments.
-    const { error: updateError } = await db
-      .schema('app')
-      .from('campaign_views')
-      .update({ viewed_at: viewedAt, source: input.source, updated_at: viewedAt })
-      .eq('tenant_id', input.tenantId)
-      .eq('buyer_id', input.buyerId)
-      .eq('campaign_id', input.campaignId)
-      .eq('view_date', viewDate)
-      .is('deleted_at', null);
+  if (updateError) {
+    console.warn('[recordCampaignView] update failed', {
+      campaignId: input.campaignId,
+      buyerId: input.buyerId,
+      message: updateError.message,
+    });
+    return;
+  }
 
-    if (updateError) {
-      console.warn('[recordCampaignView] failed', {
-        campaignId: input.campaignId,
-        buyerId: input.buyerId,
-        message: error.message,
-        updateMessage: updateError.message,
-      });
-    }
+  if ((updatedRows ?? []).length > 0) {
+    return;
+  }
+
+  const { error: insertError } = await db
+    .schema('app')
+    .from('campaign_views')
+    .insert({
+      tenant_id: input.tenantId,
+      buyer_id: input.buyerId,
+      campaign_id: input.campaignId,
+      view_date: viewDate,
+      viewed_at: viewedAt,
+      source: input.source,
+    });
+
+  if (insertError) {
+    console.warn('[recordCampaignView] insert failed', {
+      campaignId: input.campaignId,
+      buyerId: input.buyerId,
+      message: insertError.message,
+    });
   }
 }

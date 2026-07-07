@@ -2,7 +2,7 @@
 
 import { use, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { MailPlus, PencilLine, Trash2 } from 'lucide-react';
+import { MailPlus, PencilIcon, Trash2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -242,14 +242,14 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                       <AlertDialogTrigger asChild>
                         <Button type="button" variant="ghost" size="sm" className="text-danger-700 hover:text-danger-800">
                           <Trash2 size={16} />
-                          Delete Buyer
+                          Delete buyer
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
                           <AlertDialogTitle>Delete buyer?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            This will soft-delete the buyer by marking it inactive. The record remains in the database.
+                            The buyer will be marked as inactive. The buyer history will not be deleted.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -269,12 +269,12 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     onClick={() => setEditOpen(true)}
                   >
-                    <PencilLine size={16} />
-                    Edit Buyer
+                    <PencilIcon size={14} />
+                    Edit buyer
                   </Button>
                 </>
               ) : null}
@@ -286,7 +286,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               onClick={() => toast.info('Send Message will be added in a later phase.')}
             >
               <MailPlus size={16} />
-              Send Message
+              Send message
             </Button>
             </div>
           }

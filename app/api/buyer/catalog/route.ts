@@ -42,7 +42,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     });
 
     if (offset === 0 && context.buyerId && response.selected_campaign_id) {
-      void recordCampaignView(supabaseAdmin, {
+      await recordCampaignView(supabaseAdmin, {
         tenantId: context.tenantId,
         buyerId: context.buyerId,
         campaignId: response.selected_campaign_id,

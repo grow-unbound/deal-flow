@@ -82,12 +82,15 @@ export async function PATCH(
       p_tenant_id: claims.tenant_id,
       p_estimate_id: id,
       p_actor_user_id: claims.sub,
-      p_qty_overrides: parsed.data.qty_overrides ?? {},
       p_expected_delivery: parsed.data.delivery_date,
       p_order_number_override: parsed.data.order_number ?? null,
     };
     if (parsed.data.line_ids.length > 0) {
       rpcInput.p_line_ids = parsed.data.line_ids;
+    }
+    const qtyOverrides = parsed.data.qty_overrides;
+    if (qtyOverrides && Object.keys(qtyOverrides).length > 0) {
+      rpcInput.p_qty_overrides = qtyOverrides;
     }
 
     const { data, error } = await db.schema('app').rpc('estimate_convert_to_order', rpcInput);

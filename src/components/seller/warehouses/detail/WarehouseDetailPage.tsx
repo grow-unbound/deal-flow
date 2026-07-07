@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { PencilLine } from 'lucide-react';
+import { PencilIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -114,8 +114,8 @@ export function WarehouseDetailPage({ id }: { id: string }) {
           `${data.linked_location?.associated_users.length ? data.linked_location.associated_users.length : data.associated_users.length} associated users`,
         ]}
         actions={
-          <Button variant="primary" size="sm" onClick={() => setSheetOpen(true)}>
-            <PencilLine size={16} />
+          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setSheetOpen(true)}>
+            <PencilIcon size={14} />
             Edit warehouse
           </Button>
         }

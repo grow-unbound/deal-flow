@@ -163,7 +163,8 @@ export default function GuestCatalogPage({
 
     async function load() {
       try {
-        const res = await fetch(`/api/buyer/catalog/${share_token}`);
+        const { apiFetch } = await import('@/lib/api-fetch');
+        const res = await apiFetch(`/api/buyer/catalog/${share_token}`);
         if (cancelled) return;
 
         if (res.status === 404) {

@@ -237,39 +237,6 @@ export function InvoiceDetailPage({ id }: { id: string }) {
                 {data.version}
               </Badge>
             ) : null}
-            {showEdit ? (
-              <Button
-                type="button"
-                size="sm"
-                className="gap-2"
-                variant={data.status === 'draft' ? 'outline' : 'primary'}
-                onClick={() => {
-                  void prefetchInvoiceComposer(queryClient, id);
-                  router.push(`/invoices/${id}/edit`);
-                }}
-              >
-                <Edit2 className="h-4 w-4" />
-                {data.status === 'draft' ? 'Edit before send' : 'Edit invoice'}
-              </Button>
-            ) : null}
-            {invoiceBandStatus === 'draft' ? (
-              <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setSendOpen(true)} disabled={sendInvoiceMut.isPending}>
-                <Send className="h-4 w-4" />
-                Send invoice
-              </Button>
-            ) : null}
-            {invoiceBandStatus === 'sent' || invoiceBandStatus === 'overdue' ? (
-              <Button type="button" variant="secondary" size="sm" className="gap-2" onClick={() => setPayOpen(true)}>
-                <IndianRupee className="h-4 w-4" />
-                Mark as paid
-              </Button>
-            ) : null}
-            {invoiceBandStatus === 'sent' || invoiceBandStatus === 'overdue' ? (
-              <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setRemindOpen(true)}>
-                <Mail className="h-4 w-4" />
-                Send reminder
-              </Button>
-            ) : null}
             {showVoidBtn ? (
               <Button
                 type="button"
@@ -281,6 +248,39 @@ export function InvoiceDetailPage({ id }: { id: string }) {
               >
                 <Ban className="h-4 w-4" />
                 Void invoice
+              </Button>
+            ) : null}
+            {showEdit ? (
+              <Button
+                type="button"
+                size="sm"
+                className="gap-2"
+                variant={data.status === 'draft' ? 'primary' : 'outline'}
+                onClick={() => {
+                  void prefetchInvoiceComposer(queryClient, id);
+                  router.push(`/invoices/${id}/edit`);
+                }}
+              >
+                <Edit2 className="h-4 w-4" />
+                {data.status === 'draft' ? 'Edit before send' : 'Edit invoice'}
+              </Button>
+            ) : null}
+            {invoiceBandStatus === 'draft' ? (
+              <Button type="button" variant="accent" size="sm" className="gap-2" onClick={() => setSendOpen(true)} disabled={sendInvoiceMut.isPending}>
+                <Send className="h-4 w-4" />
+                Send invoice
+              </Button>
+            ) : null}
+            {invoiceBandStatus === 'sent' || invoiceBandStatus === 'overdue' ? (
+              <Button type="button" variant="primary" size="sm" className="gap-2" onClick={() => setPayOpen(true)}>
+                <IndianRupee className="h-4 w-4" />
+                Collect payment
+              </Button>
+            ) : null}
+            {invoiceBandStatus === 'sent' || invoiceBandStatus === 'overdue' ? (
+              <Button type="button" variant="accent" size="sm" className="gap-2" onClick={() => setRemindOpen(true)}>
+                <Mail className="h-4 w-4" />
+                Send reminder
               </Button>
             ) : null}
           </>

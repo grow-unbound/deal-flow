@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { ExternalLink, Link2, PencilLine, Send } from 'lucide-react';
+import { ExternalLink, Link2, PencilIcon, Send } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useRole } from '@/hooks/useRole';
@@ -215,9 +215,9 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
         actions={
           <div className="flex items-center gap-2 pt-1">
             {isSellerAdmin ? (
-              <Button type="button" variant="ghost" size="sm" onClick={() => router.push(`/campaigns/${id}/edit`)}>
-                <PencilLine size={14} />
-                Edit Campaign
+              <Button type="button" variant="outline" size="sm" onClick={() => router.push(`/campaigns/${id}/edit`)}>
+                <PencilIcon size={14} />
+                Edit campaign
               </Button>
             ) : null}
 
@@ -225,7 +225,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
               <Dialog open={publishConfirmOpen} onOpenChange={setPublishConfirmOpen}>
                 <Button type="button" variant="accent" size="sm" onClick={() => setPublishConfirmOpen(true)} disabled={publishMutation.isPending}>
                   <Send size={14} />
-                  Publish Campaign
+                  Publish campaign
                 </Button>
                 <DialogContent className="max-w-[420px]">
                   <DialogHeader>

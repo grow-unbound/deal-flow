@@ -681,16 +681,24 @@ describe('zoho customer and transaction persistence', () => {
 
   it('hydrates contact persons when list payload omits them', async () => {
     const admin = createAdminStub();
+    let fetchContactPersonsCalled = false;
     const adapter = {
-      fetchContactById: async () => null,
-      fetchContactPersons: async () => ([
-        {
-          contact_person_id: 'CP-2',
-          first_name: 'Ravi',
-          last_name: 'Kumar',
-          email: 'ravi@example.com',
-        },
-      ]),
+      fetchContactById: async () => ({
+        contact_id: 'CUST-4',
+        company_name: 'Gamma Retail',
+        contact_persons: [
+          {
+            contact_person_id: 'CP-2',
+            first_name: 'Ravi',
+            last_name: 'Kumar',
+            email: 'ravi@example.com',
+          },
+        ],
+      }),
+      fetchContactPersons: async () => {
+        fetchContactPersonsCalled = true;
+        return [];
+      },
       fetchUsers: async () => [],
     };
 
@@ -710,12 +718,44 @@ describe('zoho customer and transaction persistence', () => {
       adapter as never,
     );
 
+    expect(fetchContactPersonsCalled).toBe(false);
     const buyerUsersCall = admin.rpcCalls.find((call) => (
       call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'buyer_users'
     ));
     const buyerUserRow = (buyerUsersCall?.args.p_rows as Array<Record<string, unknown>>)[0];
     expect(buyerUserRow?.first_name).toBe('Ravi');
     expect(buyerUserRow?.last_name).toBe('Kumar');
+  });
+
+  it('skips contact enrichment on full_sync list_only policy', async () => {
+    const admin = createAdminStub();
+    let fetchContactByIdCalled = false;
+    const adapter = {
+      fetchContactById: async () => {
+        fetchContactByIdCalled = true;
+        return null;
+      },
+      fetchUsers: async () => [],
+    };
+
+    await persistZohoEntityPage(
+      admin.client as never,
+      'tenant-1',
+      'user-1',
+      'integration-1',
+      'customers',
+      'zoho_books',
+      [
+        {
+          contact_id: 'CUST-5',
+          company_name: 'List Only Buyer',
+        },
+      ],
+      adapter as never,
+      { enrichmentPolicy: 'full_sync', customerEnrichmentMode: 'list_only' },
+    );
+
+    expect(fetchContactByIdCalled).toBe(false);
   });
 
   it('omits attributes_override when updating an existing product', async () => {

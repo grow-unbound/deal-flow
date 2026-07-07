@@ -20,7 +20,7 @@ function inr(n: number): string {
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items, clearCart, subtotal, campaignId } = useCart();
+  const { items, clearCart, subtotal, resolvedCampaignId } = useCart();
   const { data: meData } = useBuyerMe();
   const delivery = useBuyerDeliveryOptional();
   const selectedDelivery = delivery?.selected ?? null;
@@ -84,7 +84,7 @@ export default function CheckoutPage() {
           notes: notes.trim() || undefined,
           location_id: nearest.location_id,
           place_of_supply: deriveBuyerPlaceOfSupply(selectedDelivery),
-          campaign_id: campaignId ?? undefined,
+          campaign_id: resolvedCampaignId ?? undefined,
         }),
       });
       const data: { success: boolean; estimate_id?: string; estimate_number?: string | null; error?: string } = await res.json();
