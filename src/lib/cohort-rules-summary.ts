@@ -16,11 +16,7 @@ export interface CohortRulesSummary {
 }
 
 const RULE_FIELD_LABELS: Record<string, string> = {
-  'geography.label': 'Geography',
-  'geography.state': 'State',
   'geography.city': 'City',
-  'geography.zone': 'Zone',
-  tier: 'Buyer tier',
   brand_focus: 'Brand focus',
   last_order_bucket: 'Order history',
   gmv_90d_bucket: 'GMV (last 90 days)',

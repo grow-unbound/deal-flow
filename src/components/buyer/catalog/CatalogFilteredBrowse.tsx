@@ -5,6 +5,7 @@ import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { BuyerEntityChipNav } from '@/components/buyer/catalog/BuyerEntityChipNav';
 import { CampaignSummaryBlock } from '@/components/buyer/catalog/CampaignSummaryBlock';
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
+import { RecoSection } from '@/components/buyer/catalog/RecoSection';
 import { LoadingSkeleton } from '@/components/buyer/catalog/LoadingSkeleton';
 import { BuyerCatalogSearchInput } from '@/components/buyer/layout/BuyerCatalogSearchInput';
 import { ErrorState } from '@/components/ui/empty-state';
@@ -14,6 +15,7 @@ import {
   useBuyerCatalogList,
   useBuyerCategories,
 } from '@/hooks/useBuyerProducts';
+import { useBuyerCategoryRecos } from '@/hooks/useBuyerCategoryRecos';
 import { useCart } from '@/contexts/BuyerCartContext';
 
 export type CatalogFilteredMode = 'category' | 'brand' | 'list';
@@ -25,6 +27,7 @@ interface CatalogFilteredBrowseProps {
 
 export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps): React.ReactNode {
   const { setCampaignId } = useCart();
+  const categoryRecos = useBuyerCategoryRecos(mode === 'category' ? id : '');
   const [campaignTitle, setCampaignTitle] = React.useState('Catalog');
   const [campaignTitleResolved, setCampaignTitleResolved] = React.useState(false);
   const [retryNonce, setRetryNonce] = React.useState(0);
@@ -145,6 +148,15 @@ export function CatalogFilteredBrowse({ mode, id }: CatalogFilteredBrowseProps):
                 >
                   {loadingMore ? 'Loading…' : 'Load more'}
                 </button>
+              </div>
+            ) : null}
+            {mode === 'category' && (categoryRecos.data?.length ?? 0) > 0 ? (
+              <div className="pt-4">
+                <RecoSection
+                  title="Trending in this category"
+                  widget="w5_category_trending"
+                  items={categoryRecos.data ?? []}
+                />
               </div>
             ) : null}
           </>

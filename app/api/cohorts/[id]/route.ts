@@ -224,7 +224,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { data: cohort, error: cohortError } = await db
     .schema('app')
     .from('cohorts')
-    .select('id, tenant_id, name, description, rules, is_static, cached_member_count, created_at, created_by, updated_at, allowed_tenant_brand_ids')
+    .select('id, tenant_id, name, description, rules, is_static, cached_member_count, last_refreshed_at, created_at, created_by, updated_at, allowed_tenant_brand_ids')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .is('deleted_at', null)
@@ -531,6 +531,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       rules: cohort.rules ?? { filters: [] },
       members_preview: memberPreview,
       updated_at: cohort.updated_at,
+      last_refreshed_at: (cohort as any).last_refreshed_at ?? null,
     },
     performance: {
       summary: {

@@ -928,6 +928,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         status: 'published',
         share_token: shareToken,
         ...(buyerNote !== undefined ? { message: buyerNote || null } : {}),
+        ...(publishInput.hero_image_url ? { hero_image_url: publishInput.hero_image_url } : {}),
         updated_by: claims.sub,
       })
       .eq('id', id)
@@ -1211,6 +1212,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       valid_from: payload.valid_from.toISOString(),
       valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
       ...(payload.save_mode === 'publish' ? { message: buyerNote } : {}),
+      ...(payload.hero_image_url ? { hero_image_url: payload.hero_image_url } : {}),
       status: nextStatus,
       share_token: nextStatus === 'published' ? globalCatalog.share_token ?? generateShareToken() : globalCatalog.share_token,
       updated_by: claims.sub,

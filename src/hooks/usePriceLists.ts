@@ -260,7 +260,7 @@ export function useCreatePriceList() {
             is_active: ('save_mode' in data ? data.save_mode : 'publish') === 'publish',
             pricing_strategy: 'pricing_strategy' in data ? data.pricing_strategy : 'edit_each',
             strategy_value: 'strategy_value' in data ? (data.strategy_value ?? null) : null,
-            filters: 'filters' in data ? data.filters : { brand_names: [], category_names: [] },
+            filters: 'filters' in data ? data.filters : { brand_names: [], category_names: [], availability: 'show_all' as const },
             tenant_id: '',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),

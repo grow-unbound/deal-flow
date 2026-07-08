@@ -20,6 +20,7 @@ import {
 } from '@/components/seller/composer/ComposerLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-overlay';
@@ -38,7 +39,7 @@ import {
   useSavePriceListComposer,
 } from '@/hooks/usePriceLists';
 import { composerPageMinHeightClass, composerThreePanelGridClass } from '@/lib/composer-viewport-classes';
-import type { PriceListPricingStrategy } from '@/lib/zod';
+import type { PriceListPricingStrategy, ProductLastOrderBucket, ProductGmv90dBucket } from '@/lib/zod';
 
 type ComposerMode = 'create' | 'edit';
 
@@ -207,6 +208,9 @@ export function PriceListComposer({
   const [strategyValue, setStrategyValue] = useState('10');
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedAvailability, setSelectedAvailability] = useState<'in_stock' | 'low_stock' | 'out_of_stock' | 'show_all'>('show_all');
+  const [selectedLastOrderBucket, setSelectedLastOrderBucket] = useState<ProductLastOrderBucket | ''>('');
+  const [selectedGmv90dBucket, setSelectedGmv90dBucket] = useState<ProductGmv90dBucket | ''>('');
   const [search, setSearch] = useState('');
   const [rowOverrides, setRowOverrides] = useState<Record<string, string>>({});
   const [deselectedIds, setDeselectedIds] = useState<Set<string>>(new Set());
@@ -234,6 +238,9 @@ export function PriceListComposer({
     setStrategyValue(detail?.strategy_value != null ? String(detail.strategy_value) : '10');
     setSelectedBrands(initialBrands);
     setSelectedCategories(initialCategories);
+    setSelectedAvailability(detail?.filters?.availability ?? 'show_all');
+    setSelectedLastOrderBucket(detail?.filters?.last_ordered_bucket ?? '');
+    setSelectedGmv90dBucket(detail?.filters?.gmv_90d_bucket ?? '');
 
     const nextOverrides: Record<string, string> = {};
     const nextDeselected = new Set<string>();
@@ -428,9 +435,12 @@ export function PriceListComposer({
     strategyValue,
     selectedBrands,
     selectedCategories,
+    selectedAvailability,
+    selectedLastOrderBucket,
+    selectedGmv90dBucket,
     deselectedIds: Array.from(deselectedIds).sort(),
     rowOverrides,
-  }), [deselectedIds, name, pricingStrategy, priority, rowOverrides, selectedBrands, selectedCategories, strategyValue, validFrom, validTo]);
+  }), [deselectedIds, name, pricingStrategy, priority, rowOverrides, selectedAvailability, selectedBrands, selectedCategories, selectedGmv90dBucket, selectedLastOrderBucket, strategyValue, validFrom, validTo]);
 
   useEffect(() => {
     if (!didInit || initialSnapshot) return;
@@ -475,6 +485,9 @@ export function PriceListComposer({
       filters: {
         brand_names: selectedBrands,
         category_names: selectedCategories,
+        availability: selectedAvailability,
+        last_ordered_bucket: selectedLastOrderBucket || undefined,
+        gmv_90d_bucket: selectedGmv90dBucket || undefined,
       },
       item_prices: itemPrices,
       save_mode: saveMode,
@@ -667,6 +680,63 @@ export function PriceListComposer({
                       </label>
                     ))}
                   </div>
+                </section>
+
+                <section>
+                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Availability</h3>
+                  <Select
+                    value={selectedAvailability}
+                    onValueChange={(v) => setSelectedAvailability(v as typeof selectedAvailability)}
+                  >
+                    <SelectTrigger className="w-full bg-cream-50 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="show_all">Show all</SelectItem>
+                      <SelectItem value="in_stock">In stock</SelectItem>
+                      <SelectItem value="low_stock">Low stock</SelectItem>
+                      <SelectItem value="out_of_stock">Out of stock</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </section>
+
+                <section>
+                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Order history</h3>
+                  <Select
+                    value={selectedLastOrderBucket || 'any'}
+                    onValueChange={(v) => setSelectedLastOrderBucket(v === 'any' ? '' : v as ProductLastOrderBucket)}
+                  >
+                    <SelectTrigger className="w-full bg-cream-50 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any time</SelectItem>
+                      <SelectItem value="within_30_days">Ordered in last 30 days</SelectItem>
+                      <SelectItem value="within_90_days">Ordered in last 90 days</SelectItem>
+                      <SelectItem value="dormant_90_plus_days">Dormant (90+ days)</SelectItem>
+                      <SelectItem value="anytime">Ever ordered</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </section>
+
+                <section>
+                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">GMV · last 90 days</h3>
+                  <Select
+                    value={selectedGmv90dBucket || 'any'}
+                    onValueChange={(v) => setSelectedGmv90dBucket(v === 'any' ? '' : v as ProductGmv90dBucket)}
+                  >
+                    <SelectTrigger className="w-full bg-cream-50 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any amount</SelectItem>
+                      <SelectItem value="gmv_0">No revenue</SelectItem>
+                      <SelectItem value="gmv_1_50000">₹1 – ₹50K</SelectItem>
+                      <SelectItem value="gmv_50001_200000">₹50K – ₹2L</SelectItem>
+                      <SelectItem value="gmv_200001_500000">₹2L – ₹5L</SelectItem>
+                      <SelectItem value="gmv_500001_plus">₹5L+</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </section>
 
                 <section>

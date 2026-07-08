@@ -51,6 +51,39 @@ export function campaignScopeToBroadcastTarget(input: {
   }
 }
 
+export interface CampaignLandingAudience {
+  label: string;
+  buyerCount: number | null;
+}
+
+export function resolveCampaignLandingAudience(input: {
+  scopeType: CampaignScopeType;
+  scopeValue: Record<string, unknown> | null;
+  cohort?: { name: string; cached_member_count?: number | null } | null;
+  allBuyersCount: number;
+}): CampaignLandingAudience {
+  const scopeValue = asRecord(input.scopeValue);
+
+  switch (input.scopeType) {
+    case 'cohort': {
+      const label = input.cohort?.name ?? 'Unknown cohort';
+      return { label, buyerCount: input.cohort?.cached_member_count ?? 0 };
+    }
+    case 'buyer': {
+      const buyerIds = Array.isArray(scopeValue.buyer_ids)
+        ? scopeValue.buyer_ids.filter((id): id is string => typeof id === 'string')
+        : [];
+      const count = buyerIds.length > 0 ? buyerIds.length : typeof scopeValue.buyer_id === 'string' ? 1 : 0;
+      return { label: 'Selected buyers', buyerCount: count };
+    }
+    case 'geography':
+      return { label: 'Geography filter', buyerCount: null };
+    case 'all':
+    default:
+      return { label: 'All buyers', buyerCount: input.allBuyersCount };
+  }
+}
+
 export function campaignAudienceLabel(input: {
   scopeType: CampaignScopeType;
   scopeValue: Record<string, unknown> | null;
