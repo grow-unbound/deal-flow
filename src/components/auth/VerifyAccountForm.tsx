@@ -19,14 +19,20 @@ function maskEmail(email: string): string {
   return `${visible}***@${domain}`;
 }
 
+function formatPhoneDisplay(phone: string): string {
+  // phone is 10 raw digits e.g. "9490744841"
+  return `+91 ${phone.slice(0, 5)} ${phone.slice(5)}`;
+}
+
 export function VerifyAccountForm({ email, phone, userId, tenantId }: VerifyAccountFormProps) {
   const router = useRouter();
-  const [channel, setChannel] = useState<'email' | 'whatsapp'>('email');
+  const [channel, setChannel] = useState<'email' | 'whatsapp'>(phone ? 'whatsapp' : 'email');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [resendingEmail, setResendingEmail] = useState(false);
   const [resendingWhatsapp, setResendingWhatsapp] = useState(false);
-  const [whatsappSent, setWhatsappSent] = useState(false);
+  // signup already sent the WhatsApp OTP if phone is present
+  const [whatsappSent, setWhatsappSent] = useState(!!phone);
   const [resendMessage, setResendMessage] = useState('');
 
   async function handleSubmit(otp: string) {
@@ -111,12 +117,13 @@ export function VerifyAccountForm({ email, phone, userId, tenantId }: VerifyAcco
         <p className="text-body-sm text-cream-700">
           {channel === 'email'
             ? <>We sent a 6-digit code to <span className="font-semibold text-cream-900">{maskEmail(email)}</span></>
-            : <>We sent a 6-digit code to your <span className="font-semibold text-cream-900">WhatsApp</span></>
+            : <>We sent a 6-digit code to your WhatsApp{phone && <> — <span className="font-semibold text-cream-900">{formatPhoneDisplay(phone)}</span></>}</>
           }
         </p>
-        {channel === 'email' && (
-          <p className="text-caption text-cream-500">Check your inbox (and spam folder).</p>
-        )}
+        {channel === 'email'
+          ? <p className="text-caption text-cream-500">Check your inbox (and spam folder).</p>
+          : <p className="text-caption text-cream-500">Check your WhatsApp messages.</p>
+        }
       </div>
 
       {resendMessage && (
@@ -134,22 +141,14 @@ export function VerifyAccountForm({ email, phone, userId, tenantId }: VerifyAcco
 
       <div className="pt-2 border-t border-cream-200 space-y-2">
         <div className="flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={handleResendEmail}
-            disabled={resendingEmail}
-            className="text-caption text-ember-400 hover:text-ember-500 font-medium transition-colors disabled:opacity-50"
-          >
-            {resendingEmail ? 'Sending…' : 'Resend to email'}
-          </button>
           {phone && (
             <button
               type="button"
-              onClick={whatsappSent ? handleSendWhatsapp : handleSendWhatsapp}
+              onClick={handleSendWhatsapp}
               disabled={resendingWhatsapp}
               className="text-caption text-teal-500 hover:text-teal-600 font-medium transition-colors disabled:opacity-50"
             >
-              {resendingWhatsapp ? 'Sending…' : whatsappSent ? 'Resend to WhatsApp' : 'Send to WhatsApp instead'}
+              {resendingWhatsapp ? 'Sending…' : whatsappSent ? 'Resend to WhatsApp' : 'Send to WhatsApp'}
             </button>
           )}
         </div>
@@ -159,7 +158,7 @@ export function VerifyAccountForm({ email, phone, userId, tenantId }: VerifyAcco
             onClick={() => { setChannel('email'); setResendMessage(''); }}
             className="text-caption text-cream-500 hover:text-cream-700 transition-colors"
           >
-            Switch back to email
+            Switch to email instead
           </button>
         )}
       </div>

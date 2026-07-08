@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getFlag } from '@/lib/flags';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { buildSignupTenantSettingsSeed } from '@/lib/tenant-settings/signup-seed';
+import { sendAccountVerificationOtpWhatsapp } from '@/lib/server/account-verification';
 
 const SignupBodySchema = z.object({
   full_name: z.string().min(1).optional(),
@@ -166,30 +167,39 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Step 4 — send email OTP via Supabase Auth (account not yet confirmed)
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!supabaseUrl || !supabaseAnonKey) {
-    await deleteAuthUser(userId);
-    return NextResponse.json(
-      { error: 'Server misconfiguration: Supabase credentials missing' },
-      { status: 500 }
-    );
-  }
+  // Step 4 — send verification OTP: WhatsApp when phone present, email fallback otherwise
+  let otpError: boolean = false;
 
-  // Use anon client to trigger Supabase email OTP delivery.
-  // Supabase will send a 6-digit code if the project is configured for OTP-style email
-  // (Authentication → Email → OTP expiry set, magic link disabled).
-  const anonClient = createClient(supabaseUrl, supabaseAnonKey);
-  const { error: otpError } = await anonClient.auth.signInWithOtp({
-    email,
-    options: { shouldCreateUser: false },
-  });
-
-  if (otpError) {
-    // OTP send failed — still complete signup but surface the error on the UI
-    // so the user can request a resend. Don't delete the account.
-    console.error('Email OTP send failed after signup:', otpError.message);
+  if (phone) {
+    const result = await sendAccountVerificationOtpWhatsapp({
+      user_id: userId,
+      tenant_id: tenantResult.tenant_id,
+      email,
+      phone,
+    });
+    if ('error' in result) {
+      console.error('WhatsApp OTP send failed after signup:', result.error);
+      otpError = true;
+    }
+  } else {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !supabaseAnonKey) {
+      await deleteAuthUser(userId);
+      return NextResponse.json(
+        { error: 'Server misconfiguration: Supabase credentials missing' },
+        { status: 500 }
+      );
+    }
+    const anonClient = createClient(supabaseUrl, supabaseAnonKey);
+    const { error: emailOtpError } = await anonClient.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: false },
+    });
+    if (emailOtpError) {
+      console.error('Email OTP send failed after signup:', emailOtpError.message);
+      otpError = true;
+    }
   }
 
   // Step 5 — fire PostHog server-side event for funnel analytics
@@ -230,7 +240,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         slug: tenantResult.slug,
         subdomain: tenantResult.subdomain,
       },
-      otp_send_failed: !!otpError,
+      otp_send_failed: otpError,
     },
     { status: 201 }
   );
