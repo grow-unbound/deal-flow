@@ -4,6 +4,9 @@ import { NextRequest } from 'next/server';
 const getVerifiedClaimsMock = vi.fn();
 const getFlagMock = vi.fn();
 const rpcMock = vi.fn();
+const canAccessDocumentLocationMock = vi.fn();
+const loadAccessibleSellerLocationsMock = vi.fn();
+const resolveDefaultSellerLocationIdMock = vi.fn();
 
 vi.mock('@/lib/auth', () => ({
   getVerifiedClaims: (...args: unknown[]) => getVerifiedClaimsMock(...args),
@@ -11,6 +14,21 @@ vi.mock('@/lib/auth', () => ({
 
 vi.mock('@/lib/flags', () => ({
   getFlag: (...args: unknown[]) => getFlagMock(...args),
+}));
+
+vi.mock('@/lib/server/seller-location-access', () => ({
+  canAccessDocumentLocation: (...args: unknown[]) => canAccessDocumentLocationMock(...args),
+  isSellerLocationSelectionAllowed: vi.fn(() => true),
+  loadAccessibleSellerLocations: (...args: unknown[]) => loadAccessibleSellerLocationsMock(...args),
+  resolveDefaultSellerLocationId: (...args: unknown[]) => resolveDefaultSellerLocationIdMock(...args),
+}));
+
+vi.mock('@/lib/server/buyer-credit', () => ({
+  loadBuyerCreditSnapshot: vi.fn().mockResolvedValue({
+    credit_used: 0,
+    available_credit: 500_000,
+  }),
+  loadBuyerCreditSnapshots: vi.fn().mockResolvedValue(new Map()),
 }));
 
 const estimateRow: Record<string, unknown> = {
@@ -155,10 +173,12 @@ function defaultFromImpl(table: string) {
   if (table === 'tenant_inventory') {
     return {
       select: vi.fn(() => ({
-        in: vi.fn().mockResolvedValue({
-          data: [{ tenant_product_id: 'tp-1', qty_available: 12 }],
-          error: null,
-        }),
+        in: vi.fn(() => ({
+          is: vi.fn().mockResolvedValue({
+            data: [{ tenant_product_id: 'tp-1', qty_available: 12 }],
+            error: null,
+          }),
+        })),
       })),
     };
   }
@@ -250,6 +270,9 @@ describe('GET /api/tenant/estimates/[id]', () => {
       sub: 'user-1',
     });
     getFlagMock.mockResolvedValue(true);
+    canAccessDocumentLocationMock.mockReturnValue(true);
+    loadAccessibleSellerLocationsMock.mockResolvedValue([]);
+    resolveDefaultSellerLocationIdMock.mockReturnValue(null);
   });
 
   it('returns 401 without tenant', async () => {
@@ -323,10 +346,11 @@ describe('POST /api/tenant/estimates/[id]/actions', () => {
       p_tenant_id: 'tenant-1',
       p_estimate_id: 'est-1',
       p_actor_user_id: 'user-1',
+      p_order_date: expect.any(String),
     });
   });
 
-  it('returns 400 for convert_invoice without due_date', async () => {
+  it('returns 400 for convert_invoice without invoice_date', async () => {
     const { POST } = await import('../../app/api/tenant/estimates/[id]/actions/route');
     const res = await POST(
       new NextRequest('http://localhost/api/tenant/estimates/est-1/actions', {
@@ -337,5 +361,23 @@ describe('POST /api/tenant/estimates/[id]/actions', () => {
     );
     expect(res.status).toBe(400);
     expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it('calls estimate_convert_to_invoice RPC with invoice_date for convert_invoice', async () => {
+    const { POST } = await import('../../app/api/tenant/estimates/[id]/actions/route');
+    const res = await POST(
+      new NextRequest('http://localhost/api/tenant/estimates/est-1/actions', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'convert_invoice', invoice_date: '2026-07-08' }),
+      }),
+      { params: Promise.resolve({ id: 'est-1' }) },
+    );
+    expect(res.status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith('estimate_convert_to_invoice', {
+      p_tenant_id: 'tenant-1',
+      p_estimate_id: 'est-1',
+      p_actor_user_id: 'user-1',
+      p_invoice_date: '2026-07-08',
+    });
   });
 });

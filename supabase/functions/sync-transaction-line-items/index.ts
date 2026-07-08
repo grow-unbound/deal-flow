@@ -145,7 +145,7 @@ function getDocumentDateColumn(kind: TransactionKind): string {
     case 'estimates':
       return 'estimate_date';
     case 'orders':
-      return 'placed_at';
+      return 'order_date';
     case 'invoices':
       return 'invoice_date';
   }

@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const requireBuyerAccessProfileMock = vi.fn();
-const loadBuyerCreditSnapshotMock = vi.fn();
 const loadBuyerActivityFeedMock = vi.fn();
 const getVisibleBuyerCatalogsMock = vi.fn();
 const assembleBuyerCatalogItemsForProductIdsMock = vi.fn();
@@ -9,10 +8,6 @@ const assembleBuyerCatalogItemsForProductIdsMock = vi.fn();
 vi.mock('@/lib/server/buyer-access', () => ({
   requireBuyerAccessProfile: (...args: unknown[]) => requireBuyerAccessProfileMock(...args),
   getVisibleBuyerCatalogs: (...args: unknown[]) => getVisibleBuyerCatalogsMock(...args),
-}));
-
-vi.mock('@/lib/server/buyer-credit', () => ({
-  loadBuyerCreditSnapshot: (...args: unknown[]) => loadBuyerCreditSnapshotMock(...args),
 }));
 
 vi.mock('@/lib/server/buyer-activity', () => ({
@@ -26,33 +21,29 @@ vi.mock('@/lib/server/buyer-assemble-catalog-items', () => ({
 vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: {
     schema: vi.fn((schemaName: string) => ({
-      from: vi.fn((tableName: string) => {
-        if (schemaName === 'app' && tableName === 'invoices') {
-          const mtdData = [
-            { id: 'inv-1', total_amount: 10000, invoice_date: '2026-06-05T00:00:00.000Z', status: 'sent' },
-            { id: 'inv-2', total_amount: 8000, invoice_date: '2026-05-04T00:00:00.000Z', status: 'sent' },
-          ];
-          const ytdData = [{ id: 'inv-1' }, { id: 'inv-2' }];
-          return {
-            select: vi.fn(() => {
-              const chain: Record<string, any> = {
-                __mode: 'mtd',
-                eq: vi.fn(() => chain),
-                gte: vi.fn(() => {
-                  chain.__mode = 'ytd';
-                  return chain;
-                }),
-                is: vi.fn(() => chain),
-                neq: vi.fn(async () => ({
-                  data: chain.__mode === 'ytd' ? ytdData : mtdData,
-                  error: null,
-                })),
-              };
-              return chain;
-            }),
-          };
+      rpc: vi.fn((fnName: string) => {
+        if (schemaName === 'app' && fnName === 'get_buyer_home_summary') {
+          return Promise.resolve({
+            data: [{
+              gmv_mtd: 10000,
+              invoice_count_ytd: 3,
+              trend_vs_last_month_pct: 25,
+              outstanding_dues: 8000,
+              open_invoice_count: 2,
+              earliest_due_date: '2026-06-22',
+              days_until_earliest_due: 1,
+              credit_limit: 50000,
+              available_credit: 42000,
+              credit_used: 8000,
+              open_orders_count: 4,
+            }],
+            error: null,
+          });
         }
 
+        throw new Error(`Unexpected rpc: ${schemaName}.${fnName}`);
+      }),
+      from: vi.fn((tableName: string) => {
         if (schemaName === 'app' && tableName === 'orders') {
           return {
             select: vi.fn(() => ({
@@ -131,7 +122,6 @@ vi.mock('@/lib/supabase', () => ({
 describe('buyer home route', () => {
   beforeEach(() => {
     requireBuyerAccessProfileMock.mockReset();
-    loadBuyerCreditSnapshotMock.mockReset();
     loadBuyerActivityFeedMock.mockReset();
     getVisibleBuyerCatalogsMock.mockReset();
     assembleBuyerCatalogItemsForProductIdsMock.mockReset();
@@ -142,15 +132,6 @@ describe('buyer home route', () => {
       context: { tenant_id: 'tenant-1', mode: 'buyer' },
       buyer: { id: 'buyer-1', business_name: 'Rajan Stores', contact_name: 'Rajan', credit_limit: 50000 },
       greeting_name: 'Rajan',
-    });
-    loadBuyerCreditSnapshotMock.mockResolvedValue({
-      credit_limit: 50000,
-      available_credit: 42000,
-      credit_used: 8000,
-      outstanding_dues: 8000,
-      open_invoice_count: 2,
-      earliest_due_date: '2026-06-22',
-      days_until_earliest_due: 1,
     });
     loadBuyerActivityFeedMock.mockResolvedValue({ items: [{ id: 'order:1' }], next_cursor: 'next' });
     getVisibleBuyerCatalogsMock.mockResolvedValue([
@@ -166,7 +147,9 @@ describe('buyer home route', () => {
 
     expect(response.status).toBe(200);
     expect(body.greeting_name).toBe('Rajan');
-    expect(body.summary_card.invoice_count_ytd).toBe(2);
+    expect(body.summary_card.invoice_count_ytd).toBe(3);
+    expect(body.summary_card.trend_vs_last_month_pct).toBe(25);
+    expect(body.open_orders_count).toBe(4);
     expect(body.dues_card.outstanding_dues).toBe(8000);
     expect(body.credit_card.available_credit).toBe(42000);
     expect(body.latest_promotions_preview[0].name).toBe('June Promo');

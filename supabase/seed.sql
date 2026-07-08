@@ -40,7 +40,9 @@ TRUNCATE
   app.locations_snapshot,
   app.estimates_snapshot,
   app.invoices_snapshot,
-  app.customers_snapshot,
+  app.buyers_snapshot,
+  app.buyer_current_snapshot,
+  app.kpi_buyers_daily,
   app.products_snapshot,
   app.categories_snapshot,
   app.brands_snapshot,
@@ -667,7 +669,7 @@ SELECT 'user_profiles',                COUNT(*)         FROM app.user_profiles  
 UNION ALL
 SELECT 'products_snapshot',            COUNT(*)         FROM app.products_snapshot WHERE tenant_id = '550e8400-e29b-41d4-a716-446655440501'::uuid
 UNION ALL
-SELECT 'customers_snapshot',           COUNT(*)         FROM app.customers_snapshot WHERE tenant_id = '550e8400-e29b-41d4-a716-446655440501'::uuid
+SELECT 'buyers_snapshot',              COUNT(*)         FROM app.buyers_snapshot WHERE tenant_id = '550e8400-e29b-41d4-a716-446655440501'::uuid
 UNION ALL
 SELECT 'buyer_app_snapshot',           COUNT(*)         FROM app.buyer_app_snapshot WHERE tenant_id = '550e8400-e29b-41d4-a716-446655440501'::uuid
 ORDER BY table_name;

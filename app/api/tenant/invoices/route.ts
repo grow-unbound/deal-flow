@@ -31,7 +31,6 @@ import type {
   InvoiceStatusValue,
   InvoicesKpis,
   InvoicesTodaysRead,
-  TenantInvoicesResponse,
 } from '@/types/tenant-invoices';
 
 export const dynamic = 'force-dynamic';
@@ -183,6 +182,9 @@ export async function GET(request: NextRequest) {
     const period = getSellerLandingPeriodMeta(searchParams.get('period'));
 
     const db = supabaseAdmin;
+    const availableLocations = await loadAccessibleSellerLocations(db as any, claims.tenant_id, claims);
+    const scopedLocationIds = availableLocations.map((location) => location.id);
+    const aggregateScope = claims.role === 'seller_admin' ? 'tenant' : 'location';
 
     // Fetch invoices scoped to the requested period + a safety limit.
     // Also fetch the previous period so we can compute KPI growth comparisons
@@ -195,7 +197,28 @@ export async function GET(request: NextRequest) {
     const dueParams = readArrayParam(searchParams, 'due');
     const locationParams = readArrayParam(searchParams, 'location_id');
 
-    const [{ data: invoiceRows, error: invErr }] =
+    const buildInvoiceKpiQuery = (start: string, endExclusive: string) => {
+      if (aggregateScope === 'location' && scopedLocationIds.length === 0) {
+        return Promise.resolve({ data: [], error: null });
+      }
+
+      let query = db
+        .schema('app')
+        .from('kpi_invoices_daily')
+        .select('invoices_count, gmv, overdue_count, overdue_amount, outstanding_count, outstanding_amount')
+        .eq('tenant_id', tenantId)
+        .eq('scope', aggregateScope)
+        .gte('day', start.slice(0, 10))
+        .lt('day', endExclusive.slice(0, 10));
+
+      if (aggregateScope === 'location') {
+        query = query.in('location_id', scopedLocationIds);
+      }
+
+      return query;
+    };
+
+    const [{ data: invoiceRows, error: invErr }, kpiCurrentRes, kpiPrevRes] =
       await Promise.all([
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         applySellerLocationScope(
@@ -213,6 +236,8 @@ export async function GET(request: NextRequest) {
             .limit(reqLimit + 1), // +1 to detect hasNextPage
           claims,
         ) as any,
+        buildInvoiceKpiQuery(period.current_start, period.current_end_exclusive),
+        buildInvoiceKpiQuery(period.previous_start, period.previous_end_exclusive),
       ]);
 
     // Scope linked-doc lookups to only the IDs referenced by the fetched invoices.
@@ -241,8 +266,8 @@ export async function GET(request: NextRequest) {
         : Promise.resolve({ data: [] as EstimateRow[], error: null }),
     ]);
 
-    if (invErr) {
-      console.error('[GET /api/tenant/invoices]', invErr);
+    if (invErr || kpiCurrentRes.error || kpiPrevRes.error) {
+      console.error('[GET /api/tenant/invoices]', invErr || kpiCurrentRes.error || kpiPrevRes.error);
       return timedJson({ error: 'Failed to fetch invoices' }, { status: 500 });
     }
 
@@ -256,11 +281,10 @@ export async function GET(request: NextRequest) {
 
     // Fetch snapshot total (O(1)) and scoped buyers in parallel
     const pageBuyerIds = Array.from(new Set(pageRows.map((r) => r.buyer_id)));
-    const [{ data: buyerRows }, { data: snapshotRow }] = await Promise.all([
+    const [{ data: buyerRows }] = await Promise.all([
       pageBuyerIds.length > 0
         ? db.schema('app').from('buyers').select('id, business_name, geography').in('id', pageBuyerIds).is('deleted_at', null)
         : Promise.resolve({ data: [] as BuyerRow[], error: null }),
-      db.schema('app').from('invoices_snapshot').select('total_count').eq('tenant_id', tenantId).maybeSingle(),
     ]);
 
     const buyers = (buyerRows ?? []) as BuyerRow[];
@@ -283,7 +307,6 @@ export async function GET(request: NextRequest) {
     }
     const catalogsById = new Map(((campaignsRes.data ?? []) as Array<{ id: string; name: string }>).map((row) => [row.id, row.name]));
 
-    const availableLocations = await loadAccessibleSellerLocations(db as any, claims.tenant_id, claims);
     const locationNameById = new Map(availableLocations.map((location) => [location.id, location.name]));
 
     const inCurrent = pageRows.filter((r) => inPeriod(r.invoice_date, period.current_start, period.current_end_exclusive));
@@ -368,25 +391,15 @@ export async function GET(request: NextRequest) {
       return sourceMatch && statusMatch && dueMatch && locationMatch;
     });
 
-    const invoicesThisPeriod = filteredRows.length;
-    const invoicesPrevPeriod = inPrevious.length;
-    const gmvThisPeriod = filteredRows
-      .filter((row) => row.status.value !== 'draft' && row.status.value !== 'void')
-      .reduce((sum, row) => sum + row.total_amount, 0);
-    const gmvPrevPeriod = inPrevious
-      .map((row) => ({
-        total_amount: Number(row.total_amount ?? 0),
-        effective: effectiveInvoiceStatus({ status: row.status, due_date: row.due_date }),
-      }))
-      .filter((row) => row.effective !== 'draft' && row.effective !== 'void')
-      .reduce((sum, row) => sum + row.total_amount, 0);
+    const invoicesThisPeriod = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.invoices_count ?? 0), 0);
+    const invoicesPrevPeriod = (kpiPrevRes.data ?? []).reduce((sum, row) => sum + Number(row.invoices_count ?? 0), 0);
+    const gmvThisPeriod = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.gmv ?? 0), 0);
+    const gmvPrevPeriod = (kpiPrevRes.data ?? []).reduce((sum, row) => sum + Number(row.gmv ?? 0), 0);
     const aov = invoicesThisPeriod > 0 ? gmvThisPeriod / invoicesThisPeriod : 0;
-    const overdueRows = filteredRows.filter((row) => row.status.value === 'overdue');
-    const outstandingRows = filteredRows.filter((row) => row.outstanding_amount > 0 && row.status.value !== 'void');
-    const overdueCount = overdueRows.length;
-    const overdueSum = overdueRows.reduce((sum, row) => sum + row.outstanding_amount, 0);
-    const outstandingCount = outstandingRows.length;
-    const outstandingSum = outstandingRows.reduce((sum, row) => sum + row.outstanding_amount, 0);
+    const overdueCount = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.overdue_count ?? 0), 0);
+    const overdueSum = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.overdue_amount ?? 0), 0);
+    const outstandingCount = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.outstanding_count ?? 0), 0);
+    const outstandingSum = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.outstanding_amount ?? 0), 0);
 
     const kpis: InvoicesKpis = {
       invoices_this_period: invoicesThisPeriod,

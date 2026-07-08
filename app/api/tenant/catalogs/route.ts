@@ -7,6 +7,10 @@ import { PAGE_SIZE } from '@/lib/pagination';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { CatalogComposerPayloadSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
 import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
+import { queueCampaignPublishNotify } from '@/lib/server/campaign-publish-notify';
+import { runCampaignPublishPreflight } from '@/lib/server/campaign-publish-preflight';
+import { getFlag } from '@/lib/flags';
+import { FEATURE_FLAGS } from '@/constants';
 import {
   aggregateCampaignViewsByCampaign,
   buildCatalogAttributedMetrics,
@@ -662,6 +666,42 @@ export async function POST(request: NextRequest) {
 
   const status: CatalogStatus = payload.save_mode === 'publish' ? 'published' : 'draft';
   const shareToken = payload.save_mode === 'publish' ? generateShareToken() : null;
+  const scopeValue = buildCatalogScopeValue({
+    scopeType: payload.scope_type,
+    cohortId: payload.cohort_id,
+    buyerIds: payload.buyer_ids,
+    filters: payload.filters,
+    tagOverrides: payload.tag_overrides,
+    priceSource: payload.price_source,
+    priceListId: payload.price_list_id,
+  });
+  const buyerNote = (payload.buyer_note ?? payload.message)?.trim() || null;
+  const isPublishing = payload.save_mode === 'publish';
+
+  if (isPublishing && payload.notify_whatsapp) {
+    const flagEnabled = await getFlag(FEATURE_FLAGS.WHATSAPP_BROADCAST, claims.tenant_id);
+    if (!flagEnabled) {
+      return NextResponse.json({ error: 'WhatsApp broadcast feature is not enabled' }, { status: 403 });
+    }
+
+    const preflight = await runCampaignPublishPreflight(db, {
+      tenantId: claims.tenant_id,
+      scopeType: payload.scope_type,
+      scopeValue,
+      notifyWhatsapp: true,
+    });
+
+    if (!preflight.can_notify) {
+      return NextResponse.json(
+        { error: preflight.blockers[0] ?? 'WhatsApp notify preflight failed', blockers: preflight.blockers },
+        { status: 400 },
+      );
+    }
+
+    if (payload.notify_scheduled_for && new Date(payload.notify_scheduled_for).getTime() <= Date.now()) {
+      return NextResponse.json({ error: 'Scheduled time must be in the future' }, { status: 400 });
+    }
+  }
 
   const { data: insertedCatalog, error: insertError } = await db
     .schema('app')
@@ -670,18 +710,10 @@ export async function POST(request: NextRequest) {
       tenant_id: claims.tenant_id,
       name: payload.name,
       scope_type: payload.scope_type,
-      scope_value: buildCatalogScopeValue({
-        scopeType: payload.scope_type,
-        cohortId: payload.cohort_id,
-        buyerIds: payload.buyer_ids,
-        filters: payload.filters,
-        tagOverrides: payload.tag_overrides,
-        priceSource: payload.price_source,
-        priceListId: payload.price_list_id,
-      }),
+      scope_value: scopeValue,
       valid_from: payload.valid_from.toISOString(),
       valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
-      message: payload.message?.trim() || null,
+      message: isPublishing ? buyerNote : (payload.message?.trim() || null),
       status,
       share_token: shareToken,
       created_by: claims.sub,
@@ -717,5 +749,33 @@ export async function POST(request: NextRequest) {
   }
 
   revalidateSellerDashboardCache(claims.tenant_id);
-  return NextResponse.json({ catalog: insertedCatalog });
+
+  let whatsappNotify: { broadcast_id: string; recipient_count: number; scheduled: boolean } | null = null;
+
+  if (isPublishing && payload.notify_whatsapp) {
+    try {
+      whatsappNotify = await queueCampaignPublishNotify(db, {
+        tenantId: claims.tenant_id,
+        actorId: claims.sub,
+        campaignId: insertedCatalog.id,
+        campaignName: payload.name,
+        scopeType: payload.scope_type,
+        scopeValue,
+        buyerNote,
+        scheduledFor: payload.notify_scheduled_for ?? null,
+        heroImageUrl: null,
+      });
+    } catch (notifyError) {
+      console.error('[POST /api/tenant/catalogs] WhatsApp notify failed after publish:', notifyError);
+      return NextResponse.json(
+        {
+          error: notifyError instanceof Error ? notifyError.message : 'Campaign published but WhatsApp notify failed',
+          catalog: insertedCatalog,
+        },
+        { status: 500 },
+      );
+    }
+  }
+
+  return NextResponse.json({ catalog: insertedCatalog, whatsapp_notify: whatsappNotify });
 }

@@ -29,6 +29,52 @@ const AddProductSchema = z.object({
   image_urls: z.array(z.string().url()).optional().default([]),
 });
 
+type ProductMetricRow = {
+  tenant_product_id: string;
+  units_sold?: number | null;
+  revenue?: number | null;
+};
+
+type InventoryMetricRow = {
+  tenant_product_id: string;
+  qty_available?: number | null;
+};
+
+type InvoiceMetricRow = {
+  id: string;
+  status: string | null;
+};
+
+type InvoiceItemMetricRow = {
+  invoice_id: string;
+  tenant_product_id: string;
+  qty?: number | null;
+};
+
+type SummaryProductSeedRow = {
+  id: string;
+  tenant_brand_id: string | null;
+  master_product_id: string | null;
+  internal_sku: string;
+  name_override: string | null;
+  image_urls: string[] | null;
+  is_active: boolean;
+};
+
+function metricNumber(value: number | string | null | undefined): number {
+  return Number(value ?? 0);
+}
+
+function getIstDayDaysAgo(daysAgo: number, now = new Date()): string {
+  const istNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  istNow.setHours(0, 0, 0, 0);
+  istNow.setDate(istNow.getDate() - daysAgo);
+  const year = istNow.getFullYear();
+  const month = `${istNow.getMonth() + 1}`.padStart(2, '0');
+  const day = `${istNow.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export async function GET(req: NextRequest) {
   const timer = createTimer();
   const timedJson = (body: unknown, init?: ResponseInit) => {
@@ -127,9 +173,25 @@ export async function GET(req: NextRequest) {
     const { data: snapshotRow } = await db
       .schema('app')
       .from('products_snapshot')
-      .select('total_count, active_count')
+      .select('total_count, active_count, low_stock_count')
       .eq('tenant_id', claims.tenant_id)
       .maybeSingle();
+
+    const summaryProductsRes = await db
+      .schema('app')
+      .from('tenant_products')
+      .select('id, tenant_brand_id, master_product_id, internal_sku, name_override, image_urls, is_active')
+      .eq('tenant_id', claims.tenant_id)
+      .is('deleted_at', null);
+
+    if (summaryProductsRes.error) {
+      console.error('[GET /api/tenant/products] summary products error:', summaryProductsRes.error.code, summaryProductsRes.error.message);
+      return timedJson({ error: 'Failed to fetch products summary' }, { status: 500 });
+    }
+
+    const summaryProducts = (summaryProductsRes.data ?? []) as SummaryProductSeedRow[];
+    const summaryProductIds = summaryProducts.map((row) => row.id);
+    const summaryProductIdSet = new Set(summaryProductIds);
 
     // Fetch master product details for enrichment
     const masterProductIds = pageProducts
@@ -237,24 +299,33 @@ export async function GET(req: NextRequest) {
     activeBrandRows = (activeBrandsData ?? []) as Array<{ id: string; display_name_override: string | null; master_brand_id: string | null }>;
     activeCategoryRows = (activeCategoriesData ?? []) as Array<{ id: string; name: string | null }>;
 
+    const activeMasterBrandIds = Array.from(
+      new Set(
+        activeBrandRows
+          .map((row) => row.master_brand_id)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    ).filter((brandId) => !masterBrands[brandId]);
+
+    if (activeMasterBrandIds.length > 0) {
+      const { data: activeMasterBrandsData } = await db
+        .schema('catalog')
+        .from('brands')
+        .select('id, name')
+        .in('id', activeMasterBrandIds)
+        .is('deleted_at', null);
+      Object.assign(
+        masterBrands,
+        Object.fromEntries((activeMasterBrandsData ?? []).map((row: { id: string }) => [row.id, row])),
+      );
+    }
+
     const productIds = pageProducts.map((row: { id: string }) => row.id);
     const inventoryByProduct = new Map<string, number>();
+    const units30dByProduct = new Map<string, number>();
     const unitsMtdByProduct = new Map<string, number>();
     const gmvMtdByProduct = new Map<string, number>();
     const gmvPrevByProduct = new Map<string, number>();
-
-    if (productIds.length > 0) {
-      const { data: inventoryRows } = await db
-        .schema('app')
-        .from('tenant_inventory')
-        .select('tenant_product_id, qty_available, deleted_at')
-        .in('tenant_product_id', productIds)
-        .is('deleted_at', null);
-      for (const row of inventoryRows ?? []) {
-        const qty = Number(row.qty_available ?? 0);
-        inventoryByProduct.set(row.tenant_product_id, (inventoryByProduct.get(row.tenant_product_id) ?? 0) + qty);
-      }
-    }
 
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
     const currentStartDay = period.current_start.slice(0, 10);
@@ -262,51 +333,161 @@ export async function GET(req: NextRequest) {
     const previousStartDay = period.previous_start.slice(0, 10);
     const previousEndDay = period.previous_end_exclusive.slice(0, 10);
 
-    if (productIds.length > 0) {
-      const [mtdKpiRes, prevKpiRes] = await Promise.all([
-        db
-          .schema('app')
-          .from('kpi_product_daily')
-          .select('tenant_product_id, units_sold, revenue')
-          .eq('tenant_id', claims.tenant_id)
-          .in('tenant_product_id', productIds)
-          .gte('day', currentStartDay)
-          .lt('day', currentEndDay)
-          .is('deleted_at', null),
-        db
-          .schema('app')
-          .from('kpi_product_daily')
-          .select('tenant_product_id, revenue')
-          .eq('tenant_id', claims.tenant_id)
-          .in('tenant_product_id', productIds)
-          .gte('day', previousStartDay)
-          .lt('day', previousEndDay)
-          .is('deleted_at', null),
-      ]);
+    const velocityStartDay = getIstDayDaysAgo(29);
+    const velocityEndExclusiveDay = getIstDayDaysAgo(-1);
 
-      for (const row of mtdKpiRes.data ?? []) {
-        const units = Number(row.units_sold ?? 0);
-        const revenue = Number(row.revenue ?? 0);
-        unitsMtdByProduct.set(
-          row.tenant_product_id,
-          (unitsMtdByProduct.get(row.tenant_product_id) ?? 0) + units,
-        );
-        gmvMtdByProduct.set(
-          row.tenant_product_id,
-          (gmvMtdByProduct.get(row.tenant_product_id) ?? 0) + revenue,
-        );
+    const [
+      summaryInventoryRes,
+      mtdKpiRes,
+      prevKpiRes,
+      recentInvoicesRes,
+    ] = await Promise.all([
+      summaryProductIds.length > 0
+        ? db
+            .schema('app')
+            .from('tenant_inventory')
+            .select('tenant_product_id, qty_available')
+            .in('tenant_product_id', summaryProductIds)
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [] as InventoryMetricRow[], error: null }),
+      db
+        .schema('app')
+        .from('kpi_product_daily')
+        .select('tenant_product_id, units_sold, revenue')
+        .eq('tenant_id', claims.tenant_id)
+        .gte('day', currentStartDay)
+        .lt('day', currentEndDay),
+      db
+        .schema('app')
+        .from('kpi_product_daily')
+        .select('tenant_product_id, revenue')
+        .eq('tenant_id', claims.tenant_id)
+        .gte('day', previousStartDay)
+        .lt('day', previousEndDay),
+      db
+        .schema('app')
+        .from('invoices')
+        .select('id, status')
+        .eq('tenant_id', claims.tenant_id)
+        .gte('invoice_date', velocityStartDay)
+        .lt('invoice_date', velocityEndExclusiveDay)
+        .is('deleted_at', null),
+    ]);
+
+    if (summaryInventoryRes.error || mtdKpiRes.error || prevKpiRes.error || recentInvoicesRes.error) {
+      console.error('[GET /api/tenant/products] metric query failure', summaryInventoryRes.error || mtdKpiRes.error || prevKpiRes.error || recentInvoicesRes.error);
+      return timedJson({ error: 'Failed to fetch product metrics' }, { status: 500 });
+    }
+
+    for (const row of (summaryInventoryRes.data ?? []) as InventoryMetricRow[]) {
+      const qty = metricNumber(row.qty_available);
+      inventoryByProduct.set(row.tenant_product_id, (inventoryByProduct.get(row.tenant_product_id) ?? 0) + qty);
+    }
+
+    for (const row of (mtdKpiRes.data ?? []) as ProductMetricRow[]) {
+      if (!summaryProductIdSet.has(row.tenant_product_id)) continue;
+      const units = metricNumber(row.units_sold);
+      const revenue = metricNumber(row.revenue);
+      unitsMtdByProduct.set(
+        row.tenant_product_id,
+        (unitsMtdByProduct.get(row.tenant_product_id) ?? 0) + units,
+      );
+      gmvMtdByProduct.set(
+        row.tenant_product_id,
+        (gmvMtdByProduct.get(row.tenant_product_id) ?? 0) + revenue,
+      );
+    }
+
+    for (const row of (prevKpiRes.data ?? []) as ProductMetricRow[]) {
+      if (!summaryProductIdSet.has(row.tenant_product_id)) continue;
+      const revenue = metricNumber(row.revenue);
+      gmvPrevByProduct.set(
+        row.tenant_product_id,
+        (gmvPrevByProduct.get(row.tenant_product_id) ?? 0) + revenue,
+      );
+    }
+
+    const recentInvoiceIds = ((recentInvoicesRes.data ?? []) as InvoiceMetricRow[])
+      .filter((row) => !['draft', 'void', 'cancelled', 'rejected', 'archived'].includes((row.status ?? '').toLowerCase()))
+      .map((row) => row.id);
+
+    if (recentInvoiceIds.length > 0) {
+      const recentInvoiceItemsRes = await db
+        .schema('app')
+        .from('invoice_items')
+        .select('invoice_id, tenant_product_id, qty')
+        .in('invoice_id', recentInvoiceIds)
+        .is('deleted_at', null);
+
+      if (recentInvoiceItemsRes.error) {
+        console.error('[GET /api/tenant/products] invoice velocity query failure', recentInvoiceItemsRes.error);
+        return timedJson({ error: 'Failed to fetch invoice velocity' }, { status: 500 });
       }
 
-      for (const row of prevKpiRes.data ?? []) {
-        const revenue = Number(row.revenue ?? 0);
-        gmvPrevByProduct.set(
+      for (const row of (recentInvoiceItemsRes.data ?? []) as InvoiceItemMetricRow[]) {
+        if (!summaryProductIdSet.has(row.tenant_product_id)) continue;
+        units30dByProduct.set(
           row.tenant_product_id,
-          (gmvPrevByProduct.get(row.tenant_product_id) ?? 0) + revenue,
+          (units30dByProduct.get(row.tenant_product_id) ?? 0) + metricNumber(row.qty),
         );
       }
     }
 
     const role = claims.role;
+    const activeBrandNameById = new Map(
+      activeBrandRows.map((row) => [
+        row.id,
+        row.display_name_override ?? (row.master_brand_id ? masterBrands[row.master_brand_id]?.name ?? null : null),
+      ]),
+    );
+
+    const summarizeProduct = (
+      row: {
+        id: string;
+        tenant_brand_id: string | null;
+        master_product_id: string | null;
+        internal_sku: string;
+        name_override: string | null;
+      },
+    ) => {
+      const onHand = Math.max(0, Math.round(inventoryByProduct.get(row.id) ?? 0));
+      const unitsMtd = Math.max(0, Math.round(unitsMtdByProduct.get(row.id) ?? 0));
+      const gmvMtd = metricNumber(gmvMtdByProduct.get(row.id));
+      const gmvPrev = metricNumber(gmvPrevByProduct.get(row.id));
+      const trailingInvoiceVelocity = metricNumber(units30dByProduct.get(row.id)) / 30;
+      const daysCover = onHand === 0 ? 0 : trailingInvoiceVelocity > 0 ? Math.max(0, Math.round(onHand / trailingInvoiceVelocity)) : null;
+      const growthPct = gmvPrev > 0 ? Math.round(((gmvMtd - gmvPrev) / gmvPrev) * 100) : gmvMtd > 0 ? 100 : 0;
+      const statusTone = onHand === 0
+        ? 'danger'
+        : daysCover != null && daysCover < 14
+          ? 'warning'
+          : daysCover == null
+            ? 'neutral'
+            : 'success';
+      const statusLabel = onHand === 0
+        ? 'Out of stock'
+        : daysCover != null && daysCover < 14
+          ? 'Low stock'
+          : daysCover == null
+            ? 'Insufficient velocity'
+            : 'On pace';
+
+      return {
+        onHand,
+        unitsMtd,
+        gmvMtd,
+        gmvPrev,
+        daysCover,
+        growthPct,
+        statusTone,
+        statusLabel,
+        brandName: row.tenant_brand_id ? activeBrandNameById.get(row.tenant_brand_id) ?? null : null,
+      };
+    };
+
+    const summaryMetricsByProductId = new Map(
+      summaryProducts.map((row) => [row.id, summarizeProduct(row)]),
+    );
 
     const products = pageProducts.map(
       (row: {
@@ -332,19 +513,12 @@ export async function GET(req: NextRequest) {
         const tenantBrand = row.tenant_brand_id ? tenantBrands[row.tenant_brand_id] : null;
         const tenantCategory = row.tenant_category_id ? tenantCategories[row.tenant_category_id] : null;
         const masterBrand = tenantBrand?.master_brand_id ? masterBrands[tenantBrand.master_brand_id] : null;
-        const onHand = Math.max(0, Math.round(inventoryByProduct.get(row.id) ?? 0));
-        const unitsMtd = Math.max(0, Math.round(unitsMtdByProduct.get(row.id) ?? 0));
-        const gmvMtd = Number(gmvMtdByProduct.get(row.id) ?? 0);
-        const gmvPrev = Number(gmvPrevByProduct.get(row.id) ?? 0);
-        const avgDailyUnits = period.elapsed_days > 0 ? unitsMtd / period.elapsed_days : 0;
-        const computedDaysCover = onHand === 0 ? 0 : avgDailyUnits <= 0 ? 999 : Math.max(0, Math.round(onHand / avgDailyUnits));
-        const growthPct = gmvPrev > 0 ? Math.round(((gmvMtd - gmvPrev) / gmvPrev) * 100) : gmvMtd > 0 ? 100 : 0;
-        const statusTone = onHand === 0 ? 'danger' : computedDaysCover < 14 ? 'warning' : 'success';
-        const statusLabel = onHand === 0 ? 'Out of stock' : computedDaysCover < 14 ? 'Low stock' : 'On pace';
+        const metrics = summaryMetricsByProductId.get(row.id) ?? summarizeProduct(row);
         const brandName =
           tenantBrand?.display_name_override ??
           masterBrand?.name ??
           master?.brands?.name ??
+          metrics.brandName ??
           null;
         const enriched = {
           ...row,
@@ -353,13 +527,13 @@ export async function GET(req: NextRequest) {
           display_name: row.name_override ?? master?.name ?? row.internal_sku,
           brand_name: brandName,
           category_name: tenantCategory?.name ?? master?.category_name ?? 'Uncategorized',
-          on_hand: onHand,
-          days_cover: computedDaysCover,
-          units_mtd: unitsMtd,
-          gmv_mtd: gmvMtd,
-          growth_pct: growthPct,
-          status_label: statusLabel,
-          status_tone: statusTone as 'success' | 'warning' | 'danger' | 'neutral',
+          on_hand: metrics.onHand,
+          days_cover: metrics.daysCover,
+          units_mtd: metrics.unitsMtd,
+          gmv_mtd: metrics.gmvMtd,
+          growth_pct: metrics.growthPct,
+          status_label: metrics.statusLabel,
+          status_tone: metrics.statusTone as 'success' | 'warning' | 'danger' | 'neutral',
         };
 
         // Strip cost_price for seller_assistant role
@@ -398,28 +572,49 @@ export async function GET(req: NextRequest) {
         stockParams.length === 0 ||
         stockParams.some((value) => {
           const onHand = Number(row.on_hand ?? 0);
-          const daysCover = Number(row.days_cover ?? 0);
+          const daysCover = row.days_cover ?? null;
           if (value === 'Out of stock') return onHand === 0;
-          if (value === 'Low stock') return onHand > 0 && daysCover < 14;
-          if (value === 'In stock') return onHand > 0 && daysCover >= 14;
+          if (value === 'Low stock') return onHand > 0 && daysCover != null && daysCover < 14;
+          if (value === 'In stock') return onHand > 0 && (daysCover == null || daysCover >= 14);
           return false;
         });
       return brandMatch && categoryMatch && statusMatch && stockMatch;
     });
-    const revenueMtd = filteredProducts.reduce((sum: number, row: { gmv_mtd?: number }) => sum + Number(row.gmv_mtd ?? 0), 0);
-    const revenuePrev = filteredProducts.reduce((sum: number, row: { id: string }) => sum + Number(gmvPrevByProduct.get(row.id) ?? 0), 0);
-    const revenueGrowth = revenuePrev > 0 ? Math.round(((revenueMtd - revenuePrev) / revenuePrev) * 100) : revenueMtd > 0 ? 100 : 0;
-    const activeCount = filteredProducts.filter((row: { is_active?: boolean }) => row.is_active).length;
-    const outOfStock = filteredProducts.filter((row: { on_hand?: number }) => Number(row.on_hand ?? 0) === 0).length;
-    const lowStock = filteredProducts.filter((row: { on_hand?: number; days_cover?: number }) => Number(row.on_hand ?? 0) > 0 && Number(row.days_cover ?? 0) < 14).length;
 
-    const attention = filteredProducts
-      .filter((row: { status_tone?: string; growth_pct?: number }) => row.status_tone === 'danger' || row.status_tone === 'warning' || Number(row.growth_pct ?? 0) < 0)
+    const summaryUniverse = summaryProducts.map((row, index) => {
+      const metrics = summaryMetricsByProductId.get(row.id) ?? summarizeProduct(row);
+      return {
+        id: row.id,
+        display_name: row.name_override ?? row.internal_sku,
+        brand_name: metrics.brandName,
+        on_hand: metrics.onHand,
+        days_cover: metrics.daysCover,
+        units_mtd: metrics.unitsMtd,
+        gmv_mtd: metrics.gmvMtd,
+        growth_pct: metrics.growthPct,
+        status_label: metrics.statusLabel,
+        status_tone: metrics.statusTone as 'success' | 'warning' | 'danger' | 'neutral',
+        read_index: index,
+      };
+    });
+
+    const revenueMtd = Array.from(gmvMtdByProduct.values()).reduce((sum, value) => sum + metricNumber(value), 0);
+    const revenuePrev = Array.from(gmvPrevByProduct.values()).reduce((sum, value) => sum + metricNumber(value), 0);
+    const revenueGrowth = revenuePrev > 0 ? Math.round(((revenueMtd - revenuePrev) / revenuePrev) * 100) : revenueMtd > 0 ? 100 : 0;
+    const unitsMtdTotal = Array.from(unitsMtdByProduct.values()).reduce((sum, value) => sum + metricNumber(value), 0);
+    const activeCount = Number(snapshotRow?.active_count ?? summaryProducts.filter((row) => row.is_active).length);
+    const totalCount = Number(snapshotRow?.total_count ?? summaryProducts.length);
+    const archivedCount = Math.max(0, totalCount - activeCount);
+    const outOfStock = summaryUniverse.filter((row) => row.on_hand === 0).length;
+    const lowStock = Number(snapshotRow?.low_stock_count ?? summaryUniverse.filter((row) => row.on_hand > 0 && row.days_cover != null && row.days_cover < 14).length);
+
+    const attention = summaryUniverse
+      .filter((row) => row.status_tone === 'danger' || row.status_tone === 'warning' || Number(row.growth_pct ?? 0) < 0)
       .slice(0, 3);
-    const topPerformers = [...filteredProducts]
+    const topPerformers = [...summaryUniverse]
       .sort((a, b) => Number(b.gmv_mtd ?? 0) - Number(a.gmv_mtd ?? 0))
       .slice(0, 2);
-    const topRisers = [...filteredProducts]
+    const topRisers = [...summaryUniverse]
       .sort((a, b) => Number(b.growth_pct ?? 0) - Number(a.growth_pct ?? 0))
       .slice(0, 2);
 
@@ -435,7 +630,7 @@ export async function GET(req: NextRequest) {
         .toUpperCase(),
       brand_hue: (['teal', 'ember', 'cream'][index % 3] ?? 'cream') as 'teal' | 'ember' | 'cream',
       on_hand: Number(row.on_hand ?? 0),
-      days_cover: Number(row.days_cover ?? 0),
+      days_cover: row.days_cover == null ? null : Number(row.days_cover),
       growth_pct: Number(row.growth_pct ?? 0),
       units_mtd: Number(row.units_mtd ?? 0),
       gmv_mtd: Number(row.gmv_mtd ?? 0),
@@ -462,10 +657,11 @@ export async function GET(req: NextRequest) {
       total: filteredProducts.length,
       kpis: {
         active_skus: activeCount,
-        total_skus: filteredProducts.length,
-        archived_skus: filteredProducts.length - activeCount,
+        total_skus: totalCount,
+        archived_skus: archivedCount,
         out_of_stock: outOfStock,
         low_stock: lowStock,
+        units_mtd: unitsMtdTotal,
         revenue_mtd: revenueMtd,
         revenue_prev_mtd: revenuePrev,
         revenue_growth_pct: revenueGrowth,
