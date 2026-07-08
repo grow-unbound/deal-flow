@@ -4,13 +4,22 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { createTimer } from '@/lib/server-timing';
 import { CohortCreateSchema } from '@/lib/zod';
-import { getCohortComposerPayload, resolveBuyerIdsForRules } from '@/lib/server/cohort-composer';
+import { resolveAllBuyerIdsForRules } from '@/lib/server/cohort-composer';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { readArrayParam } from '@/lib/landing-filter-params';
 import { PAGE_SIZE } from '@/lib/pagination';
 import { SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 
 type CohortType = 'Geo-based' | 'Activity-based' | 'Brand affinity';
+
+function buildPeriodFallbackFilter(
+  primaryColumn: string,
+  fallbackColumn: string,
+  startIso: string,
+  endExclusiveIso: string,
+) {
+  return `and(${primaryColumn}.gte.${startIso},${primaryColumn}.lt.${endExclusiveIso}),and(${primaryColumn}.is.null,${fallbackColumn}.gte.${startIso},${fallbackColumn}.lt.${endExclusiveIso})`;
+}
 
 function deriveCohortType(rules: unknown): CohortType {
   const json = rules && typeof rules === 'object' ? (rules as Record<string, unknown>) : null;
@@ -134,21 +143,19 @@ export async function getCohortsLandingPayload(tenantId: string, periodInput?: s
     db
       .schema('app')
       .from('orders')
-      .select('id, buyer_id, total_amount, status, placed_at')
+      .select('id, buyer_id, total_amount, status, order_date, placed_at, created_at')
       .eq('tenant_id', tenantId)
       .neq('status', 'cancelled')
       .is('deleted_at', null)
-      .gte('placed_at', period.current_start)
-      .lt('placed_at', period.current_end_exclusive),
+      .or(buildPeriodFallbackFilter('order_date', 'created_at', period.current_start, period.current_end_exclusive)),
     db
       .schema('app')
       .from('orders')
-      .select('id, buyer_id, total_amount, status, placed_at')
+      .select('id, buyer_id, total_amount, status, order_date, placed_at, created_at')
       .eq('tenant_id', tenantId)
       .neq('status', 'cancelled')
       .is('deleted_at', null)
-      .gte('placed_at', period.previous_start)
-      .lt('placed_at', period.previous_end_exclusive),
+      .or(buildPeriodFallbackFilter('order_date', 'created_at', period.previous_start, period.previous_end_exclusive)),
     db
       .schema('app')
       .from('campaigns')
@@ -241,7 +248,7 @@ export async function getCohortsLandingPayload(tenantId: string, periodInput?: s
     if (catalog.scope_type !== 'cohort') continue;
     const cohortId = catalog.scope_value?.cohort_id;
     if (!cohortId) continue;
-    if (catalog.status !== 'live') continue;
+    if (catalog.status !== 'published') continue;
     liveCatalogsByCohort.set(cohortId, (liveCatalogsByCohort.get(cohortId) ?? 0) + 1);
   }
 
@@ -340,7 +347,7 @@ export async function GET(request: NextRequest) {
     return timedJson({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  if (!claims.role?.startsWith('seller_')) {
+  if (claims.role !== 'seller_admin') {
     return timedJson({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -461,8 +468,7 @@ export async function POST(request: NextRequest) {
   let cachedMemberCount = 0;
 
   try {
-    const composer = await getCohortComposerPayload(db, claims.tenant_id);
-    const memberIds = resolveBuyerIdsForRules(composer.buyers, data.rules, data.is_static);
+    const memberIds = await resolveAllBuyerIdsForRules(db, claims.tenant_id, data.rules, data.is_static);
     cachedMemberCount = memberIds.length;
 
     if (memberIds.length > 0) {

@@ -30,6 +30,15 @@ type QueryState = {
 
 function createQueryResolver() {
   return (state: QueryState): QueryResult => {
+    if (state.table === 'buyers_snapshot') {
+      return {
+        data: [
+          { buyer_id: 'buyer-1' },
+          { buyer_id: 'buyer-2' },
+        ],
+      };
+    }
+
     if (state.table === 'buyer_app_snapshot') {
       return {
         data: {
@@ -40,38 +49,42 @@ function createQueryResolver() {
     }
 
     if (state.table === 'buyers' && state.select === 'id, buyer_app_enabled') {
+      const rows = [
+        { id: 'buyer-1', buyer_app_enabled: true },
+        { id: 'buyer-2', buyer_app_enabled: true },
+        { id: 'buyer-3', buyer_app_enabled: false },
+        { id: 'buyer-4', buyer_app_enabled: false },
+      ];
+      const scopedIds = state.inValues.id;
       return {
-        data: [
-          { id: 'buyer-1', buyer_app_enabled: true },
-          { id: 'buyer-2', buyer_app_enabled: true },
-          { id: 'buyer-3', buyer_app_enabled: false },
-          { id: 'buyer-4', buyer_app_enabled: false },
-        ],
+        data: scopedIds ? rows.filter((row) => scopedIds.includes(row.id)) : rows,
       };
     }
 
     if (state.table === 'buyers') {
+      const rows = [
+        {
+          id: 'buyer-1',
+          business_name: 'Alpha Retail',
+          contact_name: 'Asha',
+          phone: '9999999991',
+          geography: { city: 'Hyderabad', state: 'Telangana' },
+          buyer_app_enabled: true,
+          tier: 'A',
+        },
+        {
+          id: 'buyer-2',
+          business_name: 'Beta Stores',
+          contact_name: 'Bharat',
+          phone: '9999999992',
+          geography: { city: 'Pune', state: 'Maharashtra' },
+          buyer_app_enabled: true,
+          tier: 'B',
+        },
+      ];
+      const scopedIds = state.inValues.id;
       return {
-        data: [
-          {
-            id: 'buyer-1',
-            business_name: 'Alpha Retail',
-            contact_name: 'Asha',
-            phone: '9999999991',
-            geography: { city: 'Hyderabad', state: 'Telangana' },
-            buyer_app_enabled: true,
-            tier: 'A',
-          },
-          {
-            id: 'buyer-2',
-            business_name: 'Beta Stores',
-            contact_name: 'Bharat',
-            phone: '9999999992',
-            geography: { city: 'Pune', state: 'Maharashtra' },
-            buyer_app_enabled: true,
-            tier: 'B',
-          },
-        ],
+        data: scopedIds ? rows.filter((row) => scopedIds.includes(row.id)) : rows,
       };
     }
 
@@ -80,6 +93,13 @@ function createQueryResolver() {
       && state.select === 'buyer_id, total_amount, placed_at'
       && state.eqs.is_buyer_app_order === true
     ) {
+      if (state.inValues.location_id) {
+        return {
+          data: [
+            { buyer_id: 'buyer-1', total_amount: 1200, placed_at: '2026-07-01T00:00:00.000Z' },
+          ],
+        };
+      }
       return { data: [] };
     }
 
@@ -88,6 +108,13 @@ function createQueryResolver() {
       && state.select === 'buyer_id, total_amount'
       && state.eqs.is_buyer_app_order === false
     ) {
+      if (state.inValues.location_id) {
+        return {
+          data: [
+            { buyer_id: 'buyer-2', total_amount: 3400 },
+          ],
+        };
+      }
       return { data: [] };
     }
 
@@ -96,6 +123,14 @@ function createQueryResolver() {
       && state.select === 'buyer_id'
       && state.eqs.is_buyer_app_order === false
     ) {
+      if (state.inValues.location_id) {
+        return {
+          data: [
+            { buyer_id: 'buyer-2' },
+            { buyer_id: 'buyer-2' },
+          ],
+        };
+      }
       return {
         data: [
           { buyer_id: 'buyer-3' },
@@ -110,6 +145,13 @@ function createQueryResolver() {
       && state.select === 'buyer_id'
       && state.eqs.is_buyer_app_order === true
     ) {
+      if (state.inValues.location_id) {
+        return {
+          data: [
+            { buyer_id: 'buyer-1' },
+          ],
+        };
+      }
       return {
         data: [
           { buyer_id: 'buyer-2' },
@@ -213,5 +255,31 @@ describe('GET /api/tenant/buyer-app/access', () => {
     expect(body.buyers[0].id).toBe('buyer-1');
     expect(body.has_more).toBe(true);
     expect(body.limit).toBe(1);
+  });
+
+  it('scopes assistant buyer-app access KPIs and rows to assigned locations', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      tenant_id: 'tenant-1',
+      role: 'seller_assistant',
+      buyer_id: null,
+      location_ids: ['loc-1'],
+    });
+
+    const response = await GET(
+      new NextRequest('http://localhost:3000/api/tenant/buyer-app/access?limit=5'),
+    );
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+    expect(body.kpis).toEqual({
+      enabled_count: 2,
+      not_enabled_count: 0,
+      suggested_count: 0,
+      inactive_count: 1,
+      total_count: 2,
+    });
+    expect(body.buyers).toHaveLength(2);
+    expect(body.buyers.map((buyer: { id: string }) => buyer.id)).toEqual(['buyer-1', 'buyer-2']);
   });
 });

@@ -6,6 +6,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getFlag } from '@/lib/flags';
 import { FEATURE_FLAGS } from '@/constants';
 import { parseRowsLimit, SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
+import { getSellerLocationScope } from '@/lib/server/seller-location-access';
 import type { AccessBuyer, AccessKpis, AccessPageResponse } from '@/hooks/useBuyerAppAccess';
 
 type BuyerAccessKpiRow = {
@@ -55,9 +56,77 @@ export async function GET(request: NextRequest) {
     const limit = parseRowsLimit(request.nextUrl.searchParams.get('limit'));
     const search = request.nextUrl.searchParams.get('q')?.trim() ?? '';
     const status = request.nextUrl.searchParams.get('status')?.trim() ?? 'all';
+    const locationScope = getSellerLocationScope({
+      role: claims.role ?? null,
+      location_ids: claims.location_ids ?? null,
+    });
 
     const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    if (locationScope.mode === 'none') {
+      const emptyResponse: AccessPageResponse = {
+        kpis: {
+          enabled_count: 0,
+          not_enabled_count: 0,
+          suggested_count: 0,
+          inactive_count: 0,
+          total_count: 0,
+        },
+        buyers: [],
+        has_more: false,
+        limit,
+      };
+
+      return NextResponse.json(emptyResponse, { headers: SELLER_CACHE_PERSONAL });
+    }
+
+    let scopedBuyerIds: string[] | null = null;
+    if (locationScope.mode === 'subset') {
+      const scopedBuyerIdsResult = await db
+        .schema('app')
+        .from('buyers_snapshot')
+        .select('buyer_id')
+        .eq('tenant_id', tenantId)
+        .eq('scope', 'location')
+        .in('location_id', locationScope.locationIds);
+
+      if (scopedBuyerIdsResult.error) {
+        return NextResponse.json({ error: 'Failed to fetch buyers' }, { status: 500 });
+      }
+
+      scopedBuyerIds = Array.from(
+        new Set(
+          ((scopedBuyerIdsResult.data ?? []) as Array<{ buyer_id: string | null }>)
+            .map((row) => row.buyer_id)
+            .filter((buyerId): buyerId is string => typeof buyerId === 'string' && buyerId.length > 0),
+        ),
+      );
+
+      if (scopedBuyerIds.length === 0) {
+        const emptyResponse: AccessPageResponse = {
+          kpis: {
+            enabled_count: 0,
+            not_enabled_count: 0,
+            suggested_count: 0,
+            inactive_count: 0,
+            total_count: 0,
+          },
+          buyers: [],
+          has_more: false,
+          limit,
+        };
+
+        return NextResponse.json(emptyResponse, { headers: SELLER_CACHE_PERSONAL });
+      }
+    }
+
+    const applyLocationScope = <T extends { in: (column: string, values: string[]) => T }>(query: T) => {
+      if (locationScope.mode === 'subset') {
+        return query.in('location_id', locationScope.locationIds);
+      }
+      return query;
+    };
 
     let buyersQuery = db
       .schema('app')
@@ -68,6 +137,10 @@ export async function GET(request: NextRequest) {
       .is('deleted_at', null)
       .order('business_name', { ascending: true })
       .limit(limit + 1);
+
+    if (scopedBuyerIds) {
+      buyersQuery = buyersQuery.in('id', scopedBuyerIds);
+    }
 
     if (search) {
       buyersQuery = buyersQuery.textSearch('search_vector', search, { type: 'websearch' });
@@ -90,20 +163,27 @@ export async function GET(request: NextRequest) {
         .select('total_buyers, enabled_buyers')
         .eq('tenant_id', tenantId)
         .maybeSingle(),
-      db
+      (() => {
+        let query = db
         .schema('app')
         .from('buyers')
         .select('id, buyer_app_enabled')
         .eq('tenant_id', tenantId)
         .eq('is_active', true)
-        .is('deleted_at', null),
+        .is('deleted_at', null);
+        if (scopedBuyerIds) {
+          query = query.in('id', scopedBuyerIds);
+        }
+        return query;
+      })(),
     ]);
 
     const pageRows = (buyersResult.data ?? []).slice(0, limit);
     const pageBuyerIds = pageRows.map((buyer: { id: string }) => buyer.id);
 
     const [appOrdersResult, offlineOrdersResult] = pageBuyerIds.length > 0 ? await Promise.all([
-      db
+      applyLocationScope(
+        db
         .schema('app')
         .from('orders')
         .select('buyer_id, total_amount, placed_at')
@@ -112,7 +192,9 @@ export async function GET(request: NextRequest) {
         .in('buyer_id', pageBuyerIds)
         .gte('placed_at', ninetyDaysAgo)
         .is('deleted_at', null),
-      db
+      ),
+      applyLocationScope(
+        db
         .schema('app')
         .from('orders')
         .select('buyer_id, total_amount')
@@ -121,10 +203,12 @@ export async function GET(request: NextRequest) {
         .in('buyer_id', pageBuyerIds)
         .gte('placed_at', ninetyDaysAgo)
         .is('deleted_at', null),
+      ),
     ]) : [{ data: [], error: null }, { data: [], error: null }];
 
     const [suggestedBuyersResult, activeAppBuyersResult] = await Promise.all([
-      db
+      applyLocationScope(
+        db
         .schema('app')
         .from('orders')
         .select('buyer_id')
@@ -132,7 +216,9 @@ export async function GET(request: NextRequest) {
         .eq('is_buyer_app_order', false)
         .gte('placed_at', ninetyDaysAgo)
         .is('deleted_at', null),
-      db
+      ),
+      applyLocationScope(
+        db
         .schema('app')
         .from('orders')
         .select('buyer_id')
@@ -140,6 +226,7 @@ export async function GET(request: NextRequest) {
         .eq('is_buyer_app_order', true)
         .gte('placed_at', thirtyDaysAgo)
         .is('deleted_at', null),
+      ),
     ]);
 
     if (
@@ -220,8 +307,8 @@ export async function GET(request: NextRequest) {
     const snapshot = buyerAppSnapshotResult.data as
       | { total_buyers?: number | null; enabled_buyers?: number | null }
       | null;
-    const totalCount = Number(snapshot?.total_buyers ?? activeBuyers.length);
-    const enabledCount = Number(snapshot?.enabled_buyers ?? enabledBuyerIds.size);
+    const totalCount = scopedBuyerIds ? activeBuyers.length : Number(snapshot?.total_buyers ?? activeBuyers.length);
+    const enabledCount = scopedBuyerIds ? enabledBuyerIds.size : Number(snapshot?.enabled_buyers ?? enabledBuyerIds.size);
     const suggestedCount = countDistinctBuyerIds(
       suggestedBuyersResult.data as BuyerOrderCountRow[] | null | undefined,
       notEnabledBuyerIds,

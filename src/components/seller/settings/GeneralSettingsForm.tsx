@@ -487,7 +487,7 @@ export function GeneralSettingsForm({
 
           {draft.buyer_app.enabled && (
             <div className="border-b border-cream-200 bg-cream-50 pl-10 pr-5 pb-4 pt-2">
-              <p className="text-sm font-semibold uppercase tracking-wide text-cream-600 px-5 pb-2 pt-1">WhatsApp notifications</p>
+              <p className="text-sm font-semibold uppercase tracking-wide text-cream-600 pb-2 pt-1">WhatsApp notifications (Credits Based)</p>
               <NotificationToggleRow
                 label="Buyer enquiry received"
                 description="Notify you when a buyer submits a quote request."

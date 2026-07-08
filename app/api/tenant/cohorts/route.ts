@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     return timedJson({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  if (!claims.role?.startsWith('seller_')) {
+  if (claims.role !== 'seller_admin') {
     return timedJson({ error: 'Forbidden' }, { status: 403 });
   }
 

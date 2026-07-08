@@ -79,6 +79,7 @@ interface OrderRow {
   id: string;
   campaign_id: string | null;
   total_amount: number | null;
+  order_date?: string | null;
   placed_at: string | null;
   created_at: string | null;
   status: string;
@@ -91,8 +92,18 @@ interface EstimateRow {
   total_amount: number | null;
   status: string;
   converted_to_order_id: string | null;
+  estimate_date?: string | null;
   created_at: string | null;
   buyer_id?: string;
+}
+
+function buildPeriodFallbackFilter(
+  primaryColumn: string,
+  fallbackColumn: string,
+  startIso: string,
+  endExclusiveIso: string,
+) {
+  return `and(${primaryColumn}.gte.${startIso},${primaryColumn}.lt.${endExclusiveIso}),and(${primaryColumn}.is.null,${fallbackColumn}.gte.${startIso},${fallbackColumn}.lt.${endExclusiveIso})`;
 }
 
 function getHue(index: number): AvatarHue {
@@ -230,7 +241,7 @@ export async function GET(req: NextRequest) {
       return timedJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (!claims.role?.startsWith('seller_')) {
+    if (claims.role !== 'seller_admin') {
       return timedJson({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -244,6 +255,7 @@ export async function GET(req: NextRequest) {
     const nowTs = now.getTime();
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'), now);
     const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
+    const summaryLimit = PAGE_SIZE.MAX;
 
     const [catalogsRes, ordersRes, prevOrdersRes, estimatesRes, prevEstimatesRes, viewsRes, cohortsRes, activeBuyersRes] = await Promise.all([
       db
@@ -253,43 +265,39 @@ export async function GET(req: NextRequest) {
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
-        .limit(limit),
+        .limit(summaryLimit),
       db
         .schema('app')
         .from('orders')
-        .select('id, campaign_id, total_amount, placed_at, created_at, status, buyer_id')
+        .select('id, campaign_id, total_amount, order_date, placed_at, created_at, status, buyer_id')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .not('campaign_id', 'is', null)
-        .gte('placed_at', period.current_start)
-        .lt('placed_at', period.current_end_exclusive),
+        .or(buildPeriodFallbackFilter('order_date', 'created_at', period.current_start, period.current_end_exclusive)),
       db
         .schema('app')
         .from('orders')
-        .select('id, campaign_id, total_amount, placed_at, created_at, status, buyer_id')
+        .select('id, campaign_id, total_amount, order_date, placed_at, created_at, status, buyer_id')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .not('campaign_id', 'is', null)
-        .gte('placed_at', period.previous_start)
-        .lt('placed_at', period.previous_end_exclusive),
+        .or(buildPeriodFallbackFilter('order_date', 'created_at', period.previous_start, period.previous_end_exclusive)),
       db
         .schema('app')
         .from('estimates')
-        .select('id, campaign_id, total_amount, status, converted_to_order_id, created_at, buyer_id')
+        .select('id, campaign_id, total_amount, status, converted_to_order_id, estimate_date, created_at, buyer_id')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .not('campaign_id', 'is', null)
-        .gte('created_at', period.current_start)
-        .lt('created_at', period.current_end_exclusive),
+        .or(buildPeriodFallbackFilter('estimate_date', 'created_at', period.current_start, period.current_end_exclusive)),
       db
         .schema('app')
         .from('estimates')
-        .select('id, campaign_id, total_amount, status, converted_to_order_id, created_at, buyer_id')
+        .select('id, campaign_id, total_amount, status, converted_to_order_id, estimate_date, created_at, buyer_id')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .not('campaign_id', 'is', null)
-        .gte('created_at', period.previous_start)
-        .lt('created_at', period.previous_end_exclusive),
+        .or(buildPeriodFallbackFilter('estimate_date', 'created_at', period.previous_start, period.previous_end_exclusive)),
       db
         .schema('app')
         .from('campaign_views')
@@ -349,10 +357,22 @@ export async function GET(req: NextRequest) {
       }
       items = (itemsRes.data ?? []) as CatalogItemRow[];
     }
-    const orders = (ordersRes.data ?? []) as OrderRow[];
-    const prevOrders = (prevOrdersRes.data ?? []) as OrderRow[];
-    const estimates = (estimatesRes.data ?? []) as EstimateRow[];
-    const prevEstimates = (prevEstimatesRes.data ?? []) as EstimateRow[];
+    const orders = ((ordersRes.data ?? []) as OrderRow[]).map((order) => ({
+      ...order,
+      placed_at: order.order_date ?? order.placed_at ?? order.created_at,
+    }));
+    const prevOrders = ((prevOrdersRes.data ?? []) as OrderRow[]).map((order) => ({
+      ...order,
+      placed_at: order.order_date ?? order.placed_at ?? order.created_at,
+    }));
+    const estimates = ((estimatesRes.data ?? []) as EstimateRow[]).map((estimate) => ({
+      ...estimate,
+      created_at: estimate.estimate_date ?? estimate.created_at,
+    }));
+    const prevEstimates = ((prevEstimatesRes.data ?? []) as EstimateRow[]).map((estimate) => ({
+      ...estimate,
+      created_at: estimate.estimate_date ?? estimate.created_at,
+    }));
     const campaignViews = (viewsRes.data ?? []) as CampaignViewRow[];
     const cohorts = (cohortsRes.data ?? []) as CohortRow[];
     const viewsByCampaign = aggregateCampaignViewsByCampaign(campaignViews);
@@ -657,7 +677,9 @@ export async function GET(req: NextRequest) {
         top_performers: topPerformers,
         top_risers: topRisers,
       },
-      catalogs: withGrowth,
+      catalogs: withGrowth.slice(0, limit),
+      total: withGrowth.length,
+      nextCursor: null,
     });
   } catch (error) {
     console.error('[GET /api/tenant/catalogs] unexpected error:', error);
