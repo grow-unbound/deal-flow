@@ -67,11 +67,12 @@ type PriceListAssignmentRow = {
 type CohortMembershipRow = {
   buyer_id: string;
   cohort_id: string;
-  cohort: {
-    id: string;
-    name: string;
-    deleted_at: string | null;
-  } | null;
+};
+
+type TenantCohortRow = {
+  id: string;
+  name: string;
+  deleted_at: string | null;
 };
 
 type BuyerSnapshotRow = {
@@ -493,18 +494,17 @@ export async function GET(req: NextRequest) {
       return query;
     };
 
-    const [buyerRowsRes, buyerCountRes, currentKpiRes, previousKpiRes, cohortMembersRes, priceListAssignmentsRes] = await Promise.all([
+    const [buyerRowsRes, buyerCountRes, currentKpiRes, previousKpiRes, tenantCohortsRes, priceListAssignmentsRes] = await Promise.all([
       buildBuyerQuery('rows'),
       buildBuyerQuery('count'),
       buildBuyerKpiQuery(period.current_start, period.current_end_exclusive),
       buildBuyerKpiQuery(period.previous_start, period.previous_end_exclusive),
-      accessibleBuyerIds.size > 0
-        ? db
-            .schema('app')
-            .from('cohort_members')
-            .select('buyer_id, cohort_id, cohort:cohorts(id, name, deleted_at)')
-            .in('buyer_id', Array.from(accessibleBuyerIds))
-        : Promise.resolve({ data: [], error: null }),
+      db
+        .schema('app')
+        .from('cohorts')
+        .select('id, name, deleted_at')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null),
       db
         .schema('app')
         .from('price_list_assignments')
@@ -520,16 +520,32 @@ export async function GET(req: NextRequest) {
       buyerCountRes.error ||
       currentKpiRes.error ||
       previousKpiRes.error ||
-      cohortMembersRes.error
+      tenantCohortsRes.error
     ) {
       console.error('[GET /api/tenant/customers] query failure', {
         buyers: buyerRowsRes.error,
         buyerCount: buyerCountRes.error,
         currentKpi: currentKpiRes.error,
         previousKpi: previousKpiRes.error,
-        cohorts: cohortMembersRes.error,
+        cohorts: tenantCohortsRes.error,
         priceListAssignments: priceListAssignmentsRes.error,
       });
+      return timedJson({ error: 'Failed to fetch customers landing data' }, { status: 500 });
+    }
+
+    const tenantCohorts = (tenantCohortsRes.data ?? []) as TenantCohortRow[];
+    const cohortById = new Map(tenantCohorts.map((cohort) => [cohort.id, cohort]));
+    const cohortIds = tenantCohorts.map((cohort) => cohort.id);
+    const cohortMembersRes = cohortIds.length > 0
+      ? await db
+          .schema('app')
+          .from('cohort_members')
+          .select('buyer_id, cohort_id')
+          .in('cohort_id', cohortIds)
+      : { data: [] as CohortMembershipRow[], error: null };
+
+    if (cohortMembersRes.error) {
+      console.error('[GET /api/tenant/customers] cohort_members query failure', cohortMembersRes.error);
       return timedJson({ error: 'Failed to fetch customers landing data' }, { status: 500 });
     }
 
@@ -570,16 +586,16 @@ export async function GET(req: NextRequest) {
     const buyerCohortsByBuyerId = new Map<string, Array<{ id: string; name: string }>>();
     const cohortSet = new Set<string>();
     for (const row of cohortMembers) {
-      const cohortName = row.cohort?.name;
-      const cohortDeletedAt = row.cohort?.deleted_at;
-      if (!cohortName || cohortDeletedAt) continue;
-      cohortSet.add(cohortName);
+      if (!accessibleBuyerIds.has(row.buyer_id)) continue;
+      const cohort = cohortById.get(row.cohort_id);
+      if (!cohort?.name || cohort.deleted_at) continue;
+      cohortSet.add(cohort.name);
       const cohortList = buyerCohortsByBuyerId.get(row.buyer_id) ?? [];
-      cohortList.push({ id: row.cohort_id, name: cohortName });
+      cohortList.push({ id: row.cohort_id, name: cohort.name });
       buyerCohortsByBuyerId.set(row.buyer_id, cohortList);
       const prev = cohortMap.get(row.buyer_id);
-      if (!prev || cohortName.localeCompare(prev) < 0) {
-        cohortMap.set(row.buyer_id, cohortName);
+      if (!prev || cohort.name.localeCompare(prev) < 0) {
+        cohortMap.set(row.buyer_id, cohort.name);
       }
     }
 

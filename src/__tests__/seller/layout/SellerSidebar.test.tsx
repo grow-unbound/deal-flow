@@ -168,6 +168,31 @@ describe('SellerSidebar', () => {
     expect(screen.queryByRole('link', { name: 'Catalogs' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument();
   });
+
+  it('renders collapse toggle in footer when canCollapse is true', () => {
+    render(<SellerSidebar isCollapsed={false} canCollapse featureAvailability={makeFeatures()} />);
+    const toggle = screen.getByRole('button', { name: 'Collapse sidebar' });
+    expect(toggle).toBeInTheDocument();
+    expect(toggle.closest('footer')).not.toBeNull();
+  });
+
+  it('hides collapse toggle when canCollapse is false', () => {
+    render(<SellerSidebar isCollapsed={false} canCollapse={false} featureAvailability={makeFeatures()} />);
+    expect(screen.queryByRole('button', { name: /sidebar/i })).not.toBeInTheDocument();
+  });
+
+  it('renders copper mark logo in collapsed mode (not charcoal app-icon)', () => {
+    render(<SellerSidebar isCollapsed featureAvailability={makeFeatures()} />);
+    const logo = screen.getByRole('img', { name: 'Yukti' });
+    expect(logo).toHaveAttribute('src', expect.stringContaining('mark-copper.svg'));
+  });
+
+  it('keeps collapsed nav links left-aligned without justify-center', () => {
+    render(<SellerSidebar isCollapsed featureAvailability={makeFeatures()} />);
+    const dashboardLink = screen.getByRole('link', { name: 'Dashboard' });
+    expect(dashboardLink.className).not.toContain('justify-center');
+    expect(dashboardLink.className).toContain('gap-3');
+  });
 });
 
 describe('collectPrefetchHrefs', () => {
