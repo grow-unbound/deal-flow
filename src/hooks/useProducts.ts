@@ -53,7 +53,7 @@ export interface TenantProduct {
   category_name?: string | null;
   tenant_category_id?: string | null;
   on_hand?: number;
-  days_cover?: number;
+  days_cover?: number | null;
   units_mtd?: number;
   gmv_mtd?: number;
   growth_pct?: number;
@@ -67,6 +67,7 @@ export interface ProductsKpis {
   archived_skus: number;
   out_of_stock: number;
   low_stock: number;
+  units_mtd?: number;
   revenue_mtd: number;
   revenue_prev_mtd: number;
   revenue_growth_pct: number;
@@ -79,7 +80,7 @@ export interface ProductsTodaysReadItem {
   brand_initials: string;
   brand_hue: 'teal' | 'ember' | 'cream';
   on_hand: number;
-  days_cover: number;
+  days_cover: number | null;
   growth_pct: number;
   units_mtd: number;
   gmv_mtd: number;

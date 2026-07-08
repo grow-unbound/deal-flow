@@ -7,7 +7,8 @@ type TemplateVariable = {
 };
 
 type TemplateButtonConfig = {
-  type?: 'url';
+  type?: 'url' | 'quick_reply';
+  index?: string;
   variable_source?: string;
 };
 
@@ -20,6 +21,8 @@ type TemplateRow = {
   locale: string | null;
   variables: TemplateVariable[];
   button_config: TemplateButtonConfig | null;
+  buttons_config?: TemplateButtonConfig[] | null;
+  header_config?: { format?: string } | null;
 };
 
 type BuyerRow = {
@@ -114,16 +117,50 @@ function resolveButtonValue(
   variableSource: string | undefined,
   buyer: BuyerRow,
   campaign: CampaignRow | null,
+  sellerPhone: string,
 ) {
   switch (variableSource) {
+    case 'share_token':
     case 'campaign_id':
     case 'catalog_or_campaign_reference':
       return campaign?.share_token ?? campaign?.id ?? null;
+    case 'tenant_whatsapp_phone':
+      return sellerPhone ? formatWhatsappDestination(sellerPhone) : null;
     case 'buyer_id_or_invoice_list_reference':
       return buyer.id;
     default:
       return campaign?.share_token ?? campaign?.id ?? null;
   }
+}
+
+function buildButtonParams(
+  template: TemplateRow,
+  buyer: BuyerRow,
+  campaign: CampaignRow | null,
+  sellerPhone: string,
+) {
+  const configs = Array.isArray(template.buttons_config) && template.buttons_config.length > 0
+    ? template.buttons_config
+    : template.button_config?.type === 'url'
+      ? [template.button_config]
+      : [];
+
+  const buttonParams: Array<{ type: 'url'; index: string; text: string }> = [];
+
+  for (const button of configs) {
+    if (button.type !== 'url') continue;
+    const text = resolveButtonValue(button.variable_source, buyer, campaign, sellerPhone);
+    if (!text) {
+      throw new Error('Missing required broadcast CTA target');
+    }
+    buttonParams.push({
+      type: 'url',
+      index: button.index ?? String(buttonParams.length),
+      text,
+    });
+  }
+
+  return buttonParams;
 }
 
 function resolveVariableValue({
@@ -162,6 +199,8 @@ function buildSendPayload(args: {
   invoiceSummary: BuyerInvoiceSummary | null;
   campaign: CampaignRow | null;
   variableBindings: Record<string, string>;
+  headerMediaId?: string | null;
+  headerImageLink?: string | null;
 }): WhatsAppSendPayload {
   const bodyParams = args.template.variables.map((variable) => {
     const text = resolveVariableValue({
@@ -182,19 +221,28 @@ function buildSendPayload(args: {
     };
   });
 
-  const buttonValue = args.template.button_config?.type === 'url'
-    ? resolveButtonValue(args.template.button_config.variable_source, args.buyer, args.campaign)
-    : null;
+  const buttonParams = buildButtonParams(
+    args.template,
+    args.buyer,
+    args.campaign,
+    args.sellerPhone,
+  );
 
-  if (args.template.button_config?.type === 'url' && !buttonValue) {
-    throw new Error('Missing required broadcast CTA target');
-  }
+  const hasImageHeader = args.template.header_config?.format === 'image';
 
   return {
     meta_template_name: args.template.meta_template_name,
     locale: args.template.locale ?? 'en',
     body_params: bodyParams,
-    ...(buttonValue ? { button_params: [{ type: 'url' as const, index: '0', text: buttonValue }] } : {}),
+    ...(hasImageHeader && (args.headerMediaId || args.headerImageLink)
+      ? {
+          header_params: {
+            type: 'image' as const,
+            ...(args.headerMediaId ? { media_id: args.headerMediaId } : { link: args.headerImageLink ?? undefined }),
+          },
+        }
+      : {}),
+    ...(buttonParams.length > 0 ? { button_params: buttonParams } : {}),
   };
 }
 
@@ -208,6 +256,8 @@ export async function buildBroadcastMessageQueue(
     variableBindings: Record<string, string>;
     linkedCampaignId?: string | null;
     scheduledSendAt?: string | null;
+    headerMediaId?: string | null;
+    headerImageLink?: string | null;
   },
 ): Promise<EnqueueWhatsAppMessageInput[]> {
   const { data: tenant, error: tenantError } = await db
@@ -277,6 +327,9 @@ export async function buildBroadcastMessageQueue(
   if (!sellerName.trim()) {
     throw new Error('Missing seller WhatsApp display name');
   }
+  if (input.template.buttons_config?.some((b) => b.variable_source === 'tenant_whatsapp_phone') && !sellerPhone) {
+    throw new Error('Missing tenant WhatsApp contact number for Enquire button');
+  }
 
   const queueInputs: EnqueueWhatsAppMessageInput[] = [];
   for (const buyer of buyerRows) {
@@ -288,6 +341,8 @@ export async function buildBroadcastMessageQueue(
       invoiceSummary: invoiceSummaryByBuyer.get(buyer.id) ?? null,
       campaign,
       variableBindings: input.variableBindings,
+      headerMediaId: input.headerMediaId,
+      headerImageLink: input.headerImageLink,
     });
 
     queueInputs.push({

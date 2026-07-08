@@ -12,6 +12,7 @@ vi.mock('@/hooks/useCatalogs', () => ({
   useTenantCatalogDetail: (...args: unknown[]) => useTenantCatalogDetailMock(...args),
   usePublishCatalog: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useEnsureCatalogShareLink: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCatalogPublishPreview: () => ({ data: undefined, isLoading: false, error: null }),
   useAddCatalogProduct: () => ({ mutate: vi.fn(), isPending: false }),
   useRemoveCatalogProduct: () => ({ mutate: vi.fn(), isPending: false }),
 }));

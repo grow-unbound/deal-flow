@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useRole } from '@/hooks/useRole';
 import {
+  useCatalogPublishPreview,
   useEnsureCatalogShareLink,
   usePublishCatalog,
   useTenantCatalogDetail,
@@ -16,19 +17,11 @@ import { PageWrap } from '@/components/seller/layout';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { formatCompactInr } from '@/lib/utils';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { CatalogCompositionTab } from './CatalogCompositionTab';
 import { CatalogBuyersTab } from './CatalogBuyersTab';
+import { PublishCampaignDialog } from './PublishCampaignDialog';
 
 const CatalogPerformanceTab = dynamic(
   () => import('./CatalogPerformanceTab').then((m) => m.CatalogPerformanceTab),
@@ -90,10 +83,12 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
     initialState: 'performance',
   });
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
+  const [notifyWhatsappPreview, setNotifyWhatsappPreview] = useState(true);
   const { isSellerAdmin } = useRole();
   const { data, isLoading, isError } = useTenantCatalogDetail(id);
   const publishMutation = usePublishCatalog(id);
   const ensureShareLinkMutation = useEnsureCatalogShareLink(id);
+  const publishPreviewQuery = useCatalogPublishPreview(id, notifyWhatsappPreview, publishConfirmOpen && isSellerAdmin);
 
   const tiles = useMemo(() => {
     if (!data) return [];
@@ -147,11 +142,24 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
     }
   }
 
-  async function handlePublishCatalog() {
+  async function handlePublishCatalog(input: {
+    notifyWhatsapp: boolean;
+    buyerNote: string;
+    notifyScheduledFor: string | null;
+  }) {
     try {
-      const response = await publishMutation.mutateAsync();
+      const response = await publishMutation.mutateAsync({
+        notifyWhatsapp: input.notifyWhatsapp,
+        buyerNote: input.buyerNote,
+        notifyScheduledFor: input.notifyScheduledFor,
+      });
       setPublishConfirmOpen(false);
-      toast.success('Campaign published', {
+      const notifySuffix = response.whatsapp_notify
+        ? input.notifyScheduledFor
+          ? ` WhatsApp notify scheduled for ${response.whatsapp_notify.recipient_count} buyers.`
+          : ` WhatsApp notify queued for ${response.whatsapp_notify.recipient_count} buyers.`
+        : '';
+      toast.success(`Campaign published.${notifySuffix}`, {
         action: {
           label: 'Copy link',
           onClick: () => {
@@ -222,31 +230,23 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
             ) : null}
 
             {isDraft ? (
-              <Dialog open={publishConfirmOpen} onOpenChange={setPublishConfirmOpen}>
+              <>
                 <Button type="button" variant="accent" size="sm" onClick={() => setPublishConfirmOpen(true)} disabled={publishMutation.isPending}>
                   <Send size={14} />
                   Publish campaign
                 </Button>
-                <DialogContent className="max-w-[420px]">
-                  <DialogHeader>
-                    <DialogTitle>Publish this campaign?</DialogTitle>
-                    <DialogDescription>
-                      Buyers will immediately be able to open this campaign with its share link.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <DialogBody className="pt-4 text-base leading-6 text-cream-700">
-                    {data.header.products_count} products will go live for {data.header.selected_cohort.member_count} buyers in {data.header.selected_cohort.display_label}.
-                  </DialogBody>
-                  <DialogFooter>
-                    <Button type="button" variant="ghost" onClick={() => setPublishConfirmOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button type="button" variant="accent" onClick={() => void handlePublishCatalog()} disabled={publishMutation.isPending}>
-                      Confirm publish
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+                <PublishCampaignDialog
+                  open={publishConfirmOpen}
+                  onOpenChange={setPublishConfirmOpen}
+                  mode="first_publish"
+                  preview={publishPreviewQuery.data}
+                  previewLoading={publishPreviewQuery.isLoading}
+                  previewError={publishPreviewQuery.error instanceof Error ? publishPreviewQuery.error.message : null}
+                  isPublishing={publishMutation.isPending}
+                  onNotifyWhatsappChange={setNotifyWhatsappPreview}
+                  onPublish={handlePublishCatalog}
+                />
+              </>
             ) : null}
 
           </div>

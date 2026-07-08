@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
     const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
 
     // ── Parallel fetch: brands list + static snapshot + per-brand KPI daily ──
-    const [brandsRes, snapshotRes, customersSnapshotRes, currentKpiRes, prevKpiRes, categoriesRes, cohortsRes, buyersRes, cohortMembersRes] = await Promise.all([
+    const [brandsRes, snapshotRes, currentKpiRes, prevKpiRes, categoriesRes, cohortsRes, buyersRes, cohortMembersRes] = await Promise.all([
       db
         .schema('app')
         .from('tenant_brands')
@@ -95,12 +95,6 @@ export async function GET(req: NextRequest) {
         .schema('app')
         .from('brands_snapshot')
         .select('total_count, active_count, with_products_count, refreshed_at')
-        .eq('tenant_id', tenantId)
-        .maybeSingle(),
-      db
-        .schema('app')
-        .from('customers_snapshot')
-        .select('active_count')
         .eq('tenant_id', tenantId)
         .maybeSingle(),
       db
@@ -153,7 +147,7 @@ export async function GET(req: NextRequest) {
     const tenantBrands = brandsRes.data ?? [];
     const brandIds = tenantBrands.map((b: { id: string }) => b.id);
     const snapshot = snapshotRes.data ?? null;
-    const totalBuyers = customersSnapshotRes.data?.active_count ?? 0;
+    const totalBuyers = (buyersRes.data ?? []).length;
     const activeCategories = (categoriesRes.data ?? []).map((row: { name: string }) => row.name).filter(Boolean);
     const activeCohorts = (cohortsRes.data ?? [])
       .map((row: { id: string; name: string }) => ({ id: row.id, name: row.name }))

@@ -123,9 +123,31 @@ describe('products landing api', () => {
           },
         ],
       },
+      {
+        data: [
+          {
+            id: 'product-active',
+            tenant_brand_id: 'brand-active',
+            master_product_id: null,
+            internal_sku: 'SKU-A',
+            name_override: 'Active Product',
+            image_urls: [],
+            is_active: true,
+          },
+          {
+            id: 'product-inactive',
+            tenant_brand_id: 'brand-inactive',
+            master_product_id: null,
+            internal_sku: 'SKU-I',
+            name_override: 'Inactive Product',
+            image_urls: [],
+            is_active: false,
+          },
+        ],
+      },
     ];
 
-    dbResponses['app.products_snapshot'] = [{ data: { total_count: 2, active_count: 1 } }];
+    dbResponses['app.products_snapshot'] = [{ data: { total_count: 2, active_count: 1, low_stock_count: 0 } }];
     dbResponses['app.tenant_brands'] = [
       {
         data: [
@@ -170,6 +192,20 @@ describe('products landing api', () => {
         ],
       },
     ];
+    dbResponses['app.invoices'] = [
+      {
+        data: [
+          { id: 'invoice-1', status: 'paid' },
+        ],
+      },
+    ];
+    dbResponses['app.invoice_items'] = [
+      {
+        data: [
+          { invoice_id: 'invoice-1', tenant_product_id: 'product-inactive', qty: 3 },
+        ],
+      },
+    ];
     dbResponses['catalog.products'] = [{ data: [] }];
   });
 
@@ -200,7 +236,25 @@ describe('products landing api', () => {
       { value: 'Low stock', label: 'Low stock' },
       { value: 'Out of stock', label: 'Out of stock' },
     ]);
-    expect(body.kpis.total_skus).toBe(1);
-    expect(body.kpis.active_skus).toBe(0);
+    expect(body.kpis.total_skus).toBe(2);
+    expect(body.kpis.active_skus).toBe(1);
+    expect(body.kpis.out_of_stock).toBe(1);
+    expect(body.kpis.units_mtd).toBe(4);
+  });
+
+  it('returns null days_cover when invoice velocity is unavailable', async () => {
+    dbResponses['app.invoices'] = [{ data: [] }];
+    dbResponses['app.invoice_items'] = [{ data: [] }];
+
+    const response = await GET(
+      new NextRequest('http://localhost:3000/api/tenant/products?period=month'),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+
+    const activeProduct = body.products.find((product: { id: string }) => product.id === 'product-active');
+    expect(activeProduct.days_cover).toBeNull();
+    expect(activeProduct.status_label).toBe('Insufficient velocity');
   });
 });
