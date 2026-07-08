@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid context selection token' }, { status: 400 });
     }
 
-    const record = buyerOtpStore.get(ref_id);
+    const record = await buyerOtpStore.get(ref_id);
 
     if (!record || record.kind !== 'verified') {
       return NextResponse.json(
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (Date.now() > record.expiresAt) {
-      buyerOtpStore.delete(ref_id);
+      await buyerOtpStore.delete(ref_id);
       return NextResponse.json(
         { error: 'Session expired. Please log in again.' },
         { status: 400 },
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    buyerOtpStore.delete(ref_id);
+    await buyerOtpStore.delete(ref_id);
 
     if (candidate.kind === 'seller') {
       const { session, user } = await mintSellerSession(
