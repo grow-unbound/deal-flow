@@ -27,21 +27,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'ref_id and otp are required' }, { status: 400 });
     }
 
-    const record = buyerOtpStore.get(ref_id);
+    const record = await buyerOtpStore.get(ref_id);
 
     if (!record || record.kind !== 'pending') {
       return NextResponse.json({ error: 'Invalid or expired OTP session' }, { status: 400 });
     }
 
     if (Date.now() > record.expiresAt) {
-      buyerOtpStore.delete(ref_id);
+      await buyerOtpStore.delete(ref_id);
       return NextResponse.json({ error: 'OTP has expired. Request a new one.' }, { status: 400 });
     }
 
     record.attempts += 1;
 
     if (record.attempts > MAX_ATTEMPTS) {
-      buyerOtpStore.delete(ref_id);
+      await buyerOtpStore.delete(ref_id);
       return NextResponse.json(
         { error: 'Too many incorrect attempts. Request a new OTP.' },
         { status: 429 },
@@ -49,13 +49,15 @@ export async function POST(request: NextRequest) {
     }
 
     if (record.otp !== otp) {
+      // Save updated attempt count before responding
+      await buyerOtpStore.set(ref_id, record);
       return NextResponse.json(
         { error: `Incorrect OTP. ${MAX_ATTEMPTS - record.attempts} attempt(s) remaining.` },
         { status: 400 },
       );
     }
 
-    buyerOtpStore.delete(ref_id);
+    await buyerOtpStore.delete(ref_id);
 
     if (record.candidates.length === 0) {
       return NextResponse.json(

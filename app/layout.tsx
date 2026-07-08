@@ -5,6 +5,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { TenantProvider } from '@/contexts/TenantContext';
 import { PostHogProvider } from '@/components/providers/PostHogProvider';
 import { ReactQueryProvider } from '@/components/providers/ReactQueryProvider';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -52,6 +53,7 @@ export default function RootLayout({
             </AuthProvider>
           </ReactQueryProvider>
         </PostHogProvider>
+        <SpeedInsights />
       </body>
     </html>
   );

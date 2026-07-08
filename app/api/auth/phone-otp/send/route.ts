@@ -96,9 +96,8 @@ export async function POST(request: NextRequest) {
     }
 
     const otp = String(crypto.randomInt(100000, 999999));
-    const ref_id = crypto.randomUUID();
 
-    buyerOtpStore.set(ref_id, {
+    const ref_id = await buyerOtpStore.insert({
       kind: 'pending',
       otp,
       phone,
@@ -106,6 +105,10 @@ export async function POST(request: NextRequest) {
       attempts: 0,
       candidates: allCandidates,
     });
+
+    if (!ref_id) {
+      return NextResponse.json({ error: 'Failed to create OTP session' }, { status: 500 });
+    }
 
     await sendLoginOtpWhatsapp(phone, otp);
 
