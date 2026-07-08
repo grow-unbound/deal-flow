@@ -24,7 +24,6 @@ import { Input } from '@/components/ui/input';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-overlay';
 import {
   Dialog,
@@ -38,14 +37,18 @@ import {
 import {
   useCatalogComposerBootstrap,
   useCatalogComposerDetail,
+  useComposerPublishPreview,
   useSaveCatalogComposer,
   type CatalogComposerProduct,
+  type CatalogPublishPreviewResponse,
 } from '@/hooks/useCatalogs';
 import { SellerBuyerPickerOverlay } from '@/components/seller/shared/SellerBuyerPickerOverlay';
+import { PublishCampaignDialog, type PublishCampaignDialogMode } from '@/components/seller/catalogs/detail/PublishCampaignDialog';
 import { cn, formatDate, formatInr, formatInrInput, parseInrInput } from '@/lib/utils';
 import { isoDateInput } from '@/lib/date-utils';
 import { composerPageMinHeightClass, composerThreePanelGridClass } from '@/lib/composer-viewport-classes';
 import { CatalogComposerPayloadSchema, type CatalogComposerAvailability, type CatalogComposerPriceSource, type CatalogComposerTag } from '@/lib/zod';
+import { toast } from 'sonner';
 
 type ComposerMode = 'create' | 'edit';
 
@@ -226,7 +229,6 @@ export function CatalogComposer({
   const [cohortId, setCohortId] = useState('');
   const [selectedBuyerIds, setSelectedBuyerIds] = useState<string[]>([]);
   const [buyerSheetOpen, setBuyerSheetOpen] = useState(false);
-  const [noteToBuyers, setNoteToBuyers] = useState('');
   const [validFrom, setValidFrom] = useState(isoDateInput(new Date()));
   const [validTo, setValidTo] = useState('');
   const [priceSource, setPriceSource] = useState<CatalogComposerPriceSource>('manual');
@@ -246,7 +248,10 @@ export function CatalogComposer({
   const [didInit, setDidInit] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<CatalogComposerFieldErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [confirmAction, setConfirmAction] = useState<null | 'draft' | 'publish'>(null);
+  const [confirmAction, setConfirmAction] = useState<null | 'draft'>(null);
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+  const [publishDialogMode, setPublishDialogMode] = useState<PublishCampaignDialogMode>('first_publish');
+  const [notifyWhatsappPreview, setNotifyWhatsappPreview] = useState(true);
 
   useEffect(() => {
     if (didInit || products.length === 0) return;
@@ -266,7 +271,6 @@ export function CatalogComposer({
             : (detailComposer.cohort_id ?? ''),
       );
       setSelectedBuyerIds(detailComposer.buyer_ids ?? []);
-      setNoteToBuyers(detailComposer.message ?? '');
       setValidFrom(detailComposer.valid_from.slice(0, 10));
       setValidTo(detailComposer.valid_to ? detailComposer.valid_to.slice(0, 10) : '');
       setPriceSource(detailComposer.price_source ?? 'manual');
@@ -287,7 +291,6 @@ export function CatalogComposer({
     setName('');
     setCohortId(cohorts[0]?.id ?? ALL_BUYERS_SCOPE_VALUE);
     setSelectedBuyerIds([]);
-    setNoteToBuyers('');
     setValidFrom(isoDateInput(new Date()));
     setValidTo('');
     setPriceSource('manual');
@@ -395,12 +398,88 @@ export function CatalogComposer({
     { label: 'Validity', value: validFrom ? `${formatDate(validFrom)} → ${validTo ? formatDate(validTo) : 'Open ended'}` : '—' },
   ];
 
+  const isPublishedEdit = mode === 'edit' && detail?.composer?.live_status === 'published';
+  const composerScopeType = isAllBuyersScope ? 'all' : isSelectedBuyersScope ? 'buyer' : 'cohort';
+  const selectedPriceListName = priceLists.find((list) => list.id === priceListId)?.name ?? null;
+
+  const publishUpdatesPreview = useMemo<CatalogPublishPreviewResponse | undefined>(() => {
+    if (!publishDialogOpen || publishDialogMode !== 'publish_updates') return undefined;
+    return {
+      campaign: {
+        id: catalogId ?? null,
+        name: name.trim() || 'Untitled campaign',
+        valid_from: validFrom ? `${validFrom}T00:00:00.000Z` : new Date().toISOString(),
+        valid_to: validTo ? `${validTo}T23:59:59.000Z` : null,
+        audience_label: `${selectedAudienceName} (${selectedAudienceCount} buyers)`,
+        products_count: filteredSelectedProducts.length,
+        pricing_scheme: priceSource === 'price_list'
+          ? `Price list — ${selectedPriceListName ?? 'Assigned list'}`
+          : 'Manual campaign prices',
+        buyer_note: detailComposer?.message ?? '',
+        hero_image_url: null,
+        header_image_url: '',
+        header_image_source: 'platform_default',
+      },
+      whatsapp: {
+        feature_enabled: false,
+        notify_available: false,
+        can_notify: false,
+        blockers: [],
+        recipient_count: 0,
+        credits_per_message: 0,
+        estimated_credits: 0,
+        estimated_inr: 0,
+        credits_balance: 0,
+        template_approved: false,
+        tenant_phone_configured: false,
+        broadcast_sending_paused: false,
+      },
+    };
+  }, [
+    publishDialogOpen,
+    publishDialogMode,
+    catalogId,
+    name,
+    validFrom,
+    validTo,
+    selectedAudienceName,
+    selectedAudienceCount,
+    filteredSelectedProducts.length,
+    priceSource,
+    selectedPriceListName,
+    detailComposer?.message,
+  ]);
+
+  const firstPublishPreview = useComposerPublishPreview({
+    enabled: publishDialogOpen && publishDialogMode === 'first_publish',
+    notifyWhatsapp: notifyWhatsappPreview,
+    scopeType: composerScopeType,
+    cohortId: isAllBuyersScope || isSelectedBuyersScope ? null : cohortId,
+    buyerIds: selectedBuyerIds,
+    name: name.trim() || 'Untitled campaign',
+    validFrom,
+    validTo,
+    productsCount: filteredSelectedProducts.length,
+    priceSource,
+    priceListName: selectedPriceListName,
+    campaignId: mode === 'edit' ? catalogId : undefined,
+  });
+
+  const activePublishPreview = publishDialogMode === 'publish_updates'
+    ? publishUpdatesPreview
+    : firstPublishPreview.data;
+  const activePublishPreviewLoading = publishDialogMode === 'publish_updates'
+    ? false
+    : firstPublishPreview.isLoading;
+  const activePublishPreviewError = publishDialogMode === 'publish_updates'
+    ? null
+    : (firstPublishPreview.error instanceof Error ? firstPublishPreview.error.message : null);
+
   const serializedState = useMemo(
     () => JSON.stringify({
       name,
       cohortId,
       selectedBuyerIds: [...selectedBuyerIds].sort(),
-      noteToBuyers,
       validFrom,
       validTo,
       priceSource,
@@ -412,7 +491,7 @@ export function CatalogComposer({
       selectedIds: Array.from(selectedIds).sort(),
       tagOverrides,
     }),
-    [availability, campaignPrices, cohortId, name, noteToBuyers, priceListId, priceSource, selectedBrands, selectedBuyerIds, selectedCategories, selectedIds, tagOverrides, validFrom, validTo],
+    [availability, campaignPrices, cohortId, name, priceListId, priceSource, selectedBrands, selectedBuyerIds, selectedCategories, selectedIds, tagOverrides, validFrom, validTo],
   );
 
   useEffect(() => {
@@ -501,7 +580,14 @@ export function CatalogComposer({
     });
   }
 
-  function buildSavePayload(saveMode: 'draft' | 'publish') {
+  function buildSavePayload(
+    saveMode: 'draft' | 'publish',
+    publishOptions?: {
+      buyerNote: string;
+      notifyWhatsapp: boolean;
+      notifyScheduledFor: string | null;
+    },
+  ) {
     return {
       name: name.trim(),
       scope_type: isAllBuyersScope ? 'all' : isSelectedBuyersScope ? 'buyer' : 'cohort',
@@ -509,7 +595,6 @@ export function CatalogComposer({
       buyer_ids: isSelectedBuyersScope ? selectedBuyerIds : [],
       valid_from: validFrom ? `${validFrom}T00:00:00` : '',
       valid_to: validTo ? `${validTo}T23:59:59` : undefined,
-      message: noteToBuyers.trim(),
       price_source: priceSource,
       price_list_id: priceSource === 'price_list' ? priceListId : null,
       filters: {
@@ -524,11 +609,25 @@ export function CatalogComposer({
         price_override: resolvedCampaignPrice(product),
       })),
       save_mode: saveMode,
+      ...(saveMode === 'publish' && publishOptions
+        ? {
+            buyer_note: publishOptions.buyerNote,
+            notify_whatsapp: publishOptions.notifyWhatsapp,
+            notify_scheduled_for: publishOptions.notifyScheduledFor ?? undefined,
+          }
+        : {}),
     };
   }
 
-  function validateBeforeSave(saveMode: 'draft' | 'publish') {
-    const payload = buildSavePayload(saveMode);
+  function validateBeforeSave(
+    saveMode: 'draft' | 'publish',
+    publishOptions?: {
+      buyerNote: string;
+      notifyWhatsapp: boolean;
+      notifyScheduledFor: string | null;
+    },
+  ) {
+    const payload = buildSavePayload(saveMode, publishOptions);
     const nextErrors: CatalogComposerFieldErrors = {};
     const parsed = CatalogComposerPayloadSchema.safeParse(payload);
 
@@ -552,13 +651,33 @@ export function CatalogComposer({
     return { isValid: Object.keys(nextErrors).length === 0, payload: parsed.success ? parsed.data : null };
   }
 
-  async function handleSave(saveMode: 'draft' | 'publish') {
+  async function handleSave(
+    saveMode: 'draft' | 'publish',
+    publishOptions?: {
+      buyerNote: string;
+      notifyWhatsapp: boolean;
+      notifyScheduledFor: string | null;
+    },
+  ) {
     setSubmitError(null);
-    const { isValid, payload } = validateBeforeSave(saveMode);
+    const { isValid, payload } = validateBeforeSave(saveMode, publishOptions);
     if (!isValid || !payload) return;
 
     try {
       const result = await saveMutation.mutateAsync(payload);
+      setPublishDialogOpen(false);
+      if (saveMode === 'publish') {
+        if (publishDialogMode === 'publish_updates') {
+          toast.success('Campaign updates published.');
+        } else {
+          const notifySuffix = result.whatsapp_notify
+            ? result.whatsapp_notify.scheduled
+              ? ` WhatsApp notify scheduled for ${result.whatsapp_notify.recipient_count} buyers.`
+              : ` WhatsApp notify queued for ${result.whatsapp_notify.recipient_count} buyers.`
+            : '';
+          toast.success(`Campaign published.${notifySuffix}`);
+        }
+      }
       router.push(`/campaigns/${result.catalog.id}`);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Failed to save campaign');
@@ -579,18 +698,37 @@ export function CatalogComposer({
     return <CatalogComposerSkeleton />;
   }
 
-  const isPublishedEdit = mode === 'edit' && detail?.composer?.live_status === 'published';
   const createSubtitle = 'Curate which products a customer group sees. The campaign controls visibility, availability, and what gets marked new.';
   const editSubtitle = isPublishedEdit
     ? 'You are staging edits for a live campaign. Save keeps current buyer assignments unchanged until you publish updates.'
     : 'You are editing a draft campaign. Update the customer group assortment, then review the summary before publishing.';
 
+  function openPublishDialog(mode: PublishCampaignDialogMode) {
+    const { isValid } = validateBeforeSave('publish');
+    if (!isValid) return;
+    setPublishDialogMode(mode);
+    setNotifyWhatsappPreview(true);
+    setPublishDialogOpen(true);
+  }
+
+  async function handlePublishFromDialog(input: {
+    notifyWhatsapp: boolean;
+    buyerNote: string;
+    notifyScheduledFor: string | null;
+  }) {
+    await handleSave('publish', input);
+  }
+
   async function handleActionClick(action: 'draft' | 'publish') {
-    if (isPublishedEdit) {
-      setConfirmAction(action);
+    if (action === 'publish') {
+      openPublishDialog(isPublishedEdit ? 'publish_updates' : 'first_publish');
       return;
     }
-    await handleSave(action);
+    if (isPublishedEdit) {
+      setConfirmAction('draft');
+      return;
+    }
+    await handleSave('draft');
   }
 
   return (
@@ -1211,16 +1349,6 @@ export function CatalogComposer({
 
                   <div className="h-px bg-cream-300" />
 
-                  <Textarea
-                    label="Short note to buyers"
-                    value={noteToBuyers}
-                    onChange={(event) => setNoteToBuyers(event.target.value.slice(0, 50))}
-                    maxLength={50}
-                    placeholder="Short buyer-facing note"
-                    hint={`${noteToBuyers.length}/50 characters`}
-                    className="min-h-[92px] resize-none"
-                  />
-
                   {isPublishedEdit ? (
                     <>
                       <div className="h-px bg-cream-300" />
@@ -1330,19 +1458,13 @@ export function CatalogComposer({
       <Dialog open={confirmAction !== null} onOpenChange={(open) => setConfirmAction(open ? confirmAction : null)}>
         <DialogContent className="max-w-[440px]">
           <DialogHeader>
-            <DialogTitle>
-              {confirmAction === 'draft' ? 'Save unpublished changes?' : 'Publish updates to buyers?'}
-            </DialogTitle>
+            <DialogTitle>Save unpublished changes?</DialogTitle>
             <DialogDescription>
-              {confirmAction === 'draft'
-                ? 'This stores your edits as a private draft. Mapped buyers and customer groups will keep seeing the current live campaign until you publish updates.'
-                : 'This replaces the live campaign for the currently mapped buyers or customer group. Publish only when the updated assortment is ready to go live.'}
+              This stores your edits as a private draft. Mapped buyers and customer groups will keep seeing the current live campaign until you publish updates.
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="pt-4 text-base leading-6 text-cream-700">
-            {confirmAction === 'draft'
-              ? 'You can come back later, review these staged changes, and publish when ready.'
-              : `${selectedAudienceCount} buyers in ${selectedAudienceName} will see this updated campaign once you confirm.`}
+            You can come back later, review these staged changes, and publish when ready.
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setConfirmAction(null)}>
@@ -1351,18 +1473,29 @@ export function CatalogComposer({
             <Button
               type="button"
               onClick={async () => {
-                if (!confirmAction) return;
-                await handleSave(confirmAction);
+                await handleSave('draft');
                 setConfirmAction(null);
               }}
               disabled={saveMutation.isPending}
             >
-              {confirmAction === 'draft' ? <Save className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
-              {confirmAction === 'draft' ? 'Save changes' : 'Publish updates'}
+              <Save className="h-3.5 w-3.5" />
+              Save changes
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PublishCampaignDialog
+        open={publishDialogOpen}
+        onOpenChange={setPublishDialogOpen}
+        mode={publishDialogMode}
+        preview={activePublishPreview}
+        previewLoading={activePublishPreviewLoading}
+        previewError={activePublishPreviewError}
+        isPublishing={saveMutation.isPending}
+        onNotifyWhatsappChange={setNotifyWhatsappPreview}
+        onPublish={handlePublishFromDialog}
+      />
     </>
   );
 }

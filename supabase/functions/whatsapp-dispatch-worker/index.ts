@@ -34,6 +34,7 @@ interface SendPayload {
   meta_template_name: string;
   locale: string;
   body_params: Array<{ text: string; parameter_name?: string }>;
+  header_params?: { type: 'image'; media_id?: string; link?: string };
   button_params?: Array<{ type: 'url'; index: string; text: string }>;
 }
 
@@ -121,6 +122,13 @@ async function dispatchProcessingRows(admin: ReturnType<typeof createAdminClient
           text: p.text,
           parameterName: p.parameter_name,
         })),
+        headerParams: payload.header_params?.type === 'image'
+          ? {
+              type: 'image',
+              mediaId: payload.header_params.media_id,
+              link: payload.header_params.link,
+            }
+          : undefined,
         buttonParams: payload.button_params?.map((b) => ({
           type: 'url' as const,
           index: b.index,

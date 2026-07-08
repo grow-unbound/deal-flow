@@ -110,6 +110,46 @@ function setDefaultResponses() {
       data: [{ id: 'buyer-1', business_name: 'Singh Hospitality' }],
     },
   ];
+  dbResponses['app.buyers_snapshot'] = [
+    {
+      data: [
+        {
+          buyer_id: 'buyer-1',
+          is_active: true,
+          is_dormant: false,
+          outstanding_dues: 64000,
+          overdue_amount: 12000,
+          credit_limit: 100000,
+          last_order_at: '2026-07-02T10:00:00Z',
+          last_activity_at: '2026-07-02T10:00:00Z',
+        },
+      ],
+    },
+  ];
+  dbResponses['app.kpi_buyers_daily'] = [
+    {
+      data: [
+        {
+          buyer_id: 'buyer-1',
+          estimates_count: 1,
+          orders_count: 1,
+          invoices_count: 1,
+          orders_gmv: 5000,
+        },
+      ],
+    },
+    {
+      data: [
+        {
+          buyer_id: 'buyer-1',
+          estimates_count: 0,
+          orders_count: 1,
+          invoices_count: 0,
+          orders_gmv: 9000,
+        },
+      ],
+    },
+  ];
   dbResponses['app.orders'] = [{ data: [] }, { data: [] }, { data: [] }];
   dbResponses['app.order_items'] = [{ data: [] }];
   dbResponses['app.cohort_members'] = [
@@ -377,5 +417,20 @@ describe('customer detail api', () => {
     const pct = Math.round((creditUsed / creditLimit) * 1000) / 10;
 
     expect(pct).toBe(64);
+  });
+
+  it('rejects seller assistants outside the buyer aggregate scope', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      tenant_id: 'tenant-1',
+      role: 'seller_assistant',
+      buyer_id: null,
+      location_ids: ['loc-9'],
+    });
+    dbResponses['app.buyers_snapshot'] = [{ data: [] }];
+
+    const request = new NextRequest('http://localhost:3000/api/tenant/customers/buyer-1');
+    const response = await GET(request, { params: Promise.resolve({ id: 'buyer-1' }) });
+
+    expect(response.status).toBe(403);
   });
 });

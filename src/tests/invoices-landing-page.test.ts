@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const getVerifiedClaimsMock = vi.fn();
 const getFlagMock = vi.fn();
 const getAuthUserDisplayNameMapMock = vi.fn();
+const invoiceKpiCallState = { count: 0 };
 
 interface InvoiceDbRow {
   id: string;
@@ -27,6 +28,8 @@ interface QueryState {
   invoiceItems: Array<{ invoice_id: string }>;
   orders: Array<{ id: string; order_number: string }>;
   estimates: Array<{ id: string; estimate_number: string | null }>;
+  currentKpis: Array<Record<string, unknown>>;
+  previousKpis: Array<Record<string, unknown>>;
 }
 
 const queryState: QueryState = {
@@ -35,6 +38,8 @@ const queryState: QueryState = {
   invoiceItems: [],
   orders: [],
   estimates: [],
+  currentKpis: [],
+  previousKpis: [],
 };
 
 vi.mock('@/lib/auth', () => ({
@@ -49,10 +54,34 @@ vi.mock('@/lib/server/auth-user-directory', () => ({
   getAuthUserDisplayNameMap: (...args: unknown[]) => getAuthUserDisplayNameMapMock(...args),
 }));
 
+vi.mock('@/lib/server/seller-location-access', () => ({
+  applySellerLocationScope: <T extends { in?: (column: string, values: string[]) => T }>(
+    query: T,
+    claims: { location_ids?: string[] | null; role?: string | null },
+  ) => {
+    if (claims.role === 'seller_assistant' && claims.location_ids?.length && query.in) {
+      return query.in('location_id', claims.location_ids);
+    }
+    return query;
+  },
+  loadAccessibleSellerLocations: vi.fn(async (_db: unknown, _tenantId: string, claims: { location_ids?: string[] | null }) => {
+    const all = [
+      { id: 'loc-1', name: 'North Hub' },
+      { id: 'loc-2', name: 'South Hub' },
+    ];
+    return claims.location_ids?.length ? all.filter((row) => claims.location_ids?.includes(row.id)) : all;
+  }),
+  resolveDefaultSellerLocationId: vi.fn(() => 'loc-1'),
+}));
+
+vi.mock('@/lib/server/seller-features', () => ({
+  getInAppCreateFlags: vi.fn().mockResolvedValue({ create_invoices: true }),
+}));
+
 vi.mock('@/lib/supabase', () => {
   class QueryMock {
     private table: string;
-    private conditions: Array<{ kind: 'in'; column: string; value: unknown }> = [];
+    private conditions: Array<{ kind: 'eq' | 'in'; column: string; value: unknown }> = [];
 
     constructor(table: string) {
       this.table = table;
@@ -61,7 +90,8 @@ vi.mock('@/lib/supabase', () => {
     select() {
       return this;
     }
-    eq() {
+    eq(column: string, value: unknown) {
+      this.conditions.push({ kind: 'eq', column, value });
       return this;
     }
     is() {
@@ -69,6 +99,12 @@ vi.mock('@/lib/supabase', () => {
     }
     in() {
       this.conditions.push({ kind: 'in', column: arguments[0] as string, value: arguments[1] });
+      return this;
+    }
+    gte() {
+      return this;
+    }
+    lt() {
       return this;
     }
     order() {
@@ -82,6 +118,10 @@ vi.mock('@/lib/supabase', () => {
       const applyFilters = (rows: Array<Record<string, unknown>>) => {
         let result = [...rows];
         for (const condition of this.conditions) {
+          if (condition.kind === 'eq') {
+            result = result.filter((row) => !(condition.column in row) || row[condition.column] === condition.value);
+            continue;
+          }
           const values = Array.isArray(condition.value) ? condition.value : [];
           result = result.filter((row) => values.includes(row[condition.column]));
         }
@@ -93,11 +133,19 @@ vi.mock('@/lib/supabase', () => {
       if (this.table === 'invoice_items') return resolve({ data: applyFilters(queryState.invoiceItems as Array<Record<string, unknown>>), error: null });
       if (this.table === 'orders') return resolve({ data: queryState.orders, error: null });
       if (this.table === 'estimates') return resolve({ data: queryState.estimates, error: null });
+      if (this.table === 'kpi_invoices_current') return resolve({ data: applyFilters(queryState.currentKpis), error: null });
+      if (this.table === 'kpi_invoices_previous') return resolve({ data: applyFilters(queryState.previousKpis), error: null });
       return resolve({ data: [], error: null });
     }
   }
 
-  const from = vi.fn((table: string) => new QueryMock(table));
+  const from = vi.fn((table: string) => {
+    if (table === 'kpi_invoices_daily') {
+      invoiceKpiCallState.count += 1;
+      return new QueryMock(invoiceKpiCallState.count === 1 ? 'kpi_invoices_current' : 'kpi_invoices_previous');
+    }
+    return new QueryMock(table);
+  });
 
   return {
     supabaseAdmin: {
@@ -117,6 +165,7 @@ describe('invoices landing API route', () => {
     getVerifiedClaimsMock.mockReset();
     getFlagMock.mockReset();
     getAuthUserDisplayNameMapMock.mockReset();
+    invoiceKpiCallState.count = 0;
     getFlagMock.mockResolvedValue(true);
     getAuthUserDisplayNameMapMock.mockResolvedValue(new Map([
       ['seller-1', 'Priya Shah'],
@@ -184,6 +233,54 @@ describe('invoices landing API route', () => {
         created_at: '2026-05-11T00:00:00.000Z',
       },
     ];
+    queryState.currentKpis = [
+      {
+        scope: 'tenant',
+        location_id: null,
+        day: '2026-06-10',
+        invoices_count: 2,
+        gmv: 13000,
+        overdue_count: 1,
+        overdue_amount: 4000,
+        outstanding_count: 1,
+        outstanding_amount: 4000,
+      },
+      {
+        scope: 'location',
+        location_id: 'loc-1',
+        day: '2026-06-10',
+        invoices_count: 1,
+        gmv: 4000,
+        overdue_count: 1,
+        overdue_amount: 4000,
+        outstanding_count: 1,
+        outstanding_amount: 4000,
+      },
+      {
+        scope: 'location',
+        location_id: 'loc-2',
+        day: '2026-06-11',
+        invoices_count: 1,
+        gmv: 9000,
+        overdue_count: 0,
+        overdue_amount: 0,
+        outstanding_count: 0,
+        outstanding_amount: 0,
+      },
+    ];
+    queryState.previousKpis = [
+      {
+        scope: 'tenant',
+        location_id: null,
+        day: '2026-05-11',
+        invoices_count: 1,
+        gmv: 3000,
+        overdue_count: 1,
+        overdue_amount: 3000,
+        outstanding_count: 1,
+        outstanding_amount: 3000,
+      },
+    ];
   });
 
   afterEach(() => {
@@ -240,5 +337,7 @@ describe('invoices landing API route', () => {
     const body = await res.json();
     expect(body.invoices).toHaveLength(1);
     expect(body.invoices[0].id).toBe('i1');
+    expect(body.kpis.invoices_this_period).toBe(1);
+    expect(body.kpis.gmv_this_period).toBe(4000);
   });
 });

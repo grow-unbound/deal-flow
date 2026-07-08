@@ -49,6 +49,7 @@ export async function loadTenantSalesOrderComposer(
         'buyer_id',
         'order_number',
         'status',
+        'order_date',
         'placed_at',
         'subtotal',
         'tax_amount',
@@ -306,8 +307,9 @@ export async function loadTenantSalesOrderComposer(
     sourceEstimateNumber = (est?.estimate_number as string | null | undefined) ?? null;
   }
 
+  const storedOrderDate = (order.order_date as string | null | undefined) ?? null;
   const placedAt = (order.placed_at as string | null | undefined) ?? null;
-  const orderDate = placedAt ? placedAt.slice(0, 10) : isoDateInTimeZone(new Date());
+  const orderDate = storedOrderDate?.slice(0, 10) ?? (placedAt ? placedAt.slice(0, 10) : isoDateInTimeZone(new Date()));
   const expectedDelivery = order.expected_delivery
     ? String(order.expected_delivery).slice(0, 10)
     : orderDate;

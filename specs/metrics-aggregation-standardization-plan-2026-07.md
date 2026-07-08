@@ -3,6 +3,8 @@
 Date: 2026-07-07  
 Scope: Seller app landing pages, seller detail pages, buyer app home page, snapshot tables, KPI daily tables, and aggregate functions.
 
+Metric definition source of truth: [metrics-definitions-2026-07.md](/Users/phanikrovvidi/projects/deal-flow/specs/metrics-definitions-2026-07.md)
+
 ## Executive Summary
 
 DealFlow's operational numbers are now important enough that the current mixed implementation is too risky. The app has useful aggregate primitives, but the read/write contract is inconsistent:
@@ -30,7 +32,7 @@ The target direction is simple:
 
 The app currently has these aggregate patterns:
 
-- Tenant snapshots: `estimates_snapshot`, `invoices_snapshot`, `customers_snapshot`, `products_snapshot`, `brands_snapshot`, `categories_snapshot`, `buyer_app_snapshot`.
+- Tenant snapshots: `estimates_snapshot`, `invoices_snapshot`, `customers_snapshot` or preferred future `buyers_snapshot`, `products_snapshot`, `brands_snapshot`, `categories_snapshot`, `buyer_app_snapshot`.
 - Entity snapshots: `locations_snapshot`, `warehouses_snapshot`.
 - Daily KPI facts: `kpi_tenant_daily`, `kpi_product_daily`, `kpi_brand_daily`, `kpi_category_daily`, `kpi_location_daily`, `kpi_warehouse_daily`, `kpi_buyer_app_daily`.
 - Rebuild orchestration: `post_sync_rebuild`, `rebuild_kpi_*_for_tenant`, and trigger dispatchers.
@@ -41,11 +43,12 @@ Important missing aggregate coverage:
 
 - `orders_snapshot` is missing. Order landing/detail and dashboard flows currently rely on raw order reads or `kpi_tenant_daily`.
 - `kpi_estimates_daily`, `kpi_orders_daily`, and `kpi_invoices_daily` are missing as document-specific fact tables. `kpi_tenant_daily` is not enough because estimates, orders, and invoices need their own status, flow, and date semantics.
+- `kpi_buyers_daily` is missing. Seller customers/buyers landing and detail need buyer-grain selected-period metrics just like products, brands, categories, locations, and warehouses.
 - These tables should be created and wired only after the metric dictionary is finalized, because the status/date rules define their columns and refresh functions.
 
 ### High-Risk Gaps Found
 
-1. `customers_snapshot.total_count` is queried by the customers API but the local migration-defined table only contains `active_count` and tier counts.
+1. `customers_snapshot.total_count` is queried by the customers API but the local migration-defined table only contains `active_count` and tier counts. The long-term contract should prefer `buyers_snapshot` naming and distributor-relevant fields: active, dormant, due, overdue counts, due amount, and overdue amount.
 2. Several `kpi_*_daily` queries filter on `deleted_at`, but the KPI migrations do not define a `deleted_at` column.
 3. Products, customers, and invoices compute important KPIs from paginated row sets.
 4. Status inclusion rules differ across aggregate functions. Example: tenant KPI can include non-cancelled draft orders while brand/category/location KPIs exclude draft and cancelled.
@@ -96,6 +99,8 @@ Decisions already made:
 - Seller assistants see only assigned-location-scoped KPIs, callouts, lists, and entities.
 - Draft estimates, orders, and invoices count toward total flow metrics and GMV where the metric is intended to show business flow and buyer engagement. Converted/confirmed/paid metrics are separate and should show downstream quality/completion.
 - Estimate KPIs use `estimate_date`; if missing, fall back to `created_at`.
+- Order KPIs use `order_date`; if missing, fall back to `created_at`.
+- Invoice KPIs use `invoice_date`; if missing, fall back to `created_at`.
 - Buyer app "opened app MTD" means login/session or activity-level app usage, not merely account enablement.
 - Campaign conversion includes order count, estimate count, unique buyers who purchased through the campaign, and attributed GMV.
 - Inventory trends are out of scope for now. Current stock posture is the priority.
@@ -210,8 +215,9 @@ Scale rules:
 Days cover guidance:
 
 - Current days cover can be computed as current sellable stock divided by recent demand velocity.
-- Demand velocity should come from the business documents where stock is reserved or consumed, normally orders and invoices depending on the final inventory model.
-- If stock reservation and movement semantics are unclear, scope days cover out of critical KPI cards and show simpler current stock posture: in stock, low stock, stockout.
+- Demand velocity should come from invoice line velocity, because invoices represent final stock clearance.
+- If invoice velocity is zero or unavailable, return null or an explicit insufficient-data state rather than inventing a value.
+- Support both location-level and aggregate tenant/product-level days cover if the query can stay reliable and affordable.
 - Historical days cover requires a `tenant_inventory` stock-change audit or movement ledger and is out of scope until tenant inventory change tracking is designed.
 
 ### Read Models
@@ -257,13 +263,13 @@ Tasks:
 - Create a metric dictionary for all critical numbers.
 - Encode the decided status inclusion rules for estimates, orders, and invoices across the app.
 - Decide date columns per document type:
-  - Orders: `placed_at`.
+  - Orders: `order_date`, falling back to `created_at`.
   - Estimates: `estimate_date`, falling back to `created_at`.
-  - Invoices: `invoice_date`.
+  - Invoices: `invoice_date`, falling back to `created_at`.
 - Standardize timezone to `Asia/Kolkata` for all tenant-facing period metrics.
 - Apply the seller assistant decision: all data is assigned-location-scoped.
 - Apply the filter decision: filters, search, and sort affect table rows only, never KPI cards or callouts.
-- Define days-cover behavior: keep only current stock posture unless demand velocity and reservation semantics are clear.
+- Define days-cover behavior using invoice velocity, with null/insufficient-data handling.
 
 Exit criteria:
 
@@ -279,6 +285,7 @@ Owner: master session with DB migration subagent.
 Tasks:
 
 - Fix `customers_snapshot` contract: either add `total_count` or stop querying it.
+- Prefer a compatibility-safe path toward `buyers_snapshot` naming and replace irrelevant tier counts with active, dormant, due, overdue counts, due amount, and overdue amount.
 - Remove `deleted_at` filters from KPI table reads, or add a deliberate `deleted_at` column to all KPI tables and update refresh functions.
 - Add missing indexes for common summary reads.
 - Add or revise document aggregate coverage:
@@ -287,8 +294,9 @@ Tasks:
   - `kpi_orders_daily`.
   - `kpi_invoices_daily`.
 - Add buyer-scoped aggregate coverage only if needed:
-  - `kpi_buyer_daily` for spend/activity days only.
+  - `kpi_buyers_daily` for spend/activity/transaction days only.
   - `buyer_current_snapshot` as the preferred single current-state buyer table.
+- Review document CREATE and conversion flows so `estimate_date`, `order_date`, and `invoice_date` are populated consistently alongside compatibility fields.
 - Ensure every new migration is created via Supabase CLI.
 
 Exit criteria:
@@ -476,7 +484,8 @@ Good subagent scopes:
 - "Move invoices landing KPIs off paginated rows only."
 - "Create buyer home aggregate read contract only."
 - "Add sparse `kpi_orders_daily` and wire only orders landing."
-- "Define days-cover decision and remove it from critical cards if unsupported."
+- "Add sparse `kpi_buyers_daily` and wire only customers/buyers landing."
+- "Define invoice-velocity days cover for products only."
 
 Bad subagent scopes:
 
@@ -512,11 +521,16 @@ After phases 0 and 1, fix these first:
 3. Invoices landing:
    - Move KPI cards off paginated `invoiceRows`.
 4. Customers landing:
+   - Add `kpi_buyers_daily`.
    - Move spend/dues/dormancy cards off visible buyers only.
+   - Prefer a `buyers_snapshot` compatibility path and remove irrelevant tier-count semantics.
 5. Buyer home:
    - Scope `order_items` query and move financial cards to aggregate contract.
 6. Orders/documents:
    - Add missing order snapshot and document daily facts after metric dictionary approval.
+   - Review CREATE/conversion flows for `estimate_date`, `order_date`, and `invoice_date`.
+7. Product stock posture:
+   - Add invoice-velocity days cover only if deterministic at both location and aggregate levels.
 
 These are the clearest correctness wins with the least product ambiguity.
 
@@ -531,10 +545,16 @@ These are the clearest correctness wins with the least product ambiguity.
 
 ## Product Decisions
 
+Canonical definitions live in [metrics-definitions-2026-07.md](/Users/phanikrovvidi/projects/deal-flow/specs/metrics-definitions-2026-07.md). Summary:
+
 - Seller assistants see only assigned-location-scoped KPIs, callouts, lists, and entities.
+- Seller assistants do not access campaigns or any GROW-navbar page.
 - Draft estimates, orders, and invoices count toward total flow metrics and GMV where the metric is intended to show business flow and buyer engagement.
 - Converted/confirmed/paid metrics are separate downstream-quality metrics.
 - Estimate KPIs use `estimate_date`; if unavailable, use `created_at`.
+- Order KPIs use `order_date`; if unavailable, use `created_at`.
+- Invoice KPIs use `invoice_date`; if unavailable, use `created_at`.
 - Buyer app "opened app MTD" is a critical billing metric and is based on login/session or activity, not account enablement alone.
-- Campaign conversion includes order count, estimate count, unique buyers who purchased through the campaign, and attributed GMV.
+- Campaign conversion funnel is notified -> delivered -> viewed -> ordered, and includes estimate count, order count, unique buyers, and attributed GMV.
+- Days cover uses invoice-based SKU velocity if deterministic at location and aggregate levels; otherwise show current stock posture only.
 - Current stock posture is first priority. Historical inventory trends require deeper inventory movement tracking and are out of scope for this pass.

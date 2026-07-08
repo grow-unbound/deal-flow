@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { BUYER_CACHE_CATALOG } from '@/lib/server/buyer-cache-headers';
+import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
 import { recordCampaignView } from '@/lib/server/campaign-engagement';
 import { fetchBuyerCatalogPage, resolveBuyerCatalogContext } from '@/lib/server/buyer-product-data';
 import type { BuyerCatalogResponse } from '@/types/buyer';
@@ -25,6 +26,18 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const offset = Math.max(0, Number(searchParams.get('offset') ?? 0));
 
     const context = await resolveBuyerCatalogContext(supabaseAdmin as any, req, profile);
+    if (context.buyerId) {
+      void recordBuyerAppActivitySafe(supabaseAdmin as any, {
+        tenantId: context.tenantId,
+        buyerId: context.buyerId,
+        eventName: 'catalog_viewed',
+        path: req.nextUrl.pathname,
+        context: {
+          campaign_id: req.nextUrl.searchParams.get('campaign_id')?.trim() ?? null,
+          search: req.nextUrl.searchParams.get('search')?.trim() ?? null,
+        },
+      });
+    }
     const response = await fetchBuyerCatalogPage({
       db: supabaseAdmin as any,
       tenantId: context.tenantId,

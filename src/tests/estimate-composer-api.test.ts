@@ -18,6 +18,16 @@ vi.mock('@/lib/flags', () => ({
   getFlag: (...args: unknown[]) => getFlagMock(...args),
 }));
 
+vi.mock('@/lib/server/seller-features', () => ({
+  getInAppCreateFlags: vi.fn().mockResolvedValue({ create_enquiries: true }),
+}));
+
+vi.mock('@/lib/server/seller-location-access', () => ({
+  canAccessDocumentLocation: vi.fn(() => true),
+  loadAccessibleSellerLocations: vi.fn(async () => [{ id: 'loc-1', name: 'North Hub' }]),
+  resolveDefaultSellerLocationId: vi.fn(() => 'loc-1'),
+}));
+
 vi.mock('@/lib/supabase', () => {
   class QueryMock {
     private countHead = false;

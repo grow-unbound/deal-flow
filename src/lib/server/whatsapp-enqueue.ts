@@ -12,6 +12,7 @@ export interface WhatsAppSendPayload {
   meta_template_name: string;
   locale: string;
   body_params: Array<{ text: string; parameter_name?: string }>;
+  header_params?: { type: 'image'; media_id?: string; link?: string };
   button_params?: Array<{ type: 'url'; index: string; text: string }>;
 }
 

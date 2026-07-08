@@ -49,7 +49,6 @@ type CustomersLandingBuyerDbRow = {
   credit_limit: number | null;
   is_active: boolean;
   geography: { city?: string; state?: string } | null;
-  deleted_at: string | null;
   whatsapp_opt_out_at: string | null;
 };
 
@@ -73,6 +72,44 @@ type CohortMembershipRow = {
     name: string;
     deleted_at: string | null;
   } | null;
+};
+
+type BuyerSnapshotRow = {
+  buyer_id: string;
+  is_active: boolean | null;
+  is_dormant: boolean | null;
+  outstanding_dues: number | null;
+  overdue_amount: number | null;
+  credit_limit: number | null;
+  last_order_at: string | null;
+  last_activity_at: string | null;
+};
+
+type BuyerKpiRow = {
+  buyer_id: string;
+  estimates_count: number | null;
+  orders_count: number | null;
+  invoices_count: number | null;
+  orders_gmv: number | null;
+};
+
+type AggregatedBuyerSnapshot = {
+  buyer_id: string;
+  is_active: boolean;
+  is_dormant: boolean;
+  outstanding_dues: number;
+  overdue_amount: number;
+  credit_limit: number;
+  last_order_at: string | null;
+  last_activity_at: string | null;
+};
+
+type AggregatedBuyerKpi = {
+  buyer_id: string;
+  estimates_count: number;
+  orders_count: number;
+  invoices_count: number;
+  orders_gmv: number;
 };
 
 const CUSTOMERS_LANDING_CACHE_TTL_MS = 20_000;
@@ -101,11 +138,190 @@ function decodeCursor(cursor: string): { business_name: string; id: string } {
   return { business_name: parsed.n, id: parsed.i };
 }
 
+function toNumber(value: number | string | null | undefined) {
+  return Number(value ?? 0);
+}
+
+function maxIso(left: string | null, right: string | null) {
+  if (!left) return right;
+  if (!right) return left;
+  return new Date(left).getTime() >= new Date(right).getTime() ? left : right;
+}
+
+function aggregateBuyerSnapshots(
+  rows: BuyerSnapshotRow[],
+  dormantCutoffIso: string,
+): Map<string, AggregatedBuyerSnapshot> {
+  const byBuyer = new Map<string, AggregatedBuyerSnapshot>();
+
+  for (const row of rows) {
+    const current = byBuyer.get(row.buyer_id) ?? {
+      buyer_id: row.buyer_id,
+      is_active: Boolean(row.is_active),
+      is_dormant: Boolean(row.is_dormant),
+      outstanding_dues: 0,
+      overdue_amount: 0,
+      credit_limit: 0,
+      last_order_at: null,
+      last_activity_at: null,
+    };
+
+    current.is_active = current.is_active || Boolean(row.is_active);
+    current.outstanding_dues += toNumber(row.outstanding_dues);
+    current.overdue_amount += toNumber(row.overdue_amount);
+    current.credit_limit = Math.max(current.credit_limit, toNumber(row.credit_limit));
+    current.last_order_at = maxIso(current.last_order_at, row.last_order_at);
+    current.last_activity_at = maxIso(current.last_activity_at, row.last_activity_at);
+    byBuyer.set(row.buyer_id, current);
+  }
+
+  for (const snapshot of byBuyer.values()) {
+    const activityAt = snapshot.last_activity_at ?? snapshot.last_order_at;
+    snapshot.is_dormant = !activityAt || activityAt < dormantCutoffIso;
+  }
+
+  return byBuyer;
+}
+
+function aggregateBuyerKpis(rows: BuyerKpiRow[]): Map<string, AggregatedBuyerKpi> {
+  const byBuyer = new Map<string, AggregatedBuyerKpi>();
+
+  for (const row of rows) {
+    const current = byBuyer.get(row.buyer_id) ?? {
+      buyer_id: row.buyer_id,
+      estimates_count: 0,
+      orders_count: 0,
+      invoices_count: 0,
+      orders_gmv: 0,
+    };
+
+    current.estimates_count += toNumber(row.estimates_count);
+    current.orders_count += toNumber(row.orders_count);
+    current.invoices_count += toNumber(row.invoices_count);
+    current.orders_gmv += toNumber(row.orders_gmv);
+    byBuyer.set(row.buyer_id, current);
+  }
+
+  return byBuyer;
+}
+
+function buildBuyerStatus(snapshot: AggregatedBuyerSnapshot, growthPct: number): BuyerRow['status'] {
+  if (snapshot.is_dormant) return { label: 'Dormant', tone: 'danger' };
+  if (snapshot.overdue_amount > 0 || snapshot.outstanding_dues > 80000 || growthPct < 0) {
+    return { label: 'Needs follow-up', tone: 'warning' };
+  }
+  return { label: 'Healthy', tone: 'success' };
+}
+
+function buildBuyerRow(
+  buyer: CustomersLandingBuyerDbRow,
+  index: number,
+  snapshot: AggregatedBuyerSnapshot | undefined,
+  currentKpi: AggregatedBuyerKpi | undefined,
+  previousKpi: AggregatedBuyerKpi | undefined,
+  cohortLabel: string,
+  activePriceList: BuyerRow['active_price_list'],
+): BuyerRow {
+  const spend_mtd = currentKpi?.orders_gmv ?? 0;
+  const spend_prev_mtd = previousKpi?.orders_gmv ?? 0;
+  const growth_pct = spend_prev_mtd > 0
+    ? Math.round((((spend_mtd - spend_prev_mtd) / spend_prev_mtd) * 100) * 10) / 10
+    : spend_mtd > 0 ? 100 : 0;
+  const credit_limit = snapshot?.credit_limit ?? toNumber(buyer.credit_limit);
+  const dues = snapshot?.outstanding_dues ?? 0;
+  const status = buildBuyerStatus(snapshot ?? {
+    buyer_id: buyer.id,
+    is_active: Boolean(buyer.is_active),
+    is_dormant: false,
+    outstanding_dues: 0,
+    overdue_amount: 0,
+    credit_limit,
+    last_order_at: null,
+    last_activity_at: null,
+  }, growth_pct);
+
+  return {
+    id: buyer.id,
+    business_name: buyer.business_name,
+    tier: buyer.tier,
+    phone: buyer.phone ?? null,
+    gst_treatment: buyer.gst_treatment ?? null,
+    zoho_status: buyer.status ?? null,
+    is_active: Boolean(buyer.is_active),
+    city: buyer.geography?.city ?? 'Unknown',
+    state: buyer.geography?.state ?? null,
+    cohort: cohortLabel,
+    spend_mtd,
+    spend_prev_mtd,
+    growth_pct,
+    orders_mtd: currentKpi?.orders_count ?? 0,
+    last_order_at: snapshot?.last_order_at ?? null,
+    credit_limit,
+    credit_used: dues,
+    dues,
+    status,
+    avatar: {
+      initials: getInitials(buyer.business_name),
+      hue: index % 3 === 0 ? 'teal' : index % 3 === 1 ? 'ember' : 'cream',
+    },
+    active_price_list: activePriceList,
+    whatsapp_opted_out: Boolean(buyer.whatsapp_opt_out_at),
+  };
+}
+
+async function loadAccessibleBuyerIds(
+  db: any,
+  tenantId: string,
+  locationIds: string[],
+): Promise<Set<string>> {
+  if (locationIds.length === 0) return new Set();
+
+  const [ordersRes, estimatesRes, invoicesRes] = await Promise.all([
+    db
+      .schema('app')
+      .from('orders')
+      .select('buyer_id')
+      .eq('tenant_id', tenantId)
+      .in('location_id', locationIds)
+      .is('deleted_at', null),
+    db
+      .schema('app')
+      .from('estimates')
+      .select('buyer_id')
+      .eq('tenant_id', tenantId)
+      .in('location_id', locationIds)
+      .is('deleted_at', null),
+    db
+      .schema('app')
+      .from('invoices')
+      .select('buyer_id')
+      .eq('tenant_id', tenantId)
+      .in('location_id', locationIds)
+      .is('deleted_at', null),
+  ]);
+
+  const ids = new Set<string>();
+  for (const res of [ordersRes, estimatesRes, invoicesRes]) {
+    if (res.error) {
+      console.error('[GET /api/tenant/customers] failed to scope assistant buyers', res.error);
+      continue;
+    }
+    for (const row of res.data ?? []) {
+      if (typeof row.buyer_id === 'string' && row.buyer_id.length > 0) {
+        ids.add(row.buyer_id);
+      }
+    }
+  }
+
+  return ids;
+}
+
 export async function GET(req: NextRequest) {
   const timer = createTimer();
   const timedJson = (body: unknown, init?: ResponseInit) => {
     return jsonWithServerTiming(body, timer, 'customers_api', init, APP_GET_CACHE_CONTROL);
   };
+
   try {
     const claims = await getVerifiedClaims(req);
 
@@ -128,6 +344,8 @@ export async function GET(req: NextRequest) {
 
     const db = supabaseAdmin as any;
     const tenantId = claims.tenant_id;
+    const isAssistant = claims.role === 'seller_assistant';
+    const assistantLocationIds = isAssistant ? (claims.location_ids ?? []).filter(Boolean) : [];
 
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
     const istNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
@@ -142,6 +360,8 @@ export async function GET(req: NextRequest) {
     const dueParams = readArrayParam(req.nextUrl.searchParams, 'due');
     const cacheKey = [
       tenantId,
+      claims.role ?? '',
+      assistantLocationIds.join('|'),
       limit,
       cursorParam ?? '',
       search,
@@ -159,6 +379,37 @@ export async function GET(req: NextRequest) {
       return timedJson(cached.payload);
     }
 
+    const buyersSnapshotRes = await (() => {
+      let query = db
+        .schema('app')
+        .from('buyers_snapshot')
+        .select('buyer_id, is_active, is_dormant, outstanding_dues, overdue_amount, credit_limit, last_order_at, last_activity_at')
+        .eq('tenant_id', tenantId)
+        .eq('scope', isAssistant ? 'location' : 'tenant');
+
+      if (isAssistant) {
+        query = assistantLocationIds.length > 0 ? query.in('location_id', assistantLocationIds) : query.limit(0);
+      }
+
+      return query;
+    })();
+
+    if (buyersSnapshotRes.error) {
+      console.error('[GET /api/tenant/customers] buyers_snapshot query failure', buyersSnapshotRes.error);
+      return timedJson({ error: 'Failed to fetch customers landing data' }, { status: 500 });
+    }
+
+    const aggregatedSnapshots = aggregateBuyerSnapshots(
+      (buyersSnapshotRes.data ?? []) as BuyerSnapshotRow[],
+      dormantCutoffIso,
+    );
+
+    const accessibleBuyerIds = isAssistant
+      ? aggregatedSnapshots.size > 0
+        ? new Set(aggregatedSnapshots.keys())
+        : await loadAccessibleBuyerIds(db, tenantId, assistantLocationIds)
+      : new Set(aggregatedSnapshots.keys());
+
     const buildBuyerQuery = (mode: 'rows' | 'count') => {
       let query = db
         .schema('app')
@@ -166,13 +417,22 @@ export async function GET(req: NextRequest) {
         .select(
           mode === 'count'
             ? 'id'
-            : 'id, business_name, tier, phone, gst_treatment, status, credit_limit, is_active, geography, deleted_at, whatsapp_opt_out_at',
+            : 'id, business_name, tier, phone, gst_treatment, status, credit_limit, is_active, geography, whatsapp_opt_out_at',
           mode === 'count' ? { count: 'exact', head: true } : undefined,
         )
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .order('business_name', { ascending: true })
         .order('id', { ascending: true });
+
+      if (isAssistant) {
+        const ids = Array.from(accessibleBuyerIds);
+        if (ids.length === 0) {
+          query = query.in('id', ['00000000-0000-0000-0000-000000000000']);
+        } else {
+          query = query.in('id', ids);
+        }
+      }
 
       if (search) {
         query = query.textSearch('search_vector', search, { type: 'websearch' });
@@ -191,111 +451,35 @@ export async function GET(req: NextRequest) {
       return query;
     };
 
-    const [buyerRowsRes, buyerCountRes, customersSnapshotRes] = await Promise.all([
+    const buildBuyerKpiQuery = (start: string, endExclusive: string) => {
+      let query = db
+        .schema('app')
+        .from('kpi_buyers_daily')
+        .select('buyer_id, estimates_count, orders_count, invoices_count, orders_gmv')
+        .eq('tenant_id', tenantId)
+        .eq('scope', isAssistant ? 'location' : 'tenant')
+        .gte('day', start.slice(0, 10))
+        .lt('day', endExclusive.slice(0, 10));
+
+      if (isAssistant) {
+        query = assistantLocationIds.length > 0 ? query.in('location_id', assistantLocationIds) : query.limit(0);
+      }
+
+      return query;
+    };
+
+    const [buyerRowsRes, buyerCountRes, currentKpiRes, previousKpiRes, cohortMembersRes, priceListAssignmentsRes] = await Promise.all([
       buildBuyerQuery('rows'),
       buildBuyerQuery('count'),
-      db
-        .schema('app')
-        .from('customers_snapshot')
-        .select('total_count, active_count')
-        .eq('tenant_id', tenantId)
-        .maybeSingle(),
-    ]);
-
-    if (buyerRowsRes.error || buyerCountRes.error) {
-      console.error('[GET /api/tenant/customers] buyers query failure', buyerRowsRes.error || buyerCountRes.error);
-      return timedJson({ error: 'Failed to fetch customers landing data' }, { status: 500 });
-    }
-
-    const fetchedBuyerRows = (buyerRowsRes.data ?? []) as CustomersLandingBuyerDbRow[];
-    const hasNextPage = fetchedBuyerRows.length > limit;
-    const buyerRows = hasNextPage ? fetchedBuyerRows.slice(0, limit) : fetchedBuyerRows;
-    const buyerIds = buyerRows.map((b) => b.id);
-    const buyerIdSet = new Set(buyerIds);
-
-    if (buyerRows.length === 0) {
-      const emptyPayload = {
-        period,
-        kpis: {
-          total: buyerCountRes.count ?? customersSnapshotRes.data?.total_count ?? 0,
-          cohort_count: 0,
-          active: 0,
-          active_pct: 0,
-          spend_mtd: 0,
-          spend_growth_pct: 0,
-          dormant_over_30d: 0,
-          outstanding_dues: 0,
-          buyers_with_dues: 0,
-        },
-        callouts: {
-          needs_call: [],
-          top_spenders: [],
-          top_risers: [],
-        },
-        buyers: [],
-        nextCursor: null,
-        total: buyerCountRes.count ?? customersSnapshotRes.data?.total_count ?? 0,
-      };
-
-      customersLandingCache.set(cacheKey, {
-        expiresAt: Date.now() + CUSTOMERS_LANDING_CACHE_TTL_MS,
-        payload: emptyPayload,
-      });
-
-      return timedJson(emptyPayload);
-    }
-
-    // last_order_at is derived from the 90-day window orders query below.
-    // We intentionally avoid an unbounded "all orders ever" query — it would scan the
-    // entire orders table for every page load. 90 days covers all practical dormancy
-    // thresholds (the dormancy check uses a 30-day cutoff).
-    const ninetyDaysAgoIso = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-
-    const [mtdOrdersRes, prevOrdersRes, recentOrdersRes, cohortMembersRes, invoicesRes, priceListAssignmentsRes] = await Promise.all([
-      db
-        .schema('app')
-        .from('orders')
-        .select('id, buyer_id, total_amount, placed_at, status, deleted_at')
-        .eq('tenant_id', tenantId)
-        .in('buyer_id', buyerIds)
-        .is('deleted_at', null)
-        .neq('status', 'cancelled')
-        .gte('placed_at', period.current_start)
-        .lt('placed_at', period.current_end_exclusive),
-      db
-        .schema('app')
-        .from('orders')
-        .select('id, buyer_id, total_amount, placed_at, status, deleted_at')
-        .eq('tenant_id', tenantId)
-        .in('buyer_id', buyerIds)
-        .is('deleted_at', null)
-        .neq('status', 'cancelled')
-        .gte('placed_at', period.previous_start)
-        .lt('placed_at', period.previous_end_exclusive),
-      // Bounded to 90 days — enough to determine last_order_at and dormancy (30-day threshold).
-      db
-        .schema('app')
-        .from('orders')
-        .select('id, buyer_id, placed_at, status, deleted_at')
-        .eq('tenant_id', tenantId)
-        .in('buyer_id', buyerIds)
-        .is('deleted_at', null)
-        .neq('status', 'cancelled')
-        .gte('placed_at', ninetyDaysAgoIso)
-        .order('placed_at', { ascending: false }),
-      db
-        .schema('app')
-        .from('cohort_members')
-        .select('buyer_id, cohort_id, cohort:cohorts(id, name, deleted_at)')
-        .in('buyer_id', buyerIds),
-      db
-        .schema('app')
-        .from('invoices')
-        .select('buyer_id, status, outstanding_balance, deleted_at')
-        .eq('tenant_id', tenantId)
-        .in('buyer_id', buyerIds)
-        .is('deleted_at', null)
-        .in('status', ['sent', 'overdue']),
+      buildBuyerKpiQuery(period.current_start, period.current_end_exclusive),
+      buildBuyerKpiQuery(period.previous_start, period.previous_end_exclusive),
+      accessibleBuyerIds.size > 0
+        ? db
+            .schema('app')
+            .from('cohort_members')
+            .select('buyer_id, cohort_id, cohort:cohorts(id, name, deleted_at)')
+            .in('buyer_id', Array.from(accessibleBuyerIds))
+        : Promise.resolve({ data: [], error: null }),
       db
         .schema('app')
         .from('price_list_assignments')
@@ -306,31 +490,29 @@ export async function GET(req: NextRequest) {
         .order('created_at', { ascending: false }),
     ]);
 
-    const invoicesTableMissing =
-      invoicesRes.error?.code === 'PGRST205' ||
-      invoicesRes.error?.code === '42P01' ||
-      (invoicesRes.error?.message ?? '').toLowerCase().includes('invoices');
-    if (invoicesTableMissing) {
-      console.warn('[GET /api/tenant/customers] app.invoices not available yet; defaulting dues to zero.');
-    }
-
     if (
-      mtdOrdersRes.error ||
-      prevOrdersRes.error ||
-      recentOrdersRes.error ||
-      cohortMembersRes.error ||
-      (invoicesRes.error && !invoicesTableMissing)
+      buyerRowsRes.error ||
+      buyerCountRes.error ||
+      currentKpiRes.error ||
+      previousKpiRes.error ||
+      cohortMembersRes.error
     ) {
       console.error('[GET /api/tenant/customers] query failure', {
-        mtd: mtdOrdersRes.error,
-        prev: prevOrdersRes.error,
-        recent: recentOrdersRes.error,
+        buyers: buyerRowsRes.error,
+        buyerCount: buyerCountRes.error,
+        currentKpi: currentKpiRes.error,
+        previousKpi: previousKpiRes.error,
         cohorts: cohortMembersRes.error,
-        invoices: invoicesRes.error,
         priceListAssignments: priceListAssignmentsRes.error,
       });
       return timedJson({ error: 'Failed to fetch customers landing data' }, { status: 500 });
     }
+
+    const currentKpisByBuyer = aggregateBuyerKpis((currentKpiRes.data ?? []) as BuyerKpiRow[]);
+    const previousKpisByBuyer = aggregateBuyerKpis((previousKpiRes.data ?? []) as BuyerKpiRow[]);
+    const fetchedBuyerRows = (buyerRowsRes.data ?? []) as CustomersLandingBuyerDbRow[];
+    const hasNextPage = fetchedBuyerRows.length > limit;
+    const buyerRows = hasNextPage ? fetchedBuyerRows.slice(0, limit) : fetchedBuyerRows;
 
     const priceListAssignments = priceListAssignmentsRes.error ? [] : (priceListAssignmentsRes.data ?? []);
     const buyerDirectPriceListByBuyerId = new Map<string, { name: string; source: 'direct'; cohort_name?: string | null }>();
@@ -358,44 +540,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const mtdOrders = (mtdOrdersRes.data ?? []).filter((order: { buyer_id: string }) => buyerIdSet.has(order.buyer_id));
-    const prevOrders = (prevOrdersRes.data ?? []).filter((order: { buyer_id: string }) => buyerIdSet.has(order.buyer_id));
-    const allOrders = (recentOrdersRes.data ?? []).filter((order: { buyer_id: string }) => buyerIdSet.has(order.buyer_id));
     const cohortMembers = (cohortMembersRes.data ?? []) as CohortMembershipRow[];
-    const invoices = invoicesTableMissing ? [] : (invoicesRes.data ?? []).filter((invoice: { buyer_id: string }) => buyerIdSet.has(invoice.buyer_id));
-
-    const spendMtdByBuyer = new Map<string, number>();
-    const spendPrevByBuyer = new Map<string, number>();
-    const ordersMtdByBuyer = new Map<string, number>();
-    const lastOrderByBuyer = new Map<string, string>();
-
-    for (const order of mtdOrders) {
-      spendMtdByBuyer.set(order.buyer_id, (spendMtdByBuyer.get(order.buyer_id) ?? 0) + Number(order.total_amount ?? 0));
-      ordersMtdByBuyer.set(order.buyer_id, (ordersMtdByBuyer.get(order.buyer_id) ?? 0) + 1);
-    }
-
-    for (const order of prevOrders) {
-      spendPrevByBuyer.set(order.buyer_id, (spendPrevByBuyer.get(order.buyer_id) ?? 0) + Number(order.total_amount ?? 0));
-    }
-
-    for (const order of allOrders) {
-      if (!lastOrderByBuyer.has(order.buyer_id) && order.placed_at) {
-        lastOrderByBuyer.set(order.buyer_id, order.placed_at);
-      }
-    }
-
-    const creditSnapshots = new Map<string, { outstanding_dues: number }>();
-    for (const buyer of buyerRows as Array<{ id: string; credit_limit: number | null }>) {
-      creditSnapshots.set(buyer.id, {
-        outstanding_dues: 0,
-      });
-    }
-    for (const invoice of invoices as Array<{ buyer_id: string; outstanding_balance: number | null }>) {
-      const snapshot = creditSnapshots.get(invoice.buyer_id);
-      if (!snapshot) continue;
-      snapshot.outstanding_dues += Number(invoice.outstanding_balance ?? 0);
-    }
-
     const cohortMap = new Map<string, string>();
     const buyerCohortsByBuyerId = new Map<string, Array<{ id: string; name: string }>>();
     const cohortSet = new Set<string>();
@@ -413,145 +558,155 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const overdueBuyerIds = new Set(
-      invoices
-        .filter((invoice: any) => invoice.status === 'overdue' && Number(invoice.outstanding_balance ?? 0) > 0)
-        .map((invoice: any) => invoice.buyer_id),
-    );
-    const rows: BuyerRow[] = buyerRows.map((buyer: any, index: number) => {
-      const spend_mtd = spendMtdByBuyer.get(buyer.id) ?? 0;
-      const spend_prev_mtd = spendPrevByBuyer.get(buyer.id) ?? 0;
-      const growth_pct = spend_prev_mtd > 0 ? Math.round(((spend_mtd - spend_prev_mtd) / spend_prev_mtd) * 100) : spend_mtd > 0 ? 100 : 0;
-      const orders_mtd = ordersMtdByBuyer.get(buyer.id) ?? 0;
-      const last_order_at = lastOrderByBuyer.get(buyer.id) ?? null;
-      const credit_limit = Number(buyer.credit_limit ?? 0);
-      const dues = creditSnapshots.get(buyer.id)?.outstanding_dues ?? 0;
-      const credit_used = dues;
-      const dormant = !last_order_at || last_order_at < dormantCutoffIso;
-      const directPriceList = buyerDirectPriceListByBuyerId.get(buyer.id) ?? null;
-      let cohortPriceList: { name: string; source: 'cohort'; cohort_name?: string | null } | null = null;
-      if (!directPriceList) {
-        const cohorts = buyerCohortsByBuyerId.get(buyer.id) ?? [];
-        let best: { name: string; priority: number; created_at: string | null; cohort_name: string } | null = null;
-        for (const cohort of cohorts) {
-          const options = cohortPriceListsByCohortId.get(cohort.id) ?? [];
-          for (const option of options) {
-            const candidate = {
-              name: option.name,
-              priority: option.priority,
-              created_at: option.created_at,
-              cohort_name: cohort.name,
-            };
-            if (
-              !best
-              || candidate.priority > best.priority
-              || (candidate.priority === best.priority && (candidate.created_at ?? '') > (best.created_at ?? ''))
-            ) {
-              best = candidate;
-            }
+    const getActivePriceList = (buyerId: string): BuyerRow['active_price_list'] => {
+      const directPriceList = buyerDirectPriceListByBuyerId.get(buyerId) ?? null;
+      if (directPriceList) return directPriceList;
+
+      const cohorts = buyerCohortsByBuyerId.get(buyerId) ?? [];
+      let best: { name: string; priority: number; created_at: string | null; cohort_name: string } | null = null;
+      for (const cohort of cohorts) {
+        const options = cohortPriceListsByCohortId.get(cohort.id) ?? [];
+        for (const option of options) {
+          const candidate = {
+            name: option.name,
+            priority: option.priority,
+            created_at: option.created_at,
+            cohort_name: cohort.name,
+          };
+          if (
+            !best
+            || candidate.priority > best.priority
+            || (candidate.priority === best.priority && (candidate.created_at ?? '') > (best.created_at ?? ''))
+          ) {
+            best = candidate;
           }
         }
-        if (best) {
-          cohortPriceList = { name: best.name, source: 'cohort', cohort_name: best.cohort_name };
-        }
       }
+      return best ? { name: best.name, source: 'cohort', cohort_name: best.cohort_name } : null;
+    };
 
-      let status: BuyerRow['status'] = { label: 'Healthy', tone: 'success' };
-      if (dues > 80000 || growth_pct < 0) status = { label: 'Needs follow-up', tone: 'warning' };
-      if (dormant) status = { label: 'Dormant', tone: 'danger' };
-
-      return {
-        id: buyer.id,
-        business_name: buyer.business_name,
-        tier: buyer.tier,
-        phone: buyer.phone ?? null,
-        gst_treatment: buyer.gst_treatment ?? null,
-        zoho_status: buyer.status ?? null,
-        is_active: Boolean(buyer.is_active),
-        city: buyer.geography?.city ?? 'Unknown',
-        state: buyer.geography?.state ?? null,
-        cohort: cohortMap.get(buyer.id) ?? '—',
-        active_price_list: directPriceList ?? cohortPriceList,
-        spend_mtd,
-        spend_prev_mtd,
-        growth_pct,
-        orders_mtd,
-        last_order_at,
-        credit_limit,
-        credit_used,
-        dues,
-        status,
-        avatar: {
-          initials: getInitials(buyer.business_name),
-          hue: index % 3 === 0 ? 'teal' : index % 3 === 1 ? 'ember' : 'cream',
-        },
-        whatsapp_opted_out: Boolean(buyer.whatsapp_opt_out_at),
-      };
-    });
+    const rows: BuyerRow[] = buyerRows.map((buyer, index) =>
+      buildBuyerRow(
+        buyer,
+        index,
+        aggregatedSnapshots.get(buyer.id),
+        currentKpisByBuyer.get(buyer.id),
+        previousKpisByBuyer.get(buyer.id),
+        cohortMap.get(buyer.id) ?? '—',
+        getActivePriceList(buyer.id),
+      ),
+    );
 
     const filteredRows = rows
       .filter((row) => {
         if (statusParams.length === 0) return true;
-        const dormant = !row.last_order_at || row.last_order_at < dormantCutoffIso;
+        const snapshot = aggregatedSnapshots.get(row.id);
         return statusParams.some((value) => {
-          if (value === 'Active') return row.is_active && !dormant;
+          if (value === 'Active') return row.is_active && !(snapshot?.is_dormant ?? false);
           if (value === 'Inactive') return !row.is_active;
-          if (value === 'Dormant') return row.is_active && dormant;
+          if (value === 'Dormant') return row.is_active && Boolean(snapshot?.is_dormant);
           return false;
         });
       })
       .filter((row) => {
         if (dueParams.length === 0) return true;
+        const snapshot = aggregatedSnapshots.get(row.id);
         return dueParams.some((value) => {
-          if (value === 'Due') return row.dues > 0;
-          if (value === 'Overdue') return overdueBuyerIds.has(row.id);
+          if (value === 'Due') return (snapshot?.outstanding_dues ?? 0) > 0;
+          if (value === 'Overdue') return (snapshot?.overdue_amount ?? 0) > 0;
           return false;
         });
-      })
-      .filter((row) =>
-        search
-          ? [
-              row.business_name,
-              row.phone ?? '',
-              row.city,
-              row.cohort,
-              row.active_price_list?.name ?? '',
-              row.active_price_list?.cohort_name ?? '',
-              row.status.label,
-              row.state ?? '',
-              row.gst_treatment ?? '',
-              row.zoho_status ?? '',
-            ].some((value) =>
-              value.toLowerCase().includes(search),
-            )
-          : true,
-      );
+      });
 
     const pageItems = filteredRows.slice(0, limit);
     const lastItem = pageItems.at(-1);
     const nextCursor = hasNextPage && lastItem ? encodeCursor({ business_name: lastItem.business_name, id: lastItem.id }) : null;
 
-    const total = dueParams.length > 0 || statusParams.includes('Dormant')
-      ? filteredRows.length
-      : buyerCountRes.count ?? customersSnapshotRes.data?.total_count ?? filteredRows.length;
-    const active = filteredRows.filter((row) => row.orders_mtd > 0).length;
-    const spend_mtd = filteredRows.reduce((sum, row) => sum + row.spend_mtd, 0);
-    const spend_prev_mtd = filteredRows.reduce((sum, row) => sum + row.spend_prev_mtd, 0);
-    const spend_growth_pct = spend_prev_mtd > 0 ? Math.round(((spend_mtd - spend_prev_mtd) / spend_prev_mtd) * 100) : 0;
-    const dormant_over_30d = filteredRows.filter((row) => !row.last_order_at || row.last_order_at < dormantCutoffIso).length;
-    const outstanding_dues = filteredRows.reduce((sum, row) => sum + row.dues, 0);
-    const buyers_with_dues = filteredRows.filter((row) => row.dues > 0).length;
+    const buyerIdsForCallouts = Array.from(accessibleBuyerIds);
+    const sumCurrentSpend = buyerIdsForCallouts.reduce((sum, buyerId) => sum + (currentKpisByBuyer.get(buyerId)?.orders_gmv ?? 0), 0);
+    const sumPreviousSpend = buyerIdsForCallouts.reduce((sum, buyerId) => sum + (previousKpisByBuyer.get(buyerId)?.orders_gmv ?? 0), 0);
+    const activeBuyerCount = buyerIdsForCallouts.filter((buyerId) => {
+      const current = currentKpisByBuyer.get(buyerId);
+      return Boolean((current?.estimates_count ?? 0) + (current?.orders_count ?? 0) + (current?.invoices_count ?? 0) > 0);
+    }).length;
+    const dormantBuyerCount = buyerIdsForCallouts.filter((buyerId) => aggregatedSnapshots.get(buyerId)?.is_dormant).length;
+    const outstandingDues = buyerIdsForCallouts.reduce((sum, buyerId) => sum + (aggregatedSnapshots.get(buyerId)?.outstanding_dues ?? 0), 0);
+    const buyersWithDues = buyerIdsForCallouts.filter((buyerId) => (aggregatedSnapshots.get(buyerId)?.outstanding_dues ?? 0) > 0).length;
 
-    const needsCall = filteredRows
-      .filter((row) => row.status.tone === 'warning' || row.status.tone === 'danger' || row.growth_pct < 0 || row.dues > 80000)
-      .slice(0, 3)
+    const universeRowsByBuyerId = new Map<string, BuyerRow>();
+    for (const row of rows) {
+      universeRowsByBuyerId.set(row.id, row);
+    }
+
+    const rankByGrowth = (buyerId: string) => {
+      const currentSpend = currentKpisByBuyer.get(buyerId)?.orders_gmv ?? 0;
+      const previousSpend = previousKpisByBuyer.get(buyerId)?.orders_gmv ?? 0;
+      if (previousSpend <= 0) return currentSpend > 0 ? 100 : 0;
+      return Math.round((((currentSpend - previousSpend) / previousSpend) * 100) * 10) / 10;
+    };
+
+    const needsCallIds = buyerIdsForCallouts
+      .filter((buyerId) => {
+        const snapshot = aggregatedSnapshots.get(buyerId);
+        return Boolean(snapshot?.is_dormant || (snapshot?.overdue_amount ?? 0) > 0 || (snapshot?.outstanding_dues ?? 0) > 80000 || rankByGrowth(buyerId) < 0);
+      })
+      .sort((left, right) => {
+        const leftScore = (aggregatedSnapshots.get(left)?.overdue_amount ?? 0) + (aggregatedSnapshots.get(left)?.outstanding_dues ?? 0);
+        const rightScore = (aggregatedSnapshots.get(right)?.overdue_amount ?? 0) + (aggregatedSnapshots.get(right)?.outstanding_dues ?? 0);
+        return rightScore - leftScore;
+      })
+      .slice(0, 3);
+    const topSpenderIds = buyerIdsForCallouts
+      .slice()
+      .sort((left, right) => (currentKpisByBuyer.get(right)?.orders_gmv ?? 0) - (currentKpisByBuyer.get(left)?.orders_gmv ?? 0))
+      .slice(0, 2);
+    const topRiserIds = buyerIdsForCallouts
+      .filter((buyerId) => rankByGrowth(buyerId) > 0)
+      .sort((left, right) => rankByGrowth(right) - rankByGrowth(left))
+      .slice(0, 2);
+
+    const calloutBuyerIds = Array.from(new Set([...needsCallIds, ...topSpenderIds, ...topRiserIds]));
+    const missingCalloutBuyerIds = calloutBuyerIds.filter((buyerId) => !universeRowsByBuyerId.has(buyerId));
+    if (missingCalloutBuyerIds.length > 0) {
+      const calloutBuyersRes = await db
+        .schema('app')
+        .from('buyers')
+        .select('id, business_name, tier, phone, gst_treatment, status, credit_limit, is_active, geography, whatsapp_opt_out_at')
+        .eq('tenant_id', tenantId)
+        .in('id', missingCalloutBuyerIds)
+        .is('deleted_at', null);
+
+      if (!calloutBuyersRes.error) {
+        for (const [index, buyer] of ((calloutBuyersRes.data ?? []) as CustomersLandingBuyerDbRow[]).entries()) {
+          universeRowsByBuyerId.set(
+            buyer.id,
+            buildBuyerRow(
+              buyer,
+              index,
+              aggregatedSnapshots.get(buyer.id),
+              currentKpisByBuyer.get(buyer.id),
+              previousKpisByBuyer.get(buyer.id),
+              cohortMap.get(buyer.id) ?? '—',
+              getActivePriceList(buyer.id),
+            ),
+          );
+        }
+      }
+    }
+
+    const needsCall = needsCallIds
+      .map((buyerId) => universeRowsByBuyerId.get(buyerId))
+      .filter((row): row is BuyerRow => Boolean(row))
       .map((row) => ({
         ...row,
         last_order_label: formatLastOrder(row.last_order_at),
       }));
-
-    const topSpenders = [...filteredRows].sort((a, b) => b.spend_mtd - a.spend_mtd).slice(0, 2);
-    const topRisers = [...filteredRows].filter((row) => row.growth_pct > 0).sort((a, b) => b.growth_pct - a.growth_pct).slice(0, 2);
+    const topSpenders = topSpenderIds
+      .map((buyerId) => universeRowsByBuyerId.get(buyerId))
+      .filter((row): row is BuyerRow => Boolean(row));
+    const topRisers = topRiserIds
+      .map((buyerId) => universeRowsByBuyerId.get(buyerId))
+      .filter((row): row is BuyerRow => Boolean(row));
 
     const filters: LandingFilterMeta = {
       groups: [
@@ -567,18 +722,19 @@ export async function GET(req: NextRequest) {
         },
       ],
     };
+
     const payload = {
       period,
       kpis: {
-        total,
+        total: buyerIdsForCallouts.length || buyerCountRes.count || 0,
         cohort_count: cohortSet.size,
-        active,
-        active_pct: total > 0 ? Math.round((active / total) * 1000) / 10 : 0,
-        spend_mtd,
-        spend_growth_pct,
-        dormant_over_30d,
-        outstanding_dues,
-        buyers_with_dues,
+        active: activeBuyerCount,
+        active_pct: buyerIdsForCallouts.length > 0 ? Math.round((activeBuyerCount / buyerIdsForCallouts.length) * 1000) / 10 : 0,
+        spend_mtd: sumCurrentSpend,
+        spend_growth_pct: sumPreviousSpend > 0 ? Math.round((((sumCurrentSpend - sumPreviousSpend) / sumPreviousSpend) * 100) * 10) / 10 : 0,
+        dormant_over_30d: dormantBuyerCount,
+        outstanding_dues: outstandingDues,
+        buyers_with_dues: buyersWithDues,
       },
       callouts: {
         needs_call: needsCall,
@@ -588,7 +744,9 @@ export async function GET(req: NextRequest) {
       buyers: pageItems,
       filters,
       nextCursor,
-      total,
+      total: dueParams.length > 0 || statusParams.includes('Dormant')
+        ? filteredRows.length
+        : buyerCountRes.count ?? pageItems.length,
     };
 
     customersLandingCache.set(cacheKey, {
