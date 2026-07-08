@@ -10,14 +10,14 @@ import { readArrayParam } from '@/lib/landing-filter-params';
 import { PAGE_SIZE } from '@/lib/pagination';
 import { SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 
-type CohortType = 'Geo-based' | 'Tier-based' | 'Brand affinity';
+type CohortType = 'Geo-based' | 'Activity-based' | 'Brand affinity';
 
 function deriveCohortType(rules: unknown): CohortType {
   const json = rules && typeof rules === 'object' ? (rules as Record<string, unknown>) : null;
   const filters = Array.isArray(json?.filters) ? (json?.filters as Array<Record<string, unknown>>) : [];
   const fields = filters.map((f) => String(f.field ?? '').toLowerCase());
-  if (fields.some((f) => f.includes('geography') || f.includes('city') || f.includes('state'))) return 'Geo-based';
-  if (fields.some((f) => f.includes('tier'))) return 'Tier-based';
+  if (fields.some((f) => f.includes('geography') || f.includes('city'))) return 'Geo-based';
+  if (fields.some((f) => f.includes('last_order') || f.includes('gmv'))) return 'Activity-based';
   return 'Brand affinity';
 }
 
@@ -36,8 +36,8 @@ function deriveFocusChips(rules: unknown, type: CohortType): string[] {
     .slice(0, 3);
 
   if (chips.length > 0) return chips;
-  if (type === 'Geo-based') return ['State cluster'];
-  if (type === 'Tier-based') return ['Tier segment'];
+  if (type === 'Geo-based') return ['City cluster'];
+  if (type === 'Activity-based') return ['Order history'];
   return ['Brand mix'];
 }
 
