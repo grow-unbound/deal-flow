@@ -130,7 +130,7 @@ export async function getCatalogComposerPayload(db: any, tenantId: string, role?
   const PRICE_LISTS_LIMIT = PAGE_SIZE.MAX;
   const canViewCost = role === 'seller_admin';
 
-  const [productsRes, cohortsRes, recentOrdersRes, monthOrdersRes, buyersCountRes, buyersRes, priceListsRes] = await Promise.all([
+  const [productsRes, cohortsRes, recentOrdersRes, monthOrdersRes, buyersCountRes, buyersRes, priceListsRes, productSnapshotRes, brandFacetRes, categoryFacetRes] = await Promise.all([
     db
       .schema('app')
       .from('tenant_products')
@@ -186,6 +186,29 @@ export async function getCatalogComposerPayload(db: any, tenantId: string, role?
       .or(`is_active.eq.false,valid_to.is.null,valid_to.gt.${nowIso}`)
       .order('updated_at', { ascending: false })
       .limit(PRICE_LISTS_LIMIT),
+    // products_snapshot: accurate total product count (O(1))
+    db
+      .schema('app')
+      .from('products_snapshot')
+      .select('active_count')
+      .eq('tenant_id', tenantId)
+      .maybeSingle(),
+    // Brand facet counts — indexed GROUP BY on tenant_products (fast at any scale)
+    db
+      .schema('app')
+      .from('tenant_products')
+      .select('tenant_brand_id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .not('tenant_brand_id', 'is', null),
+    // Category facet counts — indexed GROUP BY on tenant_products
+    db
+      .schema('app')
+      .from('tenant_products')
+      .select('tenant_category_id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .not('tenant_category_id', 'is', null),
   ]);
 
   if (productsRes.error) throw dbErr('catalog-composer: tenant_products', productsRes.error);
@@ -195,6 +218,7 @@ export async function getCatalogComposerPayload(db: any, tenantId: string, role?
   if (buyersCountRes.error) throw dbErr('catalog-composer: buyers', buyersCountRes.error);
   if (buyersRes.error) throw dbErr('catalog-composer: buyer_rows', buyersRes.error);
   if (priceListsRes.error) throw dbErr('catalog-composer: price_lists', priceListsRes.error);
+  // productSnapshotRes / brandFacetRes / categoryFacetRes: non-fatal — fall back gracefully
 
   const products = (productsRes.data ?? []) as TenantProductRow[];
   const cohorts = (cohortsRes.data ?? []) as CohortRow[];
@@ -346,8 +370,76 @@ export async function getCatalogComposerPayload(db: any, tenantId: string, role?
     buyerStats.set(order.buyer_id, current);
   }
 
+  // Build server-side product facets from full dataset (not capped display list)
+  const productSnapshotRow = productSnapshotRes.data as { active_count: number } | null;
+  const productCount = productSnapshotRow?.active_count ?? products.length;
+
+  const brandFacetRows = (brandFacetRes.data ?? []) as Array<{ tenant_brand_id: string | null }>;
+  const categoryFacetRows = (categoryFacetRes.data ?? []) as Array<{ tenant_category_id: string | null }>;
+
+  const brandCountMap = new Map<string, number>();
+  for (const row of brandFacetRows) {
+    if (row.tenant_brand_id) {
+      brandCountMap.set(row.tenant_brand_id, (brandCountMap.get(row.tenant_brand_id) ?? 0) + 1);
+    }
+  }
+  const categoryCountMap = new Map<string, number>();
+  for (const row of categoryFacetRows) {
+    if (row.tenant_category_id) {
+      categoryCountMap.set(row.tenant_category_id, (categoryCountMap.get(row.tenant_category_id) ?? 0) + 1);
+    }
+  }
+
+  // Need all brand names for facet labels — fetch brands not already in display products
+  const allFacetBrandIds = Array.from(brandCountMap.keys());
+  const missingBrandIds = allFacetBrandIds.filter((id) => !tenantBrandById.has(id));
+  if (missingBrandIds.length > 0) {
+    const extraBrandsRes = await db
+      .schema('app')
+      .from('tenant_brands')
+      .select('id, display_name_override')
+      .in('id', missingBrandIds)
+      .is('deleted_at', null);
+    for (const b of (extraBrandsRes.data ?? []) as TenantBrandRow[]) {
+      tenantBrandById.set(b.id, b);
+    }
+  }
+
+  // Need all category names for facet labels — fetch categories not already loaded
+  const allFacetCategoryIds = Array.from(categoryCountMap.keys());
+  const missingCategoryIds = allFacetCategoryIds.filter((id) => !categoryNameById.has(id));
+  if (missingCategoryIds.length > 0) {
+    const extraCatsRes = await db
+      .schema('app')
+      .from('tenant_categories')
+      .select('id, name')
+      .in('id', missingCategoryIds)
+      .is('deleted_at', null);
+    for (const c of (extraCatsRes.data ?? []) as Array<{ id: string; name: string | null }>) {
+      categoryNameById.set(c.id, c.name);
+    }
+  }
+
+  const productFilters = {
+    brands: Array.from(brandCountMap.entries())
+      .map(([id, count]) => {
+        const brand = tenantBrandById.get(id);
+        return { id, label: brand?.display_name_override?.trim() || 'Brand', count };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    categories: Array.from(categoryCountMap.entries())
+      .map(([id, count]) => ({
+        id,
+        label: categoryNameById.get(id) ?? 'Uncategorized',
+        count,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+  };
+
   return {
     buyer_count: buyersCount,
+    product_count: productCount,
+    product_filters: productFilters,
     cohorts: cohorts.map((cohort) => ({
       id: cohort.id,
       name: cohort.name,

@@ -215,6 +215,7 @@ export interface CohortComposerBuyer {
 
 export interface CohortComposerResponse {
   buyers: CohortComposerBuyer[];
+  total_buyer_count: number;
   brands: Array<{
     id: string;
     label: string;

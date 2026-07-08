@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { FEATURE_FLAGS } from '@/constants';
 import { getFlag } from '@/lib/flags';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
+import { GET as getInvoicesLanding } from '../route';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,23 +35,27 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
 
-    const { data, error } = await supabaseAdmin
-      .schema('app')
-      .from('invoices_snapshot')
-      .select('total_count, outstanding_amt, overdue_count, overdue_amt, paid_count, refreshed_at')
-      .eq('tenant_id', claims.tenant_id)
-      .maybeSingle();
-
-    if (error) {
-      console.error('[GET /api/tenant/invoices/summary]', error);
-      return NextResponse.json({ error: 'Failed to fetch summary' }, { status: 500 });
+    const landingRes = await getInvoicesLanding(request);
+    if (!landingRes.ok) {
+      const body = await landingRes.json().catch(() => ({ error: 'Failed to fetch summary' }));
+      return NextResponse.json(body, { status: landingRes.status });
     }
 
-    if (!data) {
-      return NextResponse.json({ total: null }, { status: 404 });
-    }
+    const landing = await landingRes.json();
+    const kpis = landing.kpis ?? {};
 
-    return NextResponse.json(data, { headers: SELLER_CACHE_PERSONAL });
+    return NextResponse.json(
+      {
+        total: kpis.invoices_this_period ?? 0,
+        total_count: kpis.invoices_this_period ?? 0,
+        outstanding_amt: kpis.outstanding_sum ?? 0,
+        overdue_count: kpis.overdue_count ?? 0,
+        overdue_amt: kpis.overdue_sum ?? 0,
+        paid_count: null,
+        refreshed_at: null,
+      },
+      { headers: SELLER_CACHE_PERSONAL },
+    );
   } catch (e) {
     console.error('[GET /api/tenant/invoices/summary]', e);
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

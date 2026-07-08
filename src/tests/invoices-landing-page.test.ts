@@ -81,13 +81,20 @@ vi.mock('@/lib/server/seller-features', () => ({
 vi.mock('@/lib/supabase', () => {
   class QueryMock {
     private table: string;
-    private conditions: Array<{ kind: 'eq' | 'in'; column: string; value: unknown }> = [];
+    private conditions: Array<{ kind: 'eq' | 'in' | 'gte' | 'lt' | 'gt'; column: string; value: unknown }> = [];
+    private orderBy: Array<{ column: string; ascending: boolean }> = [];
+    private take: number | null = null;
+    private head = false;
+    private periodFilter:
+      | { primary: string; fallback: string; start: number; endExclusive: number }
+      | null = null;
 
     constructor(table: string) {
       this.table = table;
     }
 
-    select() {
+    select(_columns?: string, options?: { head?: boolean }) {
+      this.head = Boolean(options?.head);
       return this;
     }
     eq(column: string, value: unknown) {
@@ -101,41 +108,131 @@ vi.mock('@/lib/supabase', () => {
       this.conditions.push({ kind: 'in', column: arguments[0] as string, value: arguments[1] });
       return this;
     }
-    gte() {
+    gte(column: string, value: unknown) {
+      this.conditions.push({ kind: 'gte', column, value });
       return this;
     }
-    lt() {
+    lt(column: string, value: unknown) {
+      this.conditions.push({ kind: 'lt', column, value });
+      return this;
+    }
+    gt(column: string, value: unknown) {
+      this.conditions.push({ kind: 'gt', column, value });
       return this;
     }
     order() {
+      this.orderBy.push({
+        column: arguments[0] as string,
+        ascending: (arguments[1] as { ascending?: boolean } | undefined)?.ascending ?? true,
+      });
       return this;
     }
-    limit() {
+    limit(value: number) {
+      this.take = value;
+      return this;
+    }
+    ilike() {
+      return this;
+    }
+    or(filter: string) {
+      const periodMatch = filter.match(
+        /and\(invoice_date\.gte\.([^,]+),invoice_date\.lt\.([^)]+)\),and\(invoice_date\.is\.null,created_at\.gte\.([^,]+),created_at\.lt\.([^)]+)\)/,
+      );
+      if (periodMatch) {
+        this.periodFilter = {
+          primary: 'invoice_date',
+          fallback: 'created_at',
+          start: new Date(periodMatch[1]).getTime(),
+          endExclusive: new Date(periodMatch[2]).getTime(),
+        };
+      }
       return this;
     }
 
-    then(resolve: (value: { data: unknown; error: null }) => void) {
+    then(resolve: (value: { data: unknown; error: null; count?: number }) => void) {
       const applyFilters = (rows: Array<Record<string, unknown>>) => {
         let result = [...rows];
+        if (this.periodFilter) {
+          result = result.filter((row) => {
+            const primaryValue = row[this.periodFilter!.primary];
+            const fallbackValue = row[this.periodFilter!.fallback];
+            const rawValue = typeof primaryValue === 'string' ? primaryValue : fallbackValue;
+            if (typeof rawValue !== 'string') return false;
+            const time = new Date(rawValue).getTime();
+            return time >= this.periodFilter!.start && time < this.periodFilter!.endExclusive;
+          });
+        }
         for (const condition of this.conditions) {
           if (condition.kind === 'eq') {
             result = result.filter((row) => !(condition.column in row) || row[condition.column] === condition.value);
             continue;
           }
+          if (condition.kind === 'gte' || condition.kind === 'lt') {
+            const threshold = new Date(String(condition.value)).getTime();
+            result = result.filter((row) => {
+              const rowValue = row[condition.column];
+              if (typeof rowValue !== 'string') return false;
+              const time = new Date(rowValue).getTime();
+              return condition.kind === 'gte' ? time >= threshold : time < threshold;
+            });
+            continue;
+          }
+          if (condition.kind === 'gt') {
+            result = result.filter((row) => Number(row[condition.column] ?? 0) > Number(condition.value ?? 0));
+            continue;
+          }
           const values = Array.isArray(condition.value) ? condition.value : [];
           result = result.filter((row) => values.includes(row[condition.column]));
+        }
+        if (this.orderBy.length > 0) {
+          result.sort((a, b) => {
+            for (const order of this.orderBy) {
+              const av = a[order.column];
+              const bv = b[order.column];
+              if (typeof av === 'string' && typeof bv === 'string') {
+                const avTime = new Date(av).getTime();
+                const bvTime = new Date(bv).getTime();
+                if (!Number.isNaN(avTime) && !Number.isNaN(bvTime) && avTime !== bvTime) {
+                  const delta = avTime - bvTime;
+                  return order.ascending ? delta : -delta;
+                }
+                if (av !== bv) {
+                  const delta = av.localeCompare(bv);
+                  return order.ascending ? delta : -delta;
+                }
+                continue;
+              }
+              const delta = Number(av ?? 0) - Number(bv ?? 0);
+              if (delta !== 0) {
+                return order.ascending ? delta : -delta;
+              }
+            }
+            return 0;
+          });
+        }
+        if (this.take != null) {
+          result = result.slice(0, this.take);
         }
         return result;
       };
 
-      if (this.table === 'buyers') return resolve({ data: queryState.buyers, error: null });
-      if (this.table === 'invoices') return resolve({ data: applyFilters(queryState.invoices as Array<Record<string, unknown>>), error: null });
-      if (this.table === 'invoice_items') return resolve({ data: applyFilters(queryState.invoiceItems as Array<Record<string, unknown>>), error: null });
-      if (this.table === 'orders') return resolve({ data: queryState.orders, error: null });
-      if (this.table === 'estimates') return resolve({ data: queryState.estimates, error: null });
-      if (this.table === 'kpi_invoices_current') return resolve({ data: applyFilters(queryState.currentKpis), error: null });
-      if (this.table === 'kpi_invoices_previous') return resolve({ data: applyFilters(queryState.previousKpis), error: null });
-      return resolve({ data: [], error: null });
+      const finish = (rows: Array<Record<string, unknown>>) => {
+        const filtered = applyFilters(rows);
+        return resolve({
+          data: this.head ? null : filtered,
+          error: null,
+          count: this.head ? filtered.length : undefined,
+        });
+      };
+
+      if (this.table === 'buyers') return finish(queryState.buyers as Array<Record<string, unknown>>);
+      if (this.table === 'invoices') return finish(queryState.invoices as Array<Record<string, unknown>>);
+      if (this.table === 'invoice_items') return finish(queryState.invoiceItems as Array<Record<string, unknown>>);
+      if (this.table === 'orders') return finish(queryState.orders as Array<Record<string, unknown>>);
+      if (this.table === 'estimates') return finish(queryState.estimates as Array<Record<string, unknown>>);
+      if (this.table === 'kpi_invoices_current') return finish(queryState.currentKpis as Array<Record<string, unknown>>);
+      if (this.table === 'kpi_invoices_previous') return finish(queryState.previousKpis as Array<Record<string, unknown>>);
+      return finish([]);
     }
   }
 
