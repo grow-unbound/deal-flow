@@ -81,12 +81,13 @@ function CatalogsDataSkeleton() {
 }
 
 function CatalogRowReason(catalog: CatalogLandingRow) {
+  const conversionLabel = catalog.conversions > 0 ? `${catalog.conversions} conversions` : 'no conversions';
   if (catalog.status.label === 'Draft') return 'Draft · not yet sent to customer group';
-  if (catalog.status.label === 'Ended') return `Ended ${catalog.valid_until_label} · ${catalog.orders} conversions`;
+  if (catalog.status.label === 'Ended') return `Ended ${catalog.valid_until_label} · ${conversionLabel}`;
   if (catalog.days_left != null && catalog.days_left <= 5 && catalog.days_left > 0) {
-    return `Expires in ${catalog.days_left}d · ${catalog.orders} conversions`;
+    return `Expires in ${catalog.days_left}d · ${conversionLabel}`;
   }
-  return `${catalog.cohort_name} · ${catalog.orders} conversions`;
+  return `${catalog.cohort_name} · ${conversionLabel}`;
 }
 
 function CatalogsLandingContent({
@@ -171,6 +172,21 @@ function CatalogsLandingContent({
   }
   if (!landingData) return <CatalogsLoadingSkeleton />;
   const showRefreshingState = isLoading && !data;
+  const estimatesEnabled = landingData.channels?.estimates_enabled ?? true;
+
+  const tableColumns = [
+    { label: 'Campaign', minWidth: 260, className: 'px-5' },
+    { label: 'Target Buyers', minWidth: 180, className: 'px-5' },
+    { label: `Orders · ${metricSuffix}`, align: 'right' as const, minWidth: 120, className: 'px-5' },
+    ...(estimatesEnabled
+      ? [{ label: `Estimates · ${metricSuffix}`, align: 'right' as const, minWidth: 130, className: 'px-5' }]
+      : []),
+    { label: `GMV · ${metricSuffix}`, align: 'right' as const, minWidth: 140, className: 'px-5' },
+    { label: 'Conversion · Viewed', align: 'right' as const, minWidth: 150, className: 'px-5' },
+    { label: 'Conversions · Ordered', align: 'right' as const, minWidth: 160, className: 'px-5' },
+    { label: 'Status', minWidth: 180, className: 'px-5' },
+    { width: 40, className: 'px-4' },
+  ];
 
   return (
     <PageWrap>
@@ -243,7 +259,7 @@ function CatalogsLandingContent({
               initials: catalog.initials,
               hue: catalog.hue,
               name: catalog.name,
-              reason: `${catalog.cohort_name} · ${catalog.orders} conversions · ${catalog.conversion_pct}% conv.`,
+              reason: `${catalog.cohort_name} · ${catalog.conversions} conversions · ${catalog.conversion_pct}% conv.`,
               trailing: formatCompactInr(catalog.gmv),
             })),
           },
@@ -296,15 +312,8 @@ function CatalogsLandingContent({
         />
       ) : (
         <LandingTable
-          columns={[
-            { label: 'Campaign', minWidth: 260, className: 'px-5' },
-            { label: 'Customer group', minWidth: 180, className: 'px-5' },
-            { label: `GMV · ${metricSuffix}`, align: 'right', minWidth: 140, className: 'px-5' },
-            { label: 'Conversions / conversion', align: 'right', minWidth: 160, className: 'px-5' },
-            { label: 'Status', minWidth: 180, className: 'px-5' },
-            { width: 40, className: 'px-4' },
-          ]}
-          tableClassName="min-w-[1080px]"
+          columns={tableColumns}
+          tableClassName={estimatesEnabled ? 'min-w-[1400px]' : 'min-w-[1270px]'}
         >
           {filtered.map((catalog) => (
             <tr
@@ -323,14 +332,39 @@ function CatalogsLandingContent({
                   </div>
                 </div>
               </td>
-              <td className="px-5 py-3.5 text-sm text-cream-800">{catalog.cohort_name}</td>
+              <td className="px-5 py-3.5">
+                <div className="space-y-1">
+                  <p className="text-sm text-cream-800">{catalog.cohort_name}</p>
+                  <p className="text-xs text-cream-600">
+                    {catalog.audience_count != null ? `${catalog.audience_count} buyers` : '—'}
+                  </p>
+                </div>
+              </td>
+              <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                {catalog.order_count > 0 ? catalog.order_count : '—'}
+              </td>
+              {estimatesEnabled ? (
+                <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
+                  {catalog.estimate_count > 0 ? catalog.estimate_count : '—'}
+                </td>
+              ) : null}
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                 {catalog.gmv > 0 ? formatCompactInr(catalog.gmv) : '—'}
               </td>
               <td className="px-5 py-3.5 text-right">
                 <div className="space-y-1">
                   <p className="font-mono text-sm text-cream-900">
-                    {catalog.orders > 0 ? `${catalog.orders}` : '—'}
+                    {catalog.views > 0 ? catalog.views : '—'}
+                  </p>
+                  <p className="text-xs text-cream-600">
+                    {catalog.audience_count ? `${catalog.view_pct}% of buyers` : '—'}
+                  </p>
+                </div>
+              </td>
+              <td className="px-5 py-3.5 text-right">
+                <div className="space-y-1">
+                  <p className="font-mono text-sm text-cream-900">
+                    {(catalog.conversions ?? 0) > 0 ? catalog.conversions : '—'}
                   </p>
                   <p className="text-xs text-cream-600">{catalog.conversion_pct}% conversion</p>
                 </div>

@@ -4,9 +4,11 @@ import * as React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Minus, Plus, Package } from 'lucide-react';
+import posthog from 'posthog-js';
 import { Pressable } from '@/components/ui/pressable';
 import { cn, formatCurrency } from '@/lib/utils';
 import { useCart } from '@/contexts/BuyerCartContext';
+import { useRecoWidget } from '@/contexts/RecoWidgetContext';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
@@ -34,6 +36,7 @@ function ProductStockCornerBadge({ status }: { status: 'limited' | 'out_of_stock
 
 export function ProductCard({ item, className }: ProductCardProps): React.ReactNode {
   const { items, addItem, updateQty } = useCart();
+  const recoCtx = useRecoWidget();
   const [productImgError, setProductImgError] = React.useState(false);
   const [brandImgError, setBrandImgError] = React.useState(false);
   const [categoryImgError, setCategoryImgError] = React.useState(false);
@@ -64,6 +67,13 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
       line_total: item.price,
       tenant_category_id: item.category_id ?? undefined,
     }, item.campaign_id);
+    if (recoCtx) {
+      posthog.capture('reco_add_to_cart', {
+        widget: recoCtx.widget,
+        product_id: item.tenant_product_id,
+        source_product_id: recoCtx.sourceProductId ?? null,
+      });
+    }
   }
 
   function handleDecrement(e: React.MouseEvent): void {

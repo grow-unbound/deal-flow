@@ -13,18 +13,15 @@ import {
 import type { CohortRuleFilter } from '@/lib/zod';
 
 const FIELD_OPTIONS = [
-  { value: 'geography.state', label: 'State' },
   { value: 'geography.city', label: 'City' },
-  { value: 'geography.zone', label: 'Zone' },
-  { value: 'tier', label: 'Buyer Tier' },
+  { value: 'last_order_bucket', label: 'Order history' },
+  { value: 'gmv_90d_bucket', label: 'GMV (last 90 days)' },
 ] as const;
 
 const OPERATOR_OPTIONS = [
   { value: 'eq', label: '=' },
   { value: 'in', label: 'in' },
 ] as const;
-
-const TIER_VALUES = ['A', 'B', 'C'];
 
 interface CohortRuleBuilderProps {
   filters: CohortRuleFilter[];
@@ -33,7 +30,7 @@ interface CohortRuleBuilderProps {
 
 export function CohortRuleBuilder({ filters, onChange }: CohortRuleBuilderProps) {
   function addFilter() {
-    onChange([...filters, { field: 'tier', operator: 'eq', value: '' }]);
+    onChange([...filters, { field: 'geography.city', operator: 'in', value: '' }]);
   }
 
   function updateFilter(index: number, patch: Partial<CohortRuleFilter>) {
@@ -96,36 +93,12 @@ export function CohortRuleBuilder({ filters, onChange }: CohortRuleBuilderProps)
             </Select>
 
             {/* Value input */}
-            {filter.field === 'tier' ? (
-              <Select
-                value={typeof filter.value === 'string' ? filter.value : ''}
-                onValueChange={(val) => updateFilter(idx, { value: val })}
-              >
-                <SelectTrigger className="flex-1 bg-cream-50 text-sm">
-                  <SelectValue placeholder="Select tier" />
-                </SelectTrigger>
-                <SelectContent>
-                  {TIER_VALUES.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      Tier {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Input
-                className="flex-1 bg-cream-50 text-sm"
-                placeholder={
-                  filter.field === 'geography.state'
-                    ? 'e.g. Karnataka'
-                    : filter.field === 'geography.city'
-                      ? 'e.g. Bengaluru'
-                      : 'Value'
-                }
-                value={typeof filter.value === 'string' ? filter.value : ''}
-                onChange={(e) => updateFilter(idx, { value: e.target.value })}
-              />
-            )}
+            <Input
+              className="flex-1 bg-cream-50 text-sm"
+              placeholder={filter.field === 'geography.city' ? 'e.g. Bengaluru' : 'Value'}
+              value={typeof filter.value === 'string' ? filter.value : ''}
+              onChange={(e) => updateFilter(idx, { value: e.target.value })}
+            />
 
             <Button
               type="button"
