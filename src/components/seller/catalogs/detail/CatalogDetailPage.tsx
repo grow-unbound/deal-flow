@@ -146,12 +146,14 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
     notifyWhatsapp: boolean;
     buyerNote: string;
     notifyScheduledFor: string | null;
+    heroImageUrl: string | null;
   }) {
     try {
       const response = await publishMutation.mutateAsync({
         notifyWhatsapp: input.notifyWhatsapp,
         buyerNote: input.buyerNote,
         notifyScheduledFor: input.notifyScheduledFor,
+        heroImageUrl: input.heroImageUrl,
       });
       setPublishConfirmOpen(false);
       const notifySuffix = response.whatsapp_notify

@@ -2,6 +2,11 @@ import type { CampaignScopeType } from '@/lib/server/campaign-broadcast';
 import { campaignAudienceLabel, campaignScopeToBroadcastTarget } from '@/lib/server/campaign-broadcast';
 import { runCampaignPublishPreflight } from '@/lib/server/campaign-publish-preflight';
 import { resolveCampaignHeaderImage } from '@/lib/server/whatsapp-meta-media';
+import {
+  buildSellerContextFromTenant,
+  CAMPAIGN_ANNOUNCEMENT_TEMPLATE_META,
+  formatSellerPhoneDisplay,
+} from '@/lib/server/whatsapp-seller-context';
 
 export interface CampaignPublishPreviewCampaignInput {
   id?: string | null;
@@ -44,6 +49,12 @@ export interface CampaignPublishPreviewResult {
     tenant_phone_configured: boolean;
     broadcast_sending_paused: boolean;
   };
+  template: {
+    seller_name: string;
+    seller_phone_display: string;
+    footer_text: string;
+    buttons: Array<{ label: string; type: 'url' | 'quick_reply' }>;
+  };
 }
 
 function buildScopeValue(input: {
@@ -85,11 +96,21 @@ export async function buildCampaignPublishPreview(
     memberCount: input.memberCount,
   });
 
-  const headerImage = await resolveCampaignHeaderImage(db, {
-    tenantId: input.tenantId,
-    campaignId: input.campaign.id,
-    heroImageUrl: input.campaign.hero_image_url,
-  });
+  const [{ data: tenant }, headerImage] = await Promise.all([
+    db
+      .schema('app')
+      .from('tenants')
+      .select('business_name, settings')
+      .eq('id', input.tenantId)
+      .maybeSingle(),
+    resolveCampaignHeaderImage(db, {
+      tenantId: input.tenantId,
+      campaignId: input.campaign.id,
+      heroImageUrl: input.campaign.hero_image_url,
+    }),
+  ]);
+
+  const sellerContext = buildSellerContextFromTenant(tenant);
 
   const preflight = input.whatsappFeatureEnabled
     ? await runCampaignPublishPreflight(db, {
@@ -129,6 +150,12 @@ export async function buildCampaignPublishPreview(
       feature_enabled: input.whatsappFeatureEnabled,
       notify_available: input.whatsappFeatureEnabled && preflight.template_approved,
       ...preflight,
+    },
+    template: {
+      seller_name: sellerContext.sellerName,
+      seller_phone_display: formatSellerPhoneDisplay(sellerContext.sellerPhone),
+      footer_text: CAMPAIGN_ANNOUNCEMENT_TEMPLATE_META.footer_text,
+      buttons: CAMPAIGN_ANNOUNCEMENT_TEMPLATE_META.buttons,
     },
   };
 }

@@ -19,6 +19,7 @@ import {
   type CampaignViewRow,
 } from '@/lib/server/campaign-performance';
 import { getInAppCreateFlags } from '@/lib/server/seller-features';
+import { resolveCampaignLandingAudience } from '@/lib/server/campaign-broadcast';
 
 type CatalogStatus = 'draft' | 'published' | 'archived';
 type DisplayStatus = 'Live' | 'Draft' | 'Ended';
@@ -244,7 +245,7 @@ export async function GET(req: NextRequest) {
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'), now);
     const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
 
-    const [catalogsRes, ordersRes, prevOrdersRes, estimatesRes, prevEstimatesRes, viewsRes, cohortsRes] = await Promise.all([
+    const [catalogsRes, ordersRes, prevOrdersRes, estimatesRes, prevEstimatesRes, viewsRes, cohortsRes, activeBuyersRes] = await Promise.all([
       db
         .schema('app')
         .from('campaigns')
@@ -297,11 +298,37 @@ export async function GET(req: NextRequest) {
         .is('deleted_at', null)
         .gte('viewed_at', period.current_start)
         .lt('viewed_at', period.current_end_exclusive),
-      db.schema('app').from('cohorts').select('id, name').eq('tenant_id', tenantId).is('deleted_at', null),
+      db.schema('app').from('cohorts').select('id, name, cached_member_count').eq('tenant_id', tenantId).is('deleted_at', null),
+      db
+        .schema('app')
+        .from('buyers')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .is('deleted_at', null),
     ]);
 
-    if (catalogsRes.error || ordersRes.error || prevOrdersRes.error || estimatesRes.error || prevEstimatesRes.error || viewsRes.error || cohortsRes.error) {
-      console.error('[GET /api/tenant/catalogs] query error:', catalogsRes.error || ordersRes.error || prevOrdersRes.error || estimatesRes.error || prevEstimatesRes.error || viewsRes.error || cohortsRes.error);
+    if (
+      catalogsRes.error
+      || ordersRes.error
+      || prevOrdersRes.error
+      || estimatesRes.error
+      || prevEstimatesRes.error
+      || viewsRes.error
+      || cohortsRes.error
+      || activeBuyersRes.error
+    ) {
+      console.error(
+        '[GET /api/tenant/catalogs] query error:',
+        catalogsRes.error
+          || ordersRes.error
+          || prevOrdersRes.error
+          || estimatesRes.error
+          || prevEstimatesRes.error
+          || viewsRes.error
+          || cohortsRes.error
+          || activeBuyersRes.error,
+      );
       return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
     }
 
@@ -330,7 +357,8 @@ export async function GET(req: NextRequest) {
     const cohorts = (cohortsRes.data ?? []) as CohortRow[];
     const viewsByCampaign = aggregateCampaignViewsByCampaign(campaignViews);
 
-    const cohortById = new Map(cohorts.map((cohort) => [cohort.id, cohort.name]));
+    const cohortById = new Map(cohorts.map((cohort) => [cohort.id, cohort]));
+    const activeBuyersCount = activeBuyersRes.count ?? 0;
     const tenantProductIds = Array.from(new Set(items.map((item) => item.tenant_product_id)));
 
     let tenantProducts: TenantProductRow[] = [];
@@ -487,7 +515,19 @@ export async function GET(req: NextRequest) {
       }
 
       const cohortId = catalog.scope_type === 'cohort' ? (catalog.scope_value?.cohort_id as string | undefined) : undefined;
-      const cohortName = cohortId ? (cohortById.get(cohortId) ?? 'Unknown cohort') : catalog.scope_type === 'all' ? 'All buyers' : 'Targeted';
+      const cohort = cohortId ? cohortById.get(cohortId) : null;
+      const audience = resolveCampaignLandingAudience({
+        scopeType: catalog.scope_type,
+        scopeValue: catalog.scope_value,
+        cohort: cohort ? { name: cohort.name, cached_member_count: cohort.cached_member_count } : null,
+        allBuyersCount: activeBuyersCount,
+      });
+      const orderCount = conversionMetrics.orderCount;
+      const estimateCount = conversionMetrics.estimateCount;
+      const viewPct =
+        audience.buyerCount != null && audience.buyerCount > 0
+          ? Number(((views / audience.buyerCount) * 100).toFixed(1))
+          : 0;
       const daysLeft =
         catalog.valid_to && displayStatus === 'Live'
           ? Math.max(0, Math.ceil((new Date(catalog.valid_to).getTime() - nowTs) / (1000 * 60 * 60 * 24)))
@@ -503,13 +543,17 @@ export async function GET(req: NextRequest) {
           label: displayStatus,
           tone,
         },
-        cohort_name: cohortName,
+        cohort_name: audience.label,
+        audience_count: audience.buyerCount,
         products_count: catalogItems.length,
         brands_count: brandSet.size,
         gmv,
-        orders: conversionCount,
+        order_count: orderCount,
+        estimate_count: estimateCount,
+        orders: orderCount,
         conversions: conversionCount,
         views,
+        view_pct: viewPct,
         conversion_pct: conversionPct,
         valid_from: catalog.valid_from,
         valid_to: catalog.valid_to,
@@ -592,6 +636,10 @@ export async function GET(req: NextRequest) {
 
     return timedJson({
       period,
+      channels: {
+        orders_enabled: createFlags.create_sales_orders,
+        estimates_enabled: createFlags.create_enquiries,
+      },
       kpis: {
         live_catalogs: liveCatalogs.length,
         draft_catalogs: draftCatalogs.length,
@@ -714,6 +762,7 @@ export async function POST(request: NextRequest) {
       valid_from: payload.valid_from.toISOString(),
       valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
       message: isPublishing ? buyerNote : (payload.message?.trim() || null),
+      hero_image_url: payload.hero_image_url ?? null,
       status,
       share_token: shareToken,
       created_by: claims.sub,

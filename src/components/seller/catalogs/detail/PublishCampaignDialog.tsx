@@ -1,14 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Info, MessageCircle, Send } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AlertCircle, Info, Send } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { BrowseUploadField } from '@/components/ui/browse-upload-field';
 import { Button } from '@/components/ui/button';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { NotificationToggleRow } from '@/components/seller/settings/NotificationToggleRow';
 import { WhatsAppTemplatePreview } from '@/components/seller/catalogs/detail/WhatsAppTemplatePreview';
 import type { CatalogPublishPreviewResponse } from '@/hooks/useCatalogs';
 
@@ -45,6 +48,7 @@ export interface PublishCampaignDialogProps {
     notifyWhatsapp: boolean;
     buyerNote: string;
     notifyScheduledFor: string | null;
+    heroImageUrl: string | null;
   }) => Promise<void>;
 }
 
@@ -60,16 +64,24 @@ export function PublishCampaignDialog({
   onPublish,
 }: PublishCampaignDialogProps) {
   const isFirstPublish = mode === 'first_publish';
+  const openInitRef = useRef(false);
   const [notifyWhatsapp, setNotifyWhatsapp] = useState(true);
   const [buyerNote, setBuyerNote] = useState('');
+  const [heroImageUrl, setHeroImageUrl] = useState<string | null>(null);
   const [sendNow, setSendNow] = useState(true);
   const [scheduledDate, setScheduledDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('09:00');
 
   useEffect(() => {
-    if (!open || !preview) return;
+    if (!open) {
+      openInitRef.current = false;
+      return;
+    }
+    if (!preview || openInitRef.current) return;
+    openInitRef.current = true;
     setBuyerNote(preview.campaign.buyer_note ?? '');
     setNotifyWhatsapp(isFirstPublish && preview.whatsapp.feature_enabled);
+    setHeroImageUrl(preview.campaign.hero_image_url);
     setSendNow(true);
     setScheduledDate('');
     setScheduledTime('09:00');
@@ -87,7 +99,8 @@ export function PublishCampaignDialog({
     && (!isFirstPublish || !notifyWhatsapp || whatsappBlockers.length === 0)
     && (sendNow || Boolean(scheduledFor));
 
-  const sellerPhone = 'Your business number';
+  const effectiveHeaderImageUrl = heroImageUrl ?? preview?.campaign.header_image_url ?? null;
+  const heroUrls = heroImageUrl ? [heroImageUrl] : [];
 
   function handleNotifyChange(checked: boolean) {
     setNotifyWhatsapp(checked);
@@ -101,8 +114,8 @@ export function PublishCampaignDialog({
           <DialogTitle>{isFirstPublish ? 'Publish campaign' : 'Publish updates'}</DialogTitle>
           <DialogDescription>
             {isFirstPublish
-              ? 'Review the campaign summary and optionally notify opted-in buyers on WhatsApp.'
-              : 'Push staged edits live for mapped buyers. WhatsApp rebroadcast is not sent on updates.'}
+              ? 'Review the campaign summary and notify eligible buyers on WhatsApp.'
+              : 'Push campaign updates for eligible buyers. Publish updates does not send WhatsApp updates.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -125,20 +138,41 @@ export function PublishCampaignDialog({
 
             {preview ? (
               <>
-                <div className="rounded-xl border border-cream-200 bg-cream-50 p-4 text-sm text-cream-800">
-                  <p className="font-medium text-cream-900">{preview.campaign.name}</p>
-                  <ul className="mt-2 space-y-1">
-                    <li>Validity: {formatValidity(preview.campaign.valid_from, preview.campaign.valid_to)}</li>
-                    <li>Audience: {preview.campaign.audience_label}</li>
-                    <li>Products: {preview.campaign.products_count}</li>
-                    <li>Pricing: {preview.campaign.pricing_scheme}</li>
-                  </ul>
+                <div className="rounded-xl border border-cream-200 bg-cream-50 p-4">
+                  <h3 className="text-lg font-semibold text-cream-950">{preview.campaign.name}</h3>
+                  <dl className="mt-3 grid grid-cols-[minmax(7rem,auto)_1fr] gap-x-4 gap-y-2">
+                    <dt className="text-sm text-cream-600">Validity</dt>
+                    <dd className="text-sm font-medium text-cream-900">
+                      {formatValidity(preview.campaign.valid_from, preview.campaign.valid_to)}
+                    </dd>
+                    <dt className="text-sm text-cream-600">Audience</dt>
+                    <dd className="text-sm font-medium text-cream-900">{preview.campaign.audience_label}</dd>
+                    <dt className="text-sm text-cream-600">Products</dt>
+                    <dd className="text-sm font-medium text-cream-900">{preview.campaign.products_count}</dd>
+                    <dt className="text-sm text-cream-600">Pricing</dt>
+                    <dd className="text-sm font-medium text-cream-900">{preview.campaign.pricing_scheme}</dd>
+                  </dl>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-cream-900" htmlFor="buyer-note">
-                    Note to buyers
-                  </label>
+                {isFirstPublish ? (
+                  <div className="space-y-1.5">
+                    <Label>Campaign image</Label>
+                    <p className="text-sm text-cream-600">800×418 recommended. JPG, PNG, WebP · Max 5MB.</p>
+                    <BrowseUploadField
+                      value={heroUrls}
+                      onChange={(urls) => setHeroImageUrl(urls[0] ?? null)}
+                      maxFiles={1}
+                      previewInline
+                      label="Browse image"
+                      emptyLabel="Drop an image here or browse"
+                      helperText="Uses campaign image, then logo, then platform default."
+                      className="max-w-md"
+                    />
+                  </div>
+                ) : null}
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="buyer-note">Note to buyers</Label>
                   <Textarea
                     id="buyer-note"
                     value={buyerNote}
@@ -150,14 +184,13 @@ export function PublishCampaignDialog({
                 </div>
 
                 {isFirstPublish && preview.whatsapp.feature_enabled ? (
-                  <div className="space-y-4 rounded-xl border border-cream-200 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-medium text-cream-900">Notify buyers on WhatsApp</p>
-                        <p className="text-xs text-cream-600">Sends the campaign_announcement template to opted-in buyers.</p>
-                      </div>
-                      <Switch checked={notifyWhatsapp} onCheckedChange={handleNotifyChange} />
-                    </div>
+                  <div className="space-y-4">
+                    <NotificationToggleRow
+                      label="Notify buyers on WhatsApp"
+                      description="Sends the campaign_announcement template to opted-in buyers."
+                      checked={notifyWhatsapp}
+                      onCheckedChange={handleNotifyChange}
+                    />
 
                     {notifyWhatsapp ? (
                       <>
@@ -184,39 +217,40 @@ export function PublishCampaignDialog({
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-medium text-cream-900">Send now</p>
-                            <p className="text-xs text-cream-600">Turn off to schedule the WhatsApp blast.</p>
-                          </div>
-                          <Switch checked={sendNow} onCheckedChange={setSendNow} />
+                        <div className="space-y-1.5">
+                          <NotificationToggleRow
+                            label="Send now"
+                            description="Turn off to schedule the WhatsApp blast."
+                            checked={sendNow}
+                            onCheckedChange={setSendNow}
+                          />
                         </div>
 
                         {!sendNow ? (
                           <div className="grid gap-3 sm:grid-cols-2">
-                            <div className="space-y-2">
-                              <label className="text-sm font-medium text-cream-900">Date</label>
+                            <div className="space-y-1.5">
+                              <Label>Date</Label>
                               <DatePicker value={scheduledDate} onChange={setScheduledDate} />
                             </div>
-                            <div className="space-y-2">
-                              <label className="text-sm font-medium text-cream-900" htmlFor="schedule-time">Time</label>
+                            <div className="space-y-1.5">
+                              <Label htmlFor="schedule-time">Time</Label>
                               <Input id="schedule-time" type="time" value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} />
                             </div>
                           </div>
                         ) : null}
 
                         {whatsappBlockers.length > 0 ? (
-                          <Alert variant="danger">
-                            <AlertCircle className="h-4 w-4" />
-                            <AlertTitle>WhatsApp notify blocked</AlertTitle>
-                            <AlertDescription>
-                              <ul className="list-disc pl-4">
-                                {whatsappBlockers.map((blocker) => (
-                                  <li key={blocker}>{blocker}</li>
-                                ))}
-                              </ul>
-                            </AlertDescription>
-                          </Alert>
+                          <div className="space-y-2">
+                            {whatsappBlockers.map((blocker) => (
+                              <div
+                                key={blocker}
+                                className="flex items-start gap-2 rounded-[10px] border border-danger-200 bg-danger-50 px-3 py-2.5 text-sm text-danger-800"
+                              >
+                                <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                                <p>{blocker}</p>
+                              </div>
+                            ))}
+                          </div>
                         ) : null}
                       </>
                     ) : null}
@@ -232,16 +266,6 @@ export function PublishCampaignDialog({
                     </AlertDescription>
                   </Alert>
                 ) : null}
-
-                {isFirstPublish ? (
-                  <Alert>
-                    <MessageCircle className="h-4 w-4" />
-                    <AlertTitle>Campaign image</AlertTitle>
-                    <AlertDescription>
-                      Header image uses campaign hero, then tenant logo, then platform default. Recommended 800×418 JPEG/PNG, max 5MB.
-                    </AlertDescription>
-                  </Alert>
-                ) : null}
               </>
             ) : null}
           </div>
@@ -250,11 +274,13 @@ export function PublishCampaignDialog({
             <div className="space-y-3">
               <p className="text-sm font-medium text-cream-900">WhatsApp preview</p>
               <WhatsAppTemplatePreview
-                sellerName="Your business"
+                sellerName={preview.template.seller_name}
                 campaignTitle={preview.campaign.name}
                 buyerNote={buyerNote}
-                sellerPhone={sellerPhone}
-                headerImageUrl={preview.campaign.header_image_url}
+                sellerPhone={preview.template.seller_phone_display}
+                headerImageUrl={effectiveHeaderImageUrl}
+                footerText={preview.template.footer_text}
+                buttons={preview.template.buttons}
               />
             </div>
           ) : null}
@@ -272,6 +298,7 @@ export function PublishCampaignDialog({
               notifyWhatsapp: isFirstPublish && notifyWhatsapp && Boolean(preview?.whatsapp.feature_enabled),
               buyerNote,
               notifyScheduledFor: scheduledFor,
+              heroImageUrl,
             })}
           >
             <Send size={14} />
