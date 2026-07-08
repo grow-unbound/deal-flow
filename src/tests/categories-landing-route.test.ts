@@ -12,20 +12,18 @@ vi.mock('@/lib/flags', () => ({
   getFlag: (...args: unknown[]) => getFlagMock(...args),
 }));
 
-vi.mock('@/lib/server/seller-location-access', () => ({
-  getSellerLocationScope: ({ role, location_ids }: { role?: string | null; location_ids?: string[] | null }) => {
-    if (role === 'seller_admin') return { mode: 'all', locationIds: null };
-    if (location_ids?.length) return { mode: 'subset', locationIds: location_ids };
-    return { mode: 'none', locationIds: [] };
-  },
-}));
-
 type QueryResult = { data?: unknown; error?: unknown };
 const dbResponses: Record<string, QueryResult> = {};
+const inventoryEqCalls: Array<[string, unknown]> = [];
 
 function createQuery(key: string) {
   const query = {
-    eq: vi.fn(),
+    eq: vi.fn((column: string, value: unknown) => {
+      if (key === 'app.tenant_inventory') {
+        inventoryEqCalls.push([column, value]);
+      }
+      return query;
+    }),
     is: vi.fn(),
     in: vi.fn(),
     order: vi.fn(),
@@ -38,7 +36,6 @@ function createQuery(key: string) {
     },
   };
 
-  query.eq.mockReturnValue(query);
   query.is.mockReturnValue(query);
   query.in.mockReturnValue(query);
   query.order.mockReturnValue(query);
@@ -54,10 +51,10 @@ const schemaMock = vi.fn((schemaName: string) => ({
   })),
 }));
 
-vi.mock('@/lib/supabase', () => ({
-  supabaseAdmin: {
-    schema: (...args: unknown[]) => schemaMock(...args),
-  },
+const requestClientMock = { schema: (...args: unknown[]) => schemaMock(...args) };
+
+vi.mock('@/lib/server/request-supabase', () => ({
+  getRequestSupabaseClient: () => requestClientMock,
 }));
 
 import { GET } from '../../app/api/tenant/categories/landing/route';
@@ -65,6 +62,7 @@ import { GET } from '../../app/api/tenant/categories/landing/route';
 describe('GET /api/tenant/categories/landing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    inventoryEqCalls.length = 0;
     for (const key of Object.keys(dbResponses)) delete dbResponses[key];
 
     getVerifiedClaimsMock.mockResolvedValue({
@@ -92,12 +90,23 @@ describe('GET /api/tenant/categories/landing', () => {
     };
     dbResponses['app.tenant_inventory'] = {
       data: [
-        { tenant_product_id: 'product-1', qty_available: 8, reorder_point: 2, location_id: 'loc-1' },
+        { tenant_product_id: 'product-1', qty_available: 8, reorder_point: 2 },
       ],
     };
     dbResponses['app.kpi_product_daily'] = {
       data: [],
     };
+  });
+
+  it('returns 403 for seller_assistant', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      tenant_id: 'tenant-1',
+      role: 'seller_assistant',
+      location_ids: ['loc-1'],
+    });
+
+    const response = await GET(new NextRequest('http://localhost/api/tenant/categories/landing?period=month'));
+    expect(response.status).toBe(403);
   });
 
   it('returns null avg_days_cover when no recent invoice velocity exists', async () => {
@@ -107,5 +116,12 @@ describe('GET /api/tenant/categories/landing', () => {
     const body = await response.json();
     expect(body.rows).toHaveLength(1);
     expect(body.rows[0].avg_days_cover).toBeNull();
+  });
+
+  it('does not filter tenant_inventory by tenant_id', async () => {
+    await GET(new NextRequest('http://localhost/api/tenant/categories/landing?period=month'));
+
+    const tenantIdFilters = inventoryEqCalls.filter(([column]) => column === 'tenant_id');
+    expect(tenantIdFilters).toHaveLength(0);
   });
 });

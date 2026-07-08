@@ -229,6 +229,7 @@ describe('customers landing api', () => {
       },
     ];
     dbResponses['app.cohort_members'] = [{ data: [] }];
+    dbResponses['app.cohorts'] = [{ data: [] }];
     dbResponses['app.price_list_assignments'] = [{ data: [] }];
   });
 
@@ -331,5 +332,32 @@ describe('customers landing api', () => {
     expect(body.buyers.map((buyer: { id: string }) => buyer.id)).toEqual(['buyer-inactive']);
     expect(body.total).toBe(1);
     expect(body.nextCursor).toBeNull();
+  });
+
+  it('resolves cohort labels via tenant cohort membership instead of buyer_id IN filters', async () => {
+    dbResponses['app.cohorts'] = [
+      {
+        data: [
+          { id: 'cohort-premium', name: 'Premium Hotels', deleted_at: null },
+        ],
+      },
+    ];
+    dbResponses['app.cohort_members'] = [
+      {
+        data: [
+          { buyer_id: 'buyer-active', cohort_id: 'cohort-premium' },
+        ],
+      },
+    ];
+
+    const response = await GET(
+      new NextRequest('http://localhost:3000/api/tenant/customers?period=month&limit=48'),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const activeBuyer = body.buyers.find((buyer: { id: string }) => buyer.id === 'buyer-active');
+    expect(activeBuyer?.cohort).toBe('Premium Hotels');
+    expect(body.kpis.cohort_count).toBe(1);
   });
 });

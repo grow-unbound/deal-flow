@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedClaims } from '@/lib/auth';
 import { SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
-import { supabaseAdmin } from '@/lib/supabase';
+import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
 import { CreateCategoryInputSchema } from '@/types/tenant-categories';
 
 export const dynamic = 'force-dynamic';
@@ -26,11 +26,7 @@ export async function GET(req: NextRequest) {
       return jsonError(403, 'Forbidden', 'FORBIDDEN');
     }
 
-    if (!supabaseAdmin) {
-      return jsonError(500, 'Server configuration error', 'SERVER_ERROR');
-    }
-
-    const db = supabaseAdmin as any;
+    const db = getRequestSupabaseClient() as any;
     const includeDeleted =
       req.nextUrl.searchParams.get('include_deleted') === '1' && claims.role === 'seller_admin';
 
@@ -82,10 +78,6 @@ export async function POST(req: NextRequest) {
       return jsonError(401, 'Login required', 'UNAUTHORIZED');
     }
 
-    if (!supabaseAdmin) {
-      return jsonError(500, 'Server configuration error', 'SERVER_ERROR');
-    }
-
     let body: unknown;
     try {
       body = await req.json();
@@ -105,7 +97,7 @@ export async function POST(req: NextRequest) {
     const { name, slug, description, display_order, external_ref, r2_image_original_key, r2_image_medium_key, r2_image_thumb_key } =
       parsed.data;
 
-    const db = supabaseAdmin as any;
+    const db = getRequestSupabaseClient() as any;
 
     // Check slug uniqueness within tenant
     const { data: existing } = await db

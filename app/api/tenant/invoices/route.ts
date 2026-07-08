@@ -295,9 +295,9 @@ export async function GET(request: NextRequest) {
             'id, location_id, invoice_number, buyer_id, order_id, estimate_id, is_buyer_app_invoice, status, total_amount, outstanding_balance, invoice_date, due_date, paid_at, place_of_supply, created_by, created_at',
           )
           .eq('tenant_id', tenantId)
-          .is('deleted_at', null),
+          .is('deleted_at', null) as any,
         claims,
-      ) as any;
+      );
     };
 
     let invoiceListQuery = buildBaseInvoiceQuery();
@@ -326,9 +326,9 @@ export async function GET(request: NextRequest) {
         .from('invoices')
         .select('id', { count: 'exact', head: true })
         .eq('tenant_id', tenantId)
-        .is('deleted_at', null),
+        .is('deleted_at', null) as any,
       claims,
-    ) as any;
+    );
     invoiceTotalQuery = applyInvoiceDocumentPeriod(invoiceTotalQuery, period.current_start, period.current_end_exclusive);
     if (searchParam) {
       invoiceTotalQuery = invoiceTotalQuery.ilike('invoice_number', `%${searchParam}%`);

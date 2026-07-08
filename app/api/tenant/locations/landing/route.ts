@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { createTimer } from '@/lib/server-timing';
 import { SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
-import { getSellerLocationScope } from '@/lib/server/seller-location-access';
+import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
+import { assertSellerAdmin } from '@/lib/server/seller-auth';
 import { SELLER_LANDING_PERIOD_OPTIONS } from '@/lib/seller-period';
 import { readArrayParam } from '@/lib/landing-filter-params';
 import type {
@@ -75,8 +75,8 @@ function getAddressText(address: unknown): string {
 }
 
 async function getLocationsLandingPayload(
+  db: any,
   tenantId: string,
-  claims: { role?: string | null; location_ids?: string[] | null },
   periodInput?: string | null,
   filters?: {
     search: string;
@@ -85,96 +85,33 @@ async function getLocationsLandingPayload(
     dues: string[];
   },
 ): Promise<LocationsLandingResponse> {
-  const db = supabaseAdmin as any;
   const period = getSellerLandingPeriodMeta(periodInput);
-  const locationScope = getSellerLocationScope({
-    role: claims.role ?? null,
-    location_ids: claims.location_ids ?? null,
-  });
 
-  if (locationScope.mode === 'none') {
-    return {
-      kpis: {
-        active_locations: 0,
-        total_locations: 0,
-        outstanding_dues_total: 0,
-        dues_location_count: 0,
-        low_stock_locations: 0,
-        top_location_name: null,
-        top_location_gmv_share_pct: 0,
-      },
-      callouts: { stock_critical: [], top_locations: [], collections_overdue: [] },
-      locations: [],
-      period: SELLER_LANDING_PERIOD_OPTIONS.find((o) => o.value === period.selected)?.label ?? period.selected,
-      refreshed_at: new Date().toISOString(),
-    };
-  }
-
-  const summaryLocationsQuery = (() => {
-    let query = db
+  const [summaryLocationsRes, summarySnapshotRes, summaryCurrentKpiRes, rowsRes] = await Promise.all([
+    db
       .schema('app')
       .from('locations')
       .select('id, name, address, deleted_at')
       .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: true });
-
-    if (locationScope.mode === 'subset') {
-      query = query.in('id', locationScope.locationIds);
-    }
-
-    return query;
-  })();
-
-  const summarySnapshotQuery = (() => {
-    let query = db
+      .order('created_at', { ascending: true }),
+    db
       .schema('app')
       .from('locations_snapshot')
       .select('location_id, sku_count, oos_sku_count, low_stock_sku_count, outstanding_dues, oldest_unpaid_days, invoice_count')
-      .eq('tenant_id', tenantId);
-
-    if (locationScope.mode === 'subset') {
-      query = query.in('location_id', locationScope.locationIds);
-    }
-
-    return query;
-  })();
-
-  const summaryCurrentKpiQuery = (() => {
-    let query = db
+      .eq('tenant_id', tenantId),
+    db
       .schema('app')
       .from('kpi_location_daily')
       .select('location_id, gmv, orders_count')
       .eq('tenant_id', tenantId)
       .gte('day', period.current_start.split('T')[0])
-      .lt('day', period.current_end_exclusive.split('T')[0]);
-
-    if (locationScope.mode === 'subset') {
-      query = query.in('location_id', locationScope.locationIds);
-    }
-
-    return query;
-  })();
-
-  const rowsQuery = (() => {
-    let query = db
+      .lt('day', period.current_end_exclusive.split('T')[0]),
+    db
       .schema('app')
       .from('locations')
       .select('id, name, address, deleted_at')
       .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: true });
-
-    if (locationScope.mode === 'subset') {
-      query = query.in('id', locationScope.locationIds);
-    }
-
-    return query;
-  })();
-
-  const [summaryLocationsRes, summarySnapshotRes, summaryCurrentKpiRes, rowsRes] = await Promise.all([
-    summaryLocationsQuery,
-    summarySnapshotQuery,
-    summaryCurrentKpiQuery,
-    rowsQuery,
+      .order('created_at', { ascending: true }),
   ]);
 
   if (summaryLocationsRes.error) throw summaryLocationsRes.error;
@@ -570,18 +507,20 @@ export async function GET(request: NextRequest) {
   };
 
   const claims = await getVerifiedClaims(request);
-
-  if (!claims.tenant_id) return timedJson({ error: 'Unauthorized' }, { status: 401 });
-  if (!claims.role?.startsWith('seller_')) return timedJson({ error: 'Forbidden' }, { status: 403 });
+  const adminCheck = assertSellerAdmin(claims);
+  if (!adminCheck.ok) {
+    return timedJson({ error: adminCheck.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: adminCheck.status });
+  }
 
   try {
     const search = request.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '';
     const statusFilter = readArrayParam(request.nextUrl.searchParams, 'status');
     const stockFilter = readArrayParam(request.nextUrl.searchParams, 'stock');
     const duesFilter = readArrayParam(request.nextUrl.searchParams, 'dues');
+    const db = getRequestSupabaseClient();
     const payload = await getLocationsLandingPayload(
-      claims.tenant_id,
-      claims,
+      db as any,
+      claims.tenant_id!,
       request.nextUrl.searchParams.get('period'),
       {
         search,
@@ -591,8 +530,9 @@ export async function GET(request: NextRequest) {
       },
     );
     return timedJson(payload);
-  } catch (error: any) {
-    console.error('[GET /api/tenant/locations/landing]', error?.code, error?.message);
+  } catch (error: unknown) {
+    const err = error as { code?: string; message?: string };
+    console.error('[GET /api/tenant/locations/landing]', err?.code, err?.message);
     return timedJson({ error: 'Failed to fetch locations landing' }, { status: 500 });
   }
 }

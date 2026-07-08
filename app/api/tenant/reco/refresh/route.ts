@@ -28,7 +28,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (claims.role !== 'seller_admin') return jsonError(403, 'Forbidden');
   if (!supabaseAdmin) return jsonError(500, 'Server configuration error');
 
-  const db = supabaseAdmin as {
+  const db = supabaseAdmin as unknown as {
     schema: (name: string) => {
       rpc: (fn: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
     };

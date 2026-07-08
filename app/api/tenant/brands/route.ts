@@ -45,6 +45,22 @@ type TenantBrandLandingRow = {
   alerts: string[];
 };
 
+type TenantBrandDbRow = Omit<
+  TenantBrandLandingRow,
+  | 'master_brand'
+  | 'gmv_mtd'
+  | 'gmv_prev_mtd'
+  | 'growth_pct'
+  | 'portfolio_share_pct'
+  | 'sku_count'
+  | 'active_buyers_mtd'
+  | 'total_buyers'
+  | 'catalog_days_ago'
+  | 'categories'
+  | 'catalog_name'
+  | 'alerts'
+>;
+
 type BrandOrderRow = {
   id: string;
   buyer_id: string | null;
@@ -278,7 +294,7 @@ export async function GET(req: NextRequest) {
     }
 
     const snapshot = snapshotRes.data ?? null;
-    const tenantBrands = (brandsRes.data ?? []) as Array<Record<string, any>>;
+    const tenantBrands = (brandsRes.data ?? []) as TenantBrandDbRow[];
     const allTenantProducts = (tenantProductsRes.data ?? []) as Array<{ id: string; tenant_brand_id: string | null; master_product_id: string | null }>;
     const inventoryRows = (inventoryRes.data ?? []) as BrandInventoryRow[];
     const productToBrand = new Map<string, string>();
@@ -547,7 +563,7 @@ export async function GET(req: NextRequest) {
         .map((row) => row.buyer_id as string),
     );
     const now = new Date();
-    const brands: TenantBrandLandingRow[] = scopedBrands.map((row: Record<string, any>) => {
+    const brands: TenantBrandLandingRow[] = scopedBrands.map((row) => {
       const current = currentKpiByBrand.get(String(row.id));
       const gmvMtd = current?.gmv ?? 0;
       const gmvPrevMtd = prevGmvByBrand.get(String(row.id)) ?? 0;

@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { FEATURE_FLAGS } from '@/constants';
 import { getFlag } from '@/lib/flags';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
-import { GET as getEstimatesLanding } from '@/app/api/tenant/estimates/route';
+import { GET as getEstimatesLanding } from '../route';
 
 export const dynamic = 'force-dynamic';
 

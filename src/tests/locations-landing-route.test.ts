@@ -7,14 +7,6 @@ vi.mock('@/lib/auth', () => ({
   getVerifiedClaims: (...args: unknown[]) => getVerifiedClaimsMock(...args),
 }));
 
-vi.mock('@/lib/server/seller-location-access', () => ({
-  getSellerLocationScope: ({ role, location_ids }: { role?: string | null; location_ids?: string[] | null }) => {
-    if (role === 'seller_admin') return { mode: 'all', locationIds: null };
-    if (location_ids?.length) return { mode: 'subset', locationIds: location_ids };
-    return { mode: 'none', locationIds: [] };
-  },
-}));
-
 type QueryResult = { data?: unknown; error?: unknown };
 const dbResponses: Record<string, QueryResult> = {};
 
@@ -51,10 +43,10 @@ const schemaMock = vi.fn((schemaName: string) => ({
   })),
 }));
 
-vi.mock('@/lib/supabase', () => ({
-  supabaseAdmin: {
-    schema: (...args: unknown[]) => schemaMock(...args),
-  },
+const requestClientMock = { schema: (...args: unknown[]) => schemaMock(...args) };
+
+vi.mock('@/lib/server/request-supabase', () => ({
+  getRequestSupabaseClient: () => requestClientMock,
 }));
 
 import { GET } from '../../app/api/tenant/locations/landing/route';
@@ -128,6 +120,17 @@ describe('GET /api/tenant/locations/landing', () => {
 
     dbResponses['app.estimates'] = { data: [] };
     dbResponses['app.invoices'] = { data: [] };
+  });
+
+  it('returns 403 for seller_assistant', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      tenant_id: 'tenant-1',
+      role: 'seller_assistant',
+      location_ids: ['loc-1'],
+    });
+
+    const response = await GET(new NextRequest('http://localhost/api/tenant/locations/landing'));
+    expect(response.status).toBe(403);
   });
 
   it('keeps KPI and callout totals tenant-wide when search filters the visible rows', async () => {

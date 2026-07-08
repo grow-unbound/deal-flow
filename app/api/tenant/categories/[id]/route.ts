@@ -3,7 +3,8 @@ import { z } from 'zod';
 
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
-import { supabaseAdmin } from '@/lib/supabase';
+import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
+import { assertSellerAdmin } from '@/lib/server/seller-auth';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { UpdateCategoryInputSchema } from '@/types/tenant-categories';
@@ -38,14 +39,20 @@ export async function GET(
   if (!idParsed.success) return jsonError(400, 'Invalid category id', 'VALIDATION');
 
   const claims = await getVerifiedClaims(request);
-  if (!claims.tenant_id) return jsonError(401, 'Unauthorized', 'UNAUTHORIZED');
-  if (!claims.role?.startsWith('seller_')) return jsonError(403, 'Forbidden', 'FORBIDDEN');
+  const adminCheck = assertSellerAdmin(claims);
+  if (!adminCheck.ok) {
+    return jsonError(
+      adminCheck.status,
+      adminCheck.status === 401 ? 'Login required' : 'Forbidden',
+      adminCheck.status === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN',
+    );
+  }
 
-  const flagEnabled = await getFlag('df_brand_product_master', claims.tenant_id);
+  const flagEnabled = await getFlag('df_brand_product_master', claims.tenant_id!);
   if (!flagEnabled) return jsonError(403, 'Feature not enabled', 'FORBIDDEN');
 
-  const db = supabaseAdmin as any;
-  const tenantId = claims.tenant_id;
+  const db = getRequestSupabaseClient() as any;
+  const tenantId = claims.tenant_id!;
 
   // Cross-tenant guard
   const { data: category, error: catErr } = await db
@@ -316,9 +323,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (claims.role !== 'seller_admin') {
       return jsonError(403, 'Only seller_admin can update categories', 'FORBIDDEN');
     }
-    if (!supabaseAdmin) {
-      return jsonError(500, 'Server configuration error', 'SERVER_ERROR');
-    }
 
     let body: unknown;
     try {
@@ -337,7 +341,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     const patch = parsed.data;
-    const db = supabaseAdmin as any;
+    const db = getRequestSupabaseClient() as any;
     const nowIso = new Date().toISOString();
 
     const { data: row, error: loadErr } = await db
@@ -463,11 +467,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (claims.role !== 'seller_admin') {
       return jsonError(403, 'Only seller_admin can deactivate categories', 'FORBIDDEN');
     }
-    if (!supabaseAdmin) {
-      return jsonError(500, 'Server configuration error', 'SERVER_ERROR');
-    }
 
-    const db = supabaseAdmin as any;
+    const db = getRequestSupabaseClient() as any;
     const nowIso = new Date().toISOString();
 
     const { data: row, error: loadErr } = await db

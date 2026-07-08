@@ -6,7 +6,7 @@ import {
   normalizeLocationAddress,
 } from '@/lib/locations/location-deactivate-guards';
 import { normalizeLocationAssociatedUsers, syncLocationAssignees } from '@/lib/location-assignees';
-import { supabaseAdmin } from '@/lib/supabase';
+import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
 import { UpdateLocationInputSchema } from '@/types/tenant-locations';
 
 export const dynamic = 'force-dynamic';
@@ -35,8 +35,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (claims.role !== 'seller_admin') {
       return jsonError(403, 'Only seller_admin can update locations', 'FORBIDDEN');
     }
-    if (!supabaseAdmin) {
-      return jsonError(500, 'Server configuration error', 'SERVER_ERROR');
+    const db = getRequestSupabaseClient() as any;
+
+    const { data: row, error: loadErr } = await db
+      .schema('app')
+      .from('locations')
+      .select('*')
+      .eq('id', id)
+      .eq('tenant_id', claims.tenant_id)
+      .maybeSingle();
+
+    if (loadErr || !row) {
+      return jsonError(404, 'Location not found', 'NOT_FOUND');
     }
 
     let body: unknown;
@@ -56,20 +66,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     const patch = parsed.data;
-    const db = supabaseAdmin as any;
-
-    const { data: row, error: loadErr } = await db
-      .schema('app')
-      .from('locations')
-      .select('*')
-      .eq('id', id)
-      .eq('tenant_id', claims.tenant_id)
-      .maybeSingle();
-
-    if (loadErr || !row) {
-      return jsonError(404, 'Location not found', 'NOT_FOUND');
-    }
-
     const nowIso = new Date().toISOString();
 
     if (patch.reactivate) {
@@ -210,11 +206,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (claims.role !== 'seller_admin') {
       return jsonError(403, 'Only seller_admin can deactivate locations', 'FORBIDDEN');
     }
-    if (!supabaseAdmin) {
-      return jsonError(500, 'Server configuration error', 'SERVER_ERROR');
-    }
-
-    const db = supabaseAdmin as any;
+    const db = getRequestSupabaseClient() as any;
     const nowIso = new Date().toISOString();
 
     const { data: row, error: loadErr } = await db

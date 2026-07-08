@@ -202,7 +202,7 @@ export async function GET(req: NextRequest) {
             'id, location_id, estimate_number, buyer_id, status, total_amount, estimate_date, created_at, sent_at, accepted_at, expires_at, source, is_buyer_app_estimate, campaign_id, place_of_supply, created_by, updated_at',
           )
           .eq('tenant_id', tenantId)
-          .is('deleted_at', null),
+          .is('deleted_at', null) as any,
         claims,
       );
     };
@@ -236,9 +236,9 @@ export async function GET(req: NextRequest) {
         .from('estimates')
         .select('id', { count: 'exact', head: true })
         .eq('tenant_id', tenantId)
-        .is('deleted_at', null),
+        .is('deleted_at', null) as any,
       claims,
-    ) as any;
+    );
     estimateTotalQuery = applyEstimateDocumentPeriod(estimateTotalQuery, period.current_start, period.current_end_exclusive);
     if (searchParam) {
       estimateTotalQuery = estimateTotalQuery.ilike('estimate_number', `%${searchParam}%`);
