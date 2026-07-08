@@ -181,7 +181,16 @@ export async function GET(request: NextRequest) {
         throw dailyResult.error ?? snapshotResult.error ?? enabledBuyersResult.error ?? activityResult.error;
       }
 
-      const dailyRows: Record<string, number>[] = dailyResult.data ?? [];
+      const dailyRows = (dailyResult.data ?? []) as Array<{
+        app_gmv?: number | null;
+        app_orders?: number | null;
+        app_estimates_value?: number | null;
+        app_estimates_count?: number | null;
+        converted_to_order_value?: number | null;
+        converted_to_order_count?: number | null;
+        invoiced_value?: number | null;
+        invoiced_count?: number | null;
+      }>;
       let snapshot = snapshotResult.data ?? null;
 
       if (!snapshot) {
@@ -200,7 +209,7 @@ export async function GET(request: NextRequest) {
       );
 
       const normalizedSnapshot = normalizeSnapshot(snapshot);
-      const kpis = dailyRows.reduce(
+      const kpis = dailyRows.reduce<BuyerAppLandingResponse['kpis']>(
         (acc, row) => ({
           enabled_buyers: normalizedSnapshot?.enabled_buyers ?? 0,
           total_buyers: normalizedSnapshot?.total_buyers ?? 0,

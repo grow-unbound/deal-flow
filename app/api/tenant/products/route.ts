@@ -8,6 +8,7 @@ import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { PAGE_SIZE } from '@/lib/pagination';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
+import { chunkArray, POSTGREST_IN_CHUNK_SIZE } from '@/lib/server/warehouse-data';
 
 const AddProductSchema = z.object({
   master_product_id: z.string().uuid('Invalid product ID').optional().nullable(),
@@ -103,6 +104,52 @@ type ProductRowDetail = {
 };
 
 const NO_ACCESS_ID = '00000000-0000-0000-0000-000000000000';
+
+type PostgrestListResult<T> = { data: T[] | null; error: unknown };
+
+async function fetchRowsInChunks<T>(
+  ids: string[],
+  fetchChunk: (chunk: string[]) => Promise<PostgrestListResult<T>>,
+): Promise<PostgrestListResult<T>> {
+  if (ids.length === 0) {
+    return { data: [], error: null };
+  }
+
+  const rows: T[] = [];
+  for (const chunk of chunkArray(ids, POSTGREST_IN_CHUNK_SIZE)) {
+    const result = await fetchChunk(chunk);
+    if (result.error) {
+      return { data: null, error: result.error };
+    }
+    rows.push(...(result.data ?? []));
+  }
+
+  return { data: rows, error: null };
+}
+
+async function loadTenantInventoryForTenant(
+  db: any,
+  tenantId: string,
+): Promise<PostgrestListResult<InventoryMetricRow>> {
+  const { data, error } = await db
+    .schema('app')
+    .from('tenant_inventory')
+    .select('tenant_product_id, qty_available, tenant_products!inner(tenant_id)')
+    .eq('tenant_products.tenant_id', tenantId)
+    .is('deleted_at', null);
+
+  if (error) {
+    return { data: null, error };
+  }
+
+  return {
+    data: ((data ?? []) as Array<{ tenant_product_id: string; qty_available?: number | null }>).map((row) => ({
+      tenant_product_id: row.tenant_product_id,
+      qty_available: row.qty_available,
+    })),
+    error: null,
+  };
+}
 
 function metricNumber(value: number | string | null | undefined): number {
   return Number(value ?? 0);
@@ -246,14 +293,14 @@ export async function GET(req: NextRequest) {
 
     // Fetch master product details for enrichment
     const masterProductIds = rowUniverseSeedProducts
-      .filter((r: { master_product_id: string | null }) => r.master_product_id)
-      .map((r: { master_product_id: string }) => r.master_product_id);
+      .map((r) => r.master_product_id)
+      .filter((id): id is string => id != null);
     const tenantBrandIds = rowUniverseSeedProducts
-      .filter((r: { tenant_brand_id: string | null }) => r.tenant_brand_id)
-      .map((r: { tenant_brand_id: string }) => r.tenant_brand_id);
+      .map((r) => r.tenant_brand_id)
+      .filter((id): id is string => id != null);
     const tenantCategoryIds = rowUniverseSeedProducts
-      .filter((r: { tenant_category_id: string | null }) => r.tenant_category_id)
-      .map((r: { tenant_category_id: string }) => r.tenant_category_id);
+      .map((r) => r.tenant_category_id ?? null)
+      .filter((id): id is string => id != null);
 
     let masterProducts: Record<
       string,
@@ -274,58 +321,107 @@ export async function GET(req: NextRequest) {
     let activeCategoryRows: Array<{ id: string; name: string | null; is_active?: boolean | null }> = [];
 
     if (masterProductIds.length > 0) {
-      const { data: catalogProducts } = await db
-        .schema('catalog')
-        .from('products')
-        .select('id, name, master_sku, image_urls, category_id, categories(name), brand_id, brands!inner(id, name, slug, logo_url)')
-        .in('id', masterProductIds);
+      type CatalogProductRow = {
+        id: string;
+        name: string;
+        master_sku: string;
+        image_urls: string[] | null;
+        categories: { name: string } | null;
+        brand_id: string;
+        brands: { id: string; name: string; slug: string; logo_url: string | null } | null;
+      };
+
+      const catalogProductsRes = await fetchRowsInChunks<CatalogProductRow>(
+        masterProductIds,
+        async (productChunk) =>
+          db
+            .schema('catalog')
+            .from('products')
+            .select('id, name, master_sku, image_urls, category_id, categories(name), brand_id, brands!inner(id, name, slug, logo_url)')
+            .in('id', productChunk),
+      );
+
+      if (catalogProductsRes.error) {
+        console.error('[GET /api/tenant/products] catalog products error:', catalogProductsRes.error);
+        return timedJson({ error: 'Failed to fetch products' }, { status: 500 });
+      }
 
       masterProducts = Object.fromEntries(
-        (catalogProducts ?? []).map(
-          (p: {
-            id: string;
-            name: string;
-            master_sku: string;
-            image_urls: string[] | null;
-            categories: { name: string } | null;
-            brand_id: string;
-            brands: { id: string; name: string; slug: string; logo_url: string | null } | null;
-          }) => [p.id, { ...p, category_name: p.categories?.name ?? null }]
-        )
+        (catalogProductsRes.data ?? []).map((p) => [p.id, { ...p, category_name: p.categories?.name ?? null }]),
       );
     }
 
     if (tenantBrandIds.length > 0) {
-      const { data: tenantBrandsData } = await db
-        .schema('app')
-        .from('tenant_brands')
-        .select('id, display_name_override, master_brand_id, deleted_at')
-        .in('id', tenantBrandIds)
-        .is('deleted_at', null);
-      tenantBrands = Object.fromEntries((tenantBrandsData ?? []).map((row: { id: string }) => [row.id, row]));
+      type TenantBrandLookupRow = {
+        id: string;
+        display_name_override: string | null;
+        master_brand_id: string | null;
+      };
 
-      const masterBrandIds = (tenantBrandsData ?? [])
-        .map((row: { master_brand_id: string | null }) => row.master_brand_id)
-        .filter(Boolean);
+      const tenantBrandsRes = await fetchRowsInChunks<TenantBrandLookupRow>(
+        tenantBrandIds,
+        async (brandChunk) =>
+          db
+            .schema('app')
+            .from('tenant_brands')
+            .select('id, display_name_override, master_brand_id, deleted_at')
+            .in('id', brandChunk)
+            .is('deleted_at', null),
+      );
+
+      if (tenantBrandsRes.error) {
+        console.error('[GET /api/tenant/products] tenant brands error:', tenantBrandsRes.error);
+        return timedJson({ error: 'Failed to fetch products' }, { status: 500 });
+      }
+
+      tenantBrands = Object.fromEntries((tenantBrandsRes.data ?? []).map((row) => [row.id, row]));
+
+      const masterBrandIds = (tenantBrandsRes.data ?? [])
+        .map((row) => row.master_brand_id)
+        .filter((id): id is string => id != null);
       if (masterBrandIds.length > 0) {
-        const { data: masterBrandsData } = await db
-          .schema('catalog')
-          .from('brands')
-          .select('id, name, deleted_at')
-          .in('id', masterBrandIds)
-          .is('deleted_at', null);
-        masterBrands = Object.fromEntries((masterBrandsData ?? []).map((row: { id: string }) => [row.id, row]));
+        type MasterBrandLookupRow = { id: string; name: string };
+
+        const masterBrandsRes = await fetchRowsInChunks<MasterBrandLookupRow>(
+          masterBrandIds,
+          async (brandChunk) =>
+            db
+              .schema('catalog')
+              .from('brands')
+              .select('id, name, deleted_at')
+              .in('id', brandChunk)
+              .is('deleted_at', null),
+        );
+
+        if (masterBrandsRes.error) {
+          console.error('[GET /api/tenant/products] master brands error:', masterBrandsRes.error);
+          return timedJson({ error: 'Failed to fetch products' }, { status: 500 });
+        }
+
+        masterBrands = Object.fromEntries((masterBrandsRes.data ?? []).map((row) => [row.id, row]));
       }
     }
 
     if (tenantCategoryIds.length > 0) {
-      const { data: tenantCategoryRows } = await db
-        .schema('app')
-        .from('tenant_categories')
-        .select('id, name')
-        .in('id', tenantCategoryIds)
-        .is('deleted_at', null);
-      tenantCategories = Object.fromEntries((tenantCategoryRows ?? []).map((row: { id: string }) => [row.id, row]));
+      type TenantCategoryLookupRow = { id: string; name: string | null };
+
+      const tenantCategoryRes = await fetchRowsInChunks<TenantCategoryLookupRow>(
+        tenantCategoryIds,
+        async (categoryChunk) =>
+          db
+            .schema('app')
+            .from('tenant_categories')
+            .select('id, name')
+            .in('id', categoryChunk)
+            .is('deleted_at', null),
+      );
+
+      if (tenantCategoryRes.error) {
+        console.error('[GET /api/tenant/products] tenant categories error:', tenantCategoryRes.error);
+        return timedJson({ error: 'Failed to fetch products' }, { status: 500 });
+      }
+
+      tenantCategories = Object.fromEntries((tenantCategoryRes.data ?? []).map((row) => [row.id, row]));
     }
 
     const [{ data: activeBrandsData }, { data: activeCategoriesData }] = await Promise.all([
@@ -376,15 +472,25 @@ export async function GET(req: NextRequest) {
     ).filter((brandId) => !masterBrands[brandId]);
 
     if (activeMasterBrandIds.length > 0) {
-      const { data: activeMasterBrandsData } = await db
-        .schema('catalog')
-        .from('brands')
-        .select('id, name')
-        .in('id', activeMasterBrandIds)
-        .is('deleted_at', null);
+      const activeMasterBrandsRes = await fetchRowsInChunks<{ id: string; name: string }>(
+        activeMasterBrandIds,
+        async (brandChunk) =>
+          db
+            .schema('catalog')
+            .from('brands')
+            .select('id, name')
+            .in('id', brandChunk)
+            .is('deleted_at', null),
+      );
+
+      if (activeMasterBrandsRes.error) {
+        console.error('[GET /api/tenant/products] active master brands error:', activeMasterBrandsRes.error);
+        return timedJson({ error: 'Failed to fetch products' }, { status: 500 });
+      }
+
       Object.assign(
         masterBrands,
-        Object.fromEntries((activeMasterBrandsData ?? []).map((row: { id: string }) => [row.id, row])),
+        Object.fromEntries((activeMasterBrandsRes.data ?? []).map((row) => [row.id, row])),
       );
     }
 
@@ -408,13 +514,8 @@ export async function GET(req: NextRequest) {
       prevKpiRes,
       recentInvoicesRes,
     ] = await Promise.all([
-      !isAssistant && summaryProductIds.length > 0
-        ? db
-            .schema('app')
-            .from('tenant_inventory')
-            .select('tenant_product_id, qty_available')
-            .in('tenant_product_id', summaryProductIds)
-            .is('deleted_at', null)
+      !isAssistant
+        ? loadTenantInventoryForTenant(db, claims.tenant_id)
         : Promise.resolve({ data: [] as InventoryMetricRow[], error: null }),
       !isAssistant
         ? db
@@ -535,20 +636,24 @@ export async function GET(req: NextRequest) {
 
       const [currentItemsRes, previousItemsRes] = await Promise.all([
         currentOrderIds.length > 0
-          ? db
-              .schema('app')
-              .from('order_items')
-              .select('order_id, tenant_product_id, qty, line_total, unit_price')
-              .in('order_id', currentOrderIds)
-              .is('deleted_at', null)
+          ? fetchRowsInChunks<OrderItemMetricRow>(currentOrderIds, async (orderChunk) =>
+              db
+                .schema('app')
+                .from('order_items')
+                .select('order_id, tenant_product_id, qty, line_total, unit_price')
+                .in('order_id', orderChunk)
+                .is('deleted_at', null),
+            )
           : Promise.resolve({ data: [] as OrderItemMetricRow[], error: null }),
         previousOrderIds.length > 0
-          ? db
-              .schema('app')
-              .from('order_items')
-              .select('order_id, tenant_product_id, qty, line_total, unit_price')
-              .in('order_id', previousOrderIds)
-              .is('deleted_at', null)
+          ? fetchRowsInChunks<OrderItemMetricRow>(previousOrderIds, async (orderChunk) =>
+              db
+                .schema('app')
+                .from('order_items')
+                .select('order_id, tenant_product_id, qty, line_total, unit_price')
+                .in('order_id', orderChunk)
+                .is('deleted_at', null),
+            )
           : Promise.resolve({ data: [] as OrderItemMetricRow[], error: null }),
       ]);
 
@@ -577,19 +682,23 @@ export async function GET(req: NextRequest) {
       .map((row) => row.id);
 
     if (recentInvoiceIds.length > 0) {
-      const recentInvoiceItemsRes = await db
-        .schema('app')
-        .from('invoice_items')
-        .select('invoice_id, tenant_product_id, qty')
-        .in('invoice_id', recentInvoiceIds)
-        .is('deleted_at', null);
+      const recentInvoiceItemsRes = await fetchRowsInChunks<InvoiceItemMetricRow>(
+        recentInvoiceIds,
+        async (invoiceChunk) =>
+          db
+            .schema('app')
+            .from('invoice_items')
+            .select('invoice_id, tenant_product_id, qty')
+            .in('invoice_id', invoiceChunk)
+            .is('deleted_at', null),
+      );
 
       if (recentInvoiceItemsRes.error) {
         console.error('[GET /api/tenant/products] invoice velocity query failure', recentInvoiceItemsRes.error);
         return timedJson({ error: 'Failed to fetch invoice velocity' }, { status: 500 });
       }
 
-      for (const row of (recentInvoiceItemsRes.data ?? []) as InvoiceItemMetricRow[]) {
+      for (const row of recentInvoiceItemsRes.data ?? []) {
         if (!summaryProductIdSet.has(row.tenant_product_id)) continue;
         units30dByProduct.set(
           row.tenant_product_id,
@@ -890,22 +999,26 @@ export async function GET(req: NextRequest) {
 
         const [pageCurrentItemsRes, pagePreviousItemsRes] = await Promise.all([
           pageCurrentOrderIds.length > 0
-            ? db
-                .schema('app')
-                .from('order_items')
-                .select('order_id, tenant_product_id, qty, line_total, unit_price')
-                .in('order_id', pageCurrentOrderIds)
-                .in('tenant_product_id', pageProductIds)
-                .is('deleted_at', null)
+            ? fetchRowsInChunks<OrderItemMetricRow>(pageCurrentOrderIds, async (orderChunk) =>
+                db
+                  .schema('app')
+                  .from('order_items')
+                  .select('order_id, tenant_product_id, qty, line_total, unit_price')
+                  .in('order_id', orderChunk)
+                  .in('tenant_product_id', pageProductIds)
+                  .is('deleted_at', null),
+              )
             : Promise.resolve({ data: [] as OrderItemMetricRow[], error: null }),
           pagePreviousOrderIds.length > 0
-            ? db
-                .schema('app')
-                .from('order_items')
-                .select('order_id, tenant_product_id, qty, line_total, unit_price')
-                .in('order_id', pagePreviousOrderIds)
-                .in('tenant_product_id', pageProductIds)
-                .is('deleted_at', null)
+            ? fetchRowsInChunks<OrderItemMetricRow>(pagePreviousOrderIds, async (orderChunk) =>
+                db
+                  .schema('app')
+                  .from('order_items')
+                  .select('order_id, tenant_product_id, qty, line_total, unit_price')
+                  .in('order_id', orderChunk)
+                  .in('tenant_product_id', pageProductIds)
+                  .is('deleted_at', null),
+              )
             : Promise.resolve({ data: [] as OrderItemMetricRow[], error: null }),
         ]);
 
@@ -962,20 +1075,24 @@ export async function GET(req: NextRequest) {
         .map((row) => row.id);
 
       if (pageRecentInvoiceIds.length > 0) {
-        const pageInvoiceItemsRes = await db
-          .schema('app')
-          .from('invoice_items')
-          .select('invoice_id, tenant_product_id, qty')
-          .in('invoice_id', pageRecentInvoiceIds)
-          .in('tenant_product_id', pageProductIds)
-          .is('deleted_at', null);
+        const pageInvoiceItemsRes = await fetchRowsInChunks<InvoiceItemMetricRow>(
+          pageRecentInvoiceIds,
+          async (invoiceChunk) =>
+            db
+              .schema('app')
+              .from('invoice_items')
+              .select('invoice_id, tenant_product_id, qty')
+              .in('invoice_id', invoiceChunk)
+              .in('tenant_product_id', pageProductIds)
+              .is('deleted_at', null),
+        );
 
         if (pageInvoiceItemsRes.error) {
           console.error('[GET /api/tenant/products] page invoice-item velocity query failure', pageInvoiceItemsRes.error);
           return timedJson({ error: 'Failed to fetch invoice velocity' }, { status: 500 });
         }
 
-        for (const row of (pageInvoiceItemsRes.data ?? []) as InvoiceItemMetricRow[]) {
+        for (const row of pageInvoiceItemsRes.data ?? []) {
           pageUnits30dByProduct.set(
             row.tenant_product_id,
             (pageUnits30dByProduct.get(row.tenant_product_id) ?? 0) + metricNumber(row.qty),

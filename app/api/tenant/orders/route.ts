@@ -270,7 +270,7 @@ export async function GET(req: NextRequest) {
           .from('orders')
           .select('id, order_number, buyer_id, location_id, status, source, is_buyer_app_order, campaign_id, estimate_id, place_of_supply, placed_by, subtotal, tax_amount, total_amount, order_date, placed_at, created_at')
           .eq('tenant_id', tenantId)
-          .is('deleted_at', null),
+          .is('deleted_at', null) as any,
         claims,
       );
 
@@ -294,7 +294,7 @@ export async function GET(req: NextRequest) {
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .eq('tenant_id', tenantId)
-          .is('deleted_at', null),
+          .is('deleted_at', null) as any,
         claims,
       );
 
@@ -309,7 +309,7 @@ export async function GET(req: NextRequest) {
           .from('orders')
           .select('id, order_number, buyer_id, location_id, status, source, is_buyer_app_order, campaign_id, estimate_id, place_of_supply, placed_by, subtotal, tax_amount, total_amount, order_date, placed_at, created_at')
           .eq('tenant_id', tenantId)
-          .is('deleted_at', null),
+          .is('deleted_at', null) as any,
         claims,
       );
 
