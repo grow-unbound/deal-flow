@@ -12,7 +12,7 @@ import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandi
 
 export type { CohortRulesSummary };
 
-export type CohortType = 'Geo-based' | 'Tier-based' | 'Brand affinity';
+export type CohortType = 'Geo-based' | 'Activity-based' | 'Brand affinity';
 
 export interface CohortsLandingKpis {
   total_cohorts: number;
@@ -143,6 +143,7 @@ export interface CohortDetailDetailsRules {
   };
   members_preview: CohortDetailMemberPreview[];
   updated_at: string;
+  last_refreshed_at: string | null;
 }
 
 export interface CohortDetailPerformance {
@@ -524,6 +525,47 @@ export function useUpdateCohortDetail(id: string) {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['cohort-detail', id] });
       queryClient.invalidateQueries({ queryKey: ['cohorts-landing'] });
+    },
+  });
+}
+
+export function useRefreshCohort(id: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/api/cohorts/${id}/refresh`, { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Refresh failed');
+      }
+      return res.json() as Promise<{
+        ok: boolean;
+        cached_member_count: number | null;
+        last_refreshed_at: string | null;
+      }>;
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData<CohortDetailResponse>(['cohort-detail', id], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          details_rules: {
+            ...old.details_rules,
+            last_refreshed_at: result.last_refreshed_at,
+          },
+          meta_strip_4: {
+            ...old.meta_strip_4,
+            total_members: result.cached_member_count ?? old.meta_strip_4.total_members,
+          },
+        };
+      });
+      queryClient.invalidateQueries({ queryKey: ['cohort-detail', id] });
+      queryClient.invalidateQueries({ queryKey: ['cohort-members', id] });
+      toast.success('Membership refreshed');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Could not refresh cohort');
     },
   });
 }

@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { Pencil } from 'lucide-react';
+import { Pencil, RefreshCw } from 'lucide-react';
 import { PageWrap } from '@/components/seller/layout';
 import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
 import { ErrorState } from '@/components/ui/empty-state';
@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatCompactInr } from '@/lib/utils';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
-import { useCohortDetail } from '@/hooks/useCohorts';
+import { useCohortDetail, useRefreshCohort } from '@/hooks/useCohorts';
 import { CohortBuyersTab } from './CohortBuyersTab';
 
 const CohortPerformanceTab = dynamic(
@@ -66,8 +66,21 @@ function CohortDetailSkeleton() {
   );
 }
 
+function formatRefreshedAt(iso: string | null | undefined): string {
+  if (!iso) return 'Never refreshed';
+  const date = new Date(iso);
+  const diffMs = Date.now() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60_000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHrs = Math.floor(diffMins / 60);
+  if (diffHrs < 24) return `${diffHrs}h ago`;
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
 export function CohortDetailPage({ id }: CohortDetailPageProps) {
   const { isSellerAdmin } = useRole();
+  const refreshMutation = useRefreshCohort(id);
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-cohort-detail-tab',
     scopeKey: id,
@@ -129,6 +142,23 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
         actions={
           isSellerAdmin ? (
             <div className="flex items-center gap-2 pt-1">
+              {!data.details_rules.is_static ? (
+                <div className="flex flex-col items-end gap-0.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 px-4"
+                    onClick={() => refreshMutation.mutate()}
+                    disabled={refreshMutation.isPending}
+                  >
+                    <RefreshCw size={14} strokeWidth={2} className={refreshMutation.isPending ? 'animate-spin' : ''} aria-hidden />
+                    {refreshMutation.isPending ? 'Refreshing…' : 'Refresh now'}
+                  </Button>
+                  <span className="text-[11px] text-cream-500 pr-0.5">
+                    {formatRefreshedAt(data.details_rules.last_refreshed_at)}
+  </span>
+                </div>
+              ) : null}
               <Button variant="accent" size="sm" className="h-9 px-4" asChild>
                 <Link href={`/customer-groups/${id}/edit`}>
                   <Pencil size={16} strokeWidth={2} aria-hidden />

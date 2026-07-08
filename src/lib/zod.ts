@@ -211,11 +211,7 @@ export const CohortSchema = z.object({
 
 // Cohort rule schemas
 export const CohortRuleFieldSchema = z.enum([
-  'geography.label',
-  'geography.state',
   'geography.city',
-  'geography.zone',
-  'tier',
   'brand_focus',
   'last_order_bucket',
   'gmv_90d_bucket',
@@ -436,6 +432,7 @@ export const CatalogComposerPayloadSchema = z
     buyer_note: z.string().max(200, 'Note to buyers must be 200 characters or fewer').optional(),
     notify_whatsapp: z.boolean().optional(),
     notify_scheduled_for: z.string().datetime().optional(),
+    hero_image_url: z.string().url().optional(),
   })
   .refine((data) => data.scope_type !== 'cohort' || Boolean(data.cohort_id), {
     message: 'Cohort is required',
@@ -644,5 +641,6 @@ export const CatalogPublishActionSchema = z.object({
   notify_whatsapp: z.boolean().optional().default(false),
   buyer_note: z.string().max(200, 'Note to buyers must be 200 characters or fewer').optional(),
   notify_scheduled_for: z.string().datetime().optional(),
+  hero_image_url: z.string().url().optional(),
 });
 export type CatalogPublishActionInput = z.infer<typeof CatalogPublishActionSchema>;
