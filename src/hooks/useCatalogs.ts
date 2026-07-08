@@ -298,6 +298,11 @@ export interface CatalogComposerBootstrapResponse {
     price: number;
   }>;
   products: CatalogComposerProduct[];
+  product_count: number;
+  product_filters: {
+    brands: Array<{ id: string; label: string; count: number }>;
+    categories: Array<{ id: string; label: string; count: number }>;
+  };
 }
 
 export interface CatalogComposerBuyerPickerRow {
