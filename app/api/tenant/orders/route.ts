@@ -161,6 +161,9 @@ export async function GET(req: NextRequest) {
     const locationParams = readArrayParam(req.nextUrl.searchParams, 'location_id');
 
     const db = supabaseAdmin;
+    const availableLocations = await loadAccessibleSellerLocations(db as any, tenantId, claims);
+    const scopedLocationIds = availableLocations.map((location) => location.id);
+    const aggregateScope = claims.role === 'seller_admin' ? 'tenant' : 'location';
 
     const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
     const scopedCurrentOrdersQuery = applySellerLocationScope(
@@ -190,38 +193,40 @@ export async function GET(req: NextRequest) {
       claims,
     );
 
+    const buildOrdersKpiQuery = (start: string, endExclusive: string) => {
+      if (aggregateScope === 'location' && scopedLocationIds.length === 0) {
+        return Promise.resolve({ data: [], error: null });
+      }
+
+      let query = db
+        .schema('app')
+        .from('kpi_orders_daily')
+        .select('orders_count, buyers_count, gmv, confirmed_count, received_count, delivered_count')
+        .eq('tenant_id', tenantId)
+        .eq('scope', aggregateScope)
+        .gte('day', start.slice(0, 10))
+        .lt('day', endExclusive.slice(0, 10));
+
+      if (aggregateScope === 'location') {
+        query = query.in('location_id', scopedLocationIds);
+      }
+
+      return query;
+    };
+
     const [mtdOrdersRes, prevOrdersRes, kpiCurrentRes, kpiPrevRes] = await Promise.all([
       scopedCurrentOrdersQuery,
       scopedPreviousOrdersQuery,
-      claims.role === 'seller_admin'
-        ? db
-            .schema('app')
-            .from('kpi_tenant_daily')
-            .select('orders_count, buyers_count, gmv')
-            .eq('tenant_id', tenantId)
-            .gte('day', period.current_start.slice(0, 10))
-            .lt('day', period.current_end_exclusive.slice(0, 10))
-            .is('deleted_at', null)
-        : Promise.resolve({ data: [], error: null }),
-      claims.role === 'seller_admin'
-        ? db
-            .schema('app')
-            .from('kpi_tenant_daily')
-            .select('orders_count, gmv')
-            .eq('tenant_id', tenantId)
-            .gte('day', period.previous_start.slice(0, 10))
-            .lt('day', period.previous_end_exclusive.slice(0, 10))
-            .is('deleted_at', null)
-        : Promise.resolve({ data: [], error: null }),
+      buildOrdersKpiQuery(period.current_start, period.current_end_exclusive),
+      buildOrdersKpiQuery(period.previous_start, period.previous_end_exclusive),
     ]);
 
-    if (mtdOrdersRes.error || prevOrdersRes.error) {
-      console.error('[GET /api/tenant/orders] query error:', mtdOrdersRes.error || prevOrdersRes.error);
+    if (mtdOrdersRes.error || prevOrdersRes.error || kpiCurrentRes.error || kpiPrevRes.error) {
+      console.error('[GET /api/tenant/orders] query error:', mtdOrdersRes.error || prevOrdersRes.error || kpiCurrentRes.error || kpiPrevRes.error);
       return timedJson({ error: 'Failed to fetch orders' }, { status: 500 });
     }
 
     const mtdOrders = (mtdOrdersRes.data ?? []) as OrderRow[];
-    const prevOrders = (prevOrdersRes.data ?? []) as Array<{ id: string; total_amount: number }>;
     const buyerIds = Array.from(new Set(mtdOrders.map((order) => order.buyer_id).filter((value): value is string => Boolean(value))));
     const catalogIds = Array.from(new Set(mtdOrders.map((order) => order.campaign_id).filter((value): value is string => Boolean(value))));
     const estimateIds = Array.from(new Set(mtdOrders.map((order) => order.estimate_id).filter((value): value is string => Boolean(value))));
@@ -287,25 +292,15 @@ export async function GET(req: NextRequest) {
       itemsCountByOrder.set(item.order_id, (itemsCountByOrder.get(item.order_id) ?? 0) + 1);
     }
 
-    const availableLocations = await loadAccessibleSellerLocations(db as any, tenantId, claims);
     const locationNameById = new Map(availableLocations.map((location) => [location.id, location.name]));
 
-    const buyersMtd = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.buyers_count ?? 0), 0)
-      || new Set(mtdOrders.map((order) => order.buyer_id)).size;
-    const ordersMtd = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.orders_count ?? 0), 0)
-      || mtdOrders.length;
-    const ordersPrevMtd = (kpiPrevRes.data ?? []).reduce((sum, row) => sum + Number(row.orders_count ?? 0), 0)
-      || prevOrders.length;
-    const gmvMtd = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.gmv ?? 0), 0)
-      || mtdOrders.reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0);
-    const gmvPrevMtd = (kpiPrevRes.data ?? []).reduce((sum, row) => sum + Number(row.gmv ?? 0), 0)
-      || prevOrders.reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0);
+    const buyersMtd = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.buyers_count ?? 0), 0);
+    const ordersMtd = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.orders_count ?? 0), 0);
+    const ordersPrevMtd = (kpiPrevRes.data ?? []).reduce((sum, row) => sum + Number(row.orders_count ?? 0), 0);
+    const gmvMtd = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.gmv ?? 0), 0);
+    const gmvPrevMtd = (kpiPrevRes.data ?? []).reduce((sum, row) => sum + Number(row.gmv ?? 0), 0);
     const ordersGrowthPct = ordersPrevMtd > 0 ? Math.round(((ordersMtd - ordersPrevMtd) / ordersPrevMtd) * 100) : 0;
-    const aov = gmvMtd / ordersMtd;
-
-    const pendingDispatchCount = mtdOrders.filter((order) => order.status === 'confirmed').length;
-    const receivedCount = mtdOrders.filter((order) => order.status === 'received').length;
-    const deliveredCount = mtdOrders.filter((order) => order.status === 'delivered').length;
+    const aov = ordersMtd > 0 ? gmvMtd / ordersMtd : 0;
 
     const rows = mtdOrders.map((order, index) => {
       const buyer = buyerById.get(order.buyer_id);
@@ -377,11 +372,6 @@ export async function GET(req: NextRequest) {
     const inMotion = filteredRows
       .filter((row) => row.status.value === 'dispatched' || row.status.value === 'partially_dispatched')
       .slice(0, 3);
-    const filteredGmv = filteredRows.reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
-    const filteredReceived = filteredRows.filter((row) => row.status.value === 'received').length;
-    const filteredPendingDispatch = filteredRows.filter((row) => row.status.value === 'confirmed').length;
-    const filteredDelivered = filteredRows.filter((row) => row.status.value === 'delivered').length;
-    const filteredBuyers = new Set(filteredRows.map((row) => row.buyer_id)).size;
     const filters: LandingFilterMeta = {
       groups: [
         {
@@ -405,16 +395,16 @@ export async function GET(req: NextRequest) {
     const payload = {
       period,
       kpis: {
-        orders_mtd: filteredRows.length,
+        orders_mtd: ordersMtd,
         orders_prev_mtd: ordersPrevMtd,
         orders_growth_pct: ordersGrowthPct,
-        gmv_mtd: filteredGmv,
+        gmv_mtd: gmvMtd,
         gmv_prev_mtd: gmvPrevMtd,
-        aov: filteredRows.length > 0 ? filteredGmv / filteredRows.length : 0,
-        pending_dispatch_count: filteredPendingDispatch,
-        received_count: filteredReceived,
-        delivered_count: filteredDelivered,
-        buyers_mtd: filteredBuyers,
+        aov,
+        pending_dispatch_count: (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.confirmed_count ?? 0), 0),
+        received_count: (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.received_count ?? 0), 0),
+        delivered_count: (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.delivered_count ?? 0), 0),
+        buyers_mtd: buyersMtd,
       },
       todays_read: {
         needs_attention: needsAttention,
@@ -578,6 +568,7 @@ export async function POST(request: NextRequest) {
         round_off: roundOff,
         has_backorder: false,
         estimate_id: fromEstimateId,
+        order_date: draftDate.slice(0, 10),
         expected_delivery: expectedDelivery,
         created_by: claims.sub,
         updated_by: claims.sub,

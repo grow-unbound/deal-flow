@@ -117,20 +117,6 @@ function statusMeta(status: Exclude<EstimateDbStatus, 'pending'>): {
   return { label: status, tone: 'neutral', filter_chip: 'All' };
 }
 
-function inPeriod(iso: string | null, start: string, endExclusive: string): boolean {
-  if (!iso) return false;
-  const t = new Date(iso).getTime();
-  return t >= new Date(start).getTime() && t < new Date(endExclusive).getTime();
-}
-
-function isConvertedStatus(status: string): boolean {
-  return status === 'converted' || status === 'invoiced';
-}
-
-function estimateAnchor(estimate: { accepted_at: string | null; updated_at?: string | null; created_at: string }): string {
-  return estimate.accepted_at ?? estimate.updated_at ?? estimate.created_at;
-}
-
 function toText(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
@@ -175,6 +161,9 @@ export async function GET(req: NextRequest) {
     const tenantId = claims.tenant_id;
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
     const db = supabaseAdmin;
+    const availableLocations = await loadAccessibleSellerLocations(db as any, claims.tenant_id, claims);
+    const scopedLocationIds = availableLocations.map((location) => location.id);
+    const aggregateScope = claims.role === 'seller_admin' ? 'tenant' : 'location';
     const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
     const cursorParam = req.nextUrl.searchParams.get('cursor');
     const searchParam = req.nextUrl.searchParams.get('search')?.trim();
@@ -228,59 +217,47 @@ export async function GET(req: NextRequest) {
     const snapshotQuery = db
       .schema('app')
       .from('estimates_snapshot')
-      .select('total_count')
+      .select('total_count, draft_count, sent_count, accepted_count, expiring_soon')
       .eq('tenant_id', tenantId)
       .maybeSingle();
 
-    const scopedCurrentPeriodQuery = applySellerLocationScope(
-      db
-        .schema('app')
-        .from('estimates')
-        .select('status, total_amount, created_at, accepted_at, updated_at')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .gte('created_at', period.current_start)
-        .lt('created_at', period.current_end_exclusive) as any,
-      claims,
-    );
-    const scopedPreviousPeriodQuery = applySellerLocationScope(
-      db
-        .schema('app')
-        .from('estimates')
-        .select('status, total_amount, created_at, accepted_at, updated_at')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .gte('created_at', period.previous_start)
-        .lt('created_at', period.previous_end_exclusive) as any,
-      claims,
-    );
-    // Scope the converted query to the current period anchor window only.
-    // Without a date bound this would scan all ever-converted estimates.
-    const scopedConvertedQuery = applySellerLocationScope(
-      db
-        .schema('app')
-        .from('estimates')
-        .select('status, total_amount, created_at, accepted_at, updated_at')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .in('status', ['converted', 'invoiced'])
-        .gte('updated_at', period.current_start)
-        .lte('updated_at', period.current_end_exclusive) as any,
-      claims,
-    );
+    const buildEstimateKpiQuery = (opts?: { start?: string; endExclusive?: string }) => {
+      if (aggregateScope === 'location' && scopedLocationIds.length === 0) {
+        return Promise.resolve({ data: [], error: null });
+      }
 
-    const [estimatesRes, currentPeriodRes, previousPeriodRes, convertedPeriodRes, snapshotRes] = await Promise.all([
+      let query = db
+        .schema('app')
+        .from('kpi_estimates_daily')
+        .select('estimates_count, gmv, open_count, accepted_count, converted_count, draft_count, sent_count, expiring_soon_count, open_buyer_app_count')
+        .eq('tenant_id', tenantId)
+        .eq('scope', aggregateScope);
+
+      if (opts?.start) {
+        query = query.gte('day', opts.start.slice(0, 10));
+      }
+      if (opts?.endExclusive) {
+        query = query.lt('day', opts.endExclusive.slice(0, 10));
+      }
+      if (aggregateScope === 'location') {
+        query = query.in('location_id', scopedLocationIds);
+      }
+
+      return query;
+    };
+
+    const [estimatesRes, currentPeriodRes, previousPeriodRes, aggregateRes, snapshotRes] = await Promise.all([
       scopedEstimatesQuery,
-      scopedCurrentPeriodQuery,
-      scopedPreviousPeriodQuery,
-      scopedConvertedQuery,
+      buildEstimateKpiQuery({ start: period.current_start, endExclusive: period.current_end_exclusive }),
+      buildEstimateKpiQuery({ start: period.previous_start, endExclusive: period.previous_end_exclusive }),
+      buildEstimateKpiQuery(),
       snapshotQuery,
     ]);
 
-    if (estimatesRes.error || currentPeriodRes.error || previousPeriodRes.error || convertedPeriodRes.error) {
+    if (estimatesRes.error || currentPeriodRes.error || previousPeriodRes.error || aggregateRes.error || snapshotRes.error) {
       console.error(
         '[GET /api/tenant/estimates] query error:',
-        estimatesRes.error || currentPeriodRes.error || previousPeriodRes.error || convertedPeriodRes.error,
+        estimatesRes.error || currentPeriodRes.error || previousPeriodRes.error || aggregateRes.error || snapshotRes.error,
       );
       return timedJson({ error: 'Failed to fetch estimates' }, { status: 500 });
     }
@@ -369,8 +346,6 @@ export async function GET(req: NextRequest) {
 
     const now = Date.now();
     const expiringCutoff = now + 7 * DAY_MS;
-
-    const availableLocations = await loadAccessibleSellerLocations(db as any, claims.tenant_id, claims);
     const locationNameById = new Map(availableLocations.map((location) => [location.id, location.name]));
 
     const normalized = rawEstimates.map((row, index) => {
@@ -421,75 +396,28 @@ export async function GET(req: NextRequest) {
     });
 
     const openRows = normalized.filter((n) => isOpenStatus(n.norm));
-    const openTotal = openRows.length;
-    const openDrafts = openRows.filter((n) => n.norm === 'draft').length;
-    const openSent = openRows.filter((n) => n.norm === 'sent').length;
-    const openAccepted = openRows.filter((n) => n.norm === 'accepted').length;
-    const readyToConvert = normalized.filter((n) => n.norm === 'accepted').length;
 
-    const expiringSoon = openRows.filter((n) => {
+    const expiringOpenRows = openRows.filter((n) => {
       if (!n.row.expires_at) return false;
       const ex = new Date(n.row.expires_at).getTime();
       return ex <= expiringCutoff;
-    }).length;
-
-    const currentPeriodRows = ((currentPeriodRes.data ?? []) as Array<{
-      status: string;
-      total_amount: number | string | null;
-      created_at: string;
-      accepted_at: string | null;
-      updated_at?: string | null;
-    }>).map((row) => ({
-      status: normalizeStatus(row.status),
-      total_amount: Number(row.total_amount ?? 0),
-      created_at: row.created_at,
-      accepted_at: row.accepted_at,
-      updated_at: row.updated_at ?? null,
-    }));
-
-    const previousPeriodRows = ((previousPeriodRes.data ?? []) as Array<{
-      status: string;
-      total_amount: number | string | null;
-      created_at: string;
-      accepted_at: string | null;
-      updated_at?: string | null;
-    }>).map((row) => ({
-      status: normalizeStatus(row.status),
-      total_amount: Number(row.total_amount ?? 0),
-      created_at: row.created_at,
-      accepted_at: row.accepted_at,
-      updated_at: row.updated_at ?? null,
-    }));
-
-    const convertedPeriodRows = ((convertedPeriodRes.data ?? []) as Array<{
-      status: string;
-      total_amount: number | string | null;
-      created_at: string;
-      accepted_at: string | null;
-      updated_at?: string | null;
-    }>).filter((row) => {
-      const anchor = estimateAnchor(row);
-      return inPeriod(anchor, period.current_start, period.current_end_exclusive);
     });
 
-    const totalEstimatesThisPeriod = currentPeriodRows.length;
-    const totalEstimatesPrevPeriod = previousPeriodRows.length;
-    const totalGmvThisPeriod = currentPeriodRows.reduce((sum, row) => sum + row.total_amount, 0);
-    const totalGmvPrevPeriod = previousPeriodRows.reduce((sum, row) => sum + row.total_amount, 0);
+    const totalEstimatesThisPeriod = (currentPeriodRes.data ?? []).reduce((sum, row) => sum + Number(row.estimates_count ?? 0), 0);
+    const totalEstimatesPrevPeriod = (previousPeriodRes.data ?? []).reduce((sum, row) => sum + Number(row.estimates_count ?? 0), 0);
+    const totalGmvThisPeriod = (currentPeriodRes.data ?? []).reduce((sum, row) => sum + Number(row.gmv ?? 0), 0);
+    const totalGmvPrevPeriod = (previousPeriodRes.data ?? []).reduce((sum, row) => sum + Number(row.gmv ?? 0), 0);
     const totalEstimatesGrowthPct =
       totalEstimatesPrevPeriod > 0 ? Math.round(((totalEstimatesThisPeriod - totalEstimatesPrevPeriod) / totalEstimatesPrevPeriod) * 100) : 0;
     const aov = totalEstimatesThisPeriod > 0 ? totalGmvThisPeriod / totalEstimatesThisPeriod : 0;
-    const openEstimatesThisPeriod = currentPeriodRows.filter((row) => isOpenStatus(row.status)).length;
-
-    const openCreatedThisPeriod = openRows.filter((n) =>
-      inPeriod(n.row.created_at, period.current_start, period.current_end_exclusive),
-    ).length;
-
-    const buyerAppCreatedThisPeriod = openRows.filter(
-      (n) =>
-        n.row.is_buyer_app_estimate &&
-        inPeriod(n.row.created_at, period.current_start, period.current_end_exclusive),
-    ).length;
+    const openEstimatesThisPeriod = (currentPeriodRes.data ?? []).reduce((sum, row) => sum + Number(row.open_count ?? 0), 0);
+    const openCreatedThisPeriod = openEstimatesThisPeriod;
+    const buyerAppCreatedThisPeriod = (currentPeriodRes.data ?? []).reduce((sum, row) => sum + Number(row.open_buyer_app_count ?? 0), 0);
+    const openDraftsAggregate = (aggregateRes.data ?? []).reduce((sum, row) => sum + Number(row.draft_count ?? 0), 0);
+    const openSentAggregate = (aggregateRes.data ?? []).reduce((sum, row) => sum + Number(row.sent_count ?? 0), 0);
+    const openAcceptedAggregate = (aggregateRes.data ?? []).reduce((sum, row) => sum + Number(row.accepted_count ?? 0), 0);
+    const openTotalAggregate = (aggregateRes.data ?? []).reduce((sum, row) => sum + Number(row.open_count ?? 0), 0);
+    const expiringSoonAggregate = (aggregateRes.data ?? []).reduce((sum, row) => sum + Number(row.expiring_soon_count ?? 0), 0);
 
     const kpis: EstimatesKpis = {
       total_estimates_this_period: totalEstimatesThisPeriod,
@@ -499,13 +427,13 @@ export async function GET(req: NextRequest) {
       total_gmv_prev_period: totalGmvPrevPeriod,
       aov,
       open_estimates_this_period: openEstimatesThisPeriod,
-      converted_this_period: convertedPeriodRows.length,
-      open_total: openTotal,
-      open_drafts: openDrafts,
-      open_sent: openSent,
-      open_accepted: openAccepted,
-      ready_to_convert: readyToConvert,
-      expiring_soon: expiringSoon,
+      converted_this_period: (currentPeriodRes.data ?? []).reduce((sum, row) => sum + Number(row.converted_count ?? 0), 0),
+      open_total: openTotalAggregate,
+      open_drafts: openDraftsAggregate,
+      open_sent: openSentAggregate,
+      open_accepted: openAcceptedAggregate,
+      ready_to_convert: openAcceptedAggregate,
+      expiring_soon: expiringSoonAggregate,
       open_created_this_period: openCreatedThisPeriod,
       buyer_app_created_this_period: buyerAppCreatedThisPeriod,
     };
@@ -545,11 +473,7 @@ export async function GET(req: NextRequest) {
       .map((n) => toCalloutRow(n.landing));
 
     const expiringCallout = openRows
-      .filter((n) => {
-        if (!n.row.expires_at) return false;
-        const ex = new Date(n.row.expires_at).getTime();
-        return ex <= expiringCutoff;
-      })
+      .filter((n) => expiringOpenRows.some((candidate) => candidate.row.id === n.row.id))
       .sort((a, b) => {
         const ta = a.row.expires_at ? new Date(a.row.expires_at).getTime() : 0;
         const tb = b.row.expires_at ? new Date(b.row.expires_at).getTime() : 0;

@@ -19,7 +19,11 @@ import {
   type CampaignViewRow,
 } from '@/lib/server/campaign-performance';
 import { getInAppCreateFlags } from '@/lib/server/seller-features';
-import { CatalogComposerPayloadSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
+import { queueCampaignPublishNotify } from '@/lib/server/campaign-publish-notify';
+import { runCampaignPublishPreflight } from '@/lib/server/campaign-publish-preflight';
+import { getFlag } from '@/lib/flags';
+import { FEATURE_FLAGS } from '@/constants';
+import { CatalogComposerPayloadSchema, CatalogPublishActionSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
 
@@ -52,9 +56,7 @@ const PatchSchema = z.discriminatedUnion('action', [
     action: z.literal('extend_validity'),
     valid_until: z.string().datetime(),
   }),
-  z.object({
-    action: z.literal('publish_catalog'),
-  }),
+  CatalogPublishActionSchema,
   z.object({
     action: z.literal('ensure_share_link'),
   }),
@@ -881,17 +883,51 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   if (actionParsed.success && actionParsed.data.action === 'publish_catalog') {
+    if (claims.role !== 'seller_admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
     if (globalCatalog.status !== 'draft') {
       return NextResponse.json({ error: 'Only draft catalogs can be published' }, { status: 400 });
     }
 
+    const publishInput = actionParsed.data;
+    const scopeValue = (globalCatalog.scope_value ?? {}) as Record<string, unknown>;
+
+    if (publishInput.notify_whatsapp) {
+      const flagEnabled = await getFlag(FEATURE_FLAGS.WHATSAPP_BROADCAST, claims.tenant_id);
+      if (!flagEnabled) {
+        return NextResponse.json({ error: 'WhatsApp broadcast feature is not enabled' }, { status: 403 });
+      }
+
+      const preflight = await runCampaignPublishPreflight(db, {
+        tenantId: claims.tenant_id,
+        scopeType: globalCatalog.scope_type as ScopeType,
+        scopeValue,
+        notifyWhatsapp: true,
+      });
+
+      if (!preflight.can_notify) {
+        return NextResponse.json(
+          { error: preflight.blockers[0] ?? 'WhatsApp notify preflight failed', blockers: preflight.blockers },
+          { status: 400 },
+        );
+      }
+
+      if (publishInput.notify_scheduled_for && new Date(publishInput.notify_scheduled_for).getTime() <= Date.now()) {
+        return NextResponse.json({ error: 'Scheduled time must be in the future' }, { status: 400 });
+      }
+    }
+
     const shareToken = globalCatalog.share_token ?? generateShareToken();
+    const buyerNote = publishInput.buyer_note?.trim();
+
     const { error } = await db
       .schema('app')
       .from('campaigns')
       .update({
         status: 'published',
         share_token: shareToken,
+        ...(buyerNote !== undefined ? { message: buyerNote || null } : {}),
         updated_by: claims.sub,
       })
       .eq('id', id)
@@ -899,6 +935,47 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       .is('deleted_at', null);
 
     if (error) return NextResponse.json({ error: 'Failed to publish catalog' }, { status: 500 });
+
+    let whatsappNotify: { broadcast_id: string; recipient_count: number; scheduled: boolean } | null = null;
+
+    if (publishInput.notify_whatsapp) {
+      const { data: publishedCampaign } = await db
+        .schema('app')
+        .from('campaigns')
+        .select('id, name, scope_type, scope_value, hero_image_url, message')
+        .eq('id', id)
+        .eq('tenant_id', claims.tenant_id)
+        .maybeSingle();
+
+      if (publishedCampaign) {
+        try {
+          whatsappNotify = await queueCampaignPublishNotify(db, {
+            tenantId: claims.tenant_id,
+            actorId: claims.sub ?? claims.tenant_id,
+            campaignId: id,
+            campaignName: publishedCampaign.name as string,
+            scopeType: publishedCampaign.scope_type as ScopeType,
+            scopeValue: (publishedCampaign.scope_value ?? {}) as Record<string, unknown>,
+            buyerNote: publishedCampaign.message as string | null,
+            scheduledFor: publishInput.notify_scheduled_for ?? null,
+            heroImageUrl: publishedCampaign.hero_image_url as string | null,
+          });
+        } catch (notifyError) {
+          console.error('[publish_catalog] WhatsApp notify failed after publish:', notifyError);
+          return NextResponse.json(
+            {
+              error: notifyError instanceof Error ? notifyError.message : 'Campaign published but WhatsApp notify failed',
+              ok: true,
+              share_link: {
+                share_token: shareToken,
+                share_url: buildBuyerCatalogUrl(request.nextUrl.origin, shareToken),
+              },
+            },
+            { status: 500 },
+          );
+        }
+      }
+    }
 
     try {
       const ph = getPostHogClient();
@@ -910,6 +987,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           tenant_id: claims.tenant_id,
           scope_type: globalCatalog.scope_type,
           share_token: shareToken,
+          notify_whatsapp: publishInput.notify_whatsapp,
         },
       });
       await ph.flush();
@@ -924,6 +1002,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         share_token: shareToken,
         share_url: buildBuyerCatalogUrl(request.nextUrl.origin, shareToken),
       },
+      whatsapp_notify: whatsappNotify,
     });
   }
 
@@ -1083,6 +1162,44 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: 'Composition can only be edited for draft catalogs' }, { status: 400 });
   }
 
+  const isFirstComposerPublish = globalCatalog.status === 'draft' && payload.save_mode === 'publish';
+  const buyerNote = (payload.buyer_note ?? payload.message)?.trim() || null;
+  const nextScopeValue = buildCatalogScopeValue({
+    scopeType: payload.scope_type,
+    cohortId: payload.cohort_id,
+    buyerIds: payload.buyer_ids,
+    filters: payload.filters,
+    tagOverrides: payload.tag_overrides,
+    priceSource: payload.price_source,
+    priceListId: payload.price_list_id,
+    draft: null,
+  });
+
+  if (isFirstComposerPublish && payload.notify_whatsapp) {
+    const flagEnabled = await getFlag(FEATURE_FLAGS.WHATSAPP_BROADCAST, claims.tenant_id);
+    if (!flagEnabled) {
+      return NextResponse.json({ error: 'WhatsApp broadcast feature is not enabled' }, { status: 403 });
+    }
+
+    const preflight = await runCampaignPublishPreflight(db, {
+      tenantId: claims.tenant_id,
+      scopeType: payload.scope_type,
+      scopeValue: nextScopeValue,
+      notifyWhatsapp: true,
+    });
+
+    if (!preflight.can_notify) {
+      return NextResponse.json(
+        { error: preflight.blockers[0] ?? 'WhatsApp notify preflight failed', blockers: preflight.blockers },
+        { status: 400 },
+      );
+    }
+
+    if (payload.notify_scheduled_for && new Date(payload.notify_scheduled_for).getTime() <= Date.now()) {
+      return NextResponse.json({ error: 'Scheduled time must be in the future' }, { status: 400 });
+    }
+  }
+
   const nextStatus: CatalogStatus = payload.save_mode === 'publish' ? 'published' : 'draft';
   const { data: updatedCatalog, error: updateCatalogError } = await db
     .schema('app')
@@ -1090,19 +1207,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     .update({
       name: payload.name,
       scope_type: payload.scope_type,
-      scope_value: buildCatalogScopeValue({
-        scopeType: payload.scope_type,
-        cohortId: payload.cohort_id,
-        buyerIds: payload.buyer_ids,
-        filters: payload.filters,
-        tagOverrides: payload.tag_overrides,
-        priceSource: payload.price_source,
-        priceListId: payload.price_list_id,
-        draft: null,
-      }),
+      scope_value: nextScopeValue,
       valid_from: payload.valid_from.toISOString(),
       valid_to: payload.valid_to ? payload.valid_to.toISOString() : null,
-      message: payload.message?.trim() || null,
+      ...(payload.save_mode === 'publish' ? { message: buyerNote } : {}),
       status: nextStatus,
       share_token: nextStatus === 'published' ? globalCatalog.share_token ?? generateShareToken() : globalCatalog.share_token,
       updated_by: claims.sub,
@@ -1152,5 +1260,43 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   revalidateSellerDashboardCache(claims.tenant_id);
-  return NextResponse.json({ catalog: updatedCatalog });
+
+  let whatsappNotify: { broadcast_id: string; recipient_count: number; scheduled: boolean } | null = null;
+
+  if (isFirstComposerPublish && payload.notify_whatsapp) {
+    const { data: publishedCampaign } = await db
+      .schema('app')
+      .from('campaigns')
+      .select('id, name, scope_type, scope_value, hero_image_url, message')
+      .eq('id', id)
+      .eq('tenant_id', claims.tenant_id)
+      .maybeSingle();
+
+    if (publishedCampaign) {
+      try {
+        whatsappNotify = await queueCampaignPublishNotify(db, {
+          tenantId: claims.tenant_id,
+          actorId: claims.sub ?? claims.tenant_id,
+          campaignId: id,
+          campaignName: publishedCampaign.name as string,
+          scopeType: publishedCampaign.scope_type as ScopeType,
+          scopeValue: (publishedCampaign.scope_value ?? {}) as Record<string, unknown>,
+          buyerNote: (publishedCampaign.message as string | null) ?? buyerNote,
+          scheduledFor: payload.notify_scheduled_for ?? null,
+          heroImageUrl: publishedCampaign.hero_image_url as string | null,
+        });
+      } catch (notifyError) {
+        console.error('[PATCH /api/tenant/catalogs/:id] WhatsApp notify failed after publish:', notifyError);
+        return NextResponse.json(
+          {
+            error: notifyError instanceof Error ? notifyError.message : 'Campaign published but WhatsApp notify failed',
+            catalog: updatedCatalog,
+          },
+          { status: 500 },
+        );
+      }
+    }
+  }
+
+  return NextResponse.json({ catalog: updatedCatalog, whatsapp_notify: whatsappNotify });
 }

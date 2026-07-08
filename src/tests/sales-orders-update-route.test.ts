@@ -135,4 +135,23 @@ describe('PATCH /api/tenant/orders/[id]', () => {
     expect(res.status).toBe(200);
     expect(lastOrderUpdate?.place_of_supply).toBe('Karnataka');
   });
+
+  it('persists canonical order_date alongside placed_at', async () => {
+    const { PATCH } = await import('../../app/api/tenant/orders/[id]/route');
+    const res = await PATCH(
+      new NextRequest('http://localhost/api/tenant/orders/11111111-1111-1111-1111-111111111111', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          order_date: '2026-07-09',
+          buyer_id: '22222222-2222-2222-2222-222222222222',
+          location_id: '33333333-3333-3333-3333-333333333333',
+        }),
+      }),
+      { params: Promise.resolve({ id: '11111111-1111-1111-1111-111111111111' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(lastOrderUpdate?.order_date).toBe('2026-07-09');
+    expect(lastOrderUpdate?.placed_at).toBe('2026-07-09T12:00:00.000Z');
+  });
 });

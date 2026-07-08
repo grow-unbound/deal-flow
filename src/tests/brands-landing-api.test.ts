@@ -114,12 +114,18 @@ describe('brands landing api', () => {
       },
     ];
     dbResponses['app.brands_snapshot'] = [{ data: { total_count: 1, active_count: 1, with_products_count: 1, refreshed_at: '2026-06-01T00:00:00Z' } }];
-    dbResponses['app.customers_snapshot'] = [{ data: { active_count: 1 } }];
     dbResponses['app.kpi_brand_daily'] = [{ data: [] }, { data: [] }];
     dbResponses['app.tenant_categories'] = [{ data: [{ id: 'category-1', name: 'Audio', deleted_at: null }] }];
-    dbResponses['app.cohorts'] = [{ data: [{ id: 'cohort-1', name: 'Tier A', deleted_at: null }] }];
+    dbResponses['app.cohorts'] = [{ data: [{ id: 'cohort-1', name: 'Tier A', deleted_at: null, allowed_tenant_brand_ids: null }] }];
     dbResponses['catalog.brands'] = [{ data: [] }];
     dbResponses['app.tenant_products'] = [{ data: [] }];
+    dbResponses['app.buyers'] = [{
+      data: [
+        { id: 'buyer-1', default_cohort_id: 'cohort-1' },
+        { id: 'buyer-2', default_cohort_id: null },
+      ],
+    }];
+    dbResponses['app.cohort_members'] = [{ data: [] }];
   });
 
   it('returns active cohort options without requiring an is_active column', async () => {
@@ -131,5 +137,7 @@ describe('brands landing api', () => {
     expect(body.cohorts).toEqual([{ id: 'cohort-1', name: 'Tier A' }]);
     expect(body.categories).toEqual(['Audio', 'Uncategorized']);
     expect(body.brands).toHaveLength(1);
+    expect(body.kpis.total_buyers).toBe(2);
+    expect(body.brands[0].total_buyers).toBe(1);
   });
 });

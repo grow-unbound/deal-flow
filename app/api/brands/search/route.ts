@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
       .schema('catalog')
       .from('brands')
       .select('id, name, slug, logo_url, description')
-      .or(`is_public.eq.true,origin_tenant_id.eq.${claims.tenant_id}`)
+      .eq('is_public', true)
       .limit(20);
 
     if (q.trim()) {

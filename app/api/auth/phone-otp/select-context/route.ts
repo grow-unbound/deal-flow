@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
 import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate } from '@/lib/server/buyer-access';
 import { buyerOtpStore, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
 import { stampSellerImplicitWhatsappConsent } from '@/lib/server/whatsapp-consent';
@@ -76,6 +77,19 @@ export async function POST(request: NextRequest) {
     }
 
     const { session } = await mintBuyerSession(toBuyerLoginCandidate(candidate));
+    const { supabaseAdmin } = await import('@/lib/supabase');
+    if (supabaseAdmin && candidate.buyer_id) {
+      void recordBuyerAppActivitySafe(supabaseAdmin as any, {
+        tenantId: candidate.tenant_id,
+        buyerId: candidate.buyer_id,
+        eventName: 'session_started',
+        path: request.nextUrl.pathname,
+        context: {
+          role: candidate.role,
+          principal_type: candidate.principal_type,
+        },
+      });
+    }
     // WhatsApp Broadcast Phase C (§4.8, §9): force first-time buyers through
     // the consent checkbox before /buy/home.
     let redirect = '/buy/home';

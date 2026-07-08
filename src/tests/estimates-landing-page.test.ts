@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const getVerifiedClaimsMock = vi.fn();
+const estimateKpiCallState = { count: 0 };
 
 interface EstimateRow {
   id: string;
@@ -14,6 +15,7 @@ interface EstimateRow {
   accepted_at: string | null;
   expires_at: string | null;
   source: string | null;
+  is_buyer_app_estimate?: boolean;
   campaign_id?: string | null;
   created_by?: string | null;
   updated_at?: string | null;
@@ -24,6 +26,16 @@ interface QueryState {
   estimates: EstimateRow[];
   estimateItems: Array<{ estimate_id: string }>;
   catalogs: Array<{ id: string; name: string }>;
+  currentKpis: Array<Record<string, unknown>>;
+  previousKpis: Array<Record<string, unknown>>;
+  aggregateKpis: Array<Record<string, unknown>>;
+  snapshot: {
+    total_count: number;
+    draft_count: number;
+    sent_count: number;
+    accepted_count: number;
+    expiring_soon: number;
+  } | null;
 }
 
 const queryState: QueryState = {
@@ -31,10 +43,38 @@ const queryState: QueryState = {
   estimates: [],
   estimateItems: [],
   catalogs: [],
+  currentKpis: [],
+  previousKpis: [],
+  aggregateKpis: [],
+  snapshot: null,
 };
 
 vi.mock('@/lib/auth', () => ({
   getVerifiedClaims: (...args: unknown[]) => getVerifiedClaimsMock(...args),
+}));
+
+vi.mock('@/lib/server/seller-location-access', () => ({
+  applySellerLocationScope: <T extends { in?: (column: string, values: string[]) => T }>(
+    query: T,
+    claims: { location_ids?: string[] | null; role?: string | null },
+  ) => {
+    if (claims.role === 'seller_assistant' && claims.location_ids?.length && query.in) {
+      return query.in('location_id', claims.location_ids);
+    }
+    return query;
+  },
+  loadAccessibleSellerLocations: vi.fn(async (_db: unknown, _tenantId: string, claims: { location_ids?: string[] | null }) => {
+    const all = [
+      { id: 'loc-1', name: 'North Hub' },
+      { id: 'loc-2', name: 'South Hub' },
+    ];
+    return claims.location_ids?.length ? all.filter((row) => claims.location_ids?.includes(row.id)) : all;
+  }),
+  resolveDefaultSellerLocationId: vi.fn(() => 'loc-1'),
+}));
+
+vi.mock('@/lib/server/seller-features', () => ({
+  getInAppCreateFlags: vi.fn().mockResolvedValue({ create_estimates: true, create_invoices: true }),
 }));
 
 vi.mock('@/lib/supabase', () => {
@@ -46,6 +86,9 @@ vi.mock('@/lib/supabase', () => {
 
     constructor(table: string) {
       this.table = table;
+    }
+    maybeSingle() {
+      return this;
     }
 
     select() {
@@ -85,6 +128,7 @@ vi.mock('@/lib/supabase', () => {
         let result = [...rows];
         for (const condition of this.conditions) {
           if (condition.kind === 'eq' || condition.kind === 'is') {
+            result = result.filter((row) => !(condition.column in row) || row[condition.column] === condition.value);
             continue;
           }
           if (condition.kind === 'in') {
@@ -124,11 +168,23 @@ vi.mock('@/lib/supabase', () => {
       if (this.table === 'estimates') return resolve({ data: applyFilters(queryState.estimates), error: null });
       if (this.table === 'estimate_items') return resolve({ data: applyFilters(queryState.estimateItems), error: null });
       if (this.table === 'campaigns') return resolve({ data: applyFilters(queryState.catalogs), error: null });
+      if (this.table === 'kpi_estimates_current') return resolve({ data: applyFilters(queryState.currentKpis), error: null });
+      if (this.table === 'kpi_estimates_previous') return resolve({ data: applyFilters(queryState.previousKpis), error: null });
+      if (this.table === 'kpi_estimates_aggregate') return resolve({ data: applyFilters(queryState.aggregateKpis), error: null });
+      if (this.table === 'estimates_snapshot') return resolve({ data: queryState.snapshot, error: null });
       return resolve({ data: [], error: null });
     }
   }
 
-  const from = vi.fn((table: string) => new QueryMock(table));
+  const from = vi.fn((table: string) => {
+    if (table === 'kpi_estimates_daily') {
+      estimateKpiCallState.count += 1;
+      if (estimateKpiCallState.count === 1) return new QueryMock('kpi_estimates_current');
+      if (estimateKpiCallState.count === 2) return new QueryMock('kpi_estimates_previous');
+      return new QueryMock('kpi_estimates_aggregate');
+    }
+    return new QueryMock(table);
+  });
 
   return {
     supabaseAdmin: {
@@ -156,7 +212,10 @@ import { GET } from '../../app/api/tenant/estimates/route';
 
 describe('estimates landing API route', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T12:00:00.000Z'));
     getVerifiedClaimsMock.mockReset();
+    estimateKpiCallState.count = 0;
     queryState.buyers = [{ id: 'b1', business_name: 'Acme Retail', geography: { city: 'Mumbai', state: 'MH' } }];
     const soon = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
     const sentOld = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
@@ -173,6 +232,7 @@ describe('estimates landing API route', () => {
         accepted_at: '2026-06-02T10:00:00.000Z',
         expires_at: soon,
         source: 'buyer_app',
+        is_buyer_app_estimate: true,
         campaign_id: 'c1',
         updated_at: '2026-06-02T10:00:00.000Z',
       },
@@ -188,6 +248,7 @@ describe('estimates landing API route', () => {
         accepted_at: null,
         expires_at: null,
         source: 'buyer_app',
+        is_buyer_app_estimate: true,
         campaign_id: 'c1',
         updated_at: '2026-06-03T10:00:00.000Z',
       },
@@ -203,6 +264,7 @@ describe('estimates landing API route', () => {
         accepted_at: null,
         expires_at: soon,
         source: 'seller',
+        is_buyer_app_estimate: false,
         campaign_id: null,
         created_by: 'u-seller',
         updated_at: '2026-06-04T10:00:00.000Z',
@@ -219,6 +281,7 @@ describe('estimates landing API route', () => {
         accepted_at: '2026-06-05T12:00:00.000Z',
         expires_at: null,
         source: 'seller',
+        is_buyer_app_estimate: false,
         campaign_id: 'c2',
         created_by: 'u-seller',
         updated_at: '2026-06-05T14:00:00.000Z',
@@ -233,6 +296,120 @@ describe('estimates landing API route', () => {
       { id: 'c1', name: 'Summer 2026 Retail' },
       { id: 'c2', name: 'Clearance Push' },
     ];
+    queryState.currentKpis = [
+      {
+        scope: 'tenant',
+        location_id: null,
+        day: '2026-06-01',
+        estimates_count: 3,
+        gmv: 70000,
+        open_count: 3,
+        accepted_count: 1,
+        converted_count: 1,
+        draft_count: 1,
+        sent_count: 1,
+        expiring_soon_count: 2,
+        open_buyer_app_count: 2,
+      },
+      {
+        scope: 'location',
+        location_id: 'loc-1',
+        day: '2026-06-01',
+        estimates_count: 1,
+        gmv: 50000,
+        open_count: 1,
+        accepted_count: 1,
+        converted_count: 0,
+        draft_count: 0,
+        sent_count: 0,
+        expiring_soon_count: 1,
+        open_buyer_app_count: 1,
+      },
+      {
+        scope: 'location',
+        location_id: 'loc-2',
+        day: '2026-06-01',
+        estimates_count: 1,
+        gmv: 12000,
+        open_count: 1,
+        accepted_count: 0,
+        converted_count: 0,
+        draft_count: 0,
+        sent_count: 1,
+        expiring_soon_count: 0,
+        open_buyer_app_count: 1,
+      },
+    ];
+    queryState.previousKpis = [
+      {
+        scope: 'tenant',
+        location_id: null,
+        day: '2026-05-01',
+        estimates_count: 1,
+        gmv: 2000,
+        open_count: 0,
+        accepted_count: 0,
+        converted_count: 1,
+        draft_count: 0,
+        sent_count: 0,
+        expiring_soon_count: 0,
+        open_buyer_app_count: 0,
+      },
+      {
+        scope: 'location',
+        location_id: 'loc-1',
+        day: '2026-05-01',
+        estimates_count: 1,
+        gmv: 2000,
+        open_count: 0,
+        accepted_count: 0,
+        converted_count: 1,
+        draft_count: 0,
+        sent_count: 0,
+        expiring_soon_count: 0,
+        open_buyer_app_count: 0,
+      },
+    ];
+    queryState.aggregateKpis = [
+      {
+        scope: 'tenant',
+        location_id: null,
+        open_count: 3,
+        draft_count: 1,
+        sent_count: 1,
+        accepted_count: 1,
+        expiring_soon_count: 2,
+      },
+      {
+        scope: 'location',
+        location_id: 'loc-1',
+        open_count: 1,
+        draft_count: 0,
+        sent_count: 0,
+        accepted_count: 1,
+        expiring_soon_count: 1,
+      },
+      {
+        scope: 'location',
+        location_id: 'loc-2',
+        open_count: 1,
+        draft_count: 0,
+        sent_count: 1,
+        accepted_count: 0,
+        expiring_soon_count: 0,
+      },
+    ];
+    queryState.snapshot = {
+      total_count: 4,
+      draft_count: 1,
+      sent_count: 1,
+      accepted_count: 1,
+      expiring_soon: 2,
+    };
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('counts ready to convert as accepted and expiring-soon for open estimates within 7 days', async () => {
@@ -282,5 +459,7 @@ describe('estimates landing API route', () => {
     const body = await res.json();
     expect(body.estimates).toHaveLength(2);
     expect(body.estimates.every((row: { id: string }) => ['e1', 'e4'].includes(row.id))).toBe(true);
+    expect(body.kpis.total_estimates_this_period).toBe(1);
+    expect(body.kpis.open_total).toBe(1);
   });
 });

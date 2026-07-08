@@ -16,11 +16,18 @@ export interface WhatsAppTemplateButtonParam {
   text: string;
 }
 
+export interface WhatsAppTemplateHeaderParam {
+  type: 'image';
+  mediaId?: string;
+  link?: string;
+}
+
 export interface WhatsAppSendTemplateRequest {
   to: string;
   templateName: string;
   locale: string;
   bodyParams: WhatsAppTemplateBodyParam[];
+  headerParams?: WhatsAppTemplateHeaderParam;
   buttonParams?: WhatsAppTemplateButtonParam[];
 }
 
@@ -63,16 +70,30 @@ export class WhatsAppClient {
       throw new WhatsAppConfigError();
     }
 
-    const components: Record<string, unknown>[] = [
-      {
-        type: 'body',
-        parameters: request.bodyParams.map((param) => ({
-          type: 'text',
-          text: param.text,
-          ...(param.parameterName ? { parameter_name: param.parameterName } : {}),
-        })),
-      },
-    ];
+    const components: Record<string, unknown>[] = [];
+
+    if (request.headerParams?.type === 'image') {
+      const image = request.headerParams.mediaId
+        ? { id: request.headerParams.mediaId }
+        : request.headerParams.link
+          ? { link: request.headerParams.link }
+          : null;
+      if (image) {
+        components.push({
+          type: 'header',
+          parameters: [{ type: 'image', image }],
+        });
+      }
+    }
+
+    components.push({
+      type: 'body',
+      parameters: request.bodyParams.map((param) => ({
+        type: 'text',
+        text: param.text,
+        ...(param.parameterName ? { parameter_name: param.parameterName } : {}),
+      })),
+    });
 
     if (request.buttonParams?.length) {
       for (const button of request.buttonParams) {
