@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { FEATURE_FLAGS } from '@/constants';
 import { getFlag } from '@/lib/flags';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
+import { GET as getEstimatesLanding } from '@/app/api/tenant/estimates/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,23 +27,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
 
-    const { data, error } = await supabaseAdmin
-      .schema('app')
-      .from('estimates_snapshot')
-      .select('total_count, draft_count, sent_count, accepted_count, total_value, accepted_value, expiring_soon, refreshed_at')
-      .eq('tenant_id', claims.tenant_id)
-      .maybeSingle();
-
-    if (error) {
-      console.error('[GET /api/tenant/estimates/summary]', error);
-      return NextResponse.json({ error: 'Failed to fetch summary' }, { status: 500 });
+    const landingRes = await getEstimatesLanding(request);
+    if (!landingRes.ok) {
+      const body = await landingRes.json().catch(() => ({ error: 'Failed to fetch summary' }));
+      return NextResponse.json(body, { status: landingRes.status });
     }
 
-    if (!data) {
-      return NextResponse.json({ total_count: null }, { status: 404 });
-    }
+    const landing = await landingRes.json();
+    const kpis = landing.kpis ?? {};
 
-    return NextResponse.json(data, { headers: SELLER_CACHE_PERSONAL });
+    return NextResponse.json(
+      {
+        total_count: kpis.total_estimates_this_period ?? 0,
+        draft_count: kpis.open_drafts ?? 0,
+        sent_count: kpis.open_sent ?? 0,
+        accepted_count: kpis.open_accepted ?? 0,
+        total_value: kpis.total_gmv_this_period ?? 0,
+        accepted_value: null,
+        expiring_soon: kpis.expiring_soon ?? 0,
+        refreshed_at: null,
+      },
+      { headers: SELLER_CACHE_PERSONAL },
+    );
   } catch (e) {
     console.error('[GET /api/tenant/estimates/summary]', e);
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

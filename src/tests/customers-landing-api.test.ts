@@ -27,6 +27,7 @@ function nextResult(key: string): QueryResult {
 }
 
 function createQuery(key: string) {
+  let head = false;
   const query = {
     eq: vi.fn(),
     is: vi.fn(),
@@ -38,11 +39,27 @@ function createQuery(key: string) {
     gte: vi.fn(),
     lt: vi.fn(),
     maybeSingle: vi.fn(),
-    then: (onFulfilled: (value: { data: unknown; error: unknown }) => unknown) => {
+    then: (onFulfilled: (value: { data: unknown; error: unknown; count?: number }) => unknown) => {
       const result = nextResult(key);
-      return Promise.resolve(onFulfilled({ data: result.data ?? null, error: result.error ?? null }));
+      let rows = Array.isArray(result.data) ? [...result.data] : [];
+      for (const [column, value] of query.eq.mock.calls.map((args) => [args[0], args[1]] as const)) {
+        rows = rows.filter((row) => !(column in (row as Record<string, unknown>)) || (row as Record<string, unknown>)[column] === value);
+      }
+      for (const [column, value] of query.in.mock.calls.map((args) => [args[0], args[1]] as const)) {
+        const values = Array.isArray(value) ? value : [];
+        rows = rows.filter((row) => values.includes((row as Record<string, unknown>)[column]));
+      }
+      return Promise.resolve(onFulfilled({
+        data: head ? null : rows,
+        error: result.error ?? null,
+        count: head ? rows.length : undefined,
+      }));
     },
   };
+  const select = vi.fn((_columns?: string, options?: { head?: boolean }) => {
+    head = Boolean(options?.head);
+    return query;
+  });
 
   query.eq.mockReturnValue(query);
   query.is.mockReturnValue(query);
@@ -55,12 +72,15 @@ function createQuery(key: string) {
   query.lt.mockReturnValue(query);
   query.maybeSingle.mockReturnValue(query);
 
-  return query;
+  return { query, select };
 }
 
 const schemaMock = vi.fn((schemaName: string) => ({
   from: vi.fn((tableName: string) => ({
-    select: vi.fn(() => createQuery(`${schemaName}.${tableName}`)),
+    select: (...args: unknown[]) => {
+      const { select } = createQuery(`${schemaName}.${tableName}`);
+      return select(...args);
+    },
   })),
 }));
 
@@ -288,7 +308,28 @@ describe('customers landing api', () => {
     const filteredBody = await filteredResponse.json();
 
     expect(filteredBody.kpis).toEqual(baselineBody.kpis);
-    expect(filteredBody.callouts).toEqual(baselineBody.callouts);
+    expect(filteredBody.callouts.needs_call.map((buyer: { id: string }) => buyer.id)).toEqual(
+      baselineBody.callouts.needs_call.map((buyer: { id: string }) => buyer.id),
+    );
+    expect(filteredBody.callouts.top_spenders.map((buyer: { id: string }) => buyer.id)).toEqual(
+      baselineBody.callouts.top_spenders.map((buyer: { id: string }) => buyer.id),
+    );
+    expect(filteredBody.callouts.top_risers.map((buyer: { id: string }) => buyer.id)).toEqual(
+      baselineBody.callouts.top_risers.map((buyer: { id: string }) => buyer.id),
+    );
     expect(filteredBody.buyers.map((buyer: { id: string }) => buyer.id)).toEqual(['buyer-dormant']);
+  });
+
+  it('counts filtered lifecycle results from the full buyer universe instead of the first page slice', async () => {
+    const response = await GET(
+      new NextRequest('http://localhost:3000/api/tenant/customers?period=month&status=Inactive&limit=1'),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+
+    expect(body.buyers.map((buyer: { id: string }) => buyer.id)).toEqual(['buyer-inactive']);
+    expect(body.total).toBe(1);
+    expect(body.nextCursor).toBeNull();
   });
 });
