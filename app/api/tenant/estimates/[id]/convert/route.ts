@@ -6,6 +6,12 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { supabaseAdmin } from '@/lib/supabase';
 
+function currentIstDate() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+  }).format(new Date());
+}
+
 const AddedLineSchema = z.object({
   tenant_product_id: z.string().uuid(),
   qty: z.number().positive(),
@@ -84,6 +90,7 @@ export async function PATCH(
       p_actor_user_id: claims.sub,
       p_expected_delivery: parsed.data.delivery_date,
       p_order_number_override: parsed.data.order_number ?? null,
+      p_order_date: currentIstDate(),
     };
     if (parsed.data.line_ids.length > 0) {
       rpcInput.p_line_ids = parsed.data.line_ids;

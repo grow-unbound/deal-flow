@@ -108,9 +108,9 @@ This simplifies the architecture in this spec's favor — no BSP markup sitting 
 | --- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
 | 1   | Payment reminder (overdue / nearing payment terms)                                              | **Back in scope** — `app.invoices` already exists with real AR data, see flag below and §4.4                                                                                                                            | **Utility** if the template references the specific invoice; Meta will likely push generic dunning language to **Marketing** — validate per template, don't assume | `dues_filter` (new — queries `app.invoices` + `app.buyers`)                                                        |
 | 2   | New stock / campaign marketing (New in Stock, Latest Arrivals, Flash Sale, Discount, Clearance) | **In scope**                                                                                                                                                                                                            | **Marketing**                                                                                                                                                      | `campaign` (linked to `app.published_catalogs`, i.e. "Campaigns" post-rename) or `cohort`                          |
-| 3   | Preset cohorts or ad-hoc individual selection                                                   | **In scope**                                                                                                                                                                                                            | n/a (targeting mode)                                                                                                                                               | `cohort` | `manual_selection` | `geography_filter` | `all_buyers`                                                  |
+| 3   | Preset cohorts or ad-hoc individual selection                                                   | **In scope**                                                                                                                                                                                                            | n/a (targeting mode)                                                                                                                                               | `cohort`                                                                                                           |
 | 4   | Beat-route arrival ("agent visiting soon, be ready")                                            | **In scope, simplified** — no route/beat table; seller filters by existing `app.buyers.geography` (city/pincode/zone) instead of an ordered route. Coarser than "Tuesday's exact route" but ships with zero new schema. | **Utility** (operationally triggered)                                                                                                                              | `geography_filter`                                                                                                 |
-| 5   | Buyer-app onboarding / self-service nudge                                                       | **In scope**                                                                                                                                                                                                            | **Marketing** or **Utility** depending on wording — Meta is strict here (see §7.4)                                                                                 | `geography_filter` | `all_buyers`                                                                                  |
+| 5   | Buyer-app onboarding / self-service nudge                                                       | **In scope**                                                                                                                                                                                                            | **Marketing** or **Utility** depending on wording — Meta is strict here (see §7.4)                                                                                 | `geography_filter`                                                                                                 |
 | 6   | Dormant customer re-engagement                                                                  | **In scope**                                                                                                                                                                                                            | **Marketing**                                                                                                                                                      | `dormant_filter` on `orders.placed_at` staleness — this is a computed query, not a new table, so it stays in scope |
 
 
@@ -562,7 +562,7 @@ Hi {{buyer_name}},
 
 This is a payment reminder from {{seller_name}}.
 
-Amount due: *₹{{outstanding_amount}} ({{due_invoice_count}} invoices}})*
+Amount due: *₹{{outstanding_amount}} ({{due_invoice_count}} invoices)*
 Overdue by: {{overdue_days}} days
 Contact: {{seller_phone_number}}
 
@@ -633,11 +633,13 @@ Only change from the last draft: "in the app" added to the closing sentence. Rep
 **Message body:**
 
 ```
-Hi {{buyer_name}},
+Hi *{{buyer_name}}*,
 
-{{seller_name}} has a new campaign live — {{campaign_title}}
+*{{seller_name}}* has launched a new campaign. Place your orders right away.
 
-Check it out and place your order in the app.
+*{{campaign_title}}* - {{buyer_note}}
+
+Contact {{seller_phone_number}} for more details.
 
 Reply STOP to stop marketing messages.
 ```

@@ -406,8 +406,8 @@ export function useCatalogComposerBuyerPicker({
   enabled = true,
 }: CatalogComposerBuyerPickerFilters & { enabled?: boolean }) {
   return useInfiniteQuery({
-    queryKey: ['catalog-composer-buyer-picker', query?.trim() ?? '', city, cohort, orders, dues, selectedIds, limit],
-    queryFn: async ({ pageParam }): Promise<CatalogComposerBuyerPickerResponse> => {
+    queryKey: ['catalog-composer-buyer-picker', query?.trim() ?? '', city, cohort, orders, dues, limit],
+    queryFn: async ({ pageParam, signal }): Promise<CatalogComposerBuyerPickerResponse> => {
       const params = new URLSearchParams();
       if (query?.trim()) params.set('q', query.trim());
       params.set('limit', String(limit));
@@ -417,7 +417,7 @@ export function useCatalogComposerBuyerPicker({
       appendArrayParam(params, 'orders', orders);
       appendArrayParam(params, 'dues', dues);
       appendArrayParam(params, 'selected_id', selectedIds);
-      const res = await apiFetch(`/api/tenant/catalogs/buyer-picker?${params.toString()}`);
+      const res = await apiFetch(`/api/tenant/catalogs/buyer-picker?${params.toString()}`, { signal });
       if (!res.ok) throw new Error('Failed to fetch campaign buyers');
       return res.json();
     },
@@ -427,6 +427,7 @@ export function useCatalogComposerBuyerPicker({
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     staleTime: 30_000,
     gcTime: NAVIGATION_QUERY_GC_TIME,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -434,7 +435,10 @@ export function useSaveCatalogComposer(catalogId?: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (payload: CatalogComposerPayload): Promise<{ catalog: { id: string; status: 'draft' | 'published' | 'archived' } }> => {
+    mutationFn: async (payload: CatalogComposerPayload): Promise<{
+      catalog: { id: string; status: 'draft' | 'published' | 'archived' };
+      whatsapp_notify?: { broadcast_id: string; recipient_count: number; scheduled: boolean } | null;
+    }> => {
       const url = catalogId ? `/api/tenant/catalogs/${catalogId}` : '/api/tenant/catalogs';
       const method = catalogId ? 'PATCH' : 'POST';
       const res = await apiFetch(url, {
@@ -448,10 +452,15 @@ export function useSaveCatalogComposer(catalogId?: string) {
         throw new Error((body as { error?: string }).error ?? 'Failed to save catalog');
       }
 
-      return res.json() as Promise<{ catalog: { id: string; status: 'draft' | 'published' | 'archived' } }>;
+      return res.json() as Promise<{
+        catalog: { id: string; status: 'draft' | 'published' | 'archived' };
+        whatsapp_notify?: { broadcast_id: string; recipient_count: number; scheduled: boolean } | null;
+      }>;
     },
-    onSuccess: (_data, _payload) => {
-      toast.success('Campaign saved');
+    onSuccess: (_data, payload) => {
+      if (payload.save_mode !== 'publish') {
+        toast.success('Campaign saved');
+      }
       queryClient.invalidateQueries({ queryKey: ['tenant-catalogs'] });
       queryClient.invalidateQueries({ queryKey: ['catalog-composer-bootstrap'] });
       if (catalogId) {
@@ -516,15 +525,156 @@ export function useExtendCatalogValidity(id: string) {
   });
 }
 
+export interface CatalogPublishPreviewResponse {
+  campaign: {
+    id: string | null;
+    name: string;
+    valid_from: string;
+    valid_to: string | null;
+    audience_label: string;
+    products_count: number;
+    pricing_scheme: string;
+    buyer_note: string;
+    hero_image_url: string | null;
+    header_image_url: string;
+    header_image_source: 'campaign' | 'tenant_logo' | 'platform_default';
+  };
+  whatsapp: {
+    feature_enabled: boolean;
+    notify_available: boolean;
+    can_notify: boolean;
+    blockers: string[];
+    recipient_count: number;
+    credits_per_message: number;
+    estimated_credits: number;
+    estimated_inr: number;
+    credits_balance: number;
+    template_approved: boolean;
+    tenant_phone_configured: boolean;
+    broadcast_sending_paused: boolean;
+  };
+}
+
+export interface CatalogPublishInput {
+  notifyWhatsapp?: boolean;
+  buyerNote?: string;
+  notifyScheduledFor?: string | null;
+}
+
+export function useCatalogPublishPreview(campaignId: string, notifyWhatsapp: boolean, enabled: boolean) {
+  return useQuery({
+    queryKey: ['catalog-publish-preview', campaignId, notifyWhatsapp],
+    queryFn: async (): Promise<CatalogPublishPreviewResponse> => {
+      const params = new URLSearchParams({ notify_whatsapp: notifyWhatsapp ? 'true' : 'false' });
+      const res = await apiFetch(`/api/tenant/catalogs/${campaignId}/publish-preview?${params.toString()}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to load publish preview');
+      }
+      return res.json();
+    },
+    enabled: enabled && Boolean(campaignId),
+    staleTime: 0,
+  });
+}
+
+export interface ComposerPublishPreviewInput {
+  notifyWhatsapp: boolean;
+  scopeType: 'cohort' | 'buyer' | 'all';
+  cohortId?: string | null;
+  buyerIds: string[];
+  name: string;
+  validFrom: string;
+  validTo?: string;
+  productsCount: number;
+  priceSource: CatalogComposerPriceSource;
+  priceListName?: string | null;
+  heroImageUrl?: string | null;
+  campaignId?: string;
+  buyerNote?: string;
+}
+
+export function useComposerPublishPreview(input: ComposerPublishPreviewInput & { enabled: boolean }) {
+  const hasCampaignId = Boolean(input.campaignId);
+  const savedDraftPreview = useCatalogPublishPreview(
+    input.campaignId ?? '',
+    input.notifyWhatsapp,
+    input.enabled && hasCampaignId,
+  );
+
+  const unsavedPreview = useQuery({
+    queryKey: [
+      'catalog-composer-publish-preview',
+      input.notifyWhatsapp,
+      input.scopeType,
+      input.cohortId,
+      input.buyerIds,
+      input.name,
+      input.validFrom,
+      input.validTo,
+      input.productsCount,
+      input.priceSource,
+      input.priceListName,
+      input.heroImageUrl,
+    ],
+    queryFn: async (): Promise<CatalogPublishPreviewResponse> => {
+      const res = await apiFetch('/api/tenant/catalogs/publish-preflight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          notify_whatsapp: input.notifyWhatsapp,
+          scope_type: input.scopeType,
+          cohort_id: input.scopeType === 'cohort' ? input.cohortId : null,
+          buyer_ids: input.scopeType === 'buyer' ? input.buyerIds : [],
+          name: input.name,
+          valid_from: input.validFrom ? `${input.validFrom}T00:00:00.000Z` : new Date().toISOString(),
+          valid_to: input.validTo ? `${input.validTo}T23:59:59.000Z` : null,
+          products_count: input.productsCount,
+          price_source: input.priceSource,
+          price_list_name: input.priceListName ?? null,
+          hero_image_url: input.heroImageUrl ?? null,
+          buyer_note: input.buyerNote ?? '',
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Failed to load publish preview');
+      }
+      return res.json();
+    },
+    enabled: input.enabled && !hasCampaignId,
+    staleTime: 0,
+  });
+
+  if (hasCampaignId) {
+    return {
+      data: savedDraftPreview.data,
+      isLoading: savedDraftPreview.isLoading,
+      error: savedDraftPreview.error,
+    };
+  }
+
+  return {
+    data: unsavedPreview.data,
+    isLoading: unsavedPreview.isLoading,
+    error: unsavedPreview.error,
+  };
+}
+
 export function usePublishCatalog(id: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async () => {
+    mutationFn: async (input?: CatalogPublishInput) => {
       const res = await apiFetch(`/api/tenant/catalogs/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'publish_catalog' }),
+        body: JSON.stringify({
+          action: 'publish_catalog',
+          notify_whatsapp: input?.notifyWhatsapp ?? false,
+          buyer_note: input?.buyerNote,
+          notify_scheduled_for: input?.notifyScheduledFor ?? undefined,
+        }),
       });
 
       if (!res.ok) {
@@ -532,7 +682,11 @@ export function usePublishCatalog(id: string) {
         throw new Error((body as { error?: string }).error ?? 'Failed to publish catalog');
       }
 
-      return res.json() as Promise<{ ok: true; share_link: CatalogShareLinkResponse }>;
+      return res.json() as Promise<{
+        ok: true;
+        share_link: CatalogShareLinkResponse;
+        whatsapp_notify?: { broadcast_id: string; recipient_count: number; scheduled: boolean } | null;
+      }>;
     },
     onMutate: async () => {
       const snapshots = await takeSnapshots(queryClient, [['tenant-catalog-detail', id], ['tenant-catalogs']]);

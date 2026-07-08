@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check, ChevronDown, Search, Users } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Search, Users } from 'lucide-react';
 
 import { EntityAvatar } from '@/components/seller/layout';
 import { Button } from '@/components/ui/button';
@@ -166,12 +166,16 @@ export function SellerBuyerPickerOverlay({
   );
   const buyerFilterGroups = buyerPickerQuery.data?.pages[0]?.filters.groups ?? [];
   const selectedBuyerSet = useMemo(() => new Set(selectedBuyerIds), [selectedBuyerIds]);
-  const selectedBuyerRows = useMemo(
-    () => selectedBuyerIds.map((id) => buyerPickerCache[id]).filter((buyer): buyer is CatalogComposerBuyerPickerRow => Boolean(buyer)),
-    [buyerPickerCache, selectedBuyerIds],
-  );
   const allFilteredBuyerIds = useMemo(() => buyerPickerRows.map((buyer) => buyer.id), [buyerPickerRows]);
   const allFilteredSelected = allFilteredBuyerIds.length > 0 && allFilteredBuyerIds.every((id) => selectedBuyerSet.has(id));
+  const isRefetchingResults = buyerPickerQuery.isFetching
+    && !buyerPickerQuery.isFetchingNextPage
+    && buyerPickerQuery.isPlaceholderData;
+  const hasActiveFilters = buyerFilters.city.length > 0
+    || buyerFilters.cohort.length > 0
+    || buyerFilters.orders.length > 0
+    || buyerFilters.dues.length > 0
+    || Boolean(buyerSearch.trim());
 
   useEffect(() => {
     if (!buyerPickerQuery.data) return;
@@ -198,6 +202,25 @@ export function SellerBuyerPickerOverlay({
     setBuyerFilters((current) => ({ ...current, [key]: values }));
   }
 
+  function cacheBuyerRow(buyer: CatalogComposerBuyerPickerRow) {
+    setBuyerPickerCache((current) => {
+      if (current[buyer.id]) return current;
+      return { ...current, [buyer.id]: buyer };
+    });
+  }
+
+  function toggleBuyerSelection(buyer: CatalogComposerBuyerPickerRow) {
+    const checked = selectedBuyerSet.has(buyer.id);
+    if (!checked) {
+      cacheBuyerRow(buyer);
+    }
+    onSelectedBuyerIdsChange(
+      checked
+        ? selectedBuyerIds.filter((id) => id !== buyer.id)
+        : Array.from(new Set([...selectedBuyerIds, buyer.id])),
+    );
+  }
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="flex w-full max-w-[540px] flex-col p-0">
@@ -208,91 +231,33 @@ export function SellerBuyerPickerOverlay({
             <span>{selectedBuyerIds.length} buyers selected</span>
           </div>
         </SheetHeader>
-        <SheetBody className="space-y-4 px-5 py-4">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cream-600" />
-            <Input
-              value={buyerSearch}
-              onChange={(event) => setBuyerSearch(event.target.value)}
-              placeholder="Search buyer, phone, or city"
-              className="pl-9"
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {buyerFilterGroups.map((group) => {
-              const values = buyerFilters[group.key as keyof BuyerPickerFilters] ?? [];
-              return (
-                <BuyerFilterDropdown
-                  key={group.key}
-                  label={group.label}
-                  values={values}
-                  options={group.options}
-                  onChange={(values) => updateBuyerFilter(group.key as keyof BuyerPickerFilters, values)}
-                />
-              );
-            })}
-          </div>
-          {selectedBuyerRows.length > 0 ? (
+        <SheetBody className="flex min-h-0 flex-1 flex-col space-y-0 overflow-hidden px-5 py-4">
+          <div className="shrink-0 space-y-4">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cream-600" />
+              <Input
+                value={buyerSearch}
+                onChange={(event) => setBuyerSearch(event.target.value)}
+                placeholder="Search buyer, phone, or city"
+                className="pl-9"
+              />
+            </div>
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Selected buyers</p>
-                {selectedBuyerRows.length > 6 ? (
-                  <button
-                    type="button"
-                    className="text-xs font-semibold uppercase tracking-[0.06em] text-teal-700 hover:text-teal-800"
-                    onClick={() => setSelectedBuyerChipsExpanded((current) => !current)}
-                  >
-                    {selectedBuyerChipsExpanded ? 'Collapse' : 'Expand'}
-                  </button>
-                ) : null}
-              </div>
-              <div
-                className={cn(
-                  'overflow-hidden transition-[max-height] duration-200',
-                  selectedBuyerChipsExpanded ? 'max-h-40 overflow-y-auto' : 'max-h-10',
-                )}
-              >
-                <div className="flex flex-wrap gap-2">
-                  {selectedBuyerRows.map((buyer) => (
-                    <button
-                      key={buyer.id}
-                      type="button"
-                      onClick={() => onSelectedBuyerIdsChange(selectedBuyerIds.filter((id) => id !== buyer.id))}
-                      className="inline-flex items-center gap-2 rounded-full border border-cream-300 bg-white px-3 py-1 text-xs font-medium text-cream-900 transition-colors hover:bg-cream-50"
-                    >
-                      <span>{buyer.business_name}</span>
-                      <span aria-hidden="true" className="text-cream-600">×</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : null}
-          <div className="flex items-center justify-between px-1 py-1">
-            <div className="flex items-center gap-4">
-              <button
-                type="button"
-                className="text-sm font-semibold text-teal-700 hover:text-teal-800 disabled:text-cream-400"
-                disabled={allFilteredBuyerIds.length === 0}
-                onClick={() => {
-                  onSelectedBuyerIdsChange(
-                    allFilteredSelected
-                      ? selectedBuyerIds.filter((id) => !allFilteredBuyerIds.includes(id))
-                      : Array.from(new Set([...selectedBuyerIds, ...allFilteredBuyerIds])),
+              <div className="flex flex-wrap gap-2">
+                {buyerFilterGroups.map((group) => {
+                  const values = buyerFilters[group.key as keyof BuyerPickerFilters] ?? [];
+                  return (
+                    <BuyerFilterDropdown
+                      key={group.key}
+                      label={group.label}
+                      values={values}
+                      options={group.options}
+                      onChange={(values) => updateBuyerFilter(group.key as keyof BuyerPickerFilters, values)}
+                    />
                   );
-                }}
-              >
-                {allFilteredSelected ? 'Clear Filtered' : 'Select Filtered'}
-              </button>
-              {buyerPickerQuery.isFetching && buyerPickerRows.length > 0 ? (
-                <span className="text-sm text-cream-600">Refreshing buyers…</span>
-              ) : null}
-            </div>
-            {(buyerFilters.city.length > 0
-              || buyerFilters.cohort.length > 0
-              || buyerFilters.orders.length > 0
-              || buyerFilters.dues.length > 0
-              || buyerSearch.trim()) ? (
+                })}
+              </div>
+              {hasActiveFilters ? (
                 <button
                   type="button"
                   className="text-sm font-semibold text-teal-700 hover:text-teal-800"
@@ -304,9 +269,86 @@ export function SellerBuyerPickerOverlay({
                   Clear filters
                 </button>
               ) : null}
+            </div>
+            {selectedBuyerIds.length > 0 ? (
+              <div className="rounded-[10px] border border-cream-200 bg-cream-50 p-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Selected buyers</p>
+                  <button
+                    type="button"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-[8px] text-teal-700 transition-colors hover:bg-teal-50 hover:text-teal-800"
+                    aria-label={selectedBuyerChipsExpanded ? 'Collapse selected buyers' : 'Expand selected buyers'}
+                    onClick={() => setSelectedBuyerChipsExpanded((current) => !current)}
+                  >
+                    {selectedBuyerChipsExpanded ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+                <div
+                  className={cn(
+                    'mt-2 overflow-hidden transition-[max-height] duration-200',
+                    selectedBuyerChipsExpanded ? 'max-h-40 overflow-y-auto' : 'max-h-10',
+                  )}
+                >
+                  <div className="flex flex-wrap gap-2">
+                    {selectedBuyerIds.map((buyerId) => {
+                      const buyer = buyerPickerCache[buyerId];
+                      return (
+                        <button
+                          key={buyerId}
+                          type="button"
+                          onClick={() => onSelectedBuyerIdsChange(selectedBuyerIds.filter((id) => id !== buyerId))}
+                          className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-medium text-teal-900 transition-colors hover:bg-teal-100"
+                        >
+                          <span>{buyer?.business_name ?? 'Selected buyer'}</span>
+                          <span aria-hidden="true" className="text-teal-700">×</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            <div className="flex items-center px-1 py-1">
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={allFilteredBuyerIds.length === 0}
+                  onClick={() => {
+                    for (const buyer of buyerPickerRows) {
+                      cacheBuyerRow(buyer);
+                    }
+                    onSelectedBuyerIdsChange(
+                      allFilteredSelected
+                        ? selectedBuyerIds.filter((id) => !allFilteredBuyerIds.includes(id))
+                        : Array.from(new Set([...selectedBuyerIds, ...allFilteredBuyerIds])),
+                    );
+                  }}
+                >
+                  {allFilteredSelected ? 'Clear Filtered' : 'Select Filtered'}
+                </Button>
+                {selectedBuyerIds.length > 0 ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onSelectedBuyerIdsChange([])}
+                  >
+                    {clearSelectionLabel}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
           </div>
-          <div className="overflow-auto">
-            {buyerPickerQuery.isFetching && buyerPickerRows.length === 0 ? (
+          <div className="min-h-0 flex-1 overflow-y-auto pt-2">
+            {isRefetchingResults ? (
+              <BuyerResultsSkeleton />
+            ) : buyerPickerQuery.isFetching && buyerPickerRows.length === 0 ? (
               <BuyerResultsSkeleton />
             ) : buyerPickerQuery.isError ? (
               <div className="px-4 py-12 text-center text-base text-danger-600">We couldn&apos;t load buyers right now.</div>
@@ -320,13 +362,7 @@ export function SellerBuyerPickerOverlay({
                     <button
                       key={buyer.id}
                       type="button"
-                      onClick={() => {
-                        onSelectedBuyerIdsChange(
-                          checked
-                            ? selectedBuyerIds.filter((id) => id !== buyer.id)
-                            : Array.from(new Set([...selectedBuyerIds, buyer.id])),
-                        );
-                      }}
+                      onClick={() => toggleBuyerSelection(buyer)}
                       className={cn(
                         'flex w-full items-center justify-between gap-3 rounded-[8px] px-3 py-[10px] text-left transition-colors',
                         checked ? 'border border-ember-100 bg-ember-50' : 'hover:bg-cream-100',
@@ -351,9 +387,9 @@ export function SellerBuyerPickerOverlay({
             )}
           </div>
         </SheetBody>
-        <SheetFooter className="justify-end">
-          <Button type="button" variant="ghost" onClick={() => onSelectedBuyerIdsChange([])}>
-            {clearSelectionLabel}
+        <SheetFooter className="justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            Cancel
           </Button>
           <Button
             type="button"

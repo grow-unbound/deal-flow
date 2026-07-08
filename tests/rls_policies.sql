@@ -60,8 +60,8 @@ BEGIN
   VALUES (v_price_list_a, v_tenant_a, 'Summer 2026', now(), now(), now());
 
   -- Order
-  INSERT INTO app.orders (id, tenant_id, buyer_id, placed_by, order_number, status, created_at, updated_at)
-  VALUES (v_order_a, v_tenant_a, v_buyer_a, v_seller_a, 'DF-2026-00001', 'received', now(), now());
+  INSERT INTO app.orders (id, tenant_id, buyer_id, placed_by, order_number, status, order_date, created_at, updated_at)
+  VALUES (v_order_a, v_tenant_a, v_buyer_a, v_seller_a, 'DF-2026-00001', 'received', current_date, now(), now());
 
   -- Store fixture IDs
   CREATE TEMP TABLE _rls_fixture (key text PRIMARY KEY, val uuid);
@@ -128,10 +128,10 @@ BEGIN
   VALUES (v_buyer_b, (SELECT val FROM _rls_fixture WHERE key = 'tenant_b'), 'BuyerB', now(), now());
   INSERT INTO _rls_fixture VALUES ('buyer_b', v_buyer_b);
 
-  INSERT INTO app.orders (id, tenant_id, buyer_id, placed_by, order_number, status, created_at, updated_at)
+  INSERT INTO app.orders (id, tenant_id, buyer_id, placed_by, order_number, status, order_date, created_at, updated_at)
   VALUES (gen_random_uuid(),
     (SELECT val FROM _rls_fixture WHERE key = 'tenant_b'),
-    v_buyer_b, v_user_b, 'DF-2026-00099', 'received', now(), now());
+    v_buyer_b, v_user_b, 'DF-2026-00099', 'received', current_date, now(), now());
 END $$;
 
 SELECT is(
@@ -184,12 +184,12 @@ BEGIN
     (SELECT val FROM _rls_fixture WHERE key = 'tenant_a'),
     'OtherRetailer', now(), now());
 
-  INSERT INTO app.orders (id, tenant_id, buyer_id, placed_by, order_number, status, created_at, updated_at)
+  INSERT INTO app.orders (id, tenant_id, buyer_id, placed_by, order_number, status, order_date, created_at, updated_at)
   VALUES (gen_random_uuid(),
     (SELECT val FROM _rls_fixture WHERE key = 'tenant_a'),
     v_buyer_other,
     (SELECT val FROM _rls_fixture WHERE key = 'seller_a'),
-    'DF-2026-00077', 'received', now(), now());
+    'DF-2026-00077', 'received', current_date, now(), now());
 
   INSERT INTO _rls_fixture VALUES ('buyer_other', v_buyer_other);
 END $$;

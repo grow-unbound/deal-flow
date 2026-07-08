@@ -422,7 +422,7 @@ export const CatalogComposerPayloadSchema = z
     buyer_ids: z.array(z.string().uuid('Invalid buyer ID')).default([]),
     valid_from: z.coerce.date(),
     valid_to: z.coerce.date().optional(),
-    message: z.string().max(50, 'Note to buyers must be 50 characters or fewer').optional().or(z.literal('')),
+    message: z.string().max(200, 'Note to buyers must be 200 characters or fewer').optional().or(z.literal('')),
     price_source: CatalogComposerPriceSourceSchema.default('manual'),
     price_list_id: z.string().uuid('Invalid price list').nullable().optional(),
     filters: CatalogComposerFilterStateSchema.default({
@@ -433,6 +433,9 @@ export const CatalogComposerPayloadSchema = z
     tag_overrides: z.record(CatalogComposerTagSchema.nullable()).default({}),
     items: z.array(CatalogComposerItemSchema).default([]),
     save_mode: z.enum(['draft', 'publish']).default('draft'),
+    buyer_note: z.string().max(200, 'Note to buyers must be 200 characters or fewer').optional(),
+    notify_whatsapp: z.boolean().optional(),
+    notify_scheduled_for: z.string().datetime().optional(),
   })
   .refine((data) => data.scope_type !== 'cohort' || Boolean(data.cohort_id), {
     message: 'Cohort is required',
@@ -635,3 +638,11 @@ export const WhatsAppBroadcastAudiencePreviewSchema = z.object({
   meta_category: z.enum(['marketing', 'utility', 'authentication']).optional(),
 });
 export type WhatsAppBroadcastAudiencePreviewInput = z.infer<typeof WhatsAppBroadcastAudiencePreviewSchema>;
+
+export const CatalogPublishActionSchema = z.object({
+  action: z.literal('publish_catalog'),
+  notify_whatsapp: z.boolean().optional().default(false),
+  buyer_note: z.string().max(200, 'Note to buyers must be 200 characters or fewer').optional(),
+  notify_scheduled_for: z.string().datetime().optional(),
+});
+export type CatalogPublishActionInput = z.infer<typeof CatalogPublishActionSchema>;

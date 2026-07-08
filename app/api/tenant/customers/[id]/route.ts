@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
-import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { loadAccessibleSellerLocations } from '@/lib/server/seller-location-access';
 
@@ -13,6 +12,23 @@ type AvatarHue = 'teal' | 'ember' | 'cream';
 
 type ActivityKind = 'invoice' | 'payment' | 'credit_adjustment' | 'catalog_view' | 'order' | 'audit';
 type PriceListStatus = 'active' | 'draft' | 'expired';
+type BuyerSnapshotRow = {
+  buyer_id: string;
+  is_active: boolean | null;
+  is_dormant: boolean | null;
+  outstanding_dues: number | null;
+  overdue_amount: number | null;
+  credit_limit: number | null;
+  last_order_at: string | null;
+  last_activity_at: string | null;
+};
+type BuyerKpiRow = {
+  buyer_id: string;
+  estimates_count: number | null;
+  orders_count: number | null;
+  invoices_count: number | null;
+  orders_gmv: number | null;
+};
 
 function getIstMonthBounds(now = new Date()) {
   const istNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
@@ -63,6 +79,16 @@ function safePct(numerator: number, denominator: number): number {
 function growthPct(current: number, previous: number): number {
   if (previous <= 0) return current > 0 ? 100 : 0;
   return Math.round((((current - previous) / previous) * 100) * 10) / 10;
+}
+
+function toNumber(value: number | string | null | undefined) {
+  return Number(value ?? 0);
+}
+
+function maxIso(left: string | null, right: string | null) {
+  if (!left) return right;
+  if (!right) return left;
+  return new Date(left).getTime() >= new Date(right).getTime() ? left : right;
 }
 
 function shortDate(value: string | null): string {
@@ -203,9 +229,61 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
   }
 
+  const snapshotScope = claims.role === 'seller_assistant' ? 'location' : 'tenant';
+  let buyerSnapshotQuery = db
+    .schema('app')
+    .from('buyers_snapshot')
+    .select('buyer_id, is_active, is_dormant, outstanding_dues, overdue_amount, credit_limit, last_order_at, last_activity_at')
+    .eq('tenant_id', claims.tenant_id)
+    .eq('buyer_id', id)
+    .eq('scope', snapshotScope);
+
+  if (claims.role === 'seller_assistant') {
+    const locationIds = (claims.location_ids ?? []).filter(Boolean);
+    buyerSnapshotQuery = locationIds.length > 0
+      ? buyerSnapshotQuery.in('location_id', locationIds)
+      : buyerSnapshotQuery.limit(0);
+  }
+
+  const buyerSnapshotRes = await buyerSnapshotQuery;
+  if (buyerSnapshotRes.error) {
+    return NextResponse.json({ error: 'Failed to fetch customer detail data' }, { status: 500 });
+  }
+
+  const buyerSnapshotRows = (buyerSnapshotRes.data ?? []) as BuyerSnapshotRow[];
+  const aggregatedBuyerSnapshot = buyerSnapshotRows.reduce<{
+    outstanding_dues: number;
+    overdue_amount: number;
+    credit_limit: number;
+    last_order_at: string | null;
+    last_activity_at: string | null;
+    is_dormant: boolean;
+  } | null>((acc, row) => {
+    const next = acc ?? {
+      outstanding_dues: 0,
+      overdue_amount: 0,
+      credit_limit: 0,
+      last_order_at: null,
+      last_activity_at: null,
+      is_dormant: false,
+    };
+    next.outstanding_dues += toNumber(row.outstanding_dues);
+    next.overdue_amount += toNumber(row.overdue_amount);
+    next.credit_limit = Math.max(next.credit_limit, toNumber(row.credit_limit));
+    next.last_order_at = maxIso(next.last_order_at, row.last_order_at);
+    next.last_activity_at = maxIso(next.last_activity_at, row.last_activity_at);
+    return next;
+  }, null);
+
+  if (claims.role === 'seller_assistant' && !aggregatedBuyerSnapshot) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const bounds = getIstMonthBounds();
 
   const [
+    currentBuyerKpiRes,
+    previousBuyerKpiRes,
     monthOrdersRes,
     prevOrdersRes,
     allOrdersRes,
@@ -213,6 +291,42 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     auditRes,
     buyerUsersRes,
   ] = await Promise.all([
+    (() => {
+      let query = db
+        .schema('app')
+        .from('kpi_buyers_daily')
+        .select('buyer_id, estimates_count, orders_count, invoices_count, orders_gmv')
+        .eq('tenant_id', claims.tenant_id)
+        .eq('buyer_id', id)
+        .eq('scope', snapshotScope)
+        .gte('day', bounds.mtdStartIso.slice(0, 10))
+        .lt('day', bounds.nextMonthStartIso.slice(0, 10));
+
+      if (claims.role === 'seller_assistant') {
+        const locationIds = (claims.location_ids ?? []).filter(Boolean);
+        query = locationIds.length > 0 ? query.in('location_id', locationIds) : query.limit(0);
+      }
+
+      return query;
+    })(),
+    (() => {
+      let query = db
+        .schema('app')
+        .from('kpi_buyers_daily')
+        .select('buyer_id, estimates_count, orders_count, invoices_count, orders_gmv')
+        .eq('tenant_id', claims.tenant_id)
+        .eq('buyer_id', id)
+        .eq('scope', snapshotScope)
+        .gte('day', bounds.prevMonthStartIso.slice(0, 10))
+        .lt('day', bounds.prevMonthEndIso.slice(0, 10));
+
+      if (claims.role === 'seller_assistant') {
+        const locationIds = (claims.location_ids ?? []).filter(Boolean);
+        query = locationIds.length > 0 ? query.in('location_id', locationIds) : query.limit(0);
+      }
+
+      return query;
+    })(),
     scopeByAccessibleLocations(db
       .schema('app')
       .from('orders')
@@ -263,16 +377,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .order('created_at', { ascending: true }),
   ]);
 
-  if (monthOrdersRes.error || prevOrdersRes.error || allOrdersRes.error || cohortMembersRes.error || auditRes.error || buyerUsersRes.error) {
+  if (
+    currentBuyerKpiRes.error ||
+    previousBuyerKpiRes.error ||
+    monthOrdersRes.error ||
+    prevOrdersRes.error ||
+    allOrdersRes.error ||
+    cohortMembersRes.error ||
+    auditRes.error ||
+    buyerUsersRes.error
+  ) {
     return NextResponse.json({ error: 'Failed to fetch customer detail data' }, { status: 500 });
   }
 
-  const monthOrders = monthOrdersRes.data ?? [];
-  const prevOrders = prevOrdersRes.data ?? [];
   const allOrders = allOrdersRes.data ?? [];
   const auditRows = auditRes.data ?? [];
-  const visibleMonthOrders = monthOrders.filter(isVisibleOrderTransaction);
-  const visiblePrevOrders = prevOrders.filter(isVisibleOrderTransaction);
   const visibleOrders = allOrders.filter(isVisibleOrderTransaction);
 
   const orderIds = visibleOrders.map((order: { id: string }) => order.id);
@@ -667,9 +786,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
   }
 
-  const spendMtd = visibleMonthOrders.reduce((sum: number, order: any) => sum + Number(order.total_amount ?? 0), 0);
-  const prevSpendMtd = visiblePrevOrders.reduce((sum: number, order: any) => sum + Number(order.total_amount ?? 0), 0);
-  const ordersMtd = visibleMonthOrders.length;
+  const aggregateBuyerKpi = (rows: BuyerKpiRow[]) => rows.reduce(
+    (acc, row) => ({
+      estimates_count: acc.estimates_count + toNumber(row.estimates_count),
+      orders_count: acc.orders_count + toNumber(row.orders_count),
+      invoices_count: acc.invoices_count + toNumber(row.invoices_count),
+      orders_gmv: acc.orders_gmv + toNumber(row.orders_gmv),
+    }),
+    {
+      estimates_count: 0,
+      orders_count: 0,
+      invoices_count: 0,
+      orders_gmv: 0,
+    },
+  );
+
+  const currentBuyerKpi = aggregateBuyerKpi((currentBuyerKpiRes.data ?? []) as BuyerKpiRow[]);
+  const previousBuyerKpi = aggregateBuyerKpi((previousBuyerKpiRes.data ?? []) as BuyerKpiRow[]);
+
+  const spendMtd = currentBuyerKpi.orders_gmv;
+  const prevSpendMtd = previousBuyerKpi.orders_gmv;
+  const ordersMtd = currentBuyerKpi.orders_count;
   const aovMtd = ordersMtd > 0 ? spendMtd / ordersMtd : 0;
 
   const latestOrder = visibleOrders[0] ?? null;
@@ -699,14 +836,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return `${productName} ×${Number(top.qty ?? 0)}`;
   };
 
-  const tenantId = claims.tenant_id!;
-  const creditLimit = Number(buyer.credit_limit ?? 0);
-  const creditSnapshot = await loadBuyerCreditSnapshot(db as any, {
-    tenantId,
-    buyerId: buyer.id,
-    creditLimit,
-  });
-  const creditUsed = creditSnapshot.credit_used;
+  const creditLimit = aggregatedBuyerSnapshot?.credit_limit ?? Number(buyer.credit_limit ?? 0);
+  const creditUsed = aggregatedBuyerSnapshot?.outstanding_dues ?? 0;
   const creditUsedPct = safePct(creditUsed, creditLimit);
 
   const monthlyMap = new Map<string, number>();

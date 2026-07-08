@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const getVerifiedClaimsMock = vi.fn();
 const getAuthUserDisplayNameMapMock = vi.fn();
 const ordersCallState = { count: 0 };
+const ordersKpiCallState = { count: 0 };
 
 interface QueryState {
   buyers: Array<{ id: string; business_name: string; geography: Record<string, unknown> | null }>;
@@ -26,6 +27,8 @@ interface QueryState {
   orderItems: Array<{ order_id: string }>;
   catalogs: Array<{ id: string; name: string }>;
   estimates: Array<{ id: string; estimate_number: string | null }>;
+  currentKpis: Array<Record<string, unknown>>;
+  previousKpis: Array<Record<string, unknown>>;
 }
 
 const queryState: QueryState = {
@@ -35,6 +38,8 @@ const queryState: QueryState = {
   orderItems: [],
   catalogs: [],
   estimates: [],
+  currentKpis: [],
+  previousKpis: [],
 };
 
 vi.mock('@/lib/auth', () => ({
@@ -49,10 +54,32 @@ vi.mock('@/lib/server/auth-user-directory', () => ({
   getAuthUserDisplayNameMap: (...args: unknown[]) => getAuthUserDisplayNameMapMock(...args),
 }));
 
+vi.mock('@/lib/server/seller-location-access', () => ({
+  applySellerLocationScope: <T extends { in?: (column: string, values: string[]) => T }>(
+    query: T,
+    claims: { location_ids?: string[] | null; role?: string | null },
+  ) => {
+    if (claims.role === 'seller_assistant' && claims.location_ids?.length && query.in) {
+      return query.in('location_id', claims.location_ids);
+    }
+    return query;
+  },
+  getSellerLocationScope: vi.fn(),
+  isSellerLocationSelectionAllowed: vi.fn(() => true),
+  loadAccessibleSellerLocations: vi.fn(async (_db: unknown, _tenantId: string, claims: { location_ids?: string[] | null }) => {
+    const all = [
+      { id: 'loc-1', name: 'North Hub' },
+      { id: 'loc-2', name: 'South Hub' },
+    ];
+    return claims.location_ids?.length ? all.filter((row) => claims.location_ids?.includes(row.id)) : all;
+  }),
+  resolveDefaultSellerLocationId: vi.fn(() => 'loc-1'),
+}));
+
 vi.mock('@/lib/supabase', () => {
   class QueryMock {
     private table: string;
-    private conditions: Array<{ kind: 'in'; column: string; value: unknown }> = [];
+    private conditions: Array<{ kind: 'eq' | 'in'; column: string; value: unknown }> = [];
 
     constructor(table: string) {
       this.table = table;
@@ -61,7 +88,8 @@ vi.mock('@/lib/supabase', () => {
     select() {
       return this;
     }
-    eq() {
+    eq(column: string, value: unknown) {
+      this.conditions.push({ kind: 'eq', column, value });
       return this;
     }
     is() {
@@ -88,6 +116,10 @@ vi.mock('@/lib/supabase', () => {
       const applyFilters = (rows: Array<Record<string, unknown>>) => {
         let result = [...rows];
         for (const condition of this.conditions) {
+          if (condition.kind === 'eq') {
+            result = result.filter((row) => !(condition.column in row) || row[condition.column] === condition.value);
+            continue;
+          }
           const values = Array.isArray(condition.value) ? condition.value : [];
           result = result.filter((row) => values.includes(row[condition.column]));
         }
@@ -100,6 +132,8 @@ vi.mock('@/lib/supabase', () => {
       if (this.table === 'order_items') return resolve({ data: applyFilters(queryState.orderItems as Array<Record<string, unknown>>), error: null });
       if (this.table === 'campaigns') return resolve({ data: queryState.catalogs, error: null });
       if (this.table === 'estimates') return resolve({ data: queryState.estimates, error: null });
+      if (this.table === 'kpi_orders_current') return resolve({ data: applyFilters(queryState.currentKpis), error: null });
+      if (this.table === 'kpi_orders_previous') return resolve({ data: applyFilters(queryState.previousKpis), error: null });
       return resolve({ data: [], error: null });
     }
   }
@@ -109,7 +143,10 @@ vi.mock('@/lib/supabase', () => {
     if (table === 'order_items') return new QueryMock('order_items');
     if (table === 'campaigns') return new QueryMock('campaigns');
     if (table === 'estimates') return new QueryMock('estimates');
-    if (table === 'kpi_tenant_daily') return new QueryMock('unknown');
+    if (table === 'kpi_orders_daily') {
+      ordersKpiCallState.count += 1;
+      return new QueryMock(ordersKpiCallState.count === 1 ? 'kpi_orders_current' : 'kpi_orders_previous');
+    }
     if (table === 'orders') {
       ordersCallState.count += 1;
       return new QueryMock(ordersCallState.count === 1 ? 'orders_month' : 'orders_prev');
@@ -132,6 +169,7 @@ describe('sales orders landing API route', () => {
     getVerifiedClaimsMock.mockReset();
     getAuthUserDisplayNameMapMock.mockReset();
     ordersCallState.count = 0;
+    ordersKpiCallState.count = 0;
     getAuthUserDisplayNameMapMock.mockResolvedValue(new Map([
       ['seller-1', 'Priya Shah'],
       ['buyer-user-1', 'Asha Singh'],
@@ -177,6 +215,70 @@ describe('sales orders landing API route', () => {
 
     queryState.estimates = [
       { id: 'est-1', estimate_number: 'EST-2042' },
+    ];
+    queryState.currentKpis = [
+      {
+        scope: 'tenant',
+        location_id: null,
+        orders_count: 7,
+        buyers_count: 3,
+        gmv: 142000,
+        confirmed_count: 1,
+        received_count: 1,
+        delivered_count: 0,
+      },
+      {
+        scope: 'location',
+        location_id: 'loc-1',
+        orders_count: 4,
+        buyers_count: 2,
+        gmv: 77000,
+        confirmed_count: 1,
+        received_count: 0,
+        delivered_count: 0,
+      },
+      {
+        scope: 'location',
+        location_id: 'loc-2',
+        orders_count: 2,
+        buyers_count: 1,
+        gmv: 45000,
+        confirmed_count: 0,
+        received_count: 1,
+        delivered_count: 0,
+      },
+    ];
+    queryState.previousKpis = [
+      {
+        scope: 'tenant',
+        location_id: null,
+        orders_count: 2,
+        buyers_count: 2,
+        gmv: 40000,
+        confirmed_count: 0,
+        received_count: 0,
+        delivered_count: 0,
+      },
+      {
+        scope: 'location',
+        location_id: 'loc-1',
+        orders_count: 1,
+        buyers_count: 1,
+        gmv: 20000,
+        confirmed_count: 0,
+        received_count: 0,
+        delivered_count: 0,
+      },
+      {
+        scope: 'location',
+        location_id: 'loc-2',
+        orders_count: 1,
+        buyers_count: 1,
+        gmv: 20000,
+        confirmed_count: 0,
+        received_count: 0,
+        delivered_count: 0,
+      },
     ];
   });
 
@@ -252,5 +354,7 @@ describe('sales orders landing API route', () => {
     const body = await res.json();
     expect(body.orders).toHaveLength(4);
     expect(body.orders.every((row: { id: string }) => ['o1', 'o3', 'o6', 'o7'].includes(row.id))).toBe(true);
+    expect(body.kpis.orders_mtd).toBe(4);
+    expect(body.kpis.gmv_mtd).toBe(77000);
   });
 });
