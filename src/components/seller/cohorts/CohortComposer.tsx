@@ -104,7 +104,6 @@ function deriveGmvBucket(value: number): GmvBucket {
 
 function buildRulesPayload(input: {
   geographies: string[];
-  tiers: string[];
   lastOrderBucket: LastOrderBucket;
   gmvBuckets: GmvBucket[];
   selectedBuyerIds: string[];
@@ -112,8 +111,7 @@ function buildRulesPayload(input: {
 }) {
   const filters: CohortRules['filters'] = [];
 
-  if (input.geographies.length > 0) filters.push({ field: 'geography.label', operator: 'in', value: input.geographies });
-  if (input.tiers.length > 0) filters.push({ field: 'tier', operator: 'in', value: input.tiers });
+  if (input.geographies.length > 0) filters.push({ field: 'geography.city', operator: 'in', value: input.geographies });
   if (input.lastOrderBucket !== 'anytime') filters.push({ field: 'last_order_bucket', operator: 'eq', value: input.lastOrderBucket });
   if (input.gmvBuckets.length > 0) filters.push({ field: 'gmv_90d_bucket', operator: 'in', value: input.gmvBuckets });
 
@@ -130,21 +128,18 @@ function parseRules(rules: {
   excluded_buyer_ids?: string[];
 } | null | undefined) {
   const geographies = new Set<string>();
-  const tiers = new Set<string>();
   const gmvBuckets = new Set<GmvBucket>();
   let lastOrderBucket: LastOrderBucket = 'anytime';
 
   for (const filter of rules?.filters ?? []) {
     const values = Array.isArray(filter.value) ? filter.value : [filter.value];
-    if (filter.field === 'geography.label') values.forEach((value) => geographies.add(value));
-    if (filter.field === 'tier') values.forEach((value) => tiers.add(value));
+    if (filter.field === 'geography.city') values.forEach((value) => geographies.add(value));
     if (filter.field === 'gmv_90d_bucket') values.forEach((value) => gmvBuckets.add(value as GmvBucket));
     if (filter.field === 'last_order_bucket' && values[0]) lastOrderBucket = values[0] as LastOrderBucket;
   }
 
   return {
     geographies: Array.from(geographies),
-    tiers: Array.from(tiers),
     gmvBuckets: Array.from(gmvBuckets),
     lastOrderBucket,
     selectedBuyerIds: rules?.selected_buyer_ids ?? [],
@@ -156,13 +151,11 @@ function matchesStructuredFilters(
   buyer: CohortComposerBuyer,
   filters: {
     geographies: string[];
-    tiers: string[];
     lastOrderBucket: LastOrderBucket;
     gmvBuckets: GmvBucket[];
   },
 ) {
-  if (filters.geographies.length > 0 && !filters.geographies.includes(buyer.geography_label)) return false;
-  if (filters.tiers.length > 0 && !filters.tiers.includes(buyer.tier ?? '')) return false;
+  if (filters.geographies.length > 0 && !filters.geographies.map((g) => g.toLowerCase()).includes((buyer.city ?? '').toLowerCase())) return false;
   if (filters.lastOrderBucket === 'within_30_days' && deriveLastOrderBucket(buyer.last_order_at) !== 'within_30_days') return false;
   if (filters.lastOrderBucket === 'within_90_days') {
     const bucket = deriveLastOrderBucket(buyer.last_order_at);
@@ -216,7 +209,6 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
   const [description, setDescription] = useState('');
   const [selectionMode, setSelectionMode] = useState<CohortSelectionMode>('rule-based');
   const [selectedGeographies, setSelectedGeographies] = useState<string[]>([]);
-  const [selectedTiers, setSelectedTiers] = useState<string[]>([]);
   const [lastOrderBucket, setLastOrderBucket] = useState<LastOrderBucket>('anytime');
   const [selectedGmvBuckets, setSelectedGmvBuckets] = useState<GmvBucket[]>([]);
   const [selectedBuyerIds, setSelectedBuyerIds] = useState<string[]>([]);
@@ -242,7 +234,6 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
       setDescription(detailQuery.data.details_rules.description ?? '');
       setSelectionMode(detailQuery.data.details_rules.is_static ? 'manual-selection' : 'rule-based');
       setSelectedGeographies(rulesState.geographies);
-      setSelectedTiers(rulesState.tiers);
       setLastOrderBucket(rulesState.lastOrderBucket);
       setSelectedGmvBuckets(rulesState.gmvBuckets);
       setExcludedBuyerIds(rulesState.excludedBuyerIds);
@@ -273,12 +264,11 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
     return (composerQuery.data?.buyers ?? []).filter((buyer) =>
       matchesStructuredFilters(buyer, {
         geographies: selectedGeographies,
-        tiers: selectedTiers,
         lastOrderBucket,
         gmvBuckets: selectedGmvBuckets,
       }),
     );
-  }, [composerQuery.data?.buyers, lastOrderBucket, selectedGeographies, selectedGmvBuckets, selectedTiers]);
+  }, [composerQuery.data?.buyers, lastOrderBucket, selectedGeographies, selectedGmvBuckets]);
 
   const visibleRows = useMemo(() => {
     const lowered = search.trim().toLowerCase();
@@ -313,7 +303,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
 
   const summary = useMemo(() => {
     const members = selectedRows.length;
-    const areasCovered = new Set(selectedRows.map((buyer) => buyer.geography_label).filter((value) => value && value !== '—')).size;
+    const areasCovered = new Set(selectedRows.map((buyer) => buyer.city).filter((value) => value && value !== '—')).size;
     const mtdSpend = selectedRows.reduce((sum, buyer) => sum + buyer.mtd_spend, 0);
     const ordersMtd = selectedRows.reduce((sum, buyer) => sum + buyer.orders_mtd, 0);
     const avgAov = ordersMtd > 0 ? mtdSpend / ordersMtd : 0;
@@ -328,7 +318,6 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
         description,
         selectionMode,
         selectedGeographies,
-        selectedTiers,
         lastOrderBucket,
         selectedGmvBuckets,
         selectedBuyerIds: [...selectedBuyerIds].sort(),
@@ -344,7 +333,6 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
       selectedBrandIds,
       selectedGeographies,
       selectedGmvBuckets,
-      selectedTiers,
       selectionMode,
     ],
   );
@@ -395,7 +383,6 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
       allowed_tenant_brand_ids: selectedBrandIds.length > 0 ? selectedBrandIds : null,
       rules: buildRulesPayload({
         geographies: selectedGeographies,
-        tiers: selectedTiers,
         lastOrderBucket,
         gmvBuckets: selectedGmvBuckets,
         selectedBuyerIds,
@@ -698,41 +685,6 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                               checked={selectedGeographies.includes(option.value)}
                               onChange={(event) =>
                                 setSelectedGeographies((current) =>
-                                  event.target.checked
-                                    ? [...current, option.value]
-                                    : current.filter((value) => value !== option.value),
-                                )
-                              }
-                              className="accent-teal-500"
-                            />
-                            <span>{option.label}</span>
-                          </span>
-                          <span className="font-mono text-xs text-cream-700">{option.count}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </section>
-
-                  <section>
-                    <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Tier</h3>
-                      <button
-                        type="button"
-                        className="text-sm font-medium text-teal-700 hover:text-teal-800"
-                        onClick={() => toggleMany(selectedTiers, composerQuery.data.filters.tiers.map((option) => option.value), setSelectedTiers)}
-                      >
-                        {selectedTiers.length === composerQuery.data.filters.tiers.length ? 'Clear all' : 'Select all'}
-                      </button>
-                    </div>
-                    <div className="space-y-2">
-                      {composerQuery.data.filters.tiers.map((option) => (
-                        <label key={option.value} className="flex items-center justify-between gap-3 text-base text-cream-900">
-                          <span className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={selectedTiers.includes(option.value)}
-                              onChange={(event) =>
-                                setSelectedTiers((current) =>
                                   event.target.checked
                                     ? [...current, option.value]
                                     : current.filter((value) => value !== option.value),
