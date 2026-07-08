@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
 import { PAGE_SIZE } from '@/lib/pagination';
 import { SELLER_CACHE_REFERENCE, parseRowsLimit } from '@/lib/server/bounded-get';
+import { getSellerLocationScope } from '@/lib/server/seller-location-access';
 import { getSellerLandingPeriodFromRequest } from '@/lib/server/seller-period';
 import { computeWarehouseInitials } from '@/lib/server/warehouse-metrics';
 import { hydrateWarehouse } from '@/lib/server/warehouse-data';
@@ -52,13 +53,21 @@ interface WarehouseSnapshotRow {
   last_inventory_update: string | null;
 }
 
+interface WarehouseSummarySeedRow {
+  id: string;
+  name: string;
+  address: { city?: string; state?: string } | null;
+  status: 'active' | 'inactive';
+  updated_at: string;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const claims = await getVerifiedClaims(request);
     if (!claims.tenant_id) {
       return jsonError(401, 'Login required', 'UNAUTHORIZED');
     }
-    if (claims.role !== 'seller_admin') {
+    if (!claims.role?.startsWith('seller_')) {
       return jsonError(403, 'Forbidden', 'FORBIDDEN');
     }
     if (!supabaseAdmin) {
@@ -71,29 +80,100 @@ export async function GET(request: NextRequest) {
     const stockFilters = request.nextUrl.searchParams.getAll('stock');
     const limit = parseRowsLimit(request.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
     const db = supabaseAdmin as any;
+    const locationScope = getSellerLocationScope({
+      role: claims.role ?? null,
+      location_ids: claims.location_ids ?? null,
+    });
 
-    const [warehousesRes, snapshotRes] = await Promise.all([
-      db
+    if (locationScope.mode === 'none') {
+      const emptyResponse: WarehousesLandingResponse = {
+        kpis: {
+          active_warehouses: 0,
+          tracked_skus: 0,
+          low_stock_warehouses: 0,
+          idle_stock_skus: 0,
+        },
+        callouts: {
+          stock_attention: [],
+          idle_stock: [],
+          recently_replenished: [],
+        },
+        warehouses: [],
+        period,
+        refreshed_at: new Date().toISOString(),
+      };
+
+      return NextResponse.json(emptyResponse, { status: 200, headers: SELLER_CACHE_REFERENCE });
+    }
+
+    const summaryWarehousesQuery = (() => {
+      let query = db
+        .schema('app')
+        .from('warehouses')
+        .select('id, name, address, status, updated_at')
+        .eq('tenant_id', claims.tenant_id)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: true });
+
+      if (locationScope.mode === 'subset') {
+        query = query.in('location_id', locationScope.locationIds);
+      }
+
+      return query;
+    })();
+
+    const summarySnapshotQuery = (() => {
+      return db
+        .schema('app')
+        .from('warehouses_snapshot')
+        .select('warehouse_id, tracked_skus, sellable_units, low_stock_skus, stockout_skus, idle_stock_skus, last_inventory_update')
+        .eq('tenant_id', claims.tenant_id);
+    })();
+
+    const statusIncludesAll =
+      statusFilters.length === 0 || statusFilters.includes('All') || (statusFilters.includes('Active') && statusFilters.includes('Inactive'));
+    const needsDeferredRowLimit = Boolean(search) || stockFilters.length > 0;
+
+    const rowsQuery = (() => {
+      let query = db
         .schema('app')
         .from('warehouses')
         .select('id, tenant_id, location_id, name, address, phone_number, status, is_default, external_ref, associated_users, lat, lng, deleted_at, created_at, updated_at, locations(id, name, is_default)')
         .eq('tenant_id', claims.tenant_id)
         .is('deleted_at', null)
         .order('is_default', { ascending: false })
-        .order('created_at', { ascending: true })
-        .limit(limit),
-      db
-        .schema('app')
-        .from('warehouses_snapshot')
-        .select('warehouse_id, tracked_skus, sellable_units, low_stock_skus, stockout_skus, idle_stock_skus, last_inventory_update')
-        .eq('tenant_id', claims.tenant_id),
+        .order('created_at', { ascending: true });
+
+      if (locationScope.mode === 'subset') {
+        query = query.in('location_id', locationScope.locationIds);
+      }
+
+      if (!statusIncludesAll) {
+        const statusValues = statusFilters.map((value) => value.toLowerCase()).filter((value) => value === 'active' || value === 'inactive');
+        if (statusValues.length > 0) {
+          query = query.in('status', statusValues);
+        }
+      }
+
+      if (!needsDeferredRowLimit) {
+        query = query.limit(limit);
+      }
+
+      return query;
+    })();
+
+    const [summaryWarehousesRes, summarySnapshotRes, rowsRes] = await Promise.all([
+      summaryWarehousesQuery,
+      summarySnapshotQuery,
+      rowsQuery,
     ]);
 
-    if (warehousesRes.error) throw warehousesRes.error;
-    if (snapshotRes.error) throw snapshotRes.error;
+    if (summaryWarehousesRes.error) throw summaryWarehousesRes.error;
+    if (summarySnapshotRes.error) throw summarySnapshotRes.error;
+    if (rowsRes.error) throw rowsRes.error;
 
     const snapshotByWarehouse = new Map<string, WarehouseSnapshotRow>();
-    for (const row of (snapshotRes.data ?? []) as Array<Record<string, unknown>>) {
+    for (const row of (summarySnapshotRes.data ?? []) as Array<Record<string, unknown>>) {
       snapshotByWarehouse.set(String(row.warehouse_id), {
         warehouse_id: String(row.warehouse_id),
         tracked_skus: Number(row.tracked_skus ?? 0),
@@ -105,10 +185,65 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const warehouses = ((warehousesRes.data ?? []) as Record<string, unknown>[]).map(hydrateWarehouse);
+    const summaryWarehouses = ((summaryWarehousesRes.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+      id: String(row.id),
+      name: String(row.name ?? ''),
+      address: row.address && typeof row.address === 'object'
+        ? (row.address as WarehouseSummarySeedRow['address'])
+        : null,
+      status: row.status === 'inactive' ? 'inactive' : 'active',
+      updated_at: typeof row.updated_at === 'string' ? row.updated_at : new Date().toISOString(),
+    })) satisfies WarehouseSummarySeedRow[];
 
-    const rows: WarehousesLandingRow[] = warehouses.map((warehouse) => {
+    const summaryRows = summaryWarehouses.map((warehouse) => {
       const snapshot = snapshotByWarehouse.get(warehouse.id);
+      const lowStockSkus = snapshot?.low_stock_skus ?? 0;
+      const stockoutSkus = snapshot?.stockout_skus ?? 0;
+      return {
+        id: warehouse.id,
+        name: warehouse.name,
+        initials: computeWarehouseInitials(warehouse.name),
+        city: warehouse.address?.city ?? '',
+        status: warehouse.status,
+        tracked_skus: snapshot?.tracked_skus ?? 0,
+        idle_stock_skus: snapshot?.idle_stock_skus ?? 0,
+        low_stock_skus: lowStockSkus,
+        stockout_skus: stockoutSkus,
+        stock_status: overallStockStatus(lowStockSkus, stockoutSkus),
+        last_updated: snapshot?.last_inventory_update ?? warehouse.updated_at,
+      };
+    });
+
+    const rowWarehouses = ((rowsRes.data ?? []) as Record<string, unknown>[]).map(hydrateWarehouse);
+    const rowWarehouseIds = rowWarehouses.map((warehouse) => warehouse.id);
+    const needsStockMetrics = rowWarehouseIds.length > 0;
+
+    const rowMetricsByWarehouse = new Map<string, WarehouseSnapshotRow>();
+    if (needsStockMetrics) {
+      const { data: rowMetricsData, error: rowMetricsError } = await db
+        .schema('app')
+        .from('warehouses_snapshot')
+        .select('warehouse_id, tracked_skus, sellable_units, low_stock_skus, stockout_skus, idle_stock_skus, last_inventory_update')
+        .eq('tenant_id', claims.tenant_id)
+        .in('warehouse_id', rowWarehouseIds);
+
+      if (rowMetricsError) throw rowMetricsError;
+
+      for (const row of (rowMetricsData ?? []) as Array<Record<string, unknown>>) {
+        rowMetricsByWarehouse.set(String(row.warehouse_id), {
+          warehouse_id: String(row.warehouse_id),
+          tracked_skus: Number(row.tracked_skus ?? 0),
+          sellable_units: Number(row.sellable_units ?? 0),
+          low_stock_skus: Number(row.low_stock_skus ?? 0),
+          stockout_skus: Number(row.stockout_skus ?? 0),
+          idle_stock_skus: Number(row.idle_stock_skus ?? 0),
+          last_inventory_update: typeof row.last_inventory_update === 'string' ? row.last_inventory_update : null,
+        });
+      }
+    }
+
+    const hydratedRows: WarehousesLandingRow[] = rowWarehouses.map((warehouse) => {
+      const snapshot = rowMetricsByWarehouse.get(warehouse.id);
       const trackedSkus = snapshot?.tracked_skus ?? 0;
       const sellableUnits = snapshot?.sellable_units ?? 0;
       const lowStockSkus = snapshot?.low_stock_skus ?? 0;
@@ -136,7 +271,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const filteredRows = rows.filter((row) => {
+    const filteredRows = hydratedRows.filter((row) => {
       const matchesSearch =
         !search ||
         row.name.toLowerCase().includes(search) ||
@@ -144,16 +279,17 @@ export async function GET(request: NextRequest) {
         (row.linked_location_name ?? '').toLowerCase().includes(search);
       return matchesSearch && matchesStatusFilter(row.status, statusFilters) && matchesStockFilter(row.stock_status, stockFilters);
     });
+    const visibleRows = filteredRows.slice(0, limit);
 
     const response: WarehousesLandingResponse = {
       kpis: {
-        active_warehouses: rows.filter((row) => row.status === 'active').length,
-        tracked_skus: rows.reduce((sum, row) => sum + row.tracked_skus, 0),
-        low_stock_warehouses: rows.filter((row) => row.stock_status !== 'clear').length,
-        idle_stock_skus: rows.reduce((sum, row) => sum + row.idle_stock_skus, 0),
+        active_warehouses: summaryRows.filter((row) => row.status === 'active').length,
+        tracked_skus: summaryRows.reduce((sum, row) => sum + row.tracked_skus, 0),
+        low_stock_warehouses: summaryRows.filter((row) => row.stock_status !== 'clear').length,
+        idle_stock_skus: summaryRows.reduce((sum, row) => sum + row.idle_stock_skus, 0),
       },
       callouts: {
-        stock_attention: [...rows]
+        stock_attention: [...summaryRows]
           .sort((a, b) => (b.low_stock_skus + b.stockout_skus) - (a.low_stock_skus + a.stockout_skus))
           .filter((row) => row.low_stock_skus + row.stockout_skus > 0)
           .slice(0, 3)
@@ -164,7 +300,7 @@ export async function GET(request: NextRequest) {
             city: row.city,
             value: row.low_stock_skus + row.stockout_skus,
           })),
-        idle_stock: [...rows]
+        idle_stock: [...summaryRows]
           .sort((a, b) => b.idle_stock_skus - a.idle_stock_skus)
           .filter((row) => row.idle_stock_skus > 0)
           .slice(0, 3)
@@ -175,7 +311,7 @@ export async function GET(request: NextRequest) {
             city: row.city,
             value: row.idle_stock_skus,
           })),
-        recently_replenished: [...rows]
+        recently_replenished: [...summaryRows]
           .sort((a, b) => b.last_updated.localeCompare(a.last_updated))
           .slice(0, 3)
           .map((row) => ({
@@ -187,7 +323,7 @@ export async function GET(request: NextRequest) {
             last_updated: row.last_updated,
           })),
       },
-      warehouses: filteredRows,
+      warehouses: visibleRows,
       period,
       refreshed_at: new Date().toISOString(),
     };
