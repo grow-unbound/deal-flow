@@ -5,6 +5,7 @@ import posthog from 'posthog-js';
 
 import { cn } from '@/lib/utils';
 import { RecoCarousel } from '@/components/buyer/catalog/RecoCarousel';
+import { RecoWidgetProvider } from '@/contexts/RecoWidgetContext';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
 interface RecoSectionProps {
@@ -52,7 +53,9 @@ export function RecoSection({
         {title}
       </h2>
       {items.length > 0 ? (
-        <RecoCarousel items={items} />
+        <RecoWidgetProvider value={{ widget, sourceProductId }}>
+          <RecoCarousel items={items} />
+        </RecoWidgetProvider>
       ) : (
         <p className="px-4 text-sm" style={{ color: 'var(--fg-3)' }}>
           Recommendations coming soon.

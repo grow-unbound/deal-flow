@@ -64,7 +64,6 @@ export type CohortComposerPayload = {
   }>;
   filters: {
     geographies: CohortComposerFilterOption[];
-    tiers: CohortComposerFilterOption[];
     last_order_buckets: CohortComposerFilterOption[];
     gmv_90d_buckets: CohortComposerFilterOption[];
   };
@@ -216,7 +215,6 @@ export function deriveGmv90dBucket(value: number) {
 
 export function buildCohortRulesFromComposerState(input: {
   geographies: string[];
-  tiers: string[];
   lastOrderBucket: 'anytime' | 'within_30_days' | 'within_90_days' | 'dormant_90_plus_days';
   gmvBuckets: Array<'gmv_0' | 'gmv_1_50000' | 'gmv_50001_200000' | 'gmv_200001_500000' | 'gmv_500001_plus'>;
   selectedBuyerIds: string[];
@@ -226,17 +224,9 @@ export function buildCohortRulesFromComposerState(input: {
 
   if (input.geographies.length > 0) {
     filters.push({
-      field: 'geography.label',
+      field: 'geography.city',
       operator: 'in',
       value: input.geographies,
-    });
-  }
-
-  if (input.tiers.length > 0) {
-    filters.push({
-      field: 'tier',
-      operator: 'in',
-      value: input.tiers,
     });
   }
 
@@ -278,15 +268,13 @@ export function resolveBuyerIdsForRules(
     return normalizedRules.selected_buyer_ids;
   }
 
-  const selectedGeographies = new Set<string>();
-  const selectedTiers = new Set<string>();
+  const selectedCities = new Set<string>();
   const selectedGmvBuckets = new Set<string>();
   let lastOrderBucket: string | null = null;
 
   for (const filter of normalizedRules.filters) {
     const values = Array.isArray(filter.value) ? filter.value : [filter.value];
-    if (filter.field === 'geography.label') values.forEach((value) => selectedGeographies.add(value));
-    if (filter.field === 'tier') values.forEach((value) => selectedTiers.add(value));
+    if (filter.field === 'geography.city') values.forEach((value) => selectedCities.add(value.toLowerCase()));
     if (filter.field === 'gmv_90d_bucket') values.forEach((value) => selectedGmvBuckets.add(value));
     if (filter.field === 'last_order_bucket') lastOrderBucket = values[0] ?? null;
   }
@@ -295,8 +283,7 @@ export function resolveBuyerIdsForRules(
 
   return buyers
     .filter((buyer) => {
-      if (selectedGeographies.size > 0 && !selectedGeographies.has(buyer.geography_label)) return false;
-      if (selectedTiers.size > 0 && !selectedTiers.has(buyer.tier ?? '')) return false;
+      if (selectedCities.size > 0 && !selectedCities.has((buyer.city ?? '').toLowerCase())) return false;
       if (selectedGmvBuckets.size > 0 && !selectedGmvBuckets.has(deriveGmv90dBucket(buyer.gmv_90d))) return false;
       if (lastOrderBucket && !matchesLastOrderBucket(buyer.last_order_at, lastOrderBucket as 'anytime' | 'within_30_days' | 'within_90_days' | 'dormant_90_plus_days')) return false;
       if (excluded.has(buyer.id)) return false;
@@ -361,7 +348,6 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
       brands: brandOptions,
       filters: {
         geographies: [],
-        tiers: [],
         last_order_buckets: COHORT_LAST_ORDER_BUCKETS.map((bucket) => ({ value: bucket.id, label: bucket.label, count: 0 })),
         gmv_90d_buckets: COHORT_GMV_BUCKETS.map((bucket) => ({ value: bucket.id, label: bucket.label, count: 0 })),
       },
@@ -480,8 +466,7 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
     buyers: buyersPayload,
     brands: brandOptions,
     filters: {
-      geographies: buildOptionCounts(buyersPayload.map((buyer) => buyer.geography_label)),
-      tiers: buildOptionCounts(buyersPayload.map((buyer) => buyer.tier)),
+      geographies: buildOptionCounts(buyersPayload.map((buyer) => buyer.city)),
       last_order_buckets: lastOrderBuckets,
       gmv_90d_buckets: gmvBuckets,
     },

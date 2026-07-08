@@ -239,6 +239,9 @@ export function CatalogComposer({
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [availability, setAvailability] = useState<CatalogComposerAvailability>('show_everything');
+  const [selectedLastOrderBucket, setSelectedLastOrderBucket] = useState<string>('');
+  const [selectedGmv90dBucket, setSelectedGmv90dBucket] = useState<string>('');
+  const [isDynamic, setIsDynamic] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [initialSelectionIds, setInitialSelectionIds] = useState<Set<string>>(new Set());
@@ -279,6 +282,9 @@ export function CatalogComposer({
       setSelectedBrands(nextBrands);
       setSelectedCategories(nextCategories);
       setAvailability(detailComposer.filters.availability);
+      setSelectedLastOrderBucket(detailComposer.filters.last_ordered_bucket ?? '');
+      setSelectedGmv90dBucket(detailComposer.filters.gmv_90d_bucket ?? '');
+      setIsDynamic(detailComposer.is_dynamic ?? false);
       setSelectedIds(nextSelectedIds);
       setTagOverrides(detailComposer.tag_overrides ?? {});
       setInitialTagOverrides(detailComposer.tag_overrides ?? {});
@@ -301,6 +307,9 @@ export function CatalogComposer({
     setSelectedBrands([]);
     setSelectedCategories([]);
     setAvailability('show_everything');
+    setSelectedLastOrderBucket('');
+    setSelectedGmv90dBucket('');
+    setIsDynamic(false);
     setSelectedIds(nextSelectedIds);
     setTagOverrides({});
     setInitialTagOverrides({});
@@ -434,6 +443,16 @@ export function CatalogComposer({
         tenant_phone_configured: false,
         broadcast_sending_paused: false,
       },
+      template: {
+        seller_name: 'Your business',
+        seller_phone_display: 'Your business number',
+        footer_text: 'Powered by Yukti',
+        buttons: [
+          { label: 'View campaign', type: 'url' },
+          { label: 'Enquire now', type: 'url' },
+          { label: 'Unsubscribe', type: 'quick_reply' },
+        ],
+      },
     };
   }, [
     publishDialogOpen,
@@ -488,10 +507,13 @@ export function CatalogComposer({
       selectedBrands,
       selectedCategories,
       availability,
+      selectedLastOrderBucket,
+      selectedGmv90dBucket,
+      isDynamic,
       selectedIds: Array.from(selectedIds).sort(),
       tagOverrides,
     }),
-    [availability, campaignPrices, cohortId, name, priceListId, priceSource, selectedBrands, selectedBuyerIds, selectedCategories, selectedIds, tagOverrides, validFrom, validTo],
+    [availability, campaignPrices, cohortId, isDynamic, name, priceListId, priceSource, selectedBrands, selectedBuyerIds, selectedCategories, selectedGmv90dBucket, selectedIds, selectedLastOrderBucket, tagOverrides, validFrom, validTo],
   );
 
   useEffect(() => {
@@ -586,6 +608,7 @@ export function CatalogComposer({
       buyerNote: string;
       notifyWhatsapp: boolean;
       notifyScheduledFor: string | null;
+      heroImageUrl: string | null;
     },
   ) {
     return {
@@ -597,10 +620,13 @@ export function CatalogComposer({
       valid_to: validTo ? `${validTo}T23:59:59` : undefined,
       price_source: priceSource,
       price_list_id: priceSource === 'price_list' ? priceListId : null,
+      is_dynamic: isDynamic,
       filters: {
         brand_names: selectedBrands,
         category_names: selectedCategories,
         availability,
+        last_ordered_bucket: selectedLastOrderBucket || undefined,
+        gmv_90d_bucket: selectedGmv90dBucket || undefined,
       },
       tag_overrides: tagOverrides,
       items: filteredSelectedProducts.map((product, index) => ({
@@ -614,6 +640,7 @@ export function CatalogComposer({
             buyer_note: publishOptions.buyerNote,
             notify_whatsapp: publishOptions.notifyWhatsapp,
             notify_scheduled_for: publishOptions.notifyScheduledFor ?? undefined,
+            hero_image_url: publishOptions.heroImageUrl ?? undefined,
           }
         : {}),
     };
@@ -625,6 +652,7 @@ export function CatalogComposer({
       buyerNote: string;
       notifyWhatsapp: boolean;
       notifyScheduledFor: string | null;
+      heroImageUrl: string | null;
     },
   ) {
     const payload = buildSavePayload(saveMode, publishOptions);
@@ -657,6 +685,7 @@ export function CatalogComposer({
       buyerNote: string;
       notifyWhatsapp: boolean;
       notifyScheduledFor: string | null;
+      heroImageUrl: string | null;
     },
   ) {
     setSubmitError(null);
@@ -715,6 +744,7 @@ export function CatalogComposer({
     notifyWhatsapp: boolean;
     buyerNote: string;
     notifyScheduledFor: string | null;
+    heroImageUrl: string | null;
   }) {
     await handleSave('publish', input);
   }
@@ -998,6 +1028,71 @@ export function CatalogComposer({
                         </label>
                       ))}
                     </div>
+                  </section>
+
+                  <section>
+                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">Order history</h3>
+                    <Select
+                      value={selectedLastOrderBucket || 'any'}
+                      onValueChange={(v) => setSelectedLastOrderBucket(v === 'any' ? '' : v)}
+                    >
+                      <SelectTrigger className="w-full bg-cream-50 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="any">Any time</SelectItem>
+                        <SelectItem value="within_30_days">Last 30 days</SelectItem>
+                        <SelectItem value="within_90_days">Last 90 days</SelectItem>
+                        <SelectItem value="dormant_90_plus_days">Dormant (90+ days)</SelectItem>
+                        <SelectItem value="anytime">Ever ordered</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </section>
+
+                  <section>
+                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-cream-700">GMV · last 90 days</h3>
+                    <Select
+                      value={selectedGmv90dBucket || 'any'}
+                      onValueChange={(v) => setSelectedGmv90dBucket(v === 'any' ? '' : v)}
+                    >
+                      <SelectTrigger className="w-full bg-cream-50 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="any">Any amount</SelectItem>
+                        <SelectItem value="gmv_0">No revenue</SelectItem>
+                        <SelectItem value="gmv_1_50000">₹1 – ₹50K</SelectItem>
+                        <SelectItem value="gmv_50001_200000">₹50K – ₹2L</SelectItem>
+                        <SelectItem value="gmv_200001_500000">₹2L – ₹5L</SelectItem>
+                        <SelectItem value="gmv_500001_plus">₹5L+</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </section>
+
+                  <section className="border-t border-cream-200 pt-4">
+                    <label className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-cream-900">Keep products dynamic</p>
+                        <p className="text-xs text-cream-500 mt-0.5">Auto-update product list as inventory changes</p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={isDynamic}
+                        onClick={() => setIsDynamic((v) => !v)}
+                        className={cn(
+                          'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
+                          isDynamic ? 'bg-teal-600' : 'bg-cream-300',
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform',
+                            isDynamic ? 'translate-x-4' : 'translate-x-0',
+                          )}
+                        />
+                      </button>
+                    </label>
                   </section>
                 </div>
               </ComposerSidebarCard>
