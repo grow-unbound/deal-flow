@@ -257,4 +257,22 @@ describe('products landing api', () => {
     expect(activeProduct.days_cover).toBeNull();
     expect(activeProduct.status_label).toBe('Insufficient velocity');
   });
+
+  it('loads tenant inventory via tenant-scoped join instead of giant product id lists', async () => {
+    const inventorySelect = vi.fn(() => createQuery('app.tenant_inventory'));
+    schemaMock.mockImplementation((schemaName: string) => ({
+      from: vi.fn((tableName: string) => ({
+        select: tableName === 'tenant_inventory' ? inventorySelect : vi.fn(() => createQuery(`${schemaName}.${tableName}`)),
+      })),
+    }));
+
+    const response = await GET(
+      new NextRequest('http://localhost:3000/api/tenant/products?period=month'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(inventorySelect).toHaveBeenCalledWith(
+      'tenant_product_id, qty_available, tenant_products!inner(tenant_id)',
+    );
+  });
 });

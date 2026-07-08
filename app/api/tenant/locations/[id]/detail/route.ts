@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { normalizeLocationAssociatedUsers } from '@/lib/location-assignees';
 import { createTimer } from '@/lib/server-timing';
@@ -56,7 +56,7 @@ export async function GET(
   if (!claims.tenant_id) return timedJson({ error: 'Unauthorized' }, { status: 401 });
   if (claims.role !== 'seller_admin') return timedJson({ error: 'Forbidden' }, { status: 403 });
 
-  const db = supabaseAdmin as any;
+  const db = getRequestSupabaseClient() as any;
 
   // Cross-tenant guard
   const { data: baseLocation, error: locationError } = await db

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { createTimer } from '@/lib/server-timing';
 import { SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
+import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
+import { assertSellerAdmin } from '@/lib/server/seller-auth';
 import { SELLER_LANDING_PERIOD_OPTIONS } from '@/lib/seller-period';
 import { readArrayParam } from '@/lib/landing-filter-params';
 import type {
@@ -15,6 +16,37 @@ import type {
 } from '@/hooks/useLocations';
 
 export const dynamic = 'force-dynamic';
+
+interface LocationSeedRow {
+  id: string;
+  name: string;
+  address: unknown;
+  deleted_at: string | null;
+}
+
+interface LocationSnapshotRow {
+  location_id: string;
+  sku_count: number;
+  oos_sku_count: number;
+  low_stock_sku_count: number;
+  outstanding_dues: number;
+  oldest_unpaid_days: number | null;
+}
+
+interface LocationKpiRow {
+  location_id: string | null;
+  gmv: number | null;
+  orders_count: number | null;
+}
+
+function buildPeriodFallbackFilter(
+  dateColumn: string,
+  fallbackColumn: string,
+  start: string,
+  endExclusive: string,
+) {
+  return `and(${dateColumn}.gte.${start},${dateColumn}.lt.${endExclusive}),and(${dateColumn}.is.null,${fallbackColumn}.gte.${start},${fallbackColumn}.lt.${endExclusive})`;
+}
 
 function getInitials(name: string): string {
   return name
@@ -43,80 +75,189 @@ function getAddressText(address: unknown): string {
 }
 
 async function getLocationsLandingPayload(
+  db: any,
   tenantId: string,
   periodInput?: string | null,
+  filters?: {
+    search: string;
+    status: string[];
+    stock: string[];
+    dues: string[];
+  },
 ): Promise<LocationsLandingResponse> {
-  const db = supabaseAdmin as any;
   const period = getSellerLandingPeriodMeta(periodInput);
 
-  const [locationsRes, snapshotRes, currentOrdersRes, prevOrdersRes, currentEstimatesRes, currentInvoicesRes] = await Promise.all([
+  const [summaryLocationsRes, summarySnapshotRes, summaryCurrentKpiRes, rowsRes] = await Promise.all([
     db
       .schema('app')
       .from('locations')
       .select('id, name, address, deleted_at')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: true }),
-
     db
       .schema('app')
       .from('locations_snapshot')
       .select('location_id, sku_count, oos_sku_count, low_stock_sku_count, outstanding_dues, oldest_unpaid_days, invoice_count')
       .eq('tenant_id', tenantId),
-
     db
       .schema('app')
-      .from('orders')
-      .select('id, location_id, buyer_id, total_amount')
+      .from('kpi_location_daily')
+      .select('location_id, gmv, orders_count')
       .eq('tenant_id', tenantId)
-      .not('status', 'in', '("cancelled","draft")')
-      .is('deleted_at', null)
-      .gte('placed_at', period.current_start)
-      .lt('placed_at', period.current_end_exclusive),
-
+      .gte('day', period.current_start.split('T')[0])
+      .lt('day', period.current_end_exclusive.split('T')[0]),
     db
       .schema('app')
-      .from('orders')
-      .select('id, location_id, total_amount')
+      .from('locations')
+      .select('id, name, address, deleted_at')
       .eq('tenant_id', tenantId)
-      .not('status', 'in', '("cancelled","draft")')
-      .is('deleted_at', null)
-      .gte('placed_at', period.previous_start)
-      .lt('placed_at', period.previous_end_exclusive),
-    db
-      .schema('app')
-      .from('estimates')
-      .select('id, location_id, buyer_id, estimate_date')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .gte('estimate_date', period.current_start)
-      .lt('estimate_date', period.current_end_exclusive),
-    db
-      .schema('app')
-      .from('invoices')
-      .select('id, location_id, buyer_id, invoice_date')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .gte('invoice_date', period.current_start)
-      .lt('invoice_date', period.current_end_exclusive),
+      .order('created_at', { ascending: true }),
   ]);
 
-  if (locationsRes.error) throw locationsRes.error;
-  if (currentOrdersRes.error || prevOrdersRes.error || currentEstimatesRes.error || currentInvoicesRes.error) {
-    throw currentOrdersRes.error ?? prevOrdersRes.error ?? currentEstimatesRes.error ?? currentInvoicesRes.error;
+  if (summaryLocationsRes.error) throw summaryLocationsRes.error;
+  if (summarySnapshotRes.error || summaryCurrentKpiRes.error || rowsRes.error) {
+    throw summarySnapshotRes.error ?? summaryCurrentKpiRes.error ?? rowsRes.error;
   }
 
-  const rawLocations:
-    Array<{ id: string; name: string; address: unknown; deleted_at: string | null }> =
-    locationsRes.data ?? [];
-  const snapshots: Array<Record<string, unknown>> = snapshotRes.data ?? [];
-  const currentOrders: Array<{ id: string; location_id: string | null; buyer_id: string; total_amount: number }> =
-    currentOrdersRes.data ?? [];
-  const prevOrders: Array<{ id: string; location_id: string | null; total_amount: number }> =
-    prevOrdersRes.data ?? [];
-  const currentEstimates: Array<{ id: string; location_id: string | null; buyer_id: string }> = currentEstimatesRes.data ?? [];
-  const currentInvoices: Array<{ id: string; location_id: string | null; buyer_id: string }> = currentInvoicesRes.data ?? [];
+  const summaryLocations: LocationSeedRow[] = (summaryLocationsRes.data ?? []) as LocationSeedRow[];
+  const rowSeeds: LocationSeedRow[] = (rowsRes.data ?? []) as LocationSeedRow[];
+  const summarySnapshots: LocationSnapshotRow[] = ((summarySnapshotRes.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    location_id: String(row.location_id),
+    sku_count: Number(row.sku_count ?? 0),
+    oos_sku_count: Number(row.oos_sku_count ?? 0),
+    low_stock_sku_count: Number(row.low_stock_sku_count ?? 0),
+    outstanding_dues: Number(row.outstanding_dues ?? 0),
+    oldest_unpaid_days: row.oldest_unpaid_days == null ? null : Number(row.oldest_unpaid_days),
+  }));
+  const summaryCurrentKpis: LocationKpiRow[] = summaryCurrentKpiRes.data ?? [];
 
-  const locationIds = rawLocations.map((loc) => loc.id);
+  const rowIds = rowSeeds.map((loc) => loc.id);
+  const summaryByLocation = new Map<string, { seed: LocationSeedRow; snapshot?: LocationSnapshotRow; gmv_mtd: number; orders_count: number }>();
+  for (const seed of summaryLocations) {
+    summaryByLocation.set(seed.id, {
+      seed,
+      gmv_mtd: 0,
+      orders_count: 0,
+    });
+  }
+  for (const snapshot of summarySnapshots) {
+    const entry = summaryByLocation.get(snapshot.location_id);
+    if (entry) entry.snapshot = snapshot;
+  }
+  for (const kpi of summaryCurrentKpis) {
+    if (!kpi.location_id) continue;
+    const entry = summaryByLocation.get(kpi.location_id);
+    if (!entry) continue;
+    entry.gmv_mtd += Number(kpi.gmv ?? 0);
+    entry.orders_count += Number(kpi.orders_count ?? 0);
+  }
+
+  const scopedRowIds = rowIds.length > 0 ? rowIds : ['00000000-0000-0000-0000-000000000000'];
+
+  const rowSnapshotQuery = (() => {
+    let query = db
+      .schema('app')
+      .from('locations_snapshot')
+      .select('location_id, sku_count, oos_sku_count, low_stock_sku_count, outstanding_dues, oldest_unpaid_days')
+      .eq('tenant_id', tenantId)
+      .in('location_id', scopedRowIds);
+
+    return query;
+  })();
+
+  const rowCurrentKpiQuery = (() => {
+    let query = db
+      .schema('app')
+      .from('kpi_location_daily')
+      .select('location_id, gmv, orders_count')
+      .eq('tenant_id', tenantId)
+      .gte('day', period.current_start.split('T')[0])
+      .lt('day', period.current_end_exclusive.split('T')[0])
+      .in('location_id', scopedRowIds);
+
+    return query;
+  })();
+
+  const rowPrevKpiQuery = (() => {
+    let query = db
+      .schema('app')
+      .from('kpi_location_daily')
+      .select('location_id, gmv')
+      .eq('tenant_id', tenantId)
+      .gte('day', period.previous_start.split('T')[0])
+      .lt('day', period.previous_end_exclusive.split('T')[0])
+      .in('location_id', scopedRowIds);
+
+    return query;
+  })();
+
+  const rowOrderBuyerQuery = (() => {
+    let query = db
+      .schema('app')
+      .from('orders')
+      .select('buyer_id, location_id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .or(buildPeriodFallbackFilter('order_date', 'created_at', period.current_start, period.current_end_exclusive))
+      .in('location_id', scopedRowIds);
+
+    return query;
+  })();
+
+  const rowEstimateBuyerQuery = (() => {
+    let query = db
+      .schema('app')
+      .from('estimates')
+      .select('buyer_id, location_id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .or(buildPeriodFallbackFilter('estimate_date', 'created_at', period.current_start, period.current_end_exclusive))
+      .in('location_id', scopedRowIds);
+
+    return query;
+  })();
+
+  const rowInvoiceBuyerQuery = (() => {
+    let query = db
+      .schema('app')
+      .from('invoices')
+      .select('buyer_id, location_id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .or(buildPeriodFallbackFilter('invoice_date', 'created_at', period.current_start, period.current_end_exclusive))
+      .in('location_id', scopedRowIds);
+
+    return query;
+  })();
+
+  const [rowSnapshotRes, rowCurrentKpiRes, rowPrevKpiRes, rowOrdersRes, rowEstimatesRes, rowInvoicesRes] = await Promise.all([
+    rowSnapshotQuery,
+    rowCurrentKpiQuery,
+    rowPrevKpiQuery,
+    rowOrderBuyerQuery,
+    rowEstimateBuyerQuery,
+    rowInvoiceBuyerQuery,
+  ]);
+
+  if (rowSnapshotRes.error || rowCurrentKpiRes.error || rowPrevKpiRes.error || rowOrdersRes.error || rowEstimatesRes.error || rowInvoicesRes.error) {
+    throw rowSnapshotRes.error ?? rowCurrentKpiRes.error ?? rowPrevKpiRes.error ?? rowOrdersRes.error ?? rowEstimatesRes.error ?? rowInvoicesRes.error;
+  }
+
+  const rowSnapshots: LocationSnapshotRow[] = ((rowSnapshotRes.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    location_id: String(row.location_id),
+    sku_count: Number(row.sku_count ?? 0),
+    oos_sku_count: Number(row.oos_sku_count ?? 0),
+    low_stock_sku_count: Number(row.low_stock_sku_count ?? 0),
+    outstanding_dues: Number(row.outstanding_dues ?? 0),
+    oldest_unpaid_days: row.oldest_unpaid_days == null ? null : Number(row.oldest_unpaid_days),
+  }));
+  const rowCurrentKpis: LocationKpiRow[] = rowCurrentKpiRes.data ?? [];
+  const rowPrevKpis: Array<{ location_id: string | null; gmv: number | null }> = rowPrevKpiRes.data ?? [];
+  const rowOrders: Array<{ location_id: string | null; buyer_id: string }> = rowOrdersRes.data ?? [];
+  const rowEstimates: Array<{ location_id: string | null; buyer_id: string }> = rowEstimatesRes.data ?? [];
+  const rowInvoices: Array<{ location_id: string | null; buyer_id: string }> = rowInvoicesRes.data ?? [];
+
+  const locationIds = rowSeeds.map((loc) => loc.id);
   let extraById = new Map<
     string,
     { phone_number: string | null; status: 'active' | 'inactive' | null }
@@ -144,31 +285,31 @@ async function getLocationsLandingPayload(
     }
   }
 
-  // Index snapshots by location_id
-  const snapshotByLocation = new Map<string, Record<string, unknown>>();
-  for (const s of snapshots) snapshotByLocation.set(s.location_id as string, s);
+  const rowSnapshotByLocation = new Map<string, LocationSnapshotRow>();
+  for (const snapshot of rowSnapshots) rowSnapshotByLocation.set(snapshot.location_id, snapshot);
 
-  // Aggregate current-period GMV + buyers by location
   const gmvMtdByLocation = new Map<string, number>();
   const buyersByLocation = new Map<string, Set<string>>();
-  const orderCountByLocation = new Map<string, number>();
-  for (const o of currentOrders) {
+  for (const row of rowCurrentKpis) {
+    const loc = row.location_id;
+    if (!loc) continue;
+    gmvMtdByLocation.set(loc, (gmvMtdByLocation.get(loc) ?? 0) + Number(row.gmv ?? 0));
+  }
+  for (const o of rowOrders) {
     const loc = o.location_id;
     if (!loc) continue;
-    gmvMtdByLocation.set(loc, (gmvMtdByLocation.get(loc) ?? 0) + Number(o.total_amount ?? 0));
-    orderCountByLocation.set(loc, (orderCountByLocation.get(loc) ?? 0) + 1);
     const set = buyersByLocation.get(loc) ?? new Set<string>();
     set.add(o.buyer_id);
     buyersByLocation.set(loc, set);
   }
-  for (const estimate of currentEstimates) {
+  for (const estimate of rowEstimates) {
     const loc = estimate.location_id;
     if (!loc) continue;
     const set = buyersByLocation.get(loc) ?? new Set<string>();
     set.add(estimate.buyer_id);
     buyersByLocation.set(loc, set);
   }
-  for (const invoice of currentInvoices) {
+  for (const invoice of rowInvoices) {
     const loc = invoice.location_id;
     if (!loc) continue;
     const set = buyersByLocation.get(loc) ?? new Set<string>();
@@ -178,15 +319,14 @@ async function getLocationsLandingPayload(
 
   // Aggregate previous-period GMV by location
   const gmvPrevByLocation = new Map<string, number>();
-  for (const o of prevOrders) {
-    const loc = o.location_id;
+  for (const row of rowPrevKpis) {
+    const loc = row.location_id;
     if (!loc) continue;
-    gmvPrevByLocation.set(loc, (gmvPrevByLocation.get(loc) ?? 0) + Number(o.total_amount ?? 0));
+    gmvPrevByLocation.set(loc, (gmvPrevByLocation.get(loc) ?? 0) + Number(row.gmv ?? 0));
   }
 
-  // Build rows
-  const rows: LocationsLandingRow[] = rawLocations.map((loc) => {
-    const snap = snapshotByLocation.get(loc.id);
+  const unfilteredRows: LocationsLandingRow[] = rowSeeds.map((loc) => {
+    const snap = rowSnapshotByLocation.get(loc.id);
     const extra = extraById.get(loc.id);
     const gmv_mtd = gmvMtdByLocation.get(loc.id) ?? 0;
     const gmv_prev = gmvPrevByLocation.get(loc.id) ?? 0;
@@ -218,20 +358,67 @@ async function getLocationsLandingPayload(
     };
   });
 
-  const activeRows = rows.filter((r) => r.is_active);
-  const totalGmv = activeRows.reduce((s, r) => s + r.gmv_mtd, 0);
+  const filteredRows = unfilteredRows.filter((row) => {
+    const statusOk =
+      !filters || filters.status.length === 0 ||
+      filters.status.some((value) => {
+        if (value === 'Active') return row.is_active;
+        if (value === 'Inactive') return !row.is_active;
+        return false;
+      });
+    const stockOk =
+      !filters || filters.stock.length === 0 ||
+      filters.stock.some((value) => {
+        if (value === 'In Stock') return row.stock_status === 'clear';
+        if (value === 'Low Stock') return row.stock_status === 'low_stock';
+        if (value === 'Out of Stock') return row.stock_status === 'out_of_stock';
+        return false;
+      });
+    const duesOk =
+      !filters || filters.dues.length === 0 ||
+      filters.dues.some((value) => {
+        if (value === 'Due') return row.outstanding_dues > 0;
+        if (value === 'Overdue') return row.outstanding_dues > 0 && (row.oldest_unpaid_days ?? 0) > 30;
+        return false;
+      });
+    const searchOk =
+      !filters || !filters.search || [row.name, row.city, row.address_text].some((value) => value.toLowerCase().includes(filters.search));
+    return statusOk && stockOk && duesOk && searchOk;
+  });
 
-  const topLocation = activeRows.reduce<LocationsLandingRow | null>(
-    (best, r) => (best === null || r.gmv_mtd > best.gmv_mtd ? r : best),
+  const activeSummaryRows = [...summaryByLocation.values()]
+    .filter((entry) => entry.seed.deleted_at === null)
+    .map((entry) => {
+      const snapshot = entry.snapshot;
+      const oos = snapshot?.oos_sku_count ?? 0;
+      const low = snapshot?.low_stock_sku_count ?? 0;
+      return {
+        id: entry.seed.id,
+        name: entry.seed.name,
+        city: getCity(entry.seed.address),
+        initials: getInitials(entry.seed.name),
+        gmv_mtd: entry.gmv_mtd,
+        orders_count: entry.orders_count,
+        outstanding_dues: snapshot?.outstanding_dues ?? 0,
+        oldest_unpaid_days: snapshot?.oldest_unpaid_days ?? null,
+        oos_sku_count: oos,
+        low_stock_sku_count: low,
+        stock_status: (oos > 0 ? 'out_of_stock' : low > 0 ? 'low_stock' : 'clear') as LocationStockStatus,
+      };
+    });
+
+  const totalGmv = activeSummaryRows.reduce((sum, row) => sum + row.gmv_mtd, 0);
+  const topLocation = activeSummaryRows.reduce<(typeof activeSummaryRows)[number] | null>(
+    (best, row) => (best === null || row.gmv_mtd > best.gmv_mtd ? row : best),
     null,
   );
 
   const kpis: LocationsLandingKpis = {
-    active_locations: activeRows.length,
-    total_locations: rows.length,
-    outstanding_dues_total: activeRows.reduce((s, r) => s + r.outstanding_dues, 0),
-    dues_location_count: activeRows.filter((r) => r.outstanding_dues > 0).length,
-    low_stock_locations: activeRows.filter((r) => r.stock_status !== 'clear').length,
+    active_locations: activeSummaryRows.length,
+    total_locations: summaryLocations.length,
+    outstanding_dues_total: activeSummaryRows.reduce((sum, row) => sum + row.outstanding_dues, 0),
+    dues_location_count: activeSummaryRows.filter((row) => row.outstanding_dues > 0).length,
+    low_stock_locations: activeSummaryRows.filter((row) => row.stock_status !== 'clear').length,
     top_location_name: topLocation?.name ?? null,
     top_location_gmv_share_pct:
       topLocation && totalGmv > 0
@@ -240,7 +427,7 @@ async function getLocationsLandingPayload(
   };
 
   // Callout: stock_critical — top 3 by oos+low desc
-  const stock_critical: LocationsCalloutRow[] = [...activeRows]
+  const stock_critical: LocationsCalloutRow[] = [...activeSummaryRows]
     .filter((r) => r.stock_status !== 'clear')
     .sort((a, b) => b.oos_sku_count + b.low_stock_sku_count - (a.oos_sku_count + a.low_stock_sku_count))
     .slice(0, 3)
@@ -252,23 +439,41 @@ async function getLocationsLandingPayload(
       critical_sku_count: r.oos_sku_count + r.low_stock_sku_count,
     }));
 
-  // Callout: top_locations — top 2 by GMV with at least 1 order
-  const top_locations: LocationsCalloutRow[] = [...activeRows]
-    .filter((r) => (orderCountByLocation.get(r.id) ?? 0) > 0)
+  const topLocationIds = [...activeSummaryRows]
+    .filter((row) => row.orders_count > 0)
     .sort((a, b) => b.gmv_mtd - a.gmv_mtd)
     .slice(0, 2)
-    .map((r) => ({
-      id: r.id,
-      name: r.name,
-      city: r.city,
-      initials: r.initials,
-      gmv_mtd: r.gmv_mtd,
-      orders_count: orderCountByLocation.get(r.id) ?? 0,
-      buyers_count: buyersByLocation.get(r.id)?.size ?? 0,
+    .map((row) => row.id);
+
+  const topLocationBuyerCounts = new Map<string, number>();
+  if (topLocationIds.length > 0) {
+    const buyerSets = new Map<string, Set<string>>();
+    for (const row of [...rowOrders, ...rowEstimates, ...rowInvoices]) {
+      const locationId = row.location_id;
+      if (!locationId || !topLocationIds.includes(locationId)) continue;
+      const set = buyerSets.get(locationId) ?? new Set<string>();
+      set.add(row.buyer_id);
+      buyerSets.set(locationId, set);
+    }
+    for (const [locationId, buyers] of buyerSets.entries()) {
+      topLocationBuyerCounts.set(locationId, buyers.size);
+    }
+  }
+
+  const top_locations: LocationsCalloutRow[] = activeSummaryRows
+    .filter((row) => topLocationIds.includes(row.id))
+    .sort((a, b) => b.gmv_mtd - a.gmv_mtd)
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      city: row.city,
+      initials: row.initials,
+      gmv_mtd: row.gmv_mtd,
+      orders_count: row.orders_count,
+      buyers_count: topLocationBuyerCounts.get(row.id) ?? 0,
     }));
 
-  // Callout: collections_overdue — top 3 with oldest_unpaid_days > 30
-  const collections_overdue: LocationsCalloutRow[] = [...activeRows]
+  const collections_overdue: LocationsCalloutRow[] = [...activeSummaryRows]
     .filter((r) => r.outstanding_dues > 0 && (r.oldest_unpaid_days ?? 0) > 30)
     .sort((a, b) => b.outstanding_dues - a.outstanding_dues)
     .slice(0, 3)
@@ -284,7 +489,7 @@ async function getLocationsLandingPayload(
   return {
     kpis,
     callouts: { stock_critical, top_locations, collections_overdue },
-    locations: rows,
+    locations: filteredRows,
     period: SELLER_LANDING_PERIOD_OPTIONS.find((o) => o.value === period.selected)?.label ?? period.selected,
     refreshed_at: new Date().toISOString(),
   };
@@ -302,48 +507,32 @@ export async function GET(request: NextRequest) {
   };
 
   const claims = await getVerifiedClaims(request);
-
-  if (!claims.tenant_id) return timedJson({ error: 'Unauthorized' }, { status: 401 });
-  if (claims.role !== 'seller_admin') return timedJson({ error: 'Forbidden' }, { status: 403 });
+  const adminCheck = assertSellerAdmin(claims);
+  if (!adminCheck.ok) {
+    return timedJson({ error: adminCheck.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: adminCheck.status });
+  }
 
   try {
     const search = request.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '';
     const statusFilter = readArrayParam(request.nextUrl.searchParams, 'status');
     const stockFilter = readArrayParam(request.nextUrl.searchParams, 'stock');
     const duesFilter = readArrayParam(request.nextUrl.searchParams, 'dues');
+    const db = getRequestSupabaseClient();
     const payload = await getLocationsLandingPayload(
-      claims.tenant_id,
+      db as any,
+      claims.tenant_id!,
       request.nextUrl.searchParams.get('period'),
+      {
+        search,
+        status: statusFilter,
+        stock: stockFilter,
+        dues: duesFilter,
+      },
     );
-    const filteredLocations = payload.locations.filter((row) => {
-      const statusOk =
-        statusFilter.length === 0 ||
-        statusFilter.some((value) => {
-          if (value === 'Active') return row.is_active;
-          if (value === 'Inactive') return !row.is_active;
-          return false;
-        });
-      const stockOk =
-        stockFilter.length === 0 ||
-        stockFilter.some((value) => {
-          if (value === 'In Stock') return row.stock_status === 'clear';
-          if (value === 'Low Stock') return row.stock_status === 'low_stock';
-          if (value === 'Out of Stock') return row.stock_status === 'out_of_stock';
-          return false;
-        });
-      const duesOk =
-        duesFilter.length === 0 ||
-        duesFilter.some((value) => {
-          if (value === 'Due') return row.outstanding_dues > 0;
-          if (value === 'Overdue') return row.outstanding_dues > 0 && (row.oldest_unpaid_days ?? 0) > 30;
-          return false;
-        });
-      const searchOk = !search || [row.name, row.city, row.address_text].some((value) => value.toLowerCase().includes(search));
-      return statusOk && stockOk && duesOk && searchOk;
-    });
-    return timedJson({ ...payload, locations: filteredLocations });
-  } catch (error: any) {
-    console.error('[GET /api/tenant/locations/landing]', error?.code, error?.message);
+    return timedJson(payload);
+  } catch (error: unknown) {
+    const err = error as { code?: string; message?: string };
+    console.error('[GET /api/tenant/locations/landing]', err?.code, err?.message);
     return timedJson({ error: 'Failed to fetch locations landing' }, { status: 500 });
   }
 }

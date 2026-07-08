@@ -8,7 +8,7 @@ export default function SettingsBillingPage() {
       <SellerTopbar
         eyebrow="Settings"
         title="Billing & Plan"
-        subtitle="Your current plan, usage against limits, and WhatsApp credit balance."
+        subtitle="WhatsApp credit balance and message usage."
       />
       <BillingSettingsClient />
     </PageWrap>

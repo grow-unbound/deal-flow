@@ -10,6 +10,7 @@ interface EstimateRow {
   buyer_id: string;
   status: string;
   total_amount: number;
+  estimate_date?: string | null;
   created_at: string;
   sent_at: string | null;
   accepted_at: string | null;
@@ -80,18 +81,20 @@ vi.mock('@/lib/server/seller-features', () => ({
 vi.mock('@/lib/supabase', () => {
   class QueryMock {
     private table: string;
-    private conditions: Array<{ kind: 'eq' | 'is' | 'gte' | 'lt' | 'in'; column: string; value: unknown }> = [];
+    private conditions: Array<{ kind: 'eq' | 'is' | 'gte' | 'lt' | 'lte' | 'in'; column: string; value: unknown }> = [];
     private orderBy: { column: string; ascending: boolean } | null = null;
     private take: number | null = null;
+    private head = false;
+    private periodFilter:
+      | { primary: string; fallback: string; start: number; endExclusive: number }
+      | null = null;
 
     constructor(table: string) {
       this.table = table;
     }
-    maybeSingle() {
-      return this;
-    }
 
-    select() {
+    select(_columns?: string, options?: { head?: boolean }) {
+      this.head = Boolean(options?.head);
       return this;
     }
     eq(column: string, value: unknown) {
@@ -122,10 +125,38 @@ vi.mock('@/lib/supabase', () => {
       this.conditions.push({ kind: 'lt', column, value });
       return this;
     }
+    lte(column: string, value: unknown) {
+      this.conditions.push({ kind: 'lte', column, value });
+      return this;
+    }
+    or(filter: string) {
+      const match = filter.match(
+        /and\(estimate_date\.gte\.([^,]+),estimate_date\.lt\.([^)]+)\),and\(estimate_date\.is\.null,created_at\.gte\.([^,]+),created_at\.lt\.([^)]+)\)/,
+      );
+      if (match) {
+        this.periodFilter = {
+          primary: 'estimate_date',
+          fallback: 'created_at',
+          start: new Date(match[1]).getTime(),
+          endExclusive: new Date(match[2]).getTime(),
+        };
+      }
+      return this;
+    }
 
-    then(resolve: (value: { data: unknown; error: null }) => void) {
+    then(resolve: (value: { data: unknown; error: null; count?: number }) => void) {
       const applyFilters = (rows: any[]) => {
         let result = [...rows];
+        if (this.periodFilter) {
+          result = result.filter((row) => {
+            const primaryValue = row[this.periodFilter!.primary];
+            const fallbackValue = row[this.periodFilter!.fallback];
+            const rawValue = typeof primaryValue === 'string' ? primaryValue : fallbackValue;
+            if (typeof rawValue !== 'string') return false;
+            const time = new Date(rawValue).getTime();
+            return time >= this.periodFilter!.start && time < this.periodFilter!.endExclusive;
+          });
+        }
         for (const condition of this.conditions) {
           if (condition.kind === 'eq' || condition.kind === 'is') {
             result = result.filter((row) => !(condition.column in row) || row[condition.column] === condition.value);
@@ -136,13 +167,15 @@ vi.mock('@/lib/supabase', () => {
             result = result.filter((row) => values.includes(row[condition.column]));
             continue;
           }
-          if (condition.kind === 'gte' || condition.kind === 'lt') {
+          if (condition.kind === 'gte' || condition.kind === 'lt' || condition.kind === 'lte') {
             const threshold = new Date(String(condition.value)).getTime();
             result = result.filter((row) => {
               const rowValue = row[condition.column];
               if (typeof rowValue !== 'string') return false;
               const time = new Date(rowValue).getTime();
-              return condition.kind === 'gte' ? time >= threshold : time < threshold;
+              if (condition.kind === 'gte') return time >= threshold;
+              if (condition.kind === 'lt') return time < threshold;
+              return time <= threshold;
             });
           }
         }
@@ -164,15 +197,23 @@ vi.mock('@/lib/supabase', () => {
         return result;
       };
 
-      if (this.table === 'buyers') return resolve({ data: applyFilters(queryState.buyers), error: null });
-      if (this.table === 'estimates') return resolve({ data: applyFilters(queryState.estimates), error: null });
-      if (this.table === 'estimate_items') return resolve({ data: applyFilters(queryState.estimateItems), error: null });
-      if (this.table === 'campaigns') return resolve({ data: applyFilters(queryState.catalogs), error: null });
-      if (this.table === 'kpi_estimates_current') return resolve({ data: applyFilters(queryState.currentKpis), error: null });
-      if (this.table === 'kpi_estimates_previous') return resolve({ data: applyFilters(queryState.previousKpis), error: null });
-      if (this.table === 'kpi_estimates_aggregate') return resolve({ data: applyFilters(queryState.aggregateKpis), error: null });
-      if (this.table === 'estimates_snapshot') return resolve({ data: queryState.snapshot, error: null });
-      return resolve({ data: [], error: null });
+      const finish = (rows: unknown[]) => {
+        const filtered = applyFilters(rows);
+        return resolve({
+          data: this.head ? null : filtered,
+          error: null,
+          count: this.head ? filtered.length : undefined,
+        });
+      };
+
+      if (this.table === 'buyers') return finish(queryState.buyers);
+      if (this.table === 'estimates') return finish(queryState.estimates);
+      if (this.table === 'estimate_items') return finish(queryState.estimateItems);
+      if (this.table === 'campaigns') return finish(queryState.catalogs);
+      if (this.table === 'kpi_estimates_current') return finish(queryState.currentKpis);
+      if (this.table === 'kpi_estimates_previous') return finish(queryState.previousKpis);
+      if (this.table === 'kpi_estimates_aggregate') return finish(queryState.aggregateKpis);
+      return finish([]);
     }
   }
 
@@ -227,6 +268,7 @@ describe('estimates landing API route', () => {
         buyer_id: 'b1',
         status: 'accepted',
         total_amount: 50000,
+        estimate_date: '2026-06-01T10:00:00.000Z',
         created_at: '2026-06-01T10:00:00.000Z',
         sent_at: '2026-06-01T11:00:00.000Z',
         accepted_at: '2026-06-02T10:00:00.000Z',
@@ -243,6 +285,7 @@ describe('estimates landing API route', () => {
         buyer_id: 'b1',
         status: 'sent',
         total_amount: 12000,
+        estimate_date: '2026-06-03T10:00:00.000Z',
         created_at: '2026-06-03T10:00:00.000Z',
         sent_at: sentOld,
         accepted_at: null,
@@ -259,6 +302,7 @@ describe('estimates landing API route', () => {
         buyer_id: 'b1',
         status: 'draft',
         total_amount: 8000,
+        estimate_date: '2026-06-04T10:00:00.000Z',
         created_at: '2026-06-04T10:00:00.000Z',
         sent_at: null,
         accepted_at: null,
@@ -276,6 +320,7 @@ describe('estimates landing API route', () => {
         buyer_id: 'b1',
         status: 'converted',
         total_amount: 2000,
+        estimate_date: '2026-05-01T10:00:00.000Z',
         created_at: '2026-05-01T10:00:00.000Z',
         sent_at: '2026-05-02T10:00:00.000Z',
         accepted_at: '2026-06-05T12:00:00.000Z',
@@ -457,8 +502,8 @@ describe('estimates landing API route', () => {
     expect(res.status).toBe(200);
 
     const body = await res.json();
-    expect(body.estimates).toHaveLength(2);
-    expect(body.estimates.every((row: { id: string }) => ['e1', 'e4'].includes(row.id))).toBe(true);
+    expect(body.estimates).toHaveLength(1);
+    expect(body.estimates[0].id).toBe('e1');
     expect(body.kpis.total_estimates_this_period).toBe(1);
     expect(body.kpis.open_total).toBe(1);
   });

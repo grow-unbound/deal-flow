@@ -72,11 +72,32 @@ export default async function RecommendationsSettingsPage() {
       .map((s: any) => ({ ...s, category_name: categoryNames[s.tenant_category_id] ?? null })),
   }));
 
+  const roleCategoryIds = (categoriesRes.data ?? []).map((c: { category_id: string }) => c.category_id);
+  let categoryThumbKeys: Record<string, string | null> = {};
+  if (roleCategoryIds.length > 0) {
+    const { data: roleCats } = await db
+      .schema('app')
+      .from('tenant_categories')
+      .select('id, r2_image_thumb_key')
+      .in('id', roleCategoryIds)
+      .eq('tenant_id', tenantId);
+    categoryThumbKeys = Object.fromEntries(
+      (roleCats ?? []).map((c: { id: string; r2_image_thumb_key: string | null }) => [
+        c.id,
+        c.r2_image_thumb_key,
+      ]),
+    );
+  }
+
+  const categories = (categoriesRes.data ?? []).map((c: { category_id: string }) => ({
+    ...c,
+    r2_image_thumb_key: categoryThumbKeys[c.category_id] ?? null,
+  }));
+
   return (
     <PageWrap>
       <RecommendationsSettingsClient
-        tenantId={tenantId}
-        initialCategories={categoriesRes.data ?? []}
+        initialCategories={categories}
         initialSuggestions={suggestions}
         initialBundles={bundles}
       />

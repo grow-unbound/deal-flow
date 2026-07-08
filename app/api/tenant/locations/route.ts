@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
 import { normalizeLocationAddress } from '@/lib/locations/location-deactivate-guards';
@@ -30,11 +30,7 @@ export async function GET(req: NextRequest) {
       return jsonError(403, 'Forbidden', 'FORBIDDEN');
     }
 
-    if (!supabaseAdmin) {
-      return jsonError(500, 'Server configuration error', 'SERVER_ERROR');
-    }
-
-    const db = supabaseAdmin as any;
+    const db = getRequestSupabaseClient() as any;
 
     const includeDeleted =
       req.nextUrl.searchParams.get('include_deleted') === '1' && claims.role === 'seller_admin';
@@ -125,10 +121,6 @@ export async function POST(req: NextRequest) {
       return jsonError(401, 'Login required', 'UNAUTHORIZED');
     }
 
-    if (!supabaseAdmin) {
-      return jsonError(500, 'Server configuration error', 'SERVER_ERROR');
-    }
-
     let body: unknown;
     try {
       body = await req.json();
@@ -157,7 +149,7 @@ export async function POST(req: NextRequest) {
       associated_users,
     } = parsed.data;
 
-    const db = supabaseAdmin as any;
+    const db = getRequestSupabaseClient() as any;
     const normalizedAssociatedUsers = normalizeLocationAssociatedUsers(associated_users);
 
     if (is_default) {

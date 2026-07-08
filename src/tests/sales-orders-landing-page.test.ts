@@ -23,7 +23,6 @@ interface QueryState {
     placed_at: string;
     created_at: string;
   }>;
-  prevOrders: Array<{ id: string; total_amount: number }>;
   orderItems: Array<{ order_id: string }>;
   catalogs: Array<{ id: string; name: string }>;
   estimates: Array<{ id: string; estimate_number: string | null }>;
@@ -34,7 +33,6 @@ interface QueryState {
 const queryState: QueryState = {
   buyers: [],
   monthOrders: [],
-  prevOrders: [],
   orderItems: [],
   catalogs: [],
   estimates: [],
@@ -80,12 +78,15 @@ vi.mock('@/lib/supabase', () => {
   class QueryMock {
     private table: string;
     private conditions: Array<{ kind: 'eq' | 'in'; column: string; value: unknown }> = [];
+    private head = false;
+    private limitValue: number | null = null;
 
     constructor(table: string) {
       this.table = table;
     }
 
-    select() {
+    select(_columns?: string, options?: { head?: boolean }) {
+      this.head = options?.head === true;
       return this;
     }
     eq(column: string, value: unknown) {
@@ -104,7 +105,14 @@ vi.mock('@/lib/supabase', () => {
     order() {
       return this;
     }
+    or() {
+      return this;
+    }
+    ilike() {
+      return this;
+    }
     limit() {
+      this.limitValue = arguments[0] as number;
       return this;
     }
     in() {
@@ -112,7 +120,7 @@ vi.mock('@/lib/supabase', () => {
       return this;
     }
 
-    then(resolve: (value: { data: unknown; error: null }) => void) {
+    then(resolve: (value: { data: unknown; error: null; count?: number }) => void) {
       const applyFilters = (rows: Array<Record<string, unknown>>) => {
         let result = [...rows];
         for (const condition of this.conditions) {
@@ -127,8 +135,11 @@ vi.mock('@/lib/supabase', () => {
       };
 
       if (this.table === 'buyers') return resolve({ data: queryState.buyers, error: null });
-      if (this.table === 'orders_month') return resolve({ data: applyFilters(queryState.monthOrders as Array<Record<string, unknown>>), error: null });
-      if (this.table === 'orders_prev') return resolve({ data: applyFilters(queryState.prevOrders as Array<Record<string, unknown>>), error: null });
+      if (this.table === 'orders_month') {
+        const rows = applyFilters(queryState.monthOrders as Array<Record<string, unknown>>);
+        const limitedRows = this.limitValue != null ? rows.slice(0, this.limitValue) : rows;
+        return resolve({ data: this.head ? null : limitedRows, error: null, count: rows.length });
+      }
       if (this.table === 'order_items') return resolve({ data: applyFilters(queryState.orderItems as Array<Record<string, unknown>>), error: null });
       if (this.table === 'campaigns') return resolve({ data: queryState.catalogs, error: null });
       if (this.table === 'estimates') return resolve({ data: queryState.estimates, error: null });
@@ -149,7 +160,7 @@ vi.mock('@/lib/supabase', () => {
     }
     if (table === 'orders') {
       ordersCallState.count += 1;
-      return new QueryMock(ordersCallState.count === 1 ? 'orders_month' : 'orders_prev');
+      return new QueryMock('orders_month');
     }
     return new QueryMock('unknown');
   });

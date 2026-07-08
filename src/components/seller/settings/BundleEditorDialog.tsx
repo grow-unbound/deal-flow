@@ -1,17 +1,20 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog';
+import { CategorySlotPicker } from './CategorySlotPicker';
 
 export interface BundleSlot {
   id?: string;
@@ -76,7 +79,6 @@ export function BundleEditorDialog({
   }, [open, bundle]);
 
   const usedCategoryIds = new Set(slots.map((s) => s.tenant_category_id));
-  const unusedCategories = availableCategories.filter((c) => !usedCategoryIds.has(c.id));
 
   function addSlot(categoryId: string) {
     const cat = availableCategories.find((c) => c.id === categoryId);
@@ -102,8 +104,14 @@ export function BundleEditorDialog({
   }
 
   async function handleSave() {
-    if (!name.trim()) { toast.error('Bundle name is required'); return; }
-    if (slots.length === 0) { toast.error('Add at least one slot category'); return; }
+    if (!name.trim()) {
+      toast.error('Bundle name is required');
+      return;
+    }
+    if (slots.length === 0) {
+      toast.error('Add at least one slot category');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -114,8 +122,6 @@ export function BundleEditorDialog({
           body: JSON.stringify({ name: name.trim(), description: description.trim() || null }),
         });
         if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to update bundle');
-        // Sync slots via bulk replace (delete all + re-insert)
-        // Simple approach: delete all existing slots then re-insert
         const slotsRes = await fetch(`/api/tenant/reco/bundles/${bundle.id}/slots`);
         const { slots: existingSlots } = await slotsRes.json();
         for (const s of existingSlots) {
@@ -156,8 +162,9 @@ export function BundleEditorDialog({
         onSaved(json.bundle_id, name.trim());
       }
       onClose();
-    } catch (err: any) {
-      toast.error(err.message ?? 'Failed to save bundle');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to save bundle';
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -165,12 +172,17 @@ export function BundleEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg min-h-[32rem] border-cream-200 p-0">
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit Bundle' : 'Create Bundle'}</DialogTitle>
+          <DialogTitle>{isEdit ? 'Edit bundle' : 'Create bundle'}</DialogTitle>
+          <DialogDescription>
+            {isEdit
+              ? 'Update the bundle name, description, and category slots.'
+              : 'Define a product kit that powers the Complete Your Cart widget for buyers.'}
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <DialogBody className="space-y-5">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-cream-700">Bundle name</label>
             <Input
@@ -190,30 +202,28 @@ export function BundleEditorDialog({
           </div>
 
           <div>
-            <div className="mb-2 flex items-center justify-between">
-              <label className="text-sm font-medium text-cream-700">Slots ({slots.length})</label>
-              {unusedCategories.length > 0 && (
-                <select
-                  onChange={(e) => { if (e.target.value) { addSlot(e.target.value); e.target.value = ''; } }}
-                  className="rounded-md border border-cream-200 bg-white px-2.5 py-1 text-xs text-cream-700 focus:border-teal-400 focus:outline-none focus:ring-1 focus:ring-teal-400"
-                >
-                  <option value="">+ Add category slot</option>
-                  {unusedCategories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              )}
-            </div>
+            <label className="mb-2 block text-sm font-medium text-cream-700">
+              Category slots ({slots.length})
+            </label>
+            <CategorySlotPicker
+              availableCategories={availableCategories}
+              usedCategoryIds={usedCategoryIds}
+              onSelect={addSlot}
+              disabled={saving}
+            />
 
             {slots.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-cream-300 py-6 text-center text-sm text-cream-400">
-                No slots yet. Add a category above.
+              <p className="mt-3 rounded-lg border border-dashed border-cream-300 py-6 text-center text-sm text-cream-500">
+                No slots yet. Search above to add a category.
               </p>
             ) : (
-              <div className="space-y-2">
+              <div className="mt-3 space-y-2">
                 {slots.map((slot, idx) => (
-                  <div key={slot.tenant_category_id} className="flex items-center gap-2 rounded-lg border border-cream-200 bg-cream-50 px-3 py-2">
-                    <div className="flex-1 min-w-0">
+                  <div
+                    key={slot.tenant_category_id}
+                    className="flex items-center gap-2 rounded-lg border border-cream-200 bg-cream-50 px-3 py-2"
+                  >
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-cream-900">{slot.category_name}</p>
                       <div className="mt-1 flex items-center gap-2">
                         <Input
@@ -234,8 +244,9 @@ export function BundleEditorDialog({
                       </div>
                     </div>
                     <button
+                      type="button"
                       onClick={() => removeSlot(idx)}
-                      className="shrink-0 p-1 text-cream-400 hover:text-red-500 transition-colors"
+                      className="shrink-0 p-1 text-cream-400 transition-colors hover:text-red-500"
                       aria-label="Remove slot"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -245,10 +256,12 @@ export function BundleEditorDialog({
               </div>
             )}
           </div>
-        </div>
+        </DialogBody>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
           <Button onClick={handleSave} disabled={saving}>
             {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create bundle'}
           </Button>

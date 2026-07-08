@@ -46,6 +46,7 @@ interface EstimateDbRow {
   buyer_id: string;
   status: string;
   total_amount: number | string | null;
+  estimate_date: string | null;
   created_at: string;
   sent_at: string | null;
   accepted_at: string | null;
@@ -137,6 +138,27 @@ function estimateStatusesForFilters(values: string[]) {
   return Array.from(statuses);
 }
 
+function sumMetric(rows: Array<Record<string, unknown>>, key: string): number {
+  return rows.reduce((sum, row) => sum + Number(row[key] ?? 0), 0);
+}
+
+function getEstimateDocumentTimestamp(row: Pick<EstimateDbRow, 'estimate_date' | 'created_at'>): string {
+  return row.estimate_date ?? row.created_at;
+}
+
+function applyEstimateDocumentPeriod<T extends { or: (filter: string) => T }>(query: T, start: string, endExclusive: string): T {
+  return query.or(
+    `and(estimate_date.gte.${start},estimate_date.lt.${endExclusive}),and(estimate_date.is.null,created_at.gte.${start},created_at.lt.${endExclusive})`,
+  );
+}
+
+function applyEstimateCursor<T extends { or: (filter: string) => T }>(query: T, cursor: string): T {
+  const { created_at, id } = decodeCursor(cursor);
+  return query.or(
+    `and(estimate_date.lt.${created_at}),and(estimate_date.eq.${created_at},id.lt.${id}),and(estimate_date.is.null,created_at.lt.${created_at}),and(estimate_date.is.null,created_at.eq.${created_at},id.lt.${id})`,
+  );
+}
+
 export async function GET(req: NextRequest) {
   const timer = createTimer();
   const timedJson = (body: unknown, init?: ResponseInit) => {
@@ -171,55 +193,65 @@ export async function GET(req: NextRequest) {
     const statusParams = readArrayParam(req.nextUrl.searchParams, 'status');
     const locationParams = readArrayParam(req.nextUrl.searchParams, 'location_id');
 
-    let baseEstimatesQuery = db
-      .schema('app')
-      .from('estimates')
-      .select(
-        'id, location_id, estimate_number, buyer_id, status, total_amount, created_at, sent_at, accepted_at, expires_at, source, is_buyer_app_estimate, campaign_id, place_of_supply, created_by, updated_at',
-      )
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(limit + 1) as any;
-
-    if (cursorParam) {
-      const { created_at, id } = decodeCursor(cursorParam);
-      baseEstimatesQuery = baseEstimatesQuery.or(
-        `created_at.lt.${created_at},and(created_at.eq.${created_at},id.lt.${id})`,
+    const buildBaseEstimateQuery = () => {
+      return applySellerLocationScope(
+        db
+          .schema('app')
+          .from('estimates')
+          .select(
+            'id, location_id, estimate_number, buyer_id, status, total_amount, estimate_date, created_at, sent_at, accepted_at, expires_at, source, is_buyer_app_estimate, campaign_id, place_of_supply, created_by, updated_at',
+          )
+          .eq('tenant_id', tenantId)
+          .is('deleted_at', null) as any,
+        claims,
       );
+    };
+
+    let scopedEstimatesQuery = buildBaseEstimateQuery() as any;
+    scopedEstimatesQuery = applyEstimateDocumentPeriod(scopedEstimatesQuery, period.current_start, period.current_end_exclusive);
+    scopedEstimatesQuery = scopedEstimatesQuery
+      .order('estimate_date', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false });
+    if (cursorParam) {
+      scopedEstimatesQuery = applyEstimateCursor(scopedEstimatesQuery, cursorParam);
     }
     if (searchParam) {
-      baseEstimatesQuery = baseEstimatesQuery.ilike('estimate_number', `%${searchParam}%`);
+      scopedEstimatesQuery = scopedEstimatesQuery.ilike('estimate_number', `%${searchParam}%`);
     }
-    if (sourceParams.length > 0) {
-      // "Buyer App" / "Direct" are keyed off is_buyer_app_estimate (not raw
-      // `source`) so Zoho-imported buyer-app estimates (source = 'zoho_import',
-      // is_buyer_app_estimate = true from cf_catalog_estimate) still bucket
-      // correctly instead of falling outside both filter options.
-      const wantsBuyerApp = sourceParams.includes('Buyer App');
-      const wantsDirect = sourceParams.includes('Direct');
-      if (wantsBuyerApp && !wantsDirect) {
-        baseEstimatesQuery = baseEstimatesQuery.eq('is_buyer_app_estimate', true);
-      } else if (wantsDirect && !wantsBuyerApp) {
-        baseEstimatesQuery = baseEstimatesQuery.eq('is_buyer_app_estimate', false);
-      }
+    if (sourceParams.length === 1) {
+      scopedEstimatesQuery = scopedEstimatesQuery.eq('is_buyer_app_estimate', sourceParams[0] === 'Buyer App');
     }
     if (statusParams.length > 0) {
-      baseEstimatesQuery = baseEstimatesQuery.in('status', estimateStatusesForFilters(statusParams));
+      scopedEstimatesQuery = scopedEstimatesQuery.in('status', estimateStatusesForFilters(statusParams));
     }
     if (locationParams.length > 0) {
-      baseEstimatesQuery = baseEstimatesQuery.in('location_id', locationParams);
+      scopedEstimatesQuery = scopedEstimatesQuery.in('location_id', locationParams);
     }
+    scopedEstimatesQuery = scopedEstimatesQuery.limit(limit + 1);
 
-    const scopedEstimatesQuery = applySellerLocationScope(baseEstimatesQuery, claims);
-
-    const snapshotQuery = db
-      .schema('app')
-      .from('estimates_snapshot')
-      .select('total_count, draft_count, sent_count, accepted_count, expiring_soon')
-      .eq('tenant_id', tenantId)
-      .maybeSingle();
+    let estimateTotalQuery = applySellerLocationScope(
+      db
+        .schema('app')
+        .from('estimates')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null) as any,
+      claims,
+    );
+    estimateTotalQuery = applyEstimateDocumentPeriod(estimateTotalQuery, period.current_start, period.current_end_exclusive);
+    if (searchParam) {
+      estimateTotalQuery = estimateTotalQuery.ilike('estimate_number', `%${searchParam}%`);
+    }
+    if (sourceParams.length === 1) {
+      estimateTotalQuery = estimateTotalQuery.eq('is_buyer_app_estimate', sourceParams[0] === 'Buyer App');
+    }
+    if (statusParams.length > 0) {
+      estimateTotalQuery = estimateTotalQuery.in('status', estimateStatusesForFilters(statusParams));
+    }
+    if (locationParams.length > 0) {
+      estimateTotalQuery = estimateTotalQuery.in('location_id', locationParams);
+    }
 
     const buildEstimateKpiQuery = (opts?: { start?: string; endExclusive?: string }) => {
       if (aggregateScope === 'location' && scopedLocationIds.length === 0) {
@@ -246,18 +278,49 @@ export async function GET(req: NextRequest) {
       return query;
     };
 
-    const [estimatesRes, currentPeriodRes, previousPeriodRes, aggregateRes, snapshotRes] = await Promise.all([
+    const buildEstimateCalloutQuery = (mode: 'needs_follow_up' | 'ready_to_convert' | 'expiring_soon') => {
+      let query = buildBaseEstimateQuery() as any;
+      query = applyEstimateDocumentPeriod(query, period.current_start, period.current_end_exclusive);
+
+      if (mode === 'needs_follow_up') {
+        return query
+          .eq('status', 'sent')
+          .order('sent_at', { ascending: true, nullsFirst: false })
+          .order('id', { ascending: false })
+          .limit(3);
+      }
+
+      if (mode === 'ready_to_convert') {
+        return query
+          .eq('status', 'accepted')
+          .order('total_amount', { ascending: false })
+          .order('id', { ascending: false })
+          .limit(3);
+      }
+
+      return query
+        .in('status', ['draft', 'sent', 'accepted'])
+        .lte('expires_at', new Date(Date.now() + 7 * DAY_MS).toISOString())
+        .order('expires_at', { ascending: true, nullsFirst: false })
+        .order('id', { ascending: false })
+        .limit(3);
+    };
+
+    const [estimatesRes, estimateTotalRes, currentPeriodRes, previousPeriodRes, aggregateRes, needsFollowUpRes, readyToConvertRes, expiringSoonRes] = await Promise.all([
       scopedEstimatesQuery,
+      estimateTotalQuery,
       buildEstimateKpiQuery({ start: period.current_start, endExclusive: period.current_end_exclusive }),
       buildEstimateKpiQuery({ start: period.previous_start, endExclusive: period.previous_end_exclusive }),
       buildEstimateKpiQuery(),
-      snapshotQuery,
+      buildEstimateCalloutQuery('needs_follow_up'),
+      buildEstimateCalloutQuery('ready_to_convert'),
+      buildEstimateCalloutQuery('expiring_soon'),
     ]);
 
-    if (estimatesRes.error || currentPeriodRes.error || previousPeriodRes.error || aggregateRes.error || snapshotRes.error) {
+    if (estimatesRes.error || estimateTotalRes.error || currentPeriodRes.error || previousPeriodRes.error || aggregateRes.error || needsFollowUpRes.error || readyToConvertRes.error || expiringSoonRes.error) {
       console.error(
         '[GET /api/tenant/estimates] query error:',
-        estimatesRes.error || currentPeriodRes.error || previousPeriodRes.error || aggregateRes.error || snapshotRes.error,
+        estimatesRes.error || estimateTotalRes.error || currentPeriodRes.error || previousPeriodRes.error || aggregateRes.error || needsFollowUpRes.error || readyToConvertRes.error || expiringSoonRes.error,
       );
       return timedJson({ error: 'Failed to fetch estimates' }, { status: 500 });
     }
@@ -267,13 +330,19 @@ export async function GET(req: NextRequest) {
     const rawEstimates = hasNextPage ? allFetched.slice(0, limit) : allFetched;
     const lastEstimate = rawEstimates.at(-1);
     const nextCursor = hasNextPage && lastEstimate
-      ? encodeCursor({ created_at: lastEstimate.created_at, id: lastEstimate.id })
+      ? encodeCursor({ created_at: getEstimateDocumentTimestamp(lastEstimate), id: lastEstimate.id })
       : null;
-    const totalCount = (snapshotRes.data as { total_count?: number | null } | null)?.total_count ?? null;
+    const calloutRows = [
+      ...((needsFollowUpRes.data ?? []) as EstimateDbRow[]),
+      ...((readyToConvertRes.data ?? []) as EstimateDbRow[]),
+      ...((expiringSoonRes.data ?? []) as EstimateDbRow[]),
+    ];
+    const lookupRows = Array.from(new Map([...rawEstimates, ...calloutRows].map((row) => [row.id, row])).values());
+    const totalCount = estimateTotalRes.count ?? null;
 
     // Scope the buyers lookup to only the buyer IDs referenced by the fetched estimates.
     // Previously this loaded all buyers for the tenant on every request.
-    const estimateBuyerIds = Array.from(new Set(rawEstimates.map((e) => e.buyer_id).filter(Boolean)));
+    const estimateBuyerIds = Array.from(new Set(lookupRows.map((e) => e.buyer_id).filter(Boolean)));
     const buyersRes = estimateBuyerIds.length > 0
       ? await db
           .schema('app')
@@ -296,11 +365,11 @@ export async function GET(req: NextRequest) {
     }
 
     const catalogIds = Array.from(
-      new Set(rawEstimates.map((row) => row.campaign_id).filter((value): value is string => Boolean(value))),
+      new Set(lookupRows.map((row) => row.campaign_id).filter((value): value is string => Boolean(value))),
     );
     const creatorIds = Array.from(
       new Set(
-        rawEstimates
+        lookupRows
           .filter((row) => !row.is_buyer_app_estimate && row.created_by)
           .map((row) => row.created_by as string),
       ),
@@ -322,7 +391,7 @@ export async function GET(req: NextRequest) {
       ((catalogsRes.data ?? []) as Array<{ id: string; name: string }>).map((row) => [row.id, row.name]),
     );
 
-    const estimateIds = rawEstimates.map((e) => e.id);
+    const estimateIds = lookupRows.map((e) => e.id);
     const itemCountByEstimate = new Map<string, number>();
 
     if (estimateIds.length > 0) {
@@ -348,7 +417,7 @@ export async function GET(req: NextRequest) {
     const expiringCutoff = now + 7 * DAY_MS;
     const locationNameById = new Map(availableLocations.map((location) => [location.id, location.name]));
 
-    const normalized = rawEstimates.map((row, index) => {
+    const normalizeLanding = (row: EstimateDbRow, index: number) => {
       const norm = normalizeStatus(row.status);
       const buyer = buyerById.get(row.buyer_id);
       const buyerName = buyer?.business_name ?? 'Unknown buyer';
@@ -382,7 +451,7 @@ export async function GET(req: NextRequest) {
         items_count: itemCountByEstimate.get(row.id) ?? 0,
         total_amount: Number(row.total_amount ?? 0),
         expires_at: row.expires_at,
-        created_at: row.created_at,
+        created_at: getEstimateDocumentTimestamp(row),
         accepted_at: row.accepted_at,
         sent_at: row.sent_at,
         status: {
@@ -393,31 +462,25 @@ export async function GET(req: NextRequest) {
         },
       };
       return { row, norm, landing };
-    });
+    };
 
-    const openRows = normalized.filter((n) => isOpenStatus(n.norm));
+    const normalized = rawEstimates.map((row, index) => normalizeLanding(row, index));
 
-    const expiringOpenRows = openRows.filter((n) => {
-      if (!n.row.expires_at) return false;
-      const ex = new Date(n.row.expires_at).getTime();
-      return ex <= expiringCutoff;
-    });
-
-    const totalEstimatesThisPeriod = (currentPeriodRes.data ?? []).reduce((sum, row) => sum + Number(row.estimates_count ?? 0), 0);
-    const totalEstimatesPrevPeriod = (previousPeriodRes.data ?? []).reduce((sum, row) => sum + Number(row.estimates_count ?? 0), 0);
-    const totalGmvThisPeriod = (currentPeriodRes.data ?? []).reduce((sum, row) => sum + Number(row.gmv ?? 0), 0);
-    const totalGmvPrevPeriod = (previousPeriodRes.data ?? []).reduce((sum, row) => sum + Number(row.gmv ?? 0), 0);
+    const totalEstimatesThisPeriod = sumMetric((currentPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'estimates_count');
+    const totalEstimatesPrevPeriod = sumMetric((previousPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'estimates_count');
+    const totalGmvThisPeriod = sumMetric((currentPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'gmv');
+    const totalGmvPrevPeriod = sumMetric((previousPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'gmv');
     const totalEstimatesGrowthPct =
       totalEstimatesPrevPeriod > 0 ? Math.round(((totalEstimatesThisPeriod - totalEstimatesPrevPeriod) / totalEstimatesPrevPeriod) * 100) : 0;
     const aov = totalEstimatesThisPeriod > 0 ? totalGmvThisPeriod / totalEstimatesThisPeriod : 0;
-    const openEstimatesThisPeriod = (currentPeriodRes.data ?? []).reduce((sum, row) => sum + Number(row.open_count ?? 0), 0);
+    const openEstimatesThisPeriod = sumMetric((currentPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'open_count');
     const openCreatedThisPeriod = openEstimatesThisPeriod;
-    const buyerAppCreatedThisPeriod = (currentPeriodRes.data ?? []).reduce((sum, row) => sum + Number(row.open_buyer_app_count ?? 0), 0);
-    const openDraftsAggregate = (aggregateRes.data ?? []).reduce((sum, row) => sum + Number(row.draft_count ?? 0), 0);
-    const openSentAggregate = (aggregateRes.data ?? []).reduce((sum, row) => sum + Number(row.sent_count ?? 0), 0);
-    const openAcceptedAggregate = (aggregateRes.data ?? []).reduce((sum, row) => sum + Number(row.accepted_count ?? 0), 0);
-    const openTotalAggregate = (aggregateRes.data ?? []).reduce((sum, row) => sum + Number(row.open_count ?? 0), 0);
-    const expiringSoonAggregate = (aggregateRes.data ?? []).reduce((sum, row) => sum + Number(row.expiring_soon_count ?? 0), 0);
+    const buyerAppCreatedThisPeriod = sumMetric((currentPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'open_buyer_app_count');
+    const openDraftsAggregate = sumMetric((aggregateRes.data ?? []) as Array<Record<string, unknown>>, 'draft_count');
+    const openSentAggregate = sumMetric((aggregateRes.data ?? []) as Array<Record<string, unknown>>, 'sent_count');
+    const openAcceptedAggregate = sumMetric((aggregateRes.data ?? []) as Array<Record<string, unknown>>, 'accepted_count');
+    const openTotalAggregate = sumMetric((aggregateRes.data ?? []) as Array<Record<string, unknown>>, 'open_count');
+    const expiringSoonAggregate = sumMetric((aggregateRes.data ?? []) as Array<Record<string, unknown>>, 'expiring_soon_count');
 
     const kpis: EstimatesKpis = {
       total_estimates_this_period: totalEstimatesThisPeriod,
@@ -427,7 +490,7 @@ export async function GET(req: NextRequest) {
       total_gmv_prev_period: totalGmvPrevPeriod,
       aov,
       open_estimates_this_period: openEstimatesThisPeriod,
-      converted_this_period: (currentPeriodRes.data ?? []).reduce((sum, row) => sum + Number(row.converted_count ?? 0), 0),
+      converted_this_period: sumMetric((currentPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'converted_count'),
       open_total: openTotalAggregate,
       open_drafts: openDraftsAggregate,
       open_sent: openSentAggregate,
@@ -452,35 +515,20 @@ export async function GET(req: NextRequest) {
     });
 
     const threeDaysAgo = now - 3 * DAY_MS;
-    const needsFollowUp = normalized
-      .filter((n) => {
-        if (n.norm !== 'sent') return false;
-        if (!n.row.sent_at) return false;
-        return new Date(n.row.sent_at).getTime() < threeDaysAgo;
-      })
-      .sort((a, b) => {
-        const ta = a.row.sent_at ? new Date(a.row.sent_at).getTime() : 0;
-        const tb = b.row.sent_at ? new Date(b.row.sent_at).getTime() : 0;
-        return ta - tb;
-      })
-      .slice(0, 3)
-      .map((n) => toCalloutRow(n.landing));
+    const needsFollowUp = ((needsFollowUpRes.data ?? []) as EstimateDbRow[])
+      .map((row, index) => normalizeLanding(row, index))
+      .filter((entry) => entry.row.sent_at && new Date(entry.row.sent_at).getTime() < threeDaysAgo)
+      .map((entry) => toCalloutRow(entry.landing));
 
-    const readyCallout = normalized
-      .filter((n) => n.norm === 'accepted')
-      .sort((a, b) => b.landing.total_amount - a.landing.total_amount)
-      .slice(0, 3)
-      .map((n) => toCalloutRow(n.landing));
+    const readyCallout = ((readyToConvertRes.data ?? []) as EstimateDbRow[])
+      .map((row, index) => normalizeLanding(row, index))
+      .map((entry) => toCalloutRow(entry.landing));
 
-    const expiringCallout = openRows
-      .filter((n) => expiringOpenRows.some((candidate) => candidate.row.id === n.row.id))
-      .sort((a, b) => {
-        const ta = a.row.expires_at ? new Date(a.row.expires_at).getTime() : 0;
-        const tb = b.row.expires_at ? new Date(b.row.expires_at).getTime() : 0;
-        return ta - tb;
-      })
-      .slice(0, 3)
-      .map((n) => toCalloutRow(n.landing));
+    const expiringCallout = ((expiringSoonRes.data ?? []) as EstimateDbRow[])
+      .map((row, index) => normalizeLanding(row, index))
+      .filter((entry) => isOpenStatus(entry.norm) && entry.row.expires_at)
+      .filter((entry) => new Date(entry.row.expires_at as string).getTime() <= expiringCutoff)
+      .map((entry) => toCalloutRow(entry.landing));
 
     const todays_read: EstimatesTodaysRead = {
       needs_follow_up: needsFollowUp,

@@ -236,7 +236,6 @@ function LocationsLandingContent({
         onPeriodChange={setPeriod}
         primary="Add location"
         onPrimaryClick={() => setSheetOpen(true)}
-        secondary={{ label: 'Import', icon: <Upload size={13} /> }}
       />
 
       {showRefreshingState ? (
@@ -344,8 +343,8 @@ function LocationsLandingContent({
           ) : (
           <LandingTable
             columns={[
-                { label: 'Location', minWidth: 280, maxWidth: 360, className: 'px-5' },
-                { label: 'Location type', minWidth: 160, maxWidth: 200, className: 'px-5' },
+                { label: 'Location', width: 280, minWidth: 280, maxWidth: 360, className: 'px-5' },
+                { label: 'Location type', width: 160, minWidth: 160, maxWidth: 200, className: 'px-5' },
                 { label: 'GMV · MTD', align: 'right', minWidth: 140, maxWidth: 170, className: 'px-5' },
                 { label: 'Growth', minWidth: 120, maxWidth: 140, className: 'px-5' },
                 { label: 'Active buyers', align: 'right', minWidth: 130, maxWidth: 160, className: 'px-5' },

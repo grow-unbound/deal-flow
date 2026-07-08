@@ -1,8 +1,29 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { Tag } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { EmptyState } from '@/components/ui/empty-state';
+import { FilterBar, LandingTable, EntityAvatar } from '@/components/seller/layout';
+import { r2Url } from '@/lib/r2-url';
+
+function categoryInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('')
+    .slice(0, 2) || '?';
+}
 
 export interface CategoryRoleRow {
   category_id: string;
@@ -12,12 +33,18 @@ export interface CategoryRoleRow {
   resolved_role: string;
   is_auto: boolean;
   weighted_event_count: number;
+  r2_image_thumb_key?: string | null;
 }
 
 interface CategoryRolesTableProps {
-  tenantId: string;
   initialCategories: CategoryRoleRow[];
 }
+
+type RoleChip = 'All roles' | 'Anchor' | 'Companion' | 'Exclude' | 'Overridden';
+type CategoryRoleSort = 'Name (A → Z)' | 'Events (high → low)' | 'Events (low → high)';
+
+const ROLE_CHIPS: RoleChip[] = ['All roles', 'Anchor', 'Companion', 'Exclude', 'Overridden'];
+const SORT_OPTIONS: CategoryRoleSort[] = ['Name (A → Z)', 'Events (high → low)', 'Events (low → high)'];
 
 const ROLE_LABELS: Record<string, string> = {
   anchor: 'Anchor',
@@ -31,15 +58,34 @@ const ROLE_BADGE_VARIANT: Record<string, 'default' | 'teal' | 'danger' | 'outlin
   exclude: 'danger',
 };
 
-const ROLE_TOOLTIP: Record<string, string> = {
-  anchor: 'Primary discovery product — appears in Bestsellers',
-  companion: 'Add-on / accessory — excluded from Bestsellers, shown in "add to cart" suggestions',
-  exclude: 'Service line item — never surfaces in recommendations',
-};
-
-export function CategoryRolesTable({ tenantId, initialCategories }: CategoryRolesTableProps) {
+export function CategoryRolesTable({ initialCategories }: CategoryRolesTableProps) {
   const [categories, setCategories] = useState<CategoryRoleRow[]>(initialCategories);
   const [saving, setSaving] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [activeChip, setActiveChip] = useState<RoleChip>('All roles');
+  const [sortBy, setSortBy] = useState<CategoryRoleSort>('Name (A → Z)');
+
+  const filteredCategories = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = categories.filter((cat) => {
+      if (q && !cat.category_name.toLowerCase().includes(q)) return false;
+      if (activeChip === 'Anchor' && cat.resolved_role !== 'anchor') return false;
+      if (activeChip === 'Companion' && cat.resolved_role !== 'companion') return false;
+      if (activeChip === 'Exclude' && cat.resolved_role !== 'exclude') return false;
+      if (activeChip === 'Overridden' && cat.is_auto) return false;
+      return true;
+    });
+
+    const sorted = [...filtered];
+    if (sortBy === 'Name (A → Z)') {
+      sorted.sort((a, b) => a.category_name.localeCompare(b.category_name));
+    } else if (sortBy === 'Events (high → low)') {
+      sorted.sort((a, b) => b.weighted_event_count - a.weighted_event_count);
+    } else {
+      sorted.sort((a, b) => a.weighted_event_count - b.weighted_event_count);
+    }
+    return sorted;
+  }, [activeChip, categories, search, sortBy]);
 
   async function handleRoleChange(categoryId: string, newRole: string | null) {
     setSaving(categoryId);
@@ -64,8 +110,9 @@ export function CategoryRolesTable({ tenantId, initialCategories }: CategoryRole
         ),
       );
       toast.success('Category role updated');
-    } catch (err: any) {
-      toast.error(err.message ?? 'Failed to update category role');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to update category role';
+      toast.error(message);
     } finally {
       setSaving(null);
     }
@@ -73,63 +120,109 @@ export function CategoryRolesTable({ tenantId, initialCategories }: CategoryRole
 
   if (categories.length === 0) {
     return (
-      <p className="text-sm text-cream-500 py-4 text-center">
-        No categories found. Add categories in the Catalog section first.
-      </p>
+      <EmptyState
+        icon={<Tag size={28} strokeWidth={1.5} />}
+        heading="No categories yet"
+        description="Add categories in the Catalog section before configuring recommendation roles."
+      />
     );
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-cream-200">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-cream-200 bg-cream-50">
-            <th className="px-4 py-3 text-left font-medium text-cream-600">Category</th>
-            <th className="px-4 py-3 text-left font-medium text-cream-600">Auto-detected</th>
-            <th className="px-4 py-3 text-left font-medium text-cream-600">Override</th>
+    <div>
+      <FilterBar
+        count={`Showing ${filteredCategories.length} of ${categories.length} categories`}
+        searchPlaceholder="Search categories…"
+        chips={ROLE_CHIPS}
+        activeChip={activeChip}
+        sortBy={sortBy}
+        hideViewToggle
+        searchValue={search}
+        onSearchChange={setSearch}
+        onChipChange={(chip) => setActiveChip(chip as RoleChip)}
+        sortOptions={SORT_OPTIONS}
+        onSortChange={(option) => setSortBy(option as CategoryRoleSort)}
+      />
+
+      <LandingTable
+        tableMinWidth={1040}
+        columns={[
+          { label: 'Category', width: 150, minWidth: 150, maxWidth: 360, className: 'px-5' },
+          { label: 'Events', align: 'right', width: 100, minWidth: 100, maxWidth: 120, className: 'px-5' },
+          { label: 'Auto-detected', width: 180, minWidth: 180, maxWidth: 220, className: 'px-5' },
+          { label: 'Override', width: 360, minWidth: 360, className: 'px-5' },
+        ]}
+      >
+        {filteredCategories.length === 0 ? (
+          <tr>
+            <td colSpan={4} className="px-5 py-16 text-center text-base text-cream-500">
+              No categories match your filters.
+            </td>
           </tr>
-        </thead>
-        <tbody className="divide-y divide-cream-100">
-          {categories.map((cat) => (
-            <tr key={cat.category_id} className="hover:bg-cream-50 transition-colors">
-              <td className="px-4 py-3">
-                <span className="font-medium text-cream-900">{cat.category_name}</span>
-                {cat.weighted_event_count > 0 && (
-                  <span className="ml-2 text-xs text-cream-400">({cat.weighted_event_count} events)</span>
-                )}
-              </td>
-              <td className="px-4 py-3">
-                {cat.computed_role ? (
-                  <div className="flex items-center gap-1.5">
-                    <Badge variant={ROLE_BADGE_VARIANT[cat.computed_role] ?? 'outline'}>
-                      {ROLE_LABELS[cat.computed_role] ?? cat.computed_role}
-                    </Badge>
-                    {cat.is_auto && (
-                      <span className="text-xs text-cream-400" title="Auto-learned from order data">Auto</span>
-                    )}
+        ) : (
+          filteredCategories.map((cat) => {
+            const thumbUrl = r2Url(cat.r2_image_thumb_key);
+            return (
+              <tr
+                key={cat.category_id}
+                className="border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
+              >
+                <td className="px-5 py-3.5 align-middle">
+                  <div className="flex items-center gap-3">
+                    <EntityAvatar
+                      initials={categoryInitials(cat.category_name)}
+                      hue="teal"
+                      size={32}
+                      imageUrl={thumbUrl}
+                    />
+                    <span className="text-base font-medium text-cream-900">{cat.category_name}</span>
                   </div>
-                ) : (
-                  <span className="text-xs text-cream-400">No data yet</span>
-                )}
-              </td>
-              <td className="px-4 py-3">
-                <select
-                  value={cat.override_role ?? ''}
-                  onChange={(e) => handleRoleChange(cat.category_id, e.target.value || null)}
-                  disabled={saving === cat.category_id}
-                  className="rounded-md border border-cream-200 bg-white px-2.5 py-1.5 text-sm text-cream-900 focus:border-teal-400 focus:outline-none focus:ring-1 focus:ring-teal-400 disabled:opacity-50"
-                  title={cat.override_role ? ROLE_TOOLTIP[cat.override_role] : 'Use auto-detected role'}
-                >
-                  <option value="">Auto ({ROLE_LABELS[cat.computed_role ?? 'anchor'] ?? 'Anchor'})</option>
-                  <option value="anchor">Anchor — show in Bestsellers</option>
-                  <option value="companion">Companion — accessory, skip Bestsellers</option>
-                  <option value="exclude">Exclude — never surface</option>
-                </select>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                </td>
+                <td className="px-5 py-3.5 text-right align-middle">
+                  <span className="font-mono text-base tabular-nums text-cream-700">
+                    {cat.weighted_event_count > 0 ? cat.weighted_event_count : '—'}
+                  </span>
+                </td>
+                <td className="px-5 py-3.5 align-middle">
+                  {cat.computed_role ? (
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant={ROLE_BADGE_VARIANT[cat.computed_role] ?? 'outline'}>
+                        {ROLE_LABELS[cat.computed_role] ?? cat.computed_role}
+                      </Badge>
+                      {cat.is_auto ? (
+                        <span className="text-sm text-cream-500">Auto</span>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <span className="text-base text-cream-500">No data yet</span>
+                  )}
+                </td>
+                <td className="px-5 py-3.5 align-middle">
+                  <Select
+                    value={cat.override_role ?? 'auto'}
+                    onValueChange={(value) =>
+                      handleRoleChange(cat.category_id, value === 'auto' ? null : value)
+                    }
+                    disabled={saving === cat.category_id}
+                  >
+                    <SelectTrigger className="h-9 w-full max-w-none">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">
+                        Auto ({ROLE_LABELS[cat.computed_role ?? 'anchor'] ?? 'Anchor'})
+                      </SelectItem>
+                      <SelectItem value="anchor">Anchor — show in Bestsellers</SelectItem>
+                      <SelectItem value="companion">Companion — accessory, skip Bestsellers</SelectItem>
+                      <SelectItem value="exclude">Exclude — never surface</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </td>
+              </tr>
+            );
+          })
+        )}
+      </LandingTable>
     </div>
   );
 }

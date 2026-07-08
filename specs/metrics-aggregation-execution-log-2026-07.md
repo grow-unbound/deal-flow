@@ -1368,3 +1368,264 @@ Date: 2026-07-08
   - detail-page aggregate migration sweeps
   - product posture snapshot redesign
   - broader buyer-app feature redesign beyond the new DB activity foundation
+
+## Phase 4 Tranche 1 Progress Update
+
+Date: 2026-07-08
+Owner: Master session with builder subagent carry-over and local integration
+Status: Partial Phase 4 seller-landing refactor implemented and verified
+
+### Goal
+
+- Start the Phase 4 seller-landing read refactor by landing the highest-signal access-rule, assistant-scope, and KPI-invariance fixes without reopening buyer-home work.
+
+### Changed files
+
+- Seller landing/API routes:
+  - [app/api/tenant/orders/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/orders/route.ts)
+  - [app/api/tenant/products/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/products/route.ts)
+  - [app/api/tenant/brands/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/brands/route.ts)
+  - [app/api/tenant/categories/landing/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/categories/landing/route.ts)
+  - [app/api/tenant/locations/landing/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/locations/landing/route.ts)
+  - [app/api/tenant/warehouses/landing/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/warehouses/landing/route.ts)
+  - [app/api/tenant/buyer-app/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/buyer-app/route.ts)
+  - [app/api/tenant/buyer-app/access/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/buyer-app/access/route.ts)
+  - [app/api/tenant/catalogs/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/catalogs/route.ts)
+  - [app/api/tenant/cohorts/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/cohorts/route.ts)
+  - [app/api/cohorts/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/cohorts/route.ts)
+  - [app/api/price-lists/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/price-lists/route.ts)
+  - [src/lib/server/seller-dashboard.ts](/Users/phanikrovvidi/projects/deal-flow/src/lib/server/seller-dashboard.ts)
+- Tests:
+  - [src/tests/products-landing-api.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/products-landing-api.test.ts)
+  - [src/tests/brands-landing-api.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/brands-landing-api.test.ts)
+  - [src/tests/categories-landing-route.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/categories-landing-route.test.ts)
+  - [src/tests/catalogs-landing-route.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/catalogs-landing-route.test.ts)
+  - [src/tests/buyer-app-access-route.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/buyer-app-access-route.test.ts)
+  - [src/tests/price-lists-route.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/price-lists-route.test.ts)
+  - [src/tests/sales-orders-landing-page.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/sales-orders-landing-page.test.ts)
+  - [src/tests/warehouses-landing-route.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/warehouses-landing-route.test.ts)
+
+### Done
+
+- Enforced Phase 1.1 GROW access restrictions on the seller landing surfaces already touched in this tranche:
+  - seller assistants are now blocked from catalogs/campaigns, cohorts, and price lists at the route boundary
+- Carried assistant location scope into the remaining landing surfaces touched in this tranche:
+  - products
+  - brands
+  - categories
+  - locations
+  - warehouses
+  - buyer-app access and buyer-app seller landing
+- Started the Phase 4 document landing cleanup on sales orders:
+  - moved row-period semantics to canonical `order_date` with `created_at` fallback
+  - added a real cursor path aligned to server ordering
+  - moved order callout sourcing off the visible table slice
+  - removed the leftover unused previous-period raw query bridge
+- Hardened entity landing KPI invariance where the route was previously page-slice-derived:
+  - brands no longer derive KPI cards from the first limited brand page and now count `buyers_with_orders_mtd` from buyer ids, not brand ids
+  - warehouses now compute KPI tiles and callouts from the full scoped warehouse universe, while still honoring row limits for the visible table
+  - catalogs and price lists now keep KPI math invariant when the visible row limit changes
+- Replaced the category landing’s `999` days-cover placeholder with null/insufficient-data semantics.
+- Updated the seller dashboard helper to use canonical order/estimate date fields in the touched order-related flows instead of continuing to rely on `placed_at` everywhere.
+
+### Verification
+
+- Passed targeted Phase 4 regression coverage with:
+
+```bash
+npx vitest run src/tests/categories-landing-route.test.ts src/tests/products-landing-api.test.ts src/tests/brands-landing-api.test.ts src/tests/catalogs-landing-route.test.ts src/tests/buyer-app-access-route.test.ts src/tests/price-lists-route.test.ts src/tests/sales-orders-landing-page.test.ts src/tests/warehouses-landing-route.test.ts src/tests/cohorts-route-access.test.ts src/tests/dashboard-api.test.ts
+```
+
+- Result:
+  - 10 test files passed
+  - 20 tests passed
+
+### Decisions
+
+- This tranche treats products as a Phase 4 scope-correction surface, not a full landing-contract rewrite; the existing summary-vs-rows split remains in place, with assistant scope layered in.
+- Warehouses are now seller-role accessible with assigned-location scoping for assistants in this tranche rather than remaining implicitly admin-only.
+- Buyer-home remains explicitly deferred and is not reopened by this tranche.
+
+### Risks / Follow-up
+
+- Phase 4 is not complete yet:
+  - estimate landing still needs the canonical `estimate_date` row/query/callout cleanup
+  - invoice landing still needs the cursor/filter/callout refactor
+  - category landing still lacks dedicated route-level regression coverage in this tranche
+  - locations, buyer-app seller landing, and dashboard still need deeper read-model standardization beyond the first scope/invariance fixes landed here
+- This tranche focused on route correctness and regression safety first; a later Phase 4 follow-up still needs to standardize every remaining landing onto the full `summary query + rows query + row metrics query` contract.
+
+## Phase 4 Tranche 1 Addendum: Document Landing Completion
+
+Date: 2026-07-08
+Owner: Master session local integration
+Status: Additive completion update for the document landing slice and dashboard parity checks
+
+### Goal
+
+- Finish the remaining document-route integration work inside the active Phase 4 tranche:
+  - normalize estimates to canonical `estimate_date` semantics for period scoping, row ordering, and cursors
+  - finish invoice cursor/filter/callout behavior on canonical `invoice_date` semantics
+  - keep compatibility summary endpoints as thin wrappers over the landing contract
+  - verify seller dashboard helper parity after the canonical document-date changes
+
+### Changed files
+
+- Routes:
+  - [app/api/tenant/estimates/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/estimates/route.ts)
+  - [app/api/tenant/estimates/summary/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/estimates/summary/route.ts)
+  - [app/api/tenant/invoices/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/invoices/route.ts)
+  - [app/api/tenant/invoices/summary/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/invoices/summary/route.ts)
+  - [src/lib/server/seller-dashboard.ts](/Users/phanikrovvidi/projects/deal-flow/src/lib/server/seller-dashboard.ts)
+- Tests:
+  - [src/tests/estimates-landing-page.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/estimates-landing-page.test.ts)
+  - [src/tests/invoices-landing-page.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/invoices-landing-page.test.ts)
+  - [src/tests/lib/seller-dashboard.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/lib/seller-dashboard.test.ts)
+
+### Done
+
+- Estimates landing now uses canonical `estimate_date` semantics with `created_at` fallback across:
+  - row-period scoping
+  - cursor generation/decoding
+  - visible-row ordering
+  - total-count computation
+  - callout sourcing
+- Invoices landing now completes the Phase 4 contract shifts:
+  - `nextCursor` is emitted from canonical document ordering and accepted by `GET`
+  - location/source/status/due filters are applied before pagination
+  - visible rows remain period-scoped on `invoice_date` with `created_at` fallback
+  - callouts and top-riser math are sourced from scoped query sets instead of the page slice
+  - `total` now reflects the scoped, filter-matching universe rather than the visible page length
+- Compatibility summary endpoints remain retained only as thin wrappers over the landing response KPI contract.
+- Seller dashboard helper now consistently uses canonical order/estimate dates in the touched seller-summary and activity/feed flows.
+- Added route-level regression coverage for:
+  - estimates landing canonical-period behavior
+  - invoices landing KPI/callout invariance and assistant scoping
+  - seller dashboard aggregate-vs-scoped parity on canonical document dates
+
+### Verification
+
+- Passed expanded Phase 4 tranche verification with:
+
+```bash
+npx vitest run src/tests/categories-landing-route.test.ts src/tests/products-landing-api.test.ts src/tests/brands-landing-api.test.ts src/tests/catalogs-landing-route.test.ts src/tests/buyer-app-access-route.test.ts src/tests/price-lists-route.test.ts src/tests/sales-orders-landing-page.test.ts src/tests/warehouses-landing-route.test.ts src/tests/cohorts-route-access.test.ts src/tests/dashboard-api.test.ts src/tests/estimates-landing-page.test.ts src/tests/invoices-landing-page.test.ts src/tests/lib/seller-dashboard.test.ts
+```
+
+- Result:
+  - 13 test files passed
+  - 28 tests passed
+
+### Decisions
+
+- Compatibility summary routes were kept because they are still present as public surfaces, but their logic is now intentionally reduced to thin wrappers over the landing contract instead of maintaining a second source of KPI truth.
+- The document landing tests were updated to assert the Phase 4 server-filtered/server-paginated contract rather than the older page-slice-derived behavior.
+
+### Risks / Follow-up
+
+- Phase 4 remains open beyond this addendum:
+  - locations, buyer-app seller landing, catalogs/cohorts/dashboard still need deeper normalization onto the full `summary + rows + row-metrics` pattern
+  - categories currently have assistant scope and null days-cover semantics covered, but still need broader contract-standardization work if their landing payload is to fully match the newer document/entity pattern
+- Buyer-home remains intentionally deferred.
+
+## Phase 4 Full Scope Review Pass
+
+Date: 2026-07-08
+Owner: Master session with focused investigator subagents and local integration
+Status: Full seller-app landing review completed; additional customer/dashboard correctness gaps fixed and all reviewed seller landing routes are now explicitly accounted for in the execution log
+
+### Goal
+
+- Close the documentation gap in the earlier Phase 4 entries by reviewing every in-scope seller-app landing page, recording its status explicitly, and landing the remaining high-signal correctness fixes discovered during that page-by-page pass.
+
+### Changed files
+
+- Routes/helpers:
+  - [app/api/tenant/customers/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/tenant/customers/route.ts)
+  - [src/lib/server/seller-dashboard.ts](/Users/phanikrovvidi/projects/deal-flow/src/lib/server/seller-dashboard.ts)
+- Tests:
+  - [src/tests/customers-landing-api.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/customers-landing-api.test.ts)
+  - [src/tests/customers-summary-api.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/customers-summary-api.test.ts)
+  - [src/tests/lib/seller-dashboard.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/lib/seller-dashboard.test.ts)
+
+### Done
+
+- Fixed the customers landing filtered-row contract bug:
+  - `status` and `due` filters no longer compute row results and totals from an already-limited page slice
+  - filtered buyer IDs are resolved against the scoped snapshot universe before row pagination
+  - `total` now reflects the scoped filtered universe instead of the visible page
+- Fixed the remaining assistant dashboard scope drift that was discovered during the full review:
+  - assistant customer-facing dashboard metrics/callouts now use only buyers referenced by assistant-scoped orders/estimates/invoices instead of tenant-wide buyers
+  - assistant “Recent activity” now uses the selected landing period rather than a last-sign-in window
+- Completed the page-by-page review inventory for every seller landing currently in Phase 4 scope:
+  - dashboard
+  - brands
+  - products
+  - customers
+  - customer groups / cohorts
+  - campaigns / catalogs
+  - price lists
+  - sales orders
+  - estimates
+  - invoices
+  - categories
+  - locations
+  - warehouses
+  - buyer-app seller landing
+  - buyer-app access
+
+### Reviewed page status
+
+- `dashboard`:
+  - reviewed and updated in this pass
+  - assistant scope and selected-period activity semantics corrected
+- `customers`:
+  - reviewed and updated in this pass
+  - filtered row/count correctness corrected while keeping KPI/callout invariance
+- `sales orders`:
+  - reviewed; canonical `order_date`, server cursor, and non-page-slice callouts already landed in the earlier Phase 4 tranche
+- `estimates`:
+  - reviewed; canonical `estimate_date`, full-universe totals, and summary-wrapper behavior already landed in the earlier addendum
+- `invoices`:
+  - reviewed; canonical `invoice_date`, accepted cursor path, and non-page-slice callouts already landed in the earlier addendum
+- `campaigns / catalogs`:
+  - reviewed; assistant access blocking and KPI invariance behavior already landed in the earlier Phase 4 tranche
+- `price lists`:
+  - reviewed; seller-assistant access blocking and page-invariant KPI behavior already landed in the earlier Phase 4 tranche
+- `customer groups / cohorts`:
+  - reviewed; seller-assistant access blocking already landed in the earlier Phase 4 tranche
+- `buyer-app access`:
+  - reviewed; assistant/location behavior already covered by the earlier Phase 4 tranche
+- `brands`, `products`, `categories`, `locations`, `warehouses`, `buyer-app seller landing`:
+  - reviewed in this pass and retained in their current tranche state
+  - the earlier Phase 4 scope/access/KPI-invariance fixes remain in place and verified by the current regression set
+
+### Verification
+
+- Passed the expanded reviewed-scope regression set:
+
+```bash
+npx vitest run src/tests/categories-landing-route.test.ts src/tests/products-landing-api.test.ts src/tests/brands-landing-api.test.ts src/tests/catalogs-landing-route.test.ts src/tests/buyer-app-access-route.test.ts src/tests/price-lists-route.test.ts src/tests/sales-orders-landing-page.test.ts src/tests/warehouses-landing-route.test.ts src/tests/cohorts-route-access.test.ts src/tests/dashboard-api.test.ts src/tests/estimates-landing-page.test.ts src/tests/invoices-landing-page.test.ts src/tests/lib/seller-dashboard.test.ts src/tests/customers-landing-api.test.ts src/tests/customers-summary-api.test.ts
+```
+
+- Result:
+  - 15 test files passed
+  - 35 tests passed
+
+### Decisions
+
+- The execution log now treats the full seller landing scope as explicitly reviewed, not implicitly covered by route-family summaries alone.
+- This pass prioritized remaining correctness bugs that could materially change visible row sets or assistant-visible entities:
+  - customers filtered totals/pagination
+  - assistant dashboard buyer scope
+  - assistant dashboard period semantics
+
+### Risks / Follow-up
+
+- Some seller landing surfaces still carry deeper read-model debt even after the reviewed-scope pass, especially where routes still compute row enrichment or selected-period metrics directly from raw reads:
+  - brands
+  - products
+  - categories
+  - locations
+  - warehouses
+  - buyer-app seller landing
+- Those surfaces are now explicitly reviewed and inventoried, but follow-up normalization work would still be beneficial if the goal is to make every landing strictly conform to the ideal `summary query + rows query + row-metrics query` contract without any raw-read fallback.

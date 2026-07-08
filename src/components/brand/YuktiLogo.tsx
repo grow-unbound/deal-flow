@@ -2,7 +2,7 @@ import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
 interface YuktiLogoProps {
-  variant?: 'lockup' | 'stacked-lockup' | 'mark' | 'app-icon';
+  variant?: 'lockup' | 'stacked-lockup' | 'mark' | 'mark-copper' | 'app-icon';
   theme?: 'light' | 'dark';
   className?: string;
   priority?: boolean;
@@ -96,6 +96,7 @@ export function YuktiLogo({
       className={cn(
         'relative block shrink-0',
         variant === 'mark' && 'h-8 w-8',
+        variant === 'mark-copper' && 'h-8 w-8',
         variant === 'app-icon' && 'h-9 w-9',
         className
       )}

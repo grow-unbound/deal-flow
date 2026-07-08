@@ -138,7 +138,7 @@ export async function GET(request: NextRequest) {
     return timedJson({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  if (!claims.role?.startsWith('seller_')) {
+  if (claims.role !== 'seller_admin') {
     return timedJson({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -169,7 +169,7 @@ export async function GET(request: NextRequest) {
       .eq('tenant_id', claims.tenant_id)
       .is('deleted_at', null)
       .order('updated_at', { ascending: false })
-      .limit(limit + 1),
+      .limit(PAGE_SIZE.MAX),
     db
       .schema('app')
       .from('tenant_products')
@@ -436,7 +436,7 @@ export async function GET(request: NextRequest) {
         member_count: cohort.member_count,
       })),
     },
-      price_lists: filteredRows.slice(0, limit),
+    price_lists: filteredRows.slice(0, limit),
     total: filteredRows.length,
     nextCursor: null,
     cohorts_total: cohorts.length,

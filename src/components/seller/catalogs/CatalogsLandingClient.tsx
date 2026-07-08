@@ -175,17 +175,17 @@ function CatalogsLandingContent({
   const estimatesEnabled = landingData.channels?.estimates_enabled ?? true;
 
   const tableColumns = [
-    { label: 'Campaign', minWidth: 260, className: 'px-5' },
-    { label: 'Target Buyers', minWidth: 180, className: 'px-5' },
-    { label: `Orders · ${metricSuffix}`, align: 'right' as const, minWidth: 120, className: 'px-5' },
+    { label: 'Campaign', width: 280, minWidth: 260, className: 'px-5' },
+    { label: 'Target Buyers', width: 140, minWidth: 140, className: 'px-5' },
+    { label: `Orders · ${metricSuffix}`, align: 'right' as const, width: 140, minWidth: 100, className: 'px-5' },
     ...(estimatesEnabled
-      ? [{ label: `Estimates · ${metricSuffix}`, align: 'right' as const, minWidth: 130, className: 'px-5' }]
+      ? [{ label: `Estimates · ${metricSuffix}`, align: 'right' as const, width: 160, minWidth: 100, className: 'px-5' }]
       : []),
-    { label: `GMV · ${metricSuffix}`, align: 'right' as const, minWidth: 140, className: 'px-5' },
-    { label: 'Conversion · Viewed', align: 'right' as const, minWidth: 150, className: 'px-5' },
-    { label: 'Conversions · Ordered', align: 'right' as const, minWidth: 160, className: 'px-5' },
+    { label: `GMV · ${metricSuffix}`, align: 'right' as const, width: 140, minWidth: 100, className: 'px-5' },
+    { label: 'Buyers · Viewed', align: 'right' as const, width: 150, minWidth: 150, className: 'px-5' },
+    { label: 'Buyers · Ordered', align: 'right' as const, width: 170, minWidth: 150, className: 'px-5' },
     { label: 'Status', minWidth: 180, className: 'px-5' },
-    { width: 40, className: 'px-4' },
+    { width: 20, className: 'px-4' },
   ];
 
   return (

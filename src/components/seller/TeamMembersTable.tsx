@@ -251,7 +251,7 @@ export function TeamMembersTable({ tenantId, isAdmin }: Props) {
                       {member.status === 'pending' ? (
                         <RowActionButton
                           label="Resend invite"
-                          className="text-cream-600 hover:text-teal-600"
+                          className="text-cream-w600 hover:text-teal-600"
                           disabled={resendMutation.isPending}
                           onClick={() => {
                             setResendError(null);
@@ -488,12 +488,6 @@ function RowActionButton({ label, className, disabled, onClick, children }: RowA
       >
         {children}
       </Button>
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-md bg-cream-900 px-2 py-1 text-xs font-medium text-cream-50 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-      >
-        {label}
-      </span>
     </div>
   );
 }
