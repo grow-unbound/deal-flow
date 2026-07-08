@@ -4,6 +4,7 @@ const requireBuyerAccessProfileMock = vi.fn();
 const loadBuyerActivityFeedMock = vi.fn();
 const getVisibleBuyerCatalogsMock = vi.fn();
 const assembleBuyerCatalogItemsForProductIdsMock = vi.fn();
+const recordBuyerAppActivitySafeMock = vi.fn();
 
 vi.mock('@/lib/server/buyer-access', () => ({
   requireBuyerAccessProfile: (...args: unknown[]) => requireBuyerAccessProfileMock(...args),
@@ -16,6 +17,10 @@ vi.mock('@/lib/server/buyer-activity', () => ({
 
 vi.mock('@/lib/server/buyer-assemble-catalog-items', () => ({
   assembleBuyerCatalogItemsForProductIds: (...args: unknown[]) => assembleBuyerCatalogItemsForProductIdsMock(...args),
+}));
+
+vi.mock('@/lib/server/buyer-app-activity', () => ({
+  recordBuyerAppActivitySafe: (...args: unknown[]) => recordBuyerAppActivitySafeMock(...args),
 }));
 
 vi.mock('@/lib/supabase', () => ({
@@ -66,9 +71,11 @@ vi.mock('@/lib/supabase', () => ({
         if (schemaName === 'app' && tableName === 'order_items') {
           return {
             select: vi.fn(() => ({
-              is: vi.fn(async () => ({
-                data: [{ order_id: 'ord-1', tenant_product_id: 'tp-1' }],
-                error: null,
+              in: vi.fn(() => ({
+                is: vi.fn(async () => ({
+                  data: [{ order_id: 'ord-1', tenant_product_id: 'tp-1' }],
+                  error: null,
+                })),
               })),
             })),
           };
@@ -125,6 +132,7 @@ describe('buyer home route', () => {
     loadBuyerActivityFeedMock.mockReset();
     getVisibleBuyerCatalogsMock.mockReset();
     assembleBuyerCatalogItemsForProductIdsMock.mockReset();
+    recordBuyerAppActivitySafeMock.mockReset();
   });
 
   it('returns the new dashboard aggregate shape', async () => {
@@ -142,7 +150,10 @@ describe('buyer home route', () => {
     ]));
 
     const { GET } = await import('../../app/api/buyer/home/route');
-    const response = await GET(new Request('http://localhost/api/buyer/home') as any);
+    const request = Object.assign(new Request('http://localhost/api/buyer/home'), {
+      nextUrl: new URL('http://localhost/api/buyer/home'),
+    });
+    const response = await GET(request as any);
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -155,5 +166,13 @@ describe('buyer home route', () => {
     expect(body.latest_promotions_preview[0].name).toBe('June Promo');
     expect(body.order_again_preview[0].display_name).toBe('Bullet Camera');
     expect(body.recent_activity.items).toHaveLength(1);
+    expect(recordBuyerAppActivitySafeMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        buyerId: 'buyer-1',
+        eventName: 'home_viewed',
+      }),
+    );
   });
 });

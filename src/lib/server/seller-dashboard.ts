@@ -249,8 +249,7 @@ async function fetchBrandRows(
     .select('tenant_product_id, revenue')
     .eq('tenant_id', tenantId)
     .gte('day', period.current_start.slice(0, 10))
-    .lt('day', period.current_end_exclusive.slice(0, 10))
-    .is('deleted_at', null);
+    .lt('day', period.current_end_exclusive.slice(0, 10));
 
   const revenueByProduct = new Map<string, number>();
   for (const row of (kpiRows ?? []) as KpiProductDailyRevenueRow[]) {
@@ -399,16 +398,14 @@ async function fetchSellerDashboardData(
       .select('orders_count, gmv')
       .eq('tenant_id', tenantId)
       .gte('day', period.current_start.slice(0, 10))
-      .lt('day', period.current_end_exclusive.slice(0, 10))
-      .is('deleted_at', null),
+      .lt('day', period.current_end_exclusive.slice(0, 10)),
     db
       .schema('app')
       .from('kpi_tenant_daily')
       .select('orders_count, gmv')
       .eq('tenant_id', tenantId)
       .gte('day', period.previous_start.slice(0, 10))
-      .lt('day', period.previous_end_exclusive.slice(0, 10))
-      .is('deleted_at', null),
+      .lt('day', period.previous_end_exclusive.slice(0, 10)),
   ]);
 
   const buyers = (buyersRes.data ?? []) as BuyerRow[];

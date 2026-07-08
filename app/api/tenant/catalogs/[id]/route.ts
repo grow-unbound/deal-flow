@@ -951,7 +951,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         try {
           whatsappNotify = await queueCampaignPublishNotify(db, {
             tenantId: claims.tenant_id,
-            actorId: claims.sub,
+            actorId: claims.sub ?? claims.tenant_id,
             campaignId: id,
             campaignName: publishedCampaign.name as string,
             scopeType: publishedCampaign.scope_type as ScopeType,
@@ -1276,7 +1276,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       try {
         whatsappNotify = await queueCampaignPublishNotify(db, {
           tenantId: claims.tenant_id,
-          actorId: claims.sub,
+          actorId: claims.sub ?? claims.tenant_id,
           campaignId: id,
           campaignName: publishedCampaign.name as string,
           scopeType: publishedCampaign.scope_type as ScopeType,

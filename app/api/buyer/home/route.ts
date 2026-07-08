@@ -4,6 +4,7 @@ import type { BuyerHomeResponse } from '@/lib/buyer-home-types';
 import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
 import { loadBuyerActivityFeed } from '@/lib/server/buyer-activity';
 import { assembleBuyerCatalogItemsForProductIds } from '@/lib/server/buyer-assemble-catalog-items';
+import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 import { getVisibleBuyerCatalogs, requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -42,7 +43,14 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
     const buyerId = buyer.id;
     const allowedTenantBrandIds = await resolveBuyerAllowedTenantBrandIds(supabaseAdmin as any, tenantId, buyerId);
 
-    const [buyerHomeSummaryRes, activity, catalogs, ordersRes, orderItemsRes] = await Promise.all([
+    void recordBuyerAppActivitySafe(supabaseAdmin as any, {
+      tenantId,
+      buyerId,
+      eventName: 'home_viewed',
+      path: request.nextUrl.pathname,
+    });
+
+    const [buyerHomeSummaryRes, activity, catalogs, ordersRes] = await Promise.all([
       supabaseAdmin
         .schema('app')
         .rpc('get_buyer_home_summary', {
@@ -60,17 +68,11 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
         .is('deleted_at', null)
         .order('placed_at', { ascending: false })
         .limit(20),
-      supabaseAdmin
-        .schema('app')
-        .from('order_items')
-        .select('order_id, tenant_product_id')
-        .is('deleted_at', null),
     ]);
 
     const queryError =
       buyerHomeSummaryRes.error
-      ?? ordersRes.error
-      ?? orderItemsRes.error;
+      ?? ordersRes.error;
     if (queryError) {
       throw new Error(queryError.message ?? 'Failed to load buyer home');
     }
@@ -121,9 +123,20 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
 
     const recentOrders = (ordersRes.data ?? []) as Array<{ id: string; placed_at: string | null }>;
     const orderIds = recentOrders.map((row) => row.id);
-    const recentOrderItems = ((orderItemsRes.data ?? []) as Array<{ order_id: string; tenant_product_id: string }>)
-      .filter((row) => orderIds.includes(row.order_id));
-    const previewProductIds = Array.from(new Set(recentOrderItems.map((row) => row.tenant_product_id))).slice(0, 5);
+    const recentOrderItemsRes = orderIds.length > 0
+      ? await supabaseAdmin
+          .schema('app')
+          .from('order_items')
+          .select('order_id, tenant_product_id')
+          .in('order_id', orderIds)
+          .is('deleted_at', null)
+      : { data: [] as Array<{ order_id: string; tenant_product_id: string }>, error: null };
+    if (recentOrderItemsRes.error) {
+      throw new Error(recentOrderItemsRes.error.message ?? 'Failed to load buyer home order items');
+    }
+    const previewProductIds = Array.from(
+      new Set(((recentOrderItemsRes.data ?? []) as Array<{ order_id: string; tenant_product_id: string }>).map((row) => row.tenant_product_id)),
+    ).slice(0, 5);
     const reorderPreviewMap = await assembleBuyerCatalogItemsForProductIds(supabaseAdmin as any, {
       tenantId,
       buyerId,
