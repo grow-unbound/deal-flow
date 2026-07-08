@@ -25,12 +25,17 @@ export interface CatalogLandingRow {
     tone: CatalogStatusTone;
   };
   cohort_name: string;
+  audience_count: number | null;
   products_count: number;
   brands_count: number;
   gmv: number;
+  /** @deprecated Use order_count — kept for backward compatibility */
   orders: number;
-  conversions?: number;
+  order_count: number;
+  estimate_count: number;
+  conversions: number;
   views: number;
+  view_pct: number;
   conversion_pct: number;
   valid_from: string;
   valid_to: string | null;
@@ -42,6 +47,10 @@ export interface CatalogLandingRow {
 
 export interface CatalogsLandingResponse {
   period?: SellerLandingPeriodMeta;
+  channels?: {
+    orders_enabled: boolean;
+    estimates_enabled: boolean;
+  };
   kpis: {
     live_catalogs: number;
     draft_catalogs: number;
@@ -218,6 +227,7 @@ export interface CatalogDetailResponse {
     price_source?: CatalogComposerPriceSource;
     price_list_id?: string | null;
     filters: CatalogComposerFilterState;
+    is_dynamic?: boolean;
     tag_overrides: Record<string, CatalogComposerTag | null>;
     items: Array<{
       tenant_product_id: string;
@@ -553,12 +563,19 @@ export interface CatalogPublishPreviewResponse {
     tenant_phone_configured: boolean;
     broadcast_sending_paused: boolean;
   };
+  template: {
+    seller_name: string;
+    seller_phone_display: string;
+    footer_text: string;
+    buttons: Array<{ label: string; type: 'url' | 'quick_reply' }>;
+  };
 }
 
 export interface CatalogPublishInput {
   notifyWhatsapp?: boolean;
   buyerNote?: string;
   notifyScheduledFor?: string | null;
+  heroImageUrl?: string | null;
 }
 
 export function useCatalogPublishPreview(campaignId: string, notifyWhatsapp: boolean, enabled: boolean) {
@@ -674,6 +691,7 @@ export function usePublishCatalog(id: string) {
           notify_whatsapp: input?.notifyWhatsapp ?? false,
           buyer_note: input?.buyerNote,
           notify_scheduled_for: input?.notifyScheduledFor ?? undefined,
+          hero_image_url: input?.heroImageUrl ?? undefined,
         }),
       });
 

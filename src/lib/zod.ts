@@ -295,9 +295,18 @@ export const PriceListPricingStrategySchema = z.enum([
 ]);
 export type PriceListPricingStrategy = z.infer<typeof PriceListPricingStrategySchema>;
 
+export const ProductLastOrderBucketSchema = CohortLastOrderBucketSchema;
+export type ProductLastOrderBucket = z.infer<typeof ProductLastOrderBucketSchema>;
+
+export const ProductGmv90dBucketSchema = CohortGmv90dBucketSchema;
+export type ProductGmv90dBucket = z.infer<typeof ProductGmv90dBucketSchema>;
+
 export const PriceListFilterStateSchema = z.object({
   brand_names: z.array(z.string()).default([]),
   category_names: z.array(z.string()).default([]),
+  availability: z.enum(['in_stock', 'low_stock', 'out_of_stock', 'show_all']).default('show_all'),
+  last_ordered_bucket: ProductLastOrderBucketSchema.optional(),
+  gmv_90d_bucket: ProductGmv90dBucketSchema.optional(),
 });
 export type PriceListFilterState = z.infer<typeof PriceListFilterStateSchema>;
 
@@ -400,6 +409,8 @@ export const CatalogComposerFilterStateSchema = z.object({
   brand_names: z.array(z.string()).default([]),
   category_names: z.array(z.string()).default([]),
   availability: CatalogComposerAvailabilitySchema.default('show_everything'),
+  last_ordered_bucket: ProductLastOrderBucketSchema.optional(),
+  gmv_90d_bucket: ProductGmv90dBucketSchema.optional(),
 });
 export type CatalogComposerFilterState = z.infer<typeof CatalogComposerFilterStateSchema>;
 
@@ -428,6 +439,7 @@ export const CatalogComposerPayloadSchema = z
     }),
     tag_overrides: z.record(CatalogComposerTagSchema.nullable()).default({}),
     items: z.array(CatalogComposerItemSchema).default([]),
+    is_dynamic: z.boolean().default(false),
     save_mode: z.enum(['draft', 'publish']).default('draft'),
     buyer_note: z.string().max(200, 'Note to buyers must be 200 characters or fewer').optional(),
     notify_whatsapp: z.boolean().optional(),
