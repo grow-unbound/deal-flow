@@ -756,7 +756,7 @@ export async function POST(request: NextRequest) {
     try {
       whatsappNotify = await queueCampaignPublishNotify(db, {
         tenantId: claims.tenant_id,
-        actorId: claims.sub,
+        actorId: claims.sub ?? claims.tenant_id,
         campaignId: insertedCatalog.id,
         campaignName: payload.name,
         scopeType: payload.scope_type,

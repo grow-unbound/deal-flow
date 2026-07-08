@@ -11,6 +11,7 @@ import {
   nextProvisionalOrderSequence,
 } from '@/lib/server/transaction-numbers';
 import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
+import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
 import { inferCampaignIdForBuyerCart } from '@/lib/server/campaign-attribution';
 import { PAGE_SIZE, encodeCursor, decodeCursor } from '@/lib/pagination';
 
@@ -277,6 +278,19 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
         // non-blocking — order creation already succeeded
       }
     }
+
+    void recordBuyerAppActivitySafe(db as any, {
+      tenantId: tenant_id,
+      buyerId: buyer_id,
+      eventName: 'order_created',
+      path: request.nextUrl.pathname,
+      context: {
+        order_id: typed.id,
+        order_number: typed.order_number,
+        item_count: items.length,
+        total_amount: total_amount,
+      },
+    });
 
     return NextResponse.json({
       success: true,

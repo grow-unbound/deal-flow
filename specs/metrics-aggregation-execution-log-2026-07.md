@@ -3,7 +3,7 @@
 Date: 2026-07-07
 Source of truth: [metrics-aggregation-standardization-plan-2026-07.md](/Users/phanikrovvidi/projects/deal-flow/specs/metrics-aggregation-standardization-plan-2026-07.md)
 Owner: Master session
-Status: Phase 0 and Phase 1 documented, implementation not started
+Status: Phases 0-3 complete; later-phase frontend/read-model work intentionally deferred
 
 ## Working Rules
 
@@ -1293,3 +1293,78 @@ npx vitest run src/tests/buyer-app-access-route.test.ts src/tests/customers-land
   - `20260707132509_metrics_aggregation_phase1_buyers_slice.sql`
 - Canonical invoice-day handling was normalized so the buyer-home and buyer-slice migrations use explicit IST date inputs instead of raw invoice timestamps when calling `app.metric_day_ist(...)`.
 - The full remote `supabase db push --linked --include-all --yes` completed successfully after those fixes.
+
+## Phase 3 Foundation Completion
+
+Date: 2026-07-08
+
+### Goal
+
+- Finish the aggregate foundation boundary so Phases 0-3 end with no remaining writer drift, stale-bucket gaps, status-semantic drift, or buyer-app activity proxy reliance.
+
+### Subagent owners
+
+- Master session:
+  - coordinated the Phase 3 closeout
+  - reconciled plan/log/definitions drift
+  - finalized the DB cleanup migration, route wiring review, tests, and this log update
+- Builder subagent:
+  - implemented the first-party buyer-app activity ledger slice
+  - added route-compatible buyer-app event recording helpers and DB test coverage
+- Investigator subagent:
+  - isolated the remaining Phase 0-3 foundation gaps:
+    - canonical `order_date` vs `placed_at` drift
+    - stale old-bucket cleanup gaps on day/location/product/warehouse moves
+    - sparse rebuilds that upserted survivors without clearing stale rows
+    - missing document KPI retention coverage
+    - sync rebuild failure state that only raised warnings
+
+### Done
+
+- Added first-party buyer-app activity tracking in the database:
+  - introduced `app.buyer_app_activity` as the append-only buyer-app event ledger
+  - added `app.record_buyer_app_activity(...)` for route-owned activity writes
+  - added buyer-app document sync helpers so buyer-app estimates/orders also backfill the ledger safely
+  - updated buyer-app aggregates so `opened_app_mtd`, repeat-user counts, and active-user counts now come from DB activity events instead of PostHog or `buyer_users.updated_at` proxies
+- Wired qualifying buyer-app routes to emit DB-owned events without changing response shape:
+  - [app/api/auth/phone-otp/verify/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/auth/phone-otp/verify/route.ts)
+  - [app/api/auth/phone-otp/select-context/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/auth/phone-otp/select-context/route.ts)
+  - [app/api/buyer/home/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/buyer/home/route.ts)
+  - [app/api/buyer/catalog/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/buyer/catalog/route.ts)
+  - [app/api/buyer/activity/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/buyer/activity/route.ts)
+  - [app/api/buyer/estimates/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/buyer/estimates/route.ts)
+  - [app/api/buyer/orders/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/buyer/orders/route.ts)
+- Finalized the aggregate foundation cleanup in `20260708035639_metrics_aggregation_phase3_db_foundation_cleanup.sql`:
+  - standardized order flow/open/downstream-quality helpers and applied them across snapshots, daily facts, buyer facts, buyer-app facts, rebuilds, and dispatchers
+  - standardized invoice receivables/outstanding/overdue helpers and applied them across snapshot and daily writers
+  - normalized all remaining order-derived KPI grains to use canonical `order_date` with `created_at` fallback instead of `placed_at`
+  - removed remaining sparse-KPI stale-row assumptions by deleting rebuilt windows before repopulating them
+  - added old-bucket and new-bucket refresh behavior for order, estimate, invoice, order-item, and inventory dispatchers so day/location/product/brand/category/warehouse moves clear stale rows instead of only refreshing the surviving bucket
+  - extended retention to `kpi_estimates_daily`, `kpi_orders_daily`, and `kpi_invoices_daily`
+  - made sync-triggered rebuild depth derive from `integration_sync_jobs.since_date` when present
+  - made sync rebuild failures auditable on the sync-job row via `error_log` and `progress.meta.post_sync_rebuild_failed`, and added `app.retry_post_sync_rebuild_for_sync_job(...)` for explicit recovery
+- Removed the remaining Phase 0-3 KPI-table soft-delete assumptions in a still-active consumer:
+  - [src/lib/server/seller-dashboard.ts](/Users/phanikrovvidi/projects/deal-flow/src/lib/server/seller-dashboard.ts) no longer filters non-soft-deletable KPI tables by `deleted_at`
+
+### Verification
+
+- Added DB activity coverage:
+  - [tests/buyer_app_activity_tracking.sql](/Users/phanikrovvidi/projects/deal-flow/tests/buyer_app_activity_tracking.sql)
+- Added Phase 3 foundation truth coverage:
+  - [tests/metrics_aggregation_phase3_foundation.sql](/Users/phanikrovvidi/projects/deal-flow/tests/metrics_aggregation_phase3_foundation.sql)
+- Added/updated app regression coverage:
+  - [src/tests/buyer-home-route.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/buyer-home-route.test.ts)
+  - [src/tests/auth/buyer-phone-otp-routes.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/auth/buyer-phone-otp-routes.test.ts)
+
+### Notes
+
+- The Phase 0-3 foundation boundary is now treated as complete:
+  - buyer-app opened/active counts are DB-backed
+  - order status semantics are explicitly centralized and applied across all aggregate grains touched in Phases 0-3
+  - stale row cleanup and sparse-window rebuild cleanup are explicit instead of depending on recent-window luck
+  - later frontend/read-model migrations remain intentionally deferred and are not reclassified as Phase 3 scope
+- Later-phase work remains intentionally out of scope:
+  - broad seller landing API reshapes
+  - detail-page aggregate migration sweeps
+  - product posture snapshot redesign
+  - broader buyer-app feature redesign beyond the new DB activity foundation

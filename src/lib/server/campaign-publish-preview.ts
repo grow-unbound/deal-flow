@@ -69,13 +69,14 @@ export async function buildCampaignPublishPreview(
     memberCount?: number | null;
   },
 ): Promise<CampaignPublishPreviewResult> {
-  const scopeValue = input.campaign.scope_value ?? buildScopeValue({
-    scope_type: input.campaign.scope_type,
-    cohort_id: (input.campaign.scope_value?.cohort_id as string | undefined) ?? null,
-    buyer_ids: Array.isArray(input.campaign.scope_value?.buyer_ids)
-      ? input.campaign.scope_value.buyer_ids as string[]
-      : [],
-  });
+  const scopeValue =
+    Object.keys(input.campaign.scope_value).length > 0
+      ? input.campaign.scope_value
+      : buildScopeValue({
+          scope_type: input.campaign.scope_type,
+          cohort_id: null,
+          buyer_ids: [],
+        });
 
   const audienceLabel = campaignAudienceLabel({
     scopeType: input.campaign.scope_type,

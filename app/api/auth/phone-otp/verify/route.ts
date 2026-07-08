@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPostHogClient } from '@/lib/posthog-server';
+import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
 import { mintBuyerSession, mintSellerSession, toBuyerLoginCandidate } from '@/lib/server/buyer-access';
 import { buyerOtpStore, type LoginOtpCandidate } from '@/lib/server/buyer-otp-store';
 import { stampSellerImplicitWhatsappConsent } from '@/lib/server/whatsapp-consent';
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
     const sellerCandidates = record.candidates.filter((c) => c.kind === 'seller');
     const effectiveCandidates = sellerCandidates.length > 0 ? sellerCandidates : record.candidates;
     const candidate = effectiveCandidates[0];
-    const { session, redirect } = await mintCandidateSession(candidate);
+    const { session, redirect } = await mintCandidateSession(request, candidate);
     return NextResponse.json({ success: true, redirect, session });
   } catch (err) {
     console.error('[phone-otp/verify] unexpected error:', err);
@@ -95,6 +96,7 @@ export async function POST(request: NextRequest) {
 }
 
 async function mintCandidateSession(
+  request: NextRequest,
   candidate: LoginOtpCandidate,
 ): Promise<{ session: unknown; redirect: string }> {
   if (candidate.kind === 'seller') {
@@ -106,6 +108,19 @@ async function mintCandidateSession(
   }
 
   const { session } = await mintBuyerSession(toBuyerLoginCandidate(candidate));
+  const { supabaseAdmin } = await import('@/lib/supabase');
+  if (supabaseAdmin && candidate.buyer_id) {
+    void recordBuyerAppActivitySafe(supabaseAdmin as any, {
+      tenantId: candidate.tenant_id,
+      buyerId: candidate.buyer_id,
+      eventName: 'session_started',
+      path: request.nextUrl.pathname,
+      context: {
+        role: candidate.role,
+        principal_type: candidate.principal_type,
+      },
+    });
+  }
   // WhatsApp Broadcast Phase C (§4.8, §9): route first-time buyers through the
   // forced consent checkbox before /buy/home. requireBuyerConsentRedirect
   // checks app.buyers.whatsapp_consent_at directly rather than trusting any
