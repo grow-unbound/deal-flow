@@ -4,7 +4,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { createTimer } from '@/lib/server-timing';
 import { CohortCreateSchema } from '@/lib/zod';
-import { getCohortComposerPayload, resolveBuyerIdsForRules } from '@/lib/server/cohort-composer';
+import { resolveAllBuyerIdsForRules } from '@/lib/server/cohort-composer';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { readArrayParam } from '@/lib/landing-filter-params';
 import { PAGE_SIZE } from '@/lib/pagination';
@@ -468,8 +468,7 @@ export async function POST(request: NextRequest) {
   let cachedMemberCount = 0;
 
   try {
-    const composer = await getCohortComposerPayload(db, claims.tenant_id);
-    const memberIds = resolveBuyerIdsForRules(composer.buyers, data.rules, data.is_static);
+    const memberIds = await resolveAllBuyerIdsForRules(db, claims.tenant_id, data.rules, data.is_static);
     cachedMemberCount = memberIds.length;
 
     if (memberIds.length > 0) {

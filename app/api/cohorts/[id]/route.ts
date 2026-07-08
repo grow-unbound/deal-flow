@@ -6,7 +6,7 @@ import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { CohortUpdateSchema } from '@/lib/zod';
 import { buildCohortRulesSummary } from '@/lib/cohort-rules-summary';
 import { getAuthUserEmailMap } from '@/lib/server/auth-user-directory';
-import { buildCohortMemberBuyerRows, getCohortComposerPayload, resolveBuyerIdsForRules } from '@/lib/server/cohort-composer';
+import { buildCohortMemberBuyerRows, resolveAllBuyerIdsForRules } from '@/lib/server/cohort-composer';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
 
@@ -629,8 +629,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   try {
-    const composer = await getCohortComposerPayload(db, claims.tenant_id);
-    const memberIds = resolveBuyerIdsForRules(composer.buyers, nextRules, nextIsStatic);
+    const memberIds = await resolveAllBuyerIdsForRules(db, claims.tenant_id, nextRules, nextIsStatic);
 
     const { error: clearError } = await db
       .schema('app')
