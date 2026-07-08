@@ -48,3 +48,9 @@ verify_jwt = false
 
 [functions.sync-transaction-line-items]
 verify_jwt = false
+
+[functions.push-estimate-to-zoho]
+verify_jwt = false
+
+[functions.push-order-to-zoho]
+verify_jwt = false
