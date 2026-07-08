@@ -40,10 +40,10 @@ interface CategoryRolesTableProps {
   initialCategories: CategoryRoleRow[];
 }
 
-type RoleChip = 'Anchor' | 'Companion' | 'Exclude' | 'Overridden';
+type RoleChip = 'All roles' | 'Anchor' | 'Companion' | 'Exclude' | 'Overridden';
 type CategoryRoleSort = 'Name (A → Z)' | 'Events (high → low)' | 'Events (low → high)';
 
-const ROLE_CHIPS: RoleChip[] = ['Anchor', 'Companion', 'Exclude', 'Overridden'];
+const ROLE_CHIPS: RoleChip[] = ['All roles', 'Anchor', 'Companion', 'Exclude', 'Overridden'];
 const SORT_OPTIONS: CategoryRoleSort[] = ['Name (A → Z)', 'Events (high → low)', 'Events (low → high)'];
 
 const ROLE_LABELS: Record<string, string> = {

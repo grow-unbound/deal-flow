@@ -198,8 +198,7 @@ export function SellerSidebar({
         <Link
           href={item.href}
           className={[
-            'flex items-center rounded-[12px] px-3 py-2.5 text-base font-medium transition-colors duration-fast',
-            isCollapsed ? 'justify-center gap-0' : 'gap-3',
+            'flex items-center gap-3 rounded-[12px] px-3 py-2.5 text-base font-medium transition-colors duration-fast',
             active
               ? 'bg-[rgba(181,100,47,0.09)] text-[#221E1A]'
               : 'text-[#3D3630] hover:bg-[var(--yk-hover-tint)] hover:text-[#221E1A]',
@@ -218,20 +217,10 @@ export function SellerSidebar({
       className="fixed left-0 top-0 flex h-screen flex-col border-r border-cream-300 bg-cream-100 transition-[width] duration-base"
       style={{ width: 'var(--sidebar-w)' }}
     >
-      <div className="relative flex h-16 shrink-0 items-center border-b border-cream-300 px-3">
-        {canCollapse ? (
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-cream-600 transition-colors duration-fast hover:bg-[var(--yk-hover-tint)] hover:text-cream-900"
-            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-          </button>
-        ) : null}
-
-        {isCollapsed ? <YuktiLogo variant="app-icon" className="h-11 w-11" priority /> : null}
-        {!isCollapsed && (
+      <div className="flex h-16 shrink-0 items-center border-b border-cream-300 px-3">
+        {isCollapsed ? (
+          <YuktiLogo variant="mark-copper" className="h-7 w-7" priority />
+        ) : (
           <div className="min-w-0">
             <YuktiLogo variant="lockup" className="h-8 w-[138px]" priority />
           </div>
@@ -249,11 +238,11 @@ export function SellerSidebar({
               .map((item) => renderNavItem(item))}
           </div>
         ) : (
-          navGroups.map((group) => {
+          navGroups.map((group, groupIndex) => {
             const visibleItems = group.items.filter(isNavItemVisible).filter(canAccessNavItem);
             if (visibleItems.length === 0) return null;
             return (
-              <div key={group.label}>
+              <div key={group.label} className={isCollapsed && groupIndex > 0 ? 'pt-3' : undefined}>
                 {!isCollapsed && (
                   <p className="px-3 pt-5 pb-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#8A7E74]">
                     {group.label}
@@ -265,6 +254,23 @@ export function SellerSidebar({
           })
         )}
       </nav>
+
+      {canCollapse ? (
+        <footer className="shrink-0 border-t border-cream-300 px-3 py-3">
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            className={[
+              'flex w-full items-center rounded-[12px] px-3 py-2.5 text-cream-600 transition-colors duration-fast hover:bg-[var(--yk-hover-tint)] hover:text-cream-900',
+              isCollapsed ? 'justify-center' : 'gap-3',
+            ].join(' ')}
+            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            {!isCollapsed && <span className="text-base font-medium">Collapse</span>}
+          </button>
+        </footer>
+      ) : null}
     </aside>
   );
 }
