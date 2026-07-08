@@ -168,24 +168,26 @@ export function PriceListComposer({
 }) {
   const router = useRouter();
   const saveMutation = useSavePriceListComposer(priceListId);
-  const { data: products = [], isLoading: productsLoading, isError: productsError } = usePriceListComposerProducts();
+  const { data: composerData, isLoading: productsLoading, isError: productsError } = usePriceListComposerProducts();
   const {
     data: detailData,
     isLoading: detailLoading,
     isError: detailError,
   } = usePriceListDetail(priceListId ?? '');
 
+  const products = composerData?.products ?? [];
   const detail = detailData?.price_list;
   const isLoading = productsLoading || (mode === 'edit' && detailLoading);
   const isError = productsError || (mode === 'edit' && detailError);
 
+  // Facets from server — accurate counts over full product dataset, not just display page
   const brandOptions = useMemo(
-    () => buildFilterOptions(products.map((product) => product.brand_name)),
-    [products],
+    () => (composerData?.facets.brands ?? []).map((f) => ({ name: f.label, count: f.count })),
+    [composerData?.facets.brands],
   );
   const categoryOptions = useMemo(
-    () => buildFilterOptions(products.map((product) => product.category_name)),
-    [products],
+    () => (composerData?.facets.categories ?? []).map((f) => ({ name: f.label, count: f.count })),
+    [composerData?.facets.categories],
   );
   const allBrandNames = useMemo(() => brandOptions.map((option) => option.name), [brandOptions]);
   const allCategoryNames = useMemo(() => categoryOptions.map((option) => option.name), [categoryOptions]);

@@ -205,6 +205,33 @@ function aggregateBuyerKpis(rows: BuyerKpiRow[]): Map<string, AggregatedBuyerKpi
   return byBuyer;
 }
 
+function matchesStatusFilters(
+  snapshot: AggregatedBuyerSnapshot | undefined,
+  statusParams: string[],
+) {
+  if (statusParams.length === 0) return true;
+
+  return statusParams.some((value) => {
+    if (value === 'Active') return Boolean(snapshot?.is_active) && !Boolean(snapshot?.is_dormant);
+    if (value === 'Inactive') return snapshot ? !snapshot.is_active : false;
+    if (value === 'Dormant') return Boolean(snapshot?.is_active) && Boolean(snapshot?.is_dormant);
+    return false;
+  });
+}
+
+function matchesDueFilters(
+  snapshot: AggregatedBuyerSnapshot | undefined,
+  dueParams: string[],
+) {
+  if (dueParams.length === 0) return true;
+
+  return dueParams.some((value) => {
+    if (value === 'Due') return (snapshot?.outstanding_dues ?? 0) > 0;
+    if (value === 'Overdue') return (snapshot?.overdue_amount ?? 0) > 0;
+    return false;
+  });
+}
+
 function buildBuyerStatus(snapshot: AggregatedBuyerSnapshot, growthPct: number): BuyerRow['status'] {
   if (snapshot.is_dormant) return { label: 'Dormant', tone: 'danger' };
   if (snapshot.overdue_amount > 0 || snapshot.outstanding_dues > 80000 || growthPct < 0) {
@@ -409,6 +436,10 @@ export async function GET(req: NextRequest) {
         ? new Set(aggregatedSnapshots.keys())
         : await loadAccessibleBuyerIds(db, tenantId, assistantLocationIds)
       : new Set(aggregatedSnapshots.keys());
+    const rowScopedBuyerIds = Array.from(accessibleBuyerIds).filter((buyerId) => {
+      const snapshot = aggregatedSnapshots.get(buyerId);
+      return matchesStatusFilters(snapshot, statusParams) && matchesDueFilters(snapshot, dueParams);
+    });
 
     const buildBuyerQuery = (mode: 'rows' | 'count') => {
       let query = db
@@ -425,23 +456,17 @@ export async function GET(req: NextRequest) {
         .order('business_name', { ascending: true })
         .order('id', { ascending: true });
 
-      if (isAssistant) {
-        const ids = Array.from(accessibleBuyerIds);
-        if (ids.length === 0) {
-          query = query.in('id', ['00000000-0000-0000-0000-000000000000']);
-        } else {
-          query = query.in('id', ids);
-        }
+      const idsToFilter =
+        statusParams.length > 0 || dueParams.length > 0
+          ? rowScopedBuyerIds
+          : (isAssistant ? Array.from(accessibleBuyerIds) : null);
+
+      if (idsToFilter) {
+        query = query.in('id', idsToFilter.length > 0 ? idsToFilter : ['00000000-0000-0000-0000-000000000000']);
       }
 
       if (search) {
         query = query.textSearch('search_vector', search, { type: 'websearch' });
-      }
-      if (statusParams.length > 0 && !statusParams.includes('Dormant')) {
-        const wantsActive = statusParams.includes('Active');
-        const wantsInactive = statusParams.includes('Inactive');
-        if (wantsActive && !wantsInactive) query = query.eq('is_active', true);
-        if (wantsInactive && !wantsActive) query = query.eq('is_active', false);
       }
       if (cursorParam && mode === 'rows') {
         const cursor = decodeCursor(cursorParam);
@@ -597,28 +622,7 @@ export async function GET(req: NextRequest) {
       ),
     );
 
-    const filteredRows = rows
-      .filter((row) => {
-        if (statusParams.length === 0) return true;
-        const snapshot = aggregatedSnapshots.get(row.id);
-        return statusParams.some((value) => {
-          if (value === 'Active') return row.is_active && !(snapshot?.is_dormant ?? false);
-          if (value === 'Inactive') return !row.is_active;
-          if (value === 'Dormant') return row.is_active && Boolean(snapshot?.is_dormant);
-          return false;
-        });
-      })
-      .filter((row) => {
-        if (dueParams.length === 0) return true;
-        const snapshot = aggregatedSnapshots.get(row.id);
-        return dueParams.some((value) => {
-          if (value === 'Due') return (snapshot?.outstanding_dues ?? 0) > 0;
-          if (value === 'Overdue') return (snapshot?.overdue_amount ?? 0) > 0;
-          return false;
-        });
-      });
-
-    const pageItems = filteredRows.slice(0, limit);
+    const pageItems = rows;
     const lastItem = pageItems.at(-1);
     const nextCursor = hasNextPage && lastItem ? encodeCursor({ business_name: lastItem.business_name, id: lastItem.id }) : null;
 
@@ -744,9 +748,7 @@ export async function GET(req: NextRequest) {
       buyers: pageItems,
       filters,
       nextCursor,
-      total: dueParams.length > 0 || statusParams.includes('Dormant')
-        ? filteredRows.length
-        : buyerCountRes.count ?? pageItems.length,
+      total: buyerCountRes.count ?? pageItems.length,
     };
 
     customersLandingCache.set(cacheKey, {

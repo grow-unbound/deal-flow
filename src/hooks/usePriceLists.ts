@@ -318,17 +318,36 @@ export function useSavePriceListComposer(priceListId?: string) {
   });
 }
 
+export interface ComposerFacetOption {
+  id: string;
+  label: string;
+  count: number;
+}
+
+export interface PriceListComposerData {
+  products: PriceListComposerProduct[];
+  facets: {
+    brands: ComposerFacetOption[];
+    categories: ComposerFacetOption[];
+  };
+  total: number;
+}
+
 export function usePriceListComposerProducts(enabled = true) {
   return useQuery({
     queryKey: ['price-list-composer-products'],
-    queryFn: async (): Promise<PriceListComposerProduct[]> => {
-      const res = await apiFetch('/api/tenant/products');
+    queryFn: async (): Promise<PriceListComposerData> => {
+      const res = await apiFetch('/api/tenant/products/composer');
       if (!res.ok) {
         throw new Error('Failed to fetch products');
       }
 
-      const data = (await res.json()) as { products: PriceListComposerProduct[] };
-      return data.products ?? [];
+      const data = (await res.json()) as PriceListComposerData;
+      return {
+        products: data.products ?? [],
+        facets: data.facets ?? { brands: [], categories: [] },
+        total: data.total ?? 0,
+      };
     },
     enabled,
     staleTime: NAVIGATION_QUERY_STALE_TIME,

@@ -284,6 +284,8 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
     });
   }, [matchedByFilters, search]);
 
+  const hasActiveFilters = selectedGeographies.length > 0 || lastOrderBucket !== 'anytime' || selectedGmvBuckets.length > 0;
+
   const effectiveSelectedIds = useMemo(() => {
     if (selectionMode === 'manual-selection') return selectedBuyerIds;
     const excluded = new Set(excludedBuyerIds);
@@ -773,7 +775,9 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                     <p className="text-base font-semibold text-cream-950">
                       {selectionMode === 'manual-selection'
                         ? `${selectedBuyerIds.length} buyers selected manually`
-                        : `${effectiveSelectedIds.length} buyers match the rules above`}
+                        : hasActiveFilters
+                          ? `${effectiveSelectedIds.length}+ buyers match the rules above`
+                          : `${composerQuery.data?.total_buyer_count ?? effectiveSelectedIds.length} buyers total`}
                     </p>
                     <p className="mt-1 max-w-[38rem] text-sm leading-[1.5] text-cream-700">
                       {selectionMode === 'manual-selection'

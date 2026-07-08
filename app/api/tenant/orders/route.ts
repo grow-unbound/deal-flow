@@ -17,7 +17,7 @@ import { getAuthUserDisplayNameMap } from '@/lib/server/auth-user-directory';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
-import { PAGE_SIZE } from '@/lib/pagination';
+import { PAGE_SIZE, decodeCursor, encodeCursor } from '@/lib/pagination';
 import { FEATURE_FLAGS } from '@/constants';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
@@ -65,6 +65,7 @@ interface OrderRow {
   subtotal: number;
   tax_amount: number;
   total_amount: number;
+  order_date: string | null;
   placed_at: string;
   created_at: string;
 }
@@ -133,6 +134,101 @@ function orderSourceCategory(order: Pick<OrderRow, 'is_buyer_app_order' | 'estim
   return 'Direct';
 }
 
+function sumMetric(rows: Array<Record<string, unknown>>, key: string): number {
+  return rows.reduce((sum, row) => sum + Number(row[key] ?? 0), 0);
+}
+
+function getOrderDocumentTimestamp(order: Pick<OrderRow, 'order_date' | 'created_at'>): string {
+  return order.order_date ?? order.created_at;
+}
+
+function applyOrderDocumentPeriod<T extends { or: (filter: string) => T }>(query: T, start: string, endExclusive: string): T {
+  return query.or(
+    `and(order_date.gte.${start},order_date.lt.${endExclusive}),and(order_date.is.null,created_at.gte.${start},created_at.lt.${endExclusive})`,
+  );
+}
+
+function applyOrderCursor<T extends { or: (filter: string) => T }>(query: T, cursor: string): T {
+  const { created_at, id } = decodeCursor(cursor);
+  return query.or(
+    `and(order_date.lt.${created_at}),and(order_date.eq.${created_at},id.lt.${id}),and(order_date.is.null,created_at.lt.${created_at}),and(order_date.is.null,created_at.eq.${created_at},id.lt.${id})`,
+  );
+}
+
+function applyOrderStatusFilters<T extends { in: (column: string, values: string[]) => T }>(query: T, statusParams: string[]): T {
+  const statuses = new Set<string>();
+  statusParams.forEach((value) => {
+    if (value === 'Received') {
+      statuses.add('draft');
+      statuses.add('open');
+      statuses.add('received');
+    }
+    if (value === 'Confirmed') statuses.add('confirmed');
+    if (value === 'In transit') {
+      statuses.add('partially_dispatched');
+      statuses.add('dispatched');
+    }
+    if (value === 'Invoiced') {
+      statuses.add('invoiced');
+      statuses.add('partially_invoiced');
+      statuses.add('overdue');
+    }
+    if (value === 'Delivered') statuses.add('delivered');
+    if (value === 'Cancelled') {
+      statuses.add('void');
+      statuses.add('cancelled');
+    }
+  });
+
+  return statuses.size > 0 ? query.in('status', Array.from(statuses)) : query;
+}
+
+function applyOrderSourceFilters<T extends { eq: (column: string, value: unknown) => T; is: (column: string, value: unknown) => T; or: (filter: string) => T }>(
+  query: T,
+  sourceParams: string[],
+): T {
+  if (sourceParams.length !== 1) return query;
+  const [source] = sourceParams;
+  if (source === 'Buyer App') {
+    return query.eq('is_buyer_app_order', true).is('estimate_id', null);
+  }
+  if (source === 'Direct') {
+    return query.eq('is_buyer_app_order', false).is('estimate_id', null);
+  }
+  if (source === 'Converted Estimate') {
+    return query.or('estimate_id.not.is.null');
+  }
+  return query;
+}
+
+function applyOrderListFilters<T extends {
+  ilike: (column: string, value: string) => T;
+  in: (column: string, values: string[]) => T;
+  eq: (column: string, value: unknown) => T;
+  is: (column: string, value: unknown) => T;
+  or: (filter: string) => T;
+}>(
+  query: T,
+  filters: {
+    search: string;
+    sourceParams: string[];
+    statusParams: string[];
+    locationParams: string[];
+  },
+): T {
+  let next = query;
+  if (filters.search.length > 0) {
+    next = next.ilike('order_number', `%${filters.search}%`);
+  }
+  if (filters.locationParams.length > 0) {
+    next = next.in('location_id', filters.locationParams);
+  }
+  if (filters.statusParams.length > 0) {
+    next = applyOrderStatusFilters(next, filters.statusParams);
+  }
+  return applyOrderSourceFilters(next, filters.sourceParams);
+}
+
 export async function GET(req: NextRequest) {
   const timer = createTimer();
   const timedJson = (body: unknown, init?: ResponseInit) => {
@@ -155,10 +251,11 @@ export async function GET(req: NextRequest) {
 
     const tenantId = claims.tenant_id;
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
-    const search = req.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '';
+    const search = req.nextUrl.searchParams.get('search')?.trim() ?? '';
     const sourceParams = readArrayParam(req.nextUrl.searchParams, 'source');
     const statusParams = readArrayParam(req.nextUrl.searchParams, 'status');
     const locationParams = readArrayParam(req.nextUrl.searchParams, 'location_id');
+    const cursorParam = req.nextUrl.searchParams.get('cursor');
 
     const db = supabaseAdmin;
     const availableLocations = await loadAccessibleSellerLocations(db as any, tenantId, claims);
@@ -166,32 +263,78 @@ export async function GET(req: NextRequest) {
     const aggregateScope = claims.role === 'seller_admin' ? 'tenant' : 'location';
 
     const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
-    const scopedCurrentOrdersQuery = applySellerLocationScope(
-      db
-        .schema('app')
-        .from('orders')
-        .select('id, order_number, buyer_id, location_id, status, source, is_buyer_app_order, campaign_id, estimate_id, place_of_supply, placed_by, subtotal, tax_amount, total_amount, placed_at, created_at')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .gte('placed_at', period.current_start)
-        .lt('placed_at', period.current_end_exclusive)
-        .order('placed_at', { ascending: false })
-        .limit(limit),
-      claims,
-    );
+    const buildOrdersPageQuery = () => {
+      let query = applySellerLocationScope(
+        db
+          .schema('app')
+          .from('orders')
+          .select('id, order_number, buyer_id, location_id, status, source, is_buyer_app_order, campaign_id, estimate_id, place_of_supply, placed_by, subtotal, tax_amount, total_amount, order_date, placed_at, created_at')
+          .eq('tenant_id', tenantId)
+          .is('deleted_at', null),
+        claims,
+      );
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const scopedPreviousOrdersQuery = applySellerLocationScope(
-      db
-        .schema('app')
-        .from('orders')
-        .select('id, total_amount')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .gte('placed_at', period.previous_start)
-        .lt('placed_at', period.previous_end_exclusive) as any,
-      claims,
-    );
+      query = applyOrderDocumentPeriod(query, period.current_start, period.current_end_exclusive);
+      query = applyOrderListFilters(query, { search, sourceParams, statusParams, locationParams });
+      if (cursorParam) {
+        query = applyOrderCursor(query, cursorParam);
+      }
+
+      return query
+        .order('order_date', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(limit + 1);
+    };
+
+    const buildOrdersTotalQuery = () => {
+      let query = applySellerLocationScope(
+        db
+          .schema('app')
+          .from('orders')
+          .select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenantId)
+          .is('deleted_at', null),
+        claims,
+      );
+
+      query = applyOrderDocumentPeriod(query, period.current_start, period.current_end_exclusive);
+      return applyOrderListFilters(query, { search, sourceParams, statusParams, locationParams });
+    };
+
+    const buildOrderCalloutQuery = (mode: 'needs_attention' | 'biggest_tickets' | 'in_motion') => {
+      let query = applySellerLocationScope(
+        db
+          .schema('app')
+          .from('orders')
+          .select('id, order_number, buyer_id, location_id, status, source, is_buyer_app_order, campaign_id, estimate_id, place_of_supply, placed_by, subtotal, tax_amount, total_amount, order_date, placed_at, created_at')
+          .eq('tenant_id', tenantId)
+          .is('deleted_at', null),
+        claims,
+      );
+
+      query = applyOrderDocumentPeriod(query, period.current_start, period.current_end_exclusive);
+
+      if (mode === 'needs_attention') {
+        return query
+          .in('status', ['received'])
+          .order('order_date', { ascending: false, nullsFirst: false })
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .limit(3);
+      }
+
+      if (mode === 'in_motion') {
+        return query
+          .in('status', ['dispatched', 'partially_dispatched'])
+          .order('order_date', { ascending: false, nullsFirst: false })
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .limit(3);
+      }
+
+      return query.order('total_amount', { ascending: false }).order('id', { ascending: false }).limit(3);
+    };
 
     const buildOrdersKpiQuery = (start: string, endExclusive: string) => {
       if (aggregateScope === 'location' && scopedLocationIds.length === 0) {
@@ -214,23 +357,39 @@ export async function GET(req: NextRequest) {
       return query;
     };
 
-    const [mtdOrdersRes, prevOrdersRes, kpiCurrentRes, kpiPrevRes] = await Promise.all([
-      scopedCurrentOrdersQuery,
-      scopedPreviousOrdersQuery,
+    const [ordersPageRes, ordersTotalRes, kpiCurrentRes, kpiPrevRes, needsAttentionRes, biggestTicketsRes, inMotionRes] = await Promise.all([
+      buildOrdersPageQuery(),
+      buildOrdersTotalQuery(),
       buildOrdersKpiQuery(period.current_start, period.current_end_exclusive),
       buildOrdersKpiQuery(period.previous_start, period.previous_end_exclusive),
+      buildOrderCalloutQuery('needs_attention'),
+      buildOrderCalloutQuery('biggest_tickets'),
+      buildOrderCalloutQuery('in_motion'),
     ]);
 
-    if (mtdOrdersRes.error || prevOrdersRes.error || kpiCurrentRes.error || kpiPrevRes.error) {
-      console.error('[GET /api/tenant/orders] query error:', mtdOrdersRes.error || prevOrdersRes.error || kpiCurrentRes.error || kpiPrevRes.error);
+    if (ordersPageRes.error || ordersTotalRes.error || kpiCurrentRes.error || kpiPrevRes.error || needsAttentionRes.error || biggestTicketsRes.error || inMotionRes.error) {
+      console.error('[GET /api/tenant/orders] query error:', ordersPageRes.error || ordersTotalRes.error || kpiCurrentRes.error || kpiPrevRes.error || needsAttentionRes.error || biggestTicketsRes.error || inMotionRes.error);
       return timedJson({ error: 'Failed to fetch orders' }, { status: 500 });
     }
 
-    const mtdOrders = (mtdOrdersRes.data ?? []) as OrderRow[];
-    const buyerIds = Array.from(new Set(mtdOrders.map((order) => order.buyer_id).filter((value): value is string => Boolean(value))));
-    const catalogIds = Array.from(new Set(mtdOrders.map((order) => order.campaign_id).filter((value): value is string => Boolean(value))));
-    const estimateIds = Array.from(new Set(mtdOrders.map((order) => order.estimate_id).filter((value): value is string => Boolean(value))));
-    const placedByIds = Array.from(new Set(mtdOrders.map((order) => order.placed_by).filter((value): value is string => Boolean(value))));
+    const allFetchedOrders = (ordersPageRes.data ?? []) as OrderRow[];
+    const hasNextPage = allFetchedOrders.length > limit;
+    const pageOrders = hasNextPage ? allFetchedOrders.slice(0, limit) : allFetchedOrders;
+    const lastOrder = pageOrders.at(-1);
+    const nextCursor = hasNextPage && lastOrder
+      ? encodeCursor({ created_at: getOrderDocumentTimestamp(lastOrder), id: lastOrder.id })
+      : null;
+    const calloutOrders = [
+      ...((needsAttentionRes.data ?? []) as OrderRow[]),
+      ...((biggestTicketsRes.data ?? []) as OrderRow[]),
+      ...((inMotionRes.data ?? []) as OrderRow[]),
+    ];
+    const uniqueOrders = Array.from(new Map([...pageOrders, ...calloutOrders].map((order) => [order.id, order])).values());
+
+    const buyerIds = Array.from(new Set(uniqueOrders.map((order) => order.buyer_id).filter((value): value is string => Boolean(value))));
+    const catalogIds = Array.from(new Set(uniqueOrders.map((order) => order.campaign_id).filter((value): value is string => Boolean(value))));
+    const estimateIds = Array.from(new Set(uniqueOrders.map((order) => order.estimate_id).filter((value): value is string => Boolean(value))));
+    const placedByIds = Array.from(new Set(uniqueOrders.map((order) => order.placed_by).filter((value): value is string => Boolean(value))));
 
     const [buyersRes, catalogsRes, estimatesRes, placedByMap] = await Promise.all([
       buyerIds.length > 0
@@ -263,7 +422,7 @@ export async function GET(req: NextRequest) {
       ((estimatesRes.data ?? []) as Array<{ id: string; estimate_number: string | null }>).map((row) => [row.id, row.estimate_number]),
     );
 
-    const orderIds = mtdOrders.map((order) => order.id);
+    const orderIds = uniqueOrders.map((order) => order.id);
     let orderItems: OrderItemRow[] = [];
 
     if (orderIds.length > 0) {
@@ -294,15 +453,15 @@ export async function GET(req: NextRequest) {
 
     const locationNameById = new Map(availableLocations.map((location) => [location.id, location.name]));
 
-    const buyersMtd = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.buyers_count ?? 0), 0);
-    const ordersMtd = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.orders_count ?? 0), 0);
-    const ordersPrevMtd = (kpiPrevRes.data ?? []).reduce((sum, row) => sum + Number(row.orders_count ?? 0), 0);
-    const gmvMtd = (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.gmv ?? 0), 0);
-    const gmvPrevMtd = (kpiPrevRes.data ?? []).reduce((sum, row) => sum + Number(row.gmv ?? 0), 0);
+    const buyersMtd = sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'buyers_count');
+    const ordersMtd = sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'orders_count');
+    const ordersPrevMtd = sumMetric((kpiPrevRes.data ?? []) as Array<Record<string, unknown>>, 'orders_count');
+    const gmvMtd = sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'gmv');
+    const gmvPrevMtd = sumMetric((kpiPrevRes.data ?? []) as Array<Record<string, unknown>>, 'gmv');
     const ordersGrowthPct = ordersPrevMtd > 0 ? Math.round(((ordersMtd - ordersPrevMtd) / ordersPrevMtd) * 100) : 0;
     const aov = ordersMtd > 0 ? gmvMtd / ordersMtd : 0;
 
-    const rows = mtdOrders.map((order, index) => {
+    const toLandingRow = (order: OrderRow, index: number) => {
       const buyer = buyerById.get(order.buyer_id);
       const buyerName = buyer?.business_name ?? 'Unknown buyer';
       const geography = (buyer?.geography ?? null) as Record<string, unknown> | null;
@@ -353,25 +512,13 @@ export async function GET(req: NextRequest) {
           tone: meta.tone,
           filter_chip: meta.filterChip,
         },
-        placed_at: order.placed_at,
+        placed_at: getOrderDocumentTimestamp(order),
       };
-    });
-    const filteredRows = rows.filter((row) => {
-      const sourceMatch = sourceParams.length === 0 || sourceParams.includes((row as typeof row & { source_category: string }).source_category);
-      const statusMatch = statusParams.length === 0 || statusParams.includes(row.status.label);
-      const locationMatch = locationParams.length === 0 || (row.location_id ? locationParams.includes(row.location_id) : false);
-      const searchMatch =
-        search.length === 0 ||
-        [row.order_id, row.buyer_name, row.delivery_city, row.catalog_name ?? '', row.source_label, row.source_detail, row.location_name ?? '']
-          .some((value) => value.toLowerCase().includes(search));
-      return sourceMatch && statusMatch && locationMatch && searchMatch;
-    });
-
-    const needsAttention = filteredRows.filter((row) => row.status.value === 'received').slice(0, 3);
-    const biggestTickets = [...filteredRows].sort((a, b) => b.gmv - a.gmv).slice(0, 3);
-    const inMotion = filteredRows
-      .filter((row) => row.status.value === 'dispatched' || row.status.value === 'partially_dispatched')
-      .slice(0, 3);
+    };
+    const rows = pageOrders.map((order, index) => toLandingRow(order, index));
+    const needsAttention = ((needsAttentionRes.data ?? []) as OrderRow[]).map((order, index) => toLandingRow(order, index));
+    const biggestTickets = ((biggestTicketsRes.data ?? []) as OrderRow[]).map((order, index) => toLandingRow(order, index));
+    const inMotion = ((inMotionRes.data ?? []) as OrderRow[]).map((order, index) => toLandingRow(order, index));
     const filters: LandingFilterMeta = {
       groups: [
         {
@@ -401,9 +548,9 @@ export async function GET(req: NextRequest) {
         gmv_mtd: gmvMtd,
         gmv_prev_mtd: gmvPrevMtd,
         aov,
-        pending_dispatch_count: (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.confirmed_count ?? 0), 0),
-        received_count: (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.received_count ?? 0), 0),
-        delivered_count: (kpiCurrentRes.data ?? []).reduce((sum, row) => sum + Number(row.delivered_count ?? 0), 0),
+        pending_dispatch_count: sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'confirmed_count'),
+        received_count: sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'received_count'),
+        delivered_count: sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'delivered_count'),
         buyers_mtd: buyersMtd,
       },
       todays_read: {
@@ -411,9 +558,10 @@ export async function GET(req: NextRequest) {
         biggest_tickets: biggestTickets,
         in_motion: inMotion,
       },
-      orders: filteredRows,
+      orders: rows,
       filters,
-      total: filteredRows.length,
+      nextCursor,
+      total: ordersTotalRes.count ?? rows.length,
     };
 
     return timedJson(payload);

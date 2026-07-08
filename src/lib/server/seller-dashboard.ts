@@ -41,6 +41,7 @@ type OrderRow = {
   order_number: string;
   status: string;
   total_amount: number | null;
+  order_date: string | null;
   placed_at: string | null;
   created_at: string;
   updated_at: string | null;
@@ -53,6 +54,7 @@ type EstimateRow = {
   estimate_number: string | null;
   status: string;
   total_amount: number | null;
+  estimate_date: string | null;
   created_at: string;
   updated_at: string | null;
 };
@@ -177,6 +179,10 @@ function orderStatusLabel(status: string) {
   return status.replace(/_/g, ' ').replace(/\b\w/g, (char: string) => char.toUpperCase());
 }
 
+function estimateStatusLabel(status: string) {
+  return status.replace(/_/g, ' ').replace(/\b\w/g, (char: string) => char.toUpperCase());
+}
+
 function estimateStatusTone(status: string): 'success' | 'warning' | 'danger' | 'neutral' {
   if (status === 'draft' || status === 'sent') return 'warning';
   if (status === 'expired' || status === 'rejected' || status === 'void') return 'danger';
@@ -197,6 +203,10 @@ function inPeriod(iso: string | null, startIso: string, endExclusiveIso: string)
   if (!iso) return false;
   const time = new Date(iso).getTime();
   return time >= new Date(startIso).getTime() && time < new Date(endExclusiveIso).getTime();
+}
+
+function orderEventAt(row: Pick<OrderRow, 'order_date' | 'placed_at' | 'created_at'>) {
+  return row.order_date ?? row.placed_at ?? row.created_at;
 }
 
 function buildRecentFeedRows<T extends { id: string; buyer_id: string; total_amount: number | null; updated_at: string | null; created_at: string }>(
@@ -223,17 +233,6 @@ function buildTenantSummary(tenant: TenantRow | null, locationNames: string[]): 
     plan: tenant?.plan ?? null,
     location_names: locationNames,
   };
-}
-
-async function loadLastSignInAt(userId: string | null) {
-  if (!userId || !supabaseAdmin) return null;
-  try {
-    const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId);
-    if (error) return null;
-    return data.user?.last_sign_in_at ?? null;
-  } catch {
-    return null;
-  }
 }
 
 async function fetchBrandRows(
@@ -369,7 +368,7 @@ async function fetchSellerDashboardData(
       db
         .schema('app')
         .from('orders')
-        .select('id, location_id, buyer_id, order_number, status, total_amount, placed_at, created_at, updated_at')
+        .select('id, location_id, buyer_id, order_number, status, total_amount, order_date, placed_at, created_at, updated_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null),
       claims,
@@ -378,7 +377,7 @@ async function fetchSellerDashboardData(
       db
         .schema('app')
         .from('estimates')
-        .select('id, location_id, buyer_id, estimate_number, status, total_amount, created_at, updated_at')
+        .select('id, location_id, buyer_id, estimate_number, status, total_amount, estimate_date, created_at, updated_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null),
       claims,
@@ -408,7 +407,7 @@ async function fetchSellerDashboardData(
       .lt('day', period.previous_end_exclusive.slice(0, 10)),
   ]);
 
-  const buyers = (buyersRes.data ?? []) as BuyerRow[];
+  const rawBuyers = (buyersRes.data ?? []) as BuyerRow[];
   const catalogs = (catalogsRes.data ?? []) as CatalogRow[];
   const inventoryRows = (inventoryRes.data ?? []) as InventoryRow[];
   const orders = (ordersRes.data ?? []) as OrderRow[];
@@ -416,6 +415,16 @@ async function fetchSellerDashboardData(
   const invoices = (invoicesRes.data ?? []) as InvoiceRow[];
   const kpiCurrentRows = (kpiCurrentRes.data ?? []) as KpiTenantDailyRow[];
   const kpiPreviousRows = (kpiPreviousRes.data ?? []) as KpiTenantDailyRow[];
+  const scopedBuyerIds = role === ROLES.SELLER_ASSISTANT
+    ? new Set(
+        [...orders, ...estimates, ...invoices]
+          .map((row) => row.buyer_id)
+          .filter((buyerId): buyerId is string => typeof buyerId === 'string' && buyerId.length > 0),
+      )
+    : null;
+  const buyers = scopedBuyerIds
+    ? rawBuyers.filter((buyer) => scopedBuyerIds.has(buyer.id))
+    : rawBuyers;
 
   const buyersById = new Map(buyers.map((buyer) => [buyer.id, buyer]));
   const lowStockAlerts = inventoryRows.filter((row) => {
@@ -431,8 +440,8 @@ async function fetchSellerDashboardData(
     return daysUntilExpiry > 0 && daysUntilExpiry <= 7;
   }).length;
 
-  const currentOrders = orders.filter((row) => inPeriod(row.placed_at ?? row.created_at, period.current_start, period.current_end_exclusive));
-  const previousOrders = orders.filter((row) => inPeriod(row.placed_at ?? row.created_at, period.previous_start, period.previous_end_exclusive));
+  const currentOrders = orders.filter((row) => inPeriod(orderEventAt(row), period.current_start, period.current_end_exclusive));
+  const previousOrders = orders.filter((row) => inPeriod(orderEventAt(row), period.previous_start, period.previous_end_exclusive));
   const currentOrdersCount = kpiCurrentRows.length > 0 ? sumNumbers(kpiCurrentRows, (row) => Number(row.orders_count ?? 0)) : currentOrders.length;
   const previousOrdersCount = kpiPreviousRows.length > 0 ? sumNumbers(kpiPreviousRows, (row) => Number(row.orders_count ?? 0)) : previousOrders.length;
   const currentGmv = kpiCurrentRows.length > 0 ? sumNumbers(kpiCurrentRows, (row) => Number(row.gmv ?? 0)) : sumNumbers(currentOrders, (row) => Number(row.total_amount ?? 0));
@@ -476,7 +485,7 @@ async function fetchSellerDashboardData(
       {
         kind: 'info',
         eyebrow: 'Orders pulse',
-        hint: `${currentOrders.length} in scope`,
+        hint: `${currentOrdersCount} in scope`,
         rows: currentOrders
           .filter((order) => order.status === 'received' || order.status === 'confirmed')
           .slice(0, 3)
@@ -541,7 +550,7 @@ async function fetchSellerDashboardData(
         href: `/estimates/${row.id}`,
         document_number: row.estimate_number ?? 'Draft estimate',
         customer_name: buyersById.get(row.buyer_id)?.business_name ?? 'Unknown buyer',
-        status: { label: orderStatusLabel(row.status), tone: estimateStatusTone(row.status) },
+        status: { label: estimateStatusLabel(row.status), tone: estimateStatusTone(row.status) },
         amount: Number(row.total_amount ?? 0),
         updated_at: row.updated_at ?? row.created_at,
       })),
@@ -575,12 +584,11 @@ async function fetchSellerDashboardData(
     };
   }
 
-  const lastSignInAt = await loadLastSignInAt(claims.sub ?? null);
-  const recentSinceIso = lastSignInAt ?? period.current_start;
+  const recentSinceIso = period.current_start;
   const lowStockFeatureEnabled = zohoEnabled || featureAvailability.tallyExport;
 
   const lastOrderByBuyer = new Map<string, OrderRow>();
-  for (const order of [...orders].sort((a, b) => new Date(b.placed_at ?? b.created_at).getTime() - new Date(a.placed_at ?? a.created_at).getTime())) {
+  for (const order of [...orders].sort((a, b) => new Date(orderEventAt(b)).getTime() - new Date(orderEventAt(a)).getTime())) {
     if (!lastOrderByBuyer.has(order.buyer_id)) {
       lastOrderByBuyer.set(order.buyer_id, order);
     }
@@ -639,8 +647,9 @@ async function fetchSellerDashboardData(
   if (featureAvailability.customerMaster) {
     const inactiveCount = buyers.filter((buyer) => {
       const lastOrder = lastOrderByBuyer.get(buyer.id);
-      if (!lastOrder?.placed_at) return false;
-      return (Date.now() - new Date(lastOrder.placed_at).getTime()) / DAY_MS > 30;
+      const lastOrderAt = lastOrder ? orderEventAt(lastOrder) : null;
+      if (!lastOrderAt) return false;
+      return (Date.now() - new Date(lastOrderAt).getTime()) / DAY_MS > 30;
     }).length;
     operationalMetrics.push({
       label: 'Inactive customers',
@@ -694,8 +703,8 @@ async function fetchSellerDashboardData(
       hue: hueByIndex(index),
       name: row.buyer.business_name,
       reason: row.dues > 0
-        ? `Overdue ₹${Math.round(row.dues).toLocaleString('en-IN')} · last order ${row.lastOrder?.placed_at ? formatTimeAgo(row.lastOrder.placed_at) : 'never'}`
-        : `Credit usage ${row.utilization}% · last order ${row.lastOrder?.placed_at ? formatTimeAgo(row.lastOrder.placed_at) : 'never'}`,
+        ? `Overdue ₹${Math.round(row.dues).toLocaleString('en-IN')} · last order ${row.lastOrder ? formatTimeAgo(orderEventAt(row.lastOrder)) : 'never'}`
+        : `Credit usage ${row.utilization}% · last order ${row.lastOrder ? formatTimeAgo(orderEventAt(row.lastOrder)) : 'never'}`,
       trailing: row.utilization > 0 ? `${row.utilization}% used` : 'Needs follow-up',
       href: '/customers',
     }));
@@ -721,7 +730,7 @@ async function fetchSellerDashboardData(
         initials: formatInitials(row.estimate_number ?? 'EST'),
         hue: hueByIndex(index + 1),
         name: row.estimate_number ?? 'Draft estimate',
-        reason: `${buyersById.get(row.buyer_id)?.business_name ?? 'Unknown buyer'} · ${orderStatusLabel(row.status)}`,
+        reason: `${buyersById.get(row.buyer_id)?.business_name ?? 'Unknown buyer'} · ${estimateStatusLabel(row.status)}`,
         trailing: `₹${Math.round(Number(row.total_amount ?? 0)).toLocaleString('en-IN')}`,
         href: `/estimates/${row.id}`,
       })),
@@ -747,14 +756,14 @@ async function fetchSellerDashboardData(
       const lastOrder = lastOrderByBuyer.get(buyer.id);
       return { buyer, lastOrder };
     })
-    .filter((row) => row.lastOrder?.placed_at && (Date.now() - new Date(row.lastOrder.placed_at).getTime()) / DAY_MS > 30)
+    .filter((row) => row.lastOrder && (Date.now() - new Date(orderEventAt(row.lastOrder)).getTime()) / DAY_MS > 30)
     .slice(0, 4)
     .map((row, index): SellerDashboardCalloutRow => ({
       id: row.buyer.id,
       initials: formatInitials(row.buyer.business_name),
       hue: hueByIndex(index),
       name: row.buyer.business_name,
-      reason: `Last order ${new Date(row.lastOrder!.placed_at!).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`,
+      reason: `Last order ${new Date(orderEventAt(row.lastOrder!)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`,
       trailing: `₹${Math.round(Number(row.lastOrder?.total_amount ?? 0)).toLocaleString('en-IN')}`,
       href: '/customers',
     }));
@@ -825,7 +834,7 @@ async function fetchSellerDashboardData(
     {
       kind: 'info',
       eyebrow: 'Recent activity',
-      hint: lastSignInAt ? 'Since your last sign-in' : 'Since start of current period',
+      hint: sellerLandingPeriodLabel(period.selected),
       rows: recentActivityRows,
     },
     {

@@ -17,6 +17,9 @@ import { UsageWarningBanner } from './UsageWarningBanner';
 import { WhatsAppCreditsCard } from './WhatsAppCreditsCard';
 import { WhatsAppUsageHistoryCard } from './WhatsAppUsageHistoryCard';
 
+/** Plan-tier UI (current plan, limits, upgrade) — hidden until self-serve billing ships. */
+const SHOW_PLAN_BILLING_SECTIONS = false;
+
 export function BillingSettingsClient() {
   const { data, isLoading, isError, error, refetch, requestUpgrade, requestTopUp, isRequestingUpgrade, isRequestingTopUp } =
     useBillingSettings();
@@ -50,8 +53,10 @@ export function BillingSettingsClient() {
 
   return (
     <div className="w-full space-y-6">
-      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-        <PlanHeroCard plan={data.plan} usage={data.usage} limits={data.limits} />
+      <div className={SHOW_PLAN_BILLING_SECTIONS ? 'grid gap-6 lg:grid-cols-2 lg:items-start' : undefined}>
+        <div className={SHOW_PLAN_BILLING_SECTIONS ? undefined : 'hidden'} aria-hidden={!SHOW_PLAN_BILLING_SECTIONS}>
+          <PlanHeroCard plan={data.plan} usage={data.usage} limits={data.limits} />
+        </div>
 
         <WhatsAppCreditsCard
           balance={data.whatsapp.balance}
@@ -62,25 +67,31 @@ export function BillingSettingsClient() {
         />
       </div>
 
-      <UsageWarningBanner warnings={data.warnings} />
+      <div className={SHOW_PLAN_BILLING_SECTIONS ? undefined : 'hidden'} aria-hidden={!SHOW_PLAN_BILLING_SECTIONS}>
+        <UsageWarningBanner warnings={data.warnings} />
+      </div>
 
       <WhatsAppUsageHistoryCard history={data.whatsapp.usage_history} />
 
-      <UpgradePlanCard
-        currentPlan={data.plan}
-        onChooseUpgrade={(target) => {
-          setUpgradeTarget(target);
-          setUpgradeOpen(true);
-        }}
-      />
+      <div className={SHOW_PLAN_BILLING_SECTIONS ? undefined : 'hidden'} aria-hidden={!SHOW_PLAN_BILLING_SECTIONS}>
+        <UpgradePlanCard
+          currentPlan={data.plan}
+          onChooseUpgrade={(target) => {
+            setUpgradeTarget(target);
+            setUpgradeOpen(true);
+          }}
+        />
+      </div>
 
-      <SettingsSectionCard
-        title="Plan comparison"
-        subtitle="All plans include the same features. Only limits differ."
-        icon={CreditCard}
-      >
-        <PlanComparisonTable currentPlan={data.plan} />
-      </SettingsSectionCard>
+      <div className={SHOW_PLAN_BILLING_SECTIONS ? undefined : 'hidden'} aria-hidden={!SHOW_PLAN_BILLING_SECTIONS}>
+        <SettingsSectionCard
+          title="Plan comparison"
+          subtitle="All plans include the same features. Only limits differ."
+          icon={CreditCard}
+        >
+          <PlanComparisonTable currentPlan={data.plan} />
+        </SettingsSectionCard>
+      </div>
 
       <UpgradePlanDialog
         open={upgradeOpen}
