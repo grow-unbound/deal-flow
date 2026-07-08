@@ -151,7 +151,9 @@ BEGIN
       app.locations_snapshot,
       app.estimates_snapshot,
       app.invoices_snapshot,
-      app.customers_snapshot,
+      app.buyers_snapshot,
+      app.buyer_current_snapshot,
+      app.kpi_buyers_daily,
       app.products_snapshot,
       app.categories_snapshot,
       app.brands_snapshot,
@@ -606,7 +608,7 @@ BEGIN
 
     INSERT INTO app.orders (
       tenant_id, buyer_id, placed_by, order_number, status, source, campaign_id,
-      subtotal, tax_amount, total_amount, currency, notes, placed_at, estimate_id,
+      subtotal, tax_amount, total_amount, currency, notes, placed_at, order_date, estimate_id,
       created_at, updated_at, created_by, updated_by
     ) VALUES (
       v_tenant_id,
@@ -615,6 +617,7 @@ BEGIN
       v_subtotal, v_tax_total, round(v_subtotal + v_tax_total, 2), 'INR',
       'Converted from estimate (operational seed)',
       now() - interval '12 hours' * v_conv_idx,
+      (now() - interval '12 hours' * v_conv_idx)::date,
       v_estimate_id,
       now(), now(), v_seller_user_id, v_seller_user_id
     )
@@ -675,12 +678,13 @@ BEGIN
 
       INSERT INTO app.orders (
         tenant_id, buyer_id, placed_by, order_number, status, source, campaign_id,
-        subtotal, tax_amount, total_amount, currency, notes, placed_at,
+        subtotal, tax_amount, total_amount, currency, notes, placed_at, order_date,
         created_at, updated_at, created_by, updated_by
       ) VALUES (
         v_tenant_id, v_buyer_id, v_seller_user_id, v_order_number, v_status, v_source, v_catalog_id,
         0, 0, 0, 'INR', 'Operational seed sales order',
         v_day::timestamptz + make_interval(hours => 10 + (v_i % 7), mins => (v_i * 9) % 60),
+        v_day,
         now(), now(), v_seller_user_id, v_seller_user_id
       )
       RETURNING id INTO v_order_id;

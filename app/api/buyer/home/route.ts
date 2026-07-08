@@ -4,27 +4,10 @@ import type { BuyerHomeResponse } from '@/lib/buyer-home-types';
 import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
 import { loadBuyerActivityFeed } from '@/lib/server/buyer-activity';
 import { assembleBuyerCatalogItemsForProductIds } from '@/lib/server/buyer-assemble-catalog-items';
+import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 import { getVisibleBuyerCatalogs, requireBuyerAccessProfile } from '@/lib/server/buyer-access';
-import { loadBuyerCreditSnapshot } from '@/lib/server/buyer-credit';
 import { supabaseAdmin } from '@/lib/supabase';
-
-function startOfMonth(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
-function addMonths(date: Date, count: number): Date {
-  return new Date(date.getFullYear(), date.getMonth() + count, date.getDate());
-}
-
-function formatMonthDayBoundary(date: Date): string {
-  return date.toISOString();
-}
-
-function growthPct(current: number, previous: number): number {
-  if (previous > 0) return Math.round(((current - previous) / previous) * 100);
-  return current > 0 ? 100 : 0;
-}
 
 export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeResponse | { error: string }>> {
   try {
@@ -59,81 +42,57 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
     const tenantId = context.tenant_id!;
     const buyerId = buyer.id;
     const allowedTenantBrandIds = await resolveBuyerAllowedTenantBrandIds(supabaseAdmin as any, tenantId, buyerId);
-    const now = new Date();
-    const monthStart = startOfMonth(now);
-    const prevMonthStart = startOfMonth(addMonths(now, -1));
-    const prevMonthComparisonEnd = new Date(prevMonthStart);
-    prevMonthComparisonEnd.setDate(prevMonthComparisonEnd.getDate() + (now.getDate() - 1));
-    const yearStart = new Date(now.getFullYear(), 0, 1);
 
-    const [credit, activity, catalogs, invoicesRes, ytdInvoicesRes, ordersRes, orderItemsRes] = await Promise.all([
-      loadBuyerCreditSnapshot(supabaseAdmin as any, {
-        tenantId,
-        buyerId,
-        creditLimit: Number(buyer.credit_limit ?? 0),
-      }),
+    void recordBuyerAppActivitySafe(supabaseAdmin as any, {
+      tenantId,
+      buyerId,
+      eventName: 'home_viewed',
+      path: request.nextUrl.pathname,
+    });
+
+    const [buyerHomeSummaryRes, activity, catalogs, ordersRes] = await Promise.all([
+      supabaseAdmin
+        .schema('app')
+        .rpc('get_buyer_home_summary', {
+          p_tenant_id: tenantId,
+          p_buyer_id: buyerId,
+        }),
       loadBuyerActivityFeed(supabaseAdmin as any, { tenantId, buyerId, limit: 10 }),
       getVisibleBuyerCatalogs(tenantId, buyerId),
       supabaseAdmin
         .schema('app')
-        .from('invoices')
-        .select('id, total_amount, invoice_date, status')
-        .eq('tenant_id', tenantId)
-        .eq('buyer_id', buyerId)
-        .is('deleted_at', null)
-        .neq('status', 'draft'),
-      supabaseAdmin
-        .schema('app')
-        .from('invoices')
-        .select('id')
-        .eq('tenant_id', tenantId)
-        .eq('buyer_id', buyerId)
-        .gte('invoice_date', formatMonthDayBoundary(yearStart))
-        .is('deleted_at', null)
-        .neq('status', 'draft'),
-      supabaseAdmin
-        .schema('app')
         .from('orders')
-        .select('id, status, placed_at')
+        .select('id, placed_at')
         .eq('tenant_id', tenantId)
         .eq('buyer_id', buyerId)
         .is('deleted_at', null)
         .order('placed_at', { ascending: false })
         .limit(20),
-      supabaseAdmin
-        .schema('app')
-        .from('order_items')
-        .select('order_id, tenant_product_id')
-        .is('deleted_at', null),
     ]);
 
     const queryError =
-      invoicesRes.error
-      ?? ytdInvoicesRes.error
-      ?? ordersRes.error
-      ?? orderItemsRes.error;
+      buyerHomeSummaryRes.error
+      ?? ordersRes.error;
     if (queryError) {
       throw new Error(queryError.message ?? 'Failed to load buyer home');
     }
 
-    const invoiceRows = (invoicesRes.data ?? []) as Array<{
-      id: string;
-      total_amount: number | null;
-      invoice_date: string | null;
-      status: string;
-    }>;
-    let gmvMtd = 0;
-    let gmvPrevWindow = 0;
-    for (const row of invoiceRows) {
-      if (!row.invoice_date) continue;
-      const invoiceDate = new Date(row.invoice_date);
-      if (invoiceDate >= monthStart && invoiceDate <= now) {
-        gmvMtd += Number(row.total_amount ?? 0);
-      }
-      if (invoiceDate >= prevMonthStart && invoiceDate <= prevMonthComparisonEnd) {
-        gmvPrevWindow += Number(row.total_amount ?? 0);
-      }
-    }
+    const buyerHomeSummaryRow = Array.isArray(buyerHomeSummaryRes.data)
+      ? buyerHomeSummaryRes.data[0]
+      : buyerHomeSummaryRes.data;
+    const buyerHomeSummary = {
+      gmv_mtd: Number(buyerHomeSummaryRow?.gmv_mtd ?? 0),
+      invoice_count_ytd: Number(buyerHomeSummaryRow?.invoice_count_ytd ?? 0),
+      trend_vs_last_month_pct: Number(buyerHomeSummaryRow?.trend_vs_last_month_pct ?? 0),
+      outstanding_dues: Number(buyerHomeSummaryRow?.outstanding_dues ?? 0),
+      open_invoice_count: Number(buyerHomeSummaryRow?.open_invoice_count ?? 0),
+      earliest_due_date: buyerHomeSummaryRow?.earliest_due_date ?? null,
+      days_until_earliest_due: buyerHomeSummaryRow?.days_until_earliest_due ?? null,
+      credit_limit: Number(buyerHomeSummaryRow?.credit_limit ?? buyer.credit_limit ?? 0),
+      available_credit: Number(buyerHomeSummaryRow?.available_credit ?? buyer.credit_limit ?? 0),
+      credit_used: Number(buyerHomeSummaryRow?.credit_used ?? 0),
+      open_orders_count: Number(buyerHomeSummaryRow?.open_orders_count ?? 0),
+    };
 
     const visibleCatalogs = catalogs;
     const catalogIds = visibleCatalogs.map((catalog) => catalog.id);
@@ -162,13 +121,22 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
         hero_image_url: catalog.hero_image_url ?? null,
       }));
 
-    const OPEN_STATUSES = new Set(['draft', 'received', 'confirmed', 'partially_dispatched', 'dispatched']);
-    const recentOrders = (ordersRes.data ?? []) as Array<{ id: string; status: string; placed_at: string | null }>;
-    const openOrdersCount = recentOrders.filter((o) => OPEN_STATUSES.has(o.status)).length;
+    const recentOrders = (ordersRes.data ?? []) as Array<{ id: string; placed_at: string | null }>;
     const orderIds = recentOrders.map((row) => row.id);
-    const recentOrderItems = ((orderItemsRes.data ?? []) as Array<{ order_id: string; tenant_product_id: string }>)
-      .filter((row) => orderIds.includes(row.order_id));
-    const previewProductIds = Array.from(new Set(recentOrderItems.map((row) => row.tenant_product_id))).slice(0, 5);
+    const recentOrderItemsRes = orderIds.length > 0
+      ? await supabaseAdmin
+          .schema('app')
+          .from('order_items')
+          .select('order_id, tenant_product_id')
+          .in('order_id', orderIds)
+          .is('deleted_at', null)
+      : { data: [] as Array<{ order_id: string; tenant_product_id: string }>, error: null };
+    if (recentOrderItemsRes.error) {
+      throw new Error(recentOrderItemsRes.error.message ?? 'Failed to load buyer home order items');
+    }
+    const previewProductIds = Array.from(
+      new Set(((recentOrderItemsRes.data ?? []) as Array<{ order_id: string; tenant_product_id: string }>).map((row) => row.tenant_product_id)),
+    ).slice(0, 5);
     const reorderPreviewMap = await assembleBuyerCatalogItemsForProductIds(supabaseAdmin as any, {
       tenantId,
       buyerId,
@@ -233,22 +201,22 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
 
     const payload: BuyerHomeResponse = {
       greeting_name: profile.greeting_name ?? buyer.contact_name ?? buyer.business_name,
-      open_orders_count: openOrdersCount,
+      open_orders_count: buyerHomeSummary.open_orders_count,
       summary_card: {
-        gmv_mtd: Number(gmvMtd.toFixed(2)),
-        invoice_count_ytd: (ytdInvoicesRes.data ?? []).length,
-        trend_vs_last_month_pct: growthPct(gmvMtd, gmvPrevWindow),
+        gmv_mtd: Number(buyerHomeSummary.gmv_mtd.toFixed(2)),
+        invoice_count_ytd: buyerHomeSummary.invoice_count_ytd,
+        trend_vs_last_month_pct: buyerHomeSummary.trend_vs_last_month_pct,
       },
       dues_card: {
-        outstanding_dues: credit.outstanding_dues,
-        open_invoice_count: credit.open_invoice_count,
-        earliest_due_date: credit.earliest_due_date,
-        days_until_earliest_due: credit.days_until_earliest_due,
+        outstanding_dues: buyerHomeSummary.outstanding_dues,
+        open_invoice_count: buyerHomeSummary.open_invoice_count,
+        earliest_due_date: buyerHomeSummary.earliest_due_date,
+        days_until_earliest_due: buyerHomeSummary.days_until_earliest_due,
       },
       credit_card: {
-        credit_limit: credit.credit_limit,
-        available_credit: credit.available_credit,
-        credit_used: credit.credit_used,
+        credit_limit: buyerHomeSummary.credit_limit,
+        available_credit: buyerHomeSummary.available_credit,
+        credit_used: buyerHomeSummary.credit_used,
       },
       order_again_preview: previewProductIds
         .map((id) => reorderPreviewMap.get(id))

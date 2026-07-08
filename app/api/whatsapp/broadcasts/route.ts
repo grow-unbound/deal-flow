@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
   const { data: template, error: templateError } = await db
     .schema('app')
     .from('whatsapp_templates')
-    .select('id, meta_template_name, meta_category, approval_status, use_case, locale, variables, button_config')
+    .select('id, meta_template_name, meta_category, approval_status, use_case, locale, variables, button_config, buttons_config, header_config')
     .eq('id', input.whatsapp_template_id)
     .or(`tenant_id.is.null,tenant_id.eq.${claims.tenant_id}`)
     .is('deleted_at', null)

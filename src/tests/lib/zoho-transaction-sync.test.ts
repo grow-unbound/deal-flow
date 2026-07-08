@@ -15,15 +15,16 @@ describe('zoho transactional sync windowing', () => {
   });
 
   it('runs transaction line-item hydration after invoices in the orchestrator transaction group', () => {
-    const source = readFileSync('supabase/functions/integrations-sync/index.ts', 'utf8');
+    const orchestratorSource = readFileSync('src/lib/integrations/sync-orchestration.ts', 'utf8');
+    const syncFnSource = readFileSync('supabase/functions/integrations-sync/index.ts', 'utf8');
 
-    expect(source).toContain("transactional: ['estimates', 'orders', 'invoices', 'transaction_line_items']");
-    expect(source).toContain("opts.phase === 'transaction_line_items'");
-    expect(source).toContain("'sync-transaction-line-items'");
-    expect(source).toContain('resolvePhaseSince');
-    expect(source).toContain('since: phaseSince');
-    expect(source).toContain('sync_run_id');
-    expect(source).toContain("dependsOnPhase: phase === 'transaction_line_items' ? 'invoices' : null");
+    expect(orchestratorSource).toContain("export const TRANSACTIONAL_PHASES = [");
+    expect(orchestratorSource).toContain("'transaction_line_items'");
+    expect(orchestratorSource).toContain("transactional: TRANSACTIONAL_PHASES");
+    expect(syncFnSource).toContain("opts.phase === 'transaction_line_items'");
+    expect(syncFnSource).toContain("'sync-transaction-line-items'");
+    expect(syncFnSource).toContain('sinceForPhase');
+    expect(syncFnSource).toContain('sync_run_id');
   });
 
   it('scopes line-item hydration to the same transaction date window', () => {
@@ -32,7 +33,7 @@ describe('zoho transactional sync windowing', () => {
     expect(source).toContain("since_date: opts.sinceDate ?? null");
     expect(source).toContain("query.gte(dateColumn, sinceDate)");
     expect(source).toContain("estimate_date");
-    expect(source).toContain("placed_at");
+    expect(source).toContain("order_date");
     expect(source).toContain("invoice_date");
   });
 

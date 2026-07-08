@@ -60,6 +60,11 @@ function toLabelCase(input: string): string {
     .join(' ');
 }
 
+function formatDaysCover(value: number | null | undefined): string {
+  if (value == null) return '—';
+  return `${value}d`;
+}
+
 function dedupeProductsById(products: TenantProduct[]): TenantProduct[] {
   const seen = new Set<string>();
 
@@ -266,7 +271,7 @@ function ProductsLandingContent({
           ...(isSellerAssistant
             ? [{
                 label: `Units moved · ${metricSuffix}`,
-                value: `${summaryProducts.reduce((sum: number, product: TenantProduct) => sum + Number(product.units_mtd ?? 0), 0)}`,
+                value: `${kpis?.units_mtd ?? summaryProducts.reduce((sum: number, product: TenantProduct) => sum + Number(product.units_mtd ?? 0), 0)}`,
                 sub: 'Operational volume this period',
               }]
             : [{
@@ -287,7 +292,7 @@ function ProductsLandingContent({
               initials: row.brand_initials,
               hue: row.brand_hue,
               name: row.name,
-              reason: `${row.status.label} · ${row.on_hand} on hand · ${row.days_cover}d cover`,
+              reason: `${row.status.label} · ${row.on_hand} on hand · ${formatDaysCover(row.days_cover)} cover`,
               trailing: <GrowthPill value={row.growth_pct} />,
             })),
           },
@@ -373,15 +378,15 @@ function ProductsLandingContent({
         {displayRows.map((product: TenantProduct, index: number) => {
           const brandName = product.brand_name ?? 'Unknown brand';
           const onHand = Number(product.on_hand ?? 0);
-          const daysCover = Number(product.days_cover ?? 0);
+          const daysCover = product.days_cover ?? null;
           const unitsMtd = Number(product.units_mtd ?? 0);
           const gmvMtd = Number(product.gmv_mtd ?? 0);
           const growthPct = Number(product.growth_pct ?? 0);
           const sku = product.master_product?.master_sku ?? product.internal_sku;
           const category = product.category_name ?? 'Uncategorized';
           const uom = product.default_uom ?? 'units';
-          const tone = product.status_tone ?? (onHand === 0 ? 'danger' : daysCover < 14 ? 'warning' : 'success');
-          const label = product.status_label ?? (onHand === 0 ? 'Out of stock' : daysCover < 14 ? 'Low stock' : 'On pace');
+          const tone = product.status_tone ?? (onHand === 0 ? 'danger' : daysCover != null && daysCover < 14 ? 'warning' : 'success');
+          const label = product.status_label ?? (onHand === 0 ? 'Out of stock' : daysCover != null && daysCover < 14 ? 'Low stock' : 'On pace');
 
           return (
             <tr
@@ -422,7 +427,9 @@ function ProductsLandingContent({
               </td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">
                 <div className="flex flex-col items-end">
-                  {daysCover === 0 ? (
+                  {daysCover == null ? (
+                    <span className="text-cream-500">—</span>
+                  ) : daysCover === 0 ? (
                     <span className="font-semibold text-danger-700">0d</span>
                   ) : daysCover < 7 ? (
                     <span className="font-semibold text-warning-700">{daysCover}d</span>

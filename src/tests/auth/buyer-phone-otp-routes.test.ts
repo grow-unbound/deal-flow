@@ -8,6 +8,7 @@ const findBuyerLoginCandidatesMock = vi.fn();
 const sendLoginOtpWhatsappMock = vi.fn();
 const mintBuyerSessionMock = vi.fn();
 const mintSellerSessionMock = vi.fn();
+const recordBuyerAppActivitySafeMock = vi.fn();
 
 vi.mock('@/lib/server/buyer-access', () => ({
   findAllLoginCandidates: (...args: unknown[]) => findAllLoginCandidatesMock(...args),
@@ -19,6 +20,14 @@ vi.mock('@/lib/server/buyer-access', () => ({
 
 vi.mock('@/lib/server/whatsapp', () => ({
   sendLoginOtpWhatsapp: (...args: unknown[]) => sendLoginOtpWhatsappMock(...args),
+}));
+
+vi.mock('@/lib/server/buyer-app-activity', () => ({
+  recordBuyerAppActivitySafe: (...args: unknown[]) => recordBuyerAppActivitySafeMock(...args),
+}));
+
+vi.mock('@/lib/supabase', () => ({
+  supabaseAdmin: { schema: vi.fn() },
 }));
 
 const eligibleBuyerCandidate = {
@@ -49,6 +58,7 @@ describe('buyer phone otp routes', () => {
     sendLoginOtpWhatsappMock.mockResolvedValue(undefined);
     mintBuyerSessionMock.mockReset();
     mintSellerSessionMock.mockReset();
+    recordBuyerAppActivitySafeMock.mockReset();
   });
 
   it('sends OTP only for registered enabled buyer principals', async () => {
@@ -167,10 +177,13 @@ describe('buyer phone otp routes', () => {
     const verifyRoute = await import('../../../app/api/auth/phone-otp/verify/route');
     const storeModule = await import('@/lib/server/buyer-otp-store');
     const pending = storeModule.buyerOtpStore.get(sendBody.ref_id);
-    const response = await verifyRoute.POST(new Request('http://localhost/api/auth/phone-otp/verify', {
+    const verifyRequest = Object.assign(new Request('http://localhost/api/auth/phone-otp/verify', {
       method: 'POST',
       body: JSON.stringify({ ref_id: sendBody.ref_id, otp: pending && pending.kind === 'pending' ? pending.otp : '000000' }),
-    }) as any);
+    }), {
+      nextUrl: new URL('http://localhost/api/auth/phone-otp/verify'),
+    });
+    const response = await verifyRoute.POST(verifyRequest as any);
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -178,5 +191,13 @@ describe('buyer phone otp routes', () => {
     expect(body.redirect).toBe('/buy/home');
     expect(body.session.access_token).toBe('access-token');
     expect(mintBuyerSessionMock).toHaveBeenCalledTimes(1);
+    expect(recordBuyerAppActivitySafeMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        buyerId: 'buyer-1',
+        eventName: 'session_started',
+      }),
+    );
   });
 });

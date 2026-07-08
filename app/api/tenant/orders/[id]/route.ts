@@ -177,6 +177,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   if (payload.order_date !== undefined && payload.order_date.trim()) {
     const d = payload.order_date.slice(0, 10);
+    updatePayload.order_date = d;
     updatePayload.placed_at = `${d}T12:00:00.000Z`;
   }
 

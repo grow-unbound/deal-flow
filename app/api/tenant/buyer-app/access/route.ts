@@ -8,9 +8,30 @@ import { FEATURE_FLAGS } from '@/constants';
 import { parseRowsLimit, SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import type { AccessBuyer, AccessKpis, AccessPageResponse } from '@/hooks/useBuyerAppAccess';
 
+type BuyerAccessKpiRow = {
+  id: string;
+  buyer_app_enabled: boolean | null;
+};
+
+type BuyerOrderCountRow = {
+  buyer_id: string | null;
+};
+
+function countDistinctBuyerIds(rows: BuyerOrderCountRow[] | null | undefined, allowedBuyerIds: Set<string>) {
+  const distinctBuyerIds = new Set<string>();
+
+  for (const row of rows ?? []) {
+    if (!row.buyer_id || !allowedBuyerIds.has(row.buyer_id)) continue;
+    distinctBuyerIds.add(row.buyer_id);
+  }
+
+  return distinctBuyerIds.size;
+}
+
 // ─── GET /api/tenant/buyer-app/access ───────────────────────────────────────
-// Returns a bounded buyer row page plus KPI counts. Expensive suggested/inactive
-// totals should move to buyer_app_snapshot when that aggregate is extended.
+// Returns a bounded buyer row page plus tenant-scoped KPI counts. Snapshot-backed
+// totals are preferred when available; suggested/inactive remain derived from
+// tenant-wide aggregate reads until buyer_app_snapshot is extended further.
 
 export async function GET(request: NextRequest) {
   try {
@@ -59,24 +80,22 @@ export async function GET(request: NextRequest) {
 
     const [
       buyersResult,
-      totalCountResult,
-      enabledCountResult,
+      buyerAppSnapshotResult,
+      activeBuyersResult,
     ] = await Promise.all([
       buyersQuery,
       db
         .schema('app')
-        .from('buyers')
-        .select('id', { count: 'exact', head: true })
+        .from('buyer_app_snapshot')
+        .select('total_buyers, enabled_buyers')
         .eq('tenant_id', tenantId)
-        .eq('is_active', true)
-        .is('deleted_at', null),
+        .maybeSingle(),
       db
         .schema('app')
         .from('buyers')
-        .select('id', { count: 'exact', head: true })
+        .select('id, buyer_app_enabled')
         .eq('tenant_id', tenantId)
         .eq('is_active', true)
-        .eq('buyer_app_enabled', true)
         .is('deleted_at', null),
     ]);
 
@@ -104,7 +123,34 @@ export async function GET(request: NextRequest) {
         .is('deleted_at', null),
     ]) : [{ data: [], error: null }, { data: [], error: null }];
 
-    if (buyersResult.error) {
+    const [suggestedBuyersResult, activeAppBuyersResult] = await Promise.all([
+      db
+        .schema('app')
+        .from('orders')
+        .select('buyer_id')
+        .eq('tenant_id', tenantId)
+        .eq('is_buyer_app_order', false)
+        .gte('placed_at', ninetyDaysAgo)
+        .is('deleted_at', null),
+      db
+        .schema('app')
+        .from('orders')
+        .select('buyer_id')
+        .eq('tenant_id', tenantId)
+        .eq('is_buyer_app_order', true)
+        .gte('placed_at', thirtyDaysAgo)
+        .is('deleted_at', null),
+    ]);
+
+    if (
+      buyersResult.error
+      || buyerAppSnapshotResult.error
+      || activeBuyersResult.error
+      || appOrdersResult.error
+      || offlineOrdersResult.error
+      || suggestedBuyersResult.error
+      || activeAppBuyersResult.error
+    ) {
       return NextResponse.json({ error: 'Failed to fetch buyers' }, { status: 500 });
     }
 
@@ -163,15 +209,33 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // KPIs — total/enabled are aggregate counts; suggested/inactive are page-scoped
-    // until the buyer_app_snapshot aggregate owns those exact counts.
-    const totalCount = totalCountResult.count ?? buyers.length;
-    const enabledCount = enabledCountResult.count ?? buyers.filter((b) => b.buyer_app_enabled).length;
+    const activeBuyers = (activeBuyersResult.data ?? []) as BuyerAccessKpiRow[];
+    const enabledBuyerIds = new Set(
+      activeBuyers.filter((buyer) => Boolean(buyer.buyer_app_enabled)).map((buyer) => buyer.id),
+    );
+    const notEnabledBuyerIds = new Set(
+      activeBuyers.filter((buyer) => !buyer.buyer_app_enabled).map((buyer) => buyer.id),
+    );
+
+    const snapshot = buyerAppSnapshotResult.data as
+      | { total_buyers?: number | null; enabled_buyers?: number | null }
+      | null;
+    const totalCount = Number(snapshot?.total_buyers ?? activeBuyers.length);
+    const enabledCount = Number(snapshot?.enabled_buyers ?? enabledBuyerIds.size);
+    const suggestedCount = countDistinctBuyerIds(
+      suggestedBuyersResult.data as BuyerOrderCountRow[] | null | undefined,
+      notEnabledBuyerIds,
+    );
+    const activeEnabledBuyerCount = countDistinctBuyerIds(
+      activeAppBuyersResult.data as BuyerOrderCountRow[] | null | undefined,
+      enabledBuyerIds,
+    );
+
     const kpis: AccessKpis = {
       enabled_count: enabledCount,
       not_enabled_count: Math.max(0, totalCount - enabledCount),
-      suggested_count: buyers.filter((b) => b.is_suggested).length,
-      inactive_count: buyers.filter((b) => b.is_inactive).length,
+      suggested_count: suggestedCount,
+      inactive_count: Math.max(0, enabledCount - activeEnabledBuyerCount),
       total_count: totalCount,
     };
 

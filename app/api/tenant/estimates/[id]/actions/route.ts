@@ -8,9 +8,15 @@ import { supabaseAdmin } from '@/lib/supabase';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
 
+function currentIstDate() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+  }).format(new Date());
+}
+
 const ActionsBodySchema = z.object({
   action: z.enum(['send', 'accept', 'decline', 'convert_order', 'convert_invoice', 'duplicate']),
-  /** ISO 8601 or datetime-local parsed server-side */
+  invoice_date: z.string().min(4).optional(),
   due_date: z.string().min(4).optional(),
 });
 
@@ -48,12 +54,13 @@ export async function POST(
     }
 
     if (parsed.data.action === 'convert_invoice') {
-      if (!parsed.data.due_date) {
-        return NextResponse.json({ error: 'due_date required for convert_invoice' }, { status: 400 });
+      const invoiceDate = parsed.data.invoice_date ?? parsed.data.due_date;
+      if (!invoiceDate) {
+        return NextResponse.json({ error: 'invoice_date required for convert_invoice' }, { status: 400 });
       }
-      const due = new Date(parsed.data.due_date);
-      if (Number.isNaN(due.getTime())) {
-        return NextResponse.json({ error: 'Invalid due_date' }, { status: 400 });
+      const date = new Date(invoiceDate);
+      if (Number.isNaN(date.getTime())) {
+        return NextResponse.json({ error: 'Invalid invoice_date' }, { status: 400 });
       }
     }
 
@@ -98,8 +105,14 @@ export async function POST(
       p_estimate_id: id,
       p_actor_user_id: actor,
     };
-    if (parsed.data.action === 'convert_invoice' && parsed.data.due_date) {
-      rpcArgs.p_due_date = new Date(parsed.data.due_date).toISOString();
+    if (parsed.data.action === 'convert_order') {
+      rpcArgs.p_order_date = currentIstDate();
+    }
+    if (parsed.data.action === 'convert_invoice') {
+      const invoiceDate = parsed.data.invoice_date ?? parsed.data.due_date;
+      if (invoiceDate) {
+        rpcArgs.p_invoice_date = invoiceDate.slice(0, 10);
+      }
     }
 
     const { data, error } = await db.schema('app').rpc(rpcName, rpcArgs);
