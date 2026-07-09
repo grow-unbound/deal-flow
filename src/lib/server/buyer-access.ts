@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { Session, User } from '@supabase/supabase-js';
 import type { NextRequest } from 'next/server';
 import { getBuyerAppContext, type BuyerAppContext } from '@/lib/auth';
+import { isoDateInTimeZone } from '@/lib/date-utils';
 import { DEFAULT_TENANT_SETTINGS_STORED } from '@/lib/tenant-settings/defaults';
 import { firstNameFromValue, normalizeIndianPhone } from '@/lib/phone';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -620,6 +621,15 @@ function buyerMatchesCatalog(
   return false;
 }
 
+function isCatalogVisibleOnCurrentIstDay(validTo: string | null, now = new Date()): boolean {
+  if (!validTo) return true;
+
+  const validToDate = new Date(validTo);
+  if (Number.isNaN(validToDate.getTime())) return false;
+
+  return isoDateInTimeZone(validToDate) >= isoDateInTimeZone(now);
+}
+
 // ---------------------------------------------------------------------------
 // Seller phone lookup + session minting
 // ---------------------------------------------------------------------------
@@ -799,7 +809,6 @@ export async function getVisibleBuyerCatalogs(tenantId: string, buyerId: string)
       .eq('tenant_id', tenantId)
       .eq('status', 'published')
       .is('deleted_at', null)
-      .or(`valid_to.is.null,valid_to.gt.${new Date().toISOString()}`)
       .order('created_at', { ascending: false }),
     db
       .schema('app')
@@ -830,6 +839,7 @@ export async function getVisibleBuyerCatalogs(tenantId: string, buyerId: string)
   const buyerGeography = buyerData?.geography ?? null;
 
   return ((catalogsRes.data ?? []) as BuyerVisibleCatalog[]).filter((catalog) =>
-    buyerMatchesCatalog(catalog, buyerId, buyerDefaultCohortId, explicitCohorts, buyerGeography),
+    isCatalogVisibleOnCurrentIstDay(catalog.valid_to)
+    && buyerMatchesCatalog(catalog, buyerId, buyerDefaultCohortId, explicitCohorts, buyerGeography),
   );
 }

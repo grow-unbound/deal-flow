@@ -10,6 +10,7 @@ function createAdminStub(options?: {
 }) {
   const rpcCalls: Array<{ fn: string; args: Record<string, unknown> }> = [];
   const updateCalls: Array<{ table: string; payload: Record<string, unknown>; filters: Record<string, unknown> }> = [];
+  const operationLog: string[] = [];
   const tableRows = options?.tableRows ?? {};
   const fieldMappings = options?.fieldMappings ?? [];
   const authUsers = options?.authUsers ?? [];
@@ -17,6 +18,7 @@ function createAdminStub(options?: {
 
   function filterRows(tableName: string, state: {
     eq: Record<string, unknown>;
+    neq: Record<string, unknown>;
     in: { column: string; values: string[] } | null;
     is: Record<string, unknown>;
     like: { column: string; pattern: string } | null;
@@ -25,6 +27,10 @@ function createAdminStub(options?: {
     return (tableRows[tableName] ?? []).filter((row) => {
       for (const [column, value] of Object.entries(state.eq)) {
         if (row[column] !== value) return false;
+      }
+
+      for (const [column, value] of Object.entries(state.neq)) {
+        if (row[column] === value) return false;
       }
 
       if (state.in) {
@@ -54,12 +60,14 @@ function createAdminStub(options?: {
   function queryChain(tableName: string) {
     const state: {
       eq: Record<string, unknown>;
+      neq: Record<string, unknown>;
       in: { column: string; values: string[] } | null;
       is: Record<string, unknown>;
       like: { column: string; pattern: string } | null;
       gt: { column: string; value: unknown } | null;
     } = {
       eq: {},
+      neq: {},
       in: null,
       is: {},
       like: null,
@@ -72,6 +80,10 @@ function createAdminStub(options?: {
       select: () => chain,
       eq: (column: string, value: unknown) => {
         state.eq[column] = value;
+        return chain;
+      },
+      neq: (column: string, value: unknown) => {
+        state.neq[column] = value;
         return chain;
       },
       in: (column: string, values: string[]) => {
@@ -107,6 +119,7 @@ function createAdminStub(options?: {
       },
       then: (resolve: (result: { data: Array<Record<string, unknown>>; error: null }) => void) => {
         if (Object.keys(updatePayload).length > 0) {
+          operationLog.push(`update:${tableName}`);
           updateCalls.push({
             table: tableName,
             payload: updatePayload,
@@ -138,6 +151,7 @@ function createAdminStub(options?: {
   return {
     rpcCalls,
     updateCalls,
+    operationLog,
     client: {
       auth: {
         admin: {
@@ -151,6 +165,9 @@ function createAdminStub(options?: {
       schema: () => ({
         rpc: async (fn: string, args: Record<string, unknown>) => {
           rpcCalls.push({ fn, args });
+          if (fn === 'bulk_persist_jsonb_records' && typeof args.p_table === 'string') {
+            operationLog.push(`rpc:${args.p_table}`);
+          }
 
           if (fn === 'bulk_persist_jsonb_records') {
             const rows = Array.isArray(args.p_rows) ? args.p_rows as Array<Record<string, unknown>> : [];
@@ -174,6 +191,16 @@ function createAdminStub(options?: {
       }),
     },
   };
+}
+
+function getEntityMapRows(
+  admin: ReturnType<typeof createAdminStub>,
+  entityType: string,
+): Array<Record<string, unknown>> {
+  return admin.rpcCalls
+    .filter((call) => call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'integration_entity_map')
+    .flatMap((call) => (call.args.p_rows as Array<Record<string, unknown>>) ?? [])
+    .filter((row) => row.entity_type === entityType);
 }
 
 describe('zoho customer and transaction persistence', () => {
@@ -613,19 +640,44 @@ describe('zoho customer and transaction persistence', () => {
     );
   });
 
-  it('maps cf_online_catalogue_status to buyer_app_enabled', async () => {
+  it.each([
+    {
+      label: 'YES string',
+      customFieldValue: 'YES',
+      expected: true,
+    },
+    {
+      label: 'NO string',
+      customFieldValue: 'NO',
+      expected: false,
+    },
+    {
+      label: 'native boolean true',
+      customFieldValue: true,
+      expected: true,
+    },
+    {
+      label: 'missing custom field',
+      customFieldValue: undefined,
+      expected: false,
+    },
+  ])('maps cf_online_catalogue_access to buyer_app_enabled ($label)', async ({ customFieldValue, expected }) => {
     const admin = createAdminStub({
       fieldMappings: [
         {
           tenant_integration_id: 'integration-1',
           entity_type: 'customers',
           is_active: true,
-          zoho_field_name: 'cf_online_catalogue_status',
+          zoho_field_name: 'cf_online_catalogue_access',
           target_column: 'buyer_app_enabled',
           transform_type: 'boolean_from_zoho',
         },
       ],
     });
+
+    const customFields = customFieldValue === undefined
+      ? []
+      : [{ api_name: 'cf_online_catalogue_access', value: customFieldValue }];
 
     await persistZohoEntityPage(
       admin.client as never,
@@ -638,9 +690,7 @@ describe('zoho customer and transaction persistence', () => {
         {
           contact_id: 'CUST-2',
           company_name: 'Beta Retail',
-          custom_fields: [
-            { api_name: 'cf_online_catalogue_status', value: 'true' },
-          ],
+          custom_fields: customFields,
           contact_persons: [],
         },
       ],
@@ -650,7 +700,257 @@ describe('zoho customer and transaction persistence', () => {
       call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'buyers'
     ));
     const buyerRow = (buyersCall?.args.p_rows as Array<Record<string, unknown>>)[0];
-    expect(buyerRow?.buyer_app_enabled).toBe(true);
+    expect(buyerRow?.buyer_app_enabled).toBe(expected);
+    if (customFieldValue !== undefined) {
+      expect((buyerRow?.custom_fields as Record<string, unknown>)?.cf_online_catalogue_access).toEqual(customFieldValue);
+    }
+  });
+
+  it.each([
+    {
+      entityType: 'estimates' as const,
+      idField: 'estimate_id',
+      numberField: 'estimate_number',
+      mappingField: 'cf_catalog_estimate',
+      targetColumn: 'is_buyer_app_estimate',
+      customFieldValue: true,
+      expected: true,
+    },
+    {
+      entityType: 'invoices' as const,
+      idField: 'invoice_id',
+      numberField: 'invoice_number',
+      mappingField: 'cf_catalog_invoice',
+      targetColumn: 'is_buyer_app_invoice',
+      customFieldValue: undefined,
+      expected: false,
+    },
+  ])('maps boolean custom fields for $entityType ($targetColumn)', async ({
+    entityType,
+    idField,
+    numberField,
+    mappingField,
+    targetColumn,
+    customFieldValue,
+    expected,
+  }) => {
+    const admin = createAdminStub({
+      fieldMappings: [
+        {
+          tenant_integration_id: 'integration-1',
+          entity_type: entityType,
+          is_active: true,
+          zoho_field_name: mappingField,
+          target_column: targetColumn,
+          transform_type: 'boolean_from_zoho',
+        },
+      ],
+    });
+
+    const customFields = customFieldValue === undefined
+      ? []
+      : [{ api_name: mappingField, value: customFieldValue }];
+
+    await persistZohoEntityPage(
+      admin.client as never,
+      'tenant-1',
+      'user-1',
+      'integration-1',
+      entityType,
+      'zoho_books',
+      [
+        {
+          [idField]: `${entityType.toUpperCase()}-CF`,
+          [numberField]: `${entityType.toUpperCase()}-CF-1`,
+          status: 'draft',
+          date: '2026-06-25',
+          custom_fields: customFields,
+          line_items: [],
+        },
+      ],
+    );
+
+    const persistCall = admin.rpcCalls.find((call) => (
+      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === entityType
+    ));
+    const row = (persistCall?.args.p_rows as Array<Record<string, unknown>>)[0];
+    expect(row?.[targetColumn]).toBe(expected);
+  });
+
+  it.each([
+    {
+      label: 'numeric pricebook_id',
+      contact: {
+        contact_id: 'CUST-NUM-PB',
+        company_name: 'Numeric Pricebook Buyer',
+        pricebook_id: 12345,
+        contact_persons: [],
+      },
+      priceListExternalRef: '12345',
+    },
+    {
+      label: 'nested pricebook object',
+      contact: {
+        contact_id: 'CUST-NESTED-PB',
+        company_name: 'Nested Pricebook Buyer',
+        pricebook: { pricebook_id: 'PB-NESTED' },
+        contact_persons: [],
+      },
+      priceListExternalRef: 'PB-NESTED',
+    },
+  ])('creates price list assignments from contact list payload ($label)', async ({ contact, priceListExternalRef }) => {
+    const admin = createAdminStub({
+      tableRows: {
+        price_lists: [
+          {
+            tenant_id: 'tenant-1',
+            external_ref: priceListExternalRef,
+            id: 'price-list-target',
+            deleted_at: null,
+          },
+        ],
+      },
+    });
+
+    await persistZohoEntityPage(
+      admin.client as never,
+      'tenant-1',
+      'user-1',
+      'integration-1',
+      'customers',
+      'zoho_books',
+      [contact],
+    );
+
+    const assignmentsCall = admin.rpcCalls.find((call) => (
+      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'price_list_assignments'
+    ));
+    expect(assignmentsCall).toBeTruthy();
+    expect((assignmentsCall?.args.p_rows as Array<Record<string, unknown>>)[0]?.price_list_id).toBe('price-list-target');
+  });
+
+  it('upserts price list assignments before soft-deleting stale rows', async () => {
+    const admin = createAdminStub({
+      tableRows: {
+        price_lists: [
+          {
+            tenant_id: 'tenant-1',
+            external_ref: 'PB-1',
+            id: 'price-list-1',
+            deleted_at: null,
+          },
+        ],
+      },
+    });
+
+    await persistZohoEntityPage(
+      admin.client as never,
+      'tenant-1',
+      'user-1',
+      'integration-1',
+      'customers',
+      'zoho_books',
+      [
+        {
+          contact_id: 'CUST-ORDER',
+          company_name: 'Ordering Buyer',
+          pricebook_id: 'PB-1',
+          contact_persons: [],
+        },
+      ],
+    );
+
+    const assignmentRpcIndex = admin.operationLog.findIndex((entry) => entry === 'rpc:price_list_assignments');
+    const assignmentUpdateIndex = admin.operationLog.findIndex((entry) => entry === 'update:price_list_assignments');
+    expect(assignmentRpcIndex).toBeGreaterThanOrEqual(0);
+    expect(assignmentUpdateIndex).toBeGreaterThan(assignmentRpcIndex);
+  });
+
+  it('attaches source_payload to customer and product entity map upserts', async () => {
+    const admin = createAdminStub({
+      tableRows: {
+        tenant_brands: [
+          {
+            id: 'brand-1',
+            tenant_id: 'tenant-1',
+            external_ref: 'zoho_brand:acme',
+            display_name_override: 'Acme',
+            slug: 'acme',
+            deleted_at: null,
+          },
+        ],
+      },
+    });
+
+    await persistZohoEntityPage(
+      admin.client as never,
+      'tenant-1',
+      'user-1',
+      'integration-1',
+      'customers',
+      'zoho_books',
+      [
+        {
+          contact_id: 'CUST-MAP',
+          company_name: 'Map Buyer',
+          contact_persons: [],
+        },
+      ],
+    );
+
+    const customerMapRow = getEntityMapRows(admin, 'customers')[0];
+    expect(customerMapRow?.source_payload).toMatchObject({
+      contact_id: 'CUST-MAP',
+      company_name: 'Map Buyer',
+    });
+
+    await persistZohoEntityPage(
+      admin.client as never,
+      'tenant-1',
+      'user-1',
+      'integration-1',
+      'products',
+      'zoho_books',
+      [
+        {
+          item_id: 'ITEM-MAP',
+          name: 'Mapped Product',
+          brand: 'Acme',
+          sku: 'ITEM-MAP',
+        },
+      ],
+    );
+
+    const productMapRow = getEntityMapRows(admin, 'products').find((row) => row.external_id === 'ITEM-MAP');
+    expect(productMapRow?.source_payload).toMatchObject({
+      item_id: 'ITEM-MAP',
+      name: 'Mapped Product',
+    });
+  });
+
+  it('attaches source_payload to location entity map upserts', async () => {
+    const admin = createAdminStub();
+
+    await persistZohoEntityPage(
+      admin.client as never,
+      'tenant-1',
+      'user-1',
+      'integration-1',
+      'locations',
+      'zoho_books',
+      [
+        {
+          location_id: 'LOC-MAP',
+          location_name: 'Main Warehouse',
+        },
+      ],
+    );
+
+    const locationMapRow = getEntityMapRows(admin, 'locations')[0];
+    expect(locationMapRow?.source_payload).toMatchObject({
+      location_id: 'LOC-MAP',
+      location_name: 'Main Warehouse',
+    });
   });
 
   it('does not soft-delete price list assignments when contact has no pricebook', async () => {

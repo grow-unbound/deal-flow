@@ -90,7 +90,7 @@ export async function GET(
   const { data: priceList, error: plError } = await db
     .schema('app')
     .from('price_lists')
-    .select('*')
+    .select('id, tenant_id, name, description, currency, valid_from, valid_to, priority, is_active, pricing_strategy, strategy_value, filters, created_at, updated_at, created_by, updated_by')
     .eq('id', id)
     .eq('tenant_id', claims.tenant_id)
     .is('deleted_at', null)
@@ -125,14 +125,14 @@ export async function GET(
     db
       .schema('app')
       .from('price_list_assignments')
-      .select('*')
+      .select('id, price_list_id, target_type, target_id, created_at')
       .eq('price_list_id', id)
       .is('deleted_at', null)
       .order('created_at', { ascending: true }),
     db
       .schema('app')
       .from('audit_log')
-      .select('*')
+      .select('id, ts, action, entity_type, entity_id, actor_user_id, actor_email, payload')
       .eq('tenant_id', claims.tenant_id)
       .eq('entity_type', 'price_list')
       .eq('entity_id', id)
@@ -246,13 +246,21 @@ export async function GET(
     }),
   );
 
-  const cohortIds = assignments
-    .filter((assignment: { target_type: string; target_id: string | null }) => assignment.target_type === 'cohort' && assignment.target_id)
-    .map((assignment: { target_id: string | null }) => assignment.target_id as string);
+  const cohortIds = Array.from(
+    new Set(
+      assignments
+        .filter((assignment: { target_type: string; target_id: string | null }) => assignment.target_type === 'cohort' && assignment.target_id)
+        .map((assignment: { target_id: string | null }) => assignment.target_id as string),
+    ),
+  );
 
-  const buyerIds = assignments
-    .filter((assignment: { target_type: string; target_id: string | null }) => assignment.target_type === 'buyer' && assignment.target_id)
-    .map((assignment: { target_id: string | null }) => assignment.target_id as string);
+  const buyerIds = Array.from(
+    new Set(
+      assignments
+        .filter((assignment: { target_type: string; target_id: string | null }) => assignment.target_type === 'buyer' && assignment.target_id)
+        .map((assignment: { target_id: string | null }) => assignment.target_id as string),
+    ),
+  );
 
   const [cohortsRes, buyersRes, cohortMembersRes] = await Promise.all([
     cohortIds.length > 0

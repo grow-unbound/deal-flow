@@ -1629,3 +1629,95 @@ npx vitest run src/tests/categories-landing-route.test.ts src/tests/products-lan
   - warehouses
   - buyer-app seller landing
 - Those surfaces are now explicitly reviewed and inventoried, but follow-up normalization work would still be beneficial if the goal is to make every landing strictly conform to the ideal `summary query + rows query + row-metrics query` contract without any raw-read fallback.
+
+## Phase 6 Buyer-Home Completion
+
+Date: 2026-07-09
+Owner: Master session with DB and buyer-home worker subagents
+Status: Implemented and verified
+
+### Goal
+
+- Complete the buyer-home aggregate hardening pass on top of the new `prod_bootstrap.sql` baseline without replaying older metrics migrations.
+- Preserve the existing buyer-home response contract while fixing status-helper drift, YTD retention/rebuild safety, explicit second-hop scoping, and IST current-day catalog visibility semantics.
+
+### Subagent owners
+
+- Explorer/orchestration:
+  - Master session
+- DB worker:
+  - new migration on top of the bootstrap baseline
+- Buyer-home worker:
+  - buyer-home route, helper, and targeted tests
+- Master-session integration:
+  - migration reconciliation
+  - execution-log closeout
+  - targeted verification
+
+### Reused from `prod_bootstrap.sql`
+
+- Existing aggregate/read-model baseline retained:
+  - `app.buyer_current_snapshot`
+  - `app.kpi_buyers_daily`
+  - `app.get_buyer_home_summary(...)`
+  - `app.ensure_buyer_metric_snapshot_cron_scheduled()`
+  - `app.refresh_all_buyer_metric_snapshots()`
+- Buyer-home API response shape stayed unchanged.
+- Buyer-home financial cards continue to read from the aggregate contract instead of raw invoice scans.
+
+### Changed files and objects
+
+- Migration:
+  - [20260709055452_buyer_home_phase6_completion.sql](/Users/phanikrovvidi/projects/deal-flow/supabase/migrations/20260709055452_buyer_home_phase6_completion.sql)
+- Buyer-home route and helper:
+  - [app/api/buyer/home/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/buyer/home/route.ts)
+  - [src/lib/server/buyer-access.ts](/Users/phanikrovvidi/projects/deal-flow/src/lib/server/buyer-access.ts)
+- Tests:
+  - [src/tests/buyer-home-route.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/buyer-home-route.test.ts)
+  - [src/tests/buyer-access.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/buyer-access.test.ts)
+  - [src/tests/buyer-home-page.test.tsx](/Users/phanikrovvidi/projects/deal-flow/src/tests/buyer-home-page.test.tsx)
+  - [src/tests/settings/buyer-home-phase6-migration.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/settings/buyer-home-phase6-migration.test.ts)
+
+### Done
+
+- Rewrote `app.refresh_buyer_current_snapshot(...)` to use shared helper predicates instead of hardcoded buyer-home status lists:
+  - `app.invoice_status_has_receivable(...)`
+  - `app.invoice_is_overdue(...)`
+  - `app.order_status_is_open(...)`
+- Made `app.prune_kpi_daily_old_rows(...)` preserve `app.kpi_buyers_daily` rows for at least the current IST calendar year so buyer-home YTD metrics are not truncated by the generic 90-day path.
+- Widened buyer-specific rebuild coverage inside `app.post_sync_rebuild(...)` so buyer KPI rebuilds cover at least the current IST year-to-date window, without widening unrelated aggregate families.
+- Added idempotent buyer-metric cron scheduling bootstrap via `SELECT app.ensure_buyer_metric_snapshot_cron_scheduled();` in the Phase 6 migration.
+- Cleaned stale bootstrap residue around `trg_refresh_customers_snapshot()` only when `app.refresh_customers_snapshot(uuid)` is absent, instead of assuming the old compatibility path can be removed everywhere.
+- Tightened buyer-home second-hop service-role reads:
+  - `campaign_items` now scopes through `campaigns!inner(tenant_id)`
+  - `order_items` now scopes through `orders!inner(tenant_id, buyer_id)`
+- Kept the bounded recent-order preview explicit with local constants:
+  - 20 recent orders
+  - 5 preview products
+  - 5 promotions
+- Standardized buyer-visible catalog expiry to current IST calendar-day semantics in `getVisibleBuyerCatalogs(...)` so catalogs remain visible through the current `Asia/Kolkata` business day.
+
+### Verification
+
+- Passed targeted Phase 6 regression coverage with:
+
+```bash
+pnpm vitest run src/tests/buyer-home-route.test.ts src/tests/buyer-access.test.ts src/tests/buyer-home-page.test.tsx src/tests/settings/buyer-home-phase6-migration.test.ts
+```
+
+- Result:
+  - 4 test files passed
+  - 9 tests passed
+
+### Remaining compatibility bridges
+
+- `customers_snapshot` readers are still not assumed to be fully gone repo-wide; this phase only neutralizes the stale bootstrap trigger/function residue when the compatibility refresh function is absent.
+- Buyer-home still intentionally keeps recommendations, promotions, and recent activity on their existing non-aggregate helper paths.
+- Buyer-home financial cards remain aggregate-backed, but the app does not yet have full SQL-function verification of `get_buyer_home_summary(...)` against live fixtures in CI.
+
+### Risks / assumptions
+
+- Authoritative linked Supabase project remains `ytlusgmlqxuosifeapkz`.
+- This turn did not apply or push the new migration against a live database; verification is code/test-based only.
+- Final invoice taxonomy remains a product-level assumption; this phase only aligned buyer-home current-state reads to the existing shared helper predicates.
+- The bootstrap cleanup assumes dropping the orphaned customers-snapshot trigger helper is safe when `refresh_customers_snapshot(uuid)` is absent, because the active buyer aggregate contract is owned by `buyers_snapshot`/`dispatch_from_buyers`.

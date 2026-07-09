@@ -9,7 +9,6 @@ type OrderRow = {
   id: string;
   buyer_id: string;
   status: string;
-  total_amount: number | null;
   placed_at: string | null;
   campaign_id: string | null;
 };
@@ -32,6 +31,15 @@ type ProductRow = {
   master_product_id: string | null;
   internal_sku: string;
   name_override: string | null;
+};
+type BrandKpiRow = {
+  day: string;
+  gmv: number | null;
+};
+type ProductKpiRow = {
+  tenant_product_id: string;
+  units_sold: number | null;
+  on_hand: number | null;
 };
 
 function monthBounds(now = new Date()) {
@@ -151,7 +159,65 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .limit(100),
   ]);
 
+  const now = new Date();
+  const { startIso, nextIso, prevStartIso, prevEndIso } = monthBounds(now);
+  const currentStartDay = startIso.slice(0, 10);
+  const currentEndDay = nextIso.slice(0, 10);
+  const previousStartDay = prevStartIso.slice(0, 10);
+  const previousEndDay = prevEndIso.slice(0, 10);
+  const trendStartDay = new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), 1)).toISOString().slice(0, 10);
+  const velocityStartDay = new Date(now.getTime() - (29 * 24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
+
+  const [currentBrandKpiRes, previousBrandKpiRes, trendBrandKpiRes, productVelocityRes, orderItemsRes] = await Promise.all([
+    db
+      .schema('app')
+      .from('kpi_brand_daily')
+      .select('day, gmv')
+      .eq('tenant_id', claims.tenant_id)
+      .eq('tenant_brand_id', id)
+      .gte('day', currentStartDay)
+      .lt('day', currentEndDay),
+    db
+      .schema('app')
+      .from('kpi_brand_daily')
+      .select('gmv')
+      .eq('tenant_id', claims.tenant_id)
+      .eq('tenant_brand_id', id)
+      .gte('day', previousStartDay)
+      .lt('day', previousEndDay),
+    db
+      .schema('app')
+      .from('kpi_brand_daily')
+      .select('day, gmv')
+      .eq('tenant_id', claims.tenant_id)
+      .eq('tenant_brand_id', id)
+      .gte('day', trendStartDay)
+      .order('day', { ascending: true }),
+    productIds.length
+      ? db
+          .schema('app')
+          .from('kpi_product_daily')
+          .select('tenant_product_id, units_sold, on_hand')
+          .eq('tenant_id', claims.tenant_id)
+          .in('tenant_product_id', productIds)
+          .gte('day', velocityStartDay)
+      : Promise.resolve({ data: [] }),
+    productIds.length
+      ? db
+          .schema('app')
+          .from('order_items')
+          .select('order_id, tenant_product_id, qty, line_total, unit_price')
+          .in('tenant_product_id', productIds)
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  if (currentBrandKpiRes.error || previousBrandKpiRes.error || trendBrandKpiRes.error || productVelocityRes.error || orderItemsRes.error) {
+    return NextResponse.json({ error: 'Failed to fetch brand performance' }, { status: 500 });
+  }
+
   const catalogIds = Array.from(new Set((catalogsItemsRes.data ?? []).map((item: { campaign_id: string }) => item.campaign_id)));
+  const orderIds = Array.from(new Set((orderItemsRes.data ?? []).map((item: { order_id: string }) => item.order_id)));
 
   const [catalogsRes, ordersRes] = await Promise.all([
     catalogIds.length
@@ -163,16 +229,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           .eq('tenant_id', claims.tenant_id)
           .is('deleted_at', null)
       : Promise.resolve({ data: [] }),
-    db
-      .schema('app')
-      .from('orders')
-      .select('id, buyer_id, status, total_amount, placed_at, campaign_id')
-      .eq('tenant_id', claims.tenant_id)
-      .neq('status', 'cancelled')
-      .is('deleted_at', null),
+    orderIds.length
+      ? db
+          .schema('app')
+          .from('orders')
+          .select('id, buyer_id, status, placed_at, campaign_id')
+          .eq('tenant_id', claims.tenant_id)
+          .in('id', orderIds)
+          .neq('status', 'cancelled')
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [] }),
   ]);
 
-  const orderIds = (ordersRes.data ?? []).map((order: { id: string }) => order.id);
+  if (catalogsRes.error || ordersRes.error) {
+    return NextResponse.json({ error: 'Failed to fetch brand performance' }, { status: 500 });
+  }
+
   const cohortIds = Array.from(
     new Set(
       (catalogsRes.data ?? [])
@@ -185,69 +257,66 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     : { data: [] };
   const cohortNameById = new Map<string, string>((cohortNamesRes.data ?? []).map((cohort: any) => [cohort.id, cohort.name]));
 
-  const orderItemsRes = orderIds.length
-    ? await db
-        .schema('app')
-        .from('order_items')
-        .select('order_id, tenant_product_id, qty, line_total, unit_price')
-        .in('order_id', orderIds)
-        .is('deleted_at', null)
-    : { data: [] };
-
-  const now = new Date();
-  const { startIso, nextIso, prevStartIso, prevEndIso } = monthBounds(now);
-
   const buyers = (buyersRes.data ?? []) as BuyerRow[];
   const orders = (ordersRes.data ?? []) as OrderRow[];
   const orderItems = (orderItemsRes.data ?? []) as OrderItemRow[];
   const tenantProductsRows = (tenantProducts ?? []) as ProductRow[];
+  const currentBrandKpis = (currentBrandKpiRes.data ?? []) as BrandKpiRow[];
+  const previousBrandKpis = (previousBrandKpiRes.data ?? []) as Array<{ gmv: number | null }>;
+  const trendBrandKpis = (trendBrandKpiRes.data ?? []) as BrandKpiRow[];
+  const productVelocityRows = (productVelocityRes.data ?? []) as ProductKpiRow[];
   const buyersById = new Map(buyers.map((b) => [b.id, b]));
   const orderById = new Map(orders.map((o) => [o.id, o]));
-
-  const brandOrderIds = new Set<string>();
+  const productIdSet = new Set(productIds);
   const orderRevenueByOrder = new Map<string, number>();
-  const productRevenue = new Map<string, { units: number; revenue: number }>();
+  const productRevenue = new Map<string, { units: number; revenue: number; days_cover: number | null }>();
+  const productUnits30dById = new Map<string, number>();
+  const inventoryByProductId = new Map<string, number>();
+
+  for (const row of inventoryRes.data ?? []) {
+    inventoryByProductId.set(
+      row.tenant_product_id,
+      (inventoryByProductId.get(row.tenant_product_id) ?? 0) + Number(row.qty_available ?? 0),
+    );
+  }
 
   for (const item of orderItems) {
-    if (!productIds.includes(item.tenant_product_id)) continue;
-    brandOrderIds.add(item.order_id);
-    orderRevenueByOrder.set(item.order_id, (orderRevenueByOrder.get(item.order_id) ?? 0) + Number(item.line_total ?? (Number(item.qty) * Number(item.unit_price))));
-    const current = productRevenue.get(item.tenant_product_id) ?? { units: 0, revenue: 0 };
+    if (!productIdSet.has(item.tenant_product_id)) continue;
+    orderRevenueByOrder.set(item.order_id, (orderRevenueByOrder.get(item.order_id) ?? 0) + Number(item.line_total ?? (Number(item.qty ?? 0) * Number(item.unit_price ?? 0))));
+    const current = productRevenue.get(item.tenant_product_id) ?? { units: 0, revenue: 0, days_cover: null };
     current.units += Number(item.qty ?? 0);
-    current.revenue += Number(item.line_total ?? (Number(item.qty) * Number(item.unit_price)));
+    current.revenue += Number(item.line_total ?? (Number(item.qty ?? 0) * Number(item.unit_price ?? 0)));
     productRevenue.set(item.tenant_product_id, current);
   }
 
-  let gmvMtd = 0;
-  let gmvPrev = 0;
+  for (const row of productVelocityRows) {
+    productUnits30dById.set(row.tenant_product_id, (productUnits30dById.get(row.tenant_product_id) ?? 0) + Number(row.units_sold ?? 0));
+    const current = productRevenue.get(row.tenant_product_id) ?? { units: 0, revenue: 0, days_cover: null };
+    const onHand = inventoryByProductId.get(row.tenant_product_id) ?? Number(row.on_hand ?? 0);
+    const units30d = productUnits30dById.get(row.tenant_product_id) ?? 0;
+    const trailingRate = units30d / 30;
+    current.days_cover = onHand === 0 ? 0 : trailingRate > 0 ? Math.max(0, Math.round(onHand / trailingRate)) : null;
+    productRevenue.set(row.tenant_product_id, current);
+  }
+
+  const gmvMtd = currentBrandKpis.reduce((sum, row) => sum + Number(row.gmv ?? 0), 0);
+  const gmvPrev = previousBrandKpis.reduce((sum, row) => sum + Number(row.gmv ?? 0), 0);
   const activeBuyerSet = new Set<string>();
-  const totalBuyerSet = new Set<string>();
   const monthlyTrendMap = new Map<string, number>();
   const buyerSpendMap = new Map<string, { spend: number; orders: number; lastOrder: string | null }>();
   const catalogStatsMap = new Map<string, { orders: number; gmv: number }>();
 
-  for (const orderId of brandOrderIds) {
-    const order = orderById.get(orderId);
-    if (!order) continue;
-    const placedAt = order.placed_at ? new Date(order.placed_at) : null;
-    const amount = orderRevenueByOrder.get(orderId) ?? Number(order.total_amount ?? 0);
-    const buyerId = order.buyer_id as string;
+  for (const row of trendBrandKpis) {
+    monthlyTrendMap.set(row.day.slice(0, 7), (monthlyTrendMap.get(row.day.slice(0, 7)) ?? 0) + Number(row.gmv ?? 0));
+  }
 
-    totalBuyerSet.add(buyerId);
-
-    if (placedAt && order.status !== 'cancelled') {
-      const placedIso = placedAt.toISOString();
-      if (placedIso >= startIso && placedIso < nextIso) {
-        gmvMtd += amount;
-        activeBuyerSet.add(buyerId);
-      }
-      if (placedIso >= prevStartIso && placedIso < prevEndIso) {
-        gmvPrev += amount;
-      }
-      const monthKey = `${placedAt.getUTCFullYear()}-${String(placedAt.getUTCMonth() + 1).padStart(2, '0')}`;
-      monthlyTrendMap.set(monthKey, (monthlyTrendMap.get(monthKey) ?? 0) + amount);
+  for (const order of orders) {
+    const amount = orderRevenueByOrder.get(order.id);
+    const buyerId = order.buyer_id as string | null;
+    if (amount == null || !buyerId) continue;
+    if (order.placed_at && order.placed_at >= startIso && order.placed_at < nextIso) {
+      activeBuyerSet.add(buyerId);
     }
-
     const buyerCurrent = buyerSpendMap.get(buyerId) ?? { spend: 0, orders: 0, lastOrder: null };
     buyerCurrent.spend += amount;
     buyerCurrent.orders += 1;
@@ -322,7 +391,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       units: stats.units,
       revenue: stats.revenue,
       growth: 0,
-      days_cover: null as number | null,
+      days_cover: stats.days_cover,
       status: stats.revenue > 0 ? 'On pace' : 'Idle',
     }))
     .sort((a, b) => b.revenue - a.revenue);
