@@ -54,3 +54,9 @@ verify_jwt = false
 
 [functions.push-order-to-zoho]
 verify_jwt = false
+
+[functions.whatsapp-dispatch-worker]
+verify_jwt = false
+
+[functions.whatsapp-inbound-webhook]
+verify_jwt = false
