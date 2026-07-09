@@ -409,6 +409,15 @@ Deno.serve(async (req: Request) => {
         records_synced: persisted,
         next_cursor: nextCursor,
         progress,
+        summary: {
+          since: sinceDate,
+          page_from: page,
+          next_page: nextPage,
+          total_processed: processed,
+          total_failed: failed,
+          note: `Paused after page ${page} of ${Math.ceil(batch.total / batchSize)}; continuing from page ${nextPage}.`,
+          last_synced_at: nowIso(),
+        },
       });
       return jsonResponse({
         ok: true,

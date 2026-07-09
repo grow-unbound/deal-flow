@@ -60,6 +60,20 @@ vi.mock('@/lib/api-fetch', () => ({
   apiPost: (...args: unknown[]) => apiPostMock(...args),
 }));
 
+vi.mock('@/lib/supabase', () => {
+  const channel = {
+    on: vi.fn(() => channel),
+    subscribe: vi.fn(() => channel),
+  };
+
+  return {
+    supabase: {
+      channel: vi.fn(() => channel),
+      removeChannel: vi.fn(),
+    },
+  };
+});
+
 vi.mock('sonner', () => ({
   toast: {
     success: (...args: unknown[]) => toastSuccessMock(...args),
@@ -336,7 +350,7 @@ describe('settings integrations page', () => {
     renderWithQueryClient(await SettingsIntegrationsPage());
 
     expect(await screen.findByRole('heading', { name: 'Integrations' })).toBeInTheDocument();
-    expect(await screen.findByText('No integrations connected yet')).toBeInTheDocument();
+    expect(await screen.findByText('No integrations setup yet')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Add integration' })).toBeInTheDocument();
   });
 });
@@ -352,7 +366,8 @@ describe('integrations settings client', () => {
       currentTenantId: 'tenant-1',
       tenantProfile: { role: 'seller_admin' },
     });
-    apiFetchMock.mockResolvedValue(jsonResponse(buildIntegrationsPayload()));
+    apiFetchMock.mockImplementation(async () => jsonResponse(buildIntegrationsPayload()));
+    apiPostMock.mockImplementation(async () => jsonResponse({ ok: true }));
   });
 
   it('opens the picker with only available Zoho integrations', async () => {
@@ -387,6 +402,163 @@ describe('integrations settings client', () => {
     expect(screen.getByText(/Orders · SO-404: Unable to resolve product ITEM-404 for order SO-404\./)).toBeInTheDocument();
   });
 
+  it('shows a settings warning when the analysis phase fails', () => {
+    render(
+      <ConnectedIntegrationCard
+        integration={{
+          id: 'zoho_books',
+          display_name: 'Zoho Books',
+          description: 'Sync orders and invoices with Zoho Books.',
+          family_flag: 'ZOHO_INTEGRATION',
+          connectivity_mode: 'cloud',
+          auth_schema: { fields: [] },
+          capabilities: {
+            inbound_reference: ['brands', 'products', 'customers'],
+            inbound_transactional: ['estimates', 'orders', 'invoices'],
+          },
+          coverage_totals: {
+            locations: 5,
+            customers: 89,
+            products: 1240,
+            brands: 42,
+            categories: 18,
+            pricelists: 9,
+            estimates: 41,
+            orders: 318,
+            invoices: 220,
+            transactions: 579,
+          },
+          tenant_integration: {
+            id: 'tenant-int-1',
+            status: 'connected',
+            health_status: 'ok',
+            connected_at: '2026-06-10T11:00:00.000Z',
+            last_health_check_at: '2026-06-12T08:50:00.000Z',
+            config: { org_id: 'org-123' },
+            active_job: null,
+            sync_history: [
+              {
+                id: 'job-analysis-failed',
+                job_type: 'manual',
+                phase: 'analysis',
+                status: 'failed',
+                progress: {
+                  phase: 'analysis',
+                  phase_label: 'Aggregate freshness check failed for invoices_snapshot.',
+                  phases_total: 1,
+                  phase_current: 1,
+                  items_total: 0,
+                  items_processed: 0,
+                  items_failed: 1,
+                },
+                error_log: [],
+                summary: {
+                  warnings: [
+                    'Aggregate freshness check failed for invoices_snapshot.',
+                  ],
+                },
+                started_at: '2026-07-09T05:00:00.000Z',
+                completed_at: '2026-07-09T05:01:00.000Z',
+                created_at: '2026-07-09T05:00:00.000Z',
+              },
+            ],
+            data_flows: [],
+          },
+        }}
+        available
+        isSellerAdmin
+        onOpenWizard={vi.fn()}
+        onDisconnect={vi.fn()}
+        onSyncNow={vi.fn()}
+        onSyncPhase={vi.fn()}
+        onStopSync={vi.fn()}
+        onRefresh={vi.fn()}
+        onRetryWebhooks={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Analysis failed: Aggregate freshness check failed for invoices_snapshot.')).toBeInTheDocument();
+  });
+
+  it('shows analysis readiness rows after the analysis phase completes', () => {
+    render(
+      <ConnectedIntegrationCard
+        integration={{
+          id: 'zoho_books',
+          display_name: 'Zoho Books',
+          description: 'Sync orders and invoices with Zoho Books.',
+          family_flag: 'ZOHO_INTEGRATION',
+          connectivity_mode: 'cloud',
+          auth_schema: { fields: [] },
+          capabilities: {
+            inbound_reference: ['brands', 'products', 'customers'],
+            inbound_transactional: ['estimates', 'orders', 'invoices'],
+          },
+          coverage_totals: {
+            locations: 5,
+            customers: 89,
+            products: 1240,
+            brands: 42,
+            categories: 18,
+            pricelists: 9,
+            estimates: 41,
+            orders: 318,
+            invoices: 220,
+            transactions: 579,
+          },
+          tenant_integration: {
+            id: 'tenant-int-1',
+            status: 'connected',
+            health_status: 'ok',
+            connected_at: '2026-06-10T11:00:00.000Z',
+            last_health_check_at: '2026-06-12T08:50:00.000Z',
+            config: { org_id: 'org-123' },
+            active_job: null,
+            sync_history: [
+              {
+                id: 'job-analysis-complete',
+                job_type: 'manual',
+                phase: 'analysis',
+                status: 'completed',
+                progress: {
+                  phase: 'analysis',
+                  phase_label: 'Analysis complete',
+                  phases_total: 1,
+                  phase_current: 1,
+                  items_total: 0,
+                  items_processed: 0,
+                  items_failed: 0,
+                },
+                error_log: [],
+                summary: {
+                  warnings: [],
+                },
+                started_at: '2026-07-09T05:00:00.000Z',
+                completed_at: '2026-07-09T05:01:00.000Z',
+                created_at: '2026-07-09T05:00:00.000Z',
+              },
+            ],
+            data_flows: [],
+          },
+        }}
+        available
+        isSellerAdmin
+        onOpenWizard={vi.fn()}
+        onDisconnect={vi.fn()}
+        onSyncNow={vi.fn()}
+        onSyncPhase={vi.fn()}
+        onStopSync={vi.fn()}
+        onRefresh={vi.fn()}
+        onRetryWebhooks={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Snapshots')).toBeInTheDocument();
+    expect(screen.getByText('KPI tables')).toBeInTheDocument();
+    expect(screen.getByText('Recommendations')).toBeInTheDocument();
+    expect(screen.getAllByText('Ready').length).toBeGreaterThan(0);
+  });
+
   it('starts sync now without sending the legacy scope field', async () => {
     apiFetchMock.mockImplementation(async () => jsonResponse(buildIntegrationsPayload({ includeSummary: true })));
 
@@ -400,13 +572,13 @@ describe('integrations settings client', () => {
       expect(apiPostMock).toHaveBeenCalledWith('/api/settings/integrations/sync', expect.objectContaining({
         tenant_integration_id: 'tenant-int-1',
         job_type: 'manual',
-        since: expect.any(String),
+        force_full_refresh: false,
       }));
     });
   });
 
   it('closes the setup wizard immediately after starting a sync', async () => {
-    apiFetchMock.mockResolvedValue(jsonResponse(buildIntegrationsPayload()));
+    apiFetchMock.mockImplementation(async () => jsonResponse(buildIntegrationsPayload()));
 
     let resolveSyncResponse!: (value: Response) => void;
     const syncResponse = new Promise<Response>((resolve) => {
@@ -459,16 +631,16 @@ describe('integrations settings client', () => {
 
     renderWithQueryClient(<IntegrationsSettingsClient />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Sync now for Customers' }));
-    expect(await screen.findByText('Choose a sync window for Customers')).toBeInTheDocument();
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Sync Again' }))[0]!);
+    expect(await screen.findByText('Choose a sync window for Reference Data')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Start phase sync' }));
 
     await waitFor(() => {
       expect(apiPostMock).toHaveBeenCalledWith('/api/settings/integrations/sync', expect.objectContaining({
         tenant_integration_id: 'tenant-int-1',
         job_type: 'manual',
-        phase: 'customers',
-        since: expect.any(String),
+        phase: 'reference',
+        force_full_refresh: false,
       }));
     });
   });
@@ -511,7 +683,7 @@ describe('integrations settings client', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: 'Sync Again' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sync now' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reconnect' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Refresh' })).not.toBeInTheDocument();
@@ -766,8 +938,8 @@ describe('integrations settings client', () => {
 
     expect(screen.getAllByText('Scheduled').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Manual').length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Scope Transactional/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Scope Reference/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Incremental · Since/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Manual · Since/i).length).toBeGreaterThan(0);
   });
 
   it('marks cancelled runs clearly in history', () => {
@@ -873,11 +1045,82 @@ describe('integrations settings client', () => {
       />,
     );
 
-    expect(screen.getByText('Transactions')).toBeInTheDocument();
+    expect(screen.getByText('Phase 2 — Transactions')).toBeInTheDocument();
     expect(screen.getByText('Estimates')).toBeInTheDocument();
     expect(screen.getByText('Sales Orders')).toBeInTheDocument();
     expect(screen.getByText('Invoices')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Sync now for Transactions' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Sync Again' }).length).toBeGreaterThan(0);
+  });
+
+  it('shows Run Analysis only for seller admins when aggregate maintenance needs attention', () => {
+    const integration = {
+      id: 'zoho_books',
+      display_name: 'Zoho Books',
+      description: 'Sync orders and invoices with Zoho Books.',
+      family_flag: 'ZOHO_INTEGRATION' as const,
+      connectivity_mode: 'cloud' as const,
+      auth_schema: { fields: [] },
+      capabilities: {
+        inbound_reference: ['brands', 'products', 'customers'],
+        inbound_transactional: ['estimates', 'orders', 'invoices'],
+      },
+      tenant_integration: {
+        id: 'tenant-int-1',
+        status: 'connected' as const,
+        health_status: 'ok' as const,
+        connected_at: '2026-06-10T11:00:00.000Z',
+        last_health_check_at: '2026-06-12T08:50:00.000Z',
+        config: { org_id: 'org-123' },
+        active_job: null,
+        sync_history: [],
+        data_flows: [],
+        aggregate_freshness: {
+          status: 'stale',
+          latest_aggregate_at: '2026-07-08T05:00:00.000Z',
+          latest_snapshot_refreshed_at: '2026-07-08T05:00:00.000Z',
+          latest_kpi_updated_at: '2026-07-08T05:00:00.000Z',
+          warning_message: 'Aggregate freshness is older than today.',
+        },
+      },
+    };
+
+    const { rerender } = render(
+      <ConnectedIntegrationCard
+        integration={integration as never}
+        available
+        isSellerAdmin={false}
+        onOpenWizard={vi.fn()}
+        onDisconnect={vi.fn()}
+        onSyncNow={vi.fn()}
+        onSyncPhase={vi.fn()}
+        onStopSync={vi.fn()}
+        onRefresh={vi.fn()}
+        onRetryWebhooks={vi.fn()}
+        onRepairAggregates={vi.fn()}
+        onRunAnalysis={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryAllByRole('button', { name: 'Run Analysis' })).toHaveLength(0);
+
+    rerender(
+      <ConnectedIntegrationCard
+        integration={integration as never}
+        available
+        isSellerAdmin
+        onOpenWizard={vi.fn()}
+        onDisconnect={vi.fn()}
+        onSyncNow={vi.fn()}
+        onSyncPhase={vi.fn()}
+        onStopSync={vi.fn()}
+        onRefresh={vi.fn()}
+        onRetryWebhooks={vi.fn()}
+        onRepairAggregates={vi.fn()}
+        onRunAnalysis={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByRole('button', { name: 'Run Analysis' }).length).toBeGreaterThan(0);
   });
 
   it('prefers item-based progress when the worker reports item totals', () => {
@@ -1071,9 +1314,10 @@ describe('integrations settings client', () => {
       />,
     );
 
-    expect(screen.getByText('Syncing…')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Sync now for Products' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Sync now for Products' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Stop sync' })).toBeInTheDocument();
+    const phaseButtons = screen.getAllByRole('button', { name: 'Sync Again' });
+    expect(phaseButtons.length).toBeGreaterThan(0);
+    expect(phaseButtons.every((button) => button.hasAttribute('disabled'))).toBe(true);
   });
 
   it('surfaces the latest sync failure reason', () => {

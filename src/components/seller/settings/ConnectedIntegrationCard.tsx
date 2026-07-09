@@ -9,6 +9,7 @@ import {
   History,
   Plug,
   RefreshCw,
+  Sparkles,
   Unplug,
   ServerCog,
   ShieldAlert,
@@ -489,6 +490,36 @@ function getStatusVariant(status: string) {
   }
 }
 
+function getAggregateFreshnessTone(status?: string | null) {
+  switch (status) {
+    case 'fresh':
+      return 'success' as const;
+    case 'warning':
+      return 'info' as const;
+    case 'stale':
+      return 'warning' as const;
+    case 'failed':
+      return 'danger' as const;
+    default:
+      return 'outline' as const;
+  }
+}
+
+function getAggregateFreshnessLabel(status?: string | null) {
+  switch (status) {
+    case 'fresh':
+      return 'Fresh';
+    case 'warning':
+      return 'Watching';
+    case 'stale':
+      return 'Needs analysis';
+    case 'failed':
+      return 'Repair required';
+    default:
+      return 'Unknown';
+  }
+}
+
 function getIntegrationIcon(integration: IntegrationCatalogItem) {
   if (integration.connectivity_mode === 'local') return Cable;
   if (integration.id.includes('inventory')) return Boxes;
@@ -889,10 +920,14 @@ interface ConnectedIntegrationCardProps {
   onStopSync: () => void;
   onRefresh: () => void;
   onRetryWebhooks: () => void;
+  onRepairAggregates: () => void;
+  onRunAnalysis: () => void;
   isSyncingNow?: boolean;
   syncTargetPhase?: string | null;
   isStoppingSync?: boolean;
   isRetryingWebhooks?: boolean;
+  isRepairingAggregates?: boolean;
+  isRunningAnalysis?: boolean;
 }
 
 export function ConnectedIntegrationCard({
@@ -906,10 +941,14 @@ export function ConnectedIntegrationCard({
   onStopSync,
   onRefresh,
   onRetryWebhooks,
+  onRepairAggregates,
+  onRunAnalysis,
   isSyncingNow = false,
   syncTargetPhase = null,
   isStoppingSync = false,
   isRetryingWebhooks = false,
+  isRepairingAggregates = false,
+  isRunningAnalysis = false,
 }: ConnectedIntegrationCardProps) {
   const [tab, setTab] = useState<TabId>('overview');
   const [syncDialog, setSyncDialog] = useState<{
@@ -940,6 +979,7 @@ export function ConnectedIntegrationCard({
   };
   const activeFlows = ti.data_flows.filter((flow) => flow.is_active);
   const webhookTelemetry = integration.webhook_telemetry ?? ti.webhook_telemetry ?? null;
+  const aggregateFreshness = integration.aggregate_freshness ?? ti.aggregate_freshness ?? null;
   const failedRun = latestFinishedRun?.status === 'failed' ? latestFinishedRun : null;
   const displayStatus = (() => {
     if (!available) return { label: 'Gated', variant: 'outline' as const };
@@ -1040,6 +1080,8 @@ export function ConnectedIntegrationCard({
   });
   const allEntityErrors = (integration.recent_entity_errors ?? ti.recent_entity_errors ?? []) as IntegrationEntityError[];
   const recentEntityErrors = allEntityErrors.slice(0, 4);
+  const canRunAnalysis = isSellerAdmin && available && !isSyncInProgress && !isRunningAnalysis;
+  const canRepairAggregates = isSellerAdmin && available && !isSyncInProgress && !isRepairingAggregates && Boolean(aggregateFreshness?.repair_job_id);
 
   function openFullSyncDialog() {
     setSyncDialog({ open: true, mode: 'full' });
@@ -1119,7 +1161,7 @@ export function ConnectedIntegrationCard({
       </header>
 
       <div className="space-y-5 px-5 py-5">
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-4">
           <div className="rounded-2xl border border-cream-200 bg-cream-50 p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">Health</div>
             <div className="mt-3 flex items-center gap-2 text-lg font-semibold text-cream-900">
@@ -1148,6 +1190,24 @@ export function ConnectedIntegrationCard({
             </div>
             <div className="mt-2 text-sm text-cream-700">Latest note: {latestSyncNote}</div>
           </div>
+
+          <div className="rounded-2xl border border-cream-200 bg-cream-50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-600">Aggregate Freshness</div>
+            <div className="mt-3 flex items-center gap-2 text-lg font-semibold text-cream-900">
+              <StatusPill
+                label={getAggregateFreshnessLabel(aggregateFreshness?.status)}
+                variant={getAggregateFreshnessTone(aggregateFreshness?.status)}
+              />
+            </div>
+            <div className="mt-2 text-sm text-cream-700">
+              {aggregateFreshness?.latest_aggregate_at
+                ? `Last rebuild ${formatDate(aggregateFreshness.latest_aggregate_at, true)}`
+                : 'No aggregate rebuild recorded yet'}
+            </div>
+            <div className="mt-1 text-xs text-cream-600">
+              Snapshots {formatDate(aggregateFreshness?.latest_snapshot_refreshed_at, true)} · KPI tables {formatDate(aggregateFreshness?.latest_kpi_updated_at, true)}
+            </div>
+          </div>
         </div>
 
         <DetailTabs
@@ -1170,6 +1230,47 @@ export function ConnectedIntegrationCard({
 
         {tab === 'overview' ? (
           <div className="space-y-4">
+            {aggregateFreshness?.warning_message ? (
+              <div
+                className={cn(
+                  'rounded-2xl px-4 py-4',
+                  aggregateFreshness.status === 'failed'
+                    ? 'border border-danger-200 bg-danger-50'
+                    : 'border border-warning-500/30 bg-warning-50',
+                )}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className={cn('text-sm font-semibold', aggregateFreshness.status === 'failed' ? 'text-danger-950' : 'text-warning-950')}>
+                      {aggregateFreshness.status === 'failed' ? 'Aggregate rebuild needs repair' : 'Aggregate freshness needs attention'}
+                    </div>
+                    <p className={cn('mt-1 text-sm leading-6', aggregateFreshness.status === 'failed' ? 'text-danger-900' : 'text-warning-900')}>
+                      {aggregateFreshness.warning_message}
+                    </p>
+                    {aggregateFreshness.last_retried_at ? (
+                      <p className={cn('mt-1 text-xs', aggregateFreshness.status === 'failed' ? 'text-danger-700' : 'text-warning-700')}>
+                        Last repair attempt {formatDate(aggregateFreshness.last_retried_at, true)}
+                      </p>
+                    ) : null}
+                  </div>
+                  {isSellerAdmin && available ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {canRepairAggregates ? (
+                        <Button type="button" variant="outline" size="sm" onClick={onRepairAggregates} disabled={isRepairingAggregates}>
+                          <ShieldAlert className="h-3.5 w-3.5" />
+                          {isRepairingAggregates ? 'Repairing…' : 'Repair Aggregates'}
+                        </Button>
+                      ) : null}
+                      <Button type="button" variant="accent" size="sm" onClick={onRunAnalysis} disabled={!canRunAnalysis}>
+                        <Sparkles className="h-3.5 w-3.5" />
+                        {isRunningAnalysis ? 'Running…' : 'Run Analysis'}
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
             {currentRun ? (
               <details className="group rounded-2xl border border-cream-200 bg-white">
                 <summary className="cursor-pointer list-none px-4 py-4">
@@ -1333,6 +1434,20 @@ export function ConnectedIntegrationCard({
                             <RefreshCw className="h-3.5 w-3.5" />
                             {isSyncingNow && syncTargetPhase === phaseGroup.id ? 'Syncing…' : 'Sync Again'}
                           </Button>
+                        ) : phaseGroup.id === 'analysis' && isSellerAdmin && available ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              onRunAnalysis();
+                            }}
+                            disabled={!canRunAnalysis}
+                          >
+                            <Sparkles className="h-3.5 w-3.5" />
+                            {isRunningAnalysis ? 'Running…' : 'Run Analysis'}
+                          </Button>
                         ) : null}
                       </div>
                     </summary>
@@ -1341,6 +1456,9 @@ export function ConnectedIntegrationCard({
                       <div className="space-y-2">
                         {phaseGroup.id === 'analysis' ? (
                           <div className="space-y-2">
+                            <div className="rounded-lg border border-cream-200 bg-white px-3 py-3 text-sm text-cream-700">
+                              Rebuild snapshots and KPI tables from the rows already synced into DealFlow. Use this after a repaired sync or any time seller metrics look stale; it does not pull fresh source rows.
+                            </div>
                             {analysisRunning ? (
                               <div className="flex items-center gap-2 text-sm text-info-700">
                                 <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -1364,10 +1482,13 @@ export function ConnectedIntegrationCard({
                                   <span className="text-cream-900">Recommendations</span>
                                   <span className="text-success-700 font-medium">Ready</span>
                                 </div>
+                                <div className="rounded-lg border border-cream-200 bg-white px-3 py-2 text-xs text-cream-600">
+                                  Snapshots {formatDate(aggregateFreshness?.latest_snapshot_refreshed_at, true)} · KPI tables {formatDate(aggregateFreshness?.latest_kpi_updated_at, true)}
+                                </div>
                               </>
                             ) : (
                               <div className="text-sm text-cream-700">
-                                Triggered automatically after Phase 2 completes.
+                                Triggered automatically after Phase 2 completes. You can also run it manually without re-importing Zoho data.
                               </div>
                             )}
                           </div>
