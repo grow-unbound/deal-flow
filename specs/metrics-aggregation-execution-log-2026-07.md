@@ -1629,3 +1629,291 @@ npx vitest run src/tests/categories-landing-route.test.ts src/tests/products-lan
   - warehouses
   - buyer-app seller landing
 - Those surfaces are now explicitly reviewed and inventoried, but follow-up normalization work would still be beneficial if the goal is to make every landing strictly conform to the ideal `summary query + rows query + row-metrics query` contract without any raw-read fallback.
+
+## Phase 6 Buyer-Home Completion
+
+Date: 2026-07-09
+Owner: Master session with DB and buyer-home worker subagents
+Status: Implemented and verified
+
+### Goal
+
+- Complete the buyer-home aggregate hardening pass on top of the new `prod_bootstrap.sql` baseline without replaying older metrics migrations.
+- Preserve the existing buyer-home response contract while fixing status-helper drift, YTD retention/rebuild safety, explicit second-hop scoping, and IST current-day catalog visibility semantics.
+
+### Subagent owners
+
+- Explorer/orchestration:
+  - Master session
+- DB worker:
+  - new migration on top of the bootstrap baseline
+- Buyer-home worker:
+  - buyer-home route, helper, and targeted tests
+- Master-session integration:
+  - migration reconciliation
+  - execution-log closeout
+  - targeted verification
+
+### Reused from `prod_bootstrap.sql`
+
+- Existing aggregate/read-model baseline retained:
+  - `app.buyer_current_snapshot`
+  - `app.kpi_buyers_daily`
+  - `app.get_buyer_home_summary(...)`
+  - `app.ensure_buyer_metric_snapshot_cron_scheduled()`
+  - `app.refresh_all_buyer_metric_snapshots()`
+- Buyer-home API response shape stayed unchanged.
+- Buyer-home financial cards continue to read from the aggregate contract instead of raw invoice scans.
+
+### Changed files and objects
+
+- Migration:
+  - [20260709055452_buyer_home_phase6_completion.sql](/Users/phanikrovvidi/projects/deal-flow/supabase/migrations/20260709055452_buyer_home_phase6_completion.sql)
+- Buyer-home route and helper:
+  - [app/api/buyer/home/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/buyer/home/route.ts)
+  - [src/lib/server/buyer-access.ts](/Users/phanikrovvidi/projects/deal-flow/src/lib/server/buyer-access.ts)
+- Tests:
+  - [src/tests/buyer-home-route.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/buyer-home-route.test.ts)
+  - [src/tests/buyer-access.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/buyer-access.test.ts)
+  - [src/tests/buyer-home-page.test.tsx](/Users/phanikrovvidi/projects/deal-flow/src/tests/buyer-home-page.test.tsx)
+  - [src/tests/settings/buyer-home-phase6-migration.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/settings/buyer-home-phase6-migration.test.ts)
+
+### Done
+
+- Rewrote `app.refresh_buyer_current_snapshot(...)` to use shared helper predicates instead of hardcoded buyer-home status lists:
+  - `app.invoice_status_has_receivable(...)`
+  - `app.invoice_is_overdue(...)`
+  - `app.order_status_is_open(...)`
+- Made `app.prune_kpi_daily_old_rows(...)` preserve `app.kpi_buyers_daily` rows for at least the current IST calendar year so buyer-home YTD metrics are not truncated by the generic 90-day path.
+- Widened buyer-specific rebuild coverage inside `app.post_sync_rebuild(...)` so buyer KPI rebuilds cover at least the current IST year-to-date window, without widening unrelated aggregate families.
+- Added idempotent buyer-metric cron scheduling bootstrap via `SELECT app.ensure_buyer_metric_snapshot_cron_scheduled();` in the Phase 6 migration.
+- Cleaned stale bootstrap residue around `trg_refresh_customers_snapshot()` only when `app.refresh_customers_snapshot(uuid)` is absent, instead of assuming the old compatibility path can be removed everywhere.
+- Tightened buyer-home second-hop service-role reads:
+  - `campaign_items` now scopes through `campaigns!inner(tenant_id)`
+  - `order_items` now scopes through `orders!inner(tenant_id, buyer_id)`
+- Kept the bounded recent-order preview explicit with local constants:
+  - 20 recent orders
+  - 5 preview products
+  - 5 promotions
+- Standardized buyer-visible catalog expiry to current IST calendar-day semantics in `getVisibleBuyerCatalogs(...)` so catalogs remain visible through the current `Asia/Kolkata` business day.
+
+### Verification
+
+- Passed targeted Phase 6 regression coverage with:
+
+```bash
+pnpm vitest run src/tests/buyer-home-route.test.ts src/tests/buyer-access.test.ts src/tests/buyer-home-page.test.tsx src/tests/settings/buyer-home-phase6-migration.test.ts
+```
+
+- Result:
+  - 4 test files passed
+  - 9 tests passed
+
+### Remaining compatibility bridges
+
+- `customers_snapshot` readers are still not assumed to be fully gone repo-wide; this phase only neutralizes the stale bootstrap trigger/function residue when the compatibility refresh function is absent.
+- Buyer-home still intentionally keeps recommendations, promotions, and recent activity on their existing non-aggregate helper paths.
+- Buyer-home financial cards remain aggregate-backed, but the app does not yet have full SQL-function verification of `get_buyer_home_summary(...)` against live fixtures in CI.
+
+### Risks / assumptions
+
+- Authoritative linked Supabase project remains `ytlusgmlqxuosifeapkz`.
+- This turn did not apply or push the new migration against a live database; verification is code/test-based only.
+- Final invoice taxonomy remains a product-level assumption; this phase only aligned buyer-home current-state reads to the existing shared helper predicates.
+- The bootstrap cleanup assumes dropping the orphaned customers-snapshot trigger helper is safe when `refresh_customers_snapshot(uuid)` is absent, because the active buyer aggregate contract is owned by `buyers_snapshot`/`dispatch_from_buyers`.
+
+## Phase 5 Detail Read-Model Completion
+
+### Goal
+
+Complete the seller detail-page aggregate sweep on top of `supabase/prod_bootstrap.sql`, while carrying forward only the already-landed Phase 6 buyer-home migration as dependency context rather than replaying it.
+
+### Subagent owners
+
+- Master session:
+  - repo audit
+  - phase integration
+  - verification
+  - execution-log closeout
+- Detail surface investigator:
+  - detail route inventory and carry-over audit
+- Location/warehouse worker:
+  - location detail and warehouse aggregate cleanup
+
+### Migration baseline note
+
+- No new Phase 5 migration was added in this pass.
+- `supabase/prod_bootstrap.sql` remains the schema baseline for the new Supabase project.
+- [20260709055452_buyer_home_phase6_completion.sql](/Users/phanikrovvidi/projects/deal-flow/supabase/migrations/20260709055452_buyer_home_phase6_completion.sql) remains the authoritative Phase 6 buyer-home correction and was treated as existing prior work, not replayed.
+
+### Completed surfaces
+
+- Brand detail:
+  - detail KPIs and performance now read from `kpi_brand_daily` / `kpi_product_daily` instead of page-scoped order reductions in the route.
+- Product detail:
+  - detail meta/performance now read from `kpi_product_daily` for period trends and preserve invoice-velocity `days_cover` semantics with `null` when velocity is insufficient.
+- Category detail:
+  - headline/trend metrics remain on `kpi_category_daily`
+  - row-level product KPI enrichment is now bounded to category product IDs instead of broad unfiltered scans
+- Location detail:
+  - header/meta and tab badge metrics read from `locations_snapshot`, `buyers_snapshot`, `kpi_location_daily`, `kpi_orders_daily`, `kpi_estimates_daily`, and `kpi_invoices_daily`
+  - relational detail rows remain server-bounded for orders, estimates, invoices, customers, and inventory
+- Warehouse detail:
+  - header posture stays on `warehouses_snapshot`
+  - trend/fallback posture reads use `kpi_warehouse_daily`
+- Customer detail:
+  - header KPIs continue to use `buyers_snapshot` / `kpi_buyers_daily`
+  - monthly performance trend now reads from `kpi_buyers_daily` rather than rebuilding from raw orders
+- Cohort detail:
+  - engagement metrics now use `app.campaign_views`
+  - no PostHog dependency remains in the detail summary path
+- Campaign/catalog detail:
+  - detail metrics use `app.campaign_views` and canonical document dates
+- Price-list detail:
+  - kept on current header-stat scope only; no new trend model introduced
+
+### Tests and verification
+
+- Passed targeted verification:
+
+```bash
+npx vitest run src/__tests__/cohorts/[id]/route.test.ts src/__tests__/catalogs/[id]/route.test.ts src/__tests__/brands/[id]/route.test.ts src/tests/customers/[id].test.tsx src/tests/settings/buyer-home-phase6-migration.test.ts
+git diff --check
+```
+
+- Result:
+  - 5 test files passed
+  - 18 tests passed
+
+### Test maintenance landed with this phase
+
+- Updated [src/__tests__/catalogs/[id]/route.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/__tests__/catalogs/[id]/route.test.ts) to provide a React `cache` mock required by the current catalog detail route imports.
+- Updated [src/tests/customers/[id].test.tsx](/Users/phanikrovvidi/projects/deal-flow/src/tests/customers/[id].test.tsx) to match the current buyer-user row rendering (`Amit Sharma`) and current detail-tab action set.
+
+### Deferred / intentionally out of scope
+
+- Estimate, sales-order, and invoice detail pages still do not expose new KPI/performance strips; Phase 5 kept them out of scope.
+- Price-list detail still uses relational header-stat derivation rather than a dedicated aggregate family because there is no performance surface yet.
+- Customer detail still keeps brand-mix, top-SKU, and activity/event sections on bounded relational reads where there is no dedicated buyer-grain aggregate yet.
+
+### Risks / follow-up
+
+- Some detail tabs still use bounded relational reads for non-headline row content; this phase standardized KPI/meta/performance sources first.
+- Invoice taxonomy remains dependent on the existing shared helper predicates and unresolved product semantics for any future invoice-detail KPI expansion.
+- Repo verification in this turn was application-test based only; no live DB push or remote schema replay was performed.
+
+## Phase 7: Metrics Reconciliation, Monitoring, And Ad Hoc Analysis
+
+### Goal
+
+Complete the Phase 7 operator layer on top of the Phase 1-6 aggregate baseline:
+
+- add bounded tenant repair and ad hoc analysis RPCs
+- expose one canonical aggregate freshness read model in seller settings/integrations
+- surface post-sync rebuild failures as operator warnings even when sync jobs otherwise completed
+- add seller-admin actions for `Repair Aggregates` and `Run Analysis`
+- add reconciliation-oriented Phase 7 regression coverage
+
+### Subagent owners
+
+- Master session:
+  - orchestration
+  - diff review
+  - verification
+  - execution-log closeout
+- Investigator:
+  - audited existing aggregate rebuild hooks, sync warning flow, and integrations settings read path
+- Builder A:
+  - owned the Phase 7 SQL migration
+- Builder B:
+  - owned seller settings/integrations API + UI wiring
+- Test worker:
+  - owned Vitest and SQL reconciliation additions
+
+### Migration baseline note
+
+- `supabase/migrations/20260709000001_prod_bootstrap.sql` remained the schema baseline.
+- Phase 7 was added as one forward migration:
+  - [20260709112450_metrics_phase7_repair_and_freshness.sql](/Users/phanikrovvidi/projects/deal-flow/supabase/migrations/20260709112450_metrics_phase7_repair_and_freshness.sql)
+- Earlier archived migrations were treated as reference only.
+
+### Completed changes
+
+- Added new Phase 7 database primitives:
+  - `app.rebuild_metrics_for_tenant_range(...)`
+  - internal `app._run_metrics_analysis_for_tenant_range(...)`
+  - public `app.run_metrics_analysis_for_tenant(...)`
+  - `app.get_tenant_aggregate_freshness(p_tenant_id uuid)`
+- Kept repair and analysis tenant-wide only for this phase, with bounded windows and compact result rows.
+- Made repair selectively rebuild snapshots and/or KPI families based on operator input.
+- Switched integrations freshness loading to the canonical database RPC instead of page-local table probing.
+- Normalized `progress.meta.post_sync_rebuild_failed` into the existing `summary.warnings` contract so completed sync jobs still surface rebuild failures.
+- Added seller-admin POST routes for:
+  - [repair-aggregates/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/settings/integrations/repair-aggregates/route.ts)
+  - [run-analysis/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/settings/integrations/run-analysis/route.ts)
+- Ensured `Run Analysis` calls only the new ad hoc analysis RPC and does not synthesize sync-job orchestration.
+- Added operator-facing aggregate freshness blocks on connected integration cards, including:
+  - latest aggregate timestamps
+  - stale/failed warnings
+  - admin-only `Repair Aggregates`
+  - admin-only `Run Analysis`
+- Added compact maintenance dialogs with bounded inputs:
+  - repair defaults to the last 90 days with snapshot/KPI toggles
+  - analysis defaults to 90 days and explicitly states it runs independently of prior sync phases
+- Added new SQL reconciliation coverage in:
+  - [metrics_aggregation_phase7_reconciliation.sql](/Users/phanikrovvidi/projects/deal-flow/tests/metrics_aggregation_phase7_reconciliation.sql)
+- Added/updated targeted Vitest coverage for:
+  - migration regression
+  - integrations settings rendering and warnings
+  - admin-only analysis visibility
+  - new repair/run-analysis routes
+
+### Files changed
+
+- Database:
+  - [20260709112450_metrics_phase7_repair_and_freshness.sql](/Users/phanikrovvidi/projects/deal-flow/supabase/migrations/20260709112450_metrics_phase7_repair_and_freshness.sql)
+  - [metrics_aggregation_phase7_reconciliation.sql](/Users/phanikrovvidi/projects/deal-flow/tests/metrics_aggregation_phase7_reconciliation.sql)
+- Seller settings/integrations:
+  - [repair-aggregates/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/settings/integrations/repair-aggregates/route.ts)
+  - [run-analysis/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/settings/integrations/run-analysis/route.ts)
+  - [server.ts](/Users/phanikrovvidi/projects/deal-flow/src/lib/integrations/server.ts)
+  - [types/integrations.ts](/Users/phanikrovvidi/projects/deal-flow/src/types/integrations.ts)
+  - [useIntegrationsSettings.ts](/Users/phanikrovvidi/projects/deal-flow/src/hooks/useIntegrationsSettings.ts)
+  - [IntegrationsSettingsClient.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/settings/IntegrationsSettingsClient.tsx)
+  - [ConnectedIntegrationCard.tsx](/Users/phanikrovvidi/projects/deal-flow/src/components/seller/settings/ConnectedIntegrationCard.tsx)
+- Tests:
+  - [metrics-phase7-migration.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/settings/metrics-phase7-migration.test.ts)
+  - [integrations-sync-route.test.ts](/Users/phanikrovvidi/projects/deal-flow/src/tests/settings/integrations-sync-route.test.ts)
+  - [integrations-page.test.tsx](/Users/phanikrovvidi/projects/deal-flow/src/tests/settings/integrations-page.test.tsx)
+
+### Verification
+
+- Passed targeted Phase 7 and representative aggregate-backed regression coverage:
+
+```bash
+pnpm vitest run src/tests/settings/integrations-page.test.tsx src/tests/settings/integrations-sync-route.test.ts src/tests/settings/metrics-phase7-migration.test.ts
+pnpm vitest run src/tests/customers-landing-api.test.ts src/tests/products-landing-api.test.ts src/tests/buyer-home-route.test.ts
+npm run type-check
+git diff --check
+```
+
+- Result:
+  - 6 test files passed
+  - 38 tests passed
+  - `type-check` passed
+  - `git diff --check` passed
+
+- SQL reconciliation suite authoring completed, but execution was blocked locally by the sandboxed Supabase CLI trying to write `~/.supabase/telemetry.json*` outside the workspace:
+
+```bash
+npx supabase test db --file tests/metrics_aggregation_phase7_reconciliation.sql
+```
+
+- The command failed with `EPERM` on `~/.supabase/telemetry.json.tmp...`, and the follow-up escalated retry could not be approved in this session because of an approval/usage limiter outside the repo.
+
+### Remaining risks / assumptions
+
+- Phase 7 code and Vitest coverage are verified locally, but the new SQL reconciliation suite still needs one successful `supabase test db` run in an environment where the CLI can write its home-directory state.
+- Repair and ad hoc analysis remain tenant-wide only in this phase; narrower entity-scope maintenance was intentionally deferred.
+- This phase does not add a second scheduler or standalone monitoring page; settings/integrations remains the only operator surface.
+- Existing unrelated dirty-worktree files were left untouched outside the Phase 7 implementation slice.

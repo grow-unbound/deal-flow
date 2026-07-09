@@ -367,38 +367,35 @@ async function dispatchPhase(opts: {
 // Await with a 5s abort — ensures the HTTP request is at least sent (TCP
 // connection to Supabase established) before the current invocation returns.
 // No EdgeRuntime dependency; works at any chain depth including nested waitUntil contexts.
-async function dispatchContinuation(payload: ReturnType<typeof buildContinuationPayload>): Promise<void> {
+function dispatchContinuation(payload: ReturnType<typeof buildContinuationPayload>): void {
   const secret = getDispatchSecret();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5_000);
-  try {
-    await fetch(`${getFunctionsBaseUrl()}/integrations-sync`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(secret ? { 'x-integrations-dispatch-secret': secret } : {}),
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-  } catch {
-    // AbortError = 5s timeout: the request was sent, Supabase is processing it.
-    // NetworkError: log it; the reaper will rescue the pending slave after 10 min.
-    console.error('[integrations-sync] continuation dispatch timed-out or failed — reaper will rescue if needed');
-  } finally {
-    clearTimeout(timeout);
-  }
+  const p = fetch(`${getFunctionsBaseUrl()}/integrations-sync`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(secret ? { 'x-integrations-dispatch-secret': secret } : {}),
+    },
+    body: JSON.stringify(payload),
+  }).catch((err) => {
+    // Network error: the pending slave will be rescued by the reaper after 10 min.
+    console.error('[integrations-sync] continuation dispatch failed:', err instanceof Error ? err.message : err);
+  });
+
+  // Keep the edge-function runtime alive long enough for the request to be sent.
+  const runtime = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
+  runtime?.waitUntil(p);
 }
 
 async function isPhaseAlreadyComplete(
   admin: ReturnType<typeof createAdminClient>,
-  opts: { tenantIntegrationId: string; phase: string; excludeJobId: string },
+  opts: { tenantIntegrationId: string; phase: string; excludeJobId: string; masterJobId: string },
 ): Promise<boolean> {
   const { data } = await admin
     .schema('app')
     .from('integration_sync_jobs')
     .select('status')
     .eq('tenant_integration_id', opts.tenantIntegrationId)
+    .eq('master_job_id', opts.masterJobId)
     .eq('phase', opts.phase)
     .neq('id', opts.excludeJobId)
     .order('created_at', { ascending: false })
@@ -535,7 +532,7 @@ async function selfChain(
     nextPage: opts.pageFrom,
   });
 
-  await dispatchContinuation(buildContinuationPayload({
+  dispatchContinuation(buildContinuationPayload({
     tenantIntegrationId: integration.id,
     ctx,
     phase: opts.phase,
@@ -589,6 +586,7 @@ async function runOrchestratorLoop(state: OrchestratorState): Promise<Response> 
       tenantIntegrationId: integration.id,
       phase,
       excludeJobId: slaveId,
+      masterJobId: ctx.masterJobId,
     })) {
       await markSlaveSkipped(admin, slaveId, phase);
       results.push({ ok: true, phase, records_synced: 0, has_more: false, next_cursor: null });
@@ -661,7 +659,7 @@ async function runOrchestratorLoop(state: OrchestratorState): Promise<Response> 
           pageFrom: 1,
         });
         await updateMasterJob(admin, ctx.masterJobId, { status: 'paused', currentPhase: nextPhase, nextPage: 1 });
-        await dispatchContinuation(buildContinuationPayload({
+        dispatchContinuation(buildContinuationPayload({
           tenantIntegrationId: integration.id,
           ctx,
           phase: nextPhase,

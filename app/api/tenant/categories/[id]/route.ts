@@ -83,7 +83,6 @@ export async function GET(
     prevKpiRes,
     trendRes,
     productsRes,
-    unitsRes,
     activityRes,
   ] = await Promise.all([
     // Current period GMV + buyers (for meta_strip_4)
@@ -118,12 +117,6 @@ export async function GET(
       .is('deleted_at', null)
       .order('name', { ascending: true }),
 
-    // Last 30d units per product in this category
-    db.schema('app').from('kpi_product_daily')
-      .select('tenant_product_id, units_sold, gmv')
-      .eq('tenant_id', tenantId)
-      .gte('day', thirtyDaysStr),
-
     // Activity log for this category
     db.schema('app').from('audit_log')
       .select('id, action, actor_user_id, ts, diff, tenant_users(display_name)')
@@ -133,6 +126,10 @@ export async function GET(
       .order('ts', { ascending: false })
       .limit(50),
   ]);
+
+  if (currentKpiRes.error || prevKpiRes.error || trendRes.error || productsRes.error || activityRes.error) {
+    return jsonError(500, 'Failed to fetch category detail', 'ERROR');
+  }
 
   // Aggregate current period
   const currentRows = (currentKpiRes.data ?? []) as Array<{ gmv: number; units_sold: number; buyers_count: number }>;
@@ -178,14 +175,52 @@ export async function GET(
     tenant_inventory: Array<{ qty_available: number; reorder_point: number | null }> | null;
   };
   const rawProducts = (productsRes.data ?? []) as RawProduct[];
+  const productIds = rawProducts.map((product) => product.id);
 
-  // Build units/gmv MTD per product
+  const [currentProductKpiRes, prevProductKpiRes, velocityProductKpiRes] = await Promise.all([
+    productIds.length
+      ? db.schema('app').from('kpi_product_daily')
+          .select('tenant_product_id, units_sold, revenue')
+          .eq('tenant_id', tenantId)
+          .in('tenant_product_id', productIds)
+          .gte('day', period.current_start.split('T')[0])
+          .lt('day', period.current_end_exclusive.split('T')[0])
+      : Promise.resolve({ data: [] }),
+    productIds.length
+      ? db.schema('app').from('kpi_product_daily')
+          .select('tenant_product_id, revenue')
+          .eq('tenant_id', tenantId)
+          .in('tenant_product_id', productIds)
+          .gte('day', period.previous_start.split('T')[0])
+          .lt('day', period.previous_end_exclusive.split('T')[0])
+      : Promise.resolve({ data: [] }),
+    productIds.length
+      ? db.schema('app').from('kpi_product_daily')
+          .select('tenant_product_id, units_sold')
+          .eq('tenant_id', tenantId)
+          .in('tenant_product_id', productIds)
+          .gte('day', thirtyDaysStr)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  if (currentProductKpiRes.error || prevProductKpiRes.error || velocityProductKpiRes.error) {
+    return jsonError(500, 'Failed to fetch category detail', 'ERROR');
+  }
+
+  const unitsCurrentByProduct = new Map<string, number>();
+  const gmvCurrentByProduct = new Map<string, number>();
+  const gmvPrevByProduct = new Map<string, number>();
   const units30dByProduct = new Map<string, number>();
-  const gmvMtdByProduct = new Map<string, number>();
-  const rawUnits = (unitsRes.data ?? []) as Array<{ tenant_product_id: string; units_sold: number; gmv: number }>;
-  for (const row of rawUnits) {
+
+  for (const row of (currentProductKpiRes.data ?? []) as Array<{ tenant_product_id: string; units_sold: number; revenue: number }>) {
+    unitsCurrentByProduct.set(row.tenant_product_id, (unitsCurrentByProduct.get(row.tenant_product_id) ?? 0) + Number(row.units_sold ?? 0));
+    gmvCurrentByProduct.set(row.tenant_product_id, (gmvCurrentByProduct.get(row.tenant_product_id) ?? 0) + Number(row.revenue ?? 0));
+  }
+  for (const row of (prevProductKpiRes.data ?? []) as Array<{ tenant_product_id: string; revenue: number }>) {
+    gmvPrevByProduct.set(row.tenant_product_id, (gmvPrevByProduct.get(row.tenant_product_id) ?? 0) + Number(row.revenue ?? 0));
+  }
+  for (const row of (velocityProductKpiRes.data ?? []) as Array<{ tenant_product_id: string; units_sold: number }>) {
     units30dByProduct.set(row.tenant_product_id, (units30dByProduct.get(row.tenant_product_id) ?? 0) + Number(row.units_sold ?? 0));
-    gmvMtdByProduct.set(row.tenant_product_id, (gmvMtdByProduct.get(row.tenant_product_id) ?? 0) + Number(row.gmv ?? 0));
   }
 
   let active_sku_count = 0;
@@ -194,15 +229,19 @@ export async function GET(
   let uncovered_sku_count = 0;
 
   // Brand grouping for brands tab
-  const brandMap = new Map<string, { name: string; initials: string; sku_count: number; gmv_mtd: number; units_mtd: number }>();
+  const brandMap = new Map<string, { name: string; initials: string; sku_count: number; gmv_mtd: number; gmv_prev: number; units_mtd: number }>();
 
   const products = rawProducts.map((p) => {
-    const inv = p.tenant_inventory?.[0];
-    const qty = inv ? Number(inv.qty_available ?? 0) : 0;
-    const rp = inv?.reorder_point != null ? Number(inv.reorder_point) : null;
+    const qty = (p.tenant_inventory ?? []).reduce((sum, row) => sum + Number(row.qty_available ?? 0), 0);
+    const rp = (p.tenant_inventory ?? []).reduce<number | null>((max, row) => {
+      const reorderPoint = row.reorder_point != null ? Number(row.reorder_point) : null;
+      if (reorderPoint == null) return max;
+      return max == null ? reorderPoint : Math.max(max, reorderPoint);
+    }, null);
     const units30d = units30dByProduct.get(p.id) ?? 0;
     const days_cover = units30d > 0 ? Math.round((qty * 30) / units30d) : qty > 0 ? null : null;
-    const gmv_prod = gmvMtdByProduct.get(p.id) ?? 0;
+    const gmv_prod = gmvCurrentByProduct.get(p.id) ?? 0;
+    const units_mtd = unitsCurrentByProduct.get(p.id) ?? 0;
 
     active_sku_count++;
     if (qty <= 0) oos_sku_count++;
@@ -212,12 +251,13 @@ export async function GET(
     const brandId = p.tenant_brand_id ?? 'unknown';
     const brandName = p.tenant_brands?.name ?? 'Unknown Brand';
     if (!brandMap.has(brandId)) {
-      brandMap.set(brandId, { name: brandName, initials: getInitials(brandName), sku_count: 0, gmv_mtd: 0, units_mtd: 0 });
+      brandMap.set(brandId, { name: brandName, initials: getInitials(brandName), sku_count: 0, gmv_mtd: 0, gmv_prev: 0, units_mtd: 0 });
     }
     const brand = brandMap.get(brandId)!;
     brand.sku_count++;
     brand.gmv_mtd += gmv_prod;
-    brand.units_mtd += units30d;
+    brand.gmv_prev += gmvPrevByProduct.get(p.id) ?? 0;
+    brand.units_mtd += units_mtd;
 
     return {
       id: p.id,
@@ -227,7 +267,7 @@ export async function GET(
       brand_name: brandName,
       on_hand: qty,
       days_cover,
-      units_mtd: units30d,
+      units_mtd: units_mtd,
       gmv_mtd: gmv_prod,
       is_active: p.is_active,
     };
@@ -239,7 +279,7 @@ export async function GET(
     initials: b.initials,
     sku_count: b.sku_count,
     gmv_mtd: b.gmv_mtd,
-    growth_pct: 0, // growth per brand not computed here for simplicity
+    growth_pct: b.gmv_prev > 0 ? Math.round(((b.gmv_mtd - b.gmv_prev) / b.gmv_prev) * 100) : b.gmv_mtd > 0 ? 100 : 0,
     is_active: true,
   })).sort((a, b) => b.gmv_mtd - a.gmv_mtd);
 

@@ -16,6 +16,7 @@ import {
 import { SellerTopbar } from '@/components/layout/SellerTopbar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
 import {
   Dialog,
@@ -28,6 +29,7 @@ import {
 } from '@/components/ui/dialog';
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import {
   type IntegrationCatalogItem,
@@ -52,6 +54,11 @@ type WizardState = {
   importStartDate: string;
 };
 
+type MaintenanceDialogState = {
+  integrationId: string;
+  mode: 'repair' | 'analysis';
+};
+
 const WIZARD_STEPS = ['What you get', 'Connect', 'Start syncing'] as const;
 
 interface IntegrationsSettingsClientProps {
@@ -66,6 +73,17 @@ function defaultImportStartDate(): string {
   }
   const fyStartYear = month >= 3 ? now.getFullYear() : now.getFullYear() - 1;
   return `${fyStartYear}-04-01`;
+}
+
+function defaultMetricsMaintenanceRange() {
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(start.getDate() - 89);
+
+  return {
+    start_date: start.toISOString().slice(0, 10),
+    end_date: end.toISOString().slice(0, 10),
+  };
 }
 
 function labelize(value: string) {
@@ -130,6 +148,10 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
     isStoppingSync,
     retryWebhookSetup,
     isRetryingWebhookSetup,
+    repairAggregates,
+    runAnalysis,
+    isRepairingAggregates,
+    isRunningAnalysis,
   } = useIntegrationsSettings(initialData);
 
   const [isOAuthRedirecting, setIsOAuthRedirecting] = useState(false);
@@ -138,6 +160,11 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
   const [disconnectDialogIntegration, setDisconnectDialogIntegration] = useState<IntegrationCatalogItem | null>(null);
   const [stopSyncDialogIntegration, setStopSyncDialogIntegration] = useState<IntegrationCatalogItem | null>(null);
   const [syncingPhaseTarget, setSyncingPhaseTarget] = useState<string | null>(null);
+  const [maintenanceTarget, setMaintenanceTarget] = useState<MaintenanceDialogState | null>(null);
+  const [repairRange, setRepairRange] = useState(defaultMetricsMaintenanceRange());
+  const [repairIncludeSnapshots, setRepairIncludeSnapshots] = useState(true);
+  const [repairIncludeKpis, setRepairIncludeKpis] = useState(true);
+  const [analysisDays, setAnalysisDays] = useState('90');
 
   const zohoEnabled = useFlagState('ZOHO_INTEGRATION');
   const tallyEnabled = useFlagState('TALLY_INTEGRATION');
@@ -198,6 +225,13 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
     () => integrations.find((integration) => integration.id === wizard.integrationId) ?? null,
     [integrations, wizard.integrationId],
   );
+  const maintenanceIntegration = useMemo(
+    () =>
+      maintenanceTarget
+        ? integrations.find((integration) => integration.id === maintenanceTarget.integrationId) ?? null
+        : null,
+    [integrations, maintenanceTarget],
+  );
   const wizardTopology = useMemo(() => {
     if (!wizardIntegration) return null;
     try {
@@ -217,6 +251,18 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
       ...current,
       credentials: { ...current.credentials, [key]: value },
     }));
+  }
+
+  function openMaintenanceDialog(integration: IntegrationCatalogItem, mode: MaintenanceDialogState['mode']) {
+    setRepairRange(defaultMetricsMaintenanceRange());
+    setRepairIncludeSnapshots(true);
+    setRepairIncludeKpis(true);
+    setAnalysisDays('90');
+    setMaintenanceTarget({ integrationId: integration.id, mode });
+  }
+
+  function closeMaintenanceDialog() {
+    setMaintenanceTarget(null);
   }
 
   async function runStartImport() {
@@ -320,6 +366,66 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
     await retryWebhookSetup({
       tenant_integration_id: tenantIntegrationId,
     });
+  }
+
+  async function runRepairAggregates(integration: IntegrationCatalogItem, options: {
+    start_date: string;
+    end_date: string;
+    include_snapshots: boolean;
+    include_kpis: boolean;
+  }) {
+    const tenantIntegrationId = integration.tenant_integration?.id;
+    if (!tenantIntegrationId) return;
+    setMaintenanceTarget({ integrationId: integration.id, mode: 'repair' });
+    try {
+      await repairAggregates({
+        tenant_integration_id: tenantIntegrationId,
+        start_date: options.start_date,
+        end_date: options.end_date,
+        include_snapshots: options.include_snapshots,
+        include_kpis: options.include_kpis,
+      });
+      closeMaintenanceDialog();
+    } finally {
+      setMaintenanceTarget((current) =>
+        current?.integrationId === integration.id && current.mode === 'repair' ? null : current,
+      );
+    }
+  }
+
+  async function runAdHocAnalysis(integration: IntegrationCatalogItem, days: number) {
+    const tenantIntegrationId = integration.tenant_integration?.id;
+    if (!tenantIntegrationId) return;
+    setMaintenanceTarget({ integrationId: integration.id, mode: 'analysis' });
+    try {
+      await runAnalysis({
+        tenant_integration_id: tenantIntegrationId,
+        days,
+      });
+      closeMaintenanceDialog();
+    } finally {
+      setMaintenanceTarget((current) =>
+        current?.integrationId === integration.id && current.mode === 'analysis' ? null : current,
+      );
+    }
+  }
+
+  async function confirmMaintenanceAction() {
+    if (!maintenanceTarget || !maintenanceIntegration) return;
+
+    if (maintenanceTarget.mode === 'repair') {
+      await runRepairAggregates(maintenanceIntegration, {
+        start_date: repairRange.start_date,
+        end_date: repairRange.end_date,
+        include_snapshots: repairIncludeSnapshots,
+        include_kpis: repairIncludeKpis,
+      });
+      return;
+    }
+
+    const parsedDays = Number.parseInt(analysisDays, 10);
+    const safeDays = Number.isFinite(parsedDays) ? Math.min(Math.max(parsedDays, 1), 365) : 90;
+    await runAdHocAnalysis(maintenanceIntegration, safeDays);
   }
 
   async function startZohoOAuth() {
@@ -499,10 +605,14 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                 onStopSync={() => void runStopSyncIntegration(integration)}
                 onRefresh={() => void refetch()}
                 onRetryWebhooks={() => void runRetryWebhooks(integration)}
+                onRepairAggregates={() => openMaintenanceDialog(integration, 'repair')}
+                onRunAnalysis={() => openMaintenanceDialog(integration, 'analysis')}
                 isSyncingNow={isSyncingNow}
                 syncTargetPhase={syncingPhaseTarget}
                 isStoppingSync={isStoppingSync}
                 isRetryingWebhooks={isRetryingWebhookSetup}
+                isRepairingAggregates={isRepairingAggregates && maintenanceTarget?.integrationId === integration.id && maintenanceTarget.mode === 'repair'}
+                isRunningAnalysis={isRunningAnalysis && maintenanceTarget?.integrationId === integration.id && maintenanceTarget.mode === 'analysis'}
               />
             ))}
           </div>
@@ -625,6 +735,136 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                 disabled={isStoppingSync}
               >
                 {isStoppingSync ? 'Stopping…' : 'Stop sync'}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(maintenanceTarget)}
+        onOpenChange={(open) => {
+          if (!open) closeMaintenanceDialog();
+        }}
+      >
+        <DialogContent className="max-w-xl border-cream-200 bg-white">
+          <DialogHeader>
+            <DialogTitle className="font-display text-cream-900">
+              {maintenanceTarget?.mode === 'repair' ? 'Repair Aggregates' : 'Run Analysis'}
+            </DialogTitle>
+            <DialogDescription className="text-cream-700">
+              {maintenanceTarget?.mode === 'repair'
+                ? 'Rebuild snapshots and KPI families for a bounded tenant date range.'
+                : 'Run only the aggregate analysis layer on data already available for this tenant.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="space-y-4">
+            {maintenanceIntegration ? (
+              <div className="rounded-2xl border border-cream-200 bg-cream-50 px-4 py-4 text-sm leading-6 text-cream-800">
+                <div className="font-semibold text-cream-950">{maintenanceIntegration.display_name}</div>
+                <div className="mt-1">
+                  {maintenanceTarget?.mode === 'repair'
+                    ? 'Use this when aggregate freshness is stale or a post-sync rebuild failed.'
+                    : 'This runs safely on current tenant data and does not wait for or require earlier sync phases to succeed.'}
+                </div>
+              </div>
+            ) : null}
+
+            {maintenanceTarget?.mode === 'repair' ? (
+              <>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <DatePicker
+                    label="Start date"
+                    value={repairRange.start_date}
+                    onChange={(value) => setRepairRange((current) => ({ ...current, start_date: value }))}
+                    maxDate={new Date(repairRange.end_date)}
+                  />
+                  <DatePicker
+                    label="End date"
+                    value={repairRange.end_date}
+                    onChange={(value) => setRepairRange((current) => ({ ...current, end_date: value }))}
+                    minDate={new Date(repairRange.start_date)}
+                  />
+                </div>
+                <div className="grid gap-3 rounded-2xl border border-cream-200 bg-white px-4 py-4">
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="repair-include-snapshots"
+                      checked={repairIncludeSnapshots}
+                      onCheckedChange={(checked) => setRepairIncludeSnapshots(checked === true)}
+                    />
+                    <div>
+                      <Label htmlFor="repair-include-snapshots" className="text-sm font-medium text-cream-900">
+                        Refresh snapshots
+                      </Label>
+                      <p className="mt-1 text-sm text-cream-600">
+                        Recompute current-state snapshot tables once for this tenant before KPI rebuilds.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="repair-include-kpis"
+                      checked={repairIncludeKpis}
+                      onCheckedChange={(checked) => setRepairIncludeKpis(checked === true)}
+                    />
+                    <div>
+                      <Label htmlFor="repair-include-kpis" className="text-sm font-medium text-cream-900">
+                        Refresh KPI tables
+                      </Label>
+                      <p className="mt-1 text-sm text-cream-600">
+                        Rebuild daily KPI families across the selected date range.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="grid gap-2">
+                <Label htmlFor="analysis-days" className="text-sm font-medium text-cream-900">
+                  Lookback window (days)
+                </Label>
+                <Input
+                  id="analysis-days"
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={analysisDays}
+                  onChange={(event) => setAnalysisDays(event.target.value)}
+                />
+                <p className="text-sm text-cream-600">
+                  Defaults to the last 90 IST days. This runs analysis only and does not replay upstream sync jobs.
+                </p>
+              </div>
+            )}
+          </DialogBody>
+          <DialogFooter className="justify-between">
+            <div className="text-sm text-cream-600">
+              {maintenanceTarget?.mode === 'repair'
+                ? 'Bound the range to the smallest window that repairs the stale aggregates.'
+                : 'Use this for ad hoc checks when raw data is present but prior orchestration was interrupted.'}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="ghost" onClick={closeMaintenanceDialog}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="accent"
+                onClick={() => void confirmMaintenanceAction()}
+                disabled={
+                  maintenanceTarget?.mode === 'repair'
+                    ? !repairRange.start_date || !repairRange.end_date
+                    : !analysisDays.trim()
+                }
+              >
+                {maintenanceTarget?.mode === 'repair'
+                  ? isRepairingAggregates
+                    ? 'Repairing…'
+                    : 'Run repair'
+                  : isRunningAnalysis
+                    ? 'Running…'
+                    : 'Run analysis'}
               </Button>
             </div>
           </DialogFooter>

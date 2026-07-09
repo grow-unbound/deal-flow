@@ -53,9 +53,9 @@ function monthBounds(now = new Date()) {
   };
 }
 
-function monthKey(dateIso: string): string {
-  const d = new Date(dateIso);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+function isOperationalInvoiceStatus(status: string | null | undefined) {
+  const value = (status ?? '').toLowerCase();
+  return !['draft', 'void', 'cancelled', 'rejected', 'archived'].includes(value);
 }
 
 export async function GET(
@@ -192,18 +192,58 @@ export async function GET(
 
     const now = new Date();
     const { startIso, nextIso, prevStartIso, prevEndIso } = monthBounds(now);
-    const daysInMonth = Math.max(1, now.getUTCDate());
+    const currentStartDay = startIso.slice(0, 10);
+    const currentEndDay = nextIso.slice(0, 10);
+    const previousStartDay = prevStartIso.slice(0, 10);
+    const previousEndDay = prevEndIso.slice(0, 10);
+    const trendStartDay = new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), 1)).toISOString().slice(0, 10);
+    const trailing30Day = new Date(now.getTime() - (29 * 24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
 
-    const lookbackStart = new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), 1)).toISOString();
-    const [{ data: orders }, { data: auditRows }, { data: priceLists }, { data: priceListItems }, { data: assignments }, { data: cohorts }, { data: buyers }] = await Promise.all([
+    const [
+      currentKpiRes,
+      previousKpiRes,
+      trailingKpiRes,
+      trendKpiRes,
+      auditRowsRes,
+      priceListsRes,
+      priceListItemsRes,
+      assignmentsRes,
+      cohortsRes,
+      buyersRes,
+      orderItemsRes,
+      recentInvoicesRes,
+    ] = await Promise.all([
       db
         .schema('app')
-        .from('orders')
-        .select('id, status, placed_at, buyer_id')
+        .from('kpi_product_daily')
+        .select('units_sold, revenue')
         .eq('tenant_id', claims.tenant_id)
-        .neq('status', 'cancelled')
-        .is('deleted_at', null)
-        .gte('placed_at', lookbackStart),
+        .eq('tenant_product_id', id)
+        .gte('day', currentStartDay)
+        .lt('day', currentEndDay),
+      db
+        .schema('app')
+        .from('kpi_product_daily')
+        .select('units_sold')
+        .eq('tenant_id', claims.tenant_id)
+        .eq('tenant_product_id', id)
+        .gte('day', previousStartDay)
+        .lt('day', previousEndDay),
+      db
+        .schema('app')
+        .from('kpi_product_daily')
+        .select('units_sold, revenue')
+        .eq('tenant_id', claims.tenant_id)
+        .eq('tenant_product_id', id)
+        .gte('day', trailing30Day),
+      db
+        .schema('app')
+        .from('kpi_product_daily')
+        .select('day, units_sold, revenue')
+        .eq('tenant_id', claims.tenant_id)
+        .eq('tenant_product_id', id)
+        .gte('day', trendStartDay)
+        .order('day', { ascending: true }),
       db
         .schema('app')
         .from('audit_log')
@@ -240,40 +280,101 @@ export async function GET(
         .select('id, business_name, geography')
         .eq('tenant_id', claims.tenant_id)
         .is('deleted_at', null),
+      db
+        .schema('app')
+        .from('order_items')
+        .select('order_id, tenant_product_id, qty, line_total, unit_price')
+        .eq('tenant_product_id', id)
+        .is('deleted_at', null),
+      db
+        .schema('app')
+        .from('invoices')
+        .select('id, status')
+        .eq('tenant_id', claims.tenant_id)
+        .gte('invoice_date', trailing30Day)
+        .lt('invoice_date', new Date(now.getTime() + (24 * 60 * 60 * 1000)).toISOString().slice(0, 10))
+        .is('deleted_at', null),
     ]);
 
-    const orderIds = (orders ?? []).map((row: { id: string }) => row.id);
+    if (
+      currentKpiRes.error ||
+      previousKpiRes.error ||
+      trailingKpiRes.error ||
+      trendKpiRes.error ||
+      auditRowsRes.error ||
+      priceListsRes.error ||
+      priceListItemsRes.error ||
+      assignmentsRes.error ||
+      cohortsRes.error ||
+      buyersRes.error ||
+      orderItemsRes.error ||
+      recentInvoicesRes.error
+    ) {
+      return NextResponse.json({ error: 'Failed to fetch product detail' }, { status: 500 });
+    }
 
-    const { data: orderItems } = orderIds.length
-      ? await db
-          .schema('app')
-          .from('order_items')
-          .select('order_id, tenant_product_id, qty, line_total, unit_price')
-          .in('order_id', orderIds)
-          .eq('tenant_product_id', id)
-          .is('deleted_at', null)
-      : { data: [] };
+    const orderIds = Array.from(new Set(((orderItemsRes.data ?? []) as Array<{ order_id: string }>).map((row) => row.order_id)));
+    const recentInvoiceIds = ((recentInvoicesRes.data ?? []) as Array<{ id: string; status: string | null }>)
+      .filter((row) => isOperationalInvoiceStatus(row.status))
+      .map((row) => row.id);
+
+    const [ordersRes, invoiceItemsRes] = await Promise.all([
+      orderIds.length
+        ? db
+            .schema('app')
+            .from('orders')
+            .select('id, status, placed_at, buyer_id')
+            .eq('tenant_id', claims.tenant_id)
+            .in('id', orderIds)
+            .neq('status', 'cancelled')
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [] }),
+      recentInvoiceIds.length
+        ? db
+            .schema('app')
+            .from('invoice_items')
+            .select('invoice_id, tenant_product_id, qty')
+            .eq('tenant_product_id', id)
+            .in('invoice_id', recentInvoiceIds)
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    if (ordersRes.error || invoiceItemsRes.error) {
+      return NextResponse.json({ error: 'Failed to fetch product detail' }, { status: 500 });
+    }
 
     const orderById = new Map<string, { id: string; placed_at: string | null; buyer_id: string | null }>(
-      ((orders ?? []) as Array<{ id: string; placed_at: string | null; buyer_id: string | null }>).map((row) => [row.id, row]),
+      ((ordersRes.data ?? []) as Array<{ id: string; placed_at: string | null; buyer_id: string | null }>).map((row) => [row.id, row]),
     );
     const buyerById = new Map<string, { business_name: string; geography: { city?: string; state?: string } | null }>(
-      ((buyers ?? []) as Array<{ id: string; business_name: string; geography: { city?: string; state?: string } | null }>).map((row) => [
+      ((buyersRes.data ?? []) as Array<{ id: string; business_name: string; geography: { city?: string; state?: string } | null }>).map((row) => [
         row.id,
         { business_name: row.business_name, geography: row.geography },
       ]),
     );
 
-    let unitsMtd = 0;
-    let unitsPrev = 0;
-    let unitsLast30 = 0;
-    let revenueLast30 = 0;
+    const unitsMtd = ((currentKpiRes.data ?? []) as Array<{ units_sold: number | null; revenue: number | null }>)
+      .reduce((sum, row) => sum + Number(row.units_sold ?? 0), 0);
+    const unitsPrev = ((previousKpiRes.data ?? []) as Array<{ units_sold: number | null }>)
+      .reduce((sum, row) => sum + Number(row.units_sold ?? 0), 0);
+    const trailingKpis = (trailingKpiRes.data ?? []) as Array<{ units_sold: number | null; revenue: number | null }>;
+    const unitsLast30 = trailingKpis.reduce((sum, row) => sum + Number(row.units_sold ?? 0), 0);
+    const revenueLast30 = trailingKpis.reduce((sum, row) => sum + Number(row.revenue ?? 0), 0);
     let lastOrderAt: string | null = null;
     let lastOrderBuyer: string | null = null;
     const monthlyUnitsMap = new Map<string, { units: number; revenue: number }>();
     const buyerUnitsMap = new Map<string, number>();
 
-    for (const item of (orderItems ?? []) as Array<{
+    for (const row of (trendKpiRes.data ?? []) as Array<{ day: string; units_sold: number | null; revenue: number | null }>) {
+      const key = row.day.slice(0, 7);
+      const currentMonth = monthlyUnitsMap.get(key) ?? { units: 0, revenue: 0 };
+      currentMonth.units += Number(row.units_sold ?? 0);
+      currentMonth.revenue += Number(row.revenue ?? 0);
+      monthlyUnitsMap.set(key, currentMonth);
+    }
+
+    for (const item of (orderItemsRes.data ?? []) as Array<{
       order_id: string;
       qty: number | null;
       line_total: number | null;
@@ -283,26 +384,12 @@ export async function GET(
       if (!order?.placed_at) continue;
       const placedAt = order.placed_at;
       const qty = Number(item.qty ?? 0);
-      const lineTotal = Number(item.line_total ?? qty * Number(item.unit_price ?? 0));
-
-      if (placedAt >= startIso && placedAt < nextIso) unitsMtd += qty;
-      if (placedAt >= prevStartIso && placedAt < prevEndIso) unitsPrev += qty;
 
       const placedTs = new Date(placedAt).getTime();
       if (!lastOrderAt || placedTs > new Date(lastOrderAt).getTime()) {
         lastOrderAt = placedAt;
         lastOrderBuyer = order.buyer_id ? (buyerById.get(order.buyer_id)?.business_name ?? null) : null;
       }
-      if (placedTs >= now.getTime() - 30 * 24 * 60 * 60 * 1000) {
-        unitsLast30 += qty;
-        revenueLast30 += lineTotal;
-      }
-
-      const orderMonth = monthKey(placedAt);
-      const currentMonth = monthlyUnitsMap.get(orderMonth) ?? { units: 0, revenue: 0 };
-      currentMonth.units += qty;
-      currentMonth.revenue += lineTotal;
-      monthlyUnitsMap.set(orderMonth, currentMonth);
       if (order.buyer_id) {
         buyerUnitsMap.set(order.buyer_id, (buyerUnitsMap.get(order.buyer_id) ?? 0) + qty);
       }
@@ -310,8 +397,12 @@ export async function GET(
 
     const growthPct = unitsPrev > 0 ? ((unitsMtd - unitsPrev) / unitsPrev) * 100 : unitsMtd > 0 ? 100 : 0;
     const onHand = (inventoryRows ?? []).reduce((sum: number, row: any) => sum + Number(row.qty_available ?? 0), 0);
-    const avgDaily = unitsMtd / daysInMonth;
-    const daysCover = onHand === 0 ? 0 : avgDaily <= 0 ? 999 : Math.max(0, Math.round(onHand / avgDaily));
+    const invoiceUnits30d = ((invoiceItemsRes.data ?? []) as Array<{ qty: number | null }>).reduce(
+      (sum, row) => sum + Number(row.qty ?? 0),
+      0,
+    );
+    const trailingInvoiceVelocity = invoiceUnits30d / 30;
+    const daysCover = onHand === 0 ? 0 : trailingInvoiceVelocity > 0 ? Math.max(0, Math.round(onHand / trailingInvoiceVelocity)) : null;
     const sellThrough = onHand + unitsLast30 > 0 ? Math.round((unitsLast30 / (onHand + unitsLast30)) * 100) : 0;
 
     const monthSeries = Array.from({ length: 12 }).map((_, i) => {
@@ -338,17 +429,17 @@ export async function GET(
       .sort((a, b) => b.units - a.units)
       .slice(0, 4);
 
-    const cohortById = new Map((cohorts ?? []).map((row: any) => [row.id, row.name]));
+    const cohortById = new Map((cohortsRes.data ?? []).map((row: any) => [row.id, row.name]));
     const assignmentsByList = new Map<string, Array<{ id: string; target_type: string; target_id: string | null }>>();
-    for (const assignment of assignments ?? []) {
+    for (const assignment of assignmentsRes.data ?? []) {
       const bucket = assignmentsByList.get(assignment.price_list_id) ?? [];
       bucket.push(assignment);
       assignmentsByList.set(assignment.price_list_id, bucket);
     }
 
-    const pricingRows = (priceListItems ?? [])
+    const pricingRows = (priceListItemsRes.data ?? [])
       .map((item: any) => {
-        const pl = (priceLists ?? []).find((row: any) => row.id === item.price_list_id);
+        const pl = (priceListsRes.data ?? []).find((row: any) => row.id === item.price_list_id);
         if (!pl) return null;
         const listAssignments = assignmentsByList.get(pl.id) ?? [];
         const targets =
@@ -392,11 +483,11 @@ export async function GET(
       });
     }
 
-    const priceListItemIds = new Set((priceListItems ?? []).map((row: any) => row.id));
-    const priceListIds = new Set((priceListItems ?? []).map((row: any) => row.price_list_id));
+    const priceListItemIds = new Set((priceListItemsRes.data ?? []).map((row: any) => row.id));
+    const priceListIds = new Set((priceListItemsRes.data ?? []).map((row: any) => row.price_list_id));
     const inventoryEntityIds = new Set([id, ...(inventoryRows ?? []).map((row: any) => row.id).filter(Boolean)]);
     const orderIdSet = new Set(orderIds);
-    const activity = (auditRows ?? [])
+    const activity = (auditRowsRes.data ?? [])
       .filter((row: any) => {
         if (row.entity_type === 'tenant_product') return row.entity_id === id;
         if (row.entity_type === 'tenant_inventory') return inventoryEntityIds.has(row.entity_id);
@@ -417,8 +508,24 @@ export async function GET(
       }));
 
     const displayName = product.name_override ?? masterProduct?.name ?? product.internal_sku;
-    const statusTone = !product.is_active ? 'neutral' : onHand === 0 ? 'danger' : daysCover < 14 ? 'warning' : 'success';
-    const statusLabel = !product.is_active ? 'Inactive' : onHand === 0 ? 'Out of stock' : daysCover < 14 ? 'Low stock' : 'On pace';
+    const statusTone = !product.is_active
+      ? 'neutral'
+      : onHand === 0
+        ? 'danger'
+        : daysCover != null && daysCover < 14
+          ? 'warning'
+          : daysCover == null
+            ? 'neutral'
+            : 'success';
+    const statusLabel = !product.is_active
+      ? 'Inactive'
+      : onHand === 0
+        ? 'Out of stock'
+        : daysCover != null && daysCover < 14
+          ? 'Low stock'
+          : daysCover == null
+            ? 'Insufficient velocity'
+            : 'On pace';
 
     const detailResponse = {
       header: {

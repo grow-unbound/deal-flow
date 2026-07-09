@@ -9,6 +9,10 @@ import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visi
 import { getVisibleBuyerCatalogs, requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { supabaseAdmin } from '@/lib/supabase';
 
+const RECENT_ORDER_PREVIEW_LIMIT = 20;
+const ORDER_AGAIN_PREVIEW_LIMIT = 5;
+const PROMOTIONS_PREVIEW_LIMIT = 5;
+
 export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeResponse | { error: string }>> {
   try {
     const profile = await requireBuyerAccessProfile(request);
@@ -67,7 +71,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
         .eq('buyer_id', buyerId)
         .is('deleted_at', null)
         .order('placed_at', { ascending: false })
-        .limit(20),
+        .limit(RECENT_ORDER_PREVIEW_LIMIT),
     ]);
 
     const queryError =
@@ -101,7 +105,8 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
       const itemsRes = await supabaseAdmin
         .schema('app')
         .from('campaign_items')
-        .select('campaign_id')
+        .select('campaign_id, campaigns!inner(tenant_id)')
+        .eq('campaigns.tenant_id', tenantId)
         .in('campaign_id', catalogIds)
         .is('deleted_at', null);
       if (itemsRes.error) throw new Error(itemsRes.error.message);
@@ -111,7 +116,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
     }
 
     const promotionsPreview = visibleCatalogs
-      .slice(0, 5)
+      .slice(0, PROMOTIONS_PREVIEW_LIMIT)
       .map((catalog) => ({
         id: catalog.id,
         name: catalog.name,
@@ -127,7 +132,9 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
       ? await supabaseAdmin
           .schema('app')
           .from('order_items')
-          .select('order_id, tenant_product_id')
+          .select('order_id, tenant_product_id, orders!inner(tenant_id, buyer_id)')
+          .eq('orders.tenant_id', tenantId)
+          .eq('orders.buyer_id', buyerId)
           .in('order_id', orderIds)
           .is('deleted_at', null)
       : { data: [] as Array<{ order_id: string; tenant_product_id: string }>, error: null };
@@ -136,7 +143,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
     }
     const previewProductIds = Array.from(
       new Set(((recentOrderItemsRes.data ?? []) as Array<{ order_id: string; tenant_product_id: string }>).map((row) => row.tenant_product_id)),
-    ).slice(0, 5);
+    ).slice(0, ORDER_AGAIN_PREVIEW_LIMIT);
     const reorderPreviewMap = await assembleBuyerCatalogItemsForProductIds(supabaseAdmin as any, {
       tenantId,
       buyerId,

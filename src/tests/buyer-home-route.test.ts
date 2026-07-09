@@ -5,6 +5,15 @@ const loadBuyerActivityFeedMock = vi.fn();
 const getVisibleBuyerCatalogsMock = vi.fn();
 const assembleBuyerCatalogItemsForProductIdsMock = vi.fn();
 const recordBuyerAppActivitySafeMock = vi.fn();
+const campaignItemsSelectMock = vi.fn();
+const campaignItemsTenantEqMock = vi.fn();
+const campaignItemsInMock = vi.fn();
+const campaignItemsIsMock = vi.fn();
+const orderItemsSelectMock = vi.fn();
+const orderItemsTenantEqMock = vi.fn();
+const orderItemsBuyerEqMock = vi.fn();
+const orderItemsInMock = vi.fn();
+const orderItemsIsMock = vi.fn();
 
 vi.mock('@/lib/server/buyer-access', () => ({
   requireBuyerAccessProfile: (...args: unknown[]) => requireBuyerAccessProfileMock(...args),
@@ -70,11 +79,15 @@ vi.mock('@/lib/supabase', () => ({
 
         if (schemaName === 'app' && tableName === 'order_items') {
           return {
-            select: vi.fn(() => ({
-              in: vi.fn(() => ({
-                is: vi.fn(async () => ({
-                  data: [{ order_id: 'ord-1', tenant_product_id: 'tp-1' }],
-                  error: null,
+            select: orderItemsSelectMock.mockImplementation(() => ({
+              eq: orderItemsTenantEqMock.mockImplementation(() => ({
+                eq: orderItemsBuyerEqMock.mockImplementation(() => ({
+                  in: orderItemsInMock.mockImplementation(() => ({
+                    is: orderItemsIsMock.mockImplementation(async () => ({
+                      data: [{ order_id: 'ord-1', tenant_product_id: 'tp-1' }],
+                      error: null,
+                    })),
+                  })),
                 })),
               })),
             })),
@@ -83,11 +96,13 @@ vi.mock('@/lib/supabase', () => ({
 
         if (schemaName === 'app' && tableName === 'campaign_items') {
           return {
-            select: vi.fn(() => ({
-              in: vi.fn(() => ({
-                is: vi.fn(async () => ({
-                  data: [{ campaign_id: 'promo-1' }],
-                  error: null,
+            select: campaignItemsSelectMock.mockImplementation(() => ({
+              eq: campaignItemsTenantEqMock.mockImplementation(() => ({
+                in: campaignItemsInMock.mockImplementation(() => ({
+                  is: campaignItemsIsMock.mockImplementation(async () => ({
+                    data: [{ campaign_id: 'promo-1' }],
+                    error: null,
+                  })),
                 })),
               })),
             })),
@@ -133,9 +148,18 @@ describe('buyer home route', () => {
     getVisibleBuyerCatalogsMock.mockReset();
     assembleBuyerCatalogItemsForProductIdsMock.mockReset();
     recordBuyerAppActivitySafeMock.mockReset();
+    campaignItemsSelectMock.mockReset();
+    campaignItemsTenantEqMock.mockReset();
+    campaignItemsInMock.mockReset();
+    campaignItemsIsMock.mockReset();
+    orderItemsSelectMock.mockReset();
+    orderItemsTenantEqMock.mockReset();
+    orderItemsBuyerEqMock.mockReset();
+    orderItemsInMock.mockReset();
+    orderItemsIsMock.mockReset();
   });
 
-  it('returns the new dashboard aggregate shape', async () => {
+  it('returns the new dashboard aggregate shape and scopes second-hop lookups', async () => {
     requireBuyerAccessProfileMock.mockResolvedValue({
       context: { tenant_id: 'tenant-1', mode: 'buyer' },
       buyer: { id: 'buyer-1', business_name: 'Rajan Stores', contact_name: 'Rajan', credit_limit: 50000 },
@@ -166,6 +190,13 @@ describe('buyer home route', () => {
     expect(body.latest_promotions_preview[0].name).toBe('June Promo');
     expect(body.order_again_preview[0].display_name).toBe('Bullet Camera');
     expect(body.recent_activity.items).toHaveLength(1);
+    expect(campaignItemsSelectMock).toHaveBeenCalledWith('campaign_id, campaigns!inner(tenant_id)');
+    expect(campaignItemsTenantEqMock).toHaveBeenCalledWith('campaigns.tenant_id', 'tenant-1');
+    expect(campaignItemsInMock).toHaveBeenCalledWith('campaign_id', ['promo-1']);
+    expect(orderItemsSelectMock).toHaveBeenCalledWith('order_id, tenant_product_id, orders!inner(tenant_id, buyer_id)');
+    expect(orderItemsTenantEqMock).toHaveBeenCalledWith('orders.tenant_id', 'tenant-1');
+    expect(orderItemsBuyerEqMock).toHaveBeenCalledWith('orders.buyer_id', 'buyer-1');
+    expect(orderItemsInMock).toHaveBeenCalledWith('order_id', ['ord-1']);
     expect(recordBuyerAppActivitySafeMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

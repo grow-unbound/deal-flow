@@ -260,7 +260,8 @@ export async function updatePhaseJob(
     update.error_log = { message: patch.error_message, timestamp: new Date().toISOString() };
   }
 
-  await admin.schema('app').from('integration_sync_jobs').update(update).eq('id', jobId);
+  const { error } = await admin.schema('app').from('integration_sync_jobs').update(update).eq('id', jobId);
+  if (error) throw new Error(`updatePhaseJob(${jobId}, ${patch.status}) failed: ${error.message}`);
 }
 
 // ── Tenant integration status ─────────────────────────────────────────────────
