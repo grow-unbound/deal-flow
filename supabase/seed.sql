@@ -20,6 +20,14 @@ UPDATE app.tenant_brands SET default_cohort_id = NULL WHERE default_cohort_id IS
 UPDATE app.buyers SET default_cohort_id = NULL WHERE default_cohort_id IS NOT NULL;
 
 TRUNCATE
+  app.whatsapp_credit_transactions,
+  app.whatsapp_send_queue,
+  app.whatsapp_messages,
+  app.whatsapp_broadcasts,
+  app.whatsapp_platform_config,
+  app.whatsapp_templates,
+  app.whatsapp_rate_card,
+  app.whatsapp_credit_pricing,
   app.integration_webhook_event_changes,
   app.integration_webhook_events,
   app.integration_webhook_errors,
@@ -135,7 +143,7 @@ INSERT INTO auth.users (
   crypt('Welcome@123', gen_salt('bf')),
   now(),
   '9490744841', now(),
-  '{"provider":"email","providers":["email","phone"]}',
+  '{"provider":"phone","providers":["email","phone"]}',
   '{"name":"Phani Seller"}',
   now(), now(), '', '', '', ''
 ),
@@ -148,7 +156,7 @@ INSERT INTO auth.users (
   crypt('Welcome@123', gen_salt('bf')),
   now(),
   '8985987350', now(),
-  '{"provider":"email","providers":["email","phone"]}',
+  '{"provider":"phone","providers":["email","phone"]}',
   '{"name":"Phani Buyer"}',
   now(), now(), '', '', '', ''
 );
@@ -183,6 +191,37 @@ INSERT INTO auth.identities (
     'email',          'ksssp.iiith@gmail.com',
     'email_verified', true,
     'phone_verified', false
+  ),
+  now(), now(), now()
+);
+
+-- Phone identities — required for WhatsApp OTP login (GoTrue phone provider).
+-- provider_id must be E.164. identity_data.phone must match.
+INSERT INTO auth.identities (
+  id, provider_id, user_id, provider, identity_data,
+  last_sign_in_at, created_at, updated_at
+) VALUES
+(
+  gen_random_uuid(),
+  '9490744841',
+  '550e8400-e29b-41d4-a716-446655440701'::uuid,
+  'phone',
+  jsonb_build_object(
+    'sub',           '550e8400-e29b-41d4-a716-446655440701',
+    'phone',         '9490744841',
+    'phone_verified', true
+  ),
+  now(), now(), now()
+),
+(
+  gen_random_uuid(),
+  '8985987350',
+  '550e8400-e29b-41d4-a716-446655440702'::uuid,
+  'phone',
+  jsonb_build_object(
+    'sub',           '550e8400-e29b-41d4-a716-446655440702',
+    'phone',         '8985987350',
+    'phone_verified', true
   ),
   now(), now(), now()
 );
@@ -383,6 +422,15 @@ INSERT INTO catalog.integration_types (
 -- ──────────────────────────────────────────────────────────────
 -- 5. Sample tenant (TechWave Electronics distributor)
 -- ──────────────────────────────────────────────────────────────
+
+-- Platform tenant — owns OTP billing wallet and platform-managed WhatsApp templates.
+-- UUID must match WHATSAPP_PLATFORM_TENANT_ID env var.
+INSERT INTO app.tenants (id, slug, business_name, subdomain, gstin, primary_state, plan, whatsapp_credits_balance)
+VALUES (
+  '550e8400-e29b-41d4-a716-446655440500'::uuid,
+  'platform-tenant', 'Platform Tenant', 'platform',
+  NULL, 'KA', 'enterprise', 99999
+);
 
 INSERT INTO app.tenants (id, slug, business_name, subdomain, gstin, primary_state, plan)
 VALUES (
@@ -630,7 +678,70 @@ VALUES (
 );
 
 -- ──────────────────────────────────────────────────────────────
--- 12. Snapshots + daily KPI tables (derived from base seed)
+-- 12. WhatsApp config — rate card, credit pricing, platform templates
+-- ──────────────────────────────────────────────────────────────
+
+INSERT INTO app.whatsapp_credit_pricing (credit_price_inr)
+VALUES (0.25);
+
+INSERT INTO app.whatsapp_rate_card (meta_category, meta_cost_inr, credits_per_message)
+VALUES
+  ('utility',        0.1150, 1),
+  ('authentication', 0.1150, 1),
+  ('marketing',      0.8631, 4);
+
+-- Platform-managed transactional templates (already approved with Meta).
+-- tenant_id = NULL means these are global/platform templates.
+INSERT INTO app.whatsapp_templates (
+  tenant_id, meta_template_name, meta_category, use_case, locale,
+  body, variables, button_config, approval_status, is_platform_managed
+) VALUES
+(
+  NULL, 'login_otp', 'authentication', 'otp_login', 'en_US',
+  E'OTP Code: {{1}}. This is your OTP code for {{2}}. For your security, do not share this code.\n\nIf you have any concerns or questions, contact us at {{3}}.',
+  '[{"key":"otp","description":"OTP code"},{"key":"product_name","description":"Product/app name"},{"key":"support_number","description":"Support contact number"}]'::jsonb,
+  NULL, 'approved', true
+),
+(
+  NULL, 'order_received_seller', 'utility', 'order_notification', 'en',
+  E'Hello {{seller_location}} team,\n\nThere is a new order for your location. Here are the details.\n\nCustomer Name: {{buyer_name}}\nPhone Number: {{buyer_phone_number}}\nOrder Number: {{order_number}}\nTotal Amount: ₹{{total_amount}} ({{item_count}} items)\n\nPlease contact the buyer in the next {{eta}} hours.',
+  '[{"key":"seller_location","description":"Seller location/warehouse name"},{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"buyer_phone_number","description":"Buyer phone number"},{"key":"order_number","description":"Order reference number"},{"key":"total_amount","description":"Order total in INR"},{"key":"item_count","description":"Number of line items"},{"key":"eta","description":"Response time commitment in hours"}]'::jsonb,
+  '{"type":"url","url_template":"https://app.yukti.so/estimates/{{1}}","variable_source":"order_id"}'::jsonb,
+  'approved', true
+),
+(
+  NULL, 'order_received_buyer', 'utility', 'order_notification', 'en',
+  E'Hello {{buyer_name}},\n\nWe received your order for {{item_count}} items. Here are your details.\n\nOrder Number: {{order_number}}\nTotal Amount: ₹{{total_amount}}\n\nOur {{seller_name}} team from {{seller_location}} will contact you in {{eta}} hours.',
+  '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"item_count","description":"Number of line items"},{"key":"order_number","description":"Order reference number"},{"key":"total_amount","description":"Order total in INR"},{"key":"seller_name","description":"Seller business name"},{"key":"seller_location","description":"Seller location/warehouse name"},{"key":"eta","description":"Expected response time in hours"}]'::jsonb,
+  '{"type":"url","url_template":"https://app.yukti.so/buy/estimates/{{1}}","variable_source":"order_id"}'::jsonb,
+  'approved', true
+),
+(
+  NULL, 'request_received_seller', 'utility', 'estimate_notification', 'en',
+  E'Hello {{seller_location}} team,\n\nThere is a new request for your location. Here are the details.\n\nCustomer Name: {{buyer_name}}\nPhone Number: {{buyer_phone_number}}\nEstimate Number: {{request_number}}\nTotal Amount: ₹{{total_amount}} ({{item_count}} items)\n\nPlease contact the buyer in the next {{eta}} hours.',
+  '[{"key":"seller_location","description":"Seller location/warehouse name"},{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"buyer_phone_number","description":"Buyer phone number"},{"key":"request_number","description":"Estimate/request reference number"},{"key":"total_amount","description":"Request total in INR"},{"key":"item_count","description":"Number of line items"},{"key":"eta","description":"Response time commitment in hours"}]'::jsonb,
+  '{"type":"url","url_template":"https://app.yukti.so/orders/{{1}}","variable_source":"estimate_id"}'::jsonb,
+  'approved', true
+),
+(
+  NULL, 'request_received_buyer', 'utility', 'estimate_notification', 'en',
+  E'Hello {{buyer_name}},\n\nWe received your request for {{item_count}} items. Here are your details.\n\nRequest Number: {{estimate_number}}\nTotal Amount: ₹{{total_amount}}\n\nOur {{seller_name}} team from {{seller_location}} will contact you in {{eta}} hours.',
+  '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"item_count","description":"Number of line items"},{"key":"estimate_number","description":"Estimate/request reference number"},{"key":"total_amount","description":"Request total in INR"},{"key":"seller_name","description":"Seller business name"},{"key":"seller_location","description":"Seller location/warehouse name"},{"key":"eta","description":"Expected response time in hours"}]'::jsonb,
+  '{"type":"url","url_template":"https://app.yukti.so/buy/orders/{{1}}","variable_source":"estimate_id"}'::jsonb,
+  'approved', true
+)
+ON CONFLICT (tenant_id, meta_template_name) DO UPDATE SET
+  approval_status    = EXCLUDED.approval_status,
+  is_platform_managed = EXCLUDED.is_platform_managed,
+  updated_at         = now();
+
+-- Set WhatsApp consent for test buyer (Phani Mobiles) so campaign audience RPCs include them.
+UPDATE app.buyers
+SET whatsapp_consent_at = now(), whatsapp_consent_method = 'implicit_first_login'
+WHERE id = '550e8400-e29b-41d4-a716-446655440604'::uuid;
+
+-- ──────────────────────────────────────────────────────────────
+-- 13. Snapshots + daily KPI tables (derived from base seed)
 -- ──────────────────────────────────────────────────────────────
 
 SELECT app.post_sync_rebuild('550e8400-e29b-41d4-a716-446655440501'::uuid, 1);
@@ -642,6 +753,16 @@ SELECT app.post_sync_rebuild('550e8400-e29b-41d4-a716-446655440501'::uuid, 1);
 SELECT 'auth_users'    AS table_name, COUNT(*) AS rows FROM auth.users    WHERE id IN ('550e8400-e29b-41d4-a716-446655440701'::uuid,'550e8400-e29b-41d4-a716-446655440702'::uuid)
 UNION ALL
 SELECT 'auth_identities',              COUNT(*)         FROM auth.identities WHERE user_id IN ('550e8400-e29b-41d4-a716-446655440701'::uuid,'550e8400-e29b-41d4-a716-446655440702'::uuid)
+UNION ALL
+SELECT 'auth_phone_identities',        COUNT(*)         FROM auth.identities WHERE provider = 'phone' AND user_id IN ('550e8400-e29b-41d4-a716-446655440701'::uuid,'550e8400-e29b-41d4-a716-446655440702'::uuid)
+UNION ALL
+SELECT 'platform_tenant',              COUNT(*)         FROM app.tenants WHERE slug = 'platform-tenant'
+UNION ALL
+SELECT 'whatsapp_rate_card',           COUNT(*)         FROM app.whatsapp_rate_card
+UNION ALL
+SELECT 'whatsapp_credit_pricing',      COUNT(*)         FROM app.whatsapp_credit_pricing
+UNION ALL
+SELECT 'whatsapp_templates',           COUNT(*)         FROM app.whatsapp_templates WHERE approval_status = 'approved'
 UNION ALL
 SELECT 'catalog_brands',               COUNT(*)         FROM catalog.brands   WHERE is_public = true
 UNION ALL
