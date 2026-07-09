@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { YuktiLogo } from '@/components/brand/YuktiLogo';
 import { Button } from '@/components/ui/button';
-import { useBuyerMe } from '@/hooks/useBuyerMe';
+import { useBuyerMe, type BuyerMeData } from '@/hooks/useBuyerMe';
 import { apiFetch } from '@/lib/api-fetch';
 
 /**
@@ -18,6 +19,7 @@ import { apiFetch } from '@/lib/api-fetch';
  */
 export default function WhatsappConsentPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { data: me, isLoading } = useBuyerMe();
   const [agreed, setAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -47,8 +49,13 @@ export default function WhatsappConsentPage() {
         setSubmitting(false);
         return;
       }
+      // BuyerShell reads useBuyerMe() — update cache before navigating or it
+      // still sees whatsapp_consent_required=true and bounces back here.
+      queryClient.setQueryData<BuyerMeData>(['buyer-me'], (old) =>
+        old ? { ...old, whatsapp_consent_required: false } : old,
+      );
+      await queryClient.refetchQueries({ queryKey: ['buyer-me'] });
       router.replace('/buy/home');
-      router.refresh();
     } catch {
       setError('Network error. Please check your connection and try again.');
       setSubmitting(false);
