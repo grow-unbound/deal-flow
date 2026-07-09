@@ -256,6 +256,20 @@ export interface WarehouseSnapshotRow {
   refreshed_at: string;
 }
 
+function hydrateWarehouseSnapshot(row: Record<string, unknown>): WarehouseSnapshotRow {
+  return {
+    warehouse_id: String(row.warehouse_id),
+    tenant_id: String(row.tenant_id),
+    tracked_skus: Number(row.tracked_skus ?? 0),
+    sellable_units: Number(row.sellable_units ?? 0),
+    low_stock_skus: Number(row.low_stock_skus ?? 0),
+    stockout_skus: Number(row.stockout_skus ?? 0),
+    idle_stock_skus: Number(row.idle_stock_skus ?? 0),
+    last_inventory_update: typeof row.last_inventory_update === 'string' ? row.last_inventory_update : null,
+    refreshed_at: typeof row.refreshed_at === 'string' ? row.refreshed_at : new Date().toISOString(),
+  };
+}
+
 export interface WarehouseStockPageResult {
   items: WarehouseDetailInventoryItem[];
   total: number;
@@ -316,19 +330,32 @@ export async function loadWarehouseSnapshot(
     .maybeSingle();
 
   if (error) throw error;
+  return data ? hydrateWarehouseSnapshot(data as Record<string, unknown>) : null;
+}
+
+export async function loadLatestWarehouseDailySnapshot(
+  db: any,
+  tenantId: string,
+  warehouseId: string,
+): Promise<WarehouseSnapshotRow | null> {
+  const { data, error } = await db
+    .schema('app')
+    .from('kpi_warehouse_daily')
+    .select('warehouse_id, tenant_id, tracked_skus, sellable_units, low_stock_skus, stockout_skus, idle_stock_skus, updated_at')
+    .eq('tenant_id', tenantId)
+    .eq('warehouse_id', warehouseId)
+    .order('day', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
   if (!data) return null;
 
-  return {
-    warehouse_id: String(data.warehouse_id),
-    tenant_id: String(data.tenant_id),
-    tracked_skus: Number(data.tracked_skus ?? 0),
-    sellable_units: Number(data.sellable_units ?? 0),
-    low_stock_skus: Number(data.low_stock_skus ?? 0),
-    stockout_skus: Number(data.stockout_skus ?? 0),
-    idle_stock_skus: Number(data.idle_stock_skus ?? 0),
-    last_inventory_update: typeof data.last_inventory_update === 'string' ? data.last_inventory_update : null,
-    refreshed_at: typeof data.refreshed_at === 'string' ? data.refreshed_at : new Date().toISOString(),
-  };
+  return hydrateWarehouseSnapshot({
+    ...data,
+    last_inventory_update: null,
+    refreshed_at: data.updated_at,
+  } as Record<string, unknown>);
 }
 
 export async function loadWarehouseInventoryTrend(
@@ -436,10 +463,18 @@ export async function loadWarehouseStockPage(
 export async function loadWarehousePerformanceHighlights(
   db: any,
   warehouseId: string,
+  snapshot?: WarehouseSnapshotRow | null,
 ): Promise<{
   idle_stock: WarehouseDetailResponse['performance']['idle_stock'];
   recent_replenishment: WarehouseDetailResponse['performance']['recent_replenishment'];
 }> {
+  if (snapshot && snapshot.tracked_skus <= 0 && snapshot.sellable_units <= 0) {
+    return {
+      idle_stock: [],
+      recent_replenishment: [],
+    };
+  }
+
   const { data, error } = await db
     .schema('app')
     .from('tenant_inventory')
@@ -493,11 +528,12 @@ export async function loadWarehouseSummary(
 
   const mappedLocationUsers = warehouse.location?.associated_users?.length ? warehouse.location.associated_users : [];
 
-  const [snapshot, inventoryTrend, highlights] = await Promise.all([
+  const [storedSnapshot, inventoryTrend] = await Promise.all([
     loadWarehouseSnapshot(db, tenantId, warehouseId),
     loadWarehouseInventoryTrend(db, tenantId, warehouseId),
-    loadWarehousePerformanceHighlights(db, warehouseId),
   ]);
+  const snapshot = storedSnapshot ?? await loadLatestWarehouseDailySnapshot(db, tenantId, warehouseId);
+  const highlights = await loadWarehousePerformanceHighlights(db, warehouseId, snapshot);
 
   const trackedSkus = snapshot?.tracked_skus ?? 0;
   const sellableUnits = snapshot?.sellable_units ?? 0;

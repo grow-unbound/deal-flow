@@ -7,6 +7,7 @@ import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
 import { getCatalogComposerPayload } from '@/lib/server/catalog-composer';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import {
+  aggregateCampaignViewsByCampaign,
   computeCampaignAttributedMetrics,
   computeCampaignViewMetrics,
   getCampaignBuyerOpenedStatus,
@@ -209,6 +210,19 @@ function dayKey(input: string): string {
   return new Date(input).toISOString().slice(0, 10);
 }
 
+function canonicalOrderDay(order: { order_date?: string | null; placed_at?: string | null; created_at?: string | null }) {
+  if (order.order_date) return order.order_date;
+  if (order.placed_at) return dayKey(order.placed_at);
+  if (order.created_at) return dayKey(order.created_at);
+  return null;
+}
+
+function canonicalEstimateDay(estimate: { estimate_date?: string | null; created_at?: string | null }) {
+  if (estimate.estimate_date) return estimate.estimate_date;
+  if (estimate.created_at) return dayKey(estimate.created_at);
+  return null;
+}
+
 function extractBuyerCity(geography: unknown): string {
   if (!geography || typeof geography !== 'object') return 'Unknown';
   const city = (geography as { city?: unknown }).city;
@@ -256,14 +270,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     db
       .schema('app')
       .from('orders')
-      .select('id, buyer_id, total_amount, placed_at, status, created_at')
+      .select('id, buyer_id, total_amount, placed_at, order_date, status, created_at')
       .eq('tenant_id', claims.tenant_id)
       .eq('campaign_id', id)
       .is('deleted_at', null),
     db
       .schema('app')
       .from('estimates')
-      .select('id, buyer_id, total_amount, status, converted_to_order_id, created_at')
+      .select('id, buyer_id, total_amount, status, converted_to_order_id, estimate_date, created_at')
       .eq('tenant_id', claims.tenant_id)
       .eq('campaign_id', id)
       .is('deleted_at', null),
@@ -444,6 +458,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const channelValidEstimateIds = new Set(channelEligibleEstimates.map((estimate) => estimate.id));
 
   const viewMetrics = computeCampaignViewMetrics(campaignViewRows);
+  const viewMetricsByCampaign = aggregateCampaignViewsByCampaign(campaignViewRows);
   const conversionMetrics = computeCampaignAttributedMetrics(
     orders,
     estimates,
@@ -487,10 +502,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const dailyRollup = new Map<string, { revenue: number; conversions: number }>();
 
   for (const order of channelEligibleOrders) {
-    if (!order.placed_at) continue;
+    const date = canonicalOrderDay(order);
+    if (!date) continue;
     const amount = attributedGmvByOrderId.get(order.id) ?? 0;
     if (amount <= 0) continue;
-    const date = dayKey(order.placed_at);
     const current = dailyRollup.get(date) ?? { revenue: 0, conversions: 0 };
     current.revenue += amount;
     current.conversions += 1;
@@ -498,10 +513,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   for (const estimate of channelEligibleEstimates) {
-    if (!estimate.created_at) continue;
+    const date = canonicalEstimateDay(estimate);
+    if (!date) continue;
     const amount = attributedGmvByEstimateId.get(estimate.id) ?? 0;
     if (amount <= 0) continue;
-    const date = dayKey(estimate.created_at);
     const current = dailyRollup.get(date) ?? { revenue: 0, conversions: 0 };
     current.revenue += amount;
     current.conversions += 1;
@@ -511,13 +526,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const previousCatalogRes = await db
     .schema('app')
     .from('campaigns')
-    .select('id, created_at')
+    .select('id, valid_from')
     .eq('tenant_id', claims.tenant_id)
     .neq('id', id)
     .eq('status', 'published')
     .is('deleted_at', null)
-    .lt('created_at', catalog.created_at)
-    .order('created_at', { ascending: false })
+    .lt('valid_from', catalog.valid_from)
+    .order('valid_from', { ascending: false })
     .limit(1)
     .maybeSingle();
 
@@ -534,14 +549,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       db
         .schema('app')
         .from('orders')
-        .select('id, buyer_id, total_amount, placed_at, status, created_at')
+        .select('id, buyer_id, total_amount, placed_at, order_date, status, created_at')
         .eq('tenant_id', claims.tenant_id)
         .eq('campaign_id', prevCampaignId)
         .is('deleted_at', null),
       db
         .schema('app')
         .from('estimates')
-        .select('id, buyer_id, total_amount, status, converted_to_order_id, created_at')
+        .select('id, buyer_id, total_amount, status, converted_to_order_id, estimate_date, created_at')
         .eq('tenant_id', claims.tenant_id)
         .eq('campaign_id', prevCampaignId)
         .is('deleted_at', null),
@@ -718,6 +733,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const publishedBy = catalog.created_by ? `User ${catalog.created_by.slice(0, 8)}` : 'System';
   const status = getDisplayStatus(catalog.status, catalog.valid_to);
+  const currentCatalogViewMetrics = viewMetricsByCampaign.get(catalog.id) ?? viewMetrics;
 
   return NextResponse.json({
     header: {
@@ -781,11 +797,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         growth_pct: growthPct,
         aov,
         views: totalViews,
-        unique_viewers: uniqueViewers,
+        unique_viewers: currentCatalogViewMetrics.uniqueViewers,
         conversion_rate: conversionRate,
         abandoners,
         valid_until_label: formatDate(catalog.valid_to),
-        published_at_label: formatDate(catalog.created_at),
+        published_at_label: formatDate(catalog.valid_from),
       },
       funnel: {
         unique_viewers: uniqueViewers,
