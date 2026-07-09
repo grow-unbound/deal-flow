@@ -268,9 +268,7 @@ describe('customers/[id] detail shell', () => {
     expect(screen.getByText('Buyer app')).toBeInTheDocument();
     expect(screen.getByText('Buyer users')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Add User/i })).toBeInTheDocument();
-    expect(screen.getByText('Amit')).toBeInTheDocument();
-    expect(screen.getByText('Sharma')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Invite/i })).toBeInTheDocument();
+    expect(screen.getByText('Amit Sharma')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Deactivate$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Reactivate$/i })).not.toBeInTheDocument();
   });

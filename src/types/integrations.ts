@@ -308,6 +308,25 @@ export interface IntegrationWebhookTelemetry {
   entities: Record<'locations' | 'customers' | 'products' | 'transactions', IntegrationWebhookTelemetryEntity>;
 }
 
+export const IntegrationAggregateFreshnessStatusSchema = z.enum(['fresh', 'warning', 'stale', 'failed', 'unknown']);
+export type IntegrationAggregateFreshnessStatus = z.infer<typeof IntegrationAggregateFreshnessStatusSchema>;
+
+export const IntegrationAggregateFreshnessSchema = z
+  .object({
+    status: IntegrationAggregateFreshnessStatusSchema,
+    latest_snapshot_refreshed_at: z.string().datetime({ offset: true }).nullable().optional(),
+    latest_kpi_updated_at: z.string().datetime({ offset: true }).nullable().optional(),
+    latest_analysis_at: z.string().datetime({ offset: true }).nullable().optional(),
+    latest_sync_completed_at: z.string().datetime({ offset: true }).nullable().optional(),
+    latest_aggregate_at: z.string().datetime({ offset: true }).nullable().optional(),
+    repair_job_id: z.string().uuid().nullable().optional(),
+    repair_rebuild_days: z.number().int().min(1).nullable().optional(),
+    last_retried_at: z.string().datetime({ offset: true }).nullable().optional(),
+    warning_message: z.string().trim().min(1).max(500).nullable().optional(),
+  })
+  .strict();
+export type IntegrationAggregateFreshness = z.infer<typeof IntegrationAggregateFreshnessSchema>;
+
 const IntegrationJobErrorEntrySchema = z.record(z.string(), z.unknown());
 const IntegrationJobErrorLogSchema = z.union([
   z.array(IntegrationJobErrorEntrySchema),
@@ -440,6 +459,7 @@ export const IntegrationCatalogItemSchema = z
       })
       .nullable()
       .optional(),
+    aggregate_freshness: IntegrationAggregateFreshnessSchema.nullable().optional(),
   })
   .strict();
 export type IntegrationCatalogItem = z.infer<typeof IntegrationCatalogItemSchema>;

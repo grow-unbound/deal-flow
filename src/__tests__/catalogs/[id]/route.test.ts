@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('react', async () => {
+  const actual = await vi.importActual<typeof import('react')>('react');
+  return {
+    ...actual,
+    cache: <T extends (...args: any[]) => any>(fn: T) => fn,
+  };
+});
+
 const getVerifiedClaimsMock = vi.fn();
 const queryState: { exists: boolean; tenantId: string; status: string } = { exists: true, tenantId: 'tenant-a', status: 'draft' };
 
