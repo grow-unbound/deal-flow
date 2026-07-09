@@ -334,14 +334,13 @@ export function createDbTokenCache(
 
 // ── Core sync loop ────────────────────────────────────────────────────────────
 
-// Each sync-* Edge Function invocation runs for up to 120s before returning a
-// resume cursor. Supabase hard limit is ~150s — 30s safety buffer. Now safe to
-// raise from the previous 100s because the orchestrator no longer re-dispatches
-// the SAME phase a second time within one invocation (that used to compound
-// two ~100s calls past the platform's hard limit and get force-killed mid-call
-// — see the comment in integrations-sync/index.ts). A single call using more
-// of its own budget now gets strictly more real work done per invocation.
-const TIME_BUDGET_MS = 120_000;
+// Each sync-* Edge Function invocation runs for up to 110s before returning a
+// resume cursor. Supabase hard limit is ~150s. The 40s gap (150 − 110) is the
+// handover window: status writes, summary writes, and next-slave creation all
+// happen in that gap before the platform kills the function. The budget check
+// fires at the TOP of the while loop (before fetchPhasePage), so a slow Zoho
+// page can push past the soft limit — the 40s window absorbs that overshoot.
+const TIME_BUDGET_MS = 110_000;
 const DEFAULT_PER_PAGE = 200;
 
 // Converts snake_case entity type to Title Case label
@@ -489,6 +488,8 @@ export async function runPhaseSync(
       const completedAt = new Date().toISOString();
       if (opts.jobId) {
         const durationMs = Date.now() - new Date(startedAt).getTime();
+        const slavePageFrom = opts.pageFrom ?? 1;
+        const slavePageTo = slavePageFrom + pagesFetched - 1;
         await updatePhaseJob(admin, opts.jobId, {
           status: 'completed',
           records_synced: totalSynced,
@@ -496,6 +497,9 @@ export async function runPhaseSync(
           progress: buildProgress(),
           summary: {
             since: opts.since ?? null,
+            page_from: slavePageFrom,
+            page_to: slavePageTo,
+            pages_fetched: pagesFetched,
             phases_completed: [phase.entityType],
             counts: {
               [phase.entityType]: {
@@ -506,7 +510,7 @@ export async function runPhaseSync(
               },
             },
             last_synced_at: completedAt,
-            note: `${labelizeEntity(phase.entityType)}: ${totalSynced} synced${totalFailed > 0 ? `, ${totalFailed} failed` : ''} across ${pagesFetched} page${pagesFetched !== 1 ? 's' : ''}`,
+            note: `${labelizeEntity(phase.entityType)}: pages ${slavePageFrom}–${slavePageTo}, ${totalSynced} synced${totalFailed > 0 ? `, ${totalFailed} failed` : ''}`,
             duration_ms: durationMs,
             total_processed: totalSynced,
             total_failed: totalFailed,
@@ -520,14 +524,31 @@ export async function runPhaseSync(
     cursor = page.nextCursor;
   }
 
-  // Time budget exceeded — pause first, rebuild accumulated search vectors in background
+  // Time budget exceeded — write full summary before chaining to next slave.
+  // The 40s handover window (150s hard kill − 110s budget) absorbs these writes.
   const nextCursorRecord = cursor as Record<string, unknown> | null;
   if (opts.jobId) {
+    const durationMs = Date.now() - new Date(startedAt).getTime();
+    const slavePageFrom = opts.pageFrom ?? 1;
+    const slavePageTo = slavePageFrom + pagesFetched - 1;
+    const nextPage = (nextCursorRecord as { page?: number } | null)?.page ?? (slavePageTo + 1);
     await updatePhaseJob(admin, opts.jobId, {
       status: 'paused',
       records_synced: totalSynced,
       next_cursor: nextCursorRecord,
       progress: buildProgress({ next_cursor: nextCursorRecord }),
+      summary: {
+        since: opts.since ?? null,
+        page_from: slavePageFrom,
+        page_to: slavePageTo,
+        pages_fetched: pagesFetched,
+        next_page: nextPage,
+        note: `${labelizeEntity(phase.entityType)}: pages ${slavePageFrom}–${slavePageTo} processed (${totalSynced} synced), continuing from page ${nextPage}`,
+        total_processed: totalSynced,
+        total_failed: totalFailed,
+        duration_ms: durationMs,
+        last_synced_at: new Date().toISOString(),
+      },
     });
   }
   flushBuyerSearchVectorsInBackground(admin, integration.tenant_id, allBuyerIds, allBuyerUserIds);
