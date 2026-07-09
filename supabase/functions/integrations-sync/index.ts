@@ -59,10 +59,6 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-function waitUntil(task: Promise<unknown>): void {
-  const edgeRuntime = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
-  edgeRuntime?.waitUntil(task);
-}
 
 interface TenantIntegrationRow {
   id: string;
@@ -197,6 +193,7 @@ async function createSlaveJob(
     .insert({
       tenant_id: opts.tenantId,
       tenant_integration_id: opts.tenantIntegrationId,
+      master_job_id: opts.masterJobId,
       job_type: opts.jobType,
       phase: opts.phase,
       status: opts.status ?? 'pending',
@@ -229,6 +226,7 @@ async function updateMasterJob(
     runHalted?: boolean;
     startedAt?: string;
     completedAt?: string;
+    summary?: Record<string, unknown>;
   },
 ): Promise<void> {
   const existing = await loadJob(admin, masterJobId);
@@ -250,6 +248,7 @@ async function updateMasterJob(
   if (patch.status) update.status = patch.status;
   if (patch.startedAt) update.started_at = patch.startedAt;
   if (patch.completedAt) update.completed_at = patch.completedAt;
+  if (patch.summary) update.summary = patch.summary;
 
   await admin.schema('app').from('integration_sync_jobs').update(update).eq('id', masterJobId);
 }
@@ -270,31 +269,19 @@ async function loadSlavesForRun(
   admin: ReturnType<typeof createAdminClient>,
   syncRunId: string,
 ): Promise<JobRow[]> {
+  // Uses the real master_job_id column (added in migration add_master_job_id_to_sync_jobs).
+  // The old .contains('progress', { meta: { sync_run_id } }) query breaks after the first
+  // updatePhaseJob call strips progress.meta via full JSONB replace.
   const { data, error } = await admin
     .schema('app')
     .from('integration_sync_jobs')
     .select('id, phase, status, progress, since_date, job_type')
-    .contains('progress', { meta: { sync_run_id: syncRunId } })
+    .eq('master_job_id', syncRunId)
     .neq('phase', MASTER_PHASE)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
-  if (error) {
-    // Fallback: filter in memory if JSON containment unsupported
-    const { data: all } = await admin
-      .schema('app')
-      .from('integration_sync_jobs')
-      .select('id, phase, status, progress, since_date, job_type')
-      .neq('phase', MASTER_PHASE)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(200);
-    return (all ?? []).filter((row) => {
-      const runId = getSyncRunIdFromProgress(row.progress as Record<string, unknown>);
-      const masterId = getMasterJobIdFromProgress(row.progress as Record<string, unknown>);
-      return runId === syncRunId || masterId === syncRunId;
-    }) as JobRow[];
-  }
+  if (error) throw new Error(`Failed to load slaves for run: ${error.message}`);
   return (data ?? []) as JobRow[];
 }
 
@@ -377,19 +364,30 @@ async function dispatchPhase(opts: {
   return data as unknown as PhaseResult;
 }
 
-function dispatchContinuation(payload: ReturnType<typeof buildContinuationPayload>): void {
+// Await with a 5s abort — ensures the HTTP request is at least sent (TCP
+// connection to Supabase established) before the current invocation returns.
+// No EdgeRuntime dependency; works at any chain depth including nested waitUntil contexts.
+async function dispatchContinuation(payload: ReturnType<typeof buildContinuationPayload>): Promise<void> {
   const secret = getDispatchSecret();
-  const task = fetch(`${getFunctionsBaseUrl()}/integrations-sync`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(secret ? { 'x-integrations-dispatch-secret': secret } : {}),
-    },
-    body: JSON.stringify(payload),
-  }).catch((err) => {
-    console.error('[integrations-sync] continuation dispatch failed:', err);
-  });
-  waitUntil(task);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5_000);
+  try {
+    await fetch(`${getFunctionsBaseUrl()}/integrations-sync`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(secret ? { 'x-integrations-dispatch-secret': secret } : {}),
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch {
+    // AbortError = 5s timeout: the request was sent, Supabase is processing it.
+    // NetworkError: log it; the reaper will rescue the pending slave after 10 min.
+    console.error('[integrations-sync] continuation dispatch timed-out or failed — reaper will rescue if needed');
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function isPhaseAlreadyComplete(
@@ -451,13 +449,18 @@ async function runAnalysisPhase(
       });
     }
 
+    const analysisCompletedAt = new Date().toISOString();
     await admin.schema('app').from('integration_sync_jobs').update({
       status: 'completed',
-      completed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      completed_at: analysisCompletedAt,
+      updated_at: analysisCompletedAt,
       progress: {
         phase_label: 'Snapshots and KPI ready.',
         meta: { sync_run_id: ctx.syncRunId, master_job_id: ctx.masterJobId },
+      },
+      summary: {
+        last_synced_at: analysisCompletedAt,
+        note: `Snapshots and KPIs rebuilt${isInitialSync ? ' (full, 90 days)' : ' (incremental, 2 days)'}`,
       },
     }).eq('id', analysisJobId);
   } catch (err) {
@@ -490,12 +493,29 @@ async function selfChain(
   state: OrchestratorState,
   opts: {
     phase: string;
-    pageFrom: number;
-    continuationOf: string;
+    pageFrom: number;           // the NEXT slave starts here
+    continuationOf: string;     // current slave being finalized
+    currentPageFrom?: number;   // where the current slave started (for summary)
     masterStatus?: 'paused' | 'running';
   },
 ): Promise<Response> {
   const { admin, integration, ctx } = state;
+
+  // Finalize current slave with page-range summary before creating next slave.
+  // runPhaseSync already wrote status:'paused' + next_cursor; this adds the summary.
+  const slavePageFrom = opts.currentPageFrom ?? 1;
+  const slavePageTo = opts.pageFrom - 1; // continuation starts at pageFrom → current ended at pageFrom-1
+  await admin.schema('app').from('integration_sync_jobs').update({
+    summary: {
+      page_from: slavePageFrom,
+      page_to: slavePageTo,
+      next_page: opts.pageFrom,
+      note: `${opts.phase}: pages ${slavePageFrom}–${slavePageTo} processed, continuing from page ${opts.pageFrom}`,
+      last_synced_at: new Date().toISOString(),
+    },
+    updated_at: new Date().toISOString(),
+  }).eq('id', opts.continuationOf);
+
   const nextSlaveId = await createSlaveJob(admin, {
     tenantId: integration.tenant_id,
     tenantIntegrationId: integration.id,
@@ -515,7 +535,7 @@ async function selfChain(
     nextPage: opts.pageFrom,
   });
 
-  dispatchContinuation(buildContinuationPayload({
+  await dispatchContinuation(buildContinuationPayload({
     tenantIntegrationId: integration.id,
     ctx,
     phase: opts.phase,
@@ -601,7 +621,7 @@ async function runOrchestratorLoop(state: OrchestratorState): Promise<Response> 
 
       if (result.has_more) {
         const nextPage = (result.next_cursor as { page?: number } | null)?.page ?? pageFrom + 1;
-        return selfChain(state, { phase, pageFrom: nextPage, continuationOf: slaveId });
+        return selfChain(state, { phase, pageFrom: nextPage, continuationOf: slaveId, currentPageFrom: pageFrom });
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
@@ -641,7 +661,7 @@ async function runOrchestratorLoop(state: OrchestratorState): Promise<Response> 
           pageFrom: 1,
         });
         await updateMasterJob(admin, ctx.masterJobId, { status: 'paused', currentPhase: nextPhase, nextPage: 1 });
-        dispatchContinuation(buildContinuationPayload({
+        await dispatchContinuation(buildContinuationPayload({
           tenantIntegrationId: integration.id,
           ctx,
           phase: nextPhase,
@@ -671,6 +691,12 @@ async function runOrchestratorLoop(state: OrchestratorState): Promise<Response> 
   await updateMasterJob(admin, ctx.masterJobId, {
     status: 'completed',
     completedAt: new Date().toISOString(),
+    summary: {
+      phases_run: results.map((r) => r.phase),
+      phases_failed: results.filter((r) => !r.ok).map((r) => r.phase),
+      total_records_synced: results.reduce((n, r) => n + r.records_synced, 0),
+      last_synced_at: new Date().toISOString(),
+    },
   });
 
   return json({
