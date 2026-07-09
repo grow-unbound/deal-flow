@@ -85,6 +85,28 @@ function asStr(v: unknown): string | null {
   return null;
 }
 
+function pickZohoExternalId(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return String(value);
+    }
+    const str = asStr(value);
+    if (str) return str;
+  }
+  return null;
+}
+
+function pickPricebookExternalId(rec: Record<string, unknown>): string | null {
+  const pricebook = asRecord(rec.pricebook);
+  return pickZohoExternalId(
+    rec.pricebook_id,
+    rec.price_list_id,
+    pricebook?.pricebook_id,
+    pricebook?.price_list_id,
+    pricebook?.pricelist_id,
+  );
+}
+
 function asNum(v: unknown): number | null {
   const n = typeof v === 'string' ? parseFloat(v) : typeof v === 'number' ? v : NaN;
   return Number.isFinite(n) ? n : null;
@@ -570,7 +592,11 @@ function extractCustomField(rec: Record<string, unknown>, apiName: string): stri
   for (const f of fields) {
     if (typeof f === 'object' && f !== null && !Array.isArray(f)) {
       const field = f as Record<string, unknown>;
-      if (asStr(field.api_name) === apiName) return asStr(field.value);
+      if (asStr(field.api_name) === apiName) {
+        const value = normalizeCustomFieldValue(field.value);
+        if (typeof value === 'string') return value;
+        if (value !== null) return String(value);
+      }
     }
   }
   return null;
@@ -582,25 +608,42 @@ function extractCustomField(rec: Record<string, unknown>, apiName: string): stri
 // unconditionally; a tenant's active mapping rows additionally "promote" a
 // handful of those fields onto real typed columns used by app logic.
 
-function buildCustomFieldsJson(rec: Record<string, unknown>): Record<string, string | null> {
+type CustomFieldJsonValue = string | number | boolean | null;
+
+function normalizeCustomFieldValue(value: unknown): CustomFieldJsonValue {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  return String(value);
+}
+
+function buildCustomFieldsJson(rec: Record<string, unknown>): Record<string, CustomFieldJsonValue> {
   const fields = rec.custom_fields;
   if (!Array.isArray(fields)) return {};
-  const out: Record<string, string | null> = {};
+  const out: Record<string, CustomFieldJsonValue> = {};
   for (const f of fields) {
     if (typeof f === 'object' && f !== null && !Array.isArray(f)) {
       const field = f as Record<string, unknown>;
       const apiName = asStr(field.api_name);
-      if (apiName) out[apiName] = asStr(field.value);
+      if (apiName) out[apiName] = normalizeCustomFieldValue(field.value);
     }
   }
   return out;
 }
 
-function coerceZohoBoolean(value: string | null): boolean | null {
-  if (value === null) return null;
-  const normalized = value.trim().toLowerCase();
-  if (['true', '1', 'yes'].includes(normalized)) return true;
-  if (['false', '0', 'no'].includes(normalized)) return false;
+function coerceZohoBoolean(value: unknown): boolean | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes'].includes(normalized)) return true;
+    if (['false', '0', 'no', ''].includes(normalized)) return false;
+  }
   return null;
 }
 
@@ -630,18 +673,19 @@ async function loadFieldMappings(
 }
 
 function applyFieldMappings(
-  customFields: Record<string, string | null>,
+  customFields: Record<string, CustomFieldJsonValue>,
   mappings: TenantFieldMappingRow[],
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const mapping of mappings) {
-    if (!(mapping.zoho_field_name in customFields)) continue;
-    const raw = customFields[mapping.zoho_field_name];
     if (mapping.transform_type === 'boolean_from_zoho') {
-      const bool = coerceZohoBoolean(raw);
-      if (bool !== null) out[mapping.target_column] = bool;
+      const raw = mapping.zoho_field_name in customFields
+        ? customFields[mapping.zoho_field_name]
+        : null;
+      out[mapping.target_column] = coerceZohoBoolean(raw) ?? false;
     } else if (mapping.transform_type === 'copy') {
-      out[mapping.target_column] = raw;
+      if (!(mapping.zoho_field_name in customFields)) continue;
+      out[mapping.target_column] = customFields[mapping.zoho_field_name];
     }
     // 'enum_map' reserved for future transform_config-driven lookups; no
     // tenant uses it yet.
@@ -895,7 +939,15 @@ async function upsertImportedPriceList(
   }
 
   await batchUpsertEntityMap(admin, tenantId, integrationId, 'price_lists', [
-    { externalId: externalRef, internalId: priceListId },
+    {
+      externalId: externalRef,
+      internalId: priceListId,
+      sourcePayload: {
+        source: 'zoho_imported_price_list',
+        external_ref: externalRef,
+        integration_type_id: integrationTypeId,
+      },
+    },
   ]);
 
   return priceListId;
@@ -939,6 +991,28 @@ function buildPersistedRowPairsFromSourceRows(
   }
 
   return [...pairs.entries()].map(([externalId, internalId]) => ({ externalId, internalId }));
+}
+
+function attachSourcePayload(
+  pairs: Array<{ externalId: string; internalId: string }>,
+  sourceByExternalId: Map<string, Record<string, unknown>>,
+): Array<{ externalId: string; internalId: string; sourcePayload: Record<string, unknown> | null }> {
+  return pairs.map((pair) => ({
+    ...pair,
+    sourcePayload: sourceByExternalId.get(pair.externalId) ?? null,
+  }));
+}
+
+function buildSourceByExternalId(
+  records: Record<string, unknown>[],
+  pickExternalId: (rec: Record<string, unknown>) => string | null,
+): Map<string, Record<string, unknown>> {
+  return new Map(
+    records.flatMap((rec) => {
+      const externalId = pickExternalId(rec);
+      return externalId ? [[externalId, rec] as const] : [];
+    }),
+  );
 }
 
 function buildPersistedAuditUpdates(
@@ -1343,7 +1417,17 @@ async function persistLocations(
   }
 
   result.updated += persisted.length;
-  await batchUpsertEntityMap(admin, tenantId, integrationId, 'locations', entityMapPairs);
+  const locationSourceByExternalId = buildSourceByExternalId(
+    records,
+    (rec) => pickZohoExternalId(rec.location_id),
+  );
+  await batchUpsertEntityMap(
+    admin,
+    tenantId,
+    integrationId,
+    'locations',
+    attachSourcePayload(entityMapPairs, locationSourceByExternalId),
+  );
 
   const sourceByExternalRef = new Map(
     rows
@@ -1449,7 +1533,17 @@ async function persistWarehouses(
     .filter((r): r is { externalId: string; internalId: string } => r !== null);
 
   result.updated += persisted.length;
-  await batchUpsertEntityMap(admin, tenantId, integrationId, 'warehouses', entityMapPairs);
+  const warehouseSourceByExternalId = buildSourceByExternalId(
+    records,
+    (rec) => pickZohoExternalId(rec.warehouse_id),
+  );
+  await batchUpsertEntityMap(
+    admin,
+    tenantId,
+    integrationId,
+    'warehouses',
+    attachSourcePayload(entityMapPairs, warehouseSourceByExternalId),
+  );
 
   const sourceByExternalRef = new Map(
     rows
@@ -1487,7 +1581,7 @@ async function enrichBuyerRecords(
 
       const embeddedContactPersons = asRecordArray(rec.contact_persons);
       const hasCustomFields = Array.isArray(rec.custom_fields) && rec.custom_fields.length > 0;
-      const hasPricebook = Boolean(asStr(rec.pricebook_id) ?? asStr(rec.price_list_id));
+      const hasPricebook = Boolean(pickPricebookExternalId(rec));
       const needsDetail = embeddedContactPersons.length === 0
         || (needsCustomFieldHydration && !hasCustomFields)
         || !hasPricebook;
@@ -1619,7 +1713,7 @@ async function persistBuyers(
   const pricebookExternalIds = [
     ...new Set(
       hydratedRecords
-        .map((rec) => asStr(rec.pricebook_id) ?? asStr(rec.price_list_id))
+        .map((rec) => pickPricebookExternalId(rec))
         .filter((value): value is string => value !== null),
     ),
   ];
@@ -1673,7 +1767,7 @@ async function persistBuyers(
       });
     }
 
-    const pricebookExternalId = asStr(rec.pricebook_id) ?? asStr(rec.price_list_id);
+    const pricebookExternalId = pickPricebookExternalId(rec);
     const priceListId = pricebookExternalId ? pricebookIdMap.get(pricebookExternalId) ?? null : null;
     if (priceListId) {
       buyerAssignmentRows.push({
@@ -1706,9 +1800,38 @@ async function persistBuyers(
     })
     .filter((row): row is { externalId: string; internalId: string } => row !== null);
 
+  const customerSourceByExternalId = buildSourceByExternalId(
+    hydratedRecords,
+    (rec) => pickZohoExternalId(rec.contact_id),
+  );
+  const contactPersonSourceByExternalId = new Map<string, Record<string, unknown>>();
+  for (const rec of hydratedRecords) {
+    const parentContactId = pickZohoExternalId(rec.contact_id);
+    for (const cp of asRecordArray(rec.contact_persons)) {
+      const cpId = pickZohoExternalId(cp.contact_person_id);
+      if (!cpId) continue;
+      contactPersonSourceByExternalId.set(cpId, {
+        ...cp,
+        ...(parentContactId ? { parent_contact_id: parentContactId } : {}),
+      });
+    }
+  }
+
   await Promise.all([
-    batchUpsertEntityMap(admin, tenantId, integrationId, 'customers', buyerMapPairs),
-    batchUpsertEntityMap(admin, tenantId, integrationId, 'contact_persons', contactMapPairs),
+    batchUpsertEntityMap(
+      admin,
+      tenantId,
+      integrationId,
+      'customers',
+      attachSourcePayload(buyerMapPairs, customerSourceByExternalId),
+    ),
+    batchUpsertEntityMap(
+      admin,
+      tenantId,
+      integrationId,
+      'contact_persons',
+      attachSourcePayload(contactMapPairs, contactPersonSourceByExternalId),
+    ),
   ]);
 
   const buyerIds = buyerMapPairs.map((row) => row.internalId);
@@ -1721,29 +1844,6 @@ async function persistBuyers(
     ['price_list_id', 'target_type', 'target_id', 'external_ref'],
   );
 
-  const buyerIdsWithAssignments = [
-    ...new Set(
-      dedupedBuyerAssignmentRows
-        .map((row) => asStr(row.target_id))
-        .filter((value): value is string => value !== null),
-    ),
-  ];
-
-  if (buyerIdsWithAssignments.length > 0) {
-    await admin
-      .schema('app')
-      .from('price_list_assignments')
-      .update({
-        deleted_at: nowIso(),
-        updated_at: nowIso(),
-        updated_by: actorId,
-      })
-      .eq('target_type', 'buyer')
-      .in('target_id', buyerIdsWithAssignments)
-      .like('external_ref', 'zoho_buyer_pricebook:%')
-      .is('deleted_at', null);
-  }
-
   if (dedupedBuyerAssignmentRows.length > 0) {
     await bulkPersistJsonbRecords(
       admin,
@@ -1751,6 +1851,26 @@ async function persistBuyers(
       dedupedBuyerAssignmentRows,
       ['price_list_id', 'target_type', 'target_id', 'external_ref'],
     );
+
+    for (const row of dedupedBuyerAssignmentRows) {
+      const targetId = asStr(row.target_id);
+      const priceListId = asStr(row.price_list_id);
+      if (!targetId || !priceListId) continue;
+
+      await admin
+        .schema('app')
+        .from('price_list_assignments')
+        .update({
+          deleted_at: nowIso(),
+          updated_at: nowIso(),
+          updated_by: actorId,
+        })
+        .eq('target_type', 'buyer')
+        .eq('target_id', targetId)
+        .like('external_ref', 'zoho_buyer_pricebook:%')
+        .neq('price_list_id', priceListId)
+        .is('deleted_at', null);
+    }
   }
 
   result.pendingSearchVectorBuyerIds = buyerIds;
@@ -1979,6 +2099,7 @@ async function persistProducts(
 
   // Step A: upsert categories
   const categoryRows = [];
+  const categorySourceByExternalRef = new Map<string, Record<string, unknown>>();
   const categoryMapById = new Map<string, string>();
   const categoryMapByName = new Map<string, string>();
 
@@ -2002,6 +2123,12 @@ async function persistProducts(
       created_by: actorId,
       updated_by: actorId,
     });
+    categorySourceByExternalRef.set(externalRef, {
+      category_id: sourceCategoryId,
+      category_name: categoryName,
+      category_display_order: pickNumber(rec.category_display_order, rec.display_order, rec.sort_order),
+      source_item_id: pickZohoExternalId(rec.item_id),
+    });
   }
 
   if (categoryRows.length > 0) {
@@ -2016,7 +2143,7 @@ async function persistProducts(
       result.skipped += categoryResolution.conflicts.length;
     }
     const catRowsPersisted = categoryResolution.rows.length > 0
-      ? await bulkPersistJsonbRecords(admin, 'tenant_categories', categoryResolution.rows, ['id'])
+      ? await bulkPersistJsonbRecords(admin, 'tenant_categories', categoryResolution.rows, ['tenant_id', 'external_ref'])
       : [];
     for (const cat of catRowsPersisted) {
       if (typeof cat.id === 'string') {
@@ -2031,11 +2158,15 @@ async function persistProducts(
 
     await batchUpsertEntityMap(
       admin, tenantId, integrationId, 'categories',
-      buildPersistedRowPairsFromSourceRows(categoryRows, catRowsPersisted, ['slug']),
+      attachSourcePayload(
+        buildPersistedRowPairsFromSourceRows(categoryRows, catRowsPersisted, ['slug']),
+        categorySourceByExternalRef,
+      ),
     );
   }
 
   // Step B: upsert brands
+  const brandSourceByExternalRef = new Map<string, Record<string, unknown>>();
   const brandNames = [...new Set(
     records
       .map((r) => asStr(r.brand) ?? asStr(r.manufacturer))
@@ -2044,6 +2175,11 @@ async function persistProducts(
 
   // Fallback brand for products with no brand field
   const fallbackBrandExtRef = 'zoho_brand:__unknown__';
+  for (const name of brandNames) {
+    brandSourceByExternalRef.set(`zoho_brand:${slugify(name)}`, { brand: name });
+  }
+  brandSourceByExternalRef.set(fallbackBrandExtRef, { brand: 'Unknown Brand' });
+
   const allBrandRows = [
     ...brandNames.map((name) => ({
       tenant_id: tenantId,
@@ -2081,7 +2217,7 @@ async function persistProducts(
     result.skipped += brandResolution.conflicts.length;
   }
   const brandData = brandResolution.rows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'tenant_brands', brandResolution.rows, ['id'])
+    ? await bulkPersistJsonbRecords(admin, 'tenant_brands', brandResolution.rows, ['tenant_id', 'external_ref'])
     : [];
   for (const b of brandData) {
     if (typeof b.external_ref === 'string' && typeof b.id === 'string') {
@@ -2095,7 +2231,10 @@ async function persistProducts(
 
   await batchUpsertEntityMap(
     admin, tenantId, integrationId, 'brands',
-    buildPersistedRowPairsFromSourceRows(allBrandRows, brandData, ['slug']),
+    attachSourcePayload(
+      buildPersistedRowPairsFromSourceRows(allBrandRows, brandData, ['slug']),
+      brandSourceByExternalRef,
+    ),
   );
 
   // Step C: upsert products in one batch
@@ -2164,13 +2303,23 @@ async function persistProducts(
     };
   });
   const persistedProducts = productRowsForPersist.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'tenant_products', productRowsForPersist, ['id'])
+    ? await bulkPersistJsonbRecords(admin, 'tenant_products', productRowsForPersist, ['tenant_id', 'external_ref'])
     : [];
   const productMapPairs = buildPersistedRowPairsFromSourceRows(productRows, persistedProducts, ['internal_sku']);
   const productIdMap = new Map(productMapPairs.map((row) => [row.externalId, row.internalId] as const));
 
   result.updated += productMapPairs.length;
-  await batchUpsertEntityMap(admin, tenantId, integrationId, 'products', productMapPairs);
+  const productSourceByExternalId = buildSourceByExternalId(
+    records,
+    (rec) => pickZohoExternalId(rec.item_id),
+  );
+  await batchUpsertEntityMap(
+    admin,
+    tenantId,
+    integrationId,
+    'products',
+    attachSourcePayload(productMapPairs, productSourceByExternalId),
+  );
 
   // Step D: upsert inventory from embedded warehouse snapshots on each item
   const warehouseExternalIds = [
@@ -2252,10 +2401,17 @@ async function persistProducts(
 
   if (inventorySyncError) {
     const errorReason = formatErrorReason(inventorySyncError.message, inventorySyncError.details);
-    await batchUpsertEntityMap(admin, tenantId, integrationId, 'products', productMapPairs, {
+    await batchUpsertEntityMap(
+      admin,
+      tenantId,
+      integrationId,
+      'products',
+      attachSourcePayload(productMapPairs, productSourceByExternalId),
+      {
       syncStatus: 'error',
       errorReason,
-    });
+    },
+    );
     throw inventorySyncError;
   }
 
@@ -2455,14 +2611,31 @@ async function persistPricelists(
   if (skippedItems.length > 0) {
     console.warn('[persistPricelists] skipped items:', JSON.stringify(skippedItems.slice(0, 10)));
     // Persist skipped rows to entity map so they appear in the frontend entity-error section
+    const errorSourceByExternalId = new Map(
+      skippedItems.map((s) => {
+        const externalId = s.item_id ? `${s.pricebook_id}:${s.item_id}` : s.pricebook_id;
+        return [externalId, {
+          pricebook_id: s.pricebook_id,
+          item_id: s.item_id,
+          reason: s.reason,
+        }] as const;
+      }),
+    );
     const errorPairs = skippedItems.map((s) => ({
       externalId: s.item_id ? `${s.pricebook_id}:${s.item_id}` : s.pricebook_id,
       internalId: '',
     }));
-    await batchUpsertEntityMap(admin, tenantId, integrationId, 'price_list_items', errorPairs, {
+    await batchUpsertEntityMap(
+      admin,
+      tenantId,
+      integrationId,
+      'price_list_items',
+      attachSourcePayload(errorPairs, errorSourceByExternalId),
+      {
       syncStatus: 'error',
       errorReason: skippedItems[0]?.reason ?? 'FK resolution failed',
-    }).catch((e) => console.warn('[persistPricelists] entity map error write failed:', e));
+    },
+    ).catch((e) => console.warn('[persistPricelists] entity map error write failed:', e));
   }
 
   const dedupedPriceListItemRows = dedupeByColumns(
@@ -2663,7 +2836,7 @@ async function persistEstimates(
     result.skipped += estimateResolution.conflicts.length;
   }
   const persistedEstimates = estimateResolution.rows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'estimates', estimateResolution.rows, ['id'])
+    ? await bulkPersistJsonbRecords(admin, 'estimates', estimateResolution.rows, ['tenant_id', 'external_ref'])
     : [];
   const sourcePayloadByExternalRef = new Map(
     parentRecords.map((e) => [e.estimateId, e.sourcePayload] as const),
@@ -2911,7 +3084,7 @@ async function persistOrders(
     result.skipped += orderResolution.conflicts.length;
   }
   const persistedOrders = orderResolution.rows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'orders', orderResolution.rows, ['id'])
+    ? await bulkPersistJsonbRecords(admin, 'orders', orderResolution.rows, ['tenant_id', 'external_ref'])
     : [];
   const sourcePayloadByOrderRef = new Map(
     parentRecords.map((e) => [e.orderExternalId, e.sourcePayload] as const),
@@ -3189,7 +3362,7 @@ async function persistInvoices(
     result.skipped += invoiceResolution.conflicts.length;
   }
   const persistedInvoices = invoiceResolution.rows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'invoices', invoiceResolution.rows, ['id'])
+    ? await bulkPersistJsonbRecords(admin, 'invoices', invoiceResolution.rows, ['tenant_id', 'external_ref'])
     : [];
   const sourcePayloadByInvoiceRef = new Map(
     parentRecords.map((e) => [e.invoiceExternalId, e.sourcePayload] as const),

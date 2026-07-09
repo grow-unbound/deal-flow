@@ -29,6 +29,7 @@ export type IntegrationSyncJobType = 'initial_reference' | 'initial_transactiona
 export type IntegrationSyncJobStatus = 'pending' | 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 export type IntegrationTriggerType = 'webhook' | 'scheduled' | 'event';
 export type IntegrationDirection = 'inbound' | 'outbound' | 'bidirectional';
+export type IntegrationAggregateFreshnessStatus = 'fresh' | 'warning' | 'stale' | 'failed' | 'unknown';
 
 export interface IntegrationAuthField {
   key: string;
@@ -145,6 +146,19 @@ export interface IntegrationDataFlow {
   last_run_at?: string | null;
 }
 
+export interface IntegrationAggregateFreshness {
+  status: IntegrationAggregateFreshnessStatus;
+  latest_snapshot_refreshed_at?: string | null;
+  latest_kpi_updated_at?: string | null;
+  latest_analysis_at?: string | null;
+  latest_sync_completed_at?: string | null;
+  latest_aggregate_at?: string | null;
+  repair_job_id?: string | null;
+  repair_rebuild_days?: number | null;
+  last_retried_at?: string | null;
+  warning_message?: string | null;
+}
+
 export interface TenantIntegrationDetail {
   id: string;
   status: TenantIntegrationStatus;
@@ -158,6 +172,7 @@ export interface TenantIntegrationDetail {
   recent_entity_errors?: IntegrationEntityError[];
   coverage_totals?: IntegrationCoverageTotals | null;
   webhook_telemetry?: IntegrationWebhookTelemetry | null;
+  aggregate_freshness?: IntegrationAggregateFreshness | null;
 }
 
 export interface IntegrationCatalogItem {
@@ -174,6 +189,7 @@ export interface IntegrationCatalogItem {
   coverage_totals?: IntegrationCoverageTotals | null;
   webhook_telemetry?: IntegrationWebhookTelemetry | null;
   recent_entity_errors?: IntegrationEntityError[];
+  aggregate_freshness?: IntegrationAggregateFreshness | null;
 }
 
 export interface IntegrationsSettingsView {
@@ -217,6 +233,19 @@ export interface SyncNowInput {
 
 export interface StopSyncInput {
   tenant_integration_id: string;
+}
+
+export interface RepairAggregatesInput {
+  tenant_integration_id: string;
+  start_date?: string;
+  end_date?: string;
+  include_snapshots?: boolean;
+  include_kpis?: boolean;
+}
+
+export interface RunAnalysisInput {
+  tenant_integration_id: string;
+  days?: number;
 }
 
 interface ApiEnvelope<T> {
@@ -407,6 +436,26 @@ function parseDataFlow(value: unknown): IntegrationDataFlow | null {
   };
 }
 
+function parseAggregateFreshness(value: unknown): IntegrationAggregateFreshness | null {
+  if (!isRecord(value)) return null;
+
+  const status = asString(value.status) as IntegrationAggregateFreshnessStatus;
+  if (!status) return null;
+
+  return {
+    status,
+    latest_snapshot_refreshed_at: asNullableString(value.latest_snapshot_refreshed_at),
+    latest_kpi_updated_at: asNullableString(value.latest_kpi_updated_at),
+    latest_analysis_at: asNullableString(value.latest_analysis_at),
+    latest_sync_completed_at: asNullableString(value.latest_sync_completed_at),
+    latest_aggregate_at: asNullableString(value.latest_aggregate_at),
+    repair_job_id: asNullableString(value.repair_job_id),
+    repair_rebuild_days: asNumber(value.repair_rebuild_days),
+    last_retried_at: asNullableString(value.last_retried_at),
+    warning_message: asNullableString(value.warning_message),
+  };
+}
+
 function parseTenantIntegration(value: unknown): TenantIntegrationDetail | null {
   if (!isRecord(value)) return null;
 
@@ -431,6 +480,7 @@ function parseTenantIntegration(value: unknown): TenantIntegrationDetail | null 
       .filter((flow): flow is IntegrationDataFlow => flow !== null),
     coverage_totals: isRecord(value.coverage_totals) ? (value.coverage_totals as unknown as IntegrationCoverageTotals) : null,
     webhook_telemetry: isRecord(value.webhook_telemetry) ? (value.webhook_telemetry as unknown as IntegrationWebhookTelemetry) : null,
+    aggregate_freshness: parseAggregateFreshness(value.aggregate_freshness),
   };
 }
 
@@ -474,6 +524,7 @@ function normalizeCatalogItem(value: unknown): IntegrationCatalogItem | null {
     setup_notes: asArray<string>(value.setup_notes).filter((note) => typeof note === 'string'),
     coverage_totals: isRecord(value.coverage_totals) ? (value.coverage_totals as unknown as IntegrationCoverageTotals) : null,
     webhook_telemetry: isRecord(value.webhook_telemetry) ? (value.webhook_telemetry as unknown as IntegrationWebhookTelemetry) : null,
+    aggregate_freshness: parseAggregateFreshness(value.aggregate_freshness),
   };
 }
 
@@ -610,6 +661,27 @@ async function postStopSync(body: StopSyncInput): Promise<IntegrationsSettingsVi
   return parseSettingsView(json.data);
 }
 
+async function postRepairAggregates(body: RepairAggregatesInput): Promise<IntegrationsSettingsView> {
+  const res = await apiPost('/api/settings/integrations/repair-aggregates', {
+    tenant_integration_id: body.tenant_integration_id,
+    ...(body.start_date ? { start_date: body.start_date } : {}),
+    ...(body.end_date ? { end_date: body.end_date } : {}),
+    ...(typeof body.include_snapshots === 'boolean' ? { include_snapshots: body.include_snapshots } : {}),
+    ...(typeof body.include_kpis === 'boolean' ? { include_kpis: body.include_kpis } : {}),
+  });
+  const json = await parseEnvelope<unknown>(res);
+  return parseSettingsView(json.data);
+}
+
+async function postRunAnalysis(body: RunAnalysisInput): Promise<IntegrationsSettingsView> {
+  const res = await apiPost('/api/settings/integrations/run-analysis', {
+    tenant_integration_id: body.tenant_integration_id,
+    ...(typeof body.days === 'number' ? { days: body.days } : {}),
+  });
+  const json = await parseEnvelope<unknown>(res);
+  return parseSettingsView(json.data);
+}
+
 function hasActiveJob(view?: IntegrationsSettingsView | null) {
   return (
     view?.integrations?.some((integration) => {
@@ -710,7 +782,7 @@ export function useIntegrationsSettings(initialData?: IntegrationSettingsPayload
         .channel(`sync-job-main-${tiId}`)
         .on(
           'postgres_changes',
-          { event: 'UPDATE', schema: 'app', table: 'integration_sync_jobs', filter: `tenant_integration_id=eq.${tiId}` },
+          { event: '*', schema: 'app', table: 'integration_sync_jobs', filter: `tenant_integration_id=eq.${tiId}` },
           () => { void queryClient.invalidateQueries({ queryKey }); },
         )
         .subscribe(),
@@ -849,6 +921,34 @@ export function useIntegrationsSettings(initialData?: IntegrationSettingsPayload
     },
   });
 
+  const repairAggregatesMutation = useMutation({
+    mutationFn: postRepairAggregates,
+    onSuccess: (data) => {
+      queryClient.setQueryData(queryKey, data);
+      toast.success('Aggregate repair queued');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Failed to repair aggregates');
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey });
+    },
+  });
+
+  const runAnalysisMutation = useMutation({
+    mutationFn: postRunAnalysis,
+    onSuccess: (data) => {
+      queryClient.setQueryData(queryKey, data);
+      toast.success('Analysis started');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Failed to run analysis');
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey });
+    },
+  });
+
   return {
     ...query,
     testConnection: testMutation.mutateAsync,
@@ -859,6 +959,8 @@ export function useIntegrationsSettings(initialData?: IntegrationSettingsPayload
     syncNowIntegration: syncNowMutation.mutateAsync,
     stopSyncIntegration: stopSyncMutation.mutateAsync,
     retryWebhookSetup: retryWebhookMutation.mutateAsync,
+    repairAggregates: repairAggregatesMutation.mutateAsync,
+    runAnalysis: runAnalysisMutation.mutateAsync,
     isTestingConnection: testMutation.isPending,
     isConnecting: connectMutation.isPending,
     isStartingSync: syncMutation.isPending,
@@ -867,6 +969,8 @@ export function useIntegrationsSettings(initialData?: IntegrationSettingsPayload
     isSyncingNow: syncNowMutation.isPending,
     isStoppingSync: stopSyncMutation.isPending,
     isRetryingWebhookSetup: retryWebhookMutation.isPending,
+    isRepairingAggregates: repairAggregatesMutation.isPending,
+    isRunningAnalysis: runAnalysisMutation.isPending,
     testResult: testMutation.data,
   };
 }

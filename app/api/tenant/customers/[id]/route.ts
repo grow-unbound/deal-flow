@@ -30,6 +30,11 @@ type BuyerKpiRow = {
   orders_gmv: number | null;
 };
 
+type BuyerTrendKpiRow = {
+  day: string;
+  orders_gmv: number | null;
+};
+
 function getIstMonthBounds(now = new Date()) {
   const istNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
   const year = istNow.getFullYear();
@@ -46,6 +51,28 @@ function getIstMonthBounds(now = new Date()) {
     prevMonthStartIso: prevMonthStart.toISOString(),
     prevMonthEndIso: prevMonthEnd.toISOString(),
   };
+}
+
+function getIstTrailingMonthKeys(count: number, now = new Date()) {
+  const istNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  const rows: Array<{ key: string; label: string }> = [];
+
+  for (let offset = count - 1; offset >= 0; offset -= 1) {
+    const date = new Date(Date.UTC(istNow.getFullYear(), istNow.getMonth() - offset, 1, 0, 0, 0));
+    const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+    rows.push({
+      key,
+      label: date.toLocaleDateString('en-IN', { month: 'short', timeZone: 'UTC' }),
+    });
+  }
+
+  return rows;
+}
+
+function getIstYearStartIso(now = new Date()) {
+  const istNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  const start = new Date(Date.UTC(istNow.getFullYear(), 0, 1, 0, 0, 0));
+  return start.toISOString();
 }
 
 function getInitials(name: string): string {
@@ -280,10 +307,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   const bounds = getIstMonthBounds();
+  const yearStartIso = getIstYearStartIso();
 
   const [
     currentBuyerKpiRes,
     previousBuyerKpiRes,
+    trendBuyerKpiRes,
     monthOrdersRes,
     prevOrdersRes,
     allOrdersRes,
@@ -319,6 +348,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .eq('scope', snapshotScope)
         .gte('day', bounds.prevMonthStartIso.slice(0, 10))
         .lt('day', bounds.prevMonthEndIso.slice(0, 10));
+
+      if (claims.role === 'seller_assistant') {
+        const locationIds = (claims.location_ids ?? []).filter(Boolean);
+        query = locationIds.length > 0 ? query.in('location_id', locationIds) : query.limit(0);
+      }
+
+      return query;
+    })(),
+    (() => {
+      let query = db
+        .schema('app')
+        .from('kpi_buyers_daily')
+        .select('day, orders_gmv')
+        .eq('tenant_id', claims.tenant_id)
+        .eq('buyer_id', id)
+        .eq('scope', snapshotScope)
+        .gte('day', yearStartIso.slice(0, 10))
+        .lt('day', bounds.nextMonthStartIso.slice(0, 10));
 
       if (claims.role === 'seller_assistant') {
         const locationIds = (claims.location_ids ?? []).filter(Boolean);
@@ -380,6 +427,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (
     currentBuyerKpiRes.error ||
     previousBuyerKpiRes.error ||
+    trendBuyerKpiRes.error ||
     monthOrdersRes.error ||
     prevOrdersRes.error ||
     allOrdersRes.error ||
@@ -840,17 +888,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const creditUsed = aggregatedBuyerSnapshot?.outstanding_dues ?? 0;
   const creditUsedPct = safePct(creditUsed, creditLimit);
 
+  const monthlyTrendRows = (trendBuyerKpiRes.data ?? []) as BuyerTrendKpiRow[];
   const monthlyMap = new Map<string, number>();
   const freqMap = new Map<string, number>();
   const brandSpendMap = new Map<string, number>();
 
+  for (const row of monthlyTrendRows) {
+    const date = new Date(`${row.day}T00:00:00Z`);
+    const monthKey = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+    monthlyMap.set(monthKey, (monthlyMap.get(monthKey) ?? 0) + toNumber(row.orders_gmv));
+  }
+
   for (const order of visibleOrders) {
     if (order.status === 'cancelled' || !order.placed_at) continue;
     const date = new Date(order.placed_at);
-    const monthKey = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
     const dayKey = date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
 
-    monthlyMap.set(monthKey, (monthlyMap.get(monthKey) ?? 0) + Number(order.total_amount ?? 0));
     freqMap.set(dayKey, (freqMap.get(dayKey) ?? 0) + 1);
 
     const items = lineByOrder.get(order.id) ?? [];
@@ -864,10 +917,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
   }
 
-  const monthlyTrend = Array.from(monthlyMap.entries())
-    .sort(([a], [b]) => (a < b ? -1 : 1))
-    .slice(-6)
-    .map(([month, spend]) => ({ month, spend }));
+  const monthlyTrend = getIstTrailingMonthKeys(6).map(({ key, label }) => ({
+    month: label,
+    spend: Number((monthlyMap.get(key) ?? 0).toFixed(2)),
+  }));
 
   const orderFrequency = Array.from(freqMap.entries())
     .slice(-10)

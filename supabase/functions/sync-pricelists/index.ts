@@ -71,6 +71,12 @@ Deno.serve(async (req: Request) => {
         records_synced: totalSynced,
         completed_at: new Date().toISOString(),
         progress: { pricebooks_fetched: pricebooks.length },
+        summary: {
+          since: input.since ?? null,
+          pricebooks_fetched: pricebooks.length,
+          total_processed: totalSynced,
+          last_synced_at: new Date().toISOString(),
+        },
       });
     }
 

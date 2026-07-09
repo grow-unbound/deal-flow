@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const getBuyerAppContextMock = vi.fn();
@@ -198,5 +198,102 @@ describe('requireBuyerAccessProfile', () => {
     expect(profile?.buyer?.id).toBe('buyer-disabled');
     expect(profile?.buyer?.buyer_app_enabled).toBe(false);
     expect(buyersMaybeSingle).toHaveBeenCalled();
+  });
+});
+
+describe('getVisibleBuyerCatalogs', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('keeps catalogs visible through the current IST calendar day', async () => {
+    vi.setSystemTime(new Date('2026-07-09T18:00:00+05:30'));
+
+    const { supabaseAdmin } = await import('@/lib/supabase');
+    vi.mocked(supabaseAdmin!.schema).mockImplementation((schemaName: string) => {
+      if (schemaName !== 'app') throw new Error(`Unexpected schema: ${schemaName}`);
+      return {
+        from: vi.fn((tableName: string) => {
+          if (tableName === 'campaigns') {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  eq: vi.fn(() => ({
+                    is: vi.fn(() => ({
+                      order: vi.fn(async () => ({
+                        data: [
+                          {
+                            id: 'promo-live',
+                            tenant_id: 'tenant-1',
+                            name: 'Still live today',
+                            share_token: 'tok-live',
+                            valid_to: '2026-07-09T00:00:00.000Z',
+                            message: null,
+                            created_at: '2026-07-01T00:00:00.000Z',
+                            scope_type: 'all',
+                            scope_value: null,
+                            hero_image_url: null,
+                          },
+                          {
+                            id: 'promo-ended',
+                            tenant_id: 'tenant-1',
+                            name: 'Already ended',
+                            share_token: 'tok-ended',
+                            valid_to: '2026-07-08T00:00:00.000Z',
+                            message: null,
+                            created_at: '2026-06-30T00:00:00.000Z',
+                            scope_type: 'all',
+                            scope_value: null,
+                            hero_image_url: null,
+                          },
+                        ],
+                        error: null,
+                      })),
+                    })),
+                  })),
+                })),
+              })),
+            };
+          }
+
+          if (tableName === 'buyers') {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  eq: vi.fn(() => ({
+                    maybeSingle: vi.fn(async () => ({
+                      data: { id: 'buyer-1', default_cohort_id: null, geography: null },
+                      error: null,
+                    })),
+                  })),
+                })),
+              })),
+            };
+          }
+
+          if (tableName === 'cohort_members') {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(async () => ({
+                  data: [],
+                  error: null,
+                })),
+              })),
+            };
+          }
+
+          throw new Error(`Unexpected table: ${tableName}`);
+        }),
+      } as never;
+    });
+
+    const { getVisibleBuyerCatalogs } = await import('@/lib/server/buyer-access');
+    const catalogs = await getVisibleBuyerCatalogs('tenant-1', 'buyer-1');
+
+    expect(catalogs.map((catalog) => catalog.id)).toEqual(['promo-live']);
   });
 });

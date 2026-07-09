@@ -7,6 +7,11 @@ import { CohortUpdateSchema } from '@/lib/zod';
 import { buildCohortRulesSummary } from '@/lib/cohort-rules-summary';
 import { getAuthUserEmailMap } from '@/lib/server/auth-user-directory';
 import { buildCohortMemberBuyerRows, resolveAllBuyerIdsForRules } from '@/lib/server/cohort-composer';
+import {
+  aggregateCampaignViewsByCampaign,
+  computeCampaignViewMetrics,
+  type CampaignViewRow,
+} from '@/lib/server/campaign-performance';
 
 type DbClient = NonNullable<typeof supabaseAdmin>;
 
@@ -23,6 +28,7 @@ type OrderRow = {
   total_amount: number | null;
   status: string;
   placed_at: string | null;
+  order_date: string | null;
   campaign_id: string | null;
 };
 
@@ -32,6 +38,7 @@ type CatalogRow = {
   scope_value: { cohort_id?: string } | null;
   status: string;
   name: string;
+  valid_from: string;
   created_at: string;
   updated_at: string;
 };
@@ -57,16 +64,14 @@ function getIstMonthWindow(now = new Date()) {
   const year = istNow.getFullYear();
   const month = istNow.getMonth();
 
-  const currentStart = new Date(Date.UTC(year, month, 1, 0, 0, 0));
-  const nextStart = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0));
-  const prevStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
-  const prevEnd = new Date(Date.UTC(year, month, 1, 0, 0, 0));
+  const currentStart = new Date(Date.UTC(year, month, 1, 0, 0, 0)).toISOString().slice(0, 10);
+  const nextStart = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0)).toISOString().slice(0, 10);
+  const prevStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0)).toISOString().slice(0, 10);
 
   return {
-    currentStartIso: currentStart.toISOString(),
-    nextStartIso: nextStart.toISOString(),
-    prevStartIso: prevStart.toISOString(),
-    prevEndIso: prevEnd.toISOString(),
+    currentStartDate: currentStart,
+    nextStartDate: nextStart,
+    prevStartDate: prevStart,
   };
 }
 
@@ -94,107 +99,6 @@ function initialsFromName(name: string) {
 function truncate56(text: string | null | undefined) {
   if (!text) return 'No description';
   return text.length > 56 ? `${text.slice(0, 56)}…` : text;
-}
-
-async function getCatalogViewsByCohort(tenantId: string, cohortId: string, fromIso: string, toIso: string) {
-  const apiKey = process.env.POSTHOG_PERSONAL_API_KEY;
-  const projectId = process.env.POSTHOG_PROJECT_ID;
-  const host = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com';
-
-  if (!apiKey || !projectId) return 0;
-
-  try {
-    const response = await fetch(`${host}/api/projects/${projectId}/query/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        query: {
-          kind: 'HogQLQuery',
-          query: `
-            SELECT count(DISTINCT person_id) AS unique_views
-            FROM events
-            WHERE event = 'catalog_viewed'
-              AND properties.tenant_id = {tenant_id:String}
-              AND properties.cohort_id = {cohort_id:String}
-              AND timestamp >= toDateTime({from_ts:String})
-              AND timestamp < toDateTime({to_ts:String})
-          `,
-          placeholders: {
-            tenant_id: tenantId,
-            cohort_id: cohortId,
-            from_ts: fromIso,
-            to_ts: toIso,
-          },
-        },
-      }),
-    });
-
-    if (!response.ok) return 0;
-    const payload = (await response.json()) as { results?: Array<[number] | { unique_views: number }> };
-    const first = payload.results?.[0];
-    if (!first) return 0;
-    if (Array.isArray(first)) return Number(first[0] ?? 0);
-    return Number(first.unique_views ?? 0);
-  } catch {
-    return 0;
-  }
-}
-
-async function getCatalogOpensByCatalog(tenantId: string, catalogIds: string[], fromIso: string, toIso: string) {
-  const apiKey = process.env.POSTHOG_PERSONAL_API_KEY;
-  const projectId = process.env.POSTHOG_PROJECT_ID;
-  const host = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com';
-
-  if (!apiKey || !projectId || catalogIds.length === 0) return new Map<string, number>();
-
-  try {
-    const quotedCatalogIds = catalogIds.map((id) => `'${id}'`).join(',');
-    const response = await fetch(`${host}/api/projects/${projectId}/query/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        query: {
-          kind: 'HogQLQuery',
-          query: `
-            SELECT properties.campaign_id AS campaign_id, count(DISTINCT person_id) AS unique_views
-            FROM events
-            WHERE event = 'catalog_viewed'
-              AND properties.tenant_id = {tenant_id:String}
-              AND properties.campaign_id IN (${quotedCatalogIds})
-              AND timestamp >= toDateTime({from_ts:String})
-              AND timestamp < toDateTime({to_ts:String})
-            GROUP BY properties.campaign_id
-          `,
-          placeholders: {
-            tenant_id: tenantId,
-            from_ts: fromIso,
-            to_ts: toIso,
-          },
-        },
-      }),
-    });
-
-    if (!response.ok) return new Map<string, number>();
-    const payload = (await response.json()) as { results?: Array<[string, number] | { campaign_id: string; unique_views: number }> };
-
-    const map = new Map<string, number>();
-    for (const row of payload.results ?? []) {
-      if (Array.isArray(row)) {
-        map.set(String(row[0]), Number(row[1] ?? 0));
-      } else {
-        map.set(String(row.campaign_id), Number(row.unique_views ?? 0));
-      }
-    }
-    return map;
-  } catch {
-    return new Map<string, number>();
-  }
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -232,7 +136,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   if (cohortError || !cohort) return NextResponse.json({ error: 'Cohort not found' }, { status: 404 });
 
-  const [{ data: buyers }, { data: members }, { data: orders }, { data: catalogRowsData }, { data: catalogItems }, { data: tenantProducts }, { data: tenantBrandsData }] = await Promise.all([
+  const [{ data: buyers }, { data: members }] = await Promise.all([
     db
       .schema('app')
       .from('buyers')
@@ -245,46 +149,129 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .from('cohort_members')
       .select('cohort_id, buyer_id')
       .eq('cohort_id', id),
-    db
-      .schema('app')
-      .from('orders')
-      .select('id, buyer_id, total_amount, status, placed_at, campaign_id')
-      .eq('tenant_id', claims.tenant_id)
-      .neq('status', 'cancelled')
-      .is('deleted_at', null),
-    db
-      .schema('app')
-      .from('campaigns')
-      .select('id, scope_type, scope_value, status, name, created_at, updated_at')
-      .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null),
-    db
-      .schema('app')
-      .from('campaign_items')
-      .select('campaign_id, tenant_product_id')
-      .is('deleted_at', null),
-    db
-      .schema('app')
-      .from('tenant_products')
-      .select('id, tenant_brand_id')
-      .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null),
-    db
-      .schema('app')
-      .from('tenant_brands')
-      .select('id, display_name_override, master_brand_id')
-      .eq('tenant_id', claims.tenant_id)
-      .is('deleted_at', null),
   ]);
 
   const buyerRows = (buyers ?? []) as BuyerRow[];
   const memberRows = members ?? [];
-  const orderRows = (orders ?? []) as OrderRow[];
-  const catalogRows = (catalogRowsData ?? []) as CatalogRow[];
-  const catalogItemRows = (catalogItems ?? []) as CatalogItemRow[];
-  const tenantProductRows = (tenantProducts ?? []) as TenantProductRow[];
-  const tenantBrandRows = (tenantBrandsData ?? []) as TenantBrandRow[];
   const allowedTenantBrandIds = (cohort.allowed_tenant_brand_ids as string[] | null | undefined) ?? null;
+
+  const memberBuyerIds = new Set<string>(memberRows.map((row: { buyer_id: string }) => row.buyer_id));
+  const totalMembers = cohort.cached_member_count ?? memberBuyerIds.size;
+
+  const currentMembers = buyerRows.filter((b) => memberBuyerIds.has(b.id));
+  const memberPreview = currentMembers
+    .slice(0, 10)
+    .map((b) => ({ id: b.id, name: b.business_name, city: b.geography?.city ?? b.geography?.state ?? '—', tier: b.tier ?? '—' }));
+
+  const memberBuyerIdsList = Array.from(memberBuyerIds);
+  const { data: scopedCatalogRowsData, error: scopedCatalogRowsError } = await db
+    .schema('app')
+    .from('campaigns')
+    .select('id, scope_type, scope_value, status, name, valid_from, created_at, updated_at')
+    .eq('tenant_id', claims.tenant_id)
+    .eq('scope_type', 'cohort')
+    .contains('scope_value', { cohort_id: id })
+    .is('deleted_at', null);
+
+  if (scopedCatalogRowsError) {
+    return NextResponse.json({ error: 'Failed to fetch cohort catalogs' }, { status: 500 });
+  }
+
+  const scopedCatalogs = (scopedCatalogRowsData ?? []) as CatalogRow[];
+  const scopedCatalogIds = scopedCatalogs.map((catalog) => catalog.id);
+  const { currentStartDate, nextStartDate, prevStartDate } = getIstMonthWindow();
+
+  const [memberOrdersRes, scopedCatalogOrdersRes, campaignViewsRes, catalogItemsRes] = await Promise.all([
+    memberBuyerIdsList.length > 0
+      ? db
+          .schema('app')
+          .from('orders')
+          .select('id, buyer_id, total_amount, status, placed_at, order_date, campaign_id')
+          .eq('tenant_id', claims.tenant_id)
+          .in('buyer_id', memberBuyerIdsList)
+          .neq('status', 'cancelled')
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [], error: null }),
+    scopedCatalogIds.length > 0
+      ? db
+          .schema('app')
+          .from('orders')
+          .select('id, buyer_id, total_amount, status, placed_at, order_date, campaign_id')
+          .eq('tenant_id', claims.tenant_id)
+          .in('campaign_id', scopedCatalogIds)
+          .neq('status', 'cancelled')
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [], error: null }),
+    scopedCatalogIds.length > 0
+      ? db
+          .schema('app')
+          .from('campaign_views')
+          .select('buyer_id, campaign_id, viewed_at, view_date')
+          .eq('tenant_id', claims.tenant_id)
+          .in('campaign_id', scopedCatalogIds)
+          .gte('view_date', currentStartDate)
+          .lt('view_date', nextStartDate)
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [], error: null }),
+    scopedCatalogIds.length > 0
+      ? db
+          .schema('app')
+          .from('campaign_items')
+          .select('campaign_id, tenant_product_id')
+          .in('campaign_id', scopedCatalogIds)
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (memberOrdersRes.error || scopedCatalogOrdersRes.error || campaignViewsRes.error || catalogItemsRes.error) {
+    return NextResponse.json({ error: 'Failed to fetch cohort detail metrics' }, { status: 500 });
+  }
+
+  const orderRows = (memberOrdersRes.data ?? []) as OrderRow[];
+  const scopedCatalogOrders = (scopedCatalogOrdersRes.data ?? []) as OrderRow[];
+  const campaignViewRows = (campaignViewsRes.data ?? []) as CampaignViewRow[];
+  const catalogItemRows = (catalogItemsRes.data ?? []) as CatalogItemRow[];
+  const catalogProductIds = Array.from(new Set(catalogItemRows.map((row) => row.tenant_product_id)));
+
+  const { data: tenantProductsData, error: tenantProductsError } = catalogProductIds.length > 0
+    ? await db
+        .schema('app')
+        .from('tenant_products')
+        .select('id, tenant_brand_id')
+        .eq('tenant_id', claims.tenant_id)
+        .in('id', catalogProductIds)
+        .is('deleted_at', null)
+    : { data: [], error: null };
+
+  if (tenantProductsError) {
+    return NextResponse.json({ error: 'Failed to fetch catalog products' }, { status: 500 });
+  }
+
+  const tenantProductRows = (tenantProductsData ?? []) as TenantProductRow[];
+  const carriedBrandIds = Array.from(
+    new Set(
+      tenantProductRows
+        .map((row) => row.tenant_brand_id)
+        .filter((brandId): brandId is string => Boolean(brandId)),
+    ),
+  );
+  const tenantBrandIdsToLoad = Array.from(new Set([...(allowedTenantBrandIds ?? []), ...carriedBrandIds]));
+
+  const { data: tenantBrandsData, error: tenantBrandsError } = tenantBrandIdsToLoad.length > 0
+    ? await db
+        .schema('app')
+        .from('tenant_brands')
+        .select('id, display_name_override, master_brand_id')
+        .eq('tenant_id', claims.tenant_id)
+        .in('id', tenantBrandIdsToLoad)
+        .is('deleted_at', null)
+    : { data: [], error: null };
+
+  if (tenantBrandsError) {
+    return NextResponse.json({ error: 'Failed to fetch catalog brands' }, { status: 500 });
+  }
+
+  const tenantBrandRows = (tenantBrandsData ?? []) as TenantBrandRow[];
   const masterBrandIds = Array.from(new Set(tenantBrandRows.map((row) => row.master_brand_id).filter(Boolean) as string[]));
   const { data: masterBrandsData } = masterBrandIds.length > 0
     ? await db.schema('catalog').from('brands').select('id, name').in('id', masterBrandIds)
@@ -298,17 +285,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   );
   const allowedBrandNames = allowedTenantBrandIds?.map((brandId) => tenantBrandNameMap.get(brandId) ?? 'Unnamed brand') ?? [];
 
-  const memberBuyerIds = new Set<string>(memberRows.map((row: { buyer_id: string }) => row.buyer_id));
-  const totalMembers = cohort.cached_member_count ?? memberBuyerIds.size;
-  const buyerById = new Map<string, BuyerRow>(buyerRows.map((row) => [row.id, row]));
-
-  const currentMembers = buyerRows.filter((b) => memberBuyerIds.has(b.id));
-  const memberPreview = currentMembers
-    .slice(0, 10)
-    .map((b) => ({ id: b.id, name: b.business_name, city: b.geography?.city ?? b.geography?.state ?? '—', tier: b.tier ?? '—' }));
-
-  const { currentStartIso, nextStartIso, prevStartIso, prevEndIso } = getIstMonthWindow();
-
   let gmvMtd = 0;
   let gmvPrev = 0;
   let ordersMtd = 0;
@@ -317,23 +293,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   for (const order of orderRows) {
     if (!memberBuyerIds.has(order.buyer_id)) continue;
-    if (!order.placed_at) continue;
     const amount = Number(order.total_amount ?? 0);
-    const placed = new Date(order.placed_at);
-    const placedIso = placed.toISOString();
+    const metricDay = order.order_date ?? (order.placed_at ? new Date(order.placed_at).toISOString().slice(0, 10) : null);
+    if (!metricDay) continue;
 
-    const monthKey = `${placed.getUTCFullYear()}-${String(placed.getUTCMonth() + 1).padStart(2, '0')}`;
+    const monthKey = metricDay.slice(0, 7);
     const agg = monthAgg.get(monthKey) ?? { gmv: 0, orders: 0 };
     agg.gmv += amount;
     agg.orders += 1;
     monthAgg.set(monthKey, agg);
 
-    if (placedIso >= currentStartIso && placedIso < nextStartIso) {
+    if (metricDay >= currentStartDate && metricDay < nextStartDate) {
       gmvMtd += amount;
       ordersMtd += 1;
       activeMembersSet.add(order.buyer_id);
     }
-    if (placedIso >= prevStartIso && placedIso < prevEndIso) {
+    if (metricDay >= prevStartDate && metricDay < currentStartDate) {
       gmvPrev += amount;
     }
   }
@@ -341,20 +316,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const growthPct = gmvPrev > 0 ? Number((((gmvMtd - gmvPrev) / gmvPrev) * 100).toFixed(1)) : 0;
   const aov = ordersMtd > 0 ? gmvMtd / ordersMtd : 0;
 
-  const scopedCatalogIds = new Set<string>(
-    catalogRows
-      .filter((c) => c.scope_type === 'cohort' && c.scope_value?.cohort_id === id)
-      .map((c) => c.id),
-  );
+  const scopedCatalogIdSet = new Set(scopedCatalogIds);
 
-  const catalogOrdersMtd = orderRows.filter((order) => {
-    if (!order.campaign_id || !scopedCatalogIds.has(order.campaign_id)) return false;
-    if (!order.placed_at) return false;
-    const placedIso = new Date(order.placed_at).toISOString();
-    return placedIso >= currentStartIso && placedIso < nextStartIso;
+  const catalogOrdersMtd = scopedCatalogOrders.filter((order) => {
+    if (!order.campaign_id || !scopedCatalogIdSet.has(order.campaign_id)) return false;
+    const metricDay = order.order_date ?? (order.placed_at ? new Date(order.placed_at).toISOString().slice(0, 10) : null);
+    return Boolean(metricDay && metricDay >= currentStartDate && metricDay < nextStartDate);
   }).length;
 
-  const uniqueCatalogViews = await getCatalogViewsByCohort(claims.tenant_id, id, currentStartIso, nextStartIso);
+  const uniqueCatalogViews = computeCampaignViewMetrics(campaignViewRows).uniqueViewers;
   const conversionPct = uniqueCatalogViews > 0 ? Number(((catalogOrdersMtd / uniqueCatalogViews) * 100).toFixed(1)) : 0;
 
   const twelveMonthKeys = getLastNMonthStarts(12);
@@ -362,17 +332,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const mtdSpendByBuyer = new Map<string, number>();
   for (const order of orderRows) {
-    if (!memberBuyerIds.has(order.buyer_id) || !order.placed_at) continue;
-    const placedIso = new Date(order.placed_at).toISOString();
-    if (placedIso < currentStartIso || placedIso >= nextStartIso) continue;
+    const metricDay = order.order_date ?? (order.placed_at ? new Date(order.placed_at).toISOString().slice(0, 10) : null);
+    if (!memberBuyerIds.has(order.buyer_id) || !metricDay) continue;
+    if (metricDay < currentStartDate || metricDay >= nextStartDate) continue;
     mtdSpendByBuyer.set(order.buyer_id, (mtdSpendByBuyer.get(order.buyer_id) ?? 0) + Number(order.total_amount ?? 0));
   }
 
   const ordersByBuyerMtd = new Map<string, number>();
   for (const order of orderRows) {
-    if (!memberBuyerIds.has(order.buyer_id) || !order.placed_at) continue;
-    const placedIso = new Date(order.placed_at).toISOString();
-    if (placedIso < currentStartIso || placedIso >= nextStartIso) continue;
+    const metricDay = order.order_date ?? (order.placed_at ? new Date(order.placed_at).toISOString().slice(0, 10) : null);
+    if (!memberBuyerIds.has(order.buyer_id) || !metricDay) continue;
+    if (metricDay < currentStartDate || metricDay >= nextStartDate) continue;
     ordersByBuyerMtd.set(order.buyer_id, (ordersByBuyerMtd.get(order.buyer_id) ?? 0) + 1);
   }
 
@@ -389,13 +359,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const dormantMembers = Math.max(0, totalMembers - activeMembersSet.size);
 
-  const scopedCatalogs = catalogRows.filter((c) => c.scope_type === 'cohort' && c.scope_value?.cohort_id === id);
-  const scopedCatalogIdSet = new Set(scopedCatalogs.map((c) => c.id));
-
-  const scopedCatalogOrdersMtd = orderRows.filter((order) => {
-    if (!order.campaign_id || !scopedCatalogIdSet.has(order.campaign_id) || !order.placed_at) return false;
-    const placedIso = new Date(order.placed_at).toISOString();
-    return placedIso >= currentStartIso && placedIso < nextStartIso;
+  const scopedCatalogOrdersMtd = scopedCatalogOrders.filter((order) => {
+    if (!order.campaign_id || !scopedCatalogIdSet.has(order.campaign_id)) return false;
+    const metricDay = order.order_date ?? (order.placed_at ? new Date(order.placed_at).toISOString().slice(0, 10) : null);
+    return Boolean(metricDay && metricDay >= currentStartDate && metricDay < nextStartDate);
   });
 
   const tenantProductToBrand = new Map<string, string | null>(tenantProductRows.map((row) => [row.id, row.tenant_brand_id]));
@@ -419,12 +386,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
   }
 
-  const opensByCatalog = await getCatalogOpensByCatalog(
-    claims.tenant_id,
-    scopedCatalogs.map((c) => c.id),
-    currentStartIso,
-    nextStartIso,
-  );
+  const opensByCatalog = aggregateCampaignViewsByCampaign(campaignViewRows);
   const ordersByCatalogMtd = new Map<string, { orders: number; gmv: number }>();
   for (const order of scopedCatalogOrdersMtd) {
     if (!order.campaign_id) continue;
@@ -441,8 +403,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return {
         campaign_id: catalog.id,
         catalog_name: catalog.name,
-        sent_at: catalog.updated_at || catalog.created_at,
-        opens: opensByCatalog.get(catalog.id) ?? 0,
+        sent_at: catalog.valid_from ?? catalog.updated_at ?? catalog.created_at,
+        opens: opensByCatalog.get(catalog.id)?.uniqueViewers ?? 0,
         orders: stats.orders,
         gmv: Number(stats.gmv.toFixed(2)),
       };
