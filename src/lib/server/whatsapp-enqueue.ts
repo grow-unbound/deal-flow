@@ -164,6 +164,7 @@ export async function enqueueWhatsAppMessage(
  */
 export function triggerWhatsAppDispatch(): void {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '');
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
   const secret = process.env.INTEGRATIONS_PUSH_SECRET?.trim()
     ?? process.env.INTEGRATIONS_DISPATCH_SECRET?.trim();
 
@@ -174,6 +175,9 @@ export function triggerWhatsAppDispatch(): void {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      // Send anon JWT so the function accepts the call even if x-push-secret
+      // is misconfigured. x-push-secret kept as belt-and-suspenders.
+      ...(anonKey ? { 'Authorization': `Bearer ${anonKey}` } : {}),
       ...(secret ? { 'x-push-secret': secret } : {}),
     },
     body: JSON.stringify({ trigger: 'transactional' }),
