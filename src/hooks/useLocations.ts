@@ -7,11 +7,12 @@ import type { SellerLandingPeriod } from '@/lib/seller-period';
 // ─── Landing page types ───────────────────────────────────────────────────────
 
 export interface LocationsLandingKpis {
-  active_locations: number;
-  total_locations: number;
+  unpaid_invoice_count: number;
+  total_invoice_count: number;
   outstanding_dues_total: number;
   dues_location_count: number;
-  low_stock_locations: number;
+  open_estimate_count: number;
+  total_estimate_count: number;
   top_location_name: string | null;
   top_location_gmv_share_pct: number;
 }
