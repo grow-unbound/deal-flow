@@ -72,7 +72,7 @@ describe('buyer home page', () => {
       if (url === '/api/buyer/home') {
         return jsonResponse({
           greeting_name: 'Rajan',
-          summary_card: { gmv_mtd: 1854000, invoice_count_ytd: 47, trend_vs_last_month_pct: 12 },
+          summary_card: { gmv_mtd: 1854000, gmv_ytd: 3250000, invoice_count_ytd: 47, trend_vs_last_month_pct: 12 },
           dues_card: { outstanding_dues: 240000, open_invoice_count: 4, earliest_due_date: '2026-06-22', days_until_earliest_due: 2 },
           credit_card: { credit_limit: 250000, available_credit: 10000, credit_used: 240000 },
           order_again_preview: [
@@ -111,6 +111,7 @@ describe('buyer home page', () => {
     expect(await screen.findByText(/Good (morning|afternoon|evening), Rajan/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /notifications/i })).toHaveClass('h-12', 'w-12');
     expect(screen.getByText('Latest promotions')).toBeInTheDocument();
+    expect(screen.getByText('₹32,50,000')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /browse all/i })).toHaveAttribute('href', '/buy/buy-again');
     const seeAllLinks = screen.getAllByRole('link', { name: /see all/i });
     expect(seeAllLinks.map((link) => link.getAttribute('href'))).toEqual(

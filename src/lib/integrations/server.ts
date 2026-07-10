@@ -514,6 +514,12 @@ function extractJobMetadata(row: Record<string, unknown>): {
   };
 }
 
+function isDegradedSyncRun(row: Record<string, unknown>): boolean {
+  const progress = coerceRecord(row.progress);
+  const progressMeta = coerceRecord(progress.meta);
+  return progressMeta.degraded === true;
+}
+
 function mergePostSyncWarnings(row: Record<string, unknown>) {
   const summary = coerceRecord(row.summary);
   const warnings = Array.isArray(summary.warnings)
@@ -523,6 +529,14 @@ function mergePostSyncWarnings(row: Record<string, unknown>) {
   if (isPostSyncRebuildFailed(row)) {
     const phase = typeof row.phase === 'string' && row.phase.length > 0 ? row.phase : 'sync';
     const message = `Post-sync aggregate rebuild failed after ${phase}. Repair aggregates or run analysis to refresh metrics.`;
+    if (!warnings.includes(message)) warnings.push(message);
+  }
+
+  // Never let a run with a skipped phase read as plain success — this is the
+  // direct fix for failure propagation that used to be silent (master
+  // reported 'completed' even when a phase failed under skip_failed_phases).
+  if (isDegradedSyncRun(row)) {
+    const message = 'Sync completed with issues — one or more phases were skipped after failing. Check phase details below.';
     if (!warnings.includes(message)) warnings.push(message);
   }
 

@@ -49,6 +49,17 @@ export const IntegrationSyncJobTypeSchema = z.enum([
 ]);
 export type IntegrationSyncJobType = z.infer<typeof IntegrationSyncJobTypeSchema>;
 
+// Orchestration-policy tag for "why this run started" — additive alongside
+// job_type (kept for rebuild-window sizing and UI labels). See
+// src/lib/integrations/sync-orchestration.ts's RunKind for the canonical type.
+export const IntegrationRunKindSchema = z.enum([
+  'initial_sync',
+  'manual_full',
+  'manual_phase',
+  'daily_incremental',
+]);
+export type IntegrationRunKind = z.infer<typeof IntegrationRunKindSchema>;
+
 export const IntegrationSyncJobStatusSchema = z.enum(['pending', 'queued', 'running', 'paused', 'completed', 'failed', 'cancelled']);
 export type IntegrationSyncJobStatus = z.infer<typeof IntegrationSyncJobStatusSchema>;
 
@@ -495,6 +506,7 @@ export const IntegrationSyncRequestSchema = z
   .object({
     tenant_integration_id: z.string().uuid(),
     job_type: IntegrationSyncJobTypeSchema.default('manual'),
+    run_kind: IntegrationRunKindSchema.optional(),
     mode: z.enum(['initial_import', 'incremental', 'manual']).default('initial_import'),
     scope: z.enum(['reference', 'transactional', 'full']).optional(),
     phase: z.string().trim().min(1).max(120).optional(),

@@ -66,6 +66,8 @@ export function ProductCard({ item, className }: ProductCardProps): React.ReactN
       quantity: 1,
       line_total: item.price,
       tenant_category_id: item.category_id ?? undefined,
+      stock_status: item.stock_status,
+      on_hand: item.on_hand,
     }, item.campaign_id);
     if (recoCtx) {
       posthog.capture('reco_add_to_cart', {

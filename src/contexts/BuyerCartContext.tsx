@@ -23,6 +23,8 @@ export interface BuyerCartItem {
   line_total: number;
   tenant_category_id?: string;
   campaign_id?: string | null;
+  stock_status?: 'available' | 'limited' | 'out_of_stock';
+  on_hand?: number;
 }
 
 type CartState = { items: BuyerCartItem[]; campaignId: string | null };
@@ -152,7 +154,9 @@ export function BuyerCartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const itemCount = state.items.reduce((sum, i) => sum + i.quantity, 0);
-  const subtotal = state.items.reduce((sum, i) => sum + i.line_total, 0);
+  const subtotal = state.items
+    .filter((item) => item.stock_status !== 'out_of_stock')
+    .reduce((sum, i) => sum + i.line_total, 0);
   const resolvedCampaignId = resolveBuyerCartCampaignId(state.campaignId, state.items);
 
   const value: CartContextValue = {

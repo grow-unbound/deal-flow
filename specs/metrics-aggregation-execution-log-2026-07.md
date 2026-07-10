@@ -3,7 +3,7 @@
 Date: 2026-07-07
 Source of truth: [metrics-aggregation-standardization-plan-2026-07.md](/Users/phanikrovvidi/projects/deal-flow/specs/metrics-aggregation-standardization-plan-2026-07.md)
 Owner: Master session
-Status: Phases 0-3 complete; later-phase frontend/read-model work intentionally deferred
+Status: Phases 0-7 complete; Phase 8 metrics cleanup implemented with documented non-blocking exceptions
 
 ## Working Rules
 
@@ -1917,3 +1917,127 @@ npx supabase test db --file tests/metrics_aggregation_phase7_reconciliation.sql
 - Repair and ad hoc analysis remain tenant-wide only in this phase; narrower entity-scope maintenance was intentionally deferred.
 - This phase does not add a second scheduler or standalone monitoring page; settings/integrations remains the only operator surface.
 - Existing unrelated dirty-worktree files were left untouched outside the Phase 7 implementation slice.
+
+## Phase 8: Metrics Aggregation Cleanup
+
+### Goal
+
+Run a metrics-only hardening pass on the Phase 0-7 aggregate baseline:
+
+- fix confirmed aggregate logic drift
+- remove obsolete aggregate entrypoints
+- align buyer-home spend semantics
+- prevent optimistic page-slice KPI replacement
+- add missing edge fixtures
+- document the ongoing metrics review standard
+
+### Subagent owners
+
+- Master session:
+  - orchestration
+  - implementation
+  - verification
+  - execution-log closeout
+- Goodall:
+  - database aggregate audit and function comparison against snapshot/KPI semantics
+- Euclid:
+  - API/frontend metric fetch/render audit
+- Harvey:
+  - documentation and test-gap audit
+
+### Fixed
+
+- Added one Phase 8 migration created via `supabase migration new`:
+  - [20260710070719_metrics_phase8_cleanup.sql](/Users/phanikrovvidi/projects/deal-flow/supabase/migrations/20260710070719_metrics_phase8_cleanup.sql)
+- Rewrote `app.refresh_buyers_snapshot(...)` receivable and overdue calculations to use:
+  - `app.invoice_status_has_receivable(...)`
+  - `app.invoice_is_overdue(...)`
+- Rewrote `app.refresh_locations_snapshot(...)` outstanding, oldest-unpaid, and invoice-count calculations to use the same invoice helpers.
+- Fixed `app._run_metrics_analysis_for_tenant_range(...)` so tenant order GMV is aggregated from orders separately from item counts, avoiding duplicated GMV for multi-line orders.
+- Adjusted `app.get_tenant_aggregate_freshness(...)` so empty sparse daily KPI tables are not stale failures only because `row_count = 0`.
+- Dropped obsolete recent-rebuild entrypoints that still encoded pre-standardization date/status logic:
+  - `app.rebuild_kpi_aggregates_for_recent_days(integer)`
+  - `app.rebuild_kpi_brand_daily_recent(integer)`
+  - `app.rebuild_kpi_category_daily_recent(integer)`
+- Replaced `app.get_buyer_home_summary(...)` with a return contract that exposes both `gmv_mtd` and true `gmv_ytd`.
+- Buyer home now renders the "Spend this year" card from `summary_card.gmv_ytd`, with `gmv_mtd` only as a compatibility fallback:
+  - [app/api/buyer/home/route.ts](/Users/phanikrovvidi/projects/deal-flow/app/api/buyer/home/route.ts)
+  - [app/(buyer)/buy/home/page.tsx](/Users/phanikrovvidi/projects/deal-flow/app/(buyer)/buy/home/page.tsx)
+  - [src/lib/buyer-home-types.ts](/Users/phanikrovvidi/projects/deal-flow/src/lib/buyer-home-types.ts)
+- Removed page-scoped optimistic KPI replacement from buyer-app access toggles. The optimistic update now changes row state only and leaves aggregate KPI totals for refetch/aggregate response:
+  - [src/hooks/useBuyerAppAccess.ts](/Users/phanikrovvidi/projects/deal-flow/src/hooks/useBuyerAppAccess.ts)
+- Added Phase 8 review checklist to:
+  - [AGENTS.md](/Users/phanikrovvidi/projects/deal-flow/AGENTS.md)
+
+### Added / updated tests
+
+- Added Phase 8 SQL fixture:
+  - [metrics_aggregation_phase8_cleanup.sql](/Users/phanikrovvidi/projects/deal-flow/tests/metrics_aggregation_phase8_cleanup.sql)
+- The SQL fixture covers:
+  - receivable status behavior for `sent`, `viewed`, `unpaid`, `overdue`, `partially_paid`, `paid`, and `void`
+  - paid invoice with stale nonzero balance excluded from dues/overdue
+  - buyer and location snapshot receivable totals
+  - multi-line order analysis without duplicated GMV
+  - sparse KPI freshness reported as non-stale when no daily rows exist
+- Updated buyer-home route/page tests for YTD spend semantics.
+- Added buyer-app access hook coverage to prove optimistic row updates do not recompute aggregate KPI totals from the cached page slice.
+- Updated sales-orders landing coverage for `order_date` precedence over `placed_at`/`created_at`.
+
+### Verified
+
+- Passed targeted Phase 8 Vitest coverage:
+
+```bash
+pnpm vitest run src/tests/buyer-home-route.test.ts src/tests/buyer-home-page.test.tsx src/tests/buyer-app-access-hook.test.tsx src/tests/sales-orders-landing-page.test.ts
+```
+
+- Result:
+  - 4 test files passed
+  - 6 tests passed
+
+### Verification blocked / needs rerun
+
+- `npm run type-check` is currently blocked by pre-existing, unrelated location type errors:
+
+```text
+app/api/tenant/locations/landing/route.ts(15,3): Module '"@/hooks/useLocations"' has no exported member 'LocationStockStatus'.
+src/hooks/useLocations.ts(35,17): Cannot find name 'LocationStockStatus'.
+```
+
+- `git diff --check` is currently blocked by pre-existing, unrelated trailing whitespace in:
+
+```text
+src/components/seller/settings/GeneralSettingsForm.tsx:294
+```
+
+- SQL fixture execution remains blocked locally because Docker is not running. The current Supabase CLI syntax was corrected from the old `--file` form to positional paths, but `--local` cannot connect:
+
+```bash
+npx supabase test db --local tests/metrics_aggregation_phase7_reconciliation.sql
+npx supabase test db --local tests/metrics_aggregation_phase8_cleanup.sql
+```
+
+- Result:
+  - both commands reached `Connecting to local database...`
+  - both failed with `LegacyDbConnectError`
+  - `npx supabase status` reported it cannot connect to the Docker daemon at `/Users/phanikrovvidi/.docker/run/docker.sock`
+
+### Intentionally deferred
+
+- No new campaign/cohort aggregate families were introduced in Phase 8. Cohort and catalog/campaign attribution still need a dedicated aggregate/read model before every campaign/cohort KPI can be fully standardized.
+- Entity-scoped repair/analysis remains deferred; Phase 7/8 keep repair and analysis tenant-wide.
+- `app.kpi_product_daily.on_hand` remains documented as current inventory posture copied into daily facts, not a historical stock trend.
+
+### Non-blocking exceptions / follow-up matrix
+
+| Surface | Status | Phase 8 decision |
+|---|---:|---|
+| Buyer home annual spend | Fixed | Added `gmv_ytd` to DB/API contract and render path. |
+| Buyer-app access optimistic KPIs | Fixed | Optimistic update now changes row state only; aggregate KPI totals await refetch/response. |
+| Buyers/location receivables | Fixed | Snapshot functions now use canonical invoice helper predicates. |
+| Phase 7 tenant analysis GMV | Fixed | Order totals and item counts are aggregated separately before comparison. |
+| Sparse KPI freshness | Fixed | Empty daily KPI tables are not stale solely because no rows exist. |
+| Brand detail | Accepted exception | Headline/trend metrics use `kpi_brand_daily`/`kpi_product_daily`; remaining buyer/catalog/cohort breakdowns are bounded relational drill-downs until campaign/cohort aggregates exist. |
+| Dashboard | Follow-up | Order/GMV headlines prefer `kpi_tenant_daily`, but inventory/catalog/open estimate/overdue callouts still mix relational reads. Needs aggregate-backed dashboard read model or explicit snapshot coverage. |
+| Cohort landing | Follow-up | Current GMV/orders/conversion are route-composed from cohort membership, orders, and PostHog/catalog views. Needs cohort-grain KPI/read model before standardization. |
+| Campaign/catalog attribution | Follow-up | Catalog detail and related brand/cohort campaign breakdowns remain bounded relational attribution. Needs campaign-grain aggregate before removal. |

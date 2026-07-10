@@ -87,7 +87,7 @@ describe('buyer catalog routes use selected location for stock', () => {
   it('passes nearest inventory warehouse into the shared catalog page resolver', async () => {
     requireBuyerAccessProfileMock.mockResolvedValue({
       context: { tenant_id: 'tenant-1' },
-      buyer: { id: 'buyer-1' },
+      buyer: null,
     });
     resolveBuyerCatalogContextMock.mockResolvedValue({
       tenantId: 'tenant-1',
@@ -119,7 +119,7 @@ describe('buyer catalog routes use selected location for stock', () => {
   it('uses the fallback default warehouse for share-token stock enrichment', async () => {
     requireBuyerAccessProfileMock.mockResolvedValue({
       context: { tenant_id: 'tenant-1' },
-      buyer: { id: 'buyer-1' },
+      buyer: null,
     });
     getSelectedBuyerDeliveryFromRequestMock.mockReturnValue({ label: 'Remote Area', city: 'Pune', lat: 18.5, lng: 73.8 });
     resolveNearestBuyerLocationMock.mockResolvedValue({ warehouseId: 'loc-default', locationName: 'Default Warehouse', distanceKm: null, fallback: true });

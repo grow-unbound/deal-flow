@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   DELIVERY_COOKIE_NAME,
   parseDeliveryCookie,
@@ -45,6 +46,7 @@ export function BuyerDeliveryProvider({
   children: React.ReactNode;
   initialPayload?: string | null;
 }) {
+  const queryClient = useQueryClient();
   const [state, setState] = React.useState<BuyerDeliveryCookiePayload>(() => {
     const fromServer = initialPayload ? parseDeliveryCookie(initialPayload) : null;
     if (fromServer) return { selected: fromServer.selected ?? null, recent: fromServer.recent ?? [] };
@@ -70,7 +72,20 @@ export function BuyerDeliveryProvider({
       writeToDocument(next);
       return next;
     });
-  }, []);
+    void queryClient.invalidateQueries({
+      predicate: (query) => {
+        const key = query.queryKey[0];
+        return typeof key === 'string' && (
+          key.startsWith('buyer-catalog')
+          || key.startsWith('buyer-product')
+          || key === 'buyer-categories'
+          || key === 'buyer-brands'
+          || key === 'buyer-resolved-products'
+          || key === 'buyer-reorder'
+        );
+      },
+    });
+  }, [queryClient]);
 
   const value = React.useMemo<BuyerDeliveryContextValue>(
     () => ({

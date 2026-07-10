@@ -831,6 +831,9 @@ function getSummaryChips(job: IntegrationSyncJob | null) {
   if (job.summary?.last_synced_at) chips.push({ label: 'Completed', value: formatDate(job.summary.last_synced_at, true) });
   if (job.summary?.total_processed != null) chips.push({ label: 'Processed', value: formatNumber(job.summary.total_processed) });
   if (job.summary?.total_failed != null) chips.push({ label: 'Failed', value: formatNumber(job.summary.total_failed) });
+  // Never let a degraded run (a phase skipped after failing) read as plain
+  // success in the UI — see server.ts's mergePostSyncWarnings.
+  if (job.summary?.warnings?.length) chips.push({ label: 'Status', value: 'Completed with issues' });
   return chips;
 }
 
@@ -1281,7 +1284,14 @@ export function ConnectedIntegrationCard({
                         <StatusPill label={labelize(currentRun.status)} variant={getStatusVariant(currentRun.status)} />
                       </div>
                       <div className="mt-1 text-sm text-cream-700">
-                        {currentRun.progress?.phase_label ?? currentRun.summary?.note ?? 'Waiting for worker…'}
+                        {currentRun.progress?.phase_label
+                          ?? currentRun.summary?.note
+                          // "Waiting for worker…" reads as in-progress — wrong for a run
+                          // that already ended without ever setting a phase_label/note
+                          // (e.g. reaper-halted on a permanently-failed slave).
+                          ?? (['failed', 'cancelled', 'completed'].includes(currentRun.status)
+                            ? 'No details recorded for this run.'
+                            : 'Waiting for worker…')}
                       </div>
                     </div>
                     <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-cream-500 transition-transform group-open:rotate-180" />
