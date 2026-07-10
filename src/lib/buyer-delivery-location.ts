@@ -11,6 +11,12 @@ export const buyerDeliveryLocationSchema = z.object({
   pincode: z.string().optional(),
   lat: z.number(),
   lng: z.number(),
+  place_of_supply: z.string().optional(),
+  nearest_warehouse_id: z.string().nullable().optional(),
+  routed_location_id: z.string().nullable().optional(),
+  nearest_warehouse_name: z.string().nullable().optional(),
+  nearest_warehouse_distance_km: z.number().nullable().optional(),
+  nearest_warehouse_fallback: z.boolean().optional(),
 });
 
 export type BuyerDeliveryLocation = z.infer<typeof buyerDeliveryLocationSchema>;

@@ -3,7 +3,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { createTimer } from '@/lib/server-timing';
 import { SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
-import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { assertSellerAdmin } from '@/lib/server/seller-auth';
 import { SELLER_LANDING_PERIOD_OPTIONS } from '@/lib/seller-period';
 import { readArrayParam } from '@/lib/landing-filter-params';
@@ -87,7 +87,7 @@ async function getLocationsLandingPayload(
 ): Promise<LocationsLandingResponse> {
   const period = getSellerLandingPeriodMeta(periodInput);
 
-  const [summaryLocationsRes, summarySnapshotRes, summaryCurrentKpiRes, rowsRes] = await Promise.all([
+  const [summaryLocationsRes, summarySnapshotRes, summaryCurrentKpiRes, rowsRes, totalInvoiceCountRes, periodEstimatesRes] = await Promise.all([
     db
       .schema('app')
       .from('locations')
@@ -112,11 +112,27 @@ async function getLocationsLandingPayload(
       .select('id, name, address, deleted_at')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: true }),
+    // Total invoice count (all statuses, not deleted) for "of X total" sub-label
+    db
+      .schema('app')
+      .from('invoices')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null),
+    // Current-period estimates with status for open/total counts
+    db
+      .schema('app')
+      .from('estimates')
+      .select('status')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .gte('estimate_date', period.current_start.split('T')[0])
+      .lt('estimate_date', period.current_end_exclusive.split('T')[0]),
   ]);
 
   if (summaryLocationsRes.error) throw summaryLocationsRes.error;
-  if (summarySnapshotRes.error || summaryCurrentKpiRes.error || rowsRes.error) {
-    throw summarySnapshotRes.error ?? summaryCurrentKpiRes.error ?? rowsRes.error;
+  if (summarySnapshotRes.error || summaryCurrentKpiRes.error || rowsRes.error || totalInvoiceCountRes.error || periodEstimatesRes.error) {
+    throw summarySnapshotRes.error ?? summaryCurrentKpiRes.error ?? rowsRes.error ?? totalInvoiceCountRes.error ?? periodEstimatesRes.error;
   }
 
   const summaryLocations: LocationSeedRow[] = (summaryLocationsRes.data ?? []) as LocationSeedRow[];
@@ -230,17 +246,33 @@ async function getLocationsLandingPayload(
     return query;
   })();
 
-  const [rowSnapshotRes, rowCurrentKpiRes, rowPrevKpiRes, rowOrdersRes, rowEstimatesRes, rowInvoicesRes] = await Promise.all([
+  const todayIso = new Date().toISOString().split('T')[0]!;
+  const in14DaysIso = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]!;
+
+  const [rowSnapshotRes, rowCurrentKpiRes, rowPrevKpiRes, rowOrdersRes, rowEstimatesRes, rowInvoicesRes, nearExpiryRes] = await Promise.all([
     rowSnapshotQuery,
     rowCurrentKpiQuery,
     rowPrevKpiQuery,
     rowOrderBuyerQuery,
     rowEstimateBuyerQuery,
     rowInvoiceBuyerQuery,
+    // Estimates expiring within 14 days, still open
+    db
+      .schema('app')
+      .from('estimates')
+      .select('id, estimate_number, buyer_id, location_id, total_amount, expires_at')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .not('expires_at', 'is', null)
+      .gte('expires_at', todayIso)
+      .lte('expires_at', in14DaysIso)
+      .not('status', 'in', '("cancelled","rejected","expired","invoiced")')
+      .order('expires_at', { ascending: true })
+      .limit(5),
   ]);
 
-  if (rowSnapshotRes.error || rowCurrentKpiRes.error || rowPrevKpiRes.error || rowOrdersRes.error || rowEstimatesRes.error || rowInvoicesRes.error) {
-    throw rowSnapshotRes.error ?? rowCurrentKpiRes.error ?? rowPrevKpiRes.error ?? rowOrdersRes.error ?? rowEstimatesRes.error ?? rowInvoicesRes.error;
+  if (rowSnapshotRes.error || rowCurrentKpiRes.error || rowPrevKpiRes.error || rowOrdersRes.error || rowEstimatesRes.error || rowInvoicesRes.error || nearExpiryRes.error) {
+    throw rowSnapshotRes.error ?? rowCurrentKpiRes.error ?? rowPrevKpiRes.error ?? rowOrdersRes.error ?? rowEstimatesRes.error ?? rowInvoicesRes.error ?? nearExpiryRes.error;
   }
 
   const rowSnapshots: LocationSnapshotRow[] = ((rowSnapshotRes.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
@@ -413,12 +445,26 @@ async function getLocationsLandingPayload(
     null,
   );
 
+  // Unpaid invoices = sum of snapshot.invoice_count (outstanding invoices per location)
+  const unpaid_invoice_count = (summarySnapshotRes.data ?? []).reduce(
+    (sum: number, row: Record<string, unknown>) => sum + Number(row.invoice_count ?? 0),
+    0,
+  );
+  const total_invoice_count = totalInvoiceCountRes.count ?? 0;
+
+  // Estimate counts for current period
+  const periodEstimates = (periodEstimatesRes.data ?? []) as Array<{ status: string }>;
+  const TERMINAL_ESTIMATE_STATUSES = new Set(['cancelled', 'rejected', 'expired', 'invoiced']);
+  const open_estimate_count = periodEstimates.filter((e) => !TERMINAL_ESTIMATE_STATUSES.has(e.status)).length;
+  const total_estimate_count = periodEstimates.length;
+
   const kpis: LocationsLandingKpis = {
-    active_locations: activeSummaryRows.length,
-    total_locations: summaryLocations.length,
+    unpaid_invoice_count,
+    total_invoice_count,
     outstanding_dues_total: activeSummaryRows.reduce((sum, row) => sum + row.outstanding_dues, 0),
     dues_location_count: activeSummaryRows.filter((row) => row.outstanding_dues > 0).length,
-    low_stock_locations: activeSummaryRows.filter((row) => row.stock_status !== 'clear').length,
+    open_estimate_count,
+    total_estimate_count,
     top_location_name: topLocation?.name ?? null,
     top_location_gmv_share_pct:
       topLocation && totalGmv > 0
@@ -426,18 +472,58 @@ async function getLocationsLandingPayload(
         : 0,
   };
 
-  // Callout: stock_critical — top 3 by oos+low desc
-  const stock_critical: LocationsCalloutRow[] = [...activeSummaryRows]
-    .filter((r) => r.stock_status !== 'clear')
-    .sort((a, b) => b.oos_sku_count + b.low_stock_sku_count - (a.oos_sku_count + a.low_stock_sku_count))
-    .slice(0, 3)
-    .map((r) => ({
-      id: r.id,
-      name: r.name,
-      city: r.city,
-      initials: r.initials,
-      critical_sku_count: r.oos_sku_count + r.low_stock_sku_count,
-    }));
+  // Active buyer IDs = any buyer with current-period activity across locations
+  const allActiveBuyerIds = new Set<string>();
+  for (const set of buyersByLocation.values()) {
+    for (const buyerId of set) allActiveBuyerIds.add(buyerId);
+  }
+
+  // Conversions callout: near-expiry estimates for active buyers
+  const nearExpiryEstimates = (nearExpiryRes.data ?? []) as Array<{
+    id: string;
+    estimate_number: string;
+    buyer_id: string | null;
+    location_id: string | null;
+    total_amount: number | null;
+    expires_at: string;
+  }>;
+
+  // Filter to active buyers only; if none match fall back to all near-expiry
+  const filteredNearExpiry = nearExpiryEstimates.filter(
+    (e) => e.buyer_id && allActiveBuyerIds.has(e.buyer_id),
+  );
+  const conversionEstimates = filteredNearExpiry.length > 0 ? filteredNearExpiry : nearExpiryEstimates;
+
+  const conversionBuyerIds = [...new Set(conversionEstimates.map((e) => e.buyer_id).filter((id): id is string => id != null))];
+  let conversionBuyerMap = new Map<string, { business_name: string }>();
+  if (conversionBuyerIds.length > 0) {
+    const { data: buyerRows } = await db
+      .schema('app')
+      .from('buyers')
+      .select('id, business_name')
+      .eq('tenant_id', tenantId)
+      .in('id', conversionBuyerIds);
+    for (const row of buyerRows ?? []) {
+      conversionBuyerMap.set(row.id, { business_name: row.business_name });
+    }
+  }
+
+  const todayMs = new Date(todayIso).getTime();
+  const conversions: LocationsCalloutRow[] = conversionEstimates.slice(0, 3).map((e) => {
+    const buyerName = e.buyer_id ? (conversionBuyerMap.get(e.buyer_id)?.business_name ?? 'Unknown buyer') : 'Unknown buyer';
+    const expiresMs = new Date(e.expires_at).getTime();
+    const expires_in_days = Math.max(0, Math.round((expiresMs - todayMs) / (1000 * 60 * 60 * 24)));
+    const initials = buyerName.split(' ').map((w: string) => w[0] ?? '').join('').slice(0, 2).toUpperCase();
+    return {
+      id: e.id,
+      name: buyerName,
+      city: '',
+      initials,
+      estimate_number: e.estimate_number,
+      expires_in_days,
+      total_amount: Number(e.total_amount ?? 0),
+    };
+  });
 
   const topLocationIds = [...activeSummaryRows]
     .filter((row) => row.orders_count > 0)
@@ -488,7 +574,7 @@ async function getLocationsLandingPayload(
 
   return {
     kpis,
-    callouts: { stock_critical, top_locations, collections_overdue },
+    callouts: { conversions, top_locations, collections_overdue },
     locations: filteredRows,
     period: SELLER_LANDING_PERIOD_OPTIONS.find((o) => o.value === period.selected)?.label ?? period.selected,
     refreshed_at: new Date().toISOString(),
@@ -517,7 +603,7 @@ export async function GET(request: NextRequest) {
     const statusFilter = readArrayParam(request.nextUrl.searchParams, 'status');
     const stockFilter = readArrayParam(request.nextUrl.searchParams, 'stock');
     const duesFilter = readArrayParam(request.nextUrl.searchParams, 'dues');
-    const db = getRequestSupabaseClient();
+    const db = supabaseAdmin;
     const payload = await getLocationsLandingPayload(
       db as any,
       claims.tenant_id!,

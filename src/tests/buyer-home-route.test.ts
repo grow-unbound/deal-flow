@@ -40,6 +40,7 @@ vi.mock('@/lib/supabase', () => ({
           return Promise.resolve({
             data: [{
               gmv_mtd: 10000,
+              gmv_ytd: 45000,
               invoice_count_ytd: 3,
               trend_vs_last_month_pct: 25,
               outstanding_dues: 8000,
@@ -183,6 +184,7 @@ describe('buyer home route', () => {
     expect(response.status).toBe(200);
     expect(body.greeting_name).toBe('Rajan');
     expect(body.summary_card.invoice_count_ytd).toBe(3);
+    expect(body.summary_card.gmv_ytd).toBe(45000);
     expect(body.summary_card.trend_vs_last_month_pct).toBe(25);
     expect(body.open_orders_count).toBe(4);
     expect(body.dues_card.outstanding_dues).toBe(8000);

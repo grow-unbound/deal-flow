@@ -4,33 +4,57 @@
  * One master job (phase=sync_run) per logical run; slave jobs per entity phase.
  * Self-chains continuations via async POST (no 30s cron resume loop).
  * Does NOT mutate tenant_integrations.status — OAuth stays connected for outbound push.
+ *
+ * Invariant: exactly ONE phase-step per invocation. Never dispatches more
+ * than one phase in the same call — always hands off via continuation to the
+ * next page (same phase) or the next phase, so no invocation's own elapsed
+ * time can silently accumulate across multiple phases and outrun the
+ * platform's execution ceiling (see runOrchestratorStep).
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import {
-  ACTIVE_MASTER_STATUSES,
-  ANALYSIS_PHASE,
   buildContinuationPayload,
   buildSyncRunContext,
   CANONICAL_PHASES,
   dailySinceDateIst,
-  getMasterJobIdFromProgress,
-  getSyncRunIdFromProgress,
+  deriveRunKind,
+  getLatestSlavesByPhase,
   isCanonicalPhase,
-  isMasterRunActive,
+  isDegraded,
+  isRunKind,
   isRunReadyForAnalysis,
-  MASTER_PHASE,
   resolvePhasesToRun,
   resolvePhasesForPolicy,
+  resolveFailurePolicyForRunKind,
   resolveRunProfile,
   resolveSyncEnrichmentPolicy,
   shouldHaltOnFailure,
   sinceForPhase,
   type CanonicalPhase,
+  type RunKind,
   type SyncRunContext,
 } from '../../../src/lib/integrations/sync-orchestration.ts';
-
-const ORCH_BUDGET_MS = 100_000;
+import {
+  createMasterJob,
+  createSlaveJob,
+  dispatchPhase,
+  findActiveMasterJob,
+  getDispatchSecret,
+  getFunctionsBaseUrl,
+  isPhaseAlreadyComplete,
+  isRunAborted,
+  loadIntegration,
+  loadJob,
+  loadSlavesForRun,
+  markJobFailed,
+  markSlaveSkipped,
+  type PhaseResult,
+  runAnalysisPhase,
+  SyncActiveError,
+  type TenantIntegrationRow,
+  updateMasterJob,
+} from '../_shared/sync-coordinator-actions.ts';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -42,326 +66,11 @@ function createAdminClient() {
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
-function getFunctionsBaseUrl(): string {
-  const configured = Deno.env.get('INTEGRATIONS_FUNCTIONS_BASE_URL');
-  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-  return (configured ?? `${supabaseUrl}/functions/v1`).replace(/\/+$/, '');
-}
-
-function getDispatchSecret(): string | null {
-  return Deno.env.get('INTEGRATIONS_DISPATCH_SECRET') ?? null;
-}
-
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
-}
-
-
-interface TenantIntegrationRow {
-  id: string;
-  tenant_id: string;
-  integration_type_id: string;
-  status: string;
-}
-
-interface JobRow {
-  id: string;
-  phase: string | null;
-  status: string;
-  progress: Record<string, unknown> | null;
-  since_date: string | null;
-  job_type: string;
-}
-
-async function loadIntegration(
-  admin: ReturnType<typeof createAdminClient>,
-  tenantIntegrationId: string,
-): Promise<TenantIntegrationRow> {
-  const { data, error } = await admin
-    .schema('app')
-    .from('tenant_integrations')
-    .select('id, tenant_id, integration_type_id, status')
-    .eq('id', tenantIntegrationId)
-    .is('deleted_at', null)
-    .maybeSingle();
-  if (error) throw new Error(`Failed to load integration: ${error.message}`);
-  if (!data) throw new Error('Tenant integration not found');
-  return data as TenantIntegrationRow;
-}
-
-async function loadJob(admin: ReturnType<typeof createAdminClient>, jobId: string): Promise<JobRow | null> {
-  const { data, error } = await admin
-    .schema('app')
-    .from('integration_sync_jobs')
-    .select('id, phase, status, progress, since_date, job_type')
-    .eq('id', jobId)
-    .maybeSingle();
-  if (error) throw new Error(`Failed to load job: ${error.message}`);
-  return data as JobRow | null;
-}
-
-async function findActiveMasterJob(
-  admin: ReturnType<typeof createAdminClient>,
-  tenantIntegrationId: string,
-): Promise<JobRow | null> {
-  const { data, error } = await admin
-    .schema('app')
-    .from('integration_sync_jobs')
-    .select('id, phase, status, progress, since_date, job_type')
-    .eq('tenant_integration_id', tenantIntegrationId)
-    .eq('phase', MASTER_PHASE)
-    .in('status', [...ACTIVE_MASTER_STATUSES])
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false })
-    .limit(5);
-
-  if (error) throw new Error(`Failed to query active master: ${error.message}`);
-  for (const row of data ?? []) {
-    if (isMasterRunActive(row as JobRow)) return row as JobRow;
-  }
-  return null;
-}
-
-async function createMasterJob(
-  admin: ReturnType<typeof createAdminClient>,
-  opts: {
-    tenantId: string;
-    tenantIntegrationId: string;
-    jobType: string;
-    triggeredBy: string | null;
-    transactionSince: string | null;
-    referenceSince: string | null;
-    profile: ReturnType<typeof resolveRunProfile>;
-    failurePolicy: SyncRunContext['failurePolicy'];
-    phasesInRun: readonly string[];
-  },
-): Promise<string> {
-  const masterId = crypto.randomUUID();
-  const { error } = await admin.schema('app').from('integration_sync_jobs').insert({
-    id: masterId,
-    tenant_id: opts.tenantId,
-    tenant_integration_id: opts.tenantIntegrationId,
-    job_type: opts.jobType,
-    phase: MASTER_PHASE,
-    status: 'pending',
-    since_date: opts.transactionSince,
-    progress: {
-      current_phase: opts.phasesInRun[0] ?? null,
-      next_page: 1,
-      run_profile: opts.profile,
-      failure_policy: opts.failurePolicy,
-      transaction_since: opts.transactionSince,
-      reference_since: opts.referenceSince,
-      phases_in_run: opts.phasesInRun,
-      sync_run_id: masterId,
-      meta: {
-        sync_run_id: masterId,
-        run_cancelled: false,
-        run_halted: false,
-      },
-    },
-    triggered_by: opts.triggeredBy,
-    created_by: opts.triggeredBy,
-    updated_by: opts.triggeredBy,
-  });
-  if (error) throw new Error(`Failed to create master job: ${error.message}`);
-  return masterId;
-}
-
-async function createSlaveJob(
-  admin: ReturnType<typeof createAdminClient>,
-  opts: {
-    tenantId: string;
-    tenantIntegrationId: string;
-    masterJobId: string;
-    syncRunId: string;
-    phase: string;
-    jobType: string;
-    triggeredBy: string | null;
-    sinceDate: string | null;
-    pageFrom?: number;
-    continuationOf?: string | null;
-    status?: string;
-  },
-): Promise<string> {
-  const { data, error } = await admin
-    .schema('app')
-    .from('integration_sync_jobs')
-    .insert({
-      tenant_id: opts.tenantId,
-      tenant_integration_id: opts.tenantIntegrationId,
-      master_job_id: opts.masterJobId,
-      job_type: opts.jobType,
-      phase: opts.phase,
-      status: opts.status ?? 'pending',
-      since_date: opts.sinceDate,
-      progress: {
-        meta: {
-          sync_run_id: opts.syncRunId,
-          master_job_id: opts.masterJobId,
-          continuation_of: opts.continuationOf ?? null,
-          page_from: opts.pageFrom ?? 1,
-        },
-      },
-      triggered_by: opts.triggeredBy,
-      created_by: opts.triggeredBy,
-      updated_by: opts.triggeredBy,
-    })
-    .select('id')
-    .single();
-  if (error) throw new Error(`Failed to create slave job: ${error.message}`);
-  return data.id as string;
-}
-
-async function updateMasterJob(
-  admin: ReturnType<typeof createAdminClient>,
-  masterJobId: string,
-  patch: {
-    status?: string;
-    currentPhase?: string | null;
-    nextPage?: number | null;
-    runHalted?: boolean;
-    startedAt?: string;
-    completedAt?: string;
-    summary?: Record<string, unknown>;
-  },
-): Promise<void> {
-  const existing = await loadJob(admin, masterJobId);
-  const progress = { ...(existing?.progress ?? {}) };
-  if (patch.currentPhase !== undefined) progress.current_phase = patch.currentPhase;
-  if (patch.nextPage !== undefined) progress.next_page = patch.nextPage;
-  if (patch.runHalted === true) {
-    const meta = typeof progress.meta === 'object' && progress.meta !== null
-      ? { ...(progress.meta as Record<string, unknown>) }
-      : {};
-    meta.run_halted = true;
-    progress.meta = meta;
-  }
-
-  const update: Record<string, unknown> = {
-    progress,
-    updated_at: new Date().toISOString(),
-  };
-  if (patch.status) update.status = patch.status;
-  if (patch.startedAt) update.started_at = patch.startedAt;
-  if (patch.completedAt) update.completed_at = patch.completedAt;
-  if (patch.summary) update.summary = patch.summary;
-
-  await admin.schema('app').from('integration_sync_jobs').update(update).eq('id', masterJobId);
-}
-
-async function isRunAborted(admin: ReturnType<typeof createAdminClient>, masterJobId: string): Promise<boolean> {
-  const master = await loadJob(admin, masterJobId);
-  if (!master) return true;
-  if (master.status === 'cancelled' || master.status === 'failed') return true;
-  const meta = master.progress?.meta;
-  if (meta && typeof meta === 'object') {
-    const m = meta as Record<string, unknown>;
-    if (m.run_cancelled === true || m.run_halted === true) return true;
-  }
-  return false;
-}
-
-async function loadSlavesForRun(
-  admin: ReturnType<typeof createAdminClient>,
-  syncRunId: string,
-): Promise<JobRow[]> {
-  // Uses the real master_job_id column (added in migration add_master_job_id_to_sync_jobs).
-  // The old .contains('progress', { meta: { sync_run_id } }) query breaks after the first
-  // updatePhaseJob call strips progress.meta via full JSONB replace.
-  const { data, error } = await admin
-    .schema('app')
-    .from('integration_sync_jobs')
-    .select('id, phase, status, progress, since_date, job_type')
-    .eq('master_job_id', syncRunId)
-    .neq('phase', MASTER_PHASE)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false });
-
-  if (error) throw new Error(`Failed to load slaves for run: ${error.message}`);
-  return (data ?? []) as JobRow[];
-}
-
-async function markJobFailed(
-  admin: ReturnType<typeof createAdminClient>,
-  jobId: string,
-  message: string,
-): Promise<void> {
-  await admin.schema('app').from('integration_sync_jobs').update({
-    status: 'failed',
-    error_log: { message, timestamp: new Date().toISOString() },
-    completed_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }).eq('id', jobId);
-}
-
-async function markSlaveSkipped(
-  admin: ReturnType<typeof createAdminClient>,
-  jobId: string,
-  phase: string,
-): Promise<void> {
-  const now = new Date().toISOString();
-  await admin.schema('app').from('integration_sync_jobs').update({
-    status: 'completed',
-    completed_at: now,
-    updated_at: now,
-    progress: {
-      phase,
-      phase_label: 'Skipped — already up to date',
-      note: 'Skipped: previous sync already completed this phase.',
-    },
-  }).eq('id', jobId);
-}
-
-// ── Phase dispatch ───────────────────────────────────────────────────────────
-
-interface PhaseResult {
-  ok: boolean;
-  phase: string;
-  records_synced: number;
-  has_more: boolean;
-  next_cursor: Record<string, unknown> | null;
-}
-
-async function dispatchPhase(opts: {
-  phase: string;
-  tenantIntegrationId: string;
-  jobId: string;
-  pageFrom?: number | null;
-  since?: string | null;
-}): Promise<PhaseResult> {
-  const functionName = opts.phase === 'transaction_line_items'
-    ? 'sync-transaction-line-items'
-    : `sync-${opts.phase}`;
-  const url = `${getFunctionsBaseUrl()}/${functionName}`;
-  const secret = getDispatchSecret();
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(secret ? { 'x-integrations-dispatch-secret': secret } : {}),
-    },
-    body: JSON.stringify({
-      tenant_integration_id: opts.tenantIntegrationId,
-      job_id: opts.jobId,
-      page_from: opts.pageFrom ?? 1,
-      since: opts.since ?? null,
-    }),
-  });
-
-  const data = await response.json().catch(() => ({ ok: false, error: 'Invalid JSON response' })) as Record<string, unknown>;
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(
-      (data.error as string | undefined) ?? `sync-${opts.phase} returned ${response.status}`,
-    );
-  }
-
-  return data as unknown as PhaseResult;
 }
 
 // Await with a 5s abort — ensures the HTTP request is at least sent (TCP
@@ -386,99 +95,12 @@ function dispatchContinuation(payload: ReturnType<typeof buildContinuationPayloa
   runtime?.waitUntil(p);
 }
 
-async function isPhaseAlreadyComplete(
-  admin: ReturnType<typeof createAdminClient>,
-  opts: { tenantIntegrationId: string; phase: string; excludeJobId: string; masterJobId: string },
-): Promise<boolean> {
-  const { data } = await admin
-    .schema('app')
-    .from('integration_sync_jobs')
-    .select('status')
-    .eq('tenant_integration_id', opts.tenantIntegrationId)
-    .eq('master_job_id', opts.masterJobId)
-    .eq('phase', opts.phase)
-    .neq('id', opts.excludeJobId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  return data?.status === 'completed';
-}
-
-async function runAnalysisPhase(
-  admin: ReturnType<typeof createAdminClient>,
-  integration: TenantIntegrationRow,
-  ctx: SyncRunContext,
-  actorUserId: string | null,
-): Promise<void> {
-  const analysisJobId = await createSlaveJob(admin, {
-    tenantId: integration.tenant_id,
-    tenantIntegrationId: integration.id,
-    masterJobId: ctx.masterJobId,
-    syncRunId: ctx.syncRunId,
-    phase: ANALYSIS_PHASE,
-    jobType: ctx.jobType,
-    triggeredBy: actorUserId,
-    sinceDate: ctx.transactionSince,
-    status: 'running',
-  });
-
-  await admin.schema('app').from('integration_sync_jobs').update({
-    started_at: new Date().toISOString(),
-    progress: {
-      phase_label: 'Rebuilding snapshots and KPI…',
-      meta: { sync_run_id: ctx.syncRunId, master_job_id: ctx.masterJobId },
-    },
-  }).eq('id', analysisJobId);
-
-  const isInitialSync = ctx.jobType === 'initial_reference' || ctx.jobType === 'initial_transactional';
-
-  try {
-    if (isInitialSync) {
-      await admin.schema('app').rpc('post_sync_rebuild', {
-        p_tenant_id: integration.tenant_id,
-        p_days: 90,
-      });
-    } else {
-      await admin.schema('app').rpc('post_sync_rebuild', {
-        p_tenant_id: integration.tenant_id,
-        p_days: 2,
-      });
-    }
-
-    const analysisCompletedAt = new Date().toISOString();
-    await admin.schema('app').from('integration_sync_jobs').update({
-      status: 'completed',
-      completed_at: analysisCompletedAt,
-      updated_at: analysisCompletedAt,
-      progress: {
-        phase_label: 'Snapshots and KPI ready.',
-        meta: { sync_run_id: ctx.syncRunId, master_job_id: ctx.masterJobId },
-      },
-      summary: {
-        last_synced_at: analysisCompletedAt,
-        note: `Snapshots and KPIs rebuilt${isInitialSync ? ' (full, 90 days)' : ' (incremental, 2 days)'}`,
-      },
-    }).eq('id', analysisJobId);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Analysis failed';
-    await admin.schema('app').from('integration_sync_jobs').update({
-      status: 'failed',
-      completed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      progress: { phase_label: `Snapshot rebuild failed: ${message}` },
-      error_log: { message, timestamp: new Date().toISOString() },
-    }).eq('id', analysisJobId);
-  }
-}
-
 interface OrchestratorState {
   admin: ReturnType<typeof createAdminClient>;
   integration: TenantIntegrationRow;
   ctx: SyncRunContext;
   phasesToRun: readonly CanonicalPhase[];
   forceFullRefresh: boolean;
-  orchStart: number;
   results: PhaseResult[];
   startPhaseIndex: number;
   initialSlaveId?: string;
@@ -552,132 +174,62 @@ async function selfChain(
   });
 }
 
-async function runOrchestratorLoop(state: OrchestratorState): Promise<Response> {
-  const { admin, integration, ctx, phasesToRun, forceFullRefresh, orchStart, results } = state;
+// Every invocation processes exactly ONE phase-step, then always hands off —
+// either to the next page of the SAME phase (selfChain, has_more) or to page
+// 1 of the NEXT phase (finishOrAdvance) — never both in the same invocation.
+// Chaining several phases in-process (the old runOrchestratorLoop) let fast
+// phases silently eat into the SAME invocation's clock, so a later phase's
+// dispatchPhase call could return only after the orchestrator's own
+// cumulative elapsed time (counted from ITS start, not from that dispatch)
+// already exceeded Supabase's ~150s hard kill — the orchestrator got killed
+// before it ever reached selfChain()/finishOrAdvance(), orphaning the phase
+// that had just legitimately paused. Splitting to one phase-step per
+// invocation removes the cumulative-budget risk entirely: dispatchPhase's own
+// 140s timeout (sync-coordinator-actions.ts) is now the only clock that
+// matters, and it has real margin against the platform ceiling since nothing
+// else runs in the same invocation first.
+async function finishOrAdvance(state: OrchestratorState, phaseIndex: number): Promise<Response> {
+  const { admin, integration, ctx, phasesToRun, results } = state;
+  const nextPhase = phasesToRun[phaseIndex + 1];
 
-  let startIndex = state.startPhaseIndex;
-  let bootstrapSlaveId = state.initialSlaveId;
-  let bootstrapPageFrom = state.initialPageFrom;
-
-  for (let phaseIndex = startIndex; phaseIndex < phasesToRun.length; phaseIndex++) {
-    const phase = phasesToRun[phaseIndex];
-
-    if (await isRunAborted(admin, ctx.masterJobId)) {
-      return json({ ok: false, status: 'aborted', master_job_id: ctx.masterJobId, results });
-    }
-
-    let slaveId = bootstrapSlaveId ?? state.precreatedJobIds?.[phase];
-    bootstrapSlaveId = undefined;
-
-    if (!slaveId) {
-      slaveId = await createSlaveJob(admin, {
-        tenantId: integration.tenant_id,
-        tenantIntegrationId: integration.id,
-        masterJobId: ctx.masterJobId,
-        syncRunId: ctx.syncRunId,
-        phase,
-        jobType: ctx.jobType,
-        triggeredBy: null,
-        sinceDate: sinceForPhase(phase, ctx),
-      });
-    }
-
-    if (!forceFullRefresh && await isPhaseAlreadyComplete(admin, {
+  if (nextPhase) {
+    const nextSlaveId = state.precreatedJobIds?.[nextPhase] ?? await createSlaveJob(admin, {
+      tenantId: integration.tenant_id,
       tenantIntegrationId: integration.id,
-      phase,
-      excludeJobId: slaveId,
       masterJobId: ctx.masterJobId,
-    })) {
-      await markSlaveSkipped(admin, slaveId, phase);
-      results.push({ ok: true, phase, records_synced: 0, has_more: false, next_cursor: null });
-      continue;
-    }
-
-    const pageFrom = bootstrapPageFrom ?? 1;
-    bootstrapPageFrom = null;
-
-    await updateMasterJob(admin, ctx.masterJobId, {
-      status: 'running',
-      currentPhase: phase,
-      nextPage: pageFrom,
-      startedAt: phaseIndex === startIndex ? new Date().toISOString() : undefined,
+      syncRunId: ctx.syncRunId,
+      phase: nextPhase,
+      jobType: ctx.jobType,
+      triggeredBy: null,
+      sinceDate: sinceForPhase(nextPhase, ctx),
+      pageFrom: 1,
     });
-
-    try {
-      const result = await dispatchPhase({
-        phase,
-        tenantIntegrationId: integration.id,
-        jobId: slaveId,
-        pageFrom,
-        since: sinceForPhase(phase, ctx),
-      });
-      results.push(result);
-
-      if (await isRunAborted(admin, ctx.masterJobId)) {
-        return json({ ok: false, status: 'cancelled', master_job_id: ctx.masterJobId, results });
-      }
-
-      if (result.has_more) {
-        const nextPage = (result.next_cursor as { page?: number } | null)?.page ?? pageFrom + 1;
-        return selfChain(state, { phase, pageFrom: nextPage, continuationOf: slaveId, currentPageFrom: pageFrom });
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      await markJobFailed(admin, slaveId, message);
-
-      if (shouldHaltOnFailure(phase, ctx)) {
-        await updateMasterJob(admin, ctx.masterJobId, {
-          status: 'failed',
-          runHalted: true,
-          completedAt: new Date().toISOString(),
-        });
-        return json({
-          ok: false,
-          status: 'halted',
-          failed_at: phase,
-          error: message,
-          master_job_id: ctx.masterJobId,
-          results,
-        }, 500);
-      }
-      // Skip failed transactional (or incremental reference) phase and continue
-      continue;
-    }
-
-    if (Date.now() - orchStart > ORCH_BUDGET_MS) {
-      const nextPhase = phasesToRun[phaseIndex + 1];
-      if (nextPhase) {
-        const nextSlaveId = state.precreatedJobIds?.[nextPhase] ?? await createSlaveJob(admin, {
-          tenantId: integration.tenant_id,
-          tenantIntegrationId: integration.id,
-          masterJobId: ctx.masterJobId,
-          syncRunId: ctx.syncRunId,
-          phase: nextPhase,
-          jobType: ctx.jobType,
-          triggeredBy: null,
-          sinceDate: sinceForPhase(nextPhase, ctx),
-          pageFrom: 1,
-        });
-        await updateMasterJob(admin, ctx.masterJobId, { status: 'paused', currentPhase: nextPhase, nextPage: 1 });
-        dispatchContinuation(buildContinuationPayload({
-          tenantIntegrationId: integration.id,
-          ctx,
-          phase: nextPhase,
-          pageFrom: 1,
-          jobId: nextSlaveId,
-        }));
-        return json({
-          ok: true,
-          status: 'paused',
-          chained: true,
-          budget_handoff: true,
-          master_job_id: ctx.masterJobId,
-          results,
-        });
-      }
-    }
+    await updateMasterJob(admin, ctx.masterJobId, { status: 'paused', currentPhase: nextPhase, nextPage: 1 });
+    dispatchContinuation(buildContinuationPayload({
+      tenantIntegrationId: integration.id,
+      ctx,
+      phase: nextPhase,
+      pageFrom: 1,
+      jobId: nextSlaveId,
+    }));
+    return json({
+      ok: true,
+      status: 'paused',
+      chained: true,
+      master_job_id: ctx.masterJobId,
+      sync_run_id: ctx.syncRunId,
+      results,
+    });
   }
 
+  // Last phase in this run just finished (completed, skipped, or failed
+  // without halting) — reload every slave from the DB rather than the
+  // in-memory `results` array. Each invocation only ever processes one
+  // phase-step, so `results` here holds at most this single phase; deriving
+  // the run summary from it (as the old code did) silently undercounted
+  // phases_run/total_records_synced for any run spanning multiple
+  // invocations — which is most real runs. getLatestSlavesByPhase is the
+  // same dedup-to-latest-row-per-phase helper isRunReadyForAnalysis uses.
   const slaves = await loadSlavesForRun(admin, ctx.syncRunId);
   const phasesInRun = (await loadJob(admin, ctx.masterJobId))?.progress?.phases_in_run as string[] | undefined
     ?? [...phasesToRun];
@@ -686,13 +238,16 @@ async function runOrchestratorLoop(state: OrchestratorState): Promise<Response> 
     await runAnalysisPhase(admin, integration, ctx, null);
   }
 
+  const latestSlaves = [...getLatestSlavesByPhase(slaves).values()];
+
   await updateMasterJob(admin, ctx.masterJobId, {
     status: 'completed',
     completedAt: new Date().toISOString(),
+    degraded: isDegraded(latestSlaves.map((s) => ({ ok: s.status !== 'failed' }))),
     summary: {
-      phases_run: results.map((r) => r.phase),
-      phases_failed: results.filter((r) => !r.ok).map((r) => r.phase),
-      total_records_synced: results.reduce((n, r) => n + r.records_synced, 0),
+      phases_run: latestSlaves.map((s) => s.phase),
+      phases_failed: latestSlaves.filter((s) => s.status === 'failed').map((s) => s.phase),
+      total_records_synced: latestSlaves.reduce((n, s) => n + (s.records_synced ?? 0), 0),
       last_synced_at: new Date().toISOString(),
     },
   });
@@ -704,6 +259,96 @@ async function runOrchestratorLoop(state: OrchestratorState): Promise<Response> 
     sync_run_id: ctx.syncRunId,
     results,
   });
+}
+
+async function runOrchestratorStep(state: OrchestratorState): Promise<Response> {
+  const { admin, integration, ctx, phasesToRun, forceFullRefresh, results } = state;
+
+  const phaseIndex = state.startPhaseIndex;
+  const phase = phasesToRun[phaseIndex];
+
+  if (await isRunAborted(admin, ctx.masterJobId)) {
+    return json({ ok: false, status: 'aborted', master_job_id: ctx.masterJobId, results });
+  }
+
+  let slaveId = state.initialSlaveId ?? state.precreatedJobIds?.[phase];
+
+  if (!slaveId) {
+    slaveId = await createSlaveJob(admin, {
+      tenantId: integration.tenant_id,
+      tenantIntegrationId: integration.id,
+      masterJobId: ctx.masterJobId,
+      syncRunId: ctx.syncRunId,
+      phase,
+      jobType: ctx.jobType,
+      triggeredBy: null,
+      sinceDate: sinceForPhase(phase, ctx),
+    });
+  }
+
+  if (!forceFullRefresh && await isPhaseAlreadyComplete(admin, {
+    tenantIntegrationId: integration.id,
+    phase,
+    excludeJobId: slaveId,
+    masterJobId: ctx.masterJobId,
+  })) {
+    await markSlaveSkipped(admin, slaveId, phase);
+    results.push({ ok: true, phase, records_synced: 0, has_more: false, next_cursor: null });
+    return finishOrAdvance(state, phaseIndex);
+  }
+
+  const pageFrom = state.initialPageFrom ?? 1;
+
+  await updateMasterJob(admin, ctx.masterJobId, {
+    status: 'running',
+    currentPhase: phase,
+    nextPage: pageFrom,
+    startedAt: new Date().toISOString(),
+  });
+
+  try {
+    const result = await dispatchPhase({
+      phase,
+      tenantIntegrationId: integration.id,
+      jobId: slaveId,
+      pageFrom,
+      since: sinceForPhase(phase, ctx),
+    });
+    results.push(result);
+
+    if (await isRunAborted(admin, ctx.masterJobId)) {
+      return json({ ok: false, status: 'cancelled', master_job_id: ctx.masterJobId, results });
+    }
+
+    if (result.has_more) {
+      const nextPage = (result.next_cursor as { page?: number } | null)?.page ?? pageFrom + 1;
+      return selfChain(state, { phase, pageFrom: nextPage, continuationOf: slaveId, currentPageFrom: pageFrom });
+    }
+
+    return finishOrAdvance(state, phaseIndex);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    await markJobFailed(admin, slaveId, message);
+
+    if (shouldHaltOnFailure(phase, ctx)) {
+      await updateMasterJob(admin, ctx.masterJobId, {
+        status: 'failed',
+        runHalted: true,
+        completedAt: new Date().toISOString(),
+      });
+      return json({
+        ok: false,
+        status: 'halted',
+        failed_at: phase,
+        error: message,
+        master_job_id: ctx.masterJobId,
+        results,
+      }, 500);
+    }
+
+    // Skip failed transactional (or incremental reference) phase and advance.
+    return finishOrAdvance(state, phaseIndex);
+  }
 }
 
 // ── Main handler ─────────────────────────────────────────────────────────────
@@ -757,9 +402,16 @@ Deno.serve(async (req: Request) => {
 
       const progress = master.progress ?? {};
       const profile = resolveRunProfile({ forceFullRefresh: false, jobType, isContinuation: true });
+      // run_kind was fixed at master-job creation — read it back rather than
+      // re-deriving, so a continuation's failure policy always matches the
+      // policy the run actually started with.
+      const runKind = isRunKind(master.run_kind)
+        ? master.run_kind
+        : deriveRunKind({ jobType: master.job_type ?? jobType, requestedPhase: null });
       const ctx = buildSyncRunContext({
         masterJobId,
         profile,
+        runKind,
         jobType: master.job_type ?? jobType,
         transactionSince: typeof progress.transaction_since === 'string' ? progress.transaction_since : master.since_date,
         referenceSince: typeof progress.reference_since === 'string' ? progress.reference_since : null,
@@ -772,13 +424,12 @@ Deno.serve(async (req: Request) => {
       const phaseIndex = phasesInRun.indexOf(phase as CanonicalPhase);
       if (phaseIndex < 0) return json({ ok: false, error: `Phase ${phase} not in run` }, 400);
 
-      return runOrchestratorLoop({
+      return runOrchestratorStep({
         admin,
         integration,
         ctx,
         phasesToRun: phasesInRun,
         forceFullRefresh: progress.run_profile === 'full_refresh',
-        orchStart: Date.now(),
         results: [],
         startPhaseIndex: phaseIndex,
         initialSlaveId: slaveJobId,
@@ -806,21 +457,33 @@ Deno.serve(async (req: Request) => {
 
     const profile = resolveRunProfile({ forceFullRefresh, jobType, isContinuation: false });
 
+    const requestedRunKind = typeof body.run_kind === 'string' ? body.run_kind : null;
+    let runKind: RunKind;
+    if (isRunKind(requestedRunKind)) {
+      runKind = requestedRunKind;
+    } else {
+      runKind = deriveRunKind({ jobType, requestedPhase: requestedPhaseRaw });
+      // A live signal that a caller wasn't updated to send run_kind explicitly.
+      console.warn(`[integrations-sync] run_kind not provided, derived '${runKind}' from job_type='${jobType}'`);
+    }
+
     const masterJobId = await createMasterJob(admin, {
       tenantId: integration.tenant_id,
       tenantIntegrationId: integration.id,
       jobType,
+      runKind,
       triggeredBy: actorUserId,
       transactionSince,
       referenceSince,
       profile,
-      failurePolicy: profile === 'full_refresh' ? 'halt_on_reference_failure' : 'skip_failed_phases',
+      failurePolicy: resolveFailurePolicyForRunKind(runKind),
       phasesInRun: phasesToRun,
     });
 
     const ctx = buildSyncRunContext({
       masterJobId,
       profile,
+      runKind,
       jobType,
       transactionSince,
       referenceSince,
@@ -842,18 +505,20 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    return runOrchestratorLoop({
+    return runOrchestratorStep({
       admin,
       integration,
       ctx,
       phasesToRun,
       forceFullRefresh,
-      orchStart: Date.now(),
       results: [],
       startPhaseIndex: 0,
       precreatedJobIds,
     });
   } catch (err) {
+    if (err instanceof SyncActiveError) {
+      return json({ ok: false, error: 'Sync already in progress', code: 'SYNC_ACTIVE' }, 409);
+    }
     console.error('[integrations-sync]', err);
     return json({ ok: false, error: err instanceof Error ? err.message : 'Sync failed' }, 500);
   }

@@ -240,7 +240,7 @@ export default function HomePage() {
                 className="mt-3 font-semibold leading-none tracking-[-0.03em] tabular-nums text-white"
                 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-kpi)' }}
               >
-                {inr(summary?.gmv_mtd ?? 0)}
+                {inr(summary?.gmv_ytd ?? summary?.gmv_mtd ?? 0)}
               </p>
               <p className="mt-3 font-medium leading-5 tracking-[-0.005em] text-white/70" style={{ fontSize: 'var(--b-text-sub)' }}>
                 {trendLabel(summary?.trend_vs_last_month_pct ?? 0)} · {summary?.invoice_count_ytd ?? 0} invoices this year

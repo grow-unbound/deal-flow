@@ -2,6 +2,8 @@
 
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
+import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
+import type { BuyerDeliveryLocation } from '@/lib/buyer-delivery-location';
 import type {
   BuyerBrand,
   BuyerCatalogItem,
@@ -20,6 +22,17 @@ const BUYER_CATEGORIES_KEY = ['buyer-categories'] as const;
 const BUYER_BRANDS_KEY = ['buyer-brands'] as const;
 const BUYER_CATALOGS_KEY = ['buyer-catalogs'] as const;
 
+function buyerDeliveryStockSignature(selected: BuyerDeliveryLocation | null | undefined): string {
+  if (!selected) return 'no-delivery';
+  return [
+    selected.nearest_warehouse_id ?? 'no-warehouse',
+    selected.routed_location_id ?? 'no-location',
+    selected.place_id,
+    selected.lat,
+    selected.lng,
+  ].join(':');
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const response = await apiFetch(url);
   if (!response.ok) throw new Error(`Request failed: ${url}`);
@@ -27,8 +40,10 @@ async function fetchJson<T>(url: string): Promise<T> {
 }
 
 export function useBuyerCategories() {
+  const delivery = useBuyerDeliveryOptional();
+  const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
   return useQuery<BuyerCategory[]>({
-    queryKey: BUYER_CATEGORIES_KEY,
+    queryKey: [...BUYER_CATEGORIES_KEY, stockSignature],
     queryFn: async () => {
       const body = await fetchJson<{ categories?: BuyerCategory[] }>('/api/buyer/categories');
       return body.categories ?? [];
@@ -37,8 +52,10 @@ export function useBuyerCategories() {
 }
 
 export function useBuyerBrands() {
+  const delivery = useBuyerDeliveryOptional();
+  const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
   return useQuery<BuyerBrand[]>({
-    queryKey: BUYER_BRANDS_KEY,
+    queryKey: [...BUYER_BRANDS_KEY, stockSignature],
     queryFn: async () => {
       const body = await fetchJson<{ brands?: BuyerBrand[] }>('/api/buyer/brands');
       return body.brands ?? [];
@@ -47,8 +64,10 @@ export function useBuyerBrands() {
 }
 
 export function useBuyerCatalogs() {
+  const delivery = useBuyerDeliveryOptional();
+  const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
   return useQuery<BuyerCatalogSummary[]>({
-    queryKey: BUYER_CATALOGS_KEY,
+    queryKey: [...BUYER_CATALOGS_KEY, stockSignature],
     queryFn: async () => {
       const body = await fetchJson<{ catalogs?: BuyerCatalogSummary[] }>('/api/buyer/catalogs');
       return body.catalogs ?? [];
@@ -85,9 +104,11 @@ export function useBuyerCatalogLandingData() {
 }
 
 export function useBuyerCatalogList(mode: FilterMode, id: string, search = '') {
+  const delivery = useBuyerDeliveryOptional();
+  const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
   const trimmedSearch = search.trim();
   return useInfiniteQuery<BuyerCatalogResponse>({
-    queryKey: ['buyer-catalog-list', mode, id, trimmedSearch],
+    queryKey: ['buyer-catalog-list', mode, id, trimmedSearch, stockSignature],
     queryFn: async ({ pageParam = 0 }) => {
       const params = new URLSearchParams({
         limit: String(PAGE_SIZE),
@@ -117,8 +138,10 @@ export function useBuyerProductRecommendations(tenantProductId: string) {
 }
 
 export function useBuyerProductDetail(tenantProductId: string) {
+  const delivery = useBuyerDeliveryOptional();
+  const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
   const productQuery = useQuery<{ items?: BuyerCatalogItem[] }>({
-    queryKey: ['buyer-product-detail', tenantProductId],
+    queryKey: ['buyer-product-detail', tenantProductId, stockSignature],
     queryFn: async () =>
       fetchJson<{ items?: BuyerCatalogItem[] }>(`/api/buyer/catalog?tenant_product_id=${encodeURIComponent(tenantProductId)}&limit=1&offset=0`),
   });
@@ -126,7 +149,7 @@ export function useBuyerProductDetail(tenantProductId: string) {
   const item = productQuery.data?.items?.[0] ?? null;
 
   const brandItemsQuery = useQuery<{ items?: BuyerCatalogItem[] }>({
-    queryKey: ['buyer-product-brand-items', tenantProductId, item?.brand_id],
+    queryKey: ['buyer-product-brand-items', tenantProductId, item?.brand_id, stockSignature],
     enabled: Boolean(item?.brand_id),
     queryFn: async () =>
       fetchJson<{ items?: BuyerCatalogItem[] }>(
@@ -157,10 +180,13 @@ export function useBuyerReorderData() {
 export function useBuyerResolvedProducts(
   items: Array<{ tenant_product_id: string; qty: number }>,
 ) {
+  const delivery = useBuyerDeliveryOptional();
+  const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
   return useQuery<BuyerResolvedProductsResponse>({
     queryKey: [
       'buyer-resolved-products',
       items.map((item) => `${item.tenant_product_id}:${item.qty}`).join('|'),
+      stockSignature,
     ],
     enabled: items.length > 0,
     queryFn: async () => {

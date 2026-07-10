@@ -36,8 +36,9 @@ export async function GET(request: NextRequest) {
   const { data: rows, error } = await db
     .schema('app')
     .from('whatsapp_templates')
-    .select('id, meta_template_name, meta_category, use_case, body, variables, approval_status')
+    .select('id, meta_template_name, meta_category, use_case, body, variables, approval_status, is_broadcast_template')
     .is('tenant_id', null)
+    .eq('is_broadcast_template', true)
     .is('deleted_at', null)
     .order('use_case', { ascending: true });
 

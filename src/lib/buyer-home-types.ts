@@ -29,6 +29,7 @@ export interface BuyerHomeResponse {
   open_orders_count: number;
   summary_card: {
     gmv_mtd: number;
+    gmv_ytd: number;
     invoice_count_ytd: number;
     trend_vs_last_month_pct: number;
   };

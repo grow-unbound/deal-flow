@@ -30,7 +30,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
       const previewPayload: BuyerHomeResponse = {
         greeting_name: 'Preview',
         open_orders_count: 0,
-        summary_card: { gmv_mtd: 0, invoice_count_ytd: 0, trend_vs_last_month_pct: 0 },
+        summary_card: { gmv_mtd: 0, gmv_ytd: 0, invoice_count_ytd: 0, trend_vs_last_month_pct: 0 },
         dues_card: { outstanding_dues: 0, open_invoice_count: 0, earliest_due_date: null, days_until_earliest_due: null },
         credit_card: { credit_limit: 0, available_credit: 0, credit_used: 0 },
         order_again_preview: [],
@@ -86,6 +86,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
       : buyerHomeSummaryRes.data;
     const buyerHomeSummary = {
       gmv_mtd: Number(buyerHomeSummaryRow?.gmv_mtd ?? 0),
+      gmv_ytd: Number(buyerHomeSummaryRow?.gmv_ytd ?? buyerHomeSummaryRow?.gmv_mtd ?? 0),
       invoice_count_ytd: Number(buyerHomeSummaryRow?.invoice_count_ytd ?? 0),
       trend_vs_last_month_pct: Number(buyerHomeSummaryRow?.trend_vs_last_month_pct ?? 0),
       outstanding_dues: Number(buyerHomeSummaryRow?.outstanding_dues ?? 0),
@@ -211,6 +212,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
       open_orders_count: buyerHomeSummary.open_orders_count,
       summary_card: {
         gmv_mtd: Number(buyerHomeSummary.gmv_mtd.toFixed(2)),
+        gmv_ytd: Number(buyerHomeSummary.gmv_ytd.toFixed(2)),
         invoice_count_ytd: buyerHomeSummary.invoice_count_ytd,
         trend_vs_last_month_pct: buyerHomeSummary.trend_vs_last_month_pct,
       },

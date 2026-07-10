@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { SELLER_CACHE_REFERENCE } from '@/lib/server/bounded-get';
 import { normalizeLocationAddress } from '@/lib/locations/location-deactivate-guards';
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
       return jsonError(403, 'Forbidden', 'FORBIDDEN');
     }
 
-    const db = getRequestSupabaseClient() as any;
+    const db = supabaseAdmin as any;
 
     const includeDeleted =
       req.nextUrl.searchParams.get('include_deleted') === '1' && claims.role === 'seller_admin';
@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
       associated_users,
     } = parsed.data;
 
-    const db = getRequestSupabaseClient() as any;
+    const db = supabaseAdmin as any;
     const normalizedAssociatedUsers = normalizeLocationAssociatedUsers(associated_users);
 
     if (is_default) {

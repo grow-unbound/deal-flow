@@ -4,18 +4,15 @@ import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { appendArrayParam } from '@/lib/landing-filter-params';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 
-// ─── Shared ───────────────────────────────────────────────────────────────────
-
-export type LocationStockStatus = 'clear' | 'low_stock' | 'out_of_stock';
-
 // ─── Landing page types ───────────────────────────────────────────────────────
 
 export interface LocationsLandingKpis {
-  active_locations: number;
-  total_locations: number;
+  unpaid_invoice_count: number;
+  total_invoice_count: number;
   outstanding_dues_total: number;
   dues_location_count: number;
-  low_stock_locations: number;
+  open_estimate_count: number;
+  total_estimate_count: number;
   top_location_name: string | null;
   top_location_gmv_share_pct: number;
 }
@@ -45,8 +42,10 @@ export interface LocationsCalloutRow {
   name: string;
   city: string;
   initials: string;
-  // stock critical
-  critical_sku_count?: number;
+  // conversions (estimates nearing expiry)
+  estimate_number?: string;
+  expires_in_days?: number;
+  total_amount?: number;
   // top locations
   gmv_mtd?: number;
   orders_count?: number;
@@ -59,7 +58,7 @@ export interface LocationsCalloutRow {
 export interface LocationsLandingResponse {
   kpis: LocationsLandingKpis;
   callouts: {
-    stock_critical: LocationsCalloutRow[];
+    conversions: LocationsCalloutRow[];
     top_locations: LocationsCalloutRow[];
     collections_overdue: LocationsCalloutRow[];
   };
@@ -98,17 +97,6 @@ export interface LocationDetailTopBuyer {
   initials: string;
   spend_mtd: number;
   outstanding_dues: number;
-}
-
-export interface LocationDetailCustomer {
-  buyer_id: string;
-  business_name: string;
-  city: string;
-  initials: string;
-  spend_mtd: number;
-  orders_mtd: number;
-  outstanding_dues: number;
-  last_order_at: string | null;
 }
 
 export interface LocationDetailOrder {
@@ -159,16 +147,6 @@ export interface LocationDetailInvoice {
   status: string;
 }
 
-export interface LocationDetailInventoryItem {
-  tenant_product_id: string;
-  product_name: string;
-  brand_name: string;
-  qty_available: number;
-  days_cover: number | null;
-  last_updated: string;
-  stock_status: LocationStockStatus;
-}
-
 export interface LocationDetailActivityItem {
   id: string;
   action: string;
@@ -190,29 +168,26 @@ export interface LocationDetailResponse {
   meta_strip: {
     gmv_mtd: number;
     growth_pct: number;
-    active_buyers: number;
-    total_buyers: number;
     outstanding_dues: number;
     invoice_count: number;
-    low_stock_skus: number;
+    unpaid_invoice_count: number;
+    total_invoice_count: number;
+    open_estimate_count: number;
+    total_estimate_count: number;
   };
   overview: {
     gmv_trend: LocationDetailGmvWeek[];
     inventory_health: LocationDetailInventoryHealth;
     top_buyers: LocationDetailTopBuyer[];
   };
-  customers: LocationDetailCustomer[];
   orders: LocationDetailOrder[];
   estimates: LocationDetailEstimate[];
   invoices: LocationDetailInvoice[];
-  inventory: LocationDetailInventoryItem[];
   activity: LocationDetailActivityItem[];
   tab_badges: {
-    customers: number;
     orders_mtd: number;
     estimates_mtd: number;
     invoices_mtd: number;
-    low_stock_skus: number;
   };
 }
 

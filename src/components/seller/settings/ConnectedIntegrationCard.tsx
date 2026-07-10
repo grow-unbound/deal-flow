@@ -28,6 +28,7 @@ import type {
 } from '@/hooks/useIntegrationsSettings';
 import { formatIntegrationJobError } from '@/lib/integrations/job-error-log';
 import { isOAuthLiveTenantIntegrationStatus } from '@/lib/integrations/contracts';
+import { REFERENCE_PHASES, TRANSACTIONAL_PHASES } from '@/lib/integrations/sync-orchestration';
 import {
   estimateZohoDailyNextRun,
   formatZohoDailyNextRun,
@@ -50,6 +51,7 @@ function labelize(value: string) {
 
 function labelizePhase(value: string) {
   if (value === 'orders') return 'Sales Orders';
+  if (value === 'transaction_line_items') return 'Line Items';
   return labelize(value);
 }
 
@@ -78,8 +80,8 @@ const ENTITY_GROUPS: Array<{
   {
     key: 'products',
     label: 'Products',
-    aliases: ['products', 'brands', 'categories', 'pricelists', 'price_lists'],
-    sublabels: ['Products', 'Brands', 'Categories', 'Pricelists'],
+    aliases: ['products', 'brands', 'categories', 'pricelists', 'price_lists', 'inventory'],
+    sublabels: ['Products', 'Brands', 'Categories', 'Pricelists', 'Inventory'],
   },
   {
     key: 'transactions',
@@ -98,6 +100,7 @@ const GROUP_BY_PHASE_ID: Record<string, EntityGroupKey> = {
   categories: 'products',
   pricelists: 'products',
   price_lists: 'products',
+  inventory: 'products',
   estimates: 'transactions',
   orders: 'transactions',
   salesorders: 'transactions',
@@ -117,31 +120,41 @@ interface SyncPhaseGroup {
   canSyncAgain: boolean;
 }
 
+// Sub-phase id → label/aliases metadata. The *set* of phases per group comes
+// from REFERENCE_PHASES/TRANSACTIONAL_PHASES (src/lib/integrations/sync-orchestration.ts)
+// so this can't silently drift from the backend's actual phase list again —
+// only labels/entity-map aliases are maintained here.
+const REFERENCE_PHASE_META: Record<string, { label: string; aliases: string[] }> = {
+  locations: { label: 'Locations', aliases: ['locations', 'warehouses'] },
+  products: { label: 'Products', aliases: ['products', 'brands', 'categories'] },
+  inventory: { label: 'Inventory', aliases: ['inventory'] },
+  pricelists: { label: 'Pricelists', aliases: ['pricelists', 'price_lists'] },
+  customers: { label: 'Customers', aliases: ['customers'] },
+};
+
+const TRANSACTIONAL_PHASE_META: Record<string, { label: string; aliases: string[] }> = {
+  estimates: { label: 'Estimates', aliases: ['estimates'] },
+  orders: { label: 'Sales Orders', aliases: ['orders', 'salesorders'] },
+  invoices: { label: 'Invoices', aliases: ['invoices'] },
+  transaction_line_items: { label: 'Line Items', aliases: ['transaction_line_items'] },
+};
+
 const SYNC_PHASE_GROUPS: SyncPhaseGroup[] = [
   {
     id: 'reference',
     label: 'Phase 1 — Reference Data',
-    description: 'Locations, Products, Pricelists, Customers',
-    subPhases: [
-      { id: 'locations', label: 'Locations', aliases: ['locations', 'warehouses'] },
-      { id: 'products', label: 'Products', aliases: ['products', 'brands', 'categories'] },
-      { id: 'pricelists', label: 'Pricelists', aliases: ['pricelists', 'price_lists'] },
-      { id: 'customers', label: 'Customers', aliases: ['customers'] },
-    ],
-    errorEntityTypes: ['locations', 'warehouses', 'products', 'brands', 'categories', 'pricelists', 'price_lists', 'price_list_items', 'customers'],
-    syncWindowLabel: 'Products & Customers: filtered by selected date. Locations & Pricelists: always full sync (Zoho API limitation).',
+    description: 'Locations, Products, Inventory, Pricelists, Customers',
+    subPhases: REFERENCE_PHASES.map((id) => ({ id, ...REFERENCE_PHASE_META[id] })),
+    errorEntityTypes: ['locations', 'warehouses', 'products', 'brands', 'categories', 'inventory', 'pricelists', 'price_lists', 'price_list_items', 'customers'],
+    syncWindowLabel: 'Products, Inventory & Customers: filtered by selected date. Locations & Pricelists: always full sync (Zoho API limitation).',
     canSyncAgain: true,
   },
   {
     id: 'transactional',
     label: 'Phase 2 — Transactions',
-    description: 'Estimates, Sales Orders, Invoices',
-    subPhases: [
-      { id: 'estimates', label: 'Estimates', aliases: ['estimates'] },
-      { id: 'orders', label: 'Sales Orders', aliases: ['orders', 'salesorders'] },
-      { id: 'invoices', label: 'Invoices', aliases: ['invoices'] },
-    ],
-    errorEntityTypes: ['estimates', 'orders', 'salesorders', 'invoices'],
+    description: 'Estimates, Sales Orders, Invoices, Line Items',
+    subPhases: TRANSACTIONAL_PHASES.map((id) => ({ id, ...TRANSACTIONAL_PHASE_META[id] })),
+    errorEntityTypes: ['estimates', 'orders', 'salesorders', 'invoices', 'transaction_line_items'],
     syncWindowLabel: 'All transaction data filtered by the selected date window.',
     canSyncAgain: true,
   },
@@ -179,12 +192,13 @@ function getGroupSummaryTotals(totals: NonNullable<IntegrationCatalogItem['cover
       return { total: totals.customers, items: { Customers: totals.customers } };
     case 'products':
       return {
-        total: totals.products + totals.brands + totals.categories + totals.pricelists,
+        total: totals.products + totals.brands + totals.categories + totals.pricelists + totals.inventory,
         items: {
           Products: totals.products,
           Brands: totals.brands,
           Categories: totals.categories,
           Pricelists: totals.pricelists,
+          Inventory: totals.inventory,
         },
       };
     case 'transactions':
@@ -618,19 +632,6 @@ function getPhaseState(job: IntegrationSyncJob, phaseId: string, phaseIndex: num
   return hasActivity ? 'Successful' : 'Not Started';
 }
 
-function getPhaseEntries(job: IntegrationSyncJob) {
-  const phaseOrder = job.progress?.phases?.length
-    ? job.progress.phases
-    : Object.keys(job.progress?.counts ?? job.summary?.counts ?? {});
-
-  return phaseOrder.map((phaseId, phaseIndex) => ({
-    id: phaseId,
-    label: labelizePhase(phaseId),
-    state: getPhaseState(job, phaseId, phaseIndex),
-    stat: job.progress?.counts?.[phaseId] ?? job.summary?.counts?.[phaseId] ?? null,
-  }));
-}
-
 const ENTITY_CARD_KEYS = ['locations', 'customers', 'products', 'transactions'] as const;
 const TRANSACTION_PHASE_IDS = ['estimates', 'orders', 'invoices'] as const;
 
@@ -831,6 +832,9 @@ function getSummaryChips(job: IntegrationSyncJob | null) {
   if (job.summary?.last_synced_at) chips.push({ label: 'Completed', value: formatDate(job.summary.last_synced_at, true) });
   if (job.summary?.total_processed != null) chips.push({ label: 'Processed', value: formatNumber(job.summary.total_processed) });
   if (job.summary?.total_failed != null) chips.push({ label: 'Failed', value: formatNumber(job.summary.total_failed) });
+  // Never let a degraded run (a phase skipped after failing) read as plain
+  // success in the UI — see server.ts's mergePostSyncWarnings.
+  if (job.summary?.warnings?.length) chips.push({ label: 'Status', value: 'Completed with issues' });
   return chips;
 }
 
@@ -860,22 +864,56 @@ function getProgressText(job: IntegrationSyncJob) {
   return { percent, numerator, denominator: knownDenominator };
 }
 
+const CANONICAL_SYNC_PHASE_IDS = SYNC_PHASE_GROUPS.filter((g) => g.canSyncAgain).flatMap((g) => g.subPhases.map((s) => s.id));
+
+// Derives every expected phase's live state for a specific run (identified by
+// its master `sync_run` job), scoped strictly to that run's own slave rows —
+// not inferred from mixed cross-run history. Used identically by the live
+// Overview phase grid and every History tab entry (one call per past run), so
+// "Not Started" can never be confused with "this phase's last known state
+// from a previous run".
+function getPhaseEntriesForRun(masterJob: IntegrationSyncJob, allJobs: IntegrationSyncJob[]) {
+  const expectedPhases = masterJob.progress?.phases_in_run?.length
+    ? masterJob.progress.phases_in_run
+    : CANONICAL_SYNC_PHASE_IDS;
+  const slaveRows = allJobs.filter((job) => job.phase !== 'sync_run' && job.master_job_id === masterJob.id);
+  const latestByPhase = getLatestJobByPhase(slaveRows);
+
+  return expectedPhases.map((phaseId) => {
+    const job = latestByPhase.get(phaseId) ?? null;
+    return {
+      id: phaseId,
+      label: labelizePhase(phaseId),
+      state: jobStatusToPhaseState(job),
+      // A phase's own progress counters reset to 0 on every resumed attempt
+      // (each resume is a fresh job row) — sum across this run's own
+      // attempt-chain instead of reading a single row's counters, so this
+      // doesn't visibly reset every time a phase pauses and resumes.
+      stat: getCumulativePhaseStat(slaveRows, phaseId),
+    };
+  });
+}
+
 // The new per-phase job model never sets items_total/phases_total (those are
 // legacy fields from the old monolithic sync), so getProgressText above
 // always returns null for a real in-progress run — this computes a real,
-// monotonically-increasing progress fraction instead: how many of the 7
-// canonical sync phases have actually completed in the current run.
-const CANONICAL_SYNC_PHASE_IDS = SYNC_PHASE_GROUPS.filter((g) => g.canSyncAgain).flatMap((g) => g.subPhases.map((s) => s.id));
+// monotonically-increasing progress fraction instead: how many of this run's
+// phases have actually completed. When the master job explicitly carries
+// phases_in_run (every run created by the current backend does), this always
+// returns a real 0/N fraction — even before any slave row exists yet — so the
+// optimistic "just clicked Sync" state renders 0/N immediately. Without an
+// explicit phase list (older/legacy job rows), fall back to the previous
+// behavior: only report progress once at least one phase shows real
+// activity, otherwise defer to getProgressText's item-based fraction.
+function getOverallRunProgress(masterJob: IntegrationSyncJob, allJobs: IntegrationSyncJob[]) {
+  const hasExplicitPhaseList = Boolean(masterJob.progress?.phases_in_run?.length);
+  const entries = getPhaseEntriesForRun(masterJob, allJobs);
+  if (entries.length === 0) return null;
+  if (!hasExplicitPhaseList && !entries.some((entry) => entry.state !== 'Not Started')) return null;
 
-function getOverallRunProgress(jobs: IntegrationSyncJob[]) {
-  const latestByPhase = getLatestJobByPhase(jobs);
-  const relevant = CANONICAL_SYNC_PHASE_IDS.map((phaseId) => latestByPhase.get(phaseId) ?? null);
-  const anyStarted = relevant.some((job) => job !== null);
-  if (!anyStarted) return null;
-
-  const completed = relevant.filter((job) => job?.status === 'completed').length;
-  const percent = Math.max(4, Math.min(100, Math.round((completed / CANONICAL_SYNC_PHASE_IDS.length) * 100)));
-  return { percent, numerator: completed, denominator: CANONICAL_SYNC_PHASE_IDS.length };
+  const completed = entries.filter((entry) => entry.state === 'Successful').length;
+  const percent = Math.max(4, Math.min(100, Math.round((completed / entries.length) * 100)));
+  return { percent, numerator: completed, denominator: entries.length };
 }
 
 function PhaseErrorFlyout({ errors }: { errors: IntegrationEntityError[] }) {
@@ -972,6 +1010,7 @@ export function ConnectedIntegrationCard({
     brands: 0,
     categories: 0,
     pricelists: 0,
+    inventory: 0,
     estimates: 0,
     orders: 0,
     invoices: 0,
@@ -1004,28 +1043,20 @@ export function ConnectedIntegrationCard({
   const currentRun = activeJob ?? latestVisibleRun;
   const syncablePhaseActions = getSyncablePhaseActions(integration);
   const runHistory = activeJob ? [activeJob, ...sortedHistory.filter((job) => job.id !== activeJob.id)] : sortedHistory;
-  // A phase's own progress counters reset to 0 on every resumed attempt (each
-  // resume is a fresh job row) — sum across the whole attempt-chain via
-  // getCumulativePhaseStat instead of reading a single job's own counters, so
-  // this doesn't visibly reset every time a phase pauses and resumes.
-  const currentRunPhaseEntries = (() => {
-    const latestByPhase = getLatestJobByPhase(runHistory);
-    return CANONICAL_SYNC_PHASE_IDS
-      .map((phaseId) => {
-        const job = latestByPhase.get(phaseId);
-        if (!job || !['running', 'queued', 'pending', 'paused'].includes(job.status)) return null;
-        const stat = getCumulativePhaseStat(runHistory, phaseId);
-        if (!stat || (stat.processed <= 0 && stat.failed <= 0 && stat.pages <= 0)) return null;
-        return { id: phaseId, label: labelizePhase(phaseId), state: jobStatusToPhaseState(job), stat };
-      })
-      .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
-  })();
+  // Scoped strictly to the active run's own slave rows (via master_job_id) —
+  // shows every expected phase, including ones that haven't started yet, not
+  // just ones already active with some recorded activity.
+  const currentRunPhaseEntries = activeJob ? getPhaseEntriesForRun(activeJob, runHistory) : [];
+  // History tab: one entry per RUN (master `sync_run` row), not per phase row
+  // — excludes whichever master is the currently-live run, already shown
+  // above via IntegrationJobLiveLog.
+  const historicalMasters = sortedHistory.filter((job) => job.phase === 'sync_run' && job.id !== activeJob?.id);
   // While a sync is actually in progress, prefer the real "phases completed /
-  // 7" fraction — the new per-phase job model never populates the legacy
+  // N" fraction — the new per-phase job model never populates the legacy
   // items_total/phases_total fields getProgressText relies on, so that would
   // otherwise render nothing (or a stale value from an old legacy job).
-  const currentRunProgress = isSyncInProgress
-    ? getOverallRunProgress(runHistory) ?? (currentRun ? getProgressText(currentRun) : null)
+  const currentRunProgress = isSyncInProgress && activeJob
+    ? getOverallRunProgress(activeJob, runHistory) ?? (currentRun ? getProgressText(currentRun) : null)
     : currentRun ? getProgressText(currentRun) : null;
   const overviewCards = ENTITY_GROUPS.map((group) => {
     const totals = getGroupSummaryTotals(coverageTotals, group.key);
@@ -1281,7 +1312,14 @@ export function ConnectedIntegrationCard({
                         <StatusPill label={labelize(currentRun.status)} variant={getStatusVariant(currentRun.status)} />
                       </div>
                       <div className="mt-1 text-sm text-cream-700">
-                        {currentRun.progress?.phase_label ?? currentRun.summary?.note ?? 'Waiting for worker…'}
+                        {currentRun.progress?.phase_label
+                          ?? currentRun.summary?.note
+                          // "Waiting for worker…" reads as in-progress — wrong for a run
+                          // that already ended without ever setting a phase_label/note
+                          // (e.g. reaper-halted on a permanently-failed slave).
+                          ?? (['failed', 'cancelled', 'completed'].includes(currentRun.status)
+                            ? 'No details recorded for this run.'
+                            : 'Waiting for worker…')}
                       </div>
                     </div>
                     <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-cream-500 transition-transform group-open:rotate-180" />
@@ -1340,28 +1378,33 @@ export function ConnectedIntegrationCard({
                   isOAuthLiveTenantIntegrationStatus(ti.status) && phaseGroup.canSyncAgain;
 
                 // Aggregate sub-phase counts (always live, from coverageTotals) and
-                // status (from that sub-phase's OWN latest job row — job.phase maps
-                // 1:1 to sub.id, so no alias inference needed, and this reflects
-                // reality regardless of whether the "Sync Again" click's own HTTP
-                // request has already resolved).
+                // status. When a run is active, state is scoped strictly to THAT
+                // run's own slave rows (getPhaseEntriesForRun) so a phase not yet
+                // reached in the current run reads "Not Started" rather than
+                // whatever it was left at by a previous run; otherwise (idle) fall
+                // back to each phase's own latest job row across all history.
                 const latestJobByPhase = getLatestJobByPhase(runHistory);
                 const lastCompletedByPhase = getLastCompletedJobByPhase(runHistory);
+                const activeRunEntries = activeJob ? getPhaseEntriesForRun(activeJob, runHistory) : null;
                 const subPhaseRows = phaseGroup.subPhases.map((sub) => {
                   const count = (() => {
                     switch (sub.id) {
                       case 'locations': return coverageTotals.locations ?? 0;
                       case 'products': return (coverageTotals.products ?? 0) + (coverageTotals.brands ?? 0) + (coverageTotals.categories ?? 0);
+                      case 'inventory': return coverageTotals.inventory ?? 0;
                       case 'pricelists': return coverageTotals.pricelists ?? 0;
                       case 'customers': return coverageTotals.customers ?? 0;
                       case 'estimates': return coverageTotals.estimates ?? 0;
                       case 'orders': return coverageTotals.orders ?? 0;
                       case 'invoices': return coverageTotals.invoices ?? 0;
+                      case 'transaction_line_items': return 0;
                       default: return 0;
                     }
                   })();
 
                   const latestJob = latestJobByPhase.get(sub.id) ?? null;
-                  const state = jobStatusToPhaseState(latestJob);
+                  const activeEntry = activeRunEntries?.find((entry) => entry.id === sub.id) ?? null;
+                  const state = activeEntry ? activeEntry.state : jobStatusToPhaseState(latestJob);
                   const isSyncing = state === 'Syncing' || state === 'Paused';
                   const pagesNote = isSyncing && latestJob?.progress
                     ? (() => {
@@ -1373,7 +1416,7 @@ export function ConnectedIntegrationCard({
                   // row) vs. "last completed run" — shown side by side so it's
                   // clear whether the current number is fresh progress or the
                   // same total the previous full sync already reached.
-                  const currentSynced = isSyncing ? getCumulativePhaseStat(runHistory, sub.id) : null;
+                  const currentSynced = isSyncing ? (activeEntry?.stat ?? getCumulativePhaseStat(runHistory, sub.id)) : null;
                   const completedJob = lastCompletedByPhase.get(sub.id) ?? null;
                   const previousSynced = completedJob && completedJob.id !== latestJob?.id
                     ? completedJob.progress?.counts?.[sub.id] ?? completedJob.summary?.counts?.[sub.id] ?? null
@@ -1694,14 +1737,14 @@ export function ConnectedIntegrationCard({
           <div className="space-y-4">
             {activeJob ? <IntegrationJobLiveLog activeJob={activeJob} /> : null}
 
-            {sortedHistory.length === 0 ? (
+            {historicalMasters.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-cream-300 bg-cream-50 px-4 py-6 text-sm text-cream-700">
                 Sync history will appear here after the first import runs.
               </div>
             ) : (
               <div className="divide-y divide-cream-200 overflow-hidden rounded-2xl border border-cream-200 bg-white">
-                {sortedHistory.map((job) => {
-                  const phaseEntries = getPhaseEntries(job).filter((phase) => phase.stat || phase.state !== 'Not Started');
+                {historicalMasters.map((job) => {
+                  const phaseEntries = getPhaseEntriesForRun(job, sortedHistory).filter((phase) => phase.stat || phase.state !== 'Not Started');
                   const scopeLabel = labelize(job.job_type);
                   const sinceLabel = job.since_date
                     ? formatIntegrationDateTimeLabel(job.since_date)

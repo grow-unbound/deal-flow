@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { normalizeIntegrationJobErrorLog } from '@/lib/integrations/job-error-log';
+import { resolvePhasesForPolicy, resolveSyncEnrichmentPolicy } from '@/lib/integrations/sync-orchestration';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { makeHttpError, transientQueryRetry } from '@/lib/query-retry';
 import type {
@@ -79,6 +80,7 @@ export interface IntegrationSyncProgress {
     sample_ids?: string[];
   } | null;
   note?: string | null;
+  phases_in_run?: string[] | null;
 }
 
 export interface IntegrationSyncPhaseStats {
@@ -109,6 +111,9 @@ export interface IntegrationSyncJob {
   started_at?: string | null;
   completed_at?: string | null;
   created_at: string;
+  master_job_id?: string | null;
+  heartbeat_at?: string | null;
+  records_synced?: number | null;
 }
 
 export interface IntegrationJobSummary {
@@ -398,6 +403,9 @@ function parseSyncJob(value: unknown): IntegrationSyncJob | null {
               }
             : null,
           note: asNullableString(value.progress.note),
+          phases_in_run: asArray<unknown>(value.progress.phases_in_run).filter(
+            (phase): phase is string => typeof phase === 'string',
+          ),
         }
       : null,
     error_log: normalizeIntegrationJobErrorLog(value.error_log)
@@ -417,6 +425,9 @@ function parseSyncJob(value: unknown): IntegrationSyncJob | null {
     started_at: asNullableString(value.started_at),
     completed_at: asNullableString(value.completed_at),
     created_at: asString(value.created_at, new Date(0).toISOString()),
+    master_job_id: asNullableString(value.master_job_id),
+    heartbeat_at: asNullableString(value.heartbeat_at),
+    records_synced: asNumber(value.records_synced),
   };
 }
 
@@ -596,6 +607,7 @@ async function postStartImport(body: StartImportInput): Promise<StartImportResul
     tenant_integration_id: body.tenant_integration_id,
     import_orders_since: body.import_start_date,
     job_type: 'initial_reference',
+    run_kind: 'initial_sync',
     mode: 'initial_import',
   });
   const json = await parseEnvelope<{ job_id?: string }>(res);
@@ -639,6 +651,7 @@ async function postSyncNow(body: SyncNowInput): Promise<StartImportResult> {
   const res = await apiPost('/api/settings/integrations/sync', {
     tenant_integration_id: body.tenant_integration_id,
     job_type: 'manual',
+    run_kind: body.phase ? 'manual_phase' : 'manual_full',
     ...(body.phase ? { phase: body.phase } : {}),
     ...(body.since ? { since: body.since } : {}),
     ...(typeof body.max_pages === 'number' ? { max_pages: body.max_pages } : {}),
@@ -732,6 +745,64 @@ function createOptimisticView(current: IntegrationsSettingsView | undefined, inp
           active_job: optimisticJob,
           sync_history: [optimisticJob, ...(existing?.sync_history ?? [])],
           data_flows: existing?.data_flows ?? [],
+        },
+      };
+    }),
+  };
+}
+
+// syncNowMutation ("Sync Again" / "Sync now") had no optimistic update at
+// all, unlike the initial-import mutation above. That meant clicking it left
+// query.data's active_job untouched until the mutation's own HTTP call
+// resolved — and integrations-sync runs the whole phase chain synchronously
+// inside that one request, so it can stay pending for a long time. Two
+// consequences: the card kept showing the previous (often failed) run's
+// status, and the realtime subscription in useIntegrationsSettings — which
+// only arms when at least one integration already has a non-null active_job
+// — never turned on for this run, since query.data never reflected it. This
+// sets an optimistic active_job immediately so both the display and the
+// realtime subscription pick up the new run right away, matching the
+// pattern already used for the initial-import mutation and stopSyncMutation.
+function createSyncNowOptimisticView(current: IntegrationsSettingsView | undefined, input: SyncNowInput): IntegrationsSettingsView | undefined {
+  if (!current) return current;
+  const now = new Date().toISOString();
+  // Same phase list the server will create moments later (job_type is always
+  // 'manual' for this mutation — see postSyncNow) — lets the phase-grid render
+  // every expected phase as "Not Started" immediately, before any slave job
+  // rows exist, instead of showing stale state from a previous run.
+  const expectedPhases = resolvePhasesForPolicy({
+    requestedPhase: input.phase ?? null,
+    enrichmentPolicy: resolveSyncEnrichmentPolicy('manual'),
+  });
+  const optimisticJob: IntegrationSyncJob = {
+    id: `optimistic-${Math.random().toString(36).slice(2, 10)}`,
+    phase: 'sync_run',
+    job_type: 'manual',
+    status: 'pending',
+    progress: {
+      phase: input.phase ?? 'sync_run',
+      phase_label: input.phase ? `Queueing ${input.phase} sync…` : 'Queueing full sync…',
+      phases_in_run: [...expectedPhases],
+    },
+    error_log: null,
+    summary: null,
+    started_at: null,
+    completed_at: null,
+    created_at: now,
+  };
+
+  return {
+    ...current,
+    integrations: current.integrations.map((integration) => {
+      if (integration.tenant_integration?.id !== input.tenant_integration_id) return integration;
+      const existing = integration.tenant_integration;
+      return {
+        ...integration,
+        tenant_integration: {
+          ...existing,
+          status: 'syncing' as TenantIntegrationStatus,
+          active_job: optimisticJob,
+          sync_history: [optimisticJob, ...(existing.sync_history ?? [])],
         },
       };
     }),
@@ -858,10 +929,15 @@ export function useIntegrationsSettings(initialData?: IntegrationSettingsPayload
 
   const syncNowMutation = useMutation({
     mutationFn: postSyncNow,
-    onSuccess: () => {
+    onMutate: async (input) => {
+      const snapshots = await takeSnapshots(queryClient, [queryKey]);
+      queryClient.setQueryData<IntegrationsSettingsView>(queryKey, (current) => createSyncNowOptimisticView(current, input));
+      // Immediate feedback on click — don't wait on the network round-trip.
       toast.success('Sync started');
+      return { snapshots };
     },
-    onError: (error) => {
+    onError: (error, _input, context) => {
+      rollbackSnapshots(queryClient, context?.snapshots);
       toast.error(error instanceof Error ? error.message : 'Failed to start sync');
     },
     onSettled: () => {

@@ -56,15 +56,15 @@ function queuePriorityForTriggerSource(
     : QUEUE_PRIORITY_BROADCAST;
 }
 
-async function lookupTemplateId(
+async function lookupApprovedTemplate(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any,
   metaTemplateName: string,
-): Promise<string | null> {
+): Promise<{ id: string; locale: string } | null> {
   const { data, error } = await db
     .schema('app')
     .from('whatsapp_templates')
-    .select('id')
+    .select('id, locale')
     .eq('meta_template_name', metaTemplateName)
     .eq('approval_status', 'approved')
     .is('tenant_id', null)
@@ -72,7 +72,23 @@ async function lookupTemplateId(
     .maybeSingle();
 
   if (error || !data?.id) return null;
-  return data.id as string;
+  return {
+    id: data.id as string,
+    locale: (data.locale as string | null) ?? 'en',
+  };
+}
+
+export async function lookupApprovedTemplateMeta(
+  metaTemplateName: string,
+): Promise<{ id: string; locale: string } | null> {
+  try {
+    const { supabaseAdmin } = await import('@/lib/supabase');
+    if (!supabaseAdmin) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return lookupApprovedTemplate(supabaseAdmin as any, metaTemplateName);
+  } catch {
+    return null;
+  }
 }
 
 export function getPlatformTenantId(): string | null {
@@ -88,7 +104,7 @@ export async function enqueueWhatsAppMessage(
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabaseAdmin as any;
-    const whatsappTemplateId = await lookupTemplateId(
+    const templateMeta = await lookupApprovedTemplate(
       db,
       input.sendPayload.meta_template_name,
     );
@@ -97,7 +113,7 @@ export async function enqueueWhatsAppMessage(
       tenant_id: input.tenantId,
       buyer_id: input.buyerId ?? null,
       recipient_phone: input.recipientPhone,
-      whatsapp_template_id: whatsappTemplateId,
+      whatsapp_template_id: templateMeta?.id ?? null,
       whatsapp_broadcast_id: input.whatsappBroadcastId ?? null,
       meta_category: input.metaCategory,
       trigger_source: input.triggerSource,

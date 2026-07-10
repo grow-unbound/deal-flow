@@ -349,6 +349,14 @@ export async function resolveBuyerInventoryWarehouseId(
   const tenantId = profile.context.tenant_id;
   if (!tenantId) return null;
 
+  const selectedDelivery = getSelectedBuyerDeliveryFromRequest(request);
+  if (selectedDelivery?.nearest_warehouse_id) {
+    return selectedDelivery.nearest_warehouse_id;
+  }
+
+  const resolvedRouting = await resolveNearestBuyerLocation(db as any, tenantId, selectedDelivery);
+  if (resolvedRouting?.warehouseId) return resolvedRouting.warehouseId;
+
   if (profile.buyer?.geography) {
     const { data: defaultWarehouse, error } = await db
       .schema('app')
@@ -363,9 +371,7 @@ export async function resolveBuyerInventoryWarehouseId(
     return (defaultWarehouse as { id: string } | null)?.id ?? null;
   }
 
-  const selectedDelivery = getSelectedBuyerDeliveryFromRequest(request);
-  const resolvedRouting = await resolveNearestBuyerLocation(db as any, tenantId, selectedDelivery);
-  return resolvedRouting?.warehouseId ?? resolvedRouting?.locationId ?? null;
+  return null;
 }
 
 export async function resolveBuyerCatalogSummaries(

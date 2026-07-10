@@ -8,6 +8,7 @@ export const MASTER_PHASE = 'sync_run' as const;
 export const REFERENCE_PHASES = [
   'locations',
   'products',
+  'inventory',
   'pricelists',
   'customers',
 ] as const;
@@ -19,9 +20,26 @@ export const TRANSACTIONAL_PHASES = [
   'transaction_line_items',
 ] as const;
 
+// Batched per-record Zoho detail-fetch sweeps (one GET per item, up to
+// hundreds of items) — the phases most exposed to per-item Zoho stalls/rate
+// limiting (see the inventory phase hang incident). Dispatched LAST, after
+// every reference/transactional phase has already had its chance, and NEVER
+// halt the run on failure (see shouldHaltOnFailure) — a stuck or failed
+// detail-fetch sweep must not block data that already synced successfully.
+// Membership in REFERENCE_PHASES/TRANSACTIONAL_PHASES is otherwise unchanged
+// (since/halt classification for these two stays as before, just overridden
+// to never halt) so this is purely an ordering + halt-exemption overlay.
+export const DEFERRED_PHASES = ['inventory', 'transaction_line_items'] as const;
+
+const DEFERRED_SET = new Set<string>(DEFERRED_PHASES);
+
+export function isDeferredPhase(phase: string): boolean {
+  return DEFERRED_SET.has(phase);
+}
+
 export const CANONICAL_PHASES = [
-  ...REFERENCE_PHASES,
-  ...TRANSACTIONAL_PHASES,
+  ...[...REFERENCE_PHASES, ...TRANSACTIONAL_PHASES].filter((phase) => !DEFERRED_SET.has(phase)),
+  ...DEFERRED_PHASES,
 ] as const;
 
 export const ANALYSIS_PHASE = 'analysis' as const;
@@ -33,6 +51,57 @@ export type TransactionalPhase = (typeof TRANSACTIONAL_PHASES)[number];
 export type RunProfile = 'full_refresh' | 'incremental_daily' | 'continuation' | 'pickup';
 export type FailurePolicy = 'halt_on_reference_failure' | 'skip_failed_phases';
 
+/**
+ * First-class tag for "why this run started" — additive alongside job_type
+ * (which stays load-bearing for rebuild-window sizing and UI labels).
+ * Only meaningful on master (phase=sync_run) rows.
+ */
+export type RunKind = 'initial_sync' | 'manual_full' | 'manual_phase' | 'daily_incremental';
+
+export const RUN_KINDS: readonly RunKind[] = [
+  'initial_sync',
+  'manual_full',
+  'manual_phase',
+  'daily_incremental',
+] as const;
+
+export function isRunKind(value: unknown): value is RunKind {
+  return typeof value === 'string' && (RUN_KINDS as readonly string[]).includes(value);
+}
+
+/**
+ * Derives run_kind deterministically from request inputs so callers don't
+ * have to reason about it themselves. initial_sync must be passed explicitly
+ * by the caller (it isn't derivable from job_type='initial_reference' alone
+ * without also checking for the historical initial_transactional value), so
+ * this is only the manual/incremental fallback used when a caller doesn't
+ * send run_kind explicitly.
+ */
+export function deriveRunKind(input: { jobType: string; requestedPhase: string | null }): RunKind {
+  if (input.jobType === 'initial_reference' || input.jobType === 'initial_transactional') {
+    return 'initial_sync';
+  }
+  if (input.jobType === 'incremental') return 'daily_incremental';
+  return input.requestedPhase ? 'manual_phase' : 'manual_full';
+}
+
+/** Explicit, uniform failure-policy mapping per run_kind — no silent defaults. */
+export function resolveFailurePolicyForRunKind(runKind: RunKind): FailurePolicy {
+  switch (runKind) {
+    case 'initial_sync':
+    case 'manual_full':
+      return 'halt_on_reference_failure';
+    case 'manual_phase':
+    case 'daily_incremental':
+      return 'skip_failed_phases';
+  }
+}
+
+/** True when a run finished but at least one phase was skipped due to failure. */
+export function isDegraded(results: readonly { ok: boolean }[]): boolean {
+  return results.some((r) => !r.ok);
+}
+
 export const ACTIVE_MASTER_STATUSES = ['pending', 'running', 'paused'] as const;
 export const ACTIVE_SLAVE_STATUSES = ['pending', 'queued', 'running', 'paused'] as const;
 export const TERMINAL_SLAVE_STATUSES = ['completed', 'failed', 'cancelled'] as const;
@@ -41,6 +110,7 @@ export interface SyncRunContext {
   masterJobId: string;
   syncRunId: string;
   profile: RunProfile;
+  runKind: RunKind;
   failurePolicy: FailurePolicy;
   transactionSince: string | null;
   referenceSince: string | null;
@@ -111,6 +181,7 @@ export function resolveRunProfile(input: {
 export function buildSyncRunContext(input: {
   masterJobId: string;
   profile: RunProfile;
+  runKind: RunKind;
   jobType: string;
   transactionSince: string | null;
   referenceSince: string | null;
@@ -119,7 +190,8 @@ export function buildSyncRunContext(input: {
     masterJobId: input.masterJobId,
     syncRunId: input.masterJobId,
     profile: input.profile,
-    failurePolicy: resolveFailurePolicy(input.profile),
+    runKind: input.runKind,
+    failurePolicy: resolveFailurePolicyForRunKind(input.runKind),
     transactionSince: input.transactionSince,
     referenceSince: input.referenceSince,
     jobType: input.jobType,
@@ -138,7 +210,7 @@ export function sinceForPhase(phase: string, ctx: SyncRunContext): string | null
 }
 
 export function shouldHaltOnFailure(phase: string, ctx: SyncRunContext): boolean {
-  return ctx.failurePolicy === 'halt_on_reference_failure' && isReferencePhase(phase);
+  return ctx.failurePolicy === 'halt_on_reference_failure' && isReferencePhase(phase) && !isDeferredPhase(phase);
 }
 
 export function getSyncRunIdFromProgress(progress: Record<string, unknown> | null | undefined): string | null {
@@ -177,8 +249,8 @@ export function getLatestSlaveForPhase(slaves: SyncJobRow[], phase: string): Syn
 }
 
 /** Assumes `slaves` are sorted newest-first (created_at DESC). */
-export function getLatestSlavesByPhase(slaves: SyncJobRow[]): Map<string, SyncJobRow> {
-  const map = new Map<string, SyncJobRow>();
+export function getLatestSlavesByPhase<T extends SyncJobRow>(slaves: readonly T[]): Map<string, T> {
+  const map = new Map<string, T>();
   for (const job of slaves) {
     if (job.phase && !map.has(job.phase)) map.set(job.phase, job);
   }
@@ -186,7 +258,7 @@ export function getLatestSlavesByPhase(slaves: SyncJobRow[]): Map<string, SyncJo
 }
 
 export function isRunReadyForAnalysis(
-  slaves: SyncJobRow[],
+  slaves: readonly SyncJobRow[],
   phasesInRun: readonly string[] = CANONICAL_PHASES,
 ): boolean {
   const canonicalInRun = phasesInRun.filter(isCanonicalPhase);
@@ -270,6 +342,7 @@ export const FULL_SYNC_PHASES: readonly CanonicalPhase[] = [
   'estimates',
   'orders',
   'invoices',
+  'inventory',
 ];
 
 export type SyncEnrichmentPolicy = 'full_sync' | 'incremental';
@@ -310,4 +383,188 @@ export function resolvePhasesForPolicy(input: {
     return resolvePhasesToRun(input.requestedPhase);
   }
   return input.enrichmentPolicy === 'incremental' ? CANONICAL_PHASES : FULL_SYNC_PHASES;
+}
+
+// ── Coordinator decision logic ──────────────────────────────────────────────
+//
+// Pure "given current DB state, what is the single next action" function —
+// this is what the sync-coordinator edge function calls on every tick, and
+// what phase-worker completion used to decide for itself via selfChain. The
+// worker no longer decides anything; it just writes its own terminal state
+// (a slave row's own `status`/`progress.next_cursor` already fully describes
+// whether that phase needs another page, per runPhaseSync in sync-utils.ts),
+// and the coordinator reads that state fresh on each tick. This makes each
+// tick idempotent: calling it again after the decided action has been taken
+// just naturally advances to the next state, with no "did I already fire"
+// bookkeeping needed.
+
+export interface CoordinatorSlaveRow extends SyncJobRow {
+  heartbeat_at?: string | null;
+  attempt_count?: number | null;
+  next_retry_eligible_at?: string | null;
+}
+
+export interface CoordinatorMasterRow {
+  id: string;
+  status: string;
+  run_kind: string | null;
+  progress: Record<string, unknown> | null;
+}
+
+export type CoordinatorAction =
+  | { type: 'noop'; reason: 'aborted' | 'nothing_to_do' }
+  | { type: 'dispatch_next_page'; phase: CanonicalPhase; slaveId: string; pageFrom: number }
+  | { type: 'dispatch_next_phase'; phase: CanonicalPhase }
+  | { type: 'run_analysis' }
+  | { type: 'mark_complete'; degraded: boolean }
+  | { type: 'halt_failed'; phase: CanonicalPhase }
+  // Phase 3 wires bounded revival onto this — Phase 2's coordinator only
+  // detects and reports it (shadow mode has nothing to compare this against,
+  // since self-chain has no revival concept; the once-daily reaper is the
+  // only thing that currently acts on staleness).
+  | { type: 'stale_detected'; phase: CanonicalPhase; slaveId: string };
+
+function masterMeta(master: CoordinatorMasterRow): Record<string, unknown> {
+  const progress = master.progress ?? {};
+  const meta = progress.meta;
+  return typeof meta === 'object' && meta !== null ? (meta as Record<string, unknown>) : {};
+}
+
+function isMasterAborted(master: CoordinatorMasterRow): boolean {
+  if (master.status === 'cancelled' || master.status === 'failed') return true;
+  const meta = masterMeta(master);
+  return meta.run_cancelled === true || meta.run_halted === true;
+}
+
+/**
+ * lease_timeout for "is a running slave still alive" — see heartbeat_at
+ * column comment (add_heartbeat_and_revival_columns migration) for the
+ * ~150s-worst-case-Zoho-retry justification. Checked every coordinator tick.
+ */
+export const STALE_RUNNING_LEASE_MS = 5 * 60 * 1000;
+
+export function decideCoordinatorAction(
+  master: CoordinatorMasterRow,
+  slavesNewestFirst: readonly CoordinatorSlaveRow[],
+  opts: { now?: Date } = {},
+): CoordinatorAction {
+  if (isMasterAborted(master)) return { type: 'noop', reason: 'aborted' };
+
+  const now = opts.now ?? new Date();
+  const progress = master.progress ?? {};
+  const phasesInRun = (Array.isArray(progress.phases_in_run)
+    ? progress.phases_in_run.filter(isCanonicalPhase)
+    : [...CANONICAL_PHASES]) as CanonicalPhase[];
+  const runKind = isRunKind(master.run_kind)
+    ? master.run_kind
+    : deriveRunKind({ jobType: '', requestedPhase: phasesInRun.length === 1 ? phasesInRun[0] : null });
+  const failurePolicy = resolveFailurePolicyForRunKind(runKind);
+
+  const byPhase = getLatestSlavesByPhase(slavesNewestFirst);
+  const results: { ok: boolean }[] = [];
+
+  for (const phase of phasesInRun) {
+    const slave = byPhase.get(phase);
+
+    if (!slave) return { type: 'dispatch_next_phase', phase };
+
+    if (slave.status === 'paused') {
+      const nextCursor = (slave.progress?.next_cursor ?? null) as { page?: number } | null;
+      return { type: 'dispatch_next_page', phase, slaveId: slave.id, pageFrom: nextCursor?.page ?? 1 };
+    }
+
+    if (slave.status === 'pending' || slave.status === 'queued') {
+      // Respect the exponential-backoff gate after a revival — don't
+      // immediately redispatch a slave that just failed and was revived;
+      // wait until its backoff window has elapsed.
+      const retryEligibleAt = slave.next_retry_eligible_at ? new Date(slave.next_retry_eligible_at).getTime() : null;
+      if (retryEligibleAt !== null && now.getTime() < retryEligibleAt) {
+        return { type: 'noop', reason: 'nothing_to_do' };
+      }
+      return { type: 'dispatch_next_phase', phase };
+    }
+
+    if (slave.status === 'running') {
+      const heartbeatAt = slave.heartbeat_at ? new Date(slave.heartbeat_at).getTime() : null;
+      if (heartbeatAt !== null && now.getTime() - heartbeatAt > STALE_RUNNING_LEASE_MS) {
+        return { type: 'stale_detected', phase, slaveId: slave.id };
+      }
+      return { type: 'noop', reason: 'nothing_to_do' };
+    }
+
+    if (slave.status === 'failed') {
+      results.push({ ok: false });
+      if (failurePolicy === 'halt_on_reference_failure' && isReferencePhase(phase)) {
+        return { type: 'halt_failed', phase };
+      }
+      continue; // skip_failed_phases: move on to the next phase
+    }
+
+    // completed / cancelled — this phase is done, move to the next.
+    results.push({ ok: slave.status === 'completed' });
+  }
+
+  const analysisSlave = byPhase.get(ANALYSIS_PHASE);
+  if (!analysisSlave && isRunReadyForAnalysis(slavesNewestFirst, phasesInRun)) {
+    return { type: 'run_analysis' };
+  }
+
+  return { type: 'mark_complete', degraded: isDegraded(results) };
+}
+
+// ── Bounded revival ──────────────────────────────────────────────────────────
+//
+// Direct fix for the incident where a tight-cadence reaper blindly re-revived
+// a failing/incomplete job with no stop-clause and burned the tenant's entire
+// Zoho API rate limit. A slave gets at most MAX_REVIVAL_ATTEMPTS revivals,
+// with exponential (not fixed-interval) backoff between them; past the cap
+// it's marked permanently failed and never auto-revived again — only an
+// explicit human retrigger (app.retry_sync_phase RPC) can restart it.
+
+export const MAX_REVIVAL_ATTEMPTS = 3;
+export const REVIVAL_BACKOFF_BASE_MS = 30_000;
+export const REVIVAL_BACKOFF_MULTIPLIER = 3;
+
+/** 30s, 90s, 270s for attempts 1, 2, 3. */
+export function revivalBackoffMs(attemptNumber: number): number {
+  return REVIVAL_BACKOFF_BASE_MS * Math.pow(REVIVAL_BACKOFF_MULTIPLIER, attemptNumber - 1);
+}
+
+export type RevivalDecision =
+  | { type: 'revive'; nextAttemptCount: number; nextRetryEligibleAt: string }
+  | { type: 'permanently_fail'; nextAttemptCount: number };
+
+export function decideRevival(input: { currentAttemptCount: number; now?: Date }): RevivalDecision {
+  const now = input.now ?? new Date();
+  const nextAttemptCount = input.currentAttemptCount + 1;
+  if (nextAttemptCount > MAX_REVIVAL_ATTEMPTS) {
+    return { type: 'permanently_fail', nextAttemptCount };
+  }
+  const nextRetryEligibleAt = new Date(now.getTime() + revivalBackoffMs(nextAttemptCount)).toISOString();
+  return { type: 'revive', nextAttemptCount, nextRetryEligibleAt };
+}
+
+// ── Circuit breaker ──────────────────────────────────────────────────────────
+//
+// After CIRCUIT_BREAKER_FAILURE_THRESHOLD consecutive fully-failed runs for
+// one tenant integration, automatic (cron-triggered) syncs stop until a human
+// acknowledges (app.acknowledge_sync_suspension RPC) — manual syncs from
+// Settings remain allowed throughout.
+
+export const CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3;
+
+export interface CircuitBreakerUpdate {
+  consecutiveRunFailures: number;
+  shouldSuspend: boolean;
+}
+
+export function decideCircuitBreaker(input: {
+  consecutiveRunFailures: number;
+  runOutcome: 'failed' | 'completed' | 'degraded';
+}): CircuitBreakerUpdate {
+  if (input.runOutcome !== 'failed') {
+    return { consecutiveRunFailures: 0, shouldSuspend: false };
+  }
+  const next = input.consecutiveRunFailures + 1;
+  return { consecutiveRunFailures: next, shouldSuspend: next >= CIRCUIT_BREAKER_FAILURE_THRESHOLD };
 }

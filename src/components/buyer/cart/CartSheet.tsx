@@ -21,9 +21,14 @@ export function CartSheet({ open, onClose }: CartSheetProps) {
   const { data: meData } = useBuyerMe();
   const gstInclusive = meData?.business_policy.gst_inclusive ?? false;
   const gstRate = meData?.business_policy.gst_rate ?? 18;
+  const availableItems = useMemo(
+    () => items.filter((item) => item.stock_status !== 'out_of_stock'),
+    [items],
+  );
+  const availableItemCount = availableItems.reduce((sum, item) => sum + item.quantity, 0);
   const totals = useMemo(
     () => computeBuyerCartTotals(
-      items.map((item) => ({
+      availableItems.map((item) => ({
         quantity: item.quantity,
         unit_price: item.unit_price,
         disc_pct: 0,
@@ -32,7 +37,7 @@ export function CartSheet({ open, onClose }: CartSheetProps) {
       gstInclusive,
       gstRate,
     ),
-    [items, gstInclusive, gstRate],
+    [availableItems, gstInclusive, gstRate],
   );
 
   return (
@@ -91,7 +96,7 @@ export function CartSheet({ open, onClose }: CartSheetProps) {
           >
             <div className="flex items-center justify-between">
               <span className="text-sm" style={{ color: 'var(--fg-3, var(--cream-700))' }}>
-                Subtotal ({itemCount} {itemCount === 1 ? 'item' : 'items'})
+                Subtotal ({availableItemCount} {availableItemCount === 1 ? 'item' : 'items'})
               </span>
               <span
                 className="text-base font-semibold"
@@ -116,16 +121,27 @@ export function CartSheet({ open, onClose }: CartSheetProps) {
                 {formatCurrency(totals.total)}
               </span>
             </div>
-            <Pressable asChild haptic>
-              <Link
-                href="/buy/checkout"
-                onClick={onClose}
-                className="flex h-12 w-full touch-manipulation items-center justify-center rounded-xl text-sm font-semibold text-white transition-transform duration-fast ease-standard hover:opacity-90 active:scale-[0.98]"
+            {availableItems.length > 0 ? (
+              <Pressable asChild haptic>
+                <Link
+                  href="/buy/checkout"
+                  onClick={onClose}
+                  className="flex h-12 w-full touch-manipulation items-center justify-center rounded-xl text-sm font-semibold text-white transition-transform duration-fast ease-standard hover:opacity-90 active:scale-[0.98]"
+                  style={{ background: 'var(--teal-500)' }}
+                >
+                  Proceed to Checkout
+                </Link>
+              </Pressable>
+            ) : (
+              <button
+                type="button"
+                disabled
+                className="flex h-12 w-full items-center justify-center rounded-xl text-sm font-semibold text-white opacity-60"
                 style={{ background: 'var(--teal-500)' }}
               >
-                Proceed to Checkout
-              </Link>
-            </Pressable>
+                No deliverable items
+              </button>
+            )}
           </div>
         )}
       </SheetContent>

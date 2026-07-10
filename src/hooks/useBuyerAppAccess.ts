@@ -52,16 +52,6 @@ export function useAccessList(initialData?: AccessPageResponse | null) {
   });
 }
 
-function recomputeKpis(buyers: AccessBuyer[]): AccessKpis {
-  return {
-    enabled_count: buyers.filter((b) => b.buyer_app_enabled).length,
-    not_enabled_count: buyers.filter((b) => !b.buyer_app_enabled).length,
-    suggested_count: buyers.filter((b) => b.is_suggested).length,
-    inactive_count: buyers.filter((b) => b.is_inactive).length,
-    total_count: buyers.length,
-  };
-}
-
 export function useToggleBuyerAccess() {
   const queryClient = useQueryClient();
 
@@ -91,7 +81,7 @@ export function useToggleBuyerAccess() {
               }
             : b,
         );
-        return { ...old, kpis: recomputeKpis(updatedBuyers), buyers: updatedBuyers };
+        return { ...old, buyers: updatedBuyers };
       });
 
       return { snapshots };
