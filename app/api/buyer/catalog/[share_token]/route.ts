@@ -76,12 +76,9 @@ export async function GET(
   }
 
   const selectedDelivery = getSelectedBuyerDeliveryFromRequest(request);
-  const resolvedRouting = await resolveNearestBuyerLocation(
-    db as any,
-    catalog.tenant_id,
-    selectedDelivery,
-  );
-  const inventoryWarehouseId = resolvedRouting?.warehouseId ?? null;
+  const inventoryWarehouseId = selectedDelivery?.nearest_warehouse_id
+    ?? (await resolveNearestBuyerLocation(db as any, catalog.tenant_id, selectedDelivery))?.warehouseId
+    ?? null;
   const itemMap = await enrichBuyerProducts(db as any, {
     tenantId: catalog.tenant_id,
     buyerId: profile?.buyer?.id ?? null,

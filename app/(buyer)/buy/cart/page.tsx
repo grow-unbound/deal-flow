@@ -18,13 +18,6 @@ import { formatBuyerSelectedLocationLabel } from '@/lib/buyer-delivery-location'
 import { computeBuyerCartTotals } from '@/lib/gst';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
-interface NearestLocationResponse {
-  location_id: string | null;
-  name: string | null;
-  distance_km: number | null;
-  fallback: boolean;
-}
-
 type CartLineItem = {
   tenant_product_id: string;
   qty: number;
@@ -76,7 +69,7 @@ const STICKY_HEADER: React.CSSProperties = {
 
 export default function CartPage() {
   const router = useRouter();
-  const { items, itemCount, removeItem, updateQty, clearCart, addItem, replaceItems, resolvedCampaignId } = useCart();
+  const { items, removeItem, updateQty, clearCart, addItem, replaceItems, resolvedCampaignId } = useCart();
   const delivery = useBuyerDeliveryOptional();
   const { data: meData } = useBuyerMe();
   const { data: cartBundlesData } = useCartBundles();
@@ -87,8 +80,6 @@ export default function CartPage() {
   const [placingOrder, setPlacingOrder] = useState(false);
   const [requestingQuote, setRequestingQuote] = useState(false);
   const [error, setError] = useState('');
-  const [nearestLoc, setNearestLoc] = useState<NearestLocationResponse | null>(null);
-  const [nearestLoading, setNearestLoading] = useState(false);
   const reconcileQuery = useBuyerResolvedProducts(
     items.map((item) => ({
       tenant_product_id: item.tenant_product_id,
@@ -114,6 +105,8 @@ export default function CartPage() {
         line_total: product.price * quantity,
         tenant_category_id: product.category_id ?? undefined,
         campaign_id: existing?.campaign_id ?? resolvedCampaignId ?? undefined,
+        stock_status: product.stock_status,
+        on_hand: product.on_hand,
       } satisfies BuyerCartItem;
     });
 
@@ -124,26 +117,20 @@ export default function CartPage() {
     }
   }, [gstRate, items, reconcileQuery.data, replaceItems, resolvedCampaignId]);
 
-  useEffect(() => {
-    const loc = selectedDelivery;
-    if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') {
-      setNearestLoc(null);
-      return;
-    }
-    let cancelled = false;
-    setNearestLoading(true);
-    apiFetch(`/api/buyer/nearest-location?lat=${loc.lat}&lng=${loc.lng}`)
-      .then((r) => r.json())
-      .then((data: NearestLocationResponse) => { if (!cancelled) setNearestLoc(data); })
-      .catch(() => { if (!cancelled) setNearestLoc(null); })
-      .finally(() => { if (!cancelled) setNearestLoading(false); });
-    return () => { cancelled = true; };
-  }, [selectedDelivery]);
+  const availableItems = useMemo(
+    () => items.filter((item) => item.stock_status !== 'out_of_stock'),
+    [items],
+  );
+  const unavailableItems = useMemo(
+    () => items.filter((item) => item.stock_status === 'out_of_stock'),
+    [items],
+  );
+  const availableItemCount = availableItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const deliveryFee = 0;
   const totals = useMemo(
     () => computeBuyerCartTotals(
-      items.map((item) => ({
+      availableItems.map((item) => ({
         quantity: item.quantity,
         unit_price: item.unit_price,
         disc_pct: 0,
@@ -152,13 +139,13 @@ export default function CartPage() {
       gstInclusive,
       gstRate,
     ),
-    [items, gstInclusive, gstRate],
+    [availableItems, gstInclusive, gstRate],
   );
   const total = totals.total + deliveryFee;
   const isBusy = placingOrder || requestingQuote;
 
   function buildLineItems(): CartLineItem[] {
-    return items.map((i) => ({
+    return availableItems.map((i) => ({
       tenant_product_id: i.tenant_product_id,
       qty: i.quantity,
       unit_price: i.unit_price,
@@ -174,16 +161,14 @@ export default function CartPage() {
     if (!selectedDelivery) {
       return { location_id: null, place_of_supply: null };
     }
-    const res = await apiFetch(`/api/buyer/nearest-location?lat=${selectedDelivery.lat}&lng=${selectedDelivery.lng}`);
-    const data: NearestLocationResponse = await res.json();
     return {
-      location_id: data.location_id,
-      place_of_supply: deriveBuyerPlaceOfSupply(selectedDelivery),
+      location_id: selectedDelivery.routed_location_id ?? null,
+      place_of_supply: selectedDelivery.place_of_supply ?? deriveBuyerPlaceOfSupply(selectedDelivery),
     };
   }
 
   async function handlePlaceOrder() {
-    if (isBusy || items.length === 0) return;
+    if (isBusy || availableItems.length === 0) return;
     if (!selectedDelivery) {
       setError('Select a delivery location before placing an order.');
       return;
@@ -227,7 +212,7 @@ export default function CartPage() {
   }
 
   async function handleRequestQuote() {
-    if (isBusy || items.length === 0) return;
+    if (isBusy || availableItems.length === 0) return;
     if (!selectedDelivery) {
       setError('Select a delivery location before requesting a quote.');
       return;
@@ -331,7 +316,7 @@ export default function CartPage() {
         {/* Inline page head */}
         <div className="pb-1">
           <p className="font-semibold uppercase mb-0.5" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em', color: 'var(--cream-600)' }}>
-            {items.length} {items.length === 1 ? 'Product' : 'Products'} · {itemCount} {itemCount === 1 ? 'unit' : 'units'}
+            {availableItems.length} deliverable · {availableItemCount} {availableItemCount === 1 ? 'unit' : 'units'}
           </p>
           <h2 className="font-semibold" style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-section)', fontWeight: 500, letterSpacing: '-0.005em', color: 'var(--fg-1, var(--cream-900))' }}>
             Review &amp; place
@@ -340,7 +325,7 @@ export default function CartPage() {
 
         {/* All items in one card, separated by dividers */}
         <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
-          {items.map((item, idx) => (
+          {availableItems.map((item, idx) => (
             <CartPageItem
               key={item.tenant_product_id}
               item={item}
@@ -349,7 +334,35 @@ export default function CartPage() {
               showDivider={idx > 0}
             />
           ))}
+          {availableItems.length === 0 ? (
+            <div className="px-4 py-4 text-sm text-[var(--fg-3)]">
+              No deliverable items for this location.
+            </div>
+          ) : null}
         </div>
+
+        {unavailableItems.length > 0 ? (
+          <section className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--danger-100, #FECACA)', background: 'var(--danger-50, #FEF2F2)' }}>
+            <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--danger-100, #FECACA)' }}>
+              <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--danger-500)' }}>
+                Unavailable at this warehouse
+              </p>
+              <p className="mt-0.5" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--danger-500)' }}>
+                These items are excluded from totals and cannot be submitted.
+              </p>
+            </div>
+            {unavailableItems.map((item, idx) => (
+              <CartPageItem
+                key={item.tenant_product_id}
+                item={item}
+                onQtyChange={updateQty}
+                onRemove={removeItem}
+                showDivider={idx > 0}
+                unavailable
+              />
+            ))}
+          </section>
+        ) : null}
 
         {/* W6: Complete Your Cart — gap widget (renders only when bundle matches) */}
         {cartBundlesData && tenantId && (
@@ -370,6 +383,8 @@ export default function CartPage() {
                 quantity: 1,
                 line_total: product.price,
                 tenant_category_id: product.category_id ?? undefined,
+                stock_status: product.stock_status,
+                on_hand: product.on_hand,
               }, product.campaign_id ?? resolvedCampaignId);
             }}
           />
@@ -432,13 +447,11 @@ export default function CartPage() {
           <div className="rounded-xl px-4 py-3 flex items-start gap-2.5" style={{ background: 'var(--teal-50, #f0fdfa)', border: '1px solid var(--teal-100, #ccfbf1)' }}>
             <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: 'var(--teal-500)' }} />
             <p style={{ fontSize: 'var(--b-text-sub)', color: 'var(--teal-700, #0f766e)', lineHeight: '1.45' }}>
-              {nearestLoading
-                ? 'Finding nearest fulfillment location…'
-                : nearestLoc && nearestLoc.name && !nearestLoc.fallback
-                  ? `Your order will be fulfilled from ${nearestLoc.name} — the nearest warehouse, ~${nearestLoc.distance_km} km from your delivery address.`
-                  : nearestLoc && nearestLoc.name && nearestLoc.fallback
-                    ? `No warehouse found near your delivery address. Your order will be fulfilled from ${nearestLoc.name} (default location).`
-                    : 'Set a delivery address to see your fulfillment location.'}
+              {delivery.selected.nearest_warehouse_name && !delivery.selected.nearest_warehouse_fallback
+                ? `Your order will be fulfilled from ${delivery.selected.nearest_warehouse_name} — the nearest warehouse, ~${delivery.selected.nearest_warehouse_distance_km} km from your delivery address.`
+                : delivery.selected.nearest_warehouse_name && delivery.selected.nearest_warehouse_fallback
+                  ? `No warehouse found near your delivery address. Your order will be fulfilled from ${delivery.selected.nearest_warehouse_name} (default warehouse).`
+                  : 'Change your delivery address to refresh the fulfillment warehouse.'}
             </p>
           </div>
         )}
@@ -467,7 +480,7 @@ export default function CartPage() {
         <div className="flex gap-2">
           <button
             onClick={handleRequestQuote}
-          disabled={isBusy || !selectedDelivery}
+          disabled={isBusy || !selectedDelivery || availableItems.length === 0}
           className="flex h-12 flex-1 items-center justify-center gap-1.5 font-semibold text-white transition-opacity disabled:opacity-60"
           style={{ fontSize: 'var(--b-text-label)', background: 'var(--teal-500)', borderRadius: 10 }}
         >
@@ -476,7 +489,7 @@ export default function CartPage() {
           </button>
           <button
             onClick={handlePlaceOrder}
-          disabled={isBusy || !selectedDelivery}
+          disabled={isBusy || !selectedDelivery || availableItems.length === 0}
           className="flex h-12 flex-1 items-center justify-center gap-1.5 font-semibold text-white transition-opacity disabled:opacity-60"
           style={{ fontSize: 'var(--b-text-label)', background: 'var(--ember-400)', borderRadius: 10 }}
         >
@@ -505,18 +518,20 @@ function CartPageItem({
   onQtyChange,
   onRemove,
   showDivider,
+  unavailable = false,
 }: {
   item: BuyerCartItem;
   onQtyChange: (tenant_product_id: string, qty: number) => void;
   onRemove: (tenant_product_id: string) => void;
   showDivider: boolean;
+  unavailable?: boolean;
 }) {
   const subline = [item.brand, item.internal_sku].filter(Boolean).join(' · ');
 
   return (
     <>
       {showDivider && <div style={{ borderTop: '1px solid var(--border-1)' }} />}
-      <div className="flex gap-3 px-4 py-3.5">
+      <div className="flex gap-3 px-4 py-3.5" style={unavailable ? { opacity: 0.78 } : undefined}>
         {/* Thumbnail 56×56 */}
         <div
           className="relative rounded-lg flex items-center justify-center overflow-hidden shrink-0"
@@ -547,6 +562,11 @@ function CartPageItem({
                 {subline}
               </p>
             ) : null}
+            {unavailable ? (
+              <p className="mt-1 font-semibold" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--danger-500)' }}>
+                Out of stock for selected location
+              </p>
+            ) : null}
           </div>
           <button
             onClick={() => onRemove(item.tenant_product_id)}
@@ -561,9 +581,10 @@ function CartPageItem({
         {/* Right: qty stepper + item total */}
         <div className="flex flex-col items-end justify-between shrink-0 py-0.5">
           {/* Pill stepper — no input, just buttons */}
-          <div className="flex items-center" style={{ borderRadius: 999, overflow: 'hidden', background: 'var(--teal-500)' }}>
+          <div className="flex items-center" style={{ borderRadius: 999, overflow: 'hidden', background: unavailable ? 'var(--cream-300)' : 'var(--teal-500)' }}>
             <button
               onClick={() => onQtyChange(item.tenant_product_id, item.quantity - 1)}
+              disabled={unavailable}
               className="flex items-center justify-center"
               style={{ width: 24, height: 24, color: '#fff' }}
               aria-label="Decrease"
@@ -578,6 +599,7 @@ function CartPageItem({
             </span>
             <button
               onClick={() => onQtyChange(item.tenant_product_id, item.quantity + 1)}
+              disabled={unavailable}
               className="flex items-center justify-center"
               style={{ width: 24, height: 24, color: '#fff' }}
               aria-label="Increase"
@@ -586,12 +608,18 @@ function CartPageItem({
             </button>
           </div>
           {/* Item total */}
-          <span
-            className="tabular-nums font-semibold"
-            style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-body)', color: 'var(--fg-1, var(--cream-900))', letterSpacing: '-0.01em' }}
-          >
-            {formatCurrency(item.line_total)}
-          </span>
+          {unavailable ? (
+            <span className="font-semibold" style={{ fontSize: 'var(--b-text-sub)', color: 'var(--danger-500)' }}>
+              Excluded
+            </span>
+          ) : (
+            <span
+              className="tabular-nums font-semibold"
+              style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--b-text-body)', color: 'var(--fg-1, var(--cream-900))', letterSpacing: '-0.01em' }}
+            >
+              {formatCurrency(item.line_total)}
+            </span>
+          )}
         </div>
       </div>
     </>

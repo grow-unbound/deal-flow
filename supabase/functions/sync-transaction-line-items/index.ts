@@ -10,8 +10,9 @@ import {
   updatePhaseJob,
   isSyncJobCancelled,
 } from '../_shared/sync-utils.ts';
-import { createZohoAdapter } from '../_shared/integrations-zoho.ts';
+import { createZohoAdapter, ZOHO_DETAIL_FETCH_CONCURRENCY, ZOHO_DETAIL_FETCH_BATCH_PACE_MS } from '../_shared/integrations-zoho.ts';
 import { persistZohoEntityPage } from '../_shared/integrations-persist.ts';
+import { logCheckpoint, startTimer } from '../_shared/sync-log.ts';
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 type TransactionKind = 'estimates' | 'orders' | 'invoices';
@@ -34,7 +35,6 @@ const PHASE = 'transaction_line_items';
 const KIND_ORDER: TransactionKind[] = ['estimates', 'orders', 'invoices'];
 const DEFAULT_BATCH_SIZE = 50;
 const TIME_BUDGET_MS = 115_000;
-const DEFAULT_PACE_MS = 150;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -284,7 +284,21 @@ Deno.serve(async (req: Request) => {
     const zohoTypeId = assertZohoIntegration(integration.integration_type_id);
     const credentials = await loadIntegrationCredentials(admin, integration.id, integration.integration_type_id);
     const tokenCache = createDbTokenCache(admin, integration.id);
-    const adapter = createZohoAdapter(zohoTypeId, credentials, tokenCache);
+    // jobId isn't known yet at adapter-creation time (it's assigned right
+    // below) — capture it by closure so the heartbeat touch reads the
+    // current value once Zoho calls actually start happening. Without this,
+    // this bespoke sync path (it doesn't go through runPhaseSync) had zero
+    // heartbeat coverage at all, not even on retries — the highest-volume
+    // phase (line items across every estimate/order/invoice) was the least
+    // protected against looking falsely stale/dead to the reaper.
+    const touchHeartbeat = () => {
+      if (!jobId) return;
+      admin.schema('app').from('integration_sync_jobs')
+        .update({ heartbeat_at: new Date().toISOString() })
+        .eq('id', jobId)
+        .then(() => {}, () => {});
+    };
+    const adapter = createZohoAdapter(zohoTypeId, credentials, tokenCache, touchHeartbeat);
 
     jobId = input.job_id ?? await createLineItemJob(admin, {
       tenantId: integration.tenant_id,
@@ -296,10 +310,6 @@ Deno.serve(async (req: Request) => {
 
     const page = normalizePositiveInt(input.page_from, 1);
     const batchSize = Math.min(normalizePositiveInt(input.batch_size, DEFAULT_BATCH_SIZE), 100);
-    const paceMs = normalizePositiveInt(
-      Number(Deno.env.get('ZOHO_TRANSACTION_LINE_ITEM_PACE_MS') ?? DEFAULT_PACE_MS),
-      DEFAULT_PACE_MS,
-    );
     const startedAt = nowIso();
     const startedMs = Date.now();
 
@@ -325,7 +335,9 @@ Deno.serve(async (req: Request) => {
       }),
     });
 
+    const loadBatchDone = startTimer(jobId, PHASE, 'loadTransactionBatch');
     const batch = await loadTransactionBatch(admin, integration.tenant_id, page, batchSize, sinceDate);
+    loadBatchDone({ rows: batch.rows.length, total: batch.total });
     const recordsByKind: Record<TransactionKind, Record<string, unknown>[]> = {
       estimates: [],
       orders: [],
@@ -337,27 +349,55 @@ Deno.serve(async (req: Request) => {
       invoices: { processed: 0, failed: 0 },
     };
 
-    for (const [index, row] of batch.rows.entries()) {
+    // Concurrent batches of ZOHO_DETAIL_FETCH_CONCURRENCY, paced
+    // ZOHO_DETAIL_FETCH_BATCH_PACE_MS apart — same model as
+    // fetchAndPersistMissingItemLocations (integrations-persist.ts), sized to
+    // Zoho's documented 10-concurrent/100-per-minute limits. Replaces the
+    // previous one-item-at-a-time loop, which was the primary suspect
+    // whenever this phase (highest volume: 20k+ line items) hung.
+    logCheckpoint(jobId, PHASE, 'detailFetchLoop:start', { rows: batch.rows.length });
+    for (let i = 0; i < batch.rows.length; i += ZOHO_DETAIL_FETCH_CONCURRENCY) {
       if (await isSyncJobCancelled(admin, jobId)) {
         return jsonResponse({ ok: false, phase: PHASE, records_synced: 0, has_more: false, next_cursor: null, cancelled: true });
       }
 
-      const detail = row.kind === 'estimates'
-        ? await adapter.fetchEstimateById(row.external_ref)
-        : row.kind === 'orders'
-        ? await adapter.fetchSalesOrderById(row.external_ref)
-        : await adapter.fetchInvoiceById(row.external_ref);
+      const batchStart = Date.now();
+      const rowBatch = batch.rows.slice(i, i + ZOHO_DETAIL_FETCH_CONCURRENCY);
+      const batchDone = startTimer(jobId, PHASE, `detailFetchBatch${Math.floor(i / ZOHO_DETAIL_FETCH_CONCURRENCY) + 1}`);
+      const outcomes = await Promise.allSettled(rowBatch.map((row) =>
+        row.kind === 'estimates'
+          ? adapter.fetchEstimateById(row.external_ref)
+          : row.kind === 'orders'
+          ? adapter.fetchSalesOrderById(row.external_ref)
+          : adapter.fetchInvoiceById(row.external_ref)
+      ));
+      batchDone({ items: rowBatch.length });
 
-      if (detail) {
-        recordsByKind[row.kind].push(detail);
-        counts[row.kind].processed++;
-      } else {
-        counts[row.kind].failed++;
+      for (let j = 0; j < outcomes.length; j++) {
+        const row = rowBatch[j];
+        const outcome = outcomes[j];
+        if (outcome.status === 'rejected') {
+          console.warn(`sync-transaction-line-items: fetch failed for ${row.kind}:${row.external_ref}:`, outcome.reason);
+          counts[row.kind].failed++;
+          continue;
+        }
+        if (outcome.value) {
+          recordsByKind[row.kind].push(outcome.value);
+          counts[row.kind].processed++;
+        } else {
+          counts[row.kind].failed++;
+        }
       }
 
-      if (index < batch.rows.length - 1) await sleep(paceMs);
+      const isLastBatch = i + ZOHO_DETAIL_FETCH_CONCURRENCY >= batch.rows.length;
+      if (!isLastBatch) {
+        const elapsed = Date.now() - batchStart;
+        if (elapsed < ZOHO_DETAIL_FETCH_BATCH_PACE_MS) await sleep(ZOHO_DETAIL_FETCH_BATCH_PACE_MS - elapsed);
+      }
+
       if (Date.now() - startedMs > TIME_BUDGET_MS) break;
     }
+    logCheckpoint(jobId, PHASE, 'detailFetchLoop:done', { counts });
 
     let persisted = 0;
     const importActorId = resolveSyncImportActorId(integration);

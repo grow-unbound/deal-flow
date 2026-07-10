@@ -7,6 +7,16 @@ import { getMapsLoader } from '@/lib/google-maps-loader';
 import { markBuyerNavigationBack } from '@/hooks/useBuyerNavigationDirection';
 import { useBuyerDelivery } from '@/contexts/BuyerDeliveryContext';
 import type { BuyerDeliveryLocation } from '@/lib/buyer-delivery-location';
+import { apiFetch } from '@/lib/api-fetch';
+import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
+
+interface NearestLocationResponse {
+  warehouse_id: string | null;
+  location_id: string | null;
+  name: string | null;
+  distance_km: number | null;
+  fallback: boolean;
+}
 
 function safeReturnTo(raw: string | null): string {
   if (!raw?.trim()) return '/buy/catalog';
@@ -75,6 +85,32 @@ export default function BuyerLocationPage(): React.ReactNode {
     router.back();
   }
 
+  async function saveSelectedLocation(location: BuyerDeliveryLocation): Promise<void> {
+    const placeOfSupply = deriveBuyerPlaceOfSupply(location);
+    let routing: NearestLocationResponse | null = null;
+
+    try {
+      const response = await apiFetch(`/api/buyer/nearest-location?lat=${location.lat}&lng=${location.lng}`);
+      if (response.ok) {
+        routing = await response.json() as NearestLocationResponse;
+      }
+    } catch {
+      routing = null;
+    }
+
+    setSelected({
+      ...location,
+      place_of_supply: placeOfSupply,
+      nearest_warehouse_id: routing?.warehouse_id ?? null,
+      routed_location_id: routing?.location_id ?? null,
+      nearest_warehouse_name: routing?.name ?? null,
+      nearest_warehouse_distance_km: routing?.distance_km ?? null,
+      nearest_warehouse_fallback: routing?.fallback ?? true,
+    });
+    markBuyerNavigationBack();
+    router.replace(returnTo);
+  }
+
   async function pickSuggestion(suggestion: google.maps.places.AutocompleteSuggestion): Promise<void> {
     setErr(null);
     setSaving(true);
@@ -104,9 +140,7 @@ export default function BuyerLocationPage(): React.ReactNode {
         lat,
         lng,
       };
-      setSelected(location);
-      markBuyerNavigationBack();
-      router.replace(returnTo);
+      await saveSelectedLocation(location);
     } catch {
       if (mountedRef.current) setErr('Could not load that place. Try another.');
     } finally {
@@ -147,9 +181,7 @@ export default function BuyerLocationPage(): React.ReactNode {
             lat: pos.coords.latitude,
             lng: pos.coords.longitude,
           };
-          setSelected(location);
-          markBuyerNavigationBack();
-          router.replace(returnTo);
+          await saveSelectedLocation(location);
         } catch {
           if (mountedRef.current) setErr('Could not resolve current location.');
         } finally {
@@ -217,11 +249,7 @@ export default function BuyerLocationPage(): React.ReactNode {
                 <button
                   type="button"
                   disabled={saving}
-                  onClick={() => {
-                    setSelected(loc);
-                    markBuyerNavigationBack();
-                    router.replace(returnTo);
-                  }}
+                  onClick={() => void saveSelectedLocation(loc)}
                   className="flex w-full flex-col rounded-lg border border-[var(--border-1)] bg-[var(--bg-surface)] px-3 py-2 text-left text-sm disabled:opacity-50"
                 >
                   <span className="font-medium text-[var(--fg-1)]">{loc.label}</span>

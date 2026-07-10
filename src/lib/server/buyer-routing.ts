@@ -58,6 +58,19 @@ async function loadDefaultLocation(db: SupabaseClient, tenantId: string) {
   return (defaultLocs as Array<{ id: string; name: string }> | null)?.[0] ?? null;
 }
 
+async function loadDefaultWarehouse(db: SupabaseClient, tenantId: string) {
+  const { data: defaultWarehouses } = await (db as any)
+    .schema('app')
+    .from('warehouses')
+    .select('id, name, location_id')
+    .eq('tenant_id', tenantId)
+    .eq('is_default', true)
+    .is('deleted_at', null)
+    .limit(1);
+
+  return (defaultWarehouses as Array<{ id: string; name: string; location_id: string | null }> | null)?.[0] ?? null;
+}
+
 export async function resolveNearestBuyerLocation(
   db: SupabaseClient,
   tenantId: string,
@@ -86,6 +99,17 @@ export async function resolveNearestBuyerLocation(
       locationName: nearest.name,
       distanceKm: Math.round(nearest.distanceKm),
       fallback: false,
+    };
+  }
+
+  const fallbackWarehouse = await loadDefaultWarehouse(db, tenantId);
+  if (fallbackWarehouse) {
+    return {
+      warehouseId: fallbackWarehouse.id,
+      locationId: fallbackWarehouse.location_id,
+      locationName: fallbackWarehouse.name,
+      distanceKm: null,
+      fallback: true,
     };
   }
 

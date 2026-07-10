@@ -20,9 +20,11 @@ interface QueryState {
     subtotal: number;
     tax_amount: number;
     total_amount: number;
+    order_date: string | null;
     placed_at: string;
     created_at: string;
   }>;
+  prevOrders?: Array<{ id: string; total_amount: number }>;
   orderItems: Array<{ order_id: string }>;
   catalogs: Array<{ id: string; name: string }>;
   estimates: Array<{ id: string; estimate_number: string | null }>;
@@ -194,13 +196,13 @@ describe('sales orders landing API route', () => {
     ];
 
     queryState.monthOrders = [
-      { id: 'o1', location_id: 'loc-1', order_number: 'DF-1', buyer_id: 'buyer-1', status: 'confirmed', source: 'cockpit_manual', campaign_id: 'cat-1', estimate_id: 'est-1', placed_by: 'seller-1', subtotal: 8475, tax_amount: 1525, total_amount: 10000, placed_at: '2026-05-20T00:00:00.000Z', created_at: '2026-05-20T00:00:00.000Z' },
-      { id: 'o2', location_id: 'loc-2', order_number: 'DF-2', buyer_id: 'buyer-2', status: 'received', source: 'buyer_app', campaign_id: 'cat-2', estimate_id: null, placed_by: 'buyer-user-1', subtotal: 25424, tax_amount: 4576, total_amount: 30000, placed_at: '2026-05-21T00:00:00.000Z', created_at: '2026-05-21T00:00:00.000Z' },
-      { id: 'o3', location_id: 'loc-1', order_number: 'DF-3', buyer_id: 'buyer-3', status: 'dispatched', source: 'csv_import', campaign_id: null, estimate_id: null, placed_by: 'seller-2', subtotal: 42373, tax_amount: 7627, total_amount: 50000, placed_at: '2026-05-22T00:00:00.000Z', created_at: '2026-05-22T00:00:00.000Z' },
-      { id: 'o4', location_id: null, order_number: 'DF-4', buyer_id: 'buyer-1', status: 'cancelled', source: 'cockpit_manual', campaign_id: null, estimate_id: null, placed_by: 'seller-1', subtotal: 16949, tax_amount: 3051, total_amount: 20000, placed_at: '2026-05-23T00:00:00.000Z', created_at: '2026-05-23T00:00:00.000Z' },
-      { id: 'o5', location_id: 'loc-2', order_number: 'DF-5', buyer_id: 'buyer-2', status: 'partially_dispatched', source: 'buyer_app', campaign_id: 'cat-2', estimate_id: null, placed_by: 'buyer-user-1', subtotal: 12712, tax_amount: 2288, total_amount: 15000, placed_at: '2026-05-24T00:00:00.000Z', created_at: '2026-05-24T00:00:00.000Z' },
-      { id: 'o6', location_id: 'loc-1', order_number: 'DF-6', buyer_id: 'buyer-3', status: 'invoiced', source: 'csv_import', campaign_id: null, estimate_id: null, placed_by: 'seller-2', subtotal: 6780, tax_amount: 1220, total_amount: 8000, placed_at: '2026-05-25T00:00:00.000Z', created_at: '2026-05-25T00:00:00.000Z' },
-      { id: 'o7', location_id: 'loc-1', order_number: 'DF-7', buyer_id: 'buyer-1', status: 'partially_invoiced', source: 'cockpit_manual', campaign_id: 'cat-1', estimate_id: null, placed_by: 'seller-1', subtotal: 7627, tax_amount: 1373, total_amount: 9000, placed_at: '2026-05-26T00:00:00.000Z', created_at: '2026-05-26T00:00:00.000Z' },
+      { id: 'o1', location_id: 'loc-1', order_number: 'DF-1', buyer_id: 'buyer-1', status: 'confirmed', source: 'cockpit_manual', campaign_id: 'cat-1', estimate_id: 'est-1', placed_by: 'seller-1', subtotal: 8475, tax_amount: 1525, total_amount: 10000, order_date: '2026-05-18', placed_at: '2026-05-20T00:00:00.000Z', created_at: '2026-05-20T00:00:00.000Z' },
+      { id: 'o2', location_id: 'loc-2', order_number: 'DF-2', buyer_id: 'buyer-2', status: 'received', source: 'buyer_app', campaign_id: 'cat-2', estimate_id: null, placed_by: 'buyer-user-1', subtotal: 25424, tax_amount: 4576, total_amount: 30000, order_date: '2026-05-21', placed_at: '2026-05-21T00:00:00.000Z', created_at: '2026-05-21T00:00:00.000Z' },
+      { id: 'o3', location_id: 'loc-1', order_number: 'DF-3', buyer_id: 'buyer-3', status: 'dispatched', source: 'csv_import', campaign_id: null, estimate_id: null, placed_by: 'seller-2', subtotal: 42373, tax_amount: 7627, total_amount: 50000, order_date: '2026-05-22', placed_at: '2026-05-22T00:00:00.000Z', created_at: '2026-05-22T00:00:00.000Z' },
+      { id: 'o4', location_id: null, order_number: 'DF-4', buyer_id: 'buyer-1', status: 'cancelled', source: 'cockpit_manual', campaign_id: null, estimate_id: null, placed_by: 'seller-1', subtotal: 16949, tax_amount: 3051, total_amount: 20000, order_date: '2026-05-23', placed_at: '2026-05-23T00:00:00.000Z', created_at: '2026-05-23T00:00:00.000Z' },
+      { id: 'o5', location_id: 'loc-2', order_number: 'DF-5', buyer_id: 'buyer-2', status: 'partially_dispatched', source: 'buyer_app', campaign_id: 'cat-2', estimate_id: null, placed_by: 'buyer-user-1', subtotal: 12712, tax_amount: 2288, total_amount: 15000, order_date: '2026-05-24', placed_at: '2026-05-24T00:00:00.000Z', created_at: '2026-05-24T00:00:00.000Z' },
+      { id: 'o6', location_id: 'loc-1', order_number: 'DF-6', buyer_id: 'buyer-3', status: 'invoiced', source: 'csv_import', campaign_id: null, estimate_id: null, placed_by: 'seller-2', subtotal: 6780, tax_amount: 1220, total_amount: 8000, order_date: '2026-05-25', placed_at: '2026-05-25T00:00:00.000Z', created_at: '2026-05-25T00:00:00.000Z' },
+      { id: 'o7', location_id: 'loc-1', order_number: 'DF-7', buyer_id: 'buyer-1', status: 'partially_invoiced', source: 'cockpit_manual', campaign_id: 'cat-1', estimate_id: null, placed_by: 'seller-1', subtotal: 7627, tax_amount: 1373, total_amount: 9000, order_date: '2026-05-26', placed_at: '2026-05-26T00:00:00.000Z', created_at: '2026-05-26T00:00:00.000Z' },
     ];
 
     queryState.prevOrders = [
@@ -331,6 +333,7 @@ describe('sales orders landing API route', () => {
     expect(convertedRow.subtotal).toBe(8475);
     expect(convertedRow.tax_amount).toBe(1525);
     expect(convertedRow.total_amount).toBe(10000);
+    expect(convertedRow.placed_at).toBe('2026-05-18');
 
     const buyerAppRow = body.orders.find((r: { order_id: string }) => r.order_id === 'DF-2');
     expect(buyerAppRow.buyer_name).toBe('Buyer Two');

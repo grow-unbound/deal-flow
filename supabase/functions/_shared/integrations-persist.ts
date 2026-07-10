@@ -5,6 +5,7 @@
  */
 
 import type { ZohoAdapter } from './integrations-zoho.ts';
+import { ZOHO_DETAIL_FETCH_CONCURRENCY, ZOHO_DETAIL_FETCH_BATCH_PACE_MS } from './integrations-zoho.ts';
 import type { ZohoIntegrationTypeId } from '../../../src/lib/integrations/contracts.ts';
 import type { EntityEnrichmentMode, SyncEnrichmentPolicy } from '../../../src/lib/integrations/sync-orchestration.ts';
 import { enrichmentModeForEntity, resolveSyncEnrichmentPolicy } from '../../../src/lib/integrations/sync-orchestration.ts';
@@ -16,6 +17,7 @@ import {
   normalizeLocationAssociatedUsers,
   syncLocationAssignees,
 } from '../../../src/lib/location-assignees.ts';
+import { logCheckpoint, startTimer } from './sync-log.ts';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -274,8 +276,10 @@ async function resolveRowsByExternalRefOrNaturalKey(
     naturalKeyColumns: string[];
   },
 ): Promise<{ rows: Record<string, unknown>[]; conflicts: NaturalKeyCollision[] }> {
+  const resolveDone = startTimer(null, opts.table, 'resolveRowsByExternalRefOrNaturalKey');
   const dedupedRows = dedupeByExternalOrNaturalKey(opts.rows, opts.naturalKeyColumns);
   if (dedupedRows.length === 0) {
+    resolveDone({ rows: 0 });
     return { rows: [], conflicts: [] };
   }
 
@@ -366,6 +370,7 @@ async function resolveRowsByExternalRefOrNaturalKey(
     );
   }
 
+  resolveDone({ rows: resolvedRows.length, conflicts: conflicts.length });
   return { rows: resolvedRows, conflicts };
 }
 
@@ -885,6 +890,7 @@ async function batchUpsertEntityMap(
   },
 ): Promise<void> {
   if (pairs.length === 0) return;
+  logCheckpoint(null, entityType, 'batchUpsertEntityMap:start', { pairs: pairs.length });
 
   const rows = pairs.map((p) => ({
     tenant_id: tenantId,
@@ -1571,10 +1577,12 @@ async function enrichBuyerRecords(
   needsCustomFieldHydration = false,
 ): Promise<Record<string, unknown>[]> {
   if (!adapter || mode === 'list_only') return records;
+  logCheckpoint(null, 'customers', 'enrichBuyerRecords:start', { records: records.length, batches: Math.ceil(records.length / CONTACT_ENRICH_CONCURRENCY) });
 
   const enriched: Record<string, unknown>[] = [];
   for (let i = 0; i < records.length; i += CONTACT_ENRICH_CONCURRENCY) {
     const batch = records.slice(i, i + CONTACT_ENRICH_CONCURRENCY);
+    const batchDone = startTimer(null, 'customers', `enrichBuyerRecords:batch${Math.floor(i / CONTACT_ENRICH_CONCURRENCY) + 1}`);
     const batchResults = await Promise.all(batch.map(async (rec) => {
       const externalId = asStr(rec.contact_id);
       if (!externalId) return rec;
@@ -1597,6 +1605,7 @@ async function enrichBuyerRecords(
         contact_id: externalId,
       };
     }));
+    batchDone({ enriched: batchResults.length });
     enriched.push(...batchResults);
   }
 
@@ -1881,7 +1890,12 @@ async function persistBuyers(
 
 // ── Products (categories + brands + products + inventory) ────────────────────
 
-const ITEM_LOC_CONCURRENCY = 5;
+const ITEM_LOC_CONCURRENCY = ZOHO_DETAIL_FETCH_CONCURRENCY;
+const ITEM_LOC_BATCH_INTERVAL_MS = ZOHO_DETAIL_FETCH_BATCH_PACE_MS;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 async function createWarehouseFromZoho(
   admin: AdminClient,
@@ -1970,7 +1984,24 @@ async function ensureWarehouseExists(
   return afterCreate.get(warehouseExternalId) ?? null;
 }
 
-async function fetchAndPersistMissingItemLocations(
+export interface ItemLocationFetchResult {
+  persisted: number;
+  // true if the deadline was hit before every item in `itemIds` was attempted —
+  // caller should re-invoke with the same (or the still-pending) item ids.
+  incomplete: boolean;
+}
+
+/**
+ * Fetches per-item warehouse/stock detail (GET /items/{id}) for a batch of
+ * Zoho item ids and upserts tenant_inventory. Persists and heartbeats after
+ * EVERY batch (not once at the end) so a mid-loop kill leaves completed
+ * batches durable and the job's heartbeat_at fresh — this loop is the one
+ * that hung for 5-27 minutes with a single heartbeat write when it ran
+ * inline inside sync-products; it now runs as its own sync-inventory phase,
+ * paced to Zoho's 10-concurrent / 100-per-minute limits (see
+ * ITEM_LOC_CONCURRENCY / ITEM_LOC_BATCH_INTERVAL_MS above).
+ */
+export async function fetchAndPersistMissingItemLocations(
   admin: AdminClient,
   tenantId: string,
   actorId: string | null,
@@ -1979,29 +2010,45 @@ async function fetchAndPersistMissingItemLocations(
   adapter: ZohoAdapter,
   productIdMap: Map<string, string>,
   warehouseIdMap: Map<string, string>,
-): Promise<number> {
-  if (itemIds.length === 0) return 0;
+  opts: {
+    onBatchComplete?: () => void;
+    deadlineMs?: number | null;
+  } = {},
+): Promise<ItemLocationFetchResult> {
+  if (itemIds.length === 0) return { persisted: 0, incomplete: false };
+  logCheckpoint(null, 'inventory', 'fetchAndPersistMissingItemLocations:start', { items: itemIds.length, batches: Math.ceil(itemIds.length / ITEM_LOC_CONCURRENCY) });
 
-  const inventoryRows: Record<string, unknown>[] = [];
-  let updatedWarehouseIdMap = new Map(warehouseIdMap);
+  const updatedWarehouseIdMap = new Map(warehouseIdMap);
+  let totalPersisted = 0;
+  let incomplete = false;
 
   for (let i = 0; i < itemIds.length; i += ITEM_LOC_CONCURRENCY) {
+    if (opts.deadlineMs != null && Date.now() > opts.deadlineMs) {
+      incomplete = true;
+      break;
+    }
+
+    const batchStart = Date.now();
     const batch = itemIds.slice(i, i + ITEM_LOC_CONCURRENCY);
+    const batchDone = startTimer(null, 'inventory', `fetchAndPersistMissingItemLocations:batch${Math.floor(i / ITEM_LOC_CONCURRENCY) + 1}`);
     const results = await Promise.allSettled(
       batch.map((itemId) => adapter.request<{ item: Record<string, unknown> }>({ path: `/items/${itemId}` })),
     );
+    batchDone({ items: batch.length });
+
+    const inventoryRows: Record<string, unknown>[] = [];
 
     for (let j = 0; j < results.length; j++) {
       const result = results[j];
       if (result.status === 'rejected') {
-        console.warn(`sync-products: GET /items/${batch[j]} failed:`, result.reason);
+        console.warn(`sync-inventory: GET /items/${batch[j]} failed:`, result.reason);
         continue;
       }
 
       const itemId = batch[j];
       const zohoItem = result.value?.item;
       if (!zohoItem?.item_id) {
-        console.warn(`sync-products: invalid response for item ${itemId}`);
+        console.warn(`sync-inventory: invalid response for item ${itemId}`);
         continue;
       }
 
@@ -2009,7 +2056,7 @@ async function fetchAndPersistMissingItemLocations(
       const productId = productIdMap.get(itemId);
 
       if (!productId) {
-        console.warn(`sync-products: product not found for item ${itemId}`);
+        console.warn(`sync-inventory: product not found for item ${itemId}`);
         continue;
       }
 
@@ -2034,16 +2081,16 @@ async function fetchAndPersistMissingItemLocations(
             if (newWarehouseId) {
               warehouseId = newWarehouseId;
               updatedWarehouseIdMap.set(warehouseExternalId, newWarehouseId);
-              console.log(`sync-products: created missing warehouse ${warehouseExternalId}`);
+              console.log(`sync-inventory: created missing warehouse ${warehouseExternalId}`);
             }
           } catch (err) {
-            console.warn(`sync-products: failed to create warehouse ${warehouseExternalId}:`, err);
+            console.warn(`sync-inventory: failed to create warehouse ${warehouseExternalId}:`, err);
             continue;
           }
         }
 
         if (!warehouseId) {
-          console.warn(`sync-products: could not resolve warehouse ${warehouseExternalId}`);
+          console.warn(`sync-inventory: could not resolve warehouse ${warehouseExternalId}`);
           continue;
         }
 
@@ -2060,31 +2107,41 @@ async function fetchAndPersistMissingItemLocations(
         });
       }
     }
-  }
 
-  if (inventoryRows.length === 0) return 0;
-
-  const dedupedRows = dedupeByColumns(inventoryRows, ['tenant_product_id', 'warehouse_id']);
-
-  try {
-    await bulkPersistJsonbRecords(admin, 'tenant_inventory', dedupedRows, ['tenant_product_id', 'warehouse_id']);
-    return dedupedRows.length;
-  } catch (err) {
-    // Fallback: row-by-row
-    let count = 0;
-    for (const row of dedupedRows) {
+    if (inventoryRows.length > 0) {
+      const dedupedRows = dedupeByColumns(inventoryRows, ['tenant_product_id', 'warehouse_id']);
       try {
-        await bulkPersistJsonbRecords(admin, 'tenant_inventory', [row], ['tenant_product_id', 'warehouse_id']);
-        count++;
-      } catch (rowErr) {
-        console.warn(
-          `sync-products: inventory upsert failed for ${row.tenant_product_id}/${row.warehouse_id}:`,
-          rowErr,
-        );
+        await bulkPersistJsonbRecords(admin, 'tenant_inventory', dedupedRows, ['tenant_product_id', 'warehouse_id']);
+        totalPersisted += dedupedRows.length;
+      } catch (err) {
+        // Fallback: row-by-row, so one bad row doesn't drop the whole batch
+        for (const row of dedupedRows) {
+          try {
+            await bulkPersistJsonbRecords(admin, 'tenant_inventory', [row], ['tenant_product_id', 'warehouse_id']);
+            totalPersisted += 1;
+          } catch (rowErr) {
+            console.warn(
+              `sync-inventory: inventory upsert failed for ${row.tenant_product_id}/${row.warehouse_id}:`,
+              rowErr,
+            );
+          }
+        }
       }
     }
-    return count;
+
+    opts.onBatchComplete?.();
+
+    const isLastBatch = i + ITEM_LOC_CONCURRENCY >= itemIds.length;
+    if (!isLastBatch) {
+      const elapsed = Date.now() - batchStart;
+      if (elapsed < ITEM_LOC_BATCH_INTERVAL_MS) {
+        await delay(ITEM_LOC_BATCH_INTERVAL_MS - elapsed);
+      }
+    }
   }
+
+  logCheckpoint(null, 'inventory', 'fetchAndPersistMissingItemLocations:done', { persisted: totalPersisted, incomplete });
+  return { persisted: totalPersisted, incomplete };
 }
 
 async function persistProducts(
@@ -2336,9 +2393,13 @@ async function persistProducts(
   );
 
   const inventoryRows: Record<string, unknown>[] = [];
-  const needDetailItemIds: string[] = [];
   let inventorySyncError: IntegrationSyncError | null = null;
 
+  // Only derives inventory from warehouse data already embedded in this page's
+  // /items response (free — no extra Zoho calls). Items without embedded data
+  // get their stock levels from the dedicated sync-inventory phase, which
+  // detail-fetches every synced product's /items/{id} on its own paced,
+  // budget-checked schedule instead of blocking this page's persist step.
   for (const rec of records) {
     const extProductId = asStr(rec.item_id);
     if (!extProductId) continue;
@@ -2355,47 +2416,42 @@ async function persistProducts(
     }
 
     const locs = getEmbeddedLocationRows(rec);
-    if (locs.length === 0 && adapter) {
-      // No embedded warehouse data — queue for detail fetch
-      needDetailItemIds.push(extProductId);
-    } else {
-      for (const loc of locs) {
-        const extWarehouseId = getEmbeddedLocationExternalId(loc);
-        if (!extWarehouseId) continue;
+    for (const loc of locs) {
+      const extWarehouseId = getEmbeddedLocationExternalId(loc);
+      if (!extWarehouseId) continue;
 
-        let warehouseId = warehouseIdMap.get(extWarehouseId) ?? null;
-        if (!warehouseId) {
-          warehouseId = await ensureWarehouseExists(
-            admin,
-            tenantId,
-            actorId,
-            integrationId,
-            adapter?.integrationTypeId ?? 'zoho_books',
-            extWarehouseId,
-            adapter,
-            loc,
-          );
-          if (warehouseId) {
-            warehouseIdMap.set(extWarehouseId, warehouseId);
-          }
+      let warehouseId = warehouseIdMap.get(extWarehouseId) ?? null;
+      if (!warehouseId) {
+        warehouseId = await ensureWarehouseExists(
+          admin,
+          tenantId,
+          actorId,
+          integrationId,
+          adapter?.integrationTypeId ?? 'zoho_books',
+          extWarehouseId,
+          adapter,
+          loc,
+        );
+        if (warehouseId) {
+          warehouseIdMap.set(extWarehouseId, warehouseId);
         }
-
-        if (!warehouseId) {
-          console.warn(
-            `sync-products: unable to resolve warehouse ${extWarehouseId} for product ${extProductId}, skipping inventory row`,
-          );
-          continue;
-        }
-
-        inventoryRows.push({
-          tenant_product_id: productId,
-          warehouse_id: warehouseId,
-          qty_available: getEmbeddedLocationQty(loc),
-          qty_reserved: 0,
-          updated_at: nowIso(),
-          deleted_at: null,
-        });
       }
+
+      if (!warehouseId) {
+        console.warn(
+          `sync-products: unable to resolve warehouse ${extWarehouseId} for product ${extProductId}, skipping inventory row`,
+        );
+        continue;
+      }
+
+      inventoryRows.push({
+        tenant_product_id: productId,
+        warehouse_id: warehouseId,
+        qty_available: getEmbeddedLocationQty(loc),
+        qty_reserved: 0,
+        updated_at: nowIso(),
+        deleted_at: null,
+      });
     }
   }
 
@@ -2418,20 +2474,6 @@ async function persistProducts(
   const dedupedInventoryRows = dedupeByColumns(inventoryRows, ['tenant_product_id', 'warehouse_id']);
   if (dedupedInventoryRows.length > 0) {
     await bulkPersistJsonbRecords(admin, 'tenant_inventory', dedupedInventoryRows, ['tenant_product_id', 'warehouse_id']);
-  }
-
-  // Fetch missing warehouse data via detail API if adapter available
-  if (needDetailItemIds.length > 0 && adapter) {
-    await fetchAndPersistMissingItemLocations(
-      admin,
-      tenantId,
-      actorId,
-      integrationId,
-      needDetailItemIds,
-      adapter,
-      productIdMap,
-      warehouseIdMap,
-    );
   }
 
   await rebuildProductSearchVectors(
@@ -3586,6 +3628,29 @@ async function persistContactPersonsPage(
 }
 
 export async function persistZohoEntityPage(
+  admin: AdminClient,
+  tenantId: string,
+  actorId: string | null,
+  integrationId: string,
+  entityType: string,
+  integrationTypeId: ZohoIntegrationTypeId,
+  records: Record<string, unknown>[],
+  adapter?: ZohoAdapter,
+  persistOptions?: PersistOptions,
+): Promise<PersistResult> {
+  // Uniform entry/exit checkpoint for every entity type — the single common
+  // choke point between runPhaseSync's per-page fetch and every
+  // entity-specific persister. If a phase hangs, this tells you whether it
+  // ever even reached (or returned from) persistence for that page.
+  const done = startTimer(null, entityType, 'persistZohoEntityPage');
+  const result = await persistZohoEntityPageImpl(
+    admin, tenantId, actorId, integrationId, entityType, integrationTypeId, records, adapter, persistOptions,
+  );
+  done({ created: result.created, updated: result.updated, skipped: result.skipped });
+  return result;
+}
+
+async function persistZohoEntityPageImpl(
   admin: AdminClient,
   tenantId: string,
   actorId: string | null,

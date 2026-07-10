@@ -14,6 +14,10 @@ import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
 import { recordBuyerAppActivitySafe } from '@/lib/server/buyer-app-activity';
 import { inferCampaignIdForBuyerCart } from '@/lib/server/campaign-attribution';
 import { PAGE_SIZE, encodeCursor, decodeCursor } from '@/lib/pagination';
+import { resolveBuyerInventoryWarehouseId } from '@/lib/server/buyer-product-data';
+import { validateBuyerCartStock } from '@/lib/server/buyer-cart-stock';
+import { getSelectedBuyerDeliveryFromRequest } from '@/lib/server/buyer-location-selection';
+import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 
 export interface BuyerOrderPlaceRequest {
   items: Array<{
@@ -150,7 +154,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (!location_id) {
+    const selectedDelivery = getSelectedBuyerDeliveryFromRequest(request);
+    const routedLocationId = selectedDelivery?.routed_location_id ?? location_id ?? null;
+
+    if (!routedLocationId) {
       return NextResponse.json(
         { success: false, error: 'Select a delivery location before placing an order' },
         { status: 400 },
@@ -165,23 +172,39 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
 
     const buyer_id = profile.buyer.id;
     const db = supabaseAdmin ?? supabase;
+    const inventoryWarehouseId = await resolveBuyerInventoryWarehouseId(db as any, request, profile);
+    const stockValidation = await validateBuyerCartStock(db as any, {
+      tenantId: tenant_id,
+      warehouseId: inventoryWarehouseId,
+      items,
+    });
+    if (!stockValidation.ok) {
+      return NextResponse.json(
+        { success: false, error: stockValidation.error },
+        { status: stockValidation.status },
+      );
+    }
+    const acceptedItems = stockValidation.items;
+
     const resolvedCampaignId = await inferCampaignIdForBuyerCart(db, {
       tenantId: tenant_id,
       buyerId: buyer_id,
       clientCampaignId: campaign_id,
-      tenantProductIds: items.map((item) => item.tenant_product_id),
+      tenantProductIds: acceptedItems.map((item) => item.tenant_product_id),
     });
     const policy = await loadBuyerBusinessPolicy(db as typeof supabaseAdmin, tenant_id);
-    const subtotal = items.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
+    const subtotal = acceptedItems.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
     const tax_amount = policy.gst_inclusive
       ? 0
-      : items.reduce((sum, item) => {
+      : acceptedItems.reduce((sum, item) => {
           const rate = Number(item.gst_rate ?? policy.gst_rate);
           return sum + item.qty * item.unit_price * (Number.isFinite(rate) ? rate / 100 : 0);
         }, 0);
     const total_amount = subtotal + tax_amount;
 
-    const placeOfSupply = (typeof body.place_of_supply === 'string' && body.place_of_supply.trim())
+    const placeOfSupply = selectedDelivery?.place_of_supply
+      || (selectedDelivery ? deriveBuyerPlaceOfSupply(selectedDelivery) : '')
+      || (typeof body.place_of_supply === 'string' && body.place_of_supply.trim())
       || 'Unknown';
 
     const deferDocumentNumber = await tenantDefersTransactionNumber(tenant_id, 'orders');
@@ -203,7 +226,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
         status: 'received',
         source: 'buyer_app',
         campaign_id: resolvedCampaignId,
-        location_id,
+        location_id: routedLocationId,
         place_of_supply: placeOfSupply,
         subtotal,
         tax_amount,
@@ -222,7 +245,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
 
     const typed = newOrder as { id: string; order_number: string | null };
 
-    const orderItemRows = items.map((item) => ({
+    const orderItemRows = acceptedItems.map((item) => ({
       order_id: typed.id,
       tenant_product_id: item.tenant_product_id,
       qty: item.qty,
@@ -249,7 +272,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
           buyer_id,
           order_id: typed.id,
           order_number: typed.order_number,
-          item_count: items.length,
+          item_count: acceptedItems.length,
           total_amount,
           source: 'buyer_app',
         },
@@ -266,11 +289,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
           kind: 'order',
           tenantId: tenant_id,
           buyerId: buyer_id,
-          locationId: location_id,
+          locationId: routedLocationId,
           documentId: typed.id,
           documentNumber: typed.order_number,
           totalAmount: total_amount,
-          itemCount: items.length,
+          itemCount: acceptedItems.length,
           db,
           table: 'orders',
         });
@@ -287,7 +310,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
       context: {
         order_id: typed.id,
         order_number: typed.order_number,
-        item_count: items.length,
+        item_count: acceptedItems.length,
         total_amount: total_amount,
       },
     });
