@@ -80,7 +80,7 @@ type OrderItemMetricRow = {
 type InventoryScopeRow = {
   tenant_product_id: string;
   qty_available?: number | null;
-  location_id?: string | null;
+  warehouse_id?: string | null;
 };
 
 type ProductRowDetail = {
@@ -193,6 +193,18 @@ export async function GET(req: NextRequest) {
     const db = supabaseAdmin as any; // supabase client typed generically for multi-schema queries
     const isAssistant = claims.role === 'seller_assistant';
     const assistantLocationIds = isAssistant ? (claims.location_ids ?? []).filter(Boolean) : [];
+    const assistantWarehouseIds = isAssistant && assistantLocationIds.length > 0
+      ? (
+          (
+            await db
+              .schema('app')
+              .from('warehouses')
+              .select('id')
+              .in('location_id', assistantLocationIds)
+              .is('deleted_at', null)
+          ).data ?? []
+        ).map((row: { id: string }) => row.id)
+      : [];
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
 
     const reqLimit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
@@ -204,12 +216,12 @@ export async function GET(req: NextRequest) {
     const statusParams = readArrayParam(req.nextUrl.searchParams, 'status');
     const stockParams = readArrayParam(req.nextUrl.searchParams, 'stock');
     const scopeInventoryRes = isAssistant
-      ? assistantLocationIds.length > 0
+      ? assistantWarehouseIds.length > 0
         ? await db
             .schema('app')
             .from('tenant_inventory')
-            .select('tenant_product_id, qty_available, location_id')
-            .in('location_id', assistantLocationIds)
+            .select('tenant_product_id, qty_available, warehouse_id')
+            .in('warehouse_id', assistantWarehouseIds)
             .is('deleted_at', null)
         : { data: [] as InventoryScopeRow[], error: null }
       : { data: [] as InventoryScopeRow[], error: null };

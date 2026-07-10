@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { resolveImportedProductTenantLinks } from '@/lib/server/tenant-product-source-resolution';
 import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
+import { chunkArray, POSTGREST_IN_CHUNK_SIZE } from '@/lib/server/warehouse-data';
 import { z } from 'zod';
 
 const UpdateProductSchema = z.object({
@@ -318,29 +319,36 @@ export async function GET(
       .filter((row) => isOperationalInvoiceStatus(row.status))
       .map((row) => row.id);
 
-    const [ordersRes, invoiceItemsRes] = await Promise.all([
-      orderIds.length
-        ? db
+    const [orderChunkResults, invoiceItemChunkResults] = await Promise.all([
+      Promise.all(
+        chunkArray(orderIds, POSTGREST_IN_CHUNK_SIZE).map((chunk) =>
+          db
             .schema('app')
             .from('orders')
             .select('id, status, placed_at, buyer_id')
             .eq('tenant_id', claims.tenant_id)
-            .in('id', orderIds)
+            .in('id', chunk)
             .neq('status', 'cancelled')
-            .is('deleted_at', null)
-        : Promise.resolve({ data: [] }),
-      recentInvoiceIds.length
-        ? db
+            .is('deleted_at', null),
+        ),
+      ),
+      Promise.all(
+        chunkArray(recentInvoiceIds, POSTGREST_IN_CHUNK_SIZE).map((chunk) =>
+          db
             .schema('app')
             .from('invoice_items')
             .select('invoice_id, tenant_product_id, qty')
             .eq('tenant_product_id', id)
-            .in('invoice_id', recentInvoiceIds)
-            .is('deleted_at', null)
-        : Promise.resolve({ data: [] }),
+            .in('invoice_id', chunk)
+            .is('deleted_at', null),
+        ),
+      ),
     ]);
 
-    if (ordersRes.error || invoiceItemsRes.error) {
+    const ordersRes = { data: orderChunkResults.flatMap((res) => res.data ?? []) };
+    const invoiceItemsRes = { data: invoiceItemChunkResults.flatMap((res) => res.data ?? []) };
+
+    if (orderChunkResults.some((res) => res.error) || invoiceItemChunkResults.some((res) => res.error)) {
       return NextResponse.json({ error: 'Failed to fetch product detail' }, { status: 500 });
     }
 

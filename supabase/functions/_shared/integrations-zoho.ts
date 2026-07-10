@@ -5,6 +5,7 @@ import {
   type ZohoCredentialsInput,
   type ZohoIntegrationTypeId,
 } from '../../../src/lib/integrations/contracts.ts';
+import { logCheckpoint, startTimer } from './sync-log.ts';
 
 export interface IntegrationSyncPhaseDefinition {
   id: string;
@@ -252,6 +253,13 @@ function retryDelayMs(attempt: number, response?: Response): number {
   return 1000 * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 200);
 }
 
+// Lowest-level chokepoint for every outbound Zoho call (token refresh, list
+// pages, per-item detail fetches). Logs each attempt's start/end so a stall
+// anywhere upstream (a page fetch, a batch of item-detail lookups) can be
+// traced down to exactly which attempt on which URL never returned, and
+// whether it was a real network hang (no :done at all — the 30s
+// AbortController itself would then also be suspect) vs. a slow-but-completing
+// call vs. a retry loop chewing through backoff on repeated 429/5xx.
 async function fetchZohoResponse(
   url: string,
   init: RequestInit,
@@ -262,13 +270,18 @@ async function fetchZohoResponse(
 
   for (let attempt = 1; attempt <= ZOHO_REQUEST_MAX_ATTEMPTS; attempt += 1) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new Error(`Zoho ${retryLabel} request timed out after ${ZOHO_REQUEST_TIMEOUT_MS}ms.`)), ZOHO_REQUEST_TIMEOUT_MS);
+    const timer = setTimeout(() => {
+      logCheckpoint(null, 'zoho-request', `${retryLabel}:attempt${attempt}:abort`, { reason: 'timeout', timeoutMs: ZOHO_REQUEST_TIMEOUT_MS });
+      controller.abort(new Error(`Zoho ${retryLabel} request timed out after ${ZOHO_REQUEST_TIMEOUT_MS}ms.`));
+    }, ZOHO_REQUEST_TIMEOUT_MS);
+    const attemptDone = startTimer(null, 'zoho-request', `${retryLabel}:attempt${attempt}`);
 
     try {
       const response = await fetch(url, {
         ...init,
         signal: controller.signal,
       });
+      attemptDone({ status: response.status });
       // Touch on every completed call, not just retries — callers making many
       // sequential Zoho requests per page (e.g. per-item detail lookups in
       // fetchAndPersistMissingItemLocations) can run for minutes on genuine,
@@ -277,17 +290,22 @@ async function fetchZohoResponse(
       // heartbeat_at.
       onKeepAlive?.();
       if (attempt < ZOHO_REQUEST_MAX_ATTEMPTS && isRetryableZohoResponseStatus(response.status)) {
-        await delay(retryDelayMs(attempt, response));
+        const delayMs = retryDelayMs(attempt, response);
+        logCheckpoint(null, 'zoho-request', `${retryLabel}:retrying`, { attempt, status: response.status, delayMs });
+        await delay(delayMs);
         continue;
       }
       return response;
     } catch (error) {
+      attemptDone({ error: error instanceof Error ? error.message : String(error) });
       lastError = error;
       if (attempt >= ZOHO_REQUEST_MAX_ATTEMPTS || !isRetryableZohoRequestError(error)) {
         throw error;
       }
       onKeepAlive?.();
-      await delay(retryDelayMs(attempt));
+      const delayMs = retryDelayMs(attempt);
+      logCheckpoint(null, 'zoho-request', `${retryLabel}:retrying`, { attempt, error: error instanceof Error ? error.message : String(error), delayMs });
+      await delay(delayMs);
     } finally {
       clearTimeout(timer);
     }
