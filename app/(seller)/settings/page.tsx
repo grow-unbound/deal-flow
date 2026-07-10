@@ -120,6 +120,7 @@ export default function SettingsPage() {
       buyer_app: {
         enabled: finalDraft.buyer_app.enabled,
         whatsapp_number: finalDraft.buyer_app.whatsapp_number,
+        whatsapp_display_name: finalDraft.buyer_app.whatsapp_display_name,
       },
       catalog: {
         price_lists_enabled: finalDraft.catalog.price_lists_enabled,

@@ -3474,6 +3474,117 @@ async function persistInvoices(
 
 // ── Router ───────────────────────────────────────────────────────────────────
 
+// ── Contact persons (dedicated list sweep) ───────────────────────────────────
+// Called from sync-customers step=contact_persons after contacts are fully synced.
+// Uses GET /contacts/contactpersons which returns all contact persons paginated,
+// each record carrying contact_id (parent) and contact_person_id.
+async function persistContactPersonsPage(
+  admin: AdminClient,
+  tenantId: string,
+  actorId: string | null,
+  integrationId: string,
+  records: JsonRecord[],
+): Promise<PersistResult> {
+  const result: PersistResult = {
+    created: 0,
+    updated: 0,
+    skipped: 0,
+    pendingSearchVectorBuyerIds: [],
+    pendingSearchVectorBuyerUserIds: [],
+  };
+
+  if (records.length === 0) return result;
+
+  // Gather all unique contact_ids present in this page
+  const contactIds = [...new Set(
+    records.map((r) => asStr(r.contact_id)).filter((id): id is string => id !== null),
+  )];
+
+  if (contactIds.length === 0) {
+    result.skipped = records.length;
+    return result;
+  }
+
+  // Batch-resolve buyer_ids from the entity map written by the customers phase
+  const { data: entityRows, error: entityError } = await admin
+    .schema('app')
+    .from('integration_entity_map')
+    .select('external_id, internal_id')
+    .eq('tenant_id', tenantId)
+    .eq('tenant_integration_id', integrationId)
+    .eq('entity_type', 'customers')
+    .in('external_id', contactIds);
+
+  if (entityError) throw new Error(`Entity map lookup failed: ${entityError.message}`);
+
+  const buyerIdMap = new Map<string, string>(
+    (entityRows ?? []).map((r) => [r.external_id as string, r.internal_id as string]),
+  );
+
+  const contactRows: JsonRecord[] = [];
+
+  for (const rec of records) {
+    const cpId = asStr(rec.contact_person_id);
+    const contactId = asStr(rec.contact_id);
+
+    if (!cpId || !contactId) {
+      result.skipped++;
+      continue;
+    }
+
+    const buyerId = buyerIdMap.get(contactId);
+    if (!buyerId) {
+      // Parent contact not yet in entity map — contacts phase must run first
+      result.skipped++;
+      continue;
+    }
+
+    contactRows.push({
+      buyer_id: buyerId,
+      external_ref: cpId,
+      role: 'buyer_assistant' as const,
+      first_name: asStr(rec.first_name),
+      last_name: asStr(rec.last_name),
+      email: asStr(rec.email),
+      designation: asStr(rec.designation),
+      department: asStr(rec.department),
+      is_active: true, // list endpoint only returns active contact persons
+      created_by: actorId,
+      updated_by: actorId,
+      deleted_at: null,
+      ...(pickSanitizedPhone(rec.phone, rec.mobile) ? { phone: pickSanitizedPhone(rec.phone, rec.mobile) } : {}),
+    });
+  }
+
+  const dedupedRows = dedupeByColumns(contactRows, ['buyer_id', 'external_ref']);
+
+  if (dedupedRows.length === 0) return result;
+
+  const persisted = await bulkPersistJsonbRecords(
+    admin,
+    'buyer_users',
+    dedupedRows,
+    ['buyer_id', 'external_ref'],
+  );
+
+  const mapPairs = persisted
+    .map((row) => {
+      const externalId = asStr(row.external_ref);
+      const internalId = asStr(row.id);
+      return externalId && internalId ? { externalId, internalId, sourcePayload: null } : null;
+    })
+    .filter((r): r is { externalId: string; internalId: string; sourcePayload: null } => r !== null);
+
+  await batchUpsertEntityMap(admin, tenantId, integrationId, 'contact_persons', mapPairs);
+
+  result.created = persisted.length;
+  result.pendingSearchVectorBuyerUserIds = persisted
+    .map((row) => asStr(row.id))
+    .filter((id): id is string => id !== null);
+
+  return result;
+}
+
 export async function persistZohoEntityPage(
   admin: AdminClient,
   tenantId: string,
@@ -3494,6 +3605,9 @@ export async function persistZohoEntityPage(
 
     case 'customers':
       return persistBuyers(admin, tenantId, actorId, integrationId, records, adapter, integrationTypeId, persistOptions);
+
+    case 'contact_persons':
+      return persistContactPersonsPage(admin, tenantId, actorId, integrationId, records);
 
     case 'products':
       return persistProducts(admin, tenantId, actorId, integrationId, records, adapter);

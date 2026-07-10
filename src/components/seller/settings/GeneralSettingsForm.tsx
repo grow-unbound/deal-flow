@@ -310,6 +310,18 @@ export function GeneralSettingsForm({
               </div>
               <p className="text-sm text-cream-600">Shown to buyers for support in the buyer app.</p>
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="buyer-whatsapp-display-name">WhatsApp display name</Label>
+              <Input
+                id="buyer-whatsapp-display-name"
+                value={draft.buyer_app.whatsapp_display_name}
+                onChange={(e) => updateBuyerApp({ whatsapp_display_name: e.target.value })}
+                maxLength={200}
+                placeholder="WineYard"
+              />
+              <p className="text-sm text-cream-600">Name shown to buyers in WhatsApp messages. Falls back to company name if empty.</p>
+            </div>
           </SettingsSectionCard>
 
           {/* Business Policy */}

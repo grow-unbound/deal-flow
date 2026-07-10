@@ -1,10 +1,12 @@
 import { supabaseAdmin, supabase } from '@/lib/supabase';
 import { DEFAULT_TENANT_SETTINGS_STORED } from '@/lib/tenant-settings/defaults';
+import { buildSellerContextFromTenant, composeSellerDisplayName } from '@/lib/server/whatsapp-seller-context';
 import type { WhatsappNotificationContext } from '@/lib/server/whatsapp';
 
 type NotificationType = 'order_placed' | 'enquiry_received';
 
 interface TenantRow {
+  business_name: string;
   settings: Record<string, unknown> | null;
 }
 
@@ -39,13 +41,12 @@ export async function fetchWhatsappNotificationContext(
 ): Promise<WhatsappNotificationContext | null> {
   const db = supabaseAdmin ?? supabase;
 
-  // Parallel fetch: tenant settings + buyer info + optional location/warehouse
-  const [tenantResult, buyerResult, locationResult, warehouseResult] = await Promise.all([
+  const [tenantResult, buyerResult, locationResult, warehouseResult, locationCountResult] = await Promise.all([
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (db as any)
       .schema('app')
       .from('tenants')
-      .select('settings')
+      .select('business_name, settings')
       .eq('id', tenantId)
       .single() as Promise<{ data: TenantRow | null; error: unknown }>,
 
@@ -62,9 +63,9 @@ export async function fetchWhatsappNotificationContext(
         ((db as any)
           .schema('app')
           .from('locations')
-      .select('name, phone_number')
-      .eq('id', locationId)
-      .single() as Promise<{ data: LocationRow | null; error: unknown }>)
+          .select('name, phone_number')
+          .eq('id', locationId)
+          .single() as Promise<{ data: LocationRow | null; error: unknown }>)
       : Promise.resolve({ data: null, error: null }),
 
     locationId
@@ -78,11 +79,18 @@ export async function fetchWhatsappNotificationContext(
           .limit(1)
           .maybeSingle() as Promise<{ data: WarehouseRow | null; error: unknown }>)
       : Promise.resolve({ data: null, error: null }),
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (db as any)
+      .schema('app')
+      .from('locations')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null) as Promise<{ count: number | null; error: unknown }>,
   ]);
 
   if (!tenantResult.data || !buyerResult.data) return null;
 
-  // Read notification preferences from JSONB settings, falling back to defaults
   const settings = tenantResult.data.settings ?? {};
   const notifSettings =
     (settings.notifications as Record<string, unknown> | undefined)?.whatsapp ?? {};
@@ -108,24 +116,30 @@ export async function fetchWhatsappNotificationContext(
     ?? locationResult.data?.phone_number
     ?? (businessSettings.phone as string | undefined)
     ?? '';
-  const sellerName =
-    (businessSettings.company_name as string | undefined) ?? '';
+
+  const { sellerName } = buildSellerContextFromTenant(tenantResult.data);
 
   const buyer = buyerResult.data;
   const buyerPhone = buyer.phone ?? '';
   const buyerName = buyer.contact_name ?? buyer.business_name;
 
-  // Location name falls back to seller business name so the template is still coherent
   const sellerLocation =
     warehouseResult.data?.name ?? locationResult.data?.name ?? sellerName;
 
-  // Don't send if either phone is missing — messages would bounce
+  const hasMultipleLocations = (locationCountResult.count ?? 0) > 1;
+  const buyerFacingSellerName = composeSellerDisplayName(
+    sellerName,
+    sellerLocation,
+    hasMultipleLocations,
+  );
+
   if (!sellerPhone || !buyerPhone) return null;
 
   return {
     sellerPhone,
     sellerName,
     sellerLocation,
+    buyerFacingSellerName,
     buyerPhone,
     buyerName,
     etaHours,

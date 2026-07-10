@@ -34,6 +34,7 @@ export interface SyncRequest {
   page_from?: number | null;
   per_page?: number | null;
   since?: string | null;
+  step?: string | null;
 }
 
 // ── Environment ─────────────────────────────────────────────────────────────
@@ -352,7 +353,7 @@ function labelizeEntity(value: string): string {
 
 // Maps entity type to its phase group for the 3-phase UI model
 function getPhaseGroup(entityType: string): { group: string; groupLabel: string } {
-  if (['locations', 'products', 'pricelists', 'customers'].includes(entityType)) {
+  if (['locations', 'products', 'pricelists', 'customers', 'contact_persons'].includes(entityType)) {
     return { group: 'reference', groupLabel: 'Reference Data' };
   }
   if (['estimates', 'orders', 'invoices', 'transaction_line_items'].includes(entityType)) {
@@ -615,5 +616,6 @@ export async function parseSyncRequest(req: Request): Promise<SyncRequest> {
     page_from: typeof body.page_from === 'number' ? body.page_from : null,
     per_page: typeof body.per_page === 'number' ? body.per_page : null,
     since: typeof body.since === 'string' ? body.since : null,
+    step: typeof body.step === 'string' ? body.step : null,
   };
 }

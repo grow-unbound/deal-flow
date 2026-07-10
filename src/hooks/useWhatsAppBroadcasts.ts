@@ -15,6 +15,7 @@ export interface WhatsAppTemplateOption {
   body: string;
   variables: Array<{ key: string; description?: string }>;
   approval_status: 'pending' | 'approved' | 'rejected' | 'disabled';
+  is_broadcast_template: boolean;
 }
 
 export interface WhatsAppBroadcastHistoryRow {

@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
   const { data: template, error: templateError } = await db
     .schema('app')
     .from('whatsapp_templates')
-    .select('id, meta_template_name, meta_category, approval_status, use_case, locale, variables, button_config, buttons_config, header_config')
+    .select('id, meta_template_name, meta_category, approval_status, use_case, locale, variables, button_config, buttons_config, header_config, is_broadcast_template')
     .eq('id', input.whatsapp_template_id)
     .or(`tenant_id.is.null,tenant_id.eq.${claims.tenant_id}`)
     .is('deleted_at', null)
@@ -121,14 +121,8 @@ export async function POST(request: NextRequest) {
   if (template.approval_status !== 'approved') {
     return NextResponse.json({ error: 'Template is not approved for sending yet' }, { status: 400 });
   }
-  if ([
-    'login_otp',
-    'request_received_seller',
-    'request_received_buyer',
-    'order_received_seller',
-    'order_received_buyer',
-  ].includes(String(template.meta_template_name))) {
-    return NextResponse.json({ error: 'Transactional templates cannot be used for broadcasts' }, { status: 400 });
+  if (!template.is_broadcast_template) {
+    return NextResponse.json({ error: 'This template cannot be used for broadcasts' }, { status: 400 });
   }
 
   try {

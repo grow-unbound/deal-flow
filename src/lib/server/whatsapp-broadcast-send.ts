@@ -1,5 +1,10 @@
 import { firstNameFromValue, formatWhatsappDestination, isValidIndianMobile, normalizeIndianPhone } from '@/lib/phone';
 import type { EnqueueWhatsAppMessageInput, WhatsAppSendPayload } from '@/lib/server/whatsapp-enqueue';
+import {
+  buildBuyerInvoiceSummaries,
+  type BuyerInvoiceSummary,
+  type InvoiceSummaryRow,
+} from '@/lib/server/whatsapp-invoice-summary';
 
 type TemplateVariable = {
   key: string;
@@ -30,7 +35,6 @@ type BuyerRow = {
   business_name: string;
   contact_name: string | null;
   phone: string | null;
-  payment_terms_days: number | null;
 };
 
 type CampaignRow = {
@@ -39,25 +43,14 @@ type CampaignRow = {
   share_token: string | null;
 };
 
-type InvoiceRow = {
-  buyer_id: string;
-  invoice_date: string | null;
-  outstanding_balance: number | null;
-  status: string | null;
-};
-
 type TenantRow = {
   id: string;
   business_name: string;
   settings: Record<string, unknown> | null;
 };
 
-type BuyerInvoiceSummary = {
-  outstandingAmount: string;
-  overdueDays: string;
-};
-
 const REQUIRED_MANUAL_VARIABLES = new Set(['highlight_text', 'visit_window']);
+const PAYMENT_REMINDER_TEMPLATE = 'buyer_payment_reminder';
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -84,33 +77,6 @@ function buildSellerContext(tenant: TenantRow) {
       ?? '',
     ),
   };
-}
-
-function buildInvoiceSummary(rows: InvoiceRow[], buyerMap: Map<string, BuyerRow>) {
-  const summaries = new Map<string, BuyerInvoiceSummary>();
-
-  for (const row of rows) {
-    const buyer = buyerMap.get(row.buyer_id);
-    if (!buyer) continue;
-
-    const outstanding = Number(row.outstanding_balance ?? 0);
-    if (outstanding <= 0 || !row.invoice_date) continue;
-
-    const dueDate = new Date(row.invoice_date);
-    if (Number.isNaN(dueDate.getTime())) continue;
-    dueDate.setDate(dueDate.getDate() + Number(buyer.payment_terms_days ?? 0));
-
-    const overdueDays = Math.max(0, Math.floor((Date.now() - dueDate.getTime()) / (1000 * 60 * 60 * 24)));
-    const current = summaries.get(row.buyer_id);
-    const outstandingAmount = (current ? Number(current.outstandingAmount) : 0) + outstanding;
-    const maxOverdueDays = current ? Math.max(Number(current.overdueDays), overdueDays) : overdueDays;
-    summaries.set(row.buyer_id, {
-      outstandingAmount: Math.round(outstandingAmount).toString(),
-      overdueDays: maxOverdueDays.toString(),
-    });
-  }
-
-  return summaries;
 }
 
 function resolveButtonValue(
@@ -187,7 +153,8 @@ function resolveVariableValue({
   if (key === 'seller_phone_number') return sellerPhone;
   if (key === 'campaign_title') return campaign?.name ?? '';
   if (key === 'outstanding_amount') return invoiceSummary?.outstandingAmount ?? '0';
-  if (key === 'overdue_days') return invoiceSummary?.overdueDays ?? '0';
+  if (key === 'due_invoice_count') return invoiceSummary?.dueInvoiceCount ?? '0';
+  if (key === 'due_status') return invoiceSummary?.dueStatus ?? '';
   return variableBindings[key] ?? '';
 }
 
@@ -274,7 +241,7 @@ export async function buildBroadcastMessageQueue(
   const { data: buyers, error: buyersError } = await db
     .schema('app')
     .from('buyers')
-    .select('id, business_name, contact_name, phone, payment_terms_days')
+    .select('id, business_name, contact_name, phone')
     .eq('tenant_id', input.tenantId)
     .in('id', input.buyerIds)
     .is('deleted_at', null);
@@ -289,6 +256,8 @@ export async function buildBroadcastMessageQueue(
   }
 
   const buyerMap = new Map(buyerRows.map((buyer) => [buyer.id, buyer]));
+  const isPaymentReminder = input.template.meta_template_name === PAYMENT_REMINDER_TEMPLATE;
+
   const [campaignResult, invoicesResult] = await Promise.all([
     input.linkedCampaignId
       ? db
@@ -303,7 +272,7 @@ export async function buildBroadcastMessageQueue(
     db
       .schema('app')
       .from('invoices')
-      .select('buyer_id, invoice_date, outstanding_balance, status')
+      .select('buyer_id, due_date, outstanding_balance, status')
       .eq('tenant_id', input.tenantId)
       .in('buyer_id', buyerRows.map((buyer) => buyer.id))
       .is('deleted_at', null)
@@ -321,7 +290,9 @@ export async function buildBroadcastMessageQueue(
   }
 
   const campaign = campaignResult.data as CampaignRow | null;
-  const invoiceSummaryByBuyer = buildInvoiceSummary((invoicesResult.data ?? []) as InvoiceRow[], buyerMap);
+  const invoiceSummaryByBuyer = buildBuyerInvoiceSummaries(
+    (invoicesResult.data ?? []) as InvoiceSummaryRow[],
+  );
   const { sellerName, sellerPhone } = buildSellerContext(tenant as TenantRow);
 
   if (!sellerName.trim()) {
@@ -333,12 +304,17 @@ export async function buildBroadcastMessageQueue(
 
   const queueInputs: EnqueueWhatsAppMessageInput[] = [];
   for (const buyer of buyerRows) {
+    const invoiceSummary = invoiceSummaryByBuyer.get(buyer.id) ?? null;
+    if (isPaymentReminder && !invoiceSummary) {
+      continue;
+    }
+
     const sendPayload = buildSendPayload({
       template: input.template,
       buyer,
       sellerName,
       sellerPhone,
-      invoiceSummary: invoiceSummaryByBuyer.get(buyer.id) ?? null,
+      invoiceSummary,
       campaign,
       variableBindings: input.variableBindings,
       headerMediaId: input.headerMediaId,
@@ -356,6 +332,10 @@ export async function buildBroadcastMessageQueue(
       scheduledSendAt: input.scheduledSendAt ?? null,
       sendPayload,
     });
+  }
+
+  if (queueInputs.length === 0) {
+    throw new Error('No eligible buyers have outstanding invoices for this reminder');
   }
 
   return queueInputs;
