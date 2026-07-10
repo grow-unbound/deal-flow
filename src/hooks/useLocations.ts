@@ -4,10 +4,6 @@ import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { appendArrayParam } from '@/lib/landing-filter-params';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 
-// ─── Shared ───────────────────────────────────────────────────────────────────
-
-export type LocationStockStatus = 'clear' | 'low_stock' | 'out_of_stock';
-
 // ─── Landing page types ───────────────────────────────────────────────────────
 
 export interface LocationsLandingKpis {
@@ -100,17 +96,6 @@ export interface LocationDetailTopBuyer {
   outstanding_dues: number;
 }
 
-export interface LocationDetailCustomer {
-  buyer_id: string;
-  business_name: string;
-  city: string;
-  initials: string;
-  spend_mtd: number;
-  orders_mtd: number;
-  outstanding_dues: number;
-  last_order_at: string | null;
-}
-
 export interface LocationDetailOrder {
   order_id: string;
   order_number: string;
@@ -159,16 +144,6 @@ export interface LocationDetailInvoice {
   status: string;
 }
 
-export interface LocationDetailInventoryItem {
-  tenant_product_id: string;
-  product_name: string;
-  brand_name: string;
-  qty_available: number;
-  days_cover: number | null;
-  last_updated: string;
-  stock_status: LocationStockStatus;
-}
-
 export interface LocationDetailActivityItem {
   id: string;
   action: string;
@@ -190,29 +165,26 @@ export interface LocationDetailResponse {
   meta_strip: {
     gmv_mtd: number;
     growth_pct: number;
-    active_buyers: number;
-    total_buyers: number;
     outstanding_dues: number;
     invoice_count: number;
-    low_stock_skus: number;
+    unpaid_invoice_count: number;
+    total_invoice_count: number;
+    open_estimate_count: number;
+    total_estimate_count: number;
   };
   overview: {
     gmv_trend: LocationDetailGmvWeek[];
     inventory_health: LocationDetailInventoryHealth;
     top_buyers: LocationDetailTopBuyer[];
   };
-  customers: LocationDetailCustomer[];
   orders: LocationDetailOrder[];
   estimates: LocationDetailEstimate[];
   invoices: LocationDetailInvoice[];
-  inventory: LocationDetailInventoryItem[];
   activity: LocationDetailActivityItem[];
   tab_badges: {
-    customers: number;
     orders_mtd: number;
     estimates_mtd: number;
     invoices_mtd: number;
-    low_stock_skus: number;
   };
 }
 

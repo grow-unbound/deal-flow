@@ -6,7 +6,7 @@ import {
   normalizeLocationAddress,
 } from '@/lib/locations/location-deactivate-guards';
 import { normalizeLocationAssociatedUsers, syncLocationAssignees } from '@/lib/location-assignees';
-import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { UpdateLocationInputSchema } from '@/types/tenant-locations';
 
 export const dynamic = 'force-dynamic';
@@ -35,7 +35,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (claims.role !== 'seller_admin') {
       return jsonError(403, 'Only seller_admin can update locations', 'FORBIDDEN');
     }
-    const db = getRequestSupabaseClient() as any;
+    const db = supabaseAdmin as any;
 
     const { data: row, error: loadErr } = await db
       .schema('app')
@@ -206,7 +206,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (claims.role !== 'seller_admin') {
       return jsonError(403, 'Only seller_admin can deactivate locations', 'FORBIDDEN');
     }
-    const db = getRequestSupabaseClient() as any;
+    const db = supabaseAdmin as any;
     const nowIso = new Date().toISOString();
 
     const { data: row, error: loadErr } = await db
