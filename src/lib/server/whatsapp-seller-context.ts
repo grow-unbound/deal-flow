@@ -47,6 +47,15 @@ export function formatSellerPhoneDisplay(phone: string): string {
   return `+91 ${normalized.slice(0, 5)} ${normalized.slice(5)}`;
 }
 
+export function composeSellerDisplayName(
+  sellerName: string,
+  locationName: string | null,
+  hasMultipleLocations: boolean,
+): string {
+  if (!hasMultipleLocations || !locationName?.trim()) return sellerName;
+  return `${sellerName} (${locationName.trim()})`;
+}
+
 export const CAMPAIGN_ANNOUNCEMENT_TEMPLATE_META = {
   footer_text: 'Powered by Yukti',
   buttons: [

@@ -43,11 +43,8 @@ function combineScheduledAt(dateValue: string, timeValue: string) {
 }
 
 function isTemplateSupported(template: WhatsAppTemplateOption) {
-  return template.meta_template_name !== 'login_otp'
-    && template.meta_template_name !== 'request_received_seller'
-    && template.meta_template_name !== 'request_received_buyer'
-    && template.meta_template_name !== 'order_received_seller'
-    && template.meta_template_name !== 'order_received_buyer'
+  return template.is_broadcast_template
+    && template.meta_template_name !== 'login_otp'
     && template.use_case !== BUYER_APP_NUDGE_USE_CASE;
 }
 
