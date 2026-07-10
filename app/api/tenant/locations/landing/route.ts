@@ -87,7 +87,7 @@ async function getLocationsLandingPayload(
 ): Promise<LocationsLandingResponse> {
   const period = getSellerLandingPeriodMeta(periodInput);
 
-  const [summaryLocationsRes, summarySnapshotRes, summaryCurrentKpiRes, rowsRes] = await Promise.all([
+  const [summaryLocationsRes, summarySnapshotRes, summaryCurrentKpiRes, rowsRes, totalInvoiceCountRes, periodEstimatesRes] = await Promise.all([
     db
       .schema('app')
       .from('locations')
@@ -112,11 +112,27 @@ async function getLocationsLandingPayload(
       .select('id, name, address, deleted_at')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: true }),
+    // Total invoice count (all statuses, not deleted) for "of X total" sub-label
+    db
+      .schema('app')
+      .from('invoices')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null),
+    // Current-period estimates with status for open/total counts
+    db
+      .schema('app')
+      .from('estimates')
+      .select('status')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .gte('estimate_date', period.current_start.split('T')[0])
+      .lt('estimate_date', period.current_end_exclusive.split('T')[0]),
   ]);
 
   if (summaryLocationsRes.error) throw summaryLocationsRes.error;
-  if (summarySnapshotRes.error || summaryCurrentKpiRes.error || rowsRes.error) {
-    throw summarySnapshotRes.error ?? summaryCurrentKpiRes.error ?? rowsRes.error;
+  if (summarySnapshotRes.error || summaryCurrentKpiRes.error || rowsRes.error || totalInvoiceCountRes.error || periodEstimatesRes.error) {
+    throw summarySnapshotRes.error ?? summaryCurrentKpiRes.error ?? rowsRes.error ?? totalInvoiceCountRes.error ?? periodEstimatesRes.error;
   }
 
   const summaryLocations: LocationSeedRow[] = (summaryLocationsRes.data ?? []) as LocationSeedRow[];
@@ -413,12 +429,26 @@ async function getLocationsLandingPayload(
     null,
   );
 
+  // Unpaid invoices = sum of snapshot.invoice_count (outstanding invoices per location)
+  const unpaid_invoice_count = (summarySnapshotRes.data ?? []).reduce(
+    (sum: number, row: Record<string, unknown>) => sum + Number(row.invoice_count ?? 0),
+    0,
+  );
+  const total_invoice_count = totalInvoiceCountRes.count ?? 0;
+
+  // Estimate counts for current period
+  const periodEstimates = (periodEstimatesRes.data ?? []) as Array<{ status: string }>;
+  const TERMINAL_ESTIMATE_STATUSES = new Set(['cancelled', 'rejected', 'expired', 'invoiced']);
+  const open_estimate_count = periodEstimates.filter((e) => !TERMINAL_ESTIMATE_STATUSES.has(e.status)).length;
+  const total_estimate_count = periodEstimates.length;
+
   const kpis: LocationsLandingKpis = {
-    active_locations: activeSummaryRows.length,
-    total_locations: summaryLocations.length,
+    unpaid_invoice_count,
+    total_invoice_count,
     outstanding_dues_total: activeSummaryRows.reduce((sum, row) => sum + row.outstanding_dues, 0),
     dues_location_count: activeSummaryRows.filter((row) => row.outstanding_dues > 0).length,
-    low_stock_locations: activeSummaryRows.filter((row) => row.stock_status !== 'clear').length,
+    open_estimate_count,
+    total_estimate_count,
     top_location_name: topLocation?.name ?? null,
     top_location_gmv_share_pct:
       topLocation && totalGmv > 0
