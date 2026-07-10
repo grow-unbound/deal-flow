@@ -42,8 +42,10 @@ export interface LocationsCalloutRow {
   name: string;
   city: string;
   initials: string;
-  // stock critical
-  critical_sku_count?: number;
+  // conversions (estimates nearing expiry)
+  estimate_number?: string;
+  expires_in_days?: number;
+  total_amount?: number;
   // top locations
   gmv_mtd?: number;
   orders_count?: number;
@@ -56,7 +58,7 @@ export interface LocationsCalloutRow {
 export interface LocationsLandingResponse {
   kpis: LocationsLandingKpis;
   callouts: {
-    stock_critical: LocationsCalloutRow[];
+    conversions: LocationsCalloutRow[];
     top_locations: LocationsCalloutRow[];
     collections_overdue: LocationsCalloutRow[];
   };
