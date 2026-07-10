@@ -278,15 +278,15 @@ function LocationsLandingContent({
           <V3CalloutPanel
             items={[
               {
-                kind: 'risk',
-                eyebrow: 'Stock critical',
-                hint: `${landingData.callouts.stock_critical.length} locations`,
-                rows: landingData.callouts.stock_critical.map((row) => ({
+                kind: 'info',
+                eyebrow: 'Conversions',
+                hint: `${landingData.callouts.conversions.length} estimates expiring`,
+                rows: landingData.callouts.conversions.map((row) => ({
                   initials: row.initials,
-                  hue: 'ember' as const,
+                  hue: 'teal' as const,
                   name: row.name,
-                  reason: `${row.critical_sku_count} SKUs critical`,
-                  trailing: <StatusTag tone="danger" label="Stock out" />,
+                  reason: `${row.estimate_number} · exp in ${row.expires_in_days}d`,
+                  trailing: formatCompactInr(row.total_amount ?? 0),
                 })),
               },
               {
