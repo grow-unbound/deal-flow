@@ -3,7 +3,7 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { createTimer } from '@/lib/server-timing';
 import { SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
-import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { assertSellerAdmin } from '@/lib/server/seller-auth';
 import { SELLER_LANDING_PERIOD_OPTIONS } from '@/lib/seller-period';
 import { readArrayParam } from '@/lib/landing-filter-params';
@@ -517,7 +517,7 @@ export async function GET(request: NextRequest) {
     const statusFilter = readArrayParam(request.nextUrl.searchParams, 'status');
     const stockFilter = readArrayParam(request.nextUrl.searchParams, 'stock');
     const duesFilter = readArrayParam(request.nextUrl.searchParams, 'dues');
-    const db = getRequestSupabaseClient();
+    const db = supabaseAdmin;
     const payload = await getLocationsLandingPayload(
       db as any,
       claims.tenant_id!,
