@@ -20,9 +20,26 @@ export const TRANSACTIONAL_PHASES = [
   'transaction_line_items',
 ] as const;
 
+// Batched per-record Zoho detail-fetch sweeps (one GET per item, up to
+// hundreds of items) — the phases most exposed to per-item Zoho stalls/rate
+// limiting (see the inventory phase hang incident). Dispatched LAST, after
+// every reference/transactional phase has already had its chance, and NEVER
+// halt the run on failure (see shouldHaltOnFailure) — a stuck or failed
+// detail-fetch sweep must not block data that already synced successfully.
+// Membership in REFERENCE_PHASES/TRANSACTIONAL_PHASES is otherwise unchanged
+// (since/halt classification for these two stays as before, just overridden
+// to never halt) so this is purely an ordering + halt-exemption overlay.
+export const DEFERRED_PHASES = ['inventory', 'transaction_line_items'] as const;
+
+const DEFERRED_SET = new Set<string>(DEFERRED_PHASES);
+
+export function isDeferredPhase(phase: string): boolean {
+  return DEFERRED_SET.has(phase);
+}
+
 export const CANONICAL_PHASES = [
-  ...REFERENCE_PHASES,
-  ...TRANSACTIONAL_PHASES,
+  ...[...REFERENCE_PHASES, ...TRANSACTIONAL_PHASES].filter((phase) => !DEFERRED_SET.has(phase)),
+  ...DEFERRED_PHASES,
 ] as const;
 
 export const ANALYSIS_PHASE = 'analysis' as const;
@@ -193,7 +210,7 @@ export function sinceForPhase(phase: string, ctx: SyncRunContext): string | null
 }
 
 export function shouldHaltOnFailure(phase: string, ctx: SyncRunContext): boolean {
-  return ctx.failurePolicy === 'halt_on_reference_failure' && isReferencePhase(phase);
+  return ctx.failurePolicy === 'halt_on_reference_failure' && isReferencePhase(phase) && !isDeferredPhase(phase);
 }
 
 export function getSyncRunIdFromProgress(progress: Record<string, unknown> | null | undefined): string | null {
@@ -320,12 +337,12 @@ export function resolvePhasesToRun(requestedPhaseRaw: string | null): readonly C
 export const FULL_SYNC_PHASES: readonly CanonicalPhase[] = [
   'locations',
   'products',
-  'inventory',
   'pricelists',
   'customers',
   'estimates',
   'orders',
   'invoices',
+  'inventory',
 ];
 
 export type SyncEnrichmentPolicy = 'full_sync' | 'incremental';

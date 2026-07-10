@@ -216,6 +216,7 @@ export const IntegrationJobProgressSchema = z
       .optional(),
     note: z.string().trim().min(1).max(500).optional(),
     meta: z.record(z.string(), z.unknown()).optional(),
+    phases_in_run: z.array(z.string().trim().min(1).max(120)).optional(),
   })
   .passthrough()
   .superRefine((progress, ctx) => {
@@ -295,6 +296,7 @@ export interface IntegrationCoverageTotals {
   brands: number;
   categories: number;
   pricelists: number;
+  inventory: number;
   estimates: number;
   orders: number;
   invoices: number;
@@ -405,6 +407,9 @@ export const IntegrationJobRecordSchema = z
     started_at: z.string().datetime({ offset: true }).nullable(),
     completed_at: z.string().datetime({ offset: true }).nullable(),
     created_at: z.string().datetime({ offset: true }),
+    master_job_id: z.string().uuid().nullable().optional(),
+    heartbeat_at: z.string().datetime({ offset: true }).nullable().optional(),
+    records_synced: z.number().int().min(0).nullable().optional(),
   })
   .strict();
 export type IntegrationJobRecord = z.infer<typeof IntegrationJobRecordSchema>;
@@ -442,6 +447,7 @@ export const IntegrationCatalogItemSchema = z
         brands: z.number().int().min(0),
         categories: z.number().int().min(0),
         pricelists: z.number().int().min(0),
+        inventory: z.number().int().min(0),
         estimates: z.number().int().min(0),
         orders: z.number().int().min(0),
         invoices: z.number().int().min(0),

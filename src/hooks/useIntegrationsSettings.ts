@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { normalizeIntegrationJobErrorLog } from '@/lib/integrations/job-error-log';
+import { resolvePhasesForPolicy, resolveSyncEnrichmentPolicy } from '@/lib/integrations/sync-orchestration';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { makeHttpError, transientQueryRetry } from '@/lib/query-retry';
 import type {
@@ -79,6 +80,7 @@ export interface IntegrationSyncProgress {
     sample_ids?: string[];
   } | null;
   note?: string | null;
+  phases_in_run?: string[] | null;
 }
 
 export interface IntegrationSyncPhaseStats {
@@ -109,6 +111,9 @@ export interface IntegrationSyncJob {
   started_at?: string | null;
   completed_at?: string | null;
   created_at: string;
+  master_job_id?: string | null;
+  heartbeat_at?: string | null;
+  records_synced?: number | null;
 }
 
 export interface IntegrationJobSummary {
@@ -398,6 +403,9 @@ function parseSyncJob(value: unknown): IntegrationSyncJob | null {
               }
             : null,
           note: asNullableString(value.progress.note),
+          phases_in_run: asArray<unknown>(value.progress.phases_in_run).filter(
+            (phase): phase is string => typeof phase === 'string',
+          ),
         }
       : null,
     error_log: normalizeIntegrationJobErrorLog(value.error_log)
@@ -417,6 +425,9 @@ function parseSyncJob(value: unknown): IntegrationSyncJob | null {
     started_at: asNullableString(value.started_at),
     completed_at: asNullableString(value.completed_at),
     created_at: asString(value.created_at, new Date(0).toISOString()),
+    master_job_id: asNullableString(value.master_job_id),
+    heartbeat_at: asNullableString(value.heartbeat_at),
+    records_synced: asNumber(value.records_synced),
   };
 }
 
@@ -755,6 +766,14 @@ function createOptimisticView(current: IntegrationsSettingsView | undefined, inp
 function createSyncNowOptimisticView(current: IntegrationsSettingsView | undefined, input: SyncNowInput): IntegrationsSettingsView | undefined {
   if (!current) return current;
   const now = new Date().toISOString();
+  // Same phase list the server will create moments later (job_type is always
+  // 'manual' for this mutation — see postSyncNow) — lets the phase-grid render
+  // every expected phase as "Not Started" immediately, before any slave job
+  // rows exist, instead of showing stale state from a previous run.
+  const expectedPhases = resolvePhasesForPolicy({
+    requestedPhase: input.phase ?? null,
+    enrichmentPolicy: resolveSyncEnrichmentPolicy('manual'),
+  });
   const optimisticJob: IntegrationSyncJob = {
     id: `optimistic-${Math.random().toString(36).slice(2, 10)}`,
     phase: 'sync_run',
@@ -763,6 +782,7 @@ function createSyncNowOptimisticView(current: IntegrationsSettingsView | undefin
     progress: {
       phase: input.phase ?? 'sync_run',
       phase_label: input.phase ? `Queueing ${input.phase} sync…` : 'Queueing full sync…',
+      phases_in_run: [...expectedPhases],
     },
     error_log: null,
     summary: null,
@@ -912,10 +932,9 @@ export function useIntegrationsSettings(initialData?: IntegrationSettingsPayload
     onMutate: async (input) => {
       const snapshots = await takeSnapshots(queryClient, [queryKey]);
       queryClient.setQueryData<IntegrationsSettingsView>(queryKey, (current) => createSyncNowOptimisticView(current, input));
-      return { snapshots };
-    },
-    onSuccess: () => {
+      // Immediate feedback on click — don't wait on the network round-trip.
       toast.success('Sync started');
+      return { snapshots };
     },
     onError: (error, _input, context) => {
       rollbackSnapshots(queryClient, context?.snapshots);

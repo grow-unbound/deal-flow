@@ -780,6 +780,7 @@ describe('integrations settings client', () => {
               {
                 id: 'job-scheduled',
                 job_type: 'incremental',
+                phase: 'sync_run',
                 status: 'completed',
                 run_origin: 'scheduled',
                 sync_window: 'Last 24 hours',
@@ -816,6 +817,7 @@ describe('integrations settings client', () => {
               {
                 id: 'job-manual',
                 job_type: 'manual',
+                phase: 'sync_run',
                 status: 'completed',
                 run_origin: 'manual',
                 progress: {
@@ -968,6 +970,7 @@ describe('integrations settings client', () => {
               {
                 id: 'job-1',
                 job_type: 'manual',
+                phase: 'sync_run',
                 status: 'cancelled',
                 progress: {
                   phase: 'cancelled',
