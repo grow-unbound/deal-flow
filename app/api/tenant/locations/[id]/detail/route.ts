@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { getVerifiedClaims } from '@/lib/auth';
 import { normalizeLocationAssociatedUsers } from '@/lib/location-assignees';
 import { createTimer } from '@/lib/server-timing';
@@ -10,11 +10,8 @@ import type {
   LocationDetailGmvWeek,
   LocationDetailInventoryHealth,
   LocationDetailTopBuyer,
-  LocationDetailCustomer,
   LocationDetailOrder,
-  LocationDetailInventoryItem,
   LocationDetailActivityItem,
-  LocationStockStatus,
 } from '@/hooks/useLocations';
 
 export const dynamic = 'force-dynamic';
@@ -40,10 +37,6 @@ function sumNumberField(rows: Array<Record<string, unknown>>, field: string): nu
   return rows.reduce((sum, row) => sum + Number(row[field] ?? 0), 0);
 }
 
-function isWithinIsoRange(value: string | null | undefined, startIso: string, endIsoExclusive: string): boolean {
-  return Boolean(value && value >= startIso && value < endIsoExclusive);
-}
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -64,7 +57,7 @@ export async function GET(
   if (!claims.tenant_id) return timedJson({ error: 'Unauthorized' }, { status: 401 });
   if (claims.role !== 'seller_admin') return timedJson({ error: 'Forbidden' }, { status: 403 });
 
-  const db = getRequestSupabaseClient() as any;
+  const db = supabaseAdmin as any;
 
   // Cross-tenant guard
   const { data: baseLocation, error: locationError } = await db
@@ -118,7 +111,6 @@ export async function GET(
 
   const [
     locationSnapshotRes,
-    buyersSnapshotRes,
     currentPeriodKpiRes,
     previousPeriodKpiRes,
     currentOrdersDailyRes,
@@ -126,7 +118,6 @@ export async function GET(
     currentInvoicesDailyRes,
     currentOrdersRes,
     trendRes,
-    inventoryRes,
     estimatesRes,
     invoicesRes,
     activityRes,
@@ -138,14 +129,6 @@ export async function GET(
       .eq('tenant_id', claims.tenant_id)
       .eq('location_id', id)
       .maybeSingle(),
-
-    db
-      .schema('app')
-      .from('buyers_snapshot')
-      .select('buyer_id, outstanding_dues, last_order_at')
-      .eq('tenant_id', claims.tenant_id)
-      .eq('scope', 'location')
-      .eq('location_id', id),
 
     db
       .schema('app')
@@ -218,13 +201,6 @@ export async function GET(
 
     db
       .schema('app')
-      .from('tenant_inventory')
-      .select('tenant_product_id, qty_available, reorder_point, updated_at, warehouses!inner(location_id), tenant_products(name, daily_sales_rate, deleted_at, tenant_brands(name))')
-      .eq('warehouses.location_id', id)
-      .is('deleted_at', null),
-
-    db
-      .schema('app')
       .from('estimates')
       .select('id, estimate_number, buyer_id, location_id, status, source, is_buyer_app_estimate, campaign_id, place_of_supply, total_amount, estimate_date, created_at, expires_at')
       .eq('tenant_id', claims.tenant_id)
@@ -254,29 +230,20 @@ export async function GET(
       .limit(50),
   ]);
 
-  if (
-    locationSnapshotRes.error ||
-    buyersSnapshotRes.error ||
-    currentPeriodKpiRes.error ||
-    previousPeriodKpiRes.error ||
-    currentOrdersDailyRes.error ||
-    currentEstimatesDailyRes.error ||
-    currentInvoicesDailyRes.error ||
-    currentOrdersRes.error ||
-    trendRes.error ||
-    inventoryRes.error ||
-    estimatesRes.error ||
-    invoicesRes.error ||
-    activityRes.error
-  ) {
+  const firstError =
+    locationSnapshotRes.error ?? currentPeriodKpiRes.error ??
+    previousPeriodKpiRes.error ?? currentOrdersDailyRes.error ?? currentEstimatesDailyRes.error ??
+    currentInvoicesDailyRes.error ?? currentOrdersRes.error ?? trendRes.error ??
+    estimatesRes.error ?? invoicesRes.error ?? activityRes.error;
+  if (firstError) {
+    console.error('[GET /api/tenant/locations/[id]/detail]', firstError.code, firstError.message);
     return timedJson({ error: 'Failed to fetch location detail data' }, { status: 500 });
   }
 
-  // Period GMV
   const currentOrders: Array<{
     id: string;
     order_number: string;
-    buyer_id: string;
+    buyer_id: string | null;
     location_id: string | null;
     total_amount: number;
     status: string;
@@ -287,8 +254,8 @@ export async function GET(
     place_of_supply: string | null;
     placed_at: string;
     created_at: string;
-  }> =
-    currentOrdersRes.data ?? [];
+  }> = currentOrdersRes.data ?? [];
+
   const locationSnapshot = locationSnapshotRes.data as
     | {
         sku_count: number | null;
@@ -298,20 +265,10 @@ export async function GET(
         invoice_count: number | null;
       }
     | null;
-  const buyerSnapshots = (buyersSnapshotRes.data ?? []) as Array<{
-    buyer_id: string;
-    outstanding_dues: number | null;
-    last_order_at: string | null;
-  }>;
-  const currentPeriodBuyerIds = new Set(currentOrders.map((row) => row.buyer_id));
 
   const gmv_mtd = sumNumberField((currentPeriodKpiRes.data ?? []) as Array<Record<string, unknown>>, 'gmv');
   const gmv_prev = sumNumberField((previousPeriodKpiRes.data ?? []) as Array<Record<string, unknown>>, 'gmv');
   const growth_pct = gmv_prev > 0 ? Math.round(((gmv_mtd - gmv_prev) / gmv_prev) * 100) : 0;
-
-  const activeBuyersFromSnapshot = buyerSnapshots.filter((row) =>
-    isWithinIsoRange(row.last_order_at, period.current_start, period.current_end_exclusive),
-  ).length;
 
   // GMV trend — bucket daily rows into ISO weeks
   const dailyRows: Array<{ day: string; gmv: number; orders_count: number }> =
@@ -319,8 +276,7 @@ export async function GET(
   const weekBuckets = new Map<string, { gmv: number; orders: number; start: string }>();
   for (const row of dailyRows) {
     const d = new Date(row.day);
-    // ISO week: get Monday
-    const dow = d.getDay(); // 0=Sun
+    const dow = d.getDay();
     const monday = new Date(d);
     monday.setDate(d.getDate() - ((dow + 6) % 7));
     const key = monday.toISOString().split('T')[0]!;
@@ -344,82 +300,45 @@ export async function GET(
       };
     });
 
-  // Inventory
-  const invRows: Array<Record<string, any>> = inventoryRes.data ?? [];
-  const rawLowStockSkusCount = invRows.filter((r) => {
-    const qty = Number(r.qty_available ?? 0);
-    const rp = r.reorder_point != null ? Number(r.reorder_point) : null;
-    return qty > 0 && rp !== null && qty <= rp;
-  }).length;
-  const rawOosSkusCount = invRows.filter((r) => Number(r.qty_available ?? 0) <= 0).length;
-  const rawActiveSkus = invRows.filter((r) => r.tenant_products?.deleted_at == null).length;
-  const low_stock_skus_count = Number(locationSnapshot?.low_stock_sku_count ?? rawLowStockSkusCount);
-  const oos_skus_count = Number(locationSnapshot?.oos_sku_count ?? rawOosSkusCount);
-  const active_skus = Number(locationSnapshot?.sku_count ?? rawActiveSkus);
-
-  const avgCovers = invRows
-    .map((r) => {
-      const qty = Number(r.qty_available ?? 0);
-      const rate = Number(r.tenant_products?.daily_sales_rate ?? 0);
-      return rate > 0 ? qty / rate : null;
-    })
-    .filter((v): v is number => v !== null);
-  const avg_days_cover =
-    avgCovers.length > 0
-      ? Math.round(avgCovers.reduce((s, v) => s + v, 0) / avgCovers.length)
-      : null;
-
+  // Inventory health sourced from snapshot only
   const inventory_health: LocationDetailInventoryHealth = {
-    active_skus,
-    oos_skus: oos_skus_count,
-    low_stock_skus: low_stock_skus_count,
-    avg_days_cover,
+    active_skus: Number(locationSnapshot?.sku_count ?? 0),
+    oos_skus: Number(locationSnapshot?.oos_sku_count ?? 0),
+    low_stock_skus: Number(locationSnapshot?.low_stock_sku_count ?? 0),
+    avg_days_cover: null,
   };
 
-  // Buyer spend aggregation for top buyers and customers tab
+  // Buyer spend aggregation for top buyers
   const spendByBuyer = new Map<string, number>();
-  const orderCountByBuyer = new Map<string, number>();
   for (const o of currentOrders) {
+    if (!o.buyer_id) continue;
     spendByBuyer.set(o.buyer_id, (spendByBuyer.get(o.buyer_id) ?? 0) + Number(o.total_amount ?? 0));
-    orderCountByBuyer.set(o.buyer_id, (orderCountByBuyer.get(o.buyer_id) ?? 0) + 1);
   }
 
-  const buyerSnapshotById = new Map(
-    buyerSnapshots.map((row) => [
-      row.buyer_id,
-      {
-        outstanding_dues: Number(row.outstanding_dues ?? 0),
-        last_order_at: row.last_order_at,
-      },
-    ]),
-  );
-
+  // Buyer IDs from current-period data only (bounded — avoids URL-length overflow on .in())
   const allBuyerIds = Array.from(
     new Set([
-      ...buyerSnapshots.map((row) => row.buyer_id),
-      ...currentOrders.map((row) => row.buyer_id),
-      ...((estimatesRes.data ?? []) as Array<{ buyer_id: string }>).map((row) => row.buyer_id),
-      ...((invoicesRes.data ?? []) as Array<{ buyer_id: string }>).map((row) => row.buyer_id),
+      ...currentOrders.map((row) => row.buyer_id).filter((id): id is string => id != null),
+      ...((estimatesRes.data ?? []) as Array<{ buyer_id: string | null }>).map((row) => row.buyer_id).filter((id): id is string => id != null),
+      ...((invoicesRes.data ?? []) as Array<{ buyer_id: string | null }>).map((row) => row.buyer_id).filter((id): id is string => id != null),
     ]),
   );
-  const total_buyers = allBuyerIds.length;
-  const active_buyers = Math.max(activeBuyersFromSnapshot, currentPeriodBuyerIds.size);
 
-  const [buyerNamesRes] = await Promise.all([
-    allBuyerIds.length
-      ? db
-          .schema('app')
-          .from('buyers')
-          .select('id, business_name, address')
-          .in('id', allBuyerIds)
-      : Promise.resolve({ data: [] as any[], error: null }),
-  ]);
+  const buyerNamesRes = allBuyerIds.length
+    ? await db
+        .schema('app')
+        .from('buyers')
+        .select('id, business_name, billing_address')
+        .eq('tenant_id', claims.tenant_id)
+        .in('id', allBuyerIds)
+    : { data: [] as any[], error: null };
 
   if (buyerNamesRes.error) {
+    console.error('[GET /api/tenant/locations/[id]/detail] buyerNamesRes', buyerNamesRes.error.code, buyerNamesRes.error.message);
     return timedJson({ error: 'Failed to fetch location detail data' }, { status: 500 });
   }
 
-  const buyerMap = new Map<string, { business_name: string; address: unknown }>();
+  const buyerMap = new Map<string, { business_name: string; billing_address: unknown }>();
   for (const b of buyerNamesRes.data ?? []) {
     buyerMap.set(b.id, b);
   }
@@ -427,16 +346,12 @@ export async function GET(
   const sortedBuyerIds = [...allBuyerIds].sort((buyerIdA, buyerIdB) => {
     const spendDelta = (spendByBuyer.get(buyerIdB) ?? 0) - (spendByBuyer.get(buyerIdA) ?? 0);
     if (spendDelta !== 0) return spendDelta;
-
-    const lastOrderA = buyerSnapshotById.get(buyerIdA)?.last_order_at ?? '';
-    const lastOrderB = buyerSnapshotById.get(buyerIdB)?.last_order_at ?? '';
-    if (lastOrderA !== lastOrderB) return lastOrderB.localeCompare(lastOrderA);
-
     const nameA = buyerMap.get(buyerIdA)?.business_name ?? '';
     const nameB = buyerMap.get(buyerIdB)?.business_name ?? '';
     return nameA.localeCompare(nameB);
   });
   const top5Ids = sortedBuyerIds.slice(0, 5);
+
   const outstanding_dues = locationSnapshot
     ? Number(locationSnapshot.outstanding_dues ?? 0)
     : ((invoicesRes.data ?? []) as Array<{ outstanding_balance: number | null }>)
@@ -451,26 +366,10 @@ export async function GET(
     return {
       buyer_id: buyerId,
       business_name: name,
-      city: getCity(b?.address),
+      city: getCity(b?.billing_address),
       initials: getInitials(name),
       spend_mtd: spendByBuyer.get(buyerId) ?? 0,
-      outstanding_dues: buyerSnapshotById.get(buyerId)?.outstanding_dues ?? 0,
-    };
-  });
-
-  // Customers tab — all buyers with location-level activity in snapshot plus any live period rows.
-  const customers: LocationDetailCustomer[] = sortedBuyerIds.map((buyerId) => {
-    const b = buyerMap.get(buyerId);
-    const name = b?.business_name ?? 'Unknown';
-    return {
-      buyer_id: buyerId,
-      business_name: name,
-      city: getCity(b?.address),
-      initials: getInitials(name),
-      spend_mtd: spendByBuyer.get(buyerId) ?? 0,
-      orders_mtd: orderCountByBuyer.get(buyerId) ?? 0,
-      outstanding_dues: buyerSnapshotById.get(buyerId)?.outstanding_dues ?? 0,
-      last_order_at: buyerSnapshotById.get(buyerId)?.last_order_at ?? null,
+      outstanding_dues: 0,
     };
   });
 
@@ -489,14 +388,14 @@ export async function GET(
     ? await db.schema('app').from('campaigns').select('id, name').in('id', campaignIds).is('deleted_at', null)
     : { data: [] as Array<{ id: string; name: string }>, error: null };
   if (campaignsRes.error) {
+    console.error('[GET /api/tenant/locations/[id]/detail] campaignsRes', campaignsRes.error.code, campaignsRes.error.message);
     return timedJson({ error: 'Failed to fetch location detail data' }, { status: 500 });
   }
   const campaignById = new Map(((campaignsRes.data ?? []) as Array<{ id: string; name: string }>).map((row) => [row.id, row.name]));
 
-  // Orders tab — current period orders with buyer name
   const allOrdersFull = currentOrders as Array<{
     id: string;
-    buyer_id: string;
+    buyer_id: string | null;
     total_amount: number;
     source: string | null;
     is_buyer_app_order: boolean;
@@ -505,7 +404,7 @@ export async function GET(
     place_of_supply: string | null;
     location_id: string | null;
   }>;
-  // Fetch order items count + order number in one query
+
   const orderIds = allOrdersFull.map((o) => o.id);
   const [orderDetailRes, orderItemCountRes] = await Promise.all([
     orderIds.length
@@ -546,7 +445,7 @@ export async function GET(
 
   const orders: LocationDetailOrder[] = allOrdersFull.map((o) => {
     const detail = orderDetails.get(o.id);
-    const buyerName = buyerMap.get(o.buyer_id)?.business_name ?? 'Unknown';
+    const buyerName = o.buyer_id ? (buyerMap.get(o.buyer_id)?.business_name ?? 'Unknown') : 'Unknown';
     return {
       order_id: o.id,
       order_number: detail?.order_number ?? o.id.slice(0, 8),
@@ -566,7 +465,7 @@ export async function GET(
   const locationEstimates = (estimatesRes.data ?? []) as Array<{
     id: string;
     estimate_number: string;
-    buyer_id: string;
+    buyer_id: string | null;
     location_id: string | null;
     status: string;
     source: string | null;
@@ -581,7 +480,7 @@ export async function GET(
   const locationInvoices = (invoicesRes.data ?? []) as Array<{
     id: string;
     invoice_number: string;
-    buyer_id: string;
+    buyer_id: string | null;
     location_id: string | null;
     order_id: string | null;
     estimate_id: string | null;
@@ -616,6 +515,7 @@ export async function GET(
   ]);
 
   if (estimateItemCountRes.error || invoiceItemCountRes.error) {
+    console.error('[GET /api/tenant/locations/[id]/detail] items', estimateItemCountRes.error ?? invoiceItemCountRes.error);
     return timedJson({ error: 'Failed to fetch location detail data' }, { status: 500 });
   }
 
@@ -628,40 +528,14 @@ export async function GET(
     invoiceItemsCountById.set(row.invoice_id, (invoiceItemsCountById.get(row.invoice_id) ?? 0) + 1);
   }
   const estimateNumberById = new Map(locationEstimates.map((row) => [row.id, row.estimate_number]));
-  const estimateCampaignById = new Map(locationEstimates.map((row) => [row.id, row.campaign_id]));
-  const invoiceById = new Map(locationInvoices.map((row) => [row.id, row]));
 
-  // Inventory tab rows
-  const inventory: LocationDetailInventoryItem[] = invRows
-    .filter((r) => r.tenant_products?.deleted_at == null)
-    .map((r) => {
-      const qty = Number(r.qty_available ?? 0);
-      const rate = Number(r.tenant_products?.daily_sales_rate ?? 0);
-      const days_cover = rate > 0 ? Math.round(qty / rate) : null;
-      const stock_status: LocationStockStatus =
-        qty <= 0
-          ? 'out_of_stock'
-          : r.reorder_point != null && qty <= Number(r.reorder_point)
-          ? 'low_stock'
-          : 'clear';
-      return {
-        tenant_product_id: r.tenant_product_id,
-        product_name: r.tenant_products?.name ?? 'Unknown',
-        brand_name: r.tenant_products?.tenant_brands?.name ?? '—',
-        qty_available: qty,
-        days_cover,
-        last_updated: r.updated_at ?? new Date().toISOString(),
-        stock_status,
-      };
-    })
-    .sort((a, b) => {
-      // Out-of-stock first, then by days_cover asc
-      if (a.stock_status === 'out_of_stock' && b.stock_status !== 'out_of_stock') return -1;
-      if (b.stock_status === 'out_of_stock' && a.stock_status !== 'out_of_stock') return 1;
-      const da = a.days_cover ?? 9999;
-      const db2 = b.days_cover ?? 9999;
-      return da - db2;
-    });
+  // New KPI counts
+  const unpaid_invoice_count = locationInvoices.length; // already filtered to issued/partially_paid
+  const total_invoice_count = invoice_count; // from snapshot or live fallback
+  const open_estimate_count = locationEstimates.filter(
+    (e) => !['cancelled', 'rejected', 'expired', 'invoiced'].includes(e.status),
+  ).length;
+  const total_estimate_count = locationEstimates.length;
 
   // Activity
   const activity: LocationDetailActivityItem[] = (activityRes.data ?? []).map(
@@ -691,23 +565,23 @@ export async function GET(
     meta_strip: {
       gmv_mtd,
       growth_pct,
-      active_buyers,
-      total_buyers,
       outstanding_dues,
       invoice_count,
-      low_stock_skus: low_stock_skus_count,
+      unpaid_invoice_count,
+      total_invoice_count,
+      open_estimate_count,
+      total_estimate_count,
     },
     overview: {
       gmv_trend,
       inventory_health,
       top_buyers,
     },
-    customers,
     orders: currentOrders.map((order) => ({
       order_id: order.id,
       order_number: order.order_number,
       placed_at: order.placed_at,
-      buyer_name: buyerMap.get(order.buyer_id)?.business_name ?? 'Unknown',
+      buyer_name: order.buyer_id ? (buyerMap.get(order.buyer_id)?.business_name ?? 'Unknown') : 'Unknown',
       place_of_supply: order.place_of_supply?.trim() || null,
       location_name: location.name,
       source_kind: order.estimate_id ? 'converted' : order.is_buyer_app_order ? 'buyer_app' : 'direct',
@@ -721,7 +595,7 @@ export async function GET(
       estimate_id: estimate.id,
       estimate_number: estimate.estimate_number,
       issued_at: estimate.estimate_date ?? estimate.created_at,
-      buyer_name: buyerMap.get(estimate.buyer_id)?.business_name ?? 'Unknown',
+      buyer_name: estimate.buyer_id ? (buyerMap.get(estimate.buyer_id)?.business_name ?? 'Unknown') : 'Unknown',
       place_of_supply: estimate.place_of_supply?.trim() || null,
       location_name: location.name,
       source_kind: estimate.is_buyer_app_estimate ? 'buyer_app' : 'seller',
@@ -748,7 +622,7 @@ export async function GET(
         invoice_id: invoice.id,
         invoice_number: invoice.invoice_number,
         issued_at: invoice.invoice_date ?? invoice.created_at,
-        buyer_name: buyerMap.get(invoice.buyer_id)?.business_name ?? 'Unknown',
+        buyer_name: invoice.buyer_id ? (buyerMap.get(invoice.buyer_id)?.business_name ?? 'Unknown') : 'Unknown',
         place_of_supply: invoice.place_of_supply?.trim() || null,
         location_name: location.name,
         source_kind: sourceKind,
@@ -761,10 +635,8 @@ export async function GET(
         status: invoice.status,
       };
     }),
-    inventory,
     activity,
     tab_badges: {
-      customers: total_buyers,
       orders_mtd: Math.max(
         sumNumberField((currentOrdersDailyRes.data ?? []) as Array<Record<string, unknown>>, 'orders_count'),
         currentOrders.length,
@@ -777,7 +649,6 @@ export async function GET(
         sumNumberField((currentInvoicesDailyRes.data ?? []) as Array<Record<string, unknown>>, 'invoices_count'),
         locationInvoices.length,
       ),
-      low_stock_skus: low_stock_skus_count,
     },
   };
 

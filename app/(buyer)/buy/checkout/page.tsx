@@ -6,6 +6,7 @@ import { ChevronRight, MapPin, ShoppingBag } from 'lucide-react';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
+import { useBuyerResolvedProducts } from '@/hooks/useBuyerProducts';
 import { apiFetch } from '@/lib/api-fetch';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
 import { computeBuyerCartTotals } from '@/lib/gst';
@@ -20,16 +21,59 @@ function inr(n: number): string {
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items, clearCart, subtotal, resolvedCampaignId } = useCart();
+  const { items, clearCart, resolvedCampaignId, replaceItems } = useCart();
   const { data: meData } = useBuyerMe();
   const delivery = useBuyerDeliveryOptional();
   const selectedDelivery = delivery?.selected ?? null;
   const gstInclusive = meData?.business_policy.gst_inclusive ?? false;
   const gstRate = meData?.business_policy.gst_rate ?? 18;
+  const reconcileQuery = useBuyerResolvedProducts(
+    items.map((item) => ({
+      tenant_product_id: item.tenant_product_id,
+      qty: item.quantity,
+    })),
+  );
+
+  useEffect(() => {
+    if (!reconcileQuery.data) return;
+    const nextItems = reconcileQuery.data.items.map((product) => {
+      const existing = items.find((item) => item.tenant_product_id === product.tenant_product_id);
+      const quantity = existing?.quantity ?? 1;
+      return {
+        tenant_product_id: product.tenant_product_id,
+        name: product.display_name,
+        brand: product.brand_name ?? undefined,
+        internal_sku: product.internal_sku,
+        image_url: product.image_urls[0],
+        unit_price: product.price,
+        gst_rate: product.gst_rate ?? gstRate,
+        unit: product.default_uom ?? undefined,
+        quantity,
+        line_total: product.price * quantity,
+        tenant_category_id: product.category_id ?? undefined,
+        campaign_id: existing?.campaign_id ?? resolvedCampaignId ?? undefined,
+        stock_status: product.stock_status,
+        on_hand: product.on_hand,
+      };
+    });
+
+    if (JSON.stringify(items) !== JSON.stringify(nextItems)) {
+      replaceItems(nextItems);
+    }
+  }, [gstRate, items, reconcileQuery.data, replaceItems, resolvedCampaignId]);
+
+  const availableItems = useMemo(
+    () => items.filter((item) => item.stock_status !== 'out_of_stock'),
+    [items],
+  );
+  const unavailableItems = useMemo(
+    () => items.filter((item) => item.stock_status === 'out_of_stock'),
+    [items],
+  );
   const totals = useMemo(
     () =>
       computeBuyerCartTotals(
-        items.map((item) => ({
+        availableItems.map((item) => ({
           quantity: item.quantity,
           unit_price: item.unit_price,
           disc_pct: 0,
@@ -38,7 +82,7 @@ export default function CheckoutPage() {
         gstInclusive,
         gstRate,
       ),
-    [items, gstInclusive, gstRate],
+    [availableItems, gstInclusive, gstRate],
   );
   const [notes, setNotes] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -64,17 +108,20 @@ export default function CheckoutPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const nearestRes = await apiFetch(`/api/buyer/nearest-location?lat=${selectedDelivery.lat}&lng=${selectedDelivery.lng}`);
-      const nearest = await nearestRes.json() as { location_id: string | null };
-      if (!nearest.location_id) {
+      const locationId = selectedDelivery.routed_location_id ?? null;
+      if (!locationId) {
         setError('Select a delivery location that can be routed to a warehouse.');
+        return;
+      }
+      if (availableItems.length === 0) {
+        setError('Remove out-of-stock items or choose another delivery location before submitting.');
         return;
       }
       const res = await apiFetch('/api/buyer/estimates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items: items.map(i => ({
+          items: availableItems.map(i => ({
             tenant_product_id: i.tenant_product_id,
             qty: i.quantity,
             unit_price: i.unit_price,
@@ -82,8 +129,8 @@ export default function CheckoutPage() {
             product_name: i.name,
           })),
           notes: notes.trim() || undefined,
-          location_id: nearest.location_id,
-          place_of_supply: deriveBuyerPlaceOfSupply(selectedDelivery),
+          location_id: locationId,
+          place_of_supply: selectedDelivery.place_of_supply ?? deriveBuyerPlaceOfSupply(selectedDelivery),
           campaign_id: resolvedCampaignId ?? undefined,
         }),
       });
@@ -93,7 +140,7 @@ export default function CheckoutPage() {
           estimate_id: data.estimate_id,
           estimate_number: data.estimate_number,
           item_count: items.length,
-          subtotal,
+          subtotal: totals.subtotal,
           tax_amount: totals.tax_amount,
         });
         clearCart();
@@ -152,7 +199,7 @@ export default function CheckoutPage() {
           </p>
 
           <div className="space-y-2">
-            {items.map(item => (
+            {availableItems.map(item => (
               <div key={item.tenant_product_id} className="flex items-center justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-cream-900 truncate">{item.name}</p>
@@ -171,6 +218,21 @@ export default function CheckoutPage() {
                 </span>
               </div>
             ))}
+            {availableItems.length === 0 ? (
+              <p className="text-sm text-cream-600">No deliverable items for this location.</p>
+            ) : null}
+            {unavailableItems.length > 0 ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                <p className="text-sm font-semibold text-red-700">Excluded from inquiry</p>
+                <div className="mt-2 space-y-1">
+                  {unavailableItems.map((item) => (
+                    <p key={item.tenant_product_id} className="truncate text-xs text-red-700">
+                      {item.name} · Out of stock
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div
@@ -293,7 +355,7 @@ export default function CheckoutPage() {
         {/* Submit */}
         <button
           onClick={handleSubmit}
-          disabled={submitting || !selectedDelivery}
+          disabled={submitting || !selectedDelivery || availableItems.length === 0}
           className="w-full h-12 rounded-lg flex items-center justify-center gap-2 text-sm font-semibold text-white transition-opacity disabled:opacity-60"
           style={{ background: 'var(--teal-500)' }}
         >

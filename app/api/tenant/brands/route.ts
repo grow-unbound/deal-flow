@@ -85,7 +85,7 @@ type BrandInventoryRow = {
   tenant_product_id: string;
   qty_available?: number | null;
   reorder_point?: number | null;
-  location_id?: string | null;
+  warehouse_id?: string | null;
 };
 
 const NO_ACCESS_ID = '00000000-0000-0000-0000-000000000000';
@@ -129,6 +129,19 @@ export async function GET(req: NextRequest) {
     const categoryFilter = readArrayParam(req.nextUrl.searchParams, 'categories');
     const cohortFilter = readArrayParam(req.nextUrl.searchParams, 'cohorts');
     const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
+
+    const assistantWarehouseIds = isAssistant && assistantLocationIds.length > 0
+      ? (
+          (
+            await db
+              .schema('app')
+              .from('warehouses')
+              .select('id')
+              .in('location_id', assistantLocationIds)
+              .is('deleted_at', null)
+          ).data ?? []
+        ).map((row: { id: string }) => row.id)
+      : [];
 
     const [
       brandsRes,
@@ -199,19 +212,19 @@ export async function GET(req: NextRequest) {
         .is('deleted_at', null),
       isAssistant
         ? (
-            assistantLocationIds.length > 0
+            assistantWarehouseIds.length > 0
               ? db
                   .schema('app')
                   .from('tenant_inventory')
-                  .select('tenant_product_id, qty_available, reorder_point, location_id')
-                  .in('location_id', assistantLocationIds)
+                  .select('tenant_product_id, qty_available, reorder_point, warehouse_id')
+                  .in('warehouse_id', assistantWarehouseIds)
                   .is('deleted_at', null)
               : Promise.resolve({ data: [] as BrandInventoryRow[], error: null })
           )
         : db
             .schema('app')
             .from('tenant_inventory')
-            .select('tenant_product_id, qty_available, reorder_point, location_id')
+            .select('tenant_product_id, qty_available, reorder_point, warehouse_id')
             .is('deleted_at', null),
       isAssistant
         ? (

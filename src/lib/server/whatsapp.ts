@@ -2,6 +2,7 @@ import { formatWhatsappDestination } from '@/lib/phone';
 import {
   enqueueWhatsAppMessage,
   getPlatformTenantId,
+  lookupApprovedTemplateMeta,
   triggerWhatsAppDispatch,
   type WhatsAppSendPayload,
 } from '@/lib/server/whatsapp-enqueue';
@@ -11,6 +12,7 @@ export interface WhatsappNotificationContext {
   sellerPhone: string;
   sellerName: string;
   sellerLocation: string;
+  buyerFacingSellerName: string;
   buyerPhone: string;
   buyerName: string;
   etaHours: number;
@@ -23,9 +25,14 @@ interface WhatsappTemplateBodyParam {
   parameterName?: string;
 }
 
-const WHATSAPP_TEMPLATE_LOCALE = 'en';
 const WHATSAPP_OTP_TEMPLATE_LOCALE = 'en_US';
 const WHATSAPP_LOGIN_PRODUCT_NAME = 'Login to Yukti';
+const FALLBACK_TEMPLATE_LOCALE = 'en';
+
+async function resolveTemplateLocale(templateName: string): Promise<string> {
+  const meta = await lookupApprovedTemplateMeta(templateName);
+  return meta?.locale ?? FALLBACK_TEMPLATE_LOCALE;
+}
 
 interface EnqueueTemplateContext {
   tenantId: string;
@@ -90,10 +97,11 @@ export async function sendOrderReceivedSeller(
   itemCount: number,
 ): Promise<void> {
   if (!ctx.tenantId) return;
+  const locale = await resolveTemplateLocale('order_received_seller');
   await enqueueWhatsappTemplate(
     ctx.sellerPhone,
     'order_received_seller',
-    WHATSAPP_TEMPLATE_LOCALE,
+    locale,
     [
       { text: ctx.sellerLocation, parameterName: 'seller_location' },
       { text: ctx.buyerName, parameterName: 'buyer_name' },
@@ -123,17 +131,17 @@ export async function sendOrderReceivedBuyer(
   itemCount: number,
 ): Promise<void> {
   if (!ctx.tenantId) return;
+  const locale = await resolveTemplateLocale('order_received_buyer');
   await enqueueWhatsappTemplate(
     ctx.buyerPhone,
     'order_received_buyer',
-    WHATSAPP_TEMPLATE_LOCALE,
+    locale,
     [
       { text: ctx.buyerName, parameterName: 'buyer_name' },
       { text: String(itemCount), parameterName: 'item_count' },
       { text: orderNumber, parameterName: 'order_number' },
       { text: String(Math.round(totalAmount / 100)), parameterName: 'total_amount' },
-      { text: ctx.sellerName, parameterName: 'seller_name' },
-      { text: ctx.sellerLocation, parameterName: 'seller_location' },
+      { text: ctx.buyerFacingSellerName, parameterName: 'seller_name' },
       { text: String(ctx.etaHours), parameterName: 'eta' },
     ],
     orderId,
@@ -156,10 +164,11 @@ export async function sendRequestReceivedSeller(
   itemCount: number,
 ): Promise<void> {
   if (!ctx.tenantId) return;
+  const locale = await resolveTemplateLocale('request_received_seller');
   await enqueueWhatsappTemplate(
     ctx.sellerPhone,
     'request_received_seller',
-    WHATSAPP_TEMPLATE_LOCALE,
+    locale,
     [
       { text: ctx.sellerLocation, parameterName: 'seller_location' },
       { text: ctx.buyerName, parameterName: 'buyer_name' },
@@ -189,17 +198,17 @@ export async function sendRequestReceivedBuyer(
   itemCount: number,
 ): Promise<void> {
   if (!ctx.tenantId) return;
+  const locale = await resolveTemplateLocale('request_received_buyer');
   await enqueueWhatsappTemplate(
     ctx.buyerPhone,
     'request_received_buyer',
-    WHATSAPP_TEMPLATE_LOCALE,
+    locale,
     [
       { text: ctx.buyerName, parameterName: 'buyer_name' },
       { text: String(itemCount), parameterName: 'item_count' },
       { text: estimateNumber, parameterName: 'estimate_number' },
       { text: String(Math.round(totalAmount / 100)), parameterName: 'total_amount' },
-      { text: ctx.sellerName, parameterName: 'seller_name' },
-      { text: ctx.sellerLocation, parameterName: 'seller_location' },
+      { text: ctx.buyerFacingSellerName, parameterName: 'seller_name' },
       { text: String(ctx.etaHours), parameterName: 'eta' },
     ],
     estimateId,

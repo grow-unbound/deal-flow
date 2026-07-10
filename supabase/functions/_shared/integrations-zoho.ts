@@ -5,6 +5,7 @@ import {
   type ZohoCredentialsInput,
   type ZohoIntegrationTypeId,
 } from '../../../src/lib/integrations/contracts.ts';
+import { logCheckpoint, startTimer } from './sync-log.ts';
 
 export interface IntegrationSyncPhaseDefinition {
   id: string;
@@ -85,6 +86,16 @@ const PRICE_LIST_RESPONSE_KEYS = ['pricebooks', 'pricelists'] as const;
 const ZOHO_REQUEST_RETRYABLE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const ZOHO_REQUEST_MAX_ATTEMPTS = 3;
 const ZOHO_REQUEST_TIMEOUT_MS = 30_000;
+
+// Zoho Books/Inventory API limits (confirmed via Zoho's own docs, July 2026):
+// 10 concurrent API calls per org (soft limit, 429 above it), 100 requests
+// per minute per org (hard cap, does not scale with plan). Any caller doing
+// many individual per-record detail fetches (item-location lookups,
+// estimate/order/invoice line-item hydration) should batch at this
+// concurrency and pace batches at this interval — 10 req / 6s sustains
+// <=100/min while still using the full concurrent allowance per batch.
+export const ZOHO_DETAIL_FETCH_CONCURRENCY = 10;
+export const ZOHO_DETAIL_FETCH_BATCH_PACE_MS = 6_000;
 
 // Indian Financial Year starts April 1. For transactional data we load from:
 //   Apr–Jun (early in FY)  → Jan 1 of this calendar year (extra context quarter)
@@ -242,29 +253,59 @@ function retryDelayMs(attempt: number, response?: Response): number {
   return 1000 * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 200);
 }
 
-async function fetchZohoResponse(url: string, init: RequestInit, retryLabel: string): Promise<Response> {
+// Lowest-level chokepoint for every outbound Zoho call (token refresh, list
+// pages, per-item detail fetches). Logs each attempt's start/end so a stall
+// anywhere upstream (a page fetch, a batch of item-detail lookups) can be
+// traced down to exactly which attempt on which URL never returned, and
+// whether it was a real network hang (no :done at all — the 30s
+// AbortController itself would then also be suspect) vs. a slow-but-completing
+// call vs. a retry loop chewing through backoff on repeated 429/5xx.
+async function fetchZohoResponse(
+  url: string,
+  init: RequestInit,
+  retryLabel: string,
+  onKeepAlive?: () => void,
+): Promise<Response> {
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= ZOHO_REQUEST_MAX_ATTEMPTS; attempt += 1) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new Error(`Zoho ${retryLabel} request timed out after ${ZOHO_REQUEST_TIMEOUT_MS}ms.`)), ZOHO_REQUEST_TIMEOUT_MS);
+    const timer = setTimeout(() => {
+      logCheckpoint(null, 'zoho-request', `${retryLabel}:attempt${attempt}:abort`, { reason: 'timeout', timeoutMs: ZOHO_REQUEST_TIMEOUT_MS });
+      controller.abort(new Error(`Zoho ${retryLabel} request timed out after ${ZOHO_REQUEST_TIMEOUT_MS}ms.`));
+    }, ZOHO_REQUEST_TIMEOUT_MS);
+    const attemptDone = startTimer(null, 'zoho-request', `${retryLabel}:attempt${attempt}`);
 
     try {
       const response = await fetch(url, {
         ...init,
         signal: controller.signal,
       });
+      attemptDone({ status: response.status });
+      // Touch on every completed call, not just retries — callers making many
+      // sequential Zoho requests per page (e.g. per-item detail lookups in
+      // fetchAndPersistMissingItemLocations) can run for minutes on genuine,
+      // successful, non-retried calls with no other write in between. Without
+      // this, that looks identical to a dead worker to anything checking
+      // heartbeat_at.
+      onKeepAlive?.();
       if (attempt < ZOHO_REQUEST_MAX_ATTEMPTS && isRetryableZohoResponseStatus(response.status)) {
-        await delay(retryDelayMs(attempt, response));
+        const delayMs = retryDelayMs(attempt, response);
+        logCheckpoint(null, 'zoho-request', `${retryLabel}:retrying`, { attempt, status: response.status, delayMs });
+        await delay(delayMs);
         continue;
       }
       return response;
     } catch (error) {
+      attemptDone({ error: error instanceof Error ? error.message : String(error) });
       lastError = error;
       if (attempt >= ZOHO_REQUEST_MAX_ATTEMPTS || !isRetryableZohoRequestError(error)) {
         throw error;
       }
-      await delay(retryDelayMs(attempt));
+      onKeepAlive?.();
+      const delayMs = retryDelayMs(attempt);
+      logCheckpoint(null, 'zoho-request', `${retryLabel}:retrying`, { attempt, error: error instanceof Error ? error.message : String(error), delayMs });
+      await delay(delayMs);
     } finally {
       clearTimeout(timer);
     }
@@ -374,6 +415,7 @@ export function createZohoAdapter(
   integrationTypeId: ZohoIntegrationTypeId,
   rawCredentials: Record<string, unknown>,
   tokenCache?: ZohoTokenCacheProvider,
+  onKeepAlive?: () => void,
 ) {
   const credentials = normalizeZohoCredentials(integrationTypeId, rawCredentials);
   let cachedToken: string | null = null;
@@ -394,7 +436,7 @@ export function createZohoAdapter(
     url.searchParams.set('client_secret', credentials.clientSecret);
     url.searchParams.set('refresh_token', credentials.refreshToken);
 
-    const response = await fetchZohoResponse(url.toString(), { method: 'POST' }, 'token refresh');
+    const response = await fetchZohoResponse(url.toString(), { method: 'POST' }, 'token refresh', onKeepAlive);
     const payload = await parseZohoResponse(response);
     const accessToken = asString(payload.access_token);
 
@@ -436,7 +478,7 @@ export function createZohoAdapter(
         'Content-Type': 'application/json',
       },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
-    }, init.path);
+    }, init.path, onKeepAlive);
 
     if (response.status === 401 && retryOnUnauthorized) {
       cachedToken = null;

@@ -14,11 +14,9 @@ import { useLocationDetail } from '@/hooks/useLocations';
 import { useTenantLocations } from '@/hooks/useTenantLocations';
 import { LocationFormSheet } from '@/components/seller/settings/LocationFormSheet';
 import { formatCompactInr } from '@/lib/utils';
-import { LocationCustomersTab } from './LocationCustomersTab';
 import { LocationOrdersTab } from './LocationOrdersTab';
 import { LocationEstimatesTab } from './LocationEstimatesTab';
 import { LocationInvoicesTab } from './LocationInvoicesTab';
-import { LocationInventoryTab } from './LocationInventoryTab';
 import { LocationActivityTab } from './LocationActivityTab';
 
 const LocationOverviewTab = dynamic(
@@ -26,7 +24,7 @@ const LocationOverviewTab = dynamic(
   { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
 );
 
-type TabId = 'performance' | 'customers' | 'orders' | 'estimates' | 'invoices' | 'inventory' | 'activity';
+type TabId = 'performance' | 'orders' | 'estimates' | 'invoices' | 'activity';
 
 interface LocationDetailPageProps {
   id: string;
@@ -147,22 +145,11 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
   const meta = data.meta_strip;
   const tabs = [
     { id: 'performance', label: 'Performance' },
-    { id: 'customers', label: 'Customers', badge: data.tab_badges.customers },
     { id: 'orders', label: 'Orders', badge: data.tab_badges.orders_mtd },
     { id: 'estimates', label: 'Estimates', badge: data.tab_badges.estimates_mtd },
     { id: 'invoices', label: 'Invoices', badge: data.tab_badges.invoices_mtd },
-    {
-      id: 'inventory',
-      label: 'Inventory',
-      badge: data.tab_badges.low_stock_skus > 0 ? data.tab_badges.low_stock_skus : undefined,
-    },
     { id: 'activity', label: 'Activity' },
   ];
-
-  const skuSubLabel =
-    meta.low_stock_skus > 0
-      ? `${meta.low_stock_skus} SKUs tracked`
-      : `${data.overview.inventory_health.active_skus} SKUs tracked`;
 
   const tiles = [
     {
@@ -176,9 +163,9 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
       ),
     },
     {
-      label: 'Active buyers',
-      value: `${meta.active_buyers}`,
-      sub: `of ${meta.total_buyers} assigned`,
+      label: 'Unpaid invoices',
+      value: `${meta.unpaid_invoice_count}`,
+      sub: `of ${meta.total_invoice_count} total`,
     },
     {
       label: 'Outstanding dues',
@@ -189,9 +176,9 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
         ) : undefined,
     },
     {
-      label: 'Low-stock SKUs',
-      value: `${meta.low_stock_skus}`,
-      sub: '< 14d cover',
+      label: 'Open estimates',
+      value: `${meta.open_estimate_count}`,
+      sub: `of ${meta.total_estimate_count} this period`,
     },
   ];
 
@@ -214,8 +201,6 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
           'Branch',
           data.phone_number ?? 'No phone',
           `${data.associated_users.length} associated users`,
-          `${data.tab_badges.customers} buyers`,
-          skuSubLabel,
         ]}
         actions={
           <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setSheetOpen(true)}>
@@ -236,11 +221,9 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
       />
 
       {tab === 'performance' ? <LocationOverviewTab data={data.overview} /> : null}
-      {tab === 'customers' ? <LocationCustomersTab customers={data.customers} /> : null}
       {tab === 'orders' ? <LocationOrdersTab rows={data.orders} /> : null}
       {tab === 'estimates' ? <LocationEstimatesTab rows={data.estimates} /> : null}
       {tab === 'invoices' ? <LocationInvoicesTab rows={data.invoices} /> : null}
-      {tab === 'inventory' ? <LocationInventoryTab inventory={data.inventory} /> : null}
       {tab === 'activity' ? <LocationActivityTab activity={data.activity} /> : null}
 
       <LocationFormSheet open={sheetOpen} onOpenChange={setSheetOpen} editingLocation={editingLocation} />

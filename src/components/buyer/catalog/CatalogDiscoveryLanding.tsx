@@ -11,6 +11,7 @@ import { BuyerCatalogLandingHeader } from '@/components/buyer/layout/BuyerCatalo
 import { apiFetch } from '@/lib/api-fetch';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
 import { useBuyerCatalogLandingData } from '@/hooks/useBuyerProducts';
+import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
 function formatProductCount(count: number): string {
@@ -18,6 +19,7 @@ function formatProductCount(count: number): string {
 }
 
 export function CatalogDiscoveryLanding(): React.ReactNode {
+  const delivery = useBuyerDeliveryOptional();
   const landingQuery = useBuyerCatalogLandingData();
   const categories = landingQuery.data?.categories ?? [];
   const brands = landingQuery.data?.brands ?? [];
@@ -30,6 +32,11 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
   const [searchItems, setSearchItems] = React.useState<BuyerCatalogItem[]>([]);
   const [searchLoading, setSearchLoading] = React.useState(false);
   const [searchError, setSearchError] = React.useState(false);
+  const stockSignature = [
+    delivery?.selected?.nearest_warehouse_id ?? 'no-warehouse',
+    delivery?.selected?.routed_location_id ?? 'no-location',
+    delivery?.selected?.place_id ?? 'no-delivery',
+  ].join(':');
 
   React.useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 280);
@@ -64,7 +71,7 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
     return () => {
       cancelled = true;
     };
-  }, [debouncedSearch]);
+  }, [debouncedSearch, stockSignature]);
 
   const isSearching = debouncedSearch.length > 0;
 

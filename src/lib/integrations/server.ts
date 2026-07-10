@@ -74,6 +74,7 @@ const COVERAGE_TABLES = [
   { key: 'brands', table: 'tenant_brands' },
   { key: 'categories', table: 'tenant_categories' },
   { key: 'pricelists', table: 'price_lists' },
+  { key: 'inventory', table: 'tenant_inventory' },
   { key: 'estimates', table: 'estimates' },
   { key: 'orders', table: 'orders' },
   { key: 'invoices', table: 'invoices' },
@@ -136,6 +137,7 @@ function buildCoverageTotals(counts: Record<string, number>): import('@/types/in
     brands: counts.brands ?? 0,
     categories: counts.categories ?? 0,
     pricelists: counts.pricelists ?? 0,
+    inventory: counts.inventory ?? 0,
     estimates: counts.estimates ?? 0,
     orders: counts.orders ?? 0,
     invoices: counts.invoices ?? 0,
@@ -367,6 +369,17 @@ async function loadAggregateFreshness(
 }
 
 async function countActiveRows(db: DbClient, table: string, tenantId: string) {
+  if (table === 'tenant_inventory') {
+    // tenant_inventory has no tenant_id column — it scopes to a tenant via warehouse_id -> warehouses.tenant_id.
+    const { data: warehouses, error: warehouseErr } = await db.schema('app').from('warehouses').select('id').eq('tenant_id', tenantId).is('deleted_at', null);
+    if (warehouseErr) throw warehouseErr;
+    const warehouseIds = (warehouses ?? []).map((row: { id: string }) => row.id);
+    if (warehouseIds.length === 0) return 0;
+    const { count, error } = await db.schema('app').from('tenant_inventory').select('id', { count: 'exact', head: true }).in('warehouse_id', warehouseIds).is('deleted_at', null);
+    if (error) throw error;
+    return count ?? 0;
+  }
+
   const { count, error } = await db.schema('app').from(table).select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).is('deleted_at', null);
   if (error) throw error;
   return count ?? 0;
@@ -514,6 +527,12 @@ function extractJobMetadata(row: Record<string, unknown>): {
   };
 }
 
+function isDegradedSyncRun(row: Record<string, unknown>): boolean {
+  const progress = coerceRecord(row.progress);
+  const progressMeta = coerceRecord(progress.meta);
+  return progressMeta.degraded === true;
+}
+
 function mergePostSyncWarnings(row: Record<string, unknown>) {
   const summary = coerceRecord(row.summary);
   const warnings = Array.isArray(summary.warnings)
@@ -523,6 +542,14 @@ function mergePostSyncWarnings(row: Record<string, unknown>) {
   if (isPostSyncRebuildFailed(row)) {
     const phase = typeof row.phase === 'string' && row.phase.length > 0 ? row.phase : 'sync';
     const message = `Post-sync aggregate rebuild failed after ${phase}. Repair aggregates or run analysis to refresh metrics.`;
+    if (!warnings.includes(message)) warnings.push(message);
+  }
+
+  // Never let a run with a skipped phase read as plain success — this is the
+  // direct fix for failure propagation that used to be silent (master
+  // reported 'completed' even when a phase failed under skip_failed_phases).
+  if (isDegradedSyncRun(row)) {
+    const message = 'Sync completed with issues — one or more phases were skipped after failing. Check phase details below.';
     if (!warnings.includes(message)) warnings.push(message);
   }
 
@@ -742,7 +769,7 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
   ] = await Promise.all([
     db.schema('catalog').from('integration_types').select('id, display_name, description, logo_url, auth_schema, capabilities, connectivity_mode, is_active').eq('is_active', true).order('display_name'),
     db.schema('app').from('tenant_integrations').select('id, tenant_id, integration_type_id, status, config, last_health_check_at, health_status, connected_at, connected_by, created_at, updated_at').eq('tenant_id', tenantId).is('deleted_at', null),
-    db.schema('app').from('integration_sync_jobs').select('id, tenant_integration_id, job_type, phase, status, progress, error_log, summary, since_date, started_at, completed_at, created_at').eq('tenant_id', tenantId).is('deleted_at', null).order('created_at', { ascending: false }),
+    db.schema('app').from('integration_sync_jobs').select('id, tenant_integration_id, job_type, phase, status, progress, error_log, summary, since_date, started_at, completed_at, created_at, master_job_id, heartbeat_at, records_synced').eq('tenant_id', tenantId).is('deleted_at', null).order('created_at', { ascending: false }),
     db.schema('app').from('integration_data_flows').select('id, tenant_integration_id, entity_type, direction, trigger_type, schedule, webhook_id, field_mappings, filters, is_active, last_run_at').eq('tenant_id', tenantId).is('deleted_at', null),
     db.schema('app').from('integration_webhooks').select('tenant_integration_id, entity_type, event_types, status, is_active, last_received_at, last_verified_at').eq('tenant_id', tenantId).is('deleted_at', null),
     db.schema('app').from('integration_webhook_events').select('tenant_integration_id, entity_type, processing_status, received_at').eq('tenant_id', tenantId).gte('received_at', sinceIso).is('deleted_at', null),

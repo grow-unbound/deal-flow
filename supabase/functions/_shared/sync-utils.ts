@@ -17,6 +17,7 @@ import {
   buildPersistOptions,
 } from './integrations-persist.ts';
 import { getMasterJobIdFromProgress } from '../../../src/lib/integrations/sync-orchestration.ts';
+import { logCheckpoint, startTimer } from './sync-log.ts';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,7 @@ export interface SyncRequest {
   page_from?: number | null;
   per_page?: number | null;
   since?: string | null;
+  step?: string | null;
 }
 
 // ── Environment ─────────────────────────────────────────────────────────────
@@ -240,9 +242,14 @@ export async function updatePhaseJob(
     return;
   }
 
+  const now = new Date().toISOString();
   const update: Record<string, unknown> = {
     status: patch.status,
-    updated_at: new Date().toISOString(),
+    updated_at: now,
+    // Proves the worker is alive as of this write. Staleness detection reads
+    // this, not updated_at, since a single Zoho page fetch can legitimately
+    // stall for ~150s mid-retry with no progress write in between.
+    heartbeat_at: now,
   };
 
   if (patch.records_synced !== undefined) update.records_synced = patch.records_synced;
@@ -254,6 +261,27 @@ export async function updatePhaseJob(
 
   if (patch.next_cursor !== undefined) {
     update.progress = { ...(patch.progress ?? {}), next_cursor: patch.next_cursor };
+  }
+
+  if (update.progress !== undefined && !(update.progress as Record<string, unknown>).meta) {
+    // buildProgress() (sync-utils.ts) builds a fresh object with no `meta`
+    // key — writing it as-is wipes progress.meta.sync_run_id/master_job_id
+    // that createSlaveJob set at row creation. That defeats
+    // trg_post_sync_rebuild's skip-guard (it checks NEW.progress->'meta'
+    // for those fields to recognize an orchestrated slave and skip the
+    // redundant per-phase rebuild), so post_sync_rebuild ends up running
+    // synchronously on every ordinary phase completion instead of only via
+    // the dedicated analysis phase — and can blow past statement_timeout.
+    const { data: existing } = await admin
+      .schema('app')
+      .from('integration_sync_jobs')
+      .select('progress')
+      .eq('id', jobId)
+      .maybeSingle();
+    const existingMeta = (existing?.progress as Record<string, unknown> | null)?.meta;
+    if (existingMeta) {
+      update.progress = { ...(update.progress as Record<string, unknown>), meta: existingMeta };
+    }
   }
 
   if (patch.error_message) {
@@ -352,7 +380,7 @@ function labelizeEntity(value: string): string {
 
 // Maps entity type to its phase group for the 3-phase UI model
 function getPhaseGroup(entityType: string): { group: string; groupLabel: string } {
-  if (['locations', 'products', 'pricelists', 'customers'].includes(entityType)) {
+  if (['locations', 'products', 'inventory', 'pricelists', 'customers', 'contact_persons'].includes(entityType)) {
     return { group: 'reference', groupLabel: 'Reference Data' };
   }
   if (['estimates', 'orders', 'invoices', 'transaction_line_items'].includes(entityType)) {
@@ -376,16 +404,30 @@ export async function runPhaseSync(
 ): Promise<SyncResult> {
   const zohoTypeId = assertZohoIntegration(integration.integration_type_id);
   const tokenCache = createDbTokenCache(admin, integration.id);
-  const adapter = createZohoAdapter(zohoTypeId, credentials, tokenCache);
+  const jobIdForHeartbeat = opts.jobId;
+  const touchHeartbeat = jobIdForHeartbeat
+    ? () => {
+      // Fire-and-forget: a retry-loop keepalive must not block or fail the
+      // Zoho request it's proving liveness for.
+      admin.schema('app').from('integration_sync_jobs')
+        .update({ heartbeat_at: new Date().toISOString() })
+        .eq('id', jobIdForHeartbeat)
+        .then(() => {}, () => {});
+    }
+    : undefined;
+  const adapter = createZohoAdapter(zohoTypeId, credentials, tokenCache, touchHeartbeat);
+  logCheckpoint(opts.jobId, phase.entityType, 'runPhaseSync:entered');
 
   const startedAt = new Date().toISOString();
   const budgetStart = Date.now();
   const { group: phaseGroup, groupLabel: phaseGroupLabel } = getPhaseGroup(phase.entityType);
+  const resolveOptionsDone = startTimer(opts.jobId, phase.entityType, 'resolvePersistOptionsForJob');
   const { jobType: resolvedJobType, persistOptions } = await resolvePersistOptionsForJob(
     admin,
     opts.jobId,
     phase.entityType,
   );
+  resolveOptionsDone();
   const effectiveJobType = opts.jobType ?? resolvedJobType ?? undefined;
 
   if (opts.jobId && await isSyncJobCancelled(admin, opts.jobId)) {
@@ -446,10 +488,13 @@ export async function runPhaseSync(
     // Time-budget check: stop before Supabase's 150s hard limit
     if (Date.now() - budgetStart > TIME_BUDGET_MS) break;
 
+    const fetchDone = startTimer(opts.jobId, phase.entityType, `fetch:page${pagesFetched + 1}`);
     const page = await adapter.fetchPhasePage(phase, cursor, opts.since ?? null, effectiveJobType);
+    fetchDone({ records: page.records.length, hasMore: page.hasMore });
 
     if (page.records.length > 0) {
       const importActorId = resolveSyncImportActorId(integration);
+      const persistDone = startTimer(opts.jobId, phase.entityType, `persist:page${pagesFetched + 1}`);
       const result: PersistResult = await persistZohoEntityPage(
         admin,
         integration.tenant_id,
@@ -461,6 +506,7 @@ export async function runPhaseSync(
         adapter,
         persistOptions,
       );
+      persistDone({ created: result.created, updated: result.updated, skipped: result.skipped });
       const pageSynced = result.created + result.updated;
       totalSynced += pageSynced;
       // Records not created/updated/skipped are treat as failed
@@ -615,5 +661,6 @@ export async function parseSyncRequest(req: Request): Promise<SyncRequest> {
     page_from: typeof body.page_from === 'number' ? body.page_from : null,
     per_page: typeof body.per_page === 'number' ? body.per_page : null,
     since: typeof body.since === 'string' ? body.since : null,
+    step: typeof body.step === 'string' ? body.step : null,
   };
 }

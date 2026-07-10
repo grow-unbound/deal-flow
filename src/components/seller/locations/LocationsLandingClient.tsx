@@ -251,9 +251,10 @@ function LocationsLandingContent({
           <InsightStrip4
             tiles={[
               {
-                label: 'Active locations',
-                value: `${kpis.active_locations}`,
-                sub: `${kpis.total_locations} total branches / godowns`,
+                label: 'Unpaid invoices',
+                value: `${kpis.unpaid_invoice_count}`,
+                sub: `of ${kpis.total_invoice_count} total`,
+                tone: kpis.unpaid_invoice_count > 0 ? 'warn' : undefined,
               },
               {
                 label: 'Outstanding dues',
@@ -262,10 +263,9 @@ function LocationsLandingContent({
                 tone: kpis.outstanding_dues_total > 0 ? 'warn' : undefined,
               },
               {
-                label: 'Low-stock locations',
-                value: `${kpis.low_stock_locations}`,
-                sub: '< 7d cover on key SKUs',
-                tone: kpis.low_stock_locations > 0 ? 'warn' : undefined,
+                label: 'Open estimates',
+                value: `${kpis.open_estimate_count}`,
+                sub: `of ${kpis.total_estimate_count} this period`,
               },
               {
                 label: 'Top location share',
@@ -278,15 +278,15 @@ function LocationsLandingContent({
           <V3CalloutPanel
             items={[
               {
-                kind: 'risk',
-                eyebrow: 'Stock critical',
-                hint: `${landingData.callouts.stock_critical.length} locations`,
-                rows: landingData.callouts.stock_critical.map((row) => ({
+                kind: 'info',
+                eyebrow: 'Conversions',
+                hint: `${landingData.callouts.conversions.length} estimates expiring`,
+                rows: landingData.callouts.conversions.map((row) => ({
                   initials: row.initials,
-                  hue: 'ember' as const,
+                  hue: 'teal' as const,
                   name: row.name,
-                  reason: `${row.critical_sku_count} SKUs critical`,
-                  trailing: <StatusTag tone="danger" label="Stock out" />,
+                  reason: `${row.estimate_number} · exp in ${row.expires_in_days}d`,
+                  trailing: formatCompactInr(row.total_amount ?? 0),
                 })),
               },
               {

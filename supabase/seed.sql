@@ -688,59 +688,75 @@ INSERT INTO app.whatsapp_rate_card (meta_category, meta_cost_inr, credits_per_me
 VALUES
   ('utility',        0.1150, 1),
   ('authentication', 0.1150, 1),
-  ('marketing',      0.8631, 4);
+  ('marketing',      0.8631, 6);
 
 -- Platform-managed transactional templates (already approved with Meta).
 -- tenant_id = NULL means these are global/platform templates.
 INSERT INTO app.whatsapp_templates (
   tenant_id, meta_template_name, meta_category, use_case, locale,
-  body, variables, button_config, approval_status, is_platform_managed
+  body, variables, button_config, header_config, footer_text, buttons_config,
+  approval_status, is_platform_managed, is_broadcast_template
 ) VALUES
 (
   NULL, 'login_otp', 'authentication', 'otp_login', 'en_US',
   E'OTP Code: {{1}}. This is your OTP code for {{2}}. For your security, do not share this code.\n\nIf you have any concerns or questions, contact us at {{3}}.',
   '[{"key":"otp","description":"OTP code"},{"key":"product_name","description":"Product/app name"},{"key":"support_number","description":"Support contact number"}]'::jsonb,
-  NULL, 'approved', true
+  NULL, NULL, 'Powered by Yukti', NULL,
+  'approved', true, false
 ),
 (
-  NULL, 'order_received_seller', 'utility', 'order_notification', 'en',
-  E'Hi {{seller_location}} team,\n\nThere is a new order for your location. Here are the details.\n\nCustomer Name: {{buyer_name}}\nPhone Number: {{buyer_phone_number}}\nOrder Number: {{order_number}}\nTotal Amount: ₹{{total_amount}} ({{item_count}} items)\n\nPlease contact the buyer in the next {{eta}} hours.',
+  NULL, 'order_received_seller', 'utility', 'order_notification', 'en_IN',
+  E'Hi {{seller_location}} team,\n\nThere is a new order for your location. Here are the details.\n\nCustomer Name: *{{buyer_name}}*\nPhone Number: {{buyer_phone_number}}\nOrder Number: {{order_number}}\nTotal Amount: *₹{{total_amount}} ({{item_count}} items)*\n\nPlease contact the buyer in the next {{eta}} hours.',
   '[{"key":"seller_location","description":"Seller location/warehouse name"},{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"buyer_phone_number","description":"Buyer phone number"},{"key":"order_number","description":"Order reference number"},{"key":"total_amount","description":"Order total in INR"},{"key":"item_count","description":"Number of line items"},{"key":"eta","description":"Response time commitment in hours"}]'::jsonb,
-  '{"type":"url","url_template":"https://app.useyukti.in/estimates/{{1}}","variable_source":"order_id"}'::jsonb,
-  'approved', true
+  '{"type":"url","url_template":"https://app.useyukti.in/sales-orders/{{1}}","variable_source":"order_id"}'::jsonb,
+  '{"format":"text","text":"New Order received"}'::jsonb, 'Powered by Yukti',
+  '[{"type":"url","index":"0","url_template":"https://app.useyukti.in/sales-orders/{{1}}","variable_source":"order_id"}]'::jsonb,
+  'approved', true, false
 ),
 (
-  NULL, 'order_received_buyer', 'utility', 'order_notification', 'en',
-  E'Hi {{buyer_name}},\n\nWe received your order for {{item_count}} items. Here are your details.\n\nOrder Number: {{order_number}}\nTotal Amount: ₹{{total_amount}}\n\nOur {{seller_name}} team from {{seller_location}} will contact you in {{eta}} hours.',
-  '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"item_count","description":"Number of line items"},{"key":"order_number","description":"Order reference number"},{"key":"total_amount","description":"Order total in INR"},{"key":"seller_name","description":"Seller business name"},{"key":"seller_location","description":"Seller location/warehouse name"},{"key":"eta","description":"Expected response time in hours"}]'::jsonb,
-  '{"type":"url","url_template":"https://app.useyukti.in/buy/estimates/{{1}}","variable_source":"order_id"}'::jsonb,
-  'approved', true
+  NULL, 'order_received_buyer', 'utility', 'order_notification', 'en_IN',
+  E'Hi {{buyer_name}},\n\nWe received your order for *{{item_count}} items*. Here are your details.\n\nOrder Number: *{{order_number}}*\nTotal Amount: *₹{{total_amount}}*\n\nOur {{seller_name}} team will contact you in {{eta}} hours.',
+  '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"item_count","description":"Number of line items"},{"key":"order_number","description":"Order reference number"},{"key":"total_amount","description":"Order total in INR"},{"key":"seller_name","description":"Seller business name"},{"key":"eta","description":"Expected response time in hours"}]'::jsonb,
+  '{"type":"url","url_template":"https://app.useyukti.in/buy/sales-orders/{{1}}","variable_source":"order_id"}'::jsonb,
+  '{"format":"text","text":"Order received"}'::jsonb, 'Powered by Yukti',
+  '[{"type":"url","index":"0","url_template":"https://app.useyukti.in/buy/sales-orders/{{1}}","variable_source":"order_id"}]'::jsonb,
+  'approved', true, false
 ),
 (
   NULL, 'request_received_seller', 'utility', 'estimate_notification', 'en',
   E'Hi {{seller_location}} team,\n\nThere is a new request for your location. Here are the details.\n\nCustomer Name: *{{buyer_name}}*\nPhone Number: {{buyer_phone_number}}\nEstimate Number: {{request_number}}\nTotal Amount: *₹{{total_amount}} ({{item_count}} items)*\n\nPlease contact the buyer in the next {{eta}} hours.',
   '[{"key":"seller_location","description":"Seller location/warehouse name"},{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"buyer_phone_number","description":"Buyer phone number"},{"key":"request_number","description":"Estimate/request reference number"},{"key":"total_amount","description":"Request total in INR"},{"key":"item_count","description":"Number of line items"},{"key":"eta","description":"Response time commitment in hours"}]'::jsonb,
-  '{"type":"url","url_template":"https://app.useyukti.in/sales-orders/{{1}}","variable_source":"estimate_id"}'::jsonb,
-  'approved', true
+  '{"type":"url","url_template":"https://app.useyukti.in/estimates/{{1}}","variable_source":"estimate_id"}'::jsonb,
+  '{"format":"text","text":"New request received"}'::jsonb, 'Powered by Yukti',
+  '[{"type":"url","index":"0","url_template":"https://app.useyukti.in/estimates/{{1}}","variable_source":"estimate_id"}]'::jsonb,
+  'approved', true, false
 ),
 (
   NULL, 'request_received_buyer', 'utility', 'estimate_notification', 'en',
-  E'Hello *{{buyer_name}}*,\n\nWe received your request for *{{item_count}} items*. Here are your details.\n\nRequest Number: *{{estimate_number}}*\nTotal Amount: *₹{{total_amount}}*\n\nOur *{{seller_name}}* team will contact you in {{eta}} hours.',
+  E'Hi *{{buyer_name}}*,\n\nWe received your request for *{{item_count}} items*. Here are your details.\n\nRequest Number: *{{estimate_number}}*\nTotal Amount: *₹{{total_amount}}*\n\nOur *{{seller_name}}* team will contact you in {{eta}} hours.',
   '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"item_count","description":"Number of line items"},{"key":"estimate_number","description":"Estimate/request reference number"},{"key":"total_amount","description":"Request total in INR"},{"key":"seller_name","description":"Seller business name and location"},{"key":"eta","description":"Expected response time in hours"}]'::jsonb,
-  '{"type":"url","url_template":"https://app.useyukti.in/buy/sales-orders/{{1}}","variable_source":"estimate_id"}'::jsonb,
-  'approved', true
+  '{"type":"url","url_template":"https://app.useyukti.in/buy/estimates/{{1}}","variable_source":"estimate_id"}'::jsonb,
+  '{"format":"text","text":"Request received"}'::jsonb, 'Powered by Yukti',
+  '[{"type":"url","index":"0","url_template":"https://app.useyukti.in/buy/estimates/{{1}}","variable_source":"estimate_id"}]'::jsonb,
+  'approved', true, false
 ),
 (
   NULL, 'buyer_payment_reminder', 'utility', 'payment_reminder', 'en',
-  E'Hello {{buyer_name}},\n\nThis is a payment reminder from *{{seller_name}}* on {{due_invoice_count}} invoices.\n\nAmount Due: *₹{{outstanding_amount}} ({{due_status}})*\nContact: {{seller_phone_number}}\n\nCheck your dues and pay at the earliest.',
-  '[{"key":"buyer_name","description":"Buyer contact or business name"}, {"key":"seller_name","description":"Seller business name"}, {"key":"due_invoice_count","description":"Number of due invoices"},{"key":"outstanding_amount","description":"Outstanding amount in INR"},{"key":"due_status","description":"Due or overdue by X days status"},{"key":"seller_phone_number","description":"Seller phone number"}]'::jsonb,
+  E'Hi {{buyer_name}},\n\nThis is a payment reminder from *{{seller_name}}* on {{due_invoice_count}} invoices.\n\nAmount Due: *₹{{outstanding_amount}} ({{due_status}})*\nContact: {{seller_phone_number}}\n\nCheck your dues and pay at the earliest.',
+  '[{"key":"buyer_name","description":"Buyer contact or business name"}, {"key":"seller_name","description":"Seller business name"}, {"key":"due_invoice_count","description":"Number of due invoices"},{"key":"outstanding_amount","description":"Outstanding amount in INR"},{"key":"due_status","description":"Due in X days or Overdue by X days status"},{"key":"seller_phone_number","description":"Seller phone number"}]'::jsonb,
   '{"type":"url","url_template":"https://app.useyukti.in/buy/orders"}'::jsonb,
-  'approved', true
+  '{"format":"text","text":"Payment reminder"}'::jsonb, 'Powered by Yukti',
+  '[{"type":"url","index":"0","url_template":"https://app.useyukti.in/buy/orders"}]'::jsonb,
+  'approved', true, true
 )
 ON CONFLICT (tenant_id, meta_template_name) DO UPDATE SET
-  approval_status    = EXCLUDED.approval_status,
-  is_platform_managed = EXCLUDED.is_platform_managed,
-  updated_at         = now();
+  approval_status       = EXCLUDED.approval_status,
+  is_platform_managed   = EXCLUDED.is_platform_managed,
+  header_config         = EXCLUDED.header_config,
+  footer_text           = EXCLUDED.footer_text,
+  buttons_config        = EXCLUDED.buttons_config,
+  is_broadcast_template = EXCLUDED.is_broadcast_template,
+  updated_at            = now();
 
 -- Set WhatsApp consent for test buyer (Phani Mobiles) so campaign audience RPCs include them.
 UPDATE app.buyers

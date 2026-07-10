@@ -291,9 +291,11 @@ export function GeneralSettingsForm({
               </div>
             </div>
 
+          
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="buyer-whatsapp">WhatsApp number (buyer app)</Label>
-              <div className="flex items-stretch max-w-xs">
+              <div className="flex items-stretch max-w-sm">
                 <span className="inline-flex items-center rounded-l-sm border border-r-0 border-cream-300 bg-cream-200 px-3 text-sm text-cream-700">
                   +91
                 </span>
@@ -309,6 +311,19 @@ export function GeneralSettingsForm({
                 />
               </div>
               <p className="text-sm text-cream-600">Shown to buyers for support in the buyer app.</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="buyer-whatsapp-display-name">WhatsApp display name</Label>
+              <Input
+                id="buyer-whatsapp-display-name"
+                value={draft.buyer_app.whatsapp_display_name}
+                onChange={(e) => updateBuyerApp({ whatsapp_display_name: e.target.value })}
+                maxLength={200}
+                placeholder="WineYard"
+              />
+              <p className="text-sm text-cream-600">Name shown to buyers in WhatsApp messages. Falls back to company name if empty.</p>
+            </div>
             </div>
           </SettingsSectionCard>
 
