@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api-fetch';
 import { appendArrayParam } from '@/lib/landing-filter-params';
@@ -228,6 +228,21 @@ export interface CohortComposerResponse {
   };
 }
 
+export interface CohortComposerBuyerResultsetResponse {
+  buyers: CohortComposerBuyer[];
+  total: number;
+  nextCursor: string | null;
+}
+
+export interface CohortComposerBuyerFilters {
+  query?: string;
+  geographies?: string[];
+  lastOrderBucket?: string;
+  gmvBuckets?: string[];
+  limit?: number;
+  enabled?: boolean;
+}
+
 export interface CohortMembersResponse {
   members: Array<{
     buyer_id: string;
@@ -317,6 +332,40 @@ export function useCohortComposerData() {
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
     placeholderData: (previous) => previous,
+  });
+}
+
+export function useCohortComposerBuyers({
+  query,
+  geographies = [],
+  lastOrderBucket = 'anytime',
+  gmvBuckets = [],
+  limit = 50,
+  enabled = true,
+}: CohortComposerBuyerFilters) {
+  return useInfiniteQuery({
+    queryKey: ['cohort-composer-buyers', query?.trim() ?? '', geographies, lastOrderBucket, gmvBuckets, limit],
+    queryFn: async ({ pageParam, signal }): Promise<CohortComposerBuyerResultsetResponse> => {
+      const params = new URLSearchParams();
+      params.set('limit', String(limit));
+      if (query?.trim()) params.set('q', query.trim());
+      if (lastOrderBucket && lastOrderBucket !== 'anytime') params.set('last_order', lastOrderBucket);
+      if (pageParam) params.set('cursor', pageParam as string);
+      appendArrayParam(params, 'geography', geographies);
+      appendArrayParam(params, 'gmv', gmvBuckets);
+      const res = await apiFetch(`/api/cohorts/composer/buyers?${params.toString()}`, { signal });
+      if (!res.ok) {
+        throw new Error('Failed to fetch cohort buyers');
+      }
+      return res.json();
+    },
+    enabled,
+    placeholderData: keepPreviousData,
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    staleTime: 30_000,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    refetchOnWindowFocus: false,
   });
 }
 

@@ -20,7 +20,7 @@ import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useCreateFlags } from '@/hooks/useCreateFlags';
 import { useTenantInvoices, useTenantInvoicesInfinite, type TenantInvoicesResponse } from '@/hooks/useInvoices';
-import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
@@ -91,9 +91,11 @@ function InvoicesDataSkeleton() {
 function InvoicesLandingContent({
   initialData,
   initialPeriod,
+  initialSearch,
 }: {
   initialData: TenantInvoicesResponse | null;
   initialPeriod: SellerLandingPeriod;
+  initialSearch?: string;
 }) {
   const router = useRouter();
   const { period, setPeriod, horizonLabel, lowerLabel, options } = useSellerLandingPeriod(initialPeriod);
@@ -105,7 +107,7 @@ function InvoicesLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-invoices-landing',
     scopeKey: period,
-    version: 3,
+    version: 4,
     initialState: {
       search: '',
       filters: {
@@ -117,6 +119,7 @@ function InvoicesLandingContent({
       sortBy: 'Recent first' as SortOption,
     },
   });
+  useSeedRouteSearch({ initialSearch, setState: setRouteState });
   const search = routeState.search;
   const filters = routeState.filters ?? { source: [], status: [], due: [], location_id: [] };
   const sortBy = routeState.sortBy;
@@ -350,9 +353,11 @@ function InvoicesLandingContent({
 export function InvoicesLandingClient({
   initialData,
   initialPeriod,
+  initialSearch,
 }: {
   initialData: TenantInvoicesResponse | null;
   initialPeriod: SellerLandingPeriod;
+  initialSearch?: string;
 }) {
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const invoicesFlag = useFlagState('INVOICES');
@@ -361,5 +366,5 @@ export function InvoicesLandingClient({
     return <FeatureDisabledState />;
   }
 
-  return <InvoicesLandingContent initialData={initialData} initialPeriod={initialPeriod} />;
+  return <InvoicesLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />;
 }

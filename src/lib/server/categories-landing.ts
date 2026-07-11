@@ -349,6 +349,7 @@ export async function getCategoriesLandingPayload(
     kpis,
     callouts: { stockout_risk, top_performers, fast_movers },
     rows: filteredRows.slice(0, limit),
+    total: filteredRows.length,
     period: period.selected,
   };
 }

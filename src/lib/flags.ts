@@ -35,7 +35,9 @@ export async function getFlag(flagName: string, tenantId: string): Promise<boole
   }
 
   const client = createClient();
-  if (!client) return false;
+  // PostHog unavailable = not blocking; DB toggles in tenant_settings are the authority.
+  // Only an explicit PostHog `false` acts as a global kill-switch.
+  if (!client) return true;
 
   try {
     const flags = await client.evaluateFlags(tenantId);
@@ -46,6 +48,6 @@ export async function getFlag(flagName: string, tenantId: string): Promise<boole
     });
     return value;
   } catch {
-    return false;
+    return true;
   }
 }

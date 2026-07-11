@@ -5,11 +5,16 @@ import { useRouter } from 'next/navigation';
 import {
   Clock,
   FileText,
+  FolderTree,
+  ListOrdered,
+  MapPin,
+  Megaphone,
   Package,
   Receipt,
   Search,
   Tag,
   Users,
+  Warehouse,
   X,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-fetch';
@@ -36,6 +41,12 @@ const ENTITY_ICON: Record<string, React.ElementType> = {
   product: Package,
   brand: Tag,
   customer: Users,
+  category: FolderTree,
+  location: MapPin,
+  warehouse: Warehouse,
+  cohort: Users,
+  campaign: Megaphone,
+  price_list: ListOrdered,
   order: Receipt,
   invoice: FileText,
   estimate: FileText,
@@ -45,9 +56,30 @@ const ENTITY_LABEL: Record<string, string> = {
   product: 'Products',
   brand: 'Brands',
   customer: 'Customers',
+  category: 'Categories',
+  location: 'Locations',
+  warehouse: 'Warehouses',
+  cohort: 'Customer Groups',
+  campaign: 'Campaigns',
+  price_list: 'Price Lists',
   order: 'Orders',
   invoice: 'Invoices',
   estimate: 'Estimates',
+};
+
+const ENTITY_LIST_URL: Record<string, string> = {
+  product: '/products',
+  brand: '/brands',
+  customer: '/customers',
+  category: '/categories',
+  location: '/locations',
+  warehouse: '/warehouses',
+  cohort: '/customer-groups',
+  campaign: '/campaigns',
+  price_list: '/price-lists',
+  order: '/sales-orders',
+  invoice: '/invoices',
+  estimate: '/estimates',
 };
 
 const RECENT_KEY = 'seller-search-recent';
@@ -172,8 +204,8 @@ export function GlobalSearchOverlay({ className }: Props) {
         <input
           ref={inputRef}
           type="search"
-          aria-label="Search brands, products, buyers, orders"
-          placeholder="Search brands, products, buyers, orders…"
+          aria-label="Search seller entities"
+          placeholder="Search products, customers, campaigns, price lists…"
           value={query}
           onChange={(event) => handleQuery(event.target.value)}
           onFocus={() => setOpen(true)}
@@ -286,15 +318,7 @@ export function GlobalSearchOverlay({ className }: Props) {
                             type="button"
                             onClick={() => {
                               setOpen(false);
-                              const listUrls: Record<string, string> = {
-                                product: '/products',
-                                brand: '/brands',
-                                customer: '/customers',
-                                order: '/sales-orders',
-                                invoice: '/invoices',
-                                estimate: '/estimates',
-                              };
-                              const base = listUrls[group.entity_type] ?? `/${group.entity_type}s`;
+                              const base = ENTITY_LIST_URL[group.entity_type] ?? `/${group.entity_type}s`;
                               router.push(`${base}?search=${encodeURIComponent(query)}`);
                             }}
                             className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2 text-left text-teal-600 transition-colors hover:bg-[rgba(34,30,26,0.04)]"
@@ -311,7 +335,7 @@ export function GlobalSearchOverlay({ className }: Props) {
 
             {open && !loading && !showRecent && !showResults && !noResults ? (
               <div className="px-4 py-4 text-sm text-cream-500">
-                Start typing to search brands, products, buyers, orders, invoices, and estimates.
+                Start typing to search products, brands, customers, categories, locations, warehouses, customer groups, campaigns, price lists, and documents.
               </div>
             ) : null}
           </div>

@@ -20,7 +20,7 @@ import {
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
 import { usePriceListsLanding, type PriceListLandingRow, type PriceListsLandingResponse } from '@/hooks/usePriceLists';
 import { cn, formatDate } from '@/lib/utils';
@@ -83,12 +83,18 @@ function entityHue(index: number): 'teal' | 'ember' | 'cream' {
   return 'cream';
 }
 
-function PriceListsLandingContent({ initialData }: { initialData: PriceListsLandingResponse | null }) {
+function PriceListsLandingContent({
+  initialData,
+  initialSearch,
+}: {
+  initialData: PriceListsLandingResponse | null;
+  initialSearch?: string;
+}) {
   const router = useRouter();
   const { isSellerAssistant } = useRole();
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-price-lists-landing',
-    version: 2,
+    version: 3,
     initialState: {
       search: '',
       filters: {
@@ -97,6 +103,7 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
       sortBy: 'Recently updated' as SortOption,
     },
   });
+  useSeedRouteSearch({ initialSearch, setState: setRouteState });
   const search = routeState.search;
   const sortBy = routeState.sortBy;
   const filters = routeState.filters ?? { status: [] };
@@ -373,10 +380,16 @@ function PriceListsLandingContent({ initialData }: { initialData: PriceListsLand
   );
 }
 
-export function PriceListsLandingClient({ initialData }: { initialData: PriceListsLandingResponse | null }) {
+export function PriceListsLandingClient({
+  initialData,
+  initialSearch,
+}: {
+  initialData: PriceListsLandingResponse | null;
+  initialSearch?: string;
+}) {
   return (
     <FeatureGate flag="PRICING_ENGINE">
-      <PriceListsLandingContent initialData={initialData} />
+      <PriceListsLandingContent initialData={initialData} initialSearch={initialSearch} />
     </FeatureGate>
   );
 }

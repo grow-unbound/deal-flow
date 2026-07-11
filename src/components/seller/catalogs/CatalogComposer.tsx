@@ -37,6 +37,7 @@ import {
 import {
   useCatalogComposerBootstrap,
   useCatalogComposerDetail,
+  useCatalogComposerProducts,
   useComposerPublishPreview,
   useSaveCatalogComposer,
   type CatalogComposerProduct,
@@ -45,7 +46,7 @@ import {
 import { SellerBuyerPickerOverlay } from '@/components/seller/shared/SellerBuyerPickerOverlay';
 import { PublishCampaignDialog, type PublishCampaignDialogMode } from '@/components/seller/catalogs/detail/PublishCampaignDialog';
 import { cn, formatDate, formatInr, formatInrInput, parseInrInput } from '@/lib/utils';
-import { apiPost } from '@/lib/api-fetch';
+import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { isoDateInput } from '@/lib/date-utils';
 import { composerPageMinHeightClass, composerThreePanelGridClass } from '@/lib/composer-viewport-classes';
 import { CatalogComposerPayloadSchema, type CatalogComposerAvailability, type CatalogComposerPriceSource, type CatalogComposerTag } from '@/lib/zod';
@@ -209,30 +210,27 @@ export function CatalogComposer({
     isError: detailError,
   } = useCatalogComposerDetail(mode === 'edit' ? catalogId ?? '' : '');
 
-  const products = bootstrap?.products ?? [];
   const cohorts = bootstrap?.cohorts ?? [];
   const priceLists = bootstrap?.price_lists ?? [];
   const priceListItems = bootstrap?.price_list_items ?? [];
   const buyerCount = bootstrap?.buyer_count ?? 0;
-  const productCount = bootstrap?.product_count ?? products.length;
   const detailComposer = detail?.composer;
-  const isLoading = bootstrapLoading || (mode === 'edit' && detailLoading);
-  const isError = bootstrapError || (mode === 'edit' && detailError);
+  const bootstrapProducts = bootstrap?.products ?? [];
 
   // Server-provided facets: accurate counts over full product dataset, not just display page
   const brandOptions = useMemo<FilterOption[]>(
     () =>
       bootstrap?.product_filters?.brands
         ? bootstrap.product_filters.brands.map((f: { id: string; label: string; count: number }) => ({ name: f.label, count: f.count }))
-        : buildFilterOptions(products.map((p) => p.brand_name)),
-    [bootstrap?.product_filters?.brands, products],
+        : buildFilterOptions(bootstrapProducts.map((p) => p.brand_name)),
+    [bootstrap?.product_filters?.brands, bootstrapProducts],
   );
   const categoryOptions = useMemo<FilterOption[]>(
     () =>
       bootstrap?.product_filters?.categories
         ? bootstrap.product_filters.categories.map((f: { id: string; label: string; count: number }) => ({ name: f.label, count: f.count }))
-        : buildFilterOptions(products.map((p) => p.category_name)),
-    [bootstrap?.product_filters?.categories, products],
+        : buildFilterOptions(bootstrapProducts.map((p) => p.category_name)),
+    [bootstrap?.product_filters?.categories, bootstrapProducts],
   );
   const allBrandNames = useMemo(() => brandOptions.map((option) => option.name), [brandOptions]);
   const allCategoryNames = useMemo(() => categoryOptions.map((option) => option.name), [categoryOptions]);
@@ -267,6 +265,23 @@ export function CatalogComposer({
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [publishDialogMode, setPublishDialogMode] = useState<PublishCampaignDialogMode>('first_publish');
   const [notifyWhatsappPreview, setNotifyWhatsappPreview] = useState(true);
+
+  const productsQuery = useCatalogComposerProducts({
+    query: search,
+    brands: selectedBrands,
+    categories: selectedCategories,
+    availability,
+    limit: 50,
+    enabled: !bootstrapLoading,
+  });
+  const productPages = productsQuery.data?.pages ?? [];
+  const products = useMemo(
+    () => productPages.flatMap((page) => page.products ?? []),
+    [productPages],
+  );
+  const productCount = productPages[0]?.total ?? bootstrap?.product_count ?? products.length;
+  const isLoading = bootstrapLoading || productsQuery.isLoading || (mode === 'edit' && detailLoading);
+  const isError = bootstrapError || productsQuery.isError || (mode === 'edit' && detailError);
 
   useEffect(() => {
     if (didInit || products.length === 0) return;
@@ -614,6 +629,28 @@ export function CatalogComposer({
     });
   }
 
+  async function fetchAllMatchingProductsForSave() {
+    const allProducts: CatalogComposerProduct[] = [];
+    let cursor: string | null = null;
+    for (let guard = 0; guard < 100; guard += 1) {
+      const params = new URLSearchParams();
+      params.set('limit', '100');
+      params.set('availability', availability);
+      if (search.trim()) params.set('q', search.trim());
+      selectedBrands.forEach((brand) => params.append('brand', brand));
+      selectedCategories.forEach((category) => params.append('category', category));
+      if (cursor) params.set('cursor', cursor);
+
+      const res = await apiFetch(`/api/tenant/catalogs/composer/products?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to resolve all matching products');
+      const data = (await res.json()) as { products?: CatalogComposerProduct[]; nextCursor?: string | null };
+      allProducts.push(...(data.products ?? []));
+      cursor = data.nextCursor ?? null;
+      if (!cursor) break;
+    }
+    return allProducts;
+  }
+
   function buildSavePayload(
     saveMode: 'draft' | 'publish',
     publishOptions?: {
@@ -704,37 +741,30 @@ export function CatalogComposer({
     const { isValid, payload } = validateBeforeSave(saveMode, publishOptions);
     if (!isValid || !payload) return;
 
-    // When brand or category filters are active, the display list is capped at PAGE_SIZE.MAX.
-    // Call the resolve endpoint to get ALL matching product IDs server-side before saving.
-    const hasProductFilter = selectedBrands.length > 0 || selectedCategories.length > 0 || availability !== 'show_everything';
     let finalPayload = payload;
-    if (hasProductFilter) {
+    const needsFullProductResolution =
+      productCount > products.length ||
+      search.trim().length > 0 ||
+      selectedBrands.length > 0 ||
+      selectedCategories.length > 0 ||
+      availability !== 'show_everything';
+    if (needsFullProductResolution) {
       try {
-        const resolveRes = await apiPost('/api/tenant/catalogs/composer/resolve', {
-          brand_ids: selectedBrands.length > 0
-            ? bootstrap?.product_filters?.brands?.filter((f) => selectedBrands.includes(f.label)).map((f) => f.id)
-            : undefined,
-          category_ids: selectedCategories.length > 0
-            ? bootstrap?.product_filters?.categories?.filter((f) => selectedCategories.includes(f.label)).map((f) => f.id)
-            : undefined,
-          availability: availability === 'in_stock_only' || availability === 'new_in_stock_today' ? 'in_stock' : undefined,
-          excluded_ids: Array.from(selectedIds).filter((id) => !filteredSelectedProducts.some((p) => p.id === id)),
-        });
-        if (resolveRes.ok) {
-          const resolveData = (await resolveRes.json()) as { product_ids: string[] };
-          const resolvedIds = resolveData.product_ids ?? [];
-          let displayOrder = 0;
-          const resolvedItems = resolvedIds.map((id) => ({
-            tenant_product_id: id,
-            display_order: displayOrder++,
-            price_override: campaignPrices[id] ?? null,
-          }));
-          if (resolvedItems.length > 0) {
-            finalPayload = { ...payload, items: resolvedItems };
-          }
+        const allMatchingProducts = await fetchAllMatchingProductsForSave();
+        const visibleDeselectedIds = new Set(products.filter((product) => !selectedIds.has(product.id)).map((product) => product.id));
+        const selectedMatchingProducts = allMatchingProducts.filter((product) => !visibleDeselectedIds.has(product.id));
+        let displayOrder = 0;
+        const resolvedItems = selectedMatchingProducts.map((product) => ({
+          tenant_product_id: product.id,
+          display_order: displayOrder++,
+          price_override: resolvedCampaignPrice(product),
+        }));
+        if (resolvedItems.length > 0) {
+          finalPayload = { ...payload, items: resolvedItems };
         }
-      } catch {
-        // Non-fatal: fall back to display-list items
+      } catch (error) {
+        setSubmitError(error instanceof Error ? error.message : 'Failed to resolve matching products');
+        return;
       }
     }
 
@@ -1404,6 +1434,18 @@ export function CatalogComposer({
                         })}
                       </tbody>
                     </table>
+                    {productsQuery.hasNextPage ? (
+                      <div className="border-t border-cream-300 bg-white px-4 py-3 text-center">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => void productsQuery.fetchNextPage()}
+                          disabled={productsQuery.isFetchingNextPage}
+                        >
+                          {productsQuery.isFetchingNextPage ? 'Loading…' : 'Load more products'}
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </ComposerMainCard>

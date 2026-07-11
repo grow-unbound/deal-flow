@@ -1,3 +1,46 @@
+/**
+ * sync-transaction-line-items — hydrates estimates/orders/invoices with
+ * their Zoho line-item detail. Automatically orchestrated ONLY as part of
+ * the daily incremental sync (see resolvePhasesForPolicy in
+ * sync-orchestration.ts) — never reachable through any manual sync trigger
+ * (full sync, phase-group expansion, or an explicit phase request), and
+ * hidden from the frontend phase grid entirely. It's the highest-volume
+ * phase (line items across every estimate/order/invoice, one Zoho GET per
+ * document), so controlled manual backfills are expected to call this
+ * function DIRECTLY, bypassing the orchestrator, so the caller controls
+ * pacing against Zoho's rate limit page-by-page.
+ *
+ * Manual invocation contract:
+ *   - Omit `job_id` on the first call — a standalone job row is created
+ *     with no master_job_id (never touched by the reaper/coordinator/cancel
+ *     RPC), and its `id` comes back in the response.
+ *   - `since`/`until` (both optional, inclusive, `YYYY-MM-DD`) bound the
+ *     local estimate/order/invoice date window fetched. `since` persists on
+ *     the job row across pages; `until` does NOT (no column for it) — pass
+ *     it explicitly on every call when resuming a bounded range.
+ *   - Pass the response's `job_id` + `next_cursor.page` as `page_from` on
+ *     the next call to resume; `records_synced` accumulates correctly
+ *     across calls. Stop when `has_more` is false.
+ *
+ *   curl -X POST "$SUPABASE_URL/functions/v1/sync-transaction-line-items" \
+ *     -H "Content-Type: application/json" \
+ *     -H "x-integrations-dispatch-secret: $INTEGRATIONS_DISPATCH_SECRET" \
+ *     -d '{"tenant_integration_id":"<uuid>","since":"2026-06-01","until":"2026-06-30","batch_size":50}'
+ *
+ *   -- or from SQL (psql / SQL editor):
+ *   select net.http_post(
+ *     url := app.get_functions_base_url() || '/sync-transaction-line-items',
+ *     headers := jsonb_build_object(
+ *       'Content-Type', 'application/json',
+ *       'x-integrations-dispatch-secret', current_setting('app.integrations_dispatch_secret', true)
+ *     ),
+ *     body := jsonb_build_object('tenant_integration_id', '<uuid>', 'since', '2026-06-01', 'until', '2026-06-30', 'batch_size', 50)
+ *   );
+ *   -- check progress:
+ *   select id, status, records_synced, progress->'next_cursor'
+ *   from app.integration_sync_jobs
+ *   where phase = 'transaction_line_items' order by created_at desc limit 1;
+ */
 import {
   assertZohoIntegration,
   createAdminClient,
@@ -23,6 +66,7 @@ interface SyncLineItemRequest {
   page_from?: number | null;
   batch_size?: number | null;
   since?: string | null;
+  until?: string | null;
 }
 
 interface LocalTransactionRow {
@@ -68,6 +112,7 @@ async function parseRequest(req: Request): Promise<SyncLineItemRequest> {
     page_from: typeof body.page_from === 'number' ? body.page_from : null,
     batch_size: typeof body.batch_size === 'number' ? body.batch_size : null,
     since: typeof body.since === 'string' ? body.since : null,
+    until: typeof body.until === 'string' ? body.until : null,
   };
 }
 
@@ -97,11 +142,11 @@ async function createLineItemJob(
 async function loadLineItemJob(
   admin: AdminClient,
   jobId: string,
-): Promise<{ id: string; since_date: string | null }> {
+): Promise<{ id: string; since_date: string | null; records_synced: number | null }> {
   const { data, error } = await admin
     .schema('app')
     .from('integration_sync_jobs')
-    .select('id, since_date')
+    .select('id, since_date, records_synced')
     .eq('id', jobId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -112,6 +157,7 @@ async function loadLineItemJob(
   return {
     id: String(data.id),
     since_date: typeof data.since_date === 'string' ? data.since_date : null,
+    records_synced: typeof data.records_synced === 'number' ? data.records_synced : null,
   };
 }
 
@@ -120,6 +166,7 @@ async function countRows(
   table: TransactionKind,
   tenantId: string,
   sinceDate: string | null,
+  untilDate: string | null,
 ): Promise<number> {
   const dateColumn = getDocumentDateColumn(table);
   const query = admin
@@ -132,6 +179,9 @@ async function countRows(
 
   if (sinceDate) {
     query.gte(dateColumn, sinceDate);
+  }
+  if (untilDate) {
+    query.lte(dateColumn, untilDate);
   }
 
   const { count, error } = await query;
@@ -158,6 +208,7 @@ async function loadRowsForKind(
   offset: number,
   limit: number,
   sinceDate: string | null,
+  untilDate: string | null,
 ): Promise<LocalTransactionRow[]> {
   if (limit <= 0) return [];
 
@@ -172,6 +223,9 @@ async function loadRowsForKind(
 
   if (sinceDate) {
     query.gte(dateColumn, sinceDate);
+  }
+  if (untilDate) {
+    query.lte(dateColumn, untilDate);
   }
 
   const { data, error } = await query
@@ -196,11 +250,12 @@ async function loadTransactionBatch(
   page: number,
   batchSize: number,
   sinceDate: string | null,
+  untilDate: string | null,
 ): Promise<{ rows: LocalTransactionRow[]; total: number; counts: Record<TransactionKind, number> }> {
   const counts = {
-    estimates: await countRows(admin, 'estimates', tenantId, sinceDate),
-    orders: await countRows(admin, 'orders', tenantId, sinceDate),
-    invoices: await countRows(admin, 'invoices', tenantId, sinceDate),
+    estimates: await countRows(admin, 'estimates', tenantId, sinceDate, untilDate),
+    orders: await countRows(admin, 'orders', tenantId, sinceDate, untilDate),
+    invoices: await countRows(admin, 'invoices', tenantId, sinceDate, untilDate),
   };
   const total = counts.estimates + counts.orders + counts.invoices;
   let remainingOffset = (page - 1) * batchSize;
@@ -214,7 +269,7 @@ async function loadTransactionBatch(
       continue;
     }
 
-    const kindRows = await loadRowsForKind(admin, kind, tenantId, remainingOffset, remainingLimit, sinceDate);
+    const kindRows = await loadRowsForKind(admin, kind, tenantId, remainingOffset, remainingLimit, sinceDate, untilDate);
     rows.push(...kindRows);
     remainingLimit -= kindRows.length;
     remainingOffset = 0;
@@ -307,6 +362,11 @@ Deno.serve(async (req: Request) => {
     });
     const job = await loadLineItemJob(admin, jobId);
     const sinceDate = input.since ?? job.since_date;
+    // Unlike since_date, there's no until column on the job row — a
+    // manual/standalone caller resuming a range fetch across multiple pages
+    // must pass `until` on every call (see this function's manual-trigger
+    // docs). Orchestrated incremental dispatch never sends `until`.
+    const untilDate = input.until ?? null;
 
     const page = normalizePositiveInt(input.page_from, 1);
     const batchSize = Math.min(normalizePositiveInt(input.batch_size, DEFAULT_BATCH_SIZE), 100);
@@ -336,7 +396,7 @@ Deno.serve(async (req: Request) => {
     });
 
     const loadBatchDone = startTimer(jobId, PHASE, 'loadTransactionBatch');
-    const batch = await loadTransactionBatch(admin, integration.tenant_id, page, batchSize, sinceDate);
+    const batch = await loadTransactionBatch(admin, integration.tenant_id, page, batchSize, sinceDate, untilDate);
     loadBatchDone({ rows: batch.rows.length, total: batch.total });
     const recordsByKind: Record<TransactionKind, Record<string, unknown>[]> = {
       estimates: [],
@@ -399,7 +459,10 @@ Deno.serve(async (req: Request) => {
     }
     logCheckpoint(jobId, PHASE, 'detailFetchLoop:done', { counts });
 
-    let persisted = 0;
+    // The coordinator reuses this same jobId across every page (dispatch_next_page
+    // re-invokes with page_from advanced) — seed from the row's already persisted
+    // records_synced on resume, or each page's write overwrites the running total.
+    let persisted = page > 1 ? (job.records_synced ?? 0) : 0;
     const importActorId = resolveSyncImportActorId(integration);
     for (const kind of KIND_ORDER) {
       if (recordsByKind[kind].length === 0) continue;

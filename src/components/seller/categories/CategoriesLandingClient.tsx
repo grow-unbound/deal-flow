@@ -20,7 +20,7 @@ import {
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
-import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useCategoryLanding, type CategoryTableRow, type CategoriesLandingResponse } from '@/hooks/useCategories';
 import { CategoryFormSheet } from '@/components/seller/settings/CategoryFormSheet';
@@ -75,9 +75,11 @@ function CategoriesDataSkeleton() {
 function CategoriesLandingContent({
   initialData,
   initialPeriod,
+  initialSearch,
 }: {
   initialData: CategoriesLandingResponse | null;
   initialPeriod: SellerLandingPeriod;
+  initialSearch?: string;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -86,7 +88,7 @@ function CategoriesLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-categories-landing',
     scopeKey: period,
-    version: 2,
+    version: 3,
     initialState: {
       search: '',
       filters: {
@@ -96,6 +98,7 @@ function CategoriesLandingContent({
       sortBy: 'GMV (high → low)' as SortOption,
     },
   });
+  useSeedRouteSearch({ initialSearch, setState: setRouteState });
   const { search, sortBy } = routeState;
   const filters = routeState.filters ?? { status: [], products: [] };
   const { data, isLoading, isError } = useCategoryLanding(period, { search, status: filters.status, products: filters.products }, initialData);
@@ -351,13 +354,15 @@ function CategoriesLandingContent({
 export function CategoriesLandingClient({
   initialData,
   initialPeriod,
+  initialSearch,
 }: {
   initialData: CategoriesLandingResponse | null;
   initialPeriod: SellerLandingPeriod;
+  initialSearch?: string;
 }) {
   return (
     <FeatureGate flag="BRAND_PRODUCT_MASTER">
-      <CategoriesLandingContent initialData={initialData} initialPeriod={initialPeriod} />
+      <CategoriesLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />
     </FeatureGate>
   );
 }

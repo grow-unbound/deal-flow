@@ -90,10 +90,11 @@ describe('sync-orchestration', () => {
       { id: '3', phase: 'inventory', status: 'completed', progress: {} },
       { id: '4', phase: 'pricelists', status: 'completed', progress: {} },
       { id: '5', phase: 'customers', status: 'completed', progress: {} },
-      { id: '6', phase: 'estimates', status: 'completed', progress: {} },
-      { id: '7', phase: 'orders', status: 'completed', progress: {} },
-      { id: '8', phase: 'invoices', status: 'running', progress: {} },
-      { id: '9', phase: 'transaction_line_items', status: 'pending', progress: {} },
+      { id: '6', phase: 'contact_persons', status: 'completed', progress: {} },
+      { id: '7', phase: 'estimates', status: 'completed', progress: {} },
+      { id: '8', phase: 'orders', status: 'completed', progress: {} },
+      { id: '9', phase: 'invoices', status: 'running', progress: {} },
+      { id: '10', phase: 'transaction_line_items', status: 'pending', progress: {} },
     ];
 
     expect(isRunReadyForAnalysis(slaves)).toBe(false);
@@ -146,7 +147,7 @@ describe('sync-orchestration', () => {
     expect(resolveSyncEnrichmentPolicy('initial_reference')).toBe('full_sync');
   });
 
-  it('resolvePhasesForPolicy omits transaction_line_items on full sync', () => {
+  it('resolvePhasesForPolicy omits transaction_line_items on every manual path, only ever includes it for incremental', () => {
     expect(resolvePhasesForPolicy({
       requestedPhase: null,
       enrichmentPolicy: 'full_sync',
@@ -155,10 +156,23 @@ describe('sync-orchestration', () => {
       requestedPhase: null,
       enrichmentPolicy: 'incremental',
     })).toContain('transaction_line_items');
+    // Even an explicit single-phase request for it is cut under a non-incremental
+    // policy — it's reachable ONLY through the automatic daily incremental sync,
+    // never through any manual trigger (full sync, group, or explicit phase).
     expect(resolvePhasesForPolicy({
       requestedPhase: 'transaction_line_items',
       enrichmentPolicy: 'full_sync',
+    })).toEqual([]);
+    expect(resolvePhasesForPolicy({
+      requestedPhase: 'transaction_line_items',
+      enrichmentPolicy: 'incremental',
     })).toEqual(['transaction_line_items']);
+    // A manual 'transactional' group request still gets every other
+    // transactional phase, just not the line-item hydration sweep.
+    expect(resolvePhasesForPolicy({
+      requestedPhase: 'transactional',
+      enrichmentPolicy: 'full_sync',
+    })).toEqual(['estimates', 'orders', 'invoices']);
   });
 
   it('enrichmentModeForEntity applies list_only to customers on full sync', () => {
@@ -300,6 +314,17 @@ describe('sync-orchestration', () => {
       const m = master({ run_kind: 'manual_full', progress: { phases_in_run: ['estimates', 'orders'] } });
       const slaves = [slave({ id: 's1', phase: 'estimates', status: 'failed' })];
       expect(decideCoordinatorAction(m, slaves)).toEqual({ type: 'dispatch_next_phase', phase: 'orders' });
+    });
+
+    // Regression: inventory IS a reference phase (isReferencePhase('inventory')
+    // is true) AND a deferred phase — this branch used to check only
+    // isReferencePhase, so a deferred phase's failure (e.g. sync-inventory's
+    // dispatch timing out on a large catalog) halted an otherwise
+    // fully-synced run, contradicting DEFERRED_PHASES' whole purpose.
+    it('does not halt on a failed deferred phase (inventory) even under halt_on_reference_failure', () => {
+      const m = master({ run_kind: 'manual_full', progress: { phases_in_run: ['inventory', 'estimates'] } });
+      const slaves = [slave({ id: 's1', phase: 'inventory', status: 'failed' })];
+      expect(decideCoordinatorAction(m, slaves)).toEqual({ type: 'dispatch_next_phase', phase: 'estimates' });
     });
 
     it('runs analysis once all phases are terminal and reference+transactional are both present', () => {

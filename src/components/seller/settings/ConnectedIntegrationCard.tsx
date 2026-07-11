@@ -51,7 +51,6 @@ function labelize(value: string) {
 
 function labelizePhase(value: string) {
   if (value === 'orders') return 'Sales Orders';
-  if (value === 'transaction_line_items') return 'Line Items';
   return labelize(value);
 }
 
@@ -76,7 +75,7 @@ const ENTITY_GROUPS: Array<{
   sublabels: string[];
 }> = [
   { key: 'locations', label: 'Locations', aliases: ['locations', 'warehouses'], sublabels: ['Locations'] },
-  { key: 'customers', label: 'Customers', aliases: ['customers'], sublabels: ['Customers'] },
+  { key: 'customers', label: 'Customers', aliases: ['customers', 'contact_persons'], sublabels: ['Customers'] },
   {
     key: 'products',
     label: 'Products',
@@ -95,6 +94,7 @@ const GROUP_BY_PHASE_ID: Record<string, EntityGroupKey> = {
   locations: 'locations',
   warehouses: 'locations',
   customers: 'customers',
+  contact_persons: 'customers',
   products: 'products',
   brands: 'products',
   categories: 'products',
@@ -130,31 +130,37 @@ const REFERENCE_PHASE_META: Record<string, { label: string; aliases: string[] }>
   inventory: { label: 'Inventory', aliases: ['inventory'] },
   pricelists: { label: 'Pricelists', aliases: ['pricelists', 'price_lists'] },
   customers: { label: 'Customers', aliases: ['customers'] },
+  contact_persons: { label: 'Contact Persons', aliases: ['contact_persons'] },
 };
 
 const TRANSACTIONAL_PHASE_META: Record<string, { label: string; aliases: string[] }> = {
   estimates: { label: 'Estimates', aliases: ['estimates'] },
   orders: { label: 'Sales Orders', aliases: ['orders', 'salesorders'] },
   invoices: { label: 'Invoices', aliases: ['invoices'] },
-  transaction_line_items: { label: 'Line Items', aliases: ['transaction_line_items'] },
 };
+
+// transaction_line_items is deliberately excluded here — it only ever runs
+// as part of the automatic daily incremental sync (see resolvePhasesForPolicy
+// in sync-orchestration.ts), never via any manual trigger, and is hidden
+// from the frontend phase grid entirely.
+const VISIBLE_TRANSACTIONAL_PHASES = TRANSACTIONAL_PHASES.filter((id) => id !== 'transaction_line_items');
 
 const SYNC_PHASE_GROUPS: SyncPhaseGroup[] = [
   {
     id: 'reference',
     label: 'Phase 1 — Reference Data',
-    description: 'Locations, Products, Inventory, Pricelists, Customers',
+    description: 'Locations, Products, Inventory, Pricelists, Customers, Contact Persons',
     subPhases: REFERENCE_PHASES.map((id) => ({ id, ...REFERENCE_PHASE_META[id] })),
-    errorEntityTypes: ['locations', 'warehouses', 'products', 'brands', 'categories', 'inventory', 'pricelists', 'price_lists', 'price_list_items', 'customers'],
+    errorEntityTypes: ['locations', 'warehouses', 'products', 'brands', 'categories', 'inventory', 'pricelists', 'price_lists', 'price_list_items', 'customers', 'contact_persons'],
     syncWindowLabel: 'Products, Inventory & Customers: filtered by selected date. Locations & Pricelists: always full sync (Zoho API limitation).',
     canSyncAgain: true,
   },
   {
     id: 'transactional',
     label: 'Phase 2 — Transactions',
-    description: 'Estimates, Sales Orders, Invoices, Line Items',
-    subPhases: TRANSACTIONAL_PHASES.map((id) => ({ id, ...TRANSACTIONAL_PHASE_META[id] })),
-    errorEntityTypes: ['estimates', 'orders', 'salesorders', 'invoices', 'transaction_line_items'],
+    description: 'Estimates, Sales Orders, Invoices',
+    subPhases: VISIBLE_TRANSACTIONAL_PHASES.map((id) => ({ id, ...TRANSACTIONAL_PHASE_META[id] })),
+    errorEntityTypes: ['estimates', 'orders', 'salesorders', 'invoices'],
     syncWindowLabel: 'All transaction data filtered by the selected date window.',
     canSyncAgain: true,
   },
@@ -873,9 +879,14 @@ const CANONICAL_SYNC_PHASE_IDS = SYNC_PHASE_GROUPS.filter((g) => g.canSyncAgain)
 // "Not Started" can never be confused with "this phase's last known state
 // from a previous run".
 function getPhaseEntriesForRun(masterJob: IntegrationSyncJob, allJobs: IntegrationSyncJob[]) {
-  const expectedPhases = masterJob.progress?.phases_in_run?.length
+  // The backend's real phases_in_run DOES include transaction_line_items for
+  // incremental runs (it's still dispatched/tracked server-side) — filter it
+  // here too, not just out of the static phase-group lists above, or it would
+  // render for exactly the run kind where it actually happens.
+  const expectedPhases = (masterJob.progress?.phases_in_run?.length
     ? masterJob.progress.phases_in_run
-    : CANONICAL_SYNC_PHASE_IDS;
+    : CANONICAL_SYNC_PHASE_IDS
+  ).filter((phaseId) => phaseId !== 'transaction_line_items');
   const slaveRows = allJobs.filter((job) => job.phase !== 'sync_run' && job.master_job_id === masterJob.id);
   const latestByPhase = getLatestJobByPhase(slaveRows);
 
@@ -1397,7 +1408,6 @@ export function ConnectedIntegrationCard({
                       case 'estimates': return coverageTotals.estimates ?? 0;
                       case 'orders': return coverageTotals.orders ?? 0;
                       case 'invoices': return coverageTotals.invoices ?? 0;
-                      case 'transaction_line_items': return 0;
                       default: return 0;
                     }
                   })();

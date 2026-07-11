@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { toast } from 'sonner';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
@@ -326,18 +326,41 @@ export interface ComposerFacetOption {
 
 export interface PriceListComposerData {
   products: PriceListComposerProduct[];
+  selected_products?: PriceListComposerProduct[];
   facets: {
     brands: ComposerFacetOption[];
     categories: ComposerFacetOption[];
   };
   total: number;
+  nextCursor?: string | null;
 }
 
-export function usePriceListComposerProducts(enabled = true) {
-  return useQuery({
-    queryKey: ['price-list-composer-products'],
-    queryFn: async (): Promise<PriceListComposerData> => {
-      const res = await apiFetch('/api/tenant/products/composer');
+export interface PriceListComposerProductFilters {
+  search?: string;
+  brands?: string[];
+  categories?: string[];
+  availability?: 'show_all' | 'in_stock' | 'low_stock' | 'out_of_stock';
+  limit?: number;
+}
+
+export function usePriceListComposerProducts(filters: PriceListComposerProductFilters = {}, enabled = true) {
+  const normalizedSearch = filters.search?.trim() ?? '';
+  const normalizedBrands = filters.brands ?? [];
+  const normalizedCategories = filters.categories ?? [];
+  const availability = filters.availability ?? 'show_all';
+  const limit = filters.limit ?? 50;
+
+  return useInfiniteQuery({
+    queryKey: ['price-list-composer-products', normalizedSearch, normalizedBrands, normalizedCategories, availability, limit],
+    queryFn: async ({ pageParam, signal }): Promise<PriceListComposerData> => {
+      const params = new URLSearchParams();
+      params.set('limit', String(limit));
+      params.set('availability', availability);
+      if (pageParam) params.set('cursor', pageParam as string);
+      if (normalizedSearch) params.set('q', normalizedSearch);
+      appendArrayParam(params, 'brand', normalizedBrands);
+      appendArrayParam(params, 'category', normalizedCategories);
+      const res = await apiFetch(`/api/tenant/products/composer?${params.toString()}`, { signal });
       if (!res.ok) {
         throw new Error('Failed to fetch products');
       }
@@ -347,12 +370,16 @@ export function usePriceListComposerProducts(enabled = true) {
         products: data.products ?? [],
         facets: data.facets ?? { brands: [], categories: [] },
         total: data.total ?? 0,
+        nextCursor: data.nextCursor ?? null,
       };
     },
     enabled,
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
-    placeholderData: (previous) => previous,
+    refetchOnWindowFocus: false,
   });
 }
 

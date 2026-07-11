@@ -715,8 +715,8 @@ INSERT INTO app.whatsapp_templates (
 ),
 (
   NULL, 'order_received_buyer', 'utility', 'order_notification', 'en_IN',
-  E'Hi {{buyer_name}},\n\nWe received your order for *{{item_count}} items*. Here are your details.\n\nOrder Number: *{{order_number}}*\nTotal Amount: *₹{{total_amount}}*\n\nOur {{seller_name}} team will contact you in {{eta}} hours.',
-  '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"item_count","description":"Number of line items"},{"key":"order_number","description":"Order reference number"},{"key":"total_amount","description":"Order total in INR"},{"key":"seller_name","description":"Seller business name"},{"key":"eta","description":"Expected response time in hours"}]'::jsonb,
+  E'Hi {{buyer_name}},\n\nWe received your order for *{{item_count}} items*. Here are your details.\n\nOrder Number: *{{order_number}}*\nTotal Amount: *₹{{total_amount}}*\n\nOur {{seller_team}} team will contact you in {{eta}} hours.',
+  '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"item_count","description":"Number of line items"},{"key":"order_number","description":"Order reference number"},{"key":"total_amount","description":"Order total in INR"},{"key":"seller_team","description":"Seller business name"},{"key":"eta","description":"Expected response time in hours"}]'::jsonb,
   '{"type":"url","url_template":"https://app.useyukti.in/buy/sales-orders/{{1}}","variable_source":"order_id"}'::jsonb,
   '{"format":"text","text":"Order received"}'::jsonb, 'Powered by Yukti',
   '[{"type":"url","index":"0","url_template":"https://app.useyukti.in/buy/sales-orders/{{1}}","variable_source":"order_id"}]'::jsonb,
