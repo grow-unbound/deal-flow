@@ -27,7 +27,7 @@ import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn, formatCompactInr } from '@/lib/utils';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
-import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import {
   useCustomersLandingInfinite,
@@ -150,9 +150,11 @@ function CustomersDataSkeleton() {
 function CustomersLandingContent({
   initialData,
   initialPeriod,
+  initialSearch,
 }: {
   initialData: CustomersLandingResponse | null;
   initialPeriod: SellerLandingPeriod;
+  initialSearch?: string;
 }) {
   const router = useRouter();
   const [addBuyerOpen, setAddBuyerOpen] = useState(false);
@@ -165,7 +167,7 @@ function CustomersLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-customers-landing',
     scopeKey: period,
-    version: 2,
+    version: 3,
     initialState: {
       filters: {
         status: [] as string[],
@@ -175,6 +177,7 @@ function CustomersLandingContent({
       search: '',
     },
   });
+  useSeedRouteSearch({ initialSearch, setState: setRouteState });
   const filters = routeState.filters ?? { status: [], due: [] };
   const sortBy = routeState.sortBy;
   const search = routeState.search;
@@ -481,13 +484,15 @@ function CustomersLandingContent({
 export function CustomersLandingClient({
   initialData,
   initialPeriod,
+  initialSearch,
 }: {
   initialData: CustomersLandingResponse | null;
   initialPeriod: SellerLandingPeriod;
+  initialSearch?: string;
 }) {
   return (
     <FeatureGate flag="CUSTOMER_MASTER">
-      <CustomersLandingContent initialData={initialData} initialPeriod={initialPeriod} />
+      <CustomersLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />
     </FeatureGate>
   );
 }

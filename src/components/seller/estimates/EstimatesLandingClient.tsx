@@ -21,7 +21,7 @@ import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useCreateFlags } from '@/hooks/useCreateFlags';
 import { useTenantEstimates, useTenantEstimatesInfinite, type EstimateLandingRow, type TenantEstimatesResponse } from '@/hooks/useEstimates';
-import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
@@ -139,9 +139,11 @@ function EstimatesDataSkeleton() {
 function EstimatesLandingContent({
   initialData,
   initialPeriod,
+  initialSearch,
 }: {
   initialData: TenantEstimatesResponse | null;
   initialPeriod: SellerLandingPeriod;
+  initialSearch?: string;
 }) {
   const router = useRouter();
   const { newEntityIds, markSeen } = useSellerRealtimeContext();
@@ -154,7 +156,7 @@ function EstimatesLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-estimates-landing',
     scopeKey: period,
-    version: 4,
+    version: 5,
     initialState: {
       search: '',
       filters: {
@@ -165,6 +167,7 @@ function EstimatesLandingContent({
       sortBy: 'Recent first' as SortOption,
     },
   });
+  useSeedRouteSearch({ initialSearch, setState: setRouteState });
   const search = routeState.search;
   const filters = routeState.filters ?? { source: [], status: [], location_id: [] };
   const sortBy = (routeState.sortBy ?? 'Recent first') as SortOption;
@@ -416,9 +419,11 @@ function EstimatesLandingContent({
 export function EstimatesLandingClient({
   initialData,
   initialPeriod,
+  initialSearch,
 }: {
   initialData: TenantEstimatesResponse | null;
   initialPeriod: SellerLandingPeriod;
+  initialSearch?: string;
 }) {
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const estimatesFlag = useFlagState('ESTIMATES');
@@ -427,5 +432,5 @@ export function EstimatesLandingClient({
     return <FeatureDisabledState />;
   }
 
-  return <EstimatesLandingContent initialData={initialData} initialPeriod={initialPeriod} />;
+  return <EstimatesLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />;
 }

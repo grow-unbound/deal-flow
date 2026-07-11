@@ -70,8 +70,21 @@ export async function GET(req: NextRequest): Promise<NextResponse<GlobalSearchRe
     url_path: string;
   }>;
 
-  // Group rows by entity_type preserving order: product, brand, customer, order, invoice, estimate
-  const ORDER = ['product', 'brand', 'customer', 'order', 'invoice', 'estimate'];
+  // Group rows by entity_type preserving seller-app navigation order.
+  const ORDER = [
+    'product',
+    'brand',
+    'category',
+    'customer',
+    'cohort',
+    'campaign',
+    'price_list',
+    'order',
+    'invoice',
+    'estimate',
+    'location',
+    'warehouse',
+  ];
   const map = new Map<string, SearchItem[]>();
   for (const row of rows) {
     const list = map.get(row.entity_type) ?? [];

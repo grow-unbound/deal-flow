@@ -22,7 +22,7 @@ import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
-import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useTenantCatalogs, type CatalogLandingRow, type CatalogsLandingResponse } from '@/hooks/useCatalogs';
 import { formatCompactInr } from '@/lib/utils';
@@ -93,9 +93,11 @@ function CatalogRowReason(catalog: CatalogLandingRow) {
 function CatalogsLandingContent({
   initialData,
   initialPeriod,
+  initialSearch,
 }: {
   initialData: CatalogsLandingResponse | null;
   initialPeriod: SellerLandingPeriod;
+  initialSearch?: string;
 }) {
   const router = useRouter();
   const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
@@ -105,7 +107,7 @@ function CatalogsLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-catalogs-landing',
     scopeKey: period,
-    version: 2,
+    version: 3,
     initialState: {
       search: '',
       filters: {
@@ -114,6 +116,7 @@ function CatalogsLandingContent({
       sortBy: 'Recently published' as SortOption,
     },
   });
+  useSeedRouteSearch({ initialSearch, setState: setRouteState });
   useRouteScrollRestoration({
     storageKey: 'seller-catalogs-landing',
     scopeKey: period,
@@ -397,13 +400,15 @@ function CatalogsLandingContent({
 export function CatalogsLandingClient({
   initialData,
   initialPeriod,
+  initialSearch,
 }: {
   initialData: CatalogsLandingResponse | null;
   initialPeriod: SellerLandingPeriod;
+  initialSearch?: string;
 }) {
   return (
     <FeatureGate flag="CATALOG_PUBLISHING">
-      <CatalogsLandingContent initialData={initialData} initialPeriod={initialPeriod} />
+      <CatalogsLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />
     </FeatureGate>
   );
 }

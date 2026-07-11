@@ -2,6 +2,7 @@ import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { BrandsLandingClient } from '@/components/seller/brands/BrandsLandingClient';
 import type { TenantBrandsResponse } from '@/hooks/useBrands';
 import { FLAGS, getFlag } from '@/lib/flags';
+import { resolveOptionalSearchParam } from '@/lib/server/read-search-param';
 import { fetchSellerPageBootstrap } from '@/lib/server/seller-page-bootstrap';
 import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
@@ -18,7 +19,8 @@ export default async function BrandsPage({
   }
 
   const period = await resolveSellerLandingPeriod(searchParams);
+  const initialSearch = await resolveOptionalSearchParam(searchParams);
   const { data: initialData, status } = await fetchSellerPageBootstrap<TenantBrandsResponse>(`/api/tenant/brands?period=${period}`);
   if (status === 403) return <FeatureForbiddenPage />;
-  return <BrandsLandingClient initialData={initialData} initialPeriod={period} />;
+  return <BrandsLandingClient initialData={initialData} initialPeriod={period} initialSearch={initialSearch} />;
 }

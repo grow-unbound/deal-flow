@@ -21,6 +21,7 @@ function createQuery(key: string) {
   const query: Record<string, unknown> = {
     eq: vi.fn(),
     is: vi.fn(),
+    not: vi.fn(),
     in: vi.fn(),
     or: vi.fn(),
     order: vi.fn(),
@@ -43,6 +44,7 @@ function createQuery(key: string) {
 
   query.eq = vi.fn(() => query);
   query.is = vi.fn(() => query);
+  query.not = vi.fn(() => query);
   query.in = vi.fn(() => query);
   query.or = vi.fn(() => query);
   query.order = vi.fn(() => query);

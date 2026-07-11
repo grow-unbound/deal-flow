@@ -21,6 +21,8 @@ export interface BuyerMeData {
     enquiries: boolean;
     sales_orders: boolean;
     invoices: boolean;
+    create_enquiries: boolean;
+    create_sales_orders: boolean;
   };
   business_policy: {
     credit_enabled: boolean;

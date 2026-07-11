@@ -1,8 +1,25 @@
+// @vitest-environment jsdom
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const usePriceListsLandingMock = vi.fn();
 const useFlagMock = vi.fn();
+const storageFactory = () => {
+  const store = new Map<string, string>();
+  return {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(key, value);
+    },
+    removeItem: (key: string) => {
+      store.delete(key);
+    },
+    clear: () => {
+      store.clear();
+    },
+  };
+};
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -10,7 +27,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@/hooks/usePriceLists', () => ({
-  usePriceListsLanding: () => usePriceListsLandingMock(),
+  usePriceListsLanding: (...args: unknown[]) => usePriceListsLandingMock(...args),
   useCreatePriceList: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
@@ -19,12 +36,18 @@ vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlagState: (...args: unknown[]) => useFlagMock(...args),
 }));
 
+vi.mock('@/hooks/useRole', () => ({
+  useRole: () => ({ isSellerAssistant: false }),
+}));
+
 import { PriceListsLandingClient } from '@/components/seller/price-lists/PriceListsLandingClient';
 
 describe('price lists landing integration', () => {
   beforeEach(() => {
     usePriceListsLandingMock.mockReset();
     useFlagMock.mockReset();
+    Object.defineProperty(globalThis, 'localStorage', { value: storageFactory(), configurable: true });
+    Object.defineProperty(globalThis, 'sessionStorage', { value: storageFactory(), configurable: true });
   });
 
   it('renders flag-off state and does not fetch data', () => {
@@ -36,7 +59,7 @@ describe('price lists landing integration', () => {
     expect(usePriceListsLandingMock).not.toHaveBeenCalled();
   });
 
-  it('supports search and chip filtering', () => {
+  it('supports search filtering', () => {
     useFlagMock.mockReturnValue(true);
     usePriceListsLandingMock.mockReturnValue({
       isLoading: false,
@@ -109,14 +132,43 @@ describe('price lists landing integration', () => {
 
     expect(screen.getByText('2 price lists')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Expired' }));
-    expect(screen.getByText('1 price lists')).toBeInTheDocument();
-    expect(screen.getByText('B List')).toBeInTheDocument();
-    expect(screen.queryByText('A List')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'All' }));
     fireEvent.change(screen.getByLabelText('Search price list or cohort…'), { target: { value: 'north' } });
     expect(screen.getByText('A List')).toBeInTheDocument();
     expect(screen.queryByText('B List')).not.toBeInTheDocument();
+  });
+
+  it('seeds the landing search from the URL-provided initialSearch', async () => {
+    useFlagMock.mockReturnValue(true);
+    usePriceListsLandingMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+      data: {
+        kpis: {
+          active_lists: 0,
+          draft_lists: 0,
+          expiring_soon: 0,
+          cohorts_covered: 0,
+          cohorts_total: 0,
+          products_with_overrides: 0,
+        },
+        todays_read: {
+          expiring_soon: [],
+          most_coverage: [],
+          uncovered_cohorts: [],
+        },
+        price_lists: [],
+        cohorts_total: 0,
+        counts: { active: 0, draft: 0, expired: 0 },
+      },
+    });
+
+    render(<PriceListsLandingClient initialData={null} initialSearch="north" />);
+
+    await waitFor(() => {
+      expect(usePriceListsLandingMock).toHaveBeenLastCalledWith({ search: 'north', status: [] }, null);
+    });
+
+    expect(screen.getByLabelText('Search price list or cohort…')).toHaveValue('north');
   });
 });

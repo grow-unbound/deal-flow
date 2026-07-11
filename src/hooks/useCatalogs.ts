@@ -305,6 +305,21 @@ export interface CatalogComposerBootstrapResponse {
   };
 }
 
+export interface CatalogComposerProductsResponse {
+  products: CatalogComposerProduct[];
+  total: number;
+  nextCursor: string | null;
+}
+
+export interface CatalogComposerProductFilters {
+  query?: string;
+  brands?: string[];
+  categories?: string[];
+  availability?: CatalogComposerFilterState['availability'];
+  limit?: number;
+  enabled?: boolean;
+}
+
 export interface CatalogComposerBuyerPickerRow {
   id: string;
   business_name: string;
@@ -405,6 +420,38 @@ export function useCatalogComposerDetail(id: string) {
     },
     enabled: Boolean(id),
     staleTime: NAVIGATION_QUERY_STALE_TIME,
+    gcTime: NAVIGATION_QUERY_GC_TIME,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useCatalogComposerProducts({
+  query,
+  brands = [],
+  categories = [],
+  availability = 'show_everything',
+  limit = 50,
+  enabled = true,
+}: CatalogComposerProductFilters) {
+  return useInfiniteQuery({
+    queryKey: ['catalog-composer-products', query?.trim() ?? '', brands, categories, availability, limit],
+    queryFn: async ({ pageParam, signal }): Promise<CatalogComposerProductsResponse> => {
+      const params = new URLSearchParams();
+      if (query?.trim()) params.set('q', query.trim());
+      params.set('availability', availability);
+      params.set('limit', String(limit));
+      if (pageParam) params.set('cursor', pageParam as string);
+      appendArrayParam(params, 'brand', brands);
+      appendArrayParam(params, 'category', categories);
+      const res = await apiFetch(`/api/tenant/catalogs/composer/products?${params.toString()}`, { signal });
+      if (!res.ok) throw new Error('Failed to fetch campaign products');
+      return res.json();
+    },
+    enabled,
+    placeholderData: keepPreviousData,
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    staleTime: 30_000,
     gcTime: NAVIGATION_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
   });

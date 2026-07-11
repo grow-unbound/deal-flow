@@ -39,7 +39,7 @@ describe('whatsapp enqueue sender', () => {
       },
       'ord-123',
       'ORD-2026-0001',
-      125000,
+      12500,
       3,
     );
 
@@ -54,7 +54,7 @@ describe('whatsapp enqueue sender', () => {
       { text: 'Ravi Traders', parameter_name: 'buyer_name' },
       { text: '9876543210', parameter_name: 'buyer_phone_number' },
       { text: 'ORD-2026-0001', parameter_name: 'order_number' },
-      { text: '1250', parameter_name: 'total_amount' },
+      { text: '12500', parameter_name: 'total_amount' },
       { text: '3', parameter_name: 'item_count' },
       { text: '24', parameter_name: 'eta' },
     ]);
@@ -62,7 +62,7 @@ describe('whatsapp enqueue sender', () => {
     expect(triggerWhatsAppDispatchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('enqueues buyer order template with composed seller_name and en_IN locale', async () => {
+  it('enqueues buyer order template with seller_team param and en_IN locale', async () => {
     const { sendOrderReceivedBuyer } = await import('@/lib/server/whatsapp');
 
     await sendOrderReceivedBuyer(
@@ -79,7 +79,7 @@ describe('whatsapp enqueue sender', () => {
       },
       'ord-123',
       'ORD-2026-0001',
-      125000,
+      12500,
       3,
     );
 
@@ -96,8 +96,8 @@ describe('whatsapp enqueue sender', () => {
       { text: 'Ravi Traders', parameter_name: 'buyer_name' },
       { text: '3', parameter_name: 'item_count' },
       { text: 'ORD-2026-0001', parameter_name: 'order_number' },
-      { text: '1250', parameter_name: 'total_amount' },
-      { text: 'WineYard (Mumbai Warehouse)', parameter_name: 'seller_name' },
+      { text: '12500', parameter_name: 'total_amount' },
+      { text: 'WineYard (Mumbai Warehouse)', parameter_name: 'seller_team' },
       { text: '24', parameter_name: 'eta' },
     ]);
     expect(input.sendPayload.body_params.some((param) => param.parameter_name === 'seller_location')).toBe(false);

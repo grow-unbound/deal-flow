@@ -24,6 +24,7 @@ import {
   parseWebhookRecord,
   ok,
 } from '../_shared/push-zoho-utils.ts';
+import { notifyTransactionReady } from '../_shared/transaction-notify-client.ts';
 
 const FN = '[push-estimate-to-zoho]';
 
@@ -204,7 +205,7 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`${FN} Zoho POST /estimates failed for estimate ${id}:`, msg);
-    await assignProvisionalTransactionNumber(admin, {
+    const provisionalNumber = await assignProvisionalTransactionNumber(admin, {
       entityTable: 'estimates',
       numberField: 'estimate_number',
       tenantId,
@@ -221,6 +222,13 @@ Deno.serve(async (req: Request) => {
       internalId: id,
       errorReason: msg,
     });
+    if (provisionalNumber) {
+      void notifyTransactionReady({
+        entityTable: 'estimates',
+        entityId: id,
+        documentNumber: provisionalNumber,
+      });
+    }
     return ok({ error: 'zoho_push_failed' });
   }
 
@@ -264,6 +272,14 @@ Deno.serve(async (req: Request) => {
       notes: notesText,
     },
   });
+
+  if (zohoEstimateNumber) {
+    void notifyTransactionReady({
+      entityTable: 'estimates',
+      entityId: id,
+      documentNumber: zohoEstimateNumber,
+    });
+  }
 
   // Echo guard — 30 min TTL prevents forward sync from reimporting this estimate
   await createEchoGuard(admin, {

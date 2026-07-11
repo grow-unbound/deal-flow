@@ -22,7 +22,7 @@ import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
-import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -123,9 +123,11 @@ function ProductLandingDataSkeleton() {
 function ProductsLandingContent({
   initialData,
   initialPeriod,
+  initialSearch,
 }: {
   initialData: TenantProductsResponse | null;
   initialPeriod: SellerLandingPeriod;
+  initialSearch?: string;
 }) {
   const router = useRouter();
   const { isSellerAssistant } = useRole();
@@ -135,7 +137,7 @@ function ProductsLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-products-landing',
     scopeKey: period,
-    version: 2,
+    version: 3,
     initialState: {
       search: '',
       sortBy: 'GMV (high → low)' as SortOption,
@@ -147,6 +149,7 @@ function ProductsLandingContent({
       },
     },
   });
+  useSeedRouteSearch({ initialSearch, setState: setRouteState });
   const search = routeState.search;
   const sortBy = routeState.sortBy;
   const filters = routeState.filters ?? { brand: [], category: [], status: [], stock: [] };
@@ -470,13 +473,15 @@ function ProductsLandingContent({
 export function ProductsLandingClient({
   initialData,
   initialPeriod,
+  initialSearch,
 }: {
   initialData: TenantProductsResponse | null;
   initialPeriod: SellerLandingPeriod;
+  initialSearch?: string;
 }) {
   return (
     <FeatureGate flag="BRAND_PRODUCT_MASTER">
-      <ProductsLandingContent initialData={initialData} initialPeriod={initialPeriod} />
+      <ProductsLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />
     </FeatureGate>
   );
 }

@@ -63,6 +63,11 @@ interface ZohoRequestInit {
   query?: Record<string, string | number | boolean | undefined | null>;
   body?: unknown;
   baseUrl?: string;
+  /** 'bulk' = tighter per-attempt timeout/retry budget for a per-item call
+   * inside a concurrent batch (see ZOHO_BULK_DETAIL_* constants) — one
+   * stubborn item shouldn't be able to stall the whole batch on the
+   * standard 30s x 3 budget. Defaults to 'standard'. */
+  retryBudget?: 'standard' | 'bulk';
 }
 
 interface NormalizedZohoCredentials {
@@ -86,6 +91,19 @@ const PRICE_LIST_RESPONSE_KEYS = ['pricebooks', 'pricelists'] as const;
 const ZOHO_REQUEST_RETRYABLE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const ZOHO_REQUEST_MAX_ATTEMPTS = 3;
 const ZOHO_REQUEST_TIMEOUT_MS = 30_000;
+
+// Per-item detail fetches inside a concurrent bulk sweep (inventory's
+// item-location lookups, transaction line-item hydration) run
+// Promise.allSettled over a batch — one item stuck on the standard budget
+// (30s timeout x 3 attempts + backoff ~= 90-100s) blocks the ENTIRE batch
+// that long, which alone can exceed the caller's DISPATCH_TIMEOUT_MS (140s)
+// with zero heartbeat in between. A bulk sweep should skip a stubborn item
+// and move on, not burn most of its dispatch budget retrying one record.
+// Worst case per item here: ~15s + backoff + 15s =~ 31s, so one bad item in
+// a batch of ZOHO_DETAIL_FETCH_CONCURRENCY no longer threatens the whole
+// dispatch window.
+const ZOHO_BULK_DETAIL_MAX_ATTEMPTS = 2;
+const ZOHO_BULK_DETAIL_TIMEOUT_MS = 15_000;
 
 // Zoho Books/Inventory API limits (confirmed via Zoho's own docs, July 2026):
 // 10 concurrent API calls per org (soft limit, 429 above it), 100 requests
@@ -265,15 +283,18 @@ async function fetchZohoResponse(
   init: RequestInit,
   retryLabel: string,
   onKeepAlive?: () => void,
+  retryBudget: 'standard' | 'bulk' = 'standard',
 ): Promise<Response> {
   let lastError: unknown = null;
+  const maxAttempts = retryBudget === 'bulk' ? ZOHO_BULK_DETAIL_MAX_ATTEMPTS : ZOHO_REQUEST_MAX_ATTEMPTS;
+  const timeoutMs = retryBudget === 'bulk' ? ZOHO_BULK_DETAIL_TIMEOUT_MS : ZOHO_REQUEST_TIMEOUT_MS;
 
-  for (let attempt = 1; attempt <= ZOHO_REQUEST_MAX_ATTEMPTS; attempt += 1) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      logCheckpoint(null, 'zoho-request', `${retryLabel}:attempt${attempt}:abort`, { reason: 'timeout', timeoutMs: ZOHO_REQUEST_TIMEOUT_MS });
-      controller.abort(new Error(`Zoho ${retryLabel} request timed out after ${ZOHO_REQUEST_TIMEOUT_MS}ms.`));
-    }, ZOHO_REQUEST_TIMEOUT_MS);
+      logCheckpoint(null, 'zoho-request', `${retryLabel}:attempt${attempt}:abort`, { reason: 'timeout', timeoutMs });
+      controller.abort(new Error(`Zoho ${retryLabel} request timed out after ${timeoutMs}ms.`));
+    }, timeoutMs);
     const attemptDone = startTimer(null, 'zoho-request', `${retryLabel}:attempt${attempt}`);
 
     try {
@@ -289,7 +310,7 @@ async function fetchZohoResponse(
       // this, that looks identical to a dead worker to anything checking
       // heartbeat_at.
       onKeepAlive?.();
-      if (attempt < ZOHO_REQUEST_MAX_ATTEMPTS && isRetryableZohoResponseStatus(response.status)) {
+      if (attempt < maxAttempts && isRetryableZohoResponseStatus(response.status)) {
         const delayMs = retryDelayMs(attempt, response);
         logCheckpoint(null, 'zoho-request', `${retryLabel}:retrying`, { attempt, status: response.status, delayMs });
         await delay(delayMs);
@@ -299,7 +320,7 @@ async function fetchZohoResponse(
     } catch (error) {
       attemptDone({ error: error instanceof Error ? error.message : String(error) });
       lastError = error;
-      if (attempt >= ZOHO_REQUEST_MAX_ATTEMPTS || !isRetryableZohoRequestError(error)) {
+      if (attempt >= maxAttempts || !isRetryableZohoRequestError(error)) {
         throw error;
       }
       onKeepAlive?.();
@@ -478,7 +499,7 @@ export function createZohoAdapter(
         'Content-Type': 'application/json',
       },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
-    }, init.path, onKeepAlive);
+    }, init.path, onKeepAlive, init.retryBudget ?? 'standard');
 
     if (response.status === 401 && retryOnUnauthorized) {
       cachedToken = null;
@@ -626,9 +647,12 @@ export function createZohoAdapter(
     }
   }
 
+  // fetchEstimateById/fetchSalesOrderById/fetchInvoiceById are only ever
+  // called from sync-transaction-line-items's concurrent per-item batch
+  // sweep — bulk retry budget applies (see ZOHO_BULK_DETAIL_* constants).
   async function fetchEstimateById(estimateId: string): Promise<Record<string, unknown> | null> {
     try {
-      const payload = await request({ path: `/estimates/${estimateId}` });
+      const payload = await request({ path: `/estimates/${estimateId}`, retryBudget: 'bulk' });
       const estimate = payload.estimate;
       return isRecord(estimate) ? estimate : null;
     } catch (error) {
@@ -639,7 +663,7 @@ export function createZohoAdapter(
 
   async function fetchSalesOrderById(salesOrderId: string): Promise<Record<string, unknown> | null> {
     try {
-      const payload = await request({ path: `/salesorders/${salesOrderId}` });
+      const payload = await request({ path: `/salesorders/${salesOrderId}`, retryBudget: 'bulk' });
       const salesOrder = payload.salesorder;
       return isRecord(salesOrder) ? salesOrder : null;
     } catch (error) {
@@ -650,7 +674,7 @@ export function createZohoAdapter(
 
   async function fetchInvoiceById(invoiceId: string): Promise<Record<string, unknown> | null> {
     try {
-      const payload = await request({ path: `/invoices/${invoiceId}` });
+      const payload = await request({ path: `/invoices/${invoiceId}`, retryBudget: 'bulk' });
       const invoice = payload.invoice;
       return isRecord(invoice) ? invoice : null;
     } catch (error) {

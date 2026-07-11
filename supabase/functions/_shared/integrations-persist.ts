@@ -2032,7 +2032,7 @@ export async function fetchAndPersistMissingItemLocations(
     const batch = itemIds.slice(i, i + ITEM_LOC_CONCURRENCY);
     const batchDone = startTimer(null, 'inventory', `fetchAndPersistMissingItemLocations:batch${Math.floor(i / ITEM_LOC_CONCURRENCY) + 1}`);
     const results = await Promise.allSettled(
-      batch.map((itemId) => adapter.request<{ item: Record<string, unknown> }>({ path: `/items/${itemId}` })),
+      batch.map((itemId) => adapter.request<{ item: Record<string, unknown> }>({ path: `/items/${itemId}`, retryBudget: 'bulk' })),
     );
     batchDone({ items: batch.length });
 

@@ -119,6 +119,7 @@ export interface WarehousesLandingResponse {
     recently_replenished: WarehousesLandingCalloutRow[];
   };
   warehouses: WarehousesLandingRow[];
+  total: number;
   period: string;
   refreshed_at: string;
 }

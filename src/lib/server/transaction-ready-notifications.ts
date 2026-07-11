@@ -101,7 +101,7 @@ export async function enqueueTransactionReadyNotifications(
     if (!ctx) return { enqueued: false, skipped: 'notification_disabled' };
 
     const itemCount = await countEstimateItems(db, row.id);
-    const results = await sendBuyerTransactionNotifications(
+    const whatsappEnqueued = await sendBuyerTransactionNotifications(
       'estimate',
       ctx,
       row.id,
@@ -109,7 +109,6 @@ export async function enqueueTransactionReadyNotifications(
       Number(row.total_amount ?? 0),
       itemCount,
     );
-    const whatsappEnqueued = results.some((result) => result.status === 'fulfilled');
     if (whatsappEnqueued) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (db as any)
@@ -147,7 +146,7 @@ export async function enqueueTransactionReadyNotifications(
   if (!ctx) return { enqueued: false, skipped: 'notification_disabled' };
 
   const itemCount = await countOrderItems(db, row.id);
-  const results = await sendBuyerTransactionNotifications(
+  const whatsappEnqueued = await sendBuyerTransactionNotifications(
     'order',
     ctx,
     row.id,
@@ -155,7 +154,6 @@ export async function enqueueTransactionReadyNotifications(
     Number(row.total_amount ?? 0),
     itemCount,
   );
-  const whatsappEnqueued = results.some((result) => result.status === 'fulfilled');
   if (whatsappEnqueued) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (db as any)

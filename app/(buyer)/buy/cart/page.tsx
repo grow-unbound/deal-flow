@@ -77,6 +77,8 @@ export default function CartPage() {
   const selectedDelivery = delivery?.selected ?? null;
   const gstInclusive = meData?.business_policy.gst_inclusive ?? false;
   const gstRate = meData?.business_policy.gst_rate ?? 18;
+  const allowPlaceOrder = meData?.order_features.create_sales_orders ?? false;
+  const allowRequestQuote = meData?.order_features.create_enquiries ?? false;
   const [placingOrder, setPlacingOrder] = useState(false);
   const [requestingQuote, setRequestingQuote] = useState(false);
   const [error, setError] = useState('');
@@ -478,24 +480,28 @@ export default function CartPage() {
         }}
       >
         <div className="flex gap-2">
-          <button
-            onClick={handleRequestQuote}
-          disabled={isBusy || !selectedDelivery || availableItems.length === 0}
-          className="flex h-12 flex-1 items-center justify-center gap-1.5 font-semibold text-white transition-opacity disabled:opacity-60"
-          style={{ fontSize: 'var(--b-text-label)', background: 'var(--teal-500)', borderRadius: 10 }}
-        >
-            <WhatsAppIcon className="w-4 h-4 shrink-0" />
-            {requestingQuote ? 'Requesting…' : 'Get WhatsApp quote'}
-          </button>
-          <button
-            onClick={handlePlaceOrder}
-          disabled={isBusy || !selectedDelivery || availableItems.length === 0}
-          className="flex h-12 flex-1 items-center justify-center gap-1.5 font-semibold text-white transition-opacity disabled:opacity-60"
-          style={{ fontSize: 'var(--b-text-label)', background: 'var(--ember-400)', borderRadius: 10 }}
-        >
-            <Check className="w-4 h-4 shrink-0" />
-            {placingOrder ? 'Placing…' : 'Place order'}
-          </button>
+          {allowRequestQuote && (
+            <button
+              onClick={handleRequestQuote}
+              disabled={isBusy || !selectedDelivery || availableItems.length === 0}
+              className="flex h-12 flex-1 items-center justify-center gap-1.5 font-semibold text-white transition-opacity disabled:opacity-60"
+              style={{ fontSize: 'var(--b-text-label)', background: 'var(--teal-500)', borderRadius: 10 }}
+            >
+              <WhatsAppIcon className="w-4 h-4 shrink-0" />
+              {requestingQuote ? 'Requesting…' : 'Get WhatsApp quote'}
+            </button>
+          )}
+          {allowPlaceOrder && (
+            <button
+              onClick={handlePlaceOrder}
+              disabled={isBusy || !selectedDelivery || availableItems.length === 0}
+              className="flex h-12 flex-1 items-center justify-center gap-1.5 font-semibold text-white transition-opacity disabled:opacity-60"
+              style={{ fontSize: 'var(--b-text-label)', background: 'var(--ember-400)', borderRadius: 10 }}
+            >
+              <Check className="w-4 h-4 shrink-0" />
+              {placingOrder ? 'Placing…' : 'Place order'}
+            </button>
+          )}
         </div>
       </div>
     </>

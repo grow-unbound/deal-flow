@@ -154,6 +154,24 @@ export function useRouteSnapshot<T>({
   };
 }
 
+export function useSeedRouteSearch<T extends { search: string }>({
+  initialSearch,
+  setState,
+}: {
+  initialSearch?: string;
+  setState: (next: T | ((previous: T) => T)) => void;
+}) {
+  useEffect(() => {
+    if (typeof initialSearch !== 'string') return;
+
+    setState((current) => (
+      current.search === initialSearch
+        ? current
+        : { ...current, search: initialSearch }
+    ));
+  }, [initialSearch, setState]);
+}
+
 export function useRouteScrollRestoration({
   storageKey,
   enabled = true,

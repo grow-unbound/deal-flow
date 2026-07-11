@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
-import { SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
+import { parseRowsLimit, SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 import { createTimer } from '@/lib/server-timing';
 import { getCohortsLandingPayload } from '../../cohorts/route';
+import { readArrayParam } from '@/lib/landing-filter-params';
+import { PAGE_SIZE } from '@/lib/pagination';
 
 export async function GET(request: NextRequest) {
   const timer = createTimer();
@@ -32,7 +34,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const payload = await getCohortsLandingPayload(claims.tenant_id, request.nextUrl.searchParams.get('period'));
+    const payload = await getCohortsLandingPayload(claims.tenant_id, request.nextUrl.searchParams.get('period'), {
+      search: request.nextUrl.searchParams.get('search')?.trim() ?? '',
+      brands: readArrayParam(request.nextUrl.searchParams, 'brands'),
+      limit: parseRowsLimit(request.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER),
+    });
     return timedJson(payload);
   } catch (error: any) {
     console.error('[GET /api/tenant/cohorts] DB error:', error?.code, error?.message);

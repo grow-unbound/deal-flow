@@ -53,6 +53,7 @@ export interface CategoriesLandingResponse {
     fast_movers: CategoryCalloutRow[];
   };
   rows: CategoryTableRow[];
+  total: number;
   period: string;
 }
 

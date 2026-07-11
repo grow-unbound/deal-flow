@@ -24,6 +24,7 @@ import {
   parseWebhookRecord,
   ok,
 } from '../_shared/push-zoho-utils.ts';
+import { notifyTransactionReady } from '../_shared/transaction-notify-client.ts';
 
 const FN = '[push-order-to-zoho]';
 
@@ -211,7 +212,7 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`${FN} Zoho POST /salesorders failed for order ${id}:`, msg);
-    await assignProvisionalTransactionNumber(admin, {
+    const provisionalNumber = await assignProvisionalTransactionNumber(admin, {
       entityTable: 'orders',
       numberField: 'order_number',
       tenantId,
@@ -228,6 +229,13 @@ Deno.serve(async (req: Request) => {
       internalId: id,
       errorReason: msg,
     });
+    if (provisionalNumber) {
+      void notifyTransactionReady({
+        entityTable: 'orders',
+        entityId: id,
+        documentNumber: provisionalNumber,
+      });
+    }
     return ok({ error: 'zoho_push_failed' });
   }
 
@@ -262,6 +270,14 @@ Deno.serve(async (req: Request) => {
       notes: notesText,
     },
   });
+
+  if (zohoSalesOrderNumber) {
+    void notifyTransactionReady({
+      entityTable: 'orders',
+      entityId: id,
+      documentNumber: zohoSalesOrderNumber,
+    });
+  }
 
   // Echo guard — 30 min TTL prevents forward sync from reimporting this order
   await createEchoGuard(admin, {
