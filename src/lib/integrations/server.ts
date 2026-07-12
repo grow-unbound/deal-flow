@@ -333,7 +333,7 @@ async function loadAggregateFreshness(
       repair_job_id: null,
       repair_rebuild_days: null,
       last_retried_at: null,
-      warning_message: 'No aggregate timestamps are available yet. Run Analysis after the first sync finishes.',
+      warning_message: 'No aggregate timestamps available yet. Run Repair Aggregates after the first sync finishes.',
     };
   }
 
@@ -350,7 +350,7 @@ async function loadAggregateFreshness(
       repair_job_id: null,
       repair_rebuild_days: null,
       last_retried_at: null,
-      warning_message: `Some aggregates are stale or missing (${staleList}). Run Analysis to rebuild snapshots and KPI tables.`,
+      warning_message: `Some aggregates are stale or missing (${staleList}). Use Repair Aggregates to rebuild snapshots and KPI tables.`,
     };
   }
 
