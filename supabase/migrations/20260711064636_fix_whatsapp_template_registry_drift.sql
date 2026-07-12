@@ -3,7 +3,7 @@
 -- order_received_buyer: Meta expects {{seller_team}}, not {{seller_name}}
 UPDATE app.whatsapp_templates
 SET
-  body_text = replace(body_text, '{{seller_name}}', '{{seller_team}}'),
+  body = replace(body, '{{seller_name}}', '{{seller_team}}'),
   variables = (
     SELECT coalesce(
       jsonb_agg(
