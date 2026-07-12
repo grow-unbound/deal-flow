@@ -48,13 +48,13 @@ export async function queueCampaignPublishNotify(
     .schema('app')
     .from('whatsapp_templates')
     .select('id, meta_template_name, meta_category, approval_status, use_case, locale, variables, button_config, buttons_config, header_config')
-    .eq('meta_template_name', 'campaign_announcement')
+    .eq('use_case', 'campaign_announcement')
     .is('tenant_id', null)
     .is('deleted_at', null)
     .maybeSingle();
 
   if (templateError || !template) {
-    throw new Error('campaign_announcement template not found');
+    throw new Error('campaign_announcement template not found (use_case)');
   }
 
   const target = campaignScopeToBroadcastTarget({

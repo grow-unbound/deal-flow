@@ -29,6 +29,11 @@ const WHATSAPP_OTP_TEMPLATE_LOCALE = 'en_US';
 const WHATSAPP_LOGIN_PRODUCT_NAME = 'Login to Yukti';
 const FALLBACK_TEMPLATE_LOCALE = 'en';
 
+/** Buyer-app totals are stored in whole rupees — Meta body params expect the same scale. */
+export function formatWhatsappInrAmount(amount: number): string {
+  return String(Math.round(amount));
+}
+
 async function resolveTemplateLocale(templateName: string): Promise<string> {
   const meta = await lookupApprovedTemplateMeta(templateName);
   return meta?.locale ?? FALLBACK_TEMPLATE_LOCALE;
@@ -95,10 +100,10 @@ export async function sendOrderReceivedSeller(
   orderNumber: string,
   totalAmount: number,
   itemCount: number,
-): Promise<void> {
-  if (!ctx.tenantId) return;
+): Promise<boolean> {
+  if (!ctx.tenantId) return false;
   const locale = await resolveTemplateLocale('order_received_seller');
-  await enqueueWhatsappTemplate(
+  return enqueueWhatsappTemplate(
     ctx.sellerPhone,
     'order_received_seller',
     locale,
@@ -107,7 +112,7 @@ export async function sendOrderReceivedSeller(
       { text: ctx.buyerName, parameterName: 'buyer_name' },
       { text: ctx.buyerPhone, parameterName: 'buyer_phone_number' },
       { text: orderNumber, parameterName: 'order_number' },
-      { text: String(Math.round(totalAmount / 100)), parameterName: 'total_amount' },
+      { text: formatWhatsappInrAmount(totalAmount), parameterName: 'total_amount' },
       { text: String(itemCount), parameterName: 'item_count' },
       { text: String(ctx.etaHours), parameterName: 'eta' },
     ],
@@ -129,10 +134,10 @@ export async function sendOrderReceivedBuyer(
   orderNumber: string,
   totalAmount: number,
   itemCount: number,
-): Promise<void> {
-  if (!ctx.tenantId) return;
+): Promise<boolean> {
+  if (!ctx.tenantId) return false;
   const locale = await resolveTemplateLocale('order_received_buyer');
-  await enqueueWhatsappTemplate(
+  return enqueueWhatsappTemplate(
     ctx.buyerPhone,
     'order_received_buyer',
     locale,
@@ -140,8 +145,8 @@ export async function sendOrderReceivedBuyer(
       { text: ctx.buyerName, parameterName: 'buyer_name' },
       { text: String(itemCount), parameterName: 'item_count' },
       { text: orderNumber, parameterName: 'order_number' },
-      { text: String(Math.round(totalAmount / 100)), parameterName: 'total_amount' },
-      { text: ctx.buyerFacingSellerName, parameterName: 'seller_name' },
+      { text: formatWhatsappInrAmount(totalAmount), parameterName: 'total_amount' },
+      { text: ctx.buyerFacingSellerName, parameterName: 'seller_team' },
       { text: String(ctx.etaHours), parameterName: 'eta' },
     ],
     orderId,
@@ -162,10 +167,10 @@ export async function sendRequestReceivedSeller(
   estimateNumber: string,
   totalAmount: number,
   itemCount: number,
-): Promise<void> {
-  if (!ctx.tenantId) return;
+): Promise<boolean> {
+  if (!ctx.tenantId) return false;
   const locale = await resolveTemplateLocale('request_received_seller');
-  await enqueueWhatsappTemplate(
+  return enqueueWhatsappTemplate(
     ctx.sellerPhone,
     'request_received_seller',
     locale,
@@ -174,7 +179,7 @@ export async function sendRequestReceivedSeller(
       { text: ctx.buyerName, parameterName: 'buyer_name' },
       { text: ctx.buyerPhone, parameterName: 'buyer_phone_number' },
       { text: estimateNumber, parameterName: 'request_number' },
-      { text: String(Math.round(totalAmount / 100)), parameterName: 'total_amount' },
+      { text: formatWhatsappInrAmount(totalAmount), parameterName: 'total_amount' },
       { text: String(itemCount), parameterName: 'item_count' },
       { text: String(ctx.etaHours), parameterName: 'eta' },
     ],
@@ -196,10 +201,10 @@ export async function sendRequestReceivedBuyer(
   estimateNumber: string,
   totalAmount: number,
   itemCount: number,
-): Promise<void> {
-  if (!ctx.tenantId) return;
+): Promise<boolean> {
+  if (!ctx.tenantId) return false;
   const locale = await resolveTemplateLocale('request_received_buyer');
-  await enqueueWhatsappTemplate(
+  return enqueueWhatsappTemplate(
     ctx.buyerPhone,
     'request_received_buyer',
     locale,
@@ -207,7 +212,7 @@ export async function sendRequestReceivedBuyer(
       { text: ctx.buyerName, parameterName: 'buyer_name' },
       { text: String(itemCount), parameterName: 'item_count' },
       { text: estimateNumber, parameterName: 'estimate_number' },
-      { text: String(Math.round(totalAmount / 100)), parameterName: 'total_amount' },
+      { text: formatWhatsappInrAmount(totalAmount), parameterName: 'total_amount' },
       { text: ctx.buyerFacingSellerName, parameterName: 'seller_name' },
       { text: String(ctx.etaHours), parameterName: 'eta' },
     ],

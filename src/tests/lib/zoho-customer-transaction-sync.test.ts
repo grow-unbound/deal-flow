@@ -8,7 +8,7 @@ function createAdminStub(options?: {
   authUsers?: Array<{ id: string; email: string | null }>;
   tenantUsers?: Array<{ user_id: string }>;
 }) {
-  const rpcCalls: Array<{ fn: string; args: Record<string, unknown> }> = [];
+  const rpcCalls: Array<{ fn: string; args: Record<string, unknown>; result?: unknown }> = [];
   const updateCalls: Array<{ table: string; payload: Record<string, unknown>; filters: Record<string, unknown> }> = [];
   const operationLog: string[] = [];
   const tableRows = options?.tableRows ?? {};
@@ -164,7 +164,8 @@ function createAdminStub(options?: {
       },
       schema: () => ({
         rpc: async (fn: string, args: Record<string, unknown>) => {
-          rpcCalls.push({ fn, args });
+          const entry: { fn: string; args: Record<string, unknown>; result?: unknown } = { fn, args };
+          rpcCalls.push(entry);
           if (fn === 'bulk_persist_jsonb_records' && typeof args.p_table === 'string') {
             operationLog.push(`rpc:${args.p_table}`);
           }
@@ -173,16 +174,47 @@ function createAdminStub(options?: {
             const rows = Array.isArray(args.p_rows) ? args.p_rows as Array<Record<string, unknown>> : [];
 
             if (args.p_table === 'integration_entity_map') {
+              entry.result = [];
               return { data: [], error: null };
             }
 
-            return {
-              data: rows.map((row, index) => ({
-                id: typeof row.id === 'string' ? row.id : `${String(args.p_table)}-${index + 1}`,
-                ...row,
-              })),
-              error: null,
-            };
+            const data = rows.map((row, index) => ({
+              id: typeof row.id === 'string' ? row.id : `${String(args.p_table)}-${index + 1}`,
+              ...row,
+            }));
+            entry.result = data;
+            return { data, error: null };
+          }
+
+          // Mirrors app.persist_with_natural_key_lock: resolve each row by
+          // external_ref OR the natural key against pre-seeded tableRows,
+          // assign the matched id, then persist (same id-assignment shape
+          // as the bulk_persist_jsonb_records branch above). Resolution now
+          // happens inside the RPC, not beforehand — args.p_rows no longer
+          // carries a pre-resolved id, only entry.result (the RPC's return
+          // value) does.
+          if (fn === 'persist_with_natural_key_lock') {
+            const table = String(args.p_table);
+            const rows = Array.isArray(args.p_rows) ? args.p_rows as Array<Record<string, unknown>> : [];
+            const naturalKeyCol = String(args.p_natural_key_col);
+            const existing = tableRows[table] ?? [];
+
+            operationLog.push(`rpc:${table}`);
+
+            const resolvedRows = rows.map((row) => {
+              const match = existing.find((r) => r.external_ref === row.external_ref)
+                ?? existing.find((r) => r[naturalKeyCol] === row[naturalKeyCol]);
+              return match ? { ...row, id: match.id } : row;
+            });
+
+            const persisted = resolvedRows.map((row, index) => ({
+              id: typeof row.id === 'string' ? row.id : `${table}-${index + 1}`,
+              ...row,
+            }));
+
+            const data = { rows: persisted, conflicts: [] };
+            entry.result = data;
+            return { data, error: null };
           }
 
           return { data: null, error: null };
@@ -198,7 +230,7 @@ function getEntityMapRows(
   entityType: string,
 ): Array<Record<string, unknown>> {
   return admin.rpcCalls
-    .filter((call) => call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'integration_entity_map')
+    .filter((call) => (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === 'integration_entity_map')
     .flatMap((call) => (call.args.p_rows as Array<Record<string, unknown>>) ?? [])
     .filter((row) => row.entity_type === entityType);
 }
@@ -256,13 +288,13 @@ describe('zoho customer and transaction persistence', () => {
     );
 
     const buyersCall = admin.rpcCalls.find((call) => (
-      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'buyers'
+      (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === 'buyers'
     ));
     const buyerUsersCall = admin.rpcCalls.find((call) => (
-      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'buyer_users'
+      (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === 'buyer_users'
     ));
     const assignmentsCall = admin.rpcCalls.find((call) => (
-      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'price_list_assignments'
+      (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === 'price_list_assignments'
     ));
 
     expect(Array.isArray(buyersCall?.args.p_rows)).toBe(true);
@@ -391,11 +423,17 @@ describe('zoho customer and transaction persistence', () => {
       records as Array<Record<string, unknown>>,
     );
 
-    const persistedCall = admin.rpcCalls.find((call) => call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === entityType);
+    const persistedCall = admin.rpcCalls.find((call) => (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === entityType);
     expect(persistedCall).toBeTruthy();
-    const persistedRows = Array.isArray(persistedCall?.args.p_rows) ? persistedCall?.args.p_rows as Array<Record<string, unknown>> : [];
-    expect(persistedRows).toHaveLength(1);
-    expect(persistedRows[0]?.id).toBe(expectedId);
+    const submittedRows = Array.isArray(persistedCall?.args.p_rows) ? persistedCall?.args.p_rows as Array<Record<string, unknown>> : [];
+    expect(submittedRows).toHaveLength(1);
+    // Natural-key resolution now happens inside the RPC — the resolved id
+    // shows up in its return value, not the submitted args, when the call
+    // went through persist_with_natural_key_lock.
+    const resultRows = persistedCall?.fn === 'persist_with_natural_key_lock'
+      ? ((persistedCall?.result as { rows?: Array<Record<string, unknown>> } | undefined)?.rows ?? [])
+      : submittedRows;
+    expect(resultRows[0]?.id).toBe(expectedId);
   });
 
   it.each([
@@ -424,7 +462,7 @@ describe('zoho customer and transaction persistence', () => {
     );
 
     const persistCall = admin.rpcCalls.find((call) => (
-      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === entityType
+      (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === entityType
     ));
 
     expect(persistCall).toBeTruthy();
@@ -478,13 +516,13 @@ describe('zoho customer and transaction persistence', () => {
     );
 
     const brandsCall = admin.rpcCalls.find((call) => (
-      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'tenant_brands'
+      (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === 'tenant_brands'
     ));
     const productsCall = admin.rpcCalls.find((call) => (
-      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'tenant_products'
+      (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === 'tenant_products'
     ));
     const inventoryCall = admin.rpcCalls.find((call) => (
-      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'tenant_inventory'
+      (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === 'tenant_inventory'
     ));
 
     expect(brandsCall?.args.p_rows as unknown[]).toHaveLength(2);
@@ -535,10 +573,10 @@ describe('zoho customer and transaction persistence', () => {
     );
 
     const priceListsCall = admin.rpcCalls.find((call) => (
-      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'price_lists'
+      (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === 'price_lists'
     ));
     const priceListItemsCall = admin.rpcCalls.find((call) => (
-      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'price_list_items'
+      (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === 'price_list_items'
     ));
 
     expect(priceListsCall?.args.p_rows as unknown[]).toHaveLength(1);
@@ -589,7 +627,7 @@ describe('zoho customer and transaction persistence', () => {
     );
 
     const childCall = admin.rpcCalls.find((call) => (
-      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === childTable
+      (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === childTable
     ));
 
     expect(Array.isArray(childCall?.args.p_rows)).toBe(true);
@@ -627,7 +665,7 @@ describe('zoho customer and transaction persistence', () => {
     ).rejects.toThrow('Unable to resolve product ITEM-404 for order SO-1.');
 
     const errorMapCall = admin.rpcCalls
-      .filter((call) => call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'integration_entity_map')
+      .filter((call) => (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === 'integration_entity_map')
       .at(-1);
 
     expect(errorMapCall).toBeTruthy();
@@ -697,7 +735,7 @@ describe('zoho customer and transaction persistence', () => {
     );
 
     const buyersCall = admin.rpcCalls.find((call) => (
-      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'buyers'
+      (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === 'buyers'
     ));
     const buyerRow = (buyersCall?.args.p_rows as Array<Record<string, unknown>>)[0];
     expect(buyerRow?.buyer_app_enabled).toBe(expected);
@@ -771,7 +809,7 @@ describe('zoho customer and transaction persistence', () => {
     );
 
     const persistCall = admin.rpcCalls.find((call) => (
-      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === entityType
+      (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === entityType
     ));
     const row = (persistCall?.args.p_rows as Array<Record<string, unknown>>)[0];
     expect(row?.[targetColumn]).toBe(expected);
@@ -823,7 +861,7 @@ describe('zoho customer and transaction persistence', () => {
     );
 
     const assignmentsCall = admin.rpcCalls.find((call) => (
-      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'price_list_assignments'
+      (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === 'price_list_assignments'
     ));
     expect(assignmentsCall).toBeTruthy();
     expect((assignmentsCall?.args.p_rows as Array<Record<string, unknown>>)[0]?.price_list_id).toBe('price-list-target');
@@ -974,7 +1012,7 @@ describe('zoho customer and transaction persistence', () => {
 
     expect(admin.updateCalls.filter((call) => call.table === 'price_list_assignments')).toHaveLength(0);
     const assignmentsCall = admin.rpcCalls.find((call) => (
-      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'price_list_assignments'
+      (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === 'price_list_assignments'
     ));
     expect(assignmentsCall).toBeUndefined();
   });
@@ -1020,7 +1058,7 @@ describe('zoho customer and transaction persistence', () => {
 
     expect(fetchContactPersonsCalled).toBe(false);
     const buyerUsersCall = admin.rpcCalls.find((call) => (
-      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'buyer_users'
+      (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === 'buyer_users'
     ));
     const buyerUserRow = (buyerUsersCall?.args.p_rows as Array<Record<string, unknown>>)[0];
     expect(buyerUserRow?.first_name).toBe('Ravi');
@@ -1102,11 +1140,17 @@ describe('zoho customer and transaction persistence', () => {
     );
 
     const productsCall = admin.rpcCalls.find((call) => (
-      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'tenant_products'
+      (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === 'tenant_products'
     ));
-    const productRow = (productsCall?.args.p_rows as Array<Record<string, unknown>>)[0];
-    expect(productRow?.id).toBe('product-existing');
-    expect(productRow?.attributes_override).toBeUndefined();
+    // attributes_override omission is decided in JS before the RPC call, so
+    // it's still visible on the submitted args; the resolved id only shows
+    // up in the RPC's return value now.
+    const submittedRow = (productsCall?.args.p_rows as Array<Record<string, unknown>>)[0];
+    expect(submittedRow?.attributes_override).toBeUndefined();
+    const resultRow = productsCall?.fn === 'persist_with_natural_key_lock'
+      ? ((productsCall?.result as { rows?: Array<Record<string, unknown>> } | undefined)?.rows ?? [])[0]
+      : submittedRow;
+    expect(resultRow?.id).toBe('product-existing');
   });
 
   it('persists estimate_url, financials, and buyer-app flag from detail payload', async () => {
@@ -1149,7 +1193,7 @@ describe('zoho customer and transaction persistence', () => {
     );
 
     const persistCall = admin.rpcCalls.find((call) => (
-      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'estimates'
+      (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === 'estimates'
     ));
     const row = (persistCall?.args.p_rows as Array<Record<string, unknown>>)[0];
     expect(row?.estimate_url).toBe('https://books.zoho.in/portal/estimate/EST-DETAIL');
@@ -1192,7 +1236,7 @@ describe('zoho customer and transaction persistence', () => {
     );
 
     const persistCall = admin.rpcCalls.find((call) => (
-      call.fn === 'bulk_persist_jsonb_records' && call.args.p_table === 'orders'
+      (call.fn === 'bulk_persist_jsonb_records' || call.fn === 'persist_with_natural_key_lock') && call.args.p_table === 'orders'
     ));
     const row = (persistCall?.args.p_rows as Array<Record<string, unknown>>)[0];
     expect(row?.created_by).toBe('seller-user-1');

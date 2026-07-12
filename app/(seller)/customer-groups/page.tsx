@@ -1,6 +1,7 @@
 import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { CohortsLandingClient } from '@/components/seller/cohorts/CohortsLandingClient';
 import type { CohortsLandingResponse } from '@/hooks/useCohorts';
+import { resolveOptionalSearchParam } from '@/lib/server/read-search-param';
 import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
 import { fetchSellerPageBootstrap } from '@/lib/server/seller-page-bootstrap';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
@@ -13,7 +14,8 @@ export default async function CohortsPage({
   await requireSellerServerTenantId();
 
   const period = await resolveSellerLandingPeriod(searchParams);
+  const initialSearch = await resolveOptionalSearchParam(searchParams);
   const { data: initialData, status } = await fetchSellerPageBootstrap<CohortsLandingResponse>(`/api/tenant/cohorts?period=${period}`);
   if (status === 403) return <FeatureForbiddenPage />;
-  return <CohortsLandingClient initialData={initialData} initialPeriod={period} />;
+  return <CohortsLandingClient initialData={initialData} initialPeriod={period} initialSearch={initialSearch} />;
 }

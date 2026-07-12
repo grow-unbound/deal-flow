@@ -11,6 +11,7 @@ export const REFERENCE_PHASES = [
   'inventory',
   'pricelists',
   'customers',
+  'contact_persons',
 ] as const;
 
 export const TRANSACTIONAL_PHASES = [
@@ -339,6 +340,7 @@ export const FULL_SYNC_PHASES: readonly CanonicalPhase[] = [
   'products',
   'pricelists',
   'customers',
+  'contact_persons',
   'estimates',
   'orders',
   'invoices',
@@ -375,14 +377,26 @@ export function enrichmentModeForEntity(
   return 'keep_current';
 }
 
+// transaction_line_items only ever runs automatically as part of the daily
+// incremental sync (scoped to the since-window so it only touches entities
+// brought in during that period) — it stays out of every manual trigger
+// path (full sync, phase-group expansion, or an explicit single-phase
+// request), regardless of `requestedPhase`. It remains in
+// TRANSACTIONAL_PHASES for since/halt-policy classification purposes; only
+// its reachability through this function is cut. Manual/controlled
+// backfills go straight to the sync-transaction-line-items edge function
+// instead, bypassing this orchestrator entirely (see that function's
+// header for the direct-invocation contract).
 export function resolvePhasesForPolicy(input: {
   requestedPhase: string | null;
   enrichmentPolicy: SyncEnrichmentPolicy;
 }): readonly CanonicalPhase[] {
-  if (input.requestedPhase) {
-    return resolvePhasesToRun(input.requestedPhase);
-  }
-  return input.enrichmentPolicy === 'incremental' ? CANONICAL_PHASES : FULL_SYNC_PHASES;
+  const base = input.requestedPhase
+    ? resolvePhasesToRun(input.requestedPhase)
+    : (input.enrichmentPolicy === 'incremental' ? CANONICAL_PHASES : FULL_SYNC_PHASES);
+  return input.enrichmentPolicy === 'incremental'
+    ? base
+    : base.filter((phase) => phase !== 'transaction_line_items');
 }
 
 // ── Coordinator decision logic ──────────────────────────────────────────────
@@ -494,10 +508,18 @@ export function decideCoordinatorAction(
 
     if (slave.status === 'failed') {
       results.push({ ok: false });
-      if (failurePolicy === 'halt_on_reference_failure' && isReferencePhase(phase)) {
+      // Deferred phases (inventory, transaction_line_items — batched
+      // per-record Zoho detail-fetch sweeps, the ones most exposed to
+      // per-item stalls/timeouts) must never halt the run even under
+      // halt_on_reference_failure — matches shouldHaltOnFailure's own
+      // !isDeferredPhase guard. This branch used to duplicate that check
+      // inline without the exemption, so a deferred phase's failure (e.g.
+      // sync-inventory's dispatch timing out on a large catalog) halted an
+      // otherwise fully-synced run.
+      if (failurePolicy === 'halt_on_reference_failure' && isReferencePhase(phase) && !isDeferredPhase(phase)) {
         return { type: 'halt_failed', phase };
       }
-      continue; // skip_failed_phases: move on to the next phase
+      continue; // skip_failed_phases (or a deferred-phase exemption): move on to the next phase
     }
 
     // completed / cancelled — this phase is done, move to the next.

@@ -29,6 +29,8 @@ interface BuyerMeResponse {
     enquiries: boolean;
     sales_orders: boolean;
     invoices: boolean;
+    create_enquiries: boolean;
+    create_sales_orders: boolean;
   };
   business_policy: {
     credit_enabled: boolean;
@@ -109,6 +111,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       enquiries: rawFeatures.enquiries === true,
       sales_orders: rawFeatures.sales_orders === true,
       invoices: rawFeatures.invoices === true,
+      create_enquiries: rawFeatures.create_enquiries !== false,
+      create_sales_orders: rawFeatures.create_sales_orders !== false,
     };
     const businessPolicy = {
       credit_enabled: rawPolicy.credit_enabled !== false,

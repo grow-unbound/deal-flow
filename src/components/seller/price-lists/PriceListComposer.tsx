@@ -31,7 +31,9 @@ import {
   strategyLabelShort,
 } from '@/lib/price-list-strategy';
 import { cn, formatDate } from '@/lib/utils';
+import { apiFetch } from '@/lib/api-fetch';
 import { isoDateInput } from '@/lib/date-utils';
+import { appendArrayParam } from '@/lib/landing-filter-params';
 import {
   type PriceListComposerProduct,
   usePriceListComposerProducts,
@@ -168,17 +170,47 @@ export function PriceListComposer({
 }) {
   const router = useRouter();
   const saveMutation = useSavePriceListComposer(priceListId);
-  const { data: composerData, isLoading: productsLoading, isError: productsError } = usePriceListComposerProducts();
   const {
     data: detailData,
     isLoading: detailLoading,
     isError: detailError,
   } = usePriceListDetail(priceListId ?? '');
 
-  const products = composerData?.products ?? [];
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [validFrom, setValidFrom] = useState(isoDateInput(new Date()));
+  const [validTo, setValidTo] = useState('');
+  const [priority, setPriority] = useState('0');
+  const [pricingStrategy, setPricingStrategy] = useState<PriceListPricingStrategy>('edit_each');
+  const [strategyValue, setStrategyValue] = useState('10');
+  const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedAvailability, setSelectedAvailability] = useState<'in_stock' | 'low_stock' | 'out_of_stock' | 'show_all'>('show_all');
+  const [selectedLastOrderBucket, setSelectedLastOrderBucket] = useState<ProductLastOrderBucket | ''>('');
+  const [selectedGmv90dBucket, setSelectedGmv90dBucket] = useState<ProductGmv90dBucket | ''>('');
+  const [search, setSearch] = useState('');
+  const [rowOverrides, setRowOverrides] = useState<Record<string, string>>({});
+  const [deselectedIds, setDeselectedIds] = useState<Set<string>>(new Set());
+  const [initialSnapshot, setInitialSnapshot] = useState('');
+  const [didInit, setDidInit] = useState(false);
+
+  const productsQuery = usePriceListComposerProducts({
+    search,
+    brands: selectedBrands,
+    categories: selectedCategories,
+    availability: selectedAvailability,
+    limit: 50,
+  });
+  const productPages = productsQuery.data?.pages ?? [];
+  const composerData = productPages[0] ?? null;
+  const products = useMemo(
+    () => productPages.flatMap((page) => page.products ?? []),
+    [productPages],
+  );
+  const productsTotal = composerData?.total ?? products.length;
   const detail = detailData?.price_list;
-  const isLoading = productsLoading || (mode === 'edit' && detailLoading);
-  const isError = productsError || (mode === 'edit' && detailError);
+  const isLoading = productsQuery.isLoading || (mode === 'edit' && detailLoading);
+  const isError = productsQuery.isError || (mode === 'edit' && detailError);
 
   // Facets from server — accurate counts over full product dataset, not just display page
   const brandOptions = useMemo(
@@ -200,24 +232,6 @@ export function PriceListComposer({
     [detail?.items],
   );
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
-
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [validFrom, setValidFrom] = useState(isoDateInput(new Date()));
-  const [validTo, setValidTo] = useState('');
-  const [priority, setPriority] = useState('0');
-  const [pricingStrategy, setPricingStrategy] = useState<PriceListPricingStrategy>('edit_each');
-  const [strategyValue, setStrategyValue] = useState('10');
-  const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [selectedAvailability, setSelectedAvailability] = useState<'in_stock' | 'low_stock' | 'out_of_stock' | 'show_all'>('show_all');
-  const [selectedLastOrderBucket, setSelectedLastOrderBucket] = useState<ProductLastOrderBucket | ''>('');
-  const [selectedGmv90dBucket, setSelectedGmv90dBucket] = useState<ProductGmv90dBucket | ''>('');
-  const [search, setSearch] = useState('');
-  const [rowOverrides, setRowOverrides] = useState<Record<string, string>>({});
-  const [deselectedIds, setDeselectedIds] = useState<Set<string>>(new Set());
-  const [initialSnapshot, setInitialSnapshot] = useState('');
-  const [didInit, setDidInit] = useState(false);
 
   useEffect(() => {
     if (didInit || products.length === 0 || (mode === 'edit' && !detail)) return;
@@ -467,8 +481,44 @@ export function PriceListComposer({
     onConfirmClose: () => router.push(closeTarget),
   });
 
+  async function fetchAllMatchingProductsForSave() {
+    if (selectedBrands.length === 0 || selectedCategories.length === 0) return [];
+
+    const allProducts: PriceListComposerProduct[] = [];
+    let cursor: string | null = null;
+    let guard = 0;
+
+    do {
+      const params = new URLSearchParams();
+      params.set('limit', '100');
+      params.set('availability', selectedAvailability);
+      if (cursor) params.set('cursor', cursor);
+      if (search.trim()) params.set('q', search.trim());
+      appendArrayParam(params, 'brand', selectedBrands);
+      appendArrayParam(params, 'category', selectedCategories);
+
+      const response = await apiFetch(`/api/tenant/products/composer?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch matching products');
+      }
+
+      const payload = await response.json() as {
+        products?: PriceListComposerProduct[];
+        nextCursor?: string | null;
+      };
+      allProducts.push(...(payload.products ?? []));
+      cursor = payload.nextCursor ?? null;
+      guard += 1;
+    } while (cursor && guard < 100);
+
+    return allProducts;
+  }
+
   async function handleSave(saveMode: 'draft' | 'publish') {
-    const itemPrices = visibleSelectedProducts.map((product) => ({
+    const saveProducts = productsTotal > products.length
+      ? (await fetchAllMatchingProductsForSave()).filter((product) => !deselectedIds.has(product.id))
+      : visibleSelectedProducts;
+    const itemPrices = saveProducts.map((product) => ({
       tenant_product_id: product.id,
       price: resolveCurrentPrice(product),
       min_qty: 1,
@@ -845,7 +895,7 @@ export function PriceListComposer({
                   <div className="text-base font-semibold text-cream-900">
                     {mode === 'edit'
                       ? `${currentMetrics.productCount} products · ${modifiedRows} modified`
-                      : `${filteredProducts.length} products match`}
+                      : `${productsTotal} products match`}
                   </div>
                   <div className="text-sm text-cream-700">
                     {centerPanelSubtitle}
@@ -1037,6 +1087,18 @@ export function PriceListComposer({
                       })}
                     </tbody>
                   </table>
+                  {productsQuery.hasNextPage ? (
+                    <div className="border-t border-cream-300 bg-white px-4 py-3 text-center">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => void productsQuery.fetchNextPage()}
+                        disabled={productsQuery.isFetchingNextPage}
+                      >
+                        {productsQuery.isFetchingNextPage ? 'Loading…' : 'Load more products'}
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               )}
               </ComposerMainCard>

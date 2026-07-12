@@ -50,3 +50,63 @@ export async function bulkPersistJsonbRecordsWithIds(
   const persisted = await bulkPersistJsonbRecords(admin, table, rows, conflictColumns);
   return persisted.map((row) => String(row.id ?? '')).filter((id) => id.length > 0);
 }
+
+export interface NaturalKeyCollision {
+  externalRef: string | null;
+  naturalKey: string | null;
+  reason: string;
+}
+
+// Resolves each row against an existing row by external_ref OR a secondary
+// natural key (invoice_number, estimate_number, order_number, slug,
+// internal_sku, ...), then inserts/updates — all inside ONE database call.
+// Both steps used to be separate round trips (a plain SELECT, then a
+// separate bulk_persist_jsonb_records call): two concurrent callers (the
+// bulk sync pipeline and an incoming webhook) resolving the same natural
+// key in the gap between those two calls could both decide "not found,
+// insert new" and race, one landing a hard, uncaught
+// "duplicate key value violates unique constraint ..." — bulk_persist_jsonb_records's
+// ON CONFLICT only covers the (tenant_id, external_ref) target, not a
+// separate natural-key unique constraint. Doing both steps in one RPC call
+// means one transaction, one connection — a pg_advisory_xact_lock taken at
+// the top actually serializes concurrent callers (a lock acquired in one
+// PostgREST/Supavisor round trip is not reliably held during a second,
+// separate round trip under connection pooling).
+export async function persistWithNaturalKeyLock(
+  admin: RpcClient,
+  table: string,
+  tenantId: string,
+  rows: Record<string, unknown>[],
+  naturalKeyColumn: string,
+  conflictColumns: string[],
+): Promise<{ rows: Record<string, unknown>[]; conflicts: NaturalKeyCollision[] }> {
+  if (rows.length === 0) return { rows: [], conflicts: [] };
+
+  const startedAt = Date.now();
+  console.log(`[sync-checkpoint] persist_with_natural_key_lock:start table=${table} rows=${rows.length}`);
+
+  const { data, error } = await admin.schema('app').rpc<{ rows: unknown; conflicts: unknown }>('persist_with_natural_key_lock', {
+    p_table: table,
+    p_tenant_id: tenantId,
+    p_rows: rows,
+    p_natural_key_col: naturalKeyColumn,
+    p_conflict_cols: conflictColumns,
+  });
+
+  console.log(`[sync-checkpoint] persist_with_natural_key_lock:done table=${table} ms=${Date.now() - startedAt} error=${error?.message ?? 'none'}`);
+
+  if (error) {
+    throw new Error(error.message ?? `Failed to persist rows into ${table}`);
+  }
+
+  const persistedRows = Array.isArray(data?.rows) ? data.rows.filter(isRecord) : [];
+  const conflicts = Array.isArray(data?.conflicts)
+    ? data.conflicts.filter(isRecord).map((c): NaturalKeyCollision => ({
+        externalRef: typeof c.external_ref === 'string' ? c.external_ref : null,
+        naturalKey: typeof c.natural_key === 'string' ? c.natural_key : null,
+        reason: typeof c.reason === 'string' ? c.reason : 'unknown',
+      }))
+    : [];
+
+  return { rows: persistedRows, conflicts };
+}

@@ -3,8 +3,20 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 
 const pushMock = vi.fn();
 const useCatalogComposerBootstrapMock = vi.fn();
+const useCatalogComposerProductsMock = vi.fn();
 const useCatalogComposerDetailMock = vi.fn();
+const useCatalogComposerBuyerPickerMock = vi.fn();
+const useComposerPublishPreviewMock = vi.fn();
 const useSaveCatalogComposerMock = vi.fn();
+
+const COHORT_1_ID = '11111111-1111-4111-8111-111111111111';
+const COHORT_2_ID = '22222222-2222-4222-8222-222222222222';
+const BUYER_1_ID = '33333333-3333-4333-8333-333333333333';
+const BUYER_2_ID = '44444444-4444-4444-8444-444444444444';
+const PRICE_LIST_1_ID = '55555555-5555-4555-8555-555555555555';
+const PRODUCT_1_ID = '66666666-6666-4666-8666-666666666666';
+const PRODUCT_2_ID = '77777777-7777-4777-8777-777777777777';
+const PRODUCT_3_ID = '88888888-8888-4888-8888-888888888888';
 
 vi.mock('next/navigation', async (importOriginal) => {
   const actual = await importOriginal<typeof import('next/navigation')>();
@@ -16,7 +28,10 @@ vi.mock('next/navigation', async (importOriginal) => {
 
 vi.mock('@/hooks/useCatalogs', () => ({
   useCatalogComposerBootstrap: (...args: unknown[]) => useCatalogComposerBootstrapMock(...args),
+  useCatalogComposerProducts: (...args: unknown[]) => useCatalogComposerProductsMock(...args),
   useCatalogComposerDetail: (...args: unknown[]) => useCatalogComposerDetailMock(...args),
+  useCatalogComposerBuyerPicker: (...args: unknown[]) => useCatalogComposerBuyerPickerMock(...args),
+  useComposerPublishPreview: (...args: unknown[]) => useComposerPublishPreviewMock(...args),
   useSaveCatalogComposer: (...args: unknown[]) => useSaveCatalogComposerMock(...args),
 }));
 
@@ -24,14 +39,14 @@ import { CatalogComposer } from '@/components/seller/catalogs/CatalogComposer';
 
 const bootstrap = {
   cohorts: [
-    { id: 'cohort-1', name: 'North Delhi · A-class', member_count: 12 },
-    { id: 'cohort-2', name: 'South Delhi · A-class', member_count: 8 },
+    { id: COHORT_1_ID, name: 'North Delhi · A-class', member_count: 12 },
+    { id: COHORT_2_ID, name: 'South Delhi · A-class', member_count: 8 },
   ],
   buyer_count: 2,
   can_view_cost: true,
   buyers: [
     {
-      id: 'buyer-1',
+      id: BUYER_1_ID,
       business_name: 'Bharat Stores',
       contact_name: 'Ravi',
       external_ref: 'B-001',
@@ -48,7 +63,7 @@ const bootstrap = {
       hue: 'teal' as const,
     },
     {
-      id: 'buyer-2',
+      id: BUYER_2_ID,
       business_name: 'Kumar Wines',
       contact_name: 'Anil',
       external_ref: 'B-002',
@@ -69,11 +84,11 @@ const bootstrap = {
     geographies: [{ value: 'Delhi, NCR', label: 'Delhi, NCR', count: 1 }],
     tiers: [{ value: 'A', label: 'A', count: 1 }],
   },
-  price_lists: [{ id: 'pl-1', name: 'North A draft', status: 'draft' as const, valid_from: null, valid_to: null }],
-  price_list_items: [{ price_list_id: 'pl-1', tenant_product_id: 'p-1', price: 700 }],
+  price_lists: [{ id: PRICE_LIST_1_ID, name: 'North A draft', status: 'draft' as const, valid_from: null, valid_to: null }],
+  price_list_items: [{ price_list_id: PRICE_LIST_1_ID, tenant_product_id: PRODUCT_1_ID, price: 700 }],
   products: [
     {
-      id: 'p-1',
+      id: PRODUCT_1_ID,
       display_name: 'Solar Reserve 750ml',
       internal_sku: 'SKU-001',
       brand_name: 'Solar Estates',
@@ -91,7 +106,7 @@ const bootstrap = {
       stock_tone: 'success' as const,
     },
     {
-      id: 'p-2',
+      id: PRODUCT_2_ID,
       display_name: 'Luna Blanc 750ml',
       internal_sku: 'SKU-002',
       brand_name: 'Luna Cellars',
@@ -109,7 +124,7 @@ const bootstrap = {
       stock_tone: 'warning' as const,
     },
     {
-      id: 'p-3',
+      id: PRODUCT_3_ID,
       display_name: 'Heritage Port 750ml',
       internal_sku: 'SKU-003',
       brand_name: 'Solar Estates',
@@ -132,15 +147,43 @@ const bootstrap = {
 describe('CatalogComposer', () => {
   beforeEach(() => {
     pushMock.mockReset();
+    useCatalogComposerProductsMock.mockReset();
+    useCatalogComposerBuyerPickerMock.mockReset();
+    useComposerPublishPreviewMock.mockReset();
     useCatalogComposerBootstrapMock.mockReturnValue({
       data: bootstrap,
       isLoading: false,
       isError: false,
     });
+    useCatalogComposerProductsMock.mockImplementation(() => {
+      const current = useCatalogComposerBootstrapMock();
+      const products = current.data?.products ?? [];
+      return {
+        data: { pages: [{ products, total: current.data?.product_count ?? products.length, nextCursor: null }] },
+        isLoading: false,
+        isError: false,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+      };
+    });
     useCatalogComposerDetailMock.mockReturnValue({
       data: undefined,
       isLoading: false,
       isError: false,
+    });
+    useComposerPublishPreviewMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: null,
+    });
+    useCatalogComposerBuyerPickerMock.mockReturnValue({
+      data: { pages: [{ buyers: [], selected_buyers: [], filters: {}, nextCursor: null }] },
+      isLoading: false,
+      isError: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
     });
     useSaveCatalogComposerMock.mockReturnValue({
       mutateAsync: vi.fn().mockResolvedValue({ catalog: { id: 'cat-1', status: 'draft' } }),
@@ -241,7 +284,7 @@ describe('CatalogComposer', () => {
           valid_from: '2026-06-01T00:00:00.000Z',
           valid_to: '2026-06-30T00:00:00.000Z',
           scope_type: 'cohort',
-          cohort_id: 'cohort-1',
+          cohort_id: COHORT_1_ID,
           filters: {
             brand_names: ['Solar Estates'],
             category_names: ['Red wine'],
@@ -249,8 +292,8 @@ describe('CatalogComposer', () => {
           },
           tag_overrides: {},
           items: [
-            { tenant_product_id: 'p-1', display_order: 0 },
-            { tenant_product_id: 'p-3', display_order: 1 },
+            { tenant_product_id: PRODUCT_1_ID, display_order: 0 },
+            { tenant_product_id: PRODUCT_3_ID, display_order: 1 },
           ],
         },
       },
@@ -268,7 +311,7 @@ describe('CatalogComposer', () => {
       expect(screen.getByText(/Unsaved changes/i)).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /Reset overrides/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Reset tags/i }));
 
     await waitFor(() => {
       expect(screen.queryByText(/Unsaved changes/i)).not.toBeInTheDocument();
@@ -299,7 +342,7 @@ describe('CatalogComposer', () => {
           valid_from: '2026-06-01T00:00:00.000Z',
           valid_to: '2026-06-30T00:00:00.000Z',
           scope_type: 'cohort',
-          cohort_id: 'cohort-1',
+          cohort_id: COHORT_1_ID,
           filters: {
             brand_names: ['Solar Estates'],
             category_names: ['Red wine'],
@@ -307,7 +350,7 @@ describe('CatalogComposer', () => {
           },
           tag_overrides: {},
           items: [
-            { tenant_product_id: 'p-1', display_order: 0 },
+            { tenant_product_id: PRODUCT_1_ID, display_order: 0 },
           ],
         },
       },
@@ -343,7 +386,7 @@ describe('CatalogComposer', () => {
           valid_from: '2026-06-01T00:00:00.000Z',
           valid_to: '2026-06-30T00:00:00.000Z',
           scope_type: 'cohort',
-          cohort_id: 'cohort-1',
+          cohort_id: COHORT_1_ID,
           filters: {
             brand_names: ['Solar Estates'],
             category_names: ['Red wine'],
@@ -351,7 +394,7 @@ describe('CatalogComposer', () => {
           },
           tag_overrides: {},
           items: [
-            { tenant_product_id: 'p-1', display_order: 0 },
+            { tenant_product_id: PRODUCT_1_ID, display_order: 0 },
           ],
         },
       },
@@ -364,7 +407,7 @@ describe('CatalogComposer', () => {
     fireEvent.click(screen.getByRole('button', { name: /Publish updates/i }));
 
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByText(/Publish updates to buyers/i)).toBeInTheDocument();
-    expect(within(dialog).getByText(/will see this updated campaign/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Push campaign updates for eligible buyers/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Publish updates does not send WhatsApp updates/i)).toBeInTheDocument();
   });
 });

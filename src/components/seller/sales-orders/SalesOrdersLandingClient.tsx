@@ -20,7 +20,7 @@ import { TransactionTable } from '@/components/seller/transactional';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
-import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useCreateFlags } from '@/hooks/useCreateFlags';
@@ -97,9 +97,11 @@ function SalesOrdersDataSkeleton() {
 function SalesOrdersLandingContent({
   initialData,
   initialPeriod,
+  initialSearch,
 }: {
   initialData: TenantOrdersResponse | null;
   initialPeriod: SellerLandingPeriod;
+  initialSearch?: string;
 }) {
   const router = useRouter();
   const { newEntityIds, markSeen } = useSellerRealtimeContext();
@@ -111,7 +113,7 @@ function SalesOrdersLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-sales-orders-landing',
     scopeKey: period,
-    version: 3,
+    version: 4,
     initialState: {
       search: '',
       filters: {
@@ -122,6 +124,7 @@ function SalesOrdersLandingContent({
       sortBy: 'Recent first' as SortOption,
     },
   });
+  useSeedRouteSearch({ initialSearch, setState: setRouteState });
   const filters = routeState.filters ?? { source: [], status: [], location_id: [] };
   const { data, isLoading, isError } = useTenantOrders(period, { search: routeState.search, ...filters }, initialData);
   const retainedData = useRetainedValue(data);
@@ -347,9 +350,11 @@ function SalesOrdersLandingContent({
 export function SalesOrdersLandingClient({
   initialData,
   initialPeriod,
+  initialSearch,
 }: {
   initialData: TenantOrdersResponse | null;
   initialPeriod: SellerLandingPeriod;
+  initialSearch?: string;
 }) {
   const orderManagement = useFlagState('ORDER_MANAGEMENT');
   const salesOrders = useFlagState('SALES_ORDERS');
@@ -358,5 +363,5 @@ export function SalesOrdersLandingClient({
     return <FeatureDisabledState />;
   }
 
-  return <SalesOrdersLandingContent initialData={initialData} initialPeriod={initialPeriod} />;
+  return <SalesOrdersLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />;
 }

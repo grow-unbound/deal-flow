@@ -40,9 +40,12 @@ interface SyncInventoryRequest {
 }
 
 const PHASE = 'inventory';
-// 10 batches of ITEM_LOC_CONCURRENCY(=10) per page, paced ~6s apart —
-// comfortably inside TIME_BUDGET_MS even at worst-case per-batch latency.
-const DEFAULT_PAGE_SIZE = 100;
+// 2 batches of ITEM_LOC_CONCURRENCY(=10) per page, paced ~6s apart.
+// 20 items × worst-case 30s/batch = ~60s — safely inside TIME_BUDGET_MS.
+// Previously 100; reduced because each item-detail batch can take up to
+// ZOHO_BULK_DETAIL_MAX_ATTEMPTS(2) × ZOHO_BULK_DETAIL_TIMEOUT_MS(15s) = 30s,
+// and 10 batches × 36s = 360s >> TIME_BUDGET_MS, causing 0-record timeouts.
+const DEFAULT_PAGE_SIZE = 20;
 // Mirrors runPhaseSync's TIME_BUDGET_MS (sync-utils.ts): stop before
 // Supabase's ~150s hard limit and hand off a resume cursor.
 const TIME_BUDGET_MS = 110_000;

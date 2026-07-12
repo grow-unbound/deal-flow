@@ -42,6 +42,7 @@ import {
 import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-overlay';
 import {
   type CohortComposerBuyer,
+  useCohortComposerBuyers,
   useCohortComposerData,
   useCohortDetail,
   useCohortMembers,
@@ -94,14 +95,6 @@ function deriveLastOrderBucket(value: string | null): LastOrderBucket {
   return 'dormant_90_plus_days';
 }
 
-function deriveGmvBucket(value: number): GmvBucket {
-  if (value <= 0) return 'gmv_0';
-  if (value <= 50_000) return 'gmv_1_50000';
-  if (value <= 200_000) return 'gmv_50001_200000';
-  if (value <= 500_000) return 'gmv_200001_500000';
-  return 'gmv_500001_plus';
-}
-
 function buildRulesPayload(input: {
   geographies: string[];
   lastOrderBucket: LastOrderBucket;
@@ -145,25 +138,6 @@ function parseRules(rules: {
     selectedBuyerIds: rules?.selected_buyer_ids ?? [],
     excludedBuyerIds: rules?.excluded_buyer_ids ?? [],
   };
-}
-
-function matchesStructuredFilters(
-  buyer: CohortComposerBuyer,
-  filters: {
-    geographies: string[];
-    lastOrderBucket: LastOrderBucket;
-    gmvBuckets: GmvBucket[];
-  },
-) {
-  if (filters.geographies.length > 0 && !filters.geographies.map((g) => g.toLowerCase()).includes((buyer.city ?? '').toLowerCase())) return false;
-  if (filters.lastOrderBucket === 'within_30_days' && deriveLastOrderBucket(buyer.last_order_at) !== 'within_30_days') return false;
-  if (filters.lastOrderBucket === 'within_90_days') {
-    const bucket = deriveLastOrderBucket(buyer.last_order_at);
-    if (bucket !== 'within_30_days' && bucket !== 'within_90_days') return false;
-  }
-  if (filters.lastOrderBucket === 'dormant_90_plus_days' && deriveLastOrderBucket(buyer.last_order_at) !== 'dormant_90_plus_days') return false;
-  if (filters.gmvBuckets.length > 0 && !filters.gmvBuckets.includes(deriveGmvBucket(buyer.gmv_90d))) return false;
-  return true;
 }
 
 function CohortComposerSkeleton() {
@@ -221,8 +195,23 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
 
-  const isLoading = composerQuery.isLoading || (mode === 'edit' && (detailQuery.isLoading || membersQuery.isLoading));
-  const isError = composerQuery.isError || (mode === 'edit' && (detailQuery.isError || membersQuery.isError));
+  const buyerResultsQuery = useCohortComposerBuyers({
+    query: search,
+    geographies: selectedGeographies,
+    lastOrderBucket,
+    gmvBuckets: selectedGmvBuckets,
+    limit: 50,
+    enabled: Boolean(composerQuery.data),
+  });
+  const buyerResultPages = buyerResultsQuery.data?.pages ?? [];
+  const resultRows = useMemo(
+    () => buyerResultPages.flatMap((page) => page.buyers ?? []),
+    [buyerResultPages],
+  );
+  const resultTotal = buyerResultPages[0]?.total ?? composerQuery.data?.total_buyer_count ?? resultRows.length;
+
+  const isLoading = composerQuery.isLoading || buyerResultsQuery.isLoading || (mode === 'edit' && (detailQuery.isLoading || membersQuery.isLoading));
+  const isError = composerQuery.isError || buyerResultsQuery.isError || (mode === 'edit' && (detailQuery.isError || membersQuery.isError));
 
   useEffect(() => {
     if (didInit || !composerQuery.data) return;
@@ -251,8 +240,8 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
   }, [composerQuery.data, detailQuery.data, didInit, membersQuery.data, mode]);
 
   const buyerMap = useMemo(
-    () => new Map((composerQuery.data?.buyers ?? []).map((buyer) => [buyer.id, buyer])),
-    [composerQuery.data?.buyers],
+    () => new Map([...(composerQuery.data?.buyers ?? []), ...resultRows].map((buyer) => [buyer.id, buyer])),
+    [composerQuery.data?.buyers, resultRows],
   );
   const brandOptions = composerQuery.data?.brands ?? [];
   const brandLabelById = useMemo(
@@ -260,37 +249,15 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
     [brandOptions],
   );
 
-  const matchedByFilters = useMemo(() => {
-    return (composerQuery.data?.buyers ?? []).filter((buyer) =>
-      matchesStructuredFilters(buyer, {
-        geographies: selectedGeographies,
-        lastOrderBucket,
-        gmvBuckets: selectedGmvBuckets,
-      }),
-    );
-  }, [composerQuery.data?.buyers, lastOrderBucket, selectedGeographies, selectedGmvBuckets]);
-
-  const visibleRows = useMemo(() => {
-    const lowered = search.trim().toLowerCase();
-    return matchedByFilters.filter((buyer) => {
-      if (!lowered) return true;
-      return [
-        buyer.business_name,
-        buyer.contact_name ?? '',
-        buyer.external_ref ?? '',
-        buyer.city ?? '',
-        buyer.state ?? '',
-      ].some((value) => value.toLowerCase().includes(lowered));
-    });
-  }, [matchedByFilters, search]);
+  const visibleRows = resultRows;
 
   const hasActiveFilters = selectedGeographies.length > 0 || lastOrderBucket !== 'anytime' || selectedGmvBuckets.length > 0;
 
   const effectiveSelectedIds = useMemo(() => {
     if (selectionMode === 'manual-selection') return selectedBuyerIds;
     const excluded = new Set(excludedBuyerIds);
-    return matchedByFilters.filter((buyer) => !excluded.has(buyer.id)).map((buyer) => buyer.id);
-  }, [excludedBuyerIds, matchedByFilters, selectedBuyerIds, selectionMode]);
+    return resultRows.filter((buyer) => !excluded.has(buyer.id)).map((buyer) => buyer.id);
+  }, [excludedBuyerIds, resultRows, selectedBuyerIds, selectionMode]);
 
   const effectiveSelectedSet = useMemo(() => new Set(effectiveSelectedIds), [effectiveSelectedIds]);
   const visibleSelectedCount = useMemo(
@@ -304,14 +271,17 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
   );
 
   const summary = useMemo(() => {
-    const members = selectedRows.length;
+    const members =
+      selectionMode === 'rule-based' && !search.trim()
+        ? Math.max(0, resultTotal - excludedBuyerIds.length)
+        : selectedRows.length;
     const areasCovered = new Set(selectedRows.map((buyer) => buyer.city).filter((value) => value && value !== '—')).size;
     const mtdSpend = selectedRows.reduce((sum, buyer) => sum + buyer.mtd_spend, 0);
     const ordersMtd = selectedRows.reduce((sum, buyer) => sum + buyer.orders_mtd, 0);
     const avgAov = ordersMtd > 0 ? mtdSpend / ordersMtd : 0;
     const active30d = selectedRows.filter((buyer) => deriveLastOrderBucket(buyer.last_order_at) === 'within_30_days').length;
     return { members, areasCovered, mtdSpend, avgAov, active30d };
-  }, [selectedRows]);
+  }, [excludedBuyerIds.length, resultTotal, search, selectedRows, selectionMode]);
 
   const serializedState = useMemo(
     () =>
@@ -776,8 +746,8 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                       {selectionMode === 'manual-selection'
                         ? `${selectedBuyerIds.length} buyers selected manually`
                         : hasActiveFilters
-                          ? `${effectiveSelectedIds.length}+ buyers match the rules above`
-                          : `${composerQuery.data?.total_buyer_count ?? effectiveSelectedIds.length} buyers total`}
+                          ? `${resultTotal} buyers match the rules above`
+                          : `${resultTotal} buyers total`}
                     </p>
                     <p className="mt-1 max-w-[38rem] text-sm leading-[1.5] text-cream-700">
                       {selectionMode === 'manual-selection'
@@ -901,6 +871,18 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
                       })}
                     </tbody>
                     </table>
+                    {buyerResultsQuery.hasNextPage ? (
+                      <div className="border-t border-cream-300 bg-white px-4 py-3 text-center">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => void buyerResultsQuery.fetchNextPage()}
+                          disabled={buyerResultsQuery.isFetchingNextPage}
+                        >
+                          {buyerResultsQuery.isFetchingNextPage ? 'Loading…' : 'Load more buyers'}
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </ComposerMainCard>

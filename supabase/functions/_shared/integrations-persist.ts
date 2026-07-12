@@ -12,6 +12,7 @@ import { enrichmentModeForEntity, resolveSyncEnrichmentPolicy } from '../../../s
 import {
   bulkPersistJsonbRecords,
   bulkPersistJsonbRecordsWithIds,
+  persistWithNaturalKeyLock,
 } from '../../../src/lib/integrations/rpc-persist.ts';
 import {
   normalizeLocationAssociatedUsers,
@@ -259,119 +260,6 @@ function dedupeByExternalOrNaturalKey(
   }
 
   return groupRows.filter((row): row is Record<string, unknown> => row !== null);
-}
-
-type NaturalKeyCollision = {
-  externalRef: string | null;
-  naturalKey: string | null;
-  reason: string;
-};
-
-async function resolveRowsByExternalRefOrNaturalKey(
-  admin: AdminClient,
-  opts: {
-    table: string;
-    tenantId: string;
-    rows: Record<string, unknown>[];
-    naturalKeyColumns: string[];
-  },
-): Promise<{ rows: Record<string, unknown>[]; conflicts: NaturalKeyCollision[] }> {
-  const resolveDone = startTimer(null, opts.table, 'resolveRowsByExternalRefOrNaturalKey');
-  const dedupedRows = dedupeByExternalOrNaturalKey(opts.rows, opts.naturalKeyColumns);
-  if (dedupedRows.length === 0) {
-    resolveDone({ rows: 0 });
-    return { rows: [], conflicts: [] };
-  }
-
-  const externalRefs = [...new Set(
-    dedupedRows
-      .map((row) => asStr(row.external_ref))
-      .filter((value): value is string => value !== null),
-  )];
-  const naturalKeys = [...new Set(
-    dedupedRows
-      .map((row) => getRowNaturalKey(row, opts.naturalKeyColumns))
-      .filter((value): value is string => value !== null),
-  )];
-
-  const columns = ['id', 'external_ref', ...opts.naturalKeyColumns, 'deleted_at'].join(', ');
-  const [existingByExternalRef, existingByNaturalKey] = await Promise.all([
-    externalRefs.length > 0
-      ? admin.schema('app').from(opts.table).select(columns).eq('tenant_id', opts.tenantId).in('external_ref', externalRefs)
-      : Promise.resolve({ data: [] as Record<string, unknown>[], error: null as { message?: string } | null }),
-    naturalKeys.length > 0
-      ? admin.schema('app').from(opts.table).select(columns).eq('tenant_id', opts.tenantId).in(opts.naturalKeyColumns[0], naturalKeys)
-      : Promise.resolve({ data: [] as Record<string, unknown>[], error: null as { message?: string } | null }),
-  ]);
-
-  if (existingByExternalRef.error) throw new Error(existingByExternalRef.error.message ?? `Failed to resolve ${opts.table} by external_ref`);
-  if (existingByNaturalKey.error) throw new Error(existingByNaturalKey.error.message ?? `Failed to resolve ${opts.table} by natural key`);
-
-  const externalRefMap = new Map<string, Array<Record<string, unknown>>>();
-  for (const row of (existingByExternalRef.data ?? []) as Record<string, unknown>[]) {
-    const externalRef = asStr(row.external_ref);
-    if (!externalRef) continue;
-    const entries = externalRefMap.get(externalRef) ?? [];
-    entries.push(row);
-    externalRefMap.set(externalRef, entries);
-  }
-
-  const naturalKeyMap = new Map<string, Array<Record<string, unknown>>>();
-  for (const row of (existingByNaturalKey.data ?? []) as Record<string, unknown>[]) {
-    const naturalKey = getRowNaturalKey(row, opts.naturalKeyColumns);
-    if (!naturalKey) continue;
-    const entries = naturalKeyMap.get(naturalKey) ?? [];
-    entries.push(row);
-    naturalKeyMap.set(naturalKey, entries);
-  }
-
-  const conflicts: NaturalKeyCollision[] = [];
-  const resolvedRows: Record<string, unknown>[] = [];
-
-  for (const row of dedupedRows) {
-    const externalRef = asStr(row.external_ref);
-    const naturalKey = getRowNaturalKey(row, opts.naturalKeyColumns);
-    const externalMatches = externalRef ? (externalRefMap.get(externalRef) ?? []) : [];
-    const naturalMatches = naturalKey ? (naturalKeyMap.get(naturalKey) ?? []) : [];
-    const pickMatch = (matches: Record<string, unknown>[]) => {
-      if (matches.length === 0) return null;
-      const active = matches.find((match) => match.deleted_at === null || match.deleted_at === undefined);
-      return active ?? matches[0] ?? null;
-    };
-
-    const externalMatch = pickMatch(externalMatches);
-    const naturalMatch = pickMatch(naturalMatches);
-    const activeExternalMatches = externalMatches.filter((match) => match.deleted_at === null || match.deleted_at === undefined);
-    const activeNaturalMatches = naturalMatches.filter((match) => match.deleted_at === null || match.deleted_at === undefined);
-
-    if (activeExternalMatches.length > 1 || activeNaturalMatches.length > 1) {
-      conflicts.push({
-        externalRef,
-        naturalKey,
-        reason: `multiple existing ${opts.table} rows matched the same key`,
-      });
-      continue;
-    }
-
-    if (externalMatch && naturalMatch && asStr(externalMatch.id) !== asStr(naturalMatch.id)) {
-      conflicts.push({
-        externalRef,
-        naturalKey,
-        reason: `external_ref matched ${asStr(externalMatch.id)} but natural key matched ${asStr(naturalMatch.id)}`,
-      });
-      continue;
-    }
-
-    const resolvedId = asStr(externalMatch?.id) ?? asStr(naturalMatch?.id);
-    resolvedRows.push(
-      resolvedId
-        ? { ...row, id: resolvedId }
-        : row,
-    );
-  }
-
-  resolveDone({ rows: resolvedRows.length, conflicts: conflicts.length });
-  return { rows: resolvedRows, conflicts };
 }
 
 async function mapWithConcurrency<T, R>(
@@ -2022,8 +1910,14 @@ export async function fetchAndPersistMissingItemLocations(
   let totalPersisted = 0;
   let incomplete = false;
 
+  // Reserve time for one full worst-case batch so the function returns before
+  // hitting the coordinator's dispatch timeout or Supabase's 150s wall.
+  // ZOHO_BULK_DETAIL_MAX_ATTEMPTS(2) × ZOHO_BULK_DETAIL_TIMEOUT_MS(15s) = 30s
+  // + ~5s warehouse resolution + persist overhead = 35s total reservation.
+  const BATCH_DEADLINE_RESERVATION_MS = 35_000;
+
   for (let i = 0; i < itemIds.length; i += ITEM_LOC_CONCURRENCY) {
-    if (opts.deadlineMs != null && Date.now() > opts.deadlineMs) {
+    if (opts.deadlineMs != null && Date.now() + BATCH_DEADLINE_RESERVATION_MS > opts.deadlineMs) {
       incomplete = true;
       break;
     }
@@ -2032,7 +1926,7 @@ export async function fetchAndPersistMissingItemLocations(
     const batch = itemIds.slice(i, i + ITEM_LOC_CONCURRENCY);
     const batchDone = startTimer(null, 'inventory', `fetchAndPersistMissingItemLocations:batch${Math.floor(i / ITEM_LOC_CONCURRENCY) + 1}`);
     const results = await Promise.allSettled(
-      batch.map((itemId) => adapter.request<{ item: Record<string, unknown> }>({ path: `/items/${itemId}` })),
+      batch.map((itemId) => adapter.request<{ item: Record<string, unknown> }>({ path: `/items/${itemId}`, retryBudget: 'bulk' })),
     );
     batchDone({ items: batch.length });
 
@@ -2189,19 +2083,14 @@ async function persistProducts(
   }
 
   if (categoryRows.length > 0) {
-    const categoryResolution = await resolveRowsByExternalRefOrNaturalKey(admin, {
-      table: 'tenant_categories',
-      tenantId,
-      rows: categoryRows,
-      naturalKeyColumns: ['slug'],
-    });
-    if (categoryResolution.conflicts.length > 0) {
-      console.warn('[persistProducts] category collision conflicts:', categoryResolution.conflicts);
-      result.skipped += categoryResolution.conflicts.length;
+    const categoryPersist = await persistWithNaturalKeyLock(
+      admin, 'tenant_categories', tenantId, dedupeByExternalOrNaturalKey(categoryRows, ['slug']), 'slug', ['tenant_id', 'external_ref'],
+    );
+    if (categoryPersist.conflicts.length > 0) {
+      console.warn('[persistProducts] category collision conflicts:', categoryPersist.conflicts);
+      result.skipped += categoryPersist.conflicts.length;
     }
-    const catRowsPersisted = categoryResolution.rows.length > 0
-      ? await bulkPersistJsonbRecords(admin, 'tenant_categories', categoryResolution.rows, ['tenant_id', 'external_ref'])
-      : [];
+    const catRowsPersisted = categoryPersist.rows;
     for (const cat of catRowsPersisted) {
       if (typeof cat.id === 'string') {
         if (typeof cat.external_ref === 'string') {
@@ -2263,19 +2152,14 @@ async function persistProducts(
   const brandMap = new Map<string, string>(); // zohoName → tenant_brand_id
   let fallbackBrandId: string | null = null;
 
-  const brandResolution = await resolveRowsByExternalRefOrNaturalKey(admin, {
-    table: 'tenant_brands',
-    tenantId,
-    rows: allBrandRows,
-    naturalKeyColumns: ['slug'],
-  });
-  if (brandResolution.conflicts.length > 0) {
-    console.warn('[persistProducts] brand collision conflicts:', brandResolution.conflicts);
-    result.skipped += brandResolution.conflicts.length;
+  const brandPersist = await persistWithNaturalKeyLock(
+    admin, 'tenant_brands', tenantId, dedupeByExternalOrNaturalKey(allBrandRows, ['slug']), 'slug', ['tenant_id', 'external_ref'],
+  );
+  if (brandPersist.conflicts.length > 0) {
+    console.warn('[persistProducts] brand collision conflicts:', brandPersist.conflicts);
+    result.skipped += brandPersist.conflicts.length;
   }
-  const brandData = brandResolution.rows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'tenant_brands', brandResolution.rows, ['tenant_id', 'external_ref'])
-    : [];
+  const brandData = brandPersist.rows;
   for (const b of brandData) {
     if (typeof b.external_ref === 'string' && typeof b.id === 'string') {
       if (b.external_ref === fallbackBrandExtRef) {
@@ -2339,18 +2223,27 @@ async function persistProducts(
     });
   }
 
-  const productResolution = await resolveRowsByExternalRefOrNaturalKey(admin, {
-    table: 'tenant_products',
-    tenantId,
-    rows: productRows,
-    naturalKeyColumns: ['internal_sku'],
-  });
-  if (productResolution.conflicts.length > 0) {
-    console.warn('[persistProducts] product collision conflicts:', productResolution.conflicts);
-    result.skipped += productResolution.conflicts.length;
-  }
-  const productRowsForPersist = productResolution.rows.map((row) => {
-    if (asStr(row.id)) {
+  // attributes_override must be omitted (not overwritten with {}) for an
+  // already-existing product, so a seller's manual override survives a
+  // re-sync — this pre-check is a plain read, not part of the resolve+lock
+  // atomicity below; a rare race here only risks attributes_override being
+  // included/omitted one sync late, not a duplicate row or a lost write.
+  const dedupedProductRows = dedupeByExternalOrNaturalKey(productRows, ['internal_sku']);
+  const productExternalRefs = [...new Set(dedupedProductRows.map((r) => asStr(r.external_ref)).filter((x): x is string => x !== null))];
+  const productSkus = [...new Set(dedupedProductRows.map((r) => getRowNaturalKey(r, ['internal_sku'])).filter((x): x is string => x !== null))];
+  const [existingProductsByRef, existingProductsBySku] = await Promise.all([
+    productExternalRefs.length > 0
+      ? admin.schema('app').from('tenant_products').select('external_ref').eq('tenant_id', tenantId).in('external_ref', productExternalRefs).is('deleted_at', null)
+      : Promise.resolve({ data: [] as { external_ref: string }[] }),
+    productSkus.length > 0
+      ? admin.schema('app').from('tenant_products').select('internal_sku').eq('tenant_id', tenantId).in('internal_sku', productSkus).is('deleted_at', null)
+      : Promise.resolve({ data: [] as { internal_sku: string }[] }),
+  ]);
+  const existingProductRefSet = new Set(((existingProductsByRef.data ?? []) as { external_ref: string }[]).map((r) => r.external_ref));
+  const existingProductSkuSet = new Set(((existingProductsBySku.data ?? []) as { internal_sku: string }[]).map((r) => r.internal_sku));
+  const productRowsForPersist = dedupedProductRows.map((row) => {
+    const isExisting = existingProductRefSet.has(asStr(row.external_ref) ?? '') || existingProductSkuSet.has(getRowNaturalKey(row, ['internal_sku']) ?? '');
+    if (isExisting) {
       const { attributes_override: _ignored, ...rest } = row;
       return rest;
     }
@@ -2359,9 +2252,14 @@ async function persistProducts(
       attributes_override: {},
     };
   });
-  const persistedProducts = productRowsForPersist.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'tenant_products', productRowsForPersist, ['tenant_id', 'external_ref'])
-    : [];
+  const productPersist = await persistWithNaturalKeyLock(
+    admin, 'tenant_products', tenantId, productRowsForPersist, 'internal_sku', ['tenant_id', 'external_ref'],
+  );
+  if (productPersist.conflicts.length > 0) {
+    console.warn('[persistProducts] product collision conflicts:', productPersist.conflicts);
+    result.skipped += productPersist.conflicts.length;
+  }
+  const persistedProducts = productPersist.rows;
   const productMapPairs = buildPersistedRowPairsFromSourceRows(productRows, persistedProducts, ['internal_sku']);
   const productIdMap = new Map(productMapPairs.map((row) => [row.externalId, row.internalId] as const));
 
@@ -2867,19 +2765,14 @@ async function persistEstimates(
   const guardedEstimateRows = await applyImmediateEchoGuards(
     admin, tenantId, integrationId, 'estimates', 'estimates', parentRows,
   );
-  const estimateResolution = await resolveRowsByExternalRefOrNaturalKey(admin, {
-    table: 'estimates',
-    tenantId,
-    rows: guardedEstimateRows,
-    naturalKeyColumns: ['estimate_number'],
-  });
-  if (estimateResolution.conflicts.length > 0) {
-    console.warn('[persistEstimates] estimate collision conflicts:', estimateResolution.conflicts);
-    result.skipped += estimateResolution.conflicts.length;
+  const estimatePersist = await persistWithNaturalKeyLock(
+    admin, 'estimates', tenantId, dedupeByExternalOrNaturalKey(guardedEstimateRows, ['estimate_number']), 'estimate_number', ['tenant_id', 'external_ref'],
+  );
+  if (estimatePersist.conflicts.length > 0) {
+    console.warn('[persistEstimates] estimate collision conflicts:', estimatePersist.conflicts);
+    result.skipped += estimatePersist.conflicts.length;
   }
-  const persistedEstimates = estimateResolution.rows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'estimates', estimateResolution.rows, ['tenant_id', 'external_ref'])
-    : [];
+  const persistedEstimates = estimatePersist.rows;
   const sourcePayloadByExternalRef = new Map(
     parentRecords.map((e) => [e.estimateId, e.sourcePayload] as const),
   );
@@ -3115,19 +3008,14 @@ async function persistOrders(
   const guardedOrderRows = await applyImmediateEchoGuards(
     admin, tenantId, integrationId, 'orders', 'orders', parentRows,
   );
-  const orderResolution = await resolveRowsByExternalRefOrNaturalKey(admin, {
-    table: 'orders',
-    tenantId,
-    rows: guardedOrderRows,
-    naturalKeyColumns: ['order_number'],
-  });
-  if (orderResolution.conflicts.length > 0) {
-    console.warn('[persistOrders] order collision conflicts:', orderResolution.conflicts);
-    result.skipped += orderResolution.conflicts.length;
+  const orderPersist = await persistWithNaturalKeyLock(
+    admin, 'orders', tenantId, dedupeByExternalOrNaturalKey(guardedOrderRows, ['order_number']), 'order_number', ['tenant_id', 'external_ref'],
+  );
+  if (orderPersist.conflicts.length > 0) {
+    console.warn('[persistOrders] order collision conflicts:', orderPersist.conflicts);
+    result.skipped += orderPersist.conflicts.length;
   }
-  const persistedOrders = orderResolution.rows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'orders', orderResolution.rows, ['tenant_id', 'external_ref'])
-    : [];
+  const persistedOrders = orderPersist.rows;
   const sourcePayloadByOrderRef = new Map(
     parentRecords.map((e) => [e.orderExternalId, e.sourcePayload] as const),
   );
@@ -3393,19 +3281,14 @@ async function persistInvoices(
   const guardedInvoiceRows = await applyImmediateEchoGuards(
     admin, tenantId, integrationId, 'invoices', 'invoices', parentRows,
   );
-  const invoiceResolution = await resolveRowsByExternalRefOrNaturalKey(admin, {
-    table: 'invoices',
-    tenantId,
-    rows: guardedInvoiceRows,
-    naturalKeyColumns: ['invoice_number'],
-  });
-  if (invoiceResolution.conflicts.length > 0) {
-    console.warn('[persistInvoices] invoice collision conflicts:', invoiceResolution.conflicts);
-    result.skipped += invoiceResolution.conflicts.length;
+  const invoicePersist = await persistWithNaturalKeyLock(
+    admin, 'invoices', tenantId, dedupeByExternalOrNaturalKey(guardedInvoiceRows, ['invoice_number']), 'invoice_number', ['tenant_id', 'external_ref'],
+  );
+  if (invoicePersist.conflicts.length > 0) {
+    console.warn('[persistInvoices] invoice collision conflicts:', invoicePersist.conflicts);
+    result.skipped += invoicePersist.conflicts.length;
   }
-  const persistedInvoices = invoiceResolution.rows.length > 0
-    ? await bulkPersistJsonbRecords(admin, 'invoices', invoiceResolution.rows, ['tenant_id', 'external_ref'])
-    : [];
+  const persistedInvoices = invoicePersist.rows;
   const sourcePayloadByInvoiceRef = new Map(
     parentRecords.map((e) => [e.invoiceExternalId, e.sourcePayload] as const),
   );

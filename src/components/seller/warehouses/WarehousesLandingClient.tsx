@@ -18,7 +18,7 @@ import {
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { WarehouseFormSheet } from '@/components/seller/warehouses/WarehouseFormSheet';
-import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useWarehousesLanding } from '@/hooks/useWarehouses';
 import { formatDate } from '@/lib/utils';
@@ -75,9 +75,11 @@ function stockLabel(status: WarehouseStockStatus) {
 export function WarehousesLandingClient({
   initialData,
   initialPeriod,
+  initialSearch,
 }: {
   initialData: WarehousesLandingResponse | null;
   initialPeriod: SellerLandingPeriod;
+  initialSearch?: string;
 }) {
   const router = useRouter();
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -85,7 +87,7 @@ export function WarehousesLandingClient({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-warehouses-landing',
     scopeKey: period,
-    version: 1,
+    version: 2,
     initialState: {
       search: '',
       filters: {
@@ -95,6 +97,7 @@ export function WarehousesLandingClient({
       sortBy: 'Tracked SKUs (high → low)' as SortOption,
     },
   });
+  useSeedRouteSearch({ initialSearch, setState: setRouteState });
 
   const filters = routeState.filters ?? { status: [], stock: [] };
   const { data, isLoading, isError, refetch } = useWarehousesLanding(

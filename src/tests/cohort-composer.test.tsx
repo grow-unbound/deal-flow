@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 
 const pushMock = vi.fn();
 const useCohortComposerDataMock = vi.fn();
+const useCohortComposerBuyersMock = vi.fn();
 const useCohortDetailMock = vi.fn();
 const useCohortMembersMock = vi.fn();
 const useSaveCohortComposerMock = vi.fn();
@@ -13,6 +14,7 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/hooks/useCohorts', () => ({
   useCohortComposerData: () => useCohortComposerDataMock(),
+  useCohortComposerBuyers: () => useCohortComposerBuyersMock(),
   useCohortDetail: () => useCohortDetailMock(),
   useCohortMembers: () => useCohortMembersMock(),
   useSaveCohortComposer: () => useSaveCohortComposerMock(),
@@ -24,6 +26,7 @@ describe('cohort composer', () => {
   beforeEach(() => {
     pushMock.mockReset();
     useCohortComposerDataMock.mockReset();
+    useCohortComposerBuyersMock.mockReset();
     useCohortDetailMock.mockReset();
     useCohortMembersMock.mockReset();
     useSaveCohortComposerMock.mockReset();
@@ -62,6 +65,41 @@ describe('cohort composer', () => {
     });
 
     useCohortDetailMock.mockReturnValue({ isLoading: false, isError: false, data: null });
+    useCohortComposerBuyersMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+      data: {
+        pages: [
+          {
+            buyers: [
+              {
+                id: 'buyer-1',
+                business_name: 'Bharat Stores',
+                contact_name: 'Ravi Bharat',
+                external_ref: 'B-001',
+                geography_label: 'Delhi, NCR',
+                city: 'Delhi',
+                state: 'NCR',
+                tier: 'A',
+                last_order_at: '2026-06-02T00:00:00.000Z',
+                mtd_spend: 240000,
+                orders_mtd: 6,
+                credit_used: 60000,
+                payment_terms_days: 21,
+                gmv_90d: 480000,
+                initials: 'BS',
+                hue: 'teal',
+              },
+            ],
+            total: 1,
+            nextCursor: null,
+          },
+        ],
+      },
+    });
     useCohortMembersMock.mockReturnValue({ isLoading: false, isError: false, data: { members: [] } });
     useSaveCohortComposerMock.mockReturnValue({ isPending: false, mutateAsync: vi.fn() });
   });

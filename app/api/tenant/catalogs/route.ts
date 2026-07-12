@@ -255,7 +255,6 @@ export async function GET(req: NextRequest) {
     const nowTs = now.getTime();
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'), now);
     const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
-    const summaryLimit = PAGE_SIZE.MAX;
 
     const [catalogsRes, ordersRes, prevOrdersRes, estimatesRes, prevEstimatesRes, viewsRes, cohortsRes, activeBuyersRes] = await Promise.all([
       db
@@ -264,8 +263,7 @@ export async function GET(req: NextRequest) {
         .select('id, name, scope_type, scope_value, valid_from, valid_to, status, created_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
-        .order('created_at', { ascending: false })
-        .limit(summaryLimit),
+        .order('created_at', { ascending: false }),
       db
         .schema('app')
         .from('orders')

@@ -48,6 +48,11 @@ function ok(reason: string): Response {
   return new Response(reason, { status: 200, headers: { 'content-type': 'text/plain' } });
 }
 
+// Hard ceiling for the persist step. Supabase kills the function at 150s;
+// this fires at 100s so the catch block has time to mark the event "failed"
+// and return 200 before the wall is hit (avoiding orphaned "received" rows).
+const PERSIST_TIMEOUT_MS = 100_000;
+
 // Create placeholder webhook event record at START
 async function createWebhookEventPlaceholder(
   admin: SupabaseClient,
@@ -382,17 +387,27 @@ Deno.serve(async (req: Request) => {
       console.warn(`[${traceId}] adapter creation failed, proceeding without FK-failsafe: ${String(adapterErr)}`);
     }
 
+    // 100s ceiling keeps the catch block reachable before Supabase's 150s
+    // wall-clock kill — ensures orphaned "received" rows can't accumulate.
+    // FK-failsafe Zoho calls happen before the DB persist, so normal paths
+    // complete well under this limit; only pathological cases (all Zoho calls
+    // timing out at max retry budget) would approach it.
     console.log(`[${traceId}] calling persistZohoEntityPage...`);
-    const persistResult = await persistZohoEntityPage(
-      admin,
-      webhook.tenant_id,
-      null,
-      webhook.tenant_integration_id,
-      phase,
-      integrationTypeId,
-      [entityPayload],
-      adapter,
-    );
+    const persistResult = await Promise.race([
+      persistZohoEntityPage(
+        admin,
+        webhook.tenant_id,
+        null,
+        webhook.tenant_integration_id,
+        phase,
+        integrationTypeId,
+        [entityPayload],
+        adapter,
+      ),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('persist_timeout: exceeded 100s budget')), PERSIST_TIMEOUT_MS)
+      ),
+    ]);
     console.log(`[${traceId}] persistZohoEntityPage returned | result.created=${persistResult.created} | result.updated=${persistResult.updated}`);
 
     await touchWebhookLastReceived(admin, webhook.id);

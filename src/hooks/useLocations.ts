@@ -6,6 +6,8 @@ import type { SellerLandingPeriod } from '@/lib/seller-period';
 
 // ─── Landing page types ───────────────────────────────────────────────────────
 
+export type LocationStockStatus = 'clear' | 'low_stock' | 'out_of_stock';
+
 export interface LocationsLandingKpis {
   unpaid_invoice_count: number;
   total_invoice_count: number;

@@ -99,6 +99,7 @@ export async function GET(request: NextRequest) {
           recently_replenished: [],
         },
         warehouses: [],
+        total: 0,
         period,
         refreshed_at: new Date().toISOString(),
       };
@@ -324,6 +325,7 @@ export async function GET(request: NextRequest) {
           })),
       },
       warehouses: visibleRows,
+      total: filteredRows.length,
       period,
       refreshed_at: new Date().toISOString(),
     };

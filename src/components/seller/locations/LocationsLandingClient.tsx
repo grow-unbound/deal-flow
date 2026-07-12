@@ -20,7 +20,7 @@ import {
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
-import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import {
   useLocationsLanding,
@@ -94,9 +94,11 @@ function stockLabel(status: LocationsLandingRow['stock_status']): string {
 function LocationsLandingContent({
   initialData,
   initialPeriod,
+  initialSearch,
 }: {
   initialData: LocationsLandingResponse | null;
   initialPeriod: SellerLandingPeriod;
+  initialSearch?: string;
 }) {
   const router = useRouter();
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -104,7 +106,7 @@ function LocationsLandingContent({
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-locations-landing',
     scopeKey: period,
-    version: 2,
+    version: 3,
     initialState: {
       search: '',
       filters: {
@@ -115,6 +117,7 @@ function LocationsLandingContent({
       sortBy: 'GMV (high → low)' as SortOption,
     },
   });
+  useSeedRouteSearch({ initialSearch, setState: setRouteState });
   const search = routeState.search;
   const sortBy = routeState.sortBy;
   const filters = routeState.filters ?? { status: [], stock: [], dues: [] };
@@ -405,13 +408,15 @@ function LocationsLandingContent({
 export function LocationsLandingClient({
   initialData,
   initialPeriod,
+  initialSearch,
 }: {
   initialData: LocationsLandingResponse | null;
   initialPeriod: SellerLandingPeriod;
+  initialSearch?: string;
 }) {
   return (
     <FeatureGate flag="BRAND_PRODUCT_MASTER">
-      <LocationsLandingContent initialData={initialData} initialPeriod={initialPeriod} />
+      <LocationsLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />
     </FeatureGate>
   );
 }

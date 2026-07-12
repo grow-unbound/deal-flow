@@ -18,16 +18,17 @@ describe('zoho transactional sync windowing', () => {
     const orchestratorSource = readFileSync('src/lib/integrations/sync-orchestration.ts', 'utf8');
     // dispatchPhase (the transaction_line_items -> sync-transaction-line-items
     // function-name mapping) lives in sync-coordinator-actions.ts; sinceForPhase
-    // and sync_run_id derivation stayed in the orchestrator entrypoint itself.
+    // is now called from sync-coordinator's dispatch_next_phase action, since
+    // integrations-sync no longer precreates/dispatches any phase itself.
     const dispatchSource = readFileSync('supabase/functions/_shared/sync-coordinator-actions.ts', 'utf8');
+    const coordinatorSource = readFileSync('supabase/functions/sync-coordinator/index.ts', 'utf8');
     const syncFnSource = readFileSync('supabase/functions/integrations-sync/index.ts', 'utf8');
 
     expect(orchestratorSource).toContain("export const TRANSACTIONAL_PHASES = [");
     expect(orchestratorSource).toContain("'transaction_line_items'");
     expect(orchestratorSource).toContain("transactional: TRANSACTIONAL_PHASES");
-    expect(dispatchSource).toContain("opts.phase === 'transaction_line_items'");
-    expect(dispatchSource).toContain("'sync-transaction-line-items'");
-    expect(syncFnSource).toContain('sinceForPhase');
+    expect(dispatchSource).toContain("transaction_line_items: 'sync-transaction-line-items'");
+    expect(coordinatorSource).toContain('sinceForPhase');
     expect(syncFnSource).toContain('sync_run_id');
   });
 

@@ -18,29 +18,64 @@ const dispatchActionsPath = path.join(
 );
 const dispatchActionsSource = readFileSync(dispatchActionsPath, 'utf8');
 
-describe('integrations-sync self-chain orchestrator', () => {
-  it('dispatches continuations via waitUntil instead of relying on cron resume', () => {
-    expect(orchestratorSource).toContain('dispatchContinuation');
-    expect(orchestratorSource).toContain('waitUntil');
-    expect(orchestratorSource).toContain('buildContinuationPayload');
+const coordinatorPath = path.join(
+  process.cwd(),
+  'supabase/functions/sync-coordinator/index.ts',
+);
+const coordinatorSource = readFileSync(coordinatorPath, 'utf8');
+
+// integrations-sync used to self-dispatch phases and chain continuations via
+// fire-and-forget POSTs back to itself (selfChain/finishOrAdvance/
+// dispatchContinuation). Once SYNC_COORDINATOR_LIVE went live, that ran
+// concurrently with sync-coordinator's own tick-based driver — two
+// uncoordinated actors racing to advance the same run, each creating its own
+// slave rows for the same phase transitions. Removed: integrations-sync now
+// only creates the master run and returns; sync-coordinator's 15s tick is the
+// sole driver from phase 1 to completion.
+//
+// It also used to precreate one slave row per phase up front. That was safe
+// with a single writer, but was still unnecessary surface area — and was the
+// other half of the dual-writer race above: whichever actor's dispatch lost
+// the race to flip a precreated row out of 'pending' found nothing and
+// created a duplicate instead, orphaning the original. Removed too:
+// sync-coordinator's dispatch_next_phase creates each phase's slave row
+// lazily, one at a time, right before dispatching it — the only creation
+// path left, so there's nothing to race over.
+describe('integrations-sync creates a run and hands off to sync-coordinator', () => {
+  it('does not self-dispatch or chain continuations', () => {
+    expect(orchestratorSource).not.toContain('dispatchContinuation');
+    expect(orchestratorSource).not.toContain('selfChain');
+    expect(orchestratorSource).not.toContain('buildContinuationPayload');
+    expect(orchestratorSource).not.toContain('finishOrAdvance');
+    expect(orchestratorSource).not.toContain('runOrchestratorStep');
+    expect(orchestratorSource).not.toContain('OrchestratorState');
+    expect(orchestratorSource).not.toContain('waitUntil');
+    expect(orchestratorSource).not.toContain('dispatchPhase');
     expect(orchestratorSource).not.toContain('setIntegrationStatus');
     expect(orchestratorSource).not.toContain("status: 'syncing'");
   });
 
-  it('creates continuation slaves when a phase reports has_more', () => {
-    expect(orchestratorSource).toContain('selfChain');
+  it('does not precreate slave jobs — only sync-coordinator creates them, lazily', () => {
+    expect(orchestratorSource).not.toContain('createSlaveJob');
+    expect(orchestratorSource).not.toContain('sinceForPhase');
     expect(dispatchActionsSource).toContain('continuation_of');
-    expect(orchestratorSource).not.toContain('totalSynced > 0');
   });
 
-  it('gates analysis on isRunReadyForAnalysis', () => {
-    expect(orchestratorSource).toContain('isRunReadyForAnalysis');
-    expect(dispatchActionsSource).toContain("phase: ANALYSIS_PHASE");
+  it('marks the master running immediately and kicks the coordinator so phase 1 starts without waiting for cron', () => {
+    expect(orchestratorSource).toContain('createMasterJob');
+    expect(orchestratorSource).toContain("status: 'running'");
+    expect(orchestratorSource).toContain("rpc('tick_sync_coordinator')");
   });
 
   it('uses master sync_run mutex instead of tenant_integrations claim', () => {
     expect(orchestratorSource).toContain('findActiveMasterJob');
     expect(dispatchActionsSource).toContain("phase: MASTER_PHASE");
     expect(orchestratorSource).toContain('SYNC_ACTIVE');
+  });
+
+  it('sync-coordinator is the sole driver of phase progression and analysis', () => {
+    expect(coordinatorSource).toContain('decideCoordinatorAction');
+    expect(coordinatorSource).toContain('executeAction');
+    expect(dispatchActionsSource).toContain("phase: ANALYSIS_PHASE");
   });
 });
