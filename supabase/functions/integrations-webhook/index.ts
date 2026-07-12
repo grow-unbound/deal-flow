@@ -11,6 +11,12 @@ import {
   resolveExternalId,
   touchWebhookLastReceived,
 } from '../_shared/zoho-webhook-utils.ts';
+import { createZohoAdapter, type ZohoAdapter } from '../_shared/integrations-zoho.ts';
+import {
+  loadIntegrationCredentials,
+  createDbTokenCache,
+  assertZohoIntegration,
+} from '../_shared/sync-utils.ts';
 
 // Maps integration_webhooks.entity_type → persistZohoEntityPage phase param
 const PHASE_BY_ENTITY: Record<string, string> = {
@@ -368,13 +374,25 @@ Deno.serve(async (req: Request) => {
       externalId: externalId ?? null,
     };
 
-    // FK-failsafe adapter calls (fetching missing buyers/pricelists from Zoho
-    // before persisting an estimate/invoice) are the primary cause of 150s
-    // wall-clock timeouts on this handler. Skip them on the webhook path:
-    // the next daily sync will resolve any null FKs. A hard 100s timeout
-    // on the persist call ensures the catch block can write "failed" status
-    // before Supabase kills the process (which would orphan the "received" row).
-    console.log(`[${traceId}] calling persistZohoEntityPage (no FK-failsafe, 100s timeout)...`);
+    // Build Zoho adapter for FK-failsafe fetching — if credentials can't be loaded,
+    // proceed without adapter (graceful degradation: null buyer/location, throw on missing product).
+    let adapter: ZohoAdapter | undefined;
+    try {
+      const zohoTypeId = assertZohoIntegration(integrationTypeId);
+      const credentials = await loadIntegrationCredentials(admin, webhook.tenant_integration_id, integrationTypeId);
+      const tokenCache = createDbTokenCache(admin, webhook.tenant_integration_id);
+      adapter = createZohoAdapter(zohoTypeId, credentials, tokenCache);
+      console.log(`[${traceId}] adapter created for FK-failsafe fetching`);
+    } catch (adapterErr) {
+      console.warn(`[${traceId}] adapter creation failed, proceeding without FK-failsafe: ${String(adapterErr)}`);
+    }
+
+    // 100s ceiling keeps the catch block reachable before Supabase's 150s
+    // wall-clock kill — ensures orphaned "received" rows can't accumulate.
+    // FK-failsafe Zoho calls happen before the DB persist, so normal paths
+    // complete well under this limit; only pathological cases (all Zoho calls
+    // timing out at max retry budget) would approach it.
+    console.log(`[${traceId}] calling persistZohoEntityPage...`);
     const persistResult = await Promise.race([
       persistZohoEntityPage(
         admin,
@@ -384,7 +402,7 @@ Deno.serve(async (req: Request) => {
         phase,
         integrationTypeId,
         [entityPayload],
-        undefined,
+        adapter,
       ),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('persist_timeout: exceeded 100s budget')), PERSIST_TIMEOUT_MS)
