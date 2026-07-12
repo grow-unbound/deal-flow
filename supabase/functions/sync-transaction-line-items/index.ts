@@ -418,7 +418,7 @@ Deno.serve(async (req: Request) => {
     logCheckpoint(jobId, PHASE, 'detailFetchLoop:start', { rows: batch.rows.length });
     for (let i = 0; i < batch.rows.length; i += ZOHO_DETAIL_FETCH_CONCURRENCY) {
       if (await isSyncJobCancelled(admin, jobId)) {
-        return jsonResponse({ ok: false, phase: PHASE, records_synced: 0, has_more: false, next_cursor: null, cancelled: true });
+        return jsonResponse({ ok: false, phase: PHASE, job_id: jobId, records_synced: 0, has_more: false, next_cursor: null, cancelled: true });
       }
 
       const batchStart = Date.now();
@@ -525,6 +525,7 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({
         ok: true,
         phase: PHASE,
+        job_id: jobId,
         records_synced: persisted,
         has_more: true,
         next_cursor: nextCursor,
@@ -552,6 +553,7 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({
       ok: true,
       phase: PHASE,
+      job_id: jobId,
       records_synced: persisted,
       has_more: false,
       next_cursor: null,
