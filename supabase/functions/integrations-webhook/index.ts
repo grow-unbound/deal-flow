@@ -11,12 +11,6 @@ import {
   resolveExternalId,
   touchWebhookLastReceived,
 } from '../_shared/zoho-webhook-utils.ts';
-import { createZohoAdapter, type ZohoAdapter } from '../_shared/integrations-zoho.ts';
-import {
-  loadIntegrationCredentials,
-  createDbTokenCache,
-  assertZohoIntegration,
-} from '../_shared/sync-utils.ts';
 
 // Maps integration_webhooks.entity_type → persistZohoEntityPage phase param
 const PHASE_BY_ENTITY: Record<string, string> = {
@@ -47,6 +41,11 @@ function extractTokenFromPath(pathname: string): string | null {
 function ok(reason: string): Response {
   return new Response(reason, { status: 200, headers: { 'content-type': 'text/plain' } });
 }
+
+// Hard ceiling for the persist step. Supabase kills the function at 150s;
+// this fires at 100s so the catch block has time to mark the event "failed"
+// and return 200 before the wall is hit (avoiding orphaned "received" rows).
+const PERSIST_TIMEOUT_MS = 100_000;
 
 // Create placeholder webhook event record at START
 async function createWebhookEventPlaceholder(
@@ -369,30 +368,28 @@ Deno.serve(async (req: Request) => {
       externalId: externalId ?? null,
     };
 
-    // Build Zoho adapter for FK-failsafe fetching — if credentials can't be loaded,
-    // proceed without adapter (graceful degradation: null buyer/location, throw on missing product).
-    let adapter: ZohoAdapter | undefined;
-    try {
-      const zohoTypeId = assertZohoIntegration(integrationTypeId);
-      const credentials = await loadIntegrationCredentials(admin, webhook.tenant_integration_id, integrationTypeId);
-      const tokenCache = createDbTokenCache(admin, webhook.tenant_integration_id);
-      adapter = createZohoAdapter(zohoTypeId, credentials, tokenCache);
-      console.log(`[${traceId}] adapter created for FK-failsafe fetching`);
-    } catch (adapterErr) {
-      console.warn(`[${traceId}] adapter creation failed, proceeding without FK-failsafe: ${String(adapterErr)}`);
-    }
-
-    console.log(`[${traceId}] calling persistZohoEntityPage...`);
-    const persistResult = await persistZohoEntityPage(
-      admin,
-      webhook.tenant_id,
-      null,
-      webhook.tenant_integration_id,
-      phase,
-      integrationTypeId,
-      [entityPayload],
-      adapter,
-    );
+    // FK-failsafe adapter calls (fetching missing buyers/pricelists from Zoho
+    // before persisting an estimate/invoice) are the primary cause of 150s
+    // wall-clock timeouts on this handler. Skip them on the webhook path:
+    // the next daily sync will resolve any null FKs. A hard 100s timeout
+    // on the persist call ensures the catch block can write "failed" status
+    // before Supabase kills the process (which would orphan the "received" row).
+    console.log(`[${traceId}] calling persistZohoEntityPage (no FK-failsafe, 100s timeout)...`);
+    const persistResult = await Promise.race([
+      persistZohoEntityPage(
+        admin,
+        webhook.tenant_id,
+        null,
+        webhook.tenant_integration_id,
+        phase,
+        integrationTypeId,
+        [entityPayload],
+        undefined,
+      ),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('persist_timeout: exceeded 100s budget')), PERSIST_TIMEOUT_MS)
+      ),
+    ]);
     console.log(`[${traceId}] persistZohoEntityPage returned | result.created=${persistResult.created} | result.updated=${persistResult.updated}`);
 
     await touchWebhookLastReceived(admin, webhook.id);
