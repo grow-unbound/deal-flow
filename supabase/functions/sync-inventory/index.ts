@@ -37,12 +37,16 @@ interface SyncInventoryRequest {
   job_id?: string | null;
   page_from?: number | null;
   per_page?: number | null;
+  since?: string | null;
 }
 
 const PHASE = 'inventory';
-// 10 batches of ITEM_LOC_CONCURRENCY(=10) per page, paced ~6s apart —
-// comfortably inside TIME_BUDGET_MS even at worst-case per-batch latency.
-const DEFAULT_PAGE_SIZE = 100;
+// 2 batches of ITEM_LOC_CONCURRENCY(=10) per page, paced ~6s apart.
+// 20 items × worst-case 30s/batch = ~60s — safely inside TIME_BUDGET_MS.
+// Previously 100; reduced because each item-detail batch can take up to
+// ZOHO_BULK_DETAIL_MAX_ATTEMPTS(2) × ZOHO_BULK_DETAIL_TIMEOUT_MS(15s) = 30s,
+// and 10 batches × 36s = 360s >> TIME_BUDGET_MS, causing 0-record timeouts.
+const DEFAULT_PAGE_SIZE = 20;
 // Mirrors runPhaseSync's TIME_BUDGET_MS (sync-utils.ts): stop before
 // Supabase's ~150s hard limit and hand off a resume cursor.
 const TIME_BUDGET_MS = 110_000;
@@ -65,6 +69,7 @@ async function parseRequest(req: Request): Promise<SyncInventoryRequest> {
     job_id: typeof body.job_id === 'string' ? body.job_id : null,
     page_from: typeof body.page_from === 'number' ? body.page_from : null,
     per_page: typeof body.per_page === 'number' ? body.per_page : null,
+    since: typeof body.since === 'string' ? body.since : null,
   };
 }
 
@@ -73,15 +78,19 @@ async function loadProductPage(
   tenantId: string,
   page: number,
   pageSize: number,
+  since?: string | null,
 ): Promise<{ rows: { id: string; externalRef: string }[]; total: number }> {
   const offset = (page - 1) * pageSize;
-  const { data, error, count } = await admin
+  const base = admin
     .schema('app')
     .from('tenant_products')
     .select('id, external_ref', { count: 'exact' })
     .eq('tenant_id', tenantId)
     .not('external_ref', 'is', null)
-    .is('deleted_at', null)
+    .is('deleted_at', null);
+
+  const filtered = since ? base.gte('updated_at', since) : base;
+  const { data, error, count } = await filtered
     .order('id', { ascending: true })
     .range(offset, offset + pageSize - 1);
 
@@ -141,6 +150,7 @@ Deno.serve(async (req: Request) => {
   try {
     const input = await parseRequest(req);
     jobId = input.job_id ?? null;
+    const since = input.since ?? null;
 
     const integration = await loadTenantIntegration(admin, input.tenant_integration_id);
     const zohoTypeId = assertZohoIntegration(integration.integration_type_id);
@@ -180,7 +190,7 @@ Deno.serve(async (req: Request) => {
     const importActorId = resolveSyncImportActorId(integration);
 
     const loadDone = startTimer(jobId, PHASE, 'loadProductPage');
-    const { rows, total } = await loadProductPage(admin, integration.tenant_id, page, pageSize);
+    const { rows, total } = await loadProductPage(admin, integration.tenant_id, page, pageSize, since);
     loadDone({ rows: rows.length, total });
 
     const productIdMap = new Map(rows.map((r) => [r.externalRef, r.id] as const));
