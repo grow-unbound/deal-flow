@@ -52,10 +52,23 @@ function OrdersPageInner() {
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<BuyerInvoiceStatusChip>('All');
   const { updatedEntityIds, markSeen } = useBuyerRealtimeContext();
 
-  const { state: activeTab, setState: setActiveTab } = useRouteSnapshot<TabId>({
+  const hasUrlTab = Boolean(tabParam);
+
+  const { state: snapshotTab, setState: setSnapshotTab } = useRouteSnapshot<TabId>({
     storageKey: 'buyer-orders-page-tab',
     initialState: tabParam ?? 'orders',
+    enabled: !hasUrlTab,
   });
+
+  const [urlDrivenTab, setUrlDrivenTab] = useState<TabId>(tabParam ?? 'orders');
+  const activeTab = hasUrlTab ? urlDrivenTab : snapshotTab;
+
+  const setActiveTab = (tab: TabId) => {
+    if (hasUrlTab) {
+      setUrlDrivenTab(tab);
+    }
+    setSnapshotTab(tab);
+  };
 
   const ordersQuery = useBuyerOrdersInfinite();
   const estimatesQuery = useBuyerEstimatesInfinite();
@@ -67,8 +80,11 @@ function OrdersPageInner() {
   });
 
   useEffect(() => {
-    if (tabParam) setActiveTab(tabParam);
-  }, [setActiveTab, tabParam]);
+    if (tabParam) {
+      setUrlDrivenTab(tabParam);
+      setSnapshotTab(tabParam);
+    }
+  }, [setSnapshotTab, tabParam]);
 
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeHighlight, setActiveHighlight] = useState<string | null>(null);

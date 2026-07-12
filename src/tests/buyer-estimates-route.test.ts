@@ -23,6 +23,29 @@ vi.mock('@/lib/server/buyer-transaction-notify-immediate', () => ({
     sendImmediateTransactionNotificationsMock(...args),
 }));
 
+vi.mock('@/lib/server/buyer-location-selection', () => ({
+  getSelectedBuyerDeliveryFromRequest: vi.fn().mockReturnValue(null),
+}));
+
+vi.mock('@/lib/server/buyer-product-data', () => ({
+  resolveBuyerInventoryWarehouseId: vi.fn().mockResolvedValue('wh-1'),
+}));
+
+vi.mock('@/lib/server/buyer-cart-stock', () => ({
+  validateBuyerCartStock: vi.fn(async (_db, input: { items: unknown[] }) => ({
+    ok: true,
+    items: input.items,
+  })),
+}));
+
+vi.mock('@/lib/server/campaign-attribution', () => ({
+  inferCampaignIdForBuyerCart: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock('@/lib/server/buyer-app-activity', () => ({
+  recordBuyerAppActivitySafe: vi.fn(),
+}));
+
 
 const insertSingleMock = vi.fn();
 
@@ -116,6 +139,11 @@ const VALID_ITEMS = [
   { tenant_product_id: 'prod-2', qty: 1, unit_price: 1000 },
 ];
 
+function withNextUrl(request: Request): Request {
+  Object.assign(request, { nextUrl: new URL(request.url) });
+  return request;
+}
+
 describe('buyer estimates route (POST)', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -132,20 +160,21 @@ describe('buyer estimates route (POST)', () => {
     requireBuyerAccessProfileMock.mockResolvedValue(PREVIEW_PROFILE);
 
     const { POST } = await import('../../app/api/buyer/estimates/route');
-    const request = new Request('http://localhost/api/buyer/estimates', {
+    const request = withNextUrl(new Request('http://localhost/api/buyer/estimates', {
       method: 'POST',
       body: JSON.stringify({
         items: VALID_ITEMS,
         location_id: 'loc-1',
         place_of_supply: 'Andheri East',
       }),
-    });
+    }));
     const response = await POST(request as never);
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
     expect(body.estimate_number).toBe('PREVIEW-INQUIRY');
+    expect(body.document_status_note).toBeNull();
     expect(body.whatsapp_sent).toBe(false);
     expect(insertSingleMock).not.toHaveBeenCalled();
   });
@@ -154,10 +183,10 @@ describe('buyer estimates route (POST)', () => {
     requireBuyerAccessProfileMock.mockResolvedValue(BUYER_PROFILE);
 
     const { POST } = await import('../../app/api/buyer/estimates/route');
-    const request = new Request('http://localhost/api/buyer/estimates', {
+    const request = withNextUrl(new Request('http://localhost/api/buyer/estimates', {
       method: 'POST',
       body: JSON.stringify({ items: [], location_id: 'loc-1' }),
-    });
+    }));
     const response = await POST(request as never);
     expect(response.status).toBe(400);
   });
@@ -166,18 +195,19 @@ describe('buyer estimates route (POST)', () => {
     requireBuyerAccessProfileMock.mockResolvedValue(BUYER_PROFILE);
 
     const { POST } = await import('../../app/api/buyer/estimates/route');
-    const request = new Request('http://localhost/api/buyer/estimates', {
+    const request = withNextUrl(new Request('http://localhost/api/buyer/estimates', {
       method: 'POST',
       body: JSON.stringify({
         items: VALID_ITEMS,
         location_id: 'loc-1',
       }),
-    });
+    }));
     const response = await POST(request as never);
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
+    expect(body.document_status_note).toBeNull();
     expect(body.whatsapp_sent).toBe(true);
     expect(sendImmediateTransactionNotificationsMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -199,18 +229,19 @@ describe('buyer estimates route (POST)', () => {
     });
 
     const { POST } = await import('../../app/api/buyer/estimates/route');
-    const request = new Request('http://localhost/api/buyer/estimates', {
+    const request = withNextUrl(new Request('http://localhost/api/buyer/estimates', {
       method: 'POST',
       body: JSON.stringify({
         items: VALID_ITEMS,
         location_id: 'loc-1',
       }),
-    });
+    }));
     const response = await POST(request as never);
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(body.estimate_number).toBeNull();
+    expect(body.document_status_note).toBe('will be created soon');
     expect(body.whatsapp_sent).toBe(false);
     expect(sendImmediateTransactionNotificationsMock).not.toHaveBeenCalled();
   });
@@ -220,16 +251,17 @@ describe('buyer estimates route (POST)', () => {
     sendImmediateTransactionNotificationsMock.mockResolvedValue(false);
 
     const { POST } = await import('../../app/api/buyer/estimates/route');
-    const request = new Request('http://localhost/api/buyer/estimates', {
+    const request = withNextUrl(new Request('http://localhost/api/buyer/estimates', {
       method: 'POST',
       body: JSON.stringify({
         items: VALID_ITEMS,
         location_id: 'loc-1',
       }),
-    });
+    }));
     const response = await POST(request as never);
     const body = await response.json();
 
+    expect(body.document_status_note).toBeNull();
     expect(body.whatsapp_sent).toBe(false);
     expect(sendImmediateTransactionNotificationsMock).toHaveBeenCalled();
   });

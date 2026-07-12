@@ -1,7 +1,7 @@
 // supabase/functions/integrations-webhook/index.ts
 
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2';
-import { persistZohoEntityPage } from '../_shared/integrations-persist.ts';
+import { persistZohoEntityPage, LockTimeoutError } from '../_shared/integrations-persist.ts';
 import {
   loadWebhookByToken,
   validateWebhookSecret,
@@ -46,6 +46,18 @@ function extractTokenFromPath(pathname: string): string | null {
 // Always return HTTP 200 — Zoho retries on any non-200, which causes duplicate processing
 function ok(reason: string): Response {
   return new Response(reason, { status: 200, headers: { 'content-type': 'text/plain' } });
+}
+
+// Exception to the "always 200" rule: a lock_timeout means persist_with_-
+// natural_key_lock never wrote anything (nothing to duplicate), so returning
+// 503 here lets Zoho's own retry recover the event instead of it being
+// silently dropped — the failure mode this guards against is data loss, not
+// the duplicate-processing risk `ok()` exists to avoid.
+function retryable(reason: string): Response {
+  return new Response(reason, {
+    status: 503,
+    headers: { 'content-type': 'text/plain', 'retry-after': '5' },
+  });
 }
 
 // Hard ceiling for the persist step. Supabase kills the function at 150s;
@@ -453,9 +465,13 @@ Deno.serve(async (req: Request) => {
         entityType: catchCtx.entityType,
         externalRef: catchCtx.externalId,
         stage: 'persist',
-        reasonCode: 'EXCEPTION',
+        reasonCode: err instanceof LockTimeoutError ? 'LOCK_TIMEOUT' : 'EXCEPTION',
         message: String(err),
       });
+    }
+    if (err instanceof LockTimeoutError) {
+      console.log(`[${traceId}] lock_timeout — returning 503 so Zoho retries`);
+      return retryable('lock_timeout');
     }
     return ok('error');
   }

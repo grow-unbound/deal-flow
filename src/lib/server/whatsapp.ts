@@ -3,7 +3,6 @@ import {
   enqueueWhatsAppMessage,
   getPlatformTenantId,
   lookupApprovedTemplateMeta,
-  triggerWhatsAppDispatch,
   type WhatsAppSendPayload,
 } from '@/lib/server/whatsapp-enqueue';
 import type { WhatsAppTriggerSource } from '@/lib/server/whatsapp-ledger';
@@ -76,6 +75,9 @@ async function enqueueWhatsappTemplate(
   const destination = formatWhatsappDestination(to);
   if (!destination) return false;
 
+  // Dispatch is fired by the DB trigger on app.whatsapp_send_queue
+  // (priority=1 rows) as soon as the enqueue RPC commits — no app-side kick
+  // needed here.
   const result = await enqueueWhatsAppMessage({
     tenantId: ctx.tenantId,
     buyerId: ctx.buyerId ?? null,
@@ -86,10 +88,6 @@ async function enqueueWhatsappTemplate(
     relatedEntityType: ctx.relatedEntityType ?? null,
     relatedEntityId: ctx.relatedEntityId ?? null,
   });
-
-  if (result.enqueued) {
-    triggerWhatsAppDispatch();
-  }
 
   return result.enqueued || result.skipped === 'duplicate';
 }
@@ -267,6 +265,4 @@ export async function sendLoginOtpWhatsapp(phone: string, otp: string): Promise<
   if (!result.enqueued && result.skipped !== 'duplicate') {
     throw new Error('Failed to enqueue OTP WhatsApp message');
   }
-
-  triggerWhatsAppDispatch();
 }

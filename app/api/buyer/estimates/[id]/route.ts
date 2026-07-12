@@ -3,6 +3,7 @@ import { supabaseAdmin, supabase } from '@/lib/supabase';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
 import { loadBuyerDocumentLineItems } from '@/lib/buyer-documents/load-buyer-transaction-detail';
+import { TRANSACTION_PENDING_NOTE } from '@/lib/transaction-notes';
 
 export interface BuyerEstimateItem {
   tenant_product_id: string;
@@ -18,6 +19,7 @@ export interface BuyerEstimateItem {
 export interface BuyerEstimateDetail {
   id: string;
   estimate_number: string | null;
+  document_status_note: string | null;
   status: string;
   notes: string | null;
   created_at: string;
@@ -71,6 +73,7 @@ export async function GET(
     const detail: BuyerEstimateDetail = {
       id: estimate.id,
       estimate_number: estimate.estimate_number ?? null,
+      document_status_note: estimate.estimate_number ? null : TRANSACTION_PENDING_NOTE,
       status: estimate.status,
       notes: estimate.notes ?? null,
       created_at: estimate.created_at,

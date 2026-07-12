@@ -100,6 +100,7 @@ export async function findActiveMasterJob(
   admin: AdminClient,
   tenantIntegrationId: string,
 ): Promise<JobRow | null> {
+  // Check for active sync_run master
   const { data, error } = await admin
     .schema('app')
     .from('integration_sync_jobs')
@@ -115,6 +116,23 @@ export async function findActiveMasterJob(
   for (const row of data ?? []) {
     if (isMasterRunActive(row as JobRow)) return row as JobRow;
   }
+
+  // Also block when an async repair job is pending/running for this integration
+  const { data: repairData, error: repairError } = await admin
+    .schema('app')
+    .from('integration_sync_jobs')
+    .select('id, tenant_id, tenant_integration_id, phase, status, progress, since_date, job_type, run_kind')
+    .eq('tenant_integration_id', tenantIntegrationId)
+    .eq('phase', 'repair_aggregates')
+    .in('status', ['pending', 'running'])
+    .is('deleted_at', null)
+    .limit(1);
+
+  if (repairError) throw new Error(`Failed to query active repair: ${repairError.message}`);
+  if (repairData && repairData.length > 0) {
+    throw new SyncActiveError('A repair job is currently in progress. Wait for it to finish before starting a sync.');
+  }
+
   return null;
 }
 
