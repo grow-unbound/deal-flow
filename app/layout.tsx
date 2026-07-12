@@ -6,6 +6,7 @@ import { TenantProvider } from '@/contexts/TenantContext';
 import { PostHogProvider } from '@/components/providers/PostHogProvider';
 import { ReactQueryProvider } from '@/components/providers/ReactQueryProvider';
 import { SpeedInsights } from '@vercel/speed-insights/next';
+import { Analytics } from '@vercel/analytics/next';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -54,6 +55,7 @@ export default function RootLayout({
           </ReactQueryProvider>
         </PostHogProvider>
         <SpeedInsights />
+        <Analytics />
       </body>
     </html>
   );
