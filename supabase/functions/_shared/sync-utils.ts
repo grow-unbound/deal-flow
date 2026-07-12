@@ -191,39 +191,6 @@ export async function resolvePersistOptionsForJob(
   };
 }
 
-export async function upsertPhaseJob(
-  admin: ReturnType<typeof createAdminClient>,
-  opts: {
-    tenantId: string;
-    tenantIntegrationId: string;
-    phase: string;
-    jobType: string;
-    triggeredBy: string | null;
-    sinceDate?: string | null;
-  },
-): Promise<string> {
-  const { data, error } = await admin
-    .schema('app')
-    .from('integration_sync_jobs')
-    .insert({
-      tenant_id: opts.tenantId,
-      tenant_integration_id: opts.tenantIntegrationId,
-      job_type: opts.jobType,
-      phase: opts.phase,
-      status: 'pending',
-      progress: {},
-      since_date: opts.sinceDate ?? null,
-      triggered_by: opts.triggeredBy ?? null,
-      created_by: opts.triggeredBy ?? null,
-      updated_by: opts.triggeredBy ?? null,
-    })
-    .select('id')
-    .single();
-
-  if (error) throw new Error(`Unable to create phase sync job: ${error.message}`);
-  return data.id as string;
-}
-
 export async function updatePhaseJob(
   admin: ReturnType<typeof createAdminClient>,
   jobId: string,
@@ -449,7 +416,21 @@ export async function runPhaseSync(
       }
     : null;
 
+  // The coordinator reuses the same slave row across every page of a phase
+  // (dispatch_next_page re-invokes runPhaseSync with the same jobId and an
+  // advanced pageFrom) — totalSynced must seed from that row's already
+  // persisted records_synced on resume, or each page's write overwrites the
+  // running total with only that page's count.
   let totalSynced = 0;
+  if (opts.jobId && opts.pageFrom && opts.pageFrom > 1) {
+    const { data: resumingJob } = await admin
+      .schema('app')
+      .from('integration_sync_jobs')
+      .select('records_synced')
+      .eq('id', opts.jobId)
+      .maybeSingle();
+    totalSynced = resumingJob?.records_synced ?? 0;
+  }
   let totalFailed = 0;
   let pagesFetched = 0;
 

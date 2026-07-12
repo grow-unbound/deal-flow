@@ -38,7 +38,7 @@ export async function sendImmediateTransactionNotifications(
     input.totalAmount,
     input.itemCount,
   );
-  const whatsappEnqueued = results.some((result) => result.status === 'fulfilled');
+  const whatsappEnqueued = results;
   if (whatsappEnqueued) {
     await input.db
       .schema('app')

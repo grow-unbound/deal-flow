@@ -1,62 +1,47 @@
 /**
- * integrations-sync — Master-slave sync orchestrator.
+ * integrations-sync — creates a sync run and returns immediately.
  *
- * One master job (phase=sync_run) per logical run; slave jobs per entity phase.
- * Self-chains continuations via async POST (no 30s cron resume loop).
+ * Creates only the master job (phase=sync_run). No slave rows are
+ * precreated here — app.tick_sync_coordinator's 15s cron tick invokes
+ * sync-coordinator, whose dispatch_next_phase action creates each phase's
+ * slave row lazily, one at a time, right before dispatching it (see
+ * sync-coordinator/index.ts). sync-coordinator is the sole driver of "what
+ * happens next" for every master/slave transition. Phase workers
+ * (sync-{phase}) only ever write their own terminal state and return.
+ *
+ * This function used to precreate every phase's slave row up front. That
+ * was safe as long as exactly one actor ever dispatched them — but while
+ * this function's old self-chain and sync-coordinator's tick were both
+ * live at once (two uncoordinated drivers racing to advance the same run),
+ * precreation gave them something to race OVER: whichever actor lost the
+ * race to flip a precreated row out of 'pending' would find nothing and
+ * create a duplicate, orphaning the original until the reaper permanently
+ * failed it and halted the whole run. Self-chain is gone now, but
+ * precreation was still unnecessary surface area even with a single
+ * writer — removed. With no precreation there's nothing left to race over.
+ *
  * Does NOT mutate tenant_integrations.status — OAuth stays connected for outbound push.
- *
- * Invariant: exactly ONE phase-step per invocation. Never dispatches more
- * than one phase in the same call — always hands off via continuation to the
- * next page (same phase) or the next phase, so no invocation's own elapsed
- * time can silently accumulate across multiple phases and outrun the
- * platform's execution ceiling (see runOrchestratorStep).
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import {
-  buildContinuationPayload,
-  buildSyncRunContext,
-  CANONICAL_PHASES,
   dailySinceDateIst,
   deriveRunKind,
-  getLatestSlavesByPhase,
-  isCanonicalPhase,
-  isDegraded,
   isRunKind,
-  isRunReadyForAnalysis,
-  resolvePhasesToRun,
-  resolvePhasesForPolicy,
   resolveFailurePolicyForRunKind,
+  resolvePhasesForPolicy,
   resolveRunProfile,
   resolveSyncEnrichmentPolicy,
-  shouldHaltOnFailure,
-  sinceForPhase,
   type CanonicalPhase,
   type RunKind,
-  type SyncRunContext,
 } from '../../../src/lib/integrations/sync-orchestration.ts';
 import {
   createMasterJob,
-  createSlaveJob,
-  dispatchPhase,
   findActiveMasterJob,
-  getDispatchSecret,
-  getFunctionsBaseUrl,
-  isPhaseAlreadyComplete,
-  isRunAborted,
   loadIntegration,
-  loadJob,
-  loadSlavesForRun,
-  markJobFailed,
-  markSlaveSkipped,
-  type PhaseResult,
-  runAnalysisPhase,
   SyncActiveError,
-  type TenantIntegrationRow,
   updateMasterJob,
 } from '../_shared/sync-coordinator-actions.ts';
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function createAdminClient() {
   const url = Deno.env.get('SUPABASE_URL');
@@ -73,286 +58,6 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-// Await with a 5s abort — ensures the HTTP request is at least sent (TCP
-// connection to Supabase established) before the current invocation returns.
-// No EdgeRuntime dependency; works at any chain depth including nested waitUntil contexts.
-function dispatchContinuation(payload: ReturnType<typeof buildContinuationPayload>): void {
-  const secret = getDispatchSecret();
-  const p = fetch(`${getFunctionsBaseUrl()}/integrations-sync`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(secret ? { 'x-integrations-dispatch-secret': secret } : {}),
-    },
-    body: JSON.stringify(payload),
-  }).catch((err) => {
-    // Network error: the pending slave will be rescued by the reaper after 10 min.
-    console.error('[integrations-sync] continuation dispatch failed:', err instanceof Error ? err.message : err);
-  });
-
-  // Keep the edge-function runtime alive long enough for the request to be sent.
-  const runtime = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
-  runtime?.waitUntil(p);
-}
-
-interface OrchestratorState {
-  admin: ReturnType<typeof createAdminClient>;
-  integration: TenantIntegrationRow;
-  ctx: SyncRunContext;
-  phasesToRun: readonly CanonicalPhase[];
-  forceFullRefresh: boolean;
-  results: PhaseResult[];
-  startPhaseIndex: number;
-  initialSlaveId?: string;
-  initialPageFrom?: number | null;
-  precreatedJobIds?: Record<string, string>;
-}
-
-async function selfChain(
-  state: OrchestratorState,
-  opts: {
-    phase: string;
-    pageFrom: number;           // the NEXT slave starts here
-    continuationOf: string;     // current slave being finalized
-    currentPageFrom?: number;   // where the current slave started (for summary)
-    masterStatus?: 'paused' | 'running';
-  },
-): Promise<Response> {
-  const { admin, integration, ctx } = state;
-
-  // Finalize current slave with page-range summary before creating next slave.
-  // runPhaseSync already wrote status:'paused' + next_cursor; this adds the summary.
-  const slavePageFrom = opts.currentPageFrom ?? 1;
-  const slavePageTo = opts.pageFrom - 1; // continuation starts at pageFrom → current ended at pageFrom-1
-  await admin.schema('app').from('integration_sync_jobs').update({
-    summary: {
-      page_from: slavePageFrom,
-      page_to: slavePageTo,
-      next_page: opts.pageFrom,
-      note: `${opts.phase}: pages ${slavePageFrom}–${slavePageTo} processed, continuing from page ${opts.pageFrom}`,
-      last_synced_at: new Date().toISOString(),
-    },
-    updated_at: new Date().toISOString(),
-  }).eq('id', opts.continuationOf);
-
-  const nextSlaveId = await createSlaveJob(admin, {
-    tenantId: integration.tenant_id,
-    tenantIntegrationId: integration.id,
-    masterJobId: ctx.masterJobId,
-    syncRunId: ctx.syncRunId,
-    phase: opts.phase,
-    jobType: ctx.jobType,
-    triggeredBy: null,
-    sinceDate: sinceForPhase(opts.phase, ctx),
-    pageFrom: opts.pageFrom,
-    continuationOf: opts.continuationOf,
-  });
-
-  await updateMasterJob(admin, ctx.masterJobId, {
-    status: opts.masterStatus ?? 'paused',
-    currentPhase: opts.phase,
-    nextPage: opts.pageFrom,
-  });
-
-  dispatchContinuation(buildContinuationPayload({
-    tenantIntegrationId: integration.id,
-    ctx,
-    phase: opts.phase,
-    pageFrom: opts.pageFrom,
-    jobId: nextSlaveId,
-  }));
-
-  return json({
-    ok: true,
-    status: 'paused',
-    chained: true,
-    master_job_id: ctx.masterJobId,
-    sync_run_id: ctx.syncRunId,
-    phase: opts.phase,
-    job_id: nextSlaveId,
-    results: state.results,
-  });
-}
-
-// Every invocation processes exactly ONE phase-step, then always hands off —
-// either to the next page of the SAME phase (selfChain, has_more) or to page
-// 1 of the NEXT phase (finishOrAdvance) — never both in the same invocation.
-// Chaining several phases in-process (the old runOrchestratorLoop) let fast
-// phases silently eat into the SAME invocation's clock, so a later phase's
-// dispatchPhase call could return only after the orchestrator's own
-// cumulative elapsed time (counted from ITS start, not from that dispatch)
-// already exceeded Supabase's ~150s hard kill — the orchestrator got killed
-// before it ever reached selfChain()/finishOrAdvance(), orphaning the phase
-// that had just legitimately paused. Splitting to one phase-step per
-// invocation removes the cumulative-budget risk entirely: dispatchPhase's own
-// 140s timeout (sync-coordinator-actions.ts) is now the only clock that
-// matters, and it has real margin against the platform ceiling since nothing
-// else runs in the same invocation first.
-async function finishOrAdvance(state: OrchestratorState, phaseIndex: number): Promise<Response> {
-  const { admin, integration, ctx, phasesToRun, results } = state;
-  const nextPhase = phasesToRun[phaseIndex + 1];
-
-  if (nextPhase) {
-    const nextSlaveId = state.precreatedJobIds?.[nextPhase] ?? await createSlaveJob(admin, {
-      tenantId: integration.tenant_id,
-      tenantIntegrationId: integration.id,
-      masterJobId: ctx.masterJobId,
-      syncRunId: ctx.syncRunId,
-      phase: nextPhase,
-      jobType: ctx.jobType,
-      triggeredBy: null,
-      sinceDate: sinceForPhase(nextPhase, ctx),
-      pageFrom: 1,
-    });
-    await updateMasterJob(admin, ctx.masterJobId, { status: 'paused', currentPhase: nextPhase, nextPage: 1 });
-    dispatchContinuation(buildContinuationPayload({
-      tenantIntegrationId: integration.id,
-      ctx,
-      phase: nextPhase,
-      pageFrom: 1,
-      jobId: nextSlaveId,
-    }));
-    return json({
-      ok: true,
-      status: 'paused',
-      chained: true,
-      master_job_id: ctx.masterJobId,
-      sync_run_id: ctx.syncRunId,
-      results,
-    });
-  }
-
-  // Last phase in this run just finished (completed, skipped, or failed
-  // without halting) — reload every slave from the DB rather than the
-  // in-memory `results` array. Each invocation only ever processes one
-  // phase-step, so `results` here holds at most this single phase; deriving
-  // the run summary from it (as the old code did) silently undercounted
-  // phases_run/total_records_synced for any run spanning multiple
-  // invocations — which is most real runs. getLatestSlavesByPhase is the
-  // same dedup-to-latest-row-per-phase helper isRunReadyForAnalysis uses.
-  const slaves = await loadSlavesForRun(admin, ctx.syncRunId);
-  const phasesInRun = (await loadJob(admin, ctx.masterJobId))?.progress?.phases_in_run as string[] | undefined
-    ?? [...phasesToRun];
-
-  if (isRunReadyForAnalysis(slaves, phasesInRun)) {
-    await runAnalysisPhase(admin, integration, ctx, null);
-  }
-
-  const latestSlaves = [...getLatestSlavesByPhase(slaves).values()];
-
-  await updateMasterJob(admin, ctx.masterJobId, {
-    status: 'completed',
-    completedAt: new Date().toISOString(),
-    degraded: isDegraded(latestSlaves.map((s) => ({ ok: s.status !== 'failed' }))),
-    summary: {
-      phases_run: latestSlaves.map((s) => s.phase),
-      phases_failed: latestSlaves.filter((s) => s.status === 'failed').map((s) => s.phase),
-      total_records_synced: latestSlaves.reduce((n, s) => n + (s.records_synced ?? 0), 0),
-      last_synced_at: new Date().toISOString(),
-    },
-  });
-
-  return json({
-    ok: true,
-    status: 'complete',
-    master_job_id: ctx.masterJobId,
-    sync_run_id: ctx.syncRunId,
-    results,
-  });
-}
-
-async function runOrchestratorStep(state: OrchestratorState): Promise<Response> {
-  const { admin, integration, ctx, phasesToRun, forceFullRefresh, results } = state;
-
-  const phaseIndex = state.startPhaseIndex;
-  const phase = phasesToRun[phaseIndex];
-
-  if (await isRunAborted(admin, ctx.masterJobId)) {
-    return json({ ok: false, status: 'aborted', master_job_id: ctx.masterJobId, results });
-  }
-
-  let slaveId = state.initialSlaveId ?? state.precreatedJobIds?.[phase];
-
-  if (!slaveId) {
-    slaveId = await createSlaveJob(admin, {
-      tenantId: integration.tenant_id,
-      tenantIntegrationId: integration.id,
-      masterJobId: ctx.masterJobId,
-      syncRunId: ctx.syncRunId,
-      phase,
-      jobType: ctx.jobType,
-      triggeredBy: null,
-      sinceDate: sinceForPhase(phase, ctx),
-    });
-  }
-
-  if (!forceFullRefresh && await isPhaseAlreadyComplete(admin, {
-    tenantIntegrationId: integration.id,
-    phase,
-    excludeJobId: slaveId,
-    masterJobId: ctx.masterJobId,
-  })) {
-    await markSlaveSkipped(admin, slaveId, phase);
-    results.push({ ok: true, phase, records_synced: 0, has_more: false, next_cursor: null });
-    return finishOrAdvance(state, phaseIndex);
-  }
-
-  const pageFrom = state.initialPageFrom ?? 1;
-
-  await updateMasterJob(admin, ctx.masterJobId, {
-    status: 'running',
-    currentPhase: phase,
-    nextPage: pageFrom,
-    startedAt: new Date().toISOString(),
-  });
-
-  try {
-    const result = await dispatchPhase({
-      phase,
-      tenantIntegrationId: integration.id,
-      jobId: slaveId,
-      pageFrom,
-      since: sinceForPhase(phase, ctx),
-    });
-    results.push(result);
-
-    if (await isRunAborted(admin, ctx.masterJobId)) {
-      return json({ ok: false, status: 'cancelled', master_job_id: ctx.masterJobId, results });
-    }
-
-    if (result.has_more) {
-      const nextPage = (result.next_cursor as { page?: number } | null)?.page ?? pageFrom + 1;
-      return selfChain(state, { phase, pageFrom: nextPage, continuationOf: slaveId, currentPageFrom: pageFrom });
-    }
-
-    return finishOrAdvance(state, phaseIndex);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    await markJobFailed(admin, slaveId, message);
-
-    if (shouldHaltOnFailure(phase, ctx)) {
-      await updateMasterJob(admin, ctx.masterJobId, {
-        status: 'failed',
-        runHalted: true,
-        completedAt: new Date().toISOString(),
-      });
-      return json({
-        ok: false,
-        status: 'halted',
-        failed_at: phase,
-        error: message,
-        master_job_id: ctx.masterJobId,
-        results,
-      }, 500);
-    }
-
-    // Skip failed transactional (or incremental reference) phase and advance.
-    return finishOrAdvance(state, phaseIndex);
-  }
-}
-
-// ── Main handler ─────────────────────────────────────────────────────────────
-
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405);
 
@@ -361,7 +66,6 @@ Deno.serve(async (req: Request) => {
     const tenantIntegrationId = typeof body.tenant_integration_id === 'string' ? body.tenant_integration_id : null;
     if (!tenantIntegrationId) return json({ ok: false, error: 'tenant_integration_id is required' }, 400);
 
-    const isContinuation = body.continuation === true;
     const jobType = typeof body.job_type === 'string' ? body.job_type : 'manual';
     const forceFullRefresh = body.force_full_refresh === true;
     const sinceInput = typeof body.since === 'string' ? body.since : null;
@@ -382,62 +86,6 @@ Deno.serve(async (req: Request) => {
     const admin = createAdminClient();
     const integration = await loadIntegration(admin, tenantIntegrationId);
 
-    // ── Continuation path ──────────────────────────────────────────────────
-    if (isContinuation) {
-      const masterJobId = typeof body.master_job_id === 'string' ? body.master_job_id : null;
-      const slaveJobId = typeof body.job_id === 'string' ? body.job_id : null;
-      const phase = typeof body.phase === 'string' ? body.phase : null;
-      const pageFrom = typeof body.page_from === 'number' ? body.page_from : 1;
-
-      if (!masterJobId || !slaveJobId || !phase) {
-        return json({ ok: false, error: 'continuation requires master_job_id, job_id, phase' }, 400);
-      }
-
-      if (await isRunAborted(admin, masterJobId)) {
-        return json({ ok: false, status: 'aborted', master_job_id: masterJobId });
-      }
-
-      const master = await loadJob(admin, masterJobId);
-      if (!master) return json({ ok: false, error: 'Master job not found' }, 404);
-
-      const progress = master.progress ?? {};
-      const profile = resolveRunProfile({ forceFullRefresh: false, jobType, isContinuation: true });
-      // run_kind was fixed at master-job creation — read it back rather than
-      // re-deriving, so a continuation's failure policy always matches the
-      // policy the run actually started with.
-      const runKind = isRunKind(master.run_kind)
-        ? master.run_kind
-        : deriveRunKind({ jobType: master.job_type ?? jobType, requestedPhase: null });
-      const ctx = buildSyncRunContext({
-        masterJobId,
-        profile,
-        runKind,
-        jobType: master.job_type ?? jobType,
-        transactionSince: typeof progress.transaction_since === 'string' ? progress.transaction_since : master.since_date,
-        referenceSince: typeof progress.reference_since === 'string' ? progress.reference_since : null,
-      });
-
-      const phasesInRun = Array.isArray(progress.phases_in_run)
-        ? progress.phases_in_run.filter(isCanonicalPhase)
-        : [...CANONICAL_PHASES];
-
-      const phaseIndex = phasesInRun.indexOf(phase as CanonicalPhase);
-      if (phaseIndex < 0) return json({ ok: false, error: `Phase ${phase} not in run` }, 400);
-
-      return runOrchestratorStep({
-        admin,
-        integration,
-        ctx,
-        phasesToRun: phasesInRun,
-        forceFullRefresh: progress.run_profile === 'full_refresh',
-        results: [],
-        startPhaseIndex: phaseIndex,
-        initialSlaveId: slaveJobId,
-        initialPageFrom: pageFrom,
-      });
-    }
-
-    // ── New run path ───────────────────────────────────────────────────────
     const activeMaster = await findActiveMasterJob(admin, tenantIntegrationId);
     if (activeMaster) {
       return json({ ok: false, error: 'Sync already in progress', code: 'SYNC_ACTIVE' }, 409);
@@ -480,40 +128,29 @@ Deno.serve(async (req: Request) => {
       phasesInRun: phasesToRun,
     });
 
-    const ctx = buildSyncRunContext({
-      masterJobId,
-      profile,
-      runKind,
-      jobType,
-      transactionSince,
-      referenceSince,
-    });
-
+    // 'running' (not 'pending') so tick_sync_coordinator's own query
+    // (WHERE status IN ('running','paused')) picks this master up on its
+    // next tick — within 15s.
     await updateMasterJob(admin, masterJobId, { status: 'running', startedAt: new Date().toISOString() });
 
-    const precreatedJobIds: Record<string, string> = {};
-    for (const phase of phasesToRun) {
-      precreatedJobIds[phase] = await createSlaveJob(admin, {
-        tenantId: integration.tenant_id,
-        tenantIntegrationId: integration.id,
-        masterJobId,
-        syncRunId: masterJobId,
-        phase,
-        jobType,
-        triggeredBy: actorUserId,
-        sinceDate: sinceForPhase(phase, ctx),
-      });
+    // Best-effort immediate kick so phase 1 doesn't wait up to 15s for the
+    // next cron tick. Safe to call directly (not a second race) because
+    // tick_sync_coordinator() itself does the FOR UPDATE SKIP LOCKED
+    // lease-grab — this just makes this invocation compete for the same
+    // SQL-level lease the cron-triggered call would, instead of bypassing
+    // it. Failure here is harmless; the 15s cron backstop covers it.
+    try {
+      await admin.schema('app').rpc('tick_sync_coordinator');
+    } catch (err) {
+      console.warn('[integrations-sync] immediate coordinator kick failed, cron will pick it up within 15s:', err);
     }
 
-    return runOrchestratorStep({
-      admin,
-      integration,
-      ctx,
-      phasesToRun,
-      forceFullRefresh,
+    return json({
+      ok: true,
+      status: 'queued',
+      master_job_id: masterJobId,
+      sync_run_id: masterJobId,
       results: [],
-      startPhaseIndex: 0,
-      precreatedJobIds,
     });
   } catch (err) {
     if (err instanceof SyncActiveError) {

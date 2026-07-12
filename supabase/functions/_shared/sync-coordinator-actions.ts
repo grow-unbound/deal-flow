@@ -220,6 +220,41 @@ export async function createSlaveJob(
   return data.id as string;
 }
 
+// The new-run path precreates one slave row per phase in phasesToRun up
+// front, but each phase transition after the first happens inside a FRESH
+// invocation reconstructed from the continuation HTTP payload — which never
+// carried the full precreatedJobIds map forward, only the id of the phase
+// being resumed. Without this DB lookup, finishOrAdvance's in-memory
+// `state.precreatedJobIds?.[nextPhase]` is always undefined for any phase
+// beyond the first, so it unconditionally created a brand-new slave row —
+// permanently orphaning the originally precreated 'pending' row for that
+// phase (nothing ever dispatches it, so it just sits until the reaper burns
+// through 3 revival attempts and permanently fails it with "reaped:
+// exceeded revival cap", sometimes taking the whole master down with it via
+// the halt-on-permanent-failure check, even though the REAL work for that
+// phase completed fine through the replacement row). Checking the DB first
+// finds and reuses the original precreated row regardless of how many
+// continuation hops separate this call from the run's initial invocation.
+export async function findPendingSlaveForPhase(
+  admin: AdminClient,
+  masterJobId: string,
+  phase: string,
+): Promise<string | null> {
+  const { data, error } = await admin
+    .schema('app')
+    .from('integration_sync_jobs')
+    .select('id')
+    .eq('master_job_id', masterJobId)
+    .eq('phase', phase)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(`Failed to look up pending slave for phase ${phase}: ${error.message}`);
+  return data?.id ?? null;
+}
+
 export async function updateMasterJob(
   admin: AdminClient,
   masterJobId: string,
@@ -330,6 +365,14 @@ export interface PhaseResult {
 // status_code:546/~152s incidents this caused).
 const DISPATCH_TIMEOUT_MS = 140_000;
 
+// Phases whose deployed function name isn't the literal `sync-${phase}`
+// template (phase ids use underscores; these two functions' names use
+// hyphens instead).
+const PHASE_FUNCTION_NAMES: Record<string, string> = {
+  transaction_line_items: 'sync-transaction-line-items',
+  contact_persons: 'sync-contact-persons',
+};
+
 export async function dispatchPhase(opts: {
   phase: string;
   tenantIntegrationId: string;
@@ -337,9 +380,7 @@ export async function dispatchPhase(opts: {
   pageFrom?: number | null;
   since?: string | null;
 }): Promise<PhaseResult> {
-  const functionName = opts.phase === 'transaction_line_items'
-    ? 'sync-transaction-line-items'
-    : `sync-${opts.phase}`;
+  const functionName = PHASE_FUNCTION_NAMES[opts.phase] ?? `sync-${opts.phase}`;
   const url = `${getFunctionsBaseUrl()}/${functionName}`;
   const secret = getDispatchSecret();
 

@@ -107,10 +107,16 @@ async function getCatalogViewsByCohort(
   }
 }
 
-export async function getCohortsLandingPayload(tenantId: string, periodInput?: string | null) {
+export async function getCohortsLandingPayload(
+  tenantId: string,
+  periodInput?: string | null,
+  filters: { search?: string; brands?: string[]; limit?: number } = {},
+) {
   const db = supabaseAdmin as any;
   const period = getSellerLandingPeriodMeta(periodInput);
-  const limit = PAGE_SIZE.MAX;
+  const limit = filters.limit ?? PAGE_SIZE.SELLER;
+  const search = filters.search?.trim().toLowerCase() ?? '';
+  const brandFilter = filters.brands ?? [];
 
   const { data: cohorts, error: cohortsError } = await db
     .schema('app')
@@ -118,8 +124,7 @@ export async function getCohortsLandingPayload(tenantId: string, periodInput?: s
     .select('id, name, description, rules, is_static, cached_member_count, created_at, allowed_tenant_brand_ids')
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
-    .order('created_at', { ascending: false })
-    .limit(limit + 1);
+    .order('created_at', { ascending: false });
 
   if (cohortsError) throw cohortsError;
 
@@ -299,11 +304,22 @@ export async function getCohortsLandingPayload(tenantId: string, periodInput?: s
   const avgConversionPct =
     cohortRows.length > 0 ? Number((cohortRows.reduce((sum: number, row: any) => sum + row.conversion_pct, 0) / cohortRows.length).toFixed(1)) : 0;
 
+  const filteredRows = cohortRows.filter((row: any) => {
+    const searchOk =
+      !search ||
+      [row.name, row.description ?? '', row.focus_chips.join(' '), row.allowed_brands_label]
+        .some((value) => String(value).toLowerCase().includes(search));
+    const brandOk =
+      brandFilter.length === 0 ||
+      (Array.isArray(row.allowed_tenant_brand_ids) && row.allowed_tenant_brand_ids.some((brandId: string) => brandFilter.includes(brandId)));
+    return searchOk && brandOk;
+  });
+
   const lowConversion = [...cohortRows].sort((a, b) => a.conversion_pct - b.conversion_pct).slice(0, 2);
   const topPerformers = [...cohortRows].sort((a, b) => b.gmv_mtd - a.gmv_mtd).slice(0, 2);
   const topRisers = [...cohortRows].sort((a, b) => b.growth_pct - a.growth_pct).slice(0, 2);
 
-  const pageRows = cohortRows.slice(0, limit);
+  const pageRows = filteredRows.slice(0, limit);
 
   return {
     brands: brands.map((brand: { id: string; display_name_override: string | null; master_brand_id: string | null }) => ({
@@ -325,7 +341,7 @@ export async function getCohortsLandingPayload(tenantId: string, periodInput?: s
       top_risers: topRisers,
     },
     cohorts: pageRows,
-    total: cohortRows.length,
+    total: filteredRows.length,
     nextCursor: null,
     period,
   };

@@ -20,7 +20,7 @@ import {
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useTenantBrands, type TenantBrand, type TenantBrandsResponse } from '@/hooks/useBrands';
@@ -146,16 +146,18 @@ function toBrandVm(brand: TenantBrand, index: number): BrandVm {
 function BrandLandingContent({
   initialData,
   initialPeriod,
+  initialSearch,
 }: {
   initialData: TenantBrandsResponse | null;
   initialPeriod: SellerLandingPeriod;
+  initialSearch?: string;
 }) {
   const router = useRouter();
   const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-brands-landing',
     scopeKey: period,
-    version: 2,
+    version: 3,
     initialState: {
       search: '',
       filters: {
@@ -166,6 +168,7 @@ function BrandLandingContent({
       visibleCount: PAGE_SIZE,
     },
   });
+  useSeedRouteSearch({ initialSearch, setState: setRouteState });
   const search = routeState.search;
   const sortBy = routeState.sortBy;
   const filters = routeState.filters ?? { categories: [], cohorts: [] };
@@ -493,13 +496,15 @@ function BrandLandingContent({
 export function BrandsLandingClient({
   initialData,
   initialPeriod,
+  initialSearch,
 }: {
   initialData: TenantBrandsResponse | null;
   initialPeriod: SellerLandingPeriod;
+  initialSearch?: string;
 }) {
   return (
     <FeatureGate flag="BRAND_PRODUCT_MASTER">
-      <BrandLandingContent initialData={initialData} initialPeriod={initialPeriod} />
+      <BrandLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />
     </FeatureGate>
   );
 }

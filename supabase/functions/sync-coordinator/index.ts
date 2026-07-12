@@ -218,12 +218,15 @@ async function executeAction(
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405);
 
+  let admin: ReturnType<typeof createAdminClient> | null = null;
+  let masterJobId: string | null = null;
+
   try {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
-    const masterJobId = typeof body.master_job_id === 'string' ? body.master_job_id : null;
+    masterJobId = typeof body.master_job_id === 'string' ? body.master_job_id : null;
     if (!masterJobId) return json({ ok: false, error: 'master_job_id is required' }, 400);
 
-    const admin = createAdminClient();
+    admin = createAdminClient();
     const master = await loadJob(admin, masterJobId);
     if (!master) return json({ ok: false, error: 'Master job not found' }, 404);
 
@@ -242,5 +245,24 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     console.error('[sync-coordinator]', err);
     return json({ ok: false, error: err instanceof Error ? err.message : 'Coordinator tick failed' }, 500);
+  } finally {
+    // tick_sync_coordinator() grabs a 4-minute coordinator_lease_until on
+    // this master BEFORE firing the request that lands here — meant as a
+    // crash/timeout backstop against a concurrent tick double-processing a
+    // genuinely stuck invocation. Nothing else ever clears it. Without this
+    // release, every phase transition floors at ~4 minutes apart regardless
+    // of how fast the actual dispatch was (observed: a 9-phase run stalling
+    // for minutes between each phase, once precreation was removed and this
+    // became the sole per-phase dispatch path) — release it the instant this
+    // invocation is done, success or failure, so the next 15s tick can pick
+    // this master straight back up.
+    if (admin && masterJobId) {
+      const releaseAdmin = admin;
+      const releaseId = masterJobId;
+      await releaseAdmin.schema('app').from('integration_sync_jobs')
+        .update({ coordinator_lease_until: null })
+        .eq('id', releaseId)
+        .then(() => {}, (err) => console.error('[sync-coordinator] failed to release lease:', err));
+    }
   }
 });

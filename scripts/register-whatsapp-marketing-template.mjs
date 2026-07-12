@@ -45,7 +45,7 @@ const HEADER_IMAGE_URL = process.env.WHATSAPP_TEMPLATE_HEADER_SAMPLE_URL
   ?? process.env.WHATSAPP_DEFAULT_HEADER_IMAGE_URL
   ?? 'https://assets.yukti.so/platform/whatsapp-campaign-default.jpg';
 
-const TEMPLATE_NAME = 'campaign_announcement';
+const TEMPLATE_NAME = 'campaign_published_buyer';
 
 function usage(exitCode = 1) {
   console.log(`Usage: node scripts/register-whatsapp-marketing-template.mjs [--dry-run]
@@ -126,9 +126,9 @@ function buildTemplatePayload(headerHandle) {
       },
       {
         type: 'BODY',
-        text: 'Hi {{buyer_name}},\n\n{{seller_name}} has a new campaign live — {{campaign_title}}\n\n{{buyer_note}}\n\nContact: {{seller_phone_number}}\n\nCheck it out and place your order in the app.',
+        text: 'Hi {{buyer_name}},\n\n{{seller_name}} has a new campaign live — {{campaign_title}}.\n\n{{buyer_note}}\n\nContact: {{seller_phone_number}} for more details.\n\nCheck it out and order in the app.',
         example: {
-          body_text: [['Rajesh', 'WineYard', 'Monsoon Clearance', 'Flat 15% off selected SKUs', '9876543210']],
+          body_text: [['Rajesh', 'MobileMart', 'Monsoon Clearance', 'Flat 15% off selected SKUs', '9876543210']],
         },
       },
       {
@@ -141,18 +141,12 @@ function buildTemplatePayload(headerHandle) {
           {
             type: 'URL',
             text: 'View campaign',
-            url: 'https://app.yukti.so/buy/catalog?share_token={{1}}',
+            url: 'https://app.useyukti.in/buy/catalog?share_token={{1}}',
             example: ['abc123sharetoken'],
           },
           {
-            type: 'URL',
-            text: 'Enquire now',
-            url: 'https://wa.me/{{1}}',
-            example: ['919876543210'],
-          },
-          {
             type: 'QUICK_REPLY',
-            text: 'Unsubscribe',
+            text: 'Opt Out',
           },
         ],
       },
