@@ -160,6 +160,7 @@ export interface IntegrationAggregateFreshness {
   latest_aggregate_at?: string | null;
   repair_job_id?: string | null;
   repair_rebuild_days?: number | null;
+  repair_in_progress?: boolean;
   last_retried_at?: string | null;
   warning_message?: string | null;
 }
@@ -462,6 +463,7 @@ function parseAggregateFreshness(value: unknown): IntegrationAggregateFreshness 
     latest_aggregate_at: asNullableString(value.latest_aggregate_at),
     repair_job_id: asNullableString(value.repair_job_id),
     repair_rebuild_days: asNumber(value.repair_rebuild_days),
+    repair_in_progress: value.repair_in_progress === true ? true : undefined,
     last_retried_at: asNullableString(value.last_retried_at),
     warning_message: asNullableString(value.warning_message),
   };
