@@ -13,8 +13,6 @@ export default function OrderPlacedPage() {
         successHeading="Order created successfully"
         successCopy="Your order is in the queue. We’ll keep the canonical number in sync once Zoho confirms it."
         documentLabel="Order"
-        catalogHref="/buy/catalog"
-        ordersHref="/buy/orders"
       />
     </Suspense>
   );

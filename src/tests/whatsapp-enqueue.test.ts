@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const mockRpc = vi.hoisted(() => vi.fn());
 const mockFrom = vi.hoisted(() => vi.fn());
-const mockSchema = vi.hoisted(() => vi.fn(() => ({ from: mockFrom })));
+const mockSchema = vi.hoisted(() => vi.fn(() => ({ from: mockFrom, rpc: mockRpc })));
 
 vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: { schema: mockSchema },
@@ -9,45 +10,16 @@ vi.mock('@/lib/supabase', () => ({
 
 describe('enqueueWhatsAppMessage', () => {
   beforeEach(() => {
+    mockRpc.mockReset();
     mockFrom.mockReset();
     mockSchema.mockClear();
     vi.resetModules();
   });
 
-  it('inserts queued message and queue row', async () => {
-    const templateSingle = vi.fn().mockResolvedValue({ data: { id: 'tpl-1' }, error: null });
-    const messageSingle = vi.fn().mockResolvedValue({ data: { id: 'msg-1' }, error: null });
-    const queueInsert = vi.fn().mockResolvedValue({ error: null });
-
-    mockFrom.mockImplementation((table: string) => {
-      if (table === 'whatsapp_templates') {
-        return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                is: vi.fn().mockReturnValue({
-                  is: vi.fn().mockReturnValue({
-                    maybeSingle: templateSingle,
-                  }),
-                }),
-              }),
-            }),
-          }),
-        };
-      }
-      if (table === 'whatsapp_messages') {
-        return {
-          insert: vi.fn().mockReturnValue({
-            select: vi.fn().mockReturnValue({
-              single: messageSingle,
-            }),
-          }),
-        };
-      }
-      if (table === 'whatsapp_send_queue') {
-        return { insert: queueInsert };
-      }
-      return {};
+  it('calls the shared enqueue rpc with transactional priority defaults', async () => {
+    mockRpc.mockResolvedValue({
+      data: { message_id: 'msg-1', enqueued: true },
+      error: null,
     });
 
     const { enqueueWhatsAppMessage } = await import('@/lib/server/whatsapp-enqueue');
@@ -66,52 +38,28 @@ describe('enqueueWhatsAppMessage', () => {
       relatedEntityId: 'ord-1',
     });
 
-    expect(result.enqueued).toBe(true);
-    expect(result.messageId).toBe('msg-1');
-    expect(queueInsert).toHaveBeenCalledWith(
+    expect(result).toEqual({
+      messageId: 'msg-1',
+      enqueued: true,
+      skipped: undefined,
+    });
+    expect(mockRpc).toHaveBeenCalledWith(
+      'enqueue_whatsapp_message',
       expect.objectContaining({
-        tenant_id: 'tenant-1',
-        whatsapp_message_id: 'msg-1',
-        priority: 1,
-        scheduled_send_at: expect.any(String),
+        p_tenant_id: 'tenant-1',
+        p_recipient_phone: '919876543210',
+        p_trigger_source: 'order_placed',
+        p_related_entity_type: 'orders',
+        p_related_entity_id: 'ord-1',
+        p_priority: 1,
       }),
     );
   });
 
-  it('passes broadcast linkage and explicit schedule to the queue', async () => {
-    const templateSingle = vi.fn().mockResolvedValue({ data: { id: 'tpl-1' }, error: null });
-    const messageSingle = vi.fn().mockResolvedValue({ data: { id: 'msg-2' }, error: null });
-    const queueInsert = vi.fn().mockResolvedValue({ error: null });
-
-    mockFrom.mockImplementation((table: string) => {
-      if (table === 'whatsapp_templates') {
-        return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                is: vi.fn().mockReturnValue({
-                  is: vi.fn().mockReturnValue({
-                    maybeSingle: templateSingle,
-                  }),
-                }),
-              }),
-            }),
-          }),
-        };
-      }
-      if (table === 'whatsapp_messages') {
-        return {
-          insert: vi.fn().mockReturnValue({
-            select: vi.fn().mockReturnValue({
-              single: messageSingle,
-            }),
-          }),
-        };
-      }
-      if (table === 'whatsapp_send_queue') {
-        return { insert: queueInsert };
-      }
-      return {};
+  it('passes broadcast linkage and explicit schedule to the shared enqueue rpc', async () => {
+    mockRpc.mockResolvedValue({
+      data: { message_id: 'msg-2', enqueued: true },
+      error: null,
     });
 
     const { enqueueWhatsAppMessage } = await import('@/lib/server/whatsapp-enqueue');
@@ -131,11 +79,42 @@ describe('enqueueWhatsAppMessage', () => {
       priority: 5,
     });
 
-    expect(queueInsert).toHaveBeenCalledWith(
+    expect(mockRpc).toHaveBeenCalledWith(
+      'enqueue_whatsapp_message',
       expect.objectContaining({
-        priority: 5,
-        scheduled_send_at: '2026-07-10T10:00:00.000Z',
+        p_priority: 5,
+        p_scheduled_send_at: '2026-07-10T10:00:00.000Z',
+        p_whatsapp_broadcast_id: 'broadcast-1',
       }),
     );
+  });
+
+  it('surfaces duplicate idempotency responses from the rpc', async () => {
+    mockRpc.mockResolvedValue({
+      data: { message_id: 'msg-3', enqueued: false, skipped: 'duplicate' },
+      error: null,
+    });
+
+    const { enqueueWhatsAppMessage } = await import('@/lib/server/whatsapp-enqueue');
+    const result = await enqueueWhatsAppMessage({
+      tenantId: 'tenant-1',
+      buyerId: 'buyer-1',
+      recipientPhone: '919876543210',
+      metaCategory: 'utility',
+      triggerSource: 'order_placed',
+      sendPayload: {
+        meta_template_name: 'order_received_buyer',
+        locale: 'en',
+        body_params: [{ text: 'ORD-1' }],
+      },
+      relatedEntityType: 'orders',
+      relatedEntityId: 'ord-1',
+    });
+
+    expect(result).toEqual({
+      messageId: 'msg-3',
+      enqueued: false,
+      skipped: 'duplicate',
+    });
   });
 });

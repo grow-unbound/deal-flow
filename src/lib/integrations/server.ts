@@ -306,6 +306,13 @@ async function loadAggregateFreshness(
   const repairRebuildDays = failedRebuildJob ? computeRebuildDaysFromJob(failedRebuildJob) : null;
   const failedRetryAt = asIsoTimestamp(parseProgressMeta(failedRebuildJob)?.post_sync_rebuild_last_retried_at);
 
+  // Active async repair job (phase='repair_aggregates', status pending/running)
+  const activeRepairJob =
+    recentJobs.find(
+      (job) => job.phase === 'repair_aggregates' && (job.status === 'pending' || job.status === 'running'),
+    ) ?? null;
+  const activeRepairJobId = typeof activeRepairJob?.id === 'string' ? activeRepairJob.id : null;
+
   if (failedRebuildJob) {
     const failedPhase = typeof failedRebuildJob.phase === 'string' ? failedRebuildJob.phase : 'sync';
     return {
@@ -315,8 +322,9 @@ async function loadAggregateFreshness(
       latest_analysis_at: latestAnalysisAt,
       latest_sync_completed_at: latestSyncCompletedAt,
       latest_aggregate_at: latestAggregateAt,
-      repair_job_id: repairJobId,
+      repair_job_id: activeRepairJobId ?? repairJobId,
       repair_rebuild_days: repairRebuildDays,
+      repair_in_progress: activeRepairJob ? true : undefined,
       last_retried_at: failedRetryAt,
       warning_message: `Post-sync rebuild failed after ${failedPhase}. Seller metrics may stay stale until aggregates are repaired.`,
     };
@@ -330,8 +338,9 @@ async function loadAggregateFreshness(
       latest_analysis_at: latestAnalysisAt,
       latest_sync_completed_at: latestSyncCompletedAt,
       latest_aggregate_at: null,
-      repair_job_id: null,
+      repair_job_id: activeRepairJobId,
       repair_rebuild_days: null,
+      repair_in_progress: activeRepairJob ? true : undefined,
       last_retried_at: null,
       warning_message: 'No aggregate timestamps available yet. Run Repair Aggregates after the first sync finishes.',
     };
@@ -347,8 +356,9 @@ async function loadAggregateFreshness(
       latest_analysis_at: latestAnalysisAt,
       latest_sync_completed_at: latestSyncCompletedAt,
       latest_aggregate_at: latestAggregateAt,
-      repair_job_id: null,
+      repair_job_id: activeRepairJobId,
       repair_rebuild_days: null,
+      repair_in_progress: activeRepairJob ? true : undefined,
       last_retried_at: null,
       warning_message: `Some aggregates are stale or missing (${staleList}). Use Repair Aggregates to rebuild snapshots and KPI tables.`,
     };
@@ -361,8 +371,9 @@ async function loadAggregateFreshness(
     latest_analysis_at: latestAnalysisAt,
     latest_sync_completed_at: latestSyncCompletedAt,
     latest_aggregate_at: latestAggregateAt,
-    repair_job_id: null,
+    repair_job_id: activeRepairJobId,
     repair_rebuild_days: null,
+    repair_in_progress: activeRepairJob ? true : undefined,
     last_retried_at: null,
     warning_message: null,
   };
@@ -1057,36 +1068,48 @@ export async function cancelIntegrationSync(tenantId: string, actorUserId: strin
   return loadIntegrationsSettingsPayload(tenantId);
 }
 
-export async function repairIntegrationAggregates(tenantId: string, _actorUserId: string, body: unknown) {
+export async function createRepairAggregateJob(tenantId: string, actorUserId: string, body: unknown) {
   const record = coerceRecord(body);
   const tenantIntegrationId = typeof record.tenant_integration_id === 'string' ? record.tenant_integration_id : null;
+  if (!tenantIntegrationId) throw new Error('tenant_integration_id is required');
+
   const startDate = typeof record.start_date === 'string' ? record.start_date : null;
   const endDate = typeof record.end_date === 'string' ? record.end_date : null;
   const includeSnapshots = typeof record.include_snapshots === 'boolean' ? record.include_snapshots : true;
   const includeKpis = typeof record.include_kpis === 'boolean' ? record.include_kpis : true;
+
   const today = new Date();
   const defaultEnd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
   const defaultStart = new Date(defaultEnd);
   defaultStart.setUTCDate(defaultStart.getUTCDate() - 89);
 
   const db = requireAdminDb();
-  if (tenantIntegrationId) {
-    await ensureNoActiveIntegrationJobs(db, tenantIntegrationId, tenantId);
-  }
+  await ensureNoActiveIntegrationJobs(db, tenantIntegrationId, tenantId);
 
-  const { error: rebuildError } = await db.schema('app').rpc('rebuild_metrics_for_tenant_range', {
-    p_tenant_id: tenantId,
-    p_start_day: startDate ?? defaultStart.toISOString().slice(0, 10),
-    p_end_day: endDate ?? defaultEnd.toISOString().slice(0, 10),
-    p_include_snapshots: includeSnapshots,
-    p_include_kpis: includeKpis,
-  });
+  const { data, error } = await db
+    .schema('app')
+    .from('integration_sync_jobs')
+    .insert({
+      tenant_id: tenantId,
+      tenant_integration_id: tenantIntegrationId,
+      job_type: 'manual',
+      status: 'pending',
+      phase: 'repair_aggregates',
+      triggered_by: actorUserId,
+      progress: {
+        params: {
+          start_day: startDate ?? defaultStart.toISOString().slice(0, 10),
+          end_day: endDate ?? defaultEnd.toISOString().slice(0, 10),
+          include_snapshots: includeSnapshots,
+          include_kpis: includeKpis,
+        },
+      },
+    })
+    .select('id')
+    .single();
 
-  if (rebuildError) {
-    throw new Error(rebuildError.message ?? 'Failed to repair aggregates');
-  }
-
-  return loadIntegrationsSettingsPayload(tenantId);
+  if (error) throw new Error(error.message ?? 'Failed to queue repair job');
+  return { repair_job_id: (data as { id: string }).id };
 }
 
 export async function runIntegrationAnalysis(tenantId: string, actorUserId: string, body: unknown) {

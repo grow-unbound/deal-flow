@@ -56,6 +56,7 @@ describe('tenant global search route', () => {
       p_role: 'seller_admin',
       p_items_per_group: 3,
       p_query_embedding: '[0.9,0.8,0.7]',
+      p_location_ids: null,
     }));
     expect(body.total).toBe(1);
     expect(body.groups).toHaveLength(1);
@@ -98,5 +99,35 @@ describe('tenant global search route', () => {
       'location',
       'warehouse',
     ]);
+  });
+
+  it('returns an empty result set when the global search rpc fails', async () => {
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: { code: '42703', message: 'column l.city does not exist' },
+    });
+
+    const response = await GET(new NextRequest('http://localhost/api/tenant/search?q=chandanagar&limit=5', { method: 'GET' }) as any);
+    const body = (await response.json()) as any;
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ groups: [], total: 0 });
+  });
+
+  it('passes assistant location ids into the global search rpc for database scoping', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      tenant_id: 'tenant-a',
+      role: 'seller_assistant',
+      location_ids: ['loc-1', 'loc-2'],
+    });
+
+    const response = await GET(new NextRequest('http://localhost/api/tenant/search?q=so-1&limit=5', { method: 'GET' }) as any);
+
+    expect(response.status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith('global_search', expect.objectContaining({
+      p_tenant_id: 'tenant-a',
+      p_role: 'seller_assistant',
+      p_location_ids: ['loc-1', 'loc-2'],
+    }));
   });
 });

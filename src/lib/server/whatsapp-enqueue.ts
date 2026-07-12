@@ -102,72 +102,40 @@ export async function enqueueWhatsAppMessage(
     const { supabaseAdmin } = await import('@/lib/supabase');
     if (!supabaseAdmin) return { messageId: null, enqueued: false, skipped: 'no_db' };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabaseAdmin as any;
-    const templateMeta = await lookupApprovedTemplate(
-      db,
-      input.sendPayload.meta_template_name,
-    );
-
-    const insertRow: Record<string, unknown> = {
-      tenant_id: input.tenantId,
-      buyer_id: input.buyerId ?? null,
-      recipient_phone: input.recipientPhone,
-      whatsapp_template_id: templateMeta?.id ?? null,
-      whatsapp_broadcast_id: input.whatsappBroadcastId ?? null,
-      meta_category: input.metaCategory,
-      trigger_source: input.triggerSource,
-      status: 'queued',
-      send_payload: input.sendPayload,
-      related_entity_type: input.relatedEntityType ?? null,
-      related_entity_id: input.relatedEntityId ?? null,
-    };
-
-    const { data: inserted, error } = await db
+    const { data, error } = await db
       .schema('app')
-      .from('whatsapp_messages')
-      .insert(insertRow)
-      .select('id')
-      .single();
+      .rpc('enqueue_whatsapp_message', {
+        p_tenant_id: input.tenantId,
+        p_buyer_id: input.buyerId ?? null,
+        p_recipient_phone: input.recipientPhone,
+        p_meta_category: input.metaCategory,
+        p_trigger_source: input.triggerSource,
+        p_send_payload: input.sendPayload,
+        p_whatsapp_broadcast_id: input.whatsappBroadcastId ?? null,
+        p_related_entity_type: input.relatedEntityType ?? null,
+        p_related_entity_id: input.relatedEntityId ?? null,
+        p_priority: queuePriorityForTriggerSource(input.triggerSource, input.priority),
+        p_scheduled_send_at: input.scheduledSendAt ?? null,
+      });
 
     if (error) {
-      // Idempotency: duplicate transaction notification for same entity+recipient
-      if (error.code === '23505' && input.relatedEntityId) {
-        const { data: existing } = await db
-          .schema('app')
-          .from('whatsapp_messages')
-          .select('id')
-          .eq('tenant_id', input.tenantId)
-          .eq('trigger_source', input.triggerSource)
-          .eq('related_entity_id', input.relatedEntityId)
-          .eq('recipient_phone', input.recipientPhone)
-          .not('status', 'eq', 'failed')
-          .maybeSingle();
-
-        return {
-          messageId: (existing?.id as string | undefined) ?? null,
-          enqueued: false,
-          skipped: 'duplicate',
-        };
-      }
       console.error('[whatsapp-enqueue] insert failed', error);
       return { messageId: null, enqueued: false, skipped: 'no_db' };
     }
 
-    if (!inserted?.id) return { messageId: null, enqueued: false, skipped: 'no_db' };
+    const result = (data ?? null) as {
+      message_id?: string | null;
+      enqueued?: boolean;
+      skipped?: 'duplicate' | 'no_db' | 'no_template';
+    } | null;
+    if (!result) return { messageId: null, enqueued: false, skipped: 'no_db' };
 
-    const priority = queuePriorityForTriggerSource(input.triggerSource, input.priority);
-    await db
-      .schema('app')
-      .from('whatsapp_send_queue')
-      .insert({
-        tenant_id: input.tenantId,
-        whatsapp_message_id: inserted.id,
-        priority,
-        scheduled_send_at: input.scheduledSendAt ?? new Date().toISOString(),
-      });
-
-    return { messageId: inserted.id as string, enqueued: true };
+    return {
+      messageId: result.message_id ?? null,
+      enqueued: result.enqueued === true,
+      skipped: result.skipped,
+    };
   } catch (err) {
     console.error('[whatsapp-enqueue] unexpected error', err);
     return { messageId: null, enqueued: false, skipped: 'no_db' };

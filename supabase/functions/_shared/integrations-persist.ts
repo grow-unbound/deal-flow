@@ -13,7 +13,10 @@ import {
   bulkPersistJsonbRecords,
   bulkPersistJsonbRecordsWithIds,
   persistWithNaturalKeyLock,
+  LockTimeoutError,
 } from '../../../src/lib/integrations/rpc-persist.ts';
+
+export { LockTimeoutError };
 import {
   normalizeLocationAssociatedUsers,
   syncLocationAssignees,
@@ -614,24 +617,27 @@ function getPricebookItemRows(rec: Record<string, unknown>): Record<string, unkn
   );
 }
 
-async function rebuildProductSearchVectors(
-  admin: AdminClient,
-  tenantId: string,
-  productIds: string[],
-): Promise<void> {
-  if (productIds.length === 0) return;
-  await admin.schema('app').rpc('rebuild_tenant_products_search_vectors', {
-    p_tenant_id: tenantId,
-    p_ids: productIds,
-  });
-}
-
 const SEARCH_VECTOR_CHUNK_SIZE = 500;
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
   return chunks;
+}
+
+async function rebuildProductSearchVectors(
+  admin: AdminClient,
+  tenantId: string,
+  productIds: string[],
+): Promise<void> {
+  if (productIds.length === 0) return;
+  for (const chunk of chunkArray(productIds, SEARCH_VECTOR_CHUNK_SIZE)) {
+    const { error } = await admin.schema('app').rpc('rebuild_tenant_products_search_vectors', {
+      p_tenant_id: tenantId,
+      p_ids: chunk,
+    });
+    if (error) throw new Error(`rebuild_tenant_products_search_vectors failed: ${error.message}`);
+  }
 }
 
 export async function rebuildBuyerSearchVectors(

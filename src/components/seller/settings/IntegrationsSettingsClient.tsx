@@ -611,7 +611,10 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                 syncTargetPhase={syncingPhaseTarget}
                 isStoppingSync={isStoppingSync}
                 isRetryingWebhooks={isRetryingWebhookSetup}
-                isRepairingAggregates={isRepairingAggregates && maintenanceTarget?.integrationId === integration.id && maintenanceTarget.mode === 'repair'}
+                isRepairingAggregates={
+                  Boolean(integration.aggregate_freshness?.repair_in_progress) ||
+                  (isRepairingAggregates && maintenanceTarget?.integrationId === integration.id && maintenanceTarget.mode === 'repair')
+                }
                 isRunningAnalysis={isRunningAnalysis && maintenanceTarget?.integrationId === integration.id && maintenanceTarget.mode === 'analysis'}
               />
             ))}
@@ -853,9 +856,12 @@ export function IntegrationsSettingsClient({ initialData }: IntegrationsSettings
                 variant="accent"
                 onClick={() => void confirmMaintenanceAction()}
                 disabled={
-                  maintenanceTarget?.mode === 'repair'
+                  isRepairingAggregates ||
+                  Boolean(maintenanceIntegration?.aggregate_freshness?.repair_in_progress) ||
+                  isRunningAnalysis ||
+                  (maintenanceTarget?.mode === 'repair'
                     ? !repairRange.start_date || !repairRange.end_date
-                    : !analysisDays.trim()
+                    : !analysisDays.trim())
                 }
               >
                 {maintenanceTarget?.mode === 'repair'

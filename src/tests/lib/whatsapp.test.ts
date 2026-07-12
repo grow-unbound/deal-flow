@@ -1,11 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const enqueueWhatsAppMessageMock = vi.hoisted(() => vi.fn());
-const triggerWhatsAppDispatchMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/server/whatsapp-enqueue', () => ({
   enqueueWhatsAppMessage: (...args: unknown[]) => enqueueWhatsAppMessageMock(...args),
-  triggerWhatsAppDispatch: (...args: unknown[]) => triggerWhatsAppDispatchMock(...args),
   getPlatformTenantId: () => 'platform-tenant-1',
   lookupApprovedTemplateMeta: async (templateName: string) => ({
     id: `tpl-${templateName}`,
@@ -16,7 +14,6 @@ vi.mock('@/lib/server/whatsapp-enqueue', () => ({
 describe('whatsapp enqueue sender', () => {
   beforeEach(() => {
     enqueueWhatsAppMessageMock.mockReset();
-    triggerWhatsAppDispatchMock.mockReset();
     enqueueWhatsAppMessageMock.mockResolvedValue({ messageId: 'msg-1', enqueued: true });
     process.env.WHATSAPP_ADMIN_NUMBER = '919876543210';
     vi.resetModules();
@@ -59,7 +56,6 @@ describe('whatsapp enqueue sender', () => {
       { text: '24', parameter_name: 'eta' },
     ]);
     expect(input.relatedEntityId).toBe('ord-123');
-    expect(triggerWhatsAppDispatchMock).toHaveBeenCalledTimes(1);
   });
 
   it('enqueues buyer order template with seller_team param and en_IN locale', async () => {
@@ -124,6 +120,5 @@ describe('whatsapp enqueue sender', () => {
       { text: 'Login to Yukti' },
       { text: '919876543210' },
     ]);
-    expect(triggerWhatsAppDispatchMock).toHaveBeenCalledTimes(1);
   });
 });

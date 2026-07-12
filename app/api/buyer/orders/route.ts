@@ -18,6 +18,7 @@ import { resolveBuyerInventoryWarehouseId } from '@/lib/server/buyer-product-dat
 import { validateBuyerCartStock } from '@/lib/server/buyer-cart-stock';
 import { getSelectedBuyerDeliveryFromRequest } from '@/lib/server/buyer-location-selection';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
+import { TRANSACTION_PENDING_NOTE } from '@/lib/transaction-notes';
 
 export interface BuyerOrderPlaceRequest {
   items: Array<{
@@ -38,6 +39,7 @@ export interface BuyerOrderPlaceResponse {
   order_id?: string;
   order_number?: string | null;
   document_url?: string | null;
+  document_status_note?: string | null;
   whatsapp_sent?: boolean;
   error?: string;
 }
@@ -147,6 +149,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
         order_id: `preview-order-${Date.now()}`,
         order_number: 'PREVIEW-ORDER',
         document_url: null,
+        document_status_note: null,
       });
     }
 
@@ -320,6 +323,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
       order_id: typed.id,
       order_number: typed.order_number,
       document_url: null,
+      document_status_note: typed.order_number ? null : TRANSACTION_PENDING_NOTE,
       whatsapp_sent: whatsappSent,
     });
   } catch (error) {

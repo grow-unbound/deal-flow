@@ -12,7 +12,7 @@ export function PermissionDenied() {
             <ShieldOff size={20} className="text-cream-600" />
           </div>
           <div>
-            <h2 className="text-h3 font-display text-cream-900 mb-1">Access restricted</h2>
+            <h2 className="text-h3 font-display text-cream-900 mb-1">No access</h2>
             <p className="text-body-sm text-cream-600">
               You don&apos;t have permission to access this page.
             </p>
