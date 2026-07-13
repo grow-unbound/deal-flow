@@ -3,7 +3,8 @@
 import * as React from 'react';
 import posthog from 'posthog-js';
 
-import { cn } from '@/lib/utils';
+import { BuyerHorizontalScroll } from '@/components/buyer/layout/BuyerHorizontalScroll';
+import { BuyerSectionRow } from '@/components/buyer/layout/BuyerSectionRow';
 import { RecoCarousel } from '@/components/buyer/catalog/RecoCarousel';
 import { RecoWidgetProvider } from '@/contexts/RecoWidgetContext';
 import type { BuyerCatalogItem } from '@/types/buyer';
@@ -13,9 +14,10 @@ interface RecoSectionProps {
   widget: string;
   items: BuyerCatalogItem[];
   sourceProductId?: string;
-  titleVariant?: 'default' | 'detail';
   /** When true, render the section header even with no items (placeholder body). */
   alwaysShow?: boolean;
+  href?: string;
+  linkLabel?: string;
 }
 
 export function RecoSection({
@@ -23,8 +25,9 @@ export function RecoSection({
   widget,
   items,
   sourceProductId,
-  titleVariant = 'default',
   alwaysShow = false,
+  href,
+  linkLabel,
 }: RecoSectionProps): React.ReactNode {
   const fired = React.useRef(false);
 
@@ -42,16 +45,7 @@ export function RecoSection({
 
   return (
     <div className="pb-4">
-      <h2
-        className={cn(
-          'mb-3 px-4',
-          titleVariant === 'detail'
-            ? 'text-base font-semibold text-[var(--fg-1)]'
-            : 'text-xs font-semibold uppercase tracking-widest text-[var(--cream-500)]',
-        )}
-      >
-        {title}
-      </h2>
+      <BuyerSectionRow title={title} href={href} linkLabel={linkLabel} />
       {items.length > 0 ? (
         <RecoWidgetProvider value={{ widget, sourceProductId }}>
           <RecoCarousel items={items} />

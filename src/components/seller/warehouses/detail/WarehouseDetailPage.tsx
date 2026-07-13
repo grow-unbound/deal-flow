@@ -14,6 +14,7 @@ import { WarehouseStockTab } from './WarehouseStockTab';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useWarehouseDetail, useWarehouseReference, useWarehouseStock } from '@/hooks/useWarehouses';
 import type { TenantWarehouse } from '@/types/tenant-warehouses';
+import { WarehouseDetailSkeleton as SharedWarehouseDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type TabId = 'details' | 'performance' | 'stock';
 
@@ -63,7 +64,7 @@ export function WarehouseDetailPage({ id }: { id: string }) {
   const stock = stockQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const stockTotal = stockQuery.data?.pages[0]?.total ?? data?.tracked_skus_count ?? 0;
 
-  if (isLoading) return <WarehouseDetailSkeleton />;
+  if (isLoading) return <SharedWarehouseDetailSkeleton />;
   if (isError || !data) {
     return (
       <ErrorState

@@ -4,6 +4,9 @@ import * as React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
+import { BUYER_LOOKBOOK_CAROUSEL_WIDTH_PX } from '@/lib/buyer-lookbook';
+import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
+import { cn } from '@/lib/utils';
 
 const CATALOG_HUES = [
   'linear-gradient(135deg, #1F3A34 0%, #2D5549 100%)',
@@ -19,11 +22,17 @@ export interface CatalogLookbookCardProps {
   validUntil?: string | null;
   heroImageUrl?: string | null;
   hueIndex?: number;
+  /** `carousel` = fixed width for horizontal scroll; `list` = full-width stack row */
+  layout?: 'carousel' | 'list';
 }
 
-function formatValidUntil(iso: string | null | undefined): string {
-  if (!iso) return 'No end date';
-  return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+function formatCampaignValidity(iso: string | null | undefined): string {
+  if (!iso) return 'Live';
+  const endDate = new Date(iso).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'long',
+  });
+  return `Valid until ${endDate}`;
 }
 
 export function CatalogLookbookCard({
@@ -33,55 +42,72 @@ export function CatalogLookbookCard({
   validUntil,
   heroImageUrl,
   hueIndex = 0,
+  layout = 'carousel',
 }: CatalogLookbookCardProps): React.ReactNode {
   const [imgError, setImgError] = React.useState(false);
   const showImage = Boolean(heroImageUrl) && !imgError;
   const gradient = CATALOG_HUES[hueIndex % CATALOG_HUES.length];
+  const isList = layout === 'list';
 
   return (
     <Link
       href={href}
       onClick={() => markBuyerNavigationForward()}
-      className="block shrink-0 overflow-hidden rounded-lg no-underline shadow-[var(--shadow-sm)]"
-      style={{ width: 200 }}
+      className={cn(
+        'block overflow-hidden border border-[var(--border-1)] bg-[var(--bg-surface)] no-underline shadow-[0_1px_0_rgba(34,30,26,0.03)]',
+        BUYER_CARD_RADIUS_CLASS,
+        isList ? 'w-full' : 'shrink-0',
+      )}
+      style={isList ? undefined : { width: BUYER_LOOKBOOK_CAROUSEL_WIDTH_PX }}
     >
-      <div className="relative flex h-[220px] items-end overflow-hidden p-3.5">
+      <div className="buyer-lookbook-preview">
         {showImage ? (
           <Image
             src={heroImageUrl!}
             alt={name}
             fill
             className="object-cover"
-            sizes="200px"
+            sizes={isList ? '100vw' : `${BUYER_LOOKBOOK_CAROUSEL_WIDTH_PX}px`}
             onError={() => setImgError(true)}
             unoptimized
           />
         ) : (
-          <div className="absolute inset-0" style={{ background: gradient }} />
+          <div className="absolute inset-0" style={{ background: gradient }} aria-hidden />
         )}
-        {showImage ? (
-          <div
-            className="absolute inset-0"
-            style={{
-              background: 'linear-gradient(180deg, rgba(20, 40, 35, 0) 0%, rgba(20, 40, 35, 0.55) 100%)',
-            }}
-          />
-        ) : null}
-        <h4
-          className="relative z-[1] font-semibold leading-tight text-white"
-          style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-total)', fontWeight: 500 }}
-        >
-          {name}
-        </h4>
       </div>
       <div
-        className="flex items-center justify-between px-3 py-2"
-        style={{ background: 'var(--cream-50)' }}
+        className={
+          isList
+            ? 'bg-[var(--bg-surface)] px-4 py-3.5'
+            : 'bg-white px-5 py-4'
+        }
       >
-        <span className="text-sm text-[var(--cream-700)]">
-          <strong className="font-medium text-[var(--cream-900)]">{productCount}</strong> products
-        </span>
-        <span className="text-xs text-[var(--cream-500)]">{formatValidUntil(validUntil)}</span>
+        <p
+          className="m-0 line-clamp-2 font-medium leading-[1.2] text-[var(--cream-900)]"
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: isList ? 'var(--b-text-body)' : 'var(--b-text-section)',
+            fontWeight: 500,
+            letterSpacing: '-0.01em',
+          }}
+        >
+          {name}
+        </p>
+        <div
+          className={
+            isList
+              ? 'mt-2 flex items-center justify-between text-sm text-[var(--fg-2)]'
+              : 'mt-2 flex items-center justify-between text-[var(--b-text-sub)] font-medium tracking-[-0.01em] text-[var(--cream-700)]'
+          }
+        >
+          <span>
+            <strong className={isList ? 'font-medium text-[var(--fg-1)]' : 'font-medium text-[var(--cream-900)]'}>
+              {productCount}
+            </strong>{' '}
+            products
+          </span>
+          <span>{formatCampaignValidity(validUntil)}</span>
+        </div>
       </div>
     </Link>
   );

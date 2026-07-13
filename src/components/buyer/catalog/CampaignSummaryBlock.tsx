@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
 
 interface CampaignSummaryBlockProps {
   message?: string | null;
@@ -24,7 +25,7 @@ export function CampaignSummaryBlock({ message, validUntil }: CampaignSummaryBlo
 
   return (
     <div
-      className="mx-2 mb-3 rounded-xl px-4 py-3"
+      className={`mx-2 mb-3 ${BUYER_CARD_RADIUS_CLASS} px-4 py-3`}
       style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface)' }}
     >
       {hasNote ? (

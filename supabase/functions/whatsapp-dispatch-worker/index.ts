@@ -1,13 +1,14 @@
 // supabase/functions/whatsapp-dispatch-worker/index.ts
 //
-// WhatsApp send dispatch worker — completes the pipeline after
-// app.process_whatsapp_send_queue() runs guardrails + debit.
+// WhatsApp synchronous sender. Callers enqueue durable message rows, then POST
+// explicit message_ids here. The DB prepares each message under lock
+// (guardrails + debit), this function calls Meta, then completes the row.
 // Spec: DealFlow_WhatsApp-Broadcast-Spec_v4.md §5
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { whatsAppClient, WhatsAppConfigError } from '../_shared/whatsapp-client.ts';
 
-const BATCH_LIMIT = 20;
+const MAX_MESSAGE_IDS = 50;
 
 function createAdminClient() {
   const url = Deno.env.get('SUPABASE_URL');
@@ -15,26 +16,6 @@ function createAdminClient() {
   const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_KEY');
   if (!key) throw new Error('Missing required env var: SUPABASE_SERVICE_ROLE_KEY');
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-}
-
-function verifySecret(req: Request): boolean {
-  // Accept calls that carry a Supabase JWT Bearer token (anon or service role).
-  // The anon key is safe here — this function only processes items already in
-  // the DB queue; it cannot inject new messages or cause financial side effects.
-  const authHeader = req.headers.get('authorization') ?? '';
-  if (authHeader.startsWith('Bearer ') && authHeader.length > 50) return true;
-
-  // Fallback: x-push-secret HMAC check (Vercel-side secret)
-  const secret = Deno.env.get('INTEGRATIONS_PUSH_SECRET')?.trim()
-    ?? Deno.env.get('INTEGRATIONS_DISPATCH_SECRET')?.trim();
-  if (!secret) return true; // no secret configured → open (internal function)
-  const provided = req.headers.get('x-push-secret')?.trim() ?? '';
-  if (provided.length !== secret.length) return false;
-  let diff = 0;
-  for (let i = 0; i < secret.length; i++) {
-    diff |= provided.charCodeAt(i) ^ secret.charCodeAt(i);
-  }
-  return diff === 0;
 }
 
 interface SendPayload {
@@ -45,15 +26,15 @@ interface SendPayload {
   button_params?: Array<{ type: 'url'; index: string; text: string }>;
 }
 
-interface QueueRow {
-  id: string;
-  whatsapp_message_id: string;
-}
-
-interface MessageRow {
-  id: string;
+interface PreparedMessage {
+  ready?: boolean;
+  failed?: boolean;
+  skipped?: string;
+  message_id?: string;
+  queue_id?: string;
   recipient_phone: string;
   send_payload: SendPayload;
+  failure_reason?: string;
 }
 
 function json(body: Record<string, unknown>, status = 200): Response {
@@ -63,59 +44,47 @@ function json(body: Record<string, unknown>, status = 200): Response {
   });
 }
 
-async function runPacingWorker(admin: ReturnType<typeof createAdminClient>): Promise<void> {
-  const { error } = await admin.schema('app').rpc('process_whatsapp_send_queue');
-  if (error) {
-    console.error('[whatsapp-dispatch-worker] process_whatsapp_send_queue failed:', error.message);
-  }
-}
-
-async function dispatchProcessingRows(admin: ReturnType<typeof createAdminClient>): Promise<{
+async function dispatchMessageIds(
+  admin: ReturnType<typeof createAdminClient>,
+  messageIds: string[],
+): Promise<{
   dispatched: number;
   failed: number;
+  skipped: number;
 }> {
   if (!whatsAppClient.isConfigured()) {
     console.warn('[whatsapp-dispatch-worker] WhatsApp credentials not configured — skipping Meta dispatch');
-    return { dispatched: 0, failed: 0 };
-  }
-
-  const { data: queueRows, error: queueError } = await admin
-    .schema('app')
-    .from('whatsapp_send_queue')
-    .select('id, whatsapp_message_id')
-    .eq('status', 'processing')
-    .order('priority', { ascending: true })
-    .order('created_at', { ascending: true })
-    .limit(BATCH_LIMIT);
-
-  if (queueError || !queueRows?.length) {
-    if (queueError) {
-      console.error('[whatsapp-dispatch-worker] failed to load processing queue:', queueError.message);
+    for (const messageId of messageIds) {
+      await completeSend(admin, messageId, false, null, 'WhatsApp credentials not configured');
     }
-    return { dispatched: 0, failed: 0 };
+    return { dispatched: 0, failed: messageIds.length, skipped: 0 };
   }
 
   let dispatched = 0;
   let failed = 0;
+  let skipped = 0;
 
-  for (const queueRow of queueRows as QueueRow[]) {
-    const { data: message, error: messageError } = await admin
+  for (const messageId of messageIds) {
+    const { data: prepared, error: prepareError } = await admin
       .schema('app')
-      .from('whatsapp_messages')
-      .select('id, recipient_phone, send_payload')
-      .eq('id', queueRow.whatsapp_message_id)
-      .maybeSingle();
+      .rpc('prepare_whatsapp_message_for_send', { p_message_id: messageId });
 
-    if (messageError || !message) {
-      await markFailed(admin, queueRow.id, queueRow.whatsapp_message_id, 'message row not found');
+    if (prepareError) {
+      await completeSend(admin, messageId, false, null, `prepare failed: ${prepareError.message}`);
       failed += 1;
       continue;
     }
 
-    const msg = message as MessageRow;
+    const msg = (prepared ?? null) as PreparedMessage | null;
+    if (!msg?.ready) {
+      if (msg?.failed) failed += 1;
+      else skipped += 1;
+      continue;
+    }
+
     const payload = msg.send_payload;
     if (!payload?.meta_template_name) {
-      await markFailed(admin, queueRow.id, msg.id, 'missing send_payload');
+      await completeSend(admin, messageId, false, null, 'missing send_payload');
       failed += 1;
       continue;
     }
@@ -143,53 +112,54 @@ async function dispatchProcessingRows(admin: ReturnType<typeof createAdminClient
         })),
       });
 
-      const now = new Date().toISOString();
-      await admin
-        .schema('app')
-        .from('whatsapp_messages')
-        .update({
-          status: 'sent',
-          provider_message_id: result.providerMessageId,
-          sent_at: now,
-        })
-        .eq('id', msg.id);
-
-      await admin
-        .schema('app')
-        .from('whatsapp_send_queue')
-        .update({ status: 'sent' })
-        .eq('id', queueRow.id);
-
+      await completeSend(admin, messageId, true, result.providerMessageId, null);
       dispatched += 1;
     } catch (err) {
       const reason = err instanceof WhatsAppConfigError
         ? 'WhatsApp credentials not configured'
         : err instanceof Error ? err.message : String(err);
-      await markFailed(admin, queueRow.id, msg.id, reason);
+      await completeSend(admin, messageId, false, null, reason);
       failed += 1;
     }
   }
 
-  return { dispatched, failed };
+  return { dispatched, failed, skipped };
 }
 
-async function markFailed(
+async function completeSend(
   admin: ReturnType<typeof createAdminClient>,
-  queueId: string,
   messageId: string,
-  reason: string,
+  success: boolean,
+  providerMessageId: string | null,
+  failureReason: string | null,
 ): Promise<void> {
-  await admin
+  const { error } = await admin
     .schema('app')
-    .from('whatsapp_send_queue')
-    .update({ status: 'failed', failure_reason: reason })
-    .eq('id', queueId);
+    .rpc('complete_whatsapp_message_send', {
+      p_message_id: messageId,
+      p_success: success,
+      p_provider_message_id: providerMessageId,
+      p_failure_reason: failureReason,
+    });
 
-  await admin
-    .schema('app')
-    .from('whatsapp_messages')
-    .update({ status: 'failed', failure_reason: reason })
-    .eq('id', messageId);
+  if (error) {
+    console.error('[whatsapp-dispatch-worker] complete send failed:', error.message);
+  }
+}
+
+async function readMessageIds(req: Request): Promise<string[]> {
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return [];
+  }
+
+  const ids = (body as { message_ids?: unknown; message_id?: unknown } | null)?.message_ids;
+  const single = (body as { message_ids?: unknown; message_id?: unknown } | null)?.message_id;
+  const raw = Array.isArray(ids) ? ids : single ? [single] : [];
+  return [...new Set(raw.filter((id): id is string => typeof id === 'string' && id.trim().length > 0))]
+    .slice(0, MAX_MESSAGE_IDS);
 }
 
 Deno.serve(async (req: Request) => {
@@ -197,14 +167,14 @@ Deno.serve(async (req: Request) => {
     return new Response('Method not allowed', { status: 405 });
   }
 
-  if (!verifySecret(req)) {
-    return json({ error: 'unauthorized' }, 401);
-  }
-
   try {
+    const messageIds = await readMessageIds(req);
+    if (messageIds.length === 0) {
+      return json({ error: 'message_ids required' }, 400);
+    }
+
     const admin = createAdminClient();
-    await runPacingWorker(admin);
-    const result = await dispatchProcessingRows(admin);
+    const result = await dispatchMessageIds(admin, messageIds);
     return json({ ok: true, ...result });
   } catch (err) {
     console.error('[whatsapp-dispatch-worker] unexpected error:', err);

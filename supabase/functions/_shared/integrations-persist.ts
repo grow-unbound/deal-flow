@@ -13,12 +13,16 @@ import {
   bulkPersistJsonbRecords,
   bulkPersistJsonbRecordsWithIds,
   persistWithNaturalKeyLock,
+  LockTimeoutError,
 } from '../../../src/lib/integrations/rpc-persist.ts';
+
+export { LockTimeoutError };
 import {
   normalizeLocationAssociatedUsers,
-  syncLocationAssignees,
+  // syncLocationAssignees, // Disabled — see persistLocations for details. Re-enable this import if that call is restored.
 } from '../../../src/lib/location-assignees.ts';
 import { logCheckpoint, startTimer } from './sync-log.ts';
+import { putObjectJson } from './r2.ts';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -34,6 +38,12 @@ export interface PersistResult {
 export interface PersistOptions {
   enrichmentPolicy?: SyncEnrichmentPolicy;
   customerEnrichmentMode?: EntityEnrichmentMode;
+  // Wall-clock deadline (Date.now()-comparable ms) for persisters that make many
+  // sequential external calls (e.g. persistPricelists' per-pricebook detail
+  // fetch loop) so they can bail out early instead of risking the edge
+  // function's ~150s hard-kill mid-request. Optional — callers that don't set
+  // it get unbounded behavior, same as today.
+  deadlineMs?: number | null;
 }
 
 export const INCREMENTAL_PERSIST_OPTIONS: PersistOptions = {
@@ -147,6 +157,17 @@ export function sanitizeZohoPhone(value: unknown): string | null {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+/**
+ * Formats a list of strings as a PostgREST literal list, e.g. for use with
+ * `.not(column, 'in', formatPostgrestLiteralList(values))`. Each value is
+ * double-quoted with internal backslashes/quotes escaped, so values
+ * containing commas, parentheses, or quotes are handled safely.
+ */
+function formatPostgrestLiteralList(values: string[]): string {
+  const escaped = values.map((v) => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
+  return `(${escaped.join(',')})`;
 }
 
 function formatErrorReason(message: string, details?: JsonRecord): string {
@@ -614,24 +635,27 @@ function getPricebookItemRows(rec: Record<string, unknown>): Record<string, unkn
   );
 }
 
-async function rebuildProductSearchVectors(
-  admin: AdminClient,
-  tenantId: string,
-  productIds: string[],
-): Promise<void> {
-  if (productIds.length === 0) return;
-  await admin.schema('app').rpc('rebuild_tenant_products_search_vectors', {
-    p_tenant_id: tenantId,
-    p_ids: productIds,
-  });
-}
-
 const SEARCH_VECTOR_CHUNK_SIZE = 500;
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
   return chunks;
+}
+
+async function rebuildProductSearchVectors(
+  admin: AdminClient,
+  tenantId: string,
+  productIds: string[],
+): Promise<void> {
+  if (productIds.length === 0) return;
+  for (const chunk of chunkArray(productIds, SEARCH_VECTOR_CHUNK_SIZE)) {
+    const { error } = await admin.schema('app').rpc('rebuild_tenant_products_search_vectors', {
+      p_tenant_id: tenantId,
+      p_ids: chunk,
+    });
+    if (error) throw new Error(`rebuild_tenant_products_search_vectors failed: ${error.message}`);
+  }
 }
 
 export async function rebuildBuyerSearchVectors(
@@ -780,6 +804,9 @@ async function batchUpsertEntityMap(
   if (pairs.length === 0) return;
   logCheckpoint(null, entityType, 'batchUpsertEntityMap:start', { pairs: pairs.length });
 
+  // source_payload is intentionally NOT written here — payloads are stored
+  // in R2 (see source_payload_r2_key below), not inline as jsonb, to avoid
+  // per-row table bloat (was 71MB table / 51MB idx+toast for 42K rows).
   const rows = pairs.map((p) => ({
     tenant_id: tenantId,
     tenant_integration_id: integrationId,
@@ -789,10 +816,9 @@ async function batchUpsertEntityMap(
     last_synced_at: nowIso(),
     sync_status: options?.syncStatus ?? 'synced',
     error_reason: options?.errorReason ?? null,
-    source_payload: p.sourcePayload ?? null,
   }));
 
-  await bulkPersistJsonbRecords(admin, 'integration_entity_map', dedupeByColumns(rows, [
+  const persisted = await bulkPersistJsonbRecords(admin, 'integration_entity_map', dedupeByColumns(rows, [
     'tenant_id',
     'tenant_integration_id',
     'entity_type',
@@ -803,6 +829,48 @@ async function batchUpsertEntityMap(
     'entity_type',
     'external_id',
   ]);
+
+  // Last-write-wins per external_id, matching dedupeByColumns' own dedupe
+  // behavior above, so the payload we write to R2 matches the row that was
+  // actually persisted.
+  const payloadByExternalId = new Map<string, Record<string, unknown>>();
+  for (const p of pairs) {
+    if (p.sourcePayload) payloadByExternalId.set(p.externalId, p.sourcePayload);
+  }
+  if (payloadByExternalId.size === 0) return;
+
+  await Promise.allSettled(
+    persisted.map(async (row) => {
+      const externalId = String(row.external_id ?? '');
+      const payload = payloadByExternalId.get(externalId);
+      if (!payload) return;
+
+      const rowId = String(row.id ?? '');
+      if (!rowId) return;
+
+      const key = `integrations/${tenantId}/entity-map/${rowId}.json`;
+      await putObjectJson(key, payload);
+
+      // Key is deterministic from the row's own id, so it's stable once
+      // set — only write it on first sync of this row, not every re-sync.
+      if (!row.source_payload_r2_key) {
+        const { error } = await admin
+          .schema('app')
+          .from('integration_entity_map')
+          .update({ source_payload_r2_key: key })
+          .eq('id', rowId);
+        if (error) {
+          console.error(`[r2] failed to record source_payload_r2_key for entity_map row ${rowId}: ${error.message}`);
+        }
+      }
+    }),
+  ).then((results) => {
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        console.error(`[r2] failed to persist source_payload for entity_type=${entityType}: ${String(result.reason)}`);
+      }
+    }
+  });
 }
 
 async function upsertImportedPriceList(
@@ -907,51 +975,6 @@ function buildSourceByExternalId(
       return externalId ? [[externalId, rec] as const] : [];
     }),
   );
-}
-
-function buildPersistedAuditUpdates(
-  persisted: Record<string, unknown>[],
-  sourceByExternalRef: Map<string, Record<string, unknown>>,
-  actorId: string | null,
-): Array<{ id: string; updatePayload: Record<string, unknown> }> {
-  return persisted.flatMap((row) => {
-    const id = asStr(row.id);
-    const externalId = asStr(row.external_ref);
-    const source = externalId ? sourceByExternalRef.get(externalId) ?? null : null;
-    if (!id || !source) return [];
-
-    const updatePayload: Record<string, unknown> = {
-      updated_by: actorId,
-    };
-
-    const createdAt = asStr(source.created_at);
-    const updatedAt = asStr(source.updated_at);
-    const createdBy = asStr(source.created_by);
-    const updatedBy = asStr(source.updated_by);
-
-    if (createdAt) updatePayload.created_at = createdAt;
-    if (updatedAt) updatePayload.updated_at = updatedAt;
-    if (createdBy) updatePayload.created_by = createdBy;
-    else if (actorId) updatePayload.created_by = actorId;
-    if (updatedBy) updatePayload.updated_by = updatedBy;
-    else if (actorId) updatePayload.updated_by = actorId;
-
-    return [{ id, updatePayload }];
-  });
-}
-
-async function applyPersistedAuditUpdates(
-  admin: AdminClient,
-  table: string,
-  updates: Array<{ id: string; updatePayload: Record<string, unknown> }>,
-): Promise<void> {
-  for (const item of updates) {
-    await admin
-      .schema('app')
-      .from(table)
-      .update(item.updatePayload)
-      .eq('id', item.id);
-  }
 }
 
 export async function resolveInternalIdsWithFallback(
@@ -1332,9 +1355,6 @@ async function persistLocations(
       .filter((entry): entry is readonly [string, Record<string, unknown>] => entry !== null),
   );
 
-  const auditUpdates = buildPersistedAuditUpdates(persisted, sourceByExternalRef, actorId);
-  await applyPersistedAuditUpdates(admin, 'locations', auditUpdates);
-
   const assignments = persisted.flatMap((row) => {
     const id = asStr(row.id);
     const externalId = asStr(row.external_ref);
@@ -1344,15 +1364,19 @@ async function persistLocations(
     return [{ locationId: id, users }];
   });
 
-  for (const assignment of assignments) {
-    await syncLocationAssignees(
-      admin as any,
-      tenantId,
-      assignment.locationId,
-      assignment.users,
-      actorId,
-    );
-  }
+  // Disabled: access provisioning (tenant_users.location_ids) is now managed
+  // via the frontend directly, not driven by Zoho sync. Re-enable this call
+  // if Zoho-driven location-assignee provisioning is needed again later.
+  // for (const assignment of assignments) {
+  //   await syncLocationAssignees(
+  //     admin as any,
+  //     tenantId,
+  //     assignment.locationId,
+  //     assignment.users,
+  //     actorId,
+  //   );
+  // }
+  void assignments;
 
   return result;
 }
@@ -1438,18 +1462,6 @@ async function persistWarehouses(
     'warehouses',
     attachSourcePayload(entityMapPairs, warehouseSourceByExternalId),
   );
-
-  const sourceByExternalRef = new Map(
-    rows
-      .map((row) => {
-        const externalRef = asStr(row.external_ref);
-        return externalRef ? [externalRef, row] as const : null;
-      })
-      .filter((entry): entry is readonly [string, Record<string, unknown>] => entry !== null),
-  );
-
-  const auditUpdates = buildPersistedAuditUpdates(persisted, sourceByExternalRef, actorId);
-  await applyPersistedAuditUpdates(admin, 'warehouses', auditUpdates);
 
   return result;
 }
@@ -1749,11 +1761,21 @@ async function persistBuyers(
       ['price_list_id', 'target_type', 'target_id', 'external_ref'],
     );
 
+    // Batch stale-pricebook-assignment cleanup by the price list being kept
+    // (N-per-distinct-price-list instead of N-per-buyer) — the Supabase JS
+    // client has no VALUES-joined UPDATE, so group first.
+    const targetIdsByKeptPriceListId = new Map<string, Set<string>>();
     for (const row of dedupedBuyerAssignmentRows) {
       const targetId = asStr(row.target_id);
       const priceListId = asStr(row.price_list_id);
       if (!targetId || !priceListId) continue;
+      if (!targetIdsByKeptPriceListId.has(priceListId)) {
+        targetIdsByKeptPriceListId.set(priceListId, new Set());
+      }
+      targetIdsByKeptPriceListId.get(priceListId)!.add(targetId);
+    }
 
+    for (const [priceListId, targetIdSet] of targetIdsByKeptPriceListId) {
       await admin
         .schema('app')
         .from('price_list_assignments')
@@ -1763,7 +1785,7 @@ async function persistBuyers(
           updated_by: actorId,
         })
         .eq('target_type', 'buyer')
-        .eq('target_id', targetId)
+        .in('target_id', [...targetIdSet])
         .like('external_ref', 'zoho_buyer_pricebook:%')
         .neq('price_list_id', priceListId)
         .is('deleted_at', null);
@@ -1912,9 +1934,10 @@ export async function fetchAndPersistMissingItemLocations(
 
   // Reserve time for one full worst-case batch so the function returns before
   // hitting the coordinator's dispatch timeout or Supabase's 150s wall.
-  // ZOHO_BULK_DETAIL_MAX_ATTEMPTS(2) × ZOHO_BULK_DETAIL_TIMEOUT_MS(15s) = 30s
-  // + ~5s warehouse resolution + persist overhead = 35s total reservation.
-  const BATCH_DEADLINE_RESERVATION_MS = 35_000;
+  // ZOHO_BULK_DETAIL_MAX_ATTEMPTS(2) x ZOHO_BULK_DETAIL_TIMEOUT_MS(15s) = 30s
+  // + ZOHO_BULK_RETRY_DELAY_CAP_MS(5s) 429 backoff between attempts = 35s
+  // + ~10s warehouse resolution + persist overhead = 45s total reservation.
+  const BATCH_DEADLINE_RESERVATION_MS = 45_000;
 
   for (let i = 0; i < itemIds.length; i += ITEM_LOC_CONCURRENCY) {
     if (opts.deadlineMs != null && Date.now() + BATCH_DEADLINE_RESERVATION_MS > opts.deadlineMs) {
@@ -2390,6 +2413,7 @@ async function persistPricelists(
   integrationId: string,
   records: Record<string, unknown>[],
   adapter?: ZohoAdapter,
+  persistOptions?: PersistOptions,
 ): Promise<PersistResult> {
   const sourceRecords = records.length > 0
     ? records
@@ -2457,9 +2481,21 @@ async function persistPricelists(
 
   // Enrich pricebooks with per-book detail (list endpoint omits pricebook_items).
   // Sequential with 300ms inter-call delay to avoid Zoho rate limits (was: 5-concurrent).
+  // Reserve time for one more detail fetch (worst case ~15s call + 300ms pace) so
+  // this loop doesn't blow past the edge function's ~150s hard-kill mid-request.
+  const PRICEBOOK_DETAIL_DEADLINE_RESERVATION_MS = 15_000;
   const detailedPricebooks = new Map<string, Record<string, unknown>>();
   if (adapter?.fetchPricebookDetail) {
     for (const pb of salesPricebooks) {
+      if (
+        persistOptions?.deadlineMs != null
+        && Date.now() + PRICEBOOK_DETAIL_DEADLINE_RESERVATION_MS > persistOptions.deadlineMs
+      ) {
+        console.warn(
+          `[persistPricelists] deadline approaching, stopping pricebook detail fetch early: ${detailedPricebooks.size}/${salesPricebooks.length} fetched`,
+        );
+        break;
+      }
       const id = asStr(pb.pricebook_id) ?? asStr(pb.pricelist_id);
       if (!id) continue;
       const detail = await adapter.fetchPricebookDetail(id);
@@ -2489,11 +2525,13 @@ async function persistPricelists(
   // FK-failsafe: fetch missing products from Zoho when adapter is present (webhook path)
   if (adapter) {
     const zohoTypeId = adapter.integrationTypeId;
-    for (const extId of productExternalIds) {
-      if (!tenantProductIdMap.has(extId)) {
-        const internalId = await ensureProductExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
-        if (internalId) tenantProductIdMap.set(extId, internalId);
-      }
+    const missingProductIds = productExternalIds.filter((extId) => !tenantProductIdMap.has(extId));
+    const resolvedProducts = await mapWithConcurrency(missingProductIds, ZOHO_DETAIL_FETCH_CONCURRENCY, async (extId) => {
+      const internalId = await ensureProductExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
+      return { extId, internalId };
+    });
+    for (const { extId, internalId } of resolvedProducts) {
+      if (internalId) tenantProductIdMap.set(extId, internalId);
     }
   }
 
@@ -2592,24 +2630,18 @@ async function persistPricelists(
     );
   }
 
+  // Soft-delete stale items directly via a SQL anti-join per touched price
+  // list, instead of fetching every existing row and diffing in JS — price
+  // list count per tenant is small (well under 100), so one UPDATE per
+  // touched price list is cheap and avoids loading the full item set into
+  // memory.
   const importedPriceListIds = priceListMapPairs.map((row) => row.internalId);
-  if (importedPriceListIds.length > 0) {
-    const { data: existingItems } = await admin
-      .schema('app')
-      .from('price_list_items')
-      .select('id, price_list_id, external_ref')
-      .in('price_list_id', importedPriceListIds)
-      .is('deleted_at', null);
+  for (const priceListId of importedPriceListIds) {
+    const desiredRefs = [...(desiredExternalRefsByPriceListId.get(priceListId) ?? new Set<string>())];
 
-    const staleItemIds = (existingItems ?? [])
-      .filter((row: { id: string; price_list_id: string; external_ref: string | null }) => {
-        if (!row.external_ref) return false;
-        const desired = desiredExternalRefsByPriceListId.get(row.price_list_id);
-        return !desired?.has(row.external_ref);
-      })
-      .map((row: { id: string }) => row.id);
-
-    if (staleItemIds.length > 0) {
+    if (desiredRefs.length === 0) {
+      // No items desired for this price list in this sync page — every
+      // existing non-deleted item is stale.
       await admin
         .schema('app')
         .from('price_list_items')
@@ -2618,9 +2650,22 @@ async function persistPricelists(
           updated_at: nowIso(),
           updated_by: actorId,
         })
-        .in('id', staleItemIds)
+        .eq('price_list_id', priceListId)
         .is('deleted_at', null);
+      continue;
     }
+
+    await admin
+      .schema('app')
+      .from('price_list_items')
+      .update({
+        deleted_at: nowIso(),
+        updated_at: nowIso(),
+        updated_by: actorId,
+      })
+      .eq('price_list_id', priceListId)
+      .is('deleted_at', null)
+      .not('external_ref', 'in', formatPostgrestLiteralList(desiredRefs));
   }
 
   return result;
@@ -2641,19 +2686,23 @@ async function persistEstimates(
   const estimateFieldMappings = await loadFieldMappings(admin, integrationId, 'estimates');
   const salespersonActorMap = await buildZohoSalespersonActorMap(admin, tenantId, adapter);
 
-  const customerExternalIds = records
-    .map((r) => asStr(r.customer_id))
-    .filter((x): x is string => x !== null);
+  const customerExternalIds = [...new Set(
+    records
+      .map((r) => asStr(r.customer_id))
+      .filter((x): x is string => x !== null),
+  )];
   const buyerIdMap = await resolveInternalIdsWithFallback(
     admin, tenantId, integrationId, 'customers', 'buyers', customerExternalIds,
   );
   // FK-failsafe: fetch missing buyers from Zoho when adapter is present
   if (adapter && zohoTypeId) {
-    for (const extId of customerExternalIds) {
-      if (!buyerIdMap.has(extId)) {
-        const internalId = await ensureBuyerExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
-        if (internalId) buyerIdMap.set(extId, internalId);
-      }
+    const missingBuyerIds = customerExternalIds.filter((extId) => !buyerIdMap.has(extId));
+    const resolvedBuyers = await mapWithConcurrency(missingBuyerIds, ZOHO_DETAIL_FETCH_CONCURRENCY, async (extId) => {
+      const internalId = await ensureBuyerExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
+      return { extId, internalId };
+    });
+    for (const { extId, internalId } of resolvedBuyers) {
+      if (internalId) buyerIdMap.set(extId, internalId);
     }
   }
   const locationExternalIds = [...new Set(
@@ -2666,11 +2715,13 @@ async function persistEstimates(
   );
   // FK-failsafe: fetch missing locations from Zoho when adapter is present
   if (adapter && zohoTypeId) {
-    for (const extId of locationExternalIds) {
-      if (!locationIdMap.has(extId)) {
-        const internalId = await ensureLocationExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
-        if (internalId) locationIdMap.set(extId, internalId);
-      }
+    const missingLocationIds = locationExternalIds.filter((extId) => !locationIdMap.has(extId));
+    const resolvedLocations = await mapWithConcurrency(missingLocationIds, ZOHO_DETAIL_FETCH_CONCURRENCY, async (extId) => {
+      const internalId = await ensureLocationExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
+      return { extId, internalId };
+    });
+    for (const { extId, internalId } of resolvedLocations) {
+      if (internalId) locationIdMap.set(extId, internalId);
     }
   }
   const parentRows: Record<string, unknown>[] = [];
@@ -2895,19 +2946,23 @@ async function persistOrders(
   const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
   const salespersonActorMap = await buildZohoSalespersonActorMap(admin, tenantId, adapter);
 
-  const customerExternalIds = records
-    .map((r) => asStr(r.customer_id))
-    .filter((x): x is string => x !== null);
+  const customerExternalIds = [...new Set(
+    records
+      .map((r) => asStr(r.customer_id))
+      .filter((x): x is string => x !== null),
+  )];
   const buyerIdMap = await resolveInternalIdsWithFallback(
     admin, tenantId, integrationId, 'customers', 'buyers', customerExternalIds,
   );
   // FK-failsafe: fetch missing buyers from Zoho when adapter is present
   if (adapter && zohoTypeId) {
-    for (const extId of customerExternalIds) {
-      if (!buyerIdMap.has(extId)) {
-        const internalId = await ensureBuyerExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
-        if (internalId) buyerIdMap.set(extId, internalId);
-      }
+    const missingBuyerIds = customerExternalIds.filter((extId) => !buyerIdMap.has(extId));
+    const resolvedBuyers = await mapWithConcurrency(missingBuyerIds, ZOHO_DETAIL_FETCH_CONCURRENCY, async (extId) => {
+      const internalId = await ensureBuyerExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
+      return { extId, internalId };
+    });
+    for (const { extId, internalId } of resolvedBuyers) {
+      if (internalId) buyerIdMap.set(extId, internalId);
     }
   }
   const locationExternalIds = [...new Set(
@@ -2920,11 +2975,13 @@ async function persistOrders(
   );
   // FK-failsafe: fetch missing locations from Zoho when adapter is present
   if (adapter && zohoTypeId) {
-    for (const extId of locationExternalIds) {
-      if (!locationIdMap.has(extId)) {
-        const internalId = await ensureLocationExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
-        if (internalId) locationIdMap.set(extId, internalId);
-      }
+    const missingLocationIds = locationExternalIds.filter((extId) => !locationIdMap.has(extId));
+    const resolvedLocations = await mapWithConcurrency(missingLocationIds, ZOHO_DETAIL_FETCH_CONCURRENCY, async (extId) => {
+      const internalId = await ensureLocationExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
+      return { extId, internalId };
+    });
+    for (const { extId, internalId } of resolvedLocations) {
+      if (internalId) locationIdMap.set(extId, internalId);
     }
   }
   const parentRows: Record<string, unknown>[] = [];
@@ -3140,19 +3197,23 @@ async function persistInvoices(
   const invoiceFieldMappings = await loadFieldMappings(admin, integrationId, 'invoices');
   const salespersonActorMap = await buildZohoSalespersonActorMap(admin, tenantId, adapter);
 
-  const customerExternalIds = records
-    .map((r) => asStr(r.customer_id))
-    .filter((x): x is string => x !== null);
+  const customerExternalIds = [...new Set(
+    records
+      .map((r) => asStr(r.customer_id))
+      .filter((x): x is string => x !== null),
+  )];
   const buyerIdMap = await resolveInternalIdsWithFallback(
     admin, tenantId, integrationId, 'customers', 'buyers', customerExternalIds,
   );
   // FK-failsafe: fetch missing buyers from Zoho when adapter is present
   if (adapter && zohoTypeId) {
-    for (const extId of customerExternalIds) {
-      if (!buyerIdMap.has(extId)) {
-        const internalId = await ensureBuyerExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
-        if (internalId) buyerIdMap.set(extId, internalId);
-      }
+    const missingBuyerIds = customerExternalIds.filter((extId) => !buyerIdMap.has(extId));
+    const resolvedBuyers = await mapWithConcurrency(missingBuyerIds, ZOHO_DETAIL_FETCH_CONCURRENCY, async (extId) => {
+      const internalId = await ensureBuyerExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
+      return { extId, internalId };
+    });
+    for (const { extId, internalId } of resolvedBuyers) {
+      if (internalId) buyerIdMap.set(extId, internalId);
     }
   }
   const locationExternalIds = [...new Set(
@@ -3165,11 +3226,13 @@ async function persistInvoices(
   );
   // FK-failsafe: fetch missing locations from Zoho when adapter is present
   if (adapter && zohoTypeId) {
-    for (const extId of locationExternalIds) {
-      if (!locationIdMap.has(extId)) {
-        const internalId = await ensureLocationExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
-        if (internalId) locationIdMap.set(extId, internalId);
-      }
+    const missingLocationIds = locationExternalIds.filter((extId) => !locationIdMap.has(extId));
+    const resolvedLocations = await mapWithConcurrency(missingLocationIds, ZOHO_DETAIL_FETCH_CONCURRENCY, async (extId) => {
+      const internalId = await ensureLocationExists(admin, tenantId, actorId, integrationId, zohoTypeId, extId, adapter);
+      return { extId, internalId };
+    });
+    for (const { extId, internalId } of resolvedLocations) {
+      if (internalId) locationIdMap.set(extId, internalId);
     }
   }
   const orderExternalIds = [...new Set(
@@ -3561,7 +3624,7 @@ async function persistZohoEntityPageImpl(
       return persistProducts(admin, tenantId, actorId, integrationId, records, adapter);
 
     case 'pricelists':
-      return persistPricelists(admin, tenantId, actorId, integrationId, records, adapter);
+      return persistPricelists(admin, tenantId, actorId, integrationId, records, adapter, persistOptions);
 
     case 'estimates':
       // List payload only — line items hydrated in transaction_line_items phase.

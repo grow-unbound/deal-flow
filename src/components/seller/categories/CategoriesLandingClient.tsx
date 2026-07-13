@@ -26,6 +26,7 @@ import { useCategoryLanding, type CategoryTableRow, type CategoriesLandingRespon
 import { CategoryFormSheet } from '@/components/seller/settings/CategoryFormSheet';
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
+import { CategoriesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'GMV (high → low)' | 'Name (A → Z)' | 'OOS SKUs (high → low)';
 
@@ -157,7 +158,7 @@ function CategoriesLandingContent({
       });
   }, [filters.products, filters.status, rows, search, sortBy]);
 
-  if (isLoading && !landingData) return <CategoriesLoadingSkeleton />;
+  if (isLoading && !landingData) return <CategoriesLandingSkeleton />;
   if (isError && !landingData) {
     return (
       <ErrorState
@@ -166,7 +167,7 @@ function CategoriesLandingContent({
       />
     );
   }
-  if (!landingData) return <CategoriesLoadingSkeleton />;
+  if (!landingData) return <CategoriesLandingSkeleton />;
 
   const showRefreshingState = isLoading && !data;
   const kpis = landingData.kpis;

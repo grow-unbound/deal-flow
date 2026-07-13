@@ -30,6 +30,7 @@ import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { useTenantProducts, useTenantProductsInfinite, type TenantProduct, type TenantProductsResponse } from '@/hooks/useProducts';
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
+import { ProductsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 const AddProductSheet = dynamic(
   () => import('@/components/seller/products/AddProductSheet').then((m) => m.AddProductSheet),
@@ -193,7 +194,7 @@ function ProductsLandingContent({
   const retainedFiltered = useRetainedValue(filtered.length > 0 ? filtered : null);
   const displayRows = filtered.length > 0 ? filtered : (retainedFiltered ?? []);
 
-  if (isLoading && !data) return <ProductLandingSkeleton />;
+  if (isLoading && !data) return <ProductsLandingSkeleton />;
 
   if (isError && !data) {
     return (
@@ -205,7 +206,7 @@ function ProductsLandingContent({
       </PageWrap>
     );
   }
-  if (!data) return <ProductLandingSkeleton />;
+  if (!data) return <ProductsLandingSkeleton />;
   const showRefreshingState = isLoading && !data;
 
   const kpis = summaryData?.kpis;

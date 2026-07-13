@@ -30,6 +30,7 @@ import {
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LocationFormSheet } from '@/components/seller/settings/LocationFormSheet';
+import { LocationsLandingSkeleton as SharedLocationsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Outstanding dues (high → low)';
 const STATUS_OPTIONS = ['Active', 'Inactive'] as const;
@@ -207,7 +208,7 @@ function LocationsLandingContent({
       });
   }, [filters.dues, filters.status, filters.stock, landingData?.locations, search, sortBy]);
 
-  if (isLoading && !landingData) return <LocationsLandingSkeleton />;
+  if (isLoading && !landingData) return <SharedLocationsLandingSkeleton />;
 
   if (isError && !landingData) {
     return (
@@ -221,7 +222,7 @@ function LocationsLandingContent({
     );
   }
 
-  if (!landingData) return <LocationsLandingSkeleton />;
+  if (!landingData) return <SharedLocationsLandingSkeleton />;
 
   const showRefreshingState = isLoading && !data;
 

@@ -40,6 +40,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-overlay';
+import { CohortComposerSkeleton as SharedCohortComposerSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import {
   type CohortComposerBuyer,
   useCohortComposerBuyers,
@@ -140,7 +141,7 @@ function parseRules(rules: {
   };
 }
 
-function CohortComposerSkeleton() {
+export function CohortComposerSkeleton() {
   return (
     <div
       className={cn('mx-auto flex w-full max-w-[1920px] flex-col px-8 pt-7 pb-6', composerPageMinHeightClass)}
@@ -456,7 +457,7 @@ export function CohortComposer({ mode, cohortId }: { mode: ComposerMode; cohortI
   }
 
   if (isLoading || !didInit) {
-    return <CohortComposerSkeleton />;
+    return <SharedCohortComposerSkeleton />;
   }
 
   if (isError || !composerQuery.data) {

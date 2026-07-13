@@ -55,11 +55,12 @@ export async function GET(req: NextRequest): Promise<NextResponse<GlobalSearchRe
     p_role: claims.role,
     p_items_per_group: limit,
     p_query_embedding: queryEmbedding,
+    p_location_ids: claims.location_ids ?? null,
   });
 
   if (error) {
     console.error('[search] global_search RPC error:', error);
-    return NextResponse.json({ error: 'Search failed' }, { status: 500 });
+    return NextResponse.json({ groups: [], total: 0 }, { headers: SELLER_CACHE_REFERENCE });
   }
 
   const rows = (data ?? []) as Array<{

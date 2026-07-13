@@ -21,7 +21,14 @@ export function SellerRealtimeProvider({ children }: { children: React.ReactNode
   const { user, currentTenantId, tenantProfile } = useAuth();
   const userId = user?.id ?? null;
   const tenantId = currentTenantId ?? '';
-  const locationIds = tenantProfile?.location_ids ?? null;
+  const rawLocationIds = tenantProfile?.location_ids ?? null;
+  const locationIdsKey =
+    rawLocationIds && rawLocationIds.length > 0 ? [...rawLocationIds].sort().join(',') : '';
+  const locationIds = useMemo(
+    () => (locationIdsKey ? locationIdsKey.split(',') : rawLocationIds),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [locationIdsKey],
+  );
 
   const { notifications, add, patchByEntityId, markRead, markAllRead, unreadCount } = useNotificationStore(userId);
 

@@ -27,6 +27,7 @@ import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useTenantCatalogs, type CatalogLandingRow, type CatalogsLandingResponse } from '@/hooks/useCatalogs';
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
+import { CatalogsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'Recently published' | 'GMV (high → low)' | 'Conversion (high → low)';
 
@@ -163,7 +164,7 @@ function CatalogsLandingContent({
       });
   }, [catalogs, search, sortBy, statusFilter]);
 
-  if (isLoading && !landingData) return <CatalogsLoadingSkeleton />;
+  if (isLoading && !landingData) return <CatalogsLandingSkeleton />;
 
   if (isError && !landingData) {
     return (
@@ -173,7 +174,7 @@ function CatalogsLandingContent({
       />
     );
   }
-  if (!landingData) return <CatalogsLoadingSkeleton />;
+  if (!landingData) return <CatalogsLandingSkeleton />;
   const showRefreshingState = isLoading && !data;
   const estimatesEnabled = landingData.channels?.estimates_enabled ?? true;
 

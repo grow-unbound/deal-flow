@@ -188,7 +188,7 @@ export default function CheckoutPage() {
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {/* Cart summary */}
           <div
-            className="rounded-xl p-4 space-y-3"
+            className="rounded-[12px] p-4 space-y-3"
             style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-1)' }}
           >
           <p
@@ -307,7 +307,7 @@ export default function CheckoutPage() {
         <button
           type="button"
           onClick={() => router.push('/buy/location?returnTo=' + encodeURIComponent('/buy/checkout'))}
-          className="w-full rounded-xl px-4 py-3 flex items-center gap-3 text-left"
+          className="w-full rounded-[12px] px-4 py-3 flex items-center gap-3 text-left"
           style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}
         >
           <div className="flex items-center justify-center shrink-0" style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--ember-50)' }}>

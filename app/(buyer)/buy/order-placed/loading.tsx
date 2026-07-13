@@ -21,7 +21,7 @@ export default function OrderPlacedLoading() {
           <div className="h-8 w-64 animate-pulse rounded bg-cream-200" />
           <div className="mt-3 h-4 w-full max-w-md animate-pulse rounded bg-cream-100" />
 
-          <div className="mt-8 w-full rounded-2xl border border-cream-200 bg-white text-left">
+          <div className="mt-8 w-full rounded-[12px] border border-cream-200 bg-white text-left">
             <div className="border-b border-cream-200 px-4 py-3">
               <div className="h-3 w-28 animate-pulse rounded bg-cream-200" />
             </div>

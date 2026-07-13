@@ -12,26 +12,47 @@ inactivity_timeout = "360h"
 [api]
 enabled = true
 port = 54321
-schemas = ["public", "app", "catalog", "graphql_public", "auth"]
+schemas = ["public", "app", "catalog", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
 
-[functions.integrations-webhook]
+[functions.generate-embeddings]
 verify_jwt = false
 
-[functions.integrations-sync-worker]
+[functions.generate-invoice-pdf]
+verify_jwt = false
+
+[functions.integrations-connect]
+verify_jwt = false
+
+[functions.integrations-disconnect]
 verify_jwt = false
 
 [functions.integrations-sync]
 verify_jwt = false
 
-[functions.sync-locations]
+[functions.integrations-sync-worker]
 verify_jwt = false
 
-[functions.sync-products]
+[functions.integrations-test]
 verify_jwt = false
 
-[functions.sync-pricelists]
+[functions.integrations-webhook]
+verify_jwt = false
+
+[functions.integrations-webhook-setup]
+verify_jwt = false
+
+[functions.push-estimate-to-zoho]
+verify_jwt = false
+
+[functions.push-order-to-zoho]
+verify_jwt = false
+
+[functions.sync-contact-persons]
+verify_jwt = false
+
+[functions.sync-coordinator]
 verify_jwt = false
 
 [functions.sync-customers]
@@ -40,19 +61,25 @@ verify_jwt = false
 [functions.sync-estimates]
 verify_jwt = false
 
-[functions.sync-orders]
+[functions.sync-inventory]
 verify_jwt = false
 
 [functions.sync-invoices]
 verify_jwt = false
 
+[functions.sync-locations]
+verify_jwt = false
+
+[functions.sync-orders]
+verify_jwt = false
+
+[functions.sync-pricelists]
+verify_jwt = false
+
+[functions.sync-products]
+verify_jwt = false
+
 [functions.sync-transaction-line-items]
-verify_jwt = false
-
-[functions.push-estimate-to-zoho]
-verify_jwt = false
-
-[functions.push-order-to-zoho]
 verify_jwt = false
 
 [functions.whatsapp-dispatch-worker]

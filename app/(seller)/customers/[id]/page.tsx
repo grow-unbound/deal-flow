@@ -16,6 +16,7 @@ import { CustomerDetailsTab } from '@/components/seller/customers/detail/Custome
 import { CustomerOrdersTab } from '@/components/seller/customers/detail/CustomerOrdersTab';
 import { AddCustomerDialog } from '@/components/seller/customers/AddCustomerDialog';
 import { toast } from 'sonner';
+import { CustomerDetailSkeleton as SharedCustomerDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 const CustomerPerformanceTab = dynamic(
   () => import('@/components/seller/customers/detail/CustomerPerformanceTab').then((m) => m.CustomerPerformanceTab),
@@ -210,7 +211,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     ];
   }, [data, isSellerAssistant]);
 
-  if (isLoading) return <CustomerDetailSkeleton />;
+  if (isLoading) return <SharedCustomerDetailSkeleton />;
   if (isError || !data) {
     return <ErrorState heading="Couldn't load customer" description={error?.message ?? 'There was a problem fetching this customer detail page.'} />;
   }

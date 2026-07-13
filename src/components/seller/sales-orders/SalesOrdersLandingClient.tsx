@@ -27,6 +27,7 @@ import { useCreateFlags } from '@/hooks/useCreateFlags';
 import { useTenantOrders, type OrderLandingRow, type TenantOrdersResponse } from '@/hooks/useOrders';
 import { formatCompactInr, formatDate, formatInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
+import { SalesOrdersLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'Recent first' | 'GMV (high → low)' | 'Items (high → low)';
 const SORT_OPTIONS: SortOption[] = ['Recent first', 'GMV (high → low)', 'Items (high → low)'];
@@ -156,7 +157,7 @@ function SalesOrdersLandingContent({
   const needsAttentionCount = useMemo(() => countNeedsAttention(summaryOrders), [summaryOrders]);
   const inMotionCount = useMemo(() => countOrdersInMotion(summaryOrders), [summaryOrders]);
 
-  if (isLoading && !landingData) return <SalesOrdersLoadingSkeleton />;
+  if (isLoading && !landingData) return <SalesOrdersLandingSkeleton />;
 
   if (isError && !landingData) {
     return (
@@ -166,7 +167,7 @@ function SalesOrdersLandingContent({
       />
     );
   }
-  if (!landingData) return <SalesOrdersLoadingSkeleton />;
+  if (!landingData) return <SalesOrdersLandingSkeleton />;
   const showRefreshingState = isLoading && !data;
   const groups: FilterBarGroup[] = (summaryData?.filters?.groups ?? []).map((group) => ({
     key: group.key,

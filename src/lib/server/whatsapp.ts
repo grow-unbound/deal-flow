@@ -74,8 +74,9 @@ async function enqueueWhatsappTemplate(
   ctx: EnqueueTemplateContext,
 ): Promise<boolean> {
   const destination = formatWhatsappDestination(to);
-  if (!destination) return false;
-
+  if (!destination) {
+    return false;
+  }
   const result = await enqueueWhatsAppMessage({
     tenantId: ctx.tenantId,
     buyerId: ctx.buyerId ?? null,
@@ -87,11 +88,13 @@ async function enqueueWhatsappTemplate(
     relatedEntityId: ctx.relatedEntityId ?? null,
   });
 
-  if (result.enqueued) {
-    triggerWhatsAppDispatch();
+  if (result.skipped === 'duplicate') return true;
+  if (!result.enqueued || !result.messageId) {
+    return false;
   }
 
-  return result.enqueued || result.skipped === 'duplicate';
+  const dispatch = await triggerWhatsAppDispatch([result.messageId]);
+  return Boolean(dispatch?.ok && dispatch.dispatched > 0);
 }
 
 export async function sendOrderReceivedSeller(
@@ -146,7 +149,7 @@ export async function sendOrderReceivedBuyer(
       { text: String(itemCount), parameterName: 'item_count' },
       { text: orderNumber, parameterName: 'order_number' },
       { text: formatWhatsappInrAmount(totalAmount), parameterName: 'total_amount' },
-      { text: ctx.buyerFacingSellerName, parameterName: 'seller_team' },
+      { text: ctx.buyerFacingSellerName, parameterName: 'seller_name' },
       { text: String(ctx.etaHours), parameterName: 'eta' },
     ],
     orderId,
@@ -268,5 +271,10 @@ export async function sendLoginOtpWhatsapp(phone: string, otp: string): Promise<
     throw new Error('Failed to enqueue OTP WhatsApp message');
   }
 
-  triggerWhatsAppDispatch();
+  if (result.messageId) {
+    const dispatch = await triggerWhatsAppDispatch([result.messageId]);
+    if (!dispatch?.ok || dispatch.dispatched === 0) {
+      throw new Error('Failed to send OTP WhatsApp message');
+    }
+  }
 }

@@ -45,6 +45,7 @@ import {
 } from '@/hooks/useCatalogs';
 import { SellerBuyerPickerOverlay } from '@/components/seller/shared/SellerBuyerPickerOverlay';
 import { PublishCampaignDialog, type PublishCampaignDialogMode } from '@/components/seller/catalogs/detail/PublishCampaignDialog';
+import { CatalogComposerSkeleton as SharedCatalogComposerSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { cn, formatDate, formatInr, formatInrInput, parseInrInput } from '@/lib/utils';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { isoDateInput } from '@/lib/date-utils';
@@ -800,7 +801,7 @@ export function CatalogComposer({
   }
 
   if (isLoading || !didInit) {
-    return <CatalogComposerSkeleton />;
+    return <SharedCatalogComposerSkeleton />;
   }
 
   const createSubtitle = 'Curate which products a customer group sees. The campaign controls visibility, availability, and what gets marked new.';

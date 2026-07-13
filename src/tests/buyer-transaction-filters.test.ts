@@ -21,6 +21,11 @@ describe('getSentinelInsertIndex', () => {
     expect(getSentinelInsertIndex(8)).toBe(5);
     expect(getSentinelInsertIndex(20)).toBe(14);
   });
+
+  it('places sentinel near 70% when ratio is 0.7', () => {
+    expect(getSentinelInsertIndex(20, 0.7)).toBe(13);
+    expect(getSentinelInsertIndex(8, 0.7)).toBe(4);
+  });
 });
 
 describe('buyer transaction status chips', () => {

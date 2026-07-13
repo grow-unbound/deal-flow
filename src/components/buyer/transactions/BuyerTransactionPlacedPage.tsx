@@ -1,14 +1,15 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowUpRight, CheckCircle2, ChevronLeft, FileText, ShoppingBag } from 'lucide-react';
 
 import { useCart } from '@/contexts/BuyerCartContext';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api-fetch';
+import { markBuyerNavigationBack } from '@/hooks/useBuyerNavigationDirection';
 import { supabaseBrowser } from '@/lib/supabase-browser';
+import { TRANSACTION_PENDING_NOTE } from '@/lib/transaction-notes';
 
 type BuyerTransactionKind = 'estimate' | 'order';
 
@@ -19,33 +20,35 @@ interface BuyerTransactionPlacedPageProps {
   successHeading: string;
   successCopy: string;
   documentLabel: string;
-  catalogHref: string;
-  ordersHref: string;
 }
 
 interface BuyerTransactionDetailResponse {
   estimate?: {
     estimate_number: string | null;
+    document_status_note?: string | null;
     document_url?: string | null;
     estimate_url?: string | null;
   };
   order?: {
     order_number: string | null;
+    document_status_note?: string | null;
     document_url?: string | null;
     order_url?: string | null;
   };
 }
 
 function getDocumentFields(kind: BuyerTransactionKind, payload: BuyerTransactionDetailResponse | null) {
-  if (!payload) return { number: null, documentUrl: null };
+  if (!payload) return { number: null, documentUrl: null, statusNote: null };
   if (kind === 'estimate') {
     return {
       number: payload.estimate?.estimate_number ?? null,
+      statusNote: payload.estimate?.document_status_note ?? null,
       documentUrl: payload.estimate?.document_url ?? payload.estimate?.estimate_url ?? null,
     };
   }
   return {
     number: payload.order?.order_number ?? null,
+    statusNote: payload.order?.document_status_note ?? null,
     documentUrl: payload.order?.document_url ?? payload.order?.order_url ?? null,
   };
 }
@@ -57,9 +60,8 @@ export function BuyerTransactionPlacedPage({
   successHeading,
   successCopy,
   documentLabel,
-  catalogHref,
-  ordersHref,
 }: BuyerTransactionPlacedPageProps) {
+  const router = useRouter();
   const params = useSearchParams();
   const { clearCart } = useCart();
 
@@ -68,11 +70,15 @@ export function BuyerTransactionPlacedPage({
     params.get(kind === 'estimate' ? 'estimate_number' : 'order_number')
     ?? params.get('num')
     ?? '';
+  const initialStatusNote = params.get('document_status_note') ?? '';
   const total = Number(params.get('total') ?? '0');
   const initialDocumentUrl = params.get('document_url') ?? params.get(kind === 'estimate' ? 'estimate_url' : 'order_url') ?? '';
 
   const [documentNumber, setDocumentNumber] = useState(provisionalNumber);
   const [documentUrl, setDocumentUrl] = useState(initialDocumentUrl);
+  const [documentStatusNote, setDocumentStatusNote] = useState(
+    provisionalNumber ? '' : initialStatusNote,
+  );
 
   useEffect(() => {
     clearCart();
@@ -93,7 +99,12 @@ export function BuyerTransactionPlacedPage({
       const json = (await res.json()) as BuyerTransactionDetailResponse;
       if (cancelled) return;
       const fields = getDocumentFields(kind, json);
-      if (fields.number) setDocumentNumber(fields.number);
+      if (fields.number) {
+        setDocumentNumber(fields.number);
+        setDocumentStatusNote('');
+      } else if (fields.statusNote) {
+        setDocumentStatusNote(fields.statusNote);
+      }
       if (fields.documentUrl) setDocumentUrl(fields.documentUrl);
       if (!fields.documentUrl && attempt < maxAttempts) {
         retryTimer = setTimeout(() => {
@@ -125,7 +136,10 @@ export function BuyerTransactionPlacedPage({
           const record = payload.new as Record<string, unknown>;
           const nextNumber = record[numberField] as string | null | undefined;
           const nextUrl = (record.document_url ?? record[urlField]) as string | null | undefined;
-          if (nextNumber?.trim()) setDocumentNumber(nextNumber);
+          if (nextNumber?.trim()) {
+            setDocumentNumber(nextNumber);
+            setDocumentStatusNote('');
+          }
           if (nextUrl?.trim()) setDocumentUrl(nextUrl);
         },
       )
@@ -140,6 +154,24 @@ export function BuyerTransactionPlacedPage({
     () => (kind === 'estimate' ? 'View Estimate PDF' : 'View Order PDF'),
     [kind],
   );
+  const documentDisplayValue = documentNumber || documentStatusNote || TRANSACTION_PENDING_NOTE;
+
+  const ordersHref = useMemo(() => {
+    const tab = kind === 'estimate' ? 'enquiries' : 'orders';
+    const search = new URLSearchParams({ tab });
+    if (id) search.set('highlight', id);
+    return `/buy/orders?${search.toString()}`;
+  }, [id, kind]);
+
+  function goToCatalog() {
+    markBuyerNavigationBack();
+    router.push('/buy/catalog');
+  }
+
+  function goToOrders() {
+    markBuyerNavigationBack();
+    router.push(ordersHref);
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--bg-base)]">
@@ -193,14 +225,14 @@ export function BuyerTransactionPlacedPage({
             {successCopy}
           </p>
 
-          <div className="mt-8 w-full rounded-2xl border border-[var(--border-1)] bg-[var(--bg-surface)] text-left">
+          <div className="mt-8 w-full rounded-[12px] border border-[var(--border-1)] bg-[var(--bg-surface)] text-left">
             <div className="border-b border-[var(--border-1)] px-4 py-3" style={{ background: 'var(--cream-50)' }}>
               <p className="font-semibold uppercase tracking-[0.18em] text-[var(--cream-600)]" style={{ fontSize: 'var(--b-text-eyebrow)' }}>
                 {documentLabel}
               </p>
             </div>
             <div className="space-y-3 px-4 py-4">
-              <ReceiptRow label={`${documentLabel} #`} value={documentNumber || '—'} mono />
+              <ReceiptRow label={`${documentLabel} #`} value={documentDisplayValue} mono={Boolean(documentNumber)} />
               <ReceiptRow label="Status" value={<StatusChip label="Received" />} />
               {total > 0 ? <ReceiptRow label="Total" value={formatCurrency(total)} mono /> : null}
               {documentUrl ? (
@@ -216,17 +248,13 @@ export function BuyerTransactionPlacedPage({
           </div>
 
           <div className="mt-6 grid w-full gap-3 sm:grid-cols-2">
-            <Button asChild variant="outline" className="h-12 gap-2">
-              <Link href={catalogHref}>
-                <ShoppingBag className="h-4 w-4" />
-                Go to Catalog
-              </Link>
+            <Button type="button" variant="outline" className="h-12 gap-2" onClick={goToCatalog}>
+              <ShoppingBag className="h-4 w-4" />
+              Go to Catalog
             </Button>
-            <Button asChild className="h-12 gap-2">
-              <Link href={ordersHref}>
-                <FileText className="h-4 w-4" />
-                Go to Orders
-              </Link>
+            <Button type="button" className="h-12 gap-2" onClick={goToOrders}>
+              <FileText className="h-4 w-4" />
+              Go to Orders
             </Button>
           </div>
         </div>

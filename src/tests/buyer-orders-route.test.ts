@@ -31,6 +31,29 @@ vi.mock('@/lib/server/buyer-transaction-notify-immediate', () => ({
     sendImmediateTransactionNotificationsMock(...args),
 }));
 
+vi.mock('@/lib/server/buyer-location-selection', () => ({
+  getSelectedBuyerDeliveryFromRequest: vi.fn().mockReturnValue(null),
+}));
+
+vi.mock('@/lib/server/buyer-product-data', () => ({
+  resolveBuyerInventoryWarehouseId: vi.fn().mockResolvedValue('wh-1'),
+}));
+
+vi.mock('@/lib/server/buyer-cart-stock', () => ({
+  validateBuyerCartStock: vi.fn(async (_db, input: { items: unknown[] }) => ({
+    ok: true,
+    items: input.items,
+  })),
+}));
+
+vi.mock('@/lib/server/campaign-attribution', () => ({
+  inferCampaignIdForBuyerCart: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock('@/lib/server/buyer-app-activity', () => ({
+  recordBuyerAppActivitySafe: vi.fn(),
+}));
+
 vi.mock('@/lib/server/seller-features', () => ({
   getInAppCreateFlags: vi.fn().mockResolvedValue({
     create_sales_orders: true,
@@ -84,9 +107,16 @@ vi.mock('@/lib/posthog-server', () => ({
   }),
 }));
 
+function withNextUrl(request: Request): Request {
+  Object.assign(request, { nextUrl: new URL(request.url) });
+  return request;
+}
+
 describe('buyer orders route', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const { tenantDefersTransactionNumber } = await import('@/lib/server/transaction-outbound-push');
+    vi.mocked(tenantDefersTransactionNumber).mockResolvedValue(false);
     insertSingleMock.mockResolvedValue({
       data: { id: 'ord-abc', order_number: 'ORD-2026-0001' },
       error: null,
@@ -110,7 +140,7 @@ describe('buyer orders route', () => {
     });
 
     const { GET } = await import('../../app/api/buyer/orders/route');
-    const response = await GET(new Request('http://localhost/api/buyer/orders') as any);
+    const response = await GET(withNextUrl(new Request('http://localhost/api/buyer/orders')) as any);
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -139,18 +169,19 @@ describe('buyer orders route', () => {
     });
 
     const { POST } = await import('../../app/api/buyer/orders/route');
-    const response = await POST(new Request('http://localhost/api/buyer/orders', {
+    const response = await POST(withNextUrl(new Request('http://localhost/api/buyer/orders', {
       method: 'POST',
       body: JSON.stringify({
         items: [{ tenant_product_id: 'prod-1', qty: 2, unit_price: 500 }],
         location_id: 'loc-1',
         place_of_supply: 'Andheri East',
       }),
-    }) as any);
+    })) as any);
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
+    expect(body.document_status_note).toBeNull();
     expect(body.whatsapp_sent).toBe(true);
     expect(sendImmediateTransactionNotificationsMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -159,5 +190,44 @@ describe('buyer orders route', () => {
         documentNumber: 'ORD-2026-0001',
       }),
     );
+  });
+
+  it('defers whatsapp and returns the pending note when outbound integration owns numbering', async () => {
+    requireBuyerAccessProfileMock.mockResolvedValue({
+      context: {
+        sub: 'user-1',
+        tenant_id: 'tenant-1',
+        role: 'buyer_admin',
+        buyer_id: 'buyer-1',
+        mode: 'buyer',
+        share_token: null,
+        preview: null,
+      },
+      buyer: { id: 'buyer-1', phone: '9876543210', contact_name: 'Ravi', business_name: 'Ravi Wines' },
+      tenant: { id: 'tenant-1', business_name: 'WineYard', slug: 'wineyard' },
+    });
+    const { tenantDefersTransactionNumber } = await import('@/lib/server/transaction-outbound-push');
+    vi.mocked(tenantDefersTransactionNumber).mockResolvedValue(true);
+    insertSingleMock.mockResolvedValue({
+      data: { id: 'ord-abc', order_number: null },
+      error: null,
+    });
+
+    const { POST } = await import('../../app/api/buyer/orders/route');
+    const response = await POST(withNextUrl(new Request('http://localhost/api/buyer/orders', {
+      method: 'POST',
+      body: JSON.stringify({
+        items: [{ tenant_product_id: 'prod-1', qty: 2, unit_price: 500 }],
+        location_id: 'loc-1',
+        place_of_supply: 'Andheri East',
+      }),
+    })) as any);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.order_number).toBeNull();
+    expect(body.document_status_note).toBe('will be created soon');
+    expect(body.whatsapp_sent).toBe(false);
+    expect(sendImmediateTransactionNotificationsMock).not.toHaveBeenCalled();
   });
 });

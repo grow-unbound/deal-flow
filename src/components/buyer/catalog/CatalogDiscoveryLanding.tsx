@@ -1,17 +1,18 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
-import { ChevronRight } from 'lucide-react';
 import { BuyerEntityChipNav } from '@/components/buyer/catalog/BuyerEntityChipNav';
 import { CatalogLookbookCard } from '@/components/buyer/catalog/CatalogLookbookCard';
 import { DiscoveryThumbTile } from '@/components/buyer/catalog/DiscoveryThumbTile';
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { BuyerCatalogLandingHeader } from '@/components/buyer/layout/BuyerCatalogLandingHeader';
-import { apiFetch } from '@/lib/api-fetch';
+import { BuyerHorizontalScroll } from '@/components/buyer/layout/BuyerHorizontalScroll';
+import { BuyerSectionRow } from '@/components/buyer/layout/BuyerSectionRow';
+import { BUYER_CARD_RADIUS_CLASS, BUYER_INFINITE_SCROLL_RATIO } from '@/lib/buyer-ui';
+import { cn } from '@/lib/utils';
 import { markBuyerNavigationForward } from '@/hooks/useBuyerNavigationDirection';
-import { useBuyerCatalogLandingData } from '@/hooks/useBuyerProducts';
-import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
+import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { useBuyerCatalogLandingData, useBuyerCatalogSearchInfinite } from '@/hooks/useBuyerProducts';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
 function formatProductCount(count: number): string {
@@ -19,7 +20,6 @@ function formatProductCount(count: number): string {
 }
 
 export function CatalogDiscoveryLanding(): React.ReactNode {
-  const delivery = useBuyerDeliveryOptional();
   const landingQuery = useBuyerCatalogLandingData();
   const categories = landingQuery.data?.categories ?? [];
   const brands = landingQuery.data?.brands ?? [];
@@ -29,49 +29,29 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
 
   const [searchQuery, setSearchQuery] = React.useState('');
   const [debouncedSearch, setDebouncedSearch] = React.useState('');
-  const [searchItems, setSearchItems] = React.useState<BuyerCatalogItem[]>([]);
-  const [searchLoading, setSearchLoading] = React.useState(false);
-  const [searchError, setSearchError] = React.useState(false);
-  const stockSignature = [
-    delivery?.selected?.nearest_warehouse_id ?? 'no-warehouse',
-    delivery?.selected?.routed_location_id ?? 'no-location',
-    delivery?.selected?.place_id ?? 'no-delivery',
-  ].join(':');
+
+  const searchQueryResult = useBuyerCatalogSearchInfinite(debouncedSearch, {}, debouncedSearch.length > 0);
+  const searchPages = searchQueryResult.data?.pages ?? [];
+  const searchItems = React.useMemo(
+    () => searchPages.flatMap((page) => page.items ?? []),
+    [searchPages],
+  );
+  const searchHasMore = searchPages.at(-1)?.has_more ?? false;
+  const searchLoading = searchQueryResult.isLoading && searchItems.length === 0;
+  const searchError = searchQueryResult.isError;
+  const searchLoadingMore = searchQueryResult.isFetchingNextPage;
+
+  const searchSentinelIndex = getSentinelInsertIndex(searchItems.length, BUYER_INFINITE_SCROLL_RATIO);
+  const { sentinelRef: searchSentinelRef } = useInfiniteScroll({
+    hasMore: searchHasMore,
+    isLoading: searchLoadingMore,
+    onLoadMore: () => { void searchQueryResult.fetchNextPage(); },
+  });
 
   React.useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 280);
     return () => clearTimeout(timer);
   }, [searchQuery]);
-
-  React.useEffect(() => {
-    if (!debouncedSearch) {
-      setSearchItems([]);
-      setSearchLoading(false);
-      setSearchError(false);
-      return;
-    }
-
-    let cancelled = false;
-    setSearchLoading(true);
-    setSearchError(false);
-
-    const params = new URLSearchParams({ limit: '60', offset: '0', search: debouncedSearch });
-    apiFetch(`/api/buyer/catalog?${params.toString()}`)
-      .then((response) => response.json() as Promise<{ items?: BuyerCatalogItem[] }>)
-      .then((data) => {
-        if (!cancelled) setSearchItems(data.items ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setSearchError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setSearchLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [debouncedSearch, stockSignature]);
 
   const isSearching = debouncedSearch.length > 0;
 
@@ -99,6 +79,9 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
             error={searchError}
             items={searchItems}
             query={debouncedSearch}
+            loadingMore={searchLoadingMore}
+            sentinelIndex={searchSentinelIndex}
+            sentinelRef={searchSentinelRef}
           />
         ) : loading ? (
           <LandingBodySkeleton />
@@ -110,8 +93,8 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
           <>
             {catalogs.length > 0 ? (
               <section className="pt-10">
-                <SectionRow title="Campaigns" href="/buy/promotions" linkLabel="See all" />
-                <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-none">
+                <BuyerSectionRow title="Campaigns" href="/buy/promotions" linkLabel="See all" className="px-1 pb-3" />
+                <BuyerHorizontalScroll className="gap-3 px-1">
                   {catalogs.map((c, idx) => (
                     <CatalogLookbookCard
                       key={c.id}
@@ -124,32 +107,33 @@ export function CatalogDiscoveryLanding(): React.ReactNode {
                       hueIndex={idx}
                     />
                   ))}
-                </div>
+                </BuyerHorizontalScroll>
               </section>
             ) : null}
 
             {brands.length > 0 ? (
               <section className="pt-10">
-                <SectionRow title="Brands" />
-                <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1 scrollbar-none">
+                <BuyerSectionRow title="Brands" className="px-1 pb-3" />
+                <BuyerHorizontalScroll className="items-stretch gap-2 px-1">
                   {brands.slice(0, 24).map((b) => (
                     <DiscoveryThumbTile
                       key={b.id}
                       href={`/buy/catalog/brand/${b.id}`}
                       label={b.name}
                       imageUrl={b.logo_url}
+                      subtitle={b.product_count != null ? formatProductCount(b.product_count) : undefined}
                       entityKind="brand"
                       variant="scroll"
                       onNavigate={() => markBuyerNavigationForward()}
                     />
                   ))}
-                </div>
+                </BuyerHorizontalScroll>
               </section>
             ) : null}
 
             {categories.length > 0 ? (
               <section className="pt-10 pb-4">
-                <SectionRow title="Categories" />
+                <BuyerSectionRow title="Categories" className="px-1 pb-3" />
                 <div className="grid grid-cols-3 gap-2">
                   {categories.map((cat) => (
                     <DiscoveryThumbTile
@@ -177,11 +161,17 @@ function CatalogSearchResults({
   error,
   items,
   query,
+  loadingMore = false,
+  sentinelIndex = -1,
+  sentinelRef,
 }: {
   loading: boolean;
   error: boolean;
   items: BuyerCatalogItem[];
   query: string;
+  loadingMore?: boolean;
+  sentinelIndex?: number;
+  sentinelRef?: React.RefObject<HTMLDivElement>;
 }): React.ReactNode {
   if (loading) {
     return (
@@ -206,45 +196,13 @@ function CatalogSearchResults({
   }
   return (
     <section className="pt-3 pb-4">
-      <ProductGrid items={items} />
+      <ProductGrid
+        items={items}
+        loadingMore={loadingMore}
+        sentinelIndex={sentinelIndex}
+        sentinelRef={sentinelRef}
+      />
     </section>
-  );
-}
-
-function SectionRow({
-  title,
-  href,
-  linkLabel,
-}: {
-  title: string;
-  href?: string;
-  linkLabel?: string;
-}) {
-  return (
-    <div className="mb-3 flex items-center justify-between px-1">
-      <h2
-        className="leading-none text-[var(--cream-900)]"
-        style={{
-          fontFamily: 'var(--font-display)',
-          fontSize: 'var(--b-text-section)',
-          fontWeight: 500,
-          letterSpacing: '-0.005em',
-        }}
-      >
-        {title}
-      </h2>
-      {href ? (
-        <Link
-          href={href}
-          onClick={() => markBuyerNavigationForward()}
-          className="inline-flex items-center gap-1.5 font-medium tracking-[-0.01em] text-[var(--teal-500)] no-underline"
-          style={{ fontSize: 'var(--b-text-label)' }}
-        >
-          {linkLabel ?? 'See all'}
-          <ChevronRight className="h-4 w-4" />
-        </Link>
-      ) : null}
-    </div>
   );
 }
 
@@ -253,22 +211,31 @@ function LandingBodySkeleton(): React.ReactNode {
     <div className="space-y-10 pt-10" role="status" aria-label="Loading catalog">
       <section>
         <div className="mb-3 h-5 w-28 animate-pulse rounded bg-cream-200" />
-        <div className="-mx-1 flex gap-2 overflow-hidden px-1">
+        <div className="flex gap-3 overflow-hidden px-1">
           {Array.from({ length: 2 }).map((_, i) => (
-            <div key={i} className="w-[200px] shrink-0 overflow-hidden rounded-xl border border-cream-200">
-              <div className="h-[220px] animate-pulse bg-cream-100" />
-              <div className="h-10 animate-pulse bg-cream-50" />
+            <div key={i} className={cn('w-[280px] shrink-0 overflow-hidden border border-cream-200', BUYER_CARD_RADIUS_CLASS)}>
+              <div className="buyer-lookbook-preview w-full animate-pulse bg-cream-100" />
+              <div className="space-y-2 bg-white px-5 py-4">
+                <div className="h-5 w-3/4 animate-pulse rounded bg-cream-200" />
+                <div className="h-4 w-full animate-pulse rounded bg-cream-200" />
+              </div>
             </div>
           ))}
         </div>
       </section>
       <section>
         <div className="mb-3 h-5 w-20 animate-pulse rounded bg-cream-200" />
-        <div className="-mx-1 flex gap-3 overflow-hidden px-1">
+        <div className="-mx-1 flex gap-2 overflow-hidden px-1">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="w-[88px] shrink-0">
-              <div className="mx-auto h-[72px] w-[72px] animate-pulse rounded-xl bg-cream-100" />
-              <div className="mx-auto mt-2 h-3 w-14 animate-pulse rounded bg-cream-200" />
+            <div
+              key={i}
+              className={cn('w-[calc((100vw-2.5rem)/3)] max-w-[124px] shrink-0 overflow-hidden border border-cream-200 bg-[var(--bg-surface)] shadow-[0_1px_3px_rgba(34,30,26,0.06),0_4px_12px_rgba(34,30,26,0.05)]', BUYER_CARD_RADIUS_CLASS)}
+            >
+              <div className="aspect-square animate-pulse bg-cream-100" />
+              <div className="bg-cream-50 px-3 pb-3 pt-2.5">
+                <div className="h-3.5 w-16 animate-pulse rounded bg-cream-200" />
+                <div className="mt-1.5 h-3 w-12 animate-pulse rounded bg-cream-200" />
+              </div>
             </div>
           ))}
         </div>
@@ -279,7 +246,7 @@ function LandingBodySkeleton(): React.ReactNode {
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
-              className="overflow-hidden rounded-xl border border-cream-200 bg-[var(--bg-surface)] shadow-[0_1px_3px_rgba(34,30,26,0.06),0_4px_12px_rgba(34,30,26,0.05)]"
+              className={cn('overflow-hidden border border-cream-200 bg-[var(--bg-surface)] shadow-[0_1px_3px_rgba(34,30,26,0.06),0_4px_12px_rgba(34,30,26,0.05)]', BUYER_CARD_RADIUS_CLASS)}
             >
               <div className="aspect-square animate-pulse bg-cream-100" />
               <div className="bg-cream-50 px-3 pb-3 pt-2.5">

@@ -63,7 +63,7 @@ function RowIcon({
       : 'bg-cream-100 text-cream-700';
 
   return (
-    <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${toneClasses}`}>
+    <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] ${toneClasses}`}>
       {icon}
     </div>
   );
@@ -362,16 +362,16 @@ function CreditLimitSheet({
             <Spinner size="lg" />
           </div>
         ) : invoicesQuery.isError ? (
-          <div className="rounded-[22px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-700">
+          <div className="rounded-[12px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-700">
             Couldn&apos;t load unpaid invoices right now.
           </div>
         ) : invoices.length === 0 ? (
-          <div className="rounded-[22px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-700">
+          <div className="rounded-[12px] border border-cream-200 bg-white px-4 py-5 text-sm text-cream-700">
             No unpaid invoices are contributing to your credit usage right now.
           </div>
         ) : (
           invoices.map((invoice) => (
-            <div key={invoice.id} className="rounded-[22px] border border-cream-200 bg-white px-4 py-4">
+            <div key={invoice.id} className="rounded-[12px] border border-cream-200 bg-white px-4 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-base font-semibold text-cream-900">{invoice.invoice_number}</p>
@@ -489,7 +489,7 @@ export default function ProfilePage() {
   if (isError) {
     return (
       <div className="p-4">
-        <div className="rounded-2xl border border-cream-200 bg-cream-50 px-4 py-5 text-sm text-cream-700">
+        <div className="rounded-[12px] border border-cream-200 bg-cream-50 px-4 py-5 text-sm text-cream-700">
           Couldn&apos;t load your profile right now.
         </div>
       </div>
@@ -521,7 +521,7 @@ export default function ProfilePage() {
 
       {sellerPreview ? (
         <div className="px-4 pt-3">
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div className="rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             Previewing as seller. Buyers see their account details and credit summary here.
           </div>
         </div>
@@ -529,7 +529,7 @@ export default function ProfilePage() {
 
       <div className="px-4 pt-5">
         <p className="px-2 font-semibold uppercase text-cream-600" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.18em' }}>Account</p>
-        <div className="mt-3 overflow-hidden rounded-[24px] border border-cream-200 bg-white">
+        <div className="mt-3 overflow-hidden rounded-[12px] border border-cream-200 bg-white">
           <div className="border-b border-cream-200">
             <AccountRow
               icon={<BriefcaseBusiness className="h-5 w-5" />}
@@ -563,7 +563,7 @@ export default function ProfilePage() {
       </div>
 
       <div className="space-y-3 px-4 pt-5">
-        <div className="overflow-hidden rounded-[24px] border border-cream-200 bg-white">
+        <div className="overflow-hidden rounded-[12px] border border-cream-200 bg-white">
           <AccountRow
             icon={<HelpCircle className="h-5 w-5" />}
             title="Help & Support"
@@ -573,7 +573,7 @@ export default function ProfilePage() {
           />
         </div>
 
-        <div className="overflow-hidden rounded-[24px] border border-cream-200 bg-white">
+        <div className="overflow-hidden rounded-[12px] border border-cream-200 bg-white">
           <AccountRow
             icon={<LogOut className="h-5 w-5" />}
             tone="danger"

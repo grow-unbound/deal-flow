@@ -24,6 +24,7 @@ import { useWarehousesLanding } from '@/hooks/useWarehouses';
 import { formatDate } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import type { WarehousesLandingResponse, WarehouseStockStatus } from '@/types/tenant-warehouses';
+import { WarehousesLandingSkeleton as SharedWarehousesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'Tracked SKUs (high → low)' | 'Sellable units (high → low)' | 'Idle stock SKUs (high → low)';
 
@@ -153,7 +154,7 @@ export function WarehousesLandingClient({
     return rows;
   }, [data?.warehouses, routeState.sortBy]);
 
-  if (isLoading && !data) return <WarehousesLandingSkeleton />;
+  if (isLoading && !data) return <SharedWarehousesLandingSkeleton />;
   if (isError && !data) {
     return (
       <PageWrap>
@@ -165,7 +166,7 @@ export function WarehousesLandingClient({
       </PageWrap>
     );
   }
-  if (!data) return <WarehousesLandingSkeleton />;
+  if (!data) return <SharedWarehousesLandingSkeleton />;
 
   return (
     <PageWrap>

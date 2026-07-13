@@ -11,7 +11,7 @@ export default function CheckoutLoading() {
       {/* Scrollable body */}
       <div className="flex-1 px-4 py-4 space-y-3 overflow-y-auto">
         {/* Cart items card */}
-        <div className="animate-pulse rounded-xl border border-cream-200 bg-cream-50 p-4 space-y-3">
+        <div className="animate-pulse rounded-[12px] border border-cream-200 bg-cream-50 p-4 space-y-3">
           <div className="h-4 w-28 rounded bg-cream-200" />
           <div className="space-y-2">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -28,10 +28,10 @@ export default function CheckoutLoading() {
         </div>
 
         {/* Notes textarea */}
-        <div className="h-24 animate-pulse rounded-xl border border-cream-200 bg-cream-100" />
+        <div className="h-24 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
 
         {/* Delivery location card */}
-        <div className="animate-pulse rounded-xl border border-cream-200 bg-cream-50 p-4">
+        <div className="animate-pulse rounded-[12px] border border-cream-200 bg-cream-50 p-4">
           <div className="mb-2 h-3 w-20 rounded bg-cream-200" />
           <div className="h-4 w-44 rounded bg-cream-200" />
           <div className="mt-2 h-3 w-28 rounded bg-cream-200" />

@@ -10,6 +10,7 @@ import { BuyerTransactionCardSkeleton } from './BuyerTransactionCardSkeleton';
 import { ErrorState } from '@/components/ui/empty-state';
 import { useBuyerEstimatesInfinite } from '@/hooks/useEstimates';
 import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { BUYER_INFINITE_SCROLL_RATIO } from '@/lib/buyer-ui';
 import {
   matchesEstimateStatusChip,
   type BuyerEstimateStatusChip,
@@ -69,7 +70,7 @@ export function EnquiriesTab({
     });
   }, [allEstimates, q, statusFilter]);
 
-  const sentinelIndex = getSentinelInsertIndex(visibleEstimates.length);
+  const sentinelIndex = getSentinelInsertIndex(visibleEstimates.length, BUYER_INFINITE_SCROLL_RATIO);
   const { sentinelRef } = useInfiniteScroll({
     hasMore: hasNextPage ?? false,
     isLoading: isFetchingNextPage,

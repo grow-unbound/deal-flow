@@ -10,17 +10,17 @@ export default function HomeLoading() {
       </div>
 
       <div className="grid grid-cols-2 gap-2.5 px-3 pt-3">
-        <div className="col-span-2 rounded-[24px] border border-cream-200 bg-cream-100 px-5 py-5">
+        <div className="col-span-2 rounded-[12px] border border-cream-200 bg-cream-100 px-5 py-5">
           <div className="h-3 w-28 animate-pulse rounded bg-cream-200" />
           <div className="mt-3 h-10 w-44 animate-pulse rounded bg-cream-200" />
           <div className="mt-3 h-4 w-40 animate-pulse rounded bg-cream-200" />
         </div>
-        <div className="rounded-[22px] border border-cream-200 bg-cream-100 px-4 py-5">
+        <div className="rounded-[12px] border border-cream-200 bg-cream-100 px-4 py-5">
           <div className="h-3 w-24 animate-pulse rounded bg-cream-200" />
           <div className="mt-3 h-8 w-24 animate-pulse rounded bg-cream-200" />
           <div className="mt-3 h-4 w-36 animate-pulse rounded bg-cream-200" />
         </div>
-        <div className="rounded-[22px] border border-cream-200 bg-cream-100 px-4 py-5">
+        <div className="rounded-[12px] border border-cream-200 bg-cream-100 px-4 py-5">
           <div className="h-3 w-24 animate-pulse rounded bg-cream-200" />
           <div className="mt-3 h-8 w-24 animate-pulse rounded bg-cream-200" />
           <div className="mt-3 h-4 w-36 animate-pulse rounded bg-cream-200" />
@@ -34,7 +34,7 @@ export default function HomeLoading() {
         </div>
         <div className="flex gap-3 overflow-hidden px-4">
           {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="w-[178px] shrink-0 overflow-hidden rounded-[28px] border border-cream-200 bg-cream-100">
+            <div key={index} className="w-[178px] shrink-0 overflow-hidden rounded-[12px] border border-cream-200 bg-cream-100">
               <div className="h-[220px] animate-pulse bg-cream-100" />
               <div className="space-y-2 px-4 py-4">
                 <div className="h-4 w-3/4 animate-pulse rounded bg-cream-200" />
@@ -52,13 +52,13 @@ export default function HomeLoading() {
         </div>
         <div className="flex gap-3 overflow-hidden px-4">
           {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="w-[280px] shrink-0 overflow-hidden rounded-[28px] border border-cream-200 bg-cream-100">
-              <div className="h-[170px] animate-pulse bg-cream-100" />
-              <div className="space-y-2 px-6 py-4">
-                <div className="h-4 w-3/4 animate-pulse rounded bg-cream-200" />
-                <div className="h-4 w-1/2 animate-pulse rounded bg-cream-200" />
+            <div key={index} className="w-[280px] shrink-0 overflow-hidden rounded-[12px] border border-cream-200 bg-cream-100">
+                <div className="aspect-[19/10] w-full animate-pulse bg-cream-100" />
+                <div className="space-y-2 bg-white px-5 py-4">
+                  <div className="h-5 w-3/4 animate-pulse rounded bg-cream-200" />
+                  <div className="h-4 w-full animate-pulse rounded bg-cream-200" />
+                </div>
               </div>
-            </div>
           ))}
         </div>
       </div>
