@@ -74,8 +74,9 @@ async function enqueueWhatsappTemplate(
   ctx: EnqueueTemplateContext,
 ): Promise<boolean> {
   const destination = formatWhatsappDestination(to);
-  if (!destination) return false;
-
+  if (!destination) {
+    return false;
+  }
   const result = await enqueueWhatsAppMessage({
     tenantId: ctx.tenantId,
     buyerId: ctx.buyerId ?? null,
@@ -88,7 +89,9 @@ async function enqueueWhatsappTemplate(
   });
 
   if (result.skipped === 'duplicate') return true;
-  if (!result.enqueued || !result.messageId) return false;
+  if (!result.enqueued || !result.messageId) {
+    return false;
+  }
 
   const dispatch = await triggerWhatsAppDispatch([result.messageId]);
   return Boolean(dispatch?.ok && dispatch.dispatched > 0);
@@ -146,7 +149,7 @@ export async function sendOrderReceivedBuyer(
       { text: String(itemCount), parameterName: 'item_count' },
       { text: orderNumber, parameterName: 'order_number' },
       { text: formatWhatsappInrAmount(totalAmount), parameterName: 'total_amount' },
-      { text: ctx.buyerFacingSellerName, parameterName: 'seller_team' },
+      { text: ctx.buyerFacingSellerName, parameterName: 'seller_name' },
       { text: String(ctx.etaHours), parameterName: 'eta' },
     ],
     orderId,

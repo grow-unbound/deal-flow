@@ -75,9 +75,9 @@ EXECUTE FUNCTION app.arm_sync_coordinator_crons();
 -- fires a Realtime notification and releases the row lock so the next tick
 -- sees updated status without waiting for this call to finish.
 --
--- rebuild_metrics_for_tenant_range has SET statement_timeout TO '0' in its
--- SECURITY DEFINER header, so it runs without any external timeout regardless
--- of what pg_cron's session inherits.
+-- rebuild_metrics_for_tenant_range has SET statement_timeout TO '10min' in
+-- its SECURITY DEFINER header and rejects ranges over 90 days, so a single
+-- repair call is bounded regardless of what pg_cron's session inherits.
 CREATE OR REPLACE PROCEDURE app.tick_repair_jobs()
 LANGUAGE plpgsql
 AS $$

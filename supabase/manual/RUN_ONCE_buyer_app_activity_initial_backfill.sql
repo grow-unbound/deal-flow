@@ -1,0 +1,36 @@
+-- ═══════════════════════════════════════════════════════════════════════
+-- MANUAL, ONE-TIME — NOT part of the auto-applied migration chain.
+--
+-- WHEN TO RUN: once per tenant, right after that tenant's initial Zoho
+-- sync completes (same trigger point as the search-vector backfill).
+--
+-- WHY THIS EXISTS: app.rebuild_buyer_app_activity_for_tenant is capped at
+-- 90 days max (no unbounded/365-day scans — see
+-- 20260709000001_prod_bootstrap.sql) and, in its automatic post-sync path
+-- (app.post_sync_rebuild), is scoped to rows changed since the last call —
+-- correct and cheap for steady state, but it means buyer-app activity
+-- older than 90 days (or predating the "changed since" watermark on a
+-- brand-new tenant) never gets built automatically. This file does that
+-- one-time full build explicitly, once, under supervision — not silently,
+-- not on a recurring schedule.
+--
+-- p_days is capped at 90 by the function itself regardless of what's passed
+-- here — if a tenant genuinely needs buyer-app activity reconstructed
+-- further back than 90 days, run this multiple times is not the fix; that's
+-- a deliberate product decision (how far back does "recent activity"
+-- meaningfully go for a re-order feature), not a default anyone should
+-- silently opt into by passing a huge number.
+--
+-- HOW TO RUN: via `supabase db query`, the Supabase SQL editor, or
+-- execute_sql — NOT `supabase db push`.
+--
+-- MONITORING: run per-tenant, not as one blind loop over all tenants, so
+-- you can watch each one complete before starting the next:
+--   SELECT count(*) FROM app.buyer_app_activity WHERE tenant_id = '<tenant_id>';
+--   SELECT query, state, now() - query_start AS running_for
+--     FROM pg_stat_activity WHERE query ILIKE '%rebuild_buyer_app_activity_for_tenant%';
+-- ═══════════════════════════════════════════════════════════════════════
+
+-- Replace with the actual tenant id before running.
+SELECT app.rebuild_buyer_app_activity_for_tenant('<tenant_id>'::uuid, 90);
+SELECT app.refresh_buyer_app_snapshot('<tenant_id>'::uuid);

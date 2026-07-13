@@ -28,7 +28,8 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_catalog.pg_extension WHERE extname = 'pg_cron') THEN
     IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'cron-job-run-details-purge') THEN
-      PERFORM cron.schedule('cron-job-run-details-purge', '0 3 * * *', 'SELECT app.purge_cron_job_run_details()');
+      -- 20:00 UTC = 01:30 IST — after reco-popularity-daily (01:00 IST), 30min gap.
+      PERFORM cron.schedule('cron-job-run-details-purge', '0 20 * * *', 'SELECT app.purge_cron_job_run_details()');
     END IF;
   END IF;
 END;

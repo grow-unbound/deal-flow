@@ -16,9 +16,6 @@
 --    catalog.integration_types is excluded (migration-owned reference data).
 -- ──────────────────────────────────────────────────────────────
 
-UPDATE app.tenant_brands SET default_cohort_id = NULL WHERE default_cohort_id IS NOT NULL;
-UPDATE app.buyers SET default_cohort_id = NULL WHERE default_cohort_id IS NOT NULL;
-
 TRUNCATE
   app.whatsapp_credit_transactions,
   app.whatsapp_send_queue,
@@ -142,9 +139,9 @@ INSERT INTO auth.users (
   'santosh.phani@gmail.com',
   crypt('Welcome@123', gen_salt('bf')),
   now(),
-  '9490744841', now(),
+  '9441479686', now(),
   '{"provider":"phone","providers":["email","phone"]}',
-  '{"name":"Phani Seller"}',
+  '{"name":"Phani Seller","phone":"9441479686"}',
   now(), now(), '', '', '', ''
 ),
 -- Buyer: Phani Buyer
@@ -155,7 +152,7 @@ INSERT INTO auth.users (
   'ksssp.iiith@gmail.com',
   crypt('Welcome@123', gen_salt('bf')),
   now(),
-  '8985987350', now(),
+  '9440369497', now(),
   '{"provider":"phone","providers":["email","phone"]}',
   '{"name":"Phani Buyer"}',
   now(), now(), '', '', '', ''
@@ -203,24 +200,24 @@ INSERT INTO auth.identities (
 ) VALUES
 (
   gen_random_uuid(),
-  '9490744841',
+  '9441479686',
   '550e8400-e29b-41d4-a716-446655440701'::uuid,
   'phone',
   jsonb_build_object(
     'sub',           '550e8400-e29b-41d4-a716-446655440701',
-    'phone',         '9490744841',
+    'phone',         '9441479686',
     'phone_verified', true
   ),
   now(), now(), now()
 ),
 (
   gen_random_uuid(),
-  '8985987350',
+  '9440369497',
   '550e8400-e29b-41d4-a716-446655440702'::uuid,
   'phone',
   jsonb_build_object(
     'sub',           '550e8400-e29b-41d4-a716-446655440702',
-    'phone',         '8985987350',
+    'phone',         '9440369497',
     'phone_verified', true
   ),
   now(), now(), now()
@@ -429,7 +426,7 @@ INSERT INTO app.tenants (id, slug, business_name, subdomain, gstin, primary_stat
 VALUES (
   '550e8400-e29b-41d4-a716-446655440500'::uuid,
   'platform-tenant', 'Platform Tenant', 'platform',
-  NULL, 'KA', 'enterprise', 99999
+  NULL, 'KA', 'scale', 99999
 );
 
 INSERT INTO app.tenants (id, slug, business_name, subdomain, gstin, primary_state, plan)
@@ -440,11 +437,11 @@ VALUES (
 );
 
 -- Link Phani Seller as seller_admin
-INSERT INTO app.tenant_users (tenant_id, user_id, role, is_active, joined_at)
+INSERT INTO app.tenant_users (tenant_id, user_id, role, is_active, joined_at, phone)
 VALUES (
   '550e8400-e29b-41d4-a716-446655440501'::uuid,
   '550e8400-e29b-41d4-a716-446655440701'::uuid,
-  'seller_admin', true, now()
+  'seller_admin', true, now(), '9441479686'
 );
 
 INSERT INTO app.tenant_settings (tenant_id, settings, updated_by)
@@ -596,20 +593,20 @@ WHERE p.is_public = true;
 -- ──────────────────────────────────────────────────────────────
 
 INSERT INTO app.buyers (
-  id, tenant_id, business_name, contact_name, phone, email, gstin, geography, tier, is_active
+  id, tenant_id, business_name, contact_name, phone, email, gstin, geography, tier, is_active, buyer_app_enabled
 ) VALUES
 ('550e8400-e29b-41d4-a716-446655440601'::uuid, '550e8400-e29b-41d4-a716-446655440501'::uuid,
  'Kumar Electronics',   'Rajesh Kumar', '9123456789', 'rajesh@kumarelectronics.com',
- '36AABCT5678H1Z5', '{"city":"Hyderabad","state":"TS"}', 'A', true),
+ '36AABCT5678H1Z5', '{"city":"Hyderabad","state":"TS"}', 'A', true, true),
 ('550e8400-e29b-41d4-a716-446655440602'::uuid, '550e8400-e29b-41d4-a716-446655440501'::uuid,
  'Singh Mobile Store',  'Priya Singh',  '9876541234', 'priya@singhmobilestore.com',
- '07AABDM1234H1Z2', '{"city":"Delhi","state":"DL"}',     'B', true),
+ '07AABDM1234H1Z2', '{"city":"Delhi","state":"DL"}',     'B', true, true),
 ('550e8400-e29b-41d4-a716-446655440603'::uuid, '550e8400-e29b-41d4-a716-446655440501'::uuid,
  'Patel Tech Hub',      'Amit Patel',   '9123454567', 'amit@pateltech.com',
- '27AABDU5432H1Z8', '{"city":"Mumbai","state":"MH"}',    'C', true),
+ '27AABDU5432H1Z8', '{"city":"Mumbai","state":"MH"}',    'C', true, true),
 ('550e8400-e29b-41d4-a716-446655440604'::uuid, '550e8400-e29b-41d4-a716-446655440501'::uuid,
- 'Phani Mobiles',       'Phani Buyer',  '8985987350',  'ksssp.iiith@gmail.com',
- NULL,              '{"city":"Hyderabad","state":"TS"}',  'C', true);
+ 'Phani Mobiles',       'Phani Buyer',  '9440369497',  'ksssp.iiith@gmail.com',
+ NULL,              '{"city":"Hyderabad","state":"TS"}',  'C', true, true);
 
 -- Link Phani Buyer auth user → Phani Mobiles buyer record
 INSERT INTO app.buyer_users (buyer_id, user_id, role, is_active)
@@ -715,8 +712,8 @@ INSERT INTO app.whatsapp_templates (
 ),
 (
   NULL, 'order_received_buyer', 'utility', 'order_notification', 'en_IN',
-  E'Hi {{buyer_name}},\n\nWe received your order for *{{item_count}} items*. Here are your details.\n\nOrder Number: *{{order_number}}*\nTotal Amount: *₹{{total_amount}}*\n\nOur {{seller_team}} team will contact you in {{eta}} hours.',
-  '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"item_count","description":"Number of line items"},{"key":"order_number","description":"Order reference number"},{"key":"total_amount","description":"Order total in INR"},{"key":"seller_team","description":"Seller business name"},{"key":"eta","description":"Expected response time in hours"}]'::jsonb,
+  E'Hi {{buyer_name}},\n\nWe received your order for *{{item_count}} items*. Here are your details.\n\nOrder Number: *{{order_number}}*\nTotal Amount: *₹{{total_amount}}*\n\nOur {{seller_name}} team will contact you in {{eta}} hours.',
+  '[{"key":"buyer_name","description":"Buyer contact or business name"},{"key":"item_count","description":"Number of line items"},{"key":"order_number","description":"Order reference number"},{"key":"total_amount","description":"Order total in INR"},{"key":"seller_name","description":"Seller business name"},{"key":"eta","description":"Expected response time in hours"}]'::jsonb,
   '{"type":"url","url_template":"https://app.useyukti.in/buy/sales-orders/{{1}}","variable_source":"order_id"}'::jsonb,
   '{"format":"text","text":"Order received"}'::jsonb, 'Powered by Yukti',
   '[{"type":"url","index":"0","url_template":"https://app.useyukti.in/buy/sales-orders/{{1}}","variable_source":"order_id"}]'::jsonb,
@@ -747,6 +744,15 @@ INSERT INTO app.whatsapp_templates (
   '{"type":"url","url_template":"https://app.useyukti.in/buy/orders"}'::jsonb,
   '{"format":"text","text":"Payment reminder"}'::jsonb, 'Powered by Yukti',
   '[{"type":"url","index":"0","url_template":"https://app.useyukti.in/buy/orders"}]'::jsonb,
+  'approved', true, true
+),
+(
+  NULL, 'campaign_published_buyer', 'utility', 'payment_reminder', 'en',
+  E'Hi {{buyer_name}},\n\n{{seller_name}} has a new campaign live - *{{campaign_title}}*.\n\n*{{buyer_note}}*\nContact: {{seller_phone_number}} for more details.\n\nCheck it out and order in the app.',
+  '[{"key":"buyer_name","description":"Buyer contact or business name"}, {"key":"seller_name","description":"Seller business name"}, {"key":"campaign_title","description":"Campaign title"}, {"key":"buyer_note","description":"Seller note to buyers about the campaign"},{"key":"seller_phone_number","description":"Seller phone number"}]'::jsonb,
+  '[{"type":"url", "index":"0", "url_template":"https://app.useyukti.in/catalog?share_toke={{1}}","variable_source":"share_token"}, {"type":"QUICK_REPLY","index":"1","text":"Opt out"}]'::jsonb,
+  '{"format":"text","text":"New promotion live"}'::jsonb, 'Powered by Yukti',
+  '[{"type":"url","index":"0","url_template":"https://app.useyukti.in/catalog?share_toke={{1}}","variable_source":"share_token"}, {"type":"QUICK_REPLY","index":"1","text":"Opt out"}]'::jsonb,
   'approved', true, true
 )
 ON CONFLICT (tenant_id, meta_template_name) DO UPDATE SET

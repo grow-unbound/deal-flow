@@ -233,7 +233,11 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_catalog.pg_extension WHERE extname = 'pg_cron') THEN
     IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'sync-cron-idle-sweep') THEN
-      PERFORM cron.schedule('sync-cron-idle-sweep', '*/15 * * * *', 'SELECT app.sync_cron_idle_sweep()');
+      -- Hourly, not every 15 min: this is a backstop for a reaper/repair-tick
+      -- that died before self-disarming (e.g. a deploy restart mid-run) — a
+      -- rare failure mode. Hourly still catches a stuck-armed cron well
+      -- within an operationally-relevant window, at 4x less baseline cost.
+      PERFORM cron.schedule('sync-cron-idle-sweep', '0 * * * *', 'SELECT app.sync_cron_idle_sweep()');
     END IF;
 
     -- Both hot-path crons start disarmed — the trigger above re-arms them
