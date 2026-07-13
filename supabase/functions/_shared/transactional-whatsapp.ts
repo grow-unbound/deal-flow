@@ -97,7 +97,7 @@ async function enqueueWhatsAppMessage(
     relatedEntityType: 'estimates' | 'orders';
     relatedEntityId: string;
   },
-): Promise<{ enqueued: boolean; skipped?: string }> {
+): Promise<{ messageId: string | null; enqueued: boolean; skipped?: string }> {
   const { data, error } = await admin.schema('app').rpc('enqueue_whatsapp_message', {
     p_tenant_id: input.tenantId,
     p_buyer_id: input.buyerId,
@@ -111,14 +111,46 @@ async function enqueueWhatsAppMessage(
 
   if (error) {
     console.error('[transactional-whatsapp] enqueue failed:', error.message);
-    return { enqueued: false };
+    return { messageId: null, enqueued: false };
   }
 
-  const result = (data ?? null) as { enqueued?: boolean; skipped?: string } | null;
+  const result = (data ?? null) as { message_id?: string | null; enqueued?: boolean; skipped?: string } | null;
   return {
+    messageId: result?.message_id ?? null,
     enqueued: result?.enqueued === true,
     skipped: result?.skipped,
   };
+}
+
+async function dispatchWhatsAppMessages(messageIds: Array<string | null | undefined>): Promise<boolean> {
+  const ids = [...new Set(messageIds.filter((id): id is string => Boolean(id)))];
+  if (ids.length === 0) return false;
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')?.replace(/\/$/, '');
+  if (!supabaseUrl) {
+    console.error('[transactional-whatsapp] missing SUPABASE_URL for dispatch');
+    return false;
+  }
+
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/whatsapp-dispatch-worker`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message_ids: ids }),
+    });
+
+    const text = await res.text();
+    if (!res.ok) {
+      console.error('[transactional-whatsapp] dispatch failed:', res.status, text);
+      return false;
+    }
+
+    const result = text ? JSON.parse(text) as { dispatched?: number } : null;
+    return (result?.dispatched ?? 0) > 0;
+  } catch (err) {
+    console.error('[transactional-whatsapp] dispatch errored:', err);
+    return false;
+  }
 }
 
 export async function sendTransactionalAcknowledgement(
@@ -274,12 +306,14 @@ export async function sendTransactionalAcknowledgement(
     }),
   ]);
 
-  const acknowledged = [buyerEnqueue, sellerEnqueue].some((result) => result.enqueued || result.skipped === 'duplicate');
+  const dispatched = await dispatchWhatsAppMessages([
+    buyerEnqueue.messageId,
+    sellerEnqueue.messageId,
+  ]);
+  const acknowledged = dispatched
+    || [buyerEnqueue, sellerEnqueue].some((result) => result.skipped === 'duplicate');
   if (!acknowledged) return;
 
-  // Dispatch is fired by the DB trigger on app.whatsapp_send_queue
-  // (priority=1 rows) as soon as each enqueue RPC call above commits — no
-  // app-side kick needed here.
   await admin
     .schema('app')
     .from(table)

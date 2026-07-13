@@ -183,11 +183,13 @@ export async function POST(request: NextRequest) {
       scheduledSendAt: input.scheduled_for ?? null,
     });
 
+    const messageIds: string[] = [];
     for (const queueInput of queueInputs) {
       const result = await enqueueWhatsAppMessage(queueInput);
       if (!result.enqueued) {
         throw new Error('Failed to enqueue one or more broadcast messages');
       }
+      if (result.messageId) messageIds.push(result.messageId);
     }
 
     await db
@@ -201,7 +203,7 @@ export async function POST(request: NextRequest) {
       .eq('id', broadcast.id);
 
     if (!input.scheduled_for) {
-      triggerWhatsAppDispatch();
+      await triggerWhatsAppDispatch(messageIds);
     }
 
     return NextResponse.json({
