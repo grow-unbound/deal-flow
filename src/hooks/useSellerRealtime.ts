@@ -74,8 +74,13 @@ export function useSellerRealtime({ tenantId, locationIds, onNew, onPatch }: Use
   const [newEntityIds, setNewEntityIds] = useState<Map<string, 'new'>>(new Map());
   const onNewRef = useRef(onNew);
   const onPatchRef = useRef(onPatch);
+  const locationIdsRef = useRef(locationIds);
   onNewRef.current = onNew;
   onPatchRef.current = onPatch;
+  locationIdsRef.current = locationIds;
+
+  const locationIdsKey =
+    locationIds && locationIds.length > 0 ? [...locationIds].sort().join(',') : '';
 
   const markSeen = useCallback((entityId: string) => {
     setNewEntityIds((prev) => {
@@ -90,7 +95,7 @@ export function useSellerRealtime({ tenantId, locationIds, onNew, onPatch }: Use
     if (!tenantId) return;
 
     const handleEstimateReady = (record: Record<string, unknown>, isUpdate: boolean) => {
-      if (!passesLocationFilter(record, locationIds)) return;
+      if (!passesLocationFilter(record, locationIdsRef.current)) return;
       const notification = buildEstimateNotification(record);
       if (!notification) return;
 
@@ -109,7 +114,7 @@ export function useSellerRealtime({ tenantId, locationIds, onNew, onPatch }: Use
     };
 
     const handleOrderReady = (record: Record<string, unknown>, isUpdate: boolean) => {
-      if (!passesLocationFilter(record, locationIds)) return;
+      if (!passesLocationFilter(record, locationIdsRef.current)) return;
       const notification = buildOrderNotification(record);
       if (!notification) return;
 
@@ -167,7 +172,7 @@ export function useSellerRealtime({ tenantId, locationIds, onNew, onPatch }: Use
     return () => {
       void supabaseBrowser.removeChannel(channel);
     };
-  }, [tenantId, locationIds, queryClient]);
+  }, [tenantId, locationIdsKey, queryClient]);
 
   return { newEntityIds, markSeen };
 }

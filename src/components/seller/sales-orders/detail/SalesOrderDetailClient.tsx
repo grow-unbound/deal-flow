@@ -10,7 +10,7 @@ import { FeatureDisabledState } from '@/components/FeatureGate';
 import { PermissionDenied } from '@/components/auth/PermissionDenied';
 import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
 import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasicsStrip';
-import { DocumentComposerLoadingSkeleton, DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
+import { DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
 import {
   BuyerCardFilled,
   DocumentMetaCard,
@@ -50,6 +50,7 @@ import { defaultPaymentTerms } from '@/lib/documents/composer-math';
 import { formatCompactInr } from '@/lib/utils';
 import type { SalesOrderUiStatus } from '@/types/tenant-sales-orders';
 import type { EstimateComposerProductSearchRow } from '@/types/estimate-composer';
+import { DocumentComposerLoadingSkeleton as SharedDocumentComposerLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 import { ModalCancelOrder } from './ModalCancelOrder';
 import { ModalDispatch } from './ModalDispatch';
@@ -168,7 +169,7 @@ export function SalesOrderDetailClient({ id }: { id: string }) {
   }
 
   if (isLoading) {
-    return <DocumentComposerLoadingSkeleton />;
+    return <SharedDocumentComposerLoadingSkeleton />;
   }
 
   if (isError) {

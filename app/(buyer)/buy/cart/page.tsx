@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { ShoppingCart, Trash2, Minus, Plus, Package, ChevronLeft, MapPin, ChevronRight, Check } from 'lucide-react';
+import { useMutation } from '@tanstack/react-query';
+import { ShoppingCart, Trash2, Minus, Plus, Package, ChevronLeft, MapPin, ChevronRight, Check, Loader2 } from 'lucide-react';
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
 import { useBuyerDeliveryOptional } from '@/contexts/BuyerDeliveryContext';
 import { useBuyerMe } from '@/hooks/useBuyerMe';
@@ -30,6 +31,7 @@ type OrderPlaceResponse = {
   success: boolean;
   order_id?: string;
   order_number?: string | null;
+  document_status_note?: string | null;
   document_url?: string | null;
   error?: string;
 };
@@ -38,9 +40,12 @@ type EstimateResponse = {
   success: boolean;
   estimate_id?: string;
   estimate_number?: string | null;
+  document_status_note?: string | null;
   document_url?: string | null;
   error?: string;
 };
+
+type SubmissionPhase = 'idle' | 'placing_order' | 'requesting_quote';
 
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -79,9 +84,13 @@ export default function CartPage() {
   const gstRate = meData?.business_policy.gst_rate ?? 18;
   const allowPlaceOrder = meData?.order_features.create_sales_orders ?? false;
   const allowRequestQuote = meData?.order_features.create_enquiries ?? false;
-  const [placingOrder, setPlacingOrder] = useState(false);
-  const [requestingQuote, setRequestingQuote] = useState(false);
+  const [submissionPhase, setSubmissionPhase] = useState<SubmissionPhase>('idle');
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    router.prefetch('/buy/order-placed');
+    router.prefetch('/buy/estimate-placed');
+  }, [router]);
   const reconcileQuery = useBuyerResolvedProducts(
     items.map((item) => ({
       tenant_product_id: item.tenant_product_id,
@@ -144,7 +153,9 @@ export default function CartPage() {
     [availableItems, gstInclusive, gstRate],
   );
   const total = totals.total + deliveryFee;
-  const isBusy = placingOrder || requestingQuote;
+  const isBusy = submissionPhase !== 'idle';
+  const placingOrder = submissionPhase === 'placing_order';
+  const requestingQuote = submissionPhase === 'requesting_quote';
 
   function buildLineItems(): CartLineItem[] {
     return availableItems.map((i) => ({
@@ -169,19 +180,14 @@ export default function CartPage() {
     };
   }
 
-  async function handlePlaceOrder() {
-    if (isBusy || availableItems.length === 0) return;
-    if (!selectedDelivery) {
-      setError('Select a delivery location before placing an order.');
-      return;
-    }
-    setError('');
-    setPlacingOrder(true);
-    try {
+  const placeOrderMutation = useMutation({
+    mutationFn: async (): Promise<string> => {
+      if (!selectedDelivery) {
+        throw new Error('Select a delivery location before placing an order.');
+      }
       const { location_id, place_of_supply } = await resolveFulfillmentPayload();
       if (!location_id) {
-        setError('Select a delivery location that can be routed to a warehouse.');
-        return;
+        throw new Error('Select a delivery location that can be routed to a warehouse.');
       }
       const raw = await apiFetch('/api/buyer/orders', {
         method: 'POST',
@@ -194,8 +200,7 @@ export default function CartPage() {
       });
       const res: OrderPlaceResponse = await raw.json();
       if (!raw.ok || !res.success) {
-        setError(res.error ?? 'Could not place order. Please try again.');
-        return;
+        throw new Error(res.error ?? 'Could not place order. Please try again.');
       }
       const params = new URLSearchParams({
         order_id: res.order_id ?? '',
@@ -205,27 +210,36 @@ export default function CartPage() {
       if (res.document_url) {
         params.set('document_url', res.document_url);
       }
-      router.replace(`/buy/order-placed?${params.toString()}`);
-    } catch {
-      setError('Network error. Please check your connection and try again.');
-    } finally {
-      setPlacingOrder(false);
-    }
-  }
+      if (res.document_status_note) {
+        params.set('document_status_note', res.document_status_note);
+      }
+      return `/buy/order-placed?${params.toString()}`;
+    },
+    onMutate: () => {
+      setError('');
+      setSubmissionPhase('placing_order');
+    },
+    onSuccess: (href) => {
+      router.replace(href);
+    },
+    onError: (mutationError) => {
+      setSubmissionPhase('idle');
+      setError(
+        mutationError instanceof Error
+          ? mutationError.message
+          : 'Network error. Please check your connection and try again.',
+      );
+    },
+  });
 
-  async function handleRequestQuote() {
-    if (isBusy || availableItems.length === 0) return;
-    if (!selectedDelivery) {
-      setError('Select a delivery location before requesting a quote.');
-      return;
-    }
-    setError('');
-    setRequestingQuote(true);
-    try {
+  const requestQuoteMutation = useMutation({
+    mutationFn: async (): Promise<string> => {
+      if (!selectedDelivery) {
+        throw new Error('Select a delivery location before requesting a quote.');
+      }
       const { location_id, place_of_supply } = await resolveFulfillmentPayload();
       if (!location_id) {
-        setError('Select a delivery location that can be routed to a warehouse.');
-        return;
+        throw new Error('Select a delivery location that can be routed to a warehouse.');
       }
       const raw = await apiFetch('/api/buyer/estimates', {
         method: 'POST',
@@ -238,8 +252,7 @@ export default function CartPage() {
       });
       const res: EstimateResponse = await raw.json();
       if (!raw.ok || !res.success) {
-        setError(res.error ?? 'Could not request quote. Please try again.');
-        return;
+        throw new Error(res.error ?? 'Could not request quote. Please try again.');
       }
       const params = new URLSearchParams({
         estimate_id: res.estimate_id ?? '',
@@ -249,12 +262,44 @@ export default function CartPage() {
       if (res.document_url) {
         params.set('document_url', res.document_url);
       }
-      router.replace(`/buy/estimate-placed?${params.toString()}`);
-    } catch {
-      setError('Network error. Please check your connection and try again.');
-    } finally {
-      setRequestingQuote(false);
+      if (res.document_status_note) {
+        params.set('document_status_note', res.document_status_note);
+      }
+      return `/buy/estimate-placed?${params.toString()}`;
+    },
+    onMutate: () => {
+      setError('');
+      setSubmissionPhase('requesting_quote');
+    },
+    onSuccess: (href) => {
+      router.replace(href);
+    },
+    onError: (mutationError) => {
+      setSubmissionPhase('idle');
+      setError(
+        mutationError instanceof Error
+          ? mutationError.message
+          : 'Network error. Please check your connection and try again.',
+      );
+    },
+  });
+
+  function handlePlaceOrder() {
+    if (isBusy || availableItems.length === 0) return;
+    if (!selectedDelivery) {
+      setError('Select a delivery location before placing an order.');
+      return;
     }
+    placeOrderMutation.mutate();
+  }
+
+  function handleRequestQuote() {
+    if (isBusy || availableItems.length === 0) return;
+    if (!selectedDelivery) {
+      setError('Select a delivery location before requesting a quote.');
+      return;
+    }
+    requestQuoteMutation.mutate();
   }
 
   if (items.length === 0) {
@@ -306,7 +351,8 @@ export default function CartPage() {
         </h1>
         <button
           onClick={() => clearCart()}
-          className="font-medium"
+          disabled={isBusy}
+          className="font-medium disabled:opacity-50"
           style={{ fontSize: 'var(--b-text-label)', color: 'var(--danger-500)' }}
         >
           Clear
@@ -318,7 +364,7 @@ export default function CartPage() {
         {/* Inline page head */}
         <div className="pb-1">
           <p className="font-semibold uppercase mb-0.5" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em', color: 'var(--cream-600)' }}>
-            {availableItems.length} deliverable · {availableItemCount} {availableItemCount === 1 ? 'unit' : 'units'}
+            {availableItems.length} items · {availableItemCount} {availableItemCount === 1 ? 'unit' : 'units'}
           </p>
           <h2 className="font-semibold" style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-section)', fontWeight: 500, letterSpacing: '-0.005em', color: 'var(--fg-1, var(--cream-900))' }}>
             Review &amp; place
@@ -326,7 +372,7 @@ export default function CartPage() {
         </div>
 
         {/* All items in one card, separated by dividers */}
-        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
+        <div className="rounded-[12px] overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
           {availableItems.map((item, idx) => (
             <CartPageItem
               key={item.tenant_product_id}
@@ -344,7 +390,7 @@ export default function CartPage() {
         </div>
 
         {unavailableItems.length > 0 ? (
-          <section className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--danger-100, #FECACA)', background: 'var(--danger-50, #FEF2F2)' }}>
+          <section className="rounded-[12px] overflow-hidden" style={{ border: '1px solid var(--danger-100, #FECACA)', background: 'var(--danger-50, #FEF2F2)' }}>
             <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--danger-100, #FECACA)' }}>
               <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--danger-500)' }}>
                 Unavailable at this warehouse
@@ -393,7 +439,7 @@ export default function CartPage() {
         )}
 
         {/* Totals card */}
-        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
+        <div className="rounded-[12px] overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
           <div className="px-4 py-3.5 space-y-2.5">
             <TotalsRow label="Subtotal" value={formatCurrency(totals.subtotal)} />
             <TotalsRow label={gstInclusive ? 'GST included in prices' : 'GST'} value={gstInclusive ? 'Included' : formatCurrency(totals.tax_amount)} isText={gstInclusive} />
@@ -412,7 +458,7 @@ export default function CartPage() {
         {/* Delivery row */}
         <button
           onClick={() => router.push('/buy/location?returnTo=' + encodeURIComponent('/buy/cart'))}
-          className="w-full rounded-xl px-4 py-3 flex items-center gap-3 text-left"
+          className="w-full rounded-[12px] px-4 py-3 flex items-center gap-3 text-left"
           style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}
         >
           <div className="flex items-center justify-center shrink-0" style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--ember-50)' }}>
@@ -446,7 +492,7 @@ export default function CartPage() {
 
         {/* Fulfillment location note */}
         {delivery?.selected && (
-          <div className="rounded-xl px-4 py-3 flex items-start gap-2.5" style={{ background: 'var(--teal-50, #f0fdfa)', border: '1px solid var(--teal-100, #ccfbf1)' }}>
+          <div className="rounded-[12px] px-4 py-3 flex items-start gap-2.5" style={{ background: 'var(--teal-50, #f0fdfa)', border: '1px solid var(--teal-100, #ccfbf1)' }}>
             <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: 'var(--teal-500)' }} />
             <p style={{ fontSize: 'var(--b-text-sub)', color: 'var(--teal-700, #0f766e)', lineHeight: '1.45' }}>
               {delivery.selected.nearest_warehouse_name && !delivery.selected.nearest_warehouse_fallback
@@ -460,7 +506,7 @@ export default function CartPage() {
 
         {/* Error */}
         {error && (
-          <div className="rounded-xl px-4 py-3" style={{ background: '#FEE2E2', color: '#B91C1C', fontSize: 'var(--b-text-label)' }}>
+          <div className="rounded-[12px] px-4 py-3" style={{ background: '#FEE2E2', color: '#B91C1C', fontSize: 'var(--b-text-label)' }}>
             {error}
           </div>
         )}
@@ -504,6 +550,29 @@ export default function CartPage() {
           )}
         </div>
       </div>
+
+      {isBusy ? (
+        <div
+          className="fixed inset-0 z-30 flex items-center justify-center"
+          style={{
+            left: '50%',
+            transform: 'translateX(-50%)',
+            maxWidth: BUYER_PREVIEW_MAX_WIDTH,
+            background: 'rgba(250, 247, 242, 0.72)',
+            backdropFilter: 'blur(4px)',
+            WebkitBackdropFilter: 'blur(4px)',
+          }}
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="flex flex-col items-center gap-3 rounded-[12px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-6 py-5 shadow-sm">
+            <Loader2 className="h-8 w-8 animate-spin text-[var(--teal-500)]" />
+            <p className="font-semibold text-[var(--fg-1)]" style={{ fontSize: 'var(--b-text-label)' }}>
+              {placingOrder ? 'Placing your order…' : 'Requesting your quote…'}
+            </p>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

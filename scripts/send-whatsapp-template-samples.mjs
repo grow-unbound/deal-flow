@@ -82,6 +82,7 @@ const TRIGGER_BY_TEMPLATE = {
   request_received_buyer: { triggerSource: 'enquiry_received', tenantId: DISTRIBUTOR_TENANT_ID, priority: 1, relatedEntityType: 'estimates' },
   request_received_seller: { triggerSource: 'enquiry_received', tenantId: DISTRIBUTOR_TENANT_ID, priority: 1, relatedEntityType: 'estimates' },
   buyer_payment_reminder: { triggerSource: 'broadcast', tenantId: DISTRIBUTOR_TENANT_ID, priority: 5 },
+  campaign_published_buyer: { triggerSource: 'broadcast', tenantId: DISTRIBUTOR_TENANT_ID, priority: 5 },
 };
 
 function parseArgs(argv) {
@@ -181,11 +182,9 @@ function buildSendPayload(template) {
   return payload;
 }
 
-async function triggerDispatch() {
+async function triggerDispatch(messageIds) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '');
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
-  const secret = process.env.INTEGRATIONS_PUSH_SECRET?.trim()
-    ?? process.env.INTEGRATIONS_DISPATCH_SECRET?.trim();
 
   if (!supabaseUrl) throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL');
 
@@ -194,9 +193,8 @@ async function triggerDispatch() {
     headers: {
       'Content-Type': 'application/json',
       ...(anonKey ? { Authorization: `Bearer ${anonKey}` } : {}),
-      ...(secret ? { 'x-push-secret': secret } : {}),
     },
-    body: JSON.stringify({ trigger: 'template-sample-test' }),
+    body: JSON.stringify({ message_ids: messageIds }),
   });
 
   const text = await res.text();
@@ -297,7 +295,7 @@ async function main() {
   }
 
   console.log('\nTriggering dispatch worker...');
-  const dispatchResult = await triggerDispatch();
+  const dispatchResult = await triggerDispatch(enqueued.map((row) => row.messageId));
   console.log('Dispatch result:', JSON.stringify(dispatchResult, null, 2));
 
   await new Promise((resolve) => setTimeout(resolve, 5000));

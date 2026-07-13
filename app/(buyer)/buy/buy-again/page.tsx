@@ -74,7 +74,7 @@ export default function BuyAgainPage() {
             <div className="h-5 w-28 animate-pulse rounded bg-cream-200" />
             <div className="grid grid-cols-2 gap-3">
               {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="aspect-[4/5] animate-pulse rounded-xl border border-cream-200 bg-cream-100" />
+                <div key={index} className="aspect-[4/5] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
               ))}
             </div>
           </div>
@@ -91,7 +91,7 @@ export default function BuyAgainPage() {
           </div>
         ) : items.length === 0 ? (
           <div className="px-4 py-5">
-            <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/90 px-4 py-5 shadow-sm">
+            <div className="rounded-[12px] border border-emerald-200/80 bg-emerald-50/90 px-4 py-5 shadow-sm">
               <p className="font-[var(--font-display)] text-lg font-semibold text-[var(--fg-1)]">Reordering will be easy</p>
               <p className="mt-2 text-sm leading-relaxed text-[var(--fg-3)]">
                 Items you order will show up here so you can buy them again easily.

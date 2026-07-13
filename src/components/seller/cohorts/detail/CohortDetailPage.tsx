@@ -9,6 +9,7 @@ import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail
 import { ErrorState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { CohortDetailSkeleton as SharedCohortDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { formatCompactInr } from '@/lib/utils';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
@@ -125,7 +126,7 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
     ];
   }, [data]);
 
-  if (isLoading) return <CohortDetailSkeleton />;
+  if (isLoading) return <SharedCohortDetailSkeleton />;
   if (isError || !data) return <ErrorState heading="Couldn't load customer group" description="There was a problem fetching this customer group detail page." />;
 
   return (

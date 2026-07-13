@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatCompactInr } from '@/lib/utils';
+import { CatalogDetailSkeleton as SharedCatalogDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { CatalogCompositionTab } from './CatalogCompositionTab';
 import { CatalogBuyersTab } from './CatalogBuyersTab';
@@ -124,7 +125,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
     ];
   }, [data]);
 
-  if (isLoading) return <CatalogDetailSkeleton />;
+  if (isLoading) return <SharedCatalogDetailSkeleton />;
   if (isError || !data) {
     return <ErrorState heading="Couldn't load campaign" description="There was a problem fetching this campaign detail page." />;
   }

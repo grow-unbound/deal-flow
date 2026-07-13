@@ -1123,7 +1123,8 @@ export function ConnectedIntegrationCard({
   const allEntityErrors = (integration.recent_entity_errors ?? ti.recent_entity_errors ?? []) as IntegrationEntityError[];
   const recentEntityErrors = allEntityErrors.slice(0, 4);
   const canRunAnalysis = isSellerAdmin && available && !isSyncInProgress && !isRunningAnalysis;
-  const canRepairAggregates = isSellerAdmin && available && !isSyncInProgress && !isRepairingAggregates && Boolean(aggregateFreshness?.repair_job_id);
+  const canRepairAggregates = isSellerAdmin && available && !isSyncInProgress && !isRepairingAggregates &&
+    aggregateFreshness != null && aggregateFreshness.status !== 'fresh';
 
   function openFullSyncDialog() {
     setSyncDialog({ open: true, mode: 'full' });

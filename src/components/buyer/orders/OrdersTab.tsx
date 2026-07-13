@@ -10,6 +10,7 @@ import { TransactionCard, type OrderSummary } from './TransactionCard';
 import { BuyerTransactionCardSkeleton } from './BuyerTransactionCardSkeleton';
 import { useBuyerOrdersInfinite } from '@/hooks/useBuyerOrders';
 import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { BUYER_INFINITE_SCROLL_RATIO } from '@/lib/buyer-ui';
 import {
   matchesOrderStatusChip,
   type BuyerOrderStatusChip,
@@ -71,7 +72,7 @@ export function OrdersTab({
     });
   }, [allOrders, q, statusFilter]);
 
-  const sentinelIndex = getSentinelInsertIndex(visibleOrders.length);
+  const sentinelIndex = getSentinelInsertIndex(visibleOrders.length, BUYER_INFINITE_SCROLL_RATIO);
   const { sentinelRef } = useInfiniteScroll({
     hasMore: hasNextPage ?? false,
     isLoading: isFetchingNextPage,

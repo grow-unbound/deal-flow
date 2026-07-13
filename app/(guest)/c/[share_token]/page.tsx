@@ -42,7 +42,7 @@ function formatInr(n: number): string {
 function ProductCardSkeleton() {
   return (
     <div
-      className="rounded-xl overflow-hidden border"
+      className="rounded-[12px] overflow-hidden border"
       style={{ borderColor: 'var(--border-1)', background: 'var(--bg-surface)' }}
     >
       <div
@@ -74,7 +74,7 @@ function ProductCardSkeleton() {
 function ProductCard({ item }: { item: GuestCatalogItem }) {
   return (
     <div
-      className="rounded-xl overflow-hidden border flex flex-col"
+      className="rounded-[12px] overflow-hidden border flex flex-col"
       style={{ borderColor: 'var(--border-1)', background: 'var(--bg-surface)' }}
     >
       {/* Image */}

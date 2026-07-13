@@ -1,5 +1,1 @@
-import { SalesOrderComposerLoadingSkeleton } from '@/components/seller/sales-orders/DocComposerSalesOrder';
-
-export default function EditSalesOrderLoading() {
-  return <SalesOrderComposerLoadingSkeleton />;
-}
+export { DocumentComposerLoadingSkeleton as default } from '@/components/seller/loading/SellerLoadingSkeletons';

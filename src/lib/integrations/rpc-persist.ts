@@ -1,11 +1,32 @@
+type RpcError = { message?: string; code?: string } | null;
+
 type RpcClient = {
   schema(schemaName: 'app'): {
-    rpc<T>(fn: string, args: Record<string, unknown>): Promise<{ data: T | null; error: { message?: string } | null }>;
+    rpc<T>(fn: string, args: Record<string, unknown>): Promise<{ data: T | null; error: RpcError }>;
   };
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+// Postgres SQLSTATE 55P03 (lock_not_available) — raised when
+// persist_with_natural_key_lock's lock_timeout expires waiting on
+// pg_advisory_xact_lock. Distinguished from other persist failures so callers
+// (e.g. the Zoho webhook handler) can choose to surface a retryable error
+// instead of swallowing it as a generic failure — nothing was written, so a
+// retry is safe and correct here, unlike a partial-upsert failure.
+export class LockTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LockTimeoutError';
+  }
+}
+
+function isLockTimeoutError(error: RpcError): boolean {
+  if (!error) return false;
+  if (error.code === '55P03') return true;
+  return /lock timeout/i.test(error.message ?? '');
 }
 
 export async function bulkPersistJsonbRecords(
@@ -96,6 +117,9 @@ export async function persistWithNaturalKeyLock(
   console.log(`[sync-checkpoint] persist_with_natural_key_lock:done table=${table} ms=${Date.now() - startedAt} error=${error?.message ?? 'none'}`);
 
   if (error) {
+    if (isLockTimeoutError(error)) {
+      throw new LockTimeoutError(error.message ?? `Lock timeout persisting rows into ${table}`);
+    }
     throw new Error(error.message ?? `Failed to persist rows into ${table}`);
   }
 

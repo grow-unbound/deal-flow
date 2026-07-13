@@ -30,6 +30,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { cn, formatCompactInr, formatDate } from '@/lib/utils';
 import { sellerLandingMetricSuffix, type SellerLandingPeriod } from '@/lib/seller-period';
+import { EstimatesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'Recent first' | 'Total amount (high → low)' | 'Status (workflow order)' | 'Expiry (soonest first)';
 const SORT_OPTIONS: SortOption[] = ['Recent first', 'Total amount (high → low)', 'Status (workflow order)', 'Expiry (soonest first)'];
@@ -218,7 +219,7 @@ function EstimatesLandingContent({
   const followUpHint = useMemo(() => `${countFollowUpCandidates(allEstimates)}`, [allEstimates]);
   const expiringHint = useMemo(() => `${countExpiringSoonOpen(allEstimates)}`, [allEstimates]);
 
-  if (isLoading && !data) return <EstimatesLoadingSkeleton />;
+  if (isLoading && !data) return <EstimatesLandingSkeleton />;
 
   if (isError && !data) {
     return (
@@ -228,7 +229,7 @@ function EstimatesLandingContent({
       />
     );
   }
-  if (!data) return <EstimatesLoadingSkeleton />;
+  if (!data) return <EstimatesLandingSkeleton />;
   const showRefreshingState = isLoading && !data;
 
   const kpis = summaryData?.kpis;

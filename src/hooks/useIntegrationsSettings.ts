@@ -160,6 +160,7 @@ export interface IntegrationAggregateFreshness {
   latest_aggregate_at?: string | null;
   repair_job_id?: string | null;
   repair_rebuild_days?: number | null;
+  repair_in_progress?: boolean;
   last_retried_at?: string | null;
   warning_message?: string | null;
 }
@@ -462,6 +463,7 @@ function parseAggregateFreshness(value: unknown): IntegrationAggregateFreshness 
     latest_aggregate_at: asNullableString(value.latest_aggregate_at),
     repair_job_id: asNullableString(value.repair_job_id),
     repair_rebuild_days: asNumber(value.repair_rebuild_days),
+    repair_in_progress: value.repair_in_progress === true ? true : undefined,
     last_retried_at: asNullableString(value.last_retried_at),
     warning_message: asNullableString(value.warning_message),
   };
@@ -674,7 +676,7 @@ async function postStopSync(body: StopSyncInput): Promise<IntegrationsSettingsVi
   return parseSettingsView(json.data);
 }
 
-async function postRepairAggregates(body: RepairAggregatesInput): Promise<IntegrationsSettingsView> {
+async function postRepairAggregates(body: RepairAggregatesInput): Promise<{ repair_job_id: string }> {
   const res = await apiPost('/api/settings/integrations/repair-aggregates', {
     tenant_integration_id: body.tenant_integration_id,
     ...(body.start_date ? { start_date: body.start_date } : {}),
@@ -682,8 +684,8 @@ async function postRepairAggregates(body: RepairAggregatesInput): Promise<Integr
     ...(typeof body.include_snapshots === 'boolean' ? { include_snapshots: body.include_snapshots } : {}),
     ...(typeof body.include_kpis === 'boolean' ? { include_kpis: body.include_kpis } : {}),
   });
-  const json = await parseEnvelope<unknown>(res);
-  return parseSettingsView(json.data);
+  const json = await parseEnvelope<{ repair_job_id: string }>(res);
+  return json.data as { repair_job_id: string };
 }
 
 async function postRunAnalysis(body: RunAnalysisInput): Promise<IntegrationsSettingsView> {
@@ -999,15 +1001,12 @@ export function useIntegrationsSettings(initialData?: IntegrationSettingsPayload
 
   const repairAggregatesMutation = useMutation({
     mutationFn: postRepairAggregates,
-    onSuccess: (data) => {
-      queryClient.setQueryData(queryKey, data);
-      toast.success('Aggregate repair queued');
+    onSuccess: () => {
+      toast.success('Repair queued — rebuilding aggregates in the background');
+      void queryClient.invalidateQueries({ queryKey });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Failed to repair aggregates');
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey });
+      toast.error(error instanceof Error ? error.message : 'Failed to queue repair job');
     },
   });
 

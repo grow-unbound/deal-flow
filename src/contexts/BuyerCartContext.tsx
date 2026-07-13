@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useReducer, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useEffect, useReducer, ReactNode, useCallback, useMemo } from 'react';
 import posthog from 'posthog-js';
 
 import {
@@ -153,44 +153,74 @@ export function BuyerCartProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_CAMPAIGN_ID', campaignId });
   }, []);
 
+  const addItem = useCallback((item: BuyerCartItem, campaignId?: string | null) => {
+    const effectiveCampaignId = campaignId ?? item.campaign_id ?? state.campaignId ?? null;
+    const stampedItem = effectiveCampaignId
+      ? { ...item, campaign_id: effectiveCampaignId }
+      : item;
+
+    if (effectiveCampaignId) {
+      dispatch({ type: 'SET_CAMPAIGN_ID', campaignId: effectiveCampaignId });
+    }
+    dispatch({ type: 'ADD_ITEM', item: stampedItem });
+    posthog.capture('catalog_item_added_to_cart', {
+      tenant_product_id: item.tenant_product_id,
+      product_name: item.name,
+      brand: item.brand,
+      unit_price: item.unit_price,
+      gst_rate: item.gst_rate ?? null,
+      quantity: item.quantity,
+      campaign_id: effectiveCampaignId,
+    });
+  }, [state.campaignId]);
+
+  const removeItem = useCallback((tenant_product_id: string) => {
+    dispatch({ type: 'REMOVE_ITEM', tenant_product_id });
+  }, []);
+
+  const updateQty = useCallback((tenant_product_id: string, quantity: number) => {
+    dispatch({ type: 'UPDATE_QTY', tenant_product_id, quantity });
+  }, []);
+
+  const clearCart = useCallback(() => {
+    dispatch({ type: 'CLEAR_CART' });
+  }, []);
+
+  const replaceItems = useCallback((items: BuyerCartItem[]) => {
+    dispatch({ type: 'REPLACE_ITEMS', items });
+  }, []);
+
   const itemCount = state.items.reduce((sum, i) => sum + i.quantity, 0);
   const subtotal = state.items
     .filter((item) => item.stock_status !== 'out_of_stock')
     .reduce((sum, i) => sum + i.line_total, 0);
   const resolvedCampaignId = resolveBuyerCartCampaignId(state.campaignId, state.items);
 
-  const value: CartContextValue = {
+  const value = useMemo<CartContextValue>(() => ({
     items: state.items,
     campaignId: state.campaignId,
     resolvedCampaignId,
     itemCount,
     subtotal,
     setCampaignId,
-    addItem: (item, campaignId) => {
-      const effectiveCampaignId = campaignId ?? item.campaign_id ?? state.campaignId ?? null;
-      const stampedItem = effectiveCampaignId
-        ? { ...item, campaign_id: effectiveCampaignId }
-        : item;
-
-      if (effectiveCampaignId) {
-        dispatch({ type: 'SET_CAMPAIGN_ID', campaignId: effectiveCampaignId });
-      }
-      dispatch({ type: 'ADD_ITEM', item: stampedItem });
-      posthog.capture('catalog_item_added_to_cart', {
-        tenant_product_id: item.tenant_product_id,
-        product_name: item.name,
-        brand: item.brand,
-        unit_price: item.unit_price,
-        gst_rate: item.gst_rate ?? null,
-        quantity: item.quantity,
-        campaign_id: effectiveCampaignId,
-      });
-    },
-    removeItem: (tenant_product_id) => dispatch({ type: 'REMOVE_ITEM', tenant_product_id }),
-    updateQty: (tenant_product_id, quantity) => dispatch({ type: 'UPDATE_QTY', tenant_product_id, quantity }),
-    clearCart: () => dispatch({ type: 'CLEAR_CART' }),
-    replaceItems: (items) => dispatch({ type: 'REPLACE_ITEMS', items }),
-  };
+    addItem,
+    removeItem,
+    updateQty,
+    clearCart,
+    replaceItems,
+  }), [
+    addItem,
+    clearCart,
+    itemCount,
+    removeItem,
+    replaceItems,
+    resolvedCampaignId,
+    setCampaignId,
+    state.items,
+    state.campaignId,
+    subtotal,
+    updateQty,
+  ]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

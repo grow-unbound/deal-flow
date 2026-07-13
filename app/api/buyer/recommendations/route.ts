@@ -33,6 +33,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerProdu
     const recoRes = await supabaseAdmin
       .schema('app')
       .rpc('reco_get_product_page', {
+        p_tenant_id: tenantId,
         p_tenant_product_id: productId,
         p_buyer_id: buyerId,
         p_widget_types: ['co_order', 'co_buyer', 'same_category'],

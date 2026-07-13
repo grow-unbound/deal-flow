@@ -1,4 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// source_payload is written to R2 (not inline jsonb) by batchUpsertEntityMap
+// — mock the R2 write so tests don't need a real S3 client / Deno env.
+const { putObjectJsonMock } = vi.hoisted(() => ({ putObjectJsonMock: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../../../supabase/functions/_shared/r2.ts', () => ({
+  putObjectJson: putObjectJsonMock,
+}));
 
 import { persistZohoEntityPage } from '../../../supabase/functions/_shared/integrations-persist';
 
@@ -173,11 +180,6 @@ function createAdminStub(options?: {
           if (fn === 'bulk_persist_jsonb_records') {
             const rows = Array.isArray(args.p_rows) ? args.p_rows as Array<Record<string, unknown>> : [];
 
-            if (args.p_table === 'integration_entity_map') {
-              entry.result = [];
-              return { data: [], error: null };
-            }
-
             const data = rows.map((row, index) => ({
               id: typeof row.id === 'string' ? row.id : `${String(args.p_table)}-${index + 1}`,
               ...row,
@@ -236,6 +238,10 @@ function getEntityMapRows(
 }
 
 describe('zoho customer and transaction persistence', () => {
+  beforeEach(() => {
+    putObjectJsonMock.mockClear();
+  });
+
   it('dedupes customer, contact person, and price list assignment upserts within a single page', async () => {
     const admin = createAdminStub({
       tableRows: {
@@ -904,7 +910,7 @@ describe('zoho customer and transaction persistence', () => {
     expect(assignmentUpdateIndex).toBeGreaterThan(assignmentRpcIndex);
   });
 
-  it('attaches source_payload to customer and product entity map upserts', async () => {
+  it('writes source_payload to R2 for customer and product entity map upserts', async () => {
     const admin = createAdminStub({
       tableRows: {
         tenant_brands: [
@@ -937,10 +943,11 @@ describe('zoho customer and transaction persistence', () => {
     );
 
     const customerMapRow = getEntityMapRows(admin, 'customers')[0];
-    expect(customerMapRow?.source_payload).toMatchObject({
-      contact_id: 'CUST-MAP',
-      company_name: 'Map Buyer',
-    });
+    expect(customerMapRow?.source_payload).toBeUndefined();
+    expect(putObjectJsonMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^integrations\/tenant-1\/entity-map\/.+\.json$/),
+      expect.objectContaining({ contact_id: 'CUST-MAP', company_name: 'Map Buyer' }),
+    );
 
     await persistZohoEntityPage(
       admin.client as never,
@@ -960,13 +967,14 @@ describe('zoho customer and transaction persistence', () => {
     );
 
     const productMapRow = getEntityMapRows(admin, 'products').find((row) => row.external_id === 'ITEM-MAP');
-    expect(productMapRow?.source_payload).toMatchObject({
-      item_id: 'ITEM-MAP',
-      name: 'Mapped Product',
-    });
+    expect(productMapRow?.source_payload).toBeUndefined();
+    expect(putObjectJsonMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^integrations\/tenant-1\/entity-map\/.+\.json$/),
+      expect.objectContaining({ item_id: 'ITEM-MAP', name: 'Mapped Product' }),
+    );
   });
 
-  it('attaches source_payload to location entity map upserts', async () => {
+  it('writes source_payload to R2 for location entity map upserts', async () => {
     const admin = createAdminStub();
 
     await persistZohoEntityPage(
@@ -985,10 +993,11 @@ describe('zoho customer and transaction persistence', () => {
     );
 
     const locationMapRow = getEntityMapRows(admin, 'locations')[0];
-    expect(locationMapRow?.source_payload).toMatchObject({
-      location_id: 'LOC-MAP',
-      location_name: 'Main Warehouse',
-    });
+    expect(locationMapRow?.source_payload).toBeUndefined();
+    expect(putObjectJsonMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^integrations\/tenant-1\/entity-map\/.+\.json$/),
+      expect.objectContaining({ location_id: 'LOC-MAP', location_name: 'Main Warehouse' }),
+    );
   });
 
   it('does not soft-delete price list assignments when contact has no pricebook', async () => {

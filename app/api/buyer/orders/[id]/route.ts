@@ -3,6 +3,7 @@ import { supabaseAdmin, supabase } from '@/lib/supabase';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
 import { loadBuyerDocumentLineItems } from '@/lib/buyer-documents/load-buyer-transaction-detail';
+import { TRANSACTION_PENDING_NOTE } from '@/lib/transaction-notes';
 
 export interface BuyerOrderItem {
   tenant_product_id: string;
@@ -17,7 +18,8 @@ export interface BuyerOrderItem {
 
 export interface BuyerOrderDetail {
   id: string;
-  order_number: string;
+  order_number: string | null;
+  document_status_note: string | null;
   status: string;
   notes: string | null;
   placed_at: string;
@@ -49,7 +51,7 @@ export async function GET(
     const db = supabaseAdmin ?? supabase;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: order, error } = await (db as any)
+    const { data: order, error } = await (db as any)
       .schema('app')
       .from('orders')
       .select('id, order_number, status, notes, placed_at, place_of_supply, total_amount, subtotal, tax_amount, order_url')
@@ -69,7 +71,8 @@ export async function GET(
 
     const detail: BuyerOrderDetail = {
       id: order.id,
-      order_number: order.order_number,
+      order_number: order.order_number ?? null,
+      document_status_note: order.order_number ? null : TRANSACTION_PENDING_NOTE,
       status: order.status,
       notes: order.notes ?? null,
       placed_at: order.placed_at,

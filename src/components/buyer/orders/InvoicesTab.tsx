@@ -10,6 +10,7 @@ import { BuyerTransactionCardSkeleton } from './BuyerTransactionCardSkeleton';
 import { ErrorState } from '@/components/ui/empty-state';
 import { useBuyerInvoicesInfinite } from '@/hooks/useBuyerInvoices';
 import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { BUYER_INFINITE_SCROLL_RATIO } from '@/lib/buyer-ui';
 import {
   matchesInvoiceStatusChip,
   type BuyerInvoiceStatusChip,
@@ -50,7 +51,7 @@ export function InvoicesTab({
     });
   }, [allInvoices, q, statusFilter]);
 
-  const sentinelIndex = getSentinelInsertIndex(visibleInvoices.length);
+  const sentinelIndex = getSentinelInsertIndex(visibleInvoices.length, BUYER_INFINITE_SCROLL_RATIO);
   const { sentinelRef } = useInfiniteScroll({
     hasMore: hasNextPage ?? false,
     isLoading: isFetchingNextPage,

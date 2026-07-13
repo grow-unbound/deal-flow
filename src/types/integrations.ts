@@ -334,6 +334,7 @@ export const IntegrationAggregateFreshnessSchema = z
     latest_aggregate_at: z.string().datetime({ offset: true }).nullable().optional(),
     repair_job_id: z.string().uuid().nullable().optional(),
     repair_rebuild_days: z.number().int().min(1).nullable().optional(),
+    repair_in_progress: z.boolean().optional(),
     last_retried_at: z.string().datetime({ offset: true }).nullable().optional(),
     warning_message: z.string().trim().min(1).max(500).nullable().optional(),
   })

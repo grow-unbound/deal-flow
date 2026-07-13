@@ -9,8 +9,10 @@ import { BuyerLandingHeader } from '@/components/buyer/layout/BuyerLandingHeader
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { LoadingSkeleton } from '@/components/buyer/catalog/LoadingSkeleton';
 import { useRouteScrollRestoration, useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { useCart } from '@/contexts/BuyerCartContext';
 import { ErrorState } from '@/components/ui/empty-state';
+import { BUYER_INFINITE_SCROLL_RATIO } from '@/lib/buyer-ui';
 import type { BuyerCatalogItem, BuyerBrand, BuyerCategory, BuyerCatalogSummary } from '@/types/buyer';
 
 const PAGE_LIMIT = 40;
@@ -57,9 +59,6 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
     storageKey: 'buyer-catalog-page',
     ready: !loading,
   });
-
-  const sentinelRef = React.useRef<HTMLDivElement>(null);
-  const observerRef = React.useRef<IntersectionObserver | null>(null);
 
   // Debounce search input
   const [debouncedSearch, setDebouncedSearch] = React.useState('');
@@ -197,20 +196,14 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
       })
       .catch(() => setLoadMoreError(true))
       .finally(() => setLoadingMore(false));
-  }, [shareToken, loadingMore, hasMore, page, debouncedSearch, selectedCategory, selectedBrand, selectedCatalogId, setRouteState]);
+  }, [shareToken, loadingMore, hasMore, page, debouncedSearch, selectedCategory, selectedBrand, selectedCatalogId, setRouteState, setCampaignId]);
 
-  // Intersection observer for sentinel
-  React.useEffect(() => {
-    if (observerRef.current) observerRef.current.disconnect();
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) loadMore();
-      },
-      { rootMargin: '200px' },
-    );
-    if (sentinelRef.current) observerRef.current.observe(sentinelRef.current);
-    return () => observerRef.current?.disconnect();
-  }, [loadMore]);
+  const sentinelIndex = getSentinelInsertIndex(items.length, BUYER_INFINITE_SCROLL_RATIO);
+  const { sentinelRef } = useInfiniteScroll({
+    hasMore: !shareToken && hasMore,
+    isLoading: loadingMore,
+    onLoadMore: () => { loadMore(); },
+  });
 
   // Derive brands from loaded items
   const brands = React.useMemo<BuyerBrand[]>(() => {
@@ -361,10 +354,14 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
                 )}
               </div>
             ) : (
-              <ProductGrid items={items} />
+              <ProductGrid
+                items={items}
+                loadingMore={loadingMore}
+                sentinelIndex={sentinelIndex}
+                sentinelRef={sentinelRef}
+              />
             )}
 
-            {/* Load more indicator */}
             {loadMoreError && !shareToken && items.length > 0 && (
               <div className="px-4 py-4">
                 <ErrorState
@@ -374,16 +371,8 @@ export function CatalogShareTokenView({ shareToken }: { shareToken: string }) {
                 />
               </div>
             )}
-            {loadingMore && (
-              <div className="flex justify-center py-6">
-                <div className="h-5 w-5 rounded-full border-2 border-[var(--teal-500)] border-t-transparent animate-spin" />
-              </div>
-            )}
           </>
         )}
-
-        {/* Sentinel for infinite scroll */}
-        <div ref={sentinelRef} className="h-1" aria-hidden="true" />
       </div>
     </div>
   );

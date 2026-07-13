@@ -1,4 +1,6 @@
 import * as React from 'react';
+import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
+import { cn } from '@/lib/utils';
 
 interface LoadingSkeletonProps {
   count?: number;
@@ -10,7 +12,10 @@ export function LoadingSkeleton({ count = 6 }: LoadingSkeletonProps) {
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
-          className="flex flex-col overflow-hidden rounded-xl border border-[var(--border-1)] bg-[var(--bg-surface)] animate-pulse shadow-[0_1px_3px_rgba(34,30,26,0.06),0_4px_12px_rgba(34,30,26,0.05)]"
+          className={cn(
+            BUYER_CARD_RADIUS_CLASS,
+            'flex flex-col overflow-hidden border border-[var(--border-1)] bg-[var(--bg-surface)] animate-pulse shadow-[0_1px_3px_rgba(34,30,26,0.06),0_4px_12px_rgba(34,30,26,0.05)]',
+          )}
         >
           <div className="relative aspect-square bg-[var(--bg-recessed)]">
             <div className="absolute right-2 bottom-2 h-8 w-8 rounded-md bg-[var(--cream-300)]" />

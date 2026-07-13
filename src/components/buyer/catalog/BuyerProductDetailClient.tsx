@@ -12,6 +12,7 @@ import { ProductDetailLoadingSkeleton } from '@/components/buyer/catalog/Product
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { buildBuyerSearchHref } from '@/lib/buyer-routes';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
+import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
 import { useBuyerProductDetail } from '@/hooks/useBuyerProducts';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
@@ -209,7 +210,7 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
             )}
           </button>
           {detailsOpen ? (
-            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-1)' }}>
+            <div className={`overflow-hidden ${BUYER_CARD_RADIUS_CLASS}`} style={{ border: '1px solid var(--border-1)' }}>
               <SpecRow label="SKU" value={item.internal_sku} mono />
               {item.brand_name ? <SpecRow label="Brand" value={item.brand_name} /> : null}
               {item.category_name ? <SpecRow label="Category" value={item.category_name} /> : null}
@@ -224,7 +225,6 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           widget="co_order"
           items={recos.co_order}
           sourceProductId={tenantProductId}
-          titleVariant="detail"
           alwaysShow
         />
 
@@ -233,7 +233,6 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           widget="same_category"
           items={recos.same_category}
           sourceProductId={tenantProductId}
-          titleVariant="detail"
           alwaysShow
         />
 
@@ -242,7 +241,6 @@ export function BuyerProductDetailClient({ tenantProductId }: BuyerProductDetail
           widget="similar_products"
           items={similarProducts}
           sourceProductId={tenantProductId}
-          titleVariant="detail"
           alwaysShow
         />
       </BuyerDetailShell>

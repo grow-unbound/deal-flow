@@ -38,6 +38,7 @@ import {
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
+import { CustomersLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'Spend (high → low)' | 'Spend (low → high)' | 'Growth (high → low)' | 'Recent activity';
 const SORT_OPTIONS: SortOption[] = ['Spend (high → low)', 'Spend (low → high)', 'Growth (high → low)', 'Recent activity'];
@@ -215,9 +216,9 @@ function CustomersLandingContent({
   }, [allBuyers, sortBy]);
 
   if (isLoading && !data) {
-    return <CustomersLoadingSkeleton />;
+    return <CustomersLandingSkeleton />;
   }
-  if (!data) return <CustomersLoadingSkeleton />;
+  if (!data) return <CustomersLandingSkeleton />;
   const showRefreshingState = isLoading && !data;
   const kpis = summaryData?.kpis;
   const callouts = summaryData?.callouts;

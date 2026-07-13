@@ -3,6 +3,8 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { StatusPill, type StatusTone } from '@/components/ui/status-pill';
+import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
+import { cn } from '@/lib/utils';
 
 interface ActivityCardShellProps {
   href?: string;
@@ -28,7 +30,7 @@ export function ActivityCardShell({
   trailing,
 }: ActivityCardShellProps) {
   const content = (
-    <div className="rounded-[12px] border border-[var(--border-1)] bg-white px-3.5 py-3 text-left no-underline transition hover:bg-white">
+    <div className={cn(BUYER_CARD_RADIUS_CLASS, 'border border-[var(--border-1)] bg-white px-3.5 py-3 text-left no-underline transition hover:bg-white')}>
       <div className="flex items-start justify-between gap-3">
         {/* Left column */}
         <div className="min-w-0 flex-1">

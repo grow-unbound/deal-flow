@@ -13,7 +13,8 @@ import {
   DocumentBasicsStrip,
   DocumentComposerFooterRow,
 } from '@/components/seller/composer/DocumentBasicsStrip';
-import { DocumentComposerShell, DocumentComposerLoadingSkeleton } from '@/components/seller/composer/DocumentComposerShell';
+import { DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
+import { DocumentComposerLoadingSkeleton as SharedDocumentComposerLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import {
   BuyerCardEmpty,
   BuyerCardFilled,
@@ -566,11 +567,11 @@ export function DocComposerInvoice({
   }
 
   if (shouldBlockComposer(workingId, isLoading, Boolean(documentState))) {
-    return <DocumentComposerLoadingSkeleton />;
+    return <SharedDocumentComposerLoadingSkeleton />;
   }
 
   if (!documentState) {
-    return <DocumentComposerLoadingSkeleton />;
+    return <SharedDocumentComposerLoadingSkeleton />;
   }
 
   const buyer = documentState.buyer_context ?? buyerContextQuery.data ?? null;

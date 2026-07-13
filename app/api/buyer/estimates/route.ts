@@ -18,6 +18,7 @@ import { resolveBuyerInventoryWarehouseId } from '@/lib/server/buyer-product-dat
 import { validateBuyerCartStock } from '@/lib/server/buyer-cart-stock';
 import { getSelectedBuyerDeliveryFromRequest } from '@/lib/server/buyer-location-selection';
 import { deriveBuyerPlaceOfSupply } from '@/lib/buyer-routing';
+import { TRANSACTION_PENDING_NOTE } from '@/lib/transaction-notes';
 
 // Exported types consumed by checkout/page.tsx and EnquiriesTab
 export interface EstimateRequest {
@@ -39,6 +40,7 @@ export interface EstimateResponse {
   estimate_id?: string;
   estimate_number?: string | null;
   document_url?: string | null;
+  document_status_note?: string | null;
   whatsapp_sent?: boolean;
   error?: string;
 }
@@ -110,6 +112,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
         estimate_id: `preview-${Date.now()}`,
         estimate_number: 'PREVIEW-INQUIRY',
         document_url: null,
+        document_status_note: null,
         whatsapp_sent: false,
       });
     }
@@ -202,7 +205,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
           .update({ campaign_id: resolvedCampaignId })
           .eq('id', existing.id);
       }
-      return NextResponse.json({ success: true, estimate_id: existing.id, estimate_number: existing.estimate_number, whatsapp_sent: false });
+      return NextResponse.json({
+        success: true,
+        estimate_id: existing.id,
+        estimate_number: existing.estimate_number,
+        document_status_note: existing.estimate_number ? null : TRANSACTION_PENDING_NOTE,
+        whatsapp_sent: false,
+      });
     }
 
     const deferDocumentNumber = await tenantDefersTransactionNumber(tenant_id, 'estimates');
@@ -291,7 +300,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
           db,
           table: 'estimates',
         });
-      } catch {
+      } catch (err) {
+        console.error('[buyer/estimates] whatsapp notify failed', {
+          estimate_id: typed.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
         // non-blocking — estimate creation already succeeded
       }
     }
@@ -314,6 +327,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
       estimate_id: typed.id,
       estimate_number: typed.estimate_number,
       document_url: null,
+      document_status_note: typed.estimate_number ? null : TRANSACTION_PENDING_NOTE,
       whatsapp_sent: whatsappSent,
     });
   } catch (err) {

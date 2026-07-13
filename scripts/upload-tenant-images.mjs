@@ -114,6 +114,35 @@ function parseArgs(argv) {
   return { dryRun, concurrency, positional };
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransientSupabaseError(error) {
+  if (!error) return false;
+  if (error.code === 'PGRST002') return true;
+  return /schema cache/i.test(error.message ?? '');
+}
+
+// PostgREST's schema-cache introspection can transiently fail under DB load
+// (PGRST002) even when nothing is wrong with the request itself — retry with
+// backoff instead of requiring a manual re-run for a blip that clears in
+// seconds.
+async function withRetry(fn, { attempts = 3, baseDelayMs = 1000 } = {}) {
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const result = await fn();
+    if (!result.error || !isTransientSupabaseError(result.error)) return result;
+    lastError = result.error;
+    if (attempt < attempts - 1) {
+      const delay = baseDelayMs * 2 ** attempt;
+      console.warn(`[retry] transient error (${lastError.code ?? lastError.message}), retrying in ${delay}ms...`);
+      await sleep(delay);
+    }
+  }
+  return { data: null, error: lastError };
+}
+
 function normalizeLookup(value) {
   return value.trim().toLowerCase();
 }
@@ -282,14 +311,16 @@ async function fetchRows(db, schema, table, select, tenantId, orderColumn) {
 
   while (true) {
     const to = from + pageSize - 1;
-    const { data, error } = await db
-      .schema(schema)
-      .from(table)
-      .select(select)
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .order(orderColumn, { ascending: true })
-      .range(from, to);
+    const { data, error } = await withRetry(() =>
+      db
+        .schema(schema)
+        .from(table)
+        .select(select)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .order(orderColumn, { ascending: true })
+        .range(from, to),
+    );
 
     if (error) {
       throw new Error(`Failed to fetch ${schema}.${table}: ${error.message}`);
@@ -304,16 +335,18 @@ async function fetchRows(db, schema, table, select, tenantId, orderColumn) {
 }
 
 async function resolveActorId(db, tenantId) {
-  const { data, error } = await db
-    .schema('app')
-    .from('tenant_users')
-    .select('user_id, role, deleted_at')
-    .eq('tenant_id', tenantId)
-    .eq('is_active', true)
-    .is('deleted_at', null)
-    .order('role', { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const { data, error } = await withRetry(() =>
+    db
+      .schema('app')
+      .from('tenant_users')
+      .select('user_id, role, deleted_at')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .order('role', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  );
 
   if (error) {
     throw new Error(`Failed to resolve tenant actor: ${error.message}`);
@@ -652,13 +685,15 @@ async function main() {
   const r2 = dryRun ? null : createR2Client();
   const sharp = await loadSharp();
 
-  const { data: tenantRow, error: tenantError } = await db
-    .schema('app')
-    .from('tenants')
-    .select('id, slug, business_name, deleted_at')
-    .eq('id', tenantId)
-    .is('deleted_at', null)
-    .maybeSingle();
+  const { data: tenantRow, error: tenantError } = await withRetry(() =>
+    db
+      .schema('app')
+      .from('tenants')
+      .select('id, slug, business_name, deleted_at')
+      .eq('id', tenantId)
+      .is('deleted_at', null)
+      .maybeSingle(),
+  );
 
   if (tenantError) {
     throw new Error(`Failed to load tenant ${tenantId}: ${tenantError.message}`);

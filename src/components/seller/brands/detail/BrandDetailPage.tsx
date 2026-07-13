@@ -18,6 +18,7 @@ import {
   type BrandDetailResponse,
 } from '@/hooks/useBrands';
 import { formatCompactInr } from '@/lib/utils';
+import { BrandDetailSkeleton as SharedBrandDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { BrandDetailsTab } from './BrandDetailsTab';
 import { BrandProductsTab } from './BrandProductsTab';
 import { BrandBuyersTab } from './BrandBuyersTab';
@@ -138,7 +139,7 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
     ];
   }, [data]);
 
-  if (isLoading) return <BrandDetailSkeleton />;
+  if (isLoading) return <SharedBrandDetailSkeleton />;
   if (isError || !data) return <ErrorState heading="Couldn't load brand" description="There was a problem fetching this brand detail page." />;
 
   return (

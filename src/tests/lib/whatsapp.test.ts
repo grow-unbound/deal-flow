@@ -16,8 +16,9 @@ vi.mock('@/lib/server/whatsapp-enqueue', () => ({
 describe('whatsapp enqueue sender', () => {
   beforeEach(() => {
     enqueueWhatsAppMessageMock.mockReset();
-    triggerWhatsAppDispatchMock.mockReset();
     enqueueWhatsAppMessageMock.mockResolvedValue({ messageId: 'msg-1', enqueued: true });
+    triggerWhatsAppDispatchMock.mockReset();
+    triggerWhatsAppDispatchMock.mockResolvedValue({ ok: true, dispatched: 1, failed: 0, skipped: 0 });
     process.env.WHATSAPP_ADMIN_NUMBER = '919876543210';
     vi.resetModules();
   });
@@ -59,10 +60,10 @@ describe('whatsapp enqueue sender', () => {
       { text: '24', parameter_name: 'eta' },
     ]);
     expect(input.relatedEntityId).toBe('ord-123');
-    expect(triggerWhatsAppDispatchMock).toHaveBeenCalledTimes(1);
+    expect(triggerWhatsAppDispatchMock).toHaveBeenCalledWith(['msg-1']);
   });
 
-  it('enqueues buyer order template with seller_team param and en_IN locale', async () => {
+  it('enqueues buyer order template with seller_name param and en_IN locale', async () => {
     const { sendOrderReceivedBuyer } = await import('@/lib/server/whatsapp');
 
     await sendOrderReceivedBuyer(
@@ -97,10 +98,11 @@ describe('whatsapp enqueue sender', () => {
       { text: '3', parameter_name: 'item_count' },
       { text: 'ORD-2026-0001', parameter_name: 'order_number' },
       { text: '12500', parameter_name: 'total_amount' },
-      { text: 'WineYard (Mumbai Warehouse)', parameter_name: 'seller_team' },
+      { text: 'WineYard (Mumbai Warehouse)', parameter_name: 'seller_name' },
       { text: '24', parameter_name: 'eta' },
     ]);
     expect(input.sendPayload.body_params.some((param) => param.parameter_name === 'seller_location')).toBe(false);
+    expect(triggerWhatsAppDispatchMock).toHaveBeenCalledWith(['msg-1']);
   });
 
   it('enqueues otp with platform tenant and positional parameters', async () => {
@@ -124,6 +126,6 @@ describe('whatsapp enqueue sender', () => {
       { text: 'Login to Yukti' },
       { text: '919876543210' },
     ]);
-    expect(triggerWhatsAppDispatchMock).toHaveBeenCalledTimes(1);
+    expect(triggerWhatsAppDispatchMock).toHaveBeenCalledWith(['msg-1']);
   });
 });

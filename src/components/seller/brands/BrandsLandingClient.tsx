@@ -27,6 +27,7 @@ import { useTenantBrands, type TenantBrand, type TenantBrandsResponse } from '@/
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
+import { BrandsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Growth (high → low)' | 'Campaign age (most recent)';
 
@@ -271,13 +272,13 @@ function BrandLandingContent({
     return `${denom} published in the last ${days} days`;
   };
 
-  if (isLoading && !landingData) return <BrandLandingSkeleton />;
+  if (isLoading && !landingData) return <BrandsLandingSkeleton />;
   if (isError && !landingData) {
     return (
       <ErrorState heading="Couldn't load brands" description="There was a problem fetching your brands. Please try again." />
     );
   }
-  if (!landingData) return <BrandLandingSkeleton />;
+  if (!landingData) return <BrandsLandingSkeleton />;
   const showRefreshingState = isLoading && !data;
 
   return (

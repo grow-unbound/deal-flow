@@ -1,5 +1,1 @@
-import { EstimateComposerLoadingSkeleton } from '@/components/seller/estimates/DocComposerEstimate';
-
-export default function EditEstimateLoading() {
-  return <EstimateComposerLoadingSkeleton />;
-}
+export { DocumentComposerLoadingSkeleton as default } from '@/components/seller/loading/SellerLoadingSkeletons';

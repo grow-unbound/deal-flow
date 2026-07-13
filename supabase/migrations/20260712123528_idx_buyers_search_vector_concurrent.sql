@@ -1,0 +1,13 @@
+-- Split out of the original combined global_search_vectors_indexes_concurrent
+-- migration: `supabase db push` pipelines every statement in a single
+-- migration file together (libpq pipeline mode), and CREATE INDEX
+-- CONCURRENTLY cannot run inside a pipeline — not just inside an explicit
+-- transaction block. One statement per file is required, not just "no
+-- BEGIN/COMMIT". See sibling 20260712123529.. through 20260712123541_*
+-- files for the rest of this batch.
+--
+-- app.buyers.search_vector IS queried directly by global_search()'s
+-- "customer" branch (`b.search_vector @@ v_ts_query`) — the original
+-- migration omitted this index, which would have forced a full sequential
+-- scan with `@@` on every search call across all buyer rows.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_buyers_search_vector ON app.buyers USING gin (search_vector);

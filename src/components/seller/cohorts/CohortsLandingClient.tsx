@@ -26,6 +26,7 @@ import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useCohortsLanding, type CohortsLandingResponse } from '@/hooks/useCohorts';
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
+import { CohortsLandingSkeleton as SharedCohortsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Growth (high → low)';
 
@@ -185,7 +186,7 @@ function CohortsLandingContent({
     return names.length > 3 ? `${visible.join(', ')} + ${names.length - 3} more` : visible.join(', ');
   };
 
-  if (isLoading && !landingData) return <CohortsLandingSkeleton />;
+  if (isLoading && !landingData) return <SharedCohortsLandingSkeleton />;
 
   if (isError && !landingData) {
     return (
@@ -198,7 +199,7 @@ function CohortsLandingContent({
       </PageWrap>
     );
   }
-  if (!landingData) return <CohortsLandingSkeleton />;
+  if (!landingData) return <SharedCohortsLandingSkeleton />;
   const showRefreshingState = isLoading && !data;
 
   const kpis = landingData.kpis;

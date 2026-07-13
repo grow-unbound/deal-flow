@@ -22,7 +22,7 @@ export function ProductDetailLoadingSkeleton() {
         </div>
         <div className="px-4 pb-4">
           <div className="mb-2 h-5 w-32 animate-pulse rounded bg-cream-200" />
-          <div className="h-40 animate-pulse rounded-xl border border-cream-200 bg-cream-100" />
+          <div className="h-40 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
         </div>
         {['Frequently Bought Together', 'More in category', 'Other similar'].map((key) => (
           <div key={key} className="px-4 pb-4">
@@ -31,7 +31,7 @@ export function ProductDetailLoadingSkeleton() {
               {Array.from({ length: 3 }).map((_, i) => (
                 <div
                   key={`${key}-${i}`}
-                  className="h-44 w-40 shrink-0 animate-pulse rounded-xl border border-cream-200 bg-cream-100"
+                  className="h-44 w-40 shrink-0 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100"
                 />
               ))}
             </div>

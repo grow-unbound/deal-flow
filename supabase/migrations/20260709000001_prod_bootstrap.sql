@@ -1160,6 +1160,8 @@ DECLARE
   v_tenant uuid;
   v_today date := (now() AT TIME ZONE 'Asia/Kolkata')::date;
 BEGIN
+  IF app.sync_trigger_bypass_active() THEN RETURN NULL; END IF;
+
   v_old_product_id := CASE WHEN TG_OP <> 'INSERT' THEN OLD.tenant_product_id ELSE NULL END;
   v_new_product_id := CASE WHEN TG_OP <> 'DELETE' THEN NEW.tenant_product_id ELSE NULL END;
   v_old_warehouse_id := CASE WHEN TG_OP <> 'INSERT' THEN OLD.warehouse_id ELSE NULL END;
@@ -1497,9 +1499,11 @@ BEGIN
   END IF;
 
   IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'buyer-metric-snapshot-freshness') THEN
+    -- 19:00 UTC = 00:30 IST — 30min after zoho-sync-daily (00:00 IST), so
+    -- snapshots refresh right after the day's sync kicks off.
     PERFORM cron.schedule(
       'buyer-metric-snapshot-freshness',
-      '40 18 * * *',
+      '0 19 * * *',
       'SELECT app.refresh_all_buyer_metric_snapshots()'
     );
   END IF;
@@ -3787,7 +3791,7 @@ BEGIN
   PERFORM app.refresh_categories_snapshot(p_tenant_id);
   PERFORM app.refresh_brands_snapshot(p_tenant_id);
   PERFORM app.refresh_buyer_current_snapshot(p_tenant_id);
-  PERFORM app.rebuild_buyer_app_activity_for_tenant(p_tenant_id, GREATEST(p_days, 365));
+  PERFORM app.rebuild_buyer_app_activity_for_tenant(p_tenant_id, GREATEST(p_days, 90));
   PERFORM app.refresh_buyer_app_snapshot(p_tenant_id);
 
   FOR loc IN
@@ -4517,12 +4521,17 @@ $$;
 ALTER FUNCTION "app"."reap_stale_sync_jobs"() OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "app"."rebuild_buyer_app_activity_for_tenant"("p_tenant_id" "uuid", "p_days" integer DEFAULT 365) RETURNS "void"
+CREATE OR REPLACE FUNCTION "app"."rebuild_buyer_app_activity_for_tenant"("p_tenant_id" "uuid", "p_days" integer DEFAULT 90) RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'app'
     AS $$
 DECLARE
-  v_start date := GREATEST((now() AT TIME ZONE 'Asia/Kolkata')::date - p_days, DATE '2000-01-01');
+  -- Capped at 90 days max regardless of caller input — no unbounded/all-time
+  -- scans. Scoped to rows actually touched since v_since (updated_at, which
+  -- also advances on soft-delete via touch_updated_at) rather than every row
+  -- whose activity date falls in the window, so routine post-sync calls only
+  -- redo work for what changed.
+  v_since timestamptz := now() - (LEAST(GREATEST(COALESCE(p_days, 90), 1), 90) || ' days')::interval;
   estimate_row RECORD;
   order_row RECORD;
 BEGIN
@@ -4530,10 +4539,7 @@ BEGIN
     SELECT e.id
     FROM app.estimates e
     WHERE e.tenant_id = p_tenant_id
-      AND (
-        app.metric_day_ist(e.estimate_date, e.created_at) >= v_start
-        OR e.deleted_at IS NOT NULL
-      )
+      AND e.updated_at >= v_since
   LOOP
     PERFORM app.sync_buyer_app_activity_from_estimate(estimate_row.id);
   END LOOP;
@@ -4542,10 +4548,7 @@ BEGIN
     SELECT o.id
     FROM app.orders o
     WHERE o.tenant_id = p_tenant_id
-      AND (
-        app.metric_day_ist(o.order_date, o.created_at) >= v_start
-        OR o.deleted_at IS NOT NULL
-      )
+      AND o.updated_at >= v_since
   LOOP
     PERFORM app.sync_buyer_app_activity_from_order(order_row.id);
   END LOOP;
@@ -4780,7 +4783,7 @@ $$;
 ALTER FUNCTION "app"."rebuild_kpi_brand_daily_recent"("p_days" integer) OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "app"."rebuild_kpi_buyers_daily_for_tenant"("p_tenant_id" "uuid", "p_days" integer DEFAULT 365) RETURNS "void"
+CREATE OR REPLACE FUNCTION "app"."rebuild_kpi_buyers_daily_for_tenant"("p_tenant_id" "uuid", "p_days" integer DEFAULT 90) RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'app'
     AS $$
@@ -9883,6 +9886,8 @@ CREATE OR REPLACE FUNCTION "app"."trg_inventory_campaign_refresh"() RETURNS "tri
     SET "search_path" TO 'app', 'public'
     AS $$
 BEGIN
+  IF app.sync_trigger_bypass_active() THEN RETURN NEW; END IF;
+
   -- Log stock-in event if qty increased
   IF NEW.qty_available > COALESCE(OLD.qty_available, 0) THEN
     INSERT INTO app.stock_in_events (tenant_id, tenant_product_id, qty_delta)
@@ -10043,6 +10048,8 @@ CREATE OR REPLACE FUNCTION "app"."trg_refresh_brand_categories_fn"() RETURNS "tr
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
 BEGIN
+  IF app.sync_trigger_bypass_active() THEN RETURN NEW; END IF;
+
   -- When brand changes (re-assignment) or product deleted: refresh OLD brand
   IF TG_OP = 'DELETE' OR (
     TG_OP = 'UPDATE' AND

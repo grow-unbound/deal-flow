@@ -19,12 +19,11 @@ import {
   recordPushSuccess,
   createEchoGuard,
   recordPushFailure,
-  assignProvisionalTransactionNumber,
   verifyPushSecret,
   parseWebhookRecord,
   ok,
 } from '../_shared/push-zoho-utils.ts';
-import { notifyTransactionReady } from '../_shared/transaction-notify-client.ts';
+import { sendTransactionalAcknowledgement } from '../_shared/transactional-whatsapp.ts';
 
 const FN = '[push-order-to-zoho]';
 
@@ -212,16 +211,6 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`${FN} Zoho POST /salesorders failed for order ${id}:`, msg);
-    const provisionalNumber = await assignProvisionalTransactionNumber(admin, {
-      entityTable: 'orders',
-      numberField: 'order_number',
-      tenantId,
-      internalId: id,
-      formatNumber: (sequence) => {
-        const year = new Date().getFullYear();
-        return `ORD-${year}-${String(sequence).padStart(4, '0')}`;
-      },
-    });
     await recordPushFailure(admin, {
       tenantId,
       integrationId: integration.integrationId,
@@ -229,13 +218,13 @@ Deno.serve(async (req: Request) => {
       internalId: id,
       errorReason: msg,
     });
-    if (provisionalNumber) {
-      void notifyTransactionReady({
-        entityTable: 'orders',
-        entityId: id,
-        documentNumber: provisionalNumber,
-      });
-    }
+    void sendTransactionalAcknowledgement(admin, {
+      kind: 'order',
+      outcome: 'pending',
+      entityId: id,
+      tenantId,
+      buyerId,
+    });
     return ok({ error: 'zoho_push_failed' });
   }
 
@@ -272,9 +261,12 @@ Deno.serve(async (req: Request) => {
   });
 
   if (zohoSalesOrderNumber) {
-    void notifyTransactionReady({
-      entityTable: 'orders',
+    void sendTransactionalAcknowledgement(admin, {
+      kind: 'order',
+      outcome: 'success',
       entityId: id,
+      tenantId,
+      buyerId,
       documentNumber: zohoSalesOrderNumber,
     });
   }

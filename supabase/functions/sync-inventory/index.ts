@@ -37,6 +37,7 @@ interface SyncInventoryRequest {
   job_id?: string | null;
   page_from?: number | null;
   per_page?: number | null;
+  since?: string | null;
 }
 
 const PHASE = 'inventory';
@@ -68,6 +69,7 @@ async function parseRequest(req: Request): Promise<SyncInventoryRequest> {
     job_id: typeof body.job_id === 'string' ? body.job_id : null,
     page_from: typeof body.page_from === 'number' ? body.page_from : null,
     per_page: typeof body.per_page === 'number' ? body.per_page : null,
+    since: typeof body.since === 'string' ? body.since : null,
   };
 }
 
@@ -76,15 +78,19 @@ async function loadProductPage(
   tenantId: string,
   page: number,
   pageSize: number,
+  since?: string | null,
 ): Promise<{ rows: { id: string; externalRef: string }[]; total: number }> {
   const offset = (page - 1) * pageSize;
-  const { data, error, count } = await admin
+  const base = admin
     .schema('app')
     .from('tenant_products')
     .select('id, external_ref', { count: 'exact' })
     .eq('tenant_id', tenantId)
     .not('external_ref', 'is', null)
-    .is('deleted_at', null)
+    .is('deleted_at', null);
+
+  const filtered = since ? base.gte('updated_at', since) : base;
+  const { data, error, count } = await filtered
     .order('id', { ascending: true })
     .range(offset, offset + pageSize - 1);
 
@@ -144,6 +150,7 @@ Deno.serve(async (req: Request) => {
   try {
     const input = await parseRequest(req);
     jobId = input.job_id ?? null;
+    const since = input.since ?? null;
 
     const integration = await loadTenantIntegration(admin, input.tenant_integration_id);
     const zohoTypeId = assertZohoIntegration(integration.integration_type_id);
@@ -183,7 +190,7 @@ Deno.serve(async (req: Request) => {
     const importActorId = resolveSyncImportActorId(integration);
 
     const loadDone = startTimer(jobId, PHASE, 'loadProductPage');
-    const { rows, total } = await loadProductPage(admin, integration.tenant_id, page, pageSize);
+    const { rows, total } = await loadProductPage(admin, integration.tenant_id, page, pageSize, since);
     loadDone({ rows: rows.length, total });
 
     const productIdMap = new Map(rows.map((r) => [r.externalRef, r.id] as const));
