@@ -37,7 +37,7 @@ export function BuyerCatalogLandingHeader({
           )}
         >
           <div className="overflow-hidden">
-            <div className="flex items-start justify-between gap-3 px-4 pb-2 pt-6">
+            <div className="flex items-end justify-between gap-3 px-4 pb-2 pt-6">
               <div className="min-w-0 shrink-0">
                 <p
                   className="font-semibold uppercase text-[var(--cream-700)]"
@@ -56,7 +56,7 @@ export function BuyerCatalogLandingHeader({
                   Catalog
                 </h1>
               </div>
-              <BuyerCatalogLocationLink className="max-w-[58%] pt-0.5" />
+              <BuyerCatalogLocationLink className="max-w-[58%] shrink pb-0.5" />
             </div>
           </div>
         </div>

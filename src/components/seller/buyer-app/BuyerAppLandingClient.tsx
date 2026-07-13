@@ -25,29 +25,7 @@ import {
 } from '@/hooks/useBuyerApp';
 import { formatCompactInr, formatInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
-
-function BuyerAppLoadingSkeleton() {
-  return (
-    <PageWrap>
-      <div className="h-24 animate-pulse rounded-[12px] bg-cream-100 border border-cream-200" />
-      <div className="mt-5 grid grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-[108px] animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-      <div className="mt-5 grid grid-cols-3 gap-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-[190px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-      <div className="mt-6 grid grid-cols-2 gap-6">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-[260px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-        ))}
-      </div>
-    </PageWrap>
-  );
-}
+import { BuyerAppSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 function FunnelRow({ label, count, total }: { label: string; count: number; total: number }) {
   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
@@ -224,7 +202,7 @@ function BuyerAppLandingContent({
   const retainedData = useRetainedValue(data);
   const landingData = data ?? retainedData;
 
-  if (isLoading && !landingData) return <BuyerAppLoadingSkeleton />;
+  if (isLoading && !landingData) return <BuyerAppSkeleton />;
 
   if (isError && !landingData) {
     return (
@@ -235,7 +213,7 @@ function BuyerAppLandingContent({
     );
   }
 
-  if (!landingData) return <BuyerAppLoadingSkeleton />;
+  if (!landingData) return <BuyerAppSkeleton />;
 
   const kpis = landingData.kpis;
   const snap = landingData.snapshot ?? {

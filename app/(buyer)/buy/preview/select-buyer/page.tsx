@@ -83,7 +83,7 @@ export default function PreviewSelectBuyerPage() {
 
   return (
     <div className="flex min-h-full items-center justify-center p-4">
-      <div className="w-full max-w-md rounded-2xl border border-cream-300 bg-white p-6 shadow-md">
+      <div className="w-full max-w-md rounded-[12px] border border-cream-300 bg-white p-6 shadow-md">
         <div className="mb-6 flex justify-center">
           <YuktiLogo variant="stacked-lockup" className="h-12 w-[68px]" />
         </div>
@@ -100,7 +100,7 @@ export default function PreviewSelectBuyerPage() {
         <div className="mt-6 space-y-2">
           {loading ? (
             Array.from({ length: 3 }).map((_, index) => (
-              <div key={index} className="h-16 animate-pulse rounded-xl border border-cream-200 bg-cream-100" />
+              <div key={index} className="h-16 animate-pulse rounded-[12px] border border-cream-200 bg-cream-100" />
             ))
           ) : buyers.length === 0 ? (
             <p className="text-sm text-cream-600">No buyer profiles found for your number.</p>
@@ -116,7 +116,7 @@ export default function PreviewSelectBuyerPage() {
                   type="button"
                   disabled={Boolean(submittingId)}
                   onClick={() => void handleSelect(buyer.buyer_id)}
-                  className="flex w-full items-center justify-between rounded-xl border border-cream-300 px-4 py-3 text-left transition-colors hover:bg-cream-50 disabled:opacity-60"
+                  className="flex w-full items-center justify-between rounded-[12px] border border-cream-300 px-4 py-3 text-left transition-colors hover:bg-cream-50 disabled:opacity-60"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-cream-900">{label}</p>

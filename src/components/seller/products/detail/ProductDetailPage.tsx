@@ -13,6 +13,7 @@ import { useRole } from '@/hooks/useRole';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { useProductDetail, useUpdateProduct } from '@/hooks/useProducts';
+import { ProductDetailSkeleton as SharedProductDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { ProductDetailsTab } from './ProductDetailsTab';
 import { ProductPricingTab } from './ProductPricingTab';
 import { ProductActivityTimeline } from './ProductActivityTimeline';
@@ -133,7 +134,7 @@ export function ProductDetailPage({ id }: ProductDetailPageProps) {
     ];
   }, [data]);
 
-  if (isLoading) return <ProductDetailSkeleton />;
+  if (isLoading) return <SharedProductDetailSkeleton />;
   if (isError || !data) {
     return <ErrorState heading="Couldn't load product" description="There was a problem fetching this product detail page." />;
   }

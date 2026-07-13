@@ -5,6 +5,7 @@ import * as React from 'react';
 import { BuyerDetailShell } from '@/components/buyer/layout/BuyerDetailShell';
 import { ErrorState } from '@/components/ui/empty-state';
 import { apiFetch } from '@/lib/api-fetch';
+import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
 
 function inr(n: number): string {
   const s = Math.round(n).toString();
@@ -69,8 +70,8 @@ export function BuyerSimpleDocumentDetail<TDocument>({
       <BuyerDetailShell title={title}>
         {loading ? (
           <div className="space-y-3 px-4 py-4">
-            <div className="h-32 animate-pulse rounded-2xl border border-cream-200 bg-cream-100" />
-            <div className="h-40 animate-pulse rounded-2xl border border-cream-200 bg-cream-100" />
+            <div className={`h-32 animate-pulse border border-cream-200 bg-cream-100 ${BUYER_CARD_RADIUS_CLASS}`} />
+            <div className={`h-40 animate-pulse border border-cream-200 bg-cream-100 ${BUYER_CARD_RADIUS_CLASS}`} />
           </div>
         ) : error ? (
           <div className="p-4">
@@ -96,7 +97,7 @@ export function BuyerSimpleDocumentDetail<TDocument>({
 
 export function BuyerDocumentStat({ label, value, sub }: { label: string; value: string; sub?: string | null }) {
   return (
-    <div className="rounded-2xl border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4">
+    <div className={`border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4 ${BUYER_CARD_RADIUS_CLASS}`}>
       <p className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--cream-600)]">{label}</p>
       <p className="mt-2 font-[var(--font-display)] text-3xl font-semibold text-[var(--cream-900)]">{value}</p>
       {sub ? <p className="mt-2 text-sm text-[var(--cream-600)]">{sub}</p> : null}

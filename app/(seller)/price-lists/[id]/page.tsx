@@ -10,6 +10,7 @@ import { RoleGuard } from '@/components/auth/RoleGuard';
 import { ROLES } from '@/constants';
 import { PageWrap } from '@/components/seller/layout';
 import { DetailHeader, MetaStrip4, DetailTabs } from '@/components/seller/detail';
+import { PriceListDetailSkeleton as SharedPriceListDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -75,35 +76,7 @@ export default function PriceListDetailPage() {
       <RoleGuard roles={[ROLES.SELLER_ADMIN, ROLES.SELLER_ASSISTANT]}>
         <PageWrap className="pt-7 pb-10">
           {isLoading ? (
-            <div className="space-y-6" role="status" aria-label="Loading price list detail">
-              <div className="h-5 w-52 animate-pulse rounded border border-cream-200 bg-cream-100" />
-              <div className="flex items-start justify-between">
-                <div className="space-y-3">
-                  <div className="h-12 w-96 animate-pulse rounded border border-cream-200 bg-cream-100" />
-                  <div className="h-4 w-[540px] animate-pulse rounded border border-cream-200 bg-cream-100" />
-                </div>
-                <div className="h-10 w-56 animate-pulse rounded-[8px] border border-cream-200 bg-cream-100" />
-              </div>
-              <div className="grid grid-cols-4 gap-3">
-                {Array.from({ length: 4 }).map((_, idx) => (
-                  <div key={idx} className="h-[112px] animate-pulse rounded-[14px] border border-cream-200 bg-cream-100" />
-                ))}
-              </div>
-              <div className="h-12 w-full animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-              <div className="rounded-[14px] border border-cream-200 bg-cream-100 p-5">
-                <div className="h-4 w-40 animate-pulse rounded bg-cream-200" />
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  <div className="h-16 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-                  <div className="h-16 animate-pulse rounded-[10px] border border-cream-200 bg-cream-100" />
-                </div>
-              </div>
-              <div className="h-12 animate-pulse rounded-t-[14px] border border-cream-200 border-b-0 bg-cream-100" />
-              <div className="space-y-2">
-                {Array.from({ length: 6 }).map((_, idx) => (
-                  <div key={idx} className="h-12 animate-pulse rounded-[8px] border border-cream-200 bg-cream-100" />
-                ))}
-              </div>
-            </div>
+            <SharedPriceListDetailSkeleton />
           ) : isError || !priceList ? (
             <div className="rounded-[14px] border border-danger-200 bg-danger-50 p-4 text-base text-danger-700">
               Price list not found.

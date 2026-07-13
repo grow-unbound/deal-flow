@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { apiFetch } from '@/lib/api-fetch';
 import { BUYER_PREVIEW_MAX_WIDTH } from '@/lib/buyer-preview';
+import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
 import { useCart, type BuyerCartItem } from '@/contexts/BuyerCartContext';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -103,7 +104,6 @@ function getStatusBadge(status: string): { tone: StatusTone; label: string } {
   return orderStatusBadge[status] ?? { tone: 'neutral', label: status };
 }
 
-const CARD_RADIUS = 'rounded-[12px]';
 
 function formatDocSubtitle(doc: TransactionDoc, docType: DocType): string {
   const created = fmtDate(doc.primaryDate);
@@ -155,7 +155,7 @@ function TotalsBlock({
 }) {
   return (
     <div
-      className={`${CARD_RADIUS} border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4`}
+      className={`${BUYER_CARD_RADIUS_CLASS} border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4`}
       style={{ background: 'white' }}
     >
       <div className="flex justify-between text-[var(--b-text-body)] text-[var(--cream-700)]">
@@ -327,9 +327,9 @@ export function TransactionDetailPage({
               </div>
               <div className="h-4 w-52 animate-pulse rounded-full bg-cream-200" />
             </div>
-            <div className={`h-40 animate-pulse border border-cream-200 bg-cream-100 ${CARD_RADIUS}`} />
-            <div className={`h-28 animate-pulse border border-cream-200 bg-cream-100 ${CARD_RADIUS}`} />
-            <div className={`h-24 animate-pulse border border-cream-200 bg-cream-100 ${CARD_RADIUS}`} />
+            <div className={`h-40 animate-pulse border border-cream-200 bg-cream-100 ${BUYER_CARD_RADIUS_CLASS}`} />
+            <div className={`h-28 animate-pulse border border-cream-200 bg-cream-100 ${BUYER_CARD_RADIUS_CLASS}`} />
+            <div className={`h-24 animate-pulse border border-cream-200 bg-cream-100 ${BUYER_CARD_RADIUS_CLASS}`} />
           </div>
         ) : fetchError ? (
           <div className="p-4">
@@ -366,7 +366,7 @@ export function TransactionDetailPage({
             </div>
 
             <div
-              className={`${CARD_RADIUS} border border-[var(--border-1)] px-4 py-4`}
+              className={`${BUYER_CARD_RADIUS_CLASS} border border-[var(--border-1)] px-4 py-4`}
               style={{ background: 'white' }}
             >
               {doc.items.length > 0 ? (
@@ -393,7 +393,7 @@ export function TransactionDetailPage({
             />
 
             {deliveryPlace ? (
-              <div className={`${CARD_RADIUS} border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4`}>
+              <div className={`${BUYER_CARD_RADIUS_CLASS} border border-[var(--border-1)] bg-[var(--bg-surface)] px-4 py-4`}>
                 <div className="flex items-start gap-3">
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-cream-200 bg-cream-100">
                     <MapPin className="h-4 w-4 text-[var(--teal-500)]" />

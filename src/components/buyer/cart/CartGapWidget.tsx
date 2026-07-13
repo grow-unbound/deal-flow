@@ -57,7 +57,7 @@ export function CartGapWidget({ bundles, items, tenantId, onAddToCart }: CartGap
 
   return (
     <div
-      className="rounded-xl overflow-hidden"
+      className="rounded-[12px] overflow-hidden"
       style={{ border: '1px solid var(--teal-100, #ccfbf1)', background: 'var(--teal-50, #f0fdfa)' }}
     >
       {/* Header */}

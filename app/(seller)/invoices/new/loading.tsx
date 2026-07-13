@@ -1,1 +1,1 @@
-export { InvoiceComposerLoadingSkeleton as default } from '@/components/seller/invoices/DocComposerInvoice';
+export { DocumentComposerLoadingSkeleton as default } from '@/components/seller/loading/SellerLoadingSkeletons';

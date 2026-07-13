@@ -6,6 +6,7 @@ import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useSellerDashboard } from '@/hooks/useSellerDashboard';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSellerRealtimeContext } from '@/contexts/SellerRealtimeContext';
+import { DashboardSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
 import {
   EntityAvatar,
@@ -260,7 +261,7 @@ export function SellerDashboardClient({
   if (!dashboard && isLoading) {
     return (
       <PageWrap>
-        <DashboardDataSkeleton />
+        <DashboardSkeleton />
       </PageWrap>
     );
   }
@@ -289,7 +290,7 @@ export function SellerDashboardClient({
         onPeriodChange={setPeriod}
       />
 
-      {isLoading && !data ? <DashboardDataSkeleton /> : (
+      {isLoading && !data ? <DashboardSkeleton /> : (
         <>
           {dashboard.role === 'seller_admin' ? <AdminSection data={dashboard} newEntityIds={newEntityIds} markSeen={markSeen} /> : <AssistantSection data={dashboard} newEntityIds={newEntityIds} markSeen={markSeen} />}
         </>

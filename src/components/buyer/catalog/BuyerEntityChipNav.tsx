@@ -143,7 +143,7 @@ function BrandFilterWithDataAttrs({
 }): React.ReactNode {
   return (
     <div
-      className="flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+      className="flex gap-2 overflow-x-auto px-4 pb-1 pt-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       aria-label="Filter by brand"
     >
       <ChipButton dataChipId="all" pressed={selected === null} onClick={() => onChange(null)}>

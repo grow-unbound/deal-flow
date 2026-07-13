@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { DiscardChangesDialog, useDirtyCloseGuard } from '@/components/ui/form-overlay';
+import { PriceListComposerSkeleton as SharedPriceListComposerSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import {
   computeStrategyPrice,
   formatApplyingRuleSummary,
@@ -126,7 +127,7 @@ function computeSummaryMetrics(
   };
 }
 
-function PriceListComposerSkeleton() {
+export function PriceListComposerSkeleton() {
   return (
     <div
       className={cn('mx-auto flex w-full max-w-[1920px] flex-col px-8 pt-7 pb-6', composerPageMinHeightClass)}
@@ -572,7 +573,7 @@ export function PriceListComposer({
   }
 
   if (isLoading || !didInit) {
-    return <PriceListComposerSkeleton />;
+    return <SharedPriceListComposerSkeleton />;
   }
 
   const createSubtitle = 'Filter the SKUs, apply pricing rules, and review the impact in the summary before publishing.';

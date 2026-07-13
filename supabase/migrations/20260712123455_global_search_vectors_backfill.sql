@@ -11,6 +11,17 @@
 SET statement_timeout = '2min';
 SET lock_timeout = '30s';
 
+-- app.buyers has an unconditional AFTER UPDATE trigger (trg_buyers_dispatch
+-- -> app.dispatch_from_buyers()) that rebuilds 3 tenant-wide snapshot tables
+-- on every row change. It already respects app.sync_trigger_bypass_active()
+-- (same GUC the BEFORE search_vector triggers check) but a plain migration
+-- UPDATE doesn't set that GUC by default — without it, this one backfill
+-- statement would trigger 10,000+ redundant tenant-wide snapshot rebuilds
+-- (one set per row instead of once total). session-scoped (is_local=false)
+-- so it survives across the separate auto-committed statements below, turned
+-- back off at the end of this file.
+SELECT set_config('app.integration_sync_bypass_triggers', 'on', false);
+
 UPDATE app.tenant_products tp
 SET search_vector = joined.search_vector
 FROM (
@@ -206,3 +217,5 @@ UPDATE app.price_lists pl
 SET search_vector = to_tsvector('english', concat_ws(' ', COALESCE(pl.name, ''), COALESCE(pl.description, '')))
 WHERE pl.deleted_at IS NULL
   AND pl.search_vector IS NULL;
+
+SELECT set_config('app.integration_sync_bypass_triggers', 'off', false);
