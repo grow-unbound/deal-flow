@@ -143,11 +143,13 @@ export async function queueCampaignPublishNotify(
     headerImageLink: metaHeaderMediaId ? null : resolvedHeader.imageUrl,
   });
 
+  const messageIds: string[] = [];
   for (const queueInput of queueInputs) {
     const result = await enqueueWhatsAppMessage(queueInput);
     if (!result.enqueued) {
       throw new Error('Failed to enqueue one or more campaign publish messages');
     }
+    if (result.messageId) messageIds.push(result.messageId);
   }
 
   await db
@@ -161,7 +163,7 @@ export async function queueCampaignPublishNotify(
     .eq('id', broadcast.id);
 
   if (!input.scheduledFor) {
-    triggerWhatsAppDispatch();
+    await triggerWhatsAppDispatch(messageIds);
   }
 
   return {

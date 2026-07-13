@@ -3,7 +3,7 @@
  * Spec: DealFlow_WhatsApp-Broadcast-Spec_v4.md §5
  *
  * Callers insert app.whatsapp_messages (status=queued) + app.whatsapp_send_queue,
- * then trigger the dispatch worker — never call Meta directly.
+ * then synchronously invoke the dispatch worker with explicit message ids.
  */
 
 import type { WhatsAppMetaCategory, WhatsAppTriggerSource } from '@/lib/server/whatsapp-ledger';
@@ -142,36 +142,50 @@ export async function enqueueWhatsAppMessage(
   }
 }
 
+export interface WhatsAppDispatchResult {
+  ok: boolean;
+  dispatched: number;
+  failed: number;
+  skipped: number;
+}
+
 /**
- * Fire-and-forget POST to the dispatch edge function so priority-1 messages
- * don't wait for the 2-minute pg_cron pacing tick.
+ * Synchronously POST explicit messages to the Supabase Edge sender. The DB
+ * prepares/debits each row; the Edge Function only performs Meta HTTP.
  */
-export function triggerWhatsAppDispatch(): void {
+export async function triggerWhatsAppDispatch(
+  messageIds: Array<string | null | undefined>,
+): Promise<WhatsAppDispatchResult | null> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '');
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
-  const secret = process.env.INTEGRATIONS_PUSH_SECRET?.trim()
-    ?? process.env.INTEGRATIONS_DISPATCH_SECRET?.trim();
+  const ids = [...new Set(messageIds.filter((id): id is string => Boolean(id)))];
 
-  if (!supabaseUrl) return;
+  if (!supabaseUrl || ids.length === 0) return null;
 
   const url = `${supabaseUrl}/functions/v1/whatsapp-dispatch-worker`;
-  void fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      // Send anon JWT so the function accepts the call even if x-push-secret
-      // is misconfigured. x-push-secret kept as belt-and-suspenders.
-      ...(anonKey ? { 'Authorization': `Bearer ${anonKey}` } : {}),
-      ...(secret ? { 'x-push-secret': secret } : {}),
-    },
-    body: JSON.stringify({ trigger: 'transactional' }),
-  })
-    .then(async (res) => {
-      if (!res.ok) {
-        console.error('[whatsapp-enqueue] dispatch trigger non-ok', res.status);
-      }
-    })
-    .catch((err) => {
-      console.error('[whatsapp-enqueue] dispatch trigger failed', err);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(anonKey ? { 'Authorization': `Bearer ${anonKey}` } : {}),
+      },
+      body: JSON.stringify({ message_ids: ids }),
     });
+
+    const text = await res.text();
+    if (!res.ok) {
+      console.error('[whatsapp-enqueue] dispatch trigger non-ok', res.status, text);
+      return null;
+    }
+
+    return (text ? JSON.parse(text) : null) as WhatsAppDispatchResult | null;
+  } catch (err) {
+    console.error('[whatsapp-enqueue] dispatch trigger failed', err);
+    return null;
+  }
+}
+
+export function triggerWhatsAppDispatchSoon(messageIds: Array<string | null | undefined>): void {
+  void triggerWhatsAppDispatch(messageIds);
 }
