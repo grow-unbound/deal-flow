@@ -17,3 +17,17 @@ export function useBuyerCategoryRecos(categoryId: string) {
     enabled: Boolean(categoryId),
   });
 }
+
+export function useBuyerBrandRecos(brandId: string) {
+  return useQuery<BuyerCatalogItem[]>({
+    queryKey: ['reco-brand', brandId],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/buyer/reco/brand/${brandId}`);
+      if (!res.ok) return [];
+      return res.json() as Promise<BuyerCatalogItem[]>;
+    },
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    enabled: Boolean(brandId),
+  });
+}

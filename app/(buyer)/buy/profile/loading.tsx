@@ -13,13 +13,13 @@ export default function ProfileLoading() {
 
       <div className="px-4 pt-5">
         <div className="h-4 w-20 animate-pulse rounded bg-cream-200" />
-        <div className="mt-3 overflow-hidden rounded-[24px] border border-cream-200 bg-cream-100">
+        <div className="mt-3 overflow-hidden rounded-[12px] border border-cream-200 bg-cream-100">
           {Array.from({ length: 3 }).map((_, index) => (
             <div
               key={index}
               className={`flex items-center gap-4 px-4 py-4 ${index < 2 ? 'border-b border-cream-200' : ''}`}
             >
-              <div className="h-12 w-12 shrink-0 animate-pulse rounded-2xl bg-cream-200" />
+              <div className="h-12 w-12 shrink-0 animate-pulse rounded-[12px] bg-cream-200" />
               <div className="flex-1 space-y-2">
                 <div className="h-5 w-32 animate-pulse rounded bg-cream-200" />
                 <div className="h-4 w-44 animate-pulse rounded bg-cream-200" />
@@ -32,9 +32,9 @@ export default function ProfileLoading() {
 
       <div className="space-y-3 px-4 pt-5">
         {Array.from({ length: 2 }).map((_, index) => (
-          <div key={index} className="overflow-hidden rounded-[24px] border border-cream-200 bg-cream-100">
+          <div key={index} className="overflow-hidden rounded-[12px] border border-cream-200 bg-cream-100">
             <div className="flex items-center gap-4 px-4 py-4">
-              <div className="h-12 w-12 shrink-0 animate-pulse rounded-2xl bg-cream-200" />
+              <div className="h-12 w-12 shrink-0 animate-pulse rounded-[12px] bg-cream-200" />
               <div className="flex-1 space-y-2">
                 <div className="h-5 w-32 animate-pulse rounded bg-cream-200" />
                 <div className="h-4 w-40 animate-pulse rounded bg-cream-200" />

@@ -10,7 +10,7 @@ import { FeatureDisabledState } from '@/components/FeatureGate';
 import { PermissionDenied } from '@/components/auth/PermissionDenied';
 import { ComposerSidebarCard } from '@/components/seller/composer/ComposerLayout';
 import { DocumentBasicsStrip } from '@/components/seller/composer/DocumentBasicsStrip';
-import { DocumentComposerLoadingSkeleton, DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
+import { DocumentComposerShell } from '@/components/seller/composer/DocumentComposerShell';
 import {
   BuyerCardFilled,
   DocumentMetaCard,
@@ -48,6 +48,7 @@ import type { EstimateComposerProductSearchRow } from '@/types/estimate-composer
 import { formatCompactInr } from '@/lib/utils';
 
 import { ModalConvertEstimate } from '@/components/seller/estimates/modals/ModalConvertEstimate';
+import { DocumentComposerLoadingSkeleton as SharedDocumentComposerLoadingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 const noop = () => {};
 
@@ -113,7 +114,7 @@ export function EstimateDetailPage({ id }: { id: string }) {
   }
 
   if (isLoading) {
-    return <DocumentComposerLoadingSkeleton />;
+    return <SharedDocumentComposerLoadingSkeleton />;
   }
 
   if (isError) {

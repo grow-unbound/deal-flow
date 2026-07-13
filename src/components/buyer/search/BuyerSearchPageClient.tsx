@@ -5,6 +5,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api-fetch';
 import { ProductGrid } from '@/components/buyer/catalog/ProductGrid';
 import { markBuyerNavigationBack } from '@/hooks/useBuyerNavigationDirection';
+import { getSentinelInsertIndex, useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { useBuyerCatalogSearchInfinite } from '@/hooks/useBuyerProducts';
+import { BUYER_INFINITE_SCROLL_RATIO } from '@/lib/buyer-ui';
 import type { BuyerCatalogItem } from '@/types/buyer';
 
 interface BuyerReorderResponse {
@@ -49,10 +52,36 @@ export function BuyerSearchPageClient() {
 
   const [q, setQ] = React.useState(initialQ);
   const [debounced, setDebounced] = React.useState(initialQ.trim());
-  const [catalogItems, setCatalogItems] = React.useState<BuyerCatalogItem[]>([]);
   const [buyAgainPool, setBuyAgainPool] = React.useState<BuyerCatalogItem[] | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState(false);
+  const [buyAgainLoading, setBuyAgainLoading] = React.useState(scope === 'buy-again');
+  const [buyAgainError, setBuyAgainError] = React.useState(false);
+
+  const catalogSearchQuery = useBuyerCatalogSearchInfinite(
+    debounced,
+    {
+      categoryId: categoryId || undefined,
+      brandId: brandId || undefined,
+      campaignId: catalogId || undefined,
+    },
+    scope !== 'buy-again',
+  );
+
+  const catalogPages = catalogSearchQuery.data?.pages ?? [];
+  const catalogItems = React.useMemo(
+    () => catalogPages.flatMap((page) => page.items ?? []),
+    [catalogPages],
+  );
+  const catalogHasMore = catalogPages.at(-1)?.has_more ?? false;
+  const catalogLoadingMore = catalogSearchQuery.isFetchingNextPage;
+
+  const sentinelIndex = scope === 'buy-again'
+    ? -1
+    : getSentinelInsertIndex(catalogItems.length, BUYER_INFINITE_SCROLL_RATIO);
+  const { sentinelRef } = useInfiniteScroll({
+    hasMore: scope !== 'buy-again' && catalogHasMore,
+    isLoading: catalogLoadingMore,
+    onLoadMore: () => { void catalogSearchQuery.fetchNextPage(); },
+  });
 
   React.useEffect(() => {
     const t = setTimeout(() => setDebounced(q.trim()), 280);
@@ -60,41 +89,14 @@ export function BuyerSearchPageClient() {
   }, [q]);
 
   React.useEffect(() => {
-    if (scope === 'buy-again') return;
-    let cancelled = false;
-    setLoading(true);
-    setError(false);
-    const params = new URLSearchParams({ limit: '60', offset: '0' });
-    if (debounced) params.set('search', debounced);
-    if (categoryId) params.set('category_id', categoryId);
-    if (brandId) params.set('brand_id', brandId);
-    if (catalogId) params.set('campaign_id', catalogId);
-
-    apiFetch(`/api/buyer/catalog?${params.toString()}`)
-      .then((r) => r.json() as Promise<{ items?: BuyerCatalogItem[] }>)
-      .then((data) => {
-        if (!cancelled) setCatalogItems(data.items ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [debounced, categoryId, brandId, catalogId, scope]);
-
-  React.useEffect(() => {
     if (scope !== 'buy-again') {
       setBuyAgainPool(null);
+      setBuyAgainLoading(false);
       return;
     }
     let cancelled = false;
-    setLoading(true);
-    setError(false);
+    setBuyAgainLoading(true);
+    setBuyAgainError(false);
     apiFetch('/api/buyer/reorder')
       .then((r) => r.json() as Promise<BuyerReorderResponse>)
       .then((data) => {
@@ -102,10 +104,10 @@ export function BuyerSearchPageClient() {
         setBuyAgainPool(mergeReorderItems(data));
       })
       .catch(() => {
-        if (!cancelled) setError(true);
+        if (!cancelled) setBuyAgainError(true);
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setBuyAgainLoading(false);
       });
     return () => {
       cancelled = true;
@@ -119,6 +121,11 @@ export function BuyerSearchPageClient() {
     }
     return catalogItems;
   }, [scope, buyAgainPool, debounced, catalogItems]);
+
+  const loading = scope === 'buy-again'
+    ? buyAgainLoading
+    : catalogSearchQuery.isLoading && catalogItems.length === 0;
+  const error = scope === 'buy-again' ? buyAgainError : catalogSearchQuery.isError;
 
   function handleClose(): void {
     markBuyerNavigationBack();
@@ -158,7 +165,12 @@ export function BuyerSearchPageClient() {
         ) : shownItems.length === 0 ? (
           <div className="px-4 py-8 text-center text-sm text-[var(--fg-3)]">No matches. Try another term.</div>
         ) : (
-          <ProductGrid items={shownItems} />
+          <ProductGrid
+            items={shownItems}
+            loadingMore={scope !== 'buy-again' && catalogLoadingMore}
+            sentinelIndex={scope !== 'buy-again' ? sentinelIndex : -1}
+            sentinelRef={scope !== 'buy-again' ? sentinelRef : undefined}
+          />
         )}
       </div>
     </div>

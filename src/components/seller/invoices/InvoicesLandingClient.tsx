@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatCompactInr, formatDate, formatInr } from '@/lib/utils';
 import { sellerLandingMetricSuffix, type SellerLandingPeriod } from '@/lib/seller-period';
+import { InvoicesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'Recent first';
 const SORT_OPTIONS: SortOption[] = ['Recent first'];
@@ -162,7 +163,7 @@ function InvoicesLandingContent({
     return `${kpis.invoices_this_period} invoices ${lowerLabel} with ${formatCompactInr(kpis.gmv_this_period)} GMV. ${kpis.outstanding_count} still due and ${kpis.overdue_count} overdue.`;
   }, [lowerLabel, summaryData?.kpis]);
 
-  if (isLoading && !data) return <InvoicesLoadingSkeleton />;
+  if (isLoading && !data) return <InvoicesLandingSkeleton />;
 
   if (isError && !data) {
     return (
@@ -172,7 +173,7 @@ function InvoicesLandingContent({
       />
     );
   }
-  if (!data) return <InvoicesLoadingSkeleton />;
+  if (!data) return <InvoicesLandingSkeleton />;
   const showRefreshingState = isLoading && !data;
   const kpis = summaryData?.kpis;
   const groups: FilterBarGroup[] = (summaryData?.filters?.groups ?? []).map((group) => ({

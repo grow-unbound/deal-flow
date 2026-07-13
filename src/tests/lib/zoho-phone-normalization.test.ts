@@ -1,4 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+// source_payload is written to R2 (not inline jsonb) by batchUpsertEntityMap
+// — mock the R2 write so tests don't need a real S3 client / Deno env.
+vi.mock('../../../supabase/functions/_shared/r2.ts', () => ({
+  putObjectJson: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { sanitizeZohoPhone } from '../../../supabase/functions/_shared/integrations-persist';
 

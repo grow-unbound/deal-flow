@@ -22,6 +22,7 @@ import {
   syncLocationAssignees,
 } from '../../../src/lib/location-assignees.ts';
 import { logCheckpoint, startTimer } from './sync-log.ts';
+import { putObjectJson } from './r2.ts';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -786,6 +787,9 @@ async function batchUpsertEntityMap(
   if (pairs.length === 0) return;
   logCheckpoint(null, entityType, 'batchUpsertEntityMap:start', { pairs: pairs.length });
 
+  // source_payload is intentionally NOT written here — payloads are stored
+  // in R2 (see source_payload_r2_key below), not inline as jsonb, to avoid
+  // per-row table bloat (was 71MB table / 51MB idx+toast for 42K rows).
   const rows = pairs.map((p) => ({
     tenant_id: tenantId,
     tenant_integration_id: integrationId,
@@ -795,10 +799,9 @@ async function batchUpsertEntityMap(
     last_synced_at: nowIso(),
     sync_status: options?.syncStatus ?? 'synced',
     error_reason: options?.errorReason ?? null,
-    source_payload: p.sourcePayload ?? null,
   }));
 
-  await bulkPersistJsonbRecords(admin, 'integration_entity_map', dedupeByColumns(rows, [
+  const persisted = await bulkPersistJsonbRecords(admin, 'integration_entity_map', dedupeByColumns(rows, [
     'tenant_id',
     'tenant_integration_id',
     'entity_type',
@@ -809,6 +812,48 @@ async function batchUpsertEntityMap(
     'entity_type',
     'external_id',
   ]);
+
+  // Last-write-wins per external_id, matching dedupeByColumns' own dedupe
+  // behavior above, so the payload we write to R2 matches the row that was
+  // actually persisted.
+  const payloadByExternalId = new Map<string, Record<string, unknown>>();
+  for (const p of pairs) {
+    if (p.sourcePayload) payloadByExternalId.set(p.externalId, p.sourcePayload);
+  }
+  if (payloadByExternalId.size === 0) return;
+
+  await Promise.allSettled(
+    persisted.map(async (row) => {
+      const externalId = String(row.external_id ?? '');
+      const payload = payloadByExternalId.get(externalId);
+      if (!payload) return;
+
+      const rowId = String(row.id ?? '');
+      if (!rowId) return;
+
+      const key = `integrations/${tenantId}/entity-map/${rowId}.json`;
+      await putObjectJson(key, payload);
+
+      // Key is deterministic from the row's own id, so it's stable once
+      // set — only write it on first sync of this row, not every re-sync.
+      if (!row.source_payload_r2_key) {
+        const { error } = await admin
+          .schema('app')
+          .from('integration_entity_map')
+          .update({ source_payload_r2_key: key })
+          .eq('id', rowId);
+        if (error) {
+          console.error(`[r2] failed to record source_payload_r2_key for entity_map row ${rowId}: ${error.message}`);
+        }
+      }
+    }),
+  ).then((results) => {
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        console.error(`[r2] failed to persist source_payload for entity_type=${entityType}: ${String(result.reason)}`);
+      }
+    }
+  });
 }
 
 async function upsertImportedPriceList(
@@ -1918,9 +1963,10 @@ export async function fetchAndPersistMissingItemLocations(
 
   // Reserve time for one full worst-case batch so the function returns before
   // hitting the coordinator's dispatch timeout or Supabase's 150s wall.
-  // ZOHO_BULK_DETAIL_MAX_ATTEMPTS(2) × ZOHO_BULK_DETAIL_TIMEOUT_MS(15s) = 30s
-  // + ~5s warehouse resolution + persist overhead = 35s total reservation.
-  const BATCH_DEADLINE_RESERVATION_MS = 35_000;
+  // ZOHO_BULK_DETAIL_MAX_ATTEMPTS(2) x ZOHO_BULK_DETAIL_TIMEOUT_MS(15s) = 30s
+  // + ZOHO_BULK_RETRY_DELAY_CAP_MS(5s) 429 backoff between attempts = 35s
+  // + ~10s warehouse resolution + persist overhead = 45s total reservation.
+  const BATCH_DEADLINE_RESERVATION_MS = 45_000;
 
   for (let i = 0; i < itemIds.length; i += ITEM_LOC_CONCURRENCY) {
     if (opts.deadlineMs != null && Date.now() + BATCH_DEADLINE_RESERVATION_MS > opts.deadlineMs) {

@@ -22,6 +22,16 @@ export async function getPresignedUploadUrl(key: string, contentType: string): P
   return getSignedUrl(r2Client, command, { expiresIn: 3600 });
 }
 
+export async function putObjectJson(key: string, value: unknown): Promise<void> {
+  const command = new PutObjectCommand({
+    Bucket: R2_BUCKET,
+    Key: key,
+    Body: JSON.stringify(value),
+    ContentType: 'application/json',
+  });
+  await r2Client.send(command);
+}
+
 export function getPublicUrl(key: string): string {
   return `${R2_PUBLIC_URL}/${key}`;
 }

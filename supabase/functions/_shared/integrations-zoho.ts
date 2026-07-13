@@ -260,15 +260,26 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function retryDelayMs(attempt: number, response?: Response): number {
+// Bulk retryBudget's whole point is fail-fast-and-skip (see
+// ZOHO_BULK_DETAIL_* comment): a batch of ZOHO_DETAIL_FETCH_CONCURRENCY
+// concurrent items only ever waits on its slowest item, so honouring a
+// standard-length Retry-After here (up to 30s) turns one 429'd item into a
+// ~60s batch (15s attempt + 30s wait + 15s attempt) — blows past callers'
+// BATCH_DEADLINE_RESERVATION_MS (35s) and the coordinator's 140s dispatch
+// timeout. Cap bulk's 429 wait well under its own per-attempt timeout
+// (ZOHO_BULK_DETAIL_TIMEOUT_MS=15s) so worst case per item stays ~31s.
+const ZOHO_BULK_RETRY_DELAY_CAP_MS = 5_000;
+
+function retryDelayMs(attempt: number, retryBudget: 'standard' | 'bulk', response?: Response): number {
+  const cap = retryBudget === 'bulk' ? ZOHO_BULK_RETRY_DELAY_CAP_MS : 30_000;
   // On 429 rate-limit: honour Retry-After header when present (value is seconds)
   if (response?.status === 429) {
     const header = response.headers.get('Retry-After');
     const seconds = header ? parseFloat(header) : NaN;
-    if (Number.isFinite(seconds) && seconds > 0) return Math.min(seconds * 1000, 30_000);
+    if (Number.isFinite(seconds) && seconds > 0) return Math.min(seconds * 1000, cap);
   }
   // Exponential backoff with ±200ms jitter for all other retryable errors
-  return 1000 * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 200);
+  return Math.min(1000 * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 200), cap);
 }
 
 // Lowest-level chokepoint for every outbound Zoho call (token refresh, list
@@ -311,7 +322,7 @@ async function fetchZohoResponse(
       // heartbeat_at.
       onKeepAlive?.();
       if (attempt < maxAttempts && isRetryableZohoResponseStatus(response.status)) {
-        const delayMs = retryDelayMs(attempt, response);
+        const delayMs = retryDelayMs(attempt, retryBudget, response);
         logCheckpoint(null, 'zoho-request', `${retryLabel}:retrying`, { attempt, status: response.status, delayMs });
         await delay(delayMs);
         continue;
@@ -324,7 +335,7 @@ async function fetchZohoResponse(
         throw error;
       }
       onKeepAlive?.();
-      const delayMs = retryDelayMs(attempt);
+      const delayMs = retryDelayMs(attempt, retryBudget);
       logCheckpoint(null, 'zoho-request', `${retryLabel}:retrying`, { attempt, error: error instanceof Error ? error.message : String(error), delayMs });
       await delay(delayMs);
     } finally {

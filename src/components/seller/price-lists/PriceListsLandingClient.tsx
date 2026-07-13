@@ -25,6 +25,7 @@ import { useRole } from '@/hooks/useRole';
 import { usePriceListsLanding, type PriceListLandingRow, type PriceListsLandingResponse } from '@/hooks/usePriceLists';
 import { cn, formatDate } from '@/lib/utils';
 import { formatStrategySummary } from '@/lib/price-list-strategy';
+import { PriceListsLandingSkeleton as SharedPriceListsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type LandingChip = 'Active' | 'Draft' | 'Expired';
 type SortOption = 'Recently updated' | 'Name (A-Z)' | 'Products (high → low)' | 'Validity (latest end date)' | 'Priority (high → low)';
@@ -158,7 +159,7 @@ function PriceListsLandingContent({
     });
   }, [allRows, search, sortBy, statusFilter]);
 
-  if (isLoading) return <PriceListsLandingSkeleton />;
+  if (isLoading) return <SharedPriceListsLandingSkeleton />;
 
   if (isError) {
     return (

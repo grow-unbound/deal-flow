@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Package, Minus, Plus } from 'lucide-react';
 import { triggerHaptic } from '@/lib/haptics';
 import { cn, formatCurrency } from '@/lib/utils';
+import { BUYER_CARD_RADIUS_CLASS } from '@/lib/buyer-ui';
 
 export interface ProductTileData {
   id: string;
@@ -39,7 +40,7 @@ function ProductTile({ product, quantity = 0, onQuantityChange, onClick, classNa
   }
 
   return (
-    <div className={cn('overflow-hidden rounded-lg border border-cream-300 bg-[var(--bg-surface)] shadow-xs', className)}>
+    <div className={cn(BUYER_CARD_RADIUS_CLASS, 'overflow-hidden border border-cream-300 bg-[var(--bg-surface)] shadow-xs', className)}>
       {/* Image */}
       <button
         type="button"

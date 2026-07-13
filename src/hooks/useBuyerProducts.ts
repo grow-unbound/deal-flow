@@ -103,6 +103,54 @@ export function useBuyerCatalogLandingData() {
   };
 }
 
+export interface BuyerCatalogSearchFilters {
+  categoryId?: string;
+  brandId?: string;
+  campaignId?: string;
+}
+
+export function useBuyerCatalogSearchInfinite(
+  search: string,
+  filters: BuyerCatalogSearchFilters = {},
+  enabled = true,
+) {
+  const delivery = useBuyerDeliveryOptional();
+  const stockSignature = buyerDeliveryStockSignature(delivery?.selected);
+  const trimmedSearch = search.trim();
+  const categoryId = filters.categoryId?.trim() ?? '';
+  const brandId = filters.brandId?.trim() ?? '';
+  const campaignId = filters.campaignId?.trim() ?? '';
+
+  return useInfiniteQuery<BuyerCatalogResponse>({
+    queryKey: [
+      'buyer-catalog-search',
+      trimmedSearch,
+      categoryId,
+      brandId,
+      campaignId,
+      stockSignature,
+    ],
+    enabled: enabled && trimmedSearch.length > 0,
+    queryFn: async ({ pageParam = 0 }) => {
+      const params = new URLSearchParams({
+        limit: String(PAGE_SIZE),
+        offset: String(pageParam),
+      });
+      if (trimmedSearch) params.set('search', trimmedSearch);
+      if (categoryId) params.set('category_id', categoryId);
+      if (brandId) params.set('brand_id', brandId);
+      if (campaignId) params.set('campaign_id', campaignId);
+      return fetchJson<BuyerCatalogResponse>(`/api/buyer/catalog?${params.toString()}`);
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, pages) => {
+      if (!lastPage.has_more) return undefined;
+      const loaded = pages.reduce((sum, page) => sum + page.items.length, 0);
+      return loaded;
+    },
+  });
+}
+
 export function useBuyerCatalogList(mode: FilterMode, id: string, search = '') {
   const delivery = useBuyerDeliveryOptional();
   const stockSignature = buyerDeliveryStockSignature(delivery?.selected);

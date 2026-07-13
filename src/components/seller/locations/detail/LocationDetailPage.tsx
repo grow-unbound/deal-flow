@@ -14,6 +14,7 @@ import { useLocationDetail } from '@/hooks/useLocations';
 import { useTenantLocations } from '@/hooks/useTenantLocations';
 import { LocationFormSheet } from '@/components/seller/settings/LocationFormSheet';
 import { formatCompactInr } from '@/lib/utils';
+import { LocationDetailSkeleton as SharedLocationDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LocationOrdersTab } from './LocationOrdersTab';
 import { LocationEstimatesTab } from './LocationEstimatesTab';
 import { LocationInvoicesTab } from './LocationInvoicesTab';
@@ -131,7 +132,7 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
   });
   const { data, isLoading, isError, refetch } = useLocationDetail(id);
 
-  if (isLoading) return <LocationDetailSkeleton />;
+  if (isLoading) return <SharedLocationDetailSkeleton />;
   if (isError || !data) {
     return (
       <ErrorState

@@ -11,7 +11,7 @@ export default function CatalogLoading() {
           <div className="h-5 w-36 animate-pulse rounded bg-cream-200" />
         </div>
         <div className="px-4 pb-2">
-          <div className="h-10 w-full animate-pulse rounded-xl bg-cream-200" />
+          <div className="h-10 w-full animate-pulse rounded-[12px] bg-cream-200" />
         </div>
         <div className="border-t border-cream-200 px-4 pb-2 pt-2">
           <div className="flex gap-2 overflow-hidden">
@@ -26,9 +26,12 @@ export default function CatalogLoading() {
           <div className="mb-3 h-5 w-28 animate-pulse rounded bg-cream-200" />
           <div className="-mx-1 flex gap-2 overflow-hidden px-1">
             {Array.from({ length: 2 }).map((_, i) => (
-              <div key={i} className="w-[200px] shrink-0 overflow-hidden rounded-lg shadow-sm">
-                <div className="h-[220px] animate-pulse bg-cream-100" />
-                <div className="h-10 animate-pulse bg-cream-50" />
+              <div key={i} className="w-[280px] shrink-0 overflow-hidden rounded-[12px] border border-cream-200">
+                <div className="aspect-[19/10] w-full animate-pulse bg-cream-100" />
+                <div className="space-y-2 bg-white px-5 py-4">
+                  <div className="h-5 w-3/4 animate-pulse rounded bg-cream-200" />
+                  <div className="h-4 w-full animate-pulse rounded bg-cream-200" />
+                </div>
               </div>
             ))}
           </div>
@@ -50,7 +53,7 @@ export default function CatalogLoading() {
             {Array.from({ length: 6 }).map((_, i) => (
               <div
                 key={i}
-                className="overflow-hidden rounded-xl border border-cream-200 bg-[var(--bg-surface)] shadow-[0_1px_3px_rgba(34,30,26,0.06),0_4px_12px_rgba(34,30,26,0.05)]"
+                className="overflow-hidden rounded-[12px] border border-cream-200 bg-[var(--bg-surface)] shadow-[0_1px_3px_rgba(34,30,26,0.06),0_4px_12px_rgba(34,30,26,0.05)]"
               >
                 <div className="aspect-square animate-pulse bg-cream-100" />
                 <div className="bg-cream-50 px-3 pb-3 pt-2.5">

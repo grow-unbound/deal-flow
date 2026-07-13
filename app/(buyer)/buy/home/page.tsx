@@ -4,12 +4,17 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { Bell, ChevronRight } from 'lucide-react';
+import { Bell } from 'lucide-react';
 
 import type { BuyerHomeResponse } from '@/lib/buyer-home-types';
 import { apiFetch } from '@/lib/api-fetch';
+import { BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS } from '@/lib/buyer-lookbook';
+import { BUYER_CARD_RADIUS_CLASS, BUYER_INFINITE_SCROLL_RATIO } from '@/lib/buyer-ui';
 import { ErrorState } from '@/components/ui/empty-state';
 import { BuyerHomeLandingHeader } from '@/components/buyer/layout/BuyerHomeLandingHeader';
+import { BuyerHorizontalScroll } from '@/components/buyer/layout/BuyerHorizontalScroll';
+import { BuyerSectionRow } from '@/components/buyer/layout/BuyerSectionRow';
+import { CatalogLookbookCard } from '@/components/buyer/catalog/CatalogLookbookCard';
 import { ProductCard } from '@/components/buyer/catalog/ProductCard';
 import { ActivityCardShell } from '@/components/buyer/orders/ActivityCardShell';
 import { BuyerTransactionCardSkeleton } from '@/components/buyer/orders/BuyerTransactionCardSkeleton';
@@ -51,11 +56,6 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(diffDays / 30)}mo ago`;
 }
 
-function formatValidUntil(iso: string | null): string {
-  if (!iso) return 'No end date';
-  return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
 function formatDueSummary(daysUntilDue: number | null, invoiceCount: number, outstandingDues: number): string {
   if (outstandingDues <= 0 || invoiceCount === 0) return 'No unpaid invoices';
   if (daysUntilDue == null) return `for ${invoiceCount} invoice${invoiceCount === 1 ? '' : 's'}`;
@@ -92,39 +92,9 @@ function activityStatusTone(status: string): StatusTone {
   }
 }
 
-function SectionRow({ title, href, linkLabel }: { title: string; href?: string; linkLabel?: string }) {
-  return (
-    <div className="flex items-center justify-between px-4 pb-3">
-      <h2
-        className="leading-none text-[var(--cream-900)]"
-        style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-section)', fontWeight: 500, letterSpacing: '-0.005em' }}
-      >
-        {title}
-      </h2>
-      {href ? (
-        <Link
-          href={href}
-          onClick={() => markBuyerNavigationForward()}
-          className="inline-flex items-center gap-1.5 font-medium tracking-[-0.01em] text-[var(--teal-500)] no-underline"
-          style={{ fontSize: 'var(--b-text-label)' }}
-        >
-          {linkLabel ?? 'See all'}
-          <ChevronRight className="h-4 w-4" />
-        </Link>
-      ) : null}
-    </div>
-  );
-}
-
 function SkeletonBlock({ className }: { className: string }) {
-  return <div className={`animate-pulse rounded-xl border border-cream-200 bg-cream-100 ${className}`} />;
+  return <div className={`animate-pulse border border-cream-200 bg-cream-100 ${BUYER_CARD_RADIUS_CLASS} ${className}`} />;
 }
-
-const promotionHues = [
-  'linear-gradient(135deg, #1F3A34 0%, #2D5549 100%)',
-  'linear-gradient(135deg, #874720 0%, #C26E3A 100%)',
-  'linear-gradient(135deg, #6B6760 0%, #3D3A35 100%)',
-];
 
 async function fetchBuyerHome(): Promise<BuyerHomeResponse> {
   const response = await apiFetch('/api/buyer/home');
@@ -165,7 +135,7 @@ export default function HomePage() {
   const loading = homeLoading || (activityLoading && activityItems.length === 0);
   useRouteScrollRestoration({ storageKey: 'buyer-home-page', ready: !loading });
 
-  const sentinelIndex = getSentinelInsertIndex(activityItems.length);
+  const sentinelIndex = getSentinelInsertIndex(activityItems.length, BUYER_INFINITE_SCROLL_RATIO);
   const { sentinelRef } = useInfiniteScroll({
     hasMore: hasNextPage ?? false,
     isLoading: isFetchingNextPage,
@@ -226,7 +196,7 @@ export default function HomePage() {
       />
 
       <div className="grid grid-cols-2 gap-2.5 px-3 pt-3">
-        <div className="col-span-2 rounded-[24px] bg-[#1f3a33] px-5 py-5 text-[var(--cream-50)] shadow-[0_18px_40px_rgba(31,58,51,0.14)]">
+        <div className={`col-span-2 ${BUYER_CARD_RADIUS_CLASS} bg-[#1f3a33] px-5 py-5 text-[var(--cream-50)] shadow-[0_18px_40px_rgba(31,58,51,0.14)]`}>
           {loading ? (
             <>
               <div className="h-3 w-28 animate-pulse rounded bg-white/20" />
@@ -249,7 +219,7 @@ export default function HomePage() {
           )}
         </div>
 
-        <div className="rounded-[22px] border border-[var(--border-1)] bg-[var(--cream-50)] px-4 py-5 shadow-[0_1px_0_rgba(34,30,26,0.03)]">
+        <div className={`${BUYER_CARD_RADIUS_CLASS} border border-[var(--border-1)] bg-[var(--cream-50)] px-4 py-5 shadow-[0_1px_0_rgba(34,30,26,0.03)]`}>
           {loading ? (
             <>
               <div className="h-3 w-24 animate-pulse rounded bg-cream-200" />
@@ -272,7 +242,7 @@ export default function HomePage() {
           )}
         </div>
 
-        <div className="rounded-[22px] border border-[var(--border-1)] bg-[var(--cream-50)] px-4 py-5 shadow-[0_1px_0_rgba(34,30,26,0.03)]">
+        <div className={`${BUYER_CARD_RADIUS_CLASS} border border-[var(--border-1)] bg-[var(--cream-50)] px-4 py-5 shadow-[0_1px_0_rgba(34,30,26,0.03)]`}>
           {loading ? (
             <>
               <div className="h-3 w-24 animate-pulse rounded bg-cream-200" />
@@ -303,12 +273,44 @@ export default function HomePage() {
       )}
 
       <div className="pt-10">
-        <SectionRow title="Order again" href="/buy/buy-again" linkLabel="Browse all" />
-        <div className="flex gap-3 overflow-x-auto px-4 pb-1">
+        <BuyerSectionRow title="Promotions" href="/buy/promotions" linkLabel="See all" />
+        <BuyerHorizontalScroll className="gap-3 px-4">
           {loading ? (
             Array.from({ length: 3 }).map((_, index) => (
-              <div key={index} className="w-[178px] shrink-0 overflow-hidden rounded-[28px] border border-cream-200 bg-cream-50">
-                <div className="h-[220px] animate-pulse bg-cream-100" />
+              <div key={index} className={`w-[280px] shrink-0 overflow-hidden border border-cream-200 bg-cream-50 ${BUYER_CARD_RADIUS_CLASS}`}>
+                <div className="buyer-lookbook-preview w-full animate-pulse bg-cream-100" />
+                <div className="space-y-2 bg-white px-5 py-4">
+                  <div className="h-5 w-3/4 animate-pulse rounded bg-cream-200" />
+                  <div className="h-4 w-full animate-pulse rounded bg-cream-200" />
+                </div>
+              </div>
+            ))
+          ) : promotions.length > 0 ? (
+            promotions.map((promotion, index) => (
+              <CatalogLookbookCard
+                key={promotion.id}
+                id={promotion.id}
+                name={promotion.name}
+                productCount={promotion.product_count}
+                href={`/buy/catalog/list/${promotion.id}`}
+                validUntil={promotion.valid_until}
+                heroImageUrl={promotion.hero_image_url}
+                hueIndex={index}
+              />
+            ))
+          ) : (
+            <p className="px-1 text-[var(--b-text-body)] font-medium tracking-[-0.01em] text-[var(--cream-600)]">No promotions are live right now.</p>
+          )}
+        </BuyerHorizontalScroll>
+      </div>
+
+      <div className="pt-10">
+        <BuyerSectionRow title="Order again" href="/buy/buy-again" linkLabel="Browse all" />
+        <BuyerHorizontalScroll className="gap-3 px-4">
+          {loading ? (
+            Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className={`${BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS} shrink-0 overflow-hidden border border-cream-200 bg-cream-50 ${BUYER_CARD_RADIUS_CLASS}`}>
+                <div className="aspect-square animate-pulse bg-cream-100" />
                 <div className="space-y-2 px-4 py-4">
                   <div className="h-4 w-3/4 animate-pulse rounded bg-cream-200" />
                   <div className="h-4 w-1/2 animate-pulse rounded bg-cream-200" />
@@ -317,12 +319,12 @@ export default function HomePage() {
             ))
           ) : reorderItems.length > 0 ? (
             reorderItems.map((item) => (
-              <ProductCard key={item.tenant_product_id} item={item} className="w-[178px] shrink-0" />
+              <ProductCard key={item.tenant_product_id} item={item} className={`${BUYER_PRODUCT_CAROUSEL_WIDTH_CLASS} shrink-0`} />
             ))
           ) : (
             <p className="px-1 text-[var(--b-text-body)] font-medium tracking-[-0.01em] text-[var(--cream-600)]">No previous orders yet.</p>
           )}
-        </div>
+        </BuyerHorizontalScroll>
       </div>
 
       {bestsellers.length > 0 && (
@@ -332,48 +334,7 @@ export default function HomePage() {
       )}
 
       <div className="pt-10">
-        <SectionRow title="Latest promotions" href="/buy/promotions" linkLabel="See all" />
-        <div className="flex gap-3 overflow-x-auto px-4 pb-1">
-          {loading ? (
-            Array.from({ length: 3 }).map((_, index) => (
-              <div key={index} className="w-[280px] shrink-0 overflow-hidden rounded-[28px] border border-cream-200 bg-cream-50">
-                <div className="h-[170px] animate-pulse bg-cream-100" />
-                <div className="space-y-2 px-6 py-4">
-                  <div className="h-4 w-3/4 animate-pulse rounded bg-cream-200" />
-                  <div className="h-4 w-1/2 animate-pulse rounded bg-cream-200" />
-                </div>
-              </div>
-            ))
-          ) : promotions.length > 0 ? (
-            promotions.map((promotion, index) => (
-              <Link
-                key={promotion.id}
-                href={`/buy/catalog/list/${promotion.id}`}
-                onClick={() => markBuyerNavigationForward()}
-                className="w-[280px] shrink-0 overflow-hidden rounded-[28px] border border-[var(--border-1)] bg-[var(--bg-surface)] no-underline shadow-[0_1px_0_rgba(34,30,26,0.03)]"
-              >
-                <div className="flex h-[170px] items-end px-6 py-5" style={{ background: promotionHues[index % promotionHues.length] }}>
-                  <h3
-                    className="text-[var(--b-text-section)] font-bold leading-none tracking-[-0.02em] text-white"
-                    style={{ fontFamily: 'var(--font-display)' }}
-                  >
-                    {promotion.name}
-                  </h3>
-                </div>
-                <div className="flex items-center justify-between bg-white px-6 py-4 text-[var(--b-text-header)] font-medium tracking-[-0.01em] text-[var(--cream-700)]">
-                  <span><strong className="font-medium text-[var(--cream-900)]">{promotion.product_count}</strong> products</span>
-                  <span>{formatValidUntil(promotion.valid_until)}</span>
-                </div>
-              </Link>
-            ))
-          ) : (
-            <p className="px-1 text-[var(--b-text-body)] font-medium tracking-[-0.01em] text-[var(--cream-600)]">No promotions are live right now.</p>
-          )}
-        </div>
-      </div>
-
-      <div className="pt-10">
-        <SectionRow title="Recent activity" href="/buy/orders" linkLabel="See all" />
+        <BuyerSectionRow title="Recent activity" href="/buy/orders" linkLabel="See all" />
         <div className="space-y-2 px-4">
           {loading ? (
             <>

@@ -9,6 +9,7 @@ import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { CategoryDetailSkeleton as SharedCategoryDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
 import { useCategoryDetail } from '@/hooks/useCategories';
@@ -107,7 +108,7 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
     ];
   }, [data]);
 
-  if (isLoading) return <CategoryDetailSkeleton />;
+  if (isLoading) return <SharedCategoryDetailSkeleton />;
   if (isError || !data) {
     return (
       <ErrorState

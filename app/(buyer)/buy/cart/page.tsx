@@ -364,7 +364,7 @@ export default function CartPage() {
         {/* Inline page head */}
         <div className="pb-1">
           <p className="font-semibold uppercase mb-0.5" style={{ fontSize: 'var(--b-text-eyebrow)', letterSpacing: '0.14em', color: 'var(--cream-600)' }}>
-            {availableItems.length} deliverable · {availableItemCount} {availableItemCount === 1 ? 'unit' : 'units'}
+            {availableItems.length} items · {availableItemCount} {availableItemCount === 1 ? 'unit' : 'units'}
           </p>
           <h2 className="font-semibold" style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--b-text-section)', fontWeight: 500, letterSpacing: '-0.005em', color: 'var(--fg-1, var(--cream-900))' }}>
             Review &amp; place
@@ -372,7 +372,7 @@ export default function CartPage() {
         </div>
 
         {/* All items in one card, separated by dividers */}
-        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
+        <div className="rounded-[12px] overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
           {availableItems.map((item, idx) => (
             <CartPageItem
               key={item.tenant_product_id}
@@ -390,7 +390,7 @@ export default function CartPage() {
         </div>
 
         {unavailableItems.length > 0 ? (
-          <section className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--danger-100, #FECACA)', background: 'var(--danger-50, #FEF2F2)' }}>
+          <section className="rounded-[12px] overflow-hidden" style={{ border: '1px solid var(--danger-100, #FECACA)', background: 'var(--danger-50, #FEF2F2)' }}>
             <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--danger-100, #FECACA)' }}>
               <p className="font-semibold" style={{ fontSize: 'var(--b-text-label)', color: 'var(--danger-500)' }}>
                 Unavailable at this warehouse
@@ -439,7 +439,7 @@ export default function CartPage() {
         )}
 
         {/* Totals card */}
-        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
+        <div className="rounded-[12px] overflow-hidden" style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}>
           <div className="px-4 py-3.5 space-y-2.5">
             <TotalsRow label="Subtotal" value={formatCurrency(totals.subtotal)} />
             <TotalsRow label={gstInclusive ? 'GST included in prices' : 'GST'} value={gstInclusive ? 'Included' : formatCurrency(totals.tax_amount)} isText={gstInclusive} />
@@ -458,7 +458,7 @@ export default function CartPage() {
         {/* Delivery row */}
         <button
           onClick={() => router.push('/buy/location?returnTo=' + encodeURIComponent('/buy/cart'))}
-          className="w-full rounded-xl px-4 py-3 flex items-center gap-3 text-left"
+          className="w-full rounded-[12px] px-4 py-3 flex items-center gap-3 text-left"
           style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface, #fff)' }}
         >
           <div className="flex items-center justify-center shrink-0" style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--ember-50)' }}>
@@ -492,7 +492,7 @@ export default function CartPage() {
 
         {/* Fulfillment location note */}
         {delivery?.selected && (
-          <div className="rounded-xl px-4 py-3 flex items-start gap-2.5" style={{ background: 'var(--teal-50, #f0fdfa)', border: '1px solid var(--teal-100, #ccfbf1)' }}>
+          <div className="rounded-[12px] px-4 py-3 flex items-start gap-2.5" style={{ background: 'var(--teal-50, #f0fdfa)', border: '1px solid var(--teal-100, #ccfbf1)' }}>
             <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: 'var(--teal-500)' }} />
             <p style={{ fontSize: 'var(--b-text-sub)', color: 'var(--teal-700, #0f766e)', lineHeight: '1.45' }}>
               {delivery.selected.nearest_warehouse_name && !delivery.selected.nearest_warehouse_fallback
@@ -506,7 +506,7 @@ export default function CartPage() {
 
         {/* Error */}
         {error && (
-          <div className="rounded-xl px-4 py-3" style={{ background: '#FEE2E2', color: '#B91C1C', fontSize: 'var(--b-text-label)' }}>
+          <div className="rounded-[12px] px-4 py-3" style={{ background: '#FEE2E2', color: '#B91C1C', fontSize: 'var(--b-text-label)' }}>
             {error}
           </div>
         )}
@@ -565,7 +565,7 @@ export default function CartPage() {
           aria-live="polite"
           aria-busy="true"
         >
-          <div className="flex flex-col items-center gap-3 rounded-2xl border border-[var(--border-1)] bg-[var(--bg-surface)] px-6 py-5 shadow-sm">
+          <div className="flex flex-col items-center gap-3 rounded-[12px] border border-[var(--border-1)] bg-[var(--bg-surface)] px-6 py-5 shadow-sm">
             <Loader2 className="h-8 w-8 animate-spin text-[var(--teal-500)]" />
             <p className="font-semibold text-[var(--fg-1)]" style={{ fontSize: 'var(--b-text-label)' }}>
               {placingOrder ? 'Placing your order…' : 'Requesting your quote…'}
