@@ -252,10 +252,15 @@ async function loadTransactionBatch(
   sinceDate: string | null,
   untilDate: string | null,
 ): Promise<{ rows: LocalTransactionRow[]; total: number; counts: Record<TransactionKind, number> }> {
+  const [estimatesCount, ordersCount, invoicesCount] = await Promise.all([
+    countRows(admin, 'estimates', tenantId, sinceDate, untilDate),
+    countRows(admin, 'orders', tenantId, sinceDate, untilDate),
+    countRows(admin, 'invoices', tenantId, sinceDate, untilDate),
+  ]);
   const counts = {
-    estimates: await countRows(admin, 'estimates', tenantId, sinceDate, untilDate),
-    orders: await countRows(admin, 'orders', tenantId, sinceDate, untilDate),
-    invoices: await countRows(admin, 'invoices', tenantId, sinceDate, untilDate),
+    estimates: estimatesCount,
+    orders: ordersCount,
+    invoices: invoicesCount,
   };
   const total = counts.estimates + counts.orders + counts.invoices;
   let remainingOffset = (page - 1) * batchSize;

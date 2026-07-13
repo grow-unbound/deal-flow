@@ -300,7 +300,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<BuyerOrde
           db,
           table: 'orders',
         });
-      } catch {
+      } catch (err) {
+        console.error('[buyer/orders] whatsapp notify failed', {
+          order_id: typed.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
         // non-blocking — order creation already succeeded
       }
     }

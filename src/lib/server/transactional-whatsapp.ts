@@ -42,7 +42,9 @@ export async function enqueueTransactionAcknowledgement(
     input.locationId,
     notificationType,
   );
-  if (!ctx) return false;
+  if (!ctx) {
+    return false;
+  }
 
   const whatsappEnqueued = await sendBuyerTransactionNotifications(
     input.kind,
@@ -54,7 +56,7 @@ export async function enqueueTransactionAcknowledgement(
   );
 
   if (whatsappEnqueued) {
-    await input.db
+    const { error } = await input.db
       .schema('app')
       .from(input.table)
       .update({
@@ -63,6 +65,13 @@ export async function enqueueTransactionAcknowledgement(
       })
       .eq('id', input.documentId)
       .is('sent_at', null);
+    if (error) {
+      console.error('[transactional-whatsapp] sent stamp failed', {
+        kind: input.kind,
+        document_id: input.documentId,
+        error: error.message,
+      });
+    }
   }
 
   return whatsappEnqueued;

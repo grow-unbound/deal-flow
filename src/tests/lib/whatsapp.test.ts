@@ -63,7 +63,7 @@ describe('whatsapp enqueue sender', () => {
     expect(triggerWhatsAppDispatchMock).toHaveBeenCalledWith(['msg-1']);
   });
 
-  it('enqueues buyer order template with seller_team param and en_IN locale', async () => {
+  it('enqueues buyer order template with seller_name param and en_IN locale', async () => {
     const { sendOrderReceivedBuyer } = await import('@/lib/server/whatsapp');
 
     await sendOrderReceivedBuyer(
@@ -98,7 +98,7 @@ describe('whatsapp enqueue sender', () => {
       { text: '3', parameter_name: 'item_count' },
       { text: 'ORD-2026-0001', parameter_name: 'order_number' },
       { text: '12500', parameter_name: 'total_amount' },
-      { text: 'WineYard (Mumbai Warehouse)', parameter_name: 'seller_team' },
+      { text: 'WineYard (Mumbai Warehouse)', parameter_name: 'seller_name' },
       { text: '24', parameter_name: 'eta' },
     ]);
     expect(input.sendPayload.body_params.some((param) => param.parameter_name === 'seller_location')).toBe(false);

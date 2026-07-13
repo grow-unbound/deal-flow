@@ -45,6 +45,12 @@ Deno.serve(async (req: Request) => {
     // Fetch all pricebook headers
     const pricebooks = await adapter.fetchPricelists();
 
+    // Wall-clock deadline for persistPricelists' per-pricebook detail-fetch
+    // loop (see integrations-persist.ts PersistOptions.deadlineMs) — same
+    // 110s budget runPhaseSync uses elsewhere, reserving headroom under the
+    // edge function's ~150s hard-kill for this single-invocation phase.
+    const deadlineMs = Date.now() + 110_000;
+
     let totalSynced = 0;
     if (pricebooks.length > 0) {
       const { persistOptions } = await resolvePersistOptionsForJob(admin, input.job_id, 'pricelists');
@@ -57,7 +63,7 @@ Deno.serve(async (req: Request) => {
         zohoTypeId,
         pricebooks,
         adapter,
-        persistOptions,
+        { ...persistOptions, deadlineMs },
       );
       totalSynced = result.created + result.updated;
     }

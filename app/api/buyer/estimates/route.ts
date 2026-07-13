@@ -300,7 +300,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<EstimateR
           db,
           table: 'estimates',
         });
-      } catch {
+      } catch (err) {
+        console.error('[buyer/estimates] whatsapp notify failed', {
+          estimate_id: typed.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
         // non-blocking — estimate creation already succeeded
       }
     }

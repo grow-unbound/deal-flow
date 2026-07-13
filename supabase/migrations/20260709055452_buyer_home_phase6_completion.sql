@@ -141,10 +141,9 @@ AS $$
 DECLARE
   loc RECORD;
   wh RECORD;
-  buyer_rebuild_days integer := GREATEST(
-    COALESCE(p_days, 2),
-    EXTRACT(DOY FROM (now() AT TIME ZONE 'Asia/Kolkata'))::int
-  );
+  -- Capped at 90 days max — no day-of-year-growing floor. Routine post-sync
+  -- calls only need to redo buyer-app activity for what actually changed.
+  buyer_rebuild_days integer := LEAST(GREATEST(COALESCE(p_days, 2), 1), 90);
 BEGIN
   PERFORM app.refresh_estimates_snapshot(p_tenant_id);
   PERFORM app.refresh_invoices_snapshot(p_tenant_id);

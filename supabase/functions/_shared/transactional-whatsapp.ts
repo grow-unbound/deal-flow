@@ -264,7 +264,7 @@ export async function sendTransactionalAcknowledgement(
           { text: String(itemCount), parameter_name: 'item_count' },
           { text: numberText, parameter_name: 'order_number' },
           { text: String(totalAmount), parameter_name: 'total_amount' },
-          { text: buyerFacingSellerName, parameter_name: 'seller_team' },
+          { text: buyerFacingSellerName, parameter_name: 'seller_name' },
           { text: String(etaHours), parameter_name: 'eta' },
         ],
         button_params: [{ type: 'url', index: '0', text: input.entityId }],

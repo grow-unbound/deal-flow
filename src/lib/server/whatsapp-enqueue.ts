@@ -100,7 +100,9 @@ export async function enqueueWhatsAppMessage(
 ): Promise<EnqueueWhatsAppMessageResult> {
   try {
     const { supabaseAdmin } = await import('@/lib/supabase');
-    if (!supabaseAdmin) return { messageId: null, enqueued: false, skipped: 'no_db' };
+    if (!supabaseAdmin) {
+      return { messageId: null, enqueued: false, skipped: 'no_db' };
+    }
 
     const db = supabaseAdmin as any;
     const { data, error } = await db
@@ -117,10 +119,9 @@ export async function enqueueWhatsAppMessage(
         p_related_entity_id: input.relatedEntityId ?? null,
         p_priority: queuePriorityForTriggerSource(input.triggerSource, input.priority),
         p_scheduled_send_at: input.scheduledSendAt ?? null,
-      });
+    });
 
     if (error) {
-      console.error('[whatsapp-enqueue] insert failed', error);
       return { messageId: null, enqueued: false, skipped: 'no_db' };
     }
 
@@ -131,13 +132,13 @@ export async function enqueueWhatsAppMessage(
     } | null;
     if (!result) return { messageId: null, enqueued: false, skipped: 'no_db' };
 
-    return {
+    const output = {
       messageId: result.message_id ?? null,
       enqueued: result.enqueued === true,
       skipped: result.skipped,
     };
+    return output;
   } catch (err) {
-    console.error('[whatsapp-enqueue] unexpected error', err);
     return { messageId: null, enqueued: false, skipped: 'no_db' };
   }
 }
@@ -160,7 +161,9 @@ export async function triggerWhatsAppDispatch(
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
   const ids = [...new Set(messageIds.filter((id): id is string => Boolean(id)))];
 
-  if (!supabaseUrl || ids.length === 0) return null;
+  if (!supabaseUrl || ids.length === 0) {
+    return null;
+  }
 
   const url = `${supabaseUrl}/functions/v1/whatsapp-dispatch-worker`;
   try {
@@ -175,13 +178,12 @@ export async function triggerWhatsAppDispatch(
 
     const text = await res.text();
     if (!res.ok) {
-      console.error('[whatsapp-enqueue] dispatch trigger non-ok', res.status, text);
       return null;
     }
 
-    return (text ? JSON.parse(text) : null) as WhatsAppDispatchResult | null;
+    const result = (text ? JSON.parse(text) : null) as WhatsAppDispatchResult | null;
+    return result;
   } catch (err) {
-    console.error('[whatsapp-enqueue] dispatch trigger failed', err);
     return null;
   }
 }
