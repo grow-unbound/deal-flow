@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 
 const getVerifiedClaimsMock = vi.fn();
 const getFlagMock = vi.fn();
+const rpcMock = vi.fn();
 
 vi.mock('@/lib/auth', () => ({
   getVerifiedClaims: (...args: unknown[]) => getVerifiedClaimsMock(...args),
@@ -13,216 +14,39 @@ vi.mock('@/lib/flags', () => ({
   getFlag: (...args: unknown[]) => getFlagMock(...args),
 }));
 
-type QueryResult = {
-  data?: unknown;
-  error?: unknown;
-};
-
-type QueryState = {
-  table: string;
-  select: string;
-  eqs: Record<string, unknown>;
-  isNulls: Set<string>;
-  inValues: Record<string, unknown[]>;
-  limitValue?: number;
-  maybeSingle: boolean;
-};
-
-function createQueryResolver() {
-  return (state: QueryState): QueryResult => {
-    if (state.table === 'buyers_snapshot') {
-      return {
-        data: [
-          { buyer_id: 'buyer-1' },
-          { buyer_id: 'buyer-2' },
-        ],
-      };
-    }
-
-    if (state.table === 'buyer_app_snapshot') {
-      return {
-        data: {
-          total_buyers: 4,
-          enabled_buyers: 2,
-        },
-      };
-    }
-
-    if (state.table === 'buyers' && state.select === 'id, buyer_app_enabled') {
-      const rows = [
-        { id: 'buyer-1', buyer_app_enabled: true },
-        { id: 'buyer-2', buyer_app_enabled: true },
-        { id: 'buyer-3', buyer_app_enabled: false },
-        { id: 'buyer-4', buyer_app_enabled: false },
-      ];
-      const scopedIds = state.inValues.id;
-      return {
-        data: scopedIds ? rows.filter((row) => scopedIds.includes(row.id)) : rows,
-      };
-    }
-
-    if (state.table === 'buyers') {
-      const rows = [
-        {
-          id: 'buyer-1',
-          business_name: 'Alpha Retail',
-          contact_name: 'Asha',
-          phone: '9999999991',
-          geography: { city: 'Hyderabad', state: 'Telangana' },
-          buyer_app_enabled: true,
-          tier: 'A',
-        },
-        {
-          id: 'buyer-2',
-          business_name: 'Beta Stores',
-          contact_name: 'Bharat',
-          phone: '9999999992',
-          geography: { city: 'Pune', state: 'Maharashtra' },
-          buyer_app_enabled: true,
-          tier: 'B',
-        },
-      ];
-      const scopedIds = state.inValues.id;
-      return {
-        data: scopedIds ? rows.filter((row) => scopedIds.includes(row.id)) : rows,
-      };
-    }
-
-    if (
-      state.table === 'orders'
-      && state.select === 'buyer_id, total_amount, placed_at'
-      && state.eqs.is_buyer_app_order === true
-    ) {
-      if (state.inValues.location_id) {
-        return {
-          data: [
-            { buyer_id: 'buyer-1', total_amount: 1200, placed_at: '2026-07-01T00:00:00.000Z' },
-          ],
-        };
-      }
-      return { data: [] };
-    }
-
-    if (
-      state.table === 'orders'
-      && state.select === 'buyer_id, total_amount'
-      && state.eqs.is_buyer_app_order === false
-    ) {
-      if (state.inValues.location_id) {
-        return {
-          data: [
-            { buyer_id: 'buyer-2', total_amount: 3400 },
-          ],
-        };
-      }
-      return { data: [] };
-    }
-
-    if (
-      state.table === 'orders'
-      && state.select === 'buyer_id'
-      && state.eqs.is_buyer_app_order === false
-    ) {
-      if (state.inValues.location_id) {
-        return {
-          data: [
-            { buyer_id: 'buyer-2' },
-            { buyer_id: 'buyer-2' },
-          ],
-        };
-      }
-      return {
-        data: [
-          { buyer_id: 'buyer-3' },
-          { buyer_id: 'buyer-3' },
-          { buyer_id: 'buyer-2' },
-        ],
-      };
-    }
-
-    if (
-      state.table === 'orders'
-      && state.select === 'buyer_id'
-      && state.eqs.is_buyer_app_order === true
-    ) {
-      if (state.inValues.location_id) {
-        return {
-          data: [
-            { buyer_id: 'buyer-1' },
-          ],
-        };
-      }
-      return {
-        data: [
-          { buyer_id: 'buyer-2' },
-          { buyer_id: 'buyer-2' },
-          { buyer_id: 'buyer-4' },
-        ],
-      };
-    }
-
-    throw new Error(`Unexpected query: ${JSON.stringify(state)}`);
-  };
-}
-
-function createQuery(state: QueryState, resolve: (state: QueryState) => QueryResult) {
-  const query = {
-    eq: vi.fn((column: string, value: unknown) => {
-      state.eqs[column] = value;
-      return query;
-    }),
-    is: vi.fn((column: string, value: unknown) => {
-      if (value === null) state.isNulls.add(column);
-      return query;
-    }),
-    in: vi.fn((column: string, values: unknown[]) => {
-      state.inValues[column] = values;
-      return query;
-    }),
-    order: vi.fn(() => query),
-    limit: vi.fn((value: number) => {
-      state.limitValue = value;
-      return query;
-    }),
-    gte: vi.fn(() => query),
-    textSearch: vi.fn(() => query),
-    maybeSingle: vi.fn(() => {
-      state.maybeSingle = true;
-      return query;
-    }),
-    then: (
-      onFulfilled: (value: { data: unknown; error: unknown }) => unknown,
-      onRejected?: (reason: unknown) => unknown,
-    ) => Promise.resolve(resolve(state)).then(
-      (result) => onFulfilled({ data: result.data ?? null, error: result.error ?? null }),
-      onRejected,
-    ),
-  };
-
-  return query;
-}
-
-const queryResolver = createQueryResolver();
-const schemaMock = vi.fn((schemaName: string) => ({
-  from: vi.fn((tableName: string) => ({
-    select: vi.fn((selectClause: string) => createQuery({
-      table: tableName,
-      select: selectClause,
-      eqs: {},
-      isNulls: new Set<string>(),
-      inValues: {},
-      maybeSingle: false,
-    }, queryResolver)),
-  })),
-}));
-
 vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: {
-    schema: (...args: unknown[]) => schemaMock(...args),
+    schema: vi.fn(() => ({ rpc: (...args: unknown[]) => rpcMock(...args) })),
   },
 }));
 
 import { GET } from '../../app/api/tenant/buyer-app/access/route';
+
+const rpcResponse = {
+  summary_authoritative: false,
+  kpis: null,
+  buyers: [
+    {
+      id: 'buyer-3',
+      business_name: 'Alpha Retail',
+      contact_name: 'Asha',
+      phone: '9999999991',
+      city: 'Hyderabad',
+      state: 'Telangana',
+      buyer_app_enabled: false,
+      last_app_order_at: null,
+      offline_spend_90d: 10_000,
+      total_spend_90d: 10_000,
+      app_gmv_90d: 0,
+      is_suggested: true,
+      is_inactive: false,
+    },
+  ],
+  filtered_count: 1,
+  has_more: false,
+  limit: 25,
+  offset: 25,
+};
 
 describe('GET /api/tenant/buyer-app/access', () => {
   beforeEach(() => {
@@ -234,52 +58,101 @@ describe('GET /api/tenant/buyer-app/access', () => {
       location_ids: null,
     });
     getFlagMock.mockResolvedValue(true);
+    rpcMock.mockResolvedValue({ data: rpcResponse, error: null });
   });
 
-  it('keeps KPI counts tenant-scoped when the page is filtered and limited', async () => {
-    const response = await GET(
-      new NextRequest('http://localhost:3000/api/tenant/buyer-app/access?limit=1&status=enabled&q=alpha'),
-    );
+  it('pushes search, derived segment, recency, sort, and pagination into the RPC', async () => {
+    const response = await GET(new NextRequest(
+      'http://localhost:3000/api/tenant/buyer-app/access'
+      + '?limit=25&offset=25&q=alp&status=suggested&last_ordered=dormant&sort=offline_spend',
+    ));
 
     expect(response.status).toBe(200);
-
-    const body = await response.json();
-    expect(body.kpis).toEqual({
-      enabled_count: 2,
-      not_enabled_count: 2,
-      suggested_count: 1,
-      inactive_count: 1,
-      total_count: 4,
+    expect(rpcMock).toHaveBeenCalledWith('search_buyer_app_access', {
+      p_tenant_id: 'tenant-1',
+      p_query: 'alp',
+      p_segment: 'suggested',
+      p_last_ordered: 'dormant',
+      p_sort: 'offline_spend',
+      p_location_ids: null,
+      p_limit: 25,
+      p_offset: 25,
+      p_include_summary: false,
     });
-    expect(body.buyers).toHaveLength(1);
-    expect(body.buyers[0].id).toBe('buyer-1');
-    expect(body.has_more).toBe(true);
-    expect(body.limit).toBe(1);
+    expect(await response.json()).toEqual(rpcResponse);
   });
 
-  it('scopes assistant buyer-app access KPIs and rows to assigned locations', async () => {
+  it('passes assistant location scope directly to the authoritative RPC', async () => {
     getVerifiedClaimsMock.mockResolvedValue({
       tenant_id: 'tenant-1',
       role: 'seller_assistant',
       buyer_id: null,
-      location_ids: ['loc-1'],
+      location_ids: ['loc-1', 'loc-2'],
     });
 
     const response = await GET(
-      new NextRequest('http://localhost:3000/api/tenant/buyer-app/access?limit=5'),
+      new NextRequest('http://localhost:3000/api/tenant/buyer-app/access?status=inactive'),
     );
 
     expect(response.status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith(
+      'search_buyer_app_access',
+      expect.objectContaining({
+        p_segment: 'inactive',
+        p_location_ids: ['loc-1', 'loc-2'],
+        p_include_summary: false,
+      }),
+    );
+  });
 
-    const body = await response.json();
-    expect(body.kpis).toEqual({
-      enabled_count: 2,
-      not_enabled_count: 0,
-      suggested_count: 0,
-      inactive_count: 1,
-      total_count: 2,
+  it('requests authoritative counts only for the unfiltered first page', async () => {
+    const response = await GET(
+      new NextRequest('http://localhost:3000/api/tenant/buyer-app/access?limit=25'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith(
+      'search_buyer_app_access',
+      expect.objectContaining({
+        p_query: null,
+        p_segment: 'all',
+        p_offset: 0,
+        p_include_summary: true,
+      }),
+    );
+  });
+
+  it('rejects unknown filters before reaching the database', async () => {
+    const response = await GET(
+      new NextRequest('http://localhost:3000/api/tenant/buyer-app/access?status=unknown'),
+    );
+
+    expect(response.status).toBe(400);
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it('returns an empty scoped response without querying for an unassigned assistant', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      tenant_id: 'tenant-1',
+      role: 'seller_assistant',
+      buyer_id: null,
+      location_ids: [],
     });
-    expect(body.buyers).toHaveLength(2);
-    expect(body.buyers.map((buyer: { id: string }) => buyer.id)).toEqual(['buyer-1', 'buyer-2']);
+
+    const response = await GET(
+      new NextRequest('http://localhost:3000/api/tenant/buyer-app/access?limit=20'),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual(expect.objectContaining({
+      summary_authoritative: true,
+      buyers: [],
+      filtered_count: 0,
+      has_more: false,
+      limit: 20,
+      offset: 0,
+    }));
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 });

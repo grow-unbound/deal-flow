@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Users, MessageCircle } from 'lucide-react';
 
@@ -39,6 +39,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { CustomersLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 
 type SortOption = 'Spend (high → low)' | 'Spend (low → high)' | 'Growth (high → low)' | 'Recent activity';
 const SORT_OPTIONS: SortOption[] = ['Spend (high → low)', 'Spend (low → high)', 'Growth (high → low)', 'Recent activity'];
@@ -50,6 +51,21 @@ function formatDate(value: string | null) {
 
 function tabularInline(value: string): ReactNode {
   return <span className="tabular-inline">{value}</span>;
+}
+
+function matchesBuyerSearch(buyer: CustomersLandingBuyer, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return [
+    buyer.business_name,
+    buyer.phone,
+    buyer.city,
+    buyer.state ?? null,
+    buyer.cohort,
+    buyer.active_price_list?.name ?? null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.toLowerCase().includes(needle));
 }
 
 function CustomersLoadingSkeleton() {
@@ -184,9 +200,13 @@ function CustomersLandingContent({
   const search = routeState.search;
 
   const debouncedSearch = useDebounce(search, 300);
+  const deferredFilters = useDeferredValue(filters);
+  const isInterim =
+    search !== debouncedSearch ||
+    JSON.stringify(filters) !== JSON.stringify(deferredFilters);
   const { data, isLoading, isError, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useCustomersLandingInfinite(
     period,
-    { search: debouncedSearch, ...filters },
+    { search: debouncedSearch, ...deferredFilters },
   );
   const { sentinelRef } = useInfiniteScroll({
     hasMore: hasNextPage ?? false,
@@ -205,7 +225,33 @@ function CustomersLandingContent({
   const filteredTotal = (firstPage as { total?: number | null } | undefined)?.total ?? firstPage?.kpis?.total ?? allBuyers.length;
 
   const filtered = useMemo(() => {
-    return [...allBuyers].sort((a, b) => {
+    const locallyFiltered = allBuyers.filter((buyer) => {
+      if (!matchesBuyerSearch(buyer, search)) {
+        return false;
+      }
+
+      if (
+        filters.status.length > 0 &&
+        !filters.status.some((value) => value === buyer.status.label)
+      ) {
+        return false;
+      }
+
+      if (
+        filters.due.length > 0 &&
+        !filters.due.some((value) => {
+          if (value === 'Overdue') return buyer.dues > 0;
+          if (value === 'Due') return buyer.dues > 0;
+          return false;
+        })
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+
+    return [...locallyFiltered].sort((a, b) => {
         if (sortBy === 'Spend (high → low)') return b.spend_mtd - a.spend_mtd;
         if (sortBy === 'Spend (low → high)') return a.spend_mtd - b.spend_mtd;
         if (sortBy === 'Growth (high → low)') return b.growth_pct - a.growth_pct;
@@ -213,7 +259,8 @@ function CustomersLandingContent({
         const bDate = b.last_order_at ? Date.parse(b.last_order_at) : 0;
         return bDate - aDate;
       });
-  }, [allBuyers, sortBy]);
+  }, [allBuyers, filters.due, filters.status, search, sortBy]);
+  const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && filtered.length === 0;
 
   if (isLoading && !data) {
     return <CustomersLandingSkeleton />;
@@ -339,7 +386,7 @@ function CustomersLandingContent({
       />
 
       <FilterBar
-        count={`Showing ${filtered.length} of ${filteredTotal}`}
+        count={`Showing ${filtered.length} of ${filteredTotal}${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}
         searchPlaceholder="Search buyer, city, GSTIN…"
         chips={[]}
         activeChip=""
@@ -347,7 +394,6 @@ function CustomersLandingContent({
         hideViewToggle
         groups={groups}
         searchValue={search}
-        searchLoading={Boolean(debouncedSearch.trim()) && (isFetching || isFetchingNextPage)}
         onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
         sortOptions={SORT_OPTIONS}
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
@@ -355,8 +401,11 @@ function CustomersLandingContent({
         </>
       )}
 
+      {showTableSkeleton ? (
+        <LandingTableRowsSkeleton columns={10} tableMinWidth={1760} />
+      ) : (
       <LandingTable
-        showEmptyState={filtered.length === 0}
+        showEmptyState={filtered.length === 0 && !isLoading}
         emptyState={
           <EmptyState
             icon={<Users size={28} strokeWidth={1.5} />}
@@ -381,8 +430,8 @@ function CustomersLandingContent({
           { width: 40, className: 'px-4' },
         ]}
         tableMinWidth={1540}
-      >
-        {filtered.map((buyer: CustomersLandingBuyer) => {
+        >
+          {filtered.map((buyer: CustomersLandingBuyer) => {
           const creditRatio = buyer.credit_limit > 0 ? buyer.credit_used / buyer.credit_limit : 0;
           const priceListLabel = buyer.active_price_list?.name ?? 'No price list';
           const priceListSubtext =
@@ -451,8 +500,9 @@ function CustomersLandingContent({
               <td className="chev px-4 py-3.5 pr-4 text-right text-md text-cream-500">›</td>
             </tr>
           );
-        })}
+          })}
       </LandingTable>
+      )}
 
       {/* Scroll sentinel — triggers next-page fetch 400px before list end */}
       <div ref={sentinelRef} className="h-px" aria-hidden />

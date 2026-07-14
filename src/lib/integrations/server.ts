@@ -5,7 +5,7 @@ import {
   IntegrationAuthSchemaSchema,
   IntegrationCapabilitiesSchema,
   IntegrationConnectRequestSchema,
-  IntegrationJobRecordSchema,
+  IntegrationJobRecordProjectionSchema,
   IntegrationJobSummarySchema,
   IntegrationProgressSchema,
   IntegrationSettingsPayloadSchema,
@@ -567,6 +567,16 @@ function mergePostSyncWarnings(row: Record<string, unknown>) {
   return warnings.length > 0 ? { ...summary, warnings } : summary;
 }
 
+function projectIntegrationJobRecord(row: Record<string, unknown>) {
+  return IntegrationJobRecordProjectionSchema.parse({
+    ...row,
+    ...extractJobMetadata(row),
+    progress: IntegrationProgressSchema.parse(normalizeIntegrationProgressRecord(coerceRecord(row.progress))),
+    summary: IntegrationJobSummarySchema.parse(mergePostSyncWarnings(row)),
+    error_log: normalizeIntegrationJobErrorLog(row.error_log),
+  });
+}
+
 function getIntegrationsFunctionsBaseUrl() {
   const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/+$/, '');
   if (!supabaseUrl) {
@@ -780,10 +790,12 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
   ] = await Promise.all([
     db.schema('catalog').from('integration_types').select('id, display_name, description, logo_url, auth_schema, capabilities, connectivity_mode, is_active').eq('is_active', true).order('display_name'),
     db.schema('app').from('tenant_integrations').select('id, tenant_id, integration_type_id, status, config, last_health_check_at, health_status, connected_at, connected_by, created_at, updated_at').eq('tenant_id', tenantId).is('deleted_at', null),
-    // No cursor pagination on this list — safety limit only (CLAUDE.md: cap
-    // unbounded queries instead of leaving them open-ended), not a UX cut.
-    // Ordered newest-first, so this is always the most recent history.
-    db.schema('app').from('integration_sync_jobs').select('id, tenant_integration_id, job_type, phase, status, progress, error_log, summary, since_date, started_at, completed_at, created_at, master_job_id, heartbeat_at, records_synced').eq('tenant_id', tenantId).is('deleted_at', null).order('created_at', { ascending: false }).limit(1000),
+    // The UI consumes at most 60 jobs per integration. Partitioning in SQL
+    // avoids a large tenant-wide history fetch without starving older integrations.
+    db.schema('app').rpc('list_recent_integration_sync_jobs', {
+      p_tenant_id: tenantId,
+      p_per_integration_limit: 60,
+    }),
     db.schema('app').from('integration_data_flows').select('id, tenant_integration_id, entity_type, direction, trigger_type, schedule, webhook_id, field_mappings, filters, is_active, last_run_at').eq('tenant_id', tenantId).is('deleted_at', null),
     db.schema('app').from('integration_webhooks').select('tenant_integration_id, entity_type, event_types, status, is_active, last_received_at, last_verified_at').eq('tenant_id', tenantId).is('deleted_at', null),
     db.schema('app').from('integration_webhook_events').select('tenant_integration_id, entity_type, processing_status, received_at').eq('tenant_id', tenantId).gte('received_at', sinceIso).is('deleted_at', null),
@@ -886,7 +898,7 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
     entityErrorMap.set(key, bucket);
   }
 
-  const tenantRecentJobs = (jobs ?? []).map((row) => row as Record<string, unknown>);
+  const tenantRecentJobs = (jobs ?? []).map((row: unknown) => row as Record<string, unknown>);
   const aggregateFreshness = await loadAggregateFreshness(db, tenantId, tenantRecentJobs);
 
   const payload = IntegrationSettingsPayloadSchema.parse({
@@ -914,22 +926,10 @@ export async function loadIntegrationsSettingsPayload(tenantId: string) {
             }
           : null,
         latest_job: latestJob
-          ? {
-              ...latestJob,
-              ...extractJobMetadata(latestJob),
-              progress: IntegrationProgressSchema.parse(normalizeIntegrationProgressRecord(coerceRecord(latestJob.progress))),
-              summary: IntegrationJobSummarySchema.parse(mergePostSyncWarnings(latestJob)),
-              error_log: normalizeIntegrationJobErrorLog(latestJob.error_log),
-            }
+          ? projectIntegrationJobRecord(latestJob)
           : null,
         recent_jobs: integrationId
-          ? (recentJobsMap.get(integrationId) ?? []).map((row) => ({
-              ...row,
-              ...extractJobMetadata(row),
-              progress: IntegrationProgressSchema.parse(normalizeIntegrationProgressRecord(coerceRecord(row.progress))),
-              summary: IntegrationJobSummarySchema.parse(mergePostSyncWarnings(row)),
-              error_log: normalizeIntegrationJobErrorLog(row.error_log),
-            }))
+          ? (recentJobsMap.get(integrationId) ?? []).map(projectIntegrationJobRecord)
           : [],
         active_flows: activeFlows,
         recent_entity_errors: tenantEntityErrors

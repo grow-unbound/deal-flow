@@ -21,6 +21,7 @@ import { PAGE_SIZE, decodeCursor, encodeCursor } from '@/lib/pagination';
 import { FEATURE_FLAGS } from '@/constants';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
+import { applyTransactionTableSearch, loadTransactionSearchScopeIds } from '@/lib/server/document-table-search';
 
 const CreateSalesOrderDraftSchema = z.object({
   from_estimate_id: z.string().uuid().optional(),
@@ -202,7 +203,6 @@ function applyOrderSourceFilters<T extends { eq: (column: string, value: unknown
 }
 
 function applyOrderListFilters<T extends {
-  ilike: (column: string, value: string) => T;
   in: (column: string, values: string[]) => T;
   eq: (column: string, value: unknown) => T;
   is: (column: string, value: unknown) => T;
@@ -210,16 +210,12 @@ function applyOrderListFilters<T extends {
 }>(
   query: T,
   filters: {
-    search: string;
     sourceParams: string[];
     statusParams: string[];
     locationParams: string[];
   },
 ): T {
   let next = query;
-  if (filters.search.length > 0) {
-    next = next.ilike('order_number', `%${filters.search}%`);
-  }
   if (filters.locationParams.length > 0) {
     next = next.in('location_id', filters.locationParams);
   }
@@ -261,6 +257,7 @@ export async function GET(req: NextRequest) {
     const availableLocations = await loadAccessibleSellerLocations(db as any, tenantId, claims);
     const scopedLocationIds = availableLocations.map((location) => location.id);
     const aggregateScope = claims.role === 'seller_admin' ? 'tenant' : 'location';
+    const searchScope = search ? await loadTransactionSearchScopeIds(db, tenantId, search) : { buyerIds: [], locationIds: [] };
 
     const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
     const buildOrdersPageQuery = () => {
@@ -275,7 +272,8 @@ export async function GET(req: NextRequest) {
       );
 
       query = applyOrderDocumentPeriod(query, period.current_start, period.current_end_exclusive);
-      query = applyOrderListFilters(query, { search, sourceParams, statusParams, locationParams });
+      query = applyOrderListFilters(query, { sourceParams, statusParams, locationParams });
+      query = applyTransactionTableSearch(query, 'order_number', search, searchScope.buyerIds, searchScope.locationIds);
       if (cursorParam) {
         query = applyOrderCursor(query, cursorParam);
       }
@@ -299,7 +297,8 @@ export async function GET(req: NextRequest) {
       );
 
       query = applyOrderDocumentPeriod(query, period.current_start, period.current_end_exclusive);
-      return applyOrderListFilters(query, { search, sourceParams, statusParams, locationParams });
+      query = applyOrderListFilters(query, { sourceParams, statusParams, locationParams });
+      return applyTransactionTableSearch(query, 'order_number', search, searchScope.buyerIds, searchScope.locationIds);
     };
 
     const buildOrderCalloutQuery = (mode: 'needs_attention' | 'biggest_tickets' | 'in_motion') => {

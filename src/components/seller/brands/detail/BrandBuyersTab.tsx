@@ -1,26 +1,44 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { FilterBar, LandingTable, StatusTag } from '@/components/seller/layout';
-import type { BrandDetailBuyer } from '@/hooks/useBrands';
+import { useBrandBuyers, type BrandDetailBuyer } from '@/hooks/useBrands';
+import { useDebounce } from '@/hooks/useDebounce';
 import { formatCompactInr } from '@/lib/utils';
 
 type Sort = 'Spend (high → low)' | 'Spend (low → high)' | 'Orders (high → low)';
 
 interface BrandBuyersTabProps {
+  brandId: string;
   buyers: BrandDetailBuyer[];
 }
 
-export function BrandBuyersTab({ buyers }: BrandBuyersTabProps) {
+const sortValue: Record<Sort, string> = {
+  'Spend (high → low)': 'spend_desc',
+  'Spend (low → high)': 'spend_asc',
+  'Orders (high → low)': 'orders_desc',
+};
+
+export function BrandBuyersTab({ brandId, buyers }: BrandBuyersTabProps) {
   const [search, setSearch] = useState('');
   const [activeChip, setActiveChip] = useState('All buyers');
   const [sortBy, setSortBy] = useState<Sort>('Spend (high → low)');
+  const [page, setPage] = useState(0);
+  const debouncedSearch = useDebounce(search, 300);
+  const segment = activeChip === 'Active' ? 'active' : activeChip.startsWith('Tier ') ? `tier_${activeChip.slice(5).toLowerCase()}` : undefined;
+  const query = useBrandBuyers(brandId, { query: debouncedSearch, segment, sort: sortValue[sortBy], page });
+
+  useEffect(() => setPage(0), [debouncedSearch, segment, sortBy]);
 
   const chips = ['All buyers', 'Tier A', 'Tier B', 'Tier C', 'Active'];
 
+  const authoritative = query.data?.rows ?? buyers;
+  const isTransitioning = query.isFetching || search !== debouncedSearch;
   const filtered = useMemo(() => {
+    if (!isTransitioning) return authoritative;
     const query = search.toLowerCase().trim();
-    return buyers
+    return authoritative
       .filter((buyer) => {
         if (activeChip === 'All buyers') return true;
         if (activeChip === 'Active') return buyer.status === 'Active';
@@ -32,12 +50,13 @@ export function BrandBuyersTab({ buyers }: BrandBuyersTabProps) {
         if (sortBy === 'Spend (low → high)') return a.spend - b.spend;
         return b.orders - a.orders;
       });
-  }, [buyers, search, activeChip, sortBy]);
+  }, [activeChip, authoritative, isTransitioning, search, sortBy]);
+  const total = query.data?.total ?? buyers.length;
 
   return (
     <section className="mt-5">
       <FilterBar
-        count={`${filtered.length} buyers`}
+        count={`${filtered.length} of ${total} buyers${isTransitioning ? ' · Updating' : ''}`}
         searchPlaceholder="Search buyer or city…"
         chips={chips}
         activeChip={activeChip}
@@ -75,6 +94,12 @@ export function BrandBuyersTab({ buyers }: BrandBuyersTabProps) {
           </tr>
         ))}
       </LandingTable>
+      {total > 50 ? (
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" size="sm" disabled={page === 0 || query.isFetching} onClick={() => setPage((value) => Math.max(0, value - 1))}>Previous</Button>
+          <Button variant="outline" size="sm" disabled={(page + 1) * 50 >= total || query.isFetching} onClick={() => setPage((value) => value + 1)}>Next</Button>
+        </div>
+      ) : null}
     </section>
   );
 }

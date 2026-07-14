@@ -12,7 +12,7 @@ import { WarehouseDetailsTab } from './WarehouseDetailsTab';
 import { WarehousePerformanceTab } from './WarehousePerformanceTab';
 import { WarehouseStockTab } from './WarehouseStockTab';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
-import { useWarehouseDetail, useWarehouseReference, useWarehouseStock } from '@/hooks/useWarehouses';
+import { useWarehouseDetail, useWarehouseReference } from '@/hooks/useWarehouses';
 import type { TenantWarehouse } from '@/types/tenant-warehouses';
 import { WarehouseDetailSkeleton as SharedWarehouseDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
@@ -60,9 +60,6 @@ export function WarehouseDetailPage({ id }: { id: string }) {
   });
   const { data, isLoading, isError, refetch } = useWarehouseDetail(id);
   const { data: editingWarehouse } = useWarehouseReference(id);
-  const stockQuery = useWarehouseStock(id, tab === 'stock');
-  const stock = stockQuery.data?.pages.flatMap((page) => page.items) ?? [];
-  const stockTotal = stockQuery.data?.pages[0]?.total ?? data?.tracked_skus_count ?? 0;
 
   if (isLoading) return <SharedWarehouseDetailSkeleton />;
   if (isError || !data) {
@@ -160,14 +157,7 @@ export function WarehouseDetailPage({ id }: { id: string }) {
       {tab === 'details' ? <WarehouseDetailsTab data={data} /> : null}
       {tab === 'performance' ? <WarehousePerformanceTab data={data.performance} /> : null}
       {tab === 'stock' ? (
-        <WarehouseStockTab
-          warehouseId={id}
-          stock={stock}
-          total={stockTotal}
-          hasMore={Boolean(stockQuery.hasNextPage)}
-          isLoadingMore={stockQuery.isFetchingNextPage}
-          onLoadMore={() => void stockQuery.fetchNextPage()}
-        />
+        <WarehouseStockTab warehouseId={id} />
       ) : null}
 
       <WarehouseFormSheet open={sheetOpen} onOpenChange={setSheetOpen} editingWarehouse={warehouseForEdit} />

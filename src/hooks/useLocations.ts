@@ -1,14 +1,16 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { appendArrayParam } from '@/lib/landing-filter-params';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
+import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
 
 // ─── Landing page types ───────────────────────────────────────────────────────
 
 export type LocationStockStatus = 'clear' | 'low_stock' | 'out_of_stock';
 
 export interface LocationsLandingKpis {
+  active_locations: number;
   unpaid_invoice_count: number;
   total_invoice_count: number;
   outstanding_dues_total: number;
@@ -65,6 +67,10 @@ export interface LocationsLandingResponse {
     collections_overdue: LocationsCalloutRow[];
   };
   locations: LocationsLandingRow[];
+  total: number;
+  limit?: number;
+  offset?: number;
+  nextOffset?: number | null;
   period: string;
   refreshed_at: string;
 }
@@ -201,26 +207,33 @@ export function useLocationsLanding(
   initialData: LocationsLandingResponse | null,
 ) {
   const { currentTenantId } = useAuth();
+  const hasFilters = Boolean(filters.search?.trim() || filters.status?.length || filters.stock?.length || filters.dues?.length);
+  const baseSummary = initialData?.period === period ? initialData : null;
 
-  const query = useQuery<LocationsLandingResponse>({
+  const query = useInfiniteQuery<LocationsLandingResponse>({
     queryKey: ['locations-landing', currentTenantId, period, filters],
     enabled: Boolean(currentTenantId),
     staleTime: 60_000,
-    queryFn: async () => {
-      const params = new URLSearchParams({ period });
+    initialPageParam: 0,
+    queryFn: async ({ pageParam, signal }) => {
+      const params = new URLSearchParams({ period, limit: '50', offset: String(pageParam), include_summary: String(pageParam === 0 && !hasFilters) });
       if (filters.search?.trim()) params.set('search', filters.search.trim());
       appendArrayParam(params, 'status', filters.status);
       appendArrayParam(params, 'stock', filters.stock);
       appendArrayParam(params, 'dues', filters.dues);
-      const res = await fetch(`/api/tenant/locations/landing?${params.toString()}`);
+      const res = await fetch(`/api/tenant/locations/landing?${params.toString()}`, { signal });
       if (!res.ok) throw new Error(`locations-landing ${res.status}`);
-      return res.json() as Promise<LocationsLandingResponse>;
+      return res.json();
     },
-    initialData: initialData ?? undefined,
+    getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
+    initialData: baseSummary ? { pages: [baseSummary], pageParams: [0] } : undefined,
+    initialDataUpdatedAt: baseSummary ? 0 : undefined,
+    placeholderData: keepPreviousData,
   });
-
-  const retained = useRetainedValue(query.data);
-  return { ...query, data: query.data ?? retained };
+  const merged = mergeSellerLandingPages(query.data?.pages, 'locations');
+  const data = merged && baseSummary ? { ...baseSummary, ...merged } : merged;
+  const retained = useRetainedValue(data);
+  return { ...query, data: data ?? retained };
 }
 
 export function useLocationDetail(id: string) {

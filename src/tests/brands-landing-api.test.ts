@@ -18,6 +18,8 @@ type QueryResult = {
 };
 
 const dbResponses: Record<string, QueryResult[]> = {};
+const rpcCalls: Array<[string, Record<string, unknown>]> = [];
+const tableCalls: string[] = [];
 
 function nextResult(key: string): QueryResult {
   const queue = dbResponses[key] ?? [];
@@ -57,9 +59,15 @@ function createQuery(key: string) {
 }
 
 const schemaMock = vi.fn((schemaName: string) => ({
-  from: vi.fn((tableName: string) => ({
-    select: vi.fn(() => createQuery(`${schemaName}.${tableName}`)),
-  })),
+  from: vi.fn((tableName: string) => {
+    tableCalls.push(`${schemaName}.${tableName}`);
+    return { select: vi.fn(() => createQuery(`${schemaName}.${tableName}`)) };
+  }),
+  rpc: vi.fn((functionName: string, args: Record<string, unknown>) => {
+    rpcCalls.push([functionName, args]);
+    const result = nextResult(`${schemaName}.rpc.${functionName}`);
+    return Promise.resolve({ data: result.data ?? null, error: result.error ?? null });
+  }),
 }));
 
 vi.mock('@/lib/supabase', () => ({
@@ -73,6 +81,8 @@ import { GET } from '../../app/api/tenant/brands/route';
 describe('brands landing api', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    rpcCalls.length = 0;
+    tableCalls.length = 0;
     for (const key of Object.keys(dbResponses)) delete dbResponses[key];
 
     getVerifiedClaimsMock.mockResolvedValue({
@@ -83,49 +93,65 @@ describe('brands landing api', () => {
     });
     getFlagMock.mockResolvedValue(true);
 
-    dbResponses['app.tenant_brands'] = [
-      {
-        data: [
-          {
-            id: 'brand-1',
-            tenant_id: 'tenant-1',
-            master_brand_id: null,
-            display_name_override: 'Alpha',
-            slug: null,
-            description: null,
-            logo_url: null,
-            margin_pct: null,
-            exclusivity: null,
-            is_active: true,
-            external_ref: null,
-            principal_name: null,
-            principal_email: null,
-            principal_phone: null,
-            principal_location: null,
-            contact_name: null,
-            contact_email: null,
-            contact_phone: null,
-            default_cohort_id: 'cohort-1',
-            created_at: '2026-06-01T00:00:00Z',
-            updated_at: '2026-06-01T00:00:00Z',
-            deleted_at: null,
-          },
-        ],
-      },
-    ];
-    dbResponses['app.brands_snapshot'] = [{ data: { total_count: 1, active_count: 1, with_products_count: 1, refreshed_at: '2026-06-01T00:00:00Z' } }];
-    dbResponses['app.kpi_brand_daily'] = [{ data: [] }, { data: [] }];
-    dbResponses['app.tenant_categories'] = [{ data: [{ id: 'category-1', name: 'Audio', deleted_at: null }] }];
-    dbResponses['app.cohorts'] = [{ data: [{ id: 'cohort-1', name: 'Tier A', deleted_at: null, allowed_tenant_brand_ids: null }] }];
-    dbResponses['catalog.brands'] = [{ data: [] }];
-    dbResponses['app.tenant_products'] = [{ data: [] }];
-    dbResponses['app.buyers'] = [{
-      data: [
-        { id: 'buyer-1', default_cohort_id: 'cohort-1' },
-        { id: 'buyer-2', default_cohort_id: null },
-      ],
+    dbResponses['app.rpc.search_seller_brand_landing_page'] = [{ data: [{ id: 'brand-1', total_count: 1 }] }];
+    dbResponses['app.rpc.get_seller_brand_landing_rows'] = [{
+      data: [{
+        id: 'brand-1',
+        row_data: {
+          id: 'brand-1',
+          tenant_id: 'tenant-1',
+          master_brand_id: null,
+          display_name_override: 'Alpha',
+          slug: null,
+          description: null,
+          logo_url: null,
+          margin_pct: null,
+          exclusivity: false,
+          is_active: true,
+          external_ref: null,
+          principal_name: null,
+          principal_email: null,
+          principal_phone: null,
+          principal_location: null,
+          contact_name: null,
+          contact_email: null,
+          contact_phone: null,
+          default_cohort_id: 'cohort-1',
+          created_at: '2026-06-01T00:00:00Z',
+          updated_at: '2026-06-01T00:00:00Z',
+          master_brand: null,
+          gmv_mtd: 100,
+          gmv_prev_mtd: 80,
+          growth_pct: 25,
+          portfolio_share_pct: 100,
+          sku_count: 2,
+          active_buyers_mtd: 1,
+          total_buyers: 1,
+          catalog_days_ago: null,
+          categories: ['Audio'],
+          catalog_name: null,
+          alerts: ['not_in_catalog_mtd'],
+        },
+      }],
     }];
-    dbResponses['app.cohort_members'] = [{ data: [] }];
+    dbResponses['app.rpc.get_seller_brand_landing_summary'] = [{
+      data: {
+        kpis: {
+          portfolio_gmv_mtd: 100,
+          portfolio_gmv_prev_mtd: 80,
+          brands_carried: 1,
+          buyers_with_orders_mtd: 1,
+          total_buyers: 2,
+          need_attention_count: 1,
+          catalog_freshness_count: 0,
+          total_campaigns: 0,
+          catalog_freshness_earliest_days: null,
+        },
+        todays_read: { needs_attention: [], top_performers: [], top_risers: [] },
+        categories: ['Audio', 'Uncategorized'],
+        cohorts: [{ id: 'cohort-1', name: 'Tier A' }],
+      },
+    }];
   });
 
   it('returns active cohort options without requiring an is_active column', async () => {
@@ -139,5 +165,44 @@ describe('brands landing api', () => {
     expect(body.brands).toHaveLength(1);
     expect(body.kpis.total_buyers).toBe(2);
     expect(body.brands[0].total_buyers).toBe(1);
+    expect(tableCalls).toEqual([]);
+  });
+
+  it('uses the indexed brand search vector and a bounded SQL resultset', async () => {
+    const response = await GET(new NextRequest('http://localhost:3000/api/tenant/brands?search=alpha&limit=25'));
+
+    expect(response.status).toBe(200);
+    expect(rpcCalls).toContainEqual(['search_seller_brand_landing_page', expect.objectContaining({
+      p_query: 'alpha',
+      p_limit: 25,
+    })]);
+  });
+
+  it('hydrates assistant first-page brands through the location-scoped page RPC', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      tenant_id: 'tenant-1',
+      role: 'seller_assistant',
+      buyer_id: null,
+      location_ids: ['location-1'],
+    });
+
+    const response = await GET(new NextRequest('http://localhost:3000/api/tenant/brands?period=month'));
+
+    expect(response.status).toBe(200);
+    expect(rpcCalls).toContainEqual(['get_seller_brand_landing_rows', expect.objectContaining({
+      p_brand_ids: ['brand-1'],
+      p_location_ids: ['location-1'],
+    })]);
+    expect(rpcCalls).toContainEqual(['get_seller_brand_landing_summary', expect.objectContaining({
+      p_location_ids: ['location-1'],
+    })]);
+    expect(tableCalls).toEqual([]);
+  });
+
+  it('skips the summary RPC on subsequent pages', async () => {
+    const response = await GET(new NextRequest('http://localhost:3000/api/tenant/brands?offset=50&include_summary=false'));
+
+    expect(response.status).toBe(200);
+    expect(rpcCalls.some(([name]) => name === 'get_seller_brand_landing_summary')).toBe(false);
   });
 });

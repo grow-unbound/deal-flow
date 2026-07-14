@@ -5,8 +5,12 @@ import { FilterBar } from '@/components/seller/layout';
 import { formatCompactInr } from '@/lib/utils';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { TransactionTable, type TransactionTableKind } from '@/components/seller/transactional';
+import { Button } from '@/components/ui/button';
+import { useDebounce } from '@/hooks/useDebounce';
+import { useCustomerDocuments } from '@/hooks/useCustomersLanding';
 
 interface CustomerOrdersTabProps {
+  buyerId: string;
   kind?: TransactionTableKind;
   orders: Array<{
     id: string;
@@ -84,6 +88,7 @@ function titleCase(status: string): string {
 }
 
 export function CustomerOrdersTab({
+  buyerId,
   kind = 'order',
   orders,
   title = 'Orders',
@@ -94,23 +99,46 @@ export function CustomerOrdersTab({
   const [search, setSearch] = useState('');
   const [activeChip, setActiveChip] = useState(getChips(kind)[0]);
   const [sortBy, setSortBy] = useState<SortOption>('Newest first');
+  const [page, setPage] = useState(0);
 
   const chips = useMemo(() => getChips(kind), [kind]);
   const sortOptions = useMemo(() => getSortOptions(kind), [kind]);
+  const debouncedSearch = useDebounce(search, 300);
+  const status = activeChip === chips[0] ? undefined : activeChip === 'In transit' ? 'in_transit' : activeChip.toLowerCase();
+  const sortValues: Record<SortOption, string> = {
+    'Newest first': 'newest',
+    'Oldest first': 'oldest',
+    'Amount (high → low)': 'amount_desc',
+    'Amount (low → high)': 'amount_asc',
+    'Status (A → Z)': 'status_asc',
+  };
+  const documentsQuery = useCustomerDocuments(buyerId, { kind, query: debouncedSearch, status, sort: sortValues[sortBy], page });
 
   useEffect(() => {
     setActiveChip(chips[0]);
     setSortBy('Newest first');
   }, [chips, kind]);
+  useEffect(() => setPage(0), [debouncedSearch, sortBy, status]);
+
+  const authoritativeOrders: CustomerOrdersTabProps['orders'] = documentsQuery.data
+    ? documentsQuery.data.rows.map((row) => ({
+        ...row,
+        issued_at: row.placed_at,
+        items: row.items_count,
+        gmv: row.total_amount,
+      }))
+    : orders;
+  const isTransitioning = documentsQuery.isFetching || search !== debouncedSearch;
 
   const filteredOrders = useMemo(() => {
+    if (!isTransitioning) return authoritativeOrders;
     const query = search.trim().toLowerCase();
-    const rowTime = (row: (typeof orders)[number]) =>
+    const rowTime = (row: (typeof authoritativeOrders)[number]) =>
       new Date(row.created_at ?? row.issued_at ?? row.placed_at ?? 0).getTime();
-    const documentNumber = (row: (typeof orders)[number]) =>
+    const documentNumber = (row: (typeof authoritativeOrders)[number]) =>
       row.order_number ?? row.number ?? row.estimate_number ?? row.invoice_number ?? row.id.slice(0, 8);
 
-    return orders
+    return authoritativeOrders
       .filter((row) => {
         const label = titleCase(row.status);
         if (activeChip === chips[0]) return true;
@@ -155,13 +183,14 @@ export function CustomerOrdersTab({
         if (sortBy === 'Amount (low → high)') return Number(a.total_amount ?? 0) - Number(b.total_amount ?? 0);
         return titleCase(a.status).localeCompare(titleCase(b.status)) || documentNumber(a).localeCompare(documentNumber(b));
       });
-  }, [activeChip, chips, kind, orders, search, sortBy]);
+  }, [activeChip, authoritativeOrders, chips, isTransitioning, kind, search, sortBy]);
+  const total = documentsQuery.data?.total ?? orders.length;
 
   return (
     <section className="mt-5 space-y-4">
       <FilterBar
-        count={`${filteredOrders.length} ${title.toLowerCase()}`}
-        searchPlaceholder={`Search ${title.toLowerCase().slice(0, -1)}, buyer, location…`}
+        count={`${filteredOrders.length} of ${total} ${title.toLowerCase()}${isTransitioning ? ' · Updating' : ''}`}
+        searchPlaceholder={`Search ${title.toLowerCase().slice(0, -1)} number…`}
         chips={chips}
         activeChip={activeChip}
         sortBy={sortBy}
@@ -216,6 +245,12 @@ export function CustomerOrdersTab({
           })}
         />
       )}
+      {total > 50 ? (
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" disabled={page === 0 || documentsQuery.isFetching} onClick={() => setPage((value) => Math.max(0, value - 1))}>Previous</Button>
+          <Button variant="outline" size="sm" disabled={(page + 1) * 50 >= total || documentsQuery.isFetching} onClick={() => setPage((value) => value + 1)}>Next</Button>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { EntityAvatar, FilterBar, LandingTable, type FilterBarGroup } from '@/components/seller/layout';
 import { useRouteSnapshot } from '@/hooks/useRouteSnapshot';
+import { useDebounce } from '@/hooks/useDebounce';
+import { useWarehouseStock } from '@/hooks/useWarehouses';
 import type { WarehouseDetailInventoryItem } from '@/types/tenant-warehouses';
 
 type StockSort = 'Product (A-Z)' | 'On hand (high → low)' | 'Reserved (high → low)' | 'Sellable (high → low)' | 'Reorder point (low → high)';
@@ -54,21 +56,9 @@ function sortStockRows(rows: WarehouseDetailInventoryItem[], sortBy: StockSort) 
 
 interface WarehouseStockTabProps {
   warehouseId: string;
-  stock: WarehouseDetailInventoryItem[];
-  total: number;
-  hasMore: boolean;
-  isLoadingMore: boolean;
-  onLoadMore: () => void;
 }
 
-export function WarehouseStockTab({
-  warehouseId,
-  stock,
-  total,
-  hasMore,
-  isLoadingMore,
-  onLoadMore,
-}: WarehouseStockTabProps) {
+export function WarehouseStockTab({ warehouseId }: WarehouseStockTabProps) {
   const { state: routeState, setState: setRouteState } = useRouteSnapshot<{
     search: string;
     sortBy: StockSort;
@@ -86,6 +76,23 @@ export function WarehouseStockTab({
   const search = routeState.search ?? '';
   const sortBy = routeState.sortBy ?? 'Product (A-Z)';
   const statuses = routeState.filters?.status ?? [];
+  const debouncedSearch = useDebounce(search, 300);
+  const stockStatusValues = statuses.map((status) => status === 'Clear' ? 'clear' : status === 'Low stock' ? 'low_stock' : 'out_of_stock');
+  const sortValue: Record<StockSort, string> = {
+    'Product (A-Z)': 'product_asc',
+    'On hand (high → low)': 'on_hand_desc',
+    'Reserved (high → low)': 'reserved_desc',
+    'Sellable (high → low)': 'sellable_desc',
+    'Reorder point (low → high)': 'reorder_asc',
+  };
+  const stockQuery = useWarehouseStock(warehouseId, {
+    query: debouncedSearch,
+    statuses: stockStatusValues,
+    sort: sortValue[sortBy],
+  });
+  const stock = stockQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const total = stockQuery.data?.pages[0]?.total ?? 0;
+  const isTransitioning = stockQuery.isFetching || search !== debouncedSearch;
 
   const filterGroups: FilterBarGroup[] = [
     {
@@ -105,6 +112,7 @@ export function WarehouseStockTab({
   ];
 
   const filtered = useMemo(() => {
+    if (!isTransitioning) return stock;
     const needle = search.trim().toLowerCase();
     const filteredRows = stock.filter((item) => {
       const matchesSearch =
@@ -118,12 +126,12 @@ export function WarehouseStockTab({
     });
 
     return sortStockRows(filteredRows, sortBy);
-  }, [search, sortBy, statuses, stock]);
+  }, [isTransitioning, search, sortBy, statuses, stock]);
 
   return (
     <div className="mt-5 space-y-4">
       <FilterBar
-        count={`${filtered.length} of ${stock.length} SKUs`}
+        count={`${filtered.length} of ${total} SKUs${isTransitioning ? ' · Updating' : ''}`}
         searchPlaceholder="Search product, SKU, brand…"
         chips={[]}
         activeChip=""
@@ -195,9 +203,9 @@ export function WarehouseStockTab({
         <p className="text-sm text-cream-600">
           Showing {filtered.length.toLocaleString('en-IN')} of {total.toLocaleString('en-IN')} SKUs
         </p>
-        {hasMore ? (
-          <Button variant="outline" size="sm" onClick={onLoadMore} disabled={isLoadingMore}>
-            {isLoadingMore ? 'Loading…' : 'Load more'}
+        {stockQuery.hasNextPage ? (
+          <Button variant="outline" size="sm" onClick={() => void stockQuery.fetchNextPage()} disabled={stockQuery.isFetchingNextPage}>
+            {stockQuery.isFetchingNextPage ? 'Loading…' : 'Load more'}
           </Button>
         ) : null}
       </div>

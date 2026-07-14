@@ -510,7 +510,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         buyer_reach: `${activeBuyerSet.size}/${totalBuyersCount}`,
       },
     },
-    buyers: buyersRows,
+    buyers_total: buyersRows.length,
+    buyers: buyersRows.slice(0, 50),
     catalogs: catalogsRows,
     activity,
   }, { headers: SELLER_CACHE_PERSONAL });

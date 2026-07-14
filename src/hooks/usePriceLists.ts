@@ -7,6 +7,7 @@ import { apiFetch, apiPost } from '@/lib/api-fetch';
 import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots, type OptimisticSnapshot } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
+import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
 import type {
   PriceListAssignmentInput,
   PriceListComposerPayload,
@@ -75,6 +76,10 @@ export interface PriceListLandingRow {
 }
 
 export interface PriceListsLandingResponse {
+  total?: number;
+  limit?: number;
+  offset?: number;
+  nextOffset?: number | null;
   kpis: {
     active_lists: number;
     draft_lists: number;
@@ -201,23 +206,29 @@ export function usePriceListsLanding(
   filters: PriceListsLandingFilters = {},
   initialData?: PriceListsLandingResponse | null,
 ) {
-  return useQuery({
+  const hasFilters = Boolean(filters.search?.trim() || filters.status?.length);
+  const baseSummary = initialData ?? undefined;
+  const initial = !hasFilters ? baseSummary : undefined;
+  const query = useInfiniteQuery({
     queryKey: ['price-lists-landing', filters],
-    queryFn: async (): Promise<PriceListsLandingResponse> => {
-      const params = new URLSearchParams();
+    initialPageParam: 0,
+    queryFn: async ({ pageParam, signal }): Promise<PriceListsLandingResponse> => {
+      const params = new URLSearchParams({ limit: '50', offset: String(pageParam), include_summary: String(pageParam === 0 && !hasFilters) });
       if (filters.search?.trim()) params.set('search', filters.search.trim());
       appendArrayParam(params, 'status', filters.status);
-      const res = await apiFetch(`/api/price-lists${params.toString() ? `?${params.toString()}` : ''}`);
-      if (!res.ok) {
-        throw new Error('Failed to fetch price lists landing');
-      }
+      const res = await apiFetch(`/api/price-lists?${params.toString()}`, { signal });
+      if (!res.ok) throw new Error('Failed to fetch price lists landing');
       return res.json();
     },
-    initialData: initialData ?? undefined,
+    getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
+    initialData: initial ? { pages: [initial], pageParams: [0] } : undefined,
+    initialDataUpdatedAt: initialData ? 0 : undefined,
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
-    placeholderData: (previous) => previous,
+    placeholderData: keepPreviousData,
   });
+  const merged = mergeSellerLandingPages(query.data?.pages, 'price_lists');
+  return { ...query, data: merged && baseSummary ? { ...baseSummary, ...merged } : merged };
 }
 
 export function useCreatePriceList() {

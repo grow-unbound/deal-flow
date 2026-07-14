@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-fetch';
 import { appendArrayParam } from '@/lib/landing-filter-params';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
@@ -111,6 +111,7 @@ export function useTenantOrders(
       return res.json();
     },
     initialData: hasActiveFilters ? undefined : getSellerLandingInitialData(period, initialData),
+    placeholderData: keepPreviousData,
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
   });

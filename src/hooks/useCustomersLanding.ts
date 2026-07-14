@@ -255,6 +255,31 @@ export interface TenantCustomerDetailResponse {
   };
 }
 
+export interface CustomerDocumentRow {
+  id: string;
+  number: string | null;
+  placed_at: string | null;
+  created_at: string | null;
+  expires_at: string | null;
+  due_date: string | null;
+  location_name: string | null;
+  place_of_supply: string | null;
+  source_kind: 'buyer_app' | 'converted' | 'direct' | 'seller';
+  source_label: string | null;
+  campaign_name: string | null;
+  items_count: number;
+  total_amount: number;
+  outstanding_amount: number;
+  status: string;
+}
+
+export interface CustomerDocumentPage {
+  rows: CustomerDocumentRow[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export function useCustomersLanding(period: SellerLandingPeriod = 'month', initialData?: CustomersLandingResponse | null) {
   return useQuery({
     queryKey: ['tenant-customers', period],
@@ -324,6 +349,29 @@ export function useTenantCustomerDetail(id: string) {
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
+  });
+}
+
+export function useCustomerDocuments(
+  buyerId: string,
+  filters: { kind: 'order' | 'estimate' | 'invoice'; query?: string; status?: string; sort?: string; page?: number },
+  enabled = true,
+) {
+  return useQuery<CustomerDocumentPage>({
+    queryKey: ['tenant-customer-documents', buyerId, filters],
+    enabled: Boolean(buyerId) && enabled,
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({ kind: filters.kind, limit: '50' });
+      params.set('offset', String(Math.max(0, filters.page ?? 0) * 50));
+      if (filters.query?.trim()) params.set('q', filters.query.trim());
+      if (filters.status) params.set('status', filters.status);
+      if (filters.sort) params.set('sort', filters.sort);
+      const res = await apiFetch(`/api/tenant/customers/${buyerId}/documents?${params}`, { signal });
+      if (!res.ok) throw new Error('Failed to fetch customer documents');
+      return res.json();
+    },
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
   });
 }
 

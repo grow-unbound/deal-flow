@@ -270,13 +270,13 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
 
       {tab === 'products' ? (
         <CatalogCompositionTab
+          catalogId={id}
           summary={data.products_summary}
-          rows={data.products}
         />
       ) : null}
 
       {tab === 'performance' ? <CatalogPerformanceTab performance={data.performance} /> : null}
-      {tab === 'buyers' ? <CatalogBuyersTab buyers={data.buyers} selectedCohort={data.header.selected_cohort} /> : null}
+      {tab === 'buyers' ? <CatalogBuyersTab catalogId={id} buyers={data.buyers} selectedCohort={data.header.selected_cohort} /> : null}
     </PageWrap>
   );
 }

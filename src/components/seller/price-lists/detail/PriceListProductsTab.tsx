@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react';
 import { EntityAvatar, FilterBar, LandingTable } from '@/components/seller/layout';
 import type { PriceListItem } from '@/hooks/usePriceLists';
+import { useDebounce } from '@/hooks/useDebounce';
+import { detailRowsTotal, flattenDetailRows, usePriceListProductsDetail } from '@/hooks/useDetailTabSearch';
 import type { PriceListFilterState } from '@/lib/zod';
 import { cn, formatInr } from '@/lib/utils';
 
@@ -16,6 +18,7 @@ type SortOption =
   | 'Margin % (high → low)';
 
 export interface PriceListProductsTabProps {
+  priceListId: string;
   filters: PriceListFilterState | null | undefined;
   items: PriceListItem[];
   brandsCovered: number;
@@ -36,7 +39,7 @@ function renderFilterValues(values: string[]) {
   return values.length > 0 ? values.join(', ') : '—';
 }
 
-export function PriceListProductsTab({ filters, items, brandsCovered, canViewFinancials = true }: PriceListProductsTabProps) {
+export function PriceListProductsTab({ priceListId, filters, items, brandsCovered, canViewFinancials = true }: PriceListProductsTabProps) {
   const [search, setSearch] = useState('');
   const [activeChip, setActiveChip] = useState<ActiveChip>('All products');
   const [sortBy, setSortBy] = useState<SortOption>('Product (A → Z)');
@@ -45,37 +48,16 @@ export function PriceListProductsTab({ filters, items, brandsCovered, canViewFin
   const categoryNames = filters?.category_names ?? [];
   const hasSavedFilters = brandNames.length > 0 || categoryNames.length > 0;
 
-  const rows = useMemo(() => {
-    return items.map((item) => {
-      const productName =
-        item.tenant_product?.name_override ?? item.tenant_product?.master_product?.name ?? 'Unnamed';
-      const brandName =
-        item.tenant_product?.tenant_brand?.display_name_override ??
-        item.tenant_product?.tenant_brand?.master_brand?.name ??
-        '—';
-      const base = Number(item.tenant_product?.base_selling_price ?? 0);
-      const list = Number(item.price ?? 0);
-      const mrp = item.tenant_product?.mrp ?? null;
-      const cost = item.tenant_product?.cost_price ?? null;
-      const discountPct = base > 0 ? ((base - list) / base) * 100 : null;
-      const marginPct =
-        list > 0 && cost != null && cost > 0 ? ((list - cost) / list) * 100 : null;
-      return {
-        item,
-        productName,
-        brandName,
-        base,
-        list,
-        mrp,
-        cost,
-        discountPct,
-        marginPct,
-        sku: item.tenant_product?.internal_sku ?? '—',
-      };
-    });
-  }, [items]);
+  const debouncedSearch = useDebounce(search, 300);
+  const position = activeChip === 'Discounted' ? 'discounted' : activeChip === 'Above base' ? 'above_base' : null;
+  const sort = sortBy === 'Brand (A → Z)' ? 'brand_asc' : sortBy === 'List price (high → low)' ? 'list_desc' : sortBy === 'Discount % (high → low)' ? 'discount_desc' : sortBy === 'Margin % (high → low)' ? 'margin_desc' : 'product_asc';
+  const result = usePriceListProductsDetail(priceListId, { query: debouncedSearch, filter: position, sort });
+  const authoritativeRows = useMemo(() => flattenDetailRows(result.data), [result.data]);
+  const rows = useMemo(() => authoritativeRows.map((row) => ({ item: { id: row.item_id }, productName: row.product_name, brandName: row.brand_name, base: Number(row.base_price), list: Number(row.list_price), mrp: row.mrp, cost: row.cost_price, discountPct: row.discount_pct, marginPct: row.margin_pct, sku: row.sku })), [authoritativeRows]);
+  const isInterim = search.trim() !== debouncedSearch.trim() || result.isFetching;
 
   const filtered = useMemo(() => {
+    if (!isInterim) return rows;
     const q = search.trim().toLowerCase();
     return rows
       .filter((row) => {
@@ -100,7 +82,7 @@ export function PriceListProductsTab({ filters, items, brandsCovered, canViewFin
           return (b.marginPct ?? -Infinity) - (a.marginPct ?? -Infinity);
         return a.productName.localeCompare(b.productName);
       });
-  }, [activeChip, canViewFinancials, rows, search, sortBy]);
+  }, [activeChip, canViewFinancials, isInterim, rows, search, sortBy]);
 
   return (
     <section className="mt-5 space-y-4">
@@ -109,7 +91,7 @@ export function PriceListProductsTab({ filters, items, brandsCovered, canViewFin
           <div>
             <h3 className="font-display text-lg text-cream-950">Filters applied</h3>
             <p className="mt-1 text-base text-cream-700">
-              {items.length} products across {brandsCovered} brands.
+              {detailRowsTotal(result.data) || items.length} products across {brandsCovered} brands.
             </p>
           </div>
         </div>
@@ -134,7 +116,7 @@ export function PriceListProductsTab({ filters, items, brandsCovered, canViewFin
 
       <div>
         <FilterBar
-          count={`${filtered.length} products`}
+          count={`${isInterim ? filtered.length : detailRowsTotal(result.data)} products${result.isFetching ? ' · Updating' : ''}`}
           searchPlaceholder="Search product, SKU, or brand…"
           chips={['All products', 'Discounted', 'Above base']}
           activeChip={activeChip}
@@ -217,6 +199,7 @@ export function PriceListProductsTab({ filters, items, brandsCovered, canViewFin
             );
           })}
         </LandingTable>
+        {result.hasNextPage ? <button type="button" className="mt-4 rounded-lg border border-cream-300 px-4 py-2 text-sm font-medium" disabled={result.isFetchingNextPage} onClick={() => result.fetchNextPage()}>{result.isFetchingNextPage ? 'Loading…' : 'Load more'}</button> : null}
       </div>
     </section>
   );

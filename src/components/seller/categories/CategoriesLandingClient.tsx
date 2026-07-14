@@ -27,6 +27,8 @@ import { CategoryFormSheet } from '@/components/seller/settings/CategoryFormShee
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { CategoriesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
+import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 
 type SortOption = 'GMV (high → low)' | 'Name (A → Z)' | 'OOS SKUs (high → low)';
 
@@ -102,7 +104,7 @@ function CategoriesLandingContent({
   useSeedRouteSearch({ initialSearch, setState: setRouteState });
   const { search, sortBy } = routeState;
   const filters = routeState.filters ?? { status: [], products: [] };
-  const { data, isLoading, isError } = useCategoryLanding(period, { search, status: filters.status, products: filters.products }, initialData);
+  const { data, isLoading, isError, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useCategoryLanding(period, { search, status: filters.status, products: filters.products }, initialData);
   const retainedData = useRetainedValue(data);
   const landingData = data ?? retainedData;
   useRouteScrollRestoration({
@@ -157,6 +159,7 @@ function CategoriesLandingContent({
         return b.gmv_mtd - a.gmv_mtd;
       });
   }, [filters.products, filters.status, rows, search, sortBy]);
+  const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && filtered.length === 0;
 
   if (isLoading && !landingData) return <CategoriesLandingSkeleton />;
   if (isError && !landingData) {
@@ -276,6 +279,9 @@ function CategoriesLandingContent({
             onSortChange={(option) => setRouteState((s) => ({ ...s, sortBy: option as SortOption }))}
           />
 
+          {showTableSkeleton ? (
+            <LandingTableRowsSkeleton columns={7} tableMinWidth={1220} />
+          ) : (
           <LandingTable
           columns={[
               { label: 'Category', minWidth: 280, maxWidth: 360, className: 'px-5' },
@@ -286,7 +292,7 @@ function CategoriesLandingContent({
               { width: 40, className: 'px-4' },
             ]}
             tableMinWidth={1080}
-            showEmptyState={filtered.length === 0}
+            showEmptyState={filtered.length === 0 && !isLoading}
             emptyState={
               <EmptyState
                 icon={<Tag size={28} strokeWidth={1.5} />}
@@ -339,8 +345,11 @@ function CategoriesLandingContent({
               </tr>
             ))}
           </LandingTable>
+          )}
         </>
       )}
+
+      <LandingPageLoadMore hasMore={Boolean(hasNextPage)} loading={isFetchingNextPage} onLoadMore={() => void fetchNextPage()} />
 
       <CategoryFormSheet
         open={addSheetOpen}

@@ -38,7 +38,14 @@ export async function GET(req: NextRequest): Promise<NextResponse<GlobalSearchRe
     return NextResponse.json({ groups: [], total: 0 }, { headers: SELLER_CACHE_REFERENCE });
   }
 
-  const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? '5'), 10);
+  if (q.length < 2) {
+    return NextResponse.json({ groups: [], total: 0 }, { headers: SELLER_CACHE_REFERENCE });
+  }
+
+  const requestedLimit = Number(req.nextUrl.searchParams.get('limit') ?? '5');
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 10)
+    : 5;
   const queryEmbedding = await createProductQueryEmbedding(q);
 
   const db = supabaseAdmin;

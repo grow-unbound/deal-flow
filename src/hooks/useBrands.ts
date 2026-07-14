@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { BrandCreateInput, CreateBrandInput, TenantBrandUpdateInput } from '@/lib/zod';
 import { apiFetch, apiPost } from '@/lib/api-fetch';
@@ -8,6 +8,7 @@ import { appendArrayParam } from '@/lib/landing-filter-params';
 import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
+import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
 
 export interface MasterBrand {
   id: string;
@@ -88,6 +89,10 @@ export interface TopRiserItem {
 
 export interface TenantBrandsResponse {
   brands: TenantBrand[];
+  total?: number;
+  limit?: number;
+  offset?: number;
+  nextOffset?: number | null;
   categories?: string[];
   cohorts?: Array<{
     id: string;
@@ -185,6 +190,13 @@ export interface BrandDetailBuyer {
   city: string;
 }
 
+export interface BrandBuyerPage {
+  rows: BrandDetailBuyer[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface BrandDetailCatalog {
   id: string;
   name: string;
@@ -231,6 +243,7 @@ export interface BrandDetailResponse {
       buyer_reach: string;
     };
   };
+  buyers_total: number;
   buyers: BrandDetailBuyer[];
   catalogs: BrandDetailCatalog[];
   activity: BrandDetailActivity[];
@@ -299,24 +312,32 @@ export function useTenantBrands(
   filters: TenantBrandsLandingFilters = {},
   initialData?: TenantBrandsResponse,
 ) {
-  return useQuery({
+  const hasFilters = Boolean(filters.search?.trim() || filters.categories?.length || filters.cohorts?.length);
+  const baseSummary = getSellerLandingInitialData(period, initialData);
+  const query = useInfiniteQuery({
     queryKey: ['tenant-brands', period, filters],
-    queryFn: async (): Promise<TenantBrandsResponse> => {
-      const params = new URLSearchParams({ period });
+    initialPageParam: 0,
+    queryFn: async ({ pageParam, signal }): Promise<TenantBrandsResponse> => {
+      const params = new URLSearchParams({ period, limit: '50', offset: String(pageParam), include_summary: String(pageParam === 0 && !hasFilters) });
       if (filters.search?.trim()) params.set('search', filters.search.trim());
       appendArrayParam(params, 'categories', filters.categories);
       appendArrayParam(params, 'cohorts', filters.cohorts);
-      const res = await apiFetch(`/api/tenant/brands?${params.toString()}`);
-      if (!res.ok) {
-        throw new Error('Failed to fetch brands');
-      }
+      const res = await apiFetch(`/api/tenant/brands?${params.toString()}`, { signal });
+      if (!res.ok) throw new Error('Failed to fetch brands');
       return res.json();
     },
-    initialData: getSellerLandingInitialData(period, initialData),
+    getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
+    initialData: baseSummary
+      ? { pages: [baseSummary], pageParams: [0] }
+      : undefined,
+    initialDataUpdatedAt: initialData ? 0 : undefined,
+    placeholderData: keepPreviousData,
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
   });
+  const merged = mergeSellerLandingPages(query.data?.pages, 'brands');
+  return { ...query, data: merged && baseSummary ? { ...baseSummary, ...merged } : merged };
 }
 
 export function useTenantBrandDetail(id: string) {
@@ -333,6 +354,25 @@ export function useTenantBrandDetail(id: string) {
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
+  });
+}
+
+export function useBrandBuyers(id: string, filters: { query?: string; segment?: string; sort?: string; page?: number }, enabled = true) {
+  return useQuery<BrandBuyerPage>({
+    queryKey: ['tenant-brand-buyers', id, filters],
+    enabled: Boolean(id) && enabled,
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({ limit: '50' });
+      params.set('offset', String(Math.max(0, filters.page ?? 0) * 50));
+      if (filters.query?.trim()) params.set('q', filters.query.trim());
+      if (filters.segment) params.set('segment', filters.segment);
+      if (filters.sort) params.set('sort', filters.sort);
+      const res = await apiFetch(`/api/tenant/brands/${id}/buyers?${params}`, { signal });
+      if (!res.ok) throw new Error('Failed to fetch brand buyers');
+      return res.json();
+    },
+    placeholderData: (previous) => previous,
+    staleTime: 30_000,
   });
 }
 

@@ -25,6 +25,9 @@ import { formatDate } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import type { WarehousesLandingResponse, WarehouseStockStatus } from '@/types/tenant-warehouses';
 import { WarehousesLandingSkeleton as SharedWarehousesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
+import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
+import { useRetainedValue } from '@/hooks/useRetainedValue';
 
 type SortOption = 'Tracked SKUs (high → low)' | 'Sellable units (high → low)' | 'Idle stock SKUs (high → low)';
 
@@ -101,7 +104,8 @@ export function WarehousesLandingClient({
   useSeedRouteSearch({ initialSearch, setState: setRouteState });
 
   const filters = routeState.filters ?? { status: [], stock: [] };
-  const { data, isLoading, isError, refetch } = useWarehousesLanding(
+  const hasTableControls = Boolean(routeState.search.trim() || filters.status.length > 0 || filters.stock.length > 0);
+  const { data, isLoading, isError, isFetching, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = useWarehousesLanding(
     period,
     {
       search: routeState.search,
@@ -109,6 +113,9 @@ export function WarehousesLandingClient({
       stock: filters.stock,
     },
     initialData,
+  );
+  const summaryData = useRetainedValue<WarehousesLandingResponse | undefined>(
+    !hasTableControls ? data : initialData ?? undefined,
   );
 
   useRouteScrollRestoration({
@@ -153,6 +160,8 @@ export function WarehousesLandingClient({
     }
     return rows;
   }, [data?.warehouses, routeState.sortBy]);
+  const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && filtered.length === 0;
+  const summary = summaryData ?? data;
 
   if (isLoading && !data) return <SharedWarehousesLandingSkeleton />;
   if (isError && !data) {
@@ -186,25 +195,25 @@ export function WarehousesLandingClient({
         tiles={[
           {
             label: 'Active warehouses',
-            value: `${data.kpis.active_warehouses}`,
-            sub: `${data.warehouses.length} total in view`,
+            value: `${summary?.kpis.active_warehouses ?? 0}`,
+            sub: `${summary?.kpis.active_warehouses ?? 0} total`,
           },
           {
             label: 'Tracked SKUs',
-            value: `${data.kpis.tracked_skus}`,
+            value: `${summary?.kpis.tracked_skus ?? 0}`,
             sub: 'warehouse-product rows',
           },
           {
             label: 'Low-stock warehouses',
-            value: `${data.kpis.low_stock_warehouses}`,
+            value: `${summary?.kpis.low_stock_warehouses ?? 0}`,
             sub: 'need replenishment attention',
-            tone: data.kpis.low_stock_warehouses > 0 ? 'warn' : undefined,
+            tone: (summary?.kpis.low_stock_warehouses ?? 0) > 0 ? 'warn' : undefined,
           },
           {
             label: 'Idle stock SKUs',
-            value: `${data.kpis.idle_stock_skus}`,
+            value: `${summary?.kpis.idle_stock_skus ?? 0}`,
             sub: 'positive stock with no recent demand',
-            tone: data.kpis.idle_stock_skus > 0 ? 'warn' : undefined,
+            tone: (summary?.kpis.idle_stock_skus ?? 0) > 0 ? 'warn' : undefined,
           },
         ]}
       />
@@ -214,8 +223,8 @@ export function WarehousesLandingClient({
           {
             kind: 'risk',
             eyebrow: 'Stock attention',
-            hint: `${data.callouts.stock_attention.length} warehouses`,
-            rows: data.callouts.stock_attention.map((row) => ({
+            hint: `${summary?.callouts.stock_attention.length ?? 0} warehouses`,
+            rows: (summary?.callouts.stock_attention ?? []).map((row) => ({
               initials: row.initials,
               hue: 'ember' as const,
               name: row.name,
@@ -226,8 +235,8 @@ export function WarehousesLandingClient({
           {
             kind: 'risk',
             eyebrow: 'Idle stock',
-            hint: `${data.callouts.idle_stock.length} warehouses`,
-            rows: data.callouts.idle_stock.map((row) => ({
+            hint: `${summary?.callouts.idle_stock.length ?? 0} warehouses`,
+            rows: (summary?.callouts.idle_stock ?? []).map((row) => ({
               initials: row.initials,
               hue: 'ember' as const,
               name: row.name,
@@ -239,7 +248,7 @@ export function WarehousesLandingClient({
             kind: 'info',
             eyebrow: 'Recently replenished',
             hint: 'latest inventory updates',
-            rows: data.callouts.recently_replenished.map((row) => ({
+            rows: (summary?.callouts.recently_replenished ?? []).map((row) => ({
               initials: row.initials,
               hue: 'teal' as const,
               name: row.name,
@@ -264,7 +273,9 @@ export function WarehousesLandingClient({
         onSortChange={(value) => setRouteState((current) => ({ ...current, sortBy: value as SortOption }))}
       />
 
-      {filtered.length === 0 ? (
+      {showTableSkeleton ? (
+        <LandingTableRowsSkeleton columns={9} tableMinWidth={1360} />
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={<Package2 size={28} strokeWidth={1.5} />}
           heading={routeState.search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching warehouses' : 'No warehouses yet'}
@@ -325,6 +336,8 @@ export function WarehousesLandingClient({
           ))}
         </LandingTable>
       )}
+
+      <LandingPageLoadMore hasMore={Boolean(hasNextPage)} loading={isFetchingNextPage} onLoadMore={() => void fetchNextPage()} />
 
       <WarehouseFormSheet open={sheetOpen} onOpenChange={setSheetOpen} editingWarehouse={null} />
     </PageWrap>

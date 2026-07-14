@@ -27,6 +27,12 @@ export function parseRowsLimit(value: string | null | undefined, fallback: numbe
   return parseBoundedLimit(value, fallback, PAGE_SIZE.MAX);
 }
 
+export function parseRowsOffset(value: string | null | undefined, max: number = 10_000) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return Math.min(Math.floor(parsed), max);
+}
+
 export function parseOptionsLimit(value: string | null | undefined, fallback: number = PAGE_SIZE.COMPOSER) {
   return parseBoundedLimit(value, fallback, 50);
 }

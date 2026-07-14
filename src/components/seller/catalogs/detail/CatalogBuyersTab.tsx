@@ -1,13 +1,16 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { FilterBar, LandingTable, StatusTag } from '@/components/seller/layout';
-import type { CatalogDetailResponse } from '@/hooks/useCatalogs';
+import { useCatalogBuyers, type CatalogDetailResponse } from '@/hooks/useCatalogs';
+import { useDebounce } from '@/hooks/useDebounce';
 import { formatCompactInr, formatDate } from '@/lib/utils';
 
 type SortOption = 'GMV (high → low)' | 'Conversions (high → low)' | 'Recently opened' | 'Buyer name (A → Z)';
 
 interface CatalogBuyersTabProps {
+  catalogId: string;
   buyers: CatalogDetailResponse['buyers'];
   selectedCohort: CatalogDetailResponse['header']['selected_cohort'];
 }
@@ -18,20 +21,37 @@ function statusTone(status: CatalogDetailResponse['buyers'][number]['opened_stat
   return 'warning';
 }
 
-export function CatalogBuyersTab({ buyers, selectedCohort }: CatalogBuyersTabProps) {
+const sortValue: Record<SortOption, string> = {
+  'GMV (high → low)': 'gmv_desc',
+  'Conversions (high → low)': 'conversions_desc',
+  'Recently opened': 'recently_opened',
+  'Buyer name (A → Z)': 'name_asc',
+};
+
+export function CatalogBuyersTab({ catalogId, buyers, selectedCohort }: CatalogBuyersTabProps) {
   const [search, setSearch] = useState('');
   const [activeChip, setActiveChip] = useState('All buyers');
   const [sortBy, setSortBy] = useState<SortOption>('GMV (high → low)');
+  const [page, setPage] = useState(0);
+  const debouncedSearch = useDebounce(search, 300);
+  const status = activeChip === 'All buyers' ? undefined : activeChip.toLowerCase().replace(/ /g, '_');
+  const query = useCatalogBuyers(catalogId, { query: debouncedSearch, status, sort: sortValue[sortBy], page });
 
-  const totals = useMemo(() => ({
+  useEffect(() => setPage(0), [debouncedSearch, sortBy, status]);
+
+  const fallbackTotals = useMemo(() => ({
     opens: buyers.filter((buyer) => buyer.opened_status !== 'Not yet').length,
     converted: buyers.filter((buyer) => buyer.opened_status === 'Converted').length,
     gmv: buyers.reduce((sum, buyer) => sum + buyer.spend, 0),
   }), [buyers]);
+  const totals = query.data?.totals ?? fallbackTotals;
+  const authoritative = query.data?.rows ?? buyers;
+  const isTransitioning = query.isFetching || search !== debouncedSearch;
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return buyers
+    if (!isTransitioning) return authoritative;
+    return authoritative
       .filter((buyer) => {
         if (activeChip === 'Converted') return buyer.opened_status === 'Converted';
         if (activeChip === 'Opened') return buyer.opened_status === 'Opened';
@@ -47,7 +67,8 @@ export function CatalogBuyersTab({ buyers, selectedCohort }: CatalogBuyersTabPro
         if (sortBy === 'Buyer name (A → Z)') return a.buyer_name.localeCompare(b.buyer_name);
         return b.spend - a.spend;
       });
-  }, [activeChip, buyers, search, sortBy]);
+  }, [activeChip, authoritative, isTransitioning, search, sortBy]);
+  const total = query.data?.total ?? buyers.length;
 
   return (
     <section className="mt-5 space-y-4">
@@ -79,7 +100,7 @@ export function CatalogBuyersTab({ buyers, selectedCohort }: CatalogBuyersTabPro
 
       <div>
         <FilterBar
-          count={`${filtered.length} buyers`}
+          count={`${filtered.length} of ${total} buyers${isTransitioning ? ' · Updating' : ''}`}
           searchPlaceholder="Search buyer or city…"
           chips={['All buyers', 'Converted', 'Opened', 'Not yet']}
           activeChip={activeChip}
@@ -120,6 +141,12 @@ export function CatalogBuyersTab({ buyers, selectedCohort }: CatalogBuyersTabPro
             </tr>
           ))}
         </LandingTable>
+        {total > 50 ? (
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="outline" size="sm" disabled={page === 0 || query.isFetching} onClick={() => setPage((value) => Math.max(0, value - 1))}>Previous</Button>
+            <Button variant="outline" size="sm" disabled={(page + 1) * 50 >= total || query.isFetching} onClick={() => setPage((value) => value + 1)}>Next</Button>
+          </div>
+        ) : null}
       </div>
     </section>
   );

@@ -18,7 +18,7 @@ export default async function LocationsPage({
   const period = await resolveSellerLandingPeriod(searchParams);
   const initialSearch = await resolveOptionalSearchParam(searchParams);
   const { data: initialData, status } = await fetchSellerPageBootstrap<LocationsLandingResponse>(
-    `/api/tenant/locations/landing?period=${period}`,
+    `/api/tenant/locations/landing?period=${period}&limit=50`,
   );
   if (status === 403) return <RoleForbiddenPage />;
   return <LocationsLandingClient initialData={initialData} initialPeriod={period} initialSearch={initialSearch} />;

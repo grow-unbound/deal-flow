@@ -28,6 +28,7 @@ import { useTenantCatalogs, type CatalogLandingRow, type CatalogsLandingResponse
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { CatalogsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
 
 type SortOption = 'Recently published' | 'GMV (high → low)' | 'Conversion (high → low)';
 
@@ -102,9 +103,6 @@ function CatalogsLandingContent({
 }) {
   const router = useRouter();
   const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
-  const { data, isLoading, isError } = useTenantCatalogs(period, initialData);
-  const retainedData = useRetainedValue(data);
-  const landingData = data ?? retainedData;
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-catalogs-landing',
     scopeKey: period,
@@ -118,15 +116,22 @@ function CatalogsLandingContent({
     },
   });
   useSeedRouteSearch({ initialSearch, setState: setRouteState });
+  const search = routeState.search;
+  const sortBy = routeState.sortBy;
+  const filters = routeState.filters ?? { status: [] };
+  const statusFilter = filters.status ?? [];
+  const { data, isLoading, isFetching, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantCatalogs(
+    period,
+    { search, status: statusFilter },
+    initialData,
+  );
+  const retainedData = useRetainedValue(data);
+  const landingData = data ?? retainedData;
   useRouteScrollRestoration({
     storageKey: 'seller-catalogs-landing',
     scopeKey: period,
     ready: !isLoading,
   });
-  const search = routeState.search;
-  const sortBy = routeState.sortBy;
-  const filters = routeState.filters ?? { status: [] };
-  const statusFilter = filters.status ?? [];
   const groups: FilterBarGroup[] = [
     {
       key: 'status',
@@ -145,8 +150,7 @@ function CatalogsLandingContent({
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return catalogs
-      .filter((catalog) => {
+    const interimRows = isFetching !== false ? catalogs.filter((catalog) => {
         if (statusFilter.length === 0 || statusFilter.includes('All')) return true;
         return statusFilter.some((value) => {
           if (value === 'Draft') return catalog.status.label === 'Draft';
@@ -155,14 +159,14 @@ function CatalogsLandingContent({
           if (value === 'Ended') return catalog.status.label === 'Ended';
           return false;
         });
-      })
-      .filter((catalog) => !query || catalog.name.toLowerCase().includes(query) || catalog.cohort_name.toLowerCase().includes(query))
+      }).filter((catalog) => !query || catalog.name.toLowerCase().includes(query)) : catalogs;
+    return interimRows
       .sort((a, b) => {
         if (sortBy === 'Recently published') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
         if (sortBy === 'GMV (high → low)') return b.gmv - a.gmv;
         return b.conversion_pct - a.conversion_pct;
       });
-  }, [catalogs, search, sortBy, statusFilter]);
+  }, [catalogs, isFetching, search, sortBy, statusFilter]);
 
   if (isLoading && !landingData) return <CatalogsLandingSkeleton />;
 
@@ -284,7 +288,7 @@ function CatalogsLandingContent({
 
       <FilterBar
         count={`${filtered.length} campaigns`}
-        searchPlaceholder="Search campaign or customer group…"
+        searchPlaceholder="Search campaign…"
         chips={[]}
         activeChip=""
         sortBy={sortBy}
@@ -392,6 +396,7 @@ function CatalogsLandingContent({
           ))}
         </LandingTable>
       )}
+      <LandingPageLoadMore hasMore={Boolean(hasNextPage)} loading={isFetchingNextPage} onLoadMore={() => void fetchNextPage()} />
         </>
       )}
     </PageWrap>

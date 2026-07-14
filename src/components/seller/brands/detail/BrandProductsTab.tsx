@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { FilterBar, GrowthPill, LandingTable, StatusTag } from '@/components/seller/layout';
-import { useTenantProducts } from '@/hooks/useProducts';
+import { useDebounce } from '@/hooks/useDebounce';
+import { detailRowsTotal, flattenDetailRows, useBrandProductsDetail } from '@/hooks/useDetailTabSearch';
 import { formatCompactInr } from '@/lib/utils';
 
 type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Growth (high → low)' | 'On hand (low → high)';
@@ -21,18 +22,20 @@ function toLabelCase(input: string): string {
 }
 
 export function BrandProductsTab({ brandId }: BrandProductsTabProps) {
-  const { data } = useTenantProducts();
   const [search, setSearch] = useState('');
   const [activeChip, setActiveChip] = useState('All products');
   const [sortBy, setSortBy] = useState<SortOption>('GMV (high → low)');
 
-  const products = useMemo(
-    () => (data?.products ?? []).filter((product) => product.tenant_brand_id === brandId),
-    [brandId, data?.products]
-  );
+  const debouncedSearch = useDebounce(search, 300);
+  const stock = activeChip === 'Low stock' ? 'low_stock' : null;
+  const sort = sortBy === 'GMV (low → high)' ? 'gmv_asc' : sortBy === 'Growth (high → low)' ? 'growth_desc' : sortBy === 'On hand (low → high)' ? 'on_hand_asc' : 'gmv_desc';
+  const query = useBrandProductsDetail(brandId, { query: debouncedSearch, filter: stock, sort });
+  const products = useMemo(() => flattenDetailRows(query.data), [query.data]);
+  const isInterim = search.trim() !== debouncedSearch.trim() || query.isFetching;
 
   const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    if (!isInterim) return products;
+    const localQuery = search.trim().toLowerCase();
     return products
       .filter((product) => {
         if (activeChip === 'Low stock') {
@@ -41,12 +44,12 @@ export function BrandProductsTab({ brandId }: BrandProductsTabProps) {
         return true;
       })
       .filter((product) => {
-        if (!query) return true;
-        const sku = product.master_product?.master_sku ?? product.internal_sku;
+        if (!localQuery) return true;
+        const sku = product.sku;
         return (
-          product.display_name.toLowerCase().includes(query) ||
-          sku.toLowerCase().includes(query) ||
-          (product.category_name ?? '').toLowerCase().includes(query)
+          product.product_name.toLowerCase().includes(localQuery) ||
+          sku.toLowerCase().includes(localQuery) ||
+          product.category_name.toLowerCase().includes(localQuery)
         );
       })
       .sort((a, b) => {
@@ -55,12 +58,12 @@ export function BrandProductsTab({ brandId }: BrandProductsTabProps) {
         if (sortBy === 'Growth (high → low)') return Number(b.growth_pct ?? 0) - Number(a.growth_pct ?? 0);
         return Number(a.on_hand ?? 0) - Number(b.on_hand ?? 0);
       });
-  }, [activeChip, products, search, sortBy]);
+  }, [activeChip, isInterim, products, search, sortBy]);
 
   return (
     <section className="mt-5">
       <FilterBar
-        count={`${filtered.length} products`}
+        count={`${isInterim ? filtered.length : detailRowsTotal(query.data)} products${query.isFetching ? ' · Updating' : ''}`}
         searchPlaceholder="Search product, SKU, category…"
         chips={['All products', 'Low stock']}
         activeChip={activeChip}
@@ -93,14 +96,14 @@ export function BrandProductsTab({ brandId }: BrandProductsTabProps) {
           const unitsMtd = Number(product.units_mtd ?? 0);
           const gmvMtd = Number(product.gmv_mtd ?? 0);
           const growthPct = Number(product.growth_pct ?? 0);
-          const sku = product.master_product?.master_sku ?? product.internal_sku;
-          const category = product.category_name ?? 'Uncategorized';
-          const tone = product.status_tone ?? (onHand === 0 ? 'danger' : daysCover < 14 ? 'warning' : 'success');
-          const label = product.status_label ?? (onHand === 0 ? 'Out of stock' : daysCover < 14 ? 'Low stock' : 'On pace');
+          const sku = product.sku;
+          const category = product.category_name;
+          const tone = onHand === 0 ? 'danger' : daysCover < 14 ? 'warning' : 'success';
+          const label = onHand === 0 ? 'Out of stock' : daysCover < 14 ? 'Low stock' : 'On pace';
 
           return (
             <tr
-              key={product.id}
+              key={product.tenant_product_id}
               className="border-b border-cream-300 bg-white transition-colors duration-fast hover:bg-cream-50"
             >
               <td className="px-5 py-3.5 text-base text-cream-900">
@@ -109,7 +112,7 @@ export function BrandProductsTab({ brandId }: BrandProductsTabProps) {
                     <div className="h-[26px] w-[10px] rounded-[20%_20%_8%_8%/8%_8%_4%_4%] bg-[linear-gradient(180deg,#1F3A34,#142823)]" />
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate text-base font-medium text-cream-900">{product.display_name}</p>
+                    <p className="truncate text-base font-medium text-cream-900">{product.product_name}</p>
                     <p className="mt-0.5 text-sm text-cream-700">
                       {sku} · {toLabelCase(category)}
                     </p>
@@ -149,6 +152,7 @@ export function BrandProductsTab({ brandId }: BrandProductsTabProps) {
           );
         })}
       </LandingTable>
+      {query.hasNextPage ? <button type="button" className="mt-4 rounded-lg border border-cream-300 px-4 py-2 text-sm font-medium" disabled={query.isFetchingNextPage} onClick={() => query.fetchNextPage()}>{query.isFetchingNextPage ? 'Loading…' : 'Load more'}</button> : null}
     </section>
   );
 }

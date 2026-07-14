@@ -17,6 +17,8 @@ vi.mock('@/lib/server/seller-location-access', () => ({
 
 type QueryResult = { data?: unknown; error?: unknown };
 const dbResponses: Record<string, QueryResult> = {};
+const rpcCalls: Array<[string, Record<string, unknown>]> = [];
+const queriesByKey: Record<string, Array<ReturnType<typeof createQuery>>> = {};
 
 function createQuery(key: string) {
   const query = {
@@ -38,6 +40,7 @@ function createQuery(key: string) {
   query.order.mockReturnValue(query);
   query.limit.mockReturnValue(query);
   query.select.mockReturnValue(query);
+  (queriesByKey[key] ??= []).push(query);
   return query;
 }
 
@@ -45,6 +48,11 @@ const schemaMock = vi.fn((schemaName: string) => ({
   from: vi.fn((tableName: string) => ({
     select: vi.fn(() => createQuery(`${schemaName}.${tableName}`)),
   })),
+  rpc: vi.fn((functionName: string, args: Record<string, unknown>) => {
+    rpcCalls.push([functionName, args]);
+    const result = dbResponses[`${schemaName}.rpc.${functionName}`] ?? {};
+    return Promise.resolve({ data: result.data ?? null, error: result.error ?? null });
+  }),
 }));
 
 vi.mock('@/lib/supabase', () => ({
@@ -58,6 +66,8 @@ import { GET } from '../../app/api/tenant/warehouses/landing/route';
 describe('GET /api/tenant/warehouses/landing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    rpcCalls.length = 0;
+    for (const key of Object.keys(queriesByKey)) delete queriesByKey[key];
     for (const key of Object.keys(dbResponses)) delete dbResponses[key];
 
     getVerifiedClaimsMock.mockResolvedValue({
@@ -129,9 +139,46 @@ describe('GET /api/tenant/warehouses/landing', () => {
         },
       ],
     };
+    dbResponses['app.rpc.search_seller_warehouse_landing_ids'] = {
+      data: [
+        { id: 'wh-1', total_count: 2 },
+        { id: 'wh-2', total_count: 2 },
+      ],
+    };
+    dbResponses['app.rpc.get_seller_warehouses_landing_summary'] = {
+      data: {
+        kpis: {
+          active_warehouses: 2,
+          tracked_skus: 18,
+          low_stock_warehouses: 2,
+          idle_stock_skus: 2,
+        },
+        callouts: {
+          stock_attention: [
+            { id: 'wh-1', name: 'North Warehouse', city: 'Bengaluru', value: 1 },
+            { id: 'wh-2', name: 'South Warehouse', city: 'Chennai', value: 1 },
+          ],
+          idle_stock: [
+            { id: 'wh-1', name: 'North Warehouse', city: 'Bengaluru', value: 2 },
+          ],
+          recently_replenished: [
+            {
+              id: 'wh-1',
+              name: 'North Warehouse',
+              city: 'Bengaluru',
+              value: 10,
+              last_updated: '2026-07-05T10:00:00.000Z',
+            },
+          ],
+        },
+      },
+    };
   });
 
   it('keeps KPI totals tenant-wide when the row limit truncates visible warehouses', async () => {
+    dbResponses['app.rpc.search_seller_warehouse_landing_ids'] = {
+      data: [{ id: 'wh-1', total_count: 2 }],
+    };
     const response = await GET(new NextRequest('http://localhost/api/tenant/warehouses/landing?limit=1'));
     expect(response.status).toBe(200);
 
@@ -141,5 +188,53 @@ describe('GET /api/tenant/warehouses/landing', () => {
     expect(body.kpis.low_stock_warehouses).toBe(2);
     expect(body.warehouses).toHaveLength(1);
     expect(body.callouts.stock_attention).toHaveLength(2);
+    expect(rpcCalls).toContainEqual(['get_seller_warehouses_landing_summary', {
+      p_tenant_id: 'tenant-1',
+      p_location_ids: null,
+    }]);
+    expect(queriesByKey['app.warehouses_snapshot']?.[0]?.in).toHaveBeenCalledWith('warehouse_id', ['wh-1']);
+  });
+
+  it('pushes search and stock filtering into bounded SQL queries', async () => {
+    const response = await GET(new NextRequest('http://localhost/api/tenant/warehouses/landing?search=north&stock=Low+Stock&limit=25'));
+
+    expect(response.status).toBe(200);
+    expect(rpcCalls).toContainEqual(['search_seller_warehouse_landing_ids', expect.objectContaining({
+      p_query: 'north',
+      p_stock_modes: ['Low Stock'],
+      p_limit: 25,
+    })]);
+  });
+
+  it('skips summaries and hydrates only returned IDs on later pages', async () => {
+    dbResponses['app.rpc.search_seller_warehouse_landing_ids'] = {
+      data: [{ id: 'wh-2', total_count: 75 }],
+    };
+
+    const response = await GET(new NextRequest('http://localhost/api/tenant/warehouses/landing?offset=50&limit=50&include_summary=false'));
+    expect(response.status).toBe(200);
+    expect(queriesByKey['app.warehouses']).toHaveLength(1);
+    expect(queriesByKey['app.warehouses']?.[0]?.in).toHaveBeenCalledWith('id', ['wh-2']);
+    expect(queriesByKey['app.warehouses_snapshot']).toHaveLength(1);
+    expect(queriesByKey['app.warehouses_snapshot']?.[0]?.in).toHaveBeenCalledWith('warehouse_id', ['wh-2']);
+    expect(rpcCalls.some(([name]) => name === 'get_seller_warehouses_landing_summary')).toBe(false);
+  });
+
+  it('passes assistant location scope to both search and summary RPCs', async () => {
+    getVerifiedClaimsMock.mockResolvedValue({
+      tenant_id: 'tenant-1',
+      role: 'seller_assistant',
+      location_ids: ['loc-1'],
+    });
+
+    const response = await GET(new NextRequest('http://localhost/api/tenant/warehouses/landing?limit=1'));
+    expect(response.status).toBe(200);
+    expect(rpcCalls).toContainEqual(['search_seller_warehouse_landing_ids', expect.objectContaining({
+      p_location_ids: ['loc-1'],
+    })]);
+    expect(rpcCalls).toContainEqual(['get_seller_warehouses_landing_summary', {
+      p_tenant_id: 'tenant-1',
+      p_location_ids: ['loc-1'],
+    }]);
   });
 });

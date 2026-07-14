@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getVerifiedClaims } from '@/lib/auth';
 import { getFlag } from '@/lib/flags';
 import { createTimer } from '@/lib/server-timing';
-import { parseRowsLimit, SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
+import { parseRowsLimit, parseRowsOffset, SELLER_GET_CACHE_CONTROL } from '@/lib/server/bounded-get';
 import { getCategoriesLandingPayload } from '@/lib/server/categories-landing';
 import { readArrayParam } from '@/lib/landing-filter-params';
-import { getRequestSupabaseClient } from '@/lib/server/request-supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { assertSellerAdmin } from '@/lib/server/seller-auth';
 import { PAGE_SIZE } from '@/lib/pagination';
 
@@ -32,12 +32,15 @@ export async function GET(request: NextRequest) {
   if (!flagEnabled) return timedJson({ error: 'Feature not enabled' }, { status: 403 });
 
   try {
-    const db = getRequestSupabaseClient();
+    if (!supabaseAdmin) return timedJson({ error: 'Server configuration error' }, { status: 500 });
+    const db = supabaseAdmin;
     const payload = await getCategoriesLandingPayload(db as any, claims.tenant_id!, request.nextUrl.searchParams.get('period'), {
       search: request.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '',
       status: readArrayParam(request.nextUrl.searchParams, 'status'),
       products: readArrayParam(request.nextUrl.searchParams, 'products'),
       limit: parseRowsLimit(request.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER),
+      offset: parseRowsOffset(request.nextUrl.searchParams.get('offset')),
+      includeSummary: request.nextUrl.searchParams.get('include_summary') !== 'false',
     });
     return timedJson(payload);
   } catch (error: unknown) {

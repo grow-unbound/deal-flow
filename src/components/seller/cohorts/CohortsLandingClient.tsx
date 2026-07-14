@@ -27,6 +27,7 @@ import { useCohortsLanding, type CohortsLandingResponse } from '@/hooks/useCohor
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { CohortsLandingSkeleton as SharedCohortsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
 
 type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Growth (high → low)';
 
@@ -122,7 +123,7 @@ function CohortsLandingContent({
   const search = routeState.search;
   const sortBy = routeState.sortBy;
   const filters = routeState.filters ?? { brands: [] };
-  const { data, isLoading, isError, refetch } = useCohortsLanding(period, { search, brands: filters.brands }, initialData);
+  const { data, isLoading, isFetching, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = useCohortsLanding(period, { search, brands: filters.brands }, initialData);
   useRouteScrollRestoration({
     storageKey: 'seller-cohorts-landing',
     scopeKey: period,
@@ -157,8 +158,7 @@ function CohortsLandingContent({
     const query = search.trim().toLowerCase();
     const brandFilter = filters.brands ?? [];
 
-    return rows
-      .filter((row) =>
+    const interimRows = isFetching !== false ? rows.filter((row) =>
         brandFilter.length === 0 ||
         row.allowed_tenant_brand_ids?.some((brandId) => brandFilter.includes(brandId))
       )
@@ -166,16 +166,16 @@ function CohortsLandingContent({
         if (!query) return true;
         return (
           row.name.toLowerCase().includes(query) ||
-          (row.description ?? '').toLowerCase().includes(query) ||
-          row.focus_chips.some((chip) => chip.toLowerCase().includes(query))
+          (row.description ?? '').toLowerCase().includes(query)
         );
-      })
+      }) : rows;
+    return interimRows
       .sort((a, b) => {
         if (sortBy === 'GMV (high → low)') return b.gmv_mtd - a.gmv_mtd;
         if (sortBy === 'GMV (low → high)') return a.gmv_mtd - b.gmv_mtd;
         return b.growth_pct - a.growth_pct;
       });
-  }, [filters.brands, landingData?.cohorts, search, sortBy]);
+  }, [filters.brands, isFetching, landingData?.cohorts, search, sortBy]);
 
   const formatAllowedBrands = (cohort: { allowed_tenant_brand_ids?: string[] | null }) => {
     const ids = cohort.allowed_tenant_brand_ids ?? [];
@@ -298,7 +298,7 @@ function CohortsLandingContent({
 
       <FilterBar
         count={`${filtered.length} customer groups`}
-        searchPlaceholder="Search customer group or rule…"
+        searchPlaceholder="Search customer group…"
         chips={[]}
         activeChip=""
         sortBy={sortBy}
@@ -375,6 +375,7 @@ function CohortsLandingContent({
           ))}
         </LandingTable>
       )}
+      <LandingPageLoadMore hasMore={Boolean(hasNextPage)} loading={isFetchingNextPage} onLoadMore={() => void fetchNextPage()} />
         </>
       )}
     </PageWrap>

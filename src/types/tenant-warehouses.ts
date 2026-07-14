@@ -120,6 +120,9 @@ export interface WarehousesLandingResponse {
   };
   warehouses: WarehousesLandingRow[];
   total: number;
+  limit?: number;
+  offset?: number;
+  nextOffset?: number | null;
   period: string;
   refreshed_at: string;
 }

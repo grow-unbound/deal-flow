@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { Users, User, Globe, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Check, ChevronsUpDown, Globe, Loader2, User, Users, X } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import {
@@ -13,8 +13,18 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
 import { MutationButton } from '@/components/ui/mutation-button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useDebounce } from '@/hooks/useDebounce';
 import { apiFetch } from '@/lib/api-fetch';
 import {
   usePriceListAssignments,
@@ -39,14 +49,21 @@ interface Cohort {
   name: string;
 }
 
-function useBuyers() {
+const BUYER_SEARCH_LIMIT = 8;
+
+function useBuyers(query: string, enabled: boolean) {
   return useQuery({
-    queryKey: ['buyers-list'],
+    queryKey: ['price-list-assignment-buyers', query.trim()],
     queryFn: async (): Promise<{ buyers: Buyer[] }> => {
-      const res = await apiFetch('/api/customers');
-      if (!res.ok) throw new Error('Failed to fetch buyers');
+      const params = new URLSearchParams({ limit: String(BUYER_SEARCH_LIMIT) });
+      if (query.trim()) params.set('q', query.trim());
+      const res = await apiFetch(`/api/tenant/buyers/search?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to search buyers');
       return res.json();
     },
+    enabled,
+    staleTime: 30_000,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -87,21 +104,42 @@ export function AssignmentsPanel({ priceListId }: AssignmentsPanelProps) {
   const [targetType, setTargetType] = useState<TargetType>('cohort');
   const [targetId, setTargetId] = useState<string>('');
   const [formError, setFormError] = useState<string | null>(null);
+  const [buyerPickerOpen, setBuyerPickerOpen] = useState(false);
+  const [buyerSearch, setBuyerSearch] = useState('');
+  const [buyerCache, setBuyerCache] = useState<Record<string, Buyer>>({});
+  const debouncedBuyerSearch = useDebounce(buyerSearch, 300);
 
   const { data: assignmentsData, isLoading: assignmentsLoading } =
     usePriceListAssignments(priceListId);
-  const { data: buyersData } = useBuyers();
+  const buyersQuery = useBuyers(debouncedBuyerSearch, targetType === 'buyer' && buyerPickerOpen);
   const { data: cohortsData } = useCohorts();
   const addAssignment = useAddAssignment(priceListId);
   const deleteAssignment = useDeleteAssignment(priceListId);
 
   const assignments = assignmentsData?.assignments ?? [];
-  const buyers = buyersData?.buyers ?? [];
+  const buyers = buyersQuery.data?.buyers ?? [];
   const cohorts = cohortsData?.cohorts ?? [];
+  const selectedBuyer = targetId ? buyerCache[targetId] : undefined;
+  const buyerResultsUpdating = buyerSearch.trim() !== debouncedBuyerSearch.trim()
+    || buyersQuery.isFetching;
+
+  useEffect(() => {
+    if (buyers.length === 0) return;
+    setBuyerCache((current) => {
+      const next = { ...current };
+      for (const buyer of buyers) next[buyer.id] = buyer;
+      return next;
+    });
+  }, [buyers]);
+
+  useEffect(() => {
+    if (!buyerPickerOpen) setBuyerSearch('');
+  }, [buyerPickerOpen]);
 
   function handleTypeChange(val: string) {
     setTargetType(val as TargetType);
     setTargetId('');
+    setBuyerPickerOpen(false);
     setFormError(null);
   }
 
@@ -169,21 +207,64 @@ export function AssignmentsPanel({ priceListId }: AssignmentsPanelProps) {
         {targetType === 'buyer' && (
           <div>
             <Label className="text-sm text-cream-700 mb-1 block">Buyer</Label>
-            <Select value={targetId} onValueChange={setTargetId}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={buyers.length === 0 ? 'No buyers available' : 'Select buyer'} />
-              </SelectTrigger>
-              <SelectContent>
-                {buyers.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {b.business_name}
-                  </SelectItem>
-                ))}
-                {buyers.length === 0 && (
-                  <div className="px-3 py-2 text-sm text-cream-500">No buyers available</div>
-                )}
-              </SelectContent>
-            </Select>
+            <Popover open={buyerPickerOpen} onOpenChange={setBuyerPickerOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={buyerPickerOpen}
+                  className="w-full justify-between font-normal"
+                >
+                  <span className={selectedBuyer ? 'text-cream-900' : 'text-cream-500'}>
+                    {selectedBuyer?.business_name ?? 'Search and select buyer'}
+                  </span>
+                  <ChevronsUpDown size={14} className="text-cream-500" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                <Command shouldFilter={false}>
+                  <CommandInput
+                    value={buyerSearch}
+                    onValueChange={setBuyerSearch}
+                    placeholder="Search buyers…"
+                  />
+                  <CommandList>
+                    {buyersQuery.isError ? (
+                      <div className="px-3 py-6 text-center text-sm text-red-600">
+                        Unable to search buyers.
+                      </div>
+                    ) : buyers.length === 0 && !buyerResultsUpdating ? (
+                      <CommandEmpty>No buyers found.</CommandEmpty>
+                    ) : (
+                      <CommandGroup>
+                        {buyers.map((buyer) => (
+                          <CommandItem
+                            key={buyer.id}
+                            value={buyer.id}
+                            onSelect={() => {
+                              setBuyerCache((current) => ({ ...current, [buyer.id]: buyer }));
+                              setTargetId(buyer.id);
+                              setBuyerPickerOpen(false);
+                            }}
+                            className="flex cursor-pointer items-center justify-between"
+                          >
+                            <span>{buyer.business_name}</span>
+                            {targetId === buyer.id && <Check size={14} className="text-teal-600" />}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    )}
+                    {buyerResultsUpdating && (
+                      <div className="flex items-center justify-center gap-2 px-3 py-2 text-xs text-cream-500">
+                        <Loader2 size={12} className="animate-spin" />
+                        Updating results…
+                      </div>
+                    )}
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
         )}
 

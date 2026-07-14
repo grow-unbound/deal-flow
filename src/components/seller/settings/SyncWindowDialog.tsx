@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   Dialog,
   DialogBody,
@@ -81,22 +82,21 @@ export function SyncWindowDialog({
             />
             {forceFullRefresh ? (
               <div className="mt-3 space-y-3">
-                <div>
-                  <label htmlFor="sync-since-date" className="mb-1 block text-xs font-medium text-cream-700">
-                    Sync everything from
-                  </label>
-                  <input
-                    id="sync-since-date"
-                    type="date"
-                    value={sinceDate}
-                    onChange={(e) => setSinceDate(e.target.value)}
-                    max={toDateOnly(new Date())}
-                    className="w-full rounded-lg border border-cream-300 bg-white px-3 py-2 text-sm text-cream-900 focus:border-teal-400 focus:outline-none"
-                  />
-                </div>
+                <DatePicker
+                  id="sync-since-date"
+                  label="Sync everything from"
+                  value={sinceDate}
+                  onChange={setSinceDate}
+                  maxDate={new Date()}
+                  mode="overlay"
+                  showSummary={false}
+                  triggerClassName="h-[42px] rounded-[10px] border border-cream-400 bg-[var(--bg-surface)] px-3.5 text-base text-cream-900 shadow-[inset_0_1px_0_rgba(20,40,35,0.02)] transition-colors duration-fast ease-standard focus-visible:outline-none focus-visible:border-[#B5642F] focus-visible:ring-2 focus-visible:ring-[#B5642F]/20 disabled:cursor-not-allowed disabled:bg-cream-100 disabled:opacity-50"
+                />
                 <div className="flex items-start gap-2 rounded-lg border border-warning-200 bg-warning-50 px-3 py-2 text-xs text-warning-800">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span>Re-fetches everything from this date regardless of what's already synced — this can take up to 30 minutes depending on data volume.</span>
+                  <span>
+                    Re-fetches everything from this date regardless of what&apos;s already synced — this can take up to 30 minutes depending on data volume.
+                  </span>
                 </div>
               </div>
             ) : null}

@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { PAGE_SIZE } from '@/lib/pagination';
-import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
+import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit, parseRowsOffset } from '@/lib/server/bounded-get';
 import { CatalogComposerPayloadSchema, type CatalogComposerFilterState, type CatalogComposerTag } from '@/lib/zod';
 import { revalidateSellerDashboardCache } from '@/lib/server/dashboard-cache';
 import { queueCampaignPublishNotify } from '@/lib/server/campaign-publish-notify';
@@ -20,6 +20,8 @@ import {
 } from '@/lib/server/campaign-performance';
 import { getInAppCreateFlags } from '@/lib/server/seller-features';
 import { resolveCampaignLandingAudience } from '@/lib/server/campaign-broadcast';
+import { readArrayParam } from '@/lib/landing-filter-params';
+import { searchSellerLandingEntityIds } from '@/lib/server/seller-landing-entity-search';
 
 type CatalogStatus = 'draft' | 'published' | 'archived';
 type DisplayStatus = 'Live' | 'Draft' | 'Ended';
@@ -172,6 +174,169 @@ function generateShareToken() {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 20);
 }
 
+type CatalogMetric = {
+  gmv: number;
+  previous_gmv: number;
+  order_count: number;
+  estimate_count: number;
+  conversions: number;
+  views: number;
+  view_pct: number;
+  conversion_pct: number;
+  growth_pct: number;
+  products_count: number;
+  brands_count: number;
+  audience_label: string;
+  audience_count: number | null;
+};
+
+type CatalogCallout = {
+  id: string;
+  name: string;
+  status: { value: CatalogStatus; label: DisplayStatus; tone: StatusTone };
+  cohort_name: string;
+  gmv: number;
+  conversions: number;
+  conversion_pct: number;
+  valid_to: string | null;
+  days_left: number | null;
+  growth_pct: number;
+};
+
+type CatalogMetricsRpc = {
+  row_metrics?: Record<string, CatalogMetric>;
+  summary?: {
+    kpis: Record<string, number>;
+    todays_read: {
+      needs_attention: CatalogCallout[];
+      top_performers: CatalogCallout[];
+      top_risers: CatalogCallout[];
+    };
+  } | null;
+};
+
+function calloutToLandingRow(callout: CatalogCallout, index: number) {
+  return {
+    ...callout,
+    initials: getInitials(callout.name),
+    hue: getHue(index),
+    audience_count: null,
+    products_count: 0,
+    brands_count: 0,
+    orders: 0,
+    order_count: 0,
+    estimate_count: 0,
+    views: 0,
+    view_pct: 0,
+    valid_from: '',
+    valid_until_label: callout.valid_to
+      ? new Date(callout.valid_to).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+      : 'No end date',
+    created_at: '',
+  };
+}
+
+async function getOptimizedCatalogsLanding(req: NextRequest, timedJson: (body: unknown, init?: ResponseInit) => NextResponse) {
+  const claims = await getVerifiedClaims(req);
+  if (!claims.tenant_id) return timedJson({ error: 'Unauthorized' }, { status: 401 });
+  if (claims.role !== 'seller_admin') return timedJson({ error: 'Forbidden' }, { status: 403 });
+  if (!supabaseAdmin) return timedJson({ error: 'Server configuration error' }, { status: 500 });
+
+  const tenantId = claims.tenant_id;
+  const db = supabaseAdmin;
+  const now = new Date();
+  const nowTs = now.getTime();
+  const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'), now);
+  const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
+  const offset = parseRowsOffset(req.nextUrl.searchParams.get('offset'));
+  const includeSummary = req.nextUrl.searchParams.get('include_summary') !== 'false';
+  const search = req.nextUrl.searchParams.get('search')?.trim() ?? '';
+  const statuses = readArrayParam(req.nextUrl.searchParams, 'status')
+    .map((value) => value.toLowerCase().replace(/ /g, '_'))
+    .filter((value) => value !== 'all');
+
+  const [landingSearch, createFlags] = await Promise.all([
+    searchSellerLandingEntityIds({ tenantId, entity: 'campaigns', query: search, statuses, limit, offset }),
+    getInAppCreateFlags(tenantId),
+  ]);
+  const pageIds = landingSearch.ids;
+  const metricsRes = await db.schema('app').rpc('get_catalog_landing_metrics', {
+    p_tenant_id: tenantId,
+    p_campaign_ids: pageIds,
+    p_current_start: period.current_start.slice(0, 10),
+    p_current_end_exclusive: period.current_end_exclusive.slice(0, 10),
+    p_previous_start: period.previous_start.slice(0, 10),
+    p_previous_end_exclusive: period.previous_end_exclusive.slice(0, 10),
+    p_include_orders: createFlags.create_sales_orders,
+    p_include_estimates: createFlags.create_enquiries,
+    p_include_summary: includeSummary,
+  });
+  if (metricsRes.error) {
+    console.error('[GET /api/tenant/catalogs] metrics RPC error:', metricsRes.error);
+    return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
+  }
+
+  let catalogs: CatalogRow[] = [];
+  if (pageIds.length > 0) {
+    const catalogsRes = await db
+      .schema('app')
+      .from('campaigns')
+      .select('id, name, scope_type, scope_value, valid_from, valid_to, status, created_at')
+      .eq('tenant_id', tenantId)
+      .in('id', pageIds)
+      .is('deleted_at', null)
+      .limit(limit);
+    if (catalogsRes.error) return timedJson({ error: 'Failed to fetch catalogs landing' }, { status: 500 });
+    catalogs = (catalogsRes.data ?? []) as CatalogRow[];
+  }
+
+  const rpc = (metricsRes.data ?? {}) as CatalogMetricsRpc;
+  const metricsById = rpc.row_metrics ?? {};
+  const catalogById = new Map(catalogs.map((catalog) => [catalog.id, catalog]));
+  const rows = pageIds.flatMap((id, index) => {
+    const catalog = catalogById.get(id);
+    if (!catalog) return [];
+    const metric = metricsById[id] ?? {
+      gmv: 0, previous_gmv: 0, order_count: 0, estimate_count: 0, conversions: 0,
+      views: 0, view_pct: 0, conversion_pct: 0, growth_pct: 0, products_count: 0,
+      brands_count: 0, audience_label: 'All buyers', audience_count: 0,
+    };
+    const displayStatus = getDisplayStatus(catalog.status, catalog.valid_to, nowTs);
+    const daysLeft = catalog.valid_to && displayStatus === 'Live' ? Math.max(0, Math.ceil((new Date(catalog.valid_to).getTime() - nowTs) / 86_400_000)) : null;
+    return [{
+      id, name: catalog.name, initials: getInitials(catalog.name), hue: getHue(index),
+      status: { value: catalog.status, label: displayStatus, tone: getStatusTone(displayStatus) },
+      cohort_name: metric.audience_label, audience_count: metric.audience_count,
+      products_count: Number(metric.products_count), brands_count: Number(metric.brands_count),
+      gmv: Number(metric.gmv), orders: Number(metric.order_count), order_count: Number(metric.order_count),
+      estimate_count: Number(metric.estimate_count), conversions: Number(metric.conversions), views: Number(metric.views),
+      view_pct: Number(metric.view_pct), conversion_pct: Number(metric.conversion_pct),
+      valid_from: catalog.valid_from, valid_to: catalog.valid_to,
+      valid_until_label: catalog.valid_to ? new Date(catalog.valid_to).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'No end date',
+      days_left: daysLeft, created_at: catalog.created_at, growth_pct: Number(metric.growth_pct),
+    }];
+  });
+
+  const summary = rpc.summary;
+  return timedJson({
+    period,
+    channels: { orders_enabled: createFlags.create_sales_orders, estimates_enabled: createFlags.create_enquiries },
+    ...(summary ? {
+      kpis: summary.kpis,
+      todays_read: {
+        needs_attention: summary.todays_read.needs_attention.map(calloutToLandingRow),
+        top_performers: summary.todays_read.top_performers.map(calloutToLandingRow),
+        top_risers: summary.todays_read.top_risers.map(calloutToLandingRow),
+      },
+    } : {}),
+    catalogs: rows,
+    total: landingSearch.total,
+    limit,
+    offset,
+    nextOffset: pageIds.length > 0 && offset + pageIds.length < landingSearch.total ? offset + pageIds.length : null,
+  });
+}
+
 async function ensureTenantProducts(
   db: any,
   tenantId: string,
@@ -234,6 +399,9 @@ export async function GET(req: NextRequest) {
     return jsonWithServerTiming(body, timer, 'catalogs_api', init, APP_GET_CACHE_CONTROL);
   };
 
+  return getOptimizedCatalogsLanding(req, timedJson);
+
+  /* istanbul ignore next -- superseded implementation retained temporarily during the landing pagination rollout */
   try {
     const claims = await getVerifiedClaims(req);
 
@@ -249,13 +417,28 @@ export async function GET(req: NextRequest) {
       return timedJson({ error: 'Server configuration error' }, { status: 500 });
     }
 
-    const tenantId = claims.tenant_id;
-    const db = supabaseAdmin;
+    const tenantId = claims.tenant_id!;
+    const db = supabaseAdmin!;
     const now = new Date();
     const nowTs = now.getTime();
     const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'), now);
     const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
+    const offset = parseRowsOffset(req.nextUrl.searchParams.get('offset'));
+    const search = req.nextUrl.searchParams.get('search')?.trim() ?? '';
+    const statuses = readArrayParam(req.nextUrl.searchParams, 'status')
+      .map((value) => value.toLowerCase().replace(/ /g, '_'))
+      .filter((value) => value !== 'all');
+    const landingSearch = await searchSellerLandingEntityIds({
+      tenantId,
+      entity: 'campaigns',
+      query: search,
+      statuses,
+      limit,
+      offset,
+    });
 
+    // Campaign rows and period-bounded facts below preserve the established KPI and
+    // callout attribution contract. Only landingSearch IDs are returned to the table.
     const [catalogsRes, ordersRes, prevOrdersRes, estimatesRes, prevEstimatesRes, viewsRes, cohortsRes, activeBuyersRes] = await Promise.all([
       db
         .schema('app')
@@ -651,6 +834,10 @@ export async function GET(req: NextRequest) {
     });
 
     const topRisers = [...withGrowth].sort((a, b) => b.growth_pct - a.growth_pct).slice(0, 2);
+    const rowById = new Map(withGrowth.map((row) => [row.id, row]));
+    const pageRows = landingSearch.ids
+      .map((id) => rowById.get(id))
+      .filter((row): row is NonNullable<typeof row> => Boolean(row));
 
     return timedJson({
       period,
@@ -675,9 +862,13 @@ export async function GET(req: NextRequest) {
         top_performers: topPerformers,
         top_risers: topRisers,
       },
-      catalogs: withGrowth.slice(0, limit),
-      total: withGrowth.length,
-      nextCursor: null,
+      catalogs: pageRows,
+      total: landingSearch.total,
+      limit,
+      offset,
+      nextOffset: landingSearch.ids.length > 0 && offset + landingSearch.ids.length < landingSearch.total
+        ? offset + landingSearch.ids.length
+        : null,
     });
   } catch (error) {
     console.error('[GET /api/tenant/catalogs] unexpected error:', error);

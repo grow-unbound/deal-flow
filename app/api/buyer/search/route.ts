@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, supabase } from '@/lib/supabase';
 import { requireBuyerAccessProfile } from '@/lib/server/buyer-access';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
+import { BUYER_CACHE_CATALOG, BUYER_CACHE_PERSONAL } from '@/lib/server/buyer-cache-headers';
+import { searchScopedProducts } from '@/lib/server/scoped-product-search';
 
 export interface BuyerSearchItem {
   id: string;
@@ -26,9 +28,10 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerSearc
     const { tenant_id, buyer_id } = profile.context;
     const scope = (request.nextUrl.searchParams.get('scope') ?? 'catalog') as 'catalog' | 'orders';
     const q = request.nextUrl.searchParams.get('q')?.trim() ?? '';
+    const cacheHeaders = scope === 'orders' ? BUYER_CACHE_PERSONAL : BUYER_CACHE_CATALOG;
 
     if (!q) {
-      return NextResponse.json({ items: [], scope });
+      return NextResponse.json({ items: [], scope }, { headers: cacheHeaders });
     }
 
     const db = supabaseAdmin ?? supabase;
@@ -40,30 +43,21 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerSearc
           ? await resolveBuyerAllowedTenantBrandIds(db as any, tenant_id, buyer_id)
           : null;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let productQuery = (db as any)
-        .schema('app')
-        .from('tenant_products')
-        .select('id, name_override, internal_sku, tenant_brand_id')
-        .eq('tenant_id', tenant_id)
-        .eq('is_active', true)
-        .or(`name_override.ilike.%${q}%,internal_sku.ilike.%${q}%`)
-        .limit(20);
+      const { rows } = await searchScopedProducts({
+        db: db as any,
+        tenantId: tenant_id,
+        buyerId: buyer_id,
+        query: q,
+        limit: 20,
+        allowedBrandIds: allowedTenantBrandIds,
+      });
 
-      if (Array.isArray(allowedTenantBrandIds)) {
-        if (allowedTenantBrandIds.length === 0) {
-          return NextResponse.json({ items: [], scope });
-        }
-        productQuery = productQuery.in('tenant_brand_id', allowedTenantBrandIds);
-      }
-
-      const { data: products } = await productQuery;
-      for (const p of (products ?? [])) {
+      for (const p of rows) {
         items.push({
-          id:          p.id,
+          id:          p.tenant_product_id,
           entity_type: 'product',
-          label:       p.name_override ?? p.internal_sku ?? '',
-          sublabel:    p.internal_sku ?? '',
+          label:       p.product_name ?? p.sku ?? '',
+          sublabel:    p.sku ?? '',
         });
       }
     }
@@ -76,6 +70,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerSearc
         .select('id, order_number, status, total_amount')
         .eq('tenant_id', tenant_id)
         .eq('buyer_id', buyer_id)
+        .is('deleted_at', null)
         .ilike('order_number', `%${q}%`)
         .limit(10);
 
@@ -114,7 +109,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerSearc
       }
     }
 
-    return NextResponse.json({ items, scope });
+    return NextResponse.json({ items, scope }, { headers: cacheHeaders });
   } catch (err) {
     console.error('[buyer/search] error:', err);
     return NextResponse.json({ error: 'Search failed' }, { status: 500 });

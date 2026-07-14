@@ -305,6 +305,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         {activeTab === 'performance' ? <CustomerPerformanceTab performance={data.performance} performanceV2={data.performance_v2} /> : null}
         {activeTab === 'estimates' ? (
           <CustomerOrdersTab
+            buyerId={id}
             kind="estimate"
             orders={data.estimates.rows}
             title="Estimates"
@@ -312,9 +313,10 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             routeBase="/estimates"
           />
         ) : null}
-        {activeTab === 'orders' ? <CustomerOrdersTab kind="order" orders={data.orders.rows} /> : null}
+        {activeTab === 'orders' ? <CustomerOrdersTab buyerId={id} kind="order" orders={data.orders.rows} /> : null}
         {activeTab === 'invoices' ? (
           <CustomerOrdersTab
+            buyerId={id}
             kind="invoice"
             orders={data.invoices.rows}
             title="Invoices"
