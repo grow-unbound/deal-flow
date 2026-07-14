@@ -9,13 +9,14 @@
  * tick idempotent: a lost or duplicate tick just re-derives the same
  * decision from the same state, no "did I already fire" bookkeeping needed.
  *
- * LIVE-FLIP GATE: controlled by the SYNC_COORDINATOR_LIVE env var, default
- * unset/false = shadow mode (decide + record progress.meta.shadow_decision,
- * dispatch nothing). Set to 'true' only after shadow-mode decisions have
- * been verified against real production run snapshots (see the sync
- * orchestration redesign plan's Phase 2 rollout step) — this lets ops flip
- * the switch without a redeploy, and flip it back instantly if something
- * looks wrong.
+ * LIVE-FLIP GATE: controlled by app.integration_sync_jobs.coordinator_live
+ * on the master row itself (default true), not a project-wide env secret —
+ * a secret flip affects every tenant's in-flight master at once, has no
+ * audit trail, and isn't guaranteed to propagate instantly to warm function
+ * containers. false = shadow mode for that run only (decide + record
+ * progress.meta.shadow_decision, dispatch nothing). Flip a stuck or
+ * suspect run's flag with a single UPDATE — no redeploy, no blast radius
+ * beyond that one master.
  *
  * Bounded revival (attempt_count / exponential backoff) and the circuit
  * breaker (consecutive_run_failures / sync_suspended) are wired in — see
@@ -44,6 +45,7 @@ import {
   markJobFailed,
   markSlaveSkipped,
   phasesInRunFromMaster,
+  resumeSyncRealtime,
   reviveOrFailSlave,
   runAnalysisPhase,
   updateCircuitBreakerState,
@@ -58,8 +60,8 @@ function createAdminClient() {
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
-function isLiveMode(): boolean {
-  return Deno.env.get('SYNC_COORDINATOR_LIVE') === 'true';
+function isLiveMode(master: JobRow): boolean {
+  return master.coordinator_live !== false;
 }
 
 function json(data: unknown, status = 200): Response {
@@ -189,6 +191,7 @@ async function executeAction(
         },
       });
       await updateCircuitBreakerState(admin, resolvedIntegration.id, action.degraded ? 'degraded' : 'completed');
+      await resumeSyncRealtime(admin);
       return;
     }
 
@@ -199,6 +202,7 @@ async function executeAction(
         completedAt: new Date().toISOString(),
       });
       await updateCircuitBreakerState(admin, resolvedIntegration.id, 'failed');
+      await resumeSyncRealtime(admin);
       return;
 
     case 'stale_detected': {
@@ -233,7 +237,7 @@ Deno.serve(async (req: Request) => {
     const slaves = (await loadSlavesForRun(admin, masterJobId)).filter((s) => isCanonicalPhase(s.phase ?? '') || s.phase === 'analysis');
     const decision = decideCoordinatorAction(master, slaves);
 
-    if (!isLiveMode()) {
+    if (!isLiveMode(master)) {
       console.log(`[sync-coordinator] shadow decision for ${masterJobId}:`, JSON.stringify(decision));
       await recordShadowDecision(admin, master, decision);
       return json({ ok: true, master_job_id: masterJobId, shadow_mode: true, decision });

@@ -22,7 +22,8 @@ import {
   // syncLocationAssignees, // Disabled — see persistLocations for details. Re-enable this import if that call is restored.
 } from '../../../src/lib/location-assignees.ts';
 import { logCheckpoint, startTimer } from './sync-log.ts';
-import { putObjectJson } from './r2.ts';
+import type { createAdminClient } from './sync-utils.ts';
+// import { putObjectJson } from './r2.ts'; // Disabled — see batchUpsertEntityMap for details. Re-enable this import if that call is restored.
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -66,7 +67,7 @@ export function buildPersistOptions(input: {
   };
 }
 
-type AdminClient = Parameters<typeof persistZohoEntityPage>[0];
+type AdminClient = ReturnType<typeof createAdminClient>;
 type JsonRecord = Record<string, unknown>;
 
 export class IntegrationSyncError extends Error {
@@ -830,47 +831,53 @@ async function batchUpsertEntityMap(
     'external_id',
   ]);
 
-  // Last-write-wins per external_id, matching dedupeByColumns' own dedupe
-  // behavior above, so the payload we write to R2 matches the row that was
-  // actually persisted.
-  const payloadByExternalId = new Map<string, Record<string, unknown>>();
-  for (const p of pairs) {
-    if (p.sourcePayload) payloadByExternalId.set(p.externalId, p.sourcePayload);
-  }
-  if (payloadByExternalId.size === 0) return;
-
-  await Promise.allSettled(
-    persisted.map(async (row) => {
-      const externalId = String(row.external_id ?? '');
-      const payload = payloadByExternalId.get(externalId);
-      if (!payload) return;
-
-      const rowId = String(row.id ?? '');
-      if (!rowId) return;
-
-      const key = `integrations/${tenantId}/entity-map/${rowId}.json`;
-      await putObjectJson(key, payload);
-
-      // Key is deterministic from the row's own id, so it's stable once
-      // set — only write it on first sync of this row, not every re-sync.
-      if (!row.source_payload_r2_key) {
-        const { error } = await admin
-          .schema('app')
-          .from('integration_entity_map')
-          .update({ source_payload_r2_key: key })
-          .eq('id', rowId);
-        if (error) {
-          console.error(`[r2] failed to record source_payload_r2_key for entity_map row ${rowId}: ${error.message}`);
-        }
-      }
-    }),
-  ).then((results) => {
-    for (const result of results) {
-      if (result.status === 'rejected') {
-        console.error(`[r2] failed to persist source_payload for entity_type=${entityType}: ${String(result.reason)}`);
-      }
-    }
-  });
+  // Disabled: source_payload -> R2 persistence (both the putObjectJson upload
+  // and the integration_entity_map.source_payload_r2_key column write) is
+  // commented out to cut sync-job DB/network load. entity_map upsert above
+  // still runs unchanged. Re-enable by uncommenting the block below if the
+  // raw Zoho payload archive is needed again.
+  //
+  // // Last-write-wins per external_id, matching dedupeByColumns' own dedupe
+  // // behavior above, so the payload we write to R2 matches the row that was
+  // // actually persisted.
+  // const payloadByExternalId = new Map<string, Record<string, unknown>>();
+  // for (const p of pairs) {
+  //   if (p.sourcePayload) payloadByExternalId.set(p.externalId, p.sourcePayload);
+  // }
+  // if (payloadByExternalId.size === 0) return;
+  //
+  // await Promise.allSettled(
+  //   persisted.map(async (row) => {
+  //     const externalId = String(row.external_id ?? '');
+  //     const payload = payloadByExternalId.get(externalId);
+  //     if (!payload) return;
+  //
+  //     const rowId = String(row.id ?? '');
+  //     if (!rowId) return;
+  //
+  //     const key = `integrations/${tenantId}/entity-map/${rowId}.json`;
+  //     await putObjectJson(key, payload);
+  //
+  //     // Key is deterministic from the row's own id, so it's stable once
+  //     // set — only write it on first sync of this row, not every re-sync.
+  //     if (!row.source_payload_r2_key) {
+  //       const { error } = await admin
+  //         .schema('app')
+  //         .from('integration_entity_map')
+  //         .update({ source_payload_r2_key: key })
+  //         .eq('id', rowId);
+  //       if (error) {
+  //         console.error(`[r2] failed to record source_payload_r2_key for entity_map row ${rowId}: ${error.message}`);
+  //       }
+  //     }
+  //   }),
+  // ).then((results) => {
+  //   for (const result of results) {
+  //     if (result.status === 'rejected') {
+  //       console.error(`[r2] failed to persist source_payload for entity_type=${entityType}: ${String(result.reason)}`);
+  //     }
+  //   }
+  // });
 }
 
 async function upsertImportedPriceList(
@@ -1297,7 +1304,7 @@ async function persistLocations(
             user_name: pickString(user.user_name, sourceUser?.user_name),
             user_id: sourceUserId,
           };
-        }).filter((user): user is Record<string, unknown> => user !== null)
+        }).filter((user): user is { email: string; user_name: string | null; user_id: string | null } => user !== null)
       : (externalId ? (usersByLocationId.get(externalId) ?? []) : []);
     const associatedUsers = normalizeLocationAssociatedUsers(effectiveAssociatedUsers);
 
@@ -2425,6 +2432,8 @@ async function persistPricelists(
     created: 0,
     updated: 0,
     skipped: sourceRecords.length - salesPricebooks.length,
+    pendingSearchVectorBuyerIds: [],
+    pendingSearchVectorBuyerUserIds: [],
   };
 
   if (salesPricebooks.length === 0) {

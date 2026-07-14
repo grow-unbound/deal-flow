@@ -9,6 +9,8 @@ import {
 import {
   buildZohoWebhookRegistrationPayload,
   buildZohoWorkflowRegistrationPayload,
+  fetchZohoSettings,
+  pauseForZohoSettingsRateLimit,
 } from '@/lib/integrations/zoho-webhooks';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -96,7 +98,8 @@ async function registerZohoWebhook(
   const createdWebhookIds: string[] = [];
   try {
     for (const ruleType of workflowRuleTypes) {
-      const webhookResponse = await fetch(url.toString(), {
+      await pauseForZohoSettingsRateLimit();
+      const webhookResponse = await fetchZohoSettings(url.toString(), {
         method: 'POST',
         headers: {
           Authorization: `Zoho-oauthtoken ${accessToken}`,
@@ -122,7 +125,8 @@ async function registerZohoWebhook(
       createdWebhookIds.push(webhookId);
       const workflowUrl = new URL(`/${module}/settings/workflows`, `https://www.zohoapis.${dc}`);
       workflowUrl.searchParams.set('organization_id', orgId);
-      const workflowResponse = await fetch(workflowUrl.toString(), {
+      await pauseForZohoSettingsRateLimit();
+      const workflowResponse = await fetchZohoSettings(workflowUrl.toString(), {
         method: 'POST',
         headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(buildZohoWorkflowRegistrationPayload({
@@ -143,16 +147,40 @@ async function registerZohoWebhook(
     }
     return { webhookIds, workflowIds };
   } catch (error) {
-    await Promise.all(createdWorkflowIds.map((workflowId) => {
+    // This entity's webhook (action) succeeded but its paired workflow (rule)
+    // didn't — roll back the orphan. Pace + retry these deletes too, since
+    // they hit the same Zoho rate limit that likely caused the failure above;
+    // firing them in a burst just 429s again and leaves the orphan behind.
+    for (const workflowId of createdWorkflowIds) {
+      await pauseForZohoSettingsRateLimit();
       const workflowUrl = new URL(`/${module}/settings/workflows/${workflowId}`, `https://www.zohoapis.${dc}`);
       workflowUrl.searchParams.set('organization_id', orgId);
-      return fetch(workflowUrl.toString(), { method: 'DELETE', headers: { Authorization: `Zoho-oauthtoken ${accessToken}` } });
-    }));
-    await Promise.all(createdWebhookIds.map((webhookId) => {
+      const res = await fetchZohoSettings(workflowUrl.toString(), {
+        method: 'DELETE',
+        headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
+      }).catch((cleanupError) => {
+        console.error(`[registerZohoWebhook] cleanup: failed to delete orphan workflow ${workflowId}:`, cleanupError);
+        return null;
+      });
+      if (res && !res.ok) {
+        console.error(`[registerZohoWebhook] cleanup: delete workflow ${workflowId} returned ${res.status}`);
+      }
+    }
+    for (const webhookId of createdWebhookIds) {
+      await pauseForZohoSettingsRateLimit();
       const deleteUrl = new URL(`/${module}/settings/webhooks/${webhookId}`, `https://www.zohoapis.${dc}`);
       deleteUrl.searchParams.set('organization_id', orgId);
-      return fetch(deleteUrl.toString(), { method: 'DELETE', headers: { Authorization: `Zoho-oauthtoken ${accessToken}` } }).catch(() => undefined);
-    }));
+      const res = await fetchZohoSettings(deleteUrl.toString(), {
+        method: 'DELETE',
+        headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
+      }).catch((cleanupError) => {
+        console.error(`[registerZohoWebhook] cleanup: failed to delete orphan webhook ${webhookId}:`, cleanupError);
+        return null;
+      });
+      if (res && !res.ok) {
+        console.error(`[registerZohoWebhook] cleanup: delete webhook ${webhookId} returned ${res.status}`);
+      }
+    }
     throw error;
   }
 }
@@ -168,24 +196,38 @@ async function deleteZohoWebhookRegistration(input: {
 }) {
   const module = input.integrationTypeId === 'zoho_inventory' ? 'inventory/v1' : 'books/v3';
 
-  await Promise.all((input.workflowIds ?? []).map((workflowId) => {
+  for (const workflowId of input.workflowIds ?? []) {
+    await pauseForZohoSettingsRateLimit();
     const workflowUrl = new URL(`/${module}/settings/workflows/${workflowId}`, `https://www.zohoapis.${input.dc}`);
     workflowUrl.searchParams.set('organization_id', input.orgId);
-    return fetch(workflowUrl.toString(), {
+    const res = await fetchZohoSettings(workflowUrl.toString(), {
       method: 'DELETE',
       headers: { Authorization: `Zoho-oauthtoken ${input.accessToken}` },
-    }).catch(() => undefined);
-  }));
+    }).catch((err) => {
+      console.error(`[deleteZohoWebhookRegistration] failed to delete prior workflow ${workflowId}:`, err);
+      return null;
+    });
+    if (res && !res.ok) {
+      console.error(`[deleteZohoWebhookRegistration] delete prior workflow ${workflowId} returned ${res.status}`);
+    }
+  }
 
   const webhookIds = [...new Set([input.remoteWebhookId, ...(input.remoteWebhookIds ?? [])].filter((id): id is string => Boolean(id)))];
-  await Promise.all(webhookIds.map((webhookId) => {
+  for (const webhookId of webhookIds) {
+    await pauseForZohoSettingsRateLimit();
     const webhookUrl = new URL(`/${module}/settings/webhooks/${webhookId}`, `https://www.zohoapis.${input.dc}`);
     webhookUrl.searchParams.set('organization_id', input.orgId);
-    return fetch(webhookUrl.toString(), {
+    const res = await fetchZohoSettings(webhookUrl.toString(), {
       method: 'DELETE',
       headers: { Authorization: `Zoho-oauthtoken ${input.accessToken}` },
-    }).catch(() => undefined);
-  }));
+    }).catch((err) => {
+      console.error(`[deleteZohoWebhookRegistration] failed to delete prior webhook ${webhookId}:`, err);
+      return null;
+    });
+    if (res && !res.ok) {
+      console.error(`[deleteZohoWebhookRegistration] delete prior webhook ${webhookId} returned ${res.status}`);
+    }
+  }
 }
 
 function buildWebhookSetupState(input: {

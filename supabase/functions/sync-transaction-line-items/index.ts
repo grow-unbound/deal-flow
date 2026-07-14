@@ -56,6 +56,7 @@ import {
 import { createZohoAdapter, ZOHO_DETAIL_FETCH_CONCURRENCY, ZOHO_DETAIL_FETCH_BATCH_PACE_MS } from '../_shared/integrations-zoho.ts';
 import { persistZohoEntityPage } from '../_shared/integrations-persist.ts';
 import { logCheckpoint, startTimer } from '../_shared/sync-log.ts';
+import { pauseSyncRealtime, resumeSyncRealtime } from '../_shared/sync-coordinator-actions.ts';
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 type TransactionKind = 'estimates' | 'orders' | 'invoices';
@@ -142,11 +143,11 @@ async function createLineItemJob(
 async function loadLineItemJob(
   admin: AdminClient,
   jobId: string,
-): Promise<{ id: string; since_date: string | null; records_synced: number | null }> {
+): Promise<{ id: string; since_date: string | null; records_synced: number | null; progress: Record<string, unknown> | null }> {
   const { data, error } = await admin
     .schema('app')
     .from('integration_sync_jobs')
-    .select('id, since_date, records_synced')
+    .select('id, since_date, records_synced, progress')
     .eq('id', jobId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -158,7 +159,47 @@ async function loadLineItemJob(
     id: String(data.id),
     since_date: typeof data.since_date === 'string' ? data.since_date : null,
     records_synced: typeof data.records_synced === 'number' ? data.records_synced : null,
+    progress: (data.progress && typeof data.progress === 'object') ? data.progress as Record<string, unknown> : null,
   };
+}
+
+type CountSnapshot = Record<TransactionKind, number> & { total: number };
+
+// Frozen once per job, not re-queried per page. Previously each page call
+// re-ran 3 COUNT(*) queries (estimates+orders+invoices) and used the fresh
+// result as `total` for hasMore/offset math. Since the date filter is on
+// document date (not created_at), any row landing inside the since/until
+// window *while the backfill is running* (webhooks, the daily incremental
+// job) silently grew `total` mid-run — the backfill chased a moving target
+// instead of converging, running far more pages than the window's actual
+// row count implied and eventually exceeding the caller's timeout.
+function extractCountSnapshot(progress: Record<string, unknown> | null): CountSnapshot | null {
+  const raw = progress?.count_snapshot;
+  if (!raw || typeof raw !== 'object') return null;
+  const snap = raw as Record<string, unknown>;
+  const estimates = snap.estimates;
+  const orders = snap.orders;
+  const invoices = snap.invoices;
+  const total = snap.total;
+  if (
+    typeof estimates !== 'number' || typeof orders !== 'number' ||
+    typeof invoices !== 'number' || typeof total !== 'number'
+  ) return null;
+  return { estimates, orders, invoices, total };
+}
+
+async function computeCountSnapshot(
+  admin: AdminClient,
+  tenantId: string,
+  sinceDate: string | null,
+  untilDate: string | null,
+): Promise<CountSnapshot> {
+  const [estimates, orders, invoices] = await Promise.all([
+    countRows(admin, 'estimates', tenantId, sinceDate, untilDate),
+    countRows(admin, 'orders', tenantId, sinceDate, untilDate),
+    countRows(admin, 'invoices', tenantId, sinceDate, untilDate),
+  ]);
+  return { estimates, orders, invoices, total: estimates + orders + invoices };
 }
 
 async function countRows(
@@ -251,18 +292,14 @@ async function loadTransactionBatch(
   batchSize: number,
   sinceDate: string | null,
   untilDate: string | null,
+  snapshot: CountSnapshot,
 ): Promise<{ rows: LocalTransactionRow[]; total: number; counts: Record<TransactionKind, number> }> {
-  const [estimatesCount, ordersCount, invoicesCount] = await Promise.all([
-    countRows(admin, 'estimates', tenantId, sinceDate, untilDate),
-    countRows(admin, 'orders', tenantId, sinceDate, untilDate),
-    countRows(admin, 'invoices', tenantId, sinceDate, untilDate),
-  ]);
   const counts = {
-    estimates: estimatesCount,
-    orders: ordersCount,
-    invoices: invoicesCount,
+    estimates: snapshot.estimates,
+    orders: snapshot.orders,
+    invoices: snapshot.invoices,
   };
-  const total = counts.estimates + counts.orders + counts.invoices;
+  const total = snapshot.total;
   let remainingOffset = (page - 1) * batchSize;
   let remainingLimit = batchSize;
   const rows: LocalTransactionRow[] = [];
@@ -294,6 +331,7 @@ function buildProgress(opts: {
   total: number;
   counts: Record<TransactionKind, { processed: number; failed: number }>;
   nextCursor?: Record<string, unknown> | null;
+  countSnapshot?: CountSnapshot | null;
 }): Record<string, unknown> {
   const countEntries = Object.fromEntries(
     KIND_ORDER.map((kind) => [
@@ -321,6 +359,9 @@ function buildProgress(opts: {
     counts: countEntries,
     cursor: opts.nextCursor ?? null,
     ...(opts.nextCursor ? { next_cursor: opts.nextCursor } : {}),
+    // Round-trips through the job row's progress column so the next
+    // page-continuation call can reuse it instead of re-counting.
+    ...(opts.countSnapshot ? { count_snapshot: opts.countSnapshot } : {}),
     meta: {
       page: opts.page,
       per_page: opts.batchSize,
@@ -360,11 +401,19 @@ Deno.serve(async (req: Request) => {
     };
     const adapter = createZohoAdapter(zohoTypeId, credentials, tokenCache, touchHeartbeat);
 
+    const isNewRun = !input.job_id;
     jobId = input.job_id ?? await createLineItemJob(admin, {
       tenantId: integration.tenant_id,
       tenantIntegrationId: integration.id,
       sinceDate: input.since ?? null,
     });
+    // This function is invoked directly by standalone/manual backfills (see
+    // header docs) and never goes through integrations-sync/sync-coordinator
+    // — those pause/resume realtime themselves, but a caller hitting this
+    // function directly gets none of that automatically. Pause once, on the
+    // first page of a fresh run only (job_id omitted); every subsequent
+    // page-continuation call reuses the same job_id and must not re-pause.
+    if (isNewRun) await pauseSyncRealtime(admin);
     const job = await loadLineItemJob(admin, jobId);
     const sinceDate = input.since ?? job.since_date;
     // Unlike since_date, there's no until column on the job row — a
@@ -373,12 +422,21 @@ Deno.serve(async (req: Request) => {
     // docs). Orchestrated incremental dispatch never sends `until`.
     const untilDate = input.until ?? null;
 
+    // Compute once per job and freeze — see extractCountSnapshot's comment.
+    // Reused from the job row's stored progress on every resume call so a
+    // multi-page backfill counts estimates+orders+invoices exactly once,
+    // not 3 queries x every page, and never chases a total that grows out
+    // from under it mid-run.
+    const countSnapshot = extractCountSnapshot(job.progress)
+      ?? await computeCountSnapshot(admin, integration.tenant_id, sinceDate, untilDate);
+
     const page = normalizePositiveInt(input.page_from, 1);
     const batchSize = Math.min(normalizePositiveInt(input.batch_size, DEFAULT_BATCH_SIZE), 100);
     const startedAt = nowIso();
     const startedMs = Date.now();
 
     if (await isSyncJobCancelled(admin, jobId)) {
+      await resumeSyncRealtime(admin);
       return jsonResponse({ ok: false, phase: PHASE, records_synced: 0, has_more: false, next_cursor: null, cancelled: true });
     }
 
@@ -397,11 +455,12 @@ Deno.serve(async (req: Request) => {
           orders: { processed: 0, failed: 0 },
           invoices: { processed: 0, failed: 0 },
         },
+        countSnapshot,
       }),
     });
 
     const loadBatchDone = startTimer(jobId, PHASE, 'loadTransactionBatch');
-    const batch = await loadTransactionBatch(admin, integration.tenant_id, page, batchSize, sinceDate, untilDate);
+    const batch = await loadTransactionBatch(admin, integration.tenant_id, page, batchSize, sinceDate, untilDate, countSnapshot);
     loadBatchDone({ rows: batch.rows.length, total: batch.total });
     const recordsByKind: Record<TransactionKind, Record<string, unknown>[]> = {
       estimates: [],
@@ -423,6 +482,7 @@ Deno.serve(async (req: Request) => {
     logCheckpoint(jobId, PHASE, 'detailFetchLoop:start', { rows: batch.rows.length });
     for (let i = 0; i < batch.rows.length; i += ZOHO_DETAIL_FETCH_CONCURRENCY) {
       if (await isSyncJobCancelled(admin, jobId)) {
+        await resumeSyncRealtime(admin);
         return jsonResponse({ ok: false, phase: PHASE, job_id: jobId, records_synced: 0, has_more: false, next_cursor: null, cancelled: true });
       }
 
@@ -509,6 +569,7 @@ Deno.serve(async (req: Request) => {
       total: batch.total,
       counts,
       nextCursor,
+      countSnapshot,
     });
 
     if (hasMore) {
@@ -555,6 +616,7 @@ Deno.serve(async (req: Request) => {
       },
     });
 
+    await resumeSyncRealtime(admin);
     return jsonResponse({
       ok: true,
       phase: PHASE,
@@ -574,6 +636,7 @@ Deno.serve(async (req: Request) => {
         error_message: message,
       }).catch(() => {});
     }
+    await resumeSyncRealtime(admin);
 
     return errorResponse(message);
   }
