@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Clock,
@@ -111,11 +111,20 @@ export function GlobalSearchOverlay({ className }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const requestSequenceRef = useRef(0);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [result, setResult] = useState<GlobalSearchResponse | null>(null);
+  const [resultQuery, setResultQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [recent, setRecent] = useState<RecentItem[]>([]);
+
+  const cancelPendingSearch = useCallback(() => {
+    requestSequenceRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }, []);
 
   useEffect(() => {
     if (open) setRecent(loadRecent());
@@ -123,11 +132,19 @@ export function GlobalSearchOverlay({ className }: Props) {
 
   useEffect(() => {
     if (!open) {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      cancelPendingSearch();
       setQuery('');
       setResult(null);
+      setResultQuery('');
       setLoading(false);
     }
-  }, [open]);
+  }, [cancelPendingSearch, open]);
+
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    cancelPendingSearch();
+  }, [cancelPendingSearch]);
 
   useEffect(() => {
     function onDocumentPointerDown(event: PointerEvent) {
@@ -159,19 +176,30 @@ export function GlobalSearchOverlay({ className }: Props) {
   }, []);
 
   const search = useCallback(async (q: string) => {
-    if (!q.trim()) {
-      setResult(null);
-      return;
-    }
+    const trimmedQuery = q.trim();
+    if (!trimmedQuery) return;
+
+    const controller = new AbortController();
+    const requestSequence = ++requestSequenceRef.current;
+    abortRef.current = controller;
     setLoading(true);
     try {
-      const res = await apiFetch(`/api/tenant/search?q=${encodeURIComponent(q)}&limit=5`);
+      const res = await apiFetch(`/api/tenant/search?q=${encodeURIComponent(trimmedQuery)}&limit=5`, {
+        signal: controller.signal,
+      });
       if (res.ok) {
         const data = await res.json() as GlobalSearchResponse;
+        if (requestSequence !== requestSequenceRef.current) return;
         setResult(data);
+        setResultQuery(trimmedQuery);
       }
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) return;
     } finally {
-      setLoading(false);
+      if (requestSequence === requestSequenceRef.current) {
+        abortRef.current = null;
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -179,8 +207,14 @@ export function GlobalSearchOverlay({ className }: Props) {
     setQuery(q);
     setOpen(true);
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    cancelPendingSearch();
+    if (!q.trim()) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     debounceRef.current = setTimeout(() => search(q), 200);
-  }, [search]);
+  }, [cancelPendingSearch, search]);
 
   const navigate = useCallback((item: SearchItem, entityType: string) => {
     const full: RecentItem = { ...item, entity_type: entityType };
@@ -191,7 +225,25 @@ export function GlobalSearchOverlay({ className }: Props) {
 
   const showRecent = open && !query.trim() && recent.length > 0;
   const showResults = open && !!query.trim();
-  const noResults = showResults && !loading && (result?.total ?? 0) === 0;
+  const displayedResult = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    if (!result || !normalizedQuery) return null;
+    if (resultQuery.toLocaleLowerCase() === normalizedQuery) return result;
+
+    const groups = result.groups.flatMap((group) => {
+      const items = group.items.filter((item) => (
+        `${item.label} ${item.sublabel ?? ''}`.toLocaleLowerCase().includes(normalizedQuery)
+      ));
+      return items.length > 0 ? [{ ...group, items }] : [];
+    });
+
+    return {
+      groups,
+      total: groups.reduce((total, group) => total + group.items.length, 0),
+    };
+  }, [query, result, resultQuery]);
+  const hasAuthoritativeResult = resultQuery.toLocaleLowerCase() === query.trim().toLocaleLowerCase();
+  const noResults = showResults && !loading && hasAuthoritativeResult && (result?.total ?? 0) === 0;
 
   return (
     <div ref={rootRef} className={cn('relative w-full min-w-0', className)}>
@@ -234,7 +286,7 @@ export function GlobalSearchOverlay({ className }: Props) {
       {open ? (
         <div className="absolute left-0 top-full z-50 mt-2 w-full overflow-hidden rounded-[16px] border border-cream-300 bg-cream-50 shadow-xl">
           <div className="max-h-[60vh] overflow-y-auto p-2">
-            {loading ? (
+            {loading && result === null ? (
               <div className="space-y-2 p-2">
                 {[1, 2, 3].map((item) => (
                   <div key={item} className="flex items-center gap-3 rounded-[12px] px-3 py-2">
@@ -244,6 +296,10 @@ export function GlobalSearchOverlay({ className }: Props) {
                   </div>
                 ))}
               </div>
+            ) : null}
+
+            {loading && result !== null ? (
+              <div className="px-3 py-1 text-xs text-cream-500">Updating results…</div>
             ) : null}
 
             {noResults ? (
@@ -282,9 +338,9 @@ export function GlobalSearchOverlay({ className }: Props) {
               </section>
             ) : null}
 
-            {showResults && result?.groups?.length ? (
+            {showResults && displayedResult?.groups.length ? (
               <div className="space-y-2">
-                {result.groups.map((group) => {
+                {displayedResult.groups.map((group) => {
                   const Icon = ENTITY_ICON[group.entity_type] ?? Search;
                   const label = ENTITY_LABEL[group.entity_type] ?? group.entity_type;
                   return (

@@ -119,13 +119,14 @@ export function BuyerSearchPageClient() {
       const pool = buyAgainPool ?? [];
       return pool.filter((i) => matchesQuery(i, debounced));
     }
-    return catalogItems;
-  }, [scope, buyAgainPool, debounced, catalogItems]);
+    return catalogItems.filter((item) => matchesQuery(item, q));
+  }, [scope, buyAgainPool, debounced, catalogItems, q]);
 
   const loading = scope === 'buy-again'
     ? buyAgainLoading
     : catalogSearchQuery.isLoading && catalogItems.length === 0;
   const error = scope === 'buy-again' ? buyAgainError : catalogSearchQuery.isError;
+  const refreshing = scope !== 'buy-again' && catalogSearchQuery.isFetching && catalogItems.length > 0;
 
   function handleClose(): void {
     markBuyerNavigationBack();
@@ -156,6 +157,9 @@ export function BuyerSearchPageClient() {
         />
       </header>
       <div className="flex-1 px-0 pt-2">
+        {refreshing ? (
+          <div className="px-4 pb-2 text-xs text-[var(--fg-3)]">Updating results…</div>
+        ) : null}
         {loading ? (
           <ProductGrid items={[]} loading />
         ) : error ? (

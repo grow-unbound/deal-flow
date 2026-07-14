@@ -132,7 +132,7 @@ describe('price lists landing integration', () => {
 
     expect(screen.getByText('2 price lists')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Search price list or cohort…'), { target: { value: 'north' } });
+    fireEvent.change(screen.getByLabelText('Search price list…'), { target: { value: 'A List' } });
     expect(screen.getByText('A List')).toBeInTheDocument();
     expect(screen.queryByText('B List')).not.toBeInTheDocument();
   });
@@ -169,6 +169,6 @@ describe('price lists landing integration', () => {
       expect(usePriceListsLandingMock).toHaveBeenLastCalledWith({ search: 'north', status: [] }, null);
     });
 
-    expect(screen.getByLabelText('Search price list or cohort…')).toHaveValue('north');
+    expect(screen.getByLabelText('Search price list…')).toHaveValue('north');
   });
 });

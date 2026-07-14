@@ -17,6 +17,7 @@ import { createTimer } from '@/lib/server-timing';
 import { getSellerLandingPeriodMeta } from '@/lib/server/seller-period';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
+import { applyTransactionTableSearch, loadTransactionSearchScopeIds } from '@/lib/server/document-table-search';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbClient = any;
@@ -192,6 +193,7 @@ export async function GET(req: NextRequest) {
     const sourceParams = readArrayParam(req.nextUrl.searchParams, 'source');
     const statusParams = readArrayParam(req.nextUrl.searchParams, 'status');
     const locationParams = readArrayParam(req.nextUrl.searchParams, 'location_id');
+    const searchScope = searchParam ? await loadTransactionSearchScopeIds(db, tenantId, searchParam) : { buyerIds: [], locationIds: [] };
 
     const buildBaseEstimateQuery = () => {
       return applySellerLocationScope(
@@ -216,9 +218,7 @@ export async function GET(req: NextRequest) {
     if (cursorParam) {
       scopedEstimatesQuery = applyEstimateCursor(scopedEstimatesQuery, cursorParam);
     }
-    if (searchParam) {
-      scopedEstimatesQuery = scopedEstimatesQuery.ilike('estimate_number', `%${searchParam}%`);
-    }
+    scopedEstimatesQuery = applyTransactionTableSearch(scopedEstimatesQuery, 'estimate_number', searchParam ?? '', searchScope.buyerIds, searchScope.locationIds);
     if (sourceParams.length === 1) {
       scopedEstimatesQuery = scopedEstimatesQuery.eq('is_buyer_app_estimate', sourceParams[0] === 'Buyer App');
     }
@@ -240,9 +240,7 @@ export async function GET(req: NextRequest) {
       claims,
     );
     estimateTotalQuery = applyEstimateDocumentPeriod(estimateTotalQuery, period.current_start, period.current_end_exclusive);
-    if (searchParam) {
-      estimateTotalQuery = estimateTotalQuery.ilike('estimate_number', `%${searchParam}%`);
-    }
+    estimateTotalQuery = applyTransactionTableSearch(estimateTotalQuery, 'estimate_number', searchParam ?? '', searchScope.buyerIds, searchScope.locationIds);
     if (sourceParams.length === 1) {
       estimateTotalQuery = estimateTotalQuery.eq('is_buyer_app_estimate', sourceParams[0] === 'Buyer App');
     }

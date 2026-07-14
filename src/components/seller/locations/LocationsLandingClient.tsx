@@ -31,6 +31,8 @@ import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { LocationFormSheet } from '@/components/seller/settings/LocationFormSheet';
 import { LocationsLandingSkeleton as SharedLocationsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
+import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 
 type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Outstanding dues (high → low)';
 const STATUS_OPTIONS = ['Active', 'Inactive'] as const;
@@ -122,9 +124,13 @@ function LocationsLandingContent({
   const search = routeState.search;
   const sortBy = routeState.sortBy;
   const filters = routeState.filters ?? { status: [], stock: [], dues: [] };
-  const { data, isLoading, isError, refetch } = useLocationsLanding(period, { search, status: filters.status, stock: filters.stock, dues: filters.dues }, initialData);
+  const hasTableControls = Boolean(search.trim() || filters.status.length > 0 || filters.stock.length > 0 || filters.dues.length > 0);
+  const { data, isLoading, isError, isFetching, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = useLocationsLanding(period, { search, status: filters.status, stock: filters.stock, dues: filters.dues }, initialData);
   const retainedData = useRetainedValue(data);
   const landingData = data ?? retainedData;
+  const summaryData = useRetainedValue<LocationsLandingResponse | undefined>(
+    !hasTableControls ? landingData : initialData ?? undefined,
+  );
   useRouteScrollRestoration({
     storageKey: 'seller-locations-landing',
     scopeKey: period,
@@ -225,8 +231,9 @@ function LocationsLandingContent({
   if (!landingData) return <SharedLocationsLandingSkeleton />;
 
   const showRefreshingState = isLoading && !data;
-
-  const kpis = landingData.kpis;
+  const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && filtered.length === 0;
+  const kpis = summaryData?.kpis ?? landingData.kpis;
+  const callouts = summaryData?.callouts ?? landingData.callouts;
 
   return (
     <PageWrap>
@@ -284,8 +291,8 @@ function LocationsLandingContent({
               {
                 kind: 'info',
                 eyebrow: 'Conversions',
-                hint: `${landingData.callouts.conversions.length} estimates expiring`,
-                rows: landingData.callouts.conversions.map((row) => ({
+                hint: `${callouts.conversions.length} estimates expiring`,
+                rows: callouts.conversions.map((row) => ({
                   initials: row.initials,
                   hue: 'teal' as const,
                   name: row.name,
@@ -297,7 +304,7 @@ function LocationsLandingContent({
                 kind: 'info',
                 eyebrow: 'Top locations',
                 hint: 'by GMV',
-                rows: landingData.callouts.top_locations.map((row) => ({
+                rows: callouts.top_locations.map((row) => ({
                   initials: row.initials,
                   hue: 'teal' as const,
                   name: row.name,
@@ -308,8 +315,8 @@ function LocationsLandingContent({
               {
                 kind: 'risk',
                 eyebrow: 'Collections overdue',
-                hint: `${landingData.callouts.collections_overdue.length} locations`,
-                rows: landingData.callouts.collections_overdue.map((row) => ({
+                hint: `${callouts.collections_overdue.length} locations`,
+                rows: callouts.collections_overdue.map((row) => ({
                   initials: row.initials,
                   hue: 'ember' as const,
                   name: row.name,
@@ -334,7 +341,9 @@ function LocationsLandingContent({
             onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
           />
 
-          {filtered.length === 0 ? (
+          {showTableSkeleton ? (
+            <LandingTableRowsSkeleton columns={8} tableMinWidth={1260} />
+          ) : filtered.length === 0 ? (
             <EmptyState
               icon={<MapPin size={28} strokeWidth={1.5} />}
               heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching locations' : 'No locations yet'}
@@ -400,6 +409,8 @@ function LocationsLandingContent({
           )}
         </>
       )}
+
+      <LandingPageLoadMore hasMore={Boolean(hasNextPage)} loading={isFetchingNextPage} onLoadMore={() => void fetchNextPage()} />
 
       <LocationFormSheet open={sheetOpen} onOpenChange={setSheetOpen} editingLocation={null} />
     </PageWrap>

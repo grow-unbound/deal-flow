@@ -103,6 +103,18 @@ type ProductRowDetail = {
   updated_at: string;
 };
 
+type TenantBrandLookupRow = {
+  id: string;
+  name: string | null;
+  display_name_override: string | null;
+  master_brand_id: string | null;
+};
+
+type TenantCategoryLookupRow = {
+  id: string;
+  name: string | null;
+};
+
 const NO_ACCESS_ID = '00000000-0000-0000-0000-000000000000';
 
 type PostgrestListResult<T> = { data: T[] | null; error: unknown };
@@ -303,10 +315,6 @@ export async function GET(req: NextRequest) {
 
     const rowUniverseSeedProducts = (rowUniverseRes.data ?? []) as SummaryProductSeedRow[];
 
-    // Fetch master product details for enrichment
-    const masterProductIds = rowUniverseSeedProducts
-      .map((r) => r.master_product_id)
-      .filter((id): id is string => id != null);
     const tenantBrandIds = rowUniverseSeedProducts
       .map((r) => r.tenant_brand_id)
       .filter((id): id is string => id != null);
@@ -314,62 +322,12 @@ export async function GET(req: NextRequest) {
       .map((r) => r.tenant_category_id ?? null)
       .filter((id): id is string => id != null);
 
-    let masterProducts: Record<
-      string,
-      {
-        id: string;
-        name: string;
-        master_sku: string;
-        category_name: string | null;
-        image_urls: string[] | null;
-        brand_id: string;
-        brands: { id: string; name: string; slug: string; logo_url: string | null } | null;
-      }
-    > = {};
-    let tenantBrands: Record<string, { id: string; display_name_override: string | null; master_brand_id: string | null }> = {};
+    let tenantBrands: Record<string, TenantBrandLookupRow> = {};
     let tenantCategories: Record<string, { id: string; name: string | null }> = {};
-    let masterBrands: Record<string, { id: string; name: string }> = {};
-    let activeBrandRows: Array<{ id: string; display_name_override: string | null; master_brand_id: string | null }> = [];
+    let activeBrandRows: TenantBrandLookupRow[] = [];
     let activeCategoryRows: Array<{ id: string; name: string | null; is_active?: boolean | null }> = [];
 
-    if (masterProductIds.length > 0) {
-      type CatalogProductRow = {
-        id: string;
-        name: string;
-        master_sku: string;
-        image_urls: string[] | null;
-        categories: { name: string } | null;
-        brand_id: string;
-        brands: { id: string; name: string; slug: string; logo_url: string | null } | null;
-      };
-
-      const catalogProductsRes = await fetchRowsInChunks<CatalogProductRow>(
-        masterProductIds,
-        async (productChunk) =>
-          db
-            .schema('catalog')
-            .from('products')
-            .select('id, name, master_sku, image_urls, category_id, categories(name), brand_id, brands!inner(id, name, slug, logo_url)')
-            .in('id', productChunk),
-      );
-
-      if (catalogProductsRes.error) {
-        console.error('[GET /api/tenant/products] catalog products error:', catalogProductsRes.error);
-        return timedJson({ error: 'Failed to fetch products' }, { status: 500 });
-      }
-
-      masterProducts = Object.fromEntries(
-        (catalogProductsRes.data ?? []).map((p) => [p.id, { ...p, category_name: p.categories?.name ?? null }]),
-      );
-    }
-
     if (tenantBrandIds.length > 0) {
-      type TenantBrandLookupRow = {
-        id: string;
-        display_name_override: string | null;
-        master_brand_id: string | null;
-      };
-
       const tenantBrandsRes = await fetchRowsInChunks<TenantBrandLookupRow>(
         tenantBrandIds,
         async (brandChunk) =>
@@ -387,36 +345,9 @@ export async function GET(req: NextRequest) {
       }
 
       tenantBrands = Object.fromEntries((tenantBrandsRes.data ?? []).map((row) => [row.id, row]));
-
-      const masterBrandIds = (tenantBrandsRes.data ?? [])
-        .map((row) => row.master_brand_id)
-        .filter((id): id is string => id != null);
-      if (masterBrandIds.length > 0) {
-        type MasterBrandLookupRow = { id: string; name: string };
-
-        const masterBrandsRes = await fetchRowsInChunks<MasterBrandLookupRow>(
-          masterBrandIds,
-          async (brandChunk) =>
-            db
-              .schema('catalog')
-              .from('brands')
-              .select('id, name, deleted_at')
-              .in('id', brandChunk)
-              .is('deleted_at', null),
-        );
-
-        if (masterBrandsRes.error) {
-          console.error('[GET /api/tenant/products] master brands error:', masterBrandsRes.error);
-          return timedJson({ error: 'Failed to fetch products' }, { status: 500 });
-        }
-
-        masterBrands = Object.fromEntries((masterBrandsRes.data ?? []).map((row) => [row.id, row]));
-      }
     }
 
     if (tenantCategoryIds.length > 0) {
-      type TenantCategoryLookupRow = { id: string; name: string | null };
-
       const tenantCategoryRes = await fetchRowsInChunks<TenantCategoryLookupRow>(
         tenantCategoryIds,
         async (categoryChunk) =>
@@ -468,43 +399,12 @@ export async function GET(req: NextRequest) {
         .filter((value): value is string => Boolean(value)),
     );
 
-    activeBrandRows = ((activeBrandsData ?? []) as Array<{ id: string; display_name_override: string | null; master_brand_id: string | null }>)
+    activeBrandRows = ((activeBrandsData ?? []) as TenantBrandLookupRow[])
       .filter((row) => !isAssistant || scopedBrandIds.has(row.id));
     activeCategoryRows = ((activeCategoriesData ?? []) as Array<{ id: string; name: string | null; is_active?: boolean | null }>)
       .filter((row) => row.is_active !== false)
       .filter((row) => scopedCategoryIds.has(row.id))
       .filter((row) => !isAssistant || scopedCategoryIds.has(row.id));
-
-    const activeMasterBrandIds = Array.from(
-      new Set(
-        activeBrandRows
-          .map((row) => row.master_brand_id)
-          .filter((value): value is string => Boolean(value)),
-      ),
-    ).filter((brandId) => !masterBrands[brandId]);
-
-    if (activeMasterBrandIds.length > 0) {
-      const activeMasterBrandsRes = await fetchRowsInChunks<{ id: string; name: string }>(
-        activeMasterBrandIds,
-        async (brandChunk) =>
-          db
-            .schema('catalog')
-            .from('brands')
-            .select('id, name')
-            .in('id', brandChunk)
-            .is('deleted_at', null),
-      );
-
-      if (activeMasterBrandsRes.error) {
-        console.error('[GET /api/tenant/products] active master brands error:', activeMasterBrandsRes.error);
-        return timedJson({ error: 'Failed to fetch products' }, { status: 500 });
-      }
-
-      Object.assign(
-        masterBrands,
-        Object.fromEntries((activeMasterBrandsRes.data ?? []).map((row) => [row.id, row])),
-      );
-    }
 
     const inventoryByProduct = new Map<string, number>();
     const units30dByProduct = new Map<string, number>();
@@ -723,7 +623,7 @@ export async function GET(req: NextRequest) {
     const activeBrandNameById = new Map(
       activeBrandRows.map((row) => [
         row.id,
-        row.display_name_override ?? (row.master_brand_id ? masterBrands[row.master_brand_id]?.name ?? null : null),
+        row.display_name_override?.trim() || null,
       ]),
     );
 
@@ -779,8 +679,8 @@ export async function GET(req: NextRequest) {
       new Set(
         activeBrandRows
           .map((row) => {
-            if (row.display_name_override) return row.display_name_override;
-            return row.master_brand_id ? masterBrands[row.master_brand_id]?.name ?? null : null;
+            if (row.display_name_override?.trim()) return row.display_name_override.trim();
+            return null;
           })
           .filter(Boolean) as string[],
       ),
@@ -829,21 +729,14 @@ export async function GET(req: NextRequest) {
 
     const filteredRowUniverse = rowUniverseSeedProducts
       .map((row) => {
-        const master = row.master_product_id ? masterProducts[row.master_product_id] : null;
         const tenantBrand = row.tenant_brand_id ? tenantBrands[row.tenant_brand_id] : null;
         const tenantCategory = row.tenant_category_id ? tenantCategories[row.tenant_category_id] : null;
-        const masterBrand = tenantBrand?.master_brand_id ? masterBrands[tenantBrand.master_brand_id] : null;
         const metrics = summaryMetricsByProductId.get(row.id) ?? summarizeProduct(row);
         return {
           id: row.id,
           created_at: row.created_at,
-          brand_name:
-            tenantBrand?.display_name_override ??
-            masterBrand?.name ??
-            master?.brands?.name ??
-            metrics.brandName ??
-            null,
-          category_name: tenantCategory?.name ?? master?.category_name ?? 'Uncategorized',
+          brand_name: tenantBrand?.display_name_override?.trim() || tenantBrand?.name?.trim() || metrics.brandName || null,
+          category_name: tenantCategory?.name ?? 'Uncategorized',
           is_active: row.is_active,
           on_hand: metrics.onHand,
           days_cover: metrics.daysCover,
@@ -1158,24 +1051,17 @@ export async function GET(req: NextRequest) {
     };
 
     const products = pageProducts.map((row) => {
-      const master = row.master_product_id ? masterProducts[row.master_product_id] : null;
       const tenantBrand = row.tenant_brand_id ? tenantBrands[row.tenant_brand_id] : null;
       const tenantCategory = row.tenant_category_id ? tenantCategories[row.tenant_category_id] : null;
-      const masterBrand = tenantBrand?.master_brand_id ? masterBrands[tenantBrand.master_brand_id] : null;
       const metrics = summarizePageProduct(row);
-      const brandName =
-        tenantBrand?.display_name_override ??
-        masterBrand?.name ??
-        master?.brands?.name ??
-        metrics.brandName ??
-        null;
+      const brandName = tenantBrand?.display_name_override?.trim() || tenantBrand?.name?.trim() || metrics.brandName || null;
       const enriched = {
         ...row,
-        image_urls: row.image_urls?.length ? row.image_urls : (master?.image_urls ?? null),
-        master_product: master ?? null,
-        display_name: row.name_override ?? master?.name ?? row.internal_sku,
+        image_urls: row.image_urls?.length ? row.image_urls : null,
+        master_product: null,
+        display_name: row.name_override ?? row.internal_sku,
         brand_name: brandName,
-        category_name: tenantCategory?.name ?? master?.category_name ?? 'Uncategorized',
+        category_name: tenantCategory?.name ?? 'Uncategorized',
         on_hand: metrics.onHand,
         days_cover: metrics.daysCover,
         units_mtd: metrics.unitsMtd,

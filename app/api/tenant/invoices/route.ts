@@ -19,6 +19,7 @@ import { createTimer } from '@/lib/server-timing';
 import { PAGE_SIZE, decodeCursor, encodeCursor } from '@/lib/pagination';
 import { APP_GET_CACHE_CONTROL, jsonWithServerTiming, parseRowsLimit } from '@/lib/server/bounded-get';
 import { readArrayParam, type LandingFilterMeta } from '@/lib/landing-filter-params';
+import { applyTransactionTableSearch, loadTransactionSearchScopeIds } from '@/lib/server/document-table-search';
 
 type DbClient = any;
 import type {
@@ -264,6 +265,7 @@ export async function GET(request: NextRequest) {
     const dueParams = readArrayParam(searchParams, 'due');
     const locationParams = readArrayParam(searchParams, 'location_id');
     const todayKey = isoDateInTimeZone(new Date());
+    const searchScope = searchParam ? await loadTransactionSearchScopeIds(db, tenantId, searchParam) : { buyerIds: [], locationIds: [] };
 
     const buildInvoiceKpiQuery = (start: string, endExclusive: string) => {
       if (aggregateScope === 'location' && scopedLocationIds.length === 0) {
@@ -305,9 +307,7 @@ export async function GET(request: NextRequest) {
     if (cursorParam) {
       invoiceListQuery = applyInvoiceCursor(invoiceListQuery, cursorParam);
     }
-    if (searchParam) {
-      invoiceListQuery = invoiceListQuery.ilike('invoice_number', `%${searchParam}%`);
-    }
+    invoiceListQuery = applyTransactionTableSearch(invoiceListQuery, 'invoice_number', searchParam ?? '', searchScope.buyerIds, searchScope.locationIds);
     if (locationParams.length > 0) {
       invoiceListQuery = invoiceListQuery.in('location_id', locationParams);
     }
@@ -330,9 +330,7 @@ export async function GET(request: NextRequest) {
       claims,
     );
     invoiceTotalQuery = applyInvoiceDocumentPeriod(invoiceTotalQuery, period.current_start, period.current_end_exclusive);
-    if (searchParam) {
-      invoiceTotalQuery = invoiceTotalQuery.ilike('invoice_number', `%${searchParam}%`);
-    }
+    invoiceTotalQuery = applyTransactionTableSearch(invoiceTotalQuery, 'invoice_number', searchParam ?? '', searchScope.buyerIds, searchScope.locationIds);
     if (locationParams.length > 0) {
       invoiceTotalQuery = invoiceTotalQuery.in('location_id', locationParams);
     }

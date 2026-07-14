@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useDeferredValue, useMemo } from 'react';
 import { Plus, FileText } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -94,6 +94,21 @@ function sourceLabel(row: EstimateLandingRow) {
   return row.source_label;
 }
 
+function matchesEstimateSearch(row: EstimateLandingRow, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return [
+    row.estimate_number,
+    row.buyer_name,
+    row.location_name,
+    row.source_label,
+    row.campaign_name ?? null,
+    row.place_of_supply ?? null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.toLowerCase().includes(needle));
+}
+
 function EstimatesLoadingSkeleton() {
   return (
     <PageWrap className="max-w-[1920px]">
@@ -174,9 +189,13 @@ function EstimatesLandingContent({
   const sortBy = (routeState.sortBy ?? 'Recent first') as SortOption;
 
   const debouncedSearch = useDebounce(search, 300);
-  const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantEstimatesInfinite(
+  const deferredFilters = useDeferredValue(filters);
+  const isInterim =
+    search !== debouncedSearch ||
+    JSON.stringify(filters) !== JSON.stringify(deferredFilters);
+  const { data, isLoading, isError, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantEstimatesInfinite(
     period,
-    { search: debouncedSearch, ...filters },
+    { search: debouncedSearch, ...deferredFilters },
   );
   const { sentinelRef } = useInfiniteScroll({
     hasMore: hasNextPage ?? false,
@@ -195,7 +214,27 @@ function EstimatesLandingContent({
   const total = (firstPage as { total?: number | null } | undefined)?.total ?? firstPage?.kpis?.total_estimates_this_period ?? allEstimates.length;
 
   const filteredRows = useMemo(() => {
-    return [...allEstimates].sort((a, b) => {
+    return allEstimates
+      .filter((row) => {
+        if (!matchesEstimateSearch(row, search)) {
+          return false;
+        }
+
+        if (filters.source.length > 0 && !filters.source.includes(row.source_label)) {
+          return false;
+        }
+
+        if (filters.status.length > 0 && !filters.status.includes(row.status.filter_chip)) {
+          return false;
+        }
+
+        if (filters.location_id.length > 0 && (!row.location_id || !filters.location_id.includes(row.location_id))) {
+          return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
       if (sortBy === 'Total amount (high → low)') return b.total_amount - a.total_amount;
       if (sortBy === 'Status (workflow order)') return compareStatusRows(a, b);
       if (sortBy === 'Expiry (soonest first)') {
@@ -206,8 +245,9 @@ function EstimatesLandingContent({
       }
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
-  }, [allEstimates, sortBy]);
+  }, [allEstimates, filters.location_id, filters.source, filters.status, search, sortBy]);
 
+  const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && filteredRows.length === 0;
   const subtitle = useMemo(() => {
     const kpis = summaryData?.kpis;
     if (!kpis) {
@@ -335,8 +375,8 @@ function EstimatesLandingContent({
             />
 
             <FilterBar
-              count={`Showing ${filteredRows.length} of ${total}`}
-              searchPlaceholder="Search estimate number, buyer, geography, catalog…"
+              count={`Showing ${filteredRows.length} of ${total}${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}
+              searchPlaceholder="Search estimate number…"
               chips={[]}
               activeChip=""
               sortBy={sortBy}
@@ -349,7 +389,9 @@ function EstimatesLandingContent({
             />
 
             <div className="overflow-x-auto">
-              {filteredRows.length === 0 ? (
+              {showTableSkeleton ? (
+                <EstimatesDataSkeleton />
+              ) : filteredRows.length === 0 ? (
                 <EmptyState
                   icon={<FileText size={28} strokeWidth={1.5} />}
                   heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching estimates' : 'No estimates yet'}

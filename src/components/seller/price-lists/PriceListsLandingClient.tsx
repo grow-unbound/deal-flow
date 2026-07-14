@@ -26,6 +26,8 @@ import { usePriceListsLanding, type PriceListLandingRow, type PriceListsLandingR
 import { cn, formatDate } from '@/lib/utils';
 import { formatStrategySummary } from '@/lib/price-list-strategy';
 import { PriceListsLandingSkeleton as SharedPriceListsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
+import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 
 type LandingChip = 'Active' | 'Draft' | 'Expired';
 type SortOption = 'Recently updated' | 'Name (A-Z)' | 'Products (high → low)' | 'Validity (latest end date)' | 'Priority (high → low)';
@@ -108,7 +110,7 @@ function PriceListsLandingContent({
   const search = routeState.search;
   const sortBy = routeState.sortBy;
   const filters = routeState.filters ?? { status: [] };
-  const { data, isLoading, isError, refetch } = usePriceListsLanding({ search, status: filters.status }, initialData);
+  const { data, isLoading, isFetching, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = usePriceListsLanding({ search, status: filters.status }, initialData);
   useRouteScrollRestoration({
     storageKey: 'seller-price-lists-landing',
     ready: !isLoading,
@@ -132,7 +134,7 @@ function PriceListsLandingContent({
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    const statusFiltered = allRows.filter((row) => {
+    const statusFiltered = isFetching !== false ? allRows.filter((row) => {
       if (statusFilter.length === 0 || statusFilter.includes('All')) return true;
       return statusFilter.some((value) => {
         if (value === 'Active') return row.status === 'active';
@@ -140,13 +142,12 @@ function PriceListsLandingContent({
         if (value === 'Expired') return row.status === 'expired';
         return false;
       });
-    });
+    }) : allRows;
 
-    const searched = statusFiltered.filter((row) => {
+    const searched = isFetching !== false ? statusFiltered.filter((row) => {
       if (!query) return true;
-      const cohorts = row.cohort_names.join(' ').toLowerCase();
-      return row.name.toLowerCase().includes(query) || cohorts.includes(query);
-    });
+      return row.name.toLowerCase().includes(query) || (row.description ?? '').toLowerCase().includes(query);
+    }) : statusFiltered;
 
     return searched.sort((a, b) => {
       if (sortBy === 'Name (A-Z)') return a.name.localeCompare(b.name);
@@ -157,7 +158,8 @@ function PriceListsLandingContent({
       }
       return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
     });
-  }, [allRows, search, sortBy, statusFilter]);
+  }, [allRows, isFetching, search, sortBy, statusFilter]);
+  const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && filteredRows.length === 0;
 
   if (isLoading) return <SharedPriceListsLandingSkeleton />;
 
@@ -260,7 +262,7 @@ function PriceListsLandingContent({
 
         <FilterBar
           count={`${filteredRows.length} price lists`}
-          searchPlaceholder="Search price list or cohort…"
+          searchPlaceholder="Search price list…"
           chips={[]}
           activeChip=""
           sortBy={sortBy}
@@ -272,8 +274,11 @@ function PriceListsLandingContent({
           onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
         />
 
+        {showTableSkeleton ? (
+          <LandingTableRowsSkeleton columns={isSellerAssistant ? 8 : 9} tableMinWidth={1240} />
+        ) : (
         <LandingTable
-          showEmptyState={filteredRows.length === 0}
+          showEmptyState={filteredRows.length === 0 && !isLoading}
           emptyState={
             <EmptyState
               icon={<ListOrdered size={28} strokeWidth={1.5} />}
@@ -376,6 +381,8 @@ function PriceListsLandingContent({
             );
           })}
         </LandingTable>
+        )}
+        <LandingPageLoadMore hasMore={Boolean(hasNextPage)} loading={isFetchingNextPage} onLoadMore={() => void fetchNextPage()} />
       </PageWrap>
     </>
   );

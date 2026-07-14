@@ -1,5 +1,3 @@
-import 'server-only';
-
 const EMBEDDING_PROVIDER = process.env.EMBEDDING_PROVIDER;
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL ?? 'text-embedding-3-small';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;

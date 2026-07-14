@@ -193,7 +193,7 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
           { id: 'details', label: 'Details' },
           { id: 'performance', label: 'Performance' },
           { id: 'products', label: 'Products', badge: data.header.skus },
-          { id: 'buyers', label: 'Buyers', badge: data.buyers.length },
+          { id: 'buyers', label: 'Buyers', badge: data.buyers_total },
           { id: 'catalogs', label: 'Catalogs', badge: data.catalogs.length },
           { id: 'activity', label: 'Activity' },
         ]}
@@ -210,8 +210,8 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
       ) : null}
       {tab === 'performance' ? <BrandPerformanceTab performance={data.performance} /> : null}
       {tab === 'products' ? <BrandProductsTab brandId={id} /> : null}
-      {tab === 'buyers' ? <BrandBuyersTab buyers={data.buyers} /> : null}
-      {tab === 'catalogs' ? <BrandCatalogsTab catalogs={data.catalogs} /> : null}
+      {tab === 'buyers' ? <BrandBuyersTab brandId={id} buyers={data.buyers} /> : null}
+      {tab === 'catalogs' ? <BrandCatalogsTab brandId={id} /> : null}
       {tab === 'activity' ? <BrandActivityTimeline activity={data.activity} /> : null}
 
       <AddBrandCommand

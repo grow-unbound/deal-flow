@@ -4,6 +4,7 @@ import { PAGE_SIZE } from '@/lib/pagination';
 type DbClient = {
   schema: (name: 'app' | 'catalog') => {
     from: (table: string) => any;
+    rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message?: string } | null }>;
   };
 };
 
@@ -197,10 +198,6 @@ function parseOffsetCursor(value: string | null | undefined) {
   if (!value) return 0;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
-}
-
-function escapeLike(value: string) {
-  return value.replace(/[%_]/g, (match) => `\\${match}`);
 }
 
 export function deriveLastOrderBucket(lastOrderAt: string | null, now = new Date()) {
@@ -506,85 +503,46 @@ export async function getCohortComposerBuyerResultset(
   const nextMonthDate = nextStartIso.slice(0, 10);
   const limit = Math.max(1, Math.min(options.limit ?? PAGE_SIZE.COMPOSER, PAGE_SIZE.MAX));
   const offset = parseOffsetCursor(options.cursor);
-  const search = options.q?.trim() ?? '';
-  const selectedCities = options.geographies ?? [];
-  const selectedGmvBuckets = new Set(options.gmvBuckets ?? []);
-  const lastOrderBucket = options.lastOrderBucket && options.lastOrderBucket !== 'anytime' ? options.lastOrderBucket : null;
-  const needsComputedFilters = selectedGmvBuckets.size > 0 || Boolean(lastOrderBucket);
-
-  let buyersQuery = db
-    .schema('app')
-    .from('buyers')
-    .select('id, business_name, contact_name, geography, tier, payment_terms_days, credit_limit, external_ref', { count: 'exact' })
-    .eq('tenant_id', tenantId)
-    .eq('is_active', true)
-    .is('deleted_at', null)
-    .order('business_name', { ascending: true })
-    .order('id', { ascending: true });
-
-  if (selectedCities.length > 0) {
-    buyersQuery = buyersQuery.in('geography->>city', selectedCities);
-  }
-  if (search) {
-    const escaped = escapeLike(search);
-    buyersQuery = buyersQuery.or(`business_name.ilike.%${escaped}%,contact_name.ilike.%${escaped}%,external_ref.ilike.%${escaped}%`);
-  }
-  if (!needsComputedFilters) {
-    buyersQuery = buyersQuery.range(offset, offset + limit - 1);
-  }
-
-  const [buyersRes, snapshotRes, kpiRes] = await Promise.all([
-    buyersQuery,
-    db
-      .schema('app')
-      .from('buyers_snapshot')
-      .select('buyer_id, last_order_at, outstanding_dues')
-      .eq('tenant_id', tenantId)
-      .eq('scope', 'tenant')
-      .eq('is_active', true),
-    db
-      .schema('app')
-      .from('kpi_buyers_daily')
-      .select('buyer_id, orders_gmv, orders_count, day')
-      .eq('tenant_id', tenantId)
-      .eq('scope', 'tenant')
-      .gte('day', ninetyDaysAgoDate),
-  ]);
-
-  if (buyersRes.error) throw buyersRes.error;
-  if (snapshotRes.error) throw snapshotRes.error;
-  if (kpiRes.error) throw kpiRes.error;
-
-  const snapshotByBuyer = new Map(
-    ((snapshotRes.data ?? []) as Array<{ buyer_id: string; last_order_at: string | null; outstanding_dues: number | null }>)
-      .map((row) => [row.buyer_id, row]),
-  );
-  const gmv90dByBuyer = new Map<string, number>();
-  const mtdSpendByBuyer = new Map<string, number>();
-  const ordersMtdByBuyer = new Map<string, number>();
-  for (const row of (kpiRes.data ?? []) as Array<{ buyer_id: string; orders_gmv: number | null; orders_count: number | null; day: string }>) {
-    gmv90dByBuyer.set(row.buyer_id, (gmv90dByBuyer.get(row.buyer_id) ?? 0) + Number(row.orders_gmv ?? 0));
-    if (row.day >= currentMonthDate && row.day < nextMonthDate) {
-      mtdSpendByBuyer.set(row.buyer_id, (mtdSpendByBuyer.get(row.buyer_id) ?? 0) + Number(row.orders_gmv ?? 0));
-      ordersMtdByBuyer.set(row.buyer_id, (ordersMtdByBuyer.get(row.buyer_id) ?? 0) + Number(row.orders_count ?? 0));
-    }
-  }
-
-  const allRows = ((buyersRes.data ?? []) as BuyerDbRow[]).filter((buyer) => {
-    const snapshot = snapshotByBuyer.get(buyer.id);
-    if (lastOrderBucket && !matchesLastOrderBucket(snapshot?.last_order_at ?? null, lastOrderBucket)) return false;
-    if (selectedGmvBuckets.size > 0 && !selectedGmvBuckets.has(deriveGmv90dBucket(gmv90dByBuyer.get(buyer.id) ?? 0))) return false;
-    return true;
+  const { data, error } = await db.schema('app').rpc('search_cohort_composer_buyers', {
+    p_tenant_id: tenantId,
+    p_query: options.q?.trim() || null,
+    p_geographies: options.geographies?.length ? options.geographies : null,
+    p_last_order_bucket: options.lastOrderBucket && options.lastOrderBucket !== 'anytime'
+      ? options.lastOrderBucket
+      : null,
+    p_gmv_buckets: options.gmvBuckets?.length ? options.gmvBuckets : null,
+    p_ninety_days_ago: ninetyDaysAgoDate,
+    p_month_start: currentMonthDate,
+    p_next_month_start: nextMonthDate,
+    p_limit: limit,
+    p_offset: offset,
   });
-  const pageRows = needsComputedFilters ? allRows.slice(offset, offset + limit) : allRows;
+
+  if (error) throw error;
+
+  const pageRows = (data ?? []) as Array<{
+    buyer_id: string;
+    business_name: string;
+    contact_name: string | null;
+    external_ref: string | null;
+    geography: { city?: string; state?: string } | null;
+    tier: 'A' | 'B' | 'C' | null;
+    payment_terms_days: number | null;
+    last_order_at: string | null;
+    outstanding_dues: number | null;
+    gmv_90d: number | null;
+    mtd_spend: number | null;
+    orders_mtd: number | null;
+    total_count: number | null;
+  }>;
+  const total = Number(pageRows[0]?.total_count ?? 0);
 
   return {
     buyers: pageRows.map((buyer, index) => {
       const city = buyer.geography?.city?.trim() || null;
       const state = expandStateLabel(buyer.geography?.state?.trim() || null);
-      const snapshot = snapshotByBuyer.get(buyer.id);
       return {
-        id: buyer.id,
+        id: buyer.buyer_id,
         business_name: buyer.business_name,
         contact_name: buyer.contact_name,
         external_ref: buyer.external_ref,
@@ -592,18 +550,18 @@ export async function getCohortComposerBuyerResultset(
         city,
         state,
         tier: buyer.tier,
-        last_order_at: snapshot?.last_order_at ?? null,
-        mtd_spend: Number((mtdSpendByBuyer.get(buyer.id) ?? 0).toFixed(2)),
-        orders_mtd: ordersMtdByBuyer.get(buyer.id) ?? 0,
-        credit_used: Number((snapshot?.outstanding_dues ?? 0).toFixed(2)),
+        last_order_at: buyer.last_order_at,
+        mtd_spend: Number(Number(buyer.mtd_spend ?? 0).toFixed(2)),
+        orders_mtd: Number(buyer.orders_mtd ?? 0),
+        credit_used: Number(Number(buyer.outstanding_dues ?? 0).toFixed(2)),
         payment_terms_days: Number(buyer.payment_terms_days ?? 0),
-        gmv_90d: Number((gmv90dByBuyer.get(buyer.id) ?? 0).toFixed(2)),
+        gmv_90d: Number(Number(buyer.gmv_90d ?? 0).toFixed(2)),
         initials: getInitials(buyer.business_name),
         hue: (offset + index) % 3 === 0 ? 'teal' : (offset + index) % 3 === 1 ? 'ember' : 'cream',
       } satisfies CohortComposerBuyerRow;
     }),
-    total: needsComputedFilters ? allRows.length : Number(buyersRes.count ?? allRows.length),
-    nextCursor: offset + pageRows.length < (needsComputedFilters ? allRows.length : Number(buyersRes.count ?? allRows.length))
+    total,
+    nextCursor: offset + pageRows.length < total
       ? String(offset + pageRows.length)
       : null,
   };

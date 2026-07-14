@@ -139,6 +139,7 @@ export default function PriceListDetailPage() {
 
               {tabActive === 'products' ? (
                 <PriceListProductsTab
+                  priceListId={id}
                   filters={priceList.filters}
                   items={priceList.items}
                   brandsCovered={priceList.stats?.brands_covered ?? 0}

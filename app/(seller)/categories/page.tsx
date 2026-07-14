@@ -20,7 +20,7 @@ export default async function CategoriesPage({
   const period = await resolveSellerLandingPeriod(searchParams);
   const initialSearch = await resolveOptionalSearchParam(searchParams);
   const { data: initialData, status } = await fetchSellerPageBootstrap<CategoriesLandingResponse>(
-    `/api/tenant/categories/landing?period=${period}`,
+    `/api/tenant/categories/landing?period=${period}&limit=50`,
   );
   if (status === 403) return <RoleForbiddenPage />;
   return <CategoriesLandingClient initialData={initialData} initialPeriod={period} initialSearch={initialSearch} />;

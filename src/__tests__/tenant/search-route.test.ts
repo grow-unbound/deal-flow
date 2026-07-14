@@ -114,6 +114,30 @@ describe('tenant global search route', () => {
     expect(body).toEqual({ groups: [], total: 0 });
   });
 
+  it('bounds invalid limits before calling the global search rpc', async () => {
+    await GET(new NextRequest('http://localhost/api/tenant/search?q=alpha&limit=500', { method: 'GET' }) as any);
+
+    expect(rpcMock).toHaveBeenCalledWith('global_search', expect.objectContaining({
+      p_items_per_group: 10,
+    }));
+
+    rpcMock.mockClear();
+    await GET(new NextRequest('http://localhost/api/tenant/search?q=alpha&limit=invalid', { method: 'GET' }) as any);
+
+    expect(rpcMock).toHaveBeenCalledWith('global_search', expect.objectContaining({
+      p_items_per_group: 5,
+    }));
+  });
+
+  it('does not call the rpc or embedding provider for one-character queries', async () => {
+    const response = await GET(new NextRequest('http://localhost/api/tenant/search?q=a', { method: 'GET' }) as any);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ groups: [], total: 0 });
+    expect(createProductQueryEmbeddingMock).not.toHaveBeenCalled();
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
   it('passes assistant location ids into the global search rpc for database scoping', async () => {
     getVerifiedClaimsMock.mockResolvedValue({
       tenant_id: 'tenant-a',

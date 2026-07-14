@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useDeferredValue, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, Receipt } from 'lucide-react';
@@ -33,6 +33,21 @@ import { InvoicesLandingSkeleton } from '@/components/seller/loading/SellerLoadi
 
 type SortOption = 'Recent first';
 const SORT_OPTIONS: SortOption[] = ['Recent first'];
+
+function matchesInvoiceSearch(invoice: TenantInvoicesResponse['invoices'][number], query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return [
+    invoice.invoice_number,
+    invoice.buyer_name,
+    invoice.location_name,
+    invoice.source_label,
+    invoice.campaign_name ?? null,
+    invoice.place_of_supply ?? null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.toLowerCase().includes(needle));
+}
 
 function buyerGeographyLabel(row: Pick<TenantInvoicesResponse['invoices'][number], 'buyer_city' | 'buyer_state'>) {
   return [row.buyer_city, row.buyer_state].filter(Boolean).join(', ') || '—';
@@ -126,9 +141,13 @@ function InvoicesLandingContent({
   const sortBy = routeState.sortBy;
 
   const debouncedSearch = useDebounce(search, 300);
-  const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantInvoicesInfinite(
+  const deferredFilters = useDeferredValue(filters);
+  const isInterim =
+    search !== debouncedSearch ||
+    JSON.stringify(filters) !== JSON.stringify(deferredFilters);
+  const { data, isLoading, isError, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantInvoicesInfinite(
     period,
-    { search: debouncedSearch, ...filters },
+    { search: debouncedSearch, ...deferredFilters },
   );
   const { sentinelRef } = useInfiniteScroll({
     hasMore: hasNextPage ?? false,
@@ -149,11 +168,42 @@ function InvoicesLandingContent({
   // Client-side sort only (server returns DESC by invoice_date)
   const filteredRows = useMemo(() => {
     void sortBy; // acknowledged — only one sort option currently
-    return allInvoices.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  }, [allInvoices, sortBy]);
+    return [...allInvoices]
+      .filter((invoice) => {
+        if (!matchesInvoiceSearch(invoice, search)) {
+          return false;
+        }
 
-  const retainedRows = useRetainedValue(filteredRows.length > 0 ? filteredRows : null);
-  const displayRows = filteredRows.length > 0 ? filteredRows : (retainedRows ?? []);
+        if (filters.source.length > 0 && !filters.source.includes(invoice.source_label)) {
+          return false;
+        }
+
+        if (filters.status.length > 0 && !filters.status.includes(invoice.status.filter_chip)) {
+          return false;
+        }
+
+        if (filters.location_id.length > 0 && (!invoice.location_id || !filters.location_id.includes(invoice.location_id))) {
+          return false;
+        }
+
+        if (
+          filters.due.length > 0 &&
+          !filters.due.some((value) => {
+            if (value === 'Overdue') return invoice.status.filter_chip === 'Overdue';
+            if (value === 'Due') return invoice.outstanding_amount > 0 && invoice.status.filter_chip !== 'Overdue';
+            return false;
+          })
+        ) {
+          return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [allInvoices, filters.due, filters.location_id, filters.source, filters.status, search, sortBy]);
+
+  const displayRows = filteredRows;
+  const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && displayRows.length === 0;
 
   const subtitle = useMemo(() => {
     const kpis = summaryData?.kpis;
@@ -274,8 +324,8 @@ function InvoicesLandingContent({
           />
 
             <FilterBar
-              count={`${displayRows.length} of ${total} invoices`}
-              searchPlaceholder="Search invoice number, buyer, geography…"
+              count={`${displayRows.length} of ${total} invoices${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}
+              searchPlaceholder="Search invoice number…"
               chips={[]}
               activeChip=""
               sortBy={sortBy}
@@ -288,7 +338,9 @@ function InvoicesLandingContent({
             />
 
           <div className="overflow-x-auto">
-            {displayRows.length === 0 && !isLoading ? (
+            {showTableSkeleton ? (
+              <InvoicesDataSkeleton />
+            ) : displayRows.length === 0 ? (
               <EmptyState
                 icon={<Receipt size={28} strokeWidth={1.5} />}
                 heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching invoices' : 'No invoices yet'}

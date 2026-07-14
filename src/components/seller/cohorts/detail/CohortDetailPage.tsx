@@ -184,7 +184,7 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
 
       {tab === 'buyers' ? (
         <CohortBuyersTab
-          buyers={data.buyers}
+          cohortId={id}
           rules_summary={data.rules_summary}
           activeMembersMtd={data.meta_strip_4.active_members}
         />

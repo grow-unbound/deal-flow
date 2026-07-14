@@ -9,6 +9,7 @@ import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/que
 import type { CohortCreateInput, CohortRules, CohortUpdateInput } from '@/lib/zod';
 import { buildCohortRulesSummary, type CohortRulesSummary } from '@/lib/cohort-rules-summary';
 import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
+import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
 
 export type { CohortRulesSummary };
 
@@ -58,6 +59,10 @@ export interface CohortsLandingRow {
 }
 
 export interface CohortsLandingResponse {
+  total?: number;
+  limit?: number;
+  offset?: number;
+  nextOffset?: number | null;
   kpis: CohortsLandingKpis;
   todays_read: {
     low_conversion: CohortsLandingCalloutRow[];
@@ -260,22 +265,31 @@ export function useCohortsLanding(
   filters: CohortsLandingFilters = {},
   initialData?: CohortsLandingResponse | null,
 ) {
-  return useQuery({
+  const hasFilters = Boolean(filters.search?.trim() || filters.brands?.length);
+  const baseSummary = getSellerLandingInitialData(period, initialData);
+  const initial = !hasFilters
+    ? baseSummary
+    : undefined;
+  const query = useInfiniteQuery({
     queryKey: ['cohorts-landing', period, filters],
-    queryFn: async (): Promise<CohortsLandingResponse> => {
-      const params = new URLSearchParams({ period });
+    initialPageParam: 0,
+    queryFn: async ({ pageParam, signal }): Promise<CohortsLandingResponse> => {
+      const params = new URLSearchParams({ period, limit: '50', offset: String(pageParam), include_summary: String(pageParam === 0 && !hasFilters) });
       if (filters.search?.trim()) params.set('search', filters.search.trim());
       appendArrayParam(params, 'brands', filters.brands);
-      const res = await apiFetch(`/api/tenant/cohorts?${params.toString()}`);
-      if (!res.ok) {
-        throw new Error('Failed to fetch cohorts landing');
-      }
+      const res = await apiFetch(`/api/tenant/cohorts?${params.toString()}`, { signal });
+      if (!res.ok) throw new Error('Failed to fetch cohorts landing');
       return res.json();
     },
-    initialData: getSellerLandingInitialData(period, initialData),
+    getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
+    initialData: initial ? { pages: [initial], pageParams: [0] } : undefined,
+    initialDataUpdatedAt: initialData ? 0 : undefined,
+    placeholderData: keepPreviousData,
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
   });
+  const merged = mergeSellerLandingPages(query.data?.pages, 'cohorts');
+  return { ...query, data: merged && baseSummary ? { ...baseSummary, ...merged } : merged };
 }
 
 export function useTenantCohortOptions(enabled = true) {

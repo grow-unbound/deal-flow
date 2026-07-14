@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useDeferredValue, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, Package } from 'lucide-react';
@@ -25,6 +25,7 @@ import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useFlagState } from '@/hooks/useFeatureFlag';
 import { useCreateFlags } from '@/hooks/useCreateFlags';
 import { useTenantOrders, type OrderLandingRow, type TenantOrdersResponse } from '@/hooks/useOrders';
+import { useDebounce } from '@/hooks/useDebounce';
 import { formatCompactInr, formatDate, formatInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { SalesOrdersLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
@@ -50,6 +51,22 @@ function countNeedsAttention(rows: OrderLandingRow[]) {
 
 function countOrdersInMotion(rows: OrderLandingRow[]) {
   return rows.filter((row) => row.status.value === 'dispatched' || row.status.value === 'partially_dispatched').length;
+}
+
+function matchesOrderSearch(row: OrderLandingRow, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return [
+    row.order_id,
+    row.buyer_name,
+    row.location_name,
+    row.source_label,
+    row.campaign_name ?? null,
+    row.catalog_name ?? null,
+    row.place_of_supply ?? null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.toLowerCase().includes(needle));
 }
 
 function SalesOrdersLoadingSkeleton() {
@@ -127,7 +144,17 @@ function SalesOrdersLandingContent({
   });
   useSeedRouteSearch({ initialSearch, setState: setRouteState });
   const filters = routeState.filters ?? { source: [], status: [], location_id: [] };
-  const { data, isLoading, isError } = useTenantOrders(period, { search: routeState.search, ...filters }, initialData);
+  const search = routeState.search;
+  const debouncedSearch = useDebounce(search, 300);
+  const deferredFilters = useDeferredValue(filters);
+  const isInterim =
+    search !== debouncedSearch ||
+    JSON.stringify(filters) !== JSON.stringify(deferredFilters);
+  const { data, isLoading, isError, isFetching } = useTenantOrders(
+    period,
+    { search: debouncedSearch, ...deferredFilters },
+    initialData,
+  );
   const retainedData = useRetainedValue(data);
   const landingData = data ?? retainedData;
   useRouteScrollRestoration({
@@ -135,19 +162,39 @@ function SalesOrdersLandingContent({
     scopeKey: period,
     ready: !isLoading,
   });
-  const search = routeState.search;
   const sortBy = routeState.sortBy;
 
   const summaryOrders = summaryData?.orders ?? [];
   const orders = landingData?.orders ?? [];
 
   const filteredRows = useMemo(() => {
-    return [...orders].sort((a, b) => {
+    return orders
+      .filter((row) => {
+        if (!matchesOrderSearch(row, search)) {
+          return false;
+        }
+
+        if (filters.source.length > 0 && !filters.source.includes(row.source_label)) {
+          return false;
+        }
+
+        if (filters.status.length > 0 && !filters.status.includes(row.status.filter_chip)) {
+          return false;
+        }
+
+        if (filters.location_id.length > 0 && (!row.location_id || !filters.location_id.includes(row.location_id))) {
+          return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
       if (sortBy === 'Recent first') return new Date(b.placed_at).getTime() - new Date(a.placed_at).getTime();
       if (sortBy === 'GMV (high → low)') return b.gmv - a.gmv;
       return b.items_count - a.items_count;
     });
-  }, [orders, sortBy]);
+  }, [filters.location_id, filters.source, filters.status, orders, search, sortBy]);
+  const showTableSkeleton = (isLoading || isFetching) && filteredRows.length === 0;
 
   const subtitle = useMemo(() => {
     const kpis = summaryData?.kpis;
@@ -275,8 +322,8 @@ function SalesOrdersLandingContent({
             />
 
             <FilterBar
-              count={`Showing ${filteredRows.length} of ${orders.length}`}
-              searchPlaceholder="Search order ID, buyer, city, catalog…"
+              count={`Showing ${filteredRows.length} of ${orders.length}${(isFetching || isInterim) ? ' · Updating' : ''}`}
+              searchPlaceholder="Search order number…"
               chips={[]}
               activeChip=""
               sortBy={sortBy}
@@ -289,7 +336,9 @@ function SalesOrdersLandingContent({
             />
 
             <div className="overflow-x-auto">
-              {filteredRows.length === 0 ? (
+              {showTableSkeleton ? (
+                <SalesOrdersDataSkeleton />
+              ) : filteredRows.length === 0 ? (
                 <EmptyState
                   icon={<Package size={28} strokeWidth={1.5} />}
                   heading={search.trim() || groups.some((group) => group.values.length > 0) ? 'No matching sales orders' : 'No sales orders yet'}

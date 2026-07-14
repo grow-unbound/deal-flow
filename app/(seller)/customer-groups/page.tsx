@@ -15,7 +15,7 @@ export default async function CohortsPage({
 
   const period = await resolveSellerLandingPeriod(searchParams);
   const initialSearch = await resolveOptionalSearchParam(searchParams);
-  const { data: initialData, status } = await fetchSellerPageBootstrap<CohortsLandingResponse>(`/api/tenant/cohorts?period=${period}`);
+  const { data: initialData, status } = await fetchSellerPageBootstrap<CohortsLandingResponse>(`/api/tenant/cohorts?period=${period}&limit=50`);
   if (status === 403) return <FeatureForbiddenPage />;
   return <CohortsLandingClient initialData={initialData} initialPeriod={period} initialSearch={initialSearch} />;
 }

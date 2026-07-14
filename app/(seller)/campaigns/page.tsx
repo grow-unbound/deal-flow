@@ -16,7 +16,7 @@ export default async function CatalogsPage({
   const period = await resolveSellerLandingPeriod(searchParams);
   const initialSearch = await resolveOptionalSearchParam(searchParams);
   const { data: initialData, status } = await fetchSellerPageBootstrap<CatalogsLandingResponse>(
-    `/api/tenant/catalogs?limit=200&period=${period}`,
+    `/api/tenant/catalogs?limit=50&period=${period}`,
   );
   if (status === 403) return <FeatureForbiddenPage />;
   return <CatalogsLandingClient initialData={initialData} initialPeriod={period} initialSearch={initialSearch} />;

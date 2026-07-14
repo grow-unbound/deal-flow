@@ -31,9 +31,16 @@ export interface PersistResult {
   created: number;
   updated: number;
   skipped: number;
-  // Non-empty only for customers phase — caller must call search vector rebuild at invocation end
+  pendingSearchVectorProductIds: string[];
   pendingSearchVectorBuyerIds: string[];
   pendingSearchVectorBuyerUserIds: string[];
+  pendingSearchVectorBrandIds: string[];
+  pendingSearchVectorCategoryIds: string[];
+  pendingSearchVectorLocationIds: string[];
+  pendingSearchVectorWarehouseIds: string[];
+  pendingSearchVectorCohortIds: string[];
+  pendingSearchVectorCampaignIds: string[];
+  pendingSearchVectorPriceListIds: string[];
 }
 
 export interface PersistOptions {
@@ -69,6 +76,25 @@ export function buildPersistOptions(input: {
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 type JsonRecord = Record<string, unknown>;
+
+function emptyPersistResult(overrides?: Partial<PersistResult>): PersistResult {
+  return {
+    created: 0,
+    updated: 0,
+    skipped: 0,
+    pendingSearchVectorProductIds: [],
+    pendingSearchVectorBuyerIds: [],
+    pendingSearchVectorBuyerUserIds: [],
+    pendingSearchVectorBrandIds: [],
+    pendingSearchVectorCategoryIds: [],
+    pendingSearchVectorLocationIds: [],
+    pendingSearchVectorWarehouseIds: [],
+    pendingSearchVectorCohortIds: [],
+    pendingSearchVectorCampaignIds: [],
+    pendingSearchVectorPriceListIds: [],
+    ...overrides,
+  };
+}
 
 export class IntegrationSyncError extends Error {
   entityType: string;
@@ -636,27 +662,12 @@ function getPricebookItemRows(rec: Record<string, unknown>): Record<string, unkn
   );
 }
 
-const SEARCH_VECTOR_CHUNK_SIZE = 500;
+const SEARCH_VECTOR_CHUNK_SIZE = 100;
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
   return chunks;
-}
-
-async function rebuildProductSearchVectors(
-  admin: AdminClient,
-  tenantId: string,
-  productIds: string[],
-): Promise<void> {
-  if (productIds.length === 0) return;
-  for (const chunk of chunkArray(productIds, SEARCH_VECTOR_CHUNK_SIZE)) {
-    const { error } = await admin.schema('app').rpc('rebuild_tenant_products_search_vectors', {
-      p_tenant_id: tenantId,
-      p_ids: chunk,
-    });
-    if (error) throw new Error(`rebuild_tenant_products_search_vectors failed: ${error.message}`);
-  }
 }
 
 export async function rebuildBuyerSearchVectors(
@@ -680,14 +691,22 @@ export async function rebuildBuyerUserSearchVectors(
   buyerUserIds: string[],
 ): Promise<void> {
   if (buyerIds.length === 0 && buyerUserIds.length === 0) return;
-  // chunk by buyerUserIds; each chunk gets the full buyerIds list (RPC filters by both)
-  const userIdChunks = buyerUserIds.length > 0
-    ? chunkArray(buyerUserIds, SEARCH_VECTOR_CHUNK_SIZE)
-    : [[]];
-  for (const chunk of userIdChunks) {
+
+  // Parent buyer names are embedded in contact vectors, so buyer changes and
+  // contact changes are rebuilt independently to avoid repeatedly updating
+  // every contact for each contact-ID chunk.
+  for (const chunk of chunkArray(Array.from(new Set(buyerIds)), SEARCH_VECTOR_CHUNK_SIZE)) {
     const { error } = await admin.schema('app').rpc('rebuild_buyer_users_search_vectors', {
-      p_buyer_ids: buyerIds.length > 0 ? buyerIds : null,
-      p_ids: chunk.length > 0 ? chunk : null,
+      p_buyer_ids: chunk,
+      p_ids: null,
+    });
+    if (error) throw new Error(`rebuild_buyer_users_search_vectors failed: ${error.message}`);
+  }
+
+  for (const chunk of chunkArray(Array.from(new Set(buyerUserIds)), SEARCH_VECTOR_CHUNK_SIZE)) {
+    const { error } = await admin.schema('app').rpc('rebuild_buyer_users_search_vectors', {
+      p_buyer_ids: null,
+      p_ids: chunk,
     });
     if (error) throw new Error(`rebuild_buyer_users_search_vectors failed: ${error.message}`);
   }
@@ -1227,7 +1246,7 @@ async function persistLocations(
   records: Record<string, unknown>[],
   adapter?: ZohoAdapter,
 ): Promise<PersistResult> {
-  const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
+  const result = emptyPersistResult();
 
   const hasExistingDefault = await (async () => {
     const { count } = await admin
@@ -1341,6 +1360,9 @@ async function persistLocations(
   }
 
   result.updated += persisted.length;
+  result.pendingSearchVectorLocationIds = persisted
+    .map((row) => asStr(row.id))
+    .filter((value): value is string => value !== null);
   const locationSourceByExternalId = buildSourceByExternalId(
     records,
     (rec) => pickZohoExternalId(rec.location_id),
@@ -1397,7 +1419,7 @@ async function persistWarehouses(
   integrationId: string,
   records: Record<string, unknown>[],
 ): Promise<PersistResult> {
-  const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
+  const result = emptyPersistResult();
 
   // Collect location external IDs to resolve location_id FK for each warehouse
   const locationExternalIds = [
@@ -1458,6 +1480,9 @@ async function persistWarehouses(
     .filter((r): r is { externalId: string; internalId: string } => r !== null);
 
   result.updated += persisted.length;
+  result.pendingSearchVectorWarehouseIds = persisted
+    .map((row) => asStr(row.id))
+    .filter((value): value is string => value !== null);
   const warehouseSourceByExternalId = buildSourceByExternalId(
     records,
     (rec) => pickZohoExternalId(rec.warehouse_id),
@@ -1529,7 +1554,7 @@ async function persistBuyers(
   zohoTypeId?: ZohoIntegrationTypeId,
   persistOptions?: PersistOptions,
 ): Promise<PersistResult> {
-  const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
+  const result = emptyPersistResult();
   const buyerRows: Record<string, unknown>[] = [];
   const customerFieldMappings = await loadFieldMappings(admin, integrationId, 'customers');
   const customerEnrichmentMode = persistOptions?.customerEnrichmentMode ?? 'detail_when_needed';
@@ -2076,7 +2101,7 @@ async function persistProducts(
   records: Record<string, unknown>[],
   adapter?: ZohoAdapter,
 ): Promise<PersistResult> {
-  const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
+  const result = emptyPersistResult();
 
   // Step A: upsert categories
   const categoryRows = [];
@@ -2259,6 +2284,7 @@ async function persistProducts(
   // atomicity below; a rare race here only risks attributes_override being
   // included/omitted one sync late, not a duplicate row or a lost write.
   const dedupedProductRows = dedupeByExternalOrNaturalKey(productRows, ['internal_sku']);
+  const sourceProductExternalRefs = [...new Set(productRows.map((r) => asStr(r.external_ref)).filter((x): x is string => x !== null))];
   const productExternalRefs = [...new Set(dedupedProductRows.map((r) => asStr(r.external_ref)).filter((x): x is string => x !== null))];
   const productSkus = [...new Set(dedupedProductRows.map((r) => getRowNaturalKey(r, ['internal_sku'])).filter((x): x is string => x !== null))];
   const [existingProductsByRef, existingProductsBySku] = await Promise.all([
@@ -2290,10 +2316,52 @@ async function persistProducts(
     result.skipped += productPersist.conflicts.length;
   }
   const persistedProducts = productPersist.rows;
-  const productMapPairs = buildPersistedRowPairsFromSourceRows(productRows, persistedProducts, ['internal_sku']);
+  let productMapPairs = buildPersistedRowPairsFromSourceRows(productRows, persistedProducts, ['internal_sku']);
+  if (productMapPairs.length < sourceProductExternalRefs.length && sourceProductExternalRefs.length > 0) {
+    const { data: resolvedProductRows } = await admin
+      .schema('app')
+      .from('tenant_products')
+      .select('external_ref, id')
+      .eq('tenant_id', tenantId)
+      .in('external_ref', sourceProductExternalRefs)
+      .is('deleted_at', null);
+    const resolvedByExternalRef = ((resolvedProductRows ?? []) as Array<{ external_ref: string | null; id: string | null }>)
+      .map((row) => {
+        const externalId = asStr(row.external_ref);
+        const internalId = asStr(row.id);
+        return externalId && internalId ? { externalId, internalId } : null;
+      })
+      .filter((row): row is { externalId: string; internalId: string } => row !== null);
+    const mergedPairs = new Map(productMapPairs.map((row) => [row.externalId, row.internalId] as const));
+    for (const row of resolvedByExternalRef) {
+      mergedPairs.set(row.externalId, row.internalId);
+    }
+    productMapPairs = [...mergedPairs.entries()].map(([externalId, internalId]) => ({ externalId, internalId }));
+  }
+  if (productMapPairs.length < sourceProductExternalRefs.length && persistedProducts.length === productRowsForPersist.length) {
+    const fallbackPairs = persistedProducts
+      .map((row, index) => {
+        const externalId = asStr(productRowsForPersist[index]?.external_ref);
+        const internalId = asStr(row.id);
+        return externalId && internalId ? { externalId, internalId } : null;
+      })
+      .filter((row): row is { externalId: string; internalId: string } => row !== null);
+    const mergedPairs = new Map(productMapPairs.map((row) => [row.externalId, row.internalId] as const));
+    for (const row of fallbackPairs) {
+      mergedPairs.set(row.externalId, row.internalId);
+    }
+    productMapPairs = [...mergedPairs.entries()].map(([externalId, internalId]) => ({ externalId, internalId }));
+  }
   const productIdMap = new Map(productMapPairs.map((row) => [row.externalId, row.internalId] as const));
 
   result.updated += productMapPairs.length;
+  result.pendingSearchVectorProductIds = productMapPairs.map((row) => row.internalId);
+  result.pendingSearchVectorBrandIds = brandData
+    .map((row) => asStr(row.id))
+    .filter((value): value is string => value !== null);
+  result.pendingSearchVectorCategoryIds = categoryRows.length > 0
+    ? [...categoryMapById.values()]
+    : [];
   const productSourceByExternalId = buildSourceByExternalId(
     records,
     (rec) => pickZohoExternalId(rec.item_id),
@@ -2404,12 +2472,6 @@ async function persistProducts(
     await bulkPersistJsonbRecords(admin, 'tenant_inventory', dedupedInventoryRows, ['tenant_product_id', 'warehouse_id']);
   }
 
-  await rebuildProductSearchVectors(
-    admin,
-    tenantId,
-    productMapPairs.map((row) => row.internalId),
-  );
-
   return result;
 }
 
@@ -2428,13 +2490,9 @@ async function persistPricelists(
       ? await adapter.fetchPricelists()
       : [];
   const salesPricebooks = sourceRecords.filter(isSalesPricebook);
-  const result: PersistResult = {
-    created: 0,
-    updated: 0,
+  const result = emptyPersistResult({
     skipped: sourceRecords.length - salesPricebooks.length,
-    pendingSearchVectorBuyerIds: [],
-    pendingSearchVectorBuyerUserIds: [],
-  };
+  });
 
   if (salesPricebooks.length === 0) {
     return result;
@@ -2486,6 +2544,7 @@ async function persistPricelists(
   const priceListIdByExternalRef = new Map(priceListMapPairs.map((row) => [row.externalId, row.internalId] as const));
 
   result.updated += priceListMapPairs.length;
+  result.pendingSearchVectorPriceListIds = priceListMapPairs.map((row) => row.internalId);
   await batchUpsertEntityMap(admin, tenantId, integrationId, 'pricelists', priceListMapPairs);
 
   // Enrich pricebooks with per-book detail (list endpoint omits pricebook_items).
@@ -2691,7 +2750,7 @@ async function persistEstimates(
   adapter?: ZohoAdapter,
   zohoTypeId?: ZohoIntegrationTypeId,
 ): Promise<PersistResult> {
-  const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
+  const result = emptyPersistResult();
   const estimateFieldMappings = await loadFieldMappings(admin, integrationId, 'estimates');
   const salespersonActorMap = await buildZohoSalespersonActorMap(admin, tenantId, adapter);
 
@@ -2952,7 +3011,7 @@ async function persistOrders(
   adapter?: ZohoAdapter,
   zohoTypeId?: ZohoIntegrationTypeId,
 ): Promise<PersistResult> {
-  const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
+  const result = emptyPersistResult();
   const salespersonActorMap = await buildZohoSalespersonActorMap(admin, tenantId, adapter);
 
   const customerExternalIds = [...new Set(
@@ -3202,7 +3261,7 @@ async function persistInvoices(
   adapter?: ZohoAdapter,
   zohoTypeId?: ZohoIntegrationTypeId,
 ): Promise<PersistResult> {
-  const result: PersistResult = { created: 0, updated: 0, skipped: 0, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
+  const result = emptyPersistResult();
   const invoiceFieldMappings = await loadFieldMappings(admin, integrationId, 'invoices');
   const salespersonActorMap = await buildZohoSalespersonActorMap(admin, tenantId, adapter);
 
@@ -3482,13 +3541,7 @@ async function persistContactPersonsPage(
   integrationId: string,
   records: JsonRecord[],
 ): Promise<PersistResult> {
-  const result: PersistResult = {
-    created: 0,
-    updated: 0,
-    skipped: 0,
-    pendingSearchVectorBuyerIds: [],
-    pendingSearchVectorBuyerUserIds: [],
-  };
+  const result = emptyPersistResult();
 
   if (records.length === 0) return result;
 
@@ -3575,6 +3628,11 @@ async function persistContactPersonsPage(
   await batchUpsertEntityMap(admin, tenantId, integrationId, 'contact_persons', mapPairs);
 
   result.created = persisted.length;
+  result.pendingSearchVectorBuyerIds = Array.from(new Set(
+    dedupedRows
+      .map((row) => asStr(row.buyer_id))
+      .filter((id): id is string => id !== null),
+  ));
   result.pendingSearchVectorBuyerUserIds = persisted
     .map((row) => asStr(row.id))
     .filter((id): id is string => id !== null);
@@ -3646,6 +3704,6 @@ async function persistZohoEntityPageImpl(
       return persistInvoices(admin, tenantId, actorId, integrationId, records, adapter, integrationTypeId);
 
     default:
-      return { created: 0, updated: 0, skipped: records.length, pendingSearchVectorBuyerIds: [], pendingSearchVectorBuyerUserIds: [] };
+      return emptyPersistResult({ skipped: records.length });
   }
 }

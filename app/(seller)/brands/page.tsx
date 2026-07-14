@@ -20,7 +20,7 @@ export default async function BrandsPage({
 
   const period = await resolveSellerLandingPeriod(searchParams);
   const initialSearch = await resolveOptionalSearchParam(searchParams);
-  const { data: initialData, status } = await fetchSellerPageBootstrap<TenantBrandsResponse>(`/api/tenant/brands?period=${period}`);
+  const { data: initialData, status } = await fetchSellerPageBootstrap<TenantBrandsResponse>(`/api/tenant/brands?period=${period}&limit=50`);
   if (status === 403) return <FeatureForbiddenPage />;
   return <BrandsLandingClient initialData={initialData} initialPeriod={period} initialSearch={initialSearch} />;
 }

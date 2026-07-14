@@ -824,7 +824,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         last_order_at: buyer.last_order_at,
       })),
     },
-    buyers,
+    buyers: buyers.slice(0, 50),
     permissions: {
       can_extend_validity: claims.role === 'seller_admin',
       can_edit_composition: claims.role === 'seller_admin',

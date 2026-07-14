@@ -5,6 +5,7 @@ import { getVisibleBuyerCatalogs } from '@/lib/server/buyer-access';
 import { resolveBuyerAllowedTenantBrandIds } from '@/lib/server/buyer-brand-visibility';
 import { getSelectedBuyerDeliveryFromRequest } from '@/lib/server/buyer-location-selection';
 import { resolveNearestBuyerLocation } from '@/lib/server/buyer-routing';
+import { searchScopedProducts } from '@/lib/server/scoped-product-search';
 import { r2Url } from '@/lib/r2-url';
 import type {
   BuyerBrand,
@@ -74,21 +75,23 @@ type PriceRow = {
   unit_price: number | null;
 };
 
-type SearchContext = {
-  tenantBrandIds: string[];
-  masterProductIds: string[];
-  tenantCategoryIds: string[];
+type BuyerFacetRpcRow = {
+  facet_type: 'brand' | 'category';
+  facet_id: string;
+  facet_label: string;
+  facet_slug: string | null;
+  image_url: string | null;
+  image_thumb_key: string | null;
+  image_medium_key: string | null;
+  product_count: number;
 };
 
-type CategoryProductFilter =
-  | { kind: 'tenant_category'; tenantCategoryIds: string[] }
-  | { kind: 'master_product'; masterProductIds: string[] };
-
-type FacetProductRow = {
-  tenant_brand_id: string | null;
-  master_product_id: string | null;
-  tenant_category_id: string | null;
+type CampaignCountRow = {
+  id: string;
+  campaign_items: Array<{ count: number }> | null;
 };
+
+const BUYER_CATALOG_SUMMARY_LIMIT = 100;
 
 export type BuyerProductEnrichmentParams = {
   tenantId: string;
@@ -139,88 +142,6 @@ function uniq<T>(values: T[]): T[] {
   return Array.from(new Set(values));
 }
 
-function escapeLike(value: string): string {
-  return value.replace(/[%_]/g, '\\$&');
-}
-
-async function resolveMasterProductIdsForCategory(
-  db: SupabaseClient,
-  categoryId: string,
-): Promise<string[]> {
-  const { data, error } = await db
-    .schema('catalog')
-    .from('products')
-    .select('id')
-    .eq('category_id', categoryId);
-
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
-}
-
-async function resolveCategoryProductFilter(
-  db: SupabaseClient,
-  tenantId: string,
-  categoryId: string,
-): Promise<CategoryProductFilter | null> {
-  const { data: tenantCategoryById, error: tenantCategoryByIdError } = await db
-    .schema('app')
-    .from('tenant_categories')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .eq('id', categoryId)
-    .is('deleted_at', null)
-    .maybeSingle();
-  if (tenantCategoryByIdError) throw new Error(tenantCategoryByIdError.message);
-  if (tenantCategoryById) {
-    return { kind: 'tenant_category', tenantCategoryIds: [(tenantCategoryById as { id: string }).id] };
-  }
-
-  const { data: tenantCategoriesByMaster, error: tenantCategoriesByMasterError } = await db
-    .schema('app')
-    .from('tenant_categories')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .eq('master_category_id', categoryId)
-    .is('deleted_at', null);
-  if (tenantCategoriesByMasterError) throw new Error(tenantCategoriesByMasterError.message);
-  const tenantCategoryIds = ((tenantCategoriesByMaster ?? []) as Array<{ id: string }>).map((row) => row.id);
-  if (tenantCategoryIds.length > 0) {
-    return { kind: 'tenant_category', tenantCategoryIds };
-  }
-
-  const masterProductIds = await resolveMasterProductIdsForCategory(db, categoryId);
-  if (masterProductIds.length > 0) {
-    return { kind: 'master_product', masterProductIds };
-  }
-
-  return null;
-}
-
-function applyCategoryProductFilter<TQuery extends { eq: (column: string, value: string) => TQuery; in: (column: string, values: string[]) => TQuery }>(
-  query: TQuery,
-  filter: CategoryProductFilter,
-): TQuery {
-  if (filter.kind === 'tenant_category') {
-    if (filter.tenantCategoryIds.length === 1) {
-      return query.eq('tenant_category_id', filter.tenantCategoryIds[0]!);
-    }
-    return query.in('tenant_category_id', filter.tenantCategoryIds);
-  }
-  return query.in('master_product_id', filter.masterProductIds);
-}
-
-function appendSearchOrParts(orParts: string[], searchContext: SearchContext): void {
-  if (searchContext.tenantBrandIds.length > 0) {
-    orParts.push(`tenant_brand_id.in.(${searchContext.tenantBrandIds.join(',')})`);
-  }
-  if (searchContext.tenantCategoryIds.length > 0) {
-    orParts.push(`tenant_category_id.in.(${searchContext.tenantCategoryIds.join(',')})`);
-  }
-  if (searchContext.masterProductIds.length > 0) {
-    orParts.push(`master_product_id.in.(${searchContext.masterProductIds.join(',')})`);
-  }
-}
-
 function tenantCategoryImageUrl(
   thumbKey: string | null | undefined,
   mediumKey?: string | null,
@@ -264,83 +185,6 @@ async function resolveTenantBrandIdsForBuyerBrand(
   return resolveTenantBrandIdsForMasterBrand(db, tenantId, brandId);
 }
 
-async function resolveSearchContext(
-  db: SupabaseClient,
-  tenantId: string,
-  search: string,
-): Promise<SearchContext> {
-  const term = search.trim();
-  if (!term) return { tenantBrandIds: [], masterProductIds: [], tenantCategoryIds: [] };
-
-  const like = `%${escapeLike(term)}%`;
-  const [masterBrandsRes, categoriesRes, tenantCategoriesRes, tenantBrandsRes, masterProductsRes] = await Promise.all([
-    db.schema('catalog').from('brands').select('id').ilike('name', like),
-    db.schema('catalog').from('categories').select('id').ilike('name', like),
-    db
-      .schema('app')
-      .from('tenant_categories')
-      .select('id')
-      .eq('tenant_id', tenantId)
-      .ilike('name', like)
-      .is('deleted_at', null),
-    db
-      .schema('app')
-      .from('tenant_brands')
-      .select('id, master_brand_id, display_name_override')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null),
-    db
-      .schema('catalog')
-      .from('products')
-      .select('id, category_id')
-      .ilike('name', like),
-  ]);
-
-  const firstError =
-    masterBrandsRes.error
-    ?? categoriesRes.error
-    ?? tenantCategoriesRes.error
-    ?? tenantBrandsRes.error
-    ?? masterProductsRes.error;
-  if (firstError) throw new Error(firstError.message);
-
-  const matchingMasterBrandIds = new Set(
-    ((masterBrandsRes.data ?? []) as Array<{ id: string }>).map((row) => row.id),
-  );
-  const matchingCategoryIds = new Set(
-    ((categoriesRes.data ?? []) as Array<{ id: string }>).map((row) => row.id),
-  );
-  const tenantCategoryIds = ((tenantCategoriesRes.data ?? []) as Array<{ id: string }>).map((row) => row.id);
-  const tenantBrandIds = ((tenantBrandsRes.data ?? []) as TenantBrandRow[])
-    .filter((brand) =>
-      (brand.display_name_override?.toLowerCase().includes(term.toLowerCase()) ?? false)
-      || (brand.master_brand_id ? matchingMasterBrandIds.has(brand.master_brand_id) : false),
-    )
-    .map((brand) => brand.id);
-
-  const masterProductIds = ((masterProductsRes.data ?? []) as Array<{ id: string; category_id: string | null }>)
-    .filter((row) => row.category_id == null || matchingCategoryIds.size === 0 || matchingCategoryIds.has(row.category_id))
-    .map((row) => row.id);
-
-  if (matchingCategoryIds.size > 0) {
-    const { data: categoryProducts, error: categoryProductsError } = await db
-      .schema('catalog')
-      .from('products')
-      .select('id')
-      .in('category_id', Array.from(matchingCategoryIds));
-    if (categoryProductsError) throw new Error(categoryProductsError.message);
-    for (const row of (categoryProducts ?? []) as Array<{ id: string }>) {
-      masterProductIds.push(row.id);
-    }
-  }
-
-  return {
-    tenantBrandIds: uniq(tenantBrandIds),
-    masterProductIds: uniq(masterProductIds),
-    tenantCategoryIds: uniq(tenantCategoryIds),
-  };
-}
-
 export async function resolveBuyerInventoryWarehouseId(
   db: SupabaseClient,
   request: NextRequest,
@@ -381,7 +225,7 @@ export async function resolveBuyerCatalogSummaries(
 ): Promise<{ visibleCampaigns: BuyerVisibleCatalog[]; catalogs: BuyerCatalogSummary[] }> {
   let visibleCampaigns: BuyerVisibleCatalog[] = [];
   if (buyerId) {
-    visibleCampaigns = await getVisibleBuyerCatalogs(tenantId, buyerId);
+    visibleCampaigns = (await getVisibleBuyerCatalogs(tenantId, buyerId)).slice(0, BUYER_CATALOG_SUMMARY_LIMIT);
   } else {
     const { data, error } = await db
       .schema('app')
@@ -391,7 +235,8 @@ export async function resolveBuyerCatalogSummaries(
       .eq('status', 'published')
       .is('deleted_at', null)
       .or(`valid_to.is.null,valid_to.gt.${new Date().toISOString()}`)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(BUYER_CATALOG_SUMMARY_LIMIT);
     if (error) throw new Error(error.message);
     visibleCampaigns = (data ?? []) as BuyerVisibleCatalog[];
   }
@@ -401,13 +246,16 @@ export async function resolveBuyerCatalogSummaries(
   if (campaignIds.length > 0) {
     const { data, error } = await db
       .schema('app')
-      .from('campaign_items')
-      .select('campaign_id')
-      .in('campaign_id', campaignIds)
-      .is('deleted_at', null);
+      .from('campaigns')
+      .select('id, campaign_items(count)')
+      .eq('tenant_id', tenantId)
+      .in('id', campaignIds)
+      .is('deleted_at', null)
+      .is('campaign_items.deleted_at', null)
+      .limit(BUYER_CATALOG_SUMMARY_LIMIT);
     if (error) throw new Error(error.message);
-    for (const row of (data ?? []) as Array<{ campaign_id: string }>) {
-      counts.set(row.campaign_id, (counts.get(row.campaign_id) ?? 0) + 1);
+    for (const row of (data ?? []) as unknown as CampaignCountRow[]) {
+      counts.set(row.id, Number(row.campaign_items?.[0]?.count ?? 0));
     }
   }
 
@@ -640,10 +488,6 @@ async function resolveCatalogScope(params: CatalogPageParams): Promise<CatalogSc
   } = params;
 
   const trimmedSearch = search.trim();
-  const searchContext = trimmedSearch
-    ? await resolveSearchContext(db, tenantId, trimmedSearch)
-    : { tenantBrandIds: [], masterProductIds: [], tenantCategoryIds: [] };
-
   if (requestedCampaignId) {
     const selectedCampaign = visibleCampaigns.find((campaign) => campaign.id === requestedCampaignId) ?? null;
     if (!selectedCampaign) {
@@ -654,31 +498,6 @@ async function resolveCatalogScope(params: CatalogPageParams): Promise<CatalogSc
         campaignByProductId: new Map(),
       };
     }
-
-    const { data: campaignItemsData, error: campaignItemsError } = await db
-      .schema('app')
-      .from('campaign_items')
-      .select('tenant_product_id, price_override, display_order, is_featured')
-      .eq('campaign_id', selectedCampaign.id)
-      .is('deleted_at', null)
-      .order('display_order', { ascending: true });
-    if (campaignItemsError) throw new Error(campaignItemsError.message);
-
-    const campaignItems = (campaignItemsData ?? []) as CampaignItemRow[];
-    let orderedRows = campaignItems;
-    let candidateIds = uniq(campaignItems.map((row) => row.tenant_product_id));
-    if (candidateIds.length === 0) {
-      return { orderedProductIds: [], total: 0, selectedCampaign, campaignByProductId: new Map() };
-    }
-
-    let tenantProductsQuery = db
-      .schema('app')
-      .from('tenant_products')
-      .select('id, tenant_brand_id, master_product_id, name_override, internal_sku')
-      .eq('tenant_id', tenantId)
-      .in('id', candidateIds)
-      .eq('is_active', true)
-      .is('deleted_at', null);
 
     let effectiveTenantBrandIds = Array.isArray(allowedTenantBrandIds) ? [...allowedTenantBrandIds] : null;
     if (brandId) {
@@ -691,59 +510,62 @@ async function resolveCatalogScope(params: CatalogPageParams): Promise<CatalogSc
       if (effectiveTenantBrandIds.length === 0) {
         return { orderedProductIds: [], total: 0, selectedCampaign, campaignByProductId: new Map() };
       }
-      tenantProductsQuery = tenantProductsQuery.in('tenant_brand_id', effectiveTenantBrandIds);
     }
 
-    if (categoryId) {
-      const categoryFilter = await resolveCategoryProductFilter(db, tenantId, categoryId);
-      if (!categoryFilter) {
-        return { orderedProductIds: [], total: 0, selectedCampaign, campaignByProductId: new Map() };
-      }
-      tenantProductsQuery = applyCategoryProductFilter(tenantProductsQuery, categoryFilter);
+    const { rows, total } = await searchScopedProducts({
+      db,
+      tenantId,
+      buyerId: params.buyerId,
+      campaignId: selectedCampaign.id,
+      query: trimmedSearch,
+      limit,
+      offset,
+      ids: tenantProductId ? [tenantProductId] : null,
+      brandIds: effectiveTenantBrandIds,
+      categoryScopeId: categoryId || null,
+      allowedBrandIds: effectiveTenantBrandIds,
+      warehouseIds: params.inventoryWarehouseId ? [params.inventoryWarehouseId] : null,
+      availability: 'show_all',
+      sort: trimmedSearch ? 'relevance' : 'created_desc',
+    });
+    const orderedProductIds = rows.map((row) => row.tenant_product_id);
+    if (orderedProductIds.length === 0) {
+      return { orderedProductIds: [], total, selectedCampaign, campaignByProductId: new Map() };
     }
-    if (tenantProductId) tenantProductsQuery = tenantProductsQuery.eq('id', tenantProductId);
 
-    if (trimmedSearch) {
-      const orParts = [
-        `name_override.ilike.%${escapeLike(trimmedSearch)}%`,
-        `internal_sku.ilike.%${escapeLike(trimmedSearch)}%`,
-      ];
-      appendSearchOrParts(orParts, searchContext);
-      tenantProductsQuery = tenantProductsQuery.or(orParts.join(','));
-    }
+    const { data: pageCampaignItemsData, error: pageCampaignItemsError } = await db
+      .schema('app')
+      .from('campaign_items')
+      .select('tenant_product_id, price_override, display_order, is_featured')
+      .eq('campaign_id', selectedCampaign.id)
+      .in('tenant_product_id', orderedProductIds)
+      .is('deleted_at', null)
+      .limit(orderedProductIds.length);
+    if (pageCampaignItemsError) throw new Error(pageCampaignItemsError.message);
 
-    const { data: filteredProducts, error: filteredProductsError } = await tenantProductsQuery;
-    if (filteredProductsError) throw new Error(filteredProductsError.message);
-
-    const allowedIds = new Set(((filteredProducts ?? []) as Array<{ id: string }>).map((row) => row.id));
-    orderedRows = campaignItems.filter((row) => allowedIds.has(row.tenant_product_id));
-
-    const pageRows = orderedRows.slice(offset, offset + limit);
+    const itemByProductId = new Map(
+      ((pageCampaignItemsData ?? []) as CampaignItemRow[]).map((row) => [row.tenant_product_id, row]),
+    );
     const campaignByProductId = new Map(
-      pageRows.map((row) => [row.tenant_product_id, {
-        campaign_id: selectedCampaign.id,
-        campaign_name: selectedCampaign.name,
-        campaign_valid_until: selectedCampaign.valid_to,
-        campaign_price: row.price_override,
-        is_featured: Boolean(row.is_featured),
-      }]),
+      orderedProductIds.flatMap((productId) => {
+        const row = itemByProductId.get(productId);
+        return row ? [[productId, {
+          campaign_id: selectedCampaign.id,
+          campaign_name: selectedCampaign.name,
+          campaign_valid_until: selectedCampaign.valid_to,
+          campaign_price: row.price_override,
+          is_featured: Boolean(row.is_featured),
+        }] as const] : [];
+      }),
     );
 
     return {
-      orderedProductIds: pageRows.map((row) => row.tenant_product_id),
-      total: orderedRows.length,
+      orderedProductIds,
+      total,
       selectedCampaign,
       campaignByProductId,
     };
   }
-
-  let productsBaseQuery = db
-    .schema('app')
-    .from('tenant_products')
-    .select('id', { count: 'exact' })
-    .eq('tenant_id', tenantId)
-    .eq('is_active', true)
-    .is('deleted_at', null);
 
   let effectiveTenantBrandIds = Array.isArray(allowedTenantBrandIds) ? [...allowedTenantBrandIds] : null;
   if (brandId) {
@@ -756,67 +578,27 @@ async function resolveCatalogScope(params: CatalogPageParams): Promise<CatalogSc
     if (effectiveTenantBrandIds.length === 0) {
       return { orderedProductIds: [], total: 0, selectedCampaign: null, campaignByProductId: new Map() };
     }
-    productsBaseQuery = productsBaseQuery.in('tenant_brand_id', effectiveTenantBrandIds);
   }
 
-  let categoryFilter: CategoryProductFilter | null = null;
-  if (categoryId) {
-    categoryFilter = await resolveCategoryProductFilter(db, tenantId, categoryId);
-    if (!categoryFilter) {
-      return { orderedProductIds: [], total: 0, selectedCampaign: null, campaignByProductId: new Map() };
-    }
-    productsBaseQuery = applyCategoryProductFilter(productsBaseQuery, categoryFilter);
-  }
-
-  if (tenantProductId) {
-    productsBaseQuery = productsBaseQuery.eq('id', tenantProductId);
-  }
-
-  if (trimmedSearch) {
-    const orParts = [
-      `name_override.ilike.%${escapeLike(trimmedSearch)}%`,
-      `internal_sku.ilike.%${escapeLike(trimmedSearch)}%`,
-    ];
-    appendSearchOrParts(orParts, searchContext);
-    productsBaseQuery = productsBaseQuery.or(orParts.join(','));
-  }
-
-  const countQuery = productsBaseQuery;
-  const { count, error: countError } = await countQuery;
-  if (countError) throw new Error(countError.message);
-
-  let pageQuery = db
-    .schema('app')
-    .from('tenant_products')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .eq('is_active', true)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1);
-
-  if (effectiveTenantBrandIds) {
-    pageQuery = pageQuery.in('tenant_brand_id', effectiveTenantBrandIds);
-  }
-  if (categoryFilter) {
-    pageQuery = applyCategoryProductFilter(pageQuery, categoryFilter);
-  }
-  if (tenantProductId) pageQuery = pageQuery.eq('id', tenantProductId);
-  if (trimmedSearch) {
-    const orParts = [
-      `name_override.ilike.%${escapeLike(trimmedSearch)}%`,
-      `internal_sku.ilike.%${escapeLike(trimmedSearch)}%`,
-    ];
-    appendSearchOrParts(orParts, searchContext);
-    pageQuery = pageQuery.or(orParts.join(','));
-  }
-
-  const { data: pageRows, error: pageError } = await pageQuery;
-  if (pageError) throw new Error(pageError.message);
+  const { rows, total } = await searchScopedProducts({
+    db,
+    tenantId,
+    buyerId: params.buyerId,
+    query: trimmedSearch,
+    limit,
+    offset,
+    ids: tenantProductId ? [tenantProductId] : null,
+    brandIds: effectiveTenantBrandIds,
+    categoryScopeId: categoryId || null,
+    allowedBrandIds: effectiveTenantBrandIds,
+    warehouseIds: params.inventoryWarehouseId ? [params.inventoryWarehouseId] : null,
+    availability: 'show_all',
+    sort: trimmedSearch ? 'relevance' : 'created_desc',
+  });
 
   return {
-    orderedProductIds: ((pageRows ?? []) as Array<{ id: string }>).map((row) => row.id),
-    total: count ?? 0,
+    orderedProductIds: rows.map((row) => row.tenant_product_id),
+    total,
     selectedCampaign: null,
     campaignByProductId: new Map(),
   };
@@ -858,194 +640,76 @@ type FacetScopeParams = {
   shareToken?: string;
 };
 
-async function resolveFacetScopeProductRows(params: FacetScopeParams): Promise<FacetProductRow[]> {
-  const { db, tenantId, allowedTenantBrandIds = null, categoryId = '', brandId = '', requestedCampaignId = '', shareToken = '' } = params;
+async function resolveFacetScopeRows(params: FacetScopeParams): Promise<BuyerFacetRpcRow[]> {
+  const {
+    db,
+    tenantId,
+    allowedTenantBrandIds = null,
+    categoryId = '',
+    brandId = '',
+    requestedCampaignId = '',
+    shareToken = '',
+  } = params;
 
-  let candidateIds: string[] | null = null;
-  if (requestedCampaignId || shareToken) {
-    let campaignId = requestedCampaignId;
-    if (!campaignId && shareToken) {
-      const { data: campaign, error } = await db
-        .schema('app')
-        .from('campaigns')
-        .select('id')
-        .eq('share_token', shareToken)
-        .eq('status', 'published')
-        .is('deleted_at', null)
-        .maybeSingle();
-      if (error) throw new Error(error.message);
-      campaignId = (campaign as { id?: string } | null)?.id ?? '';
-    }
-    if (campaignId) {
-      const { data: rows, error } = await db
-        .schema('app')
-        .from('campaign_items')
-        .select('tenant_product_id')
-        .eq('campaign_id', campaignId)
-        .is('deleted_at', null);
-      if (error) throw new Error(error.message);
-      candidateIds = ((rows ?? []) as Array<{ tenant_product_id: string }>).map((row) => row.tenant_product_id);
-      if (candidateIds.length === 0) return [];
-    }
+  if (Array.isArray(allowedTenantBrandIds) && allowedTenantBrandIds.length === 0) return [];
+
+  let campaignId = requestedCampaignId || null;
+  if (!campaignId && shareToken) {
+    const { data: campaign, error } = await db
+      .schema('app')
+      .from('campaigns')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('share_token', shareToken)
+      .eq('status', 'published')
+      .is('deleted_at', null)
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    campaignId = (campaign as { id?: string } | null)?.id ?? null;
+    if (!campaignId) return [];
   }
 
-  let query = db
-    .schema('app')
-    .from('tenant_products')
-    .select('tenant_brand_id, master_product_id, tenant_category_id')
-    .eq('tenant_id', tenantId)
-    .eq('is_active', true)
-    .is('deleted_at', null);
-
-  if (candidateIds) query = query.in('id', candidateIds);
-  if (Array.isArray(allowedTenantBrandIds)) {
-    if (allowedTenantBrandIds.length === 0) return [];
-    query = query.in('tenant_brand_id', allowedTenantBrandIds);
-  }
-  if (brandId) {
-    const matchingTenantBrandIds = await resolveTenantBrandIdsForBuyerBrand(db, tenantId, brandId);
-    if (matchingTenantBrandIds.length === 0) return [];
-    query = query.in('tenant_brand_id', matchingTenantBrandIds);
-  }
-  if (categoryId) {
-    const categoryFilter = await resolveCategoryProductFilter(db, tenantId, categoryId);
-    if (!categoryFilter) return [];
-    query = applyCategoryProductFilter(query, categoryFilter);
-  }
-
-  const { data, error } = await query;
+  const rpcDb = db as any;
+  const { data, error } = await rpcDb.schema('app').rpc('get_buyer_product_facets_scoped', {
+    p_tenant_id: tenantId,
+    p_campaign_id: campaignId,
+    p_allowed_brand_ids: allowedTenantBrandIds,
+    p_brand_scope_id: brandId || null,
+    p_category_scope_id: categoryId || null,
+    p_limit: 100,
+  });
   if (error) throw new Error(error.message);
-  return (data ?? []) as FacetProductRow[];
+  return (data ?? []) as BuyerFacetRpcRow[];
 }
 
 export async function fetchBuyerCategories(
   params: FacetScopeParams,
 ): Promise<BuyerCategory[]> {
-  const rows = await resolveFacetScopeProductRows(params);
-  if (rows.length === 0) return [];
-
-  const tenantCategoryCounts = new Map<string, number>();
-  const masterProductIdsForCatalog = new Set<string>();
-
-  for (const row of rows) {
-    if (row.tenant_category_id) {
-      tenantCategoryCounts.set(
-        row.tenant_category_id,
-        (tenantCategoryCounts.get(row.tenant_category_id) ?? 0) + 1,
-      );
-      continue;
-    }
-    if (row.master_product_id) {
-      masterProductIdsForCatalog.add(row.master_product_id);
-    }
-  }
-
-  const categories: BuyerCategory[] = [];
-
-  if (tenantCategoryCounts.size > 0) {
-    const tenantCategoryIds = Array.from(tenantCategoryCounts.keys());
-    const { data: tenantCategories, error: tenantCategoriesError } = await params.db
-      .schema('app')
-      .from('tenant_categories')
-      .select('id, name, slug, r2_image_thumb_key, r2_image_medium_key')
-      .eq('tenant_id', params.tenantId)
-      .in('id', tenantCategoryIds)
-      .eq('is_active', true)
-      .is('deleted_at', null);
-    if (tenantCategoriesError) throw new Error(tenantCategoriesError.message);
-
-    for (const category of (tenantCategories ?? []) as Array<{
-      id: string;
-      name: string;
-      slug: string;
-      r2_image_thumb_key: string | null;
-      r2_image_medium_key: string | null;
-    }>) {
-      categories.push({
-        id: category.id,
-        name: category.name,
-        slug: category.slug,
-        image_url: tenantCategoryImageUrl(category.r2_image_thumb_key, category.r2_image_medium_key),
-        product_count: tenantCategoryCounts.get(category.id) ?? 0,
-      });
-    }
-  }
-
-  if (masterProductIdsForCatalog.size > 0) {
-    const { data: catalogProducts, error: catalogProductsError } = await params.db
-      .schema('catalog')
-      .from('products')
-      .select('category_id, categories(id, name, slug, image_url)')
-      .in('id', Array.from(masterProductIdsForCatalog))
-      .not('category_id', 'is', null);
-    if (catalogProductsError) throw new Error(catalogProductsError.message);
-
-    const countMap = new Map<string, number>();
-    const categoryMap = new Map<string, { id: string; name: string; slug: string; image_url: string | null }>();
-    for (const row of (catalogProducts ?? []) as unknown as Array<{ categories: { id: string; name: string; slug: string; image_url: string | null }[] | null }>) {
-      const category = Array.isArray(row.categories) ? row.categories[0] ?? null : row.categories;
-      if (!category) continue;
-      countMap.set(category.id, (countMap.get(category.id) ?? 0) + 1);
-      categoryMap.set(category.id, category);
-    }
-
-    for (const category of categoryMap.values()) {
-      categories.push({
-        id: category.id,
-        name: category.name,
-        slug: category.slug,
-        image_url: category.image_url,
-        product_count: countMap.get(category.id) ?? 0,
-      });
-    }
-  }
-
-  return categories.sort((a, b) => b.product_count - a.product_count);
+  const rows = await resolveFacetScopeRows(params);
+  return rows
+    .filter((row) => row.facet_type === 'category')
+    .map((row) => ({
+      id: row.facet_id,
+      name: row.facet_label,
+      slug: row.facet_slug ?? row.facet_id,
+      image_url: tenantCategoryImageUrl(row.image_thumb_key, row.image_medium_key) ?? row.image_url,
+      product_count: Number(row.product_count),
+    }));
 }
 
 export async function fetchBuyerBrands(
   params: FacetScopeParams,
 ): Promise<BuyerBrand[]> {
-  const rows = await resolveFacetScopeProductRows(params);
-  const countByTenantBrand = new Map<string, number>();
-  for (const row of rows) {
-    if (!row.tenant_brand_id) continue;
-    countByTenantBrand.set(row.tenant_brand_id, (countByTenantBrand.get(row.tenant_brand_id) ?? 0) + 1);
-  }
-
-  const tenantBrandIds = Array.from(countByTenantBrand.keys());
-  if (tenantBrandIds.length === 0) return [];
-
-  const { data: tenantBrands, error: tenantBrandsError } = await params.db
-    .schema('app')
-    .from('tenant_brands')
-    .select('id, display_name_override, master_brand_id, logo_url')
-    .in('id', tenantBrandIds)
-    .is('deleted_at', null);
-  if (tenantBrandsError) throw new Error(tenantBrandsError.message);
-
-  const masterBrandIds = uniq(
-    ((tenantBrands ?? []) as Array<{ master_brand_id: string | null }>)
-      .map((brand) => brand.master_brand_id)
-      .filter((value): value is string => Boolean(value)),
-  );
-  const { data: masterBrands, error: masterBrandsError } = masterBrandIds.length > 0
-    ? await params.db.schema('catalog').from('brands').select('id, name, logo_url').in('id', masterBrandIds)
-    : { data: [], error: null };
-  if (masterBrandsError) throw new Error(masterBrandsError.message);
-
-  const masterBrandMap = new Map(
-    ((masterBrands ?? []) as MasterBrandRow[]).map((brand) => [brand.id, brand]),
-  );
-
-  return ((tenantBrands ?? []) as Array<{ id: string; display_name_override: string | null; master_brand_id: string | null; logo_url: string | null }>)
-    .map((brand) => ({
-      id: brand.master_brand_id ?? brand.id,
-      name: brand.display_name_override ?? (brand.master_brand_id ? masterBrandMap.get(brand.master_brand_id)?.name ?? 'Brand' : 'Brand'),
-      product_count: countByTenantBrand.get(brand.id) ?? 0,
-      logo_url: brand.logo_url ?? (brand.master_brand_id ? masterBrandMap.get(brand.master_brand_id)?.logo_url ?? null : null),
-    }))
-    .sort((a, b) => (b.product_count ?? 0) - (a.product_count ?? 0));
+  const rows = await resolveFacetScopeRows(params);
+  return rows
+    .filter((row) => row.facet_type === 'brand')
+    .map((row) => ({
+      id: row.facet_id,
+      name: row.facet_label,
+      product_count: Number(row.product_count),
+      logo_url: row.image_url,
+    }));
 }
 
 export async function resolveBuyerCatalogContext(

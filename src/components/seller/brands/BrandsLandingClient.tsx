@@ -28,6 +28,7 @@ import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { BrandsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 
 type SortOption = 'GMV (high → low)' | 'GMV (low → high)' | 'Growth (high → low)' | 'Campaign age (most recent)';
 
@@ -173,7 +174,7 @@ function BrandLandingContent({
   const search = routeState.search;
   const sortBy = routeState.sortBy;
   const filters = routeState.filters ?? { categories: [], cohorts: [] };
-  const { data, isLoading, isError } = useTenantBrands(period, { search, categories: filters.categories, cohorts: filters.cohorts }, initialData ?? undefined);
+  const { data, isLoading, isError, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantBrands(period, { search, categories: filters.categories, cohorts: filters.cohorts }, initialData ?? undefined);
   const retainedData = useRetainedValue(data);
   const landingData = data ?? retainedData;
   useRouteScrollRestoration({
@@ -184,11 +185,15 @@ function BrandLandingContent({
   const [inviteOpen, setInviteOpen] = useState(false);
   const [addBrandOpen, setAddBrandOpen] = useState(false);
   const visibleCount = routeState.visibleCount;
+  const hasTableControls = Boolean(search.trim() || filters.categories.length > 0 || filters.cohorts.length > 0);
 
   const brands = useMemo(() => (landingData?.brands ?? []).map(toBrandVm), [landingData?.brands]);
+  const summaryData = useRetainedValue<TenantBrandsResponse | undefined>(
+    !hasTableControls ? landingData : initialData ?? undefined,
+  );
   const portfolioGmv = useMemo(
-    () => landingData?.kpis?.portfolio_gmv_mtd ?? brands.reduce((sum, brand) => sum + brand.gmv, 0),
-    [brands, landingData?.kpis?.portfolio_gmv_mtd]
+    () => summaryData?.kpis?.portfolio_gmv_mtd ?? brands.reduce((sum, brand) => sum + brand.gmv, 0),
+    [brands, summaryData?.kpis?.portfolio_gmv_mtd]
   );
   const updatedBrands = useMemo(
     () => brands.map((brand) => ({ ...brand, share: portfolioGmv > 0 ? Math.round((brand.gmv / portfolioGmv) * 100) : 0 })),
@@ -225,34 +230,34 @@ function BrandLandingContent({
     setRouteState((current) => ({ ...current, visibleCount: PAGE_SIZE }));
   }, [filters.categories, filters.cohorts, search, sortBy]);
   const visibleRows = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
-  const hasMore = visibleCount < filtered.length;
+  const hasMore = visibleCount < filtered.length || Boolean(hasNextPage);
   const { sentinelRef } = useInfiniteScroll({
     hasMore,
-    onLoadMore: () =>
-      setRouteState((current) => ({
-        ...current,
-        visibleCount: Math.min(current.visibleCount + PAGE_SIZE, filtered.length),
-      })),
+    isLoading: isFetchingNextPage,
+    onLoadMore: () => {
+      if (visibleCount < filtered.length) {
+        setRouteState((current) => ({
+          ...current,
+          visibleCount: Math.min(current.visibleCount + PAGE_SIZE, filtered.length),
+        }));
+      } else if (hasNextPage) {
+        void fetchNextPage();
+      }
+    },
   });
 
-  const attention = useMemo(() => updatedBrands.filter((brand) => brand.alerts.length > 0), [updatedBrands]);
-  const topPerformers = useMemo(() => [...updatedBrands].sort((a, b) => b.gmv - a.gmv).slice(0, 2), [updatedBrands]);
-  const topRisers = useMemo(() => [...updatedBrands].sort((a, b) => b.growth - a.growth).slice(0, 2), [updatedBrands]);
+  const attention = useMemo(() => summaryData?.todays_read?.needs_attention ?? [], [summaryData?.todays_read?.needs_attention]);
+  const topPerformers = useMemo(() => summaryData?.todays_read?.top_performers ?? [], [summaryData?.todays_read?.top_performers]);
+  const topRisers = useMemo(() => summaryData?.todays_read?.top_risers ?? [], [summaryData?.todays_read?.top_risers]);
   const catalogFresh =
-    landingData?.kpis?.catalog_freshness_count ?? updatedBrands.filter((brand) => brand.daysSinceCatalog <= 14).length;
+    summaryData?.kpis?.catalog_freshness_count ?? updatedBrands.filter((brand) => brand.daysSinceCatalog <= 14).length;
   const growthVsPrior = useMemo(() => {
-    const prior = landingData?.kpis?.portfolio_gmv_prev_mtd ?? updatedBrands.reduce((sum, brand) => sum + brand.gmvPrior, 0);
+    const prior = summaryData?.kpis?.portfolio_gmv_prev_mtd ?? updatedBrands.reduce((sum, brand) => sum + brand.gmvPrior, 0);
     if (prior <= 0) return 0;
     return Math.round(((portfolioGmv - prior) / prior) * 100);
-  }, [landingData?.kpis?.portfolio_gmv_prev_mtd, updatedBrands, portfolioGmv]);
-  const activeBuyers = useMemo(
-    () => updatedBrands.reduce((max, brand) => Math.max(max, brand.activeBuyers), 0),
-    [updatedBrands]
-  );
-  const totalBuyers = useMemo(
-    () => updatedBrands.reduce((max, brand) => Math.max(max, brand.totalBuyers), 0),
-    [updatedBrands]
-  );
+  }, [summaryData?.kpis?.portfolio_gmv_prev_mtd, updatedBrands, portfolioGmv]);
+  const activeBuyers = summaryData?.kpis?.buyers_with_orders_mtd ?? 0;
+  const totalBuyers = summaryData?.kpis?.total_buyers ?? 0;
 
   const attentionReason = (alerts: string[]) => {
     const reasons: string[] = [];
@@ -262,15 +267,16 @@ function BrandLandingContent({
     return reasons.join(' · ');
   };
   const freshnessHelp = () => {
-    const days = landingData?.kpis?.catalog_freshness_earliest_days;
-    const fresh = landingData?.kpis?.catalog_freshness_count ?? 0;
-    const total = landingData?.kpis?.total_campaigns ?? 0;
+    const days = summaryData?.kpis?.catalog_freshness_earliest_days;
+    const fresh = summaryData?.kpis?.catalog_freshness_count ?? 0;
+    const total = summaryData?.kpis?.total_campaigns ?? 0;
     const denom = `${fresh}/${total} catalogs`;
     if (days == null) return `${denom} published ${lowerLabel}`;
     if (days === 0) return `${denom} published today`;
     if (days === 1) return `${denom} published yesterday`;
     return `${denom} published in the last ${days} days`;
   };
+  const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && filtered.length === 0;
 
   if (isLoading && !landingData) return <BrandsLandingSkeleton />;
   if (isError && !landingData) {
@@ -286,7 +292,7 @@ function BrandLandingContent({
       <PageHeader
         eyebrow="Portfolio"
         title="Brands"
-        subtitle={`${updatedBrands.length} brand principals. Phani Distribution carries them across ${totalBuyers} buyers ${lowerLabel}. This is your portfolio at a glance.`}
+        subtitle={`${summaryData?.kpis?.brands_carried ?? updatedBrands.length} brand principals carried across ${totalBuyers} buyers ${lowerLabel}. This is your portfolio at a glance.`}
         horizon={horizonLabel}
         period={period}
         periodOptions={options}
@@ -311,12 +317,12 @@ function BrandLandingContent({
           },
           {
             label: 'Brands carried',
-            value: `${data?.kpis?.brands_carried ?? updatedBrands.length}`,
-            sub: `${data?.kpis?.buyers_with_orders_mtd ?? activeBuyers} of ${data?.kpis?.total_buyers ?? totalBuyers} buyers active`,
+            value: `${summaryData?.kpis?.brands_carried ?? updatedBrands.length}`,
+            sub: `${activeBuyers} of ${totalBuyers} buyers active`,
           },
           {
             label: 'Need attention',
-            value: `${data?.kpis?.need_attention_count ?? attention.length}`,
+            value: `${summaryData?.kpis?.need_attention_count ?? attention.length}`,
             sub: `${attention.reduce((sum, brand) => sum + brand.alerts.length, 0)} alerts open`,
             tone: 'warn',
           },
@@ -334,39 +340,36 @@ function BrandLandingContent({
             kind: 'risk',
             eyebrow: 'Needs attention',
             hint: `${attention.length} brands`,
-            rows: attention.slice(0, 2).map((brand) => ({
-              initials: brand.initials,
-              hue: brand.hue,
-              imageUrl: brand.logoUrl,
+            rows: attention.slice(0, 2).map((brand, index) => ({
+              initials: getInitials(brand.name),
+              hue: index % 3 === 0 ? 'teal' : index % 3 === 1 ? 'ember' : 'cream',
               name: brand.name,
               reason: attentionReason(brand.alerts),
-              trailing: brand.growth > 0 ? `↑ +${brand.growth}%` : brand.growth < 0 ? `↓ ${Math.abs(brand.growth)}%` : '· flat',
+              trailing: brand.growth_pct > 0 ? `↑ +${brand.growth_pct}%` : brand.growth_pct < 0 ? `↓ ${Math.abs(brand.growth_pct)}%` : '· flat',
             })),
           },
           {
             kind: 'info',
             eyebrow: 'Top performers',
             hint: 'by GMV',
-            rows: topPerformers.map((brand) => ({
-              initials: brand.initials,
-              hue: brand.hue,
-              imageUrl: brand.logoUrl,
+            rows: topPerformers.map((brand, index) => ({
+              initials: getInitials(brand.name),
+              hue: index % 3 === 0 ? 'teal' : index % 3 === 1 ? 'ember' : 'cream',
               name: brand.name,
-              reason: `${brand.share}% of portfolio · ${brand.activeBuyers} buyers`,
-              trailing: formatCompactInr(brand.gmv),
+              reason: `${portfolioGmv > 0 ? Math.round((brand.gmv_mtd / portfolioGmv) * 100) : 0}% of portfolio`,
+              trailing: formatCompactInr(brand.gmv_mtd),
             })),
           },
           {
             kind: 'opportunity',
             eyebrow: 'Top risers',
             hint: 'fastest growth',
-            rows: topRisers.map((brand) => ({
-              initials: brand.initials,
-              hue: brand.hue,
-              imageUrl: brand.logoUrl,
+            rows: topRisers.map((brand, index) => ({
+              initials: getInitials(brand.name),
+              hue: index % 3 === 0 ? 'teal' : index % 3 === 1 ? 'ember' : 'cream',
               name: brand.name,
-              reason: `from ${formatCompactInr(brand.gmvPrior)} → ${formatCompactInr(brand.gmv)} ${lowerLabel}`,
-              trailing: brand.growth > 0 ? `↑ +${brand.growth}%` : brand.growth < 0 ? `↓ ${Math.abs(brand.growth)}%` : '· flat',
+              reason: `from ${formatCompactInr(brand.gmv_prev_mtd)} → ${formatCompactInr(brand.gmv_mtd)} ${lowerLabel}`,
+              trailing: brand.growth_pct > 0 ? `↑ +${brand.growth_pct}%` : brand.growth_pct < 0 ? `↓ ${Math.abs(brand.growth_pct)}%` : '· flat',
             })),
           },
         ]}
@@ -407,8 +410,11 @@ function BrandLandingContent({
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
       />
 
+      {showTableSkeleton ? (
+        <LandingTableRowsSkeleton columns={7} tableMinWidth={1400} />
+      ) : (
       <LandingTable
-        showEmptyState={filtered.length === 0}
+        showEmptyState={filtered.length === 0 && !isLoading}
         emptyState={
           <EmptyState
             icon={<Layers size={28} strokeWidth={1.5} />}
@@ -481,6 +487,7 @@ function BrandLandingContent({
           </tr>
         ))}
       </LandingTable>
+      )}
 
       {hasMore ? (
         <div ref={sentinelRef} className="h-10 w-full" aria-hidden="true" />

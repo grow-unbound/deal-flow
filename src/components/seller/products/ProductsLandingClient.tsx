@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { Upload, Plus, Package } from 'lucide-react';
@@ -31,6 +31,7 @@ import { useTenantProducts, useTenantProductsInfinite, type TenantProduct, type 
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { ProductsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
+import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 
 const AddProductSheet = dynamic(
   () => import('@/components/seller/products/AddProductSheet').then((m) => m.AddProductSheet),
@@ -77,6 +78,20 @@ function dedupeProductsById(products: TenantProduct[]): TenantProduct[] {
     seen.add(product.id);
     return true;
   });
+}
+
+function matchesProductSearch(product: TenantProduct, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return [
+    product.display_name,
+    product.internal_sku,
+    product.brand_name,
+    product.category_name,
+    product.master_product?.master_sku ?? null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.toLowerCase().includes(needle));
 }
 
 function ProductLandingSkeleton() {
@@ -157,9 +172,13 @@ function ProductsLandingContent({
   const [addProductOpen, setAddProductOpen] = useState(false);
 
   const debouncedSearch = useDebounce(search, 300);
+  const deferredFilters = useDeferredValue(filters);
+  const isInterim =
+    search !== debouncedSearch ||
+    JSON.stringify(filters) !== JSON.stringify(deferredFilters);
   const { data, isLoading, isError, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useTenantProductsInfinite(
     period,
-    { search: debouncedSearch, ...filters },
+    { search: debouncedSearch, ...deferredFilters },
   );
   const { sentinelRef } = useInfiniteScroll({
     hasMore: hasNextPage ?? false,
@@ -183,16 +202,52 @@ function ProductsLandingContent({
   const summaryBrands = summaryData?.brands?.length ?? 0;
 
   const filtered = useMemo(() => {
-    return [...allProducts].sort((a, b) => {
+    const locallyFiltered = allProducts.filter((product) => {
+      if (!matchesProductSearch(product, search)) {
+        return false;
+      }
+
+      if (filters.brand.length > 0 && (!product.brand_name || !filters.brand.includes(product.brand_name))) {
+        return false;
+      }
+
+      if (filters.category.length > 0 && (!product.category_name || !filters.category.includes(product.category_name))) {
+        return false;
+      }
+
+      if (
+        filters.status.length > 0 &&
+        !filters.status.some((value) => (value === 'Active' ? product.is_active : !product.is_active))
+      ) {
+        return false;
+      }
+
+      if (
+        filters.stock.length > 0 &&
+        !filters.stock.some((value) => {
+          const onHand = Number(product.on_hand ?? 0);
+          const daysCover = product.days_cover ?? null;
+          if (value === 'Out of stock') return onHand === 0;
+          if (value === 'Low stock') return onHand > 0 && daysCover != null && daysCover < 14;
+          if (value === 'In stock') return onHand > 0 && (daysCover == null || daysCover >= 14);
+          return false;
+        })
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+
+    return [...locallyFiltered].sort((a, b) => {
         if (!isSellerAssistant && sortBy === 'GMV (high → low)') return Number(b.gmv_mtd ?? 0) - Number(a.gmv_mtd ?? 0);
         if (!isSellerAssistant && sortBy === 'GMV (low → high)') return Number(a.gmv_mtd ?? 0) - Number(b.gmv_mtd ?? 0);
         if (!isSellerAssistant && sortBy === 'Growth (high → low)') return Number(b.growth_pct ?? 0) - Number(a.growth_pct ?? 0);
         return Number(a.on_hand ?? 0) - Number(b.on_hand ?? 0);
       });
-  }, [isSellerAssistant, allProducts, sortBy]);
-
-  const retainedFiltered = useRetainedValue(filtered.length > 0 ? filtered : null);
-  const displayRows = filtered.length > 0 ? filtered : (retainedFiltered ?? []);
+  }, [allProducts, filters.brand, filters.category, filters.status, filters.stock, isSellerAssistant, search, sortBy]);
+  const displayRows = filtered;
+  const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && displayRows.length === 0;
 
   if (isLoading && !data) return <ProductsLandingSkeleton />;
 
@@ -328,7 +383,7 @@ function ProductsLandingContent({
       />
 
       <FilterBar
-        count={`${filtered.length} of ${filteredTotal} products`}
+        count={`${filtered.length} of ${filteredTotal} products${(isFetching || isFetchingNextPage || isInterim) ? ' · Updating' : ''}`}
         searchPlaceholder="Search product, SKU, brand…"
         chips={[]}
         activeChip=""
@@ -336,7 +391,6 @@ function ProductsLandingContent({
         hideViewToggle
         groups={groups}
         searchValue={search}
-        searchLoading={Boolean(debouncedSearch.trim()) && (isFetching || isFetchingNextPage)}
         onSearchChange={(value) => setRouteState((current) => ({ ...current, search: value }))}
         sortOptions={[...SORT_OPTIONS]}
         onSortChange={(option) => setRouteState((current) => ({ ...current, sortBy: option as SortOption }))}
@@ -344,7 +398,10 @@ function ProductsLandingContent({
         </>
       )}
 
-      <LandingTable
+      {showTableSkeleton ? (
+        <LandingTableRowsSkeleton columns={9} tableMinWidth={1560} />
+      ) : (
+        <LandingTable
         showEmptyState={displayRows.length === 0 && !isLoading}
         emptyState={
           <EmptyState
@@ -378,8 +435,8 @@ function ProductsLandingContent({
           { width: 40, className: 'px-4' },
         ]}
         tableMinWidth={1640}
-      >
-        {displayRows.map((product: TenantProduct, index: number) => {
+        >
+          {displayRows.map((product: TenantProduct, index: number) => {
           const brandName = product.brand_name ?? 'Unknown brand';
           const onHand = Number(product.on_hand ?? 0);
           const daysCover = product.days_cover ?? null;
@@ -455,8 +512,9 @@ function ProductsLandingContent({
               <td className="px-4 py-3.5 text-right text-md text-cream-500">›</td>
             </tr>
           );
-        })}
-      </LandingTable>
+          })}
+        </LandingTable>
+      )}
 
       {/* Scroll sentinel — triggers next-page fetch when within 400px of viewport */}
       <div ref={sentinelRef} className="h-px" aria-hidden />

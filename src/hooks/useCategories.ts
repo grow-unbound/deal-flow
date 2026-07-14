@@ -1,9 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
+import { useRef } from 'react';
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { apiFetch } from '@/lib/api-fetch';
 import { appendArrayParam } from '@/lib/landing-filter-params';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
+import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
 
 // ─── Landing types ────────────────────────────────────────────────────────────
 
@@ -54,6 +56,9 @@ export interface CategoriesLandingResponse {
   };
   rows: CategoryTableRow[];
   total: number;
+  limit?: number;
+  offset?: number;
+  nextOffset?: number | null;
   period: string;
 }
 
@@ -69,24 +74,48 @@ export function useCategoryLanding(
   initialData?: CategoriesLandingResponse | null,
 ) {
   const { session } = useAuth();
-  const { data, isLoading, isError } = useQuery<CategoriesLandingResponse>({
+  const summaryRef = useRef<{
+    period: SellerLandingPeriod;
+    value: Pick<CategoriesLandingResponse, 'kpis' | 'callouts'> | null;
+  }>({
+    period,
+    value: initialData ? { kpis: initialData.kpis, callouts: initialData.callouts } : null,
+  });
+  if (summaryRef.current.period !== period) {
+    summaryRef.current = {
+      period,
+      value: initialData ? { kpis: initialData.kpis, callouts: initialData.callouts } : null,
+    };
+  }
+  const query = useInfiniteQuery<CategoriesLandingResponse>({
     queryKey: ['categories-landing', period, filters],
-    queryFn: async () => {
-      const params = new URLSearchParams({ period });
+    initialPageParam: 0,
+    queryFn: async ({ pageParam, signal }) => {
+      const hasFilters = Boolean(filters.search?.trim() || filters.status?.length || filters.products?.length);
+      const params = new URLSearchParams({ period, limit: '50', offset: String(pageParam), include_summary: String(pageParam === 0 && !hasFilters) });
       if (filters.search?.trim()) params.set('search', filters.search.trim());
       appendArrayParam(params, 'status', filters.status);
       appendArrayParam(params, 'products', filters.products);
-      const res = await apiFetch(`/api/tenant/categories/landing?${params.toString()}`);
+      const res = await apiFetch(`/api/tenant/categories/landing?${params.toString()}`, { signal });
       if (!res.ok) throw new Error('Failed to fetch categories landing');
       return res.json();
     },
+    getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
     enabled: !!session,
-    initialData: initialData ?? undefined,
+    initialData: initialData ? { pages: [initialData], pageParams: [0] } : undefined,
+    initialDataUpdatedAt: initialData ? 0 : undefined,
     staleTime: 60_000,
+    placeholderData: keepPreviousData,
   });
-
+  const merged = mergeSellerLandingPages(query.data?.pages, 'rows');
+  if (merged?.kpis && merged.callouts) {
+    summaryRef.current = { period, value: { kpis: merged.kpis, callouts: merged.callouts } };
+  }
+  const data = merged && summaryRef.current.value
+    ? { ...summaryRef.current.value, ...merged } as CategoriesLandingResponse
+    : merged;
   const retained = useRetainedValue(data);
-  return { data: data ?? retained, isLoading, isError };
+  return { ...query, data: data ?? retained };
 }
 
 // ─── Detail types ─────────────────────────────────────────────────────────────

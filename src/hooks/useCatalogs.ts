@@ -9,6 +9,7 @@ import { rollbackSnapshots, takeSnapshots } from '@/lib/optimistic';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
 import type { CatalogComposerFilterState, CatalogComposerPayload, CatalogComposerPriceSource, CatalogComposerTag } from '@/lib/zod';
 import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
+import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
 
 export type CatalogDisplayStatus = 'Live' | 'Draft' | 'Ended';
 export type CatalogStatusTone = 'success' | 'warning' | 'neutral';
@@ -46,6 +47,10 @@ export interface CatalogLandingRow {
 }
 
 export interface CatalogsLandingResponse {
+  total?: number;
+  limit?: number;
+  offset?: number;
+  nextOffset?: number | null;
   period?: SellerLandingPeriodMeta;
   channels?: {
     orders_enabled: boolean;
@@ -237,6 +242,14 @@ export interface CatalogDetailResponse {
   };
 }
 
+export interface CatalogBuyerPage {
+  rows: CatalogDetailResponse['buyers'];
+  total: number;
+  totals: { opens: number; converted: number; gmv: number };
+  limit: number;
+  offset: number;
+}
+
 export interface CatalogComposerProduct {
   id: string;
   display_name: string;
@@ -366,18 +379,41 @@ export interface CatalogShareLinkResponse {
   share_url: string;
 }
 
-export function useTenantCatalogs(period: SellerLandingPeriod = 'month', initialData?: CatalogsLandingResponse | null) {
-  return useQuery({
-    queryKey: ['tenant-catalogs', period],
-    queryFn: async (): Promise<CatalogsLandingResponse> => {
-      const res = await apiFetch(`/api/tenant/catalogs?period=${period}`);
+export interface CatalogsLandingFilters {
+  search?: string;
+  status?: string[];
+}
+
+export function useTenantCatalogs(
+  period: SellerLandingPeriod = 'month',
+  filters: CatalogsLandingFilters = {},
+  initialData?: CatalogsLandingResponse | null,
+) {
+  const hasFilters = Boolean(filters.search?.trim() || filters.status?.length);
+  const baseSummary = getSellerLandingInitialData(period, initialData);
+  const initial = !hasFilters
+    ? baseSummary
+    : undefined;
+  const query = useInfiniteQuery({
+    queryKey: ['tenant-catalogs', period, filters],
+    initialPageParam: 0,
+    queryFn: async ({ pageParam, signal }): Promise<CatalogsLandingResponse> => {
+      const params = new URLSearchParams({ period, limit: '50', offset: String(pageParam), include_summary: String(pageParam === 0 && !hasFilters) });
+      if (filters.search?.trim()) params.set('search', filters.search.trim());
+      appendArrayParam(params, 'status', filters.status);
+      const res = await apiFetch(`/api/tenant/catalogs?${params.toString()}`, { signal });
       if (!res.ok) throw new Error('Failed to fetch catalogs');
       return res.json();
     },
-    initialData: getSellerLandingInitialData(period, initialData),
+    getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
+    initialData: initial ? { pages: [initial], pageParams: [0] } : undefined,
+    initialDataUpdatedAt: initialData ? 0 : undefined,
+    placeholderData: keepPreviousData,
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
   });
+  const merged = mergeSellerLandingPages(query.data?.pages, 'catalogs');
+  return { ...query, data: merged && baseSummary ? { ...baseSummary, ...merged } : merged };
 }
 
 export function useTenantCatalogDetail(id: string) {
@@ -392,6 +428,25 @@ export function useTenantCatalogDetail(id: string) {
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
     refetchOnWindowFocus: false,
+  });
+}
+
+export function useCatalogBuyers(id: string, filters: { query?: string; status?: string; sort?: string; page?: number }, enabled = true) {
+  return useQuery<CatalogBuyerPage>({
+    queryKey: ['tenant-catalog-buyers', id, filters],
+    enabled: Boolean(id) && enabled,
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({ limit: '50' });
+      params.set('offset', String(Math.max(0, filters.page ?? 0) * 50));
+      if (filters.query?.trim()) params.set('q', filters.query.trim());
+      if (filters.status) params.set('status', filters.status);
+      if (filters.sort) params.set('sort', filters.sort);
+      const res = await apiFetch(`/api/tenant/catalogs/${id}/buyers?${params}`, { signal });
+      if (!res.ok) throw new Error('Failed to fetch catalog buyers');
+      return res.json();
+    },
+    placeholderData: (previous) => previous,
+    staleTime: 30_000,
   });
 }
 
