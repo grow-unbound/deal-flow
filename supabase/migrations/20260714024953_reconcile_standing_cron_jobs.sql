@@ -1,0 +1,27 @@
+-- Audit of every ensure_*_cron_scheduled() function vs what's actually
+-- registered in cron.job on prod (hcpzbnmumbykdqveyjhr), 2026-07-14:
+--
+--   ensure_buyer_metric_snapshot_cron_scheduled  -- called at buyer_home_phase6_completion.sql:205 -- job present, OK
+--   ensure_reaper_cron_scheduled                 -- called at scope_sync_coordinator_crons_to_job_lifetime.sql:47 -- OK
+--   ensure_repair_cron_scheduled                 -- called at async_repair_aggregates_job.sql:51 -- OK
+--   ensure_sync_coordinator_cron_scheduled       -- called at add_sync_coordinator_tick.sql:77 -- OK
+--   ensure_zoho_sync_cron_scheduled              -- NEVER CALLED anywhere. BUG.
+--
+-- reaper/coordinator/repair/whatsapp ticks (sync-reaper-backstop,
+-- sync-coordinator-tick, repair-jobs-tick, whatsapp-dispatch-backstop) are
+-- intentionally job-lifetime-scoped: armed by a trigger/RPC when work
+-- exists, disarmed by sync_cron_idle_sweep (hourly) when idle. Their
+-- absence from cron.job right now is expected, not a bug — do not
+-- unconditionally re-arm them here.
+--
+-- zoho-sync-daily is the only STANDING (always-on) cron whose registration
+-- function was defined (prod_bootstrap.sql:1517) but never invoked, so the
+-- job was never created on any environment. This is why this morning's
+-- incremental sync didn't fire.
+--
+-- Safe to call again in the future: cron.schedule(jobname, ...) is an
+-- upsert keyed on jobname — if the job already exists it updates schedule/
+-- command in place and keeps the same jobid, it does not create a
+-- duplicate. Re-running this migration, or re-calling any ensure_* function,
+-- is a no-op when the job is already correctly registered.
+SELECT app.ensure_zoho_sync_cron_scheduled();

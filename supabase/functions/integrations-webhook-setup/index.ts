@@ -2,6 +2,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import {
   buildZohoWebhookRegistrationPayload,
   buildZohoWorkflowRegistrationPayload,
+  fetchZohoSettings,
+  pauseForZohoSettingsRateLimit,
 } from '../../../src/lib/integrations/zoho-webhooks.ts';
 import { getIntegrationWebhookDefinitions } from '../../../src/lib/integrations/definitions.ts';
 
@@ -73,8 +75,9 @@ async function registerZohoWebhook(
       });
       console.log(`[webhook-setup] registering ${entityType} ${ruleType}`, { url: url.toString() });
 
+      await pauseForZohoSettingsRateLimit();
       const webhookResponse = await Promise.race([
-        fetch(url.toString(), {
+        fetchZohoSettings(url.toString(), {
           method: 'POST',
           headers: {
             Authorization: `Zoho-oauthtoken ${accessToken}`,
@@ -107,8 +110,9 @@ async function registerZohoWebhook(
       webhookIds[ruleType] = webhookId;
       createdWebhookIds.push(webhookId);
 
+      await pauseForZohoSettingsRateLimit();
       const workflowResponse = await Promise.race([
-        fetch(
+        fetchZohoSettings(
           new URL(
             `/${module}/settings/workflows?organization_id=${encodeURIComponent(orgId)}`,
             `https://www.zohoapis.${dc}`,
@@ -150,34 +154,38 @@ async function registerZohoWebhook(
 
     return { webhookIds, workflowIds };
   } catch (error) {
-    // Cleanup on failure
+    // Cleanup on failure — this run's own webhook succeeded but its paired
+    // workflow didn't (often Zoho rate-limiting), so roll back the orphan.
+    // These deletes hit the same rate limit, so pace + retry them too instead
+    // of firing a burst of DELETEs that 429 and get silently dropped.
     const dc_lower = dc.toLowerCase();
-    await Promise.all(
-      createdWorkflowIds.map((workflowId) =>
-        fetch(
-          new URL(
-            `/${module}/settings/workflows/${workflowId}`,
-            `https://www.zohoapis.${dc_lower}`,
-          ).toString(),
-          {
-            method: 'DELETE',
-            headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
-          },
-        ).catch(() => undefined),
-      ),
-    );
+    for (const workflowId of createdWorkflowIds) {
+      await pauseForZohoSettingsRateLimit();
+      const res = await fetchZohoSettings(
+        new URL(`/${module}/settings/workflows/${workflowId}`, `https://www.zohoapis.${dc_lower}`).toString(),
+        { method: 'DELETE', headers: { Authorization: `Zoho-oauthtoken ${accessToken}` } },
+      ).catch((err) => {
+        console.error(`[webhook-setup] cleanup: failed to delete orphan workflow ${workflowId}:`, err);
+        return null;
+      });
+      if (res && !res.ok) {
+        console.error(`[webhook-setup] cleanup: delete workflow ${workflowId} returned ${res.status}`);
+      }
+    }
 
-    await Promise.all(
-      createdWebhookIds.map((webhookId) =>
-        fetch(
-          new URL(`/${module}/settings/webhooks/${webhookId}`, `https://www.zohoapis.${dc_lower}`).toString(),
-          {
-            method: 'DELETE',
-            headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
-          },
-        ).catch(() => undefined),
-      ),
-    );
+    for (const webhookId of createdWebhookIds) {
+      await pauseForZohoSettingsRateLimit();
+      const res = await fetchZohoSettings(
+        new URL(`/${module}/settings/webhooks/${webhookId}`, `https://www.zohoapis.${dc_lower}`).toString(),
+        { method: 'DELETE', headers: { Authorization: `Zoho-oauthtoken ${accessToken}` } },
+      ).catch((err) => {
+        console.error(`[webhook-setup] cleanup: failed to delete orphan webhook ${webhookId}:`, err);
+        return null;
+      });
+      if (res && !res.ok) {
+        console.error(`[webhook-setup] cleanup: delete webhook ${webhookId} returned ${res.status}`);
+      }
+    }
 
     throw error;
   }
@@ -195,30 +203,34 @@ async function deleteZohoWebhookRegistration(input: {
   const module = input.integrationTypeId === 'zoho_inventory' ? 'inventory/v1' : 'books/v3';
   const dc_lower = input.dc.toLowerCase();
 
-  await Promise.all(
-    (input.workflowIds ?? []).map((workflowId) =>
-      fetch(
-        new URL(`/${module}/settings/workflows/${workflowId}`, `https://www.zohoapis.${dc_lower}`).toString(),
-        {
-          method: 'DELETE',
-          headers: { Authorization: `Zoho-oauthtoken ${input.accessToken}` },
-        },
-      ).catch(() => undefined),
-    ),
-  );
+  for (const workflowId of input.workflowIds ?? []) {
+    await pauseForZohoSettingsRateLimit();
+    const res = await fetchZohoSettings(
+      new URL(`/${module}/settings/workflows/${workflowId}`, `https://www.zohoapis.${dc_lower}`).toString(),
+      { method: 'DELETE', headers: { Authorization: `Zoho-oauthtoken ${input.accessToken}` } },
+    ).catch((err) => {
+      console.error(`[webhook-setup] failed to delete prior workflow ${workflowId}:`, err);
+      return null;
+    });
+    if (res && !res.ok) {
+      console.error(`[webhook-setup] delete prior workflow ${workflowId} returned ${res.status}`);
+    }
+  }
 
   const webhookIds = [...new Set([input.remoteWebhookId, ...(input.remoteWebhookIds ?? [])].filter((id): id is string => Boolean(id)))];
-  await Promise.all(
-    webhookIds.map((webhookId) =>
-      fetch(
-        new URL(`/${module}/settings/webhooks/${webhookId}`, `https://www.zohoapis.${dc_lower}`).toString(),
-        {
-          method: 'DELETE',
-          headers: { Authorization: `Zoho-oauthtoken ${input.accessToken}` },
-        },
-      ).catch(() => undefined),
-    ),
-  );
+  for (const webhookId of webhookIds) {
+    await pauseForZohoSettingsRateLimit();
+    const res = await fetchZohoSettings(
+      new URL(`/${module}/settings/webhooks/${webhookId}`, `https://www.zohoapis.${dc_lower}`).toString(),
+      { method: 'DELETE', headers: { Authorization: `Zoho-oauthtoken ${input.accessToken}` } },
+    ).catch((err) => {
+      console.error(`[webhook-setup] failed to delete prior webhook ${webhookId}:`, err);
+      return null;
+    });
+    if (res && !res.ok) {
+      console.error(`[webhook-setup] delete prior webhook ${webhookId} returned ${res.status}`);
+    }
+  }
 }
 
 Deno.serve(async (req: Request) => {

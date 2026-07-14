@@ -67,6 +67,7 @@ export interface JobRow {
   heartbeat_at?: string | null;
   attempt_count?: number | null;
   records_synced?: number | null;
+  coordinator_live?: boolean | null;
 }
 
 export async function loadIntegration(
@@ -89,7 +90,7 @@ export async function loadJob(admin: AdminClient, jobId: string): Promise<JobRow
   const { data, error } = await admin
     .schema('app')
     .from('integration_sync_jobs')
-    .select('id, tenant_id, tenant_integration_id, phase, status, progress, since_date, job_type, run_kind')
+    .select('id, tenant_id, tenant_integration_id, phase, status, progress, since_date, job_type, run_kind, coordinator_live')
     .eq('id', jobId)
     .maybeSingle();
   if (error) throw new Error(`Failed to load job: ${error.message}`);
@@ -619,4 +620,33 @@ export async function updateCircuitBreakerState(
   }
 
   await admin.schema('app').from('tenant_integrations').update(patch).eq('id', tenantIntegrationId);
+}
+
+/**
+ * Best-effort pause of realtime on sync-heavy tables — see
+ * app.pause_sync_realtime. Exported for reuse by manual/standalone sync
+ * entry points (e.g. sync-transaction-line-items) that bypass the
+ * integrations-sync/sync-coordinator orchestration entirely and so need to
+ * call this themselves.
+ */
+export async function pauseSyncRealtime(admin: AdminClient): Promise<void> {
+  try {
+    await admin.schema('app').rpc('pause_sync_realtime');
+  } catch (err) {
+    console.warn('[sync] pause_sync_realtime failed, continuing without it:', err);
+  }
+}
+
+/**
+ * Best-effort re-enable of realtime on sync-heavy tables (see
+ * app.resume_sync_realtime / integrations-sync/index.ts's pause call).
+ * Called from both coordinator terminal paths (mark_complete AND
+ * halt_failed) so a halted run never leaves realtime permanently off.
+ */
+export async function resumeSyncRealtime(admin: AdminClient): Promise<void> {
+  try {
+    await admin.schema('app').rpc('resume_sync_realtime');
+  } catch (err) {
+    console.warn('[sync-coordinator] resume_sync_realtime failed:', err);
+  }
 }
