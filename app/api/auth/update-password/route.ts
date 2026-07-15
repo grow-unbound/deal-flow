@@ -4,7 +4,10 @@ import { cookies } from 'next/headers';
 import type { Database } from '@/types/database';
 
 export async function PATCH(request: NextRequest) {
-  const supabase = createRouteHandlerClient<Database>({ cookies });
+  const cookieStore = await cookies();
+  const supabase = createRouteHandlerClient<Database>({
+    cookies: async () => cookieStore,
+  });
 
   const {
     data: { user },

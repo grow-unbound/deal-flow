@@ -51,7 +51,7 @@ export async function GET(
   const flagEnabled = await getFlag('df_brand_product_master', claims.tenant_id!);
   if (!flagEnabled) return jsonError(403, 'Feature not enabled', 'FORBIDDEN');
 
-  const db = getRequestSupabaseClient() as any;
+  const db = (await getRequestSupabaseClient()) as any;
   const tenantId = claims.tenant_id!;
 
   // Cross-tenant guard
@@ -381,7 +381,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     const patch = parsed.data;
-    const db = getRequestSupabaseClient() as any;
+    const db = (await getRequestSupabaseClient()) as any;
     const nowIso = new Date().toISOString();
 
     const { data: row, error: loadErr } = await db
@@ -508,7 +508,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return jsonError(403, 'Only seller_admin can deactivate categories', 'FORBIDDEN');
     }
 
-    const db = getRequestSupabaseClient() as any;
+    const db = (await getRequestSupabaseClient()) as any;
     const nowIso = new Date().toISOString();
 
     const { data: row, error: loadErr } = await db
