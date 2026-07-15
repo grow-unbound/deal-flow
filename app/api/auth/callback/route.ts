@@ -32,7 +32,10 @@ export async function GET(request: NextRequest) {
   const type = searchParams.get('type');
   const explicitNext = searchParams.get('next');
 
-  const supabase = createRouteHandlerClient<Database>({ cookies });
+  const cookieStore = await cookies();
+  const supabase = createRouteHandlerClient<Database>({
+    cookies: async () => cookieStore,
+  });
 
   // Token-hash flow: modern Supabase email links use ?token_hash=&type= directly
   if (token_hash && type) {

@@ -1,736 +1,1140 @@
-# Yukti Metrics Product Strategy — Proposal
+# Yukti Metrics Product Strategy — Revised Proposal
 
-Date: 2026-07-14
+Date: 2026-07-15
 
-Status: Product proposal for review; not yet the canonical metric dictionary
+Status: Product proposal for metric selection; not yet the canonical implementation dictionary
 
 Scope: Seller navbar modules under Operations and Growth, plus the Seller Dashboard and Buyer App contribution dashboard
-Out of scope: physical data models, trigger/RPC design, refresh jobs, and migration sequencing
 
-## Executive recommendation
+Out of scope: aggregate-table design, refresh mechanisms, API implementation, and migrations
 
-Yukti should not try to win by showing the most numbers. It should win by answering four questions on every screen:
+## Executive position
 
-1. **What needs attention now?** Exceptions with money, customer, owner, age, and next action.
-2. **Where is value being won or lost?** Revenue, margin, conversion, collections, and stock availability.
-3. **What lever can the distributor pull?** Call, collect, price, replenish, transfer, publish, or enable.
-4. **What changed enough to matter?** Comparisons only where they alter a decision and are cheap enough to sustain.
+Yukti should feel like a command centre, not a business-intelligence suite. Every surface should progressively answer:
 
-The default UI should use four recommended KPIs (marked `★`) from each six-option portfolio and three recommended callouts from each four-option portfolio. The other options are alternates for tenant maturity, permissions, or later experimentation.
+1. **Pulse — What is happening?** Two to four familiar facts.
+2. **Actions — What needs attention?** Zero to three ranked work queues.
+3. **Explore — Why is it happening?** Two to four optional cards after the owner deliberately opens the tab.
 
-## Cost and maintenance guardrails
+The metric lists below are option portfolios, not quotas. `★` marks the recommended default. A page may render fewer cards when fewer facts deserve permanent space. Empty slots are never filled with weak metrics23.
 
-This proposal deliberately does not prescribe tables. It classifies the *kind of computation* so the later data-design phase can choose the lightest implementation.
+This revision reassesses the earlier proposal from first principles. Previous review markings are intentionally not carried forward.
 
-| Code | Computation class | Product rule |
-|---|---|---|
-| `NOW` | Current state, balance, status, date, or count | Cheapest. Prefer for operational landing pages and table rows. |
-| `PERIOD` | One bounded aggregate for the selected period | Good for tenant totals and low-cardinality dimensions. |
-| `DETAIL` | Entity-scoped calculation when its details page opens | Preferred for buyer/product history and mixes. Never precompute it for every entity every day. |
-| `SMALL-HIST` | Period history for a small dimension such as brand, category, location, warehouse, campaign, or group | Acceptable when the comparison changes a decision. Monthly or weekly buckets are normally enough. |
-| `EVENT` | Existing campaign/app event funnel | Use bounded event queries or counters; do not duplicate them into buyer-by-day facts. |
+## How to read the recommendations
 
-Hard rules:
 
-- Do **not** maintain daily history per buyer or per product merely to display a trend arrow. Buyer/product tables should show current posture plus one bounded rolling aggregate; richer history is calculated when details open.
-- Prefer rolling 90-day values for high-cardinality row ranking. MTD is too volatile early in a month and previous-MTD growth per buyer/SKU is noisy and expensive.
-- Keep trends for tenant totals and small dimensions. Monthly buckets are sufficient for strategy; daily buckets are reserved for short-lived campaign funnels or genuine operational SLAs.
-- A callout is a ranked worklist, not a leaderboard. Every item needs a reason, value at risk/opportunity, age or deadline, and a direct action.
-- Counts alone are secondary. Pair count with rupee exposure, affected buyers, affected units, or conversion opportunity.
-- Gross margin is seller-admin only. Seller-assistant equivalents should use revenue, units, fulfillment, or location-scoped exposure.
-- “Buyer App contribution” means source/channel contribution. Do not label it incremental revenue unless Yukti later runs a defensible holdout or causal test.
-- Empty states should state the threshold used and what “healthy” means; “none right now” without a rule is not intelligence.
 
-## Shared definitions to finalize in the canonical dictionary
+### Feasibility
 
-- **Selected-period sales:** order value for flow/operations decisions; invoiced value for realized sales and stock-clearance decisions. Each card must name the document basis.
-- **Active buyer:** buyer with at least one non-void business document in the selected period. On customer surfaces, prefer an order/invoice-based variant to avoid classifying a quote-only lead as a purchasing buyer.
-- **Dormant / win-back buyer:** no order for longer than the buyer's expected cadence (fallback fixed threshold only when history is sparse), with prior meaningful spend. Never treat every never-ordered record as a dormant buyer.
-- **Open order book:** value of non-terminal, non-cancelled orders not fully fulfilled.
-- **At-risk order value:** open-order value past promised/expected milestone or blocked by stock, credit, or approval.
-- **Receivables / overdue:** positive outstanding balance on eligible invoices; overdue only when due date has passed.
-- **Conversion:** cohort of eligible source documents, not a ratio assembled from unrelated period totals. Always show numerator, denominator, and window.
-- **Stock cover:** available stock divided by recent fulfilled/invoiced daily velocity; return “insufficient history” rather than infinity.
-- **Dead/slow stock:** inventory with no or low fulfilled/invoiced movement over a configurable window, shown as inventory value, not merely SKU count.
-- **Buyer penetration:** purchasing buyers divided by eligible/active buyers in the same scope and period.
+
+| Code          | Meaning                                                                                                          |
+| ------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `READY`       | The source data exists and can support the definition now. The current API may still require correction.         |
+| `ON-OPEN`     | Practical as a bounded database aggregate when one detail page opens; do not maintain it daily for every entity. |
+| `CONDITIONAL` | Usable only when the named configuration, integration, or data-quality condition is satisfied.                   |
+| `LATER`       | Do not ship as truth with the current data. It needs missing history, provenance, ledger events, or attribution. |
+
+
+
+
+### Time basis
+
+
+| Label                 | Behavior                                                                                                            |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `NOW`                 | Current posture. It ignores period filters and is labelled “Current” or “As of today.”                              |
+| `THIS MONTH`          | A fixed calendar-month flow measure using canonical document dates.                                                 |
+| `SELECTED PERIOD`     | Uses the page or card's explicitly selected bounded period.                                                         |
+| `30D` / `90D` / `12M` | Bounded transaction period using canonical document dates and IST boundaries.                                       |
+| `NOW + 90D`           | A current posture qualified by trailing-90-day demand; for example, current stockouts among recently sold products. |
+| `LIFETIME`            | Fixed entity lifetime, used mainly for campaign details.                                                            |
+
+
+Technically feasible does not automatically mean suitable. An option still needs to be understandable and support a decision.
+
+## Experience guardrails
+
+- **Caps, not quotas:** Landing Pulse 2–4; Actions 0–3; detail Pulse 0–4; Explore 2–4.
+- **Adaptive layout:** Render two, three, or four equal cards without empty placeholders. Hide an inapplicable section. When a valid queue has no exceptions, show one compact all-clear state.
+- **Transactions are documents, not entities to analyse:** Estimate, order, and invoice details retain their existing document header, totals, status, line items, and activity. Do not repeat those facts in KPI cards or add a generic Performance tab.
+- **One decision per card:** If a distributor cannot name a likely action, the metric does not deserve permanent space.
+- **Plain business language:** Prefer “Invoiced sales,” “Customers who bought,” “Orders waiting to dispatch,” and “Stock with no sale in 90 days.” Avoid GMV, penetration, productivity, realization, cohort conversion, and whitespace in default UI.
+- **No table-row trends:** Customer and product rows show current posture plus one bounded 90-day aggregate. Brand, category, and location comparisons belong in Explore, not as decorative pills in every row.
+- **High-cardinality trends run on open:** Customer and product history is grouped by month or week only when that detail opens. Cache if needed; do not create buyer-by-day or product-by-day requirements merely for charts.
+- **NOW is not period-filtered:** Do not use a global period control on pages dominated by current posture. If a page mixes NOW and period facts, label each card explicitly.
+- **Advanced insights use progressive disclosure:** BAU owners can stop after Pulse and Actions. Growth-oriented owners can open Explore or “More insights.”
+- **Unavailable is not zero:** Show an explicit warning when data is incomplete. Use zero only when it is a verified business result.
+
+
+
+## Period-filter policy
+
+
+| Surface                                                    | Recommended default and controls                                                                                                                                                   |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Seller Dashboard                                           | This month for flow/sales; current-state cards remain “As of today.”                                                                                                               |
+| Estimates, Sales Orders, Invoices landing                  | Document table defaults to This month; optional Today, This week, 90 days, Custom. Current Pulse cards and Actions ignore the table filter. Period-based cards state their period. |
+| Customers, Products, Brands, Categories, Locations landing | Fixed trailing 90 days plus clearly labelled current-state cards. No page-global period control in V1.                                                                             |
+| Warehouses and Pricelists                                  | Current posture; no global period selector. Velocity context may explicitly use trailing 90 days.                                                                                  |
+| Customer Groups                                            | Current membership plus fixed trailing 90-day facts about current members. No global period selector.                                                                              |
+| Campaign landing [TBD]                                     | Current/live campaigns plus selected-period outcomes. Campaign detail uses campaign lifetime.                                                                                      |
+| Entity Explore tabs                                        | Default 90 days for mixes and ranked lists. Historical trend cards use a clearly labelled fixed 12 months; expose more controls only when the decision benefits.                   |
+
+
+
+
+## Shared truth and language
+
+- **Invoiced sales:** eligible invoice value in the selected period. Use this for customer, product, brand, category, location, and tenant sales performance. Do not call estimate or order value GMV.
+- **Estimate value / Order value:** the explicit commercial value at that document stage.
+- **Purchasing customer:** a customer with at least one eligible invoice in the period. If an order-based variant is needed, label it “Customers who ordered.”
+- **Open order value:** non-terminal, non-cancelled order value. Do not imply unfulfilled value until line-level fulfillment is trustworthy.
+- **Outstanding / overdue:** positive eligible invoice balance; overdue only after its due date.
+- **Due to reorder:** past an observed repeat-purchase interval with enough history. Use a simple fixed fallback only when clearly labelled.
+- **Stock cover:** current available stock divided by recent invoiced-unit velocity. Return “Not enough sales history” rather than infinity.
+- **Stock with no sale in 90 days:** current available-stock value/units for products with no eligible invoice line in the last 90 days. This is not inventory age or true dead stock.
+- **Source contribution:** orders/invoices directly linked to Buyer App or a campaign. Never call it incremental revenue.
+
+
+
+## Current technical limits
+
+The following are not trustworthy enough for recommended defaults:
+
+- Historical gross margin or margin trend: invoice lines do not preserve cost at sale; current product cost rewrites the past.
+- Historical inventory, inventory turns, stockout duration, shrinkage, or replenishment trend: there is no complete inventory-movement ledger.
+- Exact fill rate or OTIF: order lines do not preserve complete fulfilled, backordered, and cancelled quantities.
+- Historical Customer Group performance: membership has no effective-date history.
+- Historical Pricelist adoption: transaction lines do not preserve the resolved pricelist.
+- Full campaign/cart funnel or causal campaign lift: middle events and experimental attribution are incomplete.
+
+These appear only as `LATER` alternatives so the product direction is recorded without presenting them as current truth.
 
 ---
+
+
 
 # Operations modules
 
+
+
 ## 1. Estimates
 
-### Landing page
+**Recommended shape:** Landing Pulse **4** · Actions **3** · Detail Pulse **0** · Explore **0**
 
-| KPI option | What it answers | Class | Decision |
-|---|---|---|---|
-| ★ Open estimate pipeline — count + value | How much quoted demand still needs progression? | `NOW` | Include |
-| ★ Follow-up overdue — count + value older than SLA | Where is seller follow-up already late? | `NOW` | Include |
-| ★ Expiring in 7 days — count + value | What must be recovered before the commercial window closes? | `NOW` | Include |
-| ★ Estimate-to-order conversion — cohort rate + converted value | Are estimates becoming real demand? | `PERIOD` | Include |
-| Median time to order | Is the sales cycle slowing enough to intervene? | `PERIOD` | Exclude |
-| Buyer App estimate share — value + share | How much qualified demand is self-serve? | `PERIOD` | Exclude |
+**Period:** The document table defaults to This month. Recommended Pulse cards and Actions are current and ignore that table filter.
 
-| Callout option | Ranked contents / action | Class | Decision |
-|---|---|---|---|
-| ★ High-value follow-ups due | Open estimates ordered by value × age; call/message owner or buyer. | `NOW` | Include |
-| ★ Expiring without response | Soonest expiry, then value; extend, revise, or close. | `NOW` | Include |
-| ★ Availability or price risk | Estimates containing unavailable items, expired prices, or margin-floor breaches; substitute/reprice. | `NOW` | Include |
-| Stale drafts | Drafts never sent after an SLA; finish or discard. | `NOW` | Exclude |
+### Pulse options
 
-**Table-row intelligence:** do not add historical aggregates. Show document value, age/expiry or follow-up due, and item/availability exception count. Source and owner remain useful dimensions, not aggregates.
 
-### Estimate details
+| Option                                                       | Owner value | Time / feasibility | Why it earns space                                                                      |
+| ------------------------------------------------------------ | ----------- | ------------------ | --------------------------------------------------------------------------------------- |
+| ★ Estimates value created — count + value                    | Both        | `30D/90D · READY`  | Total quoted demand.                                                                    |
+| ★ Open estimates — count + value                             | Both        | `NOW · READY`      | Total quoted demand still awaiting an outcome.                                          |
+| ★ Sent estimates awaiting action for 3+ days — count + value | BAU         | `NOW · READY`      | A factual follow-up threshold the team can understand and act on.                       |
+| ★ Expiring in 7 days — count + value                         | BAU         | `NOW · READY`      | Makes urgency visible before an offer lapses.                                           |
+| Estimates converted to orders — count + value                | Growth      | `30D/90D · READY`  | Shows whether quoting produces committed demand.                                        |
+| Estimate-to-order rate                                       | Growth      | `30D/90D · READY`  | Useful for sales-process review when numerator and denominator use one eligible cohort. |
+| Buyer App estimate value                                     | Growth      | `30D/90D · READY`  | Shows self-service demand without mixing it with orders.                                |
 
-| Header KPI option | Decision supported | Class | Decision |
-|---|---|---|---|
-| ★ Estimate value | Commercial size of this opportunity. | `NOW` | Include |
-| ★ Days open / days to expiry | Urgency. | `NOW` | Include |
-| ★ Expected gross margin ₹ and % | Whether the quote is worth winning; admin only. | `NOW` | Include |
-| ★ Availability coverage — % lines/units available | Whether it can be fulfilled as quoted. | `NOW` | Include |
-| Buyer credit headroom after conversion | Whether conversion creates a credit block. | `DETAIL` |
-| Item count / total units | Operational complexity. | `NOW` |
 
-Do not add a generic Performance trend for a single estimate. Use an **Opportunity intelligence** tab:
 
-| Card | Format | What to show |
-|---|---|---|
-| Quote composition | Stacked bar + list | Value by brand/category and top-value lines. |
-| Price and margin exceptions | Exception list | Discount, price source, margin-floor breaches, and repricing action. |
-| Fulfillment readiness | Progress bar + exceptions | Available, short, and unassigned quantities by warehouse. |
-| Buyer context | Compact scorecard | Last order, 90-day spend, overdue amount, credit headroom. |
-| Engagement timeline | Event timeline | Created, sent, viewed/responded if known, revised, expiry, owner follow-up. |
-| Conversion path | Status flow | Linked order or explicit reason lost/expired; no fabricated trend. |
+
+### Action options
+
+
+| Option                                       | Time / feasibility  | Ranked by / action                                     |
+| -------------------------------------------- | ------------------- | ------------------------------------------------------ |
+| ★ Sent estimates awaiting action for 3+ days | `NOW · READY`       | Oldest and highest value first; call or message.       |
+| ★ Expiring without an order                  | `NOW · READY`       | Soonest expiry, then value; revise, extend, or close.  |
+| ★ Ready to convert                           | `NOW · READY`       | Accepted estimates without a linked order; convert.    |
+| Drafts not sent                              | `NOW · READY`       | Old drafts by value; finish or discard.                |
+| Quoted items currently short on stock        | `NOW · CONDITIONAL` | Current inventory check; substitute or confirm supply. |
+
+
+**Table rows:** estimate number, customer, status, estimate value, sent/created age, expiry, source, and item count. No growth or trend aggregate.
+
+### Detail behavior
+
+Do not add KPI cards or a Performance tab. Estimate value, dates, expiry, status, items, totals, and conversion state already belong in the document UI.
+
+Optional contextual aids, maximum two:
+
+
+| Option                              | Feasibility   | Non-duplicative value                                                                                  |
+| ----------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------ |
+| Preferred: Customer account context | `ON-OPEN`     | Last order, overdue balance, and available credit beside the decision to approve or convert.           |
+| Preferred: Current stock exceptions | `CONDITIONAL` | Directional line-versus-current-stock check only; show alternative warehouse availability where known. |
+| Price below configured floor        | `CONDITIONAL` | Use only when a reliable current cost/floor policy exists; label as a current estimate.                |
+| Engagement timeline                 | `READY`       | Sent, viewed, accepted, and converted timestamps only when not already present in Activity.            |
+
+
+
 
 ## 2. Sales Orders
 
-### Landing page
+**Recommended shape:** Landing Pulse **4** · Actions **3** · Detail Pulse **0** · Explore **0**
 
-| KPI option | What it answers | Class | Decision |
-|---|---|---|---|
-| ★ Open order book — count + value | How much committed demand remains to fulfill? | `NOW` | Include |
-| ★ At-risk / overdue fulfillment — count + value | What revenue or trust is in danger now? | `NOW` | Include |
-| ★ Stock-blocked demand — orders + value short | What must be replenished, substituted, or transferred? | `NOW` | Include |
-| ★ Dispatch due today / next 7 days — count + value | What must operations execute next? | `NOW` | Include |
-| Fill rate — fulfilled units ÷ ordered units | Are we serving demand completely? | `PERIOD` | Exclude |
-| Cancellation rate + cancelled value | Is order quality or fulfillment failure worsening? | `PERIOD` | Exclude |
+**Period:** The document table defaults to This month. Recommended Pulse cards and Actions are current and ignore that table filter.
 
-| Callout option | Ranked contents / action | Class | Decision |
-|---|---|---|---|
-| ★ Orders blocked by stock | Value at risk, short SKUs, promised date; allocate, transfer, substitute. | `NOW` | Include |
-| ★ Dispatch SLA breached | Oldest/highest-value overdue milestones; assign and dispatch. | `NOW` | Include |
-| ★ High-value orders awaiting confirmation | Value × age; approve, verify credit, or contact buyer. | `NOW` | Include |
-| Credit/payment blocked orders | Headroom shortfall or payment prerequisite; collect or override with authority. | `NOW` | Exclude |
+### Pulse options
 
-**Table-row intelligence:** aggregates/trends are not worthwhile. Show order value, age/promised date, and fulfillment coverage or shortage count. Keep source, status, and buyer as dimensions.
 
-### Sales order details
+| Option                                     | Owner value | Time / feasibility  | Why it earns space                                                              |
+| ------------------------------------------ | ----------- | ------------------- | ------------------------------------------------------------------------------- |
+| ★ Total orders value — count + value       | Both        | `30D/90D · READY`   | Shows receieved demand overview.                                                |
+| ★ Open orders — count + value              | Both        | `NOW · READY`       | Shows committed demand still moving through operations.                         |
+| ★ Waiting for confirmation — count + value | BAU         | `NOW · READY`       | Identifies the next approval workload.                                          |
+| ★ Waiting to dispatch — count + value      | BAU         | `NOW · READY`       | Identifies orders ready for operational follow-through.                         |
+| ★ Order value created                      | Growth      | `30D/90D · READY`   | Measures booked demand without calling it sales.                                |
+| Orders waiting beyond the status SLA       | BAU         | `NOW · CONDITIONAL` | Use only after the tenant accepts explicit thresholds for each status.          |
+| Cancelled orders — count + value           | Growth      | `30D/90D · READY`   | Useful when cancellations are material and reasons are captured.                |
+| Exact fill rate / OTIF                     | Growth      | `LATER`             | Requires reliable fulfilled/backordered quantities and promised-date semantics. |
 
-| Header KPI option | Decision supported | Class | Descision |
-|---|---|---|---|
-| ★ Order value | Commercial commitment. | `NOW` | Include |
-| ★ Fulfillment coverage / fill rate | Readiness and remaining work. | `NOW` | Include |
-| ★ Gross margin ₹ and % | Profitability; admin only. | `NOW` | Include |
-| ★ Promised-date status | Days remaining or overdue. | `NOW` | Include |
-| Payment received / amount due | Whether payment blocks execution. | `NOW` | Exclude |
-| Units and lines remaining | Operational workload. | `NOW` | Exclude |
 
-Use an **Execution intelligence** tab rather than a document trend:
 
-| Card | Format | What to show |
-|---|---|---|
-| Fulfillment readiness | Line-level progress | Ordered, allocated, fulfilled, cancelled, and short quantities. |
-| Stock exceptions | Ranked list | Short SKUs, warehouse options, transfer/substitute action. |
-| SLA tracker | Milestone timeline | Confirmation, allocation, dispatch, delivery and lateness. |
-| Payment and credit | Scorecard | Paid/due, buyer exposure, headroom, blocking reason. |
-| Margin and mix | Bar + exceptions | Contribution by category/brand and low-margin lines. |
-| Document chain | Flow | Source estimate/app, invoice(s), shipment and status; highlight missing next document. |
+
+### Action options
+
+
+| Option                                   | Time / feasibility  | Ranked by / action                                                             |
+| ---------------------------------------- | ------------------- | ------------------------------------------------------------------------------ |
+| ★ Orders to confirm                      | `NOW · READY`       | Highest value and oldest received orders; confirm or reject.                   |
+| ★ Orders to dispatch                     | `NOW · READY`       | Oldest confirmed orders; dispatch or assign.                                   |
+| ★ Orders with current stock shortage     | `NOW · CONDITIONAL` | Current order lines versus inventory; substitute, source, or contact customer. |
+| Orders waiting beyond SLA                | `NOW · CONDITIONAL` | Time in current status versus an agreed threshold; escalate.                   |
+| Orders from customers over credit policy | `NOW · CONDITIONAL` | Outstanding plus order exposure versus configured credit; collect or approve.  |
+
+
+**Table rows:** order number, customer, source, status, order value, created/order date, ~~status age~~, location, and item count. Do not claim remaining or fulfilled value.
+
+### Detail behavior
+
+Do not add KPI cards or a Performance tab. Order value, dates, status, line items, totals, invoice link, and delivery activity already exist in the document workflow.
+
+Optional contextual aids, maximum two:
+
+
+| Option                                         | Feasibility   | Non-duplicative value                                                                   |
+| ---------------------------------------------- | ------------- | --------------------------------------------------------------------------------------- |
+| Preferred: Current stock exceptions            | `CONDITIONAL` | Directional order-line-versus-current-stock check, including stock available elsewhere. |
+| Preferred: Customer credit and overdue context | `ON-OPEN`     | Wider account exposure before confirmation or dispatch.                                 |
+| Time in current status                         | `READY`       | Show only if the existing status timeline does not already make it obvious.             |
+| Historical order quality                       | `LATER`       | Exact fill rate and OTIF require missing line-level fulfillment facts.                  |
+
+
+
 
 ## 3. Invoices
 
-### Landing page
+**Recommended shape:** Landing Pulse **4** · Actions **3** · Detail Pulse **0** · Explore **0**
 
-| KPI option | What it answers | Class | Decision |
-|---|---|---|---|
-| ★ Total receivables — amount + invoice count | How much cash remains to collect? | `NOW` | Include |
-| ★ Overdue receivables — amount + count + buyer count | How much exposure already needs action? | `NOW` | Include |
-| ★ Due in next 7 days — amount + count | What collections work should be scheduled now? | `NOW` | Include |
-| ★ 30+ day overdue — amount + share of receivables | Where is loss risk concentrated? | `NOW` | Include |
-| Collection efficiency — cash collected ÷ amount due in period | Is collections execution effective? | `PERIOD` | Exclude |
-| Invoiced gross margin ₹ and % | Is realized business profitable? Admin only. | `PERIOD` | Exclude |
+**Period:** Invoiced sales uses This month; receivable cards and Actions are current.
 
-| Callout option | Ranked contents / action | Class | Decision |
-|---|---|---|---|
-| ★ Largest overdue exposures | Buyer + oldest invoice + total overdue; call/collect. | `NOW` | Include |
-| ★ Newly overdue | Invoices crossing due date since last review; intervene early. | `NOW` | Include |
-| ★ Due soon, high value | Next 7 days ranked by value and buyer exposure; schedule reminder. | `NOW` | Include |
-| Credit-limit pressure | Buyers whose receivables plus open orders exceed policy; hold/review. | `NOW` | Exclude |
+### Pulse options
 
-**Table-row intelligence:** no historical aggregate is needed. Show invoice total, outstanding/paid amount, and days to due or days overdue. Status is essential but not an aggregate.
 
-### Invoice details
+| Option                                        | Owner value | Time / feasibility      | Why it earns space                                                    |
+| --------------------------------------------- | ----------- | ----------------------- | --------------------------------------------------------------------- |
+| ★ Invoiced sales                              | Both        | `30D/90D · READY`       | The clearest realized-sales measure in Yukti.                         |
+| ★ Outstanding amount — amount + invoice count | BAU         | `NOW · READY`           | Total cash still to collect.                                          |
+| ★ Overdue amount — amount + customer count    | Both        | `NOW · READY`           | Cash exposure already past due.                                       |
+| ★ Due in 7 days — amount + invoice count      | BAU         | `NOW · READY`           | Lets the owner plan collections before invoices become overdue.       |
+| Overdue 30+ days                              | BAU         | `NOW · READY`           | Useful alternative for credit-heavy businesses.                       |
+| Customers with overdue invoices               | BAU         | `NOW · READY`           | A workload view when customer count matters more than rupee total.    |
+| Cash collected in period                      | Growth      | `30D/90D · CONDITIONAL` | Use only when payment sync and partial-payment handling are complete. |
 
-| Header KPI option | Decision supported | Class | Decision |
-|---|---|---|---|
-| ★ Invoice total | Original obligation. | `NOW` | Include |
-| ★ Outstanding amount | Cash still due. | `NOW` | Include |
-| ★ Days to due / overdue | Collection urgency. | `NOW` | Include |
-| ★ Paid amount and payment status | Collection progress. | `NOW` | Include |
-| Gross margin ₹ and % | Realized profitability; admin only. | `NOW` | Exclude |
-| Buyer total overdue / credit headroom | Wider account risk. | `DETAIL` | Exclude |
 
-Use a **Collection intelligence** tab rather than a trend for one invoice:
 
-| Card | Format | What to show |
-|---|---|---|
-| Payment timeline | Timeline | Issue, due, reminders, payments/adjustments, current state. |
-| Aging context | Aging strip | This invoice and buyer's total exposure by 0–30/31–60/61–90/90+ days. |
-| Collection next action | Decision card | Owner, last contact, promised payment date, recommended next step. |
-| Buyer payment behavior | Compact comparison | Recent invoices paid on time/late and median days late, calculated on open. |
-| Line profitability | Ranked list | Value, tax, margin and exception lines; admin only. |
-| Source document flow | Flow | Order, dispatch/delivery evidence, invoice and any missing dependency. |
+
+### Action options
+
+
+| Option                              | Time / feasibility  | Ranked by / action                                                          |
+| ----------------------------------- | ------------------- | --------------------------------------------------------------------------- |
+| ★ Largest overdue customer balances | `NOW · READY`       | Amount × age; call, message, or place on hold.                              |
+| ★ Newly overdue invoices            | `NOW · READY`       | Due date crossed recently; intervene early.                                 |
+| ★ High-value invoices due soon      | `NOW · READY`       | Due date then amount; schedule reminder.                                    |
+| Customers over credit policy        | `NOW · CONDITIONAL` | Outstanding plus open-order exposure versus configured credit.              |
+| Payment sync exceptions             | `NOW · CONDITIONAL` | Mismatched or stale payments only when integration status is authoritative. |
+
+
+**Table rows:** invoice number, customer, invoice date, due date, status, total, outstanding, and days overdue. No historical aggregate is needed.
+
+### Detail behavior
+
+Do not add KPI cards or a Performance tab. Invoice total, paid/outstanding amount, due state, line items, taxes, and payment history already belong in the invoice view.
+
+One optional contextual panel:
+
+
+| Option                                  | Feasibility | Non-duplicative value                                                                               |
+| --------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------- |
+| Preferred: Customer collections context | `ON-OPEN`   | Total overdue across the customer, recent on-time/late behavior, and other invoices needing action. |
+| Source order flow                       | `READY`     | Show only when the linked order/invoice relationship is not already visible.                        |
+| Historical invoice margin               | `LATER`     | Current invoice lines do not preserve cost at sale.                                                 |
+
+
+
 
 ## 4. Customers
 
-### Landing page
+**Recommended shape:** Landing Pulse **4** · Actions **2** · Detail Pulse **4** · Explore **4**
 
-| KPI option | What it answers | Class | Decision |
-|---|---|---|---|
-| ★ Purchasing buyers — count + % of active customer base | How broad is current revenue participation? | `PERIOD` | Include |
-| ★ Win-back revenue pool — prior-period value from now-dormant buyers | How much recoverable demand is inactive? | `PERIOD` | Include |
-| ★ Overdue receivables — amount + affected buyers | Which relationships need collection intervention? | `NOW` | Include |
-| ★ Repeat buyer rate | Are customers returning, not merely ordering once? | `PERIOD` | Include |
-| 90-day buyer GMV | Scale of the currently monetized base. | `PERIOD` | Exclude |
-| Commercial coverage gap — buyers missing app, group, or price assignment | How much of the base cannot receive the intended growth strategy? | `NOW` | Exclude |
+**Period:** Fixed trailing 90 days for commercial facts; credit and receivables are current. No page-global filter in V1.
 
-| Callout option | Ranked contents / action | Class | Decision |
-|---|---|---|---|
-| ★ Win-back candidates | Dormant buyers ranked by prior 90-day value and cadence breach; call/message. | `PERIOD` | Include |
-| ★ Collection risk | Overdue amount × age × open-order exposure; collect or hold. | `NOW` | Include |
-| ★ Reorder due | Buyers past their normal reorder interval for repeat SKUs; create estimate/message. | `DETAIL` or bounded on demand | Include |
-| Cross-sell whitespace | High-value buyers missing a commonly co-purchased brand/category; propose campaign. | `DETAIL` or periodic batch, optional | Exclude |
+### Landing Pulse options
 
-**Table-row intelligence:** 90-day order/invoice value, days since last order versus expected cadence, and overdue amount. Credit utilization may replace value for credit-led tenants. Drop per-buyer MoM growth from the default table.
 
-### Customer details
+| Option                                                        | Owner value | Time / feasibility  | Why it earns space                                                         |
+| ------------------------------------------------------------- | ----------- | ------------------- | -------------------------------------------------------------------------- |
+| ★ Invoiced sales                                              | Both        | `90D · READY`       | Recent value of the customer base.                                         |
+| ★ Customers who purchased — count + % of active customers     | Both        | `90D · READY`       | Shows how broadly the customer base is contributing.                       |
+| ★ Overdue amount — amount + affected customers                | BAU         | `NOW · READY`       | Direct collections exposure.                                               |
+| Customers due to order again                                  | Growth      | `NOW · CONDITIONAL` | Identifies near-term repeat demand; requires an agreed cadence rule.       |
+| ★ Customers inactive for 90 days with sales in the prior year | Growth      | `NOW · READY`       | Simple win-back pool without pretending never-ordered records are dormant. |
+| Repeat customers — count + rate                               | Growth      | `90D · READY`       | Indicates whether customers are returning.                                 |
+| Buyer App enabled customers                                   | Growth      | `NOW · READY`       | Useful alternative for tenants prioritising digital adoption.              |
+| Total active customers                                        | BAU         | `NOW · READY`       | Contextual denominator; usually belongs in the page subtitle.              |
 
-| Header KPI option | Decision supported | Class | Decision |
-|---|---|---|---|
-| ★ 90-day spend | Meaningful recent account value. | `DETAIL` | Include |
-| ★ Days since last order vs usual cadence | Reorder/win-back urgency. | `DETAIL` | Include |
-| ★ Overdue amount | Collection risk. | `NOW` | Include |
-| ★ Credit used / headroom | Ability to accept more demand. | `NOW` | Include |
-| 90-day orders and AOV | Purchase frequency and order quality. | `DETAIL` | Exclude |
-| Gross margin contribution | Account profitability; admin only. | `DETAIL` | Exclude |
 
-| Performance card | Format | What to show | Decision |
-|---|---|---|---|
-| Spend and order cadence | Monthly line + order markers | Last 12 months, calculated only when this buyer opens; annotate cadence breach. | Include |
-| Reorder playbook | Ranked SKU list | Repeat SKUs, typical quantity, last purchase, next expected date, one-click estimate. | Include |
-| Category/brand mix and whitespace | 100% stacked bar + suggestions | Current mix and relevant missing categories/brands, not a decorative pie. | Include |
-| Payment behavior | Aging + scorecard | Open/overdue, median days late, on-time share, promised payment. | Include |
-| Margin and price realization | Distribution + exceptions | Realized margin/discount by major lines; admin only. | Include |
-| Channel and engagement | Funnel/summary | Assisted vs Buyer App value, app recency, campaign-to-order actions; avoid raw open counts. | Include |
+
+
+### Action options
+
+
+| Option                                        | Time / feasibility  | Ranked by / action                                                    |
+| --------------------------------------------- | ------------------- | --------------------------------------------------------------------- |
+| ★ Collect overdue balances                    | `NOW · READY`       | Amount × age; contact or hold.                                        |
+| Customers due to order again                  | `NOW · CONDITIONAL` | Prior value and cadence lateness; message or create estimate.         |
+| ★ Win back valuable inactive customers        | `NOW · READY`       | Invoiced sales from days 91–365, then days inactive; message or call. |
+| High-value customers not enabled on Buyer App | `90D + NOW · READY` | Enable and onboard; primarily belongs on Buyer App dashboard.         |
+| Customers with no Pricelist/Group             | `NOW · READY`       | Complete setup only when tenant policy expects custom assignment.     |
+
+
+**Table rows:** trailing-90-day invoiced sales, last order/invoice date, overdue amount, current credit usage, group/pricelist badges, and health status. Remove buyer-level growth.
+
+### Detail Pulse options
+
+
+| Option                                     | Owner value | Time / feasibility | Why it earns space                                                                 |
+| ------------------------------------------ | ----------- | ------------------ | ---------------------------------------------------------------------------------- |
+| ★ Invoiced sales + count of invoices       | Both        | `90D · ON-OPEN`    | Recent customer value.                                                             |
+| ★ Estimates+Orders — count + average value | Both        | `90D · ON-OPEN`    | Frequency and typical order size in one card.                                      |
+| ★ Overdue amount                           | BAU         | `NOW · READY`      | Immediate collections risk.                                                        |
+| ★ Credit used / available                  | BAU         | `NOW · READY`      | Whether more demand can be accepted.                                               |
+| Last order and days since                  | Both        | `NOW · READY`      | Prefer in title metadata if already present; otherwise use as an alternative card. |
+| App-sourced order share                    | Growth      | `90D · ON-OPEN`    | Digital adoption for this customer.                                                |
+| Products/categories purchased              | Growth      | `90D · ON-OPEN`    | Breadth of relationship; usually better in Explore.                                |
+| Historical gross margin                    | Growth      | `LATER`            | Requires cost-at-sale provenance.                                                  |
+
+
+
+
+### Explore options
+
+Render the four recommended cards; place alternatives behind “More insights.”
+
+
+| Option                           | Owner value | Time / feasibility      | Format and action                                                                |
+| -------------------------------- | ----------- | ----------------------- | -------------------------------------------------------------------------------- |
+| ★ Sales and order history        | Both        | `12M · ON-OPEN`         | Monthly invoiced sales with order markers; identify changes and seasonality.     |
+| ★ Products ordered repeatedly    | Growth      | `90D/12M · ON-OPEN`     | Ranked products with usual quantity and last purchase; create estimate.          |
+| ★ What this customer buys        | Growth      | `90D · ON-OPEN`         | Brand/category mix in plain language; find relationship concentration.           |
+| ★ Payment behavior               | BAU         | `12M · ON-OPEN`         | On-time/late invoices, median days late, credit utilizaiton, and current aging.  |
+| Buyer App versus assisted orders | Growth      | `90D · ON-OPEN`         | Source contribution and last app use.                                            |
+| Current pricing setup            | BAU         | `NOW · READY`           | Assigned Pricelists, Groups, and fallback path.                                  |
+| Products not bought recently     | Growth      | `ON-OPEN · CONDITIONAL` | Only repeated products past their normal interval; avoid speculative cross-sell. |
+| Margin and price realization     | Growth      | `LATER`                 | Historical margin is not reliable without cost-at-sale.                          |
+
+
+
 
 ## 5. Products
 
-### Landing page
+**Recommended shape:** Landing Pulse **4** · Actions **3** · Detail Pulse **3** · Explore **4**
 
-| KPI option | What it answers | Class | Decision |
-|---|---|---|---|
-| ★ Invoiced sales — value + units | What product demand was actually realized? | `PERIOD` | Include |
-| ★ Gross margin contribution — ₹ and % | Which assortment creates profit? Admin only. | `PERIOD` | Include |
-| ★ Revenue at stockout risk — value + affected SKUs | How much proven demand may be lost? | `PERIOD` + `NOW` | Include |
-| ★ Dead/slow stock value | How much working capital is trapped? | `PERIOD` + `NOW` | Include |
-| Product productivity — % active SKUs sold in 90 days | Is the assortment earning its shelf space? | `PERIOD` | Exclude |
-| Open demand coverage — available units ÷ open ordered units | Can current inventory serve committed demand? | `NOW` | Exclude |
+**Period:** Fixed trailing 90 days for sales/velocity; stock posture is current. No page-global filter in V1.
 
-| Callout option | Ranked contents / action | Class | Decision |
-|---|---|---|---|
-| ★ Proven sellers at stockout risk | Recent velocity × shortage; replenish or transfer. | `PERIOD` + `NOW` | Include |
-| ★ Dead/slow inventory | Inventory value × days without movement; discount, bundle, or stop buying. | `PERIOD` + `NOW` | Include |
-| ★ Margin leakage | High-volume SKUs below margin floor or with falling realization; reprice. | `PERIOD` | Include |
-| Demand without stock | Open/quoted quantity with no availability; substitute or source. | `NOW` | Exclude |
+### Landing Pulse options
 
-**Table-row intelligence:** total available/on-hand, trailing 90-day units or invoiced value, and open-demand shortage or margin %. Do not maintain a previous-period growth arrow for every SKU.
 
-### Product details
+| Option                                    | Owner value | Time / feasibility  | Why it earns space                                                               |
+| ----------------------------------------- | ----------- | ------------------- | -------------------------------------------------------------------------------- |
+| ★ Invoiced sales — value + units          | Both        | `90D · READY`       | Recent assortment demand.                                                        |
+| ★ Recently sold products now out of stock | BAU         | `NOW + 90D · READY` | Counts current stockouts only among products with recent invoiced demand.        |
+| ★ Products running low                    | BAU         | `NOW + 90D · READY` | Current stock below an agreed cover threshold using recent velocity.             |
+| ★ Products that sold                      | Growth      | `90D · READY`       | Sold SKUs versus active SKUs, in plain language.                                 |
+| Stock with no sale in 90 days             | Both        | `NOW + 90D · READY` | Working-capital signal without claiming true inventory age.                      |
+| Total available units                     | BAU         | `NOW · READY`       | Useful for inventory-heavy tenants but weak as a portfolio-wide decision metric. |
+| Open ordered quantity versus stock        | BAU         | `NOW · CONDITIONAL` | Directionally useful only if open-order semantics are agreed; not fill rate.     |
+| Gross margin                              | Growth      | `LATER`             | Historical cost-at-sale is missing.                                              |
 
-| Header KPI option | Decision supported | Class | Decision |
-|---|---|---|---|
-| ★ Available/on-hand units | Current ability to sell. | `NOW` | Include |
-| ★ 90-day units sold / invoiced value | Proven velocity and value. | `DETAIL` | Include |
-| ★ Stock cover days | Replenishment urgency. | `DETAIL` | Include |
-| ★ Open demand shortage | Committed/quoted demand at risk. | `NOW` | Exclude |
-| Gross margin ₹ and % | Profit contribution; admin only. | `DETAIL` | Include |
-| Purchasing-buyer count / penetration | Breadth of demand. | `DETAIL` | Exclude |
 
-| Performance card | Format | What to show | Decision |
-|---|---|---|---|
-| Sales and velocity trend | Monthly line/columns | Last 12 months, calculated when opened; units and invoiced value. | Include |
-| Inventory by warehouse | Bars + transfer hints | Available, committed, short, and excess posture. | Include |
-| Demand and stock cover | Forecast-free decision card | Recent velocity, open demand, cover, reorder/transfer threshold. | Include |
-| Buyer penetration | Ranked list | Top buyers, repeat buyers, lapsed buyers, and relevant customer groups. | Include |
-| Price and margin realization | Distribution + exception list | Realized price versus base/list and margin-floor breaches. | Include |
-| Channel/campaign contribution | Split + list | Buyer App/assisted mix and campaigns that generated demand; source contribution only. | Include |
+
+
+### Action options
+
+
+| Option                                       | Time / feasibility  | Ranked by / action                                                    |
+| -------------------------------------------- | ------------------- | --------------------------------------------------------------------- |
+| ★ Recently sold products now out of stock    | `NOW + 90D · READY` | Recent units/value then current shortage; replenish or source.        |
+| ★ Products running low                       | `NOW + 90D · READY` | Lowest cover among proven sellers; replenish.                         |
+| ★ Stock with no sale in 90 days              | `NOW + 90D · READY` | Current stock value/units; discount, bundle, or stop buying.          |
+| Ordered products currently short             | `NOW · CONDITIONAL` | Open ordered quantity versus current inventory; substitute or source. |
+| Current selling price below configured floor | `NOW · CONDITIONAL` | Requires a trusted current cost/floor policy; reprice.                |
+
+
+**Table rows:** current available stock, trailing-90-day invoiced units and sales, days cover or “Not enough history,” and stock status. Remove previous-period growth.
+
+### Detail Pulse options
+
+
+| Option                         | Owner value | Time / feasibility    | Why it earns space                                     |
+| ------------------------------ | ----------- | --------------------- | ------------------------------------------------------ |
+| ★ Available stock              | BAU         | `NOW · READY`         | Current ability to sell.                               |
+| ★ Units sold + invoiced sales  | Both        | `90D · ON-OPEN`       | Proven demand in one card.                             |
+| ★ Days of stock remaining      | BAU         | `NOW + 90D · ON-OPEN` | Plain-language replenishment signal.                   |
+| Customers who purchased        | Growth      | `90D · ON-OPEN`       | Breadth of recent demand.                              |
+| Last invoice date              | BAU         | `NOW · ON-OPEN`       | Useful for sparse products; otherwise supporting text. |
+| Average invoiced selling price | Growth      | `90D · ON-OPEN`       | Actual price achieved, without claiming margin.        |
+| Open ordered quantity          | BAU         | `NOW · CONDITIONAL`   | Use only with clear non-terminal order semantics.      |
+| Gross margin                   | Growth      | `LATER`               | Requires cost-at-sale.                                 |
+
+
+
+
+### Explore options
+
+
+| Option                          | Owner value | Time / feasibility | Format and action                                                             |
+| ------------------------------- | ----------- | ------------------ | ----------------------------------------------------------------------------- |
+| ★ Sales and units over time     | Both        | `12M · ON-OPEN`    | Monthly line/columns from invoice lines; spot seasonality or decline.         |
+| ★ Current stock by warehouse    | BAU         | `NOW · READY`      | Bars for available stock by warehouse; transfer or replenish.                 |
+| ★ Customers buying this product | Growth      | `90D · ON-OPEN`    | Ranked buyers with last purchase and units.                                   |
+| ★ Actual selling prices         | Growth      | `90D · ON-OPEN`    | Price/discount distribution from invoice lines; investigate outliers.         |
+| Buyer App and campaign source   | Growth      | `90D · ON-OPEN`    | Directly linked source contribution only.                                     |
+| Sales by location               | Growth      | `90D · ON-OPEN`    | Location mix when document location is populated.                             |
+| Products often bought alongside | Growth      | `LATER`            | Requires a deliberately validated basket-analysis definition and cost review. |
+| Inventory history / turns       | Growth      | `LATER`            | Requires a complete movement ledger.                                          |
+
 
 ---
+
+
 
 # Growth modules
 
+
+
 ## 6. Buyer App
 
-Buyer App is already a tenant-level contribution dashboard, not an entity module. It should not gain a duplicate “Buyer App buyer details” page; buyer rows should deep-link to the existing Customer details page.
+Buyer App is a channel dashboard, not an entity module. Buyer-level rows deep-link to Customer details rather than creating duplicate buyer analytics.
 
-### Landing/dashboard header and action row
+**Recommended shape:** Pulse **4** · Actions **3** · Explore **4** · No separate detail page
 
-| KPI option | What it answers | Class | Decision |
-|---|---|---|---|
-| ★ App-enabled coverage — enabled ÷ eligible buyers | How much of the customer base can self-serve? | `NOW` | Include |
-| ★ Ordering-buyer adoption — app-ordering buyers ÷ enabled buyers | Is access turning into commercial use? | `PERIOD` + `EVENT` | Include |
-| ★ App-sourced order value + share of total order value | How much business flows through self-service? | `PERIOD` | Include |
-| ★ Repeat app buyer rate — 2+ app orders in a useful window | Is the habit becoming durable? | `PERIOD` | Include |
-| App estimate-to-order conversion | Does app-created intent progress to an order? | `PERIOD` |  Exclude |
-| App order quality — cancellation/fill rate versus assisted | Is channel growth operationally healthy? | `PERIOD` | Exclude |
+**Period:** Fixed trailing 90 days for adoption and value; app access is current.
 
-| Callout option | Ranked contents / action | Class | Decision |
-|---|---|---|---|
-| ★ High-value offline buyers not enabled | Offline 90-day value, contact/access state; enable and onboard. | `PERIOD` + `NOW` | Include |
-| ★ Enabled but not activated | Enabled date, last app event, prior offline value; assist first login/order. | `EVENT` | Include |
-| ★ Opened/started but did not order | Last funnel step and value/cart if available; nudge or support. | `EVENT` | Include |
-| Lapsed app buyers | Prior app value, cadence breach, last app order; re-engage. | `PERIOD` | Exclude |
+### Pulse options
 
-**Buyer opportunity table:** last app activity/funnel stage, app order value and count for the selected period, and app share of that buyer's order value. Do not show a buyer-level daily trend. Deep-link to Customer details.
 
-There is no separate entity details specification. The 10+ card portfolio for this dashboard appears later in this document.
+| Option                               | Owner value | Time / feasibility | Why it earns space                                                                        |
+| ------------------------------------ | ----------- | ------------------ | ----------------------------------------------------------------------------------------- |
+| ★ Customers with Buyer App access    | BAU         | `NOW · READY`      | Shows how much of the customer base can self-serve. Define one authoritative access flag. |
+| ★ Customers who ordered in the app   | Both        | `90D · READY`      | Measures commercial adoption, not merely app opens.                                       |
+| ★ App-sourced invoiced sales + share | Growth      | `90D · READY`      | Shows directly linked realized contribution without claiming incrementality.              |
+| ★ Repeat app customers               | Growth      | `90D · READY`      | Customers with at least two app orders, not two app events.                               |
+| App-sourced order value + share      | BAU         | `90D · READY`      | Earlier demand-stage alternative; keep separate from invoiced sales.                      |
+| Customers who used the app           | Growth      | `90D · READY`      | Useful as an adoption-stage diagnostic, not the primary success metric.                   |
+| App order cancellation rate          | Growth      | `90D · READY`      | Use only when cancellation status is consistently synced.                                 |
+| Average orders per enabled customer  | Growth      | `90D · READY`      | Feasible but usually less actionable than ordering and repeat-customer rates.             |
+
+
+
+
+### Action options
+
+
+| Option                                           | Time / feasibility  | Ranked by / action                                                        |
+| ------------------------------------------------ | ------------------- | ------------------------------------------------------------------------- |
+| ★ Valuable assisted customers without app access | `NOW + 90D · READY` | Recent invoiced sales; enable and onboard.                                |
+| ★ Access enabled but never used                  | `NOW · READY`       | Enablement age and prior value; assist first login.                       |
+| ★ Used the app but never ordered                 | `NOW + 90D · READY` | Last activity and prior value; contact for help.                          |
+| Previously ordered in app, now inactive          | `NOW + 90D · READY` | Previous app value and days since app order; re-engage.                   |
+| App orders needing operational action            | `NOW · READY`       | Status/age; confirm or dispatch. Usually belongs on the Seller Dashboard. |
+
+
+
+
+### Explore options
+
+
+| Option                                | Owner value | Time / feasibility  | Format and action                                                                                                              |
+| ------------------------------------- | ----------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| ★ Adoption funnel                     | Both        | `90D · READY`       | Access → used → ordered → repeat, using unique customers and explicit definitions.                                             |
+| ★ Business through the app            | Both        | `90D · READY`       | Estimates, order value, and invoiced sales as separately named stages; do not imply false conversion across unrelated periods. |
+| ★ App contribution over time          | Growth      | `12M · READY`       | Monthly app-sourced order/invoice share at tenant grain.                                                                       |
+| ★ Adoption by location                | Growth      | `90D · READY`       | Ordering customers and app contribution by document location.                                                                  |
+| Adoption by Customer Group            | Growth      | `90D · CONDITIONAL` | Uses current group membership; label it accordingly.                                                                           |
+| Assisted versus app order quality     | Growth      | `90D · CONDITIONAL` | Compare AOV/cancellation only; exact fill-rate comparison is unavailable.                                                      |
+| Customers moving from assisted to app | Growth      | `90D · ON-OPEN`     | Ranked transition list; do not maintain buyer-by-day histories.                                                                |
+| Cart and checkout drop-off            | Growth      | `LATER`             | Middle funnel events are incomplete.                                                                                           |
+
+
+
 
 ## 7. Campaigns
 
-### Landing page
+Use “opened,” “ordered,” and “campaign-linked” rather than “reached,” “converted,” or “influenced” unless the corresponding delivery and attribution evidence exists.
 
-| KPI option | What it answers | Class | Decision |
-|---|---|---|---|
-| ★ Live campaign reach — unique reached ÷ eligible target buyers | Did the offer actually reach its intended market? | `EVENT` | Include |
-| ★ Engaged buyer rate — unique viewers ÷ reached | Is the proposition interesting enough to inspect? | `EVENT` | Include |
-| ★ Buyer conversion — unique ordering buyers ÷ unique viewers/reached | Is engagement becoming demand? Show both denominators in drill-down. | `EVENT` | Include |
-| ★ Attributed order value | What sourced value did campaigns create? | `PERIOD` | Include |
-| Estimate-to-order progression from campaigns | Is campaign intent progressing downstream? | `PERIOD` | Exclude |
-| Expiring/no-response campaigns — count + audience/value opportunity | Which live campaigns need intervention? | `NOW` + `EVENT` | Exclude |
+**Recommended shape:** Landing Pulse **4** · Actions **3** · Detail Pulse **4** · Explore **4**
 
-| Callout option | Ranked contents / action | Class | Decision |
-|---|---|---|---|
-| ★ Live with weak reach | Large eligible audience but low delivered/viewed rate after SLA; resend/fix access. | `EVENT` | Include |
-| ★ High engagement, low conversion | Many viewers but few orders; review price, stock, assortment, or CTA. | `EVENT` | Include |
-| ★ Expiring with open opportunity | Time remaining × engaged non-buyers × value proxy; extend or nudge. | `NOW` + `EVENT` | Include |
-| Coverage gap | Valuable buyers/groups absent from all live campaigns; create/expand campaign. | `NOW` | Exclude |
+**Period:** Landing selected period for outcomes; live/expiry facts are current. Detail is campaign lifetime.
 
-**Table-row intelligence:** target/reached buyer count, unique view rate, and ordering buyers + attributed order value. Product/brand counts and validity remain useful configuration fields. Previous-campaign growth should not be a default row metric because campaigns differ in audience and assortment.
+### Landing Pulse options
 
-### Campaign details
 
-| Header KPI option | Decision supported | Class | Decision |
-|---|---|---|---|
-| ★ Unique reached / eligible audience | Distribution quality. | `EVENT` | Include |
-| ★ Unique engaged / engagement rate | Proposition interest. | `EVENT` | Include |
-| ★ Ordering buyers / conversion rate | Commercial response. | `EVENT` | Include |
-| ★ Attributed order value | Sourced business value. | `PERIOD` | Include |
-| Estimates and estimate-to-order rate | Downstream progression. | `PERIOD` | Exclude |
-| Days left / engaged non-buyers | Remaining recovery opportunity. | `NOW` + `EVENT` | Exclude |
+| Option                                    | Owner value | Time / feasibility              | Why it earns space                                                                       |
+| ----------------------------------------- | ----------- | ------------------------------- | ---------------------------------------------------------------------------------------- |
+| ★ Customers who opened campaigns          | Both        | `SELECTED PERIOD · READY`       | Direct engagement observed in Yukti.                                                     |
+| ★ Customers who ordered campaign products | Growth      | `SELECTED PERIOD · CONDITIONAL` | Uses the documented campaign-linking rule; label it “campaign-linked.”                   |
+| Campaign-linked order value               | Growth      | `SELECTED PERIOD · CONDITIONAL` | Commercial result without calling it GMV or incremental revenue.                         |
+| ★ Open-to-order rate                      | Growth      | `SELECTED PERIOD · CONDITIONAL` | Useful when both stages are unique customers within the same eligible campaign set.      |
+| Live campaigns                            | BAU         | `NOW · READY`                   | Workflow context; often better in the subtitle.                                          |
+| ★ Campaign enquiries value and count      | BAU         | `SELECTED PERIOD · READY`       | Useful when estimates are intentionally treated as enquiries. Keep separate from orders. |
+| WhatsApp delivery rate                    | BAU         | `SELECTED PERIOD · CONDITIONAL` | Available only for campaigns linked to authoritative broadcast delivery events.          |
 
-| Performance card | Format | What to show | Decision |
-|---|---|---|---|
-| Reach-to-order funnel | Funnel | Eligible → notified/delivered → viewed → estimated → ordered, unique buyers at every stage. | Include |
-| Engagement timing | Short cumulative line | First 7/14 days or campaign lifetime; event-derived, not a permanent daily entity fact. | Include |
-| Conversion and value | Scorecard + cohort table | Orders, buyers, AOV, attributed value, estimate progression. | Include |
-| Product response | Ranked list | Viewed/ordered products, units, value, stock/margin exceptions. | Include |
-| Audience response | Group/location table | Reach and conversion by a few strategic dimensions; avoid per-buyer trend storage. | Include |
-| Recovery queue | Ranked buyers | Engaged non-buyers, abandoned intent, or unreachable valuable buyers with direct action. | Include |
+
+
+
+### Action options
+
+
+| Option                                       | Time / feasibility  | Ranked by / action                                                   |
+| -------------------------------------------- | ------------------- | -------------------------------------------------------------------- |
+| ★ Live campaigns with weak opens             | `NOW · READY`       | Time since launch and target size; fix access or resend.             |
+| ★ Many openers but no estimates/orders       | `NOW · CONDITIONAL` | Engaged non-buyers; review price, product availability, and message. |
+| ★ Expiring campaigns with engaged non-buyers | `NOW · CONDITIONAL` | Days left and opener count; nudge or extend.                         |
+| Failed WhatsApp deliveries                   | `NOW · CONDITIONAL` | Failed recipient count; correct contact or resend.                   |
+| Draft campaigns not published                | `NOW · READY`       | Age and audience size; finish or archive.                            |
+
+
+**Table rows:** status/validity, target/current audience, unique openers, ordering customers, linked order value, and product count. Do not show previous-campaign growth; campaigns differ in audience and assortment.
+
+### Detail Pulse options
+
+
+| Option                                       | Owner value | Time / feasibility       | Why it earns space                                         |
+| -------------------------------------------- | ----------- | ------------------------ | ---------------------------------------------------------- |
+| ★ Customers who opened                       | Both        | `LIFETIME · READY`       | Direct observed engagement.                                |
+| ★ Customers who ordered + open-to-order rate | Growth      | `LIFETIME · CONDITIONAL` | Commercial response in one card.                           |
+| Campaign-linked order value                  | Growth      | `LIFETIME · CONDITIONAL` | Direct linked value.                                       |
+| Customers delivered                          | BAU         | `LIFETIME · CONDITIONAL` | Only when authoritative WhatsApp delivery data is linked.  |
+| ★ Campaign linked enquiry value              | BAU         | `LIFETIME · READY`       | Estimate-stage interest, kept separate from orders.        |
+| ★ Engaged customers who did not order        | Growth      | `NOW · CONDITIONAL`      | Better as an Action/Explore queue than a headline KPI.     |
+| Days remaining                               | BAU         | `NOW · READY`            | Prefer in campaign header metadata rather than a KPI card. |
+
+
+
+
+### Explore options
+
+
+| Option                            | Owner value | Time / feasibility       | Format and action                                                                                                         |
+| --------------------------------- | ----------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| ★ Campaign funnel                 | Both        | `LIFETIME · CONDITIONAL` | Delivered when known → opened → ordered; omit unavailable stages.                                                         |
+| ★ Response over campaign lifetime | Growth      | `LIFETIME · CONDITIONAL` | Cumulative opens and campaign-linked orders/estimates; fall back to an opens-only view when order linking is unavailable. |
+| ★ Products ordered                | Growth      | `LIFETIME · CONDITIONAL` | Ranked campaign-linked products, units, and order value.                                                                  |
+| ★ Customers to follow up          | BAU         | `NOW · CONDITIONAL`      | Opened but did not order; direct message/action.                                                                          |
+| Response by location              | Growth      | `LIFETIME · CONDITIONAL` | Use document location, not assumed customer ownership.                                                                    |
+| Response by Customer Group        | Growth      | `LIFETIME · CONDITIONAL` | Uses current membership unless publish-time audience was saved.                                                           |
+| Previous-campaign comparison      | Growth      | `LATER`                  | Campaign audiences, durations, and assortments are not naturally comparable.                                              |
+| Cart/checkout funnel              | Growth      | `LATER`                  | Middle events are incomplete.                                                                                             |
+
+
+
 
 ## 8. Customer Groups
 
-### Landing page
+Current group membership is configuration, not historical truth. Any sales metric means “sales from customers who are members now,” and group totals must not be summed when customers overlap.
 
-| KPI option | What it answers | Class | Decision |
-|---|---|---|---|
-| ★ Buyer coverage — assigned unique buyers ÷ eligible buyers | Is segmentation operationally complete? | `NOW` | Include |
-| ★ Unassigned valuable buyers — count + 90-day value | What valuable demand is outside strategy? | `NOW` + `PERIOD` | Include |
-| ★ Purchasing-member rate | Are groups commercially active? | `PERIOD` | Include |
-| ★ Group-attributed order value | How much business is addressed through groups? Deduplicate overlapping members. | `PERIOD` | Include |
-| Pricing/campaign-ready coverage | Members in groups with an active pricelist and live/recent campaign. | `NOW` | Exclude |
-| Stale dynamic groups | Groups whose rule result is old/failed or has changed materially. | `NOW` | Exclude |
+**Recommended shape:** Landing Pulse **3** · Actions **2** · Detail Pulse **4** · Explore **3**
 
-| Callout option | Ranked contents / action | Class | Decision |
-|---|---|---|---|
-| ★ High-value buyers unassigned | 90-day value and location; assign or create a group. | `NOW` + `PERIOD` | Include |
-| ★ Groups without an active commercial play | Member value but no active pricelist/campaign; price or activate. | `NOW` | Include |
-| ★ Under-engaged valuable groups | Strong historical value but low recent purchasing-member rate; campaign/review. | `SMALL-HIST` | Exclude (complex for now) |
-| Assignment conflicts | Buyers in overlapping groups with ambiguous price/campaign priority; resolve. | `NOW` | Include |
+**Period:** Current membership plus fixed trailing 90-day facts about current members. No global period filter.
 
-**Table-row intelligence:** unique active/total members, trailing 90-day order value or purchasing-member rate, and active pricelist/campaign coverage. Never sum group GMV across overlapping memberships without explicit deduplication.
+### Landing Pulse options
 
-### Customer group details
 
-| Header KPI option | Decision supported | Class | Decision |
-|---|---|---|---|
-| ★ Unique members | Addressable audience. | `NOW` |
-| ★ Purchasing-member rate | Commercial activation. | `PERIOD` |
-| ★ 90-day order value | Group value. | `DETAIL` or `SMALL-HIST` |
-| ★ Active price/campaign coverage | Whether strategy can reach the group. | `NOW` |
-| AOV / order frequency | Buying pattern. | `DETAIL` |
-| Overdue receivables or gross margin contribution | Risk or profit quality; admin choice. | `DETAIL` |
+| Option                                     | Owner value | Time / feasibility  | Why it earns space                                                                                  |
+| ------------------------------------------ | ----------- | ------------------- | --------------------------------------------------------------------------------------------------- |
+| ★ Customers assigned to at least one Group | BAU         | `NOW · READY`       | Shows whether segmentation setup covers the base.                                                   |
+| ★ Valuable customers in no Group           | Growth      | `NOW + 90D · READY` | Count plus recent invoiced sales 90d; identifies missed targeting.                                  |
+| ★ Groups with customers who purchased      | Growth      | `90D · READY`       | Shows whether the segmented base is commercially active (atleast 80% customers purchased last 90d). |
+| Groups with an active Pricelist            | BAU         | `NOW · READY`       | Configuration readiness.                                                                            |
+| Groups with a live campaign                | Growth      | `NOW · READY`       | Current activation coverage.                                                                        |
+| Rule-based Groups needing refresh          | BAU         | `NOW · CONDITIONAL` | Requires an agreed refresh/failure SLA.                                                             |
+| Total Groups                               | BAU         | `NOW · READY`       | Useful context, usually in the subtitle rather than a KPI.                                          |
+| Combined Group sales                       | Growth      | `LATER`             | Overlapping memberships make a summed headline misleading without a declared allocation rule.       |
 
-| Performance card | Format | What to show |
-|---|---|---|
-| Value and active-member trend | Monthly columns + line | Group order value and purchasing members; small dimension only. | Include |
-| Member health distribution | Segmented bar | Active, reorder due, dormant, overdue, new. | Include |
-| Product/brand affinity | Ranked bars | Distinctive categories/brands and repeat products. | Include |
-| Price realization and margin | Distribution + exceptions | Discount/margin by assigned pricing path; admin only. | Include |
-| Campaign and app adoption | Funnel/split | Reach, engagement, orders, app-enabled and app-ordering members. | Include |
-| Member opportunity queue | Ranked table | High-value dormant, unpriced, not-on-app, or cross-sell candidates. | Include |
+
+
+
+### Action options
+
+
+| Option                                                   | Time / feasibility  | Ranked by / action                                              |
+| -------------------------------------------------------- | ------------------- | --------------------------------------------------------------- |
+| ★ High-value customers in no Group                       | `NOW + 90D · READY` | Recent invoiced sales; assign or create a Group.                |
+| ★ Groups with neither active pricing nor a live campaign | `NOW · READY`       | Member count/value; price or activate.                          |
+| Rule-based Groups needing refresh                        | `NOW · CONDITIONAL` | Staleness/failure; refresh or fix rules.                        |
+| Empty Groups                                             | `NOW · READY`       | Age and last update; add members or archive.                    |
+| Assignment/price conflicts                               | `NOW · READY`       | Keep on Pricelists, where resolution priority can be explained. |
+
+
+**Table rows:** total members, purchasing members in 90 days, 90-day invoiced sales from current members, and active Pricelist/Campaign badges. Rows are independently useful but not additive.
+
+### Detail Pulse options
+
+
+| Option                                | Owner value | Time / feasibility | Why it earns space                                      |
+| ------------------------------------- | ----------- | ------------------ | ------------------------------------------------------- |
+| ★ Members                             | BAU         | `NOW · READY`      | Current addressable audience.                           |
+| ★ Members who purchased               | Growth      | `90D · ON-OPEN`    | Commercial activity among current members.              |
+| ★ Invoiced sales from current members | Growth      | `90D · ON-OPEN`    | Current-group value with explicit composition caveat.   |
+| ★ Members with overdue balances       | BAU         | `NOW · ON-OPEN`    | Risk within the current group.                          |
+| Members with Buyer App access         | Growth      | `NOW · READY`      | Digital readiness.                                      |
+| Active Pricelists / campaigns         | BAU         | `NOW · READY`      | Better as header metadata when already visible in tabs. |
+| Historical group growth               | Growth      | `LATER`            | Membership effective dates are absent.                  |
+
+
+
+
+### Explore options
+
+
+| Option                            | Owner value | Time / feasibility    | Format and action                                                         |
+| --------------------------------- | ----------- | --------------------- | ------------------------------------------------------------------------- |
+| ★ Member activity                 | Both        | `90D · ON-OPEN`       | Bought in 0–30, 31–90, 90+ days, or never; choose activation action.      |
+| ★ Products and brands members buy | Growth      | `90D · ON-OPEN`       | Ranked mix for campaign/pricing decisions.                                |
+| ★ Member opportunity list         | Both        | `NOW + 90D · ON-OPEN` | Valuable inactive, overdue, unpriced, or not-on-app customers.            |
+| Pricing and campaign setup        | BAU         | `NOW · READY`         | Assignment coverage and missing commercial setup.                         |
+| Buyer App adoption                | Growth      | `90D · ON-OPEN`       | Access, ordering, and app contribution among current members.             |
+| Monthly sales trend               | Growth      | `LATER`               | Without membership history, the past is recomputed using today's members. |
+| Historical margin                 | Growth      | `LATER`               | Cost-at-sale is absent.                                                   |
+
+
+
 
 ## 9. Pricelists
 
-### Landing page
+Pricelists are a configuration and diagnostics surface, not a time-series performance module.
 
-| KPI option | What it answers | Class | Decision |
-|---|---|---|---|
-| ★ Buyer pricing coverage — buyers resolved beyond base price | Is differentiated pricing actually deployed? | `NOW` |  Include |
-| ★ High-value uncovered buyers — count + 90-day value | Where is base-price fallback undermining strategy? | `NOW` + `PERIOD` | Include |
-| ★ Expiring in 7/30 days — lists + covered buyer value | What pricing needs renewal before disruption? | `NOW` | Include |
-| ★ Margin-floor exposure — items + recent/open demand value | Where could pricing destroy profit? Admin only. | `NOW` + bounded demand | Include |
-| Sellable-SKU coverage — priced SKUs ÷ eligible SKUs | How complete is the assortment pricing? | `NOW` | Exclude |
-| Price conflict count — buyers/SKUs with competing eligible paths | Where will priority produce surprising prices? | `NOW` | Exclude |
+**Recommended shape:** Landing Pulse **4** · Actions **2** · Detail Pulse **4** · Explore **3**
 
-| Callout option | Ranked contents / action | Class | Decision |
-|---|---|---|---|
-| ★ Expiring commercial coverage | List, days left, assigned buyer value; renew/replace. | `NOW` | Exclude (unclear what this is) |
-| ★ High-value buyers/groups on base fallback | Recent value and missing assignment; assign. | `NOW` + `PERIOD` | Include |
-| ★ Below-floor or negative-margin items | Demand/value exposure and resolved price; reprice. | `NOW` + bounded demand | Include |
-| Assignment/priority conflicts | Competing paths and affected buyers/SKUs; resolve priority. | `NOW` | Include |
+**Period:** Current posture; no period selector.
 
-**Table-row intelligence:** assigned unique buyers/groups, active SKU count or sellable-SKU coverage, and average discount/margin-floor exception count. Validity, priority, and strategy are configuration fields. A time trend is not worthwhile.
+### Landing Pulse options
 
-### Pricelist details
 
-| Header KPI option | Decision supported | Class | Decision |
-|---|---|---|---|
-| ★ Unique buyers reached | Commercial reach after group deduplication. | `DETAIL` | Include |
-| ★ Eligible SKU coverage | Completeness. | `NOW` | Include |
-| ★ Median/weighted discount | Pricing posture; prefer weighted only when demand basis is explicit. | `DETAIL` | Include |
-| ★ Margin-floor exceptions | Profit risk; admin only. | `NOW` | Include |
-| 90-day order value resolved through this list | Actual adoption/value. | `DETAIL` | Exculde |
-| Days to expiry | Renewal urgency. | `NOW` | Exclude |
+| Option                                  | Owner value | Time / feasibility  | Why it earns space                                                                    |
+| --------------------------------------- | ----------- | ------------------- | ------------------------------------------------------------------------------------- |
+| ★ Customers with active custom pricing  | Both        | `NOW · READY`       | Deduplicated direct, Group, and all-customer assignments.                             |
+| ★ Products with custom prices           | BAU         | `NOW · READY`       | Current SKU scope across active lists.                                                |
+| ★ Items priced below current cost/floor | Both        | `NOW · CONDITIONAL` | Immediate pricing check; label cost basis as current, not historical margin.          |
+| Active Pricelists                       | BAU         | `NOW · READY`       | Workflow context, usually suitable for the subtitle.                                  |
+| ★ Pricelists expiring in 30 days        | BAU         | `NOW · READY`       | Useful when validity windows are common.                                              |
+| Customer Groups with active pricing     | BAU         | `NOW · READY`       | Setup coverage for tenants using group pricing.                                       |
+| Customers on base price                 | Growth      | `NOW · CONDITIONAL` | Useful only when tenant policy expects custom pricing; base price may be intentional. |
 
-Use a **Pricing effectiveness** tab; do not add a generic time trend:
 
-| Card | Format | What to show | Decision |
-|---|---|---|---|
-| Assignment reach | Coverage tree | Direct buyers, groups, unique resolved buyers, exclusions. | Include |
-| SKU coverage | Progress + gaps | Priced, base fallback, unavailable, excluded SKUs. | Include |
-| Discount distribution | Histogram/bands | Item count and recent demand value by discount band. | Include |
-| Margin impact | Ranked exceptions | Resolved price, cost, margin, affected demand; admin only. | Include |
-| Adoption | Ranked list | Recent orders/value using this list and buyers still resolving elsewhere. | Include |
-| Resolution conflicts | Diagnostic table | Higher-priority overrides, overlapping assignments, expired/inactive paths. | Include |
+
+
+### Action options
+
+
+| Option                                                      | Time / feasibility  | Ranked by / action                                                 |
+| ----------------------------------------------------------- | ------------------- | ------------------------------------------------------------------ |
+| ★ Expiring Pricelists                                       | `NOW · READY`       | Days left and affected customers; renew, replace, or allow expiry. |
+| ★ Items below current cost/floor                            | `NOW · CONDITIONAL` | Current exposure; correct price.                                   |
+| Customers expected to have custom pricing but on base price | `NOW · CONDITIONAL` | Requires an explicit tenant policy; assign pricing.                |
+| Higher-priority overrides changing intended price           | `NOW · ON-OPEN`     | Diagnostic, not an alert until conflict semantics are agreed.      |
+| Most-covered Pricelists                                     | `READY`             | A leaderboard, not an action; keep out of Actions.                 |
+
+
+**Table rows:** unique customers reached, product count, below-cost/floor exception count, average discount, validity, priority, and status. Avoid unweighted average margin.
+
+### Detail Pulse options
+
+
+| Option                           | Owner value | Time / feasibility  | Why it earns space                                               |
+| -------------------------------- | ----------- | ------------------- | ---------------------------------------------------------------- |
+| ★ Customers reached              | Both        | `NOW · READY`       | Deduplicated current assignment reach.                           |
+| ★ Products priced                | BAU         | `NOW · READY`       | Current assortment scope.                                        |
+| ★ Typical discount               | Both        | `NOW · READY`       | Median or clearly defined average; describes pricing posture.    |
+| ★ Items below current cost/floor | Both        | `NOW · CONDITIONAL` | Admin alternative when exceptions exist.                         |
+| Customer Groups assigned         | BAU         | `NOW · READY`       | Prefer in subtitle/tab when assignments are already visible.     |
+| Days to expiry                   | BAU         | `NOW · READY`       | Prefer header status metadata, not a KPI.                        |
+| Sales using this Pricelist       | Growth      | `LATER`             | Transaction lines do not preserve resolved Pricelist provenance. |
+
+
+
+
+### Explore options — Coverage & checks
+
+
+| Option                               | Owner value | Time / feasibility  | Format and action                                                          |
+| ------------------------------------ | ----------- | ------------------- | -------------------------------------------------------------------------- |
+| ★ Assignment reach                   | BAU         | `NOW · READY`       | Direct customers, Groups, all-customer assignment, and deduplicated reach. |
+| ★ Product scope and gaps             | BAU         | `NOW · READY`       | Products explicitly priced, on base price, excluded, or unavailable.       |
+| ★ Discount bands and price checks    | Both        | `NOW · CONDITIONAL` | Distribution plus below-current-cost/floor exceptions.                     |
+| Higher-priority override diagnostics | BAU         | `NOW · ON-OPEN`     | Explain which configured rule wins and why.                                |
+| Activity log                         | BAU         | `NOW · READY`       | Recent assignment and price changes when audit data is complete.           |
+| Historical adoption/value            | Growth      | `LATER`             | Requires transaction-level resolved Pricelist provenance.                  |
+| Margin impact trend                  | Growth      | `LATER`             | Requires both Pricelist provenance and cost-at-sale.                       |
+
+
+
 
 ## 10. Brands
 
-### Landing page
+**Recommended shape:** Landing Pulse **4** · Actions **3** · Detail Pulse **4** · Explore **4**
 
-| KPI option | What it answers | Class | Decision |
-|---|---|---|---|
-| ★ Invoiced/order value by brand portfolio | Where is commercial value concentrated? | `PERIOD` | Include (but isn't this consolidated?) |
-| ★ Gross margin contribution | Which brands create profit, not just volume? Admin only. | `PERIOD` | Include |
-| ★ Buyer penetration | How broadly are brands distributed across the customer base? | `PERIOD` | Include |
-| ★ Proven-demand stock risk — value + affected brands/SKUs | Which brand sales are at risk from availability? | `PERIOD` + `NOW` | Include |
-| Inventory value / slow-stock value | Which brand ties up working capital? | `NOW` + `PERIOD` | Exclude |
-| Portfolio concentration — top brand share | Is dependence on a few principals commercially risky? | `PERIOD` | Exclude |
+**Period:** Fixed trailing 90 days for sales; stock posture is current. Brand comparisons live in Explore, not table-row growth pills.
 
-| Callout option | Ranked contents / action | Class | Decision |
-|---|---|---|---|
-| ★ Winning brands at stock risk | Value/velocity × shortage; replenish or transfer. | `PERIOD` + `NOW` | Include |
-| ★ Margin leakage | High-value brands/SKUs below floor or weakening realization; reprice/negotiate. | `SMALL-HIST` | Include |
-| ★ Slow inventory by brand | Working capital and age; campaign, bundle, or stop purchase. | `PERIOD` + `NOW` | Include |
-| Penetration whitespace | Strong brand with low reach in eligible buyers/groups/locations; target campaign. | `DETAIL` or `SMALL-HIST` | Exclude |
+### Landing Pulse options
 
-**Table-row intelligence:** trailing 90-day value, gross margin % or buyer penetration, and on-hand/low-stock exposure. Brand-level growth is affordable, but show it only when comparable periods have meaningful value and use it for sorting/strategy—not as an always-on decorative pill.
 
-### Brand details
+| Option                                         | Owner value | Time / feasibility  | Why it earns space                                                      |
+| ---------------------------------------------- | ----------- | ------------------- | ----------------------------------------------------------------------- |
+| ★ Invoiced sales from branded products         | Both        | `90D · READY`       | Commercial scale of the managed brand portfolio.                        |
+| ★ Brands with invoiced sales                   | BAU         | `90D · READY`       | Shows how much of the carried portfolio is actually moving.             |
+| ★ Selling brand products low/out of stock      | Both        | `NOW + 90D · READY` | Availability risk tied to observed sales rather than every carried SKU. |
+| Customers who purchased branded products       | Growth      | `90D · READY`       | Breadth of current demand; often supporting context.                    |
+| Top brand share of sales                       | Growth      | `90D · READY`       | Concentration signal for principal dependence.                          |
+| ★ Stock in brands with no sale in 90 days      | Both        | `NOW + 90D · READY` | Working-capital signal without claiming inventory age.                  |
+| Brands with sales falling versus prior 90 days | Growth      | `90D · READY`       | Low-cardinality comparison; useful only with a meaningful prior base.   |
+| Gross margin by brand                          | Growth      | `LATER`             | Historical cost-at-sale is absent.                                      |
 
-| Header KPI option | Decision supported | Class | Decision |
-|---|---|---|---|
-| ★ 90-day sales value | Recent commercial scale. | `SMALL-HIST` | Include |
-| ★ Gross margin contribution | Profit quality; admin only. | `SMALL-HIST` | Include |
-| ★ Purchasing buyers / penetration | Distribution breadth. | `SMALL-HIST` | Include |
-| ★ Stock-risk value / low-stock SKUs | Availability threat. | `NOW` + `SMALL-HIST` | Include |
-| Inventory and slow-stock value | Working-capital posture. | `NOW` + `SMALL-HIST` | Exclude |
-| Open demand coverage | Ability to serve pipeline/orders. | `NOW` | Exclude |
 
-| Performance card | Format | What to show | Decision |
-|---|---|---|---|
-| Sales and margin trend | Monthly line/columns | Value, units, margin; small-dimension history. | Include |
-| SKU contribution | Pareto bars | Winning, declining, stock-risk, and slow SKUs. | Include (but a brand could have 100s of SKUs) |
-| Buyer penetration | Segment/location matrix | Purchasing buyers, whitespace, repeat/lapsed. | Include |
-| Inventory health | Posture bars | Available, short, low-cover, dead/slow value by warehouse. | Include |
-| Price realization | Distribution + exceptions | Realized margin/discount and floor breaches. | Include |
-| Campaign and app contribution | Campaign list + channel split | Sourced value, conversions, engaged non-buyers. | Include |
+
+
+### Action options
+
+
+| Option                                   | Time / feasibility  | Ranked by / action                                                                 |
+| ---------------------------------------- | ------------------- | ---------------------------------------------------------------------------------- |
+| ★ Selling brands with stock risk         | `NOW + 90D · READY` | Recent invoiced sales attached to low/out-of-stock products; replenish or source.  |
+| ★ Brand stock with no sale in 90 days    | `NOW + 90D · READY` | Current stock value/units; campaign, bundle, or reduce purchases.                  |
+| ★ Brands losing meaningful sales         | `90D · READY`       | Absolute decline first, then percentage; investigate stock, customers, or pricing. |
+| Brand products below current price floor | `NOW · CONDITIONAL` | Current exceptions; reprice or renegotiate.                                        |
+| Brands with no recent campaign           | `NOW · READY`       | Useful only when tenant strategy expects campaign coverage.                        |
+
+
+**Table rows:** trailing-90-day invoiced sales, customers who purchased, products that sold, and recent sellers low/out of stock. Growth is an optional sort/filter, not a default column.
+
+### Detail Pulse options
+
+
+| Option                            | Owner value | Time / feasibility    | Why it earns space                              |
+| --------------------------------- | ----------- | --------------------- | ----------------------------------------------- |
+| ★ Invoiced sales                  | Both        | `90D · ON-OPEN`       | Recent commercial scale.                        |
+| ★ Customers who purchased         | Growth      | `90D · ON-OPEN`       | Distribution breadth in familiar language.      |
+| ★ Recent sellers low/out of stock | BAU         | `NOW + 90D · ON-OPEN` | Immediate availability risk.                    |
+| Units sold                        | BAU         | `90D · ON-OPEN`       | Volume alternative for unit-led categories.     |
+| ★ Products that sold              | Growth      | `90D · ON-OPEN`       | Product productivity without an abstract ratio. |
+| Top product share of brand sales  | Growth      | `90D · ON-OPEN`       | Concentration within the brand.                 |
+| App-sourced sales share           | Growth      | `90D · ON-OPEN`       | Digital contribution alternative.               |
+| Gross margin                      | Growth      | `LATER`               | Cost-at-sale is missing.                        |
+
+
+
+
+### Explore options
+
+
+| Option                                | Owner value | Time / feasibility  | Format and action                                                                    |
+| ------------------------------------- | ----------- | ------------------- | ------------------------------------------------------------------------------------ |
+| ★ Sales over time                     | Both        | `12M · ON-OPEN`     | Monthly invoiced sales/units grouped from raw invoice lines.                         |
+| ★ Product contribution                | Growth      | `90D · ON-OPEN`     | Pareto list of leading, declining, and stock-risk SKUs; paginate beyond the top set. |
+| ★ Customers buying the brand          | Growth      | `90D · ON-OPEN`     | Ranked customers with last purchase and value.                                       |
+| Current inventory by warehouse        | BAU         | `NOW · READY`       | Availability of brand products by warehouse.                                         |
+| ★ Campaign and Buyer App contribution | Growth      | `90D · CONDITIONAL` | Directly linked source contribution only.                                            |
+| Sales by location                     | Growth      | `90D · ON-OPEN`     | Location mix where invoice location is populated.                                    |
+| Historical price/margin realization   | Growth      | `LATER`             | Cost-at-sale is absent; price-only distribution may be added separately.             |
+
+
+
 
 ## 11. Locations
 
-### Landing page
+Location metrics use the explicit location on estimates, orders, and invoices. They describe business serviced at a location; they do not imply permanent customer ownership.
 
-| KPI option | What it answers | Class | Decision |
-|---|---|---|---|
-| ★ Sales value by serviced location | Where is demand being realized? | `PERIOD` | Include (how can this be aggregated across all locations?) |
-| ★ Gross margin contribution | Which locations grow profitably? Admin only. | `PERIOD` |  Include |
-| ★ Open order book / at-risk value | Where is execution lagging? | `NOW` | Include |
-| ★ Overdue receivables | Where is cash risk concentrated? | `NOW` | Include |
-| Purchasing buyers / penetration | Is the location activating its market? | `PERIOD` | Exclude |
-| Fulfillment fill rate / SLA | Is the location serving demand reliably? | `PERIOD` | Exclude |
+**Recommended shape:** Landing Pulse **4** · Actions **3** · Detail Pulse **4** · Explore **4**
 
-| Callout option | Ranked contents / action | Class | Decision |
-|---|---|---|---|
-| ★ Locations with overdue exposure | Amount × age and affected buyers; collection action. | `NOW` | Include |
-| ★ Low fulfillment / overdue orders | At-risk value and stock blockers; allocate/escalate. | `NOW` + `PERIOD` | Include |
-| ★ Demand-stock mismatch | Open demand at location versus linked-warehouse availability; transfer/replenish. | `NOW` | Include |
-| Buyer participation drop | Meaningful decline in purchasing buyers for a low-cardinality location; field activation. | `SMALL-HIST` | Exclude |
+**Period:** Fixed trailing 90 days for sales; order/receivable/stock posture is current.
 
-**Table-row intelligence:** selected-period sales and margin/fill rate, open/at-risk order value, and overdue receivables or active buyers. Location history is affordable, so one decision-relevant comparison can be retained.
+### Landing Pulse options
 
-### Location details
 
-| Header KPI option | Decision supported | Class | Decision |
-|---|---|---|---|
-| ★ Sales value | Commercial scale. | `SMALL-HIST` | Include |
-| ★ Gross margin | Profit quality; admin only. | `SMALL-HIST` | Include |
-| ★ Open/at-risk order value | Execution exposure. | `NOW` | Include |
-| ★ Overdue receivables | Cash exposure. | `NOW` | Include |
-| Purchasing buyers | Market activation. | `SMALL-HIST` | Exclude |
-| Fill rate / dispatch SLA | Service quality. | `PERIOD` | Exclude |
+| Option                                           | Owner value | Time / feasibility        | Why it earns space                                               |
+| ------------------------------------------------ | ----------- | ------------------------- | ---------------------------------------------------------------- |
+| ★ Invoiced sales across locations                | Both        | `90D · READY`             | Tenant headline; rows show the same measure by invoice location. |
+| Open order value                                 | BAU         | `NOW · READY`             | Current demand being handled across locations.                   |
+| ★ Overdue amount                                 | BAU         | `NOW · READY`             | Collections exposure by invoice location.                        |
+| Customers who purchased                          | Growth      | `90D · READY`             | Unique customers with an invoice at any location.                |
+| ★ Open estimate value                            | Growth      | `NOW · READY`             | Pipeline alternative for sales-led teams.                        |
+| ★ Locations with recent sellers low/out of stock | BAU         | `NOW + 90D · CONDITIONAL` | Requires a clear location-to-warehouse relationship.             |
+| Top location share of sales                      | Growth      | `90D · READY`             | Concentration signal, usually better in Explore.                 |
+| Gross margin / fill rate                         | Growth      | `LATER`                   | Cost-at-sale and complete fulfillment facts are missing.         |
 
-| Performance card | Format | What to show | Decision |
-|---|---|---|---|
-| Sales and margin trend | Weekly/monthly line | Value and margin with meaningful comparison. | Include |
-| Customer health | Distribution + ranked list | Active, reorder due, dormant, overdue and top opportunities. | Exclude (customers are not mapped to locations directly) |
-| Brand/category mix | Stacked bars | Value, margin and concentration. | Include |
-| Order execution | Funnel/SLA bars | Estimate → order → invoice plus confirmation/dispatch delays. | Include |
-| Inventory availability | Linked-warehouse matrix | Demand coverage, stockouts, low cover, transfer options. | Include |
-| Growth-channel contribution | Split/funnel | Buyer App and campaign reach/conversion/value. | Include |
+
+
+
+### Action options
+
+
+| Option                                                | Time / feasibility        | Ranked by / action                                                                |
+| ----------------------------------------------------- | ------------------------- | --------------------------------------------------------------------------------- |
+| ★ Locations with overdue balances                     | `NOW · READY`             | Amount × age; assign collections action.                                          |
+| Locations with orders waiting beyond SLA              | `NOW · CONDITIONAL`       | Current status age and order value versus agreed thresholds; confirm or dispatch. |
+| ★ Recently sold items unavailable at linked warehouse | `NOW + 90D · CONDITIONAL` | Recent sales plus current stock; replenish or source.                             |
+| ★ Locations with expiring estimates                   | `NOW · READY`             | Value and days left; follow up.                                                   |
+| Locations with sales falling materially               | `90D · READY`             | Absolute decline; investigate mix, availability, and execution.                   |
+
+
+**Table rows:** trailing-90-day invoiced sales, open order value, overdue amount, ~~customers who purchased,~~ and current linked-stock status. One optional comparison may be exposed through sorting, not a growth column.
+
+### Detail Pulse options
+
+
+| Option                          | Owner value | Time / feasibility        | Why it earns space                                                    |
+| ------------------------------- | ----------- | ------------------------- | --------------------------------------------------------------------- |
+| ★ Invoiced sales                | Both        | `90D · ON-OPEN`           | Recent commercial scale.                                              |
+| Open order value                | BAU         | `NOW · READY`             | Current operational workload.                                         |
+| ★ Overdue amount                | BAU         | `NOW · READY`             | Cash exposure at this serviced location.                              |
+| ★ Customers who purchased here  | Growth      | `90D · ON-OPEN`           | Local market activity without claiming ownership.                     |
+| ★ Open estimate value           | Growth      | `NOW · READY`             | Current opportunity pipeline.                                         |
+| Recent sellers low/out of stock | BAU         | `NOW + 90D · CONDITIONAL` | Current availability risk at linked warehouses.                       |
+| Orders waiting beyond SLA       | BAU         | `NOW · CONDITIONAL`       | Operational exception alternative after status thresholds are agreed. |
+| Gross margin / fill rate        | Growth      | `LATER`                   | Required historical cost/fulfillment facts are missing.               |
+
+
+
+
+### Explore options
+
+
+| Option                              | Owner value | Time / feasibility  | Format and action                                                  |
+| ----------------------------------- | ----------- | ------------------- | ------------------------------------------------------------------ |
+| ★ Sales over time                   | Both        | `12M · ON-OPEN`     | Weekly/monthly invoiced sales.                                     |
+| Order execution workload            | BAU         | `NOW · READY`       | Status distribution and aging; not an unsupported fill-rate claim. |
+| ★ Brand and category mix            | Growth      | `90D · ON-OPEN`     | Sales contribution and concentration.                              |
+| ★ Inventory at linked warehouses    | BAU         | `NOW · CONDITIONAL` | Current stock posture and selling-item shortages.                  |
+| Buyer App and campaign contribution | Growth      | `90D · CONDITIONAL` | Directly linked source contribution.                               |
+| ★ Customers buying here             | Growth      | `90D · ON-OPEN`     | Ranked customer activity, not permanent customer ownership.        |
+| Customer health by owned territory  | Growth      | `LATER`             | There is no direct customer-to-location ownership model.           |
+
+
+
 
 ## 12. Warehouses
 
-### Landing page
+Warehouse analytics is current-state inventory intelligence. Do not present historical stock, stock age, inventory turns, transfers, or replenishment trends until a complete movement ledger exists.
 
-| KPI option | What it answers | Class | Decision |
-|---|---|---|---|
-| ★ Inventory value / sellable value | How much working capital is held? | `NOW` | Include |
-| ★ In-stock rate — sellable SKUs with stock | How much of the assortment can be served? | `NOW` | Include |
-| ★ Proven-demand stockouts — SKUs + value at risk | Which shortages threaten real demand? | `PERIOD` + `NOW` | Include |
-| ★ Dead/slow stock value | Where is working capital trapped? | `PERIOD` + `NOW` | Include |
-| Open-demand coverage | How much committed demand can this stock serve? | `NOW` | Exclude |
-| Imbalance opportunity — transferable shortage/excess pairs | Can redistribution solve shortages without buying more? | `NOW` | Exclude |
+**Recommended shape:** Landing Pulse **4** · Actions **3** · Detail Pulse **4** · Explore **4**
 
-| Callout option | Ranked contents / action | Class | Decision |
-|---|---|---|---|
-| ★ High-demand stockouts | Velocity/open demand and short units; replenish/transfer. | `PERIOD` + `NOW` | Include |
-| ★ Dead/slow inventory | Value, age/no-movement window; liquidate or stop buying. | `PERIOD` + `NOW` | Include |
-| ★ Transfer opportunities | Shortage here and excess elsewhere; create transfer. | `NOW` | Include |
-| Inventory integrity exceptions | Negative/committed-over-on-hand/stale-sync posture; investigate. | `NOW` | Exclude |
+**Period:** Current posture with a fixed trailing-90-day invoiced-sales context. No period selector.
 
-**Table-row intelligence:** inventory/sellable value, available units + tracked SKU count, and stockout/slow-stock/open-demand exposure. “Recently replenished” is activity, not a strategic aggregate.
+### Landing Pulse options
 
-### Warehouse details
 
-| Header KPI option | Decision supported | Class | Include |
-|---|---|---|---|
-| ★ Inventory/sellable value | Working-capital scale. | `NOW` | Include |
-| ★ Available units / in-stock rate | Service posture. | `NOW` | Include |
-| ★ Proven-demand stockouts | Lost-sales risk. | `NOW` + `DETAIL` | Include |
-| ★ Dead/slow stock value | Capital-release opportunity. | `NOW` + `DETAIL` | Include |
-| Open-demand shortage | Fulfillment risk. | `NOW` | Exclude |
-| Median/weighted stock cover | Replenishment posture; null with insufficient velocity. | `DETAIL` | Exclude |
+| Option                                    | Owner value | Time / feasibility  | Why it earns space                                                     |
+| ----------------------------------------- | ----------- | ------------------- | ---------------------------------------------------------------------- |
+| ★ Sellable units + products in stock      | BAU         | `NOW · READY`       | Current serviceable inventory posture.                                 |
+| ★ Recently sold products now out of stock | BAU         | `NOW + 90D · READY` | Current stockouts tied to observed demand.                             |
+| ★ Recently sold products running low      | BAU         | `NOW + 90D · READY` | Current low-cover workload.                                            |
+| ★ Stock with no sale in 90 days           | Both        | `NOW + 90D · READY` | Working-capital signal without claiming age.                           |
+| Inventory value at current cost           | BAU         | `NOW · CONDITIONAL` | Label as an estimate; current cost may not equal accounting valuation. |
+| Products tracked                          | BAU         | `NOW · READY`       | Configuration context, usually in the subtitle.                        |
+| Products out of stock regardless of sales | BAU         | `NOW · READY`       | Useful alternative for service-level-focused tenants.                  |
+| Historical stock turns                    | Growth      | `LATER`             | Requires a complete movement ledger.                                   |
 
-Do not show historical stock trends until a trustworthy movement ledger exists.
 
-| Performance card | Format | What to show | Decision |
-|---|---|---|---|
-| Inventory composition | Stacked bars | Available, committed, short, excess, non-sellable value/units. | Include |
-| Stock-risk queue | Ranked SKU list | Demand/velocity, on hand, shortfall, cover, action. | Include |
-| Slow/dead inventory | Ranked value table | Value, last movement/sale, cover, suggested commercial action. | Include |
-| Demand coverage | Coverage bars | Open orders/estimates versus available stock by category/brand. | Include |
-| Transfer opportunities | Origin/destination matrix | Excess elsewhere versus shortage here, units and value unlocked. | Include |
-| Inventory activity | Recent-event list | Receipts, adjustments, transfers, sync freshness; not a fake trend. | Include |
+
+
+### Action options
+
+
+| Option                                    | Time / feasibility  | Ranked by / action                                                                              |
+| ----------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------- |
+| ★ Recently sold products now out of stock | `NOW + 90D · READY` | Recent sales/units then shortage; replenish or source.                                          |
+| ★ Stock with no sale in 90 days           | `NOW + 90D · READY` | Current units/value; promote, transfer, or stop buying.                                         |
+| ★ Stock available in another warehouse    | `NOW · READY`       | Same SKU has stock elsewhere; review a transfer suggestion.                                     |
+| Negative or inconsistent availability     | `NOW · READY`       | Negative stock or committed greater than available; investigate sync/data.                      |
+| Recently replenished products             | `LATER`             | Inbound events are not a complete inventory history and should not drive a general action feed. |
+
+
+**Table rows:** linked location, available stock, products in stock, recent sellers OOS/low, stock with no sale in 90 days, ~~and sync freshness~~. Avoid pseudo-historical fields.
+
+### Detail Pulse options
+
+
+| Option                                    | Owner value | Time / feasibility    | Why it earns space                                 |
+| ----------------------------------------- | ----------- | --------------------- | -------------------------------------------------- |
+| ★ Sellable units + products in stock      | BAU         | `NOW · READY`         | Current inventory scale.                           |
+| ★ Recently sold products now out of stock | BAU         | `NOW + 90D · ON-OPEN` | Demand-backed shortage.                            |
+| ★ Recently sold products running low      | BAU         | `NOW + 90D · ON-OPEN` | Replenishment workload.                            |
+| ★ Stock with no sale in 90 days           | Both        | `NOW + 90D · ON-OPEN` | Current working-capital signal.                    |
+| Inventory value at current cost           | BAU         | `NOW · CONDITIONAL`   | Accounting approximation only.                     |
+| Products tracked                          | BAU         | `NOW · READY`         | Better as subtitle context.                        |
+| Open ordered quantity                     | BAU         | `NOW · CONDITIONAL`   | Directional demand, not fulfilled/remaining truth. |
+| Inventory turns                           | Growth      | `LATER`               | Movement history is missing.                       |
+
+
+
+
+### Explore options
+
+
+| Option                           | Owner value | Time / feasibility    | Format and action                                                                              |
+| -------------------------------- | ----------- | --------------------- | ---------------------------------------------------------------------------------------------- |
+| ★ Current inventory posture      | BAU         | `NOW · READY`         | In stock, low, out, and no-sales-90-day products.                                              |
+| ★ Stock-risk product list        | BAU         | `NOW + 90D · ON-OPEN` | Current stock, recent units sold, cover, and action.                                           |
+| ★ Availability by brand/category | Both        | `NOW · ON-OPEN`       | Current concentration and shortage view.                                                       |
+| ★ Stock with no sale in 90 days  | Both        | `NOW + 90D · ON-OPEN` | Current idle stock view.                                                                       |
+| Transfer suggestions             | BAU         | `NOW · READY`         | Current excess elsewhere versus shortage here; suggestion only until transfer workflow exists. |
+| Stock value by brand/category    | BAU         | `NOW · CONDITIONAL`   | Current-cost estimate.                                                                         |
+| Inventory movement/activity      | BAU         | `LATER`               | Audit/inbound data is not a complete ledger.                                                   |
+| Historical stock trend / age     | Growth      | `LATER`               | Not reconstructable reliably.                                                                  |
+
+
+
 
 ## 13. Categories
 
-### Landing page
+**Recommended shape:** Landing Pulse **4** · Actions **3** · Detail Pulse **4** · Explore **3**
 
-| KPI option | What it answers | Class | Decisions |
-|---|---|---|---|
-| ★ Sales value by category | Where is demand concentrated? | `PERIOD` | Include |
-| ★ Gross margin contribution | Which demand pools are profitable? Admin only. | `PERIOD` | Include (how can this be aggregated across all categories?) |
-| ★ Buyer penetration | Which categories have distribution headroom? | `PERIOD` | Exclude (difficult to calculate) |
-| ★ Proven-demand stock risk | Which category value is threatened by shortage? | `PERIOD` + `NOW` | Include |
-| Assortment productivity — sold SKUs ÷ active SKUs | Is category breadth earning its place? | `PERIOD` | Include (easier) |
-| Uncategorised active SKU/value exposure | Is bad master data hiding strategy and search? | `NOW` + `PERIOD` | Exclude |
+**Period:** Fixed trailing 90 days for sales; stock and categorisation posture is current.
 
-| Callout option | Ranked contents / action | Class | Decisions |
-|---|---|---|---|
-| ★ Demand winners at stock risk | Category value/velocity with low cover; replenish/transfer. | `SMALL-HIST` + `NOW` | Include |
-| ★ Margin leakage | High-value categories/SKUs below floor; reprice/negotiate. | `SMALL-HIST` | Include |
-| ★ Slow inventory concentration | Inventory value with low movement; campaign/bundle/reduce buy. | `PERIOD` + `NOW` | Include |
-| Penetration whitespace | Strong categories under-bought by eligible groups/locations; target. | `DETAIL` or `SMALL-HIST` | Exclude |
+### Landing Pulse options
 
-**Table-row intelligence:** trailing 90-day sales, gross margin % or buyer penetration, and active/OOS SKU count or stock-risk value. Category growth is affordable and useful when the base is material.
 
-### Category details
+| Option                                   | Owner value | Time / feasibility  | Why it earns space                                                   |
+| ---------------------------------------- | ----------- | ------------------- | -------------------------------------------------------------------- |
+| ★ Invoiced sales by categorised products | Both        | `90D · READY`       | Commercial scale of the category portfolio.                          |
+| Products that sold                       | Growth      | `90D · READY`       | Shows how much of the assortment moved.                              |
+| Recent sellers low/out of stock          | BAU         | `NOW + 90D · READY` | Availability risk tied to recent demand.                             |
+| ★ Categories with invoiced sales         | BAU         | `90D · READY`       | Moving versus inactive category context.                             |
+| Customers who purchased                  | Growth      | `90D · READY`       | Unique buyers across categories; category detail is more actionable. |
+| ★ Categories with no sale in 90 days     | Both        | `NOW + 90D · READY` | Current working-capital signal.                                      |
+| ★ Uncategorised active products          | BAU         | `NOW · READY`       | Search/reporting data-quality issue.                                 |
+| Gross margin by category                 | Growth      | `LATER`             | Cost-at-sale is missing.                                             |
 
-| Header KPI option | Decision supported | Class | Decision
-|---|---|---|---|
-| ★ 90-day sales value | Recent scale. | `SMALL-HIST` | Include |
-| ★ Gross margin contribution | Profit quality; admin only. | `SMALL-HIST` | Include |
-| ★ Purchasing buyers / penetration | Distribution breadth. | `SMALL-HIST` | Include |
-| ★ Stock-risk value / OOS SKUs | Availability threat. | `NOW` + `SMALL-HIST` | Include |
-| Active/productive SKUs | Assortment efficiency. | `DETAIL` | Exclude |
-| Inventory/slow-stock value | Working-capital posture. | `NOW` + `DETAIL` | Exclude |
 
-| Performance card | Format | What to show | Decision |
-|---|---|---|---|
-| Sales and margin trend | Monthly line/columns | Value, units, margin; category grain is affordable. | Include |
-| Brand contribution | Pareto bars | Value, margin, growth and concentration. | Include |
-| Product winners and risks | Ranked table | Winners, OOS demand, margin leakage, slow stock. | Include |
-| Buyer/location penetration | Matrix | Current reach and whitespace. | Include |
-| Inventory health | Posture bars | Available, short, low-cover, slow/dead by warehouse. | Include |
-| Campaign and app contribution | Split + list | Sourced value, reach, conversion, engaged non-buyers. | Include |
+
+
+### Action options
+
+
+| Option                                        | Time / feasibility  | Ranked by / action                                            |
+| --------------------------------------------- | ------------------- | ------------------------------------------------------------- |
+| ★ Categories with recent sellers out of stock | `NOW + 90D · READY` | Recent sales then shortage; replenish or source.              |
+| ★ Categories with no sale in 90 days          | `NOW + 90D · READY` | Current units/value by category; promote or reduce purchases. |
+| ★ Uncategorised active products               | `NOW · READY`       | Product count and recent sales; assign a category.            |
+| Categories with sales falling materially      | `90D · READY`       | Absolute decline; investigate products, buyers, or stock.     |
+| Category products below current price floor   | `NOW · CONDITIONAL` | Current exceptions; reprice.                                  |
+
+
+**Table rows:** trailing-90-day invoiced sales, products that sold, ~~customers who purchased~~, and recent sellers low/OOS. No default growth or brands columns.
+
+### Detail Pulse options
+
+
+| Option                            | Owner value | Time / feasibility    | Why it earns space                          |
+| --------------------------------- | ----------- | --------------------- | ------------------------------------------- |
+| ★ Invoiced sales                  | Both        | `90D · ON-OPEN`       | Recent category scale.                      |
+| ★ Units sold + products that sold | Both        | `90D · ON-OPEN`       | Volume and assortment movement in one card. |
+| ★ Recent sellers low/out of stock | BAU         | `NOW + 90D · ON-OPEN` | Availability risk.                          |
+| Customers who purchased           | Growth      | `90D · ON-OPEN`       | Distribution breadth in plain language.     |
+| ★ Stock with no sale in 90 days   | Both        | `NOW + 90D · ON-OPEN` | Current working-capital signal.             |
+| Top brand share                   | Growth      | `90D · ON-OPEN`       | Concentration within the category.          |
+| App-sourced sales share           | Growth      | `90D · ON-OPEN`       | Digital contribution alternative.           |
+| Gross margin                      | Growth      | `LATER`               | Cost-at-sale is missing.                    |
+
+
+
+
+### Explore options
+
+
+| Option                              | Owner value | Time / feasibility    | Format and action                                             |
+| ----------------------------------- | ----------- | --------------------- | ------------------------------------------------------------- |
+| ★ Sales over time                   | Both        | `12M · ON-OPEN`       | Monthly invoiced sales/units.                                 |
+| ★ Brand contribution                | Growth      | `90D · ON-OPEN`       | Ranked brands and concentration.                              |
+| ★ Product action list               | Both        | `NOW + 90D · ON-OPEN` | Best sellers, stock risks, and stocked products with no sale. |
+| Customers buying the category       | Growth      | `90D · ON-OPEN`       | Ranked customers and last purchase.                           |
+| Sales by location                   | Growth      | `90D · ON-OPEN`       | Location mix when invoice location is populated.              |
+| Campaign and Buyer App contribution | Growth      | `90D · CONDITIONAL`   | Direct linked contribution only.                              |
+| Historical margin trend             | Growth      | `LATER`               | Cost-at-sale is missing.                                      |
+
 
 ---
+
+
 
 # Dashboard portfolios
 
-## Seller App landing dashboard
 
-The dashboard should be an executive decision surface, not a collage of module summaries. A strong default layout is four headline cards, three action queues, then 4–6 diagnostic cards. The following 15 options provide a portfolio; the first four and the three action queues are the recommended default.
 
-| # | Card option | Format | Decision / action | Class | Decision |
-|---:|---|---|---|---|---|
-| 1 | ★ Orders booked and gross margin | KPI with value, order count, margin/admin | Are we winning profitable demand this period? Use period comparison only at tenant/location grain. | `PERIOD` | Include |
-| 2 | ★ At-risk open order book | KPI with value, order count, oldest SLA | How much committed demand needs operational rescue? | `NOW` | Include |
-| 3 | ★ Overdue receivables | KPI with amount, buyer count, 30+ day share | How much cash exposure needs collection? | `NOW` | Include |
-| 4 | ★ Inventory action value | Two-sided KPI: sales at stockout risk / dead-stock value | Should cash go into replenishment or be released from slow stock? | `NOW` + `PERIOD` | Include |
-| 5 | ★ Revenue recovery queue | Ranked callout | Expiring/high-value estimates and reorder-due valuable buyers; call, revise, or create estimate. | `NOW` + bounded `PERIOD` | Include |
-| 6 | ★ Fulfillment rescue queue | Ranked callout | Stock-blocked and overdue orders by value/deadline; allocate, transfer, dispatch. | `NOW` | Include |
-| 7 | ★ Collections queue | Ranked callout | Buyer exposure × age plus next promised date; collect or hold. | `NOW` | Include |
-| 8 | Demand-to-cash funnel | Funnel with value and unique buyers | Estimates → orders → invoices → collected; reveal the stage where value stalls. Never compare unrelated denominators. | `PERIOD` | Include |
-| 9 | Buyer health distribution | Segmented bar + value | Purchasing, reorder due, dormant, overdue, new; choose engagement/collections actions. | `PERIOD` + `NOW` | 
-| 10 | Margin leakage | Waterfall or exception list | Discounts, below-floor items, low-margin high-volume orders; reprice or renegotiate. | `PERIOD` |
-| 11 | Demand versus availability | Coverage bars | Open demand, available coverage, short value by category/brand; replenish/substitute. | `NOW` |
-| 12 | Brand/category strategy map | Scatter: value or growth × margin, size=buyer reach | Invest, defend, fix margin, or exit. Use only low-cardinality monthly history. | `SMALL-HIST` |
-| 13 | Location scorecard | Compact table/heatmap | Sales, margin, overdue, fill rate, buyer activation; identify branches needing intervention. | `SMALL-HIST` + `NOW` |
-| 14 | Buyer App contribution | Split/funnel | Enabled → ordering → repeat, sourced order value/share, quality versus assisted. | `PERIOD` + `EVENT` |
-| 15 | Strategy coverage gaps | Exception card | Valuable buyers without app/group/price and active SKUs uncategorised/unpriced; complete the commercial operating system. | `NOW` + bounded `PERIOD` |
+## Seller Dashboard — business control tower
 
-**Do not default to:** raw order count, active campaign count, a generic recent-activity feed, or “top brands” without margin/availability context. These are navigational or descriptive, not executive decisions. If recent activity remains, filter it to material exceptions or state changes (large order cancelled, high-value estimate viewed, payment promise missed).
+The Seller Dashboard is the only cross-module command centre. It shows overall business posture and routes owners to the module where action happens. It should contain one Buyer App teaser, not repeat the Buyer App dashboard.
 
-## Buyer App dashboard inside Seller App
+**Recommended shape:** Pulse **4** · Actions **3** · Explore **3**
 
-The dashboard must answer whether self-service is reaching the right buyers, creating quality demand, and reducing assisted ordering. Recommended default: cards 1–4, callouts 5–7, then a subset of 8–15.
+**Period:** This month for sales/flow; current-state cards and Actions are labelled “As of today.”
 
-| # | Card option | Format | Decision / action | Class |
-|---:|---|---|---|---|
-| 1 | ★ App-enabled coverage | KPI: enabled/eligible buyers + valuable-base coverage | Is access deployed to the buyers that matter? | `NOW` + bounded `PERIOD` |
-| 2 | ★ Ordering-buyer adoption | KPI: app-ordering/enabled buyers | Is enablement becoming commercial usage? | `PERIOD` + `EVENT` |
-| 3 | ★ App-sourced order value/share | KPI: value, orders, share of total | How much demand is self-serve? Do not call it incremental. | `PERIOD` |
-| 4 | ★ Repeat app buyer rate | KPI: 2+ app orders / app-ordering buyers | Is self-service becoming habitual? | `PERIOD` |
-| 5 | ★ High-value enablement opportunities | Ranked callout | Offline value among not-enabled buyers; enable and onboard. | bounded `PERIOD` + `NOW` |
-| 6 | ★ Activation rescue | Ranked callout | Enabled buyers who never opened or opened without ordering; assist/nudge. | `EVENT` |
-| 7 | ★ Lapsed self-serve buyers | Ranked callout | Previously ordering app buyers past cadence; re-engage. | `PERIOD` |
-| 8 | Adoption funnel | Funnel | Eligible → enabled → opened → started intent → ordered → repeat, unique buyers and stage conversion. | `EVENT` |
-| 9 | Business through app | Document flow | App estimates → orders → invoices, value and unique buyers at each step. | `PERIOD` |
-| 10 | First-value latency | Distribution | Median enable-to-first-open and enable-to-first-order; find onboarding friction. | `EVENT` |
-| 11 | Assisted-to-self-serve migration | Buyer matrix/table | Buyers shifting share of orders to app, stuck offline, or reverting; target enablement/support. Calculate selected windows, not daily buyer facts. | bounded `PERIOD` |
-| 12 | App versus assisted order quality | Comparison bars | AOV, cancellation, fill rate, time to confirm; confirm channel adoption is healthy. | `PERIOD` |
-| 13 | Conversion friction | Funnel exception list | View/search/cart/estimate/order drop-off and failed checkout/support events; fix product/UX/data issues. | `EVENT` |
-| 14 | Product/category demand through app | Ranked bars | App-sourced value, buyers, search/no-result or viewed-not-ordered opportunities. | `PERIOD` + `EVENT` |
-| 15 | Adoption by location/group | Heatmap | Enablement, ordering, repeat, value share; focus onboarding teams. | `SMALL-HIST` |
-| 16 | Campaign-to-app contribution | Funnel/list | Campaign reach → app view → estimate/order and engaged non-buyers. | `EVENT` |
-| 17 | Self-service workload displaced | Scorecard | Number/share of buyer-entered orders/estimates and lines; an operational proxy, not claimed rupee savings. | `PERIOD` |
-| 18 | Recent app-sourced exceptions | Curated feed | Large app order, app order cancelled/blocked, repeated failed checkout; action only, not raw activity. | `NOW` + `EVENT` |
+### Pulse options
 
-**Do not default to:** Top App Buyers as a callout, average orders per enabled user, raw app opens, or a duplicate “app GMV” and “converted order value” when they represent the same flow. Top buyers belong in a drill-down; opens matter only as a funnel stage.
 
----
+| Option                                     | Owner value | Time / feasibility   | Why it earns space                                 |
+| ------------------------------------------ | ----------- | -------------------- | -------------------------------------------------- |
+| ★ Invoiced sales                           | Both        | `THIS MONTH · READY` | Canonical realized-sales headline.                 |
+| Open order value                           | BAU         | `NOW · READY`        | Current committed demand.                          |
+| ★ Overdue receivables                      | Both        | `NOW · READY`        | Cash exposure requiring action.                    |
+| ★ Recently sold products now out of stock  | BAU         | `NOW + 90D · READY`  | Current availability risk tied to observed demand. |
+| Customers who purchased                    | Growth      | `90D · READY`        | Breadth of active demand.                          |
+| ★ Open estimate value                      | Growth      | `NOW · READY`        | Sales pipeline alternative.                        |
+| Amount due in 7 days                       | BAU         | `NOW · READY`        | Collections planning alternative.                  |
+| Stock with no sale in 90 days              | Both        | `NOW + 90D · READY`  | Working-capital alternative.                       |
+| Buyer App ordering customers + sales share | Growth      | `90D · READY`        | One teaser linking to the channel dashboard.       |
+| Gross margin                               | Growth      | `LATER`              | Cost-at-sale is missing.                           |
 
-# Comparison with the current implementation
 
-## Overall assessment
 
-The current product has a strong and consistent visual grammar—four KPIs, three callout columns, table, and mostly four-card Performance tabs. The main issue is metric selection: many prime slots are occupied by raw entity counts, generic growth, “top” leaderboards, freshness/activity, or configuration coverage without commercial value. Operational exceptions and receivable/stock risk are generally stronger.
 
-The codebase audit found:
+### Action options
 
-- All 13 requested modules have landing surfaces. Buyer App correctly has no entity details page.
-- Estimates, Sales Orders, and Invoices are document details without KPI strips or Performance tabs; keeping them document/action-oriented is sound, but the proposed compact header and intelligence cards would improve decisions.
-- Pricelist details intentionally have no performance trend; that is correct. Add effectiveness diagnostics, not a time series.
-- Only Brand details currently reaches six Performance cards; several of its metrics are placeholders or weakly defined, so card count alone is not quality.
-- Current landings expose three callouts, not four. This proposal supplies four options so the product can select three defaults and retain one alternate; it does **not** recommend rendering four columns.
-- Existing metric infrastructure is already broad: 11 snapshot and 11 daily KPI families. High-cardinality buyer facts are the most explosive, and several high-cardinality landing reads still aggregate entity-by-day rows outside the database. This validates narrowing the product requirement before any new modelling.
 
-## Keep / change / dump by module
+| Option                 | Time / feasibility        | Ranked by / action                                                  |
+| ---------------------- | ------------------------- | ------------------------------------------------------------------- |
+| ★ Revenue follow-up    | `NOW · READY`             | Expiring/high-value estimates and accepted estimates not converted. |
+| Order execution        | `NOW · READY`             | Orders to confirm or dispatch, ranked by age and value.             |
+| ★ Collections          | `NOW · READY`             | Overdue customers ranked by amount and age.                         |
+| Product availability   | `NOW + 90D · READY`       | Recent sellers low/out of stock.                                    |
+| Customer reactivation  | `NOW + 90D · CONDITIONAL` | Due-to-reorder and valuable inactive customers.                     |
+| ★ Buyer App activation | `NOW + 90D · READY`       | Valuable customers not enabled or enabled but unused.               |
 
-| Module | Keep from current UI | Change or add | Dump/demote |
-|---|---|---|---|
-| Dashboard | GMV, low-stock attention, collections, order-pulse concept, brand concentration | Replace counts with at-risk order value, inventory action value, margin, customer health, and prioritized cross-module queues | Active campaign count as hero; generic recent activity; raw order count without value/status |
-| Estimates | Open estimates, follow-up, expiring soon, ready-to-convert | Show open/late/expiring **value**, availability/price risk, cohort conversion | Total estimate growth and AOV as heroes; generic period count |
-| Sales Orders | Pending dispatch, awaiting confirmation, needs action | Open and at-risk value, stock-blocked value, due dispatch, fill rate | Biggest tickets and “in motion” as callouts; count/AOV as heroes |
-| Invoices | Outstanding and overdue amount/count, due status, payment history | Due-soon and aging exposure, collection efficiency, buyer risk context | Top spenders/top risers on invoice page; invoice count/growth/AOV as heroes |
-| Customers | Active rate, dormancy/recency, dues, last order, credit, brand mix, top SKUs, payment behavior | Revenue-weighted win-back, reorder cadence, repeat rate, overdue rather than all outstanding, opportunity coverage | Top spenders as callout; buyer-level MoM growth in every row; raw campaign/app opens |
-| Products | OOS/low stock, revenue/units, on hand, cover, top buyers, price by group | Stockout revenue risk, dead-stock value, open-demand coverage, margin realization | Active/archived SKU count as hero; top performers/risers; per-SKU growth; historical on-hand trend |
-| Buyer App | Enabled coverage, ordering/repeat users, app order value/share, adoption funnel, business flow, location usage | First-value latency, migration, quality comparison, activation/lapse queues | Top App Buyers callout; avg orders/enabled user; duplicate app value fields; raw opens |
-| Campaigns | Reach/view/conversion funnel, attributed value, top SKUs, abandoners, expiry | Unique-buyer denominators, high-engagement/low-conversion diagnosis, audience recovery queue | Draft/live counts as strategy KPIs; top performers/risers; campaign growth without comparable audience/assortment |
-| Customer Groups | Coverage, active members, group value, campaigns | Deduplicated member/value semantics, pricing/campaign readiness, unassigned valuable buyers, assignment conflicts | Total group count hero; unweighted average conversion; summed overlapping-group GMV; generic top risers |
-| Pricelists | Expiry, uncovered groups, product count, discount/margin, assignment coverage | High-value buyer coverage, SKU completeness, floor exposure, resolution conflicts, actual adoption | Active/draft list count as hero; “most coverage” leaderboard; a time trend |
-| Brands | Value/share, buyer reach, low-stock risk, top SKUs/buyers, campaign context | Margin, inventory value, penetration whitespace, demand-stock risk | Brands-carried/campaign-count hero; generic top performers; placeholder sell-through/repeat zeros; obscure freshness KPI |
-| Locations | Sales/GMV, dues/overdue, open documents, active buyers, inventory health, top buyers | Margin, at-risk order value, fill/SLA, demand-stock mismatch, buyer participation | Invoice/estimate counts as heroes; top locations leaderboard without exception context |
-| Warehouses | Stock attention, idle stock, sellable units, tracked/OOS/low counts | Inventory and dead-stock value, demand coverage, transfers, integrity exceptions | Active warehouse/tracked-row counts as heroes; recently replenished as callout; stock history without ledger |
-| Categories | GMV/share, active buyers/SKUs, OOS/low, top brands, uncategorised data quality | Margin, buyer penetration, inventory productivity/value, strategy whitespace | Active category count hero; generic top performers/fast movers without margin/stock context |
 
-## Direct review of the supplied screenshots
 
-### Customers landing
 
-- **Keep:** Active Buyers, Dormant, Outstanding/Overdue, Needs a Call, last order, credit posture, and group/pricelist coverage.
-- **Change:** Spend MTD should be a stable 90-day customer-base value or repeat-rate view; Dormant should exclude never-ordered records and rank by recoverable prior value; Outstanding Dues should distinguish overdue.
-- **Remove from premium space:** Top Spenders and Top Risers. Top spenders is descriptive, while per-buyer growth is noisy and expensive. Replace them with Collection Risk and Reorder/Win-back queues.
-- **Table:** keep recent value, last order/cadence, overdue, and credit; drop the default Growth column.
+### Explore options
 
-### Seller dashboard
+Show three recommended cards. Put the rest behind “More insights.” Show these cards below the Action cards in the dashboard itself.
 
-- **Keep:** GMV, low-stock action, Collections, and the concept of an orders pulse.
-- **Change:** Orders This Month becomes Open/At-risk Order Book; Active Catalogs moves out of the top four; Brand Performance adds margin/stock/penetration context.
-- **Remove from premium space:** generic Recent Activity. Replace it with material exceptions or the demand-to-cash funnel.
 
-### Buyer App dashboard
+| Option              | Owner value | Time / feasibility   | Format and action                                                                                                      |
+| ------------------- | ----------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| ★ Business flow     | Both        | `THIS MONTH · READY` | Estimate value → order value → invoiced sales, shown as separately named stages rather than a false conversion funnel. |
+| ★ Sales mix         | Growth      | `90D · READY`        | One card with Brand / Category / Location tabs; avoids three competing charts.                                         |
+| ★ Customer activity | Growth      | `90D · READY`        | Purchasing, repeat, inactive, and overdue customers in plain language.                                                 |
+| Inventory actions   | BAU         | `NOW + 90D · READY`  | Recent sellers short and stock with no sale.                                                                           |
+| Buyer App teaser    | Growth      | `90D · READY`        | Ordering customers and app-sourced invoiced-sales share; link deeper.                                                  |
+| Significant changes | Both        | `NOW · CONDITIONAL`  | Only material cancellations, newly overdue invoices, or integration/data warnings; not generic activity.               |
+| Location comparison | Growth      | `90D · READY`        | Invoiced sales, open orders, and overdue by location.                                                                  |
+| Margin leakage      | Growth      | `LATER`              | Cost-at-sale is missing.                                                                                               |
 
-- **Keep:** enabled coverage, app order value/share, ordering and repeat buyers, Adoption Funnel, Business Through App, and Usage by Location.
-- **Change:** “Active this month” must mean ordering or a named funnel stage; Average Orders/User becomes Repeat App Buyer Rate; Top Buyers becomes Assisted-to-Self-serve Migration or Activation Opportunity.
-- **Keep carefully:** app opens only inside a funnel, never as a standalone success KPI.
 
-### Customer details
 
-- **Keep:** spend/orders, last order, credit, spend trend calculated on open, brand mix, top SKUs, and payment behavior.
-- **Change:** MTD to rolling 90-day context; add reorder cadence and overdue; replace Campaign Opens with channel contribution and a concrete conversion opportunity.
-- **Avoid:** maintaining daily history for every buyer to power the detail chart. Calculate bounded monthly history when the buyer is opened or use a sparse activity history.
+
+## Buyer App Dashboard — channel adoption workspace
+
+Use the complete option portfolio in [Buyer App](#6-buyer-app). Its default composition is:
+
+- **Pulse 4:** Customers with access; customers ordering; app-sourced invoiced sales/share; repeat app customers.
+- **Actions 3:** Valuable assisted customers without access; enabled but unused; used but never ordered.
+- **Explore 5:** Adoption funnel; business through app; contribution over time; adoption by location; top buyers with app usage.
+
+Do not repeat seller-wide receivables, inventory, margin, or general order-execution cards here.
 
 ---
 
-# Decisions to make before data modelling
 
-1. Choose the four starred landing KPIs per module and confirm seller-admin versus seller-assistant substitutions.
-2. Choose three default callouts per module; the fourth remains an alternate, not a fourth rendered column.
-3. Confirm the commercial basis for sales cards: order value for demand/operations and invoice value for realized sales/inventory velocity.
-4. Finalize invoice status and partial-payment semantics before accepting any receivable KPI.
-5. Finalize cadence rules for reorder due/dormant, including sparse-history fallback.
-6. Confirm margin visibility and cost reliability by role and tenant.
-7. Confirm stock-value, slow-stock, fill-rate, promised-date, and allocation data quality; show “not available” rather than synthetic precision.
-8. Confirm campaign attribution window and source rules. Keep “attributed” separate from “influenced” and never call either incremental.
-9. Confirm customer-group overlap semantics before showing combined coverage or value.
-10. Only after these product definitions are approved, map each metric to the lightest read/refresh strategy and delete aggregate requirements that no longer serve a chosen UI decision.
+
+# Recommended density summary
+
+
+| Surface          | Landing Pulse | Actions | Detail Pulse | Explore |
+| ---------------- | ------------- | ------- | ------------ | ------- |
+| Estimates        | 3             | 3       | 0            | 0       |
+| Sales Orders     | 3             | 3       | 0            | 0       |
+| Invoices         | 4             | 3       | 0            | 0       |
+| Customers        | 4             | 3       | 4            | 4       |
+| Products         | 3             | 3       | 3            | 4       |
+| Buyer App        | 4             | 3       | —            | 4       |
+| Campaigns        | 3             | 3       | 3            | 4       |
+| Customer Groups  | 3             | 2       | 3            | 3       |
+| Pricelists       | 3             | 2       | 3            | 3       |
+| Brands           | 3             | 3       | 3            | 3       |
+| Locations        | 3             | 3       | 3            | 3       |
+| Warehouses       | 3             | 3       | 3            | 3       |
+| Categories       | 3             | 3       | 3            | 3       |
+| Seller Dashboard | 4             | 3       | —            | 3       |
+
+
+These are curated defaults, not structural requirements. Render fewer when no other option passes the usefulness, comprehension, and truth tests.
+
+---
+
+
+
+# Current implementation implications
+
+
+
+## Keep and correct
+
+- Preserve the existing visual hierarchy: title → Pulse → Actions → table → opt-in Explore.
+- Keep receivables, overdue, open document posture, current stock, Buyer App access, campaign opens, and direct source contribution.
+- Standardize value language: Estimate Value, Order Value, Invoiced Sales, Campaign-linked Order Value, App-sourced Invoiced Sales.
+- Make Actions ignore the selected document-created period so older unresolved records never disappear.
+
+
+
+## Remove or demote
+
+- Growth columns and previous-period arrows from customer/product/brand/category/location tables.
+- Top Spenders, Top Risers, Most Coverage, and generic Recent Activity from action space.
+- Duplicate KPI strips and Performance tabs on estimate, order, and invoice details.
+- Active entity counts as headline cards when they belong in page subtitles.
+- Performance as the default-open tab; default to operational Details/Overview and remember only explicit user selection.
+
+
+
+## Defer until source data improves
+
+- Historical gross margin and margin trends.
+- Inventory history, turns, age, shrinkage, replenishment, and true dead stock.
+- Exact fill rate and OTIF.
+- Historical Customer Group performance.
+- Historical Pricelist adoption/value.
+- Full campaign/cart funnel and causal or incremental lift.
+
+---
+
+
+
+# Metric admission checklist
+
+Before a metric reaches a default surface, every answer must be yes:
+
+1. **Truth:** Is the raw source and status/date definition reliable?
+2. **Language:** Can an SMB owner understand the title without a tooltip?
+3. **Decision:** Does it suggest a likely action or a necessary business check?
+4. **Placement:** Is it Pulse, Action, or Explore—without repeating another layer?
+5. **Time:** Is it clearly NOW, period-based, or lifetime?
+6. **Cost:** Can it be served at the entity cardinality without daily zero rows or full-table hydration?
+7. **Role:** Is it useful to the BAU owner, the growth-oriented owner, or both?
+8. **Confidence:** Will missing data be shown as unavailable rather than zero?
+
+Only after this proposal is approved should each recommended metric be mapped to the lightest correct read and refresh mechanism.

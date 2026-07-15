@@ -23,7 +23,7 @@ export async function GET(_request: NextRequest) {
   }
 
   try {
-    const db = supabaseAdmin ?? getRequestSupabaseClient();
+    const db = supabaseAdmin ?? (await getRequestSupabaseClient());
     const payload = await getCohortComposerPayload(db as any, claims.tenant_id);
     return NextResponse.json(payload, { headers: SELLER_CACHE_PERSONAL });
   } catch (error: any) {
