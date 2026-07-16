@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
 import type { ReactNode } from 'react';
+import { MetricGrid } from '@/components/seller/detail/MetricGrid';
 
 interface InsightTile {
   label: string;
@@ -13,68 +14,16 @@ interface InsightTile {
 interface InsightStrip4Props {
   tiles: InsightTile[];
   className?: string;
+  showSupportingText?: boolean;
 }
 
-export function InsightStrip4({ tiles, className }: InsightStrip4Props) {
-  const columnClass =
-    tiles.length <= 1
-      ? 'grid-cols-1'
-      : tiles.length === 2
-        ? 'grid-cols-1 md:grid-cols-2'
-        : tiles.length === 3
-          ? 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3'
-          : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-4';
-
+export function InsightStrip4({ tiles, className, showSupportingText = false }: InsightStrip4Props) {
   return (
-    <section className={cn('mt-5 mb-0 grid gap-3', columnClass, className)}>
-      {tiles.map((tile, index) => (
-        <article
-          key={`${tile.label}-${index}`}
-          className={cn(
-            'rounded-[14px] border border-cream-300 bg-white px-[18px] py-[16px]',
-            tile.tone === 'warn' && 'border-ember-300'
-          )}
-        >
-          <p
-            className={cn(
-              'eyebrow text-cream-600',
-              tile.tone === 'warn' && 'text-ember-700'
-            )}
-          >
-            {tile.label}
-          </p>
-          <p
-            className={cn(
-              'mt-2 font-display text-2xl font-medium leading-[1.05] tracking-[-0.015em] text-[#4A3F35] tabular-nums',
-              tile.tone === 'warn' && 'text-ember-500'
-            )}
-          >
-            {tile.value}
-          </p>
-          {(tile.sub || tile.delta) && (
-            <p
-              className={cn(
-                'mt-2 flex items-center gap-2 text-sm text-cream-700',
-                tile.tone === 'warn' && 'text-ember-700'
-              )}
-            >
-              {tile.sub}
-              {tile.delta && (
-                <span
-                  className={cn(
-                    tile.sub && 'ml-1 font-semibold',
-                    tile.deltaTone === 'up' && 'text-success-500',
-                    tile.deltaTone === 'down' && 'text-danger-500',
-                  )}
-                >
-                  {tile.delta}
-                </span>
-              )}
-            </p>
-          )}
-        </article>
-      ))}
-    </section>
+    <MetricGrid
+      className={cn('mt-5 mb-0', className)}
+      tiles={tiles}
+      showSupportingText={showSupportingText}
+    />
   );
 }
 

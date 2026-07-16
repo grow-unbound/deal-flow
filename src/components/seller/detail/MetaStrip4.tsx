@@ -1,31 +1,22 @@
 import type { ReactNode } from 'react';
-import { InsightStrip4 } from '@/components/seller/layout';
+import { MetricGrid } from './MetricGrid';
 
 interface MetaTile {
   label: string;
   value: ReactNode;
   sub?: ReactNode;
+  delta?: ReactNode;
+  deltaTone?: 'up' | 'down' | 'neutral';
+  tone?: 'accent' | 'warn';
 }
 
 interface MetaStrip4Props {
   tiles: MetaTile[];
+  showSupportingText?: boolean;
 }
 
-export function MetaStrip4({ tiles }: MetaStrip4Props) {
-  if (tiles.length !== 4) {
-    console.warn(`MetaStrip4 expects exactly 4 tiles; received ${tiles.length}.`);
-  }
-
-  return (
-    <InsightStrip4
-      className="mt-6 mb-0"
-      tiles={tiles.map((tile) => ({
-        label: tile.label,
-        value: tile.value,
-        sub: tile.sub,
-      }))}
-    />
-  );
+export function MetaStrip4({ tiles, showSupportingText = false }: MetaStrip4Props) {
+  return <MetricGrid className="mt-6 mb-0" tiles={tiles} showSupportingText={showSupportingText} />;
 }
 
 export type { MetaTile, MetaStrip4Props };
