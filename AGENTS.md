@@ -201,6 +201,12 @@ follow them for all new development, not just when explicitly asked to optimize.
 - ERP mapping: `external_ref text` — unique per `(tenant_id, external_ref)`
 - All FKs: `ON DELETE RESTRICT` — never cascade business data
 
+### Metrics V2 operational table exception
+- Metrics V2 dirty-work, lease, runtime-control, refresh-state, and execution-history tables are operational coordination tables, not business records.
+- These tables must still carry tenant ownership where applicable, timestamps, explicit RLS/service-role access, bounded retention, and schema-qualified `app` DDL.
+- They are explicitly exempt from `external_ref`, business audit columns (`created_by`, `updated_by`), and soft-delete (`deleted_at`) so queues, leases, and run history can be pruned or hard-deleted by retention jobs without accumulating operational bloat.
+- This exception is narrow: business-facing metric snapshots and read models still follow the mandatory business table conventions above unless a later approved plan records a separate exception.
+
 ### Key `app` tables
 - `tenants` → `tenant_users` → `tenant_brands` → `tenant_products` → `tenant_inventory`
 - `buyers` → `buyer_users` → `cohorts` → `cohort_members`
@@ -365,8 +371,16 @@ Wk 12: Cross-tenant security tests, onboarding polish, first paid customer
 
 ### Migration workflow
 - **Always create migration files via CLI:** `supabase migration new <descriptive-name>` — never create or name migration files manually. The CLI generates the correct `YYYYMMDDHHMMSS_<name>.sql` timestamp format.
-- **Never create schema changes directly in the Supabase dashboard** without immediately capturing them into a migration file via `supabase db pull --local`.
-- Apply to remote with `supabase db push`. Verify with `supabase migration list`.
+- **Never create schema changes directly in the Supabase dashboard.** If an emergency dashboard change is explicitly authorized, immediately capture it with the linked remote CLI, review the generated migration, and reconcile migration history before further work.
+- This repository uses the hosted **`yukti-dev`** Supabase project (`euhzgherjvjopjrpoqjr`) for all development, migration validation, SQL tests, seeds, auth/setup work, function deployment, integration tests, and load tests. Agents must not use the local Docker stack and must not run or require `supabase start`, `supabase db reset --local`, `supabase test db --local`, or another Docker-dependent Supabase workflow.
+- The **`yukti` production** project (`hcpzbnmumbykdqveyjhr`) is forbidden for development work. Do not run SQL, tests, migrations, seeds, function/config/auth/storage changes, or `--linked` commands against it. Production access requires a separate explicit user authorization naming the exact production action; Phase 8 authorization must not be inferred from earlier development approval.
+- Use the official `SUPABASE_DB_PASSWORD` variable from `.env.local` for linked remote CLI commands. Never print, echo, log, inline in a command, or commit its value. (`SUPABASE_PASSWORD` is not the project variable.)
+- Before **every** `--linked` inspection, test, dry-run, or push, read the current linked project ref and require it to equal `euhzgherjvjopjrpoqjr`. Project refs are safe to record; credentials are not. Stop on any mismatch—especially `hcpzbnmumbykdqveyjhr`. Because the main checkout may still be linked to production, use a verified temporary Supabase project directory/workdir linked to `yukti-dev`; never rely on another session's link state.
+- Read-only inspection and SQL behavior tests may use `npx supabase db query --linked --file <file>`. Wrap mutation-shaped validation in `BEGIN ... ROLLBACK`, use isolated fixtures, and verify that no persistent business data changed.
+- Before a persistent remote migration, run `npx supabase migration list --linked` and `npx supabase db push --linked --dry-run`. A real `npx supabase db push --linked` requires explicit user approval. Verify migration history, RLS, grants, advisors, and focused tests afterward.
+- Never run `supabase db reset --linked`, remote destructive cleanup, or `supabase migration repair` unless the user explicitly authorizes a documented recovery procedure.
+- Cross-connection, API, Cron, sync, or load tests that cannot run inside a rolled-back transaction use `yukti-dev` with deterministic isolated seed data. Never fall back to the production project because the development environment is unavailable.
+- For newly created Data API objects, explicitly verify schema exposure, grants, and RLS; do not assume a new table is automatically API-accessible.
 
 ### Always qualify schema names
 Every SQL statement — in migration files, seed files, RPC definitions, Edge Functions, and application code (Supabase JS client calls) — **must explicitly name the schema**. This project uses three schemas (`auth`, `catalog`, `app`) and ambiguity causes silent bugs.
@@ -397,6 +411,8 @@ supabase.from('tenants').select('*')
 - Always verify your work. Run tests or show a diff before declaring done.
 - Use subagents for investigation tasks. Do not bloat main context with file reads.
 - Commit frequently with descriptive messages. Always create a PR, never push to main.
+- Agent commits must not hang on an interactive signing prompt. Default to `git -c commit.gpgsign=false commit ...` without changing repository or global Git configuration.
+- A signed commit is allowed when the existing SSH signing key is already available non-interactively through macOS Keychain/`ssh-agent`; agents may load already-stored keys with `ssh-add --apple-load-keychain`. Never request, extract, print, or store a key passphrase or private-key material; fall back to the per-command unsigned form unless signing was explicitly required.
 
 ---
 

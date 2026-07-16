@@ -35,7 +35,7 @@ BEGIN
     id, tenant_id, business_name, phone, is_active, buyer_app_enabled, created_at, updated_at
   )
   VALUES (
-    v_buyer, v_tenant, 'Activity Buyer', '+919999999999', true, true, now(), now()
+    v_buyer, v_tenant, 'Activity Buyer', '9999999999', true, true, now(), now()
   );
 
   INSERT INTO app.buyer_users (id, buyer_id, user_id, role, is_active, created_at, updated_at)
@@ -54,13 +54,14 @@ END $$;
 CREATE OR REPLACE FUNCTION _buyer_app_mock_jwt(
   p_tenant_id uuid,
   p_role text,
+  p_subject_id uuid,
   p_buyer_id uuid DEFAULT NULL
 ) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
   PERFORM set_config(
     'request.jwt.claims',
     json_build_object(
-      'sub', COALESCE(p_buyer_id, p_tenant_id)::text,
+      'sub', p_subject_id::text,
       'tenant_id', p_tenant_id::text,
       'role', p_role,
       'buyer_id', p_buyer_id::text
@@ -71,7 +72,8 @@ END $$;
 
 SELECT _buyer_app_mock_jwt(
   (SELECT val FROM _buyer_app_activity_fixture WHERE key = 'tenant'),
-  'seller_admin'
+  'seller_admin',
+  (SELECT val FROM _buyer_app_activity_fixture WHERE key = 'seller')
 );
 
 SELECT app.refresh_buyer_app_snapshot((SELECT val FROM _buyer_app_activity_fixture WHERE key = 'tenant'));
@@ -114,6 +116,8 @@ SELECT ok(
   'record_buyer_app_activity supports repeated qualifying events'
 );
 
+SELECT app.refresh_buyer_app_snapshot((SELECT val FROM _buyer_app_activity_fixture WHERE key = 'tenant'));
+
 SELECT is(
   (
     SELECT opened_app_mtd::int
@@ -147,7 +151,7 @@ SELECT is(
 
 INSERT INTO app.estimates (
   id, tenant_id, buyer_id, estimate_number, status, total_amount,
-  estimate_date, is_buyer_app_estimate, created_at, updated_at
+  estimate_date, source, is_buyer_app_estimate, created_at, updated_at, created_by, updated_by
 )
 VALUES (
   (SELECT val FROM _buyer_app_activity_fixture WHERE key = 'estimate'),
@@ -157,9 +161,12 @@ VALUES (
   'draft',
   1200,
   (now() AT TIME ZONE 'Asia/Kolkata')::date,
+  'seller',
   true,
   now(),
-  now()
+  now(),
+  (SELECT val FROM _buyer_app_activity_fixture WHERE key = 'seller'),
+  (SELECT val FROM _buyer_app_activity_fixture WHERE key = 'seller')
 );
 
 SELECT is(
