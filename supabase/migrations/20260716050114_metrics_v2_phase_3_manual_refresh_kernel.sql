@@ -24,6 +24,9 @@ ALTER TABLE app.metrics_dirty_work
   ADD COLUMN IF NOT EXISTS cursor_id uuid,
   ADD COLUMN IF NOT EXISTS cursor_aux_id uuid;
 
+ALTER TABLE app.metrics_execution_history
+  ADD COLUMN IF NOT EXISTS compute_completed_at timestamptz;
+
 ALTER TABLE app.metrics_dirty_work
   DROP CONSTRAINT IF EXISTS metrics_dirty_work_cursor_kind_check;
 ALTER TABLE app.metrics_dirty_work
@@ -51,6 +54,18 @@ CREATE INDEX IF NOT EXISTS tenant_inventory_metrics_warehouse_product_idx
 CREATE INDEX IF NOT EXISTS metrics_dirty_work_fair_claim_idx
   ON app.metrics_dirty_work (next_attempt_at, created_at, tenant_id, domain, id)
   WHERE state = ANY (ARRAY['pending', 'retry']);
+CREATE INDEX IF NOT EXISTS metrics_dirty_work_claimed_lease_idx
+  ON app.metrics_dirty_work (lease_until, id)
+  WHERE state = 'claimed';
+CREATE INDEX IF NOT EXISTS metrics_dirty_work_completed_prune_idx
+  ON app.metrics_dirty_work (completed_at, id)
+  WHERE state = 'completed';
+CREATE INDEX IF NOT EXISTS metrics_execution_history_finished_prune_idx
+  ON app.metrics_execution_history (finished_at, id)
+  WHERE finished_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS metrics_execution_history_owner_started_idx
+  ON app.metrics_execution_history (owner_token, started_at DESC, id)
+  WHERE status = 'started';
 
 CREATE OR REPLACE FUNCTION app.metrics_source_type_valid(
   p_domain text,
@@ -509,6 +524,10 @@ BEGIN
   RETURN QUERY SELECT 'claimed', p_owner_token, v_global.fencing_epoch,
     v_candidate.tenant_id, v_candidate.domain, v_sources, v_keys, 0, true,
     v_global.lease_until, NULL::text;
+EXCEPTION
+  WHEN lock_not_available THEN
+    RETURN QUERY SELECT 'busy', p_owner_token, NULL::bigint, NULL::uuid, NULL::text,
+      0, 0, 0, true, NULL::timestamptz, 'metrics_claim_lock_busy'::text;
 END;
 $$;
 
@@ -1285,6 +1304,12 @@ BEGIN
       WHERE i.tenant_id = p_tenant_id AND i.deleted_at IS NULL
         AND app.metric_day_ist(i.invoice_date, i.created_at) BETWEEN w.dirty_from AND COALESCE(w.dirty_to, w.dirty_from)
         AND (w.cursor_id IS NULL OR i.buyer_id > w.cursor_id)
+    UNION SELECT b.id FROM app.buyers b JOIN app.metrics_dirty_work w
+      ON w.lease_owner = p_owner_token AND w.dirty_from IS NOT NULL
+        AND current_setting('app.metrics_cursor_stage', true) = 'buyer'
+      WHERE b.tenant_id = p_tenant_id
+        AND b.updated_at::date BETWEEN w.dirty_from AND COALESCE(w.dirty_to, w.dirty_from)
+        AND (w.cursor_id IS NULL OR b.id > w.cursor_id)
     UNION SELECT s.buyer_id FROM app.metrics_buyer_snapshot s JOIN app.metrics_dirty_work w
       ON w.lease_owner = p_owner_token AND w.dirty_from IS NOT NULL
         AND current_setting('app.metrics_cursor_stage', true) = 'buyer'
@@ -1806,13 +1831,6 @@ BEGIN
   GET DIAGNOSTICS v_count = ROW_COUNT;
   v_rows := v_rows + v_count;
 
-  IF current_setting('app.metrics_cursor_stage', true) = '' THEN
-    SELECT r.rows_written INTO v_count
-    FROM app._metrics_refresh_location_scopes(p_owner_token, p_fencing_epoch, p_tenant_id) r;
-    v_rows := v_rows + COALESCE(v_count, 0);
-    v_location_groups := v_location_groups + 6;
-  END IF;
-
   RETURN QUERY SELECT v_rows, 2 + v_location_groups, v_watermark;
 END;
 $$;
@@ -2044,6 +2062,10 @@ DECLARE
   v_watermark timestamptz;
   v_lease_until timestamptz;
   v_dead integer := 0;
+  v_lock_timeout_ms integer := 100;
+  v_statement_timeout_ms integer := 3000;
+  v_wall_budget_ms integer := 5000;
+  v_statement_group_budget integer := 25;
 BEGIN
   IF p_stage = 'claim' THEN
     RETURN QUERY SELECT * FROM app.metrics_claim_dirty_work(p_owner_token);
@@ -2057,8 +2079,22 @@ BEGIN
     RAISE EXCEPTION 'metrics_claim_identity_required' USING ERRCODE = '22023';
   END IF;
 
-  PERFORM set_config('lock_timeout', '100ms', true);
-  PERFORM set_config('statement_timeout', '3000ms', true);
+  SELECT
+    COALESCE(MIN(c.lock_timeout_ms), 100),
+    COALESCE(MIN(c.statement_timeout_ms), 3000),
+    COALESCE(MIN(c.tick_wall_budget_ms), 5000),
+    COALESCE(MIN(c.max_statement_groups_per_tick), 25)
+  INTO v_lock_timeout_ms, v_statement_timeout_ms, v_wall_budget_ms, v_statement_group_budget
+  FROM app.metrics_runtime_control c
+  WHERE c.control_scope = 'global'
+     OR (
+       c.control_scope = 'tenant'
+       AND c.tenant_id = p_tenant_id
+       AND (c.domain IS NULL OR c.domain = p_domain)
+     );
+
+  PERFORM set_config('lock_timeout', v_lock_timeout_ms::text || 'ms', true);
+  PERFORM set_config('statement_timeout', v_statement_timeout_ms::text || 'ms', true);
 
   IF p_stage = 'compute' THEN
     v_lease_until := app._metrics_assert_refresh_fence(
@@ -2110,16 +2146,17 @@ BEGIN
       RAISE EXCEPTION 'metrics_domain_invalid' USING ERRCODE = '22023';
     END IF;
 
-    IF v_groups > 25 THEN
+    IF v_groups > v_statement_group_budget THEN
       RAISE EXCEPTION 'metrics_statement_group_budget_exceeded' USING ERRCODE = '54000';
     END IF;
-    IF EXTRACT(epoch FROM (clock_timestamp() - v_started)) * 1000 > 5000 THEN
+    IF EXTRACT(epoch FROM (clock_timestamp() - v_started)) * 1000 > v_wall_budget_ms THEN
       RAISE EXCEPTION 'metrics_tick_wall_budget_exceeded' USING ERRCODE = '57014';
     END IF;
 
     UPDATE app.metrics_execution_history h
     SET statement_groups_executed = v_groups,
-        snapshot_rows_updated = v_rows
+        snapshot_rows_updated = v_rows,
+        compute_completed_at = clock_timestamp()
     WHERE h.id = (
       SELECT id FROM app.metrics_execution_history
       WHERE owner_token = p_owner_token AND status = 'started'
@@ -2136,6 +2173,21 @@ BEGIN
     v_lease_until := app._metrics_assert_refresh_fence(
       p_owner_token, p_fencing_epoch, p_tenant_id, p_domain
     );
+
+    IF NOT EXISTS (
+      SELECT 1
+      FROM app.metrics_execution_history h
+      WHERE h.owner_token = p_owner_token
+        AND h.tenant_id = p_tenant_id
+        AND h.domain = p_domain
+        AND h.fencing_epoch = p_fencing_epoch
+        AND h.status = 'started'
+        AND h.compute_completed_at IS NOT NULL
+      ORDER BY h.started_at DESC
+      LIMIT 1
+    ) THEN
+      RAISE EXCEPTION 'metrics_compute_required_before_acknowledge' USING ERRCODE = '55000';
+    END IF;
 
     WITH acknowledged AS (
       UPDATE app.metrics_dirty_work w
@@ -2225,6 +2277,10 @@ BEGIN
   END IF;
 
   IF p_stage = 'fail' THEN
+    v_lease_until := app._metrics_assert_refresh_fence(
+      p_owner_token, p_fencing_epoch, p_tenant_id, p_domain
+    );
+
     -- A failure is version-scoped. A newer dirty version is immediately reset
     -- to pending and never inherits an older version's attempts/backoff.
     WITH failed AS (
@@ -2251,6 +2307,10 @@ BEGIN
     SELECT COUNT(*)::integer, COUNT(*) FILTER (WHERE state = 'dead_letter')::integer
     INTO v_sources, v_dead FROM failed;
 
+    IF v_sources = 0 THEN
+      RAISE EXCEPTION 'metrics_no_claimed_work_to_fail' USING ERRCODE = '55000';
+    END IF;
+
     UPDATE app.metrics_refresh_state
     SET freshness_state = CASE WHEN v_dead > 0 THEN 'error' ELSE 'stale' END,
         last_error = 'metrics_compute_failed', updated_at = clock_timestamp()
@@ -2268,7 +2328,7 @@ BEGIN
 
     RETURN QUERY SELECT CASE WHEN v_dead > 0 THEN 'dead_letter' ELSE 'retry' END,
       p_owner_token, p_fencing_epoch, p_tenant_id, p_domain,
-      v_sources, 0, 0, true, NULL::timestamptz, 'metrics_compute_failed'::text;
+      v_sources, 0, 0, true, v_lease_until, 'metrics_compute_failed'::text;
     RETURN;
   END IF;
 
@@ -2426,7 +2486,7 @@ DECLARE
 BEGIN
   -- One distributed source row per affected tenant/domain/range. The sync's
   -- row-trigger bypass remains untouched and there is no per-record marking.
-  IF p_phase = ANY (ARRAY['estimates', 'orders', 'invoices', 'transaction_line_items']) THEN
+  IF p_phase = ANY (ARRAY['customers', 'pricelists', 'estimates', 'orders', 'invoices', 'transaction_line_items']) THEN
     PERFORM app.metrics_mark_dirty(
       p_tenant_id, 'commercial', 'sync_job', p_job_id,
       p_dirty_from => v_from, p_dirty_to => v_to

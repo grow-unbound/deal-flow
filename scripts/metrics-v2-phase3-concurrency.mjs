@@ -248,6 +248,10 @@ async function runConcurrency() {
       sql: stageSql('acknowledge', staleOwner, epoch, tenantId, 'setup'),
       allowFailure: true,
     }), 'acknowledge');
+    assertExpectedStaleFailure(psql({
+      sql: stageSql('fail', staleOwner, epoch, tenantId, 'setup'),
+      allowFailure: true,
+    }), 'fail');
 
     const released = parseSingleJson(psql({
       sql: stageSql('release', winningOwner, epoch, tenantId, 'setup'),
@@ -261,6 +265,7 @@ async function runConcurrency() {
       claimStatuses: [claimA.status, claimB.status].sort(),
       staleComputeRejected: true,
       staleAcknowledgeRejected: true,
+      staleFailRejected: true,
       cleanup: 'completed',
     };
   } finally {

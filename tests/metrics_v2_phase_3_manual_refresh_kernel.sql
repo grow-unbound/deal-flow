@@ -193,6 +193,8 @@ DECLARE
   v_busy record;
   v_compute record;
   v_ack record;
+  v_ack_rejected boolean := false;
+  v_fail_rejected boolean := false;
 BEGIN
   SELECT * INTO STRICT v_claim
   FROM app.metrics_claim_dirty_work('31000000-0000-4000-8000-000000000101'::uuid);
@@ -215,6 +217,18 @@ BEGIN
     RAISE EXCEPTION 'second owner was not excluded by global lease: %', row_to_json(v_busy);
   END IF;
 
+  BEGIN
+    PERFORM app.metrics_refresh_tick(
+      'acknowledge', v_claim.owner_token, v_claim.fencing_epoch, v_claim.tenant_id, v_claim.domain
+    );
+  EXCEPTION
+    WHEN SQLSTATE '55000' THEN
+      v_ack_rejected := true;
+  END;
+  IF NOT v_ack_rejected THEN
+    RAISE EXCEPTION 'acknowledge before compute was accepted';
+  END IF;
+
   SELECT * INTO STRICT v_compute
   FROM app.metrics_refresh_tick(
     'compute', v_claim.owner_token, v_claim.fencing_epoch, v_claim.tenant_id, v_claim.domain
@@ -229,6 +243,18 @@ BEGIN
   );
   IF v_ack.status <> 'acknowledged' THEN
     RAISE EXCEPTION 'setup acknowledge failed: %', row_to_json(v_ack);
+  END IF;
+
+  BEGIN
+    PERFORM app.metrics_refresh_tick(
+      'fail', v_claim.owner_token, v_claim.fencing_epoch, v_claim.tenant_id, v_claim.domain
+    );
+  EXCEPTION
+    WHEN SQLSTATE '55000' THEN
+      v_fail_rejected := true;
+  END;
+  IF NOT v_fail_rejected THEN
+    RAISE EXCEPTION 'late fail after acknowledge was accepted';
   END IF;
 END $$;
 
