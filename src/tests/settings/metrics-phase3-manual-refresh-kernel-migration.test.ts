@@ -118,8 +118,12 @@ describe('metrics phase 3 manual refresh kernel migration', () => {
     expect(migrationSql).toContain('FOR UPDATE SKIP LOCKED');
     expect(migrationSql).toContain('LIMIT v_control.max_dirty_sources_per_tick');
     expect(migrationSql).toContain('b.cumulative_keys <= v_control.max_refresh_keys_per_tick');
-    expect(migrationSql).toContain('IF v_groups > 25 THEN');
-    expect(migrationSql).toContain("* 1000 > 5000 THEN");
+    expect(migrationSql).toContain('COALESCE(MIN(c.max_statement_groups_per_tick), 25)');
+    expect(migrationSql).toContain('IF v_groups > v_statement_group_budget THEN');
+    expect(migrationSql).toContain('* 1000 > v_wall_budget_ms THEN');
+    expect(migrationSql).toContain('compute_completed_at = clock_timestamp()');
+    expect(migrationSql).toContain('metrics_compute_required_before_acknowledge');
+    expect(migrationSql).toContain('metrics_no_claimed_work_to_fail');
     expect(migrationSql).toContain('IS DISTINCT FROM ROW(');
   });
 
@@ -130,7 +134,7 @@ describe('metrics phase 3 manual refresh kernel migration', () => {
     expect(migrationSql.indexOf('PERFORM app.metrics_mark_sync_completion(')).toBeLessThan(
       migrationSql.indexOf('IF NEW.master_job_id IS NOT NULL THEN'),
     );
-    expect(migrationSql).toContain("p_phase = ANY (ARRAY['estimates', 'orders', 'invoices', 'transaction_line_items'])");
+    expect(migrationSql).toContain("p_phase = ANY (ARRAY['customers', 'pricelists', 'estimates', 'orders', 'invoices', 'transaction_line_items'])");
     expect(migrationSql).toContain("p_phase = ANY (ARRAY['inventory', 'products', 'locations'])");
   });
 
@@ -141,7 +145,7 @@ describe('metrics phase 3 manual refresh kernel migration', () => {
     );
 
     expect(migrationSql).toContain(
-      "p_phase = ANY (ARRAY['estimates', 'orders', 'invoices', 'transaction_line_items'])",
+      "p_phase = ANY (ARRAY['customers', 'pricelists', 'estimates', 'orders', 'invoices', 'transaction_line_items'])",
     );
     expect(syncCompletionSection).toMatch(
       /IF p_phase = 'transaction_line_items' THEN[\s\S]{0,500}p_tenant_id, 'inventory', 'sync_job'/i,
