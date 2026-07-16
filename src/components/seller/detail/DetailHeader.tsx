@@ -10,7 +10,7 @@ interface CrumbItem {
 }
 
 interface DetailAvatar {
-  kind: 'brand' | 'product' | 'catalog';
+  kind: 'brand' | 'product' | 'catalog' | 'customer' | 'warehouse' | 'location' | 'category' | 'cohort' | 'price-list' | 'campaign' | 'generic';
   initials?: string;
   hue?: EntityAvatarHue;
 }
@@ -31,7 +31,7 @@ interface DetailHeaderProps {
 }
 
 function renderAvatar(avatar: DetailAvatar) {
-  if (avatar.kind === 'brand') {
+  if (avatar.kind !== 'product' && avatar.kind !== 'catalog') {
     return <EntityAvatar initials={avatar.initials ?? 'BR'} hue={avatar.hue ?? 'cream'} size={48} className="rounded-[14px]" />;
   }
 

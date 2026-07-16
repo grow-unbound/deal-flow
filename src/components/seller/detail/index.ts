@@ -1,5 +1,9 @@
 export { DetailHeader } from './DetailHeader';
 export type { CrumbItem, DetailAvatar, DetailStatus, DetailHeaderProps } from './DetailHeader';
+export { MetricCard } from './MetricCard';
+export type { MetricCardProps } from './MetricCard';
+export { MetricGrid } from './MetricGrid';
+export type { MetricGridProps, MetricTile } from './MetricGrid';
 export { MetaStrip4 } from './MetaStrip4';
 export type { MetaTile, MetaStrip4Props } from './MetaStrip4';
 export { DetailTabs } from './DetailTabs';

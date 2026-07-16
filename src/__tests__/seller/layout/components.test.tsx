@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { InsightStrip4 } from '@/components/seller/layout/InsightStrip4';
+import { V3CalloutPanel } from '@/components/seller/layout/V3CalloutPanel';
 import { StatusTag } from '@/components/seller/layout/StatusTag';
 import { GrowthPill } from '@/components/seller/layout/GrowthPill';
 import { PageWrap } from '@/components/seller/layout/PageWrap';
@@ -22,21 +23,61 @@ describe('InsightStrip4', () => {
     expect(screen.getByText('B')).toBeInTheDocument();
     expect(screen.getByText('C')).toBeInTheDocument();
   });
+
+  it('keeps KPI supporting text hidden unless explicitly expanded', () => {
+    const { rerender } = render(
+      <InsightStrip4 tiles={[{ label: 'Revenue', value: '₹5L', sub: '12% vs last period' }]} />
+    );
+
+    expect(screen.queryByText('12% vs last period')).not.toBeInTheDocument();
+
+    rerender(<InsightStrip4 showSupportingText tiles={[{ label: 'Revenue', value: '₹5L', sub: '12% vs last period' }]} />);
+    expect(screen.getByText('12% vs last period')).toBeInTheDocument();
+  });
+});
+
+describe('V3CalloutPanel', () => {
+  it('renders collapsed rows with only avatar, name, and trailing status', () => {
+    render(
+      <V3CalloutPanel
+        items={[
+          {
+            kind: 'risk',
+            eyebrow: 'Needs attention',
+            hint: '1',
+            rows: [
+              {
+                initials: 'AB',
+                hue: 'teal',
+                name: 'Asha Buyers',
+                reason: 'Last order was 45 days ago',
+                trailing: '₹42K',
+              },
+            ],
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText('Asha Buyers')).toBeInTheDocument();
+    expect(screen.getByText('₹42K')).toBeInTheDocument();
+    expect(screen.queryByText('Last order was 45 days ago')).not.toBeInTheDocument();
+  });
 });
 
 describe('StatusTag', () => {
   it('renders tone-specific classes', () => {
     const { rerender } = render(<StatusTag label="Live" tone="success" />);
-    expect(screen.getByText('Live')).toHaveClass('bg-success-50', 'text-success-700');
+    expect(screen.getByText('Live').parentElement).toHaveClass('bg-success-50', 'text-success-700');
 
     rerender(<StatusTag label="Live" tone="warning" />);
-    expect(screen.getByText('Live')).toHaveClass('bg-warning-50', 'text-warning-700');
+    expect(screen.getByText('Live').parentElement).toHaveClass('bg-warning-50', 'text-warning-700');
 
     rerender(<StatusTag label="Live" tone="danger" />);
-    expect(screen.getByText('Live')).toHaveClass('bg-danger-50', 'text-danger-700');
+    expect(screen.getByText('Live').parentElement).toHaveClass('bg-danger-50', 'text-danger-700');
 
     rerender(<StatusTag label="Live" tone="neutral" />);
-    expect(screen.getByText('Live')).toHaveClass('bg-cream-100', 'text-cream-700');
+    expect(screen.getByText('Live').parentElement).toHaveClass('bg-cream-100', 'text-cream-700');
   });
 });
 
