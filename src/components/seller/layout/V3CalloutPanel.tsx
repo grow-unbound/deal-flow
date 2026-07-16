@@ -9,7 +9,7 @@ interface CalloutRow {
   hue: EntityAvatarHue;
   imageUrl?: string | null;
   name: string;
-  reason: ReactNode;
+  reason?: ReactNode;
   trailing: ReactNode;
 }
 
@@ -67,15 +67,17 @@ export function V3CalloutPanel({ items, stalenessHint = '' }: V3CalloutPanelProp
               <p className="text-xs text-cream-700">{item.hint}</p>
             </div>
             {item.rows.length === 0 ? (
-              <p className="py-1 text-sm text-cream-700 italic">None right now. Within thresholds.</p>
+              <p className="py-1 text-sm text-cream-700 italic">None right now.</p>
             ) : (
               <div className="space-y-[10px]">
                 {item.rows.map((row, rowIndex) => (
-                  <div key={`${row.name}-${rowIndex}`} className="flex items-start gap-[10px]">
+                  <div
+                    key={`${row.name}-${rowIndex}`}
+                    className="flex items-center gap-[10px] rounded-[10px] transition duration-150 focus-within:ring-2 focus-within:ring-ember-300/70 active:scale-[0.97]"
+                  >
                     <EntityAvatar initials={row.initials} hue={row.hue} imageUrl={row.imageUrl} size={32} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-base font-medium leading-[1.25] text-cream-900">{row.name}</p>
-                      <p className="mt-0.5 truncate text-sm leading-[1.4] text-cream-700">{row.reason}</p>
                     </div>
                     <div className="shrink-0 text-right text-sm font-medium text-cream-800">{row.trailing}</div>
                   </div>
