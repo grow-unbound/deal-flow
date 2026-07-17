@@ -78,7 +78,7 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
     const m = data.meta_strip_4;
     return [
       {
-        label: 'GMV · this month',
+        label: 'Invoiced sales 90D',
         value: formatCompactInr(m.gmv_mtd),
         sub: (
           <span>
@@ -91,17 +91,17 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
         ),
       },
       {
-        label: 'Active buyers',
+        label: 'Customers who purchased',
         value: `${m.active_buyer_count}`,
-        sub: 'this month',
+        sub: 'in the last 90 days',
       },
       {
-        label: 'OOS SKUs',
+        label: 'Recent sellers low/out of stock',
         value: `${m.oos_sku_count}`,
         sub: `${m.low_stock_sku_count} more low-stock`,
       },
       {
-        label: 'Active SKUs',
+        label: 'Products in category',
         value: `${m.active_sku_count}`,
         sub: `${data.header.brand_count} brand${data.header.brand_count !== 1 ? 's' : ''}`,
       },

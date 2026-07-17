@@ -253,8 +253,8 @@ function EstimatesLandingContent({
     if (!kpis) {
       return `Track buyer enquiries and seller quotes ${lowerLabel}.`;
     }
-    return `${kpis.total_estimates_this_period} estimates ${lowerLabel} with ${formatCompactInr(kpis.total_gmv_this_period)} GMV. ${kpis.open_estimates_this_period} open and ${kpis.converted_this_period} converted ${lowerLabel}.`;
-  }, [lowerLabel, summaryData?.kpis]);
+    return `${kpis.total_estimates_this_period} estimates in ${horizonLabel.toLowerCase()}.`;
+  }, [horizonLabel, lowerLabel, summaryData?.kpis]);
 
   const followUpHint = useMemo(() => `${countFollowUpCandidates(allEstimates)}`, [allEstimates]);
   const expiringHint = useMemo(() => `${countExpiringSoonOpen(allEstimates)}`, [allEstimates]);
@@ -312,25 +312,25 @@ function EstimatesLandingContent({
             <InsightStrip4
               tiles={[
                 {
-                  label: `Estimates · ${metricSuffix}`,
-                  value: `${kpis?.total_estimates_this_period}`,
-                  sub: `${(kpis?.total_estimates_growth_pct ?? 0) >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis?.total_estimates_growth_pct ?? 0)}% vs last period`,
-                },
-                {
-                  label: 'GMV',
+                  label: 'Estimate value created',
                   value: formatCompactInr(kpis?.total_gmv_this_period ?? 0),
-                  sub: `AOV ${formatCompactInr(kpis?.aov ?? 0)}`,
-                  tone: 'accent',
+                  sub: `${kpis?.total_estimates_this_period ?? 0} estimates this period`,
                 },
                 {
                   label: 'Open estimates',
-                  value: `${kpis?.open_estimates_this_period}`,
-                  sub: `${kpis?.open_drafts} draft · ${kpis?.open_sent} sent · ${kpis?.open_accepted} accepted`,
+                  value: `${kpis?.open_estimates_this_period ?? 0}`,
+                  sub: `${kpis?.open_drafts ?? 0} draft · ${kpis?.open_sent ?? 0} sent · ${kpis?.open_accepted ?? 0} accepted`,
+                  tone: 'accent',
                 },
                 {
-                  label: `Converted · ${metricSuffix}`,
-                  value: `${kpis?.converted_this_period}`,
-                  sub: 'converted to SO or invoice',
+                  label: 'Awaiting action 3+ days',
+                  value: `${countFollowUpCandidates(allEstimates)}`,
+                  sub: `${kpis?.open_sent ?? 0} sent and pending`,
+                },
+                {
+                  label: 'Expiring in 7 days',
+                  value: `${countExpiringSoonOpen(allEstimates)}`,
+                  sub: 'unresolved estimates',
                 },
               ]}
             />
@@ -339,7 +339,7 @@ function EstimatesLandingContent({
               items={[
                 {
                   kind: 'risk',
-                  eyebrow: 'Needs a follow-up',
+                  eyebrow: 'Sent awaiting action',
                   hint: followUpHint,
                   rows: (read?.needs_follow_up ?? []).map((row) => ({
                     ...mapRowToCallout(row),
@@ -349,8 +349,8 @@ function EstimatesLandingContent({
                 },
                 {
                   kind: 'info',
-                  eyebrow: 'Ready to convert',
-                  hint: `${kpis?.ready_to_convert}`,
+                  eyebrow: 'Drafts not sent',
+                  hint: `${kpis?.open_drafts ?? 0}`,
                   rows: (read?.ready_to_convert ?? []).map((row) => ({
                     ...mapRowToCallout(row),
                     reason: `${row.estimate_number} · ${row.items_count} items`,
@@ -359,7 +359,7 @@ function EstimatesLandingContent({
                 },
                 {
                   kind: 'opportunity',
-                  eyebrow: 'Expiring soon',
+                  eyebrow: 'Expiring unresolved',
                   hint: expiringHint,
                   rows: (read?.expiring_soon ?? []).map((row) => ({
                     ...mapRowToCallout(row),

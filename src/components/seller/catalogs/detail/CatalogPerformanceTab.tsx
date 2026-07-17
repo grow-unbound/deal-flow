@@ -32,13 +32,13 @@ function conversionLabels(performance: CatalogDetailResponse['performance']) {
 
   if (estimatesEnabled && !ordersEnabled) {
     return {
-      cumulativeTitle: 'Cumulative enquiries',
+      cumulativeTitle: 'Engagement and demand timeline',
       conversionSubtitle: 'Enquiry volume since publish',
     };
   }
   if (ordersEnabled && !estimatesEnabled) {
     return {
-      cumulativeTitle: 'Cumulative orders',
+      cumulativeTitle: 'Engagement and demand timeline',
       conversionSubtitle: 'Order volume since publish',
     };
   }
@@ -53,7 +53,7 @@ function conversionLabels(performance: CatalogDetailResponse['performance']) {
           : 'No conversions yet';
 
   return {
-    cumulativeTitle: 'Cumulative conversions',
+    cumulativeTitle: 'Engagement and demand timeline',
     conversionSubtitle: breakdown,
   };
 }
@@ -177,8 +177,8 @@ export function CatalogPerformanceTab({ performance, performanceCards }: Catalog
           card={{
             id: 'catalog-funnel',
             representation: 'distribution',
-            title: 'Funnel',
-            subtitle: 'Buyer engagement',
+            title: 'Campaign funnel',
+            subtitle: 'Open to demand',
             body: {
               items: [
                 { id: 'views', label: 'Views', value: performance.summary.views, supporting: `${performance.summary.unique_viewers} unique` },
@@ -196,8 +196,8 @@ export function CatalogPerformanceTab({ performance, performanceCards }: Catalog
 
       <div className="grid grid-cols-2 gap-4">
         <PerformanceCard
-          title="Top SKUs in this catalog"
-          subtitle="Product performance"
+          title="Products driving demand"
+          subtitle="Top requested SKUs"
           actions={(
             <button type="button" className="text-sm font-semibold text-teal-700 no-underline" onClick={() => setSkusSheetOpen(true)}>
               See more →
@@ -219,8 +219,8 @@ export function CatalogPerformanceTab({ performance, performanceCards }: Catalog
         </PerformanceCard>
 
         <PerformanceCard
-          title="Per-buyer activity"
-          subtitle="From this catalog&apos;s cohort"
+          title="Customers to follow up"
+          subtitle="Recipient activity from this campaign"
           actions={(
             <button type="button" className="text-sm font-semibold text-teal-700 no-underline" onClick={() => setBuyersSheetOpen(true)}>
               See more →
@@ -251,12 +251,12 @@ export function CatalogPerformanceTab({ performance, performanceCards }: Catalog
         open={skusSheetOpen}
         onOpenChange={setSkusSheetOpen}
         title="Top SKUs in this catalog"
-        subtitle="All catalog SKUs by GMV"
+        subtitle="All catalog SKUs by demand value"
         items={performance.top_skus}
         columns={[
           { label: '#', width: 52, className: 'px-5' },
           { label: 'SKU', className: 'px-5' },
-          { label: 'GMV', className: 'px-5 text-right' },
+          { label: 'Demand value', className: 'px-5 text-right' },
           { label: 'Units', className: 'px-5 text-right' },
         ]}
         renderRow={(sku, index) => (
@@ -282,7 +282,7 @@ export function CatalogPerformanceTab({ performance, performanceCards }: Catalog
           { label: 'Buyer', className: 'px-5' },
           { label: 'Opened', className: 'px-5' },
           { label: 'Conversions', className: 'px-5 text-right' },
-          { label: 'GMV', className: 'px-5 text-right' },
+          { label: 'Demand value', className: 'px-5 text-right' },
         ]}
         renderRow={(buyer) => (
           <tr key={buyer.buyer_id} className="border-b border-cream-300 bg-white">

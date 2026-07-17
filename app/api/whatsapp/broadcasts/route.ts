@@ -9,13 +9,199 @@ import { SELLER_CACHE_PERSONAL } from '@/lib/server/bounded-get';
 import { buildBroadcastMessageQueue } from '@/lib/server/whatsapp-broadcast-send';
 import { enqueueWhatsAppMessage, triggerWhatsAppDispatch } from '@/lib/server/whatsapp-enqueue';
 
+const BROADCAST_LIST_LIMIT_DEFAULT = 50;
+const BROADCAST_LIST_LIMIT_MAX = 100;
+
+const BROADCAST_STATUS_FILTERS = new Set([
+  'all',
+  'draft',
+  'pending_review',
+  'scheduled',
+  'sending',
+  'completed',
+  'partially_failed',
+  'cancelled',
+]);
+
+const BROADCAST_SORT_OPTIONS = new Set(['date_desc', 'date_asc', 'name_asc', 'name_desc']);
+
+type BroadcastSort = 'date_desc' | 'date_asc' | 'name_asc' | 'name_desc';
+
+interface RawBroadcastRow {
+  id: string;
+  name: string;
+  use_case: string;
+  target_type: string;
+  status: string;
+  scheduled_for: string | null;
+  estimated_recipient_count: number | null;
+  actual_recipient_count: number | null;
+  created_at: string;
+  target_cohort_id: string | null;
+  target_buyer_ids: string[] | null;
+  whatsapp_template_id: string | null;
+  whatsapp_templates: { meta_template_name: string } | null;
+  cohorts: { name: string } | null;
+}
+
+interface DeliveryAggregate {
+  delivered_count: number;
+  total_count: number;
+}
+
+function parseBroadcastListParams(searchParams: URLSearchParams) {
+  const limitRaw = Number(searchParams.get('limit') ?? BROADCAST_LIST_LIMIT_DEFAULT);
+  const limit = Number.isFinite(limitRaw)
+    ? Math.min(Math.max(1, Math.floor(limitRaw)), BROADCAST_LIST_LIMIT_MAX)
+    : BROADCAST_LIST_LIMIT_DEFAULT;
+  const offsetRaw = Number(searchParams.get('offset') ?? 0);
+  const offset = Number.isFinite(offsetRaw) ? Math.max(0, Math.floor(offsetRaw)) : 0;
+  const q = (searchParams.get('q') ?? '').trim();
+  const statusParam = searchParams.get('status') ?? 'all';
+  const status = BROADCAST_STATUS_FILTERS.has(statusParam) ? statusParam : 'all';
+  const sortParam = searchParams.get('sort') ?? 'date_desc';
+  const sort: BroadcastSort = BROADCAST_SORT_OPTIONS.has(sortParam)
+    ? (sortParam as BroadcastSort)
+    : 'date_desc';
+
+  return { limit, offset, q, status, sort };
+}
+
+function formatBroadcastTargetLabel(row: RawBroadcastRow): string {
+  if (row.target_type === 'cohort') {
+    return row.cohorts?.name ?? 'Customer group';
+  }
+
+  const buyerIds = Array.isArray(row.target_buyer_ids) ? row.target_buyer_ids : [];
+  const count = row.actual_recipient_count
+    ?? row.estimated_recipient_count
+    ?? (row.target_type === 'buyer_selection' ? buyerIds.length : 0);
+
+  if (row.target_type === 'all_buyers') {
+    return count > 0 ? `All buyers (${count})` : 'All buyers';
+  }
+  if (row.target_type === 'geography_filter') {
+    return count > 0 ? `Geography filter (${count})` : 'Geography filter';
+  }
+  if (row.target_type === 'dormant_filter') {
+    return count > 0 ? `Dormant customers (${count})` : 'Dormant customers';
+  }
+  if (row.target_type === 'dues_filter') {
+    return count > 0 ? `Customers with dues (${count})` : 'Customers with dues';
+  }
+
+  return `${count} customer${count === 1 ? '' : 's'}`;
+}
+
+async function resolveBroadcastSearchTemplateIds(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  tenantId: string,
+  q: string,
+): Promise<string[]> {
+  if (!q) return [];
+
+  const { data: templates } = await db
+    .schema('app')
+    .from('whatsapp_templates')
+    .select('id')
+    .or(`tenant_id.is.null,tenant_id.eq.${tenantId}`)
+    .is('deleted_at', null)
+    .ilike('meta_template_name', `%${q}%`);
+
+  return (templates ?? []).map((row: { id: string }) => row.id);
+}
+
+function applyBroadcastSearchToQuery(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  query: any,
+  q: string,
+  templateIds: string[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): any {
+  if (!q) return query;
+
+  const escaped = q.replace(/[%_]/g, '\\$&');
+  if (templateIds.length > 0) {
+    return query.or(`name.ilike.%${escaped}%,whatsapp_template_id.in.(${templateIds.join(',')})`);
+  }
+  return query.ilike('name', `%${escaped}%`);
+}
+
+async function fetchDeliveryAggregates(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  tenantId: string,
+  broadcastIds: string[],
+): Promise<Map<string, DeliveryAggregate>> {
+  const aggregates = new Map<string, DeliveryAggregate>();
+  if (broadcastIds.length === 0) {
+    return aggregates;
+  }
+
+  const { data: messages, error } = await db
+    .schema('app')
+    .from('whatsapp_messages')
+    .select('whatsapp_broadcast_id, status')
+    .eq('tenant_id', tenantId)
+    .in('whatsapp_broadcast_id', broadcastIds)
+    .is('deleted_at', null);
+
+  if (error) {
+    console.error('[GET /api/whatsapp/broadcasts] message aggregate error:', error.code, error.message);
+    return aggregates;
+  }
+
+  for (const message of messages ?? []) {
+    const broadcastId = message.whatsapp_broadcast_id as string | null;
+    if (!broadcastId) continue;
+
+    const current = aggregates.get(broadcastId) ?? { delivered_count: 0, total_count: 0 };
+    current.total_count += 1;
+    if (message.status === 'delivered' || message.status === 'read') {
+      current.delivered_count += 1;
+    }
+    aggregates.set(broadcastId, current);
+  }
+
+  return aggregates;
+}
+
+function enrichBroadcastRow(row: RawBroadcastRow, delivery: DeliveryAggregate | undefined) {
+  const fallbackTotal = row.actual_recipient_count
+    ?? row.estimated_recipient_count
+    ?? (Array.isArray(row.target_buyer_ids) ? row.target_buyer_ids.length : 0);
+  const totalCount = delivery?.total_count && delivery.total_count > 0
+    ? delivery.total_count
+    : fallbackTotal;
+  const deliveredCount = delivery?.delivered_count ?? 0;
+  const displayAt = row.scheduled_for ?? row.created_at;
+
+  return {
+    id: row.id,
+    name: row.name,
+    use_case: row.use_case,
+    target_type: row.target_type,
+    status: row.status,
+    scheduled_for: row.scheduled_for,
+    estimated_recipient_count: row.estimated_recipient_count,
+    actual_recipient_count: row.actual_recipient_count,
+    created_at: row.created_at,
+    display_at: displayAt,
+    template_name: row.whatsapp_templates?.meta_template_name ?? null,
+    target_label: formatBroadcastTargetLabel(row),
+    delivered_count: deliveredCount,
+    total_count: totalCount,
+  };
+}
+
 /**
  * WhatsApp Broadcast Phase E — broadcast job list + create.
  *
  * Spec: CLAUDE OUTPUTS/DealFlow/DealFlow_WhatsApp-Broadcast-Spec_v4.md §4.2, §8, §9.
  *
- * GET  — lightweight broadcast history (last ~20 rows) for the Customers page
- *        secondary tab. Both seller_admin and seller_assistant can read.
+ * GET  — paginated broadcast history for Manage Broadcasts page.
+ *        Both seller_admin and seller_assistant can read.
  * POST — create a broadcast row. seller_admin only (§8), re-verified here at
  *        the API layer in addition to the RLS INSERT policy (belt+suspenders,
  *        same pattern as app/api/customers/import/route.ts).
@@ -44,25 +230,75 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
   }
 
+  const { limit, offset, q, status, sort } = parseBroadcastListParams(request.nextUrl.searchParams);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabaseAdmin as any;
-  const { data: rows, error } = await db
+
+  const templateIds = await resolveBroadcastSearchTemplateIds(db, claims.tenant_id, q);
+
+  // Filters must come after .select() — PostgREST builder from .from() alone has no .eq().
+  let listQuery = db
     .schema('app')
     .from('whatsapp_broadcasts')
     .select(
-      'id, name, use_case, target_type, status, scheduled_for, estimated_recipient_count, actual_recipient_count, created_at',
+      `
+        id,
+        name,
+        use_case,
+        target_type,
+        status,
+        scheduled_for,
+        estimated_recipient_count,
+        actual_recipient_count,
+        created_at,
+        target_cohort_id,
+        target_buyer_ids,
+        whatsapp_template_id,
+        whatsapp_templates ( meta_template_name ),
+        cohorts:target_cohort_id ( name )
+      `,
+      { count: 'exact' },
     )
     .eq('tenant_id', claims.tenant_id)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false })
-    .limit(20);
+    .is('deleted_at', null);
+
+  listQuery = applyBroadcastSearchToQuery(listQuery, q, templateIds);
+
+  if (status !== 'all') {
+    listQuery = listQuery.eq('status', status);
+  }
+
+  if (sort === 'name_asc' || sort === 'name_desc') {
+    listQuery = listQuery.order('name', { ascending: sort === 'name_asc' });
+  } else {
+    listQuery = listQuery.order('created_at', { ascending: sort === 'date_asc' });
+  }
+
+  const { data: rows, error, count } = await listQuery.range(offset, offset + limit - 1);
 
   if (error) {
     console.error('[GET /api/whatsapp/broadcasts] DB error:', error.code, error.message);
     return NextResponse.json({ error: 'Failed to fetch broadcasts' }, { status: 500 });
   }
 
-  return NextResponse.json({ broadcasts: rows ?? [] }, { headers: SELLER_CACHE_PERSONAL });
+  const rawRows = (rows ?? []) as RawBroadcastRow[];
+  const broadcastIds = rawRows.map((row) => row.id);
+  const deliveryAggregates = await fetchDeliveryAggregates(db, claims.tenant_id, broadcastIds);
+  const broadcasts = rawRows.map((row) => enrichBroadcastRow(row, deliveryAggregates.get(row.id)));
+  const total = count ?? broadcasts.length;
+  const nextOffset = offset + broadcasts.length < total ? offset + broadcasts.length : null;
+
+  return NextResponse.json(
+    {
+      broadcasts,
+      total,
+      next_offset: nextOffset,
+      limit,
+      offset,
+    },
+    { headers: SELLER_CACHE_PERSONAL },
+  );
 }
 
 export async function POST(request: NextRequest) {

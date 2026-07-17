@@ -254,24 +254,24 @@ function SalesOrdersLandingContent({
             <InsightStrip4
               tiles={[
                 {
-                  label: 'Sales Orders · MTD',
-                  value: `${landingData.kpis.orders_mtd}`,
-                  sub: `${landingData.kpis.orders_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(landingData.kpis.orders_growth_pct)}% vs last month`,
+                  label: 'Order value created',
+                  value: formatCompactInr(landingData.kpis.gmv_mtd),
+                  sub: `${landingData.kpis.orders_mtd} sales orders this month`,
                 },
                 {
-                  label: 'GMV',
-                  value: formatCompactInr(landingData.kpis.gmv_mtd),
-                  sub: `AOV ${formatCompactInr(landingData.kpis.aov)}`,
+                  label: 'Open orders',
+                  value: `${landingData.kpis.received_count + landingData.kpis.pending_dispatch_count}`,
+                  sub: 'received + confirmed in flow',
                   tone: 'accent',
                 },
                 {
-                  label: 'Pending dispatch',
+                  label: 'Waiting to dispatch',
                   value: `${landingData.kpis.pending_dispatch_count}`,
                   sub: 'confirmed, awaiting dispatch',
                   tone: 'warn',
                 },
                 {
-                  label: 'Received',
+                  label: 'Waiting for confirmation',
                   value: `${landingData.kpis.received_count}`,
                   sub: 'awaiting confirmation',
                 },
@@ -282,7 +282,7 @@ function SalesOrdersLandingContent({
               items={[
                 {
                   kind: 'risk',
-                  eyebrow: 'Needs action',
+                  eyebrow: 'Orders to confirm',
                   hint: `${needsAttentionCount}`,
                   rows: landingData.todays_read.needs_attention.map((row) => ({
                     ...mapRowToCallout(row),
@@ -296,8 +296,8 @@ function SalesOrdersLandingContent({
                 },
                 {
                   kind: 'info',
-                  eyebrow: 'Biggest tickets',
-                  hint: `${orders.length}`,
+                  eyebrow: 'Orders to dispatch',
+                  hint: `${landingData.kpis.pending_dispatch_count}`,
                   rows: landingData.todays_read.biggest_tickets.map((row) => ({
                     ...mapRowToCallout(row),
                     reason: `${row.order_id} · ${row.items_count} items · ${row.delivery_city}`,

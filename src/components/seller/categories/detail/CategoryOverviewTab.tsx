@@ -36,7 +36,7 @@ export function CategoryOverviewTab({ overview, performanceCards }: CategoryOver
   return (
     <div className="mt-6 grid grid-cols-5 gap-4">
       <div className="col-span-3 space-y-4">
-        <PerformanceCard title="Revenue trend" subtitle="6-week rolling window" bodyClassName="p-5">
+        <PerformanceCard title="Sales over time" subtitle="6-week rolling window" bodyClassName="p-5">
           <TrendFrame
             emptyTitle="No sales over time yet"
             emptyDescription="This category does not have enough invoiced history for a trend."
@@ -75,7 +75,7 @@ export function CategoryOverviewTab({ overview, performanceCards }: CategoryOver
         </PerformanceCard>
 
         {top_brands.length > 0 && (
-          <PerformanceCard title="Brand contribution" bodyClassName="p-0">
+          <PerformanceCard title="Brand contribution" subtitle="Which brands drive this category" bodyClassName="p-0">
             <RankedList
               items={top_brands.map((b, index) => ({
                 id: b.id,
@@ -93,7 +93,7 @@ export function CategoryOverviewTab({ overview, performanceCards }: CategoryOver
       </div>
 
       <div className="col-span-2 space-y-3">
-        <p className="text-sm font-medium text-cream-700">Stock health</p>
+        <p className="text-sm font-medium text-cream-700">Product action list</p>
         <MetricGrid
           className="mt-0"
           tiles={[

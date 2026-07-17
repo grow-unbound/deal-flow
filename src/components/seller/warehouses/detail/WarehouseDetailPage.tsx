@@ -124,7 +124,7 @@ export function WarehouseDetailPage({ id }: { id: string }) {
         showSupportingText
         tiles={[
           {
-            label: 'Tracked SKUs',
+            label: 'Products in stock',
             value: `${data.meta_strip.tracked_skus}`,
             sub: `${data.details.stockout_skus} stockout SKUs`,
           },
@@ -134,7 +134,7 @@ export function WarehouseDetailPage({ id }: { id: string }) {
             sub: 'available to fulfill',
           },
           {
-            label: 'Low-stock + stockout',
+            label: 'Stock risk SKUs',
             value: `${data.meta_strip.low_stock_skus}`,
             sub: 'reorder-triggered exposure',
           },

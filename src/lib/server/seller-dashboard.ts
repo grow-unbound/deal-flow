@@ -92,11 +92,6 @@ type InventoryRow = {
   } | null;
 };
 
-type KpiTenantDailyRow = {
-  orders_count: number | null;
-  gmv: number | null;
-};
-
 type MetricsProductRevenueRow = {
   tenant_product_id: string;
   invoice_value_90d: number | string | null;
@@ -208,6 +203,10 @@ function inPeriod(iso: string | null, startIso: string, endExclusiveIso: string)
 
 function orderEventAt(row: Pick<OrderRow, 'order_date' | 'placed_at' | 'created_at'>) {
   return row.order_date ?? row.placed_at ?? row.created_at;
+}
+
+function invoiceEventAt(row: Pick<InvoiceRow, 'invoice_date' | 'created_at'>) {
+  return row.invoice_date ?? row.created_at;
 }
 
 function buildRecentFeedRows<T extends { id: string; buyer_id: string; total_amount: number | null; updated_at: string | null; created_at: string }>(
@@ -378,7 +377,7 @@ async function fetchSellerDashboardData(
     inventoryQuery = inventoryQuery.eq('warehouse_id', '00000000-0000-0000-0000-000000000000');
   }
 
-  const [portfolioRes, buyersRes, catalogsRes, inventoryRes, ordersRes, estimatesRes, invoicesRes, kpiCurrentRes, kpiPreviousRes] = await Promise.all([
+  const [portfolioRes, buyersRes, catalogsRes, inventoryRes, ordersRes, estimatesRes, invoicesRes] = await Promise.all([
     db
       .schema('app')
       .rpc('get_metrics_v2_seller_dashboard', {
@@ -426,20 +425,6 @@ async function fetchSellerDashboardData(
         .is('deleted_at', null),
       claims,
     ),
-    db
-      .schema('app')
-      .from('kpi_tenant_daily')
-      .select('orders_count, gmv')
-      .eq('tenant_id', tenantId)
-      .gte('day', period.current_start.slice(0, 10))
-      .lt('day', period.current_end_exclusive.slice(0, 10)),
-    db
-      .schema('app')
-      .from('kpi_tenant_daily')
-      .select('orders_count, gmv')
-      .eq('tenant_id', tenantId)
-      .gte('day', period.previous_start.slice(0, 10))
-      .lt('day', period.previous_end_exclusive.slice(0, 10)),
   ]);
 
   const rawBuyers = (buyersRes.data ?? []) as BuyerRow[];
@@ -448,8 +433,6 @@ async function fetchSellerDashboardData(
   const orders = (ordersRes.data ?? []) as OrderRow[];
   const estimates = (estimatesRes.data ?? []) as EstimateRow[];
   const invoices = (invoicesRes.data ?? []) as InvoiceRow[];
-  const kpiCurrentRows = (kpiCurrentRes.data ?? []) as KpiTenantDailyRow[];
-  const kpiPreviousRows = (kpiPreviousRes.data ?? []) as KpiTenantDailyRow[];
   const portfolio = normalizeDashboardPortfolio(portfolioRes.data);
   const scopedBuyerIds = role === ROLES.SELLER_ASSISTANT
     ? new Set(
@@ -478,10 +461,12 @@ async function fetchSellerDashboardData(
 
   const currentOrders = orders.filter((row) => inPeriod(orderEventAt(row), period.current_start, period.current_end_exclusive));
   const previousOrders = orders.filter((row) => inPeriod(orderEventAt(row), period.previous_start, period.previous_end_exclusive));
-  const currentOrdersCount = kpiCurrentRows.length > 0 ? sumNumbers(kpiCurrentRows, (row) => Number(row.orders_count ?? 0)) : currentOrders.length;
-  const previousOrdersCount = kpiPreviousRows.length > 0 ? sumNumbers(kpiPreviousRows, (row) => Number(row.orders_count ?? 0)) : previousOrders.length;
-  const currentGmv = kpiCurrentRows.length > 0 ? sumNumbers(kpiCurrentRows, (row) => Number(row.gmv ?? 0)) : sumNumbers(currentOrders, (row) => Number(row.total_amount ?? 0));
-  const previousGmv = kpiPreviousRows.length > 0 ? sumNumbers(kpiPreviousRows, (row) => Number(row.gmv ?? 0)) : sumNumbers(previousOrders, (row) => Number(row.total_amount ?? 0));
+  const currentInvoices = invoices.filter((row) => inPeriod(invoiceEventAt(row), period.current_start, period.current_end_exclusive));
+  const previousInvoices = invoices.filter((row) => inPeriod(invoiceEventAt(row), period.previous_start, period.previous_end_exclusive));
+  const currentOrdersCount = currentOrders.length;
+  const previousOrdersCount = previousOrders.length;
+  const currentGmv = sumNumbers(currentInvoices, (row) => Number(row.total_amount ?? 0));
+  const previousGmv = sumNumbers(previousInvoices, (row) => Number(row.total_amount ?? 0));
 
   const allOrdersSorted = [...orders].sort((a, b) => new Date(b.updated_at ?? b.created_at).getTime() - new Date(a.updated_at ?? a.created_at).getTime());
   const allEstimatesSorted = [...estimates].sort((a, b) => new Date(b.updated_at ?? b.created_at).getTime() - new Date(a.updated_at ?? a.created_at).getTime());

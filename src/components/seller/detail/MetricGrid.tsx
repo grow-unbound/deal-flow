@@ -17,7 +17,7 @@ function columnsFor(count: number) {
   return 'grid-cols-1 md:grid-cols-2 xl:grid-cols-4';
 }
 
-export function MetricGrid({ tiles, className, cardClassName, showSupportingText = false, renderTile }: MetricGridProps) {
+export function MetricGrid({ tiles, className, cardClassName, showSupportingText = true, renderTile }: MetricGridProps) {
   const visibleTiles = tiles.slice(0, 4);
 
   return (

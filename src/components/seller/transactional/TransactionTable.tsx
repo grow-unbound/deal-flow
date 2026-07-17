@@ -163,7 +163,7 @@ export function TransactionTable({
 
             <td className="px-5 py-3.5">
               <div className="flex items-center gap-3">
-                <EntityAvatar initials={initials} hue={hue} size={30} />
+                {/* <EntityAvatar initials={initials} hue={hue} size={30} /> */}
                 <div className="min-w-0">
                   <p className="truncate text-base font-medium text-cream-900">{row.buyer_name}</p>
                   <p className="mt-0.5 truncate text-xs text-cream-600">{row.buyer_place_of_supply ?? '—'}</p>

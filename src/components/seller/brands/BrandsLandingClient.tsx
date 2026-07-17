@@ -294,7 +294,7 @@ function BrandLandingContent({
       <PageHeader
         eyebrow="Portfolio"
         title="Brands"
-        subtitle={`${summaryData?.kpis?.brands_carried ?? updatedBrands.length} brand principals carried across ${totalBuyers} buyers ${lowerLabel}. This is your portfolio at a glance.`}
+        subtitle={`${summaryData?.kpis?.brands_carried ?? updatedBrands.length} brands in your active portfolio. Use this page to spot sales concentration and stock risk.`}
         horizon={horizonLabel}
         primary="Add a brand"
         onPrimaryClick={() => setAddBrandOpen(true)}
@@ -309,24 +309,24 @@ function BrandLandingContent({
       <InsightStrip4
         tiles={[
           {
-            label: 'Portfolio GMV',
+            label: 'Invoiced sales 90D',
             value: formatCompactInr(portfolioGmv),
             sub: `${growthVsPrior >= 0 ? '↑ +' : '↓ '}${Math.abs(growthVsPrior)}% vs prior 90D`,
             tone: 'accent',
           },
           {
-            label: 'Brands carried',
+            label: 'Brands with sales',
             value: `${summaryData?.kpis?.brands_carried ?? updatedBrands.length}`,
-            sub: `${activeBuyers} of ${totalBuyers} buyers active`,
+            sub: `${activeBuyers} customers bought across the portfolio`,
           },
           {
-            label: 'Need attention',
+            label: 'Brands needing attention',
             value: `${summaryData?.kpis?.need_attention_count ?? attention.length}`,
             sub: `${attention.reduce((sum, brand) => sum + brand.alerts.length, 0)} alerts open`,
             tone: 'warn',
           },
           {
-            label: 'Campaign freshness',
+            label: 'Recently active in campaigns',
             value: `${catalogFresh}`,
             sub: freshnessHelp(),
           },
@@ -337,7 +337,7 @@ function BrandLandingContent({
         items={[
           {
             kind: 'risk',
-            eyebrow: 'Needs attention',
+            eyebrow: 'Brand stock risk',
             hint: `${attention.length} brands`,
             rows: attention.slice(0, 2).map((brand, index) => ({
               initials: getInitials(brand.name),
@@ -349,8 +349,8 @@ function BrandLandingContent({
           },
           {
             kind: 'info',
-            eyebrow: 'Top performers',
-            hint: 'by GMV',
+            eyebrow: 'Brands driving sales',
+            hint: 'by invoiced sales',
             rows: topPerformers.map((brand, index) => ({
               initials: getInitials(brand.name),
               hue: index % 3 === 0 ? 'teal' : index % 3 === 1 ? 'ember' : 'cream',
@@ -361,7 +361,7 @@ function BrandLandingContent({
           },
           {
             kind: 'opportunity',
-            eyebrow: 'Top risers',
+            eyebrow: 'Brands gaining momentum',
             hint: 'fastest growth',
             rows: topRisers.map((brand, index) => ({
               initials: getInitials(brand.name),
@@ -437,11 +437,11 @@ function BrandLandingContent({
         }
         columns={[
           { label: 'Brand', minWidth: 320, maxWidth: 420, className: 'px-5' },
-          { label: `GMV · ${metricSuffix}`, align: 'right', minWidth: 140, maxWidth: 180, className: 'px-5' },
-          { label: 'Growth', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
+          { label: `Sales · ${metricSuffix}`, align: 'right', minWidth: 140, maxWidth: 180, className: 'px-5' },
+          { label: 'Trend', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
           { label: 'Share of portfolio', align: 'right', minWidth: 160, maxWidth: 200, className: 'px-5' },
-          { label: 'Active buyers', align: 'right', minWidth: 150, maxWidth: 190, className: 'px-5' },
-          { label: 'Campaign', minWidth: 220, maxWidth: 280, className: 'px-5' },
+          { label: 'Customers who purchased', align: 'right', minWidth: 150, maxWidth: 190, className: 'px-5' },
+          { label: 'Recent campaign', minWidth: 220, maxWidth: 280, className: 'px-5' },
           { width: 40, className: 'px-4' },
         ]}
         tableMinWidth={1400}

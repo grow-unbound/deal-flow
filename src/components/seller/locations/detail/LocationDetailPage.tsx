@@ -151,7 +151,7 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
 
   const tiles = [
     {
-      label: 'GMV · MTD',
+      label: 'Invoiced sales 90D',
       value: formatCompactInr(meta.gmv_mtd),
       sub: (
         <span className={meta.growth_pct >= 0 ? 'up' : 'down'}>
@@ -161,12 +161,12 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
       ),
     },
     {
-      label: 'Unpaid invoices',
+      label: 'Overdue invoices',
       value: `${meta.unpaid_invoice_count}`,
-      sub: `of ${meta.total_invoice_count} total`,
+      sub: `of ${meta.total_invoice_count} invoices`,
     },
     {
-      label: 'Outstanding dues',
+      label: 'Overdue amount',
       value: formatCompactInr(meta.outstanding_dues),
       sub:
         meta.outstanding_dues > 0 ? (
@@ -176,7 +176,7 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
     {
       label: 'Open estimates',
       value: `${meta.open_estimate_count}`,
-      sub: `of ${meta.total_estimate_count} this period`,
+      sub: 'current location-level follow-up',
     },
   ];
 

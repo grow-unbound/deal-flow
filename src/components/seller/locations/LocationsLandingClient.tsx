@@ -240,7 +240,7 @@ function LocationsLandingContent({
       <PageHeader
         eyebrow="Operations"
         title="Locations"
-        subtitle="Your branches and godowns. Track stock health, outstanding dues, and GMV contribution per location."
+        subtitle="Branches and sales touchpoints. Use this page for sales contribution, overdue balances, and stock-linked exceptions."
         horizon={horizonLabel}
         primary="Add location"
         onPrimaryClick={() => setSheetOpen(true)}
@@ -259,26 +259,25 @@ function LocationsLandingContent({
           <InsightStrip4
             tiles={[
               {
-                label: 'Unpaid invoices',
-                value: `${kpis.unpaid_invoice_count}`,
-                sub: `of ${kpis.total_invoice_count} total`,
-                tone: kpis.unpaid_invoice_count > 0 ? 'warn' : undefined,
+                label: 'Invoiced sales 90D',
+                value: formatCompactInr(filtered.reduce((sum, row) => sum + row.gmv_mtd, 0)),
+                sub: `${filtered.length} active locations in view`,
               },
               {
-                label: 'Outstanding dues',
+                label: 'Overdue amount',
                 value: formatCompactInr(kpis.outstanding_dues_total),
                 sub: `across ${kpis.dues_location_count} locations`,
                 tone: kpis.outstanding_dues_total > 0 ? 'warn' : undefined,
               },
               {
-                label: 'Open estimates',
-                value: `${kpis.open_estimate_count}`,
-                sub: `of ${kpis.total_estimate_count} in the last 90 days`,
+                label: 'Customers who purchased',
+                value: `${filtered.reduce((sum, row) => sum + row.active_buyers, 0)}`,
+                sub: 'location-linked sales activity',
               },
               {
-                label: 'Top location share',
-                value: `${kpis.top_location_gmv_share_pct}%`,
-                sub: kpis.top_location_name ? `${kpis.top_location_name} leads` : '—',
+                label: 'Open estimates',
+                value: `${kpis.open_estimate_count}`,
+                sub: 'current location-level follow-up',
               },
             ]}
           />
@@ -287,7 +286,7 @@ function LocationsLandingContent({
             items={[
               {
                 kind: 'info',
-                eyebrow: 'Conversions',
+                eyebrow: 'Locations with expiring estimates',
                 hint: `${callouts.conversions.length} estimates expiring`,
                 rows: callouts.conversions.map((row) => ({
                   initials: row.initials,
@@ -299,8 +298,8 @@ function LocationsLandingContent({
               },
               {
                 kind: 'info',
-                eyebrow: 'Top locations',
-                hint: 'by GMV',
+                eyebrow: 'Locations driving sales',
+                hint: 'by invoiced sales',
                 rows: callouts.top_locations.map((row) => ({
                   initials: row.initials,
                   hue: 'teal' as const,
@@ -311,7 +310,7 @@ function LocationsLandingContent({
               },
               {
                 kind: 'risk',
-                eyebrow: 'Collections overdue',
+                eyebrow: 'Locations with overdue balances',
                 hint: `${callouts.collections_overdue.length} locations`,
                 rows: callouts.collections_overdue.map((row) => ({
                   initials: row.initials,
@@ -355,10 +354,10 @@ function LocationsLandingContent({
             columns={[
                 { label: 'Location', width: 280, minWidth: 280, maxWidth: 360, className: 'px-5' },
                 { label: 'Location type', width: 160, minWidth: 160, maxWidth: 200, className: 'px-5' },
-                { label: 'GMV · 90D', align: 'right', minWidth: 140, maxWidth: 170, className: 'px-5' },
-                { label: 'Growth', minWidth: 120, maxWidth: 140, className: 'px-5' },
-                { label: 'Active buyers', align: 'right', minWidth: 130, maxWidth: 160, className: 'px-5' },
-                { label: 'Outstanding dues', align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
+                { label: 'Sales · 90D', align: 'right', minWidth: 140, maxWidth: 170, className: 'px-5' },
+                { label: 'Trend', minWidth: 120, maxWidth: 140, className: 'px-5' },
+                { label: 'Customers who purchased', align: 'right', minWidth: 130, maxWidth: 160, className: 'px-5' },
+                { label: 'Overdue amount', align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
                 { label: 'Stock status', minWidth: 160, maxWidth: 200, className: 'px-5' },
                 { width: 40, className: 'px-4' },
               ]}

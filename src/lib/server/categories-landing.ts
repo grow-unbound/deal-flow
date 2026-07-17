@@ -84,7 +84,7 @@ export async function getCategoriesLandingPayload(
   const [categoriesRes, metricsRes, summaryRes] = await Promise.all([
     pageCategoryIds.length > 0 ? categoriesQuery.in('id', pageCategoryIds) : emptyResult,
     pageCategoryIds.length > 0
-      ? db.schema('app').rpc('get_seller_category_landing_page_metrics_v1', {
+      ? db.schema('app').rpc('get_seller_category_landing_page_metrics_v2', {
           p_tenant_id: tenantId,
           p_category_ids: pageCategoryIds,
           p_current_start: period.current_start.split('T')[0],
@@ -95,7 +95,7 @@ export async function getCategoriesLandingPayload(
         })
       : emptyResult,
     includeSummary
-      ? db.schema('app').rpc('get_seller_category_landing_summary_v1', {
+      ? db.schema('app').rpc('get_seller_category_landing_summary_v2', {
           p_tenant_id: tenantId,
           p_current_start: period.current_start.split('T')[0],
           p_current_end_exclusive: period.current_end_exclusive.split('T')[0],

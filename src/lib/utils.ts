@@ -47,7 +47,7 @@ export function parseInrInput(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function formatCompactIndianNumber(value: number, fractionDigits = 2): string {
+export function formatCompactIndianNumber(value: number, fractionDigits = 0): string {
   const abs = Math.abs(value);
   if (abs < 10000) {
     return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(value);
@@ -62,6 +62,9 @@ export function formatCompactIndianNumber(value: number, fractionDigits = 2): st
   for (const unit of units) {
     if (abs >= unit.threshold) {
       const scaled = value / unit.threshold;
+      if (fractionDigits <= 0) {
+        return `${Math.round(scaled)}${unit.suffix}`;
+      }
       return `${scaled.toFixed(fractionDigits)}${unit.suffix}`;
     }
   }
@@ -69,13 +72,38 @@ export function formatCompactIndianNumber(value: number, fractionDigits = 2): st
   return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(value);
 }
 
-export function formatSalesInr(value: number, fractionDigits = 2): string {
-  if (Math.abs(value) < 10000) return formatInr(value);
+export interface InrAmountFormatOptions {
+  compactThreshold?: number;
+  fractionDigits?: number;
+}
+
+export function formatAmountInr(
+  value: number | null | undefined,
+  options: InrAmountFormatOptions = {},
+): string {
+  const amount = Number(value ?? 0);
+  const compactThreshold = options.compactThreshold ?? 10000;
+  const fractionDigits = options.fractionDigits ?? 0;
+  if (Math.abs(amount) < compactThreshold) {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
+    }).format(amount);
+  }
+  return `₹${formatCompactIndianNumber(amount, fractionDigits)}`;
+}
+
+export function formatSalesInr(value: number, fractionDigits = 0): string {
+  if (Math.abs(value) < 10000) {
+    return formatAmountInr(value, { fractionDigits });
+  }
   return `₹${formatCompactIndianNumber(value, fractionDigits)}`;
 }
 
-export function formatCompactInr(value: number, fractionDigits = 2): string {
-  return formatSalesInr(value, fractionDigits);
+export function formatCompactInr(value: number, fractionDigits = 0): string {
+  return formatAmountInr(value, { fractionDigits });
 }
 
 export function formatDate(date: string | Date): string {

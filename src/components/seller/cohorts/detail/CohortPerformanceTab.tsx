@@ -57,7 +57,7 @@ export function CohortPerformanceTab({ performance, performanceCards }: CohortPe
   return (
     <section className="mt-5 space-y-4">
       <div className="grid grid-cols-2 gap-4">
-        <PerformanceCard title="GMV trend" subtitle="Last 12 months · from this cohort" bodyClassName="p-0">
+        <PerformanceCard title="Sales over time" subtitle="Last 12 months · current members" bodyClassName="p-0">
           <TrendFrame
             emptyTitle="No member sales trend yet"
             emptyDescription="This customer group does not have enough current-member sales history for a trend."
@@ -100,9 +100,9 @@ export function CohortPerformanceTab({ performance, performanceCards }: CohortPe
             title: 'Member activity',
             body: {
               tiles: [
-                { label: 'Active members', value: `${performance.engagement.active_members}/${performance.engagement.total_members}`, sub: 'ordered this month' },
-                { label: 'Dormant', value: performance.engagement.dormant_members, sub: 'no order in 30 days' },
-                { label: 'Conversion', value: `${performance.engagement.conversion_pct.toFixed(1)}%`, sub: 'catalog → order' },
+                { label: 'Active members', value: `${performance.engagement.active_members}/${performance.engagement.total_members}`, sub: 'purchased in the last 90 days' },
+                { label: 'Dormant members', value: performance.engagement.dormant_members, sub: 'no recent purchase signal' },
+                { label: 'Response rate', value: `${performance.engagement.conversion_pct.toFixed(1)}%`, sub: 'campaign to submitted demand' },
                 { label: 'Brands sold', value: performance.engagement.brands_sold, sub: `of ${performance.engagement.brands_carried} carried` },
               ],
               showSupportingText: true,
@@ -113,8 +113,8 @@ export function CohortPerformanceTab({ performance, performanceCards }: CohortPe
 
       <div className="grid grid-cols-2 gap-4">
         <PerformanceCard
-          title="Top members"
-          subtitle="By GMV · this month"
+          title="Members driving sales"
+          subtitle="By invoiced sales"
           actions={(
             <button
               type="button"
@@ -155,7 +155,7 @@ export function CohortPerformanceTab({ performance, performanceCards }: CohortPe
             id: 'cohort-campaigns',
             representation: 'mix',
             title: 'Campaigns to this customer group',
-            subtitle: 'Recent sends',
+            subtitle: 'Recent campaign contribution',
             body: {
               items: visibleCatalogs.map((catalog, index) => ({
                 id: catalog.campaign_id,
@@ -177,12 +177,12 @@ export function CohortPerformanceTab({ performance, performanceCards }: CohortPe
         open={topMembersSheetOpen}
         onOpenChange={setTopMembersSheetOpen}
         title="Top members"
-        subtitle="By GMV · this month"
+        subtitle="By invoiced sales"
         items={performance.top_members}
         columns={[
           { label: '#', width: 48, className: 'px-5' },
           { label: 'Buyer', className: 'px-5' },
-          { label: 'Spend', className: 'px-5 text-right' },
+          { label: 'Sales', className: 'px-5 text-right' },
           { label: 'Orders', className: 'px-5 text-right' },
         ]}
         renderRow={(member, index) => (

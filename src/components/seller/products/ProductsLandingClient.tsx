@@ -281,11 +281,11 @@ function ProductsLandingContent({
 
   return (
     <PageWrap>
-      <PageHeader
-        eyebrow="Catalog"
-        title="Products"
-        subtitle={`${summaryTotal} SKUs across ${summaryBrands} brands. ${outOfStock} out of stock, ${lowStock} running low — those are the ones to chase this week.`}
-        horizon={horizonLabel}
+        <PageHeader
+          eyebrow="Catalog"
+          title="Products"
+          subtitle={`${summaryTotal} active products across ${summaryBrands} brands. Stock risk and billed sales are the default view here.`}
+          horizon={horizonLabel}
         period={period}
         periodOptions={options}
         onPeriodChange={setPeriod}
@@ -312,32 +312,27 @@ function ProductsLandingContent({
       <InsightStrip4
         tiles={[
           {
-            label: 'Active SKUs',
-            value: `${kpis?.active_skus ?? allProducts.length}`,
-            sub: `${kpis?.total_skus ?? allProducts.length} total · ${kpis?.archived_skus ?? 0} archived`,
+            label: `Invoiced sales · ${metricSuffix}`,
+            value: formatCompactInr(kpis?.revenue_mtd ?? 0),
+            sub: `${kpis?.units_mtd ?? summaryProducts.reduce((sum: number, product: TenantProduct) => sum + Number(product.units_mtd ?? 0), 0)} units sold`,
+            tone: 'accent',
           },
           {
-            label: 'Out of stock',
+            label: 'Products out of stock',
             value: `${outOfStock}`,
-            sub: 'replenish urgently',
+            sub: 'immediate stock risk',
             tone: 'warn',
           },
           {
-            label: 'Low stock',
+            label: 'Products running low',
             value: `${lowStock}`,
             sub: '< 14 days of cover',
           },
-          ...(isSellerAssistant
-            ? [{
-                label: `Units moved · ${metricSuffix}`,
-                value: `${kpis?.units_mtd ?? summaryProducts.reduce((sum: number, product: TenantProduct) => sum + Number(product.units_mtd ?? 0), 0)}`,
-                sub: 'Operational volume this period',
-              }]
-            : [{
-                label: `Revenue · ${metricSuffix}`,
-                value: formatCompactInr(kpis?.revenue_mtd ?? 0),
-                sub: `${growth >= 0 ? '↑ +' : '↓ '}${Math.abs(growth)}% vs last month`,
-              }]),
+          {
+            label: 'Products that sold',
+            value: `${summaryProducts.filter((product) => Number(product.units_mtd ?? 0) > 0).length}`,
+            sub: `${growth >= 0 ? '↑ +' : '↓ '}${Math.abs(growth)}% vs last period`,
+          },
         ]}
       />
 
@@ -345,7 +340,7 @@ function ProductsLandingContent({
         items={[
           {
             kind: 'risk' as const,
-            eyebrow: 'Needs attention',
+            eyebrow: 'Stock risk',
             hint: `${summaryData?.todays_read?.needs_attention?.length ?? 0}`,
             rows: (summaryData?.todays_read?.needs_attention ?? []).map((row) => ({
               initials: row.brand_initials,
@@ -357,8 +352,8 @@ function ProductsLandingContent({
           },
           ...(isSellerAssistant ? [] : [{
             kind: 'info' as const,
-            eyebrow: 'Top performers',
-            hint: 'by GMV',
+            eyebrow: 'Best sellers',
+            hint: 'by invoiced sales',
             rows: (summaryData?.todays_read?.top_performers ?? []).map((row) => ({
               initials: row.brand_initials,
               hue: row.brand_hue,
@@ -369,8 +364,8 @@ function ProductsLandingContent({
           },
           {
             kind: 'opportunity' as const,
-            eyebrow: 'Top risers',
-            hint: 'fastest growth',
+            eyebrow: 'Sales movers',
+            hint: 'fastest recent change',
             rows: (summaryData?.todays_read?.top_risers ?? []).map((row) => ({
               initials: row.brand_initials,
               hue: row.brand_hue,
@@ -426,11 +421,11 @@ function ProductsLandingContent({
           { label: 'Product', width: 320, minWidth: 320, maxWidth: 420, className: 'px-5' },
           { label: 'Brand', width: 200, minWidth: 200, maxWidth: 260, className: 'px-5' },
           { label: 'Category', width: 150, minWidth: 150, maxWidth: 220, className: 'px-5' },
-          { label: 'Stock Available', align: 'right', width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
-          { label: 'Days Cover', align: 'right', width: 130, minWidth: 130, maxWidth: 160, className: 'px-5' },
-          { label: `Units Sold · ${metricSuffix}`, align: 'right', width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
-          { label: 'Revenue', align: 'right' as const, width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
-          { label: 'Growth', width: 120, minWidth: 120, maxWidth: 150, className: 'px-5' },
+          { label: 'Available stock', align: 'right', width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
+          { label: 'Stock days left', align: 'right', width: 130, minWidth: 130, maxWidth: 160, className: 'px-5' },
+          { label: `Units sold · ${metricSuffix}`, align: 'right', width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
+          { label: 'Invoiced sales', align: 'right' as const, width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
+          { label: 'Trend', width: 120, minWidth: 120, maxWidth: 150, className: 'px-5' },
           { label: 'Status', width: 150, minWidth: 150, maxWidth: 190, className: 'px-5' },
           { width: 40, className: 'px-4' },
         ]}

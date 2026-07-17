@@ -70,7 +70,7 @@ export function BrandPerformanceTab({ performance, performanceCards }: BrandPerf
       <div className="grid grid-cols-3 gap-4">
         <PerformanceCard
           className="col-span-2"
-          title="GMV trend"
+          title="Sales over time"
           subtitle={`${periodLabel(period)} · this brand`}
           actions={(
             <div className="inline-flex rounded-[10px] bg-cream-200 p-1">
@@ -133,7 +133,7 @@ export function BrandPerformanceTab({ performance, performanceCards }: BrandPerf
           />
         </PerformanceCard>
 
-        <PerformanceCard title="Current inventory by warehouse" subtitle="Warehouse inventory detail is not yet available on this surface" bodyClassName="p-5">
+        <PerformanceCard title="Current inventory by warehouse" subtitle="Current stock posture" bodyClassName="p-5">
           <CardEmptyState
             title="Unavailable"
             description="Inventory posture for this brand will render as a warehouse distribution when warehouse-level stock is available."
@@ -143,8 +143,8 @@ export function BrandPerformanceTab({ performance, performanceCards }: BrandPerf
 
       <div className="grid grid-cols-2 gap-4">
         <PerformanceCard
-          title="Top buyers"
-          subtitle="By GMV · this month"
+          title="Customers buying this brand"
+          subtitle="By invoiced sales"
           actions={(
             <button type="button" className="text-sm font-semibold text-teal-700 no-underline" onClick={() => setBuyersSheetOpen(true)}>
               See all →
@@ -168,8 +168,8 @@ export function BrandPerformanceTab({ performance, performanceCards }: BrandPerf
         </PerformanceCard>
 
         <PerformanceCard
-          title="Top SKUs"
-          subtitle="By units · this month"
+          title="Product contribution"
+          subtitle="Top SKUs by units and sales"
           actions={(
             <button type="button" className="text-sm font-semibold text-teal-700 no-underline" onClick={() => setSkusSheetOpen(true)}>
               See all →
@@ -191,7 +191,7 @@ export function BrandPerformanceTab({ performance, performanceCards }: BrandPerf
         </PerformanceCard>
       </div>
 
-      <PerformanceCard title="Campaign contribution" subtitle="Catalog and campaign outcomes for this brand" bodyClassName="p-0">
+      <PerformanceCard title="Campaign contribution" subtitle="Campaign demand and sales linked to this brand" bodyClassName="p-0">
         <RankedList
           items={performance.catalog_history.map((catalog) => ({
             id: catalog.id,
