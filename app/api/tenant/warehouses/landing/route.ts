@@ -4,7 +4,6 @@ import { getVerifiedClaims } from '@/lib/auth';
 import { PAGE_SIZE } from '@/lib/pagination';
 import { SELLER_CACHE_REFERENCE, parseRowsLimit, parseRowsOffset } from '@/lib/server/bounded-get';
 import { getSellerLocationScope } from '@/lib/server/seller-location-access';
-import { getSellerLandingPeriodFromRequest } from '@/lib/server/seller-period';
 import { computeWarehouseInitials } from '@/lib/server/warehouse-metrics';
 import { hydrateWarehouse } from '@/lib/server/warehouse-data';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -31,13 +30,13 @@ function overallStockStatus(lowStockSkus: number, stockoutSkus: number): Warehou
   return 'clear';
 }
 
-interface WarehouseSnapshotRow {
+interface WarehouseMetricsRow {
   warehouse_id: string;
-  tracked_skus: number;
-  sellable_units: number;
-  low_stock_skus: number;
-  stockout_skus: number;
-  idle_stock_skus: number;
+  tracked_skus: number | string | null;
+  sellable_units: number | string | null;
+  low_stock_skus: number | string | null;
+  stockout_skus: number | string | null;
+  idle_stock_skus: number | string | null;
   last_inventory_update: string | null;
 }
 
@@ -95,7 +94,7 @@ export async function GET(request: NextRequest) {
       return jsonError(500, 'Server configuration error', 'SERVER_ERROR');
     }
 
-    const period = getSellerLandingPeriodFromRequest(request);
+    const period = 'today';
     const search = request.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '';
     const statusFilters = request.nextUrl.searchParams.getAll('status');
     const stockFilters = request.nextUrl.searchParams.getAll('stock');
@@ -151,13 +150,13 @@ export async function GET(request: NextRequest) {
     const rowWarehouseResult = (rowWarehouseData ?? []) as Array<{ id: string | null; total_count: number | string }>;
     const rowWarehouseIds = rowWarehouseResult.flatMap((row) => (row.id ? [row.id] : []));
 
-    const pageSnapshotQuery = rowWarehouseIds.length > 0
+    const pageMetricsQuery = rowWarehouseIds.length > 0
       ? db
           .schema('app')
-          .from('warehouses_snapshot')
-          .select('warehouse_id, tracked_skus, sellable_units, low_stock_skus, stockout_skus, idle_stock_skus, last_inventory_update')
-          .eq('tenant_id', claims.tenant_id)
-          .in('warehouse_id', rowWarehouseIds)
+          .rpc('get_seller_warehouse_landing_row_metrics', {
+            p_tenant_id: claims.tenant_id,
+            p_warehouse_ids: rowWarehouseIds,
+          })
       : Promise.resolve({ data: [], error: null });
 
     const rowsQuery = rowWarehouseIds.length > 0
@@ -171,27 +170,19 @@ export async function GET(request: NextRequest) {
         .limit(limit)
       : Promise.resolve({ data: [] as Record<string, unknown>[], error: null });
 
-    const [summaryRes, pageSnapshotRes, rowsRes] = await Promise.all([
+    const [summaryRes, pageMetricsRes, rowsRes] = await Promise.all([
       summaryQuery,
-      pageSnapshotQuery,
+      pageMetricsQuery,
       rowsQuery,
     ]);
 
     if (summaryRes.error) throw summaryRes.error;
-    if (pageSnapshotRes.error) throw pageSnapshotRes.error;
+    if (pageMetricsRes.error) throw pageMetricsRes.error;
     if (rowsRes.error) throw rowsRes.error;
 
-    const snapshotByWarehouse = new Map<string, WarehouseSnapshotRow>();
-    for (const row of (pageSnapshotRes.data ?? []) as Array<Record<string, unknown>>) {
-      snapshotByWarehouse.set(String(row.warehouse_id), {
-        warehouse_id: String(row.warehouse_id),
-        tracked_skus: Number(row.tracked_skus ?? 0),
-        sellable_units: Number(row.sellable_units ?? 0),
-        low_stock_skus: Number(row.low_stock_skus ?? 0),
-        stockout_skus: Number(row.stockout_skus ?? 0),
-        idle_stock_skus: Number(row.idle_stock_skus ?? 0),
-        last_inventory_update: typeof row.last_inventory_update === 'string' ? row.last_inventory_update : null,
-      });
+    const metricsByWarehouse = new Map<string, WarehouseMetricsRow>();
+    for (const row of (pageMetricsRes.data ?? []) as WarehouseMetricsRow[]) {
+      metricsByWarehouse.set(String(row.warehouse_id), row);
     }
 
     const summary = (summaryRes.data ?? {}) as WarehouseSummaryRpcResult;
@@ -219,15 +210,15 @@ export async function GET(request: NextRequest) {
     const rowWarehouses = rowWarehouseIds
       .map((id) => rowWarehousesById.get(id))
       .filter((warehouse): warehouse is ReturnType<typeof hydrateWarehouse> => Boolean(warehouse));
-    const rowMetricsByWarehouse = snapshotByWarehouse;
+    const rowMetricsByWarehouse = metricsByWarehouse;
 
     const hydratedRows: WarehousesLandingRow[] = rowWarehouses.map((warehouse) => {
       const snapshot = rowMetricsByWarehouse.get(warehouse.id);
-      const trackedSkus = snapshot?.tracked_skus ?? 0;
-      const sellableUnits = snapshot?.sellable_units ?? 0;
-      const lowStockSkus = snapshot?.low_stock_skus ?? 0;
-      const stockoutSkus = snapshot?.stockout_skus ?? 0;
-      const idleStockSkus = snapshot?.idle_stock_skus ?? 0;
+      const trackedSkus = Number(snapshot?.tracked_skus ?? 0);
+      const sellableUnits = Number(snapshot?.sellable_units ?? 0);
+      const lowStockSkus = Number(snapshot?.low_stock_skus ?? 0);
+      const stockoutSkus = Number(snapshot?.stockout_skus ?? 0);
+      const idleStockSkus = Number(snapshot?.idle_stock_skus ?? 0);
       const lastUpdated = snapshot?.last_inventory_update ?? warehouse.updated_at;
 
       return {

@@ -21,7 +21,6 @@ import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
-import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import {
   useLocationsLanding,
   type LocationsLandingResponse,
@@ -105,11 +104,12 @@ function LocationsLandingContent({
 }) {
   const router = useRouter();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const { period, setPeriod, horizonLabel, options } = useSellerLandingPeriod(initialPeriod);
+  const period: SellerLandingPeriod = 'last90';
+  const horizonLabel = 'Trailing 90 days';
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-locations-landing',
-    scopeKey: period,
-    version: 3,
+    scopeKey: 'fixed-90d',
+    version: 4,
     initialState: {
       search: '',
       filters: {
@@ -133,7 +133,7 @@ function LocationsLandingContent({
   );
   useRouteScrollRestoration({
     storageKey: 'seller-locations-landing',
-    scopeKey: period,
+    scopeKey: 'fixed-90d',
     ready: !isLoading,
   });
   const groups: FilterBarGroup[] = [
@@ -242,9 +242,6 @@ function LocationsLandingContent({
         title="Locations"
         subtitle="Your branches and godowns. Track stock health, outstanding dues, and GMV contribution per location."
         horizon={horizonLabel}
-        period={period}
-        periodOptions={options}
-        onPeriodChange={setPeriod}
         primary="Add location"
         onPrimaryClick={() => setSheetOpen(true)}
       />
@@ -276,7 +273,7 @@ function LocationsLandingContent({
               {
                 label: 'Open estimates',
                 value: `${kpis.open_estimate_count}`,
-                sub: `of ${kpis.total_estimate_count} this period`,
+                sub: `of ${kpis.total_estimate_count} in the last 90 days`,
               },
               {
                 label: 'Top location share',
@@ -358,7 +355,7 @@ function LocationsLandingContent({
             columns={[
                 { label: 'Location', width: 280, minWidth: 280, maxWidth: 360, className: 'px-5' },
                 { label: 'Location type', width: 160, minWidth: 160, maxWidth: 200, className: 'px-5' },
-                { label: 'GMV · MTD', align: 'right', minWidth: 140, maxWidth: 170, className: 'px-5' },
+                { label: 'GMV · 90D', align: 'right', minWidth: 140, maxWidth: 170, className: 'px-5' },
                 { label: 'Growth', minWidth: 120, maxWidth: 140, className: 'px-5' },
                 { label: 'Active buyers', align: 'right', minWidth: 130, maxWidth: 160, className: 'px-5' },
                 { label: 'Outstanding dues', align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },

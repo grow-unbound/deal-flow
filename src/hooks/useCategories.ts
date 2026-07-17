@@ -198,6 +198,8 @@ export interface CategoryDetailResponse {
   products: CategoryDetailProduct[];
   brands: CategoryDetailBrand[];
   activity: CategoryDetailActivity[];
+  performance_cards?: unknown[];
+  detail_v2?: unknown;
 }
 
 export function useCategoryDetail(id: string) {

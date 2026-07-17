@@ -12,7 +12,9 @@ const repoRoot = path.resolve(__dirname, '..');
 const VALIDATION_REF = process.env.PHASE1A_SUPABASE_REF || 'euhzgherjvjopjrpoqjr';
 const BASELINE_CUTOFF = '20260714114957';
 const CANDIDATE_VERSION = '20260715112649';
+const PHASE4_VERSION = '20260716071422';
 const SQL_DIR = path.join(repoRoot, 'scripts/sql/metrics-v2-phase1a');
+const PHASE4_SQL_DIR = path.join(repoRoot, 'scripts/sql/metrics-v2-phase4');
 const ARTIFACT_DIR = path.resolve(process.env.PHASE1A_ARTIFACT_DIR || path.join(repoRoot, 'artifacts/metrics-v2-phase1a'));
 const BASE_URL = process.env.PHASE1A_BASE_URL || process.env.PERF_BASE_URL || 'http://localhost:3000';
 const COOKIE = process.env.PHASE1A_COOKIE || process.env.PERF_COOKIE || '';
@@ -54,6 +56,24 @@ export const PROFILE_CONFIGS = {
     rate: Number(process.env.PHASE1B_READ_RATE || '10'),
     vus: Number(process.env.PHASE1B_READ_VUS || '25'),
     mode: 'read-surfaces',
+  },
+  phase4Stress: {
+    name: 'phase4-stress',
+    rampUpMs: Number(process.env.PHASE4_RAMP_UP_MS || String(RAMP_UP_MS)),
+    sustainMs: Number(process.env.PHASE4_SUSTAIN_MS || String(SUSTAIN_MS)),
+    rampDownMs: Number(process.env.PHASE4_RAMP_DOWN_MS || String(RAMP_DOWN_MS)),
+    rate: Number(process.env.PHASE4_RATE || String(RATE)),
+    vus: Number(process.env.PHASE4_VUS || String(VUS)),
+    mode: 'mixed',
+  },
+  phase4NormalLoad: {
+    name: 'phase4-normal-load',
+    rampUpMs: Number(process.env.PHASE4_NORMAL_RAMP_UP_MS || '120000'),
+    sustainMs: Number(process.env.PHASE4_NORMAL_SUSTAIN_MS || '1800000'),
+    rampDownMs: Number(process.env.PHASE4_NORMAL_RAMP_DOWN_MS || '120000'),
+    rate: Number(process.env.PHASE4_NORMAL_RATE || '10'),
+    vus: Number(process.env.PHASE4_NORMAL_VUS || '100'),
+    mode: 'mixed',
   },
 };
 
@@ -123,7 +143,11 @@ function copyDir(src, dest) {
 }
 
 function createTempSupabaseProject(kind) {
-  const maxVersion = kind === 'baseline' ? BASELINE_CUTOFF : CANDIDATE_VERSION;
+  const maxVersion = kind === 'baseline'
+    ? BASELINE_CUTOFF
+    : kind === 'phase4'
+      ? PHASE4_VERSION
+      : CANDIDATE_VERSION;
   const tempRoot = path.join('/tmp', `deal-flow-metrics-v2-phase1a-${kind}`);
   rmSync(tempRoot, { recursive: true, force: true });
   ensureDir(path.join(tempRoot, 'supabase/migrations'));
@@ -599,6 +623,63 @@ function phase1bReconcile() {
   supabaseQuery(projectDir, path.join(repoRoot, 'scripts/sql/metrics-v2-phase1b/reconcile-current-reads.sql'));
 }
 
+async function runPhase4Trials(profileName) {
+  const profile = profileName === 'normal-load' ? PROFILE_CONFIGS.phase4NormalLoad : PROFILE_CONFIGS.phase4Stress;
+  const projectDir = resolveProjectDirForTrials('phase4');
+  const trials = Math.max(1, Number(process.env.PHASE4_TRIALS || '1'));
+  for (let trial = 1; trial <= trials; trial += 1) {
+    supabaseQuery(projectDir, path.join(SQL_DIR, 'reset.sql'));
+    supabaseQuery(projectDir, path.join(SQL_DIR, 'sample-before.sql'));
+    await runWorkloadTrial(profile.name, trial, profile);
+    supabaseQuery(projectDir, path.join(SQL_DIR, 'sample-after.sql'));
+  }
+}
+
+function phase4Reconcile() {
+  const projectDir = resolveProjectDirForTrials('phase4');
+  supabaseQuery(projectDir, path.join(repoRoot, 'tests/metrics_v2_phase_4_capture_only_validation.sql'));
+}
+
+function phase4CronSql() {
+  const projectDir = resolveProjectDirForTrials('phase4');
+  assertLinkedRef(projectDir);
+  const sql = readFileSync(path.join(PHASE4_SQL_DIR, 'staging-cron-template.sql'), 'utf8');
+  const outFile = path.join('/tmp', 'metrics-v2-phase4-staging-cron.sql');
+  writeFileSync(outFile, sql);
+  console.log(outFile);
+}
+
+function phase4ScheduleCron() {
+  if (process.env.PHASE4_ALLOW_CRON !== '1') {
+    fail('refusing to schedule Cron without PHASE4_ALLOW_CRON=1');
+  }
+  phase4CronSql();
+  const projectDir = resolveProjectDirForTrials('phase4');
+  supabaseQuery(projectDir, path.join('/tmp', 'metrics-v2-phase4-staging-cron.sql'));
+}
+
+function phase4IcBReport() {
+  const phase4Artifacts = [
+    ...readArtifacts('phase4-stress'),
+    ...readArtifacts('phase4-normal-load'),
+  ];
+  const report = {
+    createdAt: new Date().toISOString(),
+    artifacts: phase4Artifacts.length,
+    domains: ['commercial', 'inventory', 'buyer_app', 'setup'].map((domain) => ({
+      domain,
+      ingressPerMinute: null,
+      completionPerMinute: null,
+      backlog: null,
+      passed: null,
+      note: 'Populate from metrics_dirty_work/metrics_execution_history samples captured during the Phase 4 accepted run.',
+    })),
+  };
+  ensureDir(ARTIFACT_DIR);
+  writeFileSync(path.join(ARTIFACT_DIR, 'phase4-icb-report.json'), `${JSON.stringify(report, null, 2)}\n`);
+  console.log(JSON.stringify(report, null, 2));
+}
+
 function median(values) {
   if (!values.length) return 0;
   return percentile(values, 50);
@@ -654,6 +735,7 @@ function doctor() {
       : null,
     baselineCutoff: BASELINE_CUTOFF,
     candidateVersion: CANDIDATE_VERSION,
+    phase4Version: PHASE4_VERSION,
     seedHash,
     baseUrl: BASE_URL,
     hasCookie: Boolean(COOKIE),
@@ -662,6 +744,10 @@ function doctor() {
     phase1bProfiles: {
       normalLoad: PROFILE_CONFIGS.phase1bNormalLoad,
       readSurfaces: PROFILE_CONFIGS.phase1bReadSurfaces,
+    },
+    phase4Profiles: {
+      stress: PROFILE_CONFIGS.phase4Stress,
+      normalLoad: PROFILE_CONFIGS.phase4NormalLoad,
     },
   }, null, 2));
 }
@@ -680,6 +766,13 @@ Commands:
   phase1b-normal-load    Run Phase 1B normal-load profile against prepared candidate DB.
   phase1b-read-surfaces  Run Phase 1B dashboard/summary/callout/detail read profile.
   phase1b-reconcile      Run Phase 1B rolled-back contract and current-read reconciliation SQL.
+  phase4-prepare         Link temp project, push through ${PHASE4_VERSION}, and seed. Requires PHASE1A_ALLOW_PERSISTENT_PUSH=1.
+  phase4-reconcile       Run Phase 4 capture-only rollback SQL against prepared validation DB.
+  phase4-stress          Run Phase 4 mixed 1,000-session safety profile.
+  phase4-normal-load     Run Phase 4 normal-load I/C/B profile.
+  phase4-icb-report      Write a Phase 4 I/C/B placeholder report from captured artifacts.
+  phase4-cron-sql        Generate staging-only 60s Cron SQL under /tmp.
+  phase4-schedule-cron   Apply staging Cron SQL; requires PHASE4_ALLOW_CRON=1.
 
 Key env:
   PHASE1A_SUPABASE_REF=${VALIDATION_REF}
@@ -692,6 +785,9 @@ Key env:
   PHASE1B_RATE=${PROFILE_CONFIGS.phase1bNormalLoad.rate}
   PHASE1B_VUS=${PROFILE_CONFIGS.phase1bNormalLoad.vus}
   PHASE1B_TRIALS=1
+  PHASE4_FUNCTIONS_URL=<https://project.supabase.co/functions/v1>
+  PHASE4_REFRESH_TOKEN=<32+ character metrics refresh token>
+  PHASE4_ALLOW_CRON=1
   PHASE1A_DRY_RUN=1
 `;
 }
@@ -731,6 +827,27 @@ export async function main(selectedCommand = command) {
       break;
     case 'phase1b-reconcile':
       phase1bReconcile();
+      break;
+    case 'phase4-prepare':
+      prepare('phase4');
+      break;
+    case 'phase4-reconcile':
+      phase4Reconcile();
+      break;
+    case 'phase4-stress':
+      await runPhase4Trials('stress');
+      break;
+    case 'phase4-normal-load':
+      await runPhase4Trials('normal-load');
+      break;
+    case 'phase4-icb-report':
+      phase4IcBReport();
+      break;
+    case 'phase4-cron-sql':
+      phase4CronSql();
+      break;
+    case 'phase4-schedule-cron':
+      phase4ScheduleCron();
       break;
     case 'help':
     default:

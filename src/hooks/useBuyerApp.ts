@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 
 import { apiFetch } from '@/lib/api-fetch';
 import { NAVIGATION_QUERY_GC_TIME, NAVIGATION_QUERY_STALE_TIME } from '@/lib/query-navigation';
-import { getSellerLandingInitialData, type SellerLandingPeriod, type SellerLandingPeriodMeta } from '@/lib/seller-period';
+import type { SellerLandingPeriod, SellerLandingPeriodMeta } from '@/lib/seller-period';
+import type { MetricsV2DashboardPortfolio } from '@/types/seller-dashboard';
 
 export interface BuyerAppCalloutBuyer {
   buyer_id: string;
@@ -36,6 +37,7 @@ export interface BuyerAppTopBuyer {
 
 export interface BuyerAppLandingResponse {
   period: SellerLandingPeriodMeta;
+  portfolio?: MetricsV2DashboardPortfolio | null;
   kpis: {
     enabled_buyers: number;
     total_buyers: number;
@@ -78,13 +80,13 @@ export function useBuyerAppLanding(
   initialData?: BuyerAppLandingResponse | null,
 ) {
   return useQuery<BuyerAppLandingResponse>({
-    queryKey: ['buyer-app-landing', period],
+    queryKey: ['buyer-app-landing'],
     queryFn: async () => {
-      const res = await apiFetch(`/api/tenant/buyer-app?period=${period}`);
+      const res = await apiFetch('/api/tenant/buyer-app');
       if (!res.ok) throw new Error('Failed to fetch buyer app data');
       return res.json() as Promise<BuyerAppLandingResponse>;
     },
-    initialData: getSellerLandingInitialData(period, initialData ?? undefined),
+    initialData: initialData ?? undefined,
     staleTime: NAVIGATION_QUERY_STALE_TIME,
     gcTime: NAVIGATION_QUERY_GC_TIME,
   });

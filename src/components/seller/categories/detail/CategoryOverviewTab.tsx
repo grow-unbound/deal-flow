@@ -9,130 +9,100 @@ import {
   Tooltip,
   Cell,
 } from 'recharts';
-import { useRouter } from 'next/navigation';
-import { PerformanceCard } from '@/components/seller/detail';
+import { DetailCardRenderer, MetricGrid, PerformanceCard, RankedList, TrendFrame, type DetailCardPayload } from '@/components/seller/detail';
 import type { CategoryDetailOverview } from '@/hooks/useCategories';
 import { formatCompactInr } from '@/lib/utils';
 
 interface CategoryOverviewTabProps {
   overview: CategoryDetailOverview;
+  performanceCards?: unknown[];
 }
 
-function StatCard({ label, value, tone }: { label: string; value: string | number; tone?: 'danger' | 'warning' | 'neutral' }) {
-  const valueClass =
-    tone === 'danger'
-      ? 'text-danger-600'
-      : tone === 'warning'
-        ? 'text-amber-600'
-        : 'text-cream-900';
-  return (
-    <div className="flex flex-col gap-1 rounded-[12px] border border-cream-200 bg-white px-4 py-3">
-      <span className="text-xs text-cream-500">{label}</span>
-      <span className={`text-xl font-semibold ${valueClass}`}>{value}</span>
-    </div>
-  );
-}
-
-export function CategoryOverviewTab({ overview }: CategoryOverviewTabProps) {
-  const router = useRouter();
+export function CategoryOverviewTab({ overview, performanceCards }: CategoryOverviewTabProps) {
   const { trend_weekly, stock_health, top_brands } = overview;
 
   const hasChart = trend_weekly.some((w) => w.gmv > 0);
+
+  if (performanceCards?.length) {
+    return (
+      <section className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
+        {(performanceCards as DetailCardPayload[]).map((card) => (
+          <DetailCardRenderer key={card.id} card={card} />
+        ))}
+      </section>
+    );
+  }
 
   return (
     <div className="mt-6 grid grid-cols-5 gap-4">
       <div className="col-span-3 space-y-4">
         <PerformanceCard title="Revenue trend" subtitle="6-week rolling window" bodyClassName="p-5">
-          {hasChart ? (
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={trend_weekly} barSize={28} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
-                <XAxis
-                  dataKey="week_label"
-                  tick={{ fontSize: 11, fill: '#9B9285' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis hide />
-                <Tooltip
-                  formatter={(v: number) => [formatCompactInr(v), 'GMV']}
-                  contentStyle={{
-                    borderRadius: 10,
-                    border: '1px solid #E8E3DC',
-                    fontSize: 12,
-                    padding: '6px 10px',
-                  }}
-                  cursor={{ fill: '#F5F2EE' }}
-                />
-                <Bar dataKey="gmv" radius={[4, 4, 0, 0]}>
-                  {trend_weekly.map((_, i) => (
-                    <Cell
-                      key={i}
-                      fill={i === trend_weekly.length - 1 ? '#346A5C' : '#C5DDD8'}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex h-[180px] items-center justify-center text-sm text-cream-400">
-              No orders in this period
-            </div>
-          )}
+          <TrendFrame
+            emptyTitle="No sales over time yet"
+            emptyDescription="This category does not have enough invoiced history for a trend."
+            chart={hasChart ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={trend_weekly} barSize={28} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+                  <XAxis
+                    dataKey="week_label"
+                    tick={{ fontSize: 11, fill: '#9B9285' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis hide />
+                  <Tooltip
+                    formatter={(v: number) => [formatCompactInr(v), 'GMV']}
+                    contentStyle={{
+                      borderRadius: 10,
+                      border: '1px solid #E8E3DC',
+                      fontSize: 12,
+                      padding: '6px 10px',
+                    }}
+                    cursor={{ fill: '#F5F2EE' }}
+                  />
+                  <Bar dataKey="gmv" radius={[4, 4, 0, 0]}>
+                    {trend_weekly.map((_, i) => (
+                      <Cell
+                        key={i}
+                        fill={i === trend_weekly.length - 1 ? '#346A5C' : '#C5DDD8'}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : null}
+          />
         </PerformanceCard>
 
         {top_brands.length > 0 && (
-          <PerformanceCard title="Top brands in category" bodyClassName="p-0">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-cream-100">
-                  <th className="px-5 py-2.5 text-left text-xs text-cream-500">Brand</th>
-                  <th className="px-5 py-2.5 text-right text-xs text-cream-500">Units</th>
-                  <th className="px-5 py-2.5 text-right text-xs text-cream-500">GMV</th>
-                </tr>
-              </thead>
-              <tbody>
-                {top_brands.map((b) => (
-                  <tr
-                    key={b.id}
-                    className="cursor-pointer border-b border-cream-100 last:border-0 hover:bg-cream-50"
-                    onClick={() => router.push(`/brands/${b.id}`)}
-                  >
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-[6px] bg-cream-100 text-[10px] font-semibold text-cream-700">
-                          {b.initials}
-                        </span>
-                        <span className="font-medium text-cream-900">{b.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3 text-right text-cream-700">{b.units_mtd}</td>
-                    <td className="px-5 py-3 text-right font-medium text-cream-900">
-                      {b.gmv_mtd > 0 ? formatCompactInr(b.gmv_mtd) : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <PerformanceCard title="Brand contribution" bodyClassName="p-0">
+            <RankedList
+              items={top_brands.map((b, index) => ({
+                id: b.id,
+                label: b.name,
+                meta: `${b.units_mtd} units`,
+                value: b.gmv_mtd > 0 ? formatCompactInr(b.gmv_mtd) : '—',
+                initials: b.initials,
+                hue: index % 2 === 0 ? 'teal' : 'ember',
+              }))}
+              emptyTitle="No brand contribution yet"
+              emptyDescription="This category has no ranked brand contribution in the selected horizon."
+            />
           </PerformanceCard>
         )}
       </div>
 
       <div className="col-span-2 space-y-3">
         <p className="text-sm font-medium text-cream-700">Stock health</p>
-        <div className="grid grid-cols-2 gap-3">
-          <StatCard label="Active SKUs" value={stock_health.active_sku_count} tone="neutral" />
-          <StatCard
-            label="Out of stock"
-            value={stock_health.oos_sku_count}
-            tone={stock_health.oos_sku_count > 0 ? 'danger' : 'neutral'}
-          />
-          <StatCard
-            label="Low stock"
-            value={stock_health.low_stock_sku_count}
-            tone={stock_health.low_stock_sku_count > 0 ? 'warning' : 'neutral'}
-          />
-          <StatCard label="No sales 30d" value={stock_health.uncovered_sku_count} tone="neutral" />
-        </div>
+        <MetricGrid
+          className="mt-0"
+          tiles={[
+            { label: 'Active SKUs', value: stock_health.active_sku_count },
+            { label: 'Out of stock', value: stock_health.oos_sku_count },
+            { label: 'Low stock', value: stock_health.low_stock_sku_count },
+            { label: 'No sales 30d', value: stock_health.uncovered_sku_count },
+          ]}
+        />
       </div>
     </div>
   );

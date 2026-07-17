@@ -203,6 +203,8 @@ export interface CatalogDetailResponse {
       last_order_at: string | null;
     }>;
   };
+  performance_cards?: unknown[];
+  detail_v2?: unknown;
   buyers: Array<{
     buyer_id: string;
     buyer_name: string;

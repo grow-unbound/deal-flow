@@ -189,6 +189,8 @@ export interface CohortDetailResponse {
   meta_strip_4: CohortDetailMetaStrip4;
   details_rules: CohortDetailDetailsRules;
   performance: CohortDetailPerformance;
+  performance_cards?: unknown[];
+  detail_v2?: unknown;
   buyers: CohortDetailBuyer[];
   rules_summary: CohortRulesSummary;
 }

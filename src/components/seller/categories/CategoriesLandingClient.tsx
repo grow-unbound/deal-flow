@@ -21,7 +21,6 @@ import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
-import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useCategoryLanding, type CategoryTableRow, type CategoriesLandingResponse } from '@/hooks/useCategories';
 import { CategoryFormSheet } from '@/components/seller/settings/CategoryFormSheet';
 import { formatCompactInr } from '@/lib/utils';
@@ -87,11 +86,13 @@ function CategoriesLandingContent({
   const router = useRouter();
   const queryClient = useQueryClient();
   const [addSheetOpen, setAddSheetOpen] = useState(false);
-  const { period, setPeriod, horizonLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
+  const period: SellerLandingPeriod = 'last90';
+  const horizonLabel = 'Trailing 90 days';
+  const metricSuffix = '90D';
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-categories-landing',
-    scopeKey: period,
-    version: 3,
+    scopeKey: 'fixed-90d',
+    version: 4,
     initialState: {
       search: '',
       filters: {
@@ -109,7 +110,7 @@ function CategoriesLandingContent({
   const landingData = data ?? retainedData;
   useRouteScrollRestoration({
     storageKey: 'seller-categories-landing',
-    scopeKey: period,
+    scopeKey: 'fixed-90d',
     ready: !isLoading,
   });
   const groups: FilterBarGroup[] = [
@@ -182,9 +183,6 @@ function CategoriesLandingContent({
         title="Categories"
         subtitle="Track performance, stock health, and revenue by product category."
         horizon={horizonLabel}
-        period={period}
-        periodOptions={options}
-        onPeriodChange={setPeriod}
         primary="Add category"
         onPrimaryClick={() => setAddSheetOpen(true)}
       />

@@ -9,7 +9,7 @@ import { FeatureGate } from '@/components/FeatureGate';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { ROLES } from '@/constants';
 import { PageWrap } from '@/components/seller/layout';
-import { DetailHeader, MetaStrip4, DetailTabs } from '@/components/seller/detail';
+import { DetailCardRenderer, DetailHeader, DetailTabs, MetricGrid, PerformanceCard, RankedList, type DetailCardPayload } from '@/components/seller/detail';
 import { PriceListDetailSkeleton as SharedPriceListDetailSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { Button } from '@/components/ui/button';
 import {
@@ -40,7 +40,7 @@ export default function PriceListDetailPage() {
   const { state: activeTab, setState: setActiveTab } = useRouteSnapshot<string>({
     storageKey: 'seller-price-list-detail-tab',
     scopeKey: id,
-    initialState: 'products',
+    initialState: 'performance',
   });
   const [archiveOpen, setArchiveOpen] = useState(false);
 
@@ -51,16 +51,21 @@ export default function PriceListDetailPage() {
 
   const tabs = useMemo(() => {
     const itemsCount = priceList?.items?.length ?? 0;
-    return [{ id: 'products', label: isSellerAdmin ? 'Products and pricing' : 'Details', badge: itemsCount }];
-  }, [isSellerAdmin, priceList?.items?.length]);
+    const activityCount = priceList?.activity?.length ?? 0;
+    return [
+      { id: 'performance', label: 'Performance' },
+      { id: 'products', label: isSellerAdmin ? 'Products and pricing' : 'Details', badge: itemsCount },
+      { id: 'activity', label: 'Activity', badge: activityCount },
+    ];
+  }, [isSellerAdmin, priceList?.activity?.length, priceList?.items?.length]);
 
   useEffect(() => {
     if (!priceList) return;
     const validIds = new Set(tabs.map((t) => t.id));
-    if (!validIds.has(activeTab)) setActiveTab('products');
+    if (!validIds.has(activeTab)) setActiveTab('performance');
   }, [activeTab, priceList, setActiveTab, tabs]);
 
-  const tabActive = tabs.some((t) => t.id === activeTab) ? activeTab : 'products';
+  const tabActive = tabs.some((t) => t.id === activeTab) ? activeTab : 'performance';
 
   const subtitle = priceList
     ? [
@@ -110,7 +115,9 @@ export default function PriceListDetailPage() {
                 }
               />
 
-              <MetaStrip4
+              <MetricGrid
+                className="mt-6"
+                showSupportingText
                 tiles={[
                   {
                     label: 'Products covered',
@@ -137,6 +144,136 @@ export default function PriceListDetailPage() {
 
               <DetailTabs tabs={tabs} active={tabActive} onChange={setActiveTab} />
 
+              {tabActive === 'performance' ? (
+                <section className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  {priceList.performance_cards?.length ? (
+                    priceList.performance_cards.map((card) => (
+                      <DetailCardRenderer key={(card as DetailCardPayload).id} card={card as DetailCardPayload} />
+                    ))
+                  ) : (
+                    <>
+                  <DetailCardRenderer
+                    card={{
+                      id: 'price-list-recipients',
+                      representation: 'distribution',
+                      title: 'Who receives this pricing',
+                      subtitle: 'Assignment mix by target type',
+                      body: {
+                        items: [
+                          {
+                            id: 'buyer',
+                            label: 'Buyer specific',
+                            value: priceList.assignments.filter((assignment) => assignment.target_type === 'buyer').length,
+                            pct: priceList.assignments.length > 0 ? Math.round((priceList.assignments.filter((assignment) => assignment.target_type === 'buyer').length / priceList.assignments.length) * 100) : 0,
+                          },
+                          {
+                            id: 'cohort',
+                            label: 'Customer group',
+                            value: priceList.assignments.filter((assignment) => assignment.target_type === 'cohort').length,
+                            pct: priceList.assignments.length > 0 ? Math.round((priceList.assignments.filter((assignment) => assignment.target_type === 'cohort').length / priceList.assignments.length) * 100) : 0,
+                          },
+                          {
+                            id: 'all-buyers',
+                            label: 'All buyers',
+                            value: priceList.assignments.filter((assignment) => assignment.target_type === 'all_buyers').length,
+                            pct: priceList.assignments.length > 0 ? Math.round((priceList.assignments.filter((assignment) => assignment.target_type === 'all_buyers').length / priceList.assignments.length) * 100) : 0,
+                          },
+                        ].filter((item) => item.value > 0),
+                        emptyTitle: 'No assignments yet',
+                        emptyDescription: 'This price list is not assigned to any buyer segments yet.',
+                      },
+                    }}
+                  />
+
+                  <DetailCardRenderer
+                    card={{
+                      id: 'price-list-discount-bands',
+                      representation: 'distribution',
+                      title: 'Discount bands and price checks',
+                      subtitle: 'Current item pricing posture',
+                      body: {
+                        items: [
+                          {
+                            id: 'discounted',
+                            label: 'Discounted vs base',
+                            value: priceList.items.filter((item) => {
+                              const base = item.tenant_product?.base_selling_price ?? null;
+                              return base != null && item.price < base;
+                            }).length,
+                            pct: priceList.items.length > 0 ? Math.round((priceList.items.filter((item) => {
+                              const base = item.tenant_product?.base_selling_price ?? null;
+                              return base != null && item.price < base;
+                            }).length / priceList.items.length) * 100) : 0,
+                          },
+                          {
+                            id: 'at-base',
+                            label: 'At base price',
+                            value: priceList.items.filter((item) => {
+                              const base = item.tenant_product?.base_selling_price ?? null;
+                              return base != null && Math.abs(item.price - base) < 0.0001;
+                            }).length,
+                            pct: priceList.items.length > 0 ? Math.round((priceList.items.filter((item) => {
+                              const base = item.tenant_product?.base_selling_price ?? null;
+                              return base != null && Math.abs(item.price - base) < 0.0001;
+                            }).length / priceList.items.length) * 100) : 0,
+                          },
+                          {
+                            id: 'above-base',
+                            label: 'Above base',
+                            value: priceList.items.filter((item) => {
+                              const base = item.tenant_product?.base_selling_price ?? null;
+                              return base != null && item.price > base;
+                            }).length,
+                            pct: priceList.items.length > 0 ? Math.round((priceList.items.filter((item) => {
+                              const base = item.tenant_product?.base_selling_price ?? null;
+                              return base != null && item.price > base;
+                            }).length / priceList.items.length) * 100) : 0,
+                          },
+                        ].filter((item) => item.value > 0),
+                        emptyTitle: 'No priced items yet',
+                        emptyDescription: 'Discount and price posture will appear once this list has line items.',
+                      },
+                    }}
+                  />
+
+                  <DetailCardRenderer
+                    card={{
+                      id: 'price-list-coverage-gaps',
+                      representation: 'unavailable',
+                      title: 'Product coverage gaps',
+                      subtitle: 'Eligibility universe not yet available in this surface',
+                      availability: 'unavailable',
+                      body: {
+                        title: 'Unavailable',
+                        description: 'Coverage gaps are not shown here until this page has the eligible product universe for a bounded comparison.',
+                      },
+                    }}
+                  />
+
+                  <DetailCardRenderer
+                    card={{
+                      id: 'price-list-assigned-entities',
+                      representation: 'ranked_list',
+                      title: 'Assigned entities',
+                      subtitle: 'Current recipient list',
+                      body: {
+                        items: priceList.assignments.map((assignment) => ({
+                          id: assignment.id,
+                          label: assignment.label ?? 'Unlabeled assignment',
+                          meta: assignment.target_type === 'cohort' ? 'Customer group' : assignment.target_type === 'buyer' ? 'Buyer specific' : 'All buyers',
+                          value: assignment.members != null ? `${assignment.members}` : undefined,
+                          supporting: assignment.priority != null ? `Priority ${assignment.priority}` : 'Active assignment',
+                        })),
+                        emptyTitle: 'No recipients yet',
+                        emptyDescription: 'Assign this price list to buyers or customer groups to see recipients here.',
+                      },
+                    }}
+                  />
+                    </>
+                  )}
+                </section>
+              ) : null}
+
               {tabActive === 'products' ? (
                 <PriceListProductsTab
                   priceListId={id}
@@ -145,6 +282,23 @@ export default function PriceListDetailPage() {
                   brandsCovered={priceList.stats?.brands_covered ?? 0}
                   canViewFinancials={isSellerAdmin}
                 />
+              ) : null}
+
+              {tabActive === 'activity' ? (
+                <section className="mt-5">
+                  <PerformanceCard title="Activity log" subtitle="Operational audit trail for this price list" bodyClassName="p-0">
+                    <RankedList
+                      items={(priceList.activity ?? []).map((entry) => ({
+                        id: String(entry.id),
+                        label: entry.action.replace('_', ' '),
+                        meta: new Date(entry.ts).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+                        supporting: entry.diff ? JSON.stringify(entry.diff).slice(0, 120) : 'No field diff recorded',
+                      }))}
+                      emptyTitle="No activity yet"
+                      emptyDescription="Changes to this price list will be logged here."
+                    />
+                  </PerformanceCard>
+                </section>
               ) : null}
 
               <AlertDialog open={archiveOpen} onOpenChange={setArchiveOpen}>

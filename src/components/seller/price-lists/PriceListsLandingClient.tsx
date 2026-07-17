@@ -184,7 +184,7 @@ function PriceListsLandingContent({
           subtitle={isSellerAssistant
             ? 'Reference pricing by cohort and validity window. Use this view to verify what buyers should be seeing.'
             : 'Custom pricing per cohort. Each list sets prices on a window — once it lapses, buyers fall back to base. Keep them fresh.'}
-          horizon="This month"
+          horizon="Now"
           {...(isSellerAssistant ? {} : {
             primary: 'Add a price list',
             onPrimaryClick: () => router.push('/price-lists/new'),

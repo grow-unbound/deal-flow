@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { Pencil, RefreshCw } from 'lucide-react';
 import { PageWrap } from '@/components/seller/layout';
-import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
+import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -171,7 +171,7 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
         }
       />
 
-      <MetaStrip4 tiles={tiles} />
+      <MetricGrid className="mt-6" showSupportingText tiles={tiles} />
 
       <DetailTabs
         tabs={[
@@ -189,7 +189,9 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
           activeMembersMtd={data.meta_strip_4.active_members}
         />
       ) : null}
-      {tab === 'performance' ? <CohortPerformanceTab performance={data.performance} /> : null}
+      {tab === 'performance' ? (
+        <CohortPerformanceTab performance={data.performance} performanceCards={data.performance_cards} />
+      ) : null}
     </PageWrap>
   );
 }

@@ -23,7 +23,6 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
-import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useTenantCatalogs, type CatalogLandingRow, type CatalogsLandingResponse } from '@/hooks/useCatalogs';
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
@@ -94,19 +93,20 @@ function CatalogRowReason(catalog: CatalogLandingRow) {
 
 function CatalogsLandingContent({
   initialData,
-  initialPeriod,
   initialSearch,
 }: {
   initialData: CatalogsLandingResponse | null;
-  initialPeriod: SellerLandingPeriod;
   initialSearch?: string;
 }) {
   const router = useRouter();
-  const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
+  const period: SellerLandingPeriod = 'last90';
+  const horizonLabel = 'Trailing 90 days';
+  const lowerLabel = 'in the last 90 days';
+  const metricSuffix = '90D';
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-catalogs-landing',
-    scopeKey: period,
-    version: 3,
+    scopeKey: 'fixed-90d',
+    version: 4,
     initialState: {
       search: '',
       filters: {
@@ -129,7 +129,7 @@ function CatalogsLandingContent({
   const landingData = data ?? retainedData;
   useRouteScrollRestoration({
     storageKey: 'seller-catalogs-landing',
-    scopeKey: period,
+    scopeKey: 'fixed-90d',
     ready: !isLoading,
   });
   const groups: FilterBarGroup[] = [
@@ -203,9 +203,6 @@ function CatalogsLandingContent({
         title="Campaigns"
         subtitle="Targeted offers for your customer groups. Each campaign picks a product set, a price, and a group — then shares via WhatsApp."
         horizon={horizonLabel}
-        period={period}
-        periodOptions={options}
-        onPeriodChange={setPeriod}
         primary="Add a campaign"
         onPrimaryClick={() => router.push('/campaigns/new')}
       />
@@ -229,7 +226,7 @@ function CatalogsLandingContent({
           {
             label: `GMV · ${metricSuffix}`,
             value: formatCompactInr(landingData.kpis.gmv_mtd),
-            sub: `${landingData.kpis.gmv_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(landingData.kpis.gmv_growth_pct)}% vs last month`,
+            sub: `${landingData.kpis.gmv_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(landingData.kpis.gmv_growth_pct)}% vs prior 90D`,
             tone: 'accent',
           },
           {
@@ -405,7 +402,7 @@ function CatalogsLandingContent({
 
 export function CatalogsLandingClient({
   initialData,
-  initialPeriod,
+  initialPeriod: _initialPeriod,
   initialSearch,
 }: {
   initialData: CatalogsLandingResponse | null;
@@ -414,7 +411,7 @@ export function CatalogsLandingClient({
 }) {
   return (
     <FeatureGate flag="CATALOG_PUBLISHING">
-      <CatalogsLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />
+      <CatalogsLandingContent initialData={initialData} initialSearch={initialSearch} />
     </FeatureGate>
   );
 }

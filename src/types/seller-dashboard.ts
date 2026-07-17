@@ -13,6 +13,33 @@ export interface SellerDashboardTenantSummary {
   location_names: string[];
 }
 
+export interface MetricsV2PortfolioItem {
+  id: string;
+  label: string;
+  time_basis: string;
+  feasibility: 'READY' | 'REWORK' | 'ON-OPEN' | 'CONDITIONAL';
+  available: boolean;
+  unavailable_reason?: string | null;
+  value?: number | null;
+  count?: number | null;
+  unit?: string | null;
+  meta?: Record<string, unknown>;
+}
+
+export interface MetricsV2DashboardPortfolio {
+  as_of: string;
+  commercial_horizon_days: number;
+  table_period: null;
+  primary_demand_kind: 'orders' | 'estimates' | 'none';
+  calculation_version: number;
+  source_watermark: string | null;
+  freshness: Record<string, unknown>;
+  availability: Record<string, unknown>;
+  metrics: MetricsV2PortfolioItem[];
+  actions: MetricsV2PortfolioItem[];
+  explore: MetricsV2PortfolioItem[];
+}
+
 export interface SellerDashboardMetric {
   label: string;
   value: number;
@@ -101,6 +128,7 @@ export interface SellerDashboardResponse {
   role: SellerDashboardRole;
   period: SellerLandingPeriodMeta;
   tenant: SellerDashboardTenantSummary;
+  portfolio?: MetricsV2DashboardPortfolio | null;
   admin?: SellerAdminDashboardSection;
   assistant?: SellerAssistantDashboardSection;
 }

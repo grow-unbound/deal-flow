@@ -125,10 +125,10 @@ describe('catalogs landing page', () => {
 
     const table = screen.getByRole('table');
 
-    expect(screen.getByText('Orders · MTD')).toBeInTheDocument();
-    expect(screen.getByText('Estimates · MTD')).toBeInTheDocument();
-    expect(screen.getByText('Conversion · Viewed')).toBeInTheDocument();
-    expect(screen.getByText('Conversions · Ordered')).toBeInTheDocument();
+    expect(screen.getByText('Orders · 90D')).toBeInTheDocument();
+    expect(screen.getByText('Estimates · 90D')).toBeInTheDocument();
+    expect(screen.getByText('Buyers · Viewed')).toBeInTheDocument();
+    expect(screen.getByText('Buyers · Ordered')).toBeInTheDocument();
     expect(within(table).getByText('24 buyers')).toBeInTheDocument();
     expect(within(table).getByText('Selected buyers')).toBeInTheDocument();
     expect(within(table).getByText('12 buyers')).toBeInTheDocument();
@@ -227,6 +227,7 @@ describe('catalogs landing page', () => {
 
     render(<CatalogsLandingClient initialData={null} initialPeriod="month" />);
 
-    expect(screen.getByText(/Expires in 3d/i)).toBeInTheDocument();
+    expect(screen.getByText('Needs attention')).toBeInTheDocument();
+    expect(screen.getByText('Weekend Push')).toBeInTheDocument();
   });
 });

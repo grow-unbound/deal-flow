@@ -41,6 +41,10 @@ const schemaMock = vi.fn((schemaName: string) => ({
   from: vi.fn((tableName: string) => ({
     select: vi.fn(() => createQuery(`${schemaName}.${tableName}`)),
   })),
+  rpc: vi.fn((fnName: string) => {
+    const result = nextResult(`${schemaName}.rpc.${fnName}`);
+    return Promise.resolve({ data: result.data ?? null, error: result.error ?? null });
+  }),
 }));
 
 vi.mock('@/lib/supabase', () => ({
@@ -57,7 +61,7 @@ describe('customers summary api', () => {
     for (const key of Object.keys(dbResponses)) delete dbResponses[key];
   });
 
-  it('aggregates buyer-state summary fields from tenant-scope buyer snapshots', async () => {
+  it('returns buyer-state summary fields from the Metrics V2 customer summary RPC', async () => {
     getVerifiedClaimsMock.mockResolvedValue({
       tenant_id: 'tenant-1',
       role: 'seller_admin',
@@ -65,33 +69,17 @@ describe('customers summary api', () => {
       location_ids: null,
     });
 
-    dbResponses['app.buyers_snapshot'] = [{
-      data: [
-        {
-          buyer_id: 'buyer-1',
-          is_active: true,
-          is_dormant: false,
-          outstanding_dues: 5000,
-          overdue_amount: 1000,
-          refreshed_at: '2026-07-07T10:00:00Z',
-        },
-        {
-          buyer_id: 'buyer-2',
-          is_active: true,
-          is_dormant: true,
-          outstanding_dues: 0,
-          overdue_amount: 0,
-          refreshed_at: '2026-07-07T11:00:00Z',
-        },
-        {
-          buyer_id: 'buyer-3',
-          is_active: false,
-          is_dormant: false,
-          outstanding_dues: 250,
-          overdue_amount: 0,
-          refreshed_at: '2026-07-07T09:00:00Z',
-        },
-      ],
+    dbResponses['app.rpc.get_metrics_v2_customer_summary'] = [{
+      data: {
+        total_count: 3,
+        active_count: 1,
+        dormant_count: 1,
+        due_count: 2,
+        overdue_count: 1,
+        outstanding_dues: 5250,
+        overdue_amount: 1000,
+        refreshed_at: '2026-07-07T11:00:00Z',
+      },
     }];
 
     const response = await GET(new NextRequest('http://localhost:3000/api/tenant/customers/summary'));
@@ -111,7 +99,7 @@ describe('customers summary api', () => {
     });
   });
 
-  it('deduplicates assistant-visible location snapshots by buyer before summarizing', async () => {
+  it('passes assistant location scope to the Metrics V2 customer summary RPC', async () => {
     getVerifiedClaimsMock.mockResolvedValue({
       tenant_id: 'tenant-1',
       role: 'seller_assistant',
@@ -119,25 +107,17 @@ describe('customers summary api', () => {
       location_ids: ['location-1', 'location-2'],
     });
 
-    dbResponses['app.buyers_snapshot'] = [{
-      data: [
-        {
-          buyer_id: 'buyer-1',
-          is_active: true,
-          is_dormant: false,
-          outstanding_dues: 2000,
-          overdue_amount: 500,
-          refreshed_at: '2026-07-07T10:00:00Z',
-        },
-        {
-          buyer_id: 'buyer-1',
-          is_active: true,
-          is_dormant: false,
-          outstanding_dues: 3000,
-          overdue_amount: 0,
-          refreshed_at: '2026-07-07T12:00:00Z',
-        },
-      ],
+    dbResponses['app.rpc.get_metrics_v2_customer_summary'] = [{
+      data: {
+        total_count: 1,
+        active_count: 1,
+        dormant_count: 0,
+        due_count: 1,
+        overdue_count: 1,
+        outstanding_dues: 5000,
+        overdue_amount: 500,
+        refreshed_at: '2026-07-07T12:00:00Z',
+      },
     }];
 
     const response = await GET(new NextRequest('http://localhost:3000/api/tenant/customers/summary'));
@@ -154,6 +134,11 @@ describe('customers summary api', () => {
       outstanding_dues: 5000,
       overdue_amount: 500,
       refreshed_at: '2026-07-07T12:00:00Z',
+    });
+    const rpcMock = schemaMock.mock.results.at(-1)?.value.rpc;
+    expect(rpcMock).toHaveBeenCalledWith('get_metrics_v2_customer_summary', {
+      p_tenant_id: 'tenant-1',
+      p_location_ids: ['location-1', 'location-2'],
     });
   });
 });

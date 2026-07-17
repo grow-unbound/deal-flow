@@ -19,7 +19,6 @@ import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { WarehouseFormSheet } from '@/components/seller/warehouses/WarehouseFormSheet';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
-import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useWarehousesLanding } from '@/hooks/useWarehouses';
 import { formatDate } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
@@ -87,11 +86,11 @@ export function WarehousesLandingClient({
 }) {
   const router = useRouter();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const { period, setPeriod, horizonLabel, options } = useSellerLandingPeriod(initialPeriod);
+  const period: SellerLandingPeriod = 'today';
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-warehouses-landing',
-    scopeKey: period,
-    version: 2,
+    scopeKey: 'fixed-now',
+    version: 3,
     initialState: {
       search: '',
       filters: {
@@ -120,7 +119,7 @@ export function WarehousesLandingClient({
 
   useRouteScrollRestoration({
     storageKey: 'seller-warehouses-landing',
-    scopeKey: period,
+    scopeKey: 'fixed-now',
     ready: !isLoading,
   });
 
@@ -183,10 +182,7 @@ export function WarehousesLandingClient({
         eyebrow="Inventory"
         title="Warehouses"
         subtitle="Track stock nodes, identify idle inventory, and manage warehouse-level inventory posture."
-        horizon={horizonLabel}
-        period={period}
-        periodOptions={options}
-        onPeriodChange={setPeriod}
+        horizon="Now"
         primary="Add warehouse"
         onPrimaryClick={() => setSheetOpen(true)}
       />

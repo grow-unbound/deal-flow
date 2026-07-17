@@ -747,7 +747,7 @@ INSERT INTO app.whatsapp_templates (
   'approved', true, true
 ),
 (
-  NULL, 'campaign_published_buyer', 'utility', 'payment_reminder', 'en',
+  NULL, 'campaign_published_buyer', 'utility', 'campaign_announcement', 'en',
   E'Hi {{buyer_name}},\n\n{{seller_name}} has a new campaign live - *{{campaign_title}}*.\n\n*{{buyer_note}}*\nContact: {{seller_phone_number}} for more details.\n\nCheck it out and order in the app.',
   '[{"key":"buyer_name","description":"Buyer contact or business name"}, {"key":"seller_name","description":"Seller business name"}, {"key":"campaign_title","description":"Campaign title"}, {"key":"buyer_note","description":"Seller note to buyers about the campaign"},{"key":"seller_phone_number","description":"Seller phone number"}]'::jsonb,
   '[{"type":"url", "index":"0", "url_template":"https://app.useyukti.in/catalog?share_toke={{1}}","variable_source":"share_token"}, {"type":"QUICK_REPLY","index":"1","text":"Opt out"}]'::jsonb,

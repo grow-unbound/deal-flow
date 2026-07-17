@@ -251,34 +251,8 @@ export async function GET(req: NextRequest) {
       estimateTotalQuery = estimateTotalQuery.in('location_id', locationParams);
     }
 
-    const buildEstimateKpiQuery = (opts?: { start?: string; endExclusive?: string }) => {
-      if (aggregateScope === 'location' && scopedLocationIds.length === 0) {
-        return Promise.resolve({ data: [], error: null });
-      }
-
-      let query = db
-        .schema('app')
-        .from('kpi_estimates_daily')
-        .select('estimates_count, gmv, open_count, accepted_count, converted_count, draft_count, sent_count, expiring_soon_count, open_buyer_app_count')
-        .eq('tenant_id', tenantId)
-        .eq('scope', aggregateScope);
-
-      if (opts?.start) {
-        query = query.gte('day', opts.start.slice(0, 10));
-      }
-      if (opts?.endExclusive) {
-        query = query.lt('day', opts.endExclusive.slice(0, 10));
-      }
-      if (aggregateScope === 'location') {
-        query = query.in('location_id', scopedLocationIds);
-      }
-
-      return query;
-    };
-
     const buildEstimateCalloutQuery = (mode: 'needs_follow_up' | 'ready_to_convert' | 'expiring_soon') => {
       let query = buildBaseEstimateQuery() as any;
-      query = applyEstimateDocumentPeriod(query, period.current_start, period.current_end_exclusive);
 
       if (mode === 'needs_follow_up') {
         return query
@@ -304,21 +278,25 @@ export async function GET(req: NextRequest) {
         .limit(3);
     };
 
-    const [estimatesRes, estimateTotalRes, currentPeriodRes, previousPeriodRes, aggregateRes, needsFollowUpRes, readyToConvertRes, expiringSoonRes] = await Promise.all([
+    const landingMetricsPromise = db.schema('app').rpc('metrics_v2_transaction_landing', {
+      p_tenant_id: tenantId,
+      p_kind: 'estimates',
+      p_location_ids: aggregateScope === 'location' ? scopedLocationIds : null,
+    });
+
+    const [estimatesRes, estimateTotalRes, landingMetricsRes, needsFollowUpRes, readyToConvertRes, expiringSoonRes] = await Promise.all([
       scopedEstimatesQuery,
       estimateTotalQuery,
-      buildEstimateKpiQuery({ start: period.current_start, endExclusive: period.current_end_exclusive }),
-      buildEstimateKpiQuery({ start: period.previous_start, endExclusive: period.previous_end_exclusive }),
-      buildEstimateKpiQuery(),
+      landingMetricsPromise,
       buildEstimateCalloutQuery('needs_follow_up'),
       buildEstimateCalloutQuery('ready_to_convert'),
       buildEstimateCalloutQuery('expiring_soon'),
     ]);
 
-    if (estimatesRes.error || estimateTotalRes.error || currentPeriodRes.error || previousPeriodRes.error || aggregateRes.error || needsFollowUpRes.error || readyToConvertRes.error || expiringSoonRes.error) {
+    if (estimatesRes.error || estimateTotalRes.error || landingMetricsRes.error || needsFollowUpRes.error || readyToConvertRes.error || expiringSoonRes.error) {
       console.error(
         '[GET /api/tenant/estimates] query error:',
-        estimatesRes.error || estimateTotalRes.error || currentPeriodRes.error || previousPeriodRes.error || aggregateRes.error || needsFollowUpRes.error || readyToConvertRes.error || expiringSoonRes.error,
+        estimatesRes.error || estimateTotalRes.error || landingMetricsRes.error || needsFollowUpRes.error || readyToConvertRes.error || expiringSoonRes.error,
       );
       return timedJson({ error: 'Failed to fetch estimates' }, { status: 500 });
     }
@@ -464,40 +442,24 @@ export async function GET(req: NextRequest) {
 
     const normalized = rawEstimates.map((row, index) => normalizeLanding(row, index));
 
-    const totalEstimatesThisPeriod = sumMetric((currentPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'estimates_count');
-    const totalEstimatesPrevPeriod = sumMetric((previousPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'estimates_count');
-    const totalGmvThisPeriod = sumMetric((currentPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'gmv');
-    const totalGmvPrevPeriod = sumMetric((previousPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'gmv');
-    const totalEstimatesGrowthPct =
-      totalEstimatesPrevPeriod > 0 ? Math.round(((totalEstimatesThisPeriod - totalEstimatesPrevPeriod) / totalEstimatesPrevPeriod) * 100) : 0;
-    const aov = totalEstimatesThisPeriod > 0 ? totalGmvThisPeriod / totalEstimatesThisPeriod : 0;
-    const openEstimatesThisPeriod = sumMetric((currentPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'open_count');
-    const openCreatedThisPeriod = openEstimatesThisPeriod;
-    const buyerAppCreatedThisPeriod = sumMetric((currentPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'open_buyer_app_count');
-    const openDraftsAggregate = sumMetric((aggregateRes.data ?? []) as Array<Record<string, unknown>>, 'draft_count');
-    const openSentAggregate = sumMetric((aggregateRes.data ?? []) as Array<Record<string, unknown>>, 'sent_count');
-    const openAcceptedAggregate = sumMetric((aggregateRes.data ?? []) as Array<Record<string, unknown>>, 'accepted_count');
-    const openTotalAggregate = sumMetric((aggregateRes.data ?? []) as Array<Record<string, unknown>>, 'open_count');
-    const expiringSoonAggregate = sumMetric((aggregateRes.data ?? []) as Array<Record<string, unknown>>, 'expiring_soon_count');
-
-    const kpis: EstimatesKpis = {
-      total_estimates_this_period: totalEstimatesThisPeriod,
-      total_estimates_prev_period: totalEstimatesPrevPeriod,
-      total_estimates_growth_pct: totalEstimatesGrowthPct,
-      total_gmv_this_period: totalGmvThisPeriod,
-      total_gmv_prev_period: totalGmvPrevPeriod,
-      aov,
-      open_estimates_this_period: openEstimatesThisPeriod,
-      converted_this_period: sumMetric((currentPeriodRes.data ?? []) as Array<Record<string, unknown>>, 'converted_count'),
-      open_total: openTotalAggregate,
-      open_drafts: openDraftsAggregate,
-      open_sent: openSentAggregate,
-      open_accepted: openAcceptedAggregate,
-      ready_to_convert: openAcceptedAggregate,
-      expiring_soon: expiringSoonAggregate,
-      open_created_this_period: openCreatedThisPeriod,
-      buyer_app_created_this_period: buyerAppCreatedThisPeriod,
-    };
+    const kpis = ((landingMetricsRes.data as { kpis?: EstimatesKpis } | null)?.kpis ?? {
+      total_estimates_this_period: 0,
+      total_estimates_prev_period: 0,
+      total_estimates_growth_pct: 0,
+      total_gmv_this_period: 0,
+      total_gmv_prev_period: 0,
+      aov: 0,
+      open_estimates_this_period: 0,
+      converted_this_period: 0,
+      open_total: 0,
+      open_drafts: 0,
+      open_sent: 0,
+      open_accepted: 0,
+      ready_to_convert: 0,
+      expiring_soon: 0,
+      open_created_this_period: 0,
+      buyer_app_created_this_period: 0,
+    }) as EstimatesKpis;
 
     const toCalloutRow = (landing: EstimateLandingRow): EstimateCalloutRow => ({
       id: landing.id,

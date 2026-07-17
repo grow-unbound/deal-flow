@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
   try {
     const tenantId = claims.tenant_id;
     const db = supabaseAdmin as any;
-    const period = getSellerLandingPeriodMeta(request.nextUrl.searchParams.get('period'));
+    const period = getSellerLandingPeriodMeta('last90');
     const limit = parseRowsLimit(request.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
     const offset = parseRowsOffset(request.nextUrl.searchParams.get('offset'));
     const includeSummary = request.nextUrl.searchParams.get('include_summary') !== 'false';

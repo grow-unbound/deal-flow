@@ -180,6 +180,8 @@ export interface PriceListDetail extends PriceList {
   items: PriceListItem[];
   assignments: PriceListAssignment[];
   activity?: PriceListActivity[];
+  performance_cards?: unknown[];
+  detail_v2?: unknown;
   stats?: {
     products_covered: number;
     brands_covered: number;

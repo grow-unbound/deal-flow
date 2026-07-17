@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       return timedJson({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const period = getSellerLandingPeriodMeta(request.nextUrl.searchParams.get('period'));
+    const period = getSellerLandingPeriodMeta('month');
     const dashboard = await getSellerDashboardData(claims.tenant_id, claims, period);
     return timedJson(dashboard);
   } catch (error) {

@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
     const tenantId = claims.tenant_id;
     const isAssistant = claims.role === 'seller_assistant';
     const assistantLocationIds = isAssistant ? (claims.location_ids ?? []).filter(Boolean) : [];
-    const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'));
+    const period = getSellerLandingPeriodMeta('last90');
     const search = req.nextUrl.searchParams.get('search')?.trim().toLowerCase() ?? '';
     const categoryFilter = readArrayParam(req.nextUrl.searchParams, 'categories');
     const cohortFilter = readArrayParam(req.nextUrl.searchParams, 'cohorts');

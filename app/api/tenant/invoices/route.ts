@@ -267,27 +267,6 @@ export async function GET(request: NextRequest) {
     const todayKey = isoDateInTimeZone(new Date());
     const searchScope = searchParam ? await loadTransactionSearchScopeIds(db, tenantId, searchParam) : { buyerIds: [], locationIds: [] };
 
-    const buildInvoiceKpiQuery = (start: string, endExclusive: string) => {
-      if (aggregateScope === 'location' && scopedLocationIds.length === 0) {
-        return Promise.resolve({ data: [], error: null });
-      }
-
-      let query = db
-        .schema('app')
-        .from('kpi_invoices_daily')
-        .select('invoices_count, gmv, overdue_count, overdue_amount, outstanding_count, outstanding_amount')
-        .eq('tenant_id', tenantId)
-        .eq('scope', aggregateScope)
-        .gte('day', start.slice(0, 10))
-        .lt('day', endExclusive.slice(0, 10));
-
-      if (aggregateScope === 'location') {
-        query = query.in('location_id', scopedLocationIds);
-      }
-
-      return query;
-    };
-
     const buildBaseInvoiceQuery = () => {
       return applySellerLocationScope(
         db
@@ -340,9 +319,10 @@ export async function GET(request: NextRequest) {
 
     const buildInvoiceCalloutQuery = (mode: 'needs_attention' | 'top_spenders' | 'top_risers') => {
       let query = buildBaseInvoiceQuery();
+      const fixedMonth = getSellerLandingPeriodMeta(null);
 
       if (mode === 'top_risers') {
-        query = applyInvoiceDocumentPeriod(query, period.previous_start, period.current_end_exclusive);
+        query = applyInvoiceDocumentPeriod(query, fixedMonth.previous_start, fixedMonth.current_end_exclusive);
         return query
           .order('invoice_date', { ascending: false, nullsFirst: false })
           .order('created_at', { ascending: false })
@@ -350,9 +330,8 @@ export async function GET(request: NextRequest) {
           .limit(PAGE_SIZE.MAX);
       }
 
-      query = applyInvoiceDocumentPeriod(query, period.current_start, period.current_end_exclusive);
-
       if (mode === 'top_spenders') {
+        query = applyInvoiceDocumentPeriod(query, fixedMonth.current_start, fixedMonth.current_end_exclusive);
         return query.order('total_amount', { ascending: false }).order('id', { ascending: false }).limit(3);
       }
 
@@ -364,19 +343,24 @@ export async function GET(request: NextRequest) {
         .limit(PAGE_SIZE.MAX);
     };
 
-    const [invoiceListRes, invoiceTotalRes, kpiCurrentRes, kpiPrevRes, needsAttentionRes, topSpendersRes, topRisersRes] =
+    const landingMetricsPromise = db.schema('app').rpc('metrics_v2_transaction_landing', {
+      p_tenant_id: tenantId,
+      p_kind: 'invoices',
+      p_location_ids: aggregateScope === 'location' ? scopedLocationIds : null,
+    });
+
+    const [invoiceListRes, invoiceTotalRes, landingMetricsRes, needsAttentionRes, topSpendersRes, topRisersRes] =
       await Promise.all([
         invoiceListQuery,
         invoiceTotalQuery,
-        buildInvoiceKpiQuery(period.current_start, period.current_end_exclusive),
-        buildInvoiceKpiQuery(period.previous_start, period.previous_end_exclusive),
+        landingMetricsPromise,
         buildInvoiceCalloutQuery('needs_attention'),
         buildInvoiceCalloutQuery('top_spenders'),
         buildInvoiceCalloutQuery('top_risers'),
       ]);
 
-    if (invoiceListRes.error || invoiceTotalRes.error || kpiCurrentRes.error || kpiPrevRes.error || needsAttentionRes.error || topSpendersRes.error || topRisersRes.error) {
-      console.error('[GET /api/tenant/invoices]', invoiceListRes.error || invoiceTotalRes.error || kpiCurrentRes.error || kpiPrevRes.error || needsAttentionRes.error || topSpendersRes.error || topRisersRes.error);
+    if (invoiceListRes.error || invoiceTotalRes.error || landingMetricsRes.error || needsAttentionRes.error || topSpendersRes.error || topRisersRes.error) {
+      console.error('[GET /api/tenant/invoices]', invoiceListRes.error || invoiceTotalRes.error || landingMetricsRes.error || needsAttentionRes.error || topSpendersRes.error || topRisersRes.error);
       return timedJson({ error: 'Failed to fetch invoices' }, { status: 500 });
     }
 
@@ -524,28 +508,18 @@ export async function GET(request: NextRequest) {
     const landingRows: InvoiceLandingRow[] = pageRows.map((row, index) => toLandingRow(row, index));
     const landingById = new Map(landingRows.map((row) => [row.id, row]));
     const ensureLandingRow = (row: InvoiceDbRow, index: number) => landingById.get(row.id) ?? toLandingRow(row, index);
-    const invoicesThisPeriod = sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'invoices_count');
-    const invoicesPrevPeriod = sumMetric((kpiPrevRes.data ?? []) as Array<Record<string, unknown>>, 'invoices_count');
-    const gmvThisPeriod = sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'gmv');
-    const gmvPrevPeriod = sumMetric((kpiPrevRes.data ?? []) as Array<Record<string, unknown>>, 'gmv');
-    const aov = invoicesThisPeriod > 0 ? gmvThisPeriod / invoicesThisPeriod : 0;
-    const overdueCount = sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'overdue_count');
-    const overdueSum = sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'overdue_amount');
-    const outstandingCount = sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'outstanding_count');
-    const outstandingSum = sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'outstanding_amount');
-
-    const kpis: InvoicesKpis = {
-      invoices_this_period: invoicesThisPeriod,
-      invoices_prev_period: invoicesPrevPeriod,
-      invoices_growth_pct: growthPct(invoicesThisPeriod, invoicesPrevPeriod),
-      gmv_this_period: gmvThisPeriod,
-      gmv_prev_period: gmvPrevPeriod,
-      aov,
-      overdue_count: overdueCount,
-      overdue_sum: overdueSum,
-      outstanding_count: outstandingCount,
-      outstanding_sum: outstandingSum,
-    };
+    const kpis = ((landingMetricsRes.data as { kpis?: InvoicesKpis } | null)?.kpis ?? {
+      invoices_this_period: 0,
+      invoices_prev_period: 0,
+      invoices_growth_pct: 0,
+      gmv_this_period: 0,
+      gmv_prev_period: 0,
+      aov: 0,
+      overdue_count: 0,
+      overdue_sum: 0,
+      outstanding_count: 0,
+      outstanding_sum: 0,
+    }) as InvoicesKpis;
 
     const needsAttention = ((needsAttentionRes.data ?? []) as InvoiceDbRow[])
       .map((row, index) => ensureLandingRow(row, index))
@@ -601,11 +575,11 @@ export async function GET(request: NextRequest) {
     for (const [index, buyer] of buyers.entries()) {
       const currentGmv = ((topRisersRes.data ?? []) as InvoiceDbRow[])
         .filter((row) => row.buyer_id === buyer.id)
-        .filter((row) => inPeriod(getInvoiceDocumentTimestamp(row), period.current_start, period.current_end_exclusive))
+        .filter((row) => inPeriod(getInvoiceDocumentTimestamp(row), getSellerLandingPeriodMeta(null).current_start, getSellerLandingPeriodMeta(null).current_end_exclusive))
         .reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
       const previousGmv = ((topRisersRes.data ?? []) as InvoiceDbRow[])
         .filter((row) => row.buyer_id === buyer.id)
-        .filter((row) => inPeriod(getInvoiceDocumentTimestamp(row), period.previous_start, period.previous_end_exclusive))
+        .filter((row) => inPeriod(getInvoiceDocumentTimestamp(row), getSellerLandingPeriodMeta(null).previous_start, getSellerLandingPeriodMeta(null).previous_end_exclusive))
         .reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
       const deltaGmv = currentGmv - previousGmv;
       if (deltaGmv <= 0) continue;

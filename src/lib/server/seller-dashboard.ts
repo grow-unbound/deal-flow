@@ -25,6 +25,7 @@ import type {
   SellerDashboardBrandRow,
   SellerDashboardRole,
   SellerDashboardTenantSummary,
+  MetricsV2DashboardPortfolio,
 } from '@/types/seller-dashboard';
 
 type BuyerRow = {
@@ -96,9 +97,9 @@ type KpiTenantDailyRow = {
   gmv: number | null;
 };
 
-type KpiProductDailyRevenueRow = {
+type MetricsProductRevenueRow = {
   tenant_product_id: string;
-  revenue: number | null;
+  invoice_value_90d: number | string | null;
 };
 
 type TenantProductBrandRow = {
@@ -235,24 +236,51 @@ function buildTenantSummary(tenant: TenantRow | null, locationNames: string[]): 
   };
 }
 
+function normalizeDashboardPortfolio(raw: unknown): MetricsV2DashboardPortfolio | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const data = raw as Partial<MetricsV2DashboardPortfolio>;
+  return {
+    as_of: typeof data.as_of === 'string' ? data.as_of : new Date().toISOString(),
+    commercial_horizon_days: Number(data.commercial_horizon_days ?? 90),
+    table_period: null,
+    primary_demand_kind: data.primary_demand_kind === 'estimates' || data.primary_demand_kind === 'none' ? data.primary_demand_kind : 'orders',
+    calculation_version: Number(data.calculation_version ?? 1),
+    source_watermark: typeof data.source_watermark === 'string' ? data.source_watermark : null,
+    freshness: typeof data.freshness === 'object' && data.freshness ? data.freshness as Record<string, unknown> : {},
+    availability: typeof data.availability === 'object' && data.availability ? data.availability as Record<string, unknown> : {},
+    metrics: Array.isArray(data.metrics) ? data.metrics : [],
+    actions: Array.isArray(data.actions) ? data.actions : [],
+    explore: Array.isArray(data.explore) ? data.explore : [],
+  };
+}
+
+function portfolioItem(portfolio: MetricsV2DashboardPortfolio | null, section: 'metrics' | 'actions' | 'explore', id: string) {
+  return portfolio?.[section]?.find((item) => item.id === id) ?? null;
+}
+
+function portfolioNumber(portfolio: MetricsV2DashboardPortfolio | null, section: 'metrics' | 'actions' | 'explore', id: string, key: 'value' | 'count', fallback: number) {
+  const value = portfolioItem(portfolio, section, id)?.[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
 async function fetchBrandRows(
   tenantId: string,
-  period: SellerLandingPeriodMeta,
 ): Promise<SellerDashboardBrandRow[]> {
   if (!supabaseAdmin) return [];
 
   const db = supabaseAdmin;
-  const { data: kpiRows } = await db
+  const { data: productMetricRows } = await db
     .schema('app')
-    .from('kpi_product_daily')
-    .select('tenant_product_id, revenue')
+    .from('metrics_product_snapshot')
+    .select('tenant_product_id, invoice_value_90d')
     .eq('tenant_id', tenantId)
-    .gte('day', period.current_start.slice(0, 10))
-    .lt('day', period.current_end_exclusive.slice(0, 10));
+    .is('deleted_at', null)
+    .order('invoice_value_90d', { ascending: false })
+    .limit(80);
 
   const revenueByProduct = new Map<string, number>();
-  for (const row of (kpiRows ?? []) as KpiProductDailyRevenueRow[]) {
-    revenueByProduct.set(row.tenant_product_id, (revenueByProduct.get(row.tenant_product_id) ?? 0) + Number(row.revenue ?? 0));
+  for (const row of (productMetricRows ?? []) as MetricsProductRevenueRow[]) {
+    revenueByProduct.set(row.tenant_product_id, Number(row.invoice_value_90d ?? 0));
   }
 
   const topProductIds = Array.from(revenueByProduct.keys()).slice(0, 80);
@@ -350,7 +378,14 @@ async function fetchSellerDashboardData(
     inventoryQuery = inventoryQuery.eq('warehouse_id', '00000000-0000-0000-0000-000000000000');
   }
 
-  const [buyersRes, catalogsRes, inventoryRes, ordersRes, estimatesRes, invoicesRes, kpiCurrentRes, kpiPreviousRes] = await Promise.all([
+  const [portfolioRes, buyersRes, catalogsRes, inventoryRes, ordersRes, estimatesRes, invoicesRes, kpiCurrentRes, kpiPreviousRes] = await Promise.all([
+    db
+      .schema('app')
+      .rpc('get_metrics_v2_seller_dashboard', {
+        p_tenant_id: tenantId,
+        p_role: claims.role ?? null,
+        p_location_ids: scope.mode === 'subset' ? scopedLocationIds : null,
+      }),
     db
       .schema('app')
       .from('buyers')
@@ -415,6 +450,7 @@ async function fetchSellerDashboardData(
   const invoices = (invoicesRes.data ?? []) as InvoiceRow[];
   const kpiCurrentRows = (kpiCurrentRes.data ?? []) as KpiTenantDailyRow[];
   const kpiPreviousRows = (kpiPreviousRes.data ?? []) as KpiTenantDailyRow[];
+  const portfolio = normalizeDashboardPortfolio(portfolioRes.data);
   const scopedBuyerIds = role === ROLES.SELLER_ASSISTANT
     ? new Set(
         [...orders, ...estimates, ...invoices]
@@ -452,31 +488,30 @@ async function fetchSellerDashboardData(
   const allInvoicesSorted = [...invoices].sort((a, b) => new Date(b.updated_at ?? b.created_at).getTime() - new Date(a.updated_at ?? a.created_at).getTime());
 
   if (role === ROLES.SELLER_ADMIN) {
-    const topBrands = await fetchBrandRows(tenantId, period);
+    const topBrands = await fetchBrandRows(tenantId);
     const overdueInvoices = invoices.filter((invoice) => invoicePresentation(invoice).label === 'Overdue');
     const adminMetrics: SellerDashboardMetric[] = [
       {
-        label: `Orders · ${sellerLandingPeriodLabel(period.selected)}`,
-        value: currentOrdersCount,
-        delta: currentOrdersCount - previousOrdersCount,
-        delta_label: `vs previous ${period.selected === 'today' ? 'day' : period.selected}`,
-      },
-      {
-        label: `GMV · ${sellerLandingPeriodLabel(period.selected)}`,
-        value: currentGmv,
+        label: 'Invoiced sales · This month',
+        value: portfolioNumber(portfolio, 'metrics', 'invoiced_sales', 'value', currentGmv),
         delta: growthDelta(currentGmv, previousGmv),
-        delta_label: `vs previous ${period.selected === 'today' ? 'day' : period.selected}`,
-        // tone: 'accent',
+        delta_label: 'vs previous month',
       },
       {
-        label: 'Active catalogs',
-        value: activeCatalogs,
-        sub: `${expiringCatalogs} expiring in 7 days`,
+        label: 'Open primary demand',
+        value: portfolioNumber(portfolio, 'metrics', 'open_primary_demand_value', 'value', currentOrdersCount),
+        sub: portfolio?.primary_demand_kind === 'estimates' ? 'Open estimate value' : 'Open order value',
       },
       {
-        label: 'Low-stock alerts',
-        value: lowStockAlerts,
-        sub: 'Across inventory locations',
+        label: 'Overdue receivables',
+        value: portfolioNumber(portfolio, 'metrics', 'overdue_receivables', 'value', overdueInvoices.reduce((sum, invoice) => sum + Number(invoice.outstanding_balance ?? 0), 0)),
+        sub: `${portfolioNumber(portfolio, 'metrics', 'overdue_receivables', 'count', overdueInvoices.length)} overdue invoices`,
+        tone: overdueInvoices.length > 0 ? 'warn' : undefined,
+      },
+      {
+        label: 'Sold products out of stock',
+        value: portfolioNumber(portfolio, 'metrics', 'recently_sold_products_now_out_of_stock', 'count', lowStockAlerts),
+        sub: 'Sold in the last 90 days',
         tone: lowStockAlerts > 0 ? 'warn' : undefined,
       },
     ];
@@ -575,6 +610,7 @@ async function fetchSellerDashboardData(
       role,
       period,
       tenant,
+      portfolio,
       admin: {
         metrics: adminMetrics,
         callouts: adminCallouts,
@@ -849,6 +885,7 @@ async function fetchSellerDashboardData(
     role,
     period,
     tenant,
+    portfolio,
     assistant: {
       metrics: limitedMetrics,
       callouts: assistantCallouts,

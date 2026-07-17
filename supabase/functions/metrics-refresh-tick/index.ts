@@ -2,6 +2,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 type TickStage = 'claim' | 'compute' | 'acknowledge' | 'fail' | 'release';
 type TickResult = Record<string, unknown> | null;
+const STAGE_RPC_TIMEOUT_MS = 10_000;
+const TICK_WALL_BUDGET_MS = 15_000;
 
 interface ClaimIdentity {
   fencingEpoch: number | string;
@@ -97,10 +99,13 @@ async function callStage(
   identity: ClaimIdentity | null,
   deadlineMs: number | null = null,
 ): Promise<TickResult> {
-  const remainingMs = deadlineMs === null ? 3_500 : deadlineMs - performance.now();
+  const remainingMs = deadlineMs === null ? STAGE_RPC_TIMEOUT_MS : deadlineMs - performance.now();
   if (remainingMs <= 0) throw new TickStageError(stage, 'metrics_tick_wall_budget_exceeded');
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Math.max(1, Math.min(remainingMs, 3_500)));
+  const timeout = setTimeout(
+    () => controller.abort(),
+    Math.max(1, Math.min(remainingMs, STAGE_RPC_TIMEOUT_MS)),
+  );
   const { data, error } = await admin
     .schema('app')
     .rpc('metrics_refresh_tick', {
@@ -154,7 +159,7 @@ Deno.serve(async (request: Request) => {
   };
 
   let identity: ClaimIdentity | null = null;
-  const deadlineMs = performance.now() + 5_000;
+  const deadlineMs = performance.now() + TICK_WALL_BUDGET_MS;
 
   try {
     const admin = createAdminClient();
