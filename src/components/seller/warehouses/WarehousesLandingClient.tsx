@@ -181,7 +181,7 @@ export function WarehousesLandingClient({
       <PageHeader
         eyebrow="Inventory"
         title="Warehouses"
-        subtitle="Track stock nodes, identify idle inventory, and manage warehouse-level inventory posture."
+        subtitle="Current inventory posture by warehouse. Focus on stockouts, idle stock, and replenishment exceptions."
         horizon="Now"
         primary="Add warehouse"
         onPrimaryClick={() => setSheetOpen(true)}
@@ -190,7 +190,7 @@ export function WarehousesLandingClient({
       <InsightStrip4
         tiles={[
           {
-            label: 'Active warehouses',
+            label: 'Warehouses in operation',
             value: `${summary?.kpis.active_warehouses ?? 0}`,
             sub: `${summary?.kpis.active_warehouses ?? 0} total`,
           },
@@ -200,7 +200,7 @@ export function WarehousesLandingClient({
             sub: 'warehouse-product rows',
           },
           {
-            label: 'Low-stock warehouses',
+            label: 'Warehouses with stock risk',
             value: `${summary?.kpis.low_stock_warehouses ?? 0}`,
             sub: 'need replenishment attention',
             tone: (summary?.kpis.low_stock_warehouses ?? 0) > 0 ? 'warn' : undefined,
@@ -289,7 +289,7 @@ export function WarehousesLandingClient({
             { label: 'Status', minWidth: 130, maxWidth: 160, className: 'px-5' },
             { label: 'Tracked SKUs', align: 'right', minWidth: 130, maxWidth: 150, className: 'px-5' },
             { label: 'Sellable units', align: 'right', minWidth: 140, maxWidth: 170, className: 'px-5' },
-            { label: 'Low stock', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
+            { label: 'Stock risk SKUs', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
             { label: 'Idle stock SKUs', align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
             { label: 'Last updated', minWidth: 130, maxWidth: 160, className: 'px-5' },
             { width: 40, className: 'px-4' },

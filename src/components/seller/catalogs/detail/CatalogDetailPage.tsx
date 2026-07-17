@@ -95,7 +95,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
     if (!data) return [];
     return [
       {
-        label: 'GMV',
+        label: 'Campaign-linked demand value',
         value: formatCompactInr(data.meta_strip_4.gmv),
         sub: (
           <span>
@@ -108,14 +108,14 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
         ),
       },
       {
-        label: 'Conversions',
+        label: 'Customers with demand',
         value: `${data.meta_strip_4.conversions ?? data.meta_strip_4.orders}`,
-        sub: `${data.meta_strip_4.conversion_rate}% conversion`,
+        sub: `${data.meta_strip_4.conversion_rate}% open-to-demand`,
       },
       {
-        label: 'Unique viewers',
+        label: 'Customers who opened',
         value: `${data.meta_strip_4.unique_viewers}/${data.meta_strip_4.cohort_members}`,
-        sub: 'opened in app',
+        sub: 'opened in Buyer App',
       },
       {
         label: 'Days left',

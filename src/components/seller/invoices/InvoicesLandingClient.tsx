@@ -12,7 +12,6 @@ import {
   InsightStrip4,
   PageHeader,
   PageWrap,
-  StatusTag,
   V3CalloutPanel,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
@@ -28,7 +27,7 @@ import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatCompactInr, formatDate, formatInr } from '@/lib/utils';
-import { sellerLandingMetricSuffix, type SellerLandingPeriod } from '@/lib/seller-period';
+import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { InvoicesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'Recent first';
@@ -59,6 +58,10 @@ function mapRowToCallout(row: Pick<TenantInvoicesResponse['invoices'][number], '
     hue: row.buyer_hue,
     name: row.buyer_name,
   };
+}
+
+function invoiceSupportText(row: Pick<TenantInvoicesResponse['invoices'][number], 'invoice_number' | 'due_date'>) {
+  return `${row.invoice_number} · Due ${row.due_date ? formatDate(row.due_date) : '—'}`;
 }
 
 function InvoicesLoadingSkeleton() {
@@ -115,7 +118,6 @@ function InvoicesLandingContent({
 }) {
   const router = useRouter();
   const { period, setPeriod, horizonLabel, lowerLabel, options } = useSellerLandingPeriod(initialPeriod);
-  const metricSuffix = sellerLandingMetricSuffix(period);
   const summaryQuery = useTenantInvoices(period, initialData);
   const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
   const showCampaignColumn = useFlagState('CATALOG_PUBLISHING') === true;
@@ -204,6 +206,20 @@ function InvoicesLandingContent({
 
   const displayRows = filteredRows;
   const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && displayRows.length === 0;
+  const latestInvoiceByBuyer = useMemo(() => {
+    const latest = new Map<string, TenantInvoicesResponse['invoices'][number]>();
+
+    for (const invoice of summaryData?.invoices ?? []) {
+      const currentTime = new Date(invoice.invoice_date).getTime();
+      const existing = latest.get(invoice.buyer_id);
+      const existingTime = existing ? new Date(existing.invoice_date).getTime() : Number.NEGATIVE_INFINITY;
+      if (!existing || currentTime >= existingTime) {
+        latest.set(invoice.buyer_id, invoice);
+      }
+    }
+
+    return latest;
+  }, [summaryData?.invoices]);
 
   const subtitle = useMemo(() => {
     const kpis = summaryData?.kpis;
@@ -258,26 +274,26 @@ function InvoicesLandingContent({
           <InsightStrip4
             tiles={[
               {
-                label: `Invoices · ${metricSuffix}`,
-                value: `${kpis?.invoices_this_period ?? '—'}`,
-                sub: kpis ? `${kpis.invoices_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis.invoices_growth_pct)}% vs last period` : '',
+                label: 'Invoiced sales',
+                value: formatCompactInr(kpis?.gmv_this_period ?? 0),
+                sub: `${kpis?.invoices_this_period ?? 0} invoices this period`,
               },
               {
-                label: 'GMV',
-                value: formatCompactInr(kpis?.gmv_this_period ?? 0),
-                sub: `AOV ${formatCompactInr(kpis?.aov ?? 0)}`,
+                label: 'Outstanding amount',
+                value: formatCompactInr(kpis?.outstanding_sum ?? 0),
+                sub: `${kpis?.outstanding_count ?? 0} invoice${(kpis?.outstanding_count ?? 0) === 1 ? '' : 's'} due`,
                 tone: 'accent',
               },
               {
-                label: 'Outstanding',
-                value: formatCompactInr(kpis?.outstanding_sum ?? 0),
-                sub: `${kpis?.outstanding_count ?? 0} invoice${(kpis?.outstanding_count ?? 0) === 1 ? '' : 's'} due`,
+                label: 'Overdue amount',
+                value: formatCompactInr(kpis?.overdue_sum ?? 0),
+                sub: `${kpis?.overdue_count ?? 0} overdue invoice${(kpis?.overdue_count ?? 0) === 1 ? '' : 's'}`,
+                tone: (kpis?.overdue_count ?? 0) > 0 ? 'warn' : undefined,
               },
               {
-                label: 'Overdue',
-                value: formatCompactInr(kpis?.overdue_sum ?? 0),
-                sub: `${kpis?.overdue_count ?? 0} invoice${(kpis?.overdue_count ?? 0) === 1 ? '' : 's'} overdue`,
-                tone: (kpis?.overdue_count ?? 0) > 0 ? 'warn' : undefined,
+                label: 'Due in 7 days',
+                value: `${summaryData?.todays_read?.needs_attention?.length ?? 0}`,
+                sub: 'upcoming collections',
               },
             ]}
           />
@@ -286,39 +302,40 @@ function InvoicesLandingContent({
             items={[
               {
                 kind: 'risk',
-                eyebrow: 'Needs Attention',
+                eyebrow: 'Largest overdue balances',
                 hint: `${summaryData?.todays_read?.needs_attention?.length ?? 0}`,
                 rows: (summaryData?.todays_read?.needs_attention ?? []).map((row) => ({
                   ...mapRowToCallout(row),
-                  reason: `${row.invoice_number} · Due ${row.due_date ? formatDate(row.due_date) : '—'}`,
-                  trailing: (
-                    <span className="inline-flex font-sans">
-                      <StatusTag label={row.effective === 'overdue' ? 'Overdue' : 'Sent'} tone={row.effective === 'overdue' ? 'danger' : 'warning'} />
-                    </span>
-                  ),
+                  reason: invoiceSupportText(row),
+                  trailing: formatCompactInr(row.outstanding_amount),
                 })),
               },
               {
                 kind: 'info',
-                eyebrow: 'Top Spenders',
+                eyebrow: 'High-value invoices due soon',
                 hint: `${summaryData?.todays_read?.top_spenders?.length ?? 0}`,
                 rows: (summaryData?.todays_read?.top_spenders ?? []).map((row) => ({
                   ...mapRowToCallout(row),
-                  reason: `${row.invoice_number} · ${row.items_count} items`,
+                  reason: invoiceSupportText(row),
                   trailing: formatCompactInr(row.total_amount),
                 })),
               },
               {
                 kind: 'opportunity',
-                eyebrow: 'Top Risers',
+                eyebrow: 'Newly overdue invoices',
                 hint: `${summaryData?.todays_read?.top_risers?.length ?? 0}`,
-                rows: (summaryData?.todays_read?.top_risers ?? []).map((row) => ({
-                  initials: row.buyer_initials,
-                  hue: row.buyer_hue,
-                  name: row.buyer_name,
-                  reason: `${buyerGeographyLabel(row)} · +${formatCompactInr(row.delta_gmv)} vs last period`,
-                  trailing: formatCompactInr(row.current_gmv),
-                })),
+                rows: (summaryData?.todays_read?.top_risers ?? []).map((row) => {
+                  const latestInvoice = latestInvoiceByBuyer.get(row.buyer_id);
+                  return {
+                    initials: row.buyer_initials,
+                    hue: row.buyer_hue,
+                    name: row.buyer_name,
+                    reason: latestInvoice
+                      ? invoiceSupportText(latestInvoice)
+                      : `${buyerGeographyLabel(row)} · +${formatCompactInr(row.delta_gmv)} vs last period`,
+                    trailing: formatCompactInr(row.current_gmv),
+                  };
+                }),
               },
             ]}
           />

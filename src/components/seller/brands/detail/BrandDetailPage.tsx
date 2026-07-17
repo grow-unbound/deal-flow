@@ -105,7 +105,7 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
     if (!data) return [];
     return [
       {
-        label: 'GMV · this month',
+        label: 'Invoiced sales 90D',
         value: formatCompactInr(data.meta_strip_4.gmv_mtd),
         sub: (
           <span>
@@ -118,17 +118,17 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
         ),
       },
       {
-        label: 'Active buyers',
+        label: 'Customers who purchased',
         value: `${data.meta_strip_4.active_buyers}/${data.meta_strip_4.total_buyers}`,
-        sub: 'bought this month',
+        sub: 'bought this brand in 90D',
       },
       {
-        label: 'Low-stock SKUs',
+        label: 'Recent sellers low/out of stock',
         value: data.meta_strip_4.low_stock_skus,
         sub: 'reorder this week',
       },
       {
-        label: 'Campaign freshness',
+        label: 'Recent campaign activity',
         value: data.meta_strip_4.days_since_catalog != null ? `${data.meta_strip_4.days_since_catalog}d ago` : '—',
         sub: data.meta_strip_4.last_sent_date
           ? `last sent ${new Date(data.meta_strip_4.last_sent_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`

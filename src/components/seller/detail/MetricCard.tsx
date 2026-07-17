@@ -23,7 +23,7 @@ export function MetricCard({
   deltaTone = 'neutral',
   tone,
   className,
-  showSupportingText = false,
+  showSupportingText = true,
 }: MetricCardProps) {
   const hasSupportingText = showSupportingText && (sub || delta);
 

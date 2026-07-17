@@ -5,6 +5,7 @@ const pushMock = vi.fn();
 const useTenantInvoicesMock = vi.fn();
 const useTenantInvoicesInfiniteMock = vi.fn();
 const useFlagStateMock = vi.fn();
+const useCreateFlagsMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
@@ -18,6 +19,10 @@ vi.mock('@/hooks/useInvoices', () => ({
 
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlagState: (flag: string) => useFlagStateMock(flag),
+}));
+
+vi.mock('@/hooks/useCreateFlags', () => ({
+  useCreateFlags: () => useCreateFlagsMock(),
 }));
 
 vi.mock('@/hooks/useSellerLandingPeriod', () => ({
@@ -177,8 +182,12 @@ describe('invoices landing page', () => {
     pushMock.mockReset();
     useTenantInvoicesMock.mockReset();
     useFlagStateMock.mockReset();
+    useCreateFlagsMock.mockReset();
     useTenantInvoicesInfiniteMock.mockReset();
     useFlagStateMock.mockReturnValue(true);
+    useCreateFlagsMock.mockReturnValue({
+      createInvoices: true,
+    });
     useTenantInvoicesMock.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -254,12 +263,27 @@ describe('invoices landing page', () => {
 
   it('renders invoice KPI strip and callout rail', () => {
     render(<InvoicesLandingClient initialData={mockInvoiceResponse()} initialPeriod="month" />);
-    expect(screen.getByText('Invoices · MTD')).toBeInTheDocument();
-    expect(screen.getByText('GMV')).toBeInTheDocument();
-    expect(screen.getByText('Outstanding')).toBeInTheDocument();
-    expect(screen.getByText('Needs Attention')).toBeInTheDocument();
-    expect(screen.getByText('Top Spenders')).toBeInTheDocument();
-    expect(screen.getByText('Top Risers')).toBeInTheDocument();
+    expect(screen.getByText('Invoiced sales')).toBeInTheDocument();
+    expect(screen.getByText('Outstanding amount')).toBeInTheDocument();
+    expect(screen.getByText('Overdue amount')).toBeInTheDocument();
+    expect(screen.getByText('Due in 7 days')).toBeInTheDocument();
+    expect(screen.getByText('2 invoices this period')).toBeInTheDocument();
+    expect(screen.getByText('2 invoices due')).toBeInTheDocument();
+    expect(screen.getByText('1 overdue invoice')).toBeInTheDocument();
+    expect(screen.getByText('Largest overdue balances')).toBeInTheDocument();
+    expect(screen.getByText('High-value invoices due soon')).toBeInTheDocument();
+    expect(screen.getByText('Newly overdue invoices')).toBeInTheDocument();
+  });
+
+  it('renders invoice supporting text and opens the callout detail sheet', () => {
+    render(<InvoicesLandingClient initialData={mockInvoiceResponse()} initialPeriod="month" />);
+    expect(screen.getByText('INV-2026-0002 · Due 01 Jun 2026')).toBeInTheDocument();
+    expect(screen.getByText('INV-2026-0001 · Due 20 Jun 2026')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /open full largest overdue balances list/i }));
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getAllByText('Beta').length).toBeGreaterThan(0);
   });
 
   it('Overdue filter hides non-overdue invoices', () => {

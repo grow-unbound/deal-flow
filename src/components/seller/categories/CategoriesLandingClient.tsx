@@ -181,7 +181,7 @@ function CategoriesLandingContent({
       <PageHeader
         eyebrow="Catalog"
         title="Categories"
-        subtitle="Track performance, stock health, and revenue by product category."
+        subtitle="Category-level sales and stock posture. Focus on which categories are selling, stalling, or missing setup."
         horizon={horizonLabel}
         primary="Add category"
         onPrimaryClick={() => setAddSheetOpen(true)}
@@ -199,23 +199,23 @@ function CategoriesLandingContent({
           <InsightStrip4
             tiles={[
               {
-                label: 'Active categories',
+                label: 'Categories with sales',
                 value: `${kpis.active_count}`,
-                sub: `${kpis.low_stock_count} with low-stock products`,
+                sub: `${kpis.low_stock_count} categories have stock risk`,
               },
               {
-                label: `GMV · ${metricSuffix}`,
+                label: `Invoiced sales · ${metricSuffix}`,
                 value: formatCompactInr(rows.reduce((s, r) => s + r.gmv_mtd, 0)),
                 sub: 'across all categories',
                 tone: 'accent',
               },
               {
-                label: 'Top category share',
+                label: 'Leading category share',
                 value: kpis.top_category_name ? `${kpis.top_category_share_pct}%` : '—',
                 sub: kpis.top_category_name ?? 'No sales yet',
               },
               {
-                label: 'Uncategorised SKUs',
+                label: 'Uncategorised products',
                 value: `${kpis.uncategorized_count}`,
                 sub: 'products with no category',
               },
@@ -226,7 +226,7 @@ function CategoriesLandingContent({
             items={[
               {
                 kind: 'risk',
-                eyebrow: 'Stockout risk',
+                eyebrow: 'Categories with stock risk',
                 hint: `${landingData.callouts.stockout_risk.length}`,
                 rows: landingData.callouts.stockout_risk.map((c) => ({
                   initials: c.initials,
@@ -238,8 +238,8 @@ function CategoriesLandingContent({
               },
               {
                 kind: 'info',
-                eyebrow: 'Top performers',
-                hint: 'by GMV',
+                eyebrow: 'Categories driving sales',
+                hint: 'by invoiced sales',
                 rows: landingData.callouts.top_performers.map((c) => ({
                   initials: c.initials,
                   hue: 'teal' as const,
@@ -250,7 +250,7 @@ function CategoriesLandingContent({
               },
               {
                 kind: 'opportunity',
-                eyebrow: 'Fast movers',
+                eyebrow: 'Categories gaining demand',
                 hint: 'by units sold',
                 rows: landingData.callouts.fast_movers.map((c) => ({
                   initials: c.initials,
@@ -284,9 +284,9 @@ function CategoriesLandingContent({
           columns={[
               { label: 'Category', minWidth: 280, maxWidth: 360, className: 'px-5' },
               { label: 'Brands', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
-              { label: `GMV · ${metricSuffix}`, align: 'right', minWidth: 140, maxWidth: 160, className: 'px-5' },
-              { label: 'Growth', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
-              { label: 'SKUs', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
+              { label: `Sales · ${metricSuffix}`, align: 'right', minWidth: 140, maxWidth: 160, className: 'px-5' },
+              { label: 'Trend', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
+              { label: 'Products', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
               { width: 40, className: 'px-4' },
             ]}
             tableMinWidth={1080}

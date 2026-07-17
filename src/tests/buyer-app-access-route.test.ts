@@ -68,7 +68,7 @@ describe('GET /api/tenant/buyer-app/access', () => {
     ));
 
     expect(response.status).toBe(200);
-    expect(rpcMock).toHaveBeenCalledWith('search_buyer_app_access', {
+    expect(rpcMock).toHaveBeenCalledWith('search_buyer_app_access_v2', {
       p_tenant_id: 'tenant-1',
       p_query: 'alp',
       p_segment: 'suggested',
@@ -96,7 +96,7 @@ describe('GET /api/tenant/buyer-app/access', () => {
 
     expect(response.status).toBe(200);
     expect(rpcMock).toHaveBeenCalledWith(
-      'search_buyer_app_access',
+      'search_buyer_app_access_v2',
       expect.objectContaining({
         p_segment: 'inactive',
         p_location_ids: ['loc-1', 'loc-2'],
@@ -112,7 +112,7 @@ describe('GET /api/tenant/buyer-app/access', () => {
 
     expect(response.status).toBe(200);
     expect(rpcMock).toHaveBeenCalledWith(
-      'search_buyer_app_access',
+      'search_buyer_app_access_v2',
       expect.objectContaining({
         p_query: null,
         p_segment: 'all',

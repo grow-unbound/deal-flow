@@ -158,12 +158,12 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     if (isSellerAssistant) {
       return [
         {
-          label: 'Orders · MTD',
+          label: 'Invoices · 90D',
           value: data.meta_strip_4.orders_mtd,
-          sub: `AOV ${formatCompactInr(data.meta_strip_4.aov_mtd)}`,
+          sub: `Avg invoice ${formatCompactInr(data.meta_strip_4.aov_mtd)}`,
         },
         {
-          label: 'Last order',
+          label: 'Last sale',
           value: data.meta_strip_4.last_order_label,
           sub: data.meta_strip_4.last_order_primary_product_qty,
         },
@@ -181,7 +181,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     }
     return [
       {
-        label: 'Spend · MTD',
+        label: 'Invoiced sales · 90D',
         value: formatCompactInr(data.meta_strip_4.spend_mtd),
         sub: (
           <span>
@@ -194,12 +194,12 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         ),
       },
       {
-        label: 'Orders · MTD',
+        label: 'Invoices · 90D',
         value: data.meta_strip_4.orders_mtd,
-        sub: `AOV ${formatCompactInr(data.meta_strip_4.aov_mtd)}`,
+        sub: `Avg invoice ${formatCompactInr(data.meta_strip_4.aov_mtd)}`,
       },
       {
-        label: 'Last order',
+        label: 'Last sale',
         value: data.meta_strip_4.last_order_label,
         sub: data.meta_strip_4.last_order_primary_product_qty,
       },

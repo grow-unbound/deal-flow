@@ -29,9 +29,9 @@ import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { CatalogsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingPageLoadMore } from '@/components/seller/layout/LandingPageLoadMore';
 
-type SortOption = 'Recently published' | 'GMV (high → low)' | 'Conversion (high → low)';
+type SortOption = 'Recently published' | 'Demand value (high → low)' | 'Open to demand (high → low)';
 
-const SORT_OPTIONS: SortOption[] = ['Recently published', 'GMV (high → low)', 'Conversion (high → low)'];
+const SORT_OPTIONS: SortOption[] = ['Recently published', 'Demand value (high → low)', 'Open to demand (high → low)'];
 const STATUS_OPTIONS = ['Draft', 'Live', 'Expiring soon', 'Ended'] as const;
 
 function CatalogsLoadingSkeleton() {
@@ -163,7 +163,7 @@ function CatalogsLandingContent({
     return interimRows
       .sort((a, b) => {
         if (sortBy === 'Recently published') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-        if (sortBy === 'GMV (high → low)') return b.gmv - a.gmv;
+        if (sortBy === 'Demand value (high → low)') return b.gmv - a.gmv;
         return b.conversion_pct - a.conversion_pct;
       });
   }, [catalogs, isFetching, search, sortBy, statusFilter]);
@@ -184,14 +184,14 @@ function CatalogsLandingContent({
 
   const tableColumns = [
     { label: 'Campaign', width: 280, minWidth: 260, className: 'px-5' },
-    { label: 'Target Buyers', width: 140, minWidth: 140, className: 'px-5' },
+    { label: 'Target Customers', width: 140, minWidth: 140, className: 'px-5' },
     { label: `Orders · ${metricSuffix}`, align: 'right' as const, width: 140, minWidth: 100, className: 'px-5' },
     ...(estimatesEnabled
-      ? [{ label: `Estimates · ${metricSuffix}`, align: 'right' as const, width: 160, minWidth: 100, className: 'px-5' }]
+      ? [{ label: `Enquiries · ${metricSuffix}`, align: 'right' as const, width: 160, minWidth: 100, className: 'px-5' }]
       : []),
-    { label: `GMV · ${metricSuffix}`, align: 'right' as const, width: 140, minWidth: 100, className: 'px-5' },
-    { label: 'Buyers · Viewed', align: 'right' as const, width: 150, minWidth: 150, className: 'px-5' },
-    { label: 'Buyers · Ordered', align: 'right' as const, width: 170, minWidth: 150, className: 'px-5' },
+    { label: `Demand value · ${metricSuffix}`, align: 'right' as const, width: 140, minWidth: 100, className: 'px-5' },
+    { label: 'Customers opened', align: 'right' as const, width: 150, minWidth: 150, className: 'px-5' },
+    { label: 'Customers with demand', align: 'right' as const, width: 170, minWidth: 150, className: 'px-5' },
     { label: 'Status', minWidth: 180, className: 'px-5' },
     { width: 20, className: 'px-4' },
   ];
@@ -201,7 +201,7 @@ function CatalogsLandingContent({
       <PageHeader
         eyebrow="Growth"
         title="Campaigns"
-        subtitle="Targeted offers for your customer groups. Each campaign picks a product set, a price, and a group — then shares via WhatsApp."
+        subtitle="Targeted outreach to customer groups. Track opens, submitted demand, and which campaigns need follow-up."
         horizon={horizonLabel}
         primary="Add a campaign"
         onPrimaryClick={() => router.push('/campaigns/new')}
@@ -224,18 +224,18 @@ function CatalogsLandingContent({
             sub: `${landingData.kpis.draft_catalogs} in draft · ${landingData.kpis.expiring7d} ending in 7 days`,
           },
           {
-            label: `GMV · ${metricSuffix}`,
+            label: `Campaign-linked demand value · ${metricSuffix}`,
             value: formatCompactInr(landingData.kpis.gmv_mtd),
             sub: `${landingData.kpis.gmv_growth_pct >= 0 ? '↑ +' : '↓ '}${Math.abs(landingData.kpis.gmv_growth_pct)}% vs prior 90D`,
             tone: 'accent',
           },
           {
-            label: 'Avg conversion',
+            label: 'Open to demand rate',
             value: `${landingData.kpis.avg_conversion_pct}%`,
-            sub: 'opens → conversions',
+            sub: 'average response quality',
           },
           {
-            label: 'Conversions attributed',
+            label: 'Customers with linked demand',
             value: `${landingData.kpis.conversions_mtd ?? landingData.kpis.orders_attributed_mtd}`,
             sub: lowerLabel,
           },
@@ -246,7 +246,7 @@ function CatalogsLandingContent({
         items={[
           {
             kind: 'risk',
-            eyebrow: 'Needs attention',
+            eyebrow: 'Campaigns needing attention',
             hint: `${landingData.todays_read.needs_attention.length}`,
             rows: landingData.todays_read.needs_attention.map((catalog) => ({
               initials: catalog.initials,
@@ -258,8 +258,8 @@ function CatalogsLandingContent({
           },
           {
             kind: 'info',
-            eyebrow: 'Top performers',
-            hint: 'by GMV',
+            eyebrow: 'Campaigns driving demand',
+            hint: 'by demand value',
             rows: landingData.todays_read.top_performers.map((catalog) => ({
               initials: catalog.initials,
               hue: catalog.hue,
@@ -270,8 +270,8 @@ function CatalogsLandingContent({
           },
           {
             kind: 'opportunity',
-            eyebrow: 'Top risers',
-            hint: 'fastest growth',
+            eyebrow: 'Live campaigns gaining traction',
+            hint: 'fastest lift',
             rows: landingData.todays_read.top_risers.map((catalog) => ({
               initials: catalog.initials,
               hue: catalog.hue,

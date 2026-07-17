@@ -208,7 +208,7 @@ function CohortsLandingContent({
       <PageHeader
         eyebrow="Segmentation"
         title="Customer Groups"
-        subtitle={`${kpis?.total_cohorts ?? 0} buyer groups defined by geo, tier, and brand affinity. Each one gets its own campaigns and price list.`}
+        subtitle={`${kpis?.covered_members ?? 0} customers assigned across ${kpis?.total_cohorts ?? 0} groups. Use groups to target pricing and campaigns.`}
         horizon={horizonLabel}
         primary="Add a customer group"
         onPrimaryClick={() => router.push('/customer-groups/new')}
@@ -227,25 +227,25 @@ function CohortsLandingContent({
       <InsightStrip4
         tiles={[
           {
-            label: 'Customer Groups',
+            label: 'Customer Groups configured',
             value: `${kpis?.total_cohorts ?? 0}`,
-            sub: `covering ${kpis?.covered_members ?? 0} of ${kpis?.total_buyers ?? 0} buyers`,
+            sub: `${kpis?.covered_members ?? 0} of ${kpis?.total_buyers ?? 0} customers assigned`,
           },
           {
-            label: `Combined GMV · ${metricSuffix}`,
+            label: `Grouped customer sales · ${metricSuffix}`,
             value: formatCompactInr(kpis?.combined_gmv_mtd ?? 0),
             sub: `${(kpis?.growth_pct ?? 0) >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis?.growth_pct ?? 0)}% vs prior 90D`,
             tone: 'accent',
           },
           {
-            label: 'Avg conversion',
-            value: `${(kpis?.avg_conversion_pct ?? 0).toFixed(1)}%`,
-            sub: 'campaign → order',
+            label: 'Customers assigned',
+            value: `${kpis?.covered_members ?? 0}`,
+            sub: 'members currently in groups',
           },
           {
-            label: 'Uncategorised',
-            value: `${kpis?.uncategorised_buyers ?? 0} buyers`,
-            sub: 'not in any cohort',
+            label: 'Customers in no group',
+            value: `${kpis?.uncategorised_buyers ?? 0}`,
+            sub: 'valuable to classify next',
             tone: 'warn',
           },
         ]}
@@ -255,31 +255,31 @@ function CohortsLandingContent({
         items={[
           {
             kind: 'risk',
-            eyebrow: 'Low conversion',
+            eyebrow: 'Groups needing attention',
             hint: `${landingData.todays_read.low_conversion.length}`,
             rows: landingData.todays_read.low_conversion.map((row, index) => ({
               initials: getInitials(row.name),
               hue: getHue(index),
               name: row.name,
-              reason: `${row.conversion_pct.toFixed(1)}% conversion · ${row.active_members} of ${row.total_members} active`,
+              reason: `${row.conversion_pct.toFixed(1)}% response · ${row.active_members} of ${row.total_members} purchased`,
               trailing: `${row.conversion_pct.toFixed(1)}%`,
             })),
           },
           {
             kind: 'info',
-            eyebrow: 'Top performers',
-            hint: 'by GMV',
+            eyebrow: 'Groups driving sales',
+            hint: 'by sales',
             rows: landingData.todays_read.top_performers.map((row, index) => ({
               initials: getInitials(row.name),
               hue: getHue(index),
               name: row.name,
-              reason: `${row.total_members} buyers · AOV ${formatCompactInr(row.aov)}`,
+              reason: `${row.total_members} customers · avg ticket ${formatCompactInr(row.aov)}`,
               trailing: formatCompactInr(row.gmv_mtd),
             })),
           },
           {
             kind: 'opportunity',
-            eyebrow: 'Top risers',
+            eyebrow: 'Groups gaining traction',
             hint: 'fastest growth',
             rows: landingData.todays_read.top_risers.map((row, index) => ({
               initials: getInitials(row.name),
@@ -330,9 +330,9 @@ function CohortsLandingContent({
             { label: 'Customer group', minWidth: 280, maxWidth: 360, className: 'px-5' },
             { label: 'Type', minWidth: 160, maxWidth: 180, className: 'px-5' },
             { label: 'Allowed brands', minWidth: 220, maxWidth: 340, className: 'px-5' },
-            { label: 'Members', align: 'right', minWidth: 140, maxWidth: 180, className: 'px-5' },
-            { label: `GMV · ${metricSuffix}`, align: 'right', minWidth: 140, maxWidth: 160, className: 'px-5' },
-            { label: 'Growth', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
+            { label: 'Members who purchased', align: 'right', minWidth: 140, maxWidth: 180, className: 'px-5' },
+            { label: `Sales · ${metricSuffix}`, align: 'right', minWidth: 140, maxWidth: 160, className: 'px-5' },
+            { label: 'Trend', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
             { label: 'Status', minWidth: 140, maxWidth: 180, className: 'px-5' },
             { width: 40, className: 'px-4' },
           ]}

@@ -313,7 +313,7 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
 
   // Phase 1: all queries in parallel.
   // buyers: display list (100 rows). V2 buyer snapshots: full-dataset facets.
-  const [buyersRes, brandsRes, buyerMetricsRes, customersSnapshotRes, geoRes] = await Promise.all([
+  const [buyersRes, brandsRes, buyerMetricsRes, setupSnapshotRes, geoRes] = await Promise.all([
     db
       .schema('app')
       .from('buyers')
@@ -339,12 +339,13 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
       .select('buyer_id, last_order_at, receivable_amount, order_value_90d')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null),
-    // customers_snapshot: total active count + tier breakdown
+    // Metrics V2 setup snapshot: accurate active buyer total for facets.
     db
       .schema('app')
-      .from('customers_snapshot')
-      .select('active_count, tier_a_count, tier_b_count, tier_c_count')
+      .from('metrics_tenant_setup_snapshot')
+      .select('active_buyer_count')
       .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
       .maybeSingle(),
     // All active buyer geographies for geo facet (live — no snapshot covers this)
     db
@@ -440,8 +441,8 @@ export async function getCohortComposerPayload(db: DbClient, tenantId: string): 
   });
 
   // Accurate facet counts from full dataset (V2 snapshot rows, no 100-buyer cap)
-  const customersSnapshot = customersSnapshotRes.data as { active_count: number } | null;
-  const totalBuyerCount = customersSnapshot?.active_count ?? metricRows.length;
+  const setupSnapshot = setupSnapshotRes.data as { active_buyer_count: number | null } | null;
+  const totalBuyerCount = Number(setupSnapshot?.active_buyer_count ?? metricRows.length);
 
   // last_order_bucket counts: from V2 buyer snapshots.
   const lastOrderBuckets = COHORT_LAST_ORDER_BUCKETS.map((bucket) => ({

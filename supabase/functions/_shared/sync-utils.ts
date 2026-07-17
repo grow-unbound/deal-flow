@@ -233,12 +233,9 @@ export async function updatePhaseJob(
   if (update.progress !== undefined && !(update.progress as Record<string, unknown>).meta) {
     // buildProgress() (sync-utils.ts) builds a fresh object with no `meta`
     // key — writing it as-is wipes progress.meta.sync_run_id/master_job_id
-    // that createSlaveJob set at row creation. That defeats
-    // trg_post_sync_rebuild's skip-guard (it checks NEW.progress->'meta'
-    // for those fields to recognize an orchestrated slave and skip the
-    // redundant per-phase rebuild), so post_sync_rebuild ends up running
-    // synchronously on every ordinary phase completion instead of only via
-    // the dedicated analysis phase — and can blow past statement_timeout.
+    // that createSlaveJob set at row creation. The trigger on completed sync
+    // phase rows relies on that metadata to recognize orchestrated slave rows
+    // correctly while marking Metrics V2 dirty domains.
     const { data: existing } = await admin
       .schema('app')
       .from('integration_sync_jobs')

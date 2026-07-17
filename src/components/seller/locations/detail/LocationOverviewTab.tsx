@@ -25,7 +25,7 @@ export function LocationOverviewTab({ data, performanceCards }: LocationOverview
 
   return (
     <div className="mt-6 grid grid-cols-2 gap-6">
-      <PerformanceCard title="Revenue trend" subtitle="MTD by week" bodyClassName="p-5">
+      <PerformanceCard title="Sales over time" subtitle="Weekly sales trend" bodyClassName="p-5">
         <TrendFrame
           emptyTitle="No sales over time yet"
           emptyDescription="This location does not have enough invoiced history for a trend."
@@ -52,7 +52,7 @@ export function LocationOverviewTab({ data, performanceCards }: LocationOverview
         />
       </PerformanceCard>
 
-      <PerformanceCard title="Inventory at linked warehouses" subtitle="Current stock position" bodyClassName="p-0">
+      <PerformanceCard title="Inventory at linked warehouses" subtitle="Current stock posture" bodyClassName="p-0">
         <DistributionList
           items={[
             { id: 'active', label: 'Active SKUs', value: h.active_skus },
@@ -65,7 +65,7 @@ export function LocationOverviewTab({ data, performanceCards }: LocationOverview
         />
       </PerformanceCard>
 
-      <PerformanceCard title="Customers buying here" subtitle="Ranked activity, not permanent ownership" bodyClassName="p-0">
+      <PerformanceCard title="Customers buying here" subtitle="Recent sales activity" bodyClassName="p-0">
         <RankedList
           items={data.top_buyers.map((buyer) => ({
             id: buyer.buyer_id,

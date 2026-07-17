@@ -91,7 +91,7 @@ describe('GET /api/tenant/categories/landing', () => {
     dbResponses['app.rpc.search_seller_category_landing_ids'] = {
       data: [{ id: 'cat-1', total_count: 1 }],
     };
-    dbResponses['app.rpc.get_seller_category_landing_page_metrics_v1'] = {
+    dbResponses['app.rpc.get_seller_category_landing_page_metrics_v2'] = {
       data: [{
         tenant_category_id: 'cat-1',
         active_sku_count: 1,
@@ -105,7 +105,7 @@ describe('GET /api/tenant/categories/landing', () => {
         avg_days_cover: null,
       }],
     };
-    dbResponses['app.rpc.get_seller_category_landing_summary_v1'] = {
+    dbResponses['app.rpc.get_seller_category_landing_summary_v2'] = {
       data: {
         kpis: {
           active_count: 1,
@@ -147,7 +147,7 @@ describe('GET /api/tenant/categories/landing', () => {
     await GET(new NextRequest('http://localhost/api/tenant/categories/landing?period=month'));
 
     expect(inCalls).toContainEqual(['app.tenant_categories', 'id', ['cat-1']]);
-    expect(rpcCalls).toContainEqual(['get_seller_category_landing_page_metrics_v1', expect.objectContaining({
+    expect(rpcCalls).toContainEqual(['get_seller_category_landing_page_metrics_v2', expect.objectContaining({
       p_tenant_id: 'tenant-1',
       p_category_ids: ['cat-1'],
     })]);
@@ -174,8 +174,8 @@ describe('GET /api/tenant/categories/landing', () => {
     ));
 
     expect(response.status).toBe(200);
-    expect(rpcCalls.some(([name]) => name === 'get_seller_category_landing_summary_v1')).toBe(false);
-    expect(rpcCalls.some(([name]) => name === 'get_seller_category_landing_page_metrics_v1')).toBe(true);
+    expect(rpcCalls.some(([name]) => name === 'get_seller_category_landing_summary_v2')).toBe(false);
+    expect(rpcCalls.some(([name]) => name === 'get_seller_category_landing_page_metrics_v2')).toBe(true);
   });
 
   it('preserves compact summary and callout response fields', async () => {

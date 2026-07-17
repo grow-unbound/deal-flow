@@ -96,7 +96,7 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
 
     return [
       {
-        label: 'GMV · MTD',
+        label: 'Invoiced sales 90D',
         value: formatCompactInr(data.meta_strip_4.gmv_mtd),
         sub: (
           <span>
@@ -109,19 +109,19 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
         ),
       },
       {
-        label: 'Active members',
+        label: 'Members who purchased',
         value: `${data.meta_strip_4.active_members}/${data.meta_strip_4.total_members}`,
-        sub: 'ordered this month',
+        sub: 'current members in the last 90 days',
       },
       {
-        label: 'AOV',
+        label: 'Avg invoice value',
         value: formatCompactInr(data.meta_strip_4.aov),
-        sub: 'across this customer group',
+        sub: 'across current members',
       },
       {
-        label: 'Conversion',
+        label: 'Response rate',
         value: `${data.meta_strip_4.conversion_pct.toFixed(1)}%`,
-        sub: 'campaign → order',
+        sub: 'campaign to submitted demand',
       },
     ];
   }, [data]);

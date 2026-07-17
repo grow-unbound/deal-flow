@@ -51,7 +51,7 @@ export function CustomerPerformanceTab({ performance, performanceV2, performance
 
   return (
     <section className="mt-5 grid grid-cols-2 gap-4">
-      <PerformanceCard title="Spend trend" subtitle="Last 12 months" bodyClassName="p-0">
+      <PerformanceCard title="Sales and demand history" subtitle="Last 12 months" bodyClassName="p-0">
         <TrendFrame
           emptyTitle="No sales history yet"
           emptyDescription="This customer does not have enough recent invoiced history for a trend."
@@ -64,7 +64,7 @@ export function CustomerPerformanceTab({ performance, performanceV2, performance
                   {Math.abs(growth).toFixed(1)}%
                 </span>
                 {' · '}
-                {performanceV2.headline.orders_mtd} orders · AOV {formatCompactInr(performanceV2.headline.aov_mtd, 1)}
+                {performanceV2.headline.orders_mtd} invoices · Avg invoice {formatCompactInr(performanceV2.headline.aov_mtd, 1)}
               </p>
             </div>
           )}
@@ -133,7 +133,7 @@ export function CustomerPerformanceTab({ performance, performanceV2, performance
           id: 'payment-behavior',
           representation: 'distribution',
           title: 'Payment behavior',
-          subtitle: 'Current pricing setup fallback is used only when payment data is incomplete',
+          subtitle: 'Credit usage and collection context',
           body: {
             items: [
               {
@@ -155,7 +155,7 @@ export function CustomerPerformanceTab({ performance, performanceV2, performance
                 label: 'Campaign opens',
                 pct: null,
                 value: performanceV2.credit_ops.catalog_opens_mtd,
-                supporting: 'in PWA this month',
+                supporting: 'recent buyer app opens',
               },
             ],
             emptyTitle: performanceV2.credit_ops.payment_behavior_summary,

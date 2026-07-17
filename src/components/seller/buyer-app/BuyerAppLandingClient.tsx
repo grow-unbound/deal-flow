@@ -19,7 +19,7 @@ import {
   type BuyerAppLandingResponse,
   type BuyerAppCalloutBuyer,
 } from '@/hooks/useBuyerApp';
-import { formatCompactInr, formatInr } from '@/lib/utils';
+import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { BuyerAppSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
@@ -64,21 +64,24 @@ function BuyerAppLandingContent({
 
   const enabledPct =
     kpis.total_buyers > 0 ? Math.round((kpis.enabled_buyers / kpis.total_buyers) * 100) : 0;
-  const gmvSharePct =
+  const demandSharePct =
     snap && snap.total_gmv_mtd > 0
       ? Math.round((snap.app_gmv_mtd / snap.total_gmv_mtd) * 100)
       : 0;
-  const avgOrdersPerUser =
-    kpis.enabled_buyers > 0 ? (kpis.app_orders / kpis.enabled_buyers).toFixed(1) : '0';
-  const avgOrderValue =
-    kpis.app_orders > 0 ? Math.round(kpis.app_gmv / kpis.app_orders) : 0;
+  const invoicedShareOfDemandPct =
+    snap && snap.app_gmv_mtd > 0
+      ? Math.round((snap.invoiced_app_value_mtd / snap.app_gmv_mtd) * 100)
+      : 0;
+  const primaryDemandKind = landingData.portfolio?.primary_demand_kind ?? 'orders';
+  const primaryDemandNoun = primaryDemandKind === 'estimates' ? 'enquiries' : 'orders';
+  const primaryDemandVerb = primaryDemandKind === 'estimates' ? 'submitted' : 'placed';
 
   return (
     <PageWrap>
       <PageHeader
         eyebrow="Engagement"
         title="Buyer App"
-        subtitle="Track how much of your business flows through the buyer app and who's driving it."
+        subtitle={`${kpis.enabled_buyers} customers can self-serve · track business submitted through Buyer App.`}
         horizon={horizonLabel}
         primary="Manage Access"
         onPrimaryClick={() => router.push('/buyer-app/access')}
@@ -87,25 +90,25 @@ function BuyerAppLandingContent({
       <InsightStrip4
         tiles={[
           {
-            label: 'App-enabled buyers',
+            label: 'Customers with Buyer App access',
             value: `${kpis.enabled_buyers}`,
-            sub: `${enabledPct}% of your buyer base`,
+            sub: `${enabledPct}% of your customer base`,
           },
           {
-            label: `App GMV · ${metricSuffix}`,
-            value: formatCompactInr(kpis.app_gmv),
-            sub: `${kpis.app_orders} orders · ${gmvSharePct}% of total GMV`,
+            label: `Customers submitting app demand · ${metricSuffix}`,
+            value: `${snap?.ordered_mtd ?? kpis.active_buyers}`,
+            sub: `${demandSharePct}% of submitted demand came through the app`,
             tone: 'accent',
           },
           {
-            label: 'Active this month',
-            value: `${snap?.ordered_mtd ?? kpis.active_buyers}`,
-            sub: `${snap?.repeat_mtd ?? 0} placed 2+ orders`,
+            label: `App-sourced invoiced sales · ${metricSuffix}`,
+            value: formatCompactInr(snap?.invoiced_app_value_mtd ?? kpis.invoiced_value),
+            sub: `${invoicedShareOfDemandPct}% of app demand has invoiced through`,
           },
           {
-            label: 'Avg orders / user',
-            value: `${avgOrdersPerUser}`,
-            sub: `avg ${formatInr(avgOrderValue)} per order`,
+            label: 'Repeat app customers',
+            value: `${snap?.repeat_mtd ?? 0}`,
+            sub: `${primaryDemandVerb} 2+ ${primaryDemandNoun}`,
           },
         ]}
       />
@@ -114,37 +117,37 @@ function BuyerAppLandingContent({
         items={[
           {
             kind: 'risk',
-            eyebrow: 'Enabled, not ordering',
-            hint: `${(snap?.not_ordering_buyers ?? []).length} buyers`,
+            eyebrow: 'Access enabled, never used',
+            hint: `${(snap?.not_ordering_buyers ?? []).length} customers`,
             rows: (snap?.not_ordering_buyers ?? []).map((b: BuyerAppCalloutBuyer) => ({
               initials: b.initials,
               hue: 'ember' as const,
               name: b.name,
-              reason: `Enabled ${b.enabled_date ?? '—'} · ${b.days_inactive ?? 0}d since last app order`,
+              reason: `Access enabled ${b.enabled_date ?? '—'} · no app activity yet`,
               trailing: <StatusTag label="Inactive" tone="warning" />,
             })),
           },
           {
             kind: 'info',
-            eyebrow: 'Top app buyers',
-            hint: 'by GMV',
+            eyebrow: 'Top app contributors',
+            hint: 'by invoiced sales',
             rows: (snap?.top_app_buyers_callout ?? []).map((b: BuyerAppCalloutBuyer) => ({
               initials: b.initials,
               hue: 'teal' as const,
               name: b.name,
-              reason: `${b.orders ?? 0} orders via app`,
+              reason: 'Highest current app contribution',
               trailing: formatCompactInr(b.gmv ?? 0),
             })),
           },
           {
             kind: 'opportunity',
-            eyebrow: 'Not yet on app',
-            hint: 'highest offline spend',
+            eyebrow: 'Valuable customers without app access',
+            hint: 'highest assisted sales',
             rows: (snap?.no_app_buyers ?? []).map((b: BuyerAppCalloutBuyer) => ({
               initials: b.initials,
               hue: 'cream' as const,
               name: b.name,
-              reason: `${formatCompactInr(b.offline_gmv ?? 0)} offline spend`,
+              reason: `${formatCompactInr(b.offline_gmv ?? 0)} invoiced sales outside the app`,
               trailing: (
                 <Link
                   href={`/customers/${b.buyer_id}`}
@@ -166,13 +169,13 @@ function BuyerAppLandingContent({
             id: 'buyer-app-adoption',
             representation: 'distribution',
             title: 'Adoption funnel',
-            subtitle: 'This month',
+            subtitle: 'Trailing 90 days',
             body: {
               items: [
-                { id: 'enabled', label: 'Enabled', value: snap.enabled_buyers, pct: 100, supporting: `${snap.enabled_buyers} buyers can use the app` },
+                { id: 'enabled', label: 'Access enabled', value: snap.enabled_buyers, pct: 100, supporting: `${snap.enabled_buyers} customers can use the app` },
                 { id: 'opened', label: 'Opened app', value: snap.opened_app_mtd, pct: snap.enabled_buyers > 0 ? Math.round((snap.opened_app_mtd / snap.enabled_buyers) * 100) : 0 },
-                { id: 'ordered', label: 'Ordered', value: snap.ordered_mtd, pct: snap.enabled_buyers > 0 ? Math.round((snap.ordered_mtd / snap.enabled_buyers) * 100) : 0 },
-                { id: 'repeat', label: 'Repeat (2+ orders)', value: snap.repeat_mtd, pct: snap.enabled_buyers > 0 ? Math.round((snap.repeat_mtd / snap.enabled_buyers) * 100) : 0 },
+                { id: 'ordered', label: `${primaryDemandVerb[0]?.toUpperCase()}${primaryDemandVerb.slice(1)} ${primaryDemandNoun}`, value: snap.ordered_mtd, pct: snap.enabled_buyers > 0 ? Math.round((snap.ordered_mtd / snap.enabled_buyers) * 100) : 0 },
+                { id: 'repeat', label: `Repeat (2+ ${primaryDemandNoun})`, value: snap.repeat_mtd, pct: snap.enabled_buyers > 0 ? Math.round((snap.repeat_mtd / snap.enabled_buyers) * 100) : 0 },
               ],
               emptyTitle: 'No enabled buyers yet',
               emptyDescription: 'Adoption will appear once buyers are enabled for the app.',
@@ -184,29 +187,31 @@ function BuyerAppLandingContent({
             id: 'buyer-app-business-through-app',
             representation: 'distribution',
             title: 'Business through app',
-            subtitle: 'This month',
+            subtitle: 'Trailing 90 days',
             body: {
               items: [
                 {
                   id: 'estimates',
-                  label: 'Estimates (app-sourced)',
-                  value: formatCompactInr(snap.estimates_app_value_mtd),
-                  pct: snap.total_gmv_mtd > 0 ? Math.round((snap.estimates_app_value_mtd / snap.total_gmv_mtd) * 100) : 0,
-                  supporting: `${snap.estimates_app_count_mtd} ${snap.estimates_app_count_mtd === 1 ? 'estimate' : 'estimates'}`,
+                  label: primaryDemandKind === 'estimates' ? 'App enquiries' : 'App orders',
+                  value: formatCompactInr(primaryDemandKind === 'estimates' ? snap.estimates_app_value_mtd : snap.converted_order_value_mtd),
+                  pct: snap.total_gmv_mtd > 0 ? Math.round(((primaryDemandKind === 'estimates' ? snap.estimates_app_value_mtd : snap.converted_order_value_mtd) / snap.total_gmv_mtd) * 100) : 0,
+                  supporting: primaryDemandKind === 'estimates'
+                    ? `${snap.estimates_app_count_mtd} ${snap.estimates_app_count_mtd === 1 ? 'enquiry' : 'enquiries'}`
+                    : `${snap.converted_order_count_mtd} ${snap.converted_order_count_mtd === 1 ? 'order' : 'orders'}`,
                 },
                 {
                   id: 'converted',
-                  label: 'Converted to order',
+                  label: primaryDemandKind === 'estimates' ? 'Converted to order' : 'Repeat demand',
                   value: formatCompactInr(snap.converted_order_value_mtd),
-                  pct: snap.estimates_app_value_mtd > 0 ? Math.round((snap.converted_order_value_mtd / snap.estimates_app_value_mtd) * 100) : 0,
-                  supporting: `${snap.converted_order_count_mtd} orders`,
+                  pct: snap.app_gmv_mtd > 0 ? Math.round((snap.converted_order_value_mtd / snap.app_gmv_mtd) * 100) : 0,
+                  supporting: primaryDemandKind === 'estimates' ? `${snap.converted_order_count_mtd} orders` : `${snap.repeat_mtd} repeat customers`,
                 },
                 {
                   id: 'invoiced',
-                  label: 'Invoiced',
+                  label: 'Invoiced sales',
                   value: formatCompactInr(snap.invoiced_app_value_mtd),
                   pct: snap.total_gmv_mtd > 0 ? Math.round((snap.invoiced_app_value_mtd / snap.total_gmv_mtd) * 100) : 0,
-                  supporting: `${snap.invoiced_app_count_mtd} invoices · ${snap.total_gmv_mtd > 0 ? Math.round((snap.app_gmv_mtd / snap.total_gmv_mtd) * 100) : 0}% of total GMV`,
+                  supporting: `${snap.total_gmv_mtd > 0 ? Math.round((snap.invoiced_app_value_mtd / snap.total_gmv_mtd) * 100) : 0}% of total submitted demand`,
                 },
               ],
               emptyTitle: 'No app-sourced business yet',
@@ -215,8 +220,8 @@ function BuyerAppLandingContent({
           }}
         />
         <PerformanceCard
-          title="Top buyers on app"
-          subtitle="By GMV this month"
+          title="Top customers on app"
+          subtitle="By app contribution"
           actions={(
             <Link href="/customers?filter=app_active" className="text-sm font-semibold text-teal-700 no-underline">
               View all
@@ -234,15 +239,15 @@ function BuyerAppLandingContent({
               initials: buyer.initials,
             }))}
             emptyTitle="No app orders yet this month"
-            emptyDescription="Top buyers will appear once the app starts generating orders."
+            emptyDescription="Top customers will appear once the app starts generating demand."
           />
         </PerformanceCard>
         <DetailCardRenderer
           card={{
             id: 'buyer-app-location-usage',
             representation: 'mix',
-            title: 'Usage by location',
-            subtitle: 'Buyer app orders and GMV share',
+            title: 'Adoption by location',
+            subtitle: 'Buyer App demand and invoiced sales',
             body: {
               items: snap.top_locations.map((location) => ({
                 id: location.location_id,

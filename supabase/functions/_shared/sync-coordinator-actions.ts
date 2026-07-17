@@ -118,22 +118,6 @@ export async function findActiveMasterJob(
     if (isMasterRunActive(row as JobRow)) return row as JobRow;
   }
 
-  // Also block when an async repair job is pending/running for this integration
-  const { data: repairData, error: repairError } = await admin
-    .schema('app')
-    .from('integration_sync_jobs')
-    .select('id, tenant_id, tenant_integration_id, phase, status, progress, since_date, job_type, run_kind')
-    .eq('tenant_integration_id', tenantIntegrationId)
-    .eq('phase', 'repair_aggregates')
-    .in('status', ['pending', 'running'])
-    .is('deleted_at', null)
-    .limit(1);
-
-  if (repairError) throw new Error(`Failed to query active repair: ${repairError.message}`);
-  if (repairData && repairData.length > 0) {
-    throw new SyncActiveError('A repair job is currently in progress. Wait for it to finish before starting a sync.');
-  }
-
   return null;
 }
 
@@ -480,7 +464,7 @@ export async function runAnalysisPhase(
   await admin.schema('app').from('integration_sync_jobs').update({
     started_at: new Date().toISOString(),
     progress: {
-      phase_label: 'Rebuilding snapshots and KPI…',
+      phase_label: 'Finalizing metrics refresh…',
       meta: { sync_run_id: ctx.syncRunId, master_job_id: ctx.masterJobId },
     },
   }).eq('id', analysisJobId);
@@ -488,23 +472,18 @@ export async function runAnalysisPhase(
   const isInitialSync = ctx.jobType === 'initial_reference' || ctx.jobType === 'initial_transactional';
 
   try {
-    await admin.schema('app').rpc('post_sync_rebuild', {
-      p_tenant_id: integration.tenant_id,
-      p_days: isInitialSync ? 90 : 2,
-    });
-
     const analysisCompletedAt = new Date().toISOString();
     await admin.schema('app').from('integration_sync_jobs').update({
       status: 'completed',
       completed_at: analysisCompletedAt,
       updated_at: analysisCompletedAt,
       progress: {
-        phase_label: 'Snapshots and KPI ready.',
+        phase_label: 'Metrics refresh queued.',
         meta: { sync_run_id: ctx.syncRunId, master_job_id: ctx.masterJobId },
       },
       summary: {
         last_synced_at: analysisCompletedAt,
-        note: `Snapshots and KPIs rebuilt${isInitialSync ? ' (full, 90 days)' : ' (incremental, 2 days)'}`,
+        note: `Metrics V2 dirty work queued${isInitialSync ? ' (initial sync scope)' : ' (incremental scope)'}`,
       },
     }).eq('id', analysisJobId);
   } catch (err) {
@@ -513,7 +492,7 @@ export async function runAnalysisPhase(
       status: 'failed',
       completed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      progress: { phase_label: `Snapshot rebuild failed: ${message}` },
+      progress: { phase_label: `Metrics refresh finalization failed: ${message}` },
       error_log: { message, timestamp: new Date().toISOString() },
     }).eq('id', analysisJobId);
   }

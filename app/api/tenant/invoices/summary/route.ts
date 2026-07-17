@@ -10,7 +10,8 @@ export const dynamic = 'force-dynamic';
 
 /**
  * O(1) KPI snapshot for the invoices landing page header cards.
- * Reads from app.invoices_snapshot which is kept current by DB triggers.
+ * Reads from the v2 landing payload so header cards stay aligned with the
+ * same invoice semantics as the main landing page.
  * Fires in parallel with the paginated list fetch — cards render instantly.
  */
 export async function GET(request: NextRequest) {

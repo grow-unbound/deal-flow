@@ -135,50 +135,36 @@ export async function GET(request: NextRequest) {
         })
       : Promise.resolve({ data: null, error: null });
 
-    const { data: rowWarehouseData, error: rowWarehouseError } = await db
+    const rowsQuery = db
       .schema('app')
-      .rpc('search_seller_warehouse_landing_ids', {
-        p_tenant_id: claims.tenant_id,
-        p_query: search || null,
-        p_statuses: statusFilters.length > 0 ? statusFilters : null,
-        p_stock_modes: stockFilters.length > 0 ? stockFilters : null,
-        p_location_ids: locationScope.mode === 'subset' ? locationScope.locationIds : null,
-        p_limit: limit,
-        p_offset: offset,
-      });
-    if (rowWarehouseError) throw rowWarehouseError;
-    const rowWarehouseResult = (rowWarehouseData ?? []) as Array<{ id: string | null; total_count: number | string }>;
-    const rowWarehouseIds = rowWarehouseResult.flatMap((row) => (row.id ? [row.id] : []));
+      .from('warehouses')
+      .select('id, tenant_id, location_id, name, address, phone_number, status, is_default, external_ref, associated_users, lat, lng, deleted_at, created_at, updated_at, locations(id, name, is_default)')
+      .eq('tenant_id', claims.tenant_id)
+      .is('deleted_at', null);
+    const scopedRowsQuery = locationScope.mode === 'subset'
+      ? rowsQuery.in('location_id', locationScope.locationIds)
+      : rowsQuery;
+    const rowsRes = await scopedRowsQuery;
+    if (rowsRes.error) throw rowsRes.error;
 
-    const pageMetricsQuery = rowWarehouseIds.length > 0
+    const rowWarehouses = ((rowsRes.data ?? []) as Record<string, unknown>[]).map(hydrateWarehouse);
+    const allWarehouseIds = rowWarehouses.map((warehouse) => warehouse.id);
+    const pageMetricsQuery = allWarehouseIds.length > 0
       ? db
           .schema('app')
           .rpc('get_seller_warehouse_landing_row_metrics', {
             p_tenant_id: claims.tenant_id,
-            p_warehouse_ids: rowWarehouseIds,
+            p_warehouse_ids: allWarehouseIds,
           })
       : Promise.resolve({ data: [], error: null });
 
-    const rowsQuery = rowWarehouseIds.length > 0
-      ? db
-        .schema('app')
-        .from('warehouses')
-        .select('id, tenant_id, location_id, name, address, phone_number, status, is_default, external_ref, associated_users, lat, lng, deleted_at, created_at, updated_at, locations(id, name, is_default)')
-        .eq('tenant_id', claims.tenant_id)
-        .is('deleted_at', null)
-        .in('id', rowWarehouseIds)
-        .limit(limit)
-      : Promise.resolve({ data: [] as Record<string, unknown>[], error: null });
-
-    const [summaryRes, pageMetricsRes, rowsRes] = await Promise.all([
+    const [summaryRes, pageMetricsRes] = await Promise.all([
       summaryQuery,
       pageMetricsQuery,
-      rowsQuery,
     ]);
 
     if (summaryRes.error) throw summaryRes.error;
     if (pageMetricsRes.error) throw pageMetricsRes.error;
-    if (rowsRes.error) throw rowsRes.error;
 
     const metricsByWarehouse = new Map<string, WarehouseMetricsRow>();
     for (const row of (pageMetricsRes.data ?? []) as WarehouseMetricsRow[]) {
@@ -202,17 +188,9 @@ export async function GET(request: NextRequest) {
         }
       : EMPTY_CALLOUTS;
 
-    const rowWarehousesById = new Map(
-      ((rowsRes.data ?? []) as Record<string, unknown>[])
-        .map(hydrateWarehouse)
-        .map((warehouse) => [warehouse.id, warehouse]),
-    );
-    const rowWarehouses = rowWarehouseIds
-      .map((id) => rowWarehousesById.get(id))
-      .filter((warehouse): warehouse is ReturnType<typeof hydrateWarehouse> => Boolean(warehouse));
     const rowMetricsByWarehouse = metricsByWarehouse;
 
-    const hydratedRows: WarehousesLandingRow[] = rowWarehouses.map((warehouse) => {
+    const allHydratedRows: WarehousesLandingRow[] = rowWarehouses.map((warehouse) => {
       const snapshot = rowMetricsByWarehouse.get(warehouse.id);
       const trackedSkus = Number(snapshot?.tracked_skus ?? 0);
       const sellableUnits = Number(snapshot?.sellable_units ?? 0);
@@ -240,16 +218,33 @@ export async function GET(request: NextRequest) {
         associated_users_count: warehouse.associated_users.length,
       };
     });
+    const normalizedQ = search.toLowerCase();
+    const filteredRows = allHydratedRows.filter((warehouse) => {
+      if (normalizedQ) {
+        const haystack = [warehouse.name, warehouse.city, warehouse.state, warehouse.linked_location_name].filter(Boolean).join(' ').toLowerCase();
+        if (!haystack.includes(normalizedQ)) return false;
+      }
+      if (statusFilters.length > 0 && !statusFilters.includes(warehouse.status)) return false;
+      if (stockFilters.length > 0) {
+        const stockMatch =
+          (stockFilters.includes('In Stock') && warehouse.stock_status === 'clear')
+          || (stockFilters.includes('Low Stock') && warehouse.stock_status === 'low_stock')
+          || (stockFilters.includes('Out of Stock') && warehouse.stock_status === 'out_of_stock');
+        if (!stockMatch) return false;
+      }
+      return true;
+    });
+    const pagedRows = filteredRows.slice(offset, offset + limit);
 
     const response: WarehousesLandingResponse = {
       kpis,
       callouts,
-      warehouses: hydratedRows,
-      total: Number(rowWarehouseResult[0]?.total_count ?? 0),
+      warehouses: pagedRows,
+      total: filteredRows.length,
       limit,
       offset,
-      nextOffset: rowWarehouseIds.length > 0 && offset + rowWarehouseIds.length < Number(rowWarehouseResult[0]?.total_count ?? 0)
-        ? offset + rowWarehouseIds.length
+      nextOffset: pagedRows.length > 0 && offset + pagedRows.length < filteredRows.length
+        ? offset + pagedRows.length
         : null,
       period,
       refreshed_at: new Date().toISOString(),
