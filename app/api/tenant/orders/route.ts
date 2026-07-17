@@ -312,8 +312,6 @@ export async function GET(req: NextRequest) {
         claims,
       );
 
-      query = applyOrderDocumentPeriod(query, period.current_start, period.current_end_exclusive);
-
       if (mode === 'needs_attention') {
         return query
           .in('status', ['received'])
@@ -335,39 +333,23 @@ export async function GET(req: NextRequest) {
       return query.order('total_amount', { ascending: false }).order('id', { ascending: false }).limit(3);
     };
 
-    const buildOrdersKpiQuery = (start: string, endExclusive: string) => {
-      if (aggregateScope === 'location' && scopedLocationIds.length === 0) {
-        return Promise.resolve({ data: [], error: null });
-      }
+    const landingMetricsPromise = db.schema('app').rpc('metrics_v2_transaction_landing', {
+      p_tenant_id: tenantId,
+      p_kind: 'orders',
+      p_location_ids: aggregateScope === 'location' ? scopedLocationIds : null,
+    });
 
-      let query = db
-        .schema('app')
-        .from('kpi_orders_daily')
-        .select('orders_count, buyers_count, gmv, confirmed_count, received_count, delivered_count')
-        .eq('tenant_id', tenantId)
-        .eq('scope', aggregateScope)
-        .gte('day', start.slice(0, 10))
-        .lt('day', endExclusive.slice(0, 10));
-
-      if (aggregateScope === 'location') {
-        query = query.in('location_id', scopedLocationIds);
-      }
-
-      return query;
-    };
-
-    const [ordersPageRes, ordersTotalRes, kpiCurrentRes, kpiPrevRes, needsAttentionRes, biggestTicketsRes, inMotionRes] = await Promise.all([
+    const [ordersPageRes, ordersTotalRes, landingMetricsRes, needsAttentionRes, biggestTicketsRes, inMotionRes] = await Promise.all([
       buildOrdersPageQuery(),
       buildOrdersTotalQuery(),
-      buildOrdersKpiQuery(period.current_start, period.current_end_exclusive),
-      buildOrdersKpiQuery(period.previous_start, period.previous_end_exclusive),
+      landingMetricsPromise,
       buildOrderCalloutQuery('needs_attention'),
       buildOrderCalloutQuery('biggest_tickets'),
       buildOrderCalloutQuery('in_motion'),
     ]);
 
-    if (ordersPageRes.error || ordersTotalRes.error || kpiCurrentRes.error || kpiPrevRes.error || needsAttentionRes.error || biggestTicketsRes.error || inMotionRes.error) {
-      console.error('[GET /api/tenant/orders] query error:', ordersPageRes.error || ordersTotalRes.error || kpiCurrentRes.error || kpiPrevRes.error || needsAttentionRes.error || biggestTicketsRes.error || inMotionRes.error);
+    if (ordersPageRes.error || ordersTotalRes.error || landingMetricsRes.error || needsAttentionRes.error || biggestTicketsRes.error || inMotionRes.error) {
+      console.error('[GET /api/tenant/orders] query error:', ordersPageRes.error || ordersTotalRes.error || landingMetricsRes.error || needsAttentionRes.error || biggestTicketsRes.error || inMotionRes.error);
       return timedJson({ error: 'Failed to fetch orders' }, { status: 500 });
     }
 
@@ -452,13 +434,7 @@ export async function GET(req: NextRequest) {
 
     const locationNameById = new Map(availableLocations.map((location) => [location.id, location.name]));
 
-    const buyersMtd = sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'buyers_count');
-    const ordersMtd = sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'orders_count');
-    const ordersPrevMtd = sumMetric((kpiPrevRes.data ?? []) as Array<Record<string, unknown>>, 'orders_count');
-    const gmvMtd = sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'gmv');
-    const gmvPrevMtd = sumMetric((kpiPrevRes.data ?? []) as Array<Record<string, unknown>>, 'gmv');
-    const ordersGrowthPct = ordersPrevMtd > 0 ? Math.round(((ordersMtd - ordersPrevMtd) / ordersPrevMtd) * 100) : 0;
-    const aov = ordersMtd > 0 ? gmvMtd / ordersMtd : 0;
+    const landingKpis = ((landingMetricsRes.data as { kpis?: Record<string, number> } | null)?.kpis ?? {}) as Record<string, number>;
 
     const toLandingRow = (order: OrderRow, index: number) => {
       const buyer = buyerById.get(order.buyer_id);
@@ -541,16 +517,16 @@ export async function GET(req: NextRequest) {
     const payload = {
       period,
       kpis: {
-        orders_mtd: ordersMtd,
-        orders_prev_mtd: ordersPrevMtd,
-        orders_growth_pct: ordersGrowthPct,
-        gmv_mtd: gmvMtd,
-        gmv_prev_mtd: gmvPrevMtd,
-        aov,
-        pending_dispatch_count: sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'confirmed_count'),
-        received_count: sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'received_count'),
-        delivered_count: sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'delivered_count'),
-        buyers_mtd: buyersMtd,
+        orders_mtd: landingKpis.orders_mtd ?? 0,
+        orders_prev_mtd: landingKpis.orders_prev_mtd ?? 0,
+        orders_growth_pct: landingKpis.orders_growth_pct ?? 0,
+        gmv_mtd: landingKpis.gmv_mtd ?? 0,
+        gmv_prev_mtd: landingKpis.gmv_prev_mtd ?? 0,
+        aov: landingKpis.aov ?? 0,
+        pending_dispatch_count: landingKpis.pending_dispatch_count ?? 0,
+        received_count: landingKpis.received_count ?? 0,
+        delivered_count: landingKpis.delivered_count ?? 0,
+        buyers_mtd: landingKpis.buyers_mtd ?? 0,
       },
       todays_read: {
         needs_attention: needsAttention,

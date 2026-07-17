@@ -197,6 +197,8 @@ export interface LocationDetailResponse {
     estimates_mtd: number;
     invoices_mtd: number;
   };
+  performance_cards?: unknown[];
+  detail_v2?: unknown;
 }
 
 // ─── Hooks ────────────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { useQueryClient } from '@tanstack/react-query';
 import { PencilIcon } from 'lucide-react';
 import { PageWrap } from '@/components/seller/layout';
-import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
+import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -165,7 +165,7 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
       />
       <div className="mt-6 border-b border-cream-300" />
 
-      <MetaStrip4 tiles={tiles} />
+      <MetricGrid className="mt-6" showSupportingText tiles={tiles} />
 
       <DetailTabs
         tabs={[
@@ -178,7 +178,9 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
         onChange={(value) => setTab(value as TabId)}
       />
 
-      {tab === 'performance' ? <CategoryOverviewTab overview={data.overview} /> : null}
+      {tab === 'performance' ? (
+        <CategoryOverviewTab overview={data.overview} performanceCards={data.performance_cards} />
+      ) : null}
       {tab === 'products' ? <CategoryProductsTab products={data.products} categoryId={id} /> : null}
       {tab === 'brands' ? <CategoryBrandsTab brands={data.brands} /> : null}
       {tab === 'activity' ? <CategoryActivityTab activity={data.activity} /> : null}

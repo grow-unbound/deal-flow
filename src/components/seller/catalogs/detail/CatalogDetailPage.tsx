@@ -12,7 +12,7 @@ import {
   usePublishCatalog,
   useTenantCatalogDetail,
 } from '@/hooks/useCatalogs';
-import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
+import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail';
 import { PageWrap } from '@/components/seller/layout';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
@@ -256,7 +256,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
         }
       />
 
-      <MetaStrip4 tiles={tiles} />
+      <MetricGrid className="mt-6" showSupportingText tiles={tiles} />
 
       <DetailTabs
         tabs={[
@@ -275,7 +275,9 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
         />
       ) : null}
 
-      {tab === 'performance' ? <CatalogPerformanceTab performance={data.performance} /> : null}
+      {tab === 'performance' ? (
+        <CatalogPerformanceTab performance={data.performance} performanceCards={data.performance_cards} />
+      ) : null}
       {tab === 'buyers' ? <CatalogBuyersTab catalogId={id} buyers={data.buyers} selectedCohort={data.header.selected_cohort} /> : null}
     </PageWrap>
   );

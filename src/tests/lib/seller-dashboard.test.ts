@@ -121,6 +121,10 @@ vi.mock('@/lib/supabase', () => {
       return this;
     }
 
+    limit() {
+      return this;
+    }
+
     single() {
       return Promise.resolve({ data: state.tenant, error: null });
     }
@@ -156,6 +160,34 @@ vi.mock('@/lib/supabase', () => {
     supabaseAdmin: {
       schema: vi.fn(() => ({
         from: vi.fn((table: string) => new QueryBuilder(table)),
+        rpc: vi.fn((fnName: string) => {
+          if (fnName === 'get_metrics_v2_seller_dashboard') {
+            return Promise.resolve({
+              data: {
+                as_of: '2026-07-10T00:00:00.000Z',
+                commercial_horizon_days: 90,
+                table_period: null,
+                primary_demand_kind: 'orders',
+                calculation_version: 1,
+                source_watermark: '2026-07-10T00:00:00.000Z',
+                freshness: {},
+                availability: { primary_demand: { available: true, kind: 'orders' } },
+                metrics: [
+                  { id: 'invoiced_sales', label: 'Invoiced sales', time_basis: 'THIS MONTH', feasibility: 'REWORK', available: true, value: 1500, count: 2, unit: 'currency' },
+                  { id: 'open_primary_demand_value', label: 'Open primary demand value', time_basis: 'NOW', feasibility: 'REWORK', available: true, value: 800, count: 2, unit: 'currency' },
+                  { id: 'overdue_receivables', label: 'Overdue receivables', time_basis: 'NOW', feasibility: 'READY', available: true, value: 200, count: 1, unit: 'currency' },
+                  { id: 'recently_sold_products_now_out_of_stock', label: 'Recently sold products now out of stock', time_basis: 'NOW + 90D', feasibility: 'REWORK', available: true, count: 1, unit: 'count' },
+                ],
+                actions: [],
+                explore: [
+                  { id: 'location_comparison', label: 'Location comparison', time_basis: '90D', feasibility: 'REWORK', available: true, meta: { locations: [] } },
+                ],
+              },
+              error: null,
+            });
+          }
+          return Promise.resolve({ data: null, error: null });
+        }),
       })),
       auth: {
         admin: {
@@ -189,12 +221,15 @@ describe('seller dashboard aggregation', () => {
     });
   });
 
-  it('uses aggregate tenant KPIs for admin summary cards and hints', async () => {
+  it('uses the Metrics V2 portfolio for admin summary cards and keeps portfolio metadata', async () => {
     const period = getSellerLandingPeriodMeta('month', new Date('2026-07-10T00:00:00.000Z'));
     const dashboard = await getSellerDashboardData('tenant-1', { role: 'seller_admin', sub: 'admin-1', location_ids: null }, period);
 
-    expect(dashboard.admin?.metrics[0]?.value).toBe(9);
-    expect(dashboard.admin?.metrics[1]?.value).toBe(50000);
+    expect(dashboard.admin?.metrics[0]?.label).toBe('Invoiced sales · This month');
+    expect(dashboard.admin?.metrics[0]?.value).toBe(1500);
+    expect(dashboard.admin?.metrics[1]?.value).toBe(800);
+    expect(dashboard.portfolio?.metrics.map((metric) => metric.id)).toContain('recently_sold_products_now_out_of_stock');
+    expect(dashboard.portfolio?.explore.map((metric) => metric.id)).toContain('location_comparison');
     expect(dashboard.admin?.callouts[0]?.hint).toBe('9 in scope');
   });
 

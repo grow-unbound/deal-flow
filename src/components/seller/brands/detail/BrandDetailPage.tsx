@@ -3,9 +3,8 @@
 import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Archive, PencilIcon } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { PageWrap } from '@/components/seller/layout';
-import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
+import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
@@ -92,7 +91,6 @@ function subtitle(header: BrandDetailResponse['header']) {
 }
 
 export function BrandDetailPage({ id }: BrandDetailPageProps) {
-  const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
   const { state: tab, setState: setTab } = useRouteSnapshot<TabId>({
     storageKey: 'seller-brand-detail-tab',
@@ -186,7 +184,7 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
       />
       <div className="mt-6 border-b border-cream-300" />
 
-      <MetaStrip4 tiles={tiles} />
+      <MetricGrid className="mt-6" showSupportingText tiles={tiles} />
 
       <DetailTabs
         tabs={[
@@ -208,7 +206,9 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
           onSave={(payload) => updateMutation.mutate(payload)}
         />
       ) : null}
-      {tab === 'performance' ? <BrandPerformanceTab performance={data.performance} /> : null}
+      {tab === 'performance' ? (
+        <BrandPerformanceTab performance={data.performance} performanceCards={data.performance_cards} />
+      ) : null}
       {tab === 'products' ? <BrandProductsTab brandId={id} /> : null}
       {tab === 'buyers' ? <BrandBuyersTab brandId={id} buyers={data.buyers} /> : null}
       {tab === 'catalogs' ? <BrandCatalogsTab brandId={id} /> : null}

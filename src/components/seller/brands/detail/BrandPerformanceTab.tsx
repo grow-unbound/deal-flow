@@ -2,16 +2,16 @@
 
 import { useMemo, useState } from 'react';
 import { ResponsiveContainer, LineChart, Line, XAxis, Tooltip, CartesianGrid } from 'recharts';
-import { LandingTable, SeeAllSheet } from '@/components/seller/layout';
-import { PerformanceCard } from '@/components/seller/detail';
+import { SeeAllSheet } from '@/components/seller/layout';
+import { CardEmptyState, DetailCardRenderer, PerformanceCard, RankedList, TrendFrame, type DetailCardPayload } from '@/components/seller/detail';
 import type { BrandDetailResponse } from '@/hooks/useBrands';
 import { formatCompactInr } from '@/lib/utils';
-import { EntityAvatar } from '@/components/seller/layout';
 
 type TrendPeriod = '12m' | 'ytd' | '3m';
 
 interface BrandPerformanceTabProps {
   performance: BrandDetailResponse['performance'];
+  performanceCards?: unknown[];
 }
 
 function periodLabel(period: TrendPeriod): string {
@@ -20,10 +20,11 @@ function periodLabel(period: TrendPeriod): string {
   return 'Last 12 months';
 }
 
-export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
+export function BrandPerformanceTab({ performance, performanceCards }: BrandPerformanceTabProps) {
   const [period, setPeriod] = useState<TrendPeriod>('12m');
   const [buyersSheetOpen, setBuyersSheetOpen] = useState(false);
   const [skusSheetOpen, setSkusSheetOpen] = useState(false);
+
 
   const trendData = useMemo(() => {
     const base = performance.monthly_trend;
@@ -52,6 +53,17 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
 
   const formatSent = (date: string) =>
     new Date(date).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+
+  if (performanceCards?.length) {
+    return (
+      <section className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
+        {(performanceCards as DetailCardPayload[]).map((card) => (
+          <DetailCardRenderer key={card.id} card={card} />
+        ))}
+      </section>
+    );
+  }
+
 
   return (
     <section className="mt-5 space-y-5">
@@ -87,69 +99,46 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
           )}
           bodyClassName="px-5 pt-3"
         >
-          <div>
-            <div className="flex items-end gap-3">
-              <p className="font-display text-3xl leading-none text-cream-950">{formatCompactInr(trendCurrent)}</p>
-              <p className="pb-0.5 text-base text-cream-700">
-                <span className={trendGrowth >= 0 ? 'text-success-500' : 'text-danger-500'}>
-                  {trendGrowth >= 0 ? '↑ +' : '↓ '}
-                  {Math.abs(trendGrowth).toFixed(1)}%
-                </span>{' '}
-                vs last period · {formatCompactInr(trendPrevious)}
-              </p>
-            </div>
-          </div>
-          <div className="h-[230px] p-4 pt-1">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trendData}>
-                <CartesianGrid vertical={false} strokeDasharray="4 4" stroke="var(--cream-300)" />
-                <XAxis
-                  dataKey="month"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: 'var(--cream-700)', fontSize: 'var(--yk-text-sm)' }}
-                  tickFormatter={formatMonthTick}
-                />
-                <Tooltip formatter={(value: number) => formatCompactInr(Number(value))} />
-                <Line dataKey="revenue" stroke="var(--teal-700)" strokeWidth={2.5} dot={{ r: 3 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          <TrendFrame
+            emptyTitle="No sales over time yet"
+            emptyDescription="This brand does not have enough invoiced history for a trend."
+            summary={(
+              <div className="flex items-end gap-3">
+                <p className="font-display text-3xl leading-none text-cream-950">{formatCompactInr(trendCurrent)}</p>
+                <p className="pb-0.5 text-base text-cream-700">
+                  <span className={trendGrowth >= 0 ? 'text-success-500' : 'text-danger-500'}>
+                    {trendGrowth >= 0 ? '↑ +' : '↓ '}
+                    {Math.abs(trendGrowth).toFixed(1)}%
+                  </span>{' '}
+                  vs last period · {formatCompactInr(trendPrevious)}
+                </p>
+              </div>
+            )}
+            chart={trendData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trendData}>
+                  <CartesianGrid vertical={false} strokeDasharray="4 4" stroke="var(--cream-300)" />
+                  <XAxis
+                    dataKey="month"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: 'var(--cream-700)', fontSize: 'var(--yk-text-sm)' }}
+                    tickFormatter={formatMonthTick}
+                  />
+                  <Tooltip formatter={(value: number) => formatCompactInr(Number(value))} />
+                  <Line dataKey="revenue" stroke="var(--teal-700)" strokeWidth={2.5} dot={{ r: 3 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : null}
+          />
         </PerformanceCard>
 
-        <div className="space-y-4">
-          <PerformanceCard title="This brand" bodyClassName="p-5">
-            <p className="text-base leading-[1.55] text-cream-900">
-              Margin is holding steady at <strong>{performance.insights.margin_avg_pct.toFixed(1)}%</strong>. Buyer reach this month is{' '}
-              <strong>{performance.insights.buyer_reach}</strong>.
-            </p>
-          </PerformanceCard>
-
-          <PerformanceCard title="Key metrics" bodyClassName="p-5">
-            <div className="grid grid-cols-2 gap-y-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Margin (avg)</p>
-                <p className="mt-1 font-display text-2xl leading-none text-cream-950">{performance.insights.margin_avg_pct.toFixed(1)}%</p>
-                <p className="mt-1 text-xs text-cream-700">across SKUs</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Sell-through</p>
-                <p className="mt-1 font-display text-2xl leading-none text-cream-950">{performance.insights.sell_through_pct}%</p>
-                <p className="mt-1 text-xs text-cream-700">last 30 days</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Repeat rate</p>
-                <p className="mt-1 font-display text-2xl leading-none text-cream-950">{performance.insights.repeat_rate_pct}%</p>
-                <p className="mt-1 text-xs text-cream-700">buyers re-ordering</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Buyer reach</p>
-                <p className="mt-1 font-display text-2xl leading-none text-cream-950">{performance.insights.buyer_reach}</p>
-                <p className="mt-1 text-xs text-cream-700">bought this month</p>
-              </div>
-            </div>
-          </PerformanceCard>
-        </div>
+        <PerformanceCard title="Current inventory by warehouse" subtitle="Warehouse inventory detail is not yet available on this surface" bodyClassName="p-5">
+          <CardEmptyState
+            title="Unavailable"
+            description="Inventory posture for this brand will render as a warehouse distribution when warehouse-level stock is available."
+          />
+        </PerformanceCard>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -163,24 +152,19 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
           )}
           bodyClassName="p-0"
         >
-          <div>
-            {visibleTopBuyers.map((buyer, index) => (
-              <div key={buyer.id} className="grid grid-cols-[30px_1fr_auto] items-center gap-3 border-b border-cream-300 px-5 py-3.5">
-                <p className="font-mono text-base text-cream-600">{index + 1}</p>
-                <div className="flex items-center gap-3">
-                  <EntityAvatar initials={buyer.name.slice(0, 2).toUpperCase()} hue={index % 2 === 0 ? 'teal' : 'ember'} size={34} />
-                  <div>
-                    <p className="text-base font-medium text-cream-900">{buyer.name}</p>
-                    <p className="font-mono text-xs uppercase tracking-[0.04em] text-cream-700">{buyer.city}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="font-display text-md leading-none text-cream-950">{formatCompactInr(buyer.spend)}</p>
-                  <p className="font-mono text-xs text-cream-700">{buyer.orders_label}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+          <RankedList
+            items={visibleTopBuyers.map((buyer, index) => ({
+              id: buyer.id,
+              label: buyer.name,
+              meta: buyer.city,
+              value: formatCompactInr(buyer.spend),
+              supporting: buyer.orders_label,
+              initials: buyer.name.slice(0, 2).toUpperCase(),
+              hue: index % 2 === 0 ? 'teal' : 'ember',
+            }))}
+            emptyTitle="No buyers yet"
+            emptyDescription="This brand does not have recent customer purchase activity."
+          />
         </PerformanceCard>
 
         <PerformanceCard
@@ -193,45 +177,32 @@ export function BrandPerformanceTab({ performance }: BrandPerformanceTabProps) {
           )}
           bodyClassName="p-0"
         >
-          <div>
-            {visibleTopSkus.map((sku, index) => (
-              <div key={sku.product_id} className="grid grid-cols-[30px_1fr_auto] items-center gap-3 border-b border-cream-300 px-5 py-3.5">
-                <p className="font-mono text-base text-cream-600">{index + 1}</p>
-                <div>
-                  <p className="text-base font-medium text-cream-900">{sku.product}</p>
-                  <p className="font-mono text-xs uppercase tracking-[0.04em] text-cream-700">{sku.sku ?? sku.product_id}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-display text-md leading-none text-cream-950">{formatCompactInr(sku.revenue)}</p>
-                  <p className="font-mono text-xs text-cream-700">{Math.round(sku.units)} units</p>
-                </div>
-              </div>
-            ))}
-          </div>
+          <RankedList
+            items={visibleTopSkus.map((sku) => ({
+              id: sku.product_id,
+              label: sku.product,
+              meta: sku.sku ?? sku.product_id,
+              value: formatCompactInr(sku.revenue),
+              supporting: `${Math.round(sku.units)} units`,
+            }))}
+            emptyTitle="No product contribution yet"
+            emptyDescription="This brand does not have any ranked product contribution in the selected horizon."
+          />
         </PerformanceCard>
       </div>
 
-      <PerformanceCard title="Campaign history" subtitle="What you sent · how it landed" bodyClassName="p-0">
-        <LandingTable
-          columns={[
-            { label: 'Campaign', className: 'px-5' },
-            { label: 'Sent', className: 'px-5' },
-            { label: 'Customer group', className: 'px-5' },
-            { label: 'Orders', className: 'px-5 text-right' },
-            { label: 'GMV', className: 'px-5 text-right' },
-          ]}
-          className="rounded-none border-0 [&_thead_tr]:bg-cream-50"
-        >
-          {performance.catalog_history.map((catalog) => (
-            <tr key={catalog.id} className="border-b border-cream-300 bg-white">
-              <td className="px-5 py-3.5 text-cream-900">{catalog.name}</td>
-              <td className="px-5 py-3.5 font-mono text-sm text-cream-700">{formatSent(catalog.sent_at)}</td>
-              <td className="px-5 py-3.5 text-cream-900">{catalog.cohort}</td>
-              <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{catalog.orders}</td>
-              <td className="px-5 py-3.5 text-right font-display text-md leading-none text-cream-950">{formatCompactInr(catalog.gmv)}</td>
-            </tr>
-          ))}
-        </LandingTable>
+      <PerformanceCard title="Campaign contribution" subtitle="Catalog and campaign outcomes for this brand" bodyClassName="p-0">
+        <RankedList
+          items={performance.catalog_history.map((catalog) => ({
+            id: catalog.id,
+            label: catalog.name,
+            meta: catalog.cohort,
+            value: formatCompactInr(catalog.gmv),
+            supporting: `${catalog.orders} orders · sent ${formatSent(catalog.sent_at)}`,
+          }))}
+          emptyTitle="No campaign contribution yet"
+          emptyDescription="Catalog and campaign contribution for this brand will appear here."
+        />
       </PerformanceCard>
 
       <SeeAllSheet

@@ -2,21 +2,19 @@
 
 import Link from 'next/link';
 
-import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useSellerDashboard } from '@/hooks/useSellerDashboard';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useSellerRealtimeContext } from '@/contexts/SellerRealtimeContext';
 import { DashboardSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { RealtimeBadge } from '@/components/ui/RealtimeBadge';
 import {
-  EntityAvatar,
   InsightStrip4,
   PageHeader,
   PageWrap,
   StatusTag,
   V3CalloutPanel,
 } from '@/components/seller/layout';
-import { PerformanceCard } from '@/components/seller/detail';
+import { DetailCardRenderer, PerformanceCard, RankedList } from '@/components/seller/detail';
 import { ErrorState } from '@/components/ui/empty-state';
 import { formatCompactInr, formatInr } from '@/lib/utils';
 import { cn } from '@/lib/utils';
@@ -59,46 +57,35 @@ function formatMetricDelta(delta?: number, deltaLabel?: string) {
 
 function FeedCard({ feed, newEntityIds, markSeen }: { feed: SellerDashboardFeed; newEntityIds: Map<string, 'new'>; markSeen: (id: string) => void }) {
   return (
-    <section className="rounded-[14px] border border-cream-300 bg-white">
-      <div className="flex items-center justify-between border-b border-cream-200 px-5 py-4">
-        <div>
-          <h2 className="text-md font-semibold text-cream-900">{feed.title}</h2>
-          <p className="text-sm text-cream-600">Latest 5 by recent activity</p>
-        </div>
+    <PerformanceCard
+      title={feed.title}
+      subtitle="Latest 5 by recent activity"
+      actions={(
         <Link href={feed.href} className="text-sm font-semibold text-teal-700 no-underline">
           View all
         </Link>
-      </div>
-      <div className="p-5">
-        {feed.rows.length === 0 ? (
-          <p className="text-sm text-cream-600">{feed.empty_label}</p>
-        ) : (
-          <div className="space-y-3">
-            {feed.rows.map((row) => (
-              <Link
-                key={row.id}
-                href={row.href}
-                onClick={() => markSeen(row.id)}
-                className="flex items-start justify-between gap-4 rounded-[12px] border border-cream-200 px-4 py-3 text-left no-underline transition hover:border-cream-300 hover:bg-cream-50"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="font-mono text-sm text-cream-700">{row.document_number}</p>
-                    <StatusTag label={row.status.label} tone={row.status.tone} className="shrink-0" />
-                    {newEntityIds.has(row.id) && <RealtimeBadge type="new" />}
-                  </div>
-                  <p className="mt-1 truncate text-base font-medium text-cream-900">{row.customer_name}</p>
-                  <p className="mt-1 text-sm text-cream-600">{formatTimeAgoLabel(row.updated_at)}</p>
-                </div>
-                <div className="shrink-0 text-right">
-                  <p className="text-sm font-semibold text-cream-900">{formatInr(row.amount)}</p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
+      )}
+      bodyClassName="p-0"
+    >
+      <RankedList
+        items={feed.rows.map((row) => ({
+          id: row.id,
+          label: row.customer_name,
+          meta: row.document_number,
+          value: formatInr(row.amount),
+          supporting: (
+            <span className="inline-flex items-center gap-2">
+              <StatusTag label={row.status.label} tone={row.status.tone} className="shrink-0" />
+              <span>{formatTimeAgoLabel(row.updated_at)}</span>
+              {newEntityIds.has(row.id) ? <RealtimeBadge type="new" /> : null}
+            </span>
+          ),
+          initials: row.customer_name.slice(0, 2).toUpperCase(),
+        }))}
+        emptyTitle={feed.empty_label}
+        emptyDescription="New documents will appear here as your team works."
+      />
+    </PerformanceCard>
   );
 }
 
@@ -141,70 +128,50 @@ function AdminSection({ data, newEntityIds, markSeen }: { data: SellerDashboardR
         }))}
       />
       <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <PerformanceCard
-          title="Brand performance"
-          subtitle="Revenue share for the selected period"
+        <DetailCardRenderer
           actions={(
             <Link href="/brands" className="text-sm font-semibold text-teal-700 no-underline">
               All brands
             </Link>
           )}
-          bodyClassName="p-5"
-        >
-          <div className="space-y-3">
-            {admin.top_brands.length === 0 ? (
-              <p className="text-sm text-cream-600">No brand data yet.</p>
-            ) : (
-              admin.top_brands.map((brand) => (
-                <div key={brand.id} className="flex items-center gap-3">
-                  <EntityAvatar initials={brand.initials} hue={brand.hue} size={38} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="truncate text-base font-medium text-cream-900">{brand.name}</p>
-                      <p className="text-sm font-medium text-cream-700">{brand.trend_label}</p>
-                    </div>
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-cream-200">
-                      <div className="h-full rounded-full bg-teal-500" style={{ width: `${brand.pct}%` }} />
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          card={{
+            id: 'dashboard-brand-performance',
+            representation: 'mix',
+            title: 'Brand performance',
+            subtitle: 'Revenue share for the selected period',
+            body: {
+              items: admin.top_brands.map((brand) => ({
+                id: brand.id,
+                label: brand.name,
+                pct: brand.pct,
+                value: brand.trend_label,
+              })),
+              emptyTitle: 'No brand data yet',
+              emptyDescription: 'Revenue share will appear here once brand sales are available.',
+              mode: 'mix',
+            },
+          }}
+        />
+        <PerformanceCard title="Recent activity" subtitle="Latest estimates, orders, and invoices" bodyClassName="p-0">
+          <RankedList
+            items={admin.recent_activity.map((row) => ({
+              id: row.id,
+              label: row.customer_name,
+              meta: row.document_number,
+              value: formatInr(row.amount),
+              supporting: (
+                <span className="inline-flex items-center gap-2">
+                  <StatusTag label={row.status.label} tone={row.status.tone} />
+                  <span>{formatTimeAgoLabel(row.updated_at)}</span>
+                  {newEntityIds.has(row.id) ? <RealtimeBadge type="new" /> : null}
+                </span>
+              ),
+              initials: row.customer_name.slice(0, 2).toUpperCase(),
+            }))}
+            emptyTitle="No recent activity yet"
+            emptyDescription="The latest commercial documents will show up here."
+          />
         </PerformanceCard>
-        <section className="rounded-[14px] border border-cream-300 bg-white">
-          <div className="flex items-center justify-between border-b border-cream-200 px-5 py-4">
-            <div>
-              <h2 className="text-md font-semibold text-cream-900">Recent activity</h2>
-              <p className="text-sm text-cream-600">Latest estimates, orders, and invoices</p>
-            </div>
-          </div>
-          <div className="space-y-3 p-5">
-            {admin.recent_activity.length === 0 ? (
-              <p className="text-sm text-cream-600">No recent activity yet.</p>
-            ) : (
-              admin.recent_activity.map((row) => (
-                <Link
-                  key={row.id}
-                  href={row.href}
-                  onClick={() => markSeen(row.id)}
-                  className="flex items-start justify-between gap-4 rounded-[12px] border border-cream-200 px-4 py-3 no-underline transition hover:border-cream-300 hover:bg-cream-50"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-mono text-sm text-cream-700">{row.document_number}</p>
-                      <StatusTag label={row.status.label} tone={row.status.tone} />
-                      {newEntityIds.has(row.id) && <RealtimeBadge type="new" />}
-                    </div>
-                    <p className="mt-1 truncate text-base font-medium text-cream-900">{row.customer_name}</p>
-                    <p className="mt-1 text-sm text-cream-600">{formatTimeAgoLabel(row.updated_at)}</p>
-                  </div>
-                  <p className="shrink-0 text-sm font-semibold text-cream-900">{formatInr(row.amount)}</p>
-                </Link>
-              ))
-            )}
-          </div>
-        </section>
       </div>
     </>
   );
@@ -252,7 +219,8 @@ export function SellerDashboardClient({
   initialData: SellerDashboardResponse | null;
   initialPeriod: SellerLandingPeriod;
 }) {
-  const { period, setPeriod, horizonLabel, options } = useSellerLandingPeriod(initialPeriod);
+  const period = initialPeriod;
+  const horizonLabel = 'This Month';
   const { data, isLoading, isError } = useSellerDashboard(period, initialData);
   const retainedData = useRetainedValue(data);
   const dashboard = data ?? retainedData;
@@ -285,9 +253,6 @@ export function SellerDashboardClient({
         title="Dashboard"
         subtitle={subtitle}
         horizon={horizonLabel}
-        period={period}
-        periodOptions={options}
-        onPeriodChange={setPeriod}
       />
 
       {isLoading && !data ? <DashboardSkeleton /> : (

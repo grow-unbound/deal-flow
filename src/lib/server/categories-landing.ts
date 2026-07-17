@@ -48,7 +48,7 @@ export async function getCategoriesLandingPayload(
   periodInput: string | null | undefined,
   filters: CategoriesLandingFilters,
 ): Promise<CategoriesLandingResponse> {
-  const period = getSellerLandingPeriodMeta(periodInput);
+  const period = getSellerLandingPeriodMeta('last90');
   const { search, status: statusFilter, products: productFilter, limit, offset, includeSummary } = filters;
 
   const thirtyDaysAgo = new Date();

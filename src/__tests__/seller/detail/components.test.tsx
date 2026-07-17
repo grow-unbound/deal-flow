@@ -8,6 +8,11 @@ import { DetailTabs } from '@/components/seller/detail/DetailTabs';
 import { DetailHeader } from '@/components/seller/detail/DetailHeader';
 import { DetailActions } from '@/components/seller/detail/DetailActions';
 import { PerformanceCard } from '@/components/seller/detail/PerformanceCard';
+import { TrendFrame } from '@/components/seller/detail/TrendFrame';
+import { RankedList } from '@/components/seller/detail/RankedList';
+import { DistributionList } from '@/components/seller/detail/DistributionList';
+import { CardEmptyState } from '@/components/seller/detail/CardEmptyState';
+import { DetailCardRenderer } from '@/components/seller/detail/DetailCardRenderer';
 import { PageWrap } from '@/components/seller/layout/PageWrap';
 
 describe('MetaStrip4', () => {
@@ -109,6 +114,76 @@ describe('PerformanceCard', () => {
     expect(screen.getByText('Revenue share for the selected period')).toHaveClass('text-sm');
     expect(screen.getByRole('button', { name: 'All brands' })).toBeInTheDocument();
     expect(screen.getByText('Body').closest('section')).toHaveClass('overflow-hidden', 'rounded-[14px]', 'border');
+  });
+});
+
+describe('Shared detail body components', () => {
+  it('renders TrendFrame empty state when no chart is provided', () => {
+    render(<TrendFrame emptyTitle="No history" emptyDescription="Nothing to chart yet." />);
+
+    expect(screen.getByText('No history')).toBeInTheDocument();
+    expect(screen.getByText('Nothing to chart yet.')).toBeInTheDocument();
+  });
+
+  it('renders RankedList items through one shared primitive', () => {
+    render(
+      <RankedList
+        items={[
+          { id: '1', label: 'Buyer One', meta: 'Mumbai', value: '₹12K', supporting: '3 orders', initials: 'BO' },
+        ]}
+        emptyTitle="No rows"
+      />
+    );
+
+    expect(screen.getByText('Buyer One')).toBeInTheDocument();
+    expect(screen.getByText('3 orders')).toBeInTheDocument();
+  });
+
+  it('renders DistributionList as a shared mix/distribution primitive', () => {
+    render(
+      <DistributionList
+        mode="mix"
+        items={[
+          { id: 'brand-a', label: 'Brand A', pct: 60, value: '₹24K' },
+          { id: 'brand-b', label: 'Brand B', pct: 40, value: '₹16K' },
+        ]}
+        emptyTitle="No mix"
+      />
+    );
+
+    expect(screen.getByText('Brand A')).toBeInTheDocument();
+    expect(screen.getByText('60%')).toBeInTheDocument();
+  });
+
+  it('renders CardEmptyState for unavailable cards without coercing to zero', () => {
+    render(<CardEmptyState title="Unavailable" description="Payment behavior is unavailable." tone="unavailable" />);
+
+    expect(screen.getByText('Unavailable')).toBeInTheDocument();
+    expect(screen.getByText('Payment behavior is unavailable.')).toBeInTheDocument();
+  });
+
+  it('renders a normalized detail card through the shared renderer', () => {
+    render(
+      <DetailCardRenderer
+        card={{
+          id: 'price-distribution',
+          representation: 'distribution',
+          title: 'Actual selling prices',
+          subtitle: 'Current distribution',
+          body: {
+            items: [
+              { id: 'base', label: 'Base price', value: '₹100', pct: 70 },
+              { id: 'override', label: 'Override', value: '₹92', pct: 30 },
+            ],
+            emptyTitle: 'No prices',
+          },
+        }}
+      />
+    );
+
+    expect(screen.getByText('Actual selling prices')).toBeInTheDocument();
+    expect(screen.getByText('Override')).toBeInTheDocument();
+    expect(screen.getByText('30%')).toBeInTheDocument();
   });
 });
 

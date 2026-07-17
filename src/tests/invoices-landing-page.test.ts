@@ -243,10 +243,43 @@ vi.mock('@/lib/supabase', () => {
     }
     return new QueryMock(table);
   });
+  const sum = (rows: Array<Record<string, unknown>>, key: string) =>
+    rows.reduce((total, row) => total + Number(row[key] ?? 0), 0);
+  const scopedRows = (rows: Array<Record<string, unknown>>, args?: { p_location_ids?: string[] | null }) => {
+    const locationIds = args?.p_location_ids ?? null;
+    return locationIds?.length
+      ? rows.filter((row) => row.scope === 'location' && locationIds.includes(String(row.location_id)))
+      : rows.filter((row) => row.scope === 'tenant');
+  };
+  const rpc = vi.fn(async (name: string, args?: { p_location_ids?: string[] | null }) => {
+    if (name !== 'metrics_v2_transaction_landing') return { data: null, error: null };
+    const current = scopedRows(queryState.currentKpis, args);
+    const previous = scopedRows(queryState.previousKpis, args);
+    const invoices = sum(current, 'invoices_count');
+    const previousInvoices = sum(previous, 'invoices_count');
+    const gmv = sum(current, 'gmv');
+    return {
+      data: {
+        kpis: {
+          invoices_this_period: invoices,
+          invoices_prev_period: previousInvoices,
+          invoices_growth_pct: previousInvoices > 0 ? Math.round(((invoices - previousInvoices) / previousInvoices) * 100) : 0,
+          gmv_this_period: gmv,
+          gmv_prev_period: sum(previous, 'gmv'),
+          aov: invoices > 0 ? gmv / invoices : 0,
+          overdue_count: sum(current, 'overdue_count'),
+          overdue_sum: sum(current, 'overdue_amount'),
+          outstanding_count: sum(current, 'outstanding_count'),
+          outstanding_sum: sum(current, 'outstanding_amount'),
+        },
+      },
+      error: null,
+    };
+  });
 
   return {
     supabaseAdmin: {
-      schema: vi.fn(() => ({ from })),
+      schema: vi.fn(() => ({ from, rpc })),
     },
   };
 });
@@ -413,7 +446,8 @@ describe('invoices landing API route', () => {
     expect(estimateRow.source_label).toBe('EST-2026-0001');
     expect(estimateRow.source_detail).toBe('Converted by Ravi Nair');
 
-    expect(body.todays_read.needs_attention).toHaveLength(1);
+    expect(body.todays_read.needs_attention).toHaveLength(2);
+    expect(body.todays_read.needs_attention.map((item: { invoice_number: string }) => item.invoice_number)).toContain('INV-2026-0003');
     expect(body.todays_read.top_spenders[0].invoice_number).toBe('INV-2026-0002');
     expect(body.todays_read.top_risers[0].buyer_name).toBe('Beta');
   });

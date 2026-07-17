@@ -224,4 +224,6 @@ export interface WarehouseDetailResponse {
       updated_at: string;
     }>;
   };
+  performance_cards?: unknown[];
+  detail_v2?: unknown;
 }

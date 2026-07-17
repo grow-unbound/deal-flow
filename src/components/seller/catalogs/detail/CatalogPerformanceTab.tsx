@@ -2,13 +2,14 @@
 
 import { useMemo, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
-import { PerformanceCard } from '@/components/seller/detail';
+import { DetailCardRenderer, PerformanceCard, RankedList, TrendFrame, type DetailCardPayload } from '@/components/seller/detail';
 import { SeeAllSheet, StatusTag } from '@/components/seller/layout';
 import type { CatalogDetailResponse } from '@/hooks/useCatalogs';
 import { formatCompactInr, formatDate } from '@/lib/utils';
 
 interface CatalogPerformanceTabProps {
   performance: CatalogDetailResponse['performance'];
+  performanceCards?: unknown[];
 }
 
 type TrendPeriod = '3m' | '12m' | 'ytd';
@@ -57,7 +58,8 @@ function conversionLabels(performance: CatalogDetailResponse['performance']) {
   };
 }
 
-export function CatalogPerformanceTab({ performance }: CatalogPerformanceTabProps) {
+export function CatalogPerformanceTab({ performance, performanceCards }: CatalogPerformanceTabProps) {
+
   const labels = conversionLabels(performance);
   const [period, setPeriod] = useState<TrendPeriod>('12m');
   const [skusSheetOpen, setSkusSheetOpen] = useState(false);
@@ -83,6 +85,17 @@ export function CatalogPerformanceTab({ performance }: CatalogPerformanceTabProp
     return base.filter((point) => new Date(point.date) >= threshold);
   }, [performance.cumulative_orders, period]);
 
+  if (performanceCards?.length) {
+    return (
+      <section className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
+        {(performanceCards as DetailCardPayload[]).map((card) => (
+          <DetailCardRenderer key={card.id} card={card} />
+        ))}
+      </section>
+    );
+  }
+
+
   return (
     <section className="mt-5 space-y-4">
       <div className="grid grid-cols-[1.75fr_1fr] gap-4">
@@ -105,86 +118,80 @@ export function CatalogPerformanceTab({ performance }: CatalogPerformanceTabProp
           )}
           bodyClassName="p-0"
         >
-          <div className="px-5 pt-4">
-            <div className="flex items-end gap-3">
-              <p className="font-display text-3xl leading-none text-cream-950">{performance.summary.orders}</p>
-              <p className="pb-1 text-base text-cream-700">
-                {formatCompactInr(performance.summary.gmv, 1)}
-                {' · '}
-                <span className={performance.summary.growth_pct >= 0 ? 'font-semibold text-success-500' : 'font-semibold text-danger-500'}>
-                  {performance.summary.growth_pct >= 0 ? '↑ +' : '↓ '}
-                  {Math.abs(performance.summary.growth_pct).toFixed(1)}%
-                </span>
-                {' '}vs previous catalog
-              </p>
-            </div>
-          </div>
-          <div className="h-[220px] px-4 pb-4 pt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trendData}>
-                <defs>
-                  <linearGradient id="catalog-orders-fill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#C26E3A" stopOpacity={0.18} />
-                    <stop offset="100%" stopColor="#C26E3A" stopOpacity={0.03} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid vertical={false} strokeDasharray="4 4" stroke="var(--cream-300)" />
-                <XAxis
-                  dataKey="date"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: 'var(--cream-700)', fontSize: 'var(--yk-text-sm)' }}
-                  tickFormatter={dayTick}
-                />
-                <Tooltip
-                  formatter={(value: number, key: string) =>
-                    key === 'gmv_cumulative' ? formatCompactInr(Number(value), 1) : Number(value)
-                  }
-                  labelFormatter={(value) => formatDate(String(value))}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="orders_cumulative"
-                  stroke="#C26E3A"
-                  strokeWidth={2.5}
-                  fill="url(#catalog-orders-fill)"
-                  dot={{ r: 0 }}
-                  activeDot={{ r: 4, fill: '#fff', stroke: '#C26E3A', strokeWidth: 2 }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          <TrendFrame
+            emptyTitle="No catalog timeline yet"
+            emptyDescription="This campaign does not have enough timeline activity for a trend."
+            summary={(
+              <div className="flex items-end gap-3">
+                <p className="font-display text-3xl leading-none text-cream-950">{performance.summary.orders}</p>
+                <p className="pb-1 text-base text-cream-700">
+                  {formatCompactInr(performance.summary.gmv, 1)}
+                  {' · '}
+                  <span className={performance.summary.growth_pct >= 0 ? 'font-semibold text-success-500' : 'font-semibold text-danger-500'}>
+                    {performance.summary.growth_pct >= 0 ? '↑ +' : '↓ '}
+                    {Math.abs(performance.summary.growth_pct).toFixed(1)}%
+                  </span>
+                  {' '}vs previous catalog
+                </p>
+              </div>
+            )}
+            chart={trendData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={trendData}>
+                  <defs>
+                    <linearGradient id="catalog-orders-fill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#C26E3A" stopOpacity={0.18} />
+                      <stop offset="100%" stopColor="#C26E3A" stopOpacity={0.03} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} strokeDasharray="4 4" stroke="var(--cream-300)" />
+                  <XAxis
+                    dataKey="date"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: 'var(--cream-700)', fontSize: 'var(--yk-text-sm)' }}
+                    tickFormatter={dayTick}
+                  />
+                  <Tooltip
+                    formatter={(value: number, key: string) =>
+                      key === 'gmv_cumulative' ? formatCompactInr(Number(value), 1) : Number(value)
+                    }
+                    labelFormatter={(value) => formatDate(String(value))}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="orders_cumulative"
+                    stroke="#C26E3A"
+                    strokeWidth={2.5}
+                    fill="url(#catalog-orders-fill)"
+                    dot={{ r: 0 }}
+                    activeDot={{ r: 4, fill: '#fff', stroke: '#C26E3A', strokeWidth: 2 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : null}
+          />
         </PerformanceCard>
 
-        <PerformanceCard title="Funnel" subtitle="Buyer engagement" bodyClassName="p-0">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-7 px-5 py-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Views</p>
-              <p className="mt-1 font-display text-3xl leading-[0.95] tracking-[-0.02em] text-cream-950">{performance.summary.views}</p>
-              <p className="mt-1 text-base text-cream-700">{performance.summary.unique_viewers} unique</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Conversions</p>
-              <p className="mt-1 font-display text-3xl leading-[0.95] tracking-[-0.02em] text-cream-950">{performance.summary.conversions ?? performance.summary.orders}</p>
-              <p className="mt-1 text-base text-cream-700">{labels.conversionSubtitle}</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Opens → conversion</p>
-              <p className="mt-1 font-display text-3xl leading-[0.95] tracking-[-0.02em] text-cream-950">{performance.summary.conversion_rate}%</p>
-              <p className="mt-1 text-base text-cream-700">conversion rate</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">AOV</p>
-              <p className="mt-1 font-display text-3xl leading-[0.95] tracking-[-0.02em] text-cream-950">{formatCompactInr(performance.summary.aov, 1)}</p>
-              <p className="mt-1 text-base text-cream-700">across conversions</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cream-700">Abandoners</p>
-              <p className="mt-1 font-display text-3xl leading-[0.95] tracking-[-0.02em] text-ember-700">{performance.summary.abandoners}</p>
-              <p className="mt-1 text-base text-cream-700">opened, didn&apos;t convert</p>
-            </div>
-          </div>
-        </PerformanceCard>
+        <DetailCardRenderer
+          card={{
+            id: 'catalog-funnel',
+            representation: 'distribution',
+            title: 'Funnel',
+            subtitle: 'Buyer engagement',
+            body: {
+              items: [
+                { id: 'views', label: 'Views', value: performance.summary.views, supporting: `${performance.summary.unique_viewers} unique` },
+                { id: 'conversions', label: 'Conversions', value: performance.summary.conversions ?? performance.summary.orders, supporting: labels.conversionSubtitle },
+                { id: 'rate', label: 'Opens → conversion', value: `${performance.summary.conversion_rate}%`, supporting: 'conversion rate' },
+                { id: 'aov', label: 'AOV', value: formatCompactInr(performance.summary.aov, 1), supporting: 'across conversions' },
+                { id: 'abandons', label: 'Abandoners', value: performance.summary.abandoners, supporting: 'opened, did not convert' },
+              ],
+              emptyTitle: 'No funnel contribution yet',
+              emptyDescription: 'This campaign does not have enough buyer engagement data yet.',
+            },
+          }}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -198,21 +205,17 @@ export function CatalogPerformanceTab({ performance }: CatalogPerformanceTabProp
           )}
           bodyClassName="p-0"
         >
-          <div>
-            {visibleTopSkus.map((sku, index) => (
-              <div key={sku.tenant_product_id} className="grid grid-cols-[26px_1fr_auto] items-center gap-3 border-b border-cream-300 px-5 py-3.5 last:border-b-0">
-                <p className="font-mono text-sm text-cream-600">{index + 1}</p>
-                <div>
-                  <p className="text-base font-medium text-cream-900">{sku.product_name}</p>
-                  <p className="mt-0.5 font-mono text-xs uppercase tracking-[0.06em] text-cream-700">{sku.internal_sku}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-display text-md leading-none text-cream-950">{formatCompactInr(sku.gmv, 1)}</p>
-                  <p className="mt-1 font-mono text-xs text-cream-700">{sku.units} units</p>
-                </div>
-              </div>
-            ))}
-          </div>
+          <RankedList
+            items={visibleTopSkus.map((sku) => ({
+              id: sku.tenant_product_id,
+              label: sku.product_name,
+              meta: sku.internal_sku,
+              value: formatCompactInr(sku.gmv, 1),
+              supporting: `${sku.units} units`,
+            }))}
+            emptyTitle="No ranked product outcomes yet"
+            emptyDescription="This campaign does not have any product contribution yet."
+          />
         </PerformanceCard>
 
         <PerformanceCard
@@ -225,21 +228,22 @@ export function CatalogPerformanceTab({ performance }: CatalogPerformanceTabProp
           )}
           bodyClassName="p-0"
         >
-          <div>
-            {visibleBuyers.map((buyer) => (
-              <div key={buyer.buyer_id} className="grid grid-cols-[1.4fr_120px_80px_96px] items-center gap-3 border-b border-cream-300 px-5 py-3.5 last:border-b-0">
-                <div>
-                  <p className="text-base font-medium text-cream-900">{buyer.buyer_name}</p>
-                  <p className="mt-0.5 font-mono text-xs uppercase tracking-[0.06em] text-cream-700">{buyer.city}</p>
-                </div>
-                <div>
+          <RankedList
+            items={visibleBuyers.map((buyer) => ({
+              id: buyer.buyer_id,
+              label: buyer.buyer_name,
+              meta: buyer.city,
+              value: buyer.gmv > 0 ? formatCompactInr(buyer.gmv, 1) : '—',
+              supporting: (
+                <span className="inline-flex items-center gap-2">
                   <StatusTag label={buyer.opened_status} tone={openedTone(buyer.opened_status)} />
-                </div>
-                <p className="text-right font-mono text-base text-cream-900">{buyer.orders}</p>
-                <p className="text-right font-display text-md text-cream-950">{buyer.gmv > 0 ? formatCompactInr(buyer.gmv, 1) : '—'}</p>
-              </div>
-            ))}
-          </div>
+                  <span>{buyer.orders} orders</span>
+                </span>
+              ),
+            }))}
+            emptyTitle="No recipient outcomes yet"
+            emptyDescription="This campaign does not have enough recipient activity to rank outcomes yet."
+          />
         </PerformanceCard>
       </div>
 

@@ -2,10 +2,9 @@
 
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
 import { PencilIcon } from 'lucide-react';
 import { PageWrap } from '@/components/seller/layout';
-import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
+import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
@@ -120,8 +119,6 @@ function LocationProfileStrip({
 }
 
 export function LocationDetailPage({ id }: LocationDetailPageProps) {
-  const router = useRouter();
-  void router;
   const [sheetOpen, setSheetOpen] = useState(false);
   const { data: locationsData } = useTenantLocations();
   const editingLocation = locationsData?.locations.find((l) => l.id === id) ?? null;
@@ -213,7 +210,7 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
 
       <LocationProfileStrip phoneNumber={data.phone_number} status={data.status} users={data.associated_users} />
 
-      <MetaStrip4 tiles={tiles} />
+      <MetricGrid className="mt-6" showSupportingText tiles={tiles} />
 
       <DetailTabs
         tabs={tabs}
@@ -221,7 +218,9 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
         onChange={(value) => setTab(value as TabId)}
       />
 
-      {tab === 'performance' ? <LocationOverviewTab data={data.overview} /> : null}
+      {tab === 'performance' ? (
+        <LocationOverviewTab data={data.overview} performanceCards={data.performance_cards} />
+      ) : null}
       {tab === 'orders' ? <LocationOrdersTab rows={data.orders} /> : null}
       {tab === 'estimates' ? <LocationEstimatesTab rows={data.estimates} /> : null}
       {tab === 'invoices' ? <LocationInvoicesTab rows={data.invoices} /> : null}

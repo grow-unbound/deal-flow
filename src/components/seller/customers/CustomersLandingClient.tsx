@@ -28,7 +28,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn, formatCompactInr } from '@/lib/utils';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
-import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import {
   useCustomersLandingInfinite,
   useCustomersLanding,
@@ -166,11 +165,9 @@ function CustomersDataSkeleton() {
 
 function CustomersLandingContent({
   initialData,
-  initialPeriod,
   initialSearch,
 }: {
   initialData: CustomersLandingResponse | null;
-  initialPeriod: SellerLandingPeriod;
   initialSearch?: string;
 }) {
   const router = useRouter();
@@ -178,13 +175,15 @@ function CustomersLandingContent({
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const whatsappBroadcastEnabled = useFlag('WHATSAPP_BROADCAST');
   const { isSellerAssistant } = useRole();
-  const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
-  const summaryQuery = useCustomersLanding(period, initialData);
+  const horizonLabel = 'Trailing 90 days';
+  const lowerLabel = 'in the last 90 days';
+  const metricSuffix = '90D';
+  const summaryQuery = useCustomersLanding('month', initialData);
   const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-customers-landing',
-    scopeKey: period,
-    version: 3,
+    scopeKey: 'fixed-90d',
+    version: 4,
     initialState: {
       filters: {
         status: [] as string[],
@@ -205,7 +204,7 @@ function CustomersLandingContent({
     search !== debouncedSearch ||
     JSON.stringify(filters) !== JSON.stringify(deferredFilters);
   const { data, isLoading, isError, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useCustomersLandingInfinite(
-    period,
+    'month',
     { search: debouncedSearch, ...deferredFilters },
   );
   const { sentinelRef } = useInfiniteScroll({
@@ -216,7 +215,7 @@ function CustomersLandingContent({
   });
   useRouteScrollRestoration({
     storageKey: 'seller-customers-landing',
-    scopeKey: period,
+    scopeKey: 'fixed-90d',
     ready: !isLoading,
   });
 
@@ -227,24 +226,6 @@ function CustomersLandingContent({
   const filtered = useMemo(() => {
     const locallyFiltered = allBuyers.filter((buyer) => {
       if (!matchesBuyerSearch(buyer, search)) {
-        return false;
-      }
-
-      if (
-        filters.status.length > 0 &&
-        !filters.status.some((value) => value === buyer.status.label)
-      ) {
-        return false;
-      }
-
-      if (
-        filters.due.length > 0 &&
-        !filters.due.some((value) => {
-          if (value === 'Overdue') return buyer.dues > 0;
-          if (value === 'Due') return buyer.dues > 0;
-          return false;
-        })
-      ) {
         return false;
       }
 
@@ -259,7 +240,7 @@ function CustomersLandingContent({
         const bDate = b.last_order_at ? Date.parse(b.last_order_at) : 0;
         return bDate - aDate;
       });
-  }, [allBuyers, filters.due, filters.status, search, sortBy]);
+  }, [allBuyers, search, sortBy]);
   const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && filtered.length === 0;
 
   if (isLoading && !data) {
@@ -287,9 +268,6 @@ function CustomersLandingContent({
         title="Customers"
         subtitle={`${kpis?.total} retailers across ${kpis?.cohort_count} customer groups. ${kpis?.active} active ${lowerLabel}.`}
         horizon={horizonLabel}
-        period={period}
-        periodOptions={options}
-        onPeriodChange={setPeriod}
         secondary={
           whatsappBroadcastEnabled
             ? {
@@ -324,7 +302,7 @@ function CustomersLandingContent({
           {
             label: `Spend · ${metricSuffix}`,
             value: formatCompactInr(kpis?.spend_mtd ?? 0),
-            sub: `${(kpis?.spend_growth_pct ?? 0) >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis?.spend_growth_pct ?? 0)}% vs last ${period}`,
+            sub: `${(kpis?.spend_growth_pct ?? 0) >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis?.spend_growth_pct ?? 0)}% vs prior-year 90D`,
             tone: 'accent',
           },
           {
@@ -534,7 +512,6 @@ function CustomersLandingContent({
 
 export function CustomersLandingClient({
   initialData,
-  initialPeriod,
   initialSearch,
 }: {
   initialData: CustomersLandingResponse | null;
@@ -543,7 +520,7 @@ export function CustomersLandingClient({
 }) {
   return (
     <FeatureGate flag="CUSTOMER_MASTER">
-      <CustomersLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />
+      <CustomersLandingContent initialData={initialData} initialSearch={initialSearch} />
     </FeatureGate>
   );
 }

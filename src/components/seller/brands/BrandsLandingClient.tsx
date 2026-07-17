@@ -22,7 +22,6 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
-import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useTenantBrands, type TenantBrand, type TenantBrandsResponse } from '@/hooks/useBrands';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { formatCompactInr } from '@/lib/utils';
@@ -155,11 +154,14 @@ function BrandLandingContent({
   initialSearch?: string;
 }) {
   const router = useRouter();
-  const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
+  const period: SellerLandingPeriod = 'last90';
+  const horizonLabel = 'Trailing 90 days';
+  const lowerLabel = 'in the last 90 days';
+  const metricSuffix = '90D';
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-brands-landing',
-    scopeKey: period,
-    version: 3,
+    scopeKey: 'fixed-90d',
+    version: 4,
     initialState: {
       search: '',
       filters: {
@@ -179,7 +181,7 @@ function BrandLandingContent({
   const landingData = data ?? retainedData;
   useRouteScrollRestoration({
     storageKey: 'seller-brands-landing',
-    scopeKey: period,
+    scopeKey: 'fixed-90d',
     ready: !isLoading,
   });
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -294,9 +296,6 @@ function BrandLandingContent({
         title="Brands"
         subtitle={`${summaryData?.kpis?.brands_carried ?? updatedBrands.length} brand principals carried across ${totalBuyers} buyers ${lowerLabel}. This is your portfolio at a glance.`}
         horizon={horizonLabel}
-        period={period}
-        periodOptions={options}
-        onPeriodChange={setPeriod}
         primary="Add a brand"
         onPrimaryClick={() => setAddBrandOpen(true)}
       />
@@ -312,7 +311,7 @@ function BrandLandingContent({
           {
             label: 'Portfolio GMV',
             value: formatCompactInr(portfolioGmv),
-            sub: `${growthVsPrior >= 0 ? '↑ +' : '↓ '}${Math.abs(growthVsPrior)}% vs last month`,
+            sub: `${growthVsPrior >= 0 ? '↑ +' : '↓ '}${Math.abs(growthVsPrior)}% vs prior 90D`,
             tone: 'accent',
           },
           {

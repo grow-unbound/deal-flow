@@ -246,7 +246,7 @@ async function getOptimizedCatalogsLanding(req: NextRequest, timedJson: (body: u
   const db = supabaseAdmin;
   const now = new Date();
   const nowTs = now.getTime();
-  const period = getSellerLandingPeriodMeta(req.nextUrl.searchParams.get('period'), now);
+  const period = getSellerLandingPeriodMeta('last90', now);
   const limit = parseRowsLimit(req.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
   const offset = parseRowsOffset(req.nextUrl.searchParams.get('offset'));
   const includeSummary = req.nextUrl.searchParams.get('include_summary') !== 'false';

@@ -323,14 +323,40 @@ export async function loadWarehouseSnapshot(
 ): Promise<WarehouseSnapshotRow | null> {
   const { data, error } = await db
     .schema('app')
-    .from('warehouses_snapshot')
-    .select('warehouse_id, tenant_id, tracked_skus, sellable_units, low_stock_skus, stockout_skus, idle_stock_skus, last_inventory_update, refreshed_at')
-    .eq('tenant_id', tenantId)
-    .eq('warehouse_id', warehouseId)
-    .maybeSingle();
+    .rpc('get_seller_warehouse_detail_v2', {
+      p_tenant_id: tenantId,
+      p_warehouse_id: warehouseId,
+    });
 
   if (error) throw error;
-  return data ? hydrateWarehouseSnapshot(data as Record<string, unknown>) : null;
+
+  const cards = Array.isArray(data?.performance_cards) ? data.performance_cards : [];
+  const postureCard = cards.find((card: Record<string, unknown>) => card.id === 'current-inventory-posture');
+  const items = Array.isArray(postureCard?.body && (postureCard.body as Record<string, unknown>).items)
+    ? ((postureCard.body as Record<string, unknown>).items as Array<Record<string, unknown>>)
+    : [];
+
+  const valueFor = (id: string) => Number(items.find((item) => item.id === id)?.value ?? 0);
+  const trackedSkus = valueFor('tracked-skus');
+  const lowStockSkus = valueFor('low-stock');
+  const stockoutSkus = valueFor('out-of-stock');
+  const sellableUnits = valueFor('sellable-units');
+
+  if (trackedSkus <= 0 && lowStockSkus <= 0 && stockoutSkus <= 0 && sellableUnits <= 0) {
+    return null;
+  }
+
+  return {
+    warehouse_id: warehouseId,
+    tenant_id: tenantId,
+    tracked_skus: trackedSkus,
+    sellable_units: sellableUnits,
+    low_stock_skus: lowStockSkus,
+    stockout_skus: stockoutSkus,
+    idle_stock_skus: valueFor('idle-stock'),
+    last_inventory_update: null,
+    refreshed_at: typeof data?.as_of === 'string' ? data.as_of : new Date().toISOString(),
+  };
 }
 
 export async function loadLatestWarehouseDailySnapshot(
@@ -338,24 +364,7 @@ export async function loadLatestWarehouseDailySnapshot(
   tenantId: string,
   warehouseId: string,
 ): Promise<WarehouseSnapshotRow | null> {
-  const { data, error } = await db
-    .schema('app')
-    .from('kpi_warehouse_daily')
-    .select('warehouse_id, tenant_id, tracked_skus, sellable_units, low_stock_skus, stockout_skus, idle_stock_skus, updated_at')
-    .eq('tenant_id', tenantId)
-    .eq('warehouse_id', warehouseId)
-    .order('day', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) throw error;
-  if (!data) return null;
-
-  return hydrateWarehouseSnapshot({
-    ...data,
-    last_inventory_update: null,
-    refreshed_at: data.updated_at,
-  } as Record<string, unknown>);
+  return loadWarehouseSnapshot(db, tenantId, warehouseId);
 }
 
 export async function loadWarehouseInventoryTrend(
@@ -363,30 +372,18 @@ export async function loadWarehouseInventoryTrend(
   tenantId: string,
   warehouseId: string,
 ): Promise<WarehouseInventoryTrendWeek[]> {
-  const sixWeeksAgo = new Date();
-  sixWeeksAgo.setDate(sixWeeksAgo.getDate() - 42);
-  const sixWeeksIso = sixWeeksAgo.toISOString().split('T')[0]!;
+  const snapshot = await loadWarehouseSnapshot(db, tenantId, warehouseId);
+  if (!snapshot) return [];
 
-  const { data, error } = await db
-    .schema('app')
-    .from('kpi_warehouse_daily')
-    .select('day, tracked_skus, sellable_units, low_stock_skus, stockout_skus')
-    .eq('tenant_id', tenantId)
-    .eq('warehouse_id', warehouseId)
-    .gte('day', sixWeeksIso)
-    .order('day', { ascending: true });
-
-  if (error) throw error;
-
-  return bucketWarehouseInventoryTrend(
-    ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
-      day: String(row.day),
-      tracked_skus: Number(row.tracked_skus ?? 0),
-      sellable_units: Number(row.sellable_units ?? 0),
-      low_stock_skus: Number(row.low_stock_skus ?? 0),
-      stockout_skus: Number(row.stockout_skus ?? 0),
-    })),
-  );
+  return bucketWarehouseInventoryTrend([
+    {
+      day: new Date().toISOString().slice(0, 10),
+      tracked_skus: snapshot.tracked_skus,
+      sellable_units: snapshot.sellable_units,
+      low_stock_skus: snapshot.low_stock_skus,
+      stockout_skus: snapshot.stockout_skus,
+    },
+  ]);
 }
 
 async function hydrateInventoryItems(

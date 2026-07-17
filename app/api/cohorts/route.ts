@@ -57,7 +57,7 @@ export async function getCohortsLandingPayload(
   filters: { search?: string; brands?: string[]; limit?: number; offset?: number; includeSummary?: boolean } = {},
 ) {
   const db = supabaseAdmin as any;
-  const period = getSellerLandingPeriodMeta(periodInput);
+  const period = getSellerLandingPeriodMeta('last90');
   const limit = filters.limit ?? PAGE_SIZE.SELLER;
   const offset = filters.offset ?? 0;
   const search = filters.search?.trim() ?? '';

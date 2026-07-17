@@ -247,6 +247,8 @@ export interface BrandDetailResponse {
   buyers: BrandDetailBuyer[];
   catalogs: BrandDetailCatalog[];
   activity: BrandDetailActivity[];
+  performance_cards?: unknown[];
+  detail_v2?: unknown;
 }
 
 function optimisticBrandFromPayload(payload: CreateTenantBrandPayload): TenantBrand {

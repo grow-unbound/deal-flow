@@ -34,6 +34,7 @@ vi.mock('@/hooks/useSellerLandingPeriod', () => ({
 
 vi.mock('@/hooks/useRouteSnapshot', () => ({
   useRouteSnapshot: (...args: unknown[]) => useRouteSnapshotMock(...args),
+  useSeedRouteSearch: () => undefined,
   useRouteScrollRestoration: (...args: unknown[]) => useRouteScrollRestorationMock(...args),
 }));
 

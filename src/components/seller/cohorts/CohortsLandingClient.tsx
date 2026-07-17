@@ -22,7 +22,6 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
-import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useCohortsLanding, type CohortsLandingResponse } from '@/hooks/useCohorts';
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
@@ -98,19 +97,19 @@ function CohortsDataSkeleton() {
 
 function CohortsLandingContent({
   initialData,
-  initialPeriod,
   initialSearch,
 }: {
   initialData: CohortsLandingResponse | null;
-  initialPeriod: SellerLandingPeriod;
   initialSearch?: string;
 }) {
   const router = useRouter();
-  const { period, setPeriod, horizonLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
+  const period: SellerLandingPeriod = 'last90';
+  const horizonLabel = 'Trailing 90 days';
+  const metricSuffix = '90D';
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-cohorts-landing',
-    scopeKey: period,
-    version: 3,
+    scopeKey: 'fixed-90d',
+    version: 4,
     initialState: {
       search: '',
       filters: {
@@ -126,7 +125,7 @@ function CohortsLandingContent({
   const { data, isLoading, isFetching, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = useCohortsLanding(period, { search, brands: filters.brands }, initialData);
   useRouteScrollRestoration({
     storageKey: 'seller-cohorts-landing',
-    scopeKey: period,
+    scopeKey: 'fixed-90d',
     ready: !isLoading,
   });
   const retainedData = useRetainedValue(data);
@@ -211,9 +210,6 @@ function CohortsLandingContent({
         title="Customer Groups"
         subtitle={`${kpis?.total_cohorts ?? 0} buyer groups defined by geo, tier, and brand affinity. Each one gets its own campaigns and price list.`}
         horizon={horizonLabel}
-        period={period}
-        periodOptions={options}
-        onPeriodChange={setPeriod}
         primary="Add a customer group"
         onPrimaryClick={() => router.push('/customer-groups/new')}
       />
@@ -238,7 +234,7 @@ function CohortsLandingContent({
           {
             label: `Combined GMV · ${metricSuffix}`,
             value: formatCompactInr(kpis?.combined_gmv_mtd ?? 0),
-            sub: `${(kpis?.growth_pct ?? 0) >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis?.growth_pct ?? 0)}% vs last ${period}`,
+            sub: `${(kpis?.growth_pct ?? 0) >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis?.growth_pct ?? 0)}% vs prior 90D`,
             tone: 'accent',
           },
           {
@@ -384,7 +380,7 @@ function CohortsLandingContent({
 
 export function CohortsLandingClient({
   initialData,
-  initialPeriod,
+  initialPeriod: _initialPeriod,
   initialSearch,
 }: {
   initialData: CohortsLandingResponse | null;
@@ -393,7 +389,7 @@ export function CohortsLandingClient({
 }) {
   return (
     <FeatureGate flag="COHORTS">
-      <CohortsLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />
+      <CohortsLandingContent initialData={initialData} initialSearch={initialSearch} />
     </FeatureGate>
   );
 }
