@@ -778,17 +778,16 @@ export async function mintSellerSession(
     throw new Error(verifyError?.message ?? 'Failed to exchange recovery token for session');
   }
 
-  // Refresh so the custom_access_token_hook re-runs and embeds tenant_id + role claims
+  // Best effort: refresh re-runs the custom_access_token_hook so seller claims are
+  // embedded directly in the JWT. If Supabase rate-limits refresh, the verified
+  // session still works because our request auth path can fall back to getUser()
+  // plus workspace lookup from the bearer token.
   const { data: refreshData, error: refreshError } = await anonClient.auth.refreshSession({
     refresh_token: verifyData.session.refresh_token,
   });
 
-  if (refreshError || !refreshData.session) {
-    throw new Error(refreshError?.message ?? 'Failed to refresh seller session');
-  }
-
   return {
-    session: refreshData.session,
+    session: refreshError || !refreshData.session ? verifyData.session : refreshData.session,
     user: verifyData.user ?? sellerUser,
   };
 }

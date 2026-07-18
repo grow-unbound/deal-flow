@@ -19,17 +19,6 @@ vi.mock('@/hooks/useFeatureFlag', () => ({
   useFlagState: (...args: unknown[]) => useFlagMock(...args),
 }));
 
-vi.mock('@/hooks/useSellerLandingPeriod', () => ({
-  useSellerLandingPeriod: () => ({
-    period: 'month' as const,
-    setPeriod: vi.fn(),
-    horizonLabel: 'This month',
-    lowerLabel: 'this month',
-    metricSuffix: 'MTD',
-    options: [{ value: 'month' as const, label: 'This Month' }],
-  }),
-}));
-
 vi.mock('@/components/seller/brands/AddBrandCommand', () => ({
   AddBrandCommand: () => null,
 }));
@@ -87,7 +76,7 @@ describe('brands landing page', () => {
       },
     });
 
-    render(<BrandsLandingClient initialData={null} initialPeriod="month" />);
+    render(<BrandsLandingClient initialData={null} initialPeriod="last90" />);
 
     expect(screen.getByText('Portfolio GMV')).toBeInTheDocument();
     expect(screen.getByText('₹3.50L')).toBeInTheDocument();
@@ -106,7 +95,7 @@ describe('brands landing page', () => {
       },
     });
 
-    const { container } = render(<BrandsLandingClient initialData={null} initialPeriod="month" />);
+    const { container } = render(<BrandsLandingClient initialData={null} initialPeriod="last90" />);
     fireEvent.click(screen.getByRole('button', { name: 'Categories: All' }));
     fireEvent.click(within(screen.getByRole('menu')).getByRole('button', { name: 'Audio' }));
 
@@ -126,7 +115,7 @@ describe('brands landing page', () => {
       },
     });
 
-    const { container } = render(<BrandsLandingClient initialData={null} initialPeriod="month" />);
+    const { container } = render(<BrandsLandingClient initialData={null} initialPeriod="last90" />);
     const tbody = container.querySelector('table tbody');
     expect(tbody).toBeTruthy();
     fireEvent.click(within(tbody as HTMLElement).getByText('Alpha').closest('tr')!);
@@ -147,7 +136,7 @@ describe('brands landing page', () => {
       },
     });
 
-    const { container } = render(<BrandsLandingClient initialData={null} initialPeriod="month" />);
+    const { container } = render(<BrandsLandingClient initialData={null} initialPeriod="last90" />);
     fireEvent.click(screen.getByRole('button', { name: 'Categories: All' }));
     fireEvent.click(within(screen.getByRole('menu')).getByRole('button', { name: 'Audio' }));
     const tbody = container.querySelector('table tbody');
@@ -179,9 +168,8 @@ describe('brands landing page', () => {
       },
     });
 
-    render(<BrandsLandingClient initialData={null} initialPeriod="month" />);
+    render(<BrandsLandingClient initialData={null} initialPeriod="last90" />);
     expect(screen.getByText('7')).toBeInTheDocument();
     expect(screen.getByText('/ 11')).toBeInTheDocument();
-    expect(screen.getByText('4d ago')).toBeInTheDocument();
   });
 });

@@ -347,6 +347,38 @@
     background: rgba(0, 0, 0, 0.15);
     border-radius: 9999px;
   }
+
+  .dashboard-vscroll {
+    scrollbar-width: thin;
+    -ms-overflow-style: none;
+    scrollbar-gutter: stable;
+    scrollbar-color: transparent transparent;
+  }
+  .dashboard-vscroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .dashboard-vscroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .dashboard-vscroll::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 9999px;
+  }
+  .dashboard-vscroll--active,
+  .dashboard-vscroll:focus-within {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+  }
+  .dashboard-vscroll--active::-webkit-scrollbar-track,
+  .dashboard-vscroll:focus-within::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .dashboard-vscroll--active::-webkit-scrollbar-thumb,
+  .dashboard-vscroll:focus-within::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 9999px;
+  }
 }
 
 @layer components {

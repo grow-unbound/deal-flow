@@ -23,7 +23,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.metrics-refresh-tick]
-verify_jwt = true
+verify_jwt = false
 
 [functions.integrations-connect]
 verify_jwt = false

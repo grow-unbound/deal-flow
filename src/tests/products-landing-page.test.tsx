@@ -83,7 +83,7 @@ describe('products landing integration', () => {
   it('renders flag-off empty state and does not fetch data when disabled', () => {
     useFlagMock.mockReturnValue(false);
 
-    render(<ProductsLandingClient initialData={null} initialPeriod="month" />);
+    render(<ProductsLandingClient initialData={null} />);
 
     expect(screen.getByText("This feature isn't enabled yet.")).toBeInTheDocument();
     expect(useTenantProductsMock).not.toHaveBeenCalled();
@@ -102,6 +102,10 @@ describe('products landing integration', () => {
           archived_skus: 0,
           out_of_stock: 0,
           low_stock: 0,
+          recently_sold_out_of_stock: 0,
+          products_sold: 2,
+          brand_count: 2,
+          category_count: 1,
           revenue_mtd: 1000,
           revenue_prev_mtd: 500,
           revenue_growth_pct: 100,
@@ -112,7 +116,7 @@ describe('products landing integration', () => {
         ],
         brands: ['Alpha', 'Beta'],
         filters: { groups: productFilterGroups },
-        todays_read: { needs_attention: [], top_performers: [], top_risers: [] },
+        todays_read: { recently_sold_out_of_stock: [], running_low: [], no_sale_90d: [] },
       },
     });
     landingProducts = [
@@ -159,22 +163,22 @@ describe('products landing integration', () => {
       };
     });
 
-    render(<ProductsLandingClient initialData={null} initialPeriod="month" />);
+    render(<ProductsLandingClient initialData={null} />);
 
-    expect(screen.getByText('2 SKUs across 2 brands. 0 out of stock, 0 running low — those are the ones to chase this week.')).toBeInTheDocument();
+    expect(screen.getByText('2 active products across 2 brands and 1 categories.')).toBeInTheDocument();
     expect(screen.getByText('Alpha Water')).toBeInTheDocument();
     expect(screen.getByText('Beta Juice')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Brand: All' }));
     fireEvent.click(screen.getByRole('button', { name: 'Alpha' }));
 
-    expect(screen.getByText('2 SKUs across 2 brands. 0 out of stock, 0 running low — those are the ones to chase this week.')).toBeInTheDocument();
+    expect(screen.getByText('2 active products across 2 brands and 1 categories.')).toBeInTheDocument();
     expect(screen.getByText('Alpha Water')).toBeInTheDocument();
     expect(screen.queryByText('Beta Juice')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Status: All' }));
     fireEvent.click(screen.getByRole('button', { name: 'Inactive' }));
-    expect(useTenantProductsInfiniteMock).toHaveBeenLastCalledWith('month', expect.objectContaining({ status: ['Inactive'] }));
+    expect(useTenantProductsInfiniteMock).toHaveBeenLastCalledWith('last90', expect.objectContaining({ status: ['Inactive'] }));
   });
 
   it('deduplicates repeated products before rendering rows', () => {
@@ -199,7 +203,7 @@ describe('products landing integration', () => {
         ],
         brands: ['Alpha'],
         filters: { groups: [] },
-        todays_read: { needs_attention: [], top_performers: [], top_risers: [] },
+        todays_read: { recently_sold_out_of_stock: [], running_low: [], no_sale_90d: [] },
       },
     });
     useTenantProductsInfiniteMock.mockReturnValue({
@@ -232,7 +236,7 @@ describe('products landing integration', () => {
       isFetchingNextPage: false,
     });
 
-    render(<ProductsLandingClient initialData={null} initialPeriod="month" />);
+    render(<ProductsLandingClient initialData={null} />);
 
     expect(screen.getAllByText('Alpha Water')).toHaveLength(1);
     expect(screen.getByText('1 of 1 products')).toBeInTheDocument();

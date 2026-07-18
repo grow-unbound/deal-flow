@@ -9,6 +9,8 @@ import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
 
 export type LocationStockStatus = 'clear' | 'low_stock' | 'out_of_stock';
 
+export type PrimaryDemandKind = 'orders' | 'estimates' | 'none';
+
 export interface LocationsLandingKpis {
   active_locations: number;
   unpaid_invoice_count: number;
@@ -19,6 +21,9 @@ export interface LocationsLandingKpis {
   total_estimate_count: number;
   top_location_name: string | null;
   top_location_gmv_share_pct: number;
+  linked_warehouse_count: number;
+  open_primary_demand_kind: PrimaryDemandKind;
+  open_primary_demand_value: number;
 }
 
 export interface LocationsLandingRow {
@@ -73,6 +78,8 @@ export interface LocationsLandingResponse {
   nextOffset?: number | null;
   period: string;
   refreshed_at: string;
+  as_of?: string;
+  commercial_horizon_days?: number | null;
 }
 
 export interface LocationsLandingFilters {
@@ -177,11 +184,16 @@ export interface LocationDetailResponse {
     gmv_mtd: number;
     growth_pct: number;
     outstanding_dues: number;
+    overdue_amount: number;
     invoice_count: number;
     unpaid_invoice_count: number;
     total_invoice_count: number;
     open_estimate_count: number;
     total_estimate_count: number;
+    purchasing_customers_90d: number;
+    open_primary_demand_kind: PrimaryDemandKind;
+    open_primary_demand_value: number;
+    open_primary_demand_count: number;
   };
   overview: {
     gmv_trend: LocationDetailGmvWeek[];
@@ -197,6 +209,8 @@ export interface LocationDetailResponse {
     estimates_mtd: number;
     invoices_mtd: number;
   };
+  performance_cards?: unknown[];
+  detail_v2?: unknown;
 }
 
 // ─── Hooks ────────────────────────────────────────────────────────────────────

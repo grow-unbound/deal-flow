@@ -27,6 +27,9 @@ const CreateSalesOrderDraftSchema = z.object({
   from_estimate_id: z.string().uuid().optional(),
 });
 
+const SEE_ALL_LIMIT = PAGE_SIZE.MAX;
+const STOCK_SHORTAGE_CANDIDATE_POOL = 100;
+
 type OrderStatus =
   | 'draft'
   | 'open'
@@ -69,11 +72,22 @@ interface OrderRow {
   order_date: string | null;
   placed_at: string;
   created_at: string;
+  confirmed_at: string | null;
+  dispatched_at: string | null;
 }
 
 interface OrderItemRow {
   order_id: string;
 }
+
+interface OrderShortageItemRow {
+  order_id: string;
+  tenant_product_id: string;
+  qty: number;
+}
+
+const ORDER_COLUMNS =
+  'id, order_number, buyer_id, location_id, status, source, is_buyer_app_order, campaign_id, estimate_id, place_of_supply, placed_by, subtotal, tax_amount, total_amount, order_date, placed_at, created_at, confirmed_at, dispatched_at';
 
 function getInitials(name: string): string {
   return name
@@ -265,7 +279,7 @@ export async function GET(req: NextRequest) {
         db
           .schema('app')
           .from('orders')
-          .select('id, order_number, buyer_id, location_id, status, source, is_buyer_app_order, campaign_id, estimate_id, place_of_supply, placed_by, subtotal, tax_amount, total_amount, order_date, placed_at, created_at')
+          .select(ORDER_COLUMNS)
           .eq('tenant_id', tenantId)
           .is('deleted_at', null) as any,
         claims,
@@ -301,73 +315,171 @@ export async function GET(req: NextRequest) {
       return applyTransactionTableSearch(query, 'order_number', search, searchScope.buyerIds, searchScope.locationIds);
     };
 
-    const buildOrderCalloutQuery = (mode: 'needs_attention' | 'biggest_tickets' | 'in_motion') => {
+    // 'needs_attention' = Orders to confirm (received, ranked by value+age).
+    // 'to_dispatch' = Orders to dispatch (confirmed, oldest-confirmed-first).
+    const buildOrderCalloutQuery = (mode: 'needs_attention' | 'to_dispatch') => {
       let query = applySellerLocationScope(
         db
           .schema('app')
           .from('orders')
-          .select('id, order_number, buyer_id, location_id, status, source, is_buyer_app_order, campaign_id, estimate_id, place_of_supply, placed_by, subtotal, tax_amount, total_amount, order_date, placed_at, created_at')
+          .select(ORDER_COLUMNS)
           .eq('tenant_id', tenantId)
           .is('deleted_at', null) as any,
         claims,
       );
 
-      query = applyOrderDocumentPeriod(query, period.current_start, period.current_end_exclusive);
-
       if (mode === 'needs_attention') {
         return query
           .in('status', ['received'])
-          .order('order_date', { ascending: false, nullsFirst: false })
-          .order('created_at', { ascending: false })
+          .order('total_amount', { ascending: false })
+          .order('order_date', { ascending: true, nullsFirst: true })
           .order('id', { ascending: false })
-          .limit(3);
+          .limit(SEE_ALL_LIMIT);
       }
 
-      if (mode === 'in_motion') {
-        return query
-          .in('status', ['dispatched', 'partially_dispatched'])
-          .order('order_date', { ascending: false, nullsFirst: false })
-          .order('created_at', { ascending: false })
-          .order('id', { ascending: false })
-          .limit(3);
-      }
-
-      return query.order('total_amount', { ascending: false }).order('id', { ascending: false }).limit(3);
+      return query
+        .eq('status', 'confirmed')
+        .order('confirmed_at', { ascending: true, nullsFirst: true })
+        .order('id', { ascending: false })
+        .limit(SEE_ALL_LIMIT);
     };
 
-    const buildOrdersKpiQuery = (start: string, endExclusive: string) => {
-      if (aggregateScope === 'location' && scopedLocationIds.length === 0) {
-        return Promise.resolve({ data: [], error: null });
+    // Stock shortage: candidate pool of open orders (received/confirmed), flagged
+    // when any line's ordered qty exceeds current sellable availability at the
+    // order's location.
+    const loadStockShortageOrders = async (): Promise<OrderRow[]> => {
+      const candidatesQuery = applySellerLocationScope(
+        db
+          .schema('app')
+          .from('orders')
+          .select(ORDER_COLUMNS)
+          .eq('tenant_id', tenantId)
+          .is('deleted_at', null)
+          .in('status', ['received', 'confirmed']) as any,
+        claims,
+      );
+      const candidatesRes = await candidatesQuery
+        .order('total_amount', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(STOCK_SHORTAGE_CANDIDATE_POOL);
+
+      if (candidatesRes.error) {
+        console.error('[GET /api/tenant/orders] stock shortage candidates error:', candidatesRes.error);
+        return [];
       }
 
-      let query = db
+      const candidates = (candidatesRes.data ?? []) as OrderRow[];
+      if (candidates.length === 0) return [];
+
+      const candidateIds = candidates.map((order) => order.id);
+      const itemsRes = await db
         .schema('app')
-        .from('kpi_orders_daily')
-        .select('orders_count, buyers_count, gmv, confirmed_count, received_count, delivered_count')
-        .eq('tenant_id', tenantId)
-        .eq('scope', aggregateScope)
-        .gte('day', start.slice(0, 10))
-        .lt('day', endExclusive.slice(0, 10));
+        .from('order_items')
+        .select('order_id, tenant_product_id, qty')
+        .in('order_id', candidateIds)
+        .is('deleted_at', null);
 
-      if (aggregateScope === 'location') {
-        query = query.in('location_id', scopedLocationIds);
+      if (itemsRes.error) {
+        console.error('[GET /api/tenant/orders] stock shortage items error:', itemsRes.error);
+        return [];
       }
 
-      return query;
+      const shortageItems = (itemsRes.data ?? []) as OrderShortageItemRow[];
+      const itemsByOrder = new Map<string, OrderShortageItemRow[]>();
+      for (const item of shortageItems) {
+        const list = itemsByOrder.get(item.order_id) ?? [];
+        list.push(item);
+        itemsByOrder.set(item.order_id, list);
+      }
+
+      const locationIds = Array.from(new Set(candidates.map((order) => order.location_id).filter((value): value is string => Boolean(value))));
+      const availabilityByLocation = new Map<string, Map<string, number>>();
+      await Promise.all(
+        locationIds.map(async (locationId) => {
+          const productIds = Array.from(
+            new Set(
+              candidates
+                .filter((order) => order.location_id === locationId)
+                .flatMap((order) => (itemsByOrder.get(order.id) ?? []).map((item) => item.tenant_product_id)),
+            ),
+          );
+          availabilityByLocation.set(locationId, await loadInventoryAvailabilityMap(db, productIds, locationId));
+        }),
+      );
+
+      const flagged = candidates.filter((order) => {
+        if (!order.location_id) return false;
+        const availability = availabilityByLocation.get(order.location_id);
+        if (!availability) return false;
+        return (itemsByOrder.get(order.id) ?? []).some((item) => Number(item.qty) > (availability.get(item.tenant_product_id) ?? 0));
+      });
+
+      return flagged
+        .sort((a, b) => Number(b.total_amount) - Number(a.total_amount))
+        .slice(0, SEE_ALL_LIMIT);
     };
 
-    const [ordersPageRes, ordersTotalRes, kpiCurrentRes, kpiPrevRes, needsAttentionRes, biggestTicketsRes, inMotionRes] = await Promise.all([
+    const landingMetricsPromise = db.schema('app').rpc('metrics_v2_transaction_landing', {
+      p_tenant_id: tenantId,
+      p_kind: 'orders',
+      p_location_ids: aggregateScope === 'location' ? scopedLocationIds : null,
+    });
+
+    const waitingConfirmationAggPromise = applySellerLocationScope(
+      db
+        .schema('app')
+        .from('orders')
+        .select('total_amount', { count: 'exact' })
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .in('status', ['received', 'draft', 'open']) as any,
+      claims,
+    );
+
+    const waitingDispatchAggPromise = applySellerLocationScope(
+      db
+        .schema('app')
+        .from('orders')
+        .select('total_amount', { count: 'exact' })
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .eq('status', 'confirmed') as any,
+      claims,
+    );
+
+    const [
+      ordersPageRes,
+      ordersTotalRes,
+      landingMetricsRes,
+      needsAttentionRes,
+      toDispatchRes,
+      stockShortageOrders,
+      waitingConfirmationAggRes,
+      waitingDispatchAggRes,
+    ] = await Promise.all([
       buildOrdersPageQuery(),
       buildOrdersTotalQuery(),
-      buildOrdersKpiQuery(period.current_start, period.current_end_exclusive),
-      buildOrdersKpiQuery(period.previous_start, period.previous_end_exclusive),
+      landingMetricsPromise,
       buildOrderCalloutQuery('needs_attention'),
-      buildOrderCalloutQuery('biggest_tickets'),
-      buildOrderCalloutQuery('in_motion'),
+      buildOrderCalloutQuery('to_dispatch'),
+      loadStockShortageOrders(),
+      waitingConfirmationAggPromise,
+      waitingDispatchAggPromise,
     ]);
 
-    if (ordersPageRes.error || ordersTotalRes.error || kpiCurrentRes.error || kpiPrevRes.error || needsAttentionRes.error || biggestTicketsRes.error || inMotionRes.error) {
-      console.error('[GET /api/tenant/orders] query error:', ordersPageRes.error || ordersTotalRes.error || kpiCurrentRes.error || kpiPrevRes.error || needsAttentionRes.error || biggestTicketsRes.error || inMotionRes.error);
+    if (
+      ordersPageRes.error ||
+      ordersTotalRes.error ||
+      landingMetricsRes.error ||
+      needsAttentionRes.error ||
+      toDispatchRes.error ||
+      waitingConfirmationAggRes.error ||
+      waitingDispatchAggRes.error
+    ) {
+      console.error(
+        '[GET /api/tenant/orders] query error:',
+        ordersPageRes.error || ordersTotalRes.error || landingMetricsRes.error || needsAttentionRes.error || toDispatchRes.error || waitingConfirmationAggRes.error || waitingDispatchAggRes.error,
+      );
       return timedJson({ error: 'Failed to fetch orders' }, { status: 500 });
     }
 
@@ -380,8 +492,8 @@ export async function GET(req: NextRequest) {
       : null;
     const calloutOrders = [
       ...((needsAttentionRes.data ?? []) as OrderRow[]),
-      ...((biggestTicketsRes.data ?? []) as OrderRow[]),
-      ...((inMotionRes.data ?? []) as OrderRow[]),
+      ...((toDispatchRes.data ?? []) as OrderRow[]),
+      ...stockShortageOrders,
     ];
     const uniqueOrders = Array.from(new Map([...pageOrders, ...calloutOrders].map((order) => [order.id, order])).values());
 
@@ -452,13 +564,7 @@ export async function GET(req: NextRequest) {
 
     const locationNameById = new Map(availableLocations.map((location) => [location.id, location.name]));
 
-    const buyersMtd = sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'buyers_count');
-    const ordersMtd = sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'orders_count');
-    const ordersPrevMtd = sumMetric((kpiPrevRes.data ?? []) as Array<Record<string, unknown>>, 'orders_count');
-    const gmvMtd = sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'gmv');
-    const gmvPrevMtd = sumMetric((kpiPrevRes.data ?? []) as Array<Record<string, unknown>>, 'gmv');
-    const ordersGrowthPct = ordersPrevMtd > 0 ? Math.round(((ordersMtd - ordersPrevMtd) / ordersPrevMtd) * 100) : 0;
-    const aov = ordersMtd > 0 ? gmvMtd / ordersMtd : 0;
+    const landingKpis = ((landingMetricsRes.data as { kpis?: Record<string, number> } | null)?.kpis ?? {}) as Record<string, number>;
 
     const toLandingRow = (order: OrderRow, index: number) => {
       const buyer = buyerById.get(order.buyer_id);
@@ -512,12 +618,14 @@ export async function GET(req: NextRequest) {
           filter_chip: meta.filterChip,
         },
         placed_at: getOrderDocumentTimestamp(order),
+        confirmed_at: order.confirmed_at,
+        dispatched_at: order.dispatched_at,
       };
     };
     const rows = pageOrders.map((order, index) => toLandingRow(order, index));
     const needsAttention = ((needsAttentionRes.data ?? []) as OrderRow[]).map((order, index) => toLandingRow(order, index));
-    const biggestTickets = ((biggestTicketsRes.data ?? []) as OrderRow[]).map((order, index) => toLandingRow(order, index));
-    const inMotion = ((inMotionRes.data ?? []) as OrderRow[]).map((order, index) => toLandingRow(order, index));
+    const toDispatch = ((toDispatchRes.data ?? []) as OrderRow[]).map((order, index) => toLandingRow(order, index));
+    const stockShortage = stockShortageOrders.map((order, index) => toLandingRow(order, index));
     const filters: LandingFilterMeta = {
       groups: [
         {
@@ -541,21 +649,29 @@ export async function GET(req: NextRequest) {
     const payload = {
       period,
       kpis: {
-        orders_mtd: ordersMtd,
-        orders_prev_mtd: ordersPrevMtd,
-        orders_growth_pct: ordersGrowthPct,
-        gmv_mtd: gmvMtd,
-        gmv_prev_mtd: gmvPrevMtd,
-        aov,
-        pending_dispatch_count: sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'confirmed_count'),
-        received_count: sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'received_count'),
-        delivered_count: sumMetric((kpiCurrentRes.data ?? []) as Array<Record<string, unknown>>, 'delivered_count'),
-        buyers_mtd: buyersMtd,
+        orders_mtd: landingKpis.orders_mtd ?? 0,
+        orders_prev_mtd: landingKpis.orders_prev_mtd ?? 0,
+        orders_growth_pct: landingKpis.orders_growth_pct ?? 0,
+        gmv_mtd: landingKpis.gmv_mtd ?? 0,
+        gmv_prev_mtd: landingKpis.gmv_prev_mtd ?? 0,
+        aov: landingKpis.aov ?? 0,
+        pending_dispatch_count: landingKpis.pending_dispatch_count ?? 0,
+        received_count: landingKpis.received_count ?? 0,
+        delivered_count: landingKpis.delivered_count ?? 0,
+        buyers_mtd: landingKpis.buyers_mtd ?? 0,
+        open_value: landingKpis.open_value ?? 0,
+        open_total: landingKpis.open_total ?? 0,
+      },
+      pulse_aggregates: {
+        waiting_confirmation_count: waitingConfirmationAggRes.count ?? 0,
+        waiting_confirmation_value: sumMetric((waitingConfirmationAggRes.data ?? []) as Array<Record<string, unknown>>, 'total_amount'),
+        waiting_dispatch_count: waitingDispatchAggRes.count ?? 0,
+        waiting_dispatch_value: sumMetric((waitingDispatchAggRes.data ?? []) as Array<Record<string, unknown>>, 'total_amount'),
       },
       todays_read: {
         needs_attention: needsAttention,
-        biggest_tickets: biggestTickets,
-        in_motion: inMotion,
+        to_dispatch: toDispatch,
+        stock_shortage: stockShortage,
       },
       orders: rows,
       filters,

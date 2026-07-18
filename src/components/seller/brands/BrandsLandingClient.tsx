@@ -22,7 +22,6 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
-import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useTenantBrands, type TenantBrand, type TenantBrandsResponse } from '@/hooks/useBrands';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { formatCompactInr } from '@/lib/utils';
@@ -155,11 +154,14 @@ function BrandLandingContent({
   initialSearch?: string;
 }) {
   const router = useRouter();
-  const { period, setPeriod, horizonLabel, lowerLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
+  const period: SellerLandingPeriod = 'last90';
+  const horizonLabel = 'Trailing 90 days';
+  const lowerLabel = 'in the last 90 days';
+  const metricSuffix = '90D';
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-brands-landing',
-    scopeKey: period,
-    version: 3,
+    scopeKey: 'fixed-90d',
+    version: 4,
     initialState: {
       search: '',
       filters: {
@@ -179,7 +181,7 @@ function BrandLandingContent({
   const landingData = data ?? retainedData;
   useRouteScrollRestoration({
     storageKey: 'seller-brands-landing',
-    scopeKey: period,
+    scopeKey: 'fixed-90d',
     ready: !isLoading,
   });
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -248,7 +250,13 @@ function BrandLandingContent({
 
   const attention = useMemo(() => summaryData?.todays_read?.needs_attention ?? [], [summaryData?.todays_read?.needs_attention]);
   const topPerformers = useMemo(() => summaryData?.todays_read?.top_performers ?? [], [summaryData?.todays_read?.top_performers]);
-  const topRisers = useMemo(() => summaryData?.todays_read?.top_risers ?? [], [summaryData?.todays_read?.top_risers]);
+  // Doc-starred Action is "Brands losing meaningful sales", not a growth leaderboard —
+  // derived client-side from the already-fetched brand rows (no backend list for
+  // decliners exists), meaningful decline defined as growth <= -10%.
+  const decliningBrands = useMemo(
+    () => [...brands].filter((brand) => brand.growth <= -10).sort((a, b) => a.growth - b.growth).slice(0, 10),
+    [brands],
+  );
   const catalogFresh =
     summaryData?.kpis?.catalog_freshness_count ?? updatedBrands.filter((brand) => brand.daysSinceCatalog <= 14).length;
   const growthVsPrior = useMemo(() => {
@@ -259,11 +267,17 @@ function BrandLandingContent({
   const activeBuyers = summaryData?.kpis?.buyers_with_orders_mtd ?? 0;
   const totalBuyers = summaryData?.kpis?.total_buyers ?? 0;
 
-  const attentionReason = (alerts: string[]) => {
+  const attentionReason = (alerts: string[] | undefined) => {
+    const list = alerts ?? [];
     const reasons: string[] = [];
-    if (alerts.includes('low_stock')) reasons.push('Low stock SKUs (qty <= reorder point)');
-    if (alerts.includes('gmv_decline')) reasons.push('GMV is below previous month-to-date');
-    if (alerts.includes('not_in_catalog_mtd')) reasons.push(`Not published in any catalog ${lowerLabel}`);
+    if (list.includes('low_stock')) reasons.push('Low stock SKUs (qty <= reorder point)');
+    if (list.includes('gmv_decline')) reasons.push('GMV is below previous month-to-date');
+    if (list.includes('not_in_catalog_mtd')) reasons.push(`Not published in any catalog ${lowerLabel}`);
+    // get_seller_brand_landing_summary's needs_attention rows are sourced from the
+    // low_stock/out_of_stock join only (id, name) — no per-brand alert breakdown is
+    // returned, so `alerts` is always empty at runtime. Fall back to an honest static
+    // reason instead of rendering a blank line.
+    if (reasons.length === 0) reasons.push('Low stock or out-of-stock SKUs present');
     return reasons.join(' · ');
   };
   const freshnessHelp = () => {
@@ -292,11 +306,8 @@ function BrandLandingContent({
       <PageHeader
         eyebrow="Portfolio"
         title="Brands"
-        subtitle={`${summaryData?.kpis?.brands_carried ?? updatedBrands.length} brand principals carried across ${totalBuyers} buyers ${lowerLabel}. This is your portfolio at a glance.`}
+        subtitle={`${summaryData?.kpis?.brands_carried ?? updatedBrands.length} active brands · ${summaryData?.branded_product_count ?? 0} of ${summaryData?.active_product_count ?? 0} active products branded.`}
         horizon={horizonLabel}
-        period={period}
-        periodOptions={options}
-        onPeriodChange={setPeriod}
         primary="Add a brand"
         onPrimaryClick={() => setAddBrandOpen(true)}
       />
@@ -310,24 +321,27 @@ function BrandLandingContent({
       <InsightStrip4
         tiles={[
           {
-            label: 'Portfolio GMV',
+            label: 'Invoiced sales 90D',
             value: formatCompactInr(portfolioGmv),
-            sub: `${growthVsPrior >= 0 ? '↑ +' : '↓ '}${Math.abs(growthVsPrior)}% vs last month`,
+            sub: `${growthVsPrior >= 0 ? '↑ +' : '↓ '}${Math.abs(growthVsPrior)}% vs prior 90D`,
             tone: 'accent',
           },
           {
-            label: 'Brands carried',
+            label: 'Active brands',
             value: `${summaryData?.kpis?.brands_carried ?? updatedBrands.length}`,
-            sub: `${activeBuyers} of ${totalBuyers} buyers active`,
+            sub: `${activeBuyers} customers bought across the portfolio`,
           },
           {
-            label: 'Need attention',
+            label: 'Brands with stock risk',
             value: `${summaryData?.kpis?.need_attention_count ?? attention.length}`,
-            sub: `${attention.reduce((sum, brand) => sum + brand.alerts.length, 0)} alerts open`,
+            // get_seller_brand_landing_summary's needs_attention rows carry no
+            // per-alert breakdown (see attentionReason above), so this can't sum
+            // "alerts open" — that field is always undefined at runtime.
+            sub: 'have low or out-of-stock SKUs',
             tone: 'warn',
           },
           {
-            label: 'Campaign freshness',
+            label: 'Recently active in campaigns',
             value: `${catalogFresh}`,
             sub: freshnessHelp(),
           },
@@ -337,22 +351,32 @@ function BrandLandingContent({
       <V3CalloutPanel
         items={[
           {
+            id: 'brand_stock_risk',
             kind: 'risk',
-            eyebrow: 'Needs attention',
+            eyebrow: 'Brand stock risk',
             hint: `${attention.length} brands`,
-            rows: attention.slice(0, 2).map((brand, index) => ({
+            getHref: (row) => `/brands/${row.id}`,
+            // Pass the full sorted list — V3CalloutPanel slices to 2 for the preview
+            // itself, and its "see all" sheet renders straight from these rows with
+            // no independent data source, so pre-slicing here would silently cap
+            // "see all" at 2 instead of showing every brand needing attention.
+            rows: attention.map((brand, index) => ({
+              id: String(brand.id),
               initials: getInitials(brand.name),
               hue: index % 3 === 0 ? 'teal' : index % 3 === 1 ? 'ember' : 'cream',
               name: brand.name,
               reason: attentionReason(brand.alerts),
-              trailing: brand.growth_pct > 0 ? `↑ +${brand.growth_pct}%` : brand.growth_pct < 0 ? `↓ ${Math.abs(brand.growth_pct)}%` : '· flat',
+              trailing: null,
             })),
           },
           {
+            id: 'brands_driving_sales',
             kind: 'info',
-            eyebrow: 'Top performers',
-            hint: 'by GMV',
+            eyebrow: 'Brands driving sales',
+            hint: 'by invoiced sales',
+            getHref: (row) => `/brands/${row.id}`,
             rows: topPerformers.map((brand, index) => ({
+              id: String(brand.id),
               initials: getInitials(brand.name),
               hue: index % 3 === 0 ? 'teal' : index % 3 === 1 ? 'ember' : 'cream',
               name: brand.name,
@@ -361,15 +385,20 @@ function BrandLandingContent({
             })),
           },
           {
-            kind: 'opportunity',
-            eyebrow: 'Top risers',
-            hint: 'fastest growth',
-            rows: topRisers.map((brand, index) => ({
-              initials: getInitials(brand.name),
+            id: 'brands_losing_sales',
+            kind: 'risk',
+            eyebrow: 'Brands losing meaningful sales',
+            // Derived from already-fetched brand rows, not a tenant-wide backend
+            // aggregate — honest about undercounting until every page is loaded.
+            hint: hasNextPage ? `${decliningBrands.length}+ brands` : `${decliningBrands.length} brands`,
+            getHref: (row) => `/brands/${row.id}`,
+            rows: decliningBrands.map((brand, index) => ({
+              id: String(brand.id),
+              initials: brand.initials,
               hue: index % 3 === 0 ? 'teal' : index % 3 === 1 ? 'ember' : 'cream',
               name: brand.name,
-              reason: `from ${formatCompactInr(brand.gmv_prev_mtd)} → ${formatCompactInr(brand.gmv_mtd)} ${lowerLabel}`,
-              trailing: brand.growth_pct > 0 ? `↑ +${brand.growth_pct}%` : brand.growth_pct < 0 ? `↓ ${Math.abs(brand.growth_pct)}%` : '· flat',
+              reason: `${formatCompactInr(brand.gmv)} invoiced ${lowerLabel}`,
+              trailing: `↓ ${Math.abs(brand.growth)}%`,
             })),
           },
         ]}
@@ -438,11 +467,11 @@ function BrandLandingContent({
         }
         columns={[
           { label: 'Brand', minWidth: 320, maxWidth: 420, className: 'px-5' },
-          { label: `GMV · ${metricSuffix}`, align: 'right', minWidth: 140, maxWidth: 180, className: 'px-5' },
-          { label: 'Growth', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
+          { label: `Sales · ${metricSuffix}`, align: 'right', minWidth: 140, maxWidth: 180, className: 'px-5' },
+          { label: 'Trend', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
           { label: 'Share of portfolio', align: 'right', minWidth: 160, maxWidth: 200, className: 'px-5' },
-          { label: 'Active buyers', align: 'right', minWidth: 150, maxWidth: 190, className: 'px-5' },
-          { label: 'Campaign', minWidth: 220, maxWidth: 280, className: 'px-5' },
+          { label: 'Customers who purchased', align: 'right', minWidth: 150, maxWidth: 190, className: 'px-5' },
+          { label: 'Recent campaign', minWidth: 220, maxWidth: 280, className: 'px-5' },
           { width: 40, className: 'px-4' },
         ]}
         tableMinWidth={1400}

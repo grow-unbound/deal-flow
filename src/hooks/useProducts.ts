@@ -67,6 +67,10 @@ export interface ProductsKpis {
   archived_skus: number;
   out_of_stock: number;
   low_stock: number;
+  recently_sold_out_of_stock: number;
+  products_sold: number;
+  brand_count: number;
+  category_count: number;
   units_mtd?: number;
   revenue_mtd: number;
   revenue_prev_mtd: number;
@@ -76,12 +80,12 @@ export interface ProductsKpis {
 export interface ProductsTodaysReadItem {
   id: string;
   name: string;
+  sku: string;
   brand: string;
   brand_initials: string;
   brand_hue: 'teal' | 'ember' | 'cream';
   on_hand: number;
   days_cover: number | null;
-  growth_pct: number;
   units_mtd: number;
   gmv_mtd: number;
   status: {
@@ -164,6 +168,8 @@ export interface ProductDetailResponse {
       cost_price: number | null;
       margin_pct: number | null;
     };
+    performance_cards?: unknown[];
+    detail_v2?: unknown;
     pricing: Array<{
       item_id: string;
       price_list_id: string;
@@ -196,9 +202,9 @@ export interface TenantProductsResponse {
   filters?: LandingFilterMeta;
   kpis?: ProductsKpis;
   todays_read?: {
-    needs_attention: ProductsTodaysReadItem[];
-    top_performers: ProductsTodaysReadItem[];
-    top_risers: ProductsTodaysReadItem[];
+    recently_sold_out_of_stock: ProductsTodaysReadItem[];
+    running_low: ProductsTodaysReadItem[];
+    no_sale_90d: ProductsTodaysReadItem[];
   };
 }
 

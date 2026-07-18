@@ -5,7 +5,7 @@ import { PencilIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { DetailHeader, DetailTabs, MetaStrip4 } from '@/components/seller/detail';
+import { DetailHeader, DetailTabs, MetricGrid } from '@/components/seller/detail';
 import { PageWrap } from '@/components/seller/layout';
 import { WarehouseFormSheet } from '@/components/seller/warehouses/WarehouseFormSheet';
 import { WarehouseDetailsTab } from './WarehouseDetailsTab';
@@ -119,10 +119,12 @@ export function WarehouseDetailPage({ id }: { id: string }) {
         }
       />
 
-      <MetaStrip4
+      <MetricGrid
+        className="mt-6"
+        showSupportingText
         tiles={[
           {
-            label: 'Tracked SKUs',
+            label: 'Products in stock',
             value: `${data.meta_strip.tracked_skus}`,
             sub: `${data.details.stockout_skus} stockout SKUs`,
           },
@@ -132,7 +134,7 @@ export function WarehouseDetailPage({ id }: { id: string }) {
             sub: 'available to fulfill',
           },
           {
-            label: 'Low-stock + stockout',
+            label: 'Stock risk SKUs',
             value: `${data.meta_strip.low_stock_skus}`,
             sub: 'reorder-triggered exposure',
           },
@@ -155,7 +157,9 @@ export function WarehouseDetailPage({ id }: { id: string }) {
       />
 
       {tab === 'details' ? <WarehouseDetailsTab data={data} /> : null}
-      {tab === 'performance' ? <WarehousePerformanceTab data={data.performance} /> : null}
+      {tab === 'performance' ? (
+        <WarehousePerformanceTab data={data.performance} performanceCards={data.performance_cards} />
+      ) : null}
       {tab === 'stock' ? (
         <WarehouseStockTab warehouseId={id} />
       ) : null}

@@ -1,10 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 
 interface UseInfiniteScrollOptions {
   hasMore: boolean;
   isLoading?: boolean;
   rootMargin?: string;
   threshold?: number;
+  rootRef?: RefObject<Element | null>;
   onLoadMore: () => void;
 }
 
@@ -20,6 +21,7 @@ export function useInfiniteScroll({
   isLoading = false,
   rootMargin = '260px',
   threshold = 0,
+  rootRef,
   onLoadMore,
 }: UseInfiniteScrollOptions) {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -37,12 +39,12 @@ export function useInfiniteScroll({
           onLoadMoreRef.current();
         }
       },
-      { root: null, rootMargin, threshold },
+      { root: rootRef?.current ?? null, rootMargin, threshold },
     );
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMore, isLoading, rootMargin, threshold]);
+  }, [hasMore, isLoading, rootMargin, threshold, rootRef]);
 
   return { sentinelRef };
 }

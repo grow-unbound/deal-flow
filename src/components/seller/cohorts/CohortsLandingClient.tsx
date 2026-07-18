@@ -22,7 +22,6 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
-import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useCohortsLanding, type CohortsLandingResponse } from '@/hooks/useCohorts';
 import { formatCompactInr } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
@@ -98,19 +97,19 @@ function CohortsDataSkeleton() {
 
 function CohortsLandingContent({
   initialData,
-  initialPeriod,
   initialSearch,
 }: {
   initialData: CohortsLandingResponse | null;
-  initialPeriod: SellerLandingPeriod;
   initialSearch?: string;
 }) {
   const router = useRouter();
-  const { period, setPeriod, horizonLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
+  const period: SellerLandingPeriod = 'last90';
+  const horizonLabel = 'Trailing 90 days';
+  const metricSuffix = '90D';
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-cohorts-landing',
-    scopeKey: period,
-    version: 3,
+    scopeKey: 'fixed-90d',
+    version: 4,
     initialState: {
       search: '',
       filters: {
@@ -126,7 +125,7 @@ function CohortsLandingContent({
   const { data, isLoading, isFetching, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = useCohortsLanding(period, { search, brands: filters.brands }, initialData);
   useRouteScrollRestoration({
     storageKey: 'seller-cohorts-landing',
-    scopeKey: period,
+    scopeKey: 'fixed-90d',
     ready: !isLoading,
   });
   const retainedData = useRetainedValue(data);
@@ -209,11 +208,8 @@ function CohortsLandingContent({
       <PageHeader
         eyebrow="Segmentation"
         title="Customer Groups"
-        subtitle={`${kpis?.total_cohorts ?? 0} buyer groups defined by geo, tier, and brand affinity. Each one gets its own campaigns and price list.`}
+        subtitle={`${kpis?.total_cohorts ?? 0} customer groups · ${kpis?.covered_members ?? 0} of ${kpis?.total_buyers ?? 0} active customers assigned.`}
         horizon={horizonLabel}
-        period={period}
-        periodOptions={options}
-        onPeriodChange={setPeriod}
         primary="Add a customer group"
         onPrimaryClick={() => router.push('/customer-groups/new')}
       />
@@ -231,26 +227,20 @@ function CohortsLandingContent({
       <InsightStrip4
         tiles={[
           {
-            label: 'Customer Groups',
-            value: `${kpis?.total_cohorts ?? 0}`,
-            sub: `covering ${kpis?.covered_members ?? 0} of ${kpis?.total_buyers ?? 0} buyers`,
+            label: 'Customers assigned to a Group',
+            value: `${kpis?.covered_members ?? 0}`,
+            sub: `${kpis?.total_buyers ? Math.round(((kpis.covered_members ?? 0) / kpis.total_buyers) * 100) : 0}% of ${kpis?.total_buyers ?? 0} customers`,
           },
           {
-            label: `Combined GMV · ${metricSuffix}`,
-            value: formatCompactInr(kpis?.combined_gmv_mtd ?? 0),
-            sub: `${(kpis?.growth_pct ?? 0) >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis?.growth_pct ?? 0)}% vs last ${period}`,
-            tone: 'accent',
-          },
-          {
-            label: 'Avg conversion',
-            value: `${(kpis?.avg_conversion_pct ?? 0).toFixed(1)}%`,
-            sub: 'campaign → order',
-          },
-          {
-            label: 'Uncategorised',
-            value: `${kpis?.uncategorised_buyers ?? 0} buyers`,
-            sub: 'not in any cohort',
+            label: 'Valuable customers in no Group',
+            value: `${kpis?.uncategorised_buyers ?? 0}`,
+            sub: `90D invoiced sales — NEEDS BACKEND`,
             tone: 'warn',
+          },
+          {
+            label: 'Grouped customers who purchased',
+            value: `${(kpis?.avg_conversion_pct ?? 0).toFixed(1)}%`,
+            sub: 'Average purchase rate across groups',
           },
         ]}
       />
@@ -258,32 +248,35 @@ function CohortsLandingContent({
       <V3CalloutPanel
         items={[
           {
+            id: 'low_conversion',
             kind: 'risk',
-            eyebrow: 'Low conversion',
+            eyebrow: 'Groups needing attention',
             hint: `${landingData.todays_read.low_conversion.length}`,
             rows: landingData.todays_read.low_conversion.map((row, index) => ({
               initials: getInitials(row.name),
               hue: getHue(index),
               name: row.name,
-              reason: `${row.conversion_pct.toFixed(1)}% conversion · ${row.active_members} of ${row.total_members} active`,
+              reason: `${row.conversion_pct.toFixed(1)}% response · ${row.active_members} of ${row.total_members} purchased`,
               trailing: `${row.conversion_pct.toFixed(1)}%`,
             })),
           },
           {
+            id: 'top_performers',
             kind: 'info',
-            eyebrow: 'Top performers',
-            hint: 'by GMV',
+            eyebrow: 'Groups driving sales',
+            hint: 'by sales',
             rows: landingData.todays_read.top_performers.map((row, index) => ({
               initials: getInitials(row.name),
               hue: getHue(index),
               name: row.name,
-              reason: `${row.total_members} buyers · AOV ${formatCompactInr(row.aov)}`,
+              reason: `${row.total_members} customers · avg ticket ${formatCompactInr(row.aov)}`,
               trailing: formatCompactInr(row.gmv_mtd),
             })),
           },
           {
+            id: 'top_risers',
             kind: 'opportunity',
-            eyebrow: 'Top risers',
+            eyebrow: 'Groups gaining traction',
             hint: 'fastest growth',
             rows: landingData.todays_read.top_risers.map((row, index) => ({
               initials: getInitials(row.name),
@@ -334,9 +327,9 @@ function CohortsLandingContent({
             { label: 'Customer group', minWidth: 280, maxWidth: 360, className: 'px-5' },
             { label: 'Type', minWidth: 160, maxWidth: 180, className: 'px-5' },
             { label: 'Allowed brands', minWidth: 220, maxWidth: 340, className: 'px-5' },
-            { label: 'Members', align: 'right', minWidth: 140, maxWidth: 180, className: 'px-5' },
-            { label: `GMV · ${metricSuffix}`, align: 'right', minWidth: 140, maxWidth: 160, className: 'px-5' },
-            { label: 'Growth', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
+            { label: 'Members who purchased', align: 'right', minWidth: 140, maxWidth: 180, className: 'px-5' },
+            { label: `Sales · ${metricSuffix}`, align: 'right', minWidth: 140, maxWidth: 160, className: 'px-5' },
+            { label: 'Trend', align: 'right', minWidth: 120, maxWidth: 140, className: 'px-5' },
             { label: 'Status', minWidth: 140, maxWidth: 180, className: 'px-5' },
             { width: 40, className: 'px-4' },
           ]}
@@ -384,7 +377,7 @@ function CohortsLandingContent({
 
 export function CohortsLandingClient({
   initialData,
-  initialPeriod,
+  initialPeriod: _initialPeriod,
   initialSearch,
 }: {
   initialData: CohortsLandingResponse | null;
@@ -393,7 +386,7 @@ export function CohortsLandingClient({
 }) {
   return (
     <FeatureGate flag="COHORTS">
-      <CohortsLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />
+      <CohortsLandingContent initialData={initialData} initialSearch={initialSearch} />
     </FeatureGate>
   );
 }

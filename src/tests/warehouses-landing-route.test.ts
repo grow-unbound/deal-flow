@@ -117,7 +117,7 @@ describe('GET /api/tenant/warehouses/landing', () => {
       ],
     };
 
-    dbResponses['app.warehouses_snapshot'] = {
+    dbResponses['app.rpc.get_seller_warehouse_landing_row_metrics_v2'] = {
       data: [
         {
           warehouse_id: 'wh-1',
@@ -139,13 +139,13 @@ describe('GET /api/tenant/warehouses/landing', () => {
         },
       ],
     };
-    dbResponses['app.rpc.search_seller_warehouse_landing_ids'] = {
+    dbResponses['app.rpc.search_seller_warehouse_landing_ids_v2'] = {
       data: [
         { id: 'wh-1', total_count: 2 },
         { id: 'wh-2', total_count: 2 },
       ],
     };
-    dbResponses['app.rpc.get_seller_warehouses_landing_summary'] = {
+    dbResponses['app.rpc.get_seller_warehouses_landing_summary_v2'] = {
       data: {
         kpis: {
           active_warehouses: 2,
@@ -176,7 +176,7 @@ describe('GET /api/tenant/warehouses/landing', () => {
   });
 
   it('keeps KPI totals tenant-wide when the row limit truncates visible warehouses', async () => {
-    dbResponses['app.rpc.search_seller_warehouse_landing_ids'] = {
+    dbResponses['app.rpc.search_seller_warehouse_landing_ids_v2'] = {
       data: [{ id: 'wh-1', total_count: 2 }],
     };
     const response = await GET(new NextRequest('http://localhost/api/tenant/warehouses/landing?limit=1'));
@@ -188,18 +188,21 @@ describe('GET /api/tenant/warehouses/landing', () => {
     expect(body.kpis.low_stock_warehouses).toBe(2);
     expect(body.warehouses).toHaveLength(1);
     expect(body.callouts.stock_attention).toHaveLength(2);
-    expect(rpcCalls).toContainEqual(['get_seller_warehouses_landing_summary', {
+    expect(rpcCalls).toContainEqual(['get_seller_warehouses_landing_summary_v2', {
       p_tenant_id: 'tenant-1',
       p_location_ids: null,
     }]);
-    expect(queriesByKey['app.warehouses_snapshot']?.[0]?.in).toHaveBeenCalledWith('warehouse_id', ['wh-1']);
+    expect(rpcCalls).toContainEqual(['get_seller_warehouse_landing_row_metrics_v2', {
+      p_tenant_id: 'tenant-1',
+      p_warehouse_ids: ['wh-1'],
+    }]);
   });
 
   it('pushes search and stock filtering into bounded SQL queries', async () => {
     const response = await GET(new NextRequest('http://localhost/api/tenant/warehouses/landing?search=north&stock=Low+Stock&limit=25'));
 
     expect(response.status).toBe(200);
-    expect(rpcCalls).toContainEqual(['search_seller_warehouse_landing_ids', expect.objectContaining({
+    expect(rpcCalls).toContainEqual(['search_seller_warehouse_landing_ids_v2', expect.objectContaining({
       p_query: 'north',
       p_stock_modes: ['Low Stock'],
       p_limit: 25,
@@ -207,7 +210,7 @@ describe('GET /api/tenant/warehouses/landing', () => {
   });
 
   it('skips summaries and hydrates only returned IDs on later pages', async () => {
-    dbResponses['app.rpc.search_seller_warehouse_landing_ids'] = {
+    dbResponses['app.rpc.search_seller_warehouse_landing_ids_v2'] = {
       data: [{ id: 'wh-2', total_count: 75 }],
     };
 
@@ -215,9 +218,11 @@ describe('GET /api/tenant/warehouses/landing', () => {
     expect(response.status).toBe(200);
     expect(queriesByKey['app.warehouses']).toHaveLength(1);
     expect(queriesByKey['app.warehouses']?.[0]?.in).toHaveBeenCalledWith('id', ['wh-2']);
-    expect(queriesByKey['app.warehouses_snapshot']).toHaveLength(1);
-    expect(queriesByKey['app.warehouses_snapshot']?.[0]?.in).toHaveBeenCalledWith('warehouse_id', ['wh-2']);
-    expect(rpcCalls.some(([name]) => name === 'get_seller_warehouses_landing_summary')).toBe(false);
+    expect(rpcCalls).toContainEqual(['get_seller_warehouse_landing_row_metrics_v2', {
+      p_tenant_id: 'tenant-1',
+      p_warehouse_ids: ['wh-2'],
+    }]);
+    expect(rpcCalls.some(([name]) => name === 'get_seller_warehouses_landing_summary_v2')).toBe(false);
   });
 
   it('passes assistant location scope to both search and summary RPCs', async () => {
@@ -229,10 +234,10 @@ describe('GET /api/tenant/warehouses/landing', () => {
 
     const response = await GET(new NextRequest('http://localhost/api/tenant/warehouses/landing?limit=1'));
     expect(response.status).toBe(200);
-    expect(rpcCalls).toContainEqual(['search_seller_warehouse_landing_ids', expect.objectContaining({
+    expect(rpcCalls).toContainEqual(['search_seller_warehouse_landing_ids_v2', expect.objectContaining({
       p_location_ids: ['loc-1'],
     })]);
-    expect(rpcCalls).toContainEqual(['get_seller_warehouses_landing_summary', {
+    expect(rpcCalls).toContainEqual(['get_seller_warehouses_landing_summary_v2', {
       p_tenant_id: 'tenant-1',
       p_location_ids: ['loc-1'],
     }]);

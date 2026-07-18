@@ -117,8 +117,8 @@ CREATE TABLE IF NOT EXISTS app.metrics_location_snapshot (
   open_estimate_value numeric(14,2) DEFAULT 0 NOT NULL,
   open_order_count bigint DEFAULT 0 NOT NULL,
   open_order_value numeric(14,2) DEFAULT 0 NOT NULL,
-  receivable_amount numeric(14,2) DEFAULT 0 NOT NULL,
-  overdue_amount numeric(14,2) DEFAULT 0 NOT NULL,
+  receivable_amount numeric(14,2) DEFAULT 0 NOT NULL,   -- FEEDBACK: missing receivable_invoice_count
+  overdue_amount numeric(14,2) DEFAULT 0 NOT NULL,      -- FEEDBACK: missing overdue_invoice_count
   linked_warehouse_count bigint DEFAULT 0 NOT NULL,
   stocked_product_count bigint DEFAULT 0 NOT NULL,
   low_stock_product_count bigint DEFAULT 0 NOT NULL,

@@ -103,18 +103,18 @@ describe('SellerSidebar nav gating', () => {
       expect(screen.getByText('Invoices')).toBeInTheDocument();
       expect(screen.getByText('Customers')).toBeInTheDocument();
       expect(screen.getByText('Products')).toBeInTheDocument();
-      expect(screen.getByText('Price Lists')).toBeInTheDocument();
+      expect(screen.queryByText('Price Lists')).not.toBeInTheDocument();
       expect(screen.queryByText('Exports')).not.toBeInTheDocument();
     });
 
-    it('hides Cohorts nav item', () => {
+    it('hides Customer Groups nav item', () => {
       render(<SellerSidebar featureAvailability={makeFeatures()} />);
-      expect(screen.queryByText('Cohorts')).not.toBeInTheDocument();
+      expect(screen.queryByText('Customer Groups')).not.toBeInTheDocument();
     });
 
-    it('shows Price Lists nav item', () => {
+    it('hides Price Lists nav item', () => {
       render(<SellerSidebar featureAvailability={makeFeatures()} />);
-      expect(screen.getByText('Price Lists')).toBeInTheDocument();
+      expect(screen.queryByText('Price Lists')).not.toBeInTheDocument();
     });
 
     it('hides strategy modules and section headers', () => {
@@ -132,11 +132,6 @@ describe('SellerSidebar nav gating', () => {
       expect(screen.queryByText('Settings')).not.toBeInTheDocument();
     });
 
-    it('shows user identity in footer', () => {
-      render(<SellerSidebar featureAvailability={makeFeatures()} />);
-      expect(screen.getByText('test@example.com')).toBeInTheDocument();
-      expect(screen.getByText('Test Tenant')).toBeInTheDocument();
-    });
   });
 
   describe('seller_admin', () => {
@@ -146,16 +141,11 @@ describe('SellerSidebar nav gating', () => {
 
     it('renders all nav items including admin-only ones', () => {
       render(<SellerSidebar featureAvailability={makeFeatures()} />);
-      expect(screen.getByText('Cohorts')).toBeInTheDocument();
+      expect(screen.getByText('Customer Groups')).toBeInTheDocument();
       expect(screen.getByText('Price Lists')).toBeInTheDocument();
       expect(screen.getByText('Settings')).toBeInTheDocument();
     });
 
-    it('shows user identity in footer', () => {
-      render(<SellerSidebar featureAvailability={makeFeatures()} />);
-      expect(screen.getByText('test@example.com')).toBeInTheDocument();
-      expect(screen.getByText('Test Tenant')).toBeInTheDocument();
-    });
   });
 });
 

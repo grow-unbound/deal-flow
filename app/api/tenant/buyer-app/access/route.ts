@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await (supabaseAdmin as any)
       .schema('app')
-      .rpc('search_buyer_app_access', {
+      .rpc('search_buyer_app_access_v2', {
         p_tenant_id: tenantId,
         p_query: parsedQuery.data.q || null,
         p_segment: parsedQuery.data.status,
