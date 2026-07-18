@@ -2,6 +2,16 @@
 -- independently recomputed per app._metrics_refresh_buyer_app
 -- (20260716050114_metrics_v2_phase_3_manual_refresh_kernel.sql:1838-1935).
 --
+-- Also validates two live-computed (not snapshot-backed) dashboard KPI tiles
+-- from app.get_metrics_v2_buyer_app_dashboard, fixed 20260718131001:
+--   customers_submitting_app_demand -- union of buyer-app-flagged orders AND
+--     estimates (previously only counted whichever channel was the tenant's
+--     "primary demand kind", undercounting any tenant using both channels).
+--   repeat_app_customers -- >=2 buyer-app-flagged docs combined across
+--     orders + estimates + invoices (previously only counted one doc kind).
+-- These two raw CTEs mirror the corrected RPC logic exactly, so a MISMATCH
+-- here means the RPC and this script have drifted, not that the RPC is wrong.
+--
 -- Run with:
 --   npx supabase db query --linked --file scripts/sql/metrics-v2-reconciliation/raw-vs-v2-buyer-app.sql
 
@@ -62,6 +72,61 @@ WITH v_today AS (
   LEFT JOIN orders_rollup orx ON orx.tenant_id = t.id
   LEFT JOIN invoices_rollup ir ON ir.tenant_id = t.id
   WHERE t.deleted_at IS NULL
+), demand_customers_raw AS (
+  -- Mirrors app.get_metrics_v2_buyer_app_dashboard's corrected
+  -- customers_submitting_app_demand: union of buyer-app-flagged orders AND
+  -- estimates, independent of the tenant's "primary demand kind".
+  SELECT tenant_id, COUNT(DISTINCT buyer_id) AS cnt
+  FROM (
+    SELECT o.tenant_id, o.buyer_id
+    FROM app.orders o, v_today
+    WHERE o.deleted_at IS NULL AND o.is_buyer_app_order
+      AND app.metric_day_ist(o.order_date, o.created_at) >= v_today.today - 89
+    UNION
+    SELECT e.tenant_id, e.buyer_id
+    FROM app.estimates e, v_today
+    WHERE e.deleted_at IS NULL AND e.is_buyer_app_estimate
+      AND app.metric_day_ist(e.estimate_date, e.created_at) >= v_today.today - 89
+  ) demand_buyers
+  GROUP BY tenant_id
+), repeat_customers_raw AS (
+  -- Mirrors app.get_metrics_v2_buyer_app_dashboard's corrected
+  -- repeat_app_customers: >=2 buyer-app-flagged docs combined across
+  -- orders + estimates + invoices within the 90d horizon.
+  SELECT tenant_id, COUNT(*) FILTER (WHERE doc_count >= 2) AS cnt
+  FROM (
+    SELECT buyer_id, tenant_id, COUNT(*) AS doc_count
+    FROM (
+      SELECT o.tenant_id, o.buyer_id
+      FROM app.orders o, v_today
+      WHERE o.deleted_at IS NULL AND o.is_buyer_app_order
+        AND app.metric_day_ist(o.order_date, o.created_at) >= v_today.today - 89
+      UNION ALL
+      SELECT e.tenant_id, e.buyer_id
+      FROM app.estimates e, v_today
+      WHERE e.deleted_at IS NULL AND e.is_buyer_app_estimate
+        AND app.metric_day_ist(e.estimate_date, e.created_at) >= v_today.today - 89
+      UNION ALL
+      SELECT i.tenant_id, i.buyer_id
+      FROM app.invoices i, v_today
+      WHERE i.deleted_at IS NULL AND i.is_buyer_app_invoice
+        AND app.metric_day_ist(i.invoice_date, i.created_at) >= v_today.today - 89
+    ) docs
+    GROUP BY tenant_id, buyer_id
+  ) counts
+  GROUP BY tenant_id
+), dashboard_v2 AS (
+  -- Live RPC output per tenant (not snapshot-backed) -- pulls the two
+  -- corrected KPI tiles' 'count' field out of the 'metrics' jsonb array.
+  SELECT t.id AS tenant_id,
+    (item->>'count')::numeric AS value,
+    item->>'id' AS metric_id
+  FROM app.tenants t
+  CROSS JOIN LATERAL jsonb_array_elements(
+    app.get_metrics_v2_buyer_app_dashboard(t.id) -> 'metrics'
+  ) AS item
+  WHERE t.deleted_at IS NULL
+    AND item->>'id' IN ('customers_submitting_app_demand', 'repeat_app_customers')
 )
 SELECT tenant_id, metric, raw_value, snapshot_value,
   CASE WHEN snapshot_value IS NULL THEN 'NO_SNAPSHOT'
@@ -81,5 +146,25 @@ FROM (
     s.app_invoice_count_90d, s.app_invoice_value_90d, s.assisted_invoice_count_90d, s.assisted_invoice_value_90d]) AS snapshot_value
   FROM raw r
   LEFT JOIN app.metrics_tenant_buyer_app_snapshot s ON s.tenant_id = r.tenant_id AND s.deleted_at IS NULL
+
+  UNION ALL
+
+  SELECT t.id AS tenant_id, 'customers_submitting_app_demand' AS metric,
+    COALESCE(r.cnt, 0)::numeric AS raw_value,
+    v.value AS snapshot_value
+  FROM app.tenants t
+  LEFT JOIN demand_customers_raw r ON r.tenant_id = t.id
+  LEFT JOIN dashboard_v2 v ON v.tenant_id = t.id AND v.metric_id = 'customers_submitting_app_demand'
+  WHERE t.deleted_at IS NULL
+
+  UNION ALL
+
+  SELECT t.id AS tenant_id, 'repeat_app_customers' AS metric,
+    COALESCE(r.cnt, 0)::numeric AS raw_value,
+    v.value AS snapshot_value
+  FROM app.tenants t
+  LEFT JOIN repeat_customers_raw r ON r.tenant_id = t.id
+  LEFT JOIN dashboard_v2 v ON v.tenant_id = t.id AND v.metric_id = 'repeat_app_customers'
+  WHERE t.deleted_at IS NULL
 ) x
 ORDER BY (CASE WHEN snapshot_value IS NULL OR ABS(COALESCE(raw_value,0)-COALESCE(snapshot_value,0)) > 0.01 THEN 0 ELSE 1 END), tenant_id, metric;

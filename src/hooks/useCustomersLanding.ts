@@ -63,7 +63,9 @@ export interface CustomersLandingResponse {
   };
   callouts: {
     needs_call: Array<CustomersLandingBuyer & { last_order_label: string; invoice_count: number; days_overdue: number | null }>;
+    needs_call_total?: number;
     win_back: Array<CustomersLandingBuyer & { last_order_label: string; prior_value: number; days_inactive: number | null }>;
+    win_back_total?: number;
   };
   buyers: CustomersLandingBuyer[];
   filters?: LandingFilterMeta;

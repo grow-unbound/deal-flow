@@ -73,6 +73,9 @@ describe('price lists landing integration', () => {
           cohorts_covered: 1,
           cohorts_total: 2,
           products_with_overrides: 1,
+          products_with_custom_prices: 1,
+          customers_with_custom_prices: 3,
+          products_below_base_rate: 1,
         },
         todays_read: {
           expiring_soon: [],
@@ -131,6 +134,7 @@ describe('price lists landing integration', () => {
     render(<PriceListsLandingClient initialData={null} />);
 
     expect(screen.getByText('2 price lists')).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Search price list…'), { target: { value: 'A List' } });
     expect(screen.getByText('A List')).toBeInTheDocument();
@@ -151,6 +155,9 @@ describe('price lists landing integration', () => {
           cohorts_covered: 0,
           cohorts_total: 0,
           products_with_overrides: 0,
+          products_with_custom_prices: 0,
+          customers_with_custom_prices: 0,
+          products_below_base_rate: 0,
         },
         todays_read: {
           expiring_soon: [],

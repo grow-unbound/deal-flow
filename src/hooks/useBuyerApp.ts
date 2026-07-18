@@ -23,14 +23,20 @@ export interface BuyerAppLocation {
   name: string;
   app_orders: number;
   app_gmv: number;
+  demand_count: number;
+  demand_value: number;
+  invoice_count: number;
+  invoice_value: number;
   share_pct: number | null;
 }
 
 export interface BuyerAppContributionMonth {
   month: string;
   app_demand_value: number;
+  app_demand_count: number;
   total_demand_value: number;
   app_invoice_value: number;
+  app_invoice_count: number;
   total_invoice_value: number;
 }
 

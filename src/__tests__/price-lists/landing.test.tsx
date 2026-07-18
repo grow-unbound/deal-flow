@@ -41,6 +41,9 @@ const mockData = {
     cohorts_covered: 1,
     cohorts_total: 2,
     products_with_overrides: 2,
+    products_with_custom_prices: 2,
+    customers_with_custom_prices: 14,
+    products_below_base_rate: 1,
   },
   todays_read: {
     expiring_soon: [
@@ -183,6 +186,18 @@ describe('price lists landing page', () => {
     expect(screen.getAllByText('1')[0]).toBeInTheDocument();
   });
 
+  it('renders the new custom pricing KPI values instead of placeholders', () => {
+    render(<PriceListsLandingClient initialData={null} />);
+
+    const customerTile = screen.getByText('Customers with active custom pricing').closest('article');
+    const belowBaseTile = screen.getByText('Products priced below base rate').closest('article');
+
+    expect(customerTile).toBeTruthy();
+    expect(belowBaseTile).toBeTruthy();
+    expect(within(customerTile as HTMLElement).getByText('14')).toBeInTheDocument();
+    expect(within(belowBaseTile as HTMLElement).getByText('1')).toBeInTheDocument();
+  });
+
   it('expired chip hides active and draft rows', () => {
     render(<PriceListsLandingClient initialData={null} />);
 
@@ -199,9 +214,11 @@ describe('price lists landing page', () => {
   it('renders uncovered cohorts callout rows', () => {
     render(<PriceListsLandingClient initialData={null} />);
 
-    expect(screen.getByText('Uncovered cohorts')).toBeInTheDocument();
-    expect(screen.getByText(/South Retail/i)).toBeInTheDocument();
-    expect(screen.getByText('14')).toBeInTheDocument();
+    const uncoveredPanel = screen.getByText('Uncovered cohorts').closest('article');
+
+    expect(uncoveredPanel).toBeTruthy();
+    expect(within(uncoveredPanel as HTMLElement).getByText(/South Retail/i)).toBeInTheDocument();
+    expect(within(uncoveredPanel as HTMLElement).getByText('14')).toBeInTheDocument();
   });
 
   it('shows pricing strategy under name and em dash cohort when unassigned', () => {
