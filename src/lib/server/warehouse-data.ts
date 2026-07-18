@@ -321,26 +321,29 @@ export async function loadWarehouseSnapshot(
   tenantId: string,
   warehouseId: string,
 ): Promise<WarehouseSnapshotRow | null> {
+  // `get_seller_warehouse_detail_v2` (supabase/migrations/20260716135550_..._phase_7_detail_bootstrap_rpcs.sql)
+  // stubs its 'current-inventory-posture' card as permanently 'unavailable' with no `items` — reading
+  // it here always returned null. `get_seller_warehouse_landing_row_metrics_v2` (Metrics V2 Phase 6 wave C)
+  // computes the same tracked/sellable/low-stock/stockout/idle-stock figures directly from
+  // app.tenant_inventory and is already the source of truth for the Warehouses landing table row for
+  // this same warehouse — reused here as-is instead of the stubbed RPC.
   const { data, error } = await db
     .schema('app')
-    .rpc('get_seller_warehouse_detail_v2', {
+    .rpc('get_seller_warehouse_landing_row_metrics_v2', {
       p_tenant_id: tenantId,
-      p_warehouse_id: warehouseId,
+      p_warehouse_ids: [warehouseId],
     });
 
   if (error) throw error;
 
-  const cards = Array.isArray(data?.performance_cards) ? data.performance_cards : [];
-  const postureCard = cards.find((card: Record<string, unknown>) => card.id === 'current-inventory-posture');
-  const items = Array.isArray(postureCard?.body && (postureCard.body as Record<string, unknown>).items)
-    ? ((postureCard.body as Record<string, unknown>).items as Array<Record<string, unknown>>)
-    : [];
+  const row = (Array.isArray(data) ? data[0] : null) as Record<string, unknown> | null;
+  if (!row) return null;
 
-  const valueFor = (id: string) => Number(items.find((item) => item.id === id)?.value ?? 0);
-  const trackedSkus = valueFor('tracked-skus');
-  const lowStockSkus = valueFor('low-stock');
-  const stockoutSkus = valueFor('out-of-stock');
-  const sellableUnits = valueFor('sellable-units');
+  const trackedSkus = Number(row.tracked_skus ?? 0);
+  const sellableUnits = Number(row.sellable_units ?? 0);
+  const lowStockSkus = Number(row.low_stock_skus ?? 0);
+  const stockoutSkus = Number(row.stockout_skus ?? 0);
+  const idleStockSkus = Number(row.idle_stock_skus ?? 0);
 
   if (trackedSkus <= 0 && lowStockSkus <= 0 && stockoutSkus <= 0 && sellableUnits <= 0) {
     return null;
@@ -353,9 +356,9 @@ export async function loadWarehouseSnapshot(
     sellable_units: sellableUnits,
     low_stock_skus: lowStockSkus,
     stockout_skus: stockoutSkus,
-    idle_stock_skus: valueFor('idle-stock'),
-    last_inventory_update: null,
-    refreshed_at: typeof data?.as_of === 'string' ? data.as_of : new Date().toISOString(),
+    idle_stock_skus: idleStockSkus,
+    last_inventory_update: typeof row.last_inventory_update === 'string' ? row.last_inventory_update : null,
+    refreshed_at: new Date().toISOString(),
   };
 }
 

@@ -103,35 +103,35 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
 
   const tiles = useMemo(() => {
     if (!data) return [];
+    const m = data.meta_strip_4;
     return [
       {
+        // get_seller_brand_detail_v2 has no prior-period comparison, so this used to
+        // show a fabricated growth badge. Show the doc-recommended supporting value
+        // (product count) instead — see doc line 758.
         label: 'Invoiced sales 90D',
-        value: formatCompactInr(data.meta_strip_4.gmv_mtd),
-        sub: (
-          <span>
-            <span className={data.meta_strip_4.growth_pct >= 0 ? 'up' : 'down'}>
-              {data.meta_strip_4.growth_pct >= 0 ? '↑ +' : '↓ '}
-              {Math.abs(data.meta_strip_4.growth_pct).toFixed(1)}%
-            </span>{' '}
-            vs last month
-          </span>
-        ),
+        value: formatCompactInr(m.gmv_mtd),
+        sub: `${m.product_count} product${m.product_count !== 1 ? 's' : ''}`,
       },
       {
-        label: 'Customers who purchased',
-        value: `${data.meta_strip_4.active_buyers}/${data.meta_strip_4.total_buyers}`,
-        sub: 'bought this brand in 90D',
+        // "Customers who purchased" (doc line 759, starred) has no backing data in
+        // get_seller_brand_detail_v2 — no brand-buyer read model exists yet (same gap
+        // as the "customers-buying-the-brand" performance card). Units sold is a
+        // real, doc-listed alternative (line 761) rather than a fake 0/0.
+        label: 'Units sold 90D',
+        value: `${m.units_90d}`,
+        sub: 'in the last 90 days',
       },
       {
         label: 'Recent sellers low/out of stock',
-        value: data.meta_strip_4.low_stock_skus,
-        sub: 'reorder this week',
+        value: m.low_stock_skus != null ? `${m.low_stock_skus}` : '—',
+        sub: m.low_stock_skus != null ? 'reorder this week' : 'Not available yet',
       },
       {
         label: 'Recent campaign activity',
-        value: data.meta_strip_4.days_since_catalog != null ? `${data.meta_strip_4.days_since_catalog}d ago` : '—',
-        sub: data.meta_strip_4.last_sent_date
-          ? `last sent ${new Date(data.meta_strip_4.last_sent_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`
+        value: m.days_since_catalog != null ? `${m.days_since_catalog}d ago` : '—',
+        sub: m.last_sent_date
+          ? `last sent ${new Date(m.last_sent_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`
           : 'No catalog sent',
       },
     ];
@@ -207,7 +207,7 @@ export function BrandDetailPage({ id }: BrandDetailPageProps) {
         />
       ) : null}
       {tab === 'performance' ? (
-        <BrandPerformanceTab performance={data.performance} performanceCards={data.performance_cards} />
+        <BrandPerformanceTab performanceCards={data.performance_cards} />
       ) : null}
       {tab === 'products' ? <BrandProductsTab brandId={id} /> : null}
       {tab === 'buyers' ? <BrandBuyersTab brandId={id} buyers={data.buyers} /> : null}

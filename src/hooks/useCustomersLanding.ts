@@ -36,7 +36,9 @@ export interface CustomersLandingBuyer {
   last_order_at: string | null;
   credit_limit: number;
   credit_used: number;
+  overdue_amount?: number;
   dues: number;
+  overdue_days?: number | null;
   status: { label: string; tone: StatusTone };
   avatar: { initials: string; hue: AvatarHue };
   whatsapp_opted_out?: boolean;
@@ -54,11 +56,14 @@ export interface CustomersLandingResponse {
     dormant_over_30d: number;
     outstanding_dues: number;
     buyers_with_dues: number;
+    invoiced_customer_count: number;
+    overdue_sum: number;
+    overdue_customer_count: number;
+    dormant_prior_year_value: number;
   };
   callouts: {
-    needs_call: Array<CustomersLandingBuyer & { last_order_label: string }>;
-    top_spenders: CustomersLandingBuyer[];
-    top_risers: CustomersLandingBuyer[];
+    needs_call: Array<CustomersLandingBuyer & { last_order_label: string; invoice_count: number; days_overdue: number | null }>;
+    win_back: Array<CustomersLandingBuyer & { last_order_label: string; prior_value: number; days_inactive: number | null }>;
   };
   buyers: CustomersLandingBuyer[];
   filters?: LandingFilterMeta;

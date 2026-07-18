@@ -68,10 +68,15 @@ export function DistributionList({
     <div className={cn(compact ? 'p-4' : 'p-5', className)}>
       <div className="flex h-4 overflow-hidden rounded-full border border-cream-300 bg-cream-100">
         {items.map((item, index) => {
-          const width = Math.max(item.pct ?? 0, 6);
+          const width = Math.max(item.pct ?? 0, 0);
+          const hoverSummary = [item.label, item.pct != null ? `${item.pct}% share` : null, typeof item.value === 'string' ? item.value : null]
+            .filter(Boolean)
+            .join(' · ');
           return (
             <div
               key={item.id}
+              aria-label={`${item.label} share`}
+              title={hoverSummary}
               style={{ width: `${width}%`, backgroundColor: item.tone ?? palette[index % palette.length] }}
               className="h-full"
             />

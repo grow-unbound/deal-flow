@@ -190,7 +190,7 @@ export function CohortDetailPage({ id }: CohortDetailPageProps) {
         />
       ) : null}
       {tab === 'performance' ? (
-        <CohortPerformanceTab performance={data.performance} performanceCards={data.performance_cards} />
+        <CohortPerformanceTab performanceCards={data.performance_cards} />
       ) : null}
     </PageWrap>
   );

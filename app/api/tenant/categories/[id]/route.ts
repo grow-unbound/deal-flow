@@ -107,7 +107,12 @@ export async function GET(
   const brandItems = brandContributionCard?.body?.items ?? [];
   const oos_sku_count = actionItems.filter((item: any) => String(item.supporting ?? '').toLowerCase().includes('out of stock')).length;
   const low_stock_sku_count = actionItems.filter((item: any) => String(item.supporting ?? '').toLowerCase().includes('low stock')).length;
+  // product-action-list is capped at 20 items by get_seller_category_detail_v2 (v_limit
+  // hard-clamped to 20), so oos/low_stock/sold counts above are only exact for
+  // categories with <=20 products — a known approximation, not a bug introduced here.
+  const sold_sku_count = actionItems.filter((item: any) => Number(item.value ?? 0) > 0).length;
   const gmv_mtd = Number(kpiByLabel.get('Invoiced sales 90D') ?? 0);
+  const units_90d = Number(kpiByLabel.get('Units 90D') ?? 0);
 
   const response: CategoryDetailResponse & { performance_cards: any[]; detail_v2: any } = {
     header: {
@@ -118,11 +123,15 @@ export async function GET(
     },
     meta_strip_4: {
       gmv_mtd,
-      growth_pct: 0,
+      // get_seller_category_detail_v2 does not compute a prior-period comparison, so
+      // growth_pct was previously always 0 — a fabricated "flat" badge, not real data.
+      // product_count is a real, doc-recommended supporting value (see doc line 962).
+      product_count: active_sku_count,
+      units_90d,
+      sold_sku_count,
       active_sku_count,
       oos_sku_count,
       low_stock_sku_count,
-      active_buyer_count: 0,
     },
     overview: {
       trend_weekly: [],

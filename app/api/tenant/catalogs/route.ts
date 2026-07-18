@@ -237,6 +237,10 @@ function calloutToLandingRow(callout: CatalogCallout, index: number) {
 }
 
 async function getOptimizedCatalogsLanding(req: NextRequest, timedJson: (body: unknown, init?: ResponseInit) => NextResponse) {
+  const fullCalloutId = req.nextUrl.searchParams.get('callout')?.trim() || undefined;
+  const previewRows = <T,>(calloutId: string, rows: T[]) => (
+    fullCalloutId === calloutId ? rows : rows.slice(0, 3)
+  );
   const claims = await getVerifiedClaims(req);
   if (!claims.tenant_id) return timedJson({ error: 'Unauthorized' }, { status: 401 });
   if (claims.role !== 'seller_admin') return timedJson({ error: 'Forbidden' }, { status: 403 });
@@ -255,10 +259,13 @@ async function getOptimizedCatalogsLanding(req: NextRequest, timedJson: (body: u
     .map((value) => value.toLowerCase().replace(/ /g, '_'))
     .filter((value) => value !== 'all');
 
-  const [landingSearch, createFlags] = await Promise.all([
+  const [landingSearch, createFlags, primaryDemandKindRes] = await Promise.all([
     searchSellerLandingEntityIds({ tenantId, entity: 'campaigns', query: search, statuses, limit, offset }),
     getInAppCreateFlags(tenantId),
+    db.schema('app').rpc('metrics_v2_primary_demand_kind', { p_tenant_id: tenantId }),
   ]);
+  const primaryDemandKind: 'orders' | 'estimates' | 'none' =
+    primaryDemandKindRes.data === 'estimates' || primaryDemandKindRes.data === 'none' ? primaryDemandKindRes.data : 'orders';
   const pageIds = landingSearch.ids;
   const metricsRes = await db.schema('app').rpc('get_catalog_landing_metrics', {
     p_tenant_id: tenantId,
@@ -318,15 +325,22 @@ async function getOptimizedCatalogsLanding(req: NextRequest, timedJson: (body: u
   });
 
   const summary = rpc.summary;
+  // Scheduled = published but not yet live (valid_from in the future). This bucket doesn't
+  // exist in get_catalog_landing_metrics' display_status (Draft/Live/Ended only), so it's
+  // derived here from the same page of campaign rows already fetched above — no new SQL.
+  const scheduledCatalogs = catalogs.filter(
+    (catalog) => catalog.status === 'published' && new Date(catalog.valid_from).getTime() > nowTs,
+  ).length;
   return timedJson({
     period,
     channels: { orders_enabled: createFlags.create_sales_orders, estimates_enabled: createFlags.create_enquiries },
+    primary_demand_kind: primaryDemandKind,
     ...(summary ? {
-      kpis: summary.kpis,
+      kpis: { ...summary.kpis, scheduled_catalogs: scheduledCatalogs },
       todays_read: {
-        needs_attention: summary.todays_read.needs_attention.map(calloutToLandingRow),
-        top_performers: summary.todays_read.top_performers.map(calloutToLandingRow),
-        top_risers: summary.todays_read.top_risers.map(calloutToLandingRow),
+        needs_attention: previewRows('needs_attention', summary.todays_read.needs_attention.map(calloutToLandingRow)),
+        top_performers: previewRows('top_performers', summary.todays_read.top_performers.map(calloutToLandingRow)),
+        top_risers: previewRows('top_risers', summary.todays_read.top_risers.map(calloutToLandingRow)),
       },
     } : {}),
     catalogs: rows,

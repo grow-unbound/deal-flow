@@ -181,7 +181,7 @@ export function WarehousesLandingClient({
       <PageHeader
         eyebrow="Inventory"
         title="Warehouses"
-        subtitle="Current inventory posture by warehouse. Focus on stockouts, idle stock, and replenishment exceptions."
+        subtitle={`${summary?.kpis.warehouse_count ?? 0} warehouses across ${summary?.kpis.location_count ?? 0} locations.`}
         horizon="Now"
         primary="Add warehouse"
         onPrimaryClick={() => setSheetOpen(true)}
@@ -217,6 +217,7 @@ export function WarehousesLandingClient({
       <V3CalloutPanel
         items={[
           {
+            id: 'stock_attention',
             kind: 'risk',
             eyebrow: 'Stock attention',
             hint: `${summary?.callouts.stock_attention.length ?? 0} warehouses`,
@@ -229,6 +230,7 @@ export function WarehousesLandingClient({
             })),
           },
           {
+            id: 'idle_stock',
             kind: 'risk',
             eyebrow: 'Idle stock',
             hint: `${summary?.callouts.idle_stock.length ?? 0} warehouses`,
@@ -238,18 +240,6 @@ export function WarehousesLandingClient({
               name: row.name,
               reason: `${row.value} idle SKUs`,
               trailing: <StatusTag tone="warning" label="Idle" />,
-            })),
-          },
-          {
-            kind: 'info',
-            eyebrow: 'Recently replenished',
-            hint: 'latest inventory updates',
-            rows: (summary?.callouts.recently_replenished ?? []).map((row) => ({
-              initials: row.initials,
-              hue: 'teal' as const,
-              name: row.name,
-              reason: row.last_updated ? `Updated ${formatDate(row.last_updated)}` : 'Recently updated',
-              trailing: `${row.value} tracked SKUs`,
             })),
           },
         ]}

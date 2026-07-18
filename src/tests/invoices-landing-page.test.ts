@@ -81,7 +81,7 @@ vi.mock('@/lib/server/seller-features', () => ({
 vi.mock('@/lib/supabase', () => {
   class QueryMock {
     private table: string;
-    private conditions: Array<{ kind: 'eq' | 'in' | 'gte' | 'lt' | 'gt'; column: string; value: unknown }> = [];
+    private conditions: Array<{ kind: 'eq' | 'in' | 'gte' | 'lte' | 'lt' | 'gt'; column: string; value: unknown }> = [];
     private orderBy: Array<{ column: string; ascending: boolean }> = [];
     private take: number | null = null;
     private head = false;
@@ -110,6 +110,10 @@ vi.mock('@/lib/supabase', () => {
     }
     gte(column: string, value: unknown) {
       this.conditions.push({ kind: 'gte', column, value });
+      return this;
+    }
+    lte(column: string, value: unknown) {
+      this.conditions.push({ kind: 'lte', column, value });
       return this;
     }
     lt(column: string, value: unknown) {
@@ -167,13 +171,15 @@ vi.mock('@/lib/supabase', () => {
             result = result.filter((row) => !(condition.column in row) || row[condition.column] === condition.value);
             continue;
           }
-          if (condition.kind === 'gte' || condition.kind === 'lt') {
+          if (condition.kind === 'gte' || condition.kind === 'lt' || condition.kind === 'lte') {
             const threshold = new Date(String(condition.value)).getTime();
             result = result.filter((row) => {
               const rowValue = row[condition.column];
               if (typeof rowValue !== 'string') return false;
               const time = new Date(rowValue).getTime();
-              return condition.kind === 'gte' ? time >= threshold : time < threshold;
+              if (condition.kind === 'gte') return time >= threshold;
+              if (condition.kind === 'lte') return time <= threshold;
+              return time < threshold;
             });
             continue;
           }
@@ -362,6 +368,38 @@ describe('invoices landing API route', () => {
         created_by: 'seller-1',
         created_at: '2026-05-11T00:00:00.000Z',
       },
+      {
+        id: 'i4',
+        location_id: 'loc-2',
+        invoice_number: 'INV-2026-0004',
+        buyer_id: 'buyer-2',
+        order_id: null,
+        estimate_id: null,
+        status: 'sent',
+        total_amount: 2000,
+        outstanding_balance: 2000,
+        invoice_date: '2026-06-14T00:00:00.000Z',
+        due_date: '2026-06-20T00:00:00.000Z',
+        paid_at: null,
+        created_by: 'seller-2',
+        created_at: '2026-06-14T00:00:00.000Z',
+      },
+      {
+        id: 'i5',
+        location_id: 'loc-2',
+        invoice_number: 'INV-2026-0005',
+        buyer_id: 'buyer-2',
+        order_id: null,
+        estimate_id: null,
+        status: 'overdue',
+        total_amount: 1500,
+        outstanding_balance: 1500,
+        invoice_date: '2026-06-01T00:00:00.000Z',
+        due_date: '2026-06-12T00:00:00.000Z',
+        paid_at: null,
+        created_by: 'seller-2',
+        created_at: '2026-06-01T00:00:00.000Z',
+      },
     ];
     queryState.currentKpis = [
       {
@@ -446,10 +484,10 @@ describe('invoices landing API route', () => {
     expect(estimateRow.source_label).toBe('EST-2026-0001');
     expect(estimateRow.source_detail).toBe('Converted by Ravi Nair');
 
-    expect(body.todays_read.needs_attention).toHaveLength(2);
-    expect(body.todays_read.needs_attention.map((item: { invoice_number: string }) => item.invoice_number)).toContain('INV-2026-0003');
-    expect(body.todays_read.top_spenders[0].invoice_number).toBe('INV-2026-0002');
-    expect(body.todays_read.top_risers[0].buyer_name).toBe('Beta');
+    expect(body.todays_read.largest_overdue).toHaveLength(3);
+    expect(body.todays_read.largest_overdue.map((item: { invoice_number: string }) => item.invoice_number)).toContain('INV-2026-0003');
+    expect(body.todays_read.due_soon[0].invoice_number).toBe('INV-2026-0004');
+    expect(body.todays_read.newly_overdue[0].invoice_number).toBe('INV-2026-0005');
   });
 
   it('returns 403 for non-seller roles', async () => {

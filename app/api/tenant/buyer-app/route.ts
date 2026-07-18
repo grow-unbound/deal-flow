@@ -42,11 +42,12 @@ function emptyResponse(period: BuyerAppLandingResponse['period']): BuyerAppLandi
       converted_order_count_mtd: 0,
       invoiced_app_value_mtd: 0,
       invoiced_app_count_mtd: 0,
+      invoiced_share_of_total_pct: 0,
       not_ordering_buyers: [],
-      top_app_buyers_callout: [],
+      used_no_demand_buyers: [],
       no_app_buyers: [],
-      top_app_buyers_card: [],
       top_locations: [],
+      contribution_over_time: [],
       refreshed_at: new Date().toISOString(),
     },
   };
@@ -99,7 +100,11 @@ function initials(name: string) {
 function portfolioToResponse(
   period: BuyerAppLandingResponse['period'],
   portfolio: MetricsV2DashboardPortfolio,
+  options: { fullCalloutId?: string } = {},
 ): BuyerAppLandingResponse {
+  const previewRows = <T,>(calloutId: string, rows: T[]) => (
+    options.fullCalloutId === calloutId ? rows : rows.slice(0, 3)
+  );
   const access = findPortfolioItem(portfolio, 'metrics', 'customers_with_access');
   const demand = findPortfolioItem(portfolio, 'metrics', 'customers_submitting_app_demand');
   const invoiceShare = findPortfolioItem(portfolio, 'metrics', 'app_sourced_invoiced_sales_share');
@@ -108,17 +113,27 @@ function portfolioToResponse(
   const used = findPortfolioItem(portfolio, 'metrics', 'customers_who_used_app');
   const accessEnabledUnused = findPortfolioItem(portfolio, 'actions', 'access_enabled_but_never_used');
   const assistedWithoutAccess = findPortfolioItem(portfolio, 'actions', 'valuable_assisted_customers_without_access');
+  const usedButNoDemand = findPortfolioItem(portfolio, 'actions', 'used_app_but_no_demand');
   const adoptionByLocation = findPortfolioItem(portfolio, 'explore', 'adoption_by_location');
   const businessThroughApp = findPortfolioItem(portfolio, 'explore', 'business_through_app');
+  const contributionOverTime = findPortfolioItem(portfolio, 'explore', 'app_contribution_over_time');
 
   const businessMeta = businessThroughApp?.meta ?? {};
   const appInvoiced = Number(businessMeta.app_invoiced_sales_90d ?? 0);
+  const totalInvoiced = Number(businessMeta.total_invoiced_sales_90d ?? 0);
   const appDemandValue = Number(businessMeta.app_primary_demand_value_90d ?? 0);
   const appDemandCount = itemCount(demandShare);
+  // Prefer the RPC-computed share (app invoiced / total invoiced); it uses the correct
+  // denominator, unlike a naive app_invoiced / app_demand_value ratio.
+  const invoicedSharePct = itemValue(invoiceShare) || (totalInvoiced > 0 ? Math.round((appInvoiced / totalInvoiced) * 100) : 0);
   const enabledNeverUsedRows = rowsFromItem<Record<string, unknown>>(accessEnabledUnused);
   const assistedRows = rowsFromItem<Record<string, unknown>>(assistedWithoutAccess);
+  const usedNoDemandRows = rowsFromItem<Record<string, unknown>>(usedButNoDemand);
   const locations = Array.isArray(adoptionByLocation?.meta?.locations)
     ? adoptionByLocation.meta.locations as Array<Record<string, unknown>>
+    : [];
+  const contributionMonths = Array.isArray(contributionOverTime?.meta?.months)
+    ? contributionOverTime.meta.months as Array<Record<string, unknown>>
     : [];
 
   return {
@@ -152,7 +167,8 @@ function portfolioToResponse(
       converted_order_count_mtd: portfolio.primary_demand_kind === 'orders' ? appDemandCount : 0,
       invoiced_app_value_mtd: appInvoiced,
       invoiced_app_count_mtd: 0,
-      not_ordering_buyers: enabledNeverUsedRows.slice(0, 3).map((row) => {
+      invoiced_share_of_total_pct: invoicedSharePct,
+      not_ordering_buyers: previewRows('access_enabled_never_used', enabledNeverUsedRows).map((row) => {
         const name = String(row.name ?? 'Buyer');
         return {
           buyer_id: String(row.buyer_id ?? ''),
@@ -160,16 +176,15 @@ function portfolioToResponse(
           initials: initials(name),
         };
       }),
-      top_app_buyers_callout: assistedRows.slice(0, 3).map((row) => {
+      used_no_demand_buyers: previewRows('used_no_demand', usedNoDemandRows).map((row) => {
         const name = String(row.name ?? 'Buyer');
         return {
           buyer_id: String(row.buyer_id ?? ''),
           name,
           initials: initials(name),
-          gmv: Number(row.invoice_value_90d ?? 0),
         };
       }),
-      no_app_buyers: assistedRows.slice(0, 3).map((row) => {
+      no_app_buyers: previewRows('valuable_without_access', assistedRows).map((row) => {
         const name = String(row.name ?? 'Buyer');
         return {
           buyer_id: String(row.buyer_id ?? ''),
@@ -178,23 +193,19 @@ function portfolioToResponse(
           offline_gmv: Number(row.invoice_value_90d ?? 0),
         };
       }),
-      top_app_buyers_card: assistedRows.slice(0, 5).map((row) => {
-        const name = String(row.name ?? 'Buyer');
-        return {
-          buyer_id: String(row.buyer_id ?? ''),
-          name,
-          initials: initials(name),
-          city: '',
-          gmv: Number(row.invoice_value_90d ?? 0),
-          orders: 0,
-        };
-      }),
       top_locations: locations.slice(0, 5).map((row) => ({
         location_id: String(row.location_id ?? ''),
         name: String(row.name ?? 'Location'),
         app_orders: 0,
         app_gmv: Number(row.app_invoiced_sales_90d ?? row.app_demand_value_90d ?? 0),
         share_pct: itemValue(invoiceShare),
+      })),
+      contribution_over_time: contributionMonths.slice(-12).map((row) => ({
+        month: String(row.month ?? ''),
+        app_demand_value: Number(row.app_demand_value ?? 0),
+        total_demand_value: Number(row.total_demand_value ?? 0),
+        app_invoice_value: Number(row.app_invoice_value ?? 0),
+        total_invoice_value: Number(row.total_invoice_value ?? 0),
       })),
       refreshed_at: portfolio.as_of,
     },
@@ -253,7 +264,8 @@ export async function GET(request: NextRequest) {
     }
 
     const portfolio = normalizePortfolio(data);
-    return timedJson(portfolio ? portfolioToResponse(period, portfolio) : emptyResponse(period));
+    const fullCalloutId = request.nextUrl.searchParams.get('callout')?.trim() || undefined;
+    return timedJson(portfolio ? portfolioToResponse(period, portfolio, { fullCalloutId }) : emptyResponse(period));
   } catch (error) {
     console.error('[GET /api/tenant/buyer-app]', error);
     return timedJson({ error: 'Failed to load buyer app data' }, { status: 500 });

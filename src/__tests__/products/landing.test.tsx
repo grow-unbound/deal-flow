@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 
 const pushMock = vi.fn();
 const useTenantProductsMock = vi.fn();
@@ -123,7 +123,7 @@ describe('products landing page', () => {
     });
   });
 
-  it('shows backend out-of-stock KPI count', () => {
+  it('shows backend recently-sold-out-of-stock KPI count', () => {
     useTenantProductsMock.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -134,6 +134,7 @@ describe('products landing page', () => {
           archived_skus: 4,
           out_of_stock: 3,
           low_stock: 2,
+          recently_sold_out_of_stock: 3,
           revenue_mtd: 100000,
           revenue_prev_mtd: 90000,
           revenue_growth_pct: 11,
@@ -145,10 +146,11 @@ describe('products landing page', () => {
     });
     landingProducts = [];
 
-    render(<ProductsLandingClient initialData={null} initialPeriod="month" />);
+    render(<ProductsLandingClient initialData={null} />);
 
-    expect(screen.getByText('Out of stock')).toBeInTheDocument();
-    expect(screen.getByText('3')).toBeInTheDocument();
+    const card = screen.getByText('Recently sold products now out of stock').closest('article');
+    expect(card).toBeTruthy();
+    expect(within(card as HTMLElement).getByText('3')).toBeInTheDocument();
   });
 
   it('applies days cover coloring rules in table', () => {
@@ -213,7 +215,7 @@ describe('products landing page', () => {
       { id: 'p20', display_name: 'Twenty Cover', internal_sku: 'Z-20', master_product: { master_sku: 'MS-20' }, brand_name: 'Red wine', category_name: 'Wine', on_hand: 40, days_cover: 20, units_mtd: 10, gmv_mtd: 2000, growth_pct: 10, status_tone: 'success', status_label: 'On pace', is_active: true },
     ];
 
-    render(<ProductsLandingClient initialData={null} initialPeriod="month" />);
+    render(<ProductsLandingClient initialData={null} />);
 
     expect(screen.getByText('0d')).toHaveClass('text-danger-700');
     expect(screen.getByText('5d')).toHaveClass('text-warning-700');
@@ -240,13 +242,13 @@ describe('products landing page', () => {
       { id: 'p3', display_name: 'Healthy', internal_sku: 'H3', master_product: { master_sku: 'H3' }, brand_name: 'Red wine', category_name: 'Wine', on_hand: 22, days_cover: 20, units_mtd: 4, gmv_mtd: 1200, growth_pct: 4, status_tone: 'success', status_label: 'On pace', is_active: true },
     ];
 
-    render(<ProductsLandingClient initialData={null} initialPeriod="month" />);
+    render(<ProductsLandingClient initialData={null} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Stock: All' }));
     fireEvent.click(screen.getByRole('button', { name: 'Low stock' }));
 
     expect(screen.getByText('Low but available')).toBeInTheDocument();
-    expect(useTenantProductsInfiniteMock).toHaveBeenLastCalledWith('month', expect.objectContaining({ stock: ['Low stock'] }));
+    expect(useTenantProductsInfiniteMock).toHaveBeenLastCalledWith('last90', expect.objectContaining({ stock: ['Low stock'] }));
     expect(screen.getByRole('button', { name: 'Stock: Low stock' })).toBeInTheDocument();
   });
 

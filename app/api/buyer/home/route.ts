@@ -52,6 +52,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
         bestsellers: [],
         buy_again: [],
         preview_message: 'Preview mode — buyer-specific numbers show as 0.',
+        as_of: new Date().toISOString(),
       };
       return NextResponse.json(previewPayload, { headers: BUYER_CACHE_PERSONAL });
     }
@@ -72,8 +73,12 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
     const nextMonthStart = addMonthsUtc(currentMonthStart, 1);
     const previousMonthStart = addMonthsUtc(currentMonthStart, -1);
     const currentYearStart = startOfYearUtc(now);
+    // Widest of "previous month" or "year start" — covers MTD/YTD/trend in one
+    // date-bounded query instead of an arbitrary row-count LIMIT (which silently
+    // truncates YTD/open-invoice figures for any buyer with more than N invoices/year).
+    const financialWindowStart = previousMonthStart < currentYearStart ? previousMonthStart : currentYearStart;
 
-    const [buyerMetricsRes, activity, catalogs, ordersRes, invoicesRes, estimatesRes] = await Promise.all([
+    const [buyerMetricsRes, activity, catalogs, ordersRes, invoicesRes, estimatesRes, financialInvoicesRes] = await Promise.all([
       supabaseAdmin
         .schema('app')
         .from('metrics_buyer_snapshot')
@@ -115,13 +120,26 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
         .is('converted_to_order_id', null)
         .order('created_at', { ascending: false })
         .limit(RECENT_ORDER_PREVIEW_LIMIT),
+      // Financial figures (MTD/YTD/trend/open-invoice posture): date-bounded, not
+      // row-count-bounded — a buyer with >20 invoices/year must not silently
+      // under-report YTD from a 20-row preview window.
+      supabaseAdmin
+        .schema('app')
+        .from('invoices')
+        .select('id, invoice_date, total_amount, outstanding_balance, due_date')
+        .eq('tenant_id', tenantId)
+        .eq('buyer_id', buyerId)
+        .is('deleted_at', null)
+        .gte('invoice_date', financialWindowStart.toISOString())
+        .lt('invoice_date', nextMonthStart.toISOString()),
     ]);
 
     const queryError =
       buyerMetricsRes.error
       ?? ordersRes.error
       ?? invoicesRes.error
-      ?? estimatesRes.error;
+      ?? estimatesRes.error
+      ?? financialInvoicesRes.error;
     if (queryError) {
       throw new Error(queryError.message ?? 'Failed to load buyer home');
     }
@@ -137,29 +155,36 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
       status: string | null;
     }>;
     const recentEstimates = (estimatesRes.data ?? []) as Array<{ id: string; created_at: string | null }>;
+    const financialInvoices = (financialInvoicesRes.data ?? []) as Array<{
+      id: string;
+      invoice_date: string | null;
+      total_amount: number | null;
+      outstanding_balance: number | null;
+      due_date: string | null;
+    }>;
 
-    const gmvMtd = recentInvoices
+    const gmvMtd = financialInvoices
       .filter((row) => {
         if (!row.invoice_date) return false;
         const ts = new Date(row.invoice_date).getTime();
         return ts >= currentMonthStart.getTime() && ts < nextMonthStart.getTime();
       })
       .reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
-    const gmvPreviousMonth = recentInvoices
+    const gmvPreviousMonth = financialInvoices
       .filter((row) => {
         if (!row.invoice_date) return false;
         const ts = new Date(row.invoice_date).getTime();
         return ts >= previousMonthStart.getTime() && ts < currentMonthStart.getTime();
       })
       .reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
-    const gmvYtd = recentInvoices
+    const gmvYtd = financialInvoices
       .filter((row) => {
         if (!row.invoice_date) return false;
         const ts = new Date(row.invoice_date).getTime();
         return ts >= currentYearStart.getTime() && ts < nextMonthStart.getTime();
       })
       .reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
-    const invoiceCountYtd = recentInvoices.filter((row) => {
+    const invoiceCountYtd = financialInvoices.filter((row) => {
       if (!row.invoice_date) return false;
       const ts = new Date(row.invoice_date).getTime();
       return ts >= currentYearStart.getTime() && ts < nextMonthStart.getTime();
@@ -167,11 +192,15 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
     const trendVsLastMonthPct = gmvPreviousMonth > 0
       ? Math.round(((gmvMtd - gmvPreviousMonth) / gmvPreviousMonth) * 100)
       : gmvMtd > 0 ? 100 : 0;
-    const openInvoiceRows = recentInvoices.filter((row) => Number(row.outstanding_balance ?? 0) > 0);
-    const earliestDueDate = openInvoiceRows
+    // Open invoices within the fetched window are a lower bound only (the window
+    // is ~12-13 months); the snapshot's oldest_due_at is the authoritative
+    // all-time value and takes priority when present.
+    const openInvoiceRows = financialInvoices.filter((row) => Number(row.outstanding_balance ?? 0) > 0);
+    const earliestDueDateFromWindow = openInvoiceRows
       .map((row) => row.due_date)
       .filter((value): value is string => Boolean(value))
-      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0] ?? buyerMetrics?.oldest_due_at ?? null;
+      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0] ?? null;
+    const earliestDueDate = buyerMetrics?.oldest_due_at ?? earliestDueDateFromWindow;
     const daysUntilEarliestDue = earliestDueDate
       ? Math.ceil((new Date(earliestDueDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
       : null;
@@ -390,6 +419,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<BuyerHomeR
       recent_activity: activity,
       bestsellers,
       buy_again: buyAgain,
+      as_of: now.toISOString(),
     };
 
     return NextResponse.json(payload, { headers: BUYER_CACHE_PERSONAL });

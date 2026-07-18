@@ -1,11 +1,17 @@
 import { describe, it, expect, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { InsightStrip4 } from '@/components/seller/layout/InsightStrip4';
 import { V3CalloutPanel } from '@/components/seller/layout/V3CalloutPanel';
 import { StatusTag } from '@/components/seller/layout/StatusTag';
 import { GrowthPill } from '@/components/seller/layout/GrowthPill';
 import { PageWrap } from '@/components/seller/layout/PageWrap';
 import { PageHeader } from '@/components/seller/layout/PageHeader';
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+  }),
+}));
 
 describe('InsightStrip4', () => {
   it('supports operational layouts with fewer than four tiles', () => {
@@ -24,24 +30,25 @@ describe('InsightStrip4', () => {
     expect(screen.getByText('C')).toBeInTheDocument();
   });
 
-  it('keeps KPI supporting text hidden unless explicitly expanded', () => {
+  it('hides supporting copy by default', () => {
     const { rerender } = render(
-      <InsightStrip4 tiles={[{ label: 'Revenue', value: '₹5L', sub: '12% vs last period' }]} />
+      <InsightStrip4 showSupportingText={false} tiles={[{ label: 'Revenue', value: '₹5L', sub: '12% vs last period' }]} />
     );
 
     expect(screen.queryByText('12% vs last period')).not.toBeInTheDocument();
 
-    rerender(<InsightStrip4 showSupportingText tiles={[{ label: 'Revenue', value: '₹5L', sub: '12% vs last period' }]} />);
+    rerender(<InsightStrip4 tiles={[{ label: 'Revenue', value: '₹5L', sub: '12% vs last period' }]} />);
     expect(screen.getByText('12% vs last period')).toBeInTheDocument();
   });
 });
 
 describe('V3CalloutPanel', () => {
-  it('renders collapsed rows with only avatar, name, and trailing status', () => {
+  it('renders collapsed rows with name, reason, and trailing status', () => {
     render(
       <V3CalloutPanel
         items={[
           {
+            id: 'needs_attention',
             kind: 'risk',
             eyebrow: 'Needs attention',
             hint: '1',
@@ -61,7 +68,7 @@ describe('V3CalloutPanel', () => {
 
     expect(screen.getByText('Asha Buyers')).toBeInTheDocument();
     expect(screen.getByText('₹42K')).toBeInTheDocument();
-    expect(screen.queryByText('Last order was 45 days ago')).not.toBeInTheDocument();
+    expect(screen.getByText('Last order was 45 days ago')).toBeInTheDocument();
   });
 });
 
@@ -107,32 +114,18 @@ describe('PageWrap', () => {
 });
 
 describe('PageHeader', () => {
-  it('renders period options and calls on change', async () => {
-    const onPeriodChange = vi.fn();
-
+  it('does not render a period selector in the header', () => {
     render(
       <PageHeader
         eyebrow="Portfolio"
         title="Brands"
         subtitle="Summary"
         horizon="This Month"
-        period="month"
-        periodOptions={[
-          { value: 'today', label: 'Today' },
-          { value: 'week', label: 'This Week' },
-          { value: 'month', label: 'This Month' },
-          { value: 'quarter', label: 'This Quarter' },
-          { value: 'year', label: 'This Year' },
-        ]}
-        onPeriodChange={onPeriodChange}
         secondary={{ label: 'Secondary', icon: <span>+</span> }}
         primary="Primary"
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /showing.*this month/i }));
-    fireEvent.click(await screen.findByText('This Quarter'));
-
-    expect(onPeriodChange).toHaveBeenCalledWith('quarter');
+    expect(screen.queryByText('Showing')).not.toBeInTheDocument();
   });
 });

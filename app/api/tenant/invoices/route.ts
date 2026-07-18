@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { FEATURE_FLAGS } from '@/constants';
 import { getVerifiedClaims } from '@/lib/auth';
-import { isoDateInTimeZone } from '@/lib/date-utils';
+import { isoDateInTimeZone, offsetIsoDateInTimeZone } from '@/lib/date-utils';
 import { getFlag } from '@/lib/flags';
 import { getInAppCreateFlags } from '@/lib/server/seller-features';
 import { effectiveInvoiceStatus } from '@/lib/invoice-status';
@@ -27,7 +27,6 @@ import type {
   InvoiceFilterChip,
   InvoiceLandingRow,
   InvoiceLinkedDoc,
-  InvoiceTopRiserRow,
   InvoiceStatusTone,
   InvoiceStatusValue,
   InvoicesKpis,
@@ -35,6 +34,10 @@ import type {
 } from '@/types/tenant-invoices';
 
 export const dynamic = 'force-dynamic';
+
+const SEE_ALL_LIMIT = PAGE_SIZE.MAX;
+const OVERDUE_STATUSES = ['overdue', 'sent', 'unpaid', 'viewed', 'partially_paid'];
+const NOT_YET_DUE_STATUSES = ['sent', 'unpaid', 'viewed', 'partially_paid'];
 
 interface InvoiceDbRow {
   id: string;
@@ -76,11 +79,6 @@ interface EstimateRow {
 
 interface InvoiceItemRow {
   invoice_id: string;
-}
-
-function inPeriod(iso: string, startIso: string, endExclusiveIso: string): boolean {
-  const t = new Date(iso).getTime();
-  return t >= new Date(startIso).getTime() && t < new Date(endExclusiveIso).getTime();
 }
 
 function getInitials(name: string): string {
@@ -317,30 +315,46 @@ export async function GET(request: NextRequest) {
     invoiceTotalQuery = applyInvoiceStatusFilter(invoiceTotalQuery, statusParams, todayKey);
     invoiceTotalQuery = applyInvoiceDueFilter(invoiceTotalQuery, dueParams, todayKey);
 
-    const buildInvoiceCalloutQuery = (mode: 'needs_attention' | 'top_spenders' | 'top_risers') => {
-      let query = buildBaseInvoiceQuery();
-      const fixedMonth = getSellerLandingPeriodMeta(null);
+    // Actions, per specs/metrics-product-strategy-proposal-2026-07.md:
+    // 'largest_overdue' = overdue invoices ranked by amount x age (biggest
+    // exposure, longest overdue, first). 'newly_overdue' = due date crossed
+    // in the last 7 days. 'due_soon' = not yet overdue, due within 7 days.
+    const buildInvoiceCalloutQuery = (mode: 'largest_overdue' | 'newly_overdue' | 'due_soon') => {
+      let query = buildBaseInvoiceQuery().gt('outstanding_balance', 0);
+      const weekAgoKey = offsetIsoDateInTimeZone(new Date(), -7);
+      const weekAheadKey = offsetIsoDateInTimeZone(new Date(), 7);
 
-      if (mode === 'top_risers') {
-        query = applyInvoiceDocumentPeriod(query, fixedMonth.previous_start, fixedMonth.current_end_exclusive);
+      if (mode === 'due_soon') {
         return query
-          .order('invoice_date', { ascending: false, nullsFirst: false })
-          .order('created_at', { ascending: false })
+          .in('status', NOT_YET_DUE_STATUSES)
+          .gte('due_date', todayKey)
+          .lte('due_date', weekAheadKey)
+          .order('due_date', { ascending: true, nullsFirst: false })
+          .order('total_amount', { ascending: false })
           .order('id', { ascending: false })
-          .limit(PAGE_SIZE.MAX);
+          .limit(SEE_ALL_LIMIT);
       }
 
-      if (mode === 'top_spenders') {
-        query = applyInvoiceDocumentPeriod(query, fixedMonth.current_start, fixedMonth.current_end_exclusive);
-        return query.order('total_amount', { ascending: false }).order('id', { ascending: false }).limit(3);
+      if (mode === 'newly_overdue') {
+        return query
+          .in('status', OVERDUE_STATUSES)
+          .lt('due_date', todayKey)
+          .gte('due_date', weekAgoKey)
+          .order('due_date', { ascending: false, nullsFirst: false })
+          .order('total_amount', { ascending: false })
+          .order('id', { ascending: false })
+          .limit(SEE_ALL_LIMIT);
       }
 
+      // largest_overdue: bounded candidate pool ranked by amount x age in JS
+      // below, since amount*days-overdue can't be expressed as a plain
+      // column sort through the query builder.
       return query
-        .gt('outstanding_balance', 0)
-        .order('due_date', { ascending: true, nullsFirst: false })
+        .in('status', OVERDUE_STATUSES)
+        .lt('due_date', todayKey)
         .order('total_amount', { ascending: false })
         .order('id', { ascending: false })
-        .limit(PAGE_SIZE.MAX);
+        .limit(SEE_ALL_LIMIT * 2);
     };
 
     const landingMetricsPromise = db.schema('app').rpc('metrics_v2_transaction_landing', {
@@ -349,18 +363,81 @@ export async function GET(request: NextRequest) {
       p_location_ids: aggregateScope === 'location' ? scopedLocationIds : null,
     });
 
-    const [invoiceListRes, invoiceTotalRes, landingMetricsRes, needsAttentionRes, topSpendersRes, topRisersRes] =
-      await Promise.all([
-        invoiceListQuery,
-        invoiceTotalQuery,
-        landingMetricsPromise,
-        buildInvoiceCalloutQuery('needs_attention'),
-        buildInvoiceCalloutQuery('top_spenders'),
-        buildInvoiceCalloutQuery('top_risers'),
-      ]);
+    const outstandingCustomersPromise = applySellerLocationScope(
+      db
+        .schema('app')
+        .from('invoices')
+        .select('buyer_id')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .gt('outstanding_balance', 0) as any,
+      claims,
+    ).limit(5000);
 
-    if (invoiceListRes.error || invoiceTotalRes.error || landingMetricsRes.error || needsAttentionRes.error || topSpendersRes.error || topRisersRes.error) {
-      console.error('[GET /api/tenant/invoices]', invoiceListRes.error || invoiceTotalRes.error || landingMetricsRes.error || needsAttentionRes.error || topSpendersRes.error || topRisersRes.error);
+    const overdueCustomersPromise = applySellerLocationScope(
+      db
+        .schema('app')
+        .from('invoices')
+        .select('buyer_id')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .gt('outstanding_balance', 0)
+        .in('status', OVERDUE_STATUSES)
+        .lt('due_date', todayKey) as any,
+      claims,
+    ).limit(5000);
+
+    const dueSoonAggPromise = applySellerLocationScope(
+      db
+        .schema('app')
+        .from('invoices')
+        .select('buyer_id, total_amount', { count: 'exact' })
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .gt('outstanding_balance', 0)
+        .in('status', NOT_YET_DUE_STATUSES)
+        .gte('due_date', todayKey)
+        .lte('due_date', offsetIsoDateInTimeZone(new Date(), 7)) as any,
+      claims,
+    );
+
+    const [
+      invoiceListRes,
+      invoiceTotalRes,
+      landingMetricsRes,
+      largestOverdueRes,
+      newlyOverdueRes,
+      dueSoonRes,
+      outstandingCustomersRes,
+      overdueCustomersRes,
+      dueSoonAggRes,
+    ] = await Promise.all([
+      invoiceListQuery,
+      invoiceTotalQuery,
+      landingMetricsPromise,
+      buildInvoiceCalloutQuery('largest_overdue'),
+      buildInvoiceCalloutQuery('newly_overdue'),
+      buildInvoiceCalloutQuery('due_soon'),
+      outstandingCustomersPromise,
+      overdueCustomersPromise,
+      dueSoonAggPromise,
+    ]);
+
+    if (
+      invoiceListRes.error ||
+      invoiceTotalRes.error ||
+      landingMetricsRes.error ||
+      largestOverdueRes.error ||
+      newlyOverdueRes.error ||
+      dueSoonRes.error ||
+      outstandingCustomersRes.error ||
+      overdueCustomersRes.error ||
+      dueSoonAggRes.error
+    ) {
+      console.error(
+        '[GET /api/tenant/invoices]',
+        invoiceListRes.error || invoiceTotalRes.error || landingMetricsRes.error || largestOverdueRes.error || newlyOverdueRes.error || dueSoonRes.error || outstandingCustomersRes.error || overdueCustomersRes.error || dueSoonAggRes.error,
+      );
       return timedJson({ error: 'Failed to fetch invoices' }, { status: 500 });
     }
 
@@ -368,9 +445,9 @@ export async function GET(request: NextRequest) {
     const calloutLookupRows = Array.from(
       new Map([
         ...allInvoiceRows,
-        ...((needsAttentionRes.data ?? []) as InvoiceDbRow[]),
-        ...((topSpendersRes.data ?? []) as InvoiceDbRow[]),
-        ...((topRisersRes.data ?? []) as InvoiceDbRow[]),
+        ...((largestOverdueRes.data ?? []) as InvoiceDbRow[]),
+        ...((newlyOverdueRes.data ?? []) as InvoiceDbRow[]),
+        ...((dueSoonRes.data ?? []) as InvoiceDbRow[]),
       ].map((row) => [row.id, row])).values(),
     );
 
@@ -517,92 +594,63 @@ export async function GET(request: NextRequest) {
       aov: 0,
       overdue_count: 0,
       overdue_sum: 0,
+      overdue_customer_count: 0,
       outstanding_count: 0,
       outstanding_sum: 0,
+      outstanding_customer_count: 0,
     }) as InvoicesKpis;
 
-    const needsAttention = ((needsAttentionRes.data ?? []) as InvoiceDbRow[])
+    const toCalloutRow = (row: InvoiceLandingRow) => ({
+      id: row.id,
+      invoice_number: row.invoice_number,
+      buyer_id: row.buyer_id,
+      buyer_name: row.buyer_name,
+      buyer_initials: row.buyer_initials,
+      buyer_hue: row.buyer_hue,
+      buyer_city: row.buyer_city,
+      buyer_state: row.buyer_state,
+      items_count: row.items_count,
+      total_amount: row.total_amount,
+      outstanding_amount: row.outstanding_amount,
+      due_date: row.due_date,
+      paid_at: row.paid_at,
+      invoice_date: row.invoice_date,
+      effective: row.status.value,
+    });
+
+    const daysOverdue = (dueDate: string | null): number => {
+      if (!dueDate) return 0;
+      return Math.max(0, Math.round((new Date(todayKey).getTime() - new Date(dueDate).getTime()) / (24 * 60 * 60 * 1000)));
+    };
+
+    const largestOverdue = ((largestOverdueRes.data ?? []) as InvoiceDbRow[])
       .map((row, index) => ensureLandingRow(row, index))
-      .filter((row) => row.outstanding_amount > 0 && (row.status.value === 'overdue' || row.status.value === 'sent'))
-      .sort((a, b) => {
-        if (a.status.value === 'overdue' && b.status.value !== 'overdue') return -1;
-        if (a.status.value !== 'overdue' && b.status.value === 'overdue') return 1;
-        const aDue = a.due_date ? new Date(a.due_date).getTime() : Number.POSITIVE_INFINITY;
-        const bDue = b.due_date ? new Date(b.due_date).getTime() : Number.POSITIVE_INFINITY;
-        if (aDue !== bDue) return aDue - bDue;
-        return b.outstanding_amount - a.outstanding_amount;
-      })
-      .slice(0, 3)
-      .map((row) => ({
-        id: row.id,
-        invoice_number: row.invoice_number,
-        buyer_id: row.buyer_id,
-        buyer_name: row.buyer_name,
-        buyer_initials: row.buyer_initials,
-        buyer_hue: row.buyer_hue,
-        buyer_city: row.buyer_city,
-        buyer_state: row.buyer_state,
-        items_count: row.items_count,
-        total_amount: row.total_amount,
-        outstanding_amount: row.outstanding_amount,
-        due_date: row.due_date,
-        paid_at: row.paid_at,
-        invoice_date: row.invoice_date,
-        effective: row.status.value,
-      }));
+      .sort((a, b) => b.outstanding_amount * daysOverdue(b.due_date) - a.outstanding_amount * daysOverdue(a.due_date))
+      .slice(0, SEE_ALL_LIMIT)
+      .map(toCalloutRow);
 
-    const topSpenders = ((topSpendersRes.data ?? []) as InvoiceDbRow[])
+    const newlyOverdue = ((newlyOverdueRes.data ?? []) as InvoiceDbRow[])
       .map((row, index) => ensureLandingRow(row, index))
-      .map((row) => ({
-        id: row.id,
-        invoice_number: row.invoice_number,
-        buyer_id: row.buyer_id,
-        buyer_name: row.buyer_name,
-        buyer_initials: row.buyer_initials,
-        buyer_hue: row.buyer_hue,
-        buyer_city: row.buyer_city,
-        buyer_state: row.buyer_state,
-        items_count: row.items_count,
-        total_amount: row.total_amount,
-        outstanding_amount: row.outstanding_amount,
-        due_date: row.due_date,
-        paid_at: row.paid_at,
-        invoice_date: row.invoice_date,
-        effective: row.status.value,
-      }));
+      .map(toCalloutRow);
 
-    const buyerAggregate = new Map<string, InvoiceTopRiserRow>();
-    for (const [index, buyer] of buyers.entries()) {
-      const currentGmv = ((topRisersRes.data ?? []) as InvoiceDbRow[])
-        .filter((row) => row.buyer_id === buyer.id)
-        .filter((row) => inPeriod(getInvoiceDocumentTimestamp(row), getSellerLandingPeriodMeta(null).current_start, getSellerLandingPeriodMeta(null).current_end_exclusive))
-        .reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
-      const previousGmv = ((topRisersRes.data ?? []) as InvoiceDbRow[])
-        .filter((row) => row.buyer_id === buyer.id)
-        .filter((row) => inPeriod(getInvoiceDocumentTimestamp(row), getSellerLandingPeriodMeta(null).previous_start, getSellerLandingPeriodMeta(null).previous_end_exclusive))
-        .reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
-      const deltaGmv = currentGmv - previousGmv;
-      if (deltaGmv <= 0) continue;
-      buyerAggregate.set(buyer.id, {
-        buyer_id: buyer.id,
-        buyer_name: buyer.business_name,
-        buyer_initials: getInitials(buyer.business_name),
-        buyer_hue: getHue(index),
-        buyer_city: toText(buyer.geography?.city),
-        buyer_state: toText(buyer.geography?.state),
-        current_gmv: currentGmv,
-        previous_gmv: previousGmv,
-        delta_gmv: deltaGmv,
-      });
-    }
-
-    const topRisers = [...buyerAggregate.values()].sort((a, b) => b.delta_gmv - a.delta_gmv).slice(0, 3);
+    const dueSoon = ((dueSoonRes.data ?? []) as InvoiceDbRow[])
+      .map((row, index) => ensureLandingRow(row, index))
+      .map(toCalloutRow);
 
     const todays_read: InvoicesTodaysRead = {
-      needs_attention: needsAttention,
-      top_spenders: topSpenders,
-      top_risers: topRisers,
+      largest_overdue: largestOverdue,
+      newly_overdue: newlyOverdue,
+      due_soon: dueSoon,
     };
+
+    const distinctBuyerCount = (rows: Array<{ buyer_id: string }>) => new Set(rows.map((row) => row.buyer_id)).size;
+    const pulse_aggregates = {
+      due_soon_count: dueSoonAggRes.count ?? 0,
+      due_soon_sum: sumMetric((dueSoonAggRes.data ?? []) as Array<Record<string, unknown>>, 'total_amount'),
+      due_soon_customer_count: distinctBuyerCount((dueSoonAggRes.data ?? []) as Array<{ buyer_id: string }>),
+    };
+    kpis.overdue_customer_count = distinctBuyerCount((overdueCustomersRes.data ?? []) as Array<{ buyer_id: string }>);
+    kpis.outstanding_customer_count = distinctBuyerCount((outstandingCustomersRes.data ?? []) as Array<{ buyer_id: string }>);
 
     const filters: LandingFilterMeta = {
       groups: [
@@ -631,11 +679,17 @@ export async function GET(request: NextRequest) {
     const payload = {
       period,
       kpis,
+      pulse_aggregates,
       todays_read,
       invoices: landingRows,
       filters,
       nextCursor,
       total: invoiceTotalRes.count ?? landingRows.length,
+      as_of: new Date().toISOString(),
+      // Invoices' fixed headline ("This month") is calendar-based, not a
+      // rolling trailing-day window, so there is no single horizon day count.
+      commercial_horizon_days: null,
+      table_period: period.selected,
     };
 
     return timedJson(payload);

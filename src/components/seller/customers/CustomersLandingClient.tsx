@@ -12,7 +12,6 @@ import {
   EntityAvatar,
   FilterBar,
   type FilterBarGroup,
-  GrowthPill,
   InsightStrip4,
   LandingTable,
   PageHeader,
@@ -33,7 +32,6 @@ import {
 } from '@/hooks/useCustomersLanding';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
-import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { CustomersLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 
@@ -43,6 +41,11 @@ const SORT_OPTIONS: SortOption[] = ['Sales (high → low)', 'Sales (low → high
 function formatDate(value: string | null) {
   if (!value) return 'Never';
   return new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function formatOverdueDays(value: number | null | undefined) {
+  if (value == null) return '—';
+  return `${value}d overdue`;
 }
 
 function tabularInline(value: string): ReactNode {
@@ -171,9 +174,8 @@ function CustomersLandingContent({
   const [addBuyerOpen, setAddBuyerOpen] = useState(false);
   const whatsappBroadcastEnabled = useFlag('WHATSAPP_BROADCAST');
   const horizonLabel = 'Trailing 90 days';
-  const lowerLabel = 'in the last 90 days';
   const metricSuffix = '90D';
-  const summaryQuery = useCustomersLanding('month', initialData);
+  const summaryQuery = useCustomersLanding('last90', initialData);
   const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
     storageKey: 'seller-customers-landing',
@@ -199,7 +201,7 @@ function CustomersLandingContent({
     search !== debouncedSearch ||
     JSON.stringify(filters) !== JSON.stringify(deferredFilters);
   const { data, isLoading, isError, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useCustomersLandingInfinite(
-    'month',
+    'last90',
     { search: debouncedSearch, ...deferredFilters },
   );
   const { sentinelRef } = useInfiniteScroll({
@@ -261,8 +263,9 @@ function CustomersLandingContent({
       <PageHeader
         eyebrow="Buyers"
         title="Customers"
-        subtitle={`${kpis?.active ?? 0} active customers · ${kpis?.cohort_count ?? 0} groups configured.`}
+        subtitle={`${kpis?.active ?? 0} of ${kpis?.total ?? 0} customers in last 90 days`}
         horizon={horizonLabel}
+        showHorizonControl={false}
         secondary={
           whatsappBroadcastEnabled
             ? {
@@ -295,19 +298,19 @@ function CustomersLandingContent({
           {
             label: `Invoiced sales · ${metricSuffix}`,
             value: formatCompactInr(kpis?.spend_mtd ?? 0),
-            sub: `${(kpis?.spend_growth_pct ?? 0) >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis?.spend_growth_pct ?? 0)}% vs prior period`,
+            sub: `${kpis?.invoiced_customer_count ?? 0} customers`,
             tone: 'accent',
           },
           {
-            label: 'Inactive 90D',
-            value: String(kpis?.dormant_over_30d),
-            sub: 'no recent billed sale',
+            label: 'Inactive 90D w/ prior-year sales',
+            value: String(kpis?.dormant_over_30d ?? 0),
+            sub: `${formatCompactInr(kpis?.dormant_prior_year_value ?? 0)} prior-year value`,
             tone: 'warn',
           },
           {
             label: 'Overdue amount',
-            value: formatCompactInr(kpis?.outstanding_dues ?? 0),
-            sub: `across ${kpis?.buyers_with_dues ?? 0} customers`,
+            value: formatCompactInr(kpis?.overdue_sum ?? 0),
+            sub: `across ${kpis?.overdue_customer_count ?? 0} customers`,
           },
         ]}
       />
@@ -315,42 +318,43 @@ function CustomersLandingContent({
       <V3CalloutPanel
         items={[
           {
+            id: 'collect_overdue_balances',
             kind: 'risk',
             eyebrow: 'Collect overdue balances',
-            hint: `${callouts?.needs_call.length}`,
+            hint: `${callouts?.needs_call?.length ?? 0}`,
+            getHref: (row) => `/customers/${row.id}`,
             rows: (callouts?.needs_call ?? []).map((buyer) => ({
+              id: buyer.id,
               initials: buyer.avatar.initials,
               hue: buyer.avatar.hue,
               name: buyer.business_name,
-              reason:
-                buyer.dues > 0
-                  ? <>Last order {tabularInline(buyer.last_order_label)} · {tabularInline(formatCompactInr(buyer.dues))} dues</>
-                  : <>Last order {tabularInline(buyer.last_order_label)} · spend {tabularInline(`${buyer.growth_pct}%`)} MoM</>,
-              trailing: <GrowthPill value={buyer.growth_pct} />,
+              reason: (
+                <>
+                  {buyer.invoice_count} invoice{buyer.invoice_count === 1 ? '' : 's'}
+                  {buyer.days_overdue != null ? <> · {tabularInline(`${buyer.days_overdue}d overdue`)}</> : null}
+                </>
+              ),
+              trailing: <span className="font-mono text-base tabular">{formatCompactInr(buyer.dues)}</span>,
             })),
           },
           {
-            kind: 'info',
-            eyebrow: 'Customers who purchased',
-            hint: 'highest sales',
-            rows: (callouts?.top_spenders ?? []).map((buyer) => ({
-              initials: buyer.avatar.initials,
-              hue: buyer.avatar.hue,
-              name: buyer.business_name,
-              reason: `${buyer.orders_mtd} invoices · ${buyer.city}`,
-              trailing: <span className="font-mono text-base tabular">{formatCompactInr(buyer.spend_mtd)}</span>,
-            })),
-          },
-          {
+            id: 'win_back_inactive_customers',
             kind: 'opportunity',
-            eyebrow: 'Win back candidates',
-            hint: 'recent value',
-            rows: (callouts?.top_risers ?? []).map((buyer) => ({
+            eyebrow: 'Win back inactive customers',
+            hint: `${callouts?.win_back?.length ?? 0}`,
+            getHref: (row) => `/customers/${row.id}`,
+            rows: (callouts?.win_back ?? []).map((buyer) => ({
+              id: buyer.id,
               initials: buyer.avatar.initials,
               hue: buyer.avatar.hue,
               name: buyer.business_name,
-              reason: <>{buyer.city} · {tabularInline(formatCompactInr(buyer.spend_mtd))} {lowerLabel}</>,
-              trailing: <GrowthPill value={buyer.growth_pct} />,
+              reason: (
+                <>
+                  {buyer.phone ?? '—'}
+                  {buyer.days_inactive != null ? <> · {tabularInline(`${buyer.days_inactive}d inactive`)}</> : null}
+                </>
+              ),
+              trailing: <span className="font-mono text-base tabular">{formatCompactInr(buyer.prior_value)}</span>,
             })),
           },
         ]}
@@ -389,18 +393,18 @@ function CustomersLandingContent({
           />
         }
         columns={[
-          { label: 'Customer', width: '400px', minWidth: 340, maxWidth: 420, className: 'px-5' },
+          { label: 'Customer', width: '360px', minWidth: 340, maxWidth: 420, className: 'px-5' },
           { label: 'Customer Group', minWidth: 180, maxWidth: 240, className: 'px-5' },
           { label: 'Pricing setup', minWidth: 220, maxWidth: 280, className: 'px-5' },
           { label: `Invoiced sales · ${metricSuffix}`, align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
-          { label: 'Trend', minWidth: 120, maxWidth: 140, className: 'px-5' },
-          { label: 'Overdue amount', align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
+          { label: 'Outstanding Due', align: 'right', minWidth: 150, maxWidth: 180, className: 'px-5' },
+          { label: 'Overdue', align: 'right', minWidth: 120, maxWidth: 150, className: 'px-5' },
           { label: 'Last sale', minWidth: 130, maxWidth: 150, className: 'px-5' },
-          { label: 'Credit Used', align: 'right', minWidth: 130, maxWidth: 170, className: 'px-5' },
-          { label: 'Status', minWidth: 160, maxWidth: 200, className: 'px-5' },
+          { label: 'Credit Used', align: 'right', minWidth: 116, maxWidth: 144, className: 'px-5' },
+          { label: 'Status', minWidth: 190, maxWidth: 240, className: 'px-5' },
           { width: 40, className: 'px-4' },
         ]}
-        tableMinWidth={1540}
+        tableMinWidth={1640}
         >
           {filtered.map((buyer: CustomersLandingBuyer) => {
           const creditRatio = buyer.credit_limit > 0 ? buyer.credit_used / buyer.credit_limit : 0;
@@ -442,12 +446,21 @@ function CustomersLandingContent({
               <td className="px-5 py-3.5 text-right">
                 <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatCompactInr(buyer.spend_mtd)}</span>
               </td>
-              <td className="px-5 py-3.5"><GrowthPill value={buyer.growth_pct} /></td>
-              <td className="px-5 py-3.5 text-right text-sm text-cream-800"><span className="tabular-inline">{formatCompactInr(buyer.dues)}</span></td>
+              <td className="px-5 py-3.5 text-right text-sm text-cream-800">
+                <span className="tabular-inline">{formatCompactInr(buyer.dues)}</span>
+              </td>
+              <td className="px-5 py-3.5 text-right text-sm text-cream-800">
+                <div className="flex flex-col items-end">
+                  <span className="tabular-inline font-display text-md font-medium tabular-nums text-cream-900 tabular-inline">
+                    {buyer.overdue_amount && buyer.overdue_amount > 0 ? formatCompactInr(buyer.overdue_amount) : '-'}
+                  </span>
+                  {buyer.overdue_amount && buyer.overdue_amount > 0 ? <span className="mt-1 text-xs text-cream-500">{formatOverdueDays(buyer.overdue_days)}</span> : null}
+                </div>
+              </td>
               <td className="px-5 py-3.5 text-sm text-cream-800"><span className="tabular-inline">{formatDate(buyer.last_order_at)}</span></td>
               <td className="px-5 py-3.5">
                 <div className="flex flex-col gap-1">
-                  <div className="h-[5px] w-[140px] overflow-hidden rounded-full bg-cream-200">
+                  <div className="h-[5px] w-[120px] overflow-hidden rounded-full bg-cream-200">
                     <div
                       className={cn('h-[5px] rounded-full', creditRatio > 0.75 ? 'bg-warning-500' : 'bg-teal-500')}
                       style={{ width: `${Math.min(100, Math.round(creditRatio * 100))}%` }}
@@ -460,7 +473,7 @@ function CustomersLandingContent({
               </td>
               <td className="px-5 py-3.5">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <StatusTag label={buyer.status.label} tone={buyer.status.tone} />
+                  <StatusTag label={buyer.status.label} tone={buyer.status.tone} className="whitespace-nowrap" />
                   {buyer.whatsapp_opted_out ? (
                     <span className="rounded-full bg-cream-200 px-2 py-0.5 text-xs font-medium text-cream-700">
                       WhatsApp: opted out
@@ -498,7 +511,6 @@ export function CustomersLandingClient({
   initialSearch,
 }: {
   initialData: CustomersLandingResponse | null;
-  initialPeriod: SellerLandingPeriod;
   initialSearch?: string;
 }) {
   return (

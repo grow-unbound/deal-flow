@@ -60,12 +60,20 @@ function mockInvoiceResponse(overrides?: Partial<TenantInvoicesResponse>): Tenan
       aov: 7500,
       overdue_count: 1,
       overdue_sum: 5000,
+      overdue_customer_count: 1,
       outstanding_count: 2,
       outstanding_sum: 10000,
+      outstanding_customer_count: 2,
       ...overrides?.kpis,
     },
+    pulse_aggregates: {
+      due_soon_count: 3,
+      due_soon_sum: 8000,
+      due_soon_customer_count: 3,
+      ...overrides?.pulse_aggregates,
+    },
     todays_read: {
-      needs_attention: [
+      largest_overdue: [
         {
           id: 'inv-overdue',
           invoice_number: 'INV-2026-0002',
@@ -84,18 +92,24 @@ function mockInvoiceResponse(overrides?: Partial<TenantInvoicesResponse>): Tenan
           effective: 'overdue',
         },
       ],
-      top_spenders: [],
-      top_risers: [
+      due_soon: [],
+      newly_overdue: [
         {
+          id: 'inv-newly-overdue',
+          invoice_number: 'INV-2026-0003',
           buyer_id: 'b1',
           buyer_name: 'Acme',
           buyer_initials: 'AC',
           buyer_hue: 'teal',
           buyer_city: 'Mumbai',
           buyer_state: 'MH',
-          current_gmv: 10000,
-          previous_gmv: 3000,
-          delta_gmv: 7000,
+          items_count: 3,
+          total_amount: 7000,
+          outstanding_amount: 7000,
+          due_date: '2026-06-14T00:00:00.000Z',
+          paid_at: null,
+          invoice_date: '2026-06-01T00:00:00.000Z',
+          effective: 'overdue',
         },
       ],
       ...overrides?.todays_read,
@@ -238,8 +252,10 @@ describe('invoices landing page', () => {
           aov: overdueOnly ? 5000 : 7500,
           overdue_count: 1,
           overdue_sum: 5000,
+          overdue_customer_count: 1,
           outstanding_count: overdueOnly ? 1 : 2,
           outstanding_sum: overdueOnly ? 5000 : 10000,
+          outstanding_customer_count: overdueOnly ? 1 : 2,
         },
       });
 
@@ -256,20 +272,22 @@ describe('invoices landing page', () => {
     });
   });
 
-  it('subtitle includes overdue count from KPI payload', () => {
+  it('subtitle shows invoice count for the table period', () => {
     render(<InvoicesLandingClient initialData={mockInvoiceResponse()} initialPeriod="month" />);
-    expect(screen.getByText(/2 still due and 1 overdue\./)).toBeInTheDocument();
+    expect(screen.getByText('2 invoices in this month.')).toBeInTheDocument();
   });
 
   it('renders invoice KPI strip and callout rail', () => {
     render(<InvoicesLandingClient initialData={mockInvoiceResponse()} initialPeriod="month" />);
+    expect(screen.getByRole('button', { name: /Period: This Month/i })).toBeInTheDocument();
+    expect(screen.queryByText('Showing')).not.toBeInTheDocument();
     expect(screen.getByText('Invoiced sales')).toBeInTheDocument();
     expect(screen.getByText('Outstanding amount')).toBeInTheDocument();
     expect(screen.getByText('Overdue amount')).toBeInTheDocument();
     expect(screen.getByText('Due in 7 days')).toBeInTheDocument();
     expect(screen.getByText('2 invoices this period')).toBeInTheDocument();
-    expect(screen.getByText('2 invoices due')).toBeInTheDocument();
-    expect(screen.getByText('1 overdue invoice')).toBeInTheDocument();
+    expect(screen.getByText('2 invoices · 2 customers')).toBeInTheDocument();
+    expect(screen.getByText('1 invoices · 1 customers')).toBeInTheDocument();
     expect(screen.getByText('Largest overdue balances')).toBeInTheDocument();
     expect(screen.getByText('High-value invoices due soon')).toBeInTheDocument();
     expect(screen.getByText('Newly overdue invoices')).toBeInTheDocument();
@@ -277,8 +295,8 @@ describe('invoices landing page', () => {
 
   it('renders invoice supporting text and opens the callout detail sheet', () => {
     render(<InvoicesLandingClient initialData={mockInvoiceResponse()} initialPeriod="month" />);
-    expect(screen.getByText('INV-2026-0002 · Due 01 Jun 2026')).toBeInTheDocument();
-    expect(screen.getByText('INV-2026-0001 · Due 20 Jun 2026')).toBeInTheDocument();
+    expect(screen.getAllByText('INV-2026-0002 · Due 01 Jun 2026').length).toBeGreaterThan(0);
+    expect(screen.getByText('INV-2026-0003 · Due 14 Jun 2026')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /open full largest overdue balances list/i }));
 
@@ -294,11 +312,13 @@ describe('invoices landing page', () => {
     expect(screen.queryByText('INV-2026-0001')).not.toBeInTheDocument();
   });
 
-  it('renders place of supply, source, items, and due amount in the table', () => {
+  it('renders place of supply, source, and outstanding amount in the table', () => {
     render(<InvoicesLandingClient initialData={mockInvoiceResponse()} initialPeriod="month" />);
+    expect(screen.getByText('Place of Supply')).toBeInTheDocument();
+    expect(screen.getByText('Outstanding')).toBeInTheDocument();
     expect(screen.getAllByText('MH').length).toBeGreaterThan(0);
     expect(screen.getByText('SO-2026-0042')).toBeInTheDocument();
-    expect(screen.getAllByText('₹5,000 due')).toHaveLength(2);
+    expect(screen.getAllByText('₹5,000').length).toBeGreaterThanOrEqual(2);
   });
 
   it('row click navigates to invoice detail', () => {

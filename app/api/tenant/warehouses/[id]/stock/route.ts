@@ -46,7 +46,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const page = Math.max(1, Number(request.nextUrl.searchParams.get('page') ?? '1') || 1);
     const pageSize = Math.min(100, Math.max(1, Number(request.nextUrl.searchParams.get('page_size') ?? '50') || 50));
     const statuses = request.nextUrl.searchParams.getAll('status').filter(Boolean);
-    const { data: rows, error: searchError } = await db.schema('app').rpc('search_warehouse_stock', {
+    const { data: rows, error: searchError } = await db.schema('app').rpc('search_warehouse_stock_v2', {
       p_tenant_id: claims.tenant_id,
       p_warehouse_id: id,
       p_query: request.nextUrl.searchParams.get('q')?.trim() || null,

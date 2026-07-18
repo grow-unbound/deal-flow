@@ -120,8 +120,8 @@ describe('catalog-detail-page integration', () => {
   it('loads performance tab by default and keeps activity tab absent', () => {
     render(<CatalogDetailPage id="cat-1" />);
 
-    expect(screen.getByRole('button', { name: /Performance/i })).toHaveClass('border-teal-500');
-    expect(screen.queryByRole('button', { name: /Activity/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Performance/i })).toHaveClass('border-ember-500');
+    expect(screen.queryByRole('tab', { name: /Activity/i })).not.toBeInTheDocument();
   });
 
   it('renders the published buyer-app action as a new-tab preview launch link', () => {

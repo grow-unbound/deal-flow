@@ -60,7 +60,7 @@ describe('SellerGlobalHeader', () => {
   it('renders the inline search field and right-side actions', () => {
     render(<SellerGlobalHeader tenantBranding={{ tenantName: 'Acme Dist', tenantLogoUrl: null }} />);
 
-    expect(screen.getByRole('searchbox', { name: /Search brands, products, buyers, orders/i })).toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: /Search seller entities/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Open Buyer App/i })).toHaveAttribute('href', '/api/buyer/preview/launch');
     expect(screen.getByRole('button', { name: /Notifications/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Open account menu for Priya Shah/i })).toBeInTheDocument();
@@ -69,10 +69,10 @@ describe('SellerGlobalHeader', () => {
   it('opens the inline search dropdown from the search field', () => {
     render(<SellerGlobalHeader tenantBranding={{ tenantName: 'Acme Dist', tenantLogoUrl: null }} />);
 
-    fireEvent.focus(screen.getByRole('searchbox', { name: /Search brands, products, buyers, orders/i }));
+    fireEvent.focus(screen.getByRole('searchbox', { name: /Search seller entities/i }));
 
     expect(
-      screen.getByText(/Start typing to search brands, products, buyers, orders, invoices, and estimates/i),
+      screen.getByText(/Start typing to search products/i),
     ).toBeInTheDocument();
   });
 

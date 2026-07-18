@@ -208,7 +208,7 @@ function CohortsLandingContent({
       <PageHeader
         eyebrow="Segmentation"
         title="Customer Groups"
-        subtitle={`${kpis?.covered_members ?? 0} customers assigned across ${kpis?.total_cohorts ?? 0} groups. Use groups to target pricing and campaigns.`}
+        subtitle={`${kpis?.total_cohorts ?? 0} customer groups · ${kpis?.covered_members ?? 0} of ${kpis?.total_buyers ?? 0} active customers assigned.`}
         horizon={horizonLabel}
         primary="Add a customer group"
         onPrimaryClick={() => router.push('/customer-groups/new')}
@@ -227,26 +227,20 @@ function CohortsLandingContent({
       <InsightStrip4
         tiles={[
           {
-            label: 'Customer Groups configured',
-            value: `${kpis?.total_cohorts ?? 0}`,
-            sub: `${kpis?.covered_members ?? 0} of ${kpis?.total_buyers ?? 0} customers assigned`,
-          },
-          {
-            label: `Grouped customer sales · ${metricSuffix}`,
-            value: formatCompactInr(kpis?.combined_gmv_mtd ?? 0),
-            sub: `${(kpis?.growth_pct ?? 0) >= 0 ? '↑ +' : '↓ '}${Math.abs(kpis?.growth_pct ?? 0)}% vs prior 90D`,
-            tone: 'accent',
-          },
-          {
-            label: 'Customers assigned',
+            label: 'Customers assigned to a Group',
             value: `${kpis?.covered_members ?? 0}`,
-            sub: 'members currently in groups',
+            sub: `${kpis?.total_buyers ? Math.round(((kpis.covered_members ?? 0) / kpis.total_buyers) * 100) : 0}% of ${kpis?.total_buyers ?? 0} customers`,
           },
           {
-            label: 'Customers in no group',
+            label: 'Valuable customers in no Group',
             value: `${kpis?.uncategorised_buyers ?? 0}`,
-            sub: 'valuable to classify next',
+            sub: `90D invoiced sales — NEEDS BACKEND`,
             tone: 'warn',
+          },
+          {
+            label: 'Grouped customers who purchased',
+            value: `${(kpis?.avg_conversion_pct ?? 0).toFixed(1)}%`,
+            sub: 'Average purchase rate across groups',
           },
         ]}
       />
@@ -254,6 +248,7 @@ function CohortsLandingContent({
       <V3CalloutPanel
         items={[
           {
+            id: 'low_conversion',
             kind: 'risk',
             eyebrow: 'Groups needing attention',
             hint: `${landingData.todays_read.low_conversion.length}`,
@@ -266,6 +261,7 @@ function CohortsLandingContent({
             })),
           },
           {
+            id: 'top_performers',
             kind: 'info',
             eyebrow: 'Groups driving sales',
             hint: 'by sales',
@@ -278,6 +274,7 @@ function CohortsLandingContent({
             })),
           },
           {
+            id: 'top_risers',
             kind: 'opportunity',
             eyebrow: 'Groups gaining traction',
             hint: 'fastest growth',

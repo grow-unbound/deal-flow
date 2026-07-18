@@ -67,10 +67,14 @@ export interface BrandsKpis {
 }
 
 export interface TodaysReadItem {
+  // get_seller_brand_landing_summary's needs_attention rows only carry {id, name} —
+  // growth_pct/alerts are not part of that payload, so they must stay optional here
+  // (they previously were typed as required, which hid an undefined.includes() crash
+  // in BrandsLandingClient's attentionReason()).
   id: string;
   name: string;
-  growth_pct: number;
-  alerts: string[];
+  growth_pct?: number;
+  alerts?: string[];
 }
 
 export interface TopPerformerItem {
@@ -84,7 +88,9 @@ export interface TopRiserItem {
   name: string;
   growth_pct: number;
   gmv_mtd: number;
-  gmv_prev_mtd: number;
+  // Not returned by get_seller_brand_landing_summary's top_risers rows — do not
+  // reference this without deriving it from growth_pct/gmv_mtd first.
+  gmv_prev_mtd?: number;
 }
 
 export interface TenantBrandsResponse {
@@ -104,6 +110,10 @@ export interface TenantBrandsResponse {
     top_performers: TopPerformerItem[];
     top_risers: TopRiserItem[];
   };
+  /** Active product count, for the "{branded} of {active} active products branded" subtitle. */
+  active_product_count?: number;
+  /** Active products with a tenant_brand_id assigned. */
+  branded_product_count?: number;
   period?: SellerLandingPeriodMeta;
 }
 
@@ -145,10 +155,18 @@ export interface BrandDetailHeader {
 
 export interface BrandDetailMetaStrip {
   gmv_mtd: number;
-  growth_pct: number;
-  active_buyers: number;
-  total_buyers: number;
-  low_stock_skus: number;
+  /** Product count supporting invoiced sales (doc: "Invoiced sales - amount + product count"). */
+  product_count: number;
+  /** Units sold in the last 90 days, from get_seller_brand_detail_v2's kpi_grid. */
+  units_90d: number;
+  /**
+   * Not returned by get_seller_brand_detail_v2 — brand_detail has no buyer-count or
+   * stock-risk read model (doc lines 759-760 flagged NEEDS BACKEND). Always null;
+   * render as an unavailable state, not a fake 0.
+   */
+  active_buyers: number | null;
+  total_buyers: number | null;
+  low_stock_skus: number | null;
   days_since_catalog: number | null;
   last_sent_date: string | null;
   latest_catalog_name: string | null;

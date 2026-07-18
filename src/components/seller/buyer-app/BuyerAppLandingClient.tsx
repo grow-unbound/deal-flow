@@ -20,6 +20,7 @@ import {
   type BuyerAppCalloutBuyer,
 } from '@/hooks/useBuyerApp';
 import { formatCompactInr } from '@/lib/utils';
+import { loadCalloutRows } from '@/lib/callout-loader';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { BuyerAppSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
@@ -57,21 +58,19 @@ function BuyerAppLandingContent({
     app_gmv_mtd: 0, app_orders_mtd: 0, total_gmv_mtd: 0,
     estimates_app_value_mtd: 0, estimates_app_count_mtd: 0,
     converted_order_value_mtd: 0, converted_order_count_mtd: 0,
-    invoiced_app_value_mtd: 0, invoiced_app_count_mtd: 0,
-    not_ordering_buyers: [], top_app_buyers_callout: [], no_app_buyers: [],
-    top_app_buyers_card: [], top_locations: [], refreshed_at: '',
+    invoiced_app_value_mtd: 0, invoiced_app_count_mtd: 0, invoiced_share_of_total_pct: 0,
+    not_ordering_buyers: [], used_no_demand_buyers: [], no_app_buyers: [],
+    top_locations: [], contribution_over_time: [], refreshed_at: '',
   };
 
   const enabledPct =
     kpis.total_buyers > 0 ? Math.round((kpis.enabled_buyers / kpis.total_buyers) * 100) : 0;
-  const demandSharePct =
-    snap && snap.total_gmv_mtd > 0
-      ? Math.round((snap.app_gmv_mtd / snap.total_gmv_mtd) * 100)
-      : 0;
-  const invoicedShareOfDemandPct =
-    snap && snap.app_gmv_mtd > 0
-      ? Math.round((snap.invoiced_app_value_mtd / snap.app_gmv_mtd) * 100)
-      : 0;
+  // % of ENABLED buyers who submitted primary demand (doc: "count + % of enabled buyers").
+  const submittingShareOfEnabledPct =
+    snap && snap.enabled_buyers > 0 ? Math.round((snap.ordered_mtd / snap.enabled_buyers) * 100) : 0;
+  // % of ENABLED buyers who are repeat (2+ primary-demand documents).
+  const repeatShareOfEnabledPct =
+    snap && snap.enabled_buyers > 0 ? Math.round((snap.repeat_mtd / snap.enabled_buyers) * 100) : 0;
   const primaryDemandKind = landingData.portfolio?.primary_demand_kind ?? 'orders';
   const primaryDemandNoun = primaryDemandKind === 'estimates' ? 'enquiries' : 'orders';
   const primaryDemandVerb = primaryDemandKind === 'estimates' ? 'submitted' : 'placed';
@@ -97,18 +96,18 @@ function BuyerAppLandingContent({
           {
             label: `Customers submitting app demand · ${metricSuffix}`,
             value: `${snap?.ordered_mtd ?? kpis.active_buyers}`,
-            sub: `${demandSharePct}% of submitted demand came through the app`,
+            sub: `${submittingShareOfEnabledPct}% of enabled buyers`,
             tone: 'accent',
           },
           {
             label: `App-sourced invoiced sales · ${metricSuffix}`,
             value: formatCompactInr(snap?.invoiced_app_value_mtd ?? kpis.invoiced_value),
-            sub: `${invoicedShareOfDemandPct}% of app demand has invoiced through`,
+            sub: `${snap?.invoiced_share_of_total_pct ?? 0}% of total invoiced sales`,
           },
           {
             label: 'Repeat app customers',
             value: `${snap?.repeat_mtd ?? 0}`,
-            sub: `${primaryDemandVerb} 2+ ${primaryDemandNoun}`,
+            sub: `${repeatShareOfEnabledPct}% of enabled customers · ${primaryDemandVerb} 2+ ${primaryDemandNoun}`,
           },
         ]}
       />
@@ -116,10 +115,30 @@ function BuyerAppLandingContent({
       <V3CalloutPanel
         items={[
           {
+            id: 'access_enabled_never_used',
             kind: 'risk',
             eyebrow: 'Access enabled, never used',
             hint: `${(snap?.not_ordering_buyers ?? []).length} customers`,
+            loadRows: () => loadCalloutRows<BuyerAppLandingResponse, {
+              id: string;
+              initials: string;
+              hue: 'ember';
+              name: string;
+              reason: string;
+              trailing: JSX.Element;
+            }>(
+              '/api/tenant/buyer-app?callout=access_enabled_never_used',
+              async (payload) => (payload.snapshot?.not_ordering_buyers ?? []).map((b: BuyerAppCalloutBuyer) => ({
+                id: b.buyer_id,
+                initials: b.initials,
+                hue: 'ember' as const,
+                name: b.name,
+                reason: `Access enabled ${b.enabled_date ?? '—'} · no app activity yet`,
+                trailing: <StatusTag label="Inactive" tone="warning" />,
+              })),
+            ),
             rows: (snap?.not_ordering_buyers ?? []).map((b: BuyerAppCalloutBuyer) => ({
+              id: b.buyer_id,
               initials: b.initials,
               hue: 'ember' as const,
               name: b.name,
@@ -128,22 +147,69 @@ function BuyerAppLandingContent({
             })),
           },
           {
+            id: 'used_no_demand',
             kind: 'info',
-            eyebrow: 'Top app contributors',
-            hint: 'by invoiced sales',
-            rows: (snap?.top_app_buyers_callout ?? []).map((b: BuyerAppCalloutBuyer) => ({
+            eyebrow: 'Used the app, no demand yet',
+            hint: `${(snap?.used_no_demand_buyers ?? []).length} customers`,
+            loadRows: () => loadCalloutRows<BuyerAppLandingResponse, {
+              id: string;
+              initials: string;
+              hue: 'teal';
+              name: string;
+              reason: string;
+              trailing: JSX.Element;
+            }>(
+              '/api/tenant/buyer-app?callout=used_no_demand',
+              async (payload) => (payload.snapshot?.used_no_demand_buyers ?? []).map((b: BuyerAppCalloutBuyer) => ({
+                id: b.buyer_id,
+                initials: b.initials,
+                hue: 'teal' as const,
+                name: b.name,
+                reason: `Opened the app but hasn't ${primaryDemandVerb} ${primaryDemandNoun} yet`,
+                trailing: <StatusTag label="No demand" tone="neutral" />,
+              })),
+            ),
+            rows: (snap?.used_no_demand_buyers ?? []).map((b: BuyerAppCalloutBuyer) => ({
+              id: b.buyer_id,
               initials: b.initials,
               hue: 'teal' as const,
               name: b.name,
-              reason: 'Highest current app contribution',
-              trailing: formatCompactInr(b.gmv ?? 0),
+              reason: `Opened the app but hasn't ${primaryDemandVerb} ${primaryDemandNoun} yet`,
+              trailing: <StatusTag label="No demand" tone="neutral" />,
             })),
           },
           {
+            id: 'valuable_without_access',
             kind: 'opportunity',
             eyebrow: 'Valuable customers without app access',
             hint: 'highest assisted sales',
+            loadRows: () => loadCalloutRows<BuyerAppLandingResponse, {
+              id: string;
+              initials: string;
+              hue: 'cream';
+              name: string;
+              reason: string;
+              trailing: JSX.Element;
+            }>(
+              '/api/tenant/buyer-app?callout=valuable_without_access',
+              async (payload) => (payload.snapshot?.no_app_buyers ?? []).map((b: BuyerAppCalloutBuyer) => ({
+                id: b.buyer_id,
+                initials: b.initials,
+                hue: 'cream' as const,
+                name: b.name,
+                reason: `${formatCompactInr(b.offline_gmv ?? 0)} invoiced sales outside the app`,
+                trailing: (
+                  <Link
+                    href={`/customers/${b.buyer_id}`}
+                    className="text-[12px] text-teal-600 hover:text-teal-700 font-medium whitespace-nowrap"
+                  >
+                    Enable →
+                  </Link>
+                ),
+              })),
+            ),
             rows: (snap?.no_app_buyers ?? []).map((b: BuyerAppCalloutBuyer) => ({
+              id: b.buyer_id,
               initials: b.initials,
               hue: 'cream' as const,
               name: b.name,
@@ -220,26 +286,19 @@ function BuyerAppLandingContent({
           }}
         />
         <PerformanceCard
-          title="Top customers on app"
-          subtitle="By app contribution"
-          actions={(
-            <Link href="/customers?filter=app_active" className="text-sm font-semibold text-teal-700 no-underline">
-              View all
-            </Link>
-          )}
+          title="App contribution over time"
+          subtitle="Monthly app-sourced invoiced sales"
           bodyClassName="p-0"
         >
           <RankedList
-            items={snap.top_app_buyers_card.map((buyer) => ({
-              id: buyer.buyer_id,
-              label: buyer.name,
-              meta: buyer.city,
-              value: formatCompactInr(buyer.gmv),
-              supporting: `${buyer.orders} order${buyer.orders !== 1 ? 's' : ''}`,
-              initials: buyer.initials,
+            items={[...snap.contribution_over_time].reverse().map((month) => ({
+              id: month.month,
+              label: new Date(month.month).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }),
+              value: formatCompactInr(month.app_invoice_value),
+              supporting: `${month.total_invoice_value > 0 ? Math.round((month.app_invoice_value / month.total_invoice_value) * 100) : 0}% of that month's invoiced sales`,
             }))}
-            emptyTitle="No app orders yet this month"
-            emptyDescription="Top customers will appear once the app starts generating demand."
+            emptyTitle="No app contribution history yet"
+            emptyDescription="Monthly app-sourced invoiced sales will appear here once orders start invoicing through."
           />
         </PerformanceCard>
         <DetailCardRenderer

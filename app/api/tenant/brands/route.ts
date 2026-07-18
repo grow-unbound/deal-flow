@@ -116,7 +116,7 @@ export async function GET(req: NextRequest) {
     const pageBrandIds = pageResult.flatMap((row) => row.id ? [row.id] : []);
     const total = Number(pageResult[0]?.total_count ?? 0);
 
-    const [rowsResult, summaryResult] = await Promise.all([
+    const [rowsResult, summaryResult, productBrandingResult] = await Promise.all([
       pageBrandIds.length > 0
         ? db.schema('app').rpc('get_seller_brand_landing_rows', {
             p_tenant_id: tenantId,
@@ -132,6 +132,18 @@ export async function GET(req: NextRequest) {
             ...periodArgs,
           })
         : Promise.resolve({ data: null, error: null }),
+      // Subtitle needs "{branded} of {active} active products branded" — the landing
+      // summary RPC has no product-level fields, so pull the two counts directly off
+      // tenant_products (same plain-select pattern the categories landing route uses)
+      // instead of adding a new RPC.
+      includeSummary
+        ? Promise.all([
+            db.schema('app').from('tenant_products').select('id', { count: 'exact', head: true })
+              .eq('tenant_id', tenantId).is('deleted_at', null).eq('is_active', true),
+            db.schema('app').from('tenant_products').select('id', { count: 'exact', head: true })
+              .eq('tenant_id', tenantId).is('deleted_at', null).eq('is_active', true).not('tenant_brand_id', 'is', null),
+          ])
+        : Promise.resolve(null),
     ]);
 
     if (rowsResult.error || summaryResult.error) {
@@ -148,6 +160,8 @@ export async function GET(req: NextRequest) {
       .map((id) => rowsById.get(id))
       .filter((brand): brand is TenantBrandLandingRow => Boolean(brand));
     const summary = (summaryResult.data ?? null) as BrandLandingSummary | null;
+    const activeProductCount = productBrandingResult ? Number(productBrandingResult[0]?.count ?? 0) : 0;
+    const brandedProductCount = productBrandingResult ? Number(productBrandingResult[1]?.count ?? 0) : 0;
     const nextOffset = pageBrandIds.length > 0 && offset + pageBrandIds.length < total
       ? offset + pageBrandIds.length
       : null;
@@ -155,6 +169,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       period,
       ...(includeSummary && summary ? summary : {}),
+      ...(includeSummary ? { active_product_count: activeProductCount, branded_product_count: brandedProductCount } : {}),
       brands,
       total,
       limit,
