@@ -361,7 +361,7 @@ describe('sales orders landing API route', () => {
     expect(convertedRow.buyer_name).toBe('Buyer One');
     expect(convertedRow.buyer_initials).toBe('BO');
     expect(convertedRow.source_label).toBe('EST-2042');
-    expect(convertedRow.source_detail).toBe('Converted by Priya Shah');
+    expect(convertedRow.source_detail).toBe('');
     expect(convertedRow.catalog_name).toBe('Summer Sell-in');
     expect(convertedRow.subtotal).toBe(8475);
     expect(convertedRow.tax_amount).toBe(1525);
@@ -370,17 +370,17 @@ describe('sales orders landing API route', () => {
 
     const buyerAppRow = body.orders.find((r: { order_id: string }) => r.order_id === 'DF-2');
     expect(buyerAppRow.buyer_name).toBe('Buyer Two');
-    expect(buyerAppRow.source_label).toBe('buyer_app');
-    expect(buyerAppRow.source_detail).toBe('Asha Singh');
+    expect(buyerAppRow.source_label).toBe('BUYER_APP');
+    expect(buyerAppRow.source_detail).toBe('');
 
     expect(body.todays_read.needs_attention.length).toBeLessThanOrEqual(3);
     expect(body.todays_read.needs_attention.every((r: { status: { value: string } }) => r.status.value === 'received')).toBe(true);
 
-    expect(body.todays_read.biggest_tickets.length).toBeLessThanOrEqual(3);
-    expect(body.todays_read.in_motion.length).toBeLessThanOrEqual(3);
+    expect(body.todays_read.to_dispatch.length).toBeLessThanOrEqual(3);
+    expect(body.todays_read.stock_shortage.length).toBeLessThanOrEqual(3);
     expect(
-      body.todays_read.in_motion.every(
-        (r: { status: { value: string } }) => r.status.value === 'dispatched' || r.status.value === 'partially_dispatched'
+      body.todays_read.to_dispatch.every(
+        (r: { status: { value: string } }) => r.status.value === 'confirmed'
       )
     ).toBe(true);
   });

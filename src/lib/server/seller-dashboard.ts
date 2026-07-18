@@ -427,7 +427,7 @@ async function fetchSellerDashboardData(
         sub: `${invoicedCustomersThisMonth} customer${invoicedCustomersThisMonth === 1 ? '' : 's'}`,
       },
       {
-        label: 'Open primary demand',
+        label: 'Open demand',
         value: portfolioNumber(portfolio, 'metrics', 'open_primary_demand_value', 'value', currentOrdersCount),
         sub: `${portfolioNumber(portfolio, 'metrics', 'open_primary_demand_value', 'count', 0)} open ${primaryKind === 'estimates' ? 'estimates' : 'orders'}`,
       },
@@ -438,9 +438,9 @@ async function fetchSellerDashboardData(
         tone: overdueInvoices.length > 0 ? 'warn' : undefined,
       },
       {
-        label: 'Sold products out of stock',
+        label: 'Recently sold products out of stock',
         value: portfolioNumber(portfolio, 'metrics', 'recently_sold_products_now_out_of_stock', 'count', lowStockAlerts),
-        sub: 'Sold in the last 90 days',
+        sub: 'Products sold in the last 90 days',
         tone: lowStockAlerts > 0 ? 'warn' : undefined,
       },
     ];

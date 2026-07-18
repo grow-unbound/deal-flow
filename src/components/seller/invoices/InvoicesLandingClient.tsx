@@ -30,8 +30,8 @@ import { formatCompactInr, formatDate } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { InvoicesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
-type SortOption = 'Recent first';
-const SORT_OPTIONS: SortOption[] = ['Recent first'];
+type SortOption = 'Recent first' | 'Value (high → low)' | 'Outstanding (high → low)';
+const SORT_OPTIONS: SortOption[] = ['Recent first', 'Value (high → low)', 'Outstanding (high → low)'];
 
 function matchesInvoiceSearch(invoice: TenantInvoicesResponse['invoices'][number], query: string): boolean {
   const needle = query.trim().toLowerCase();
@@ -41,6 +41,7 @@ function matchesInvoiceSearch(invoice: TenantInvoicesResponse['invoices'][number
     invoice.buyer_name,
     invoice.location_name,
     invoice.source_label,
+    invoice.source_detail,
     invoice.campaign_name ?? null,
     invoice.place_of_supply ?? null,
   ]
@@ -50,6 +51,12 @@ function matchesInvoiceSearch(invoice: TenantInvoicesResponse['invoices'][number
 
 function buyerGeographyLabel(row: Pick<TenantInvoicesResponse['invoices'][number], 'buyer_city' | 'buyer_state'>) {
   return [row.buyer_city, row.buyer_state].filter(Boolean).join(', ') || '—';
+}
+
+function invoiceSourceFilterLabel(row: TenantInvoicesResponse['invoices'][number]) {
+  if (row.source_kind === 'converted') return 'Converted';
+  if (row.source_kind === 'buyer_app') return 'Buyer App';
+  return 'Direct';
 }
 
 function mapRowToCallout(row: { id: string; buyer_initials: string; buyer_hue: TenantInvoicesResponse['invoices'][number]['buyer_hue']; buyer_name: string }) {
@@ -177,7 +184,7 @@ function InvoicesLandingContent({
           return false;
         }
 
-        if (filters.source.length > 0 && !filters.source.includes(invoice.source_label)) {
+        if (filters.source.length > 0 && !filters.source.includes(invoiceSourceFilterLabel(invoice))) {
           return false;
         }
 
