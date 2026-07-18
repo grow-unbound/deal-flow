@@ -26,6 +26,45 @@ export interface MetricsV2PortfolioItem {
   meta?: Record<string, unknown>;
 }
 
+export interface SellerDashboardBusinessFlowMeta {
+  primary_demand_kind?: 'orders' | 'estimates' | 'none';
+  invoice_value_this_month?: number;
+  invoice_count_this_month?: number;
+  order_value_this_month?: number;
+  order_count_this_month?: number;
+  estimate_value_this_month?: number;
+  estimate_count_this_month?: number;
+  orders_enabled?: boolean;
+  estimates_enabled?: boolean;
+}
+
+export interface SellerDashboardMixEntry {
+  id: string;
+  name: string;
+  value: number;
+}
+
+export interface SellerDashboardLocationComparisonEntry {
+  location_id: string;
+  name: string;
+  invoiced_sales_90d: number;
+  open_primary_demand_value: number | null;
+  overdue_amount: number;
+}
+
+export interface SellerDashboardSalesMixMeta {
+  brands?: SellerDashboardMixEntry[];
+  categories?: SellerDashboardMixEntry[];
+  locations?: SellerDashboardLocationComparisonEntry[];
+}
+
+export interface SellerDashboardCustomerActivityMeta {
+  purchasing_customers_90d?: number;
+  repeat_customers_90d?: number;
+  inactive_customers_90d?: number;
+  overdue_customers_now?: number;
+}
+
 export interface MetricsV2DashboardPortfolio {
   as_of: string;
   commercial_horizon_days: number;
@@ -43,8 +82,6 @@ export interface MetricsV2DashboardPortfolio {
 export interface SellerDashboardMetric {
   label: string;
   value: number;
-  delta?: number;
-  delta_label?: string;
   sub?: string;
   tone?: 'accent' | 'warn';
   href?: string;
@@ -61,6 +98,7 @@ export interface SellerDashboardCalloutRow {
 }
 
 export interface SellerDashboardCalloutItem {
+  id: string;
   kind: 'risk' | 'info' | 'opportunity';
   eyebrow: string;
   hint: string;
@@ -88,15 +126,6 @@ export interface SellerDashboardFeed {
   rows: SellerDashboardFeedRow[];
 }
 
-export interface SellerDashboardBrandRow {
-  id: string;
-  initials: string;
-  name: string;
-  pct: number;
-  trend_label: string;
-  hue: EntityAvatarHue;
-}
-
 export interface SellerDashboardRecentActivityRow {
   id: string;
   kind: SellerDashboardDocKind;
@@ -114,7 +143,6 @@ export interface SellerDashboardRecentActivityRow {
 export interface SellerAdminDashboardSection {
   metrics: SellerDashboardMetric[];
   callouts: SellerDashboardCalloutItem[];
-  top_brands: SellerDashboardBrandRow[];
   recent_activity: SellerDashboardRecentActivityRow[];
 }
 

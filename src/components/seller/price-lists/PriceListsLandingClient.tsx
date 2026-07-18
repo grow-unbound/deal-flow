@@ -181,9 +181,7 @@ function PriceListsLandingContent({
         <PageHeader
           eyebrow="Pricing"
           title="Price Lists"
-          subtitle={isSellerAssistant
-            ? 'Reference pricing by cohort and validity window. Use this view to verify what buyers should be seeing.'
-            : 'Current pricing coverage across customer groups and products. Focus on active coverage and lists nearing expiry.'}
+          subtitle={`${data?.total ?? allRows.length} Pricelists · ${data?.kpis.active_lists ?? 0} active.`}
           horizon="Now"
           {...(isSellerAssistant ? {} : {
             primary: 'Add a price list',
@@ -194,25 +192,27 @@ function PriceListsLandingContent({
         <InsightStrip4
           tiles={[
             {
-              label: 'Active lists',
-              value: `${data?.kpis.active_lists ?? 0}`,
-              sub: `${data?.kpis.draft_lists ?? 0} in draft`,
+              label: 'Products with custom prices',
+              value: `${data?.kpis.products_with_overrides ?? 0}`,
+              sub: isSellerAssistant ? 'visible in these lists' : 'custom priced SKUs across active lists',
             },
             {
-              label: 'Customer groups covered',
-              value: `${data?.kpis.cohorts_covered ?? 0}`,
-              sub: `of ${data?.kpis.cohorts_total ?? 0} cohorts`,
-            },
-            {
-              label: 'Expiring soon',
-              value: `${data?.kpis.expiring_soon ?? 0}`,
-              sub: 'renew before they lapse',
+              label: 'Customers with active custom pricing',
+              value: '—',
+              sub: 'Deduplicated buyer reach — NEEDS BACKEND',
               tone: 'warn',
             },
             {
-              label: 'Products covered',
-              value: `${data?.kpis.products_with_overrides ?? 0}`,
-              sub: isSellerAssistant ? 'visible in these lists' : 'custom priced SKUs',
+              label: 'Items priced below cost/floor',
+              value: '—',
+              sub: 'Landing-scope exception count — NEEDS BACKEND',
+              tone: 'warn',
+            },
+            {
+              label: 'Pricelists expiring soon',
+              value: `${data?.kpis.expiring_soon ?? 0}`,
+              sub: 'within 7 days · renew before they lapse',
+              tone: 'warn',
             },
           ]}
         />
@@ -220,6 +220,7 @@ function PriceListsLandingContent({
         <V3CalloutPanel
           items={[
             {
+              id: 'expiring_soon',
               kind: 'risk',
               eyebrow: 'Expiring soon',
               hint: `${data?.todays_read.expiring_soon.length ?? 0}`,
@@ -232,18 +233,7 @@ function PriceListsLandingContent({
               })),
             },
             {
-              kind: 'info',
-              eyebrow: 'Most coverage',
-              hint: 'by products',
-              rows: (data?.todays_read.most_coverage ?? []).map((row, index) => ({
-                initials: row.initials,
-                hue: entityHue(index),
-                name: row.name,
-                reason: `${row.product_count} products · valid until ${row.valid_until_label}`,
-                trailing: row.product_count,
-              })),
-            },
-            {
+              id: 'uncovered_cohorts',
               kind: 'opportunity',
               eyebrow: 'Uncovered cohorts',
               hint: 'no active list',

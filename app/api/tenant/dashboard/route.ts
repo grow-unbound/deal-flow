@@ -25,7 +25,8 @@ export async function GET(request: NextRequest) {
     }
 
     const period = getSellerLandingPeriodMeta('month');
-    const dashboard = await getSellerDashboardData(claims.tenant_id, claims, period);
+    const fullCalloutId = request.nextUrl.searchParams.get('callout')?.trim() || undefined;
+    const dashboard = await getSellerDashboardData(claims.tenant_id, claims, period, { fullCalloutId });
     return timedJson(dashboard);
   } catch (error) {
     console.error('[GET /api/tenant/dashboard]', error);

@@ -83,6 +83,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   if (brandError) return NextResponse.json({ error: 'Failed to fetch brand' }, { status: 500 });
   if (!tenantBrand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
+  if (tenantBrand.tenant_id !== tenantId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const [detailV2Res, masterBrandRes, tenantProductsRes, catalogsItemsRes, auditRes] = await Promise.all([
     db.schema('app').rpc('get_seller_brand_detail_v2', {
@@ -141,6 +142,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       status: 'active',
       updated_at: item.updated_at,
     }));
+  const latestCatalogDate = catalogs.reduce((latest: string | null, item: { updated_at: string | null }) => {
+    if (!item.updated_at) return latest;
+    return !latest || item.updated_at > latest ? item.updated_at : latest;
+  }, null as string | null);
+  const daysSinceCatalog = latestCatalogDate
+    ? Math.max(0, Math.floor((Date.now() - new Date(latestCatalogDate).getTime()) / 86_400_000))
+    : null;
 
   const response = {
     header: {
@@ -158,12 +166,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     },
     meta_strip_4: {
       gmv_mtd: invoicedSales90d,
-      growth_pct: 0,
-      active_buyers: 0,
-      total_buyers: 0,
-      low_stock_skus: 0,
-      days_since_catalog: 0,
-      last_sent_date: null,
+      // get_seller_brand_detail_v2's kpi_grid only returns {Invoiced sales 90D, Units
+      // 90D, Products} — no buyer/prior-period/stock-risk data. product_count and
+      // units_90d below are real; active_buyers/total_buyers/low_stock_skus stay null
+      // (rendered as "Not available" — see doc lines 759-760) rather than fake zeros.
+      product_count: productCount,
+      units_90d: units90d,
+      active_buyers: null,
+      total_buyers: null,
+      low_stock_skus: null,
+      days_since_catalog: daysSinceCatalog,
+      last_sent_date: latestCatalogDate,
     },
     details: {
       ...tenantBrand,

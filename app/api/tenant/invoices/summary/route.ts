@@ -53,7 +53,10 @@ export async function GET(request: NextRequest) {
         overdue_count: kpis.overdue_count ?? 0,
         overdue_amt: kpis.overdue_sum ?? 0,
         paid_count: null,
-        refreshed_at: null,
+        refreshed_at: landing.as_of ?? null,
+        as_of: landing.as_of ?? null,
+        commercial_horizon_days: landing.commercial_horizon_days ?? null,
+        table_period: landing.table_period ?? null,
       },
       { headers: SELLER_CACHE_PERSONAL },
     );

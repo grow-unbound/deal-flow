@@ -19,8 +19,8 @@ import { LocationEstimatesTab } from './LocationEstimatesTab';
 import { LocationInvoicesTab } from './LocationInvoicesTab';
 import { LocationActivityTab } from './LocationActivityTab';
 
-const LocationOverviewTab = dynamic(
-  () => import('./LocationOverviewTab').then((m) => m.LocationOverviewTab),
+const LocationPerformanceTab = dynamic(
+  () => import('./LocationPerformanceTab').then((m) => m.LocationPerformanceTab),
   { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
 );
 
@@ -149,6 +149,13 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
     { id: 'activity', label: 'Activity' },
   ];
 
+  const demandKindLabel =
+    meta.open_primary_demand_kind === 'orders'
+      ? 'Open order value'
+      : meta.open_primary_demand_kind === 'estimates'
+        ? 'Open estimate value'
+        : 'Open primary demand value';
+
   const tiles = [
     {
       label: 'Invoiced sales 90D',
@@ -161,22 +168,25 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
       ),
     },
     {
-      label: 'Overdue invoices',
-      value: `${meta.unpaid_invoice_count}`,
-      sub: `of ${meta.total_invoice_count} invoices`,
-    },
-    {
       label: 'Overdue amount',
-      value: formatCompactInr(meta.outstanding_dues),
+      value: formatCompactInr(meta.overdue_amount),
       sub:
-        meta.outstanding_dues > 0 ? (
-          <span className="text-danger-600">across {meta.invoice_count} invoices</span>
+        meta.overdue_amount > 0 ? (
+          <span className="text-danger-600">across {meta.unpaid_invoice_count} invoices</span>
         ) : undefined,
     },
     {
-      label: 'Open estimates',
-      value: `${meta.open_estimate_count}`,
-      sub: 'current location-level follow-up',
+      label: 'Customers who purchased here',
+      value: `${meta.purchasing_customers_90d}`,
+      sub: 'local market activity, last 90 days',
+    },
+    {
+      label: demandKindLabel,
+      value: meta.open_primary_demand_kind === 'none' ? '—' : formatCompactInr(meta.open_primary_demand_value),
+      sub:
+        meta.open_primary_demand_kind === 'none'
+          ? 'Enable Estimates or Sales Orders'
+          : `${meta.open_primary_demand_count} open · current`,
     },
   ];
 
@@ -219,7 +229,7 @@ export function LocationDetailPage({ id }: LocationDetailPageProps) {
       />
 
       {tab === 'performance' ? (
-        <LocationOverviewTab data={data.overview} performanceCards={data.performance_cards} />
+        <LocationPerformanceTab overview={data.overview} performanceCards={data.performance_cards} />
       ) : null}
       {tab === 'orders' ? <LocationOrdersTab rows={data.orders} /> : null}
       {tab === 'estimates' ? <LocationEstimatesTab rows={data.estimates} /> : null}

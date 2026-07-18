@@ -38,6 +38,11 @@ interface LocationRowMetric {
   active_buyers: number | string | null;
 }
 
+interface LocationSearchIdRow {
+  id: string;
+  total_count: number | string | null;
+}
+
 type LocationsSummary = Pick<LocationsLandingResponse, 'kpis' | 'callouts'>;
 
 const EMPTY_KPIS: LocationsLandingKpis = {
@@ -50,7 +55,24 @@ const EMPTY_KPIS: LocationsLandingKpis = {
   total_estimate_count: 0,
   top_location_name: null,
   top_location_gmv_share_pct: 0,
+  linked_warehouse_count: 0,
+  open_primary_demand_kind: 'none',
+  open_primary_demand_value: 0,
 };
+
+/** Statuses mirroring app.estimate_status_is_open / app.order_status_is_open (SQL, prod_bootstrap migration). */
+const OPEN_ESTIMATE_STATUSES = ['draft', 'sent'];
+const OPEN_ORDER_STATUSES = [
+  'draft',
+  'open',
+  'accepted',
+  'received',
+  'confirmed',
+  'partially_dispatched',
+  'dispatched',
+  'partially_invoiced',
+  'overdue',
+];
 
 const EMPTY_SUMMARY: LocationsSummary = {
   kpis: EMPTY_KPIS,
@@ -98,23 +120,6 @@ function normalizeSummary(value: unknown): LocationsSummary {
   };
 }
 
-function matchesLocationStockFilter(filters: string[], stockStatus: LocationStockStatus) {
-  if (filters.length === 0) return true;
-  return (
-    (filters.includes('In Stock') && stockStatus === 'clear')
-    || (filters.includes('Low Stock') && stockStatus === 'low_stock')
-    || (filters.includes('Out of Stock') && stockStatus === 'out_of_stock')
-  );
-}
-
-function matchesDuesFilter(filters: string[], outstanding: number, oldestUnpaidDays: number | null) {
-  if (filters.length === 0) return true;
-  return (
-    (filters.includes('Due') && outstanding > 0)
-    || (filters.includes('Overdue') && outstanding > 0 && (oldestUnpaidDays ?? 0) > 30)
-  );
-}
-
 export async function GET(request: NextRequest) {
   const timer = createTimer();
   const timedJson = (body: unknown, init?: ResponseInit) => {
@@ -137,182 +142,175 @@ export async function GET(request: NextRequest) {
     const tenantId = claims.tenant_id;
     const db = supabaseAdmin as any;
     const period = getSellerLandingPeriodMeta('last90');
+    const currentStart = period.current_start.split('T')[0];
+    const currentEndExclusive = period.current_end_exclusive.split('T')[0];
+    const previousStart = period.previous_start.split('T')[0];
+    const previousEndExclusive = period.previous_end_exclusive.split('T')[0];
     const limit = parseRowsLimit(request.nextUrl.searchParams.get('limit'), PAGE_SIZE.SELLER);
     const offset = parseRowsOffset(request.nextUrl.searchParams.get('offset'));
     const includeSummary = request.nextUrl.searchParams.get('include_summary') !== 'false';
     const today = new Date();
-    const expiryEnd = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000);
-    const search = request.nextUrl.searchParams.get('search')?.trim().toLowerCase() || '';
+    const todayDate = today.toISOString().split('T')[0];
+    const expiryEnd = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const search = request.nextUrl.searchParams.get('search')?.trim() || '';
     const statusFilters = readArrayParam(request.nextUrl.searchParams, 'status') || [];
     const stockFilters = readArrayParam(request.nextUrl.searchParams, 'stock') || [];
     const duesFilters = readArrayParam(request.nextUrl.searchParams, 'dues') || [];
-    const [rowsRes, snapshotRes, dailyRes, invoicesRes, estimatesRes] = await Promise.all([
-      db.schema('app').from('locations')
-        .select('id, name, address, phone_number, status')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null),
-      db.schema('app').from('metrics_location_snapshot')
-        .select('location_id, stocked_product_count, low_stock_product_count, out_of_stock_product_count, receivable_amount, overdue_amount')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null),
-      db.schema('app').from('metrics_location_daily')
-        .select('location_id, day, invoice_value')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .gte('day', period.previous_start.split('T')[0])
-        .lt('day', period.current_end_exclusive.split('T')[0]),
-      db.schema('app').from('invoices')
-        .select('id, location_id, buyer_id, due_date, outstanding_balance, invoice_date, created_at')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null),
-      db.schema('app').from('estimates')
-        .select('id, location_id, buyer_id, estimate_number, total_amount, expires_at, status')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null),
+
+    // Bounded, indexed ID + count search/pagination — replaces the old
+    // full-table JS filter+slice. Rows and per-row metrics below are only
+    // ever fetched for this page's IDs, never the whole tenant.
+    const searchRes = await db.schema('app').rpc('search_seller_location_landing_ids', {
+      p_tenant_id: tenantId,
+      p_query: search || null,
+      p_statuses: statusFilters.length > 0 ? statusFilters.map((s) => s.toLowerCase()) : null,
+      p_stock_modes: stockFilters.length > 0 ? stockFilters : null,
+      p_dues_modes: duesFilters.length > 0 ? duesFilters : null,
+      p_limit: limit,
+      p_offset: offset,
+    });
+    if (searchRes.error) throw searchRes.error;
+    const idRows = (searchRes.data ?? []) as LocationSearchIdRow[];
+    const pageIds = idRows.map((row) => row.id).filter(Boolean);
+    const total = idRows.length > 0 ? Number(idRows[0].total_count ?? 0) : 0;
+
+    const summaryQuery = includeSummary
+      ? db.schema('app').rpc('get_seller_locations_landing_summary', {
+          p_tenant_id: tenantId,
+          p_location_ids: null,
+          p_current_start: currentStart,
+          p_current_end_exclusive: currentEndExclusive,
+          p_today: todayDate,
+          p_expiry_end: expiryEnd,
+        })
+      : Promise.resolve({ data: null, error: null });
+    const seedsQuery = pageIds.length > 0
+      ? db.schema('app').from('locations')
+          .select('id, name, address, phone_number, status')
+          .eq('tenant_id', tenantId)
+          .in('id', pageIds)
+      : Promise.resolve({ data: [], error: null });
+    const rowMetricsQuery = pageIds.length > 0
+      ? db.schema('app').rpc('get_seller_location_landing_row_metrics', {
+          p_tenant_id: tenantId,
+          p_location_ids: pageIds,
+          p_current_start: currentStart,
+          p_current_end_exclusive: currentEndExclusive,
+          p_previous_start: previousStart,
+          p_previous_end_exclusive: previousEndExclusive,
+        })
+      : Promise.resolve({ data: [], error: null });
+
+    // Primary demand resolution (spec §2, lines 109-132): Orders win when enabled, else Estimates,
+    // else 'none'. Resolved once via the shared RPC — never re-derived from activity heuristics.
+    const demandKindQuery = includeSummary
+      ? db.schema('app').rpc('metrics_v2_primary_demand_kind', { p_tenant_id: tenantId })
+      : Promise.resolve({ data: null, error: null });
+    const linkedWarehouseCountQuery = includeSummary
+      ? db.schema('app').from('warehouses')
+          .select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenantId)
+          .not('location_id', 'is', null)
+          .is('deleted_at', null)
+      : Promise.resolve({ count: 0, error: null });
+
+    const [summaryRes, seedsRes, rowMetricsRes, demandKindRes, linkedWarehouseCountRes] = await Promise.all([
+      summaryQuery,
+      seedsQuery,
+      rowMetricsQuery,
+      demandKindQuery,
+      linkedWarehouseCountQuery,
     ]);
-    const firstError = rowsRes.error ?? snapshotRes.error ?? dailyRes.error ?? invoicesRes.error ?? estimatesRes.error;
-    if (firstError) throw firstError;
+    if (summaryRes.error) throw summaryRes.error;
+    if (seedsRes.error) throw seedsRes.error;
+    if (rowMetricsRes.error) throw rowMetricsRes.error;
+    if (demandKindRes.error) throw demandKindRes.error;
+    if (linkedWarehouseCountRes.error) throw linkedWarehouseCountRes.error;
 
-    const seeds = (rowsRes.data ?? []) as LocationSeedRow[];
-    const snapshotsById = new Map(
-      ((snapshotRes.data ?? []) as Array<Record<string, unknown>>).map((row) => [String(row.location_id), row]),
+    const primaryDemandKind = (typeof demandKindRes.data === 'string' ? demandKindRes.data : 'none') as
+      | 'orders'
+      | 'estimates'
+      | 'none';
+    const linkedWarehouseCount = Number(linkedWarehouseCountRes.count ?? 0);
+
+    // "Open primary demand value" (doc line 801): open estimate value for Estimate-primary tenants,
+    // open order value for Order-primary tenants. Reuses app.estimates/app.orders directly, scoped to
+    // location-linked rows and the exact open-status sets from app.estimate_status_is_open /
+    // app.order_status_is_open (supabase/migrations/20260709000001_prod_bootstrap.sql). Bounded with a
+    // generous safety .limit() per the SUM-aggregate exception to the list-page row cap.
+    let openPrimaryDemandValue = 0;
+    if (includeSummary && primaryDemandKind === 'estimates') {
+      const { data, error } = await db.schema('app')
+        .from('estimates')
+        .select('total_amount')
+        .eq('tenant_id', tenantId)
+        .not('location_id', 'is', null)
+        .is('deleted_at', null)
+        .in('status', OPEN_ESTIMATE_STATUSES)
+        .limit(10000);
+      if (error) throw error;
+      openPrimaryDemandValue = ((data ?? []) as Array<{ total_amount: number | string | null }>).reduce(
+        (sum, row) => sum + Number(row.total_amount ?? 0),
+        0,
+      );
+    } else if (includeSummary && primaryDemandKind === 'orders') {
+      const { data, error } = await db.schema('app')
+        .from('orders')
+        .select('total_amount')
+        .eq('tenant_id', tenantId)
+        .not('location_id', 'is', null)
+        .is('deleted_at', null)
+        .in('status', OPEN_ORDER_STATUSES)
+        .limit(10000);
+      if (error) throw error;
+      openPrimaryDemandValue = ((data ?? []) as Array<{ total_amount: number | string | null }>).reduce(
+        (sum, row) => sum + Number(row.total_amount ?? 0),
+        0,
+      );
+    }
+
+    const seedsById = new Map(((seedsRes.data ?? []) as LocationSeedRow[]).map((row) => [row.id, row]));
+    const rowMetricsById = new Map(
+      ((rowMetricsRes.data ?? []) as LocationRowMetric[]).map((row) => [String(row.location_id), row]),
     );
-    const dailyRows = (dailyRes.data ?? []) as Array<Record<string, unknown>>;
-    const invoices = (invoicesRes.data ?? []) as Array<Record<string, unknown>>;
-    const estimates = (estimatesRes.data ?? []) as Array<Record<string, unknown>>;
 
-    const gmvsByLocation = new Map<string, { current: number; previous: number }>();
-    for (const row of dailyRows) {
-      const locationId = String(row.location_id);
-      const bucket = gmvsByLocation.get(locationId) ?? { current: 0, previous: 0 };
-      const day = String(row.day);
-      const value = Number(row.invoice_value ?? 0);
-      if (day >= period.current_start.split('T')[0] && day < period.current_end_exclusive.split('T')[0]) bucket.current += value;
-      if (day >= period.previous_start.split('T')[0] && day < period.previous_end_exclusive.split('T')[0]) bucket.previous += value;
-      gmvsByLocation.set(locationId, bucket);
+    const locations: LocationsLandingRow[] = pageIds
+      .map((id) => seedsById.get(id))
+      .filter((seed): seed is LocationSeedRow => Boolean(seed))
+      .map((seed) => {
+        const metrics = rowMetricsById.get(seed.id);
+        const outOfStock = Number(metrics?.oos_sku_count ?? 0);
+        const lowStock = Number(metrics?.low_stock_sku_count ?? 0);
+        const stockStatus: LocationStockStatus = outOfStock > 0 ? 'out_of_stock' : lowStock > 0 ? 'low_stock' : 'clear';
+        const gmvCurrent = Number(metrics?.gmv_current ?? 0);
+        const gmvPrevious = Number(metrics?.gmv_previous ?? 0);
+        return {
+          id: seed.id,
+          name: seed.name,
+          city: getCity(seed.address),
+          address_text: getAddressText(seed.address),
+          phone_number: seed.phone_number ?? null,
+          initials: getInitials(seed.name),
+          gmv_mtd: gmvCurrent,
+          gmv_prev: gmvPrevious,
+          growth_pct: gmvPrevious > 0 ? Math.round(((gmvCurrent - gmvPrevious) / gmvPrevious) * 100) : 0,
+          active_buyers: Number(metrics?.active_buyers ?? 0),
+          outstanding_dues: Number(metrics?.outstanding_dues ?? 0),
+          sku_count: Number(metrics?.sku_count ?? 0),
+          oos_sku_count: outOfStock,
+          low_stock_sku_count: lowStock,
+          stock_status: stockStatus,
+          oldest_unpaid_days: metrics?.oldest_unpaid_days != null ? Number(metrics.oldest_unpaid_days) : null,
+          is_active: seed.status !== 'inactive',
+        };
+      });
+
+    const summary: LocationsSummary = includeSummary ? normalizeSummary(summaryRes.data) : EMPTY_SUMMARY;
+    if (includeSummary) {
+      summary.kpis.linked_warehouse_count = linkedWarehouseCount;
+      summary.kpis.open_primary_demand_kind = primaryDemandKind;
+      summary.kpis.open_primary_demand_value = openPrimaryDemandValue;
     }
-    const invoiceStatsByLocation = new Map<string, { outstanding: number; oldestUnpaidDays: number | null; unpaidInvoiceCount: number; totalInvoiceCount: number; activeBuyers: Set<string> }>();
-    for (const invoice of invoices) {
-      const locationId = String(invoice.location_id ?? '');
-      if (!locationId) continue;
-      const bucket = invoiceStatsByLocation.get(locationId) ?? { outstanding: 0, oldestUnpaidDays: null, unpaidInvoiceCount: 0, totalInvoiceCount: 0, activeBuyers: new Set<string>() };
-      bucket.totalInvoiceCount += 1;
-      if (invoice.buyer_id) bucket.activeBuyers.add(String(invoice.buyer_id));
-      const outstanding = Number(invoice.outstanding_balance ?? 0);
-      if (outstanding > 0) {
-        bucket.outstanding += outstanding;
-        bucket.unpaidInvoiceCount += 1;
-        const dueDate = invoice.due_date ? new Date(String(invoice.due_date)) : null;
-        if (dueDate && Number.isFinite(dueDate.getTime())) {
-          const age = Math.max(0, Math.floor((today.getTime() - dueDate.getTime()) / (24 * 60 * 60 * 1000)));
-          bucket.oldestUnpaidDays = bucket.oldestUnpaidDays == null ? age : Math.max(bucket.oldestUnpaidDays, age);
-        }
-      }
-      invoiceStatsByLocation.set(locationId, bucket);
-    }
-
-    const allLocations: LocationsLandingRow[] = seeds.map((seed) => {
-      const snapshot = snapshotsById.get(seed.id);
-      const gmv = gmvsByLocation.get(seed.id) ?? { current: 0, previous: 0 };
-      const invoiceStats = invoiceStatsByLocation.get(seed.id) ?? { outstanding: 0, oldestUnpaidDays: null, unpaidInvoiceCount: 0, totalInvoiceCount: 0, activeBuyers: new Set<string>() };
-      const outOfStock = Number(snapshot?.out_of_stock_product_count ?? 0);
-      const lowStock = Number(snapshot?.low_stock_product_count ?? 0);
-      const stockStatus: LocationStockStatus = outOfStock > 0 ? 'out_of_stock' : lowStock > 0 ? 'low_stock' : 'clear';
-      return {
-        id: seed.id,
-        name: seed.name,
-        city: getCity(seed.address),
-        address_text: getAddressText(seed.address),
-        phone_number: seed.phone_number ?? null,
-        initials: getInitials(seed.name),
-        gmv_mtd: gmv.current,
-        gmv_prev: gmv.previous,
-        growth_pct: gmv.previous > 0 ? Math.round(((gmv.current - gmv.previous) / gmv.previous) * 100) : 0,
-        active_buyers: invoiceStats.activeBuyers.size,
-        outstanding_dues: Number(snapshot?.receivable_amount ?? invoiceStats.outstanding),
-        sku_count: Number(snapshot?.stocked_product_count ?? 0),
-        oos_sku_count: outOfStock,
-        low_stock_sku_count: lowStock,
-        stock_status: stockStatus,
-        oldest_unpaid_days: invoiceStats.oldestUnpaidDays,
-        is_active: seed.status !== 'inactive',
-      };
-    }).filter((row) => {
-      if (search) {
-        const haystack = [row.name, row.city, row.address_text, row.phone_number].filter(Boolean).join(' ').toLowerCase();
-        if (!haystack.includes(search)) return false;
-      }
-      if (statusFilters.length > 0) {
-        const label = row.is_active ? 'active' : 'inactive';
-        if (!statusFilters.includes(label)) return false;
-      }
-      if (!matchesLocationStockFilter(stockFilters, row.stock_status)) return false;
-      if (!matchesDuesFilter(duesFilters, row.outstanding_dues, row.oldest_unpaid_days)) return false;
-      return true;
-    });
-
-    const total = allLocations.length;
-    const locations = allLocations.slice(offset, offset + limit);
-    const topLocation = [...allLocations].sort((a, b) => b.gmv_mtd - a.gmv_mtd)[0] ?? null;
-    const totalGmv = allLocations.reduce((sum, row) => sum + row.gmv_mtd, 0);
-    const openEstimates = estimates.filter((row) => {
-      const status = String(row.status ?? '');
-      return status !== 'converted' && status !== 'void' && status !== 'rejected' && status !== 'expired';
-    });
-    const summary: LocationsSummary = includeSummary ? {
-      kpis: {
-        active_locations: allLocations.filter((row) => row.is_active).length,
-        unpaid_invoice_count: Array.from(invoiceStatsByLocation.values()).reduce((sum, row) => sum + row.unpaidInvoiceCount, 0),
-        total_invoice_count: Array.from(invoiceStatsByLocation.values()).reduce((sum, row) => sum + row.totalInvoiceCount, 0),
-        outstanding_dues_total: allLocations.reduce((sum, row) => sum + row.outstanding_dues, 0),
-        dues_location_count: allLocations.filter((row) => row.outstanding_dues > 0).length,
-        open_estimate_count: openEstimates.length,
-        total_estimate_count: estimates.length,
-        top_location_name: topLocation?.name ?? null,
-        top_location_gmv_share_pct: totalGmv > 0 && topLocation ? Math.round((topLocation.gmv_mtd / totalGmv) * 100) : 0,
-      },
-      callouts: {
-        conversions: openEstimates
-          .filter((row) => row.expires_at && new Date(String(row.expires_at)).getTime() <= expiryEnd.getTime())
-          .sort((a, b) => new Date(String(a.expires_at ?? '')).getTime() - new Date(String(b.expires_at ?? '')).getTime())
-          .slice(0, 3)
-          .map((row) => ({
-            id: String(row.id),
-            name: String(row.estimate_number ?? 'Estimate'),
-            city: '',
-            initials: getInitials(String(row.estimate_number ?? 'Estimate')),
-            estimate_number: String(row.estimate_number ?? 'Estimate'),
-            expires_in_days: row.expires_at
-              ? Math.max(0, Math.floor((new Date(String(row.expires_at)).getTime() - today.getTime()) / (24 * 60 * 60 * 1000)))
-              : 0,
-            total_amount: Number(row.total_amount ?? 0),
-          })),
-        top_locations: [...allLocations]
-          .sort((a, b) => b.gmv_mtd - a.gmv_mtd)
-          .slice(0, 3)
-          .map((row) => ({
-            id: row.id,
-            name: row.name,
-            city: row.city,
-            initials: row.initials,
-            gmv_mtd: row.gmv_mtd,
-            orders_count: 0,
-            buyers_count: row.active_buyers,
-          })),
-        collections_overdue: [...allLocations]
-          .filter((row) => row.outstanding_dues > 0 && (row.oldest_unpaid_days ?? 0) > 30)
-          .sort((a, b) => b.outstanding_dues - a.outstanding_dues)
-          .slice(0, 3)
-          .map((row) => ({
-            id: row.id,
-            name: row.name,
-            city: row.city,
-            initials: row.initials,
-            outstanding_dues: row.outstanding_dues,
-            oldest_unpaid_days: row.oldest_unpaid_days ?? 0,
-          })),
-      },
-    } : EMPTY_SUMMARY;
     const response: LocationsLandingResponse = {
       ...summary,
       locations,
@@ -322,6 +320,8 @@ export async function GET(request: NextRequest) {
       nextOffset: locations.length > 0 && offset + locations.length < total ? offset + locations.length : null,
       period: SELLER_LANDING_PERIOD_OPTIONS.find((option) => option.value === period.selected)?.label ?? period.selected,
       refreshed_at: new Date().toISOString(),
+      as_of: new Date().toISOString(),
+      commercial_horizon_days: 90,
     };
     return timedJson(response);
   } catch (error: unknown) {

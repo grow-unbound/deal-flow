@@ -66,18 +66,6 @@ export interface InvoiceCalloutRow {
   effective: InvoiceStatusValue;
 }
 
-export interface InvoiceTopRiserRow {
-  buyer_id: string;
-  buyer_name: string;
-  buyer_initials: string;
-  buyer_hue: InvoiceAvatarHue;
-  buyer_city: string | null;
-  buyer_state: string | null;
-  current_gmv: number;
-  previous_gmv: number;
-  delta_gmv: number;
-}
-
 export interface InvoicesKpis {
   invoices_this_period: number;
   invoices_prev_period: number;
@@ -87,19 +75,28 @@ export interface InvoicesKpis {
   aov: number;
   overdue_count: number;
   overdue_sum: number;
+  overdue_customer_count: number;
   outstanding_count: number;
   outstanding_sum: number;
+  outstanding_customer_count: number;
+}
+
+export interface InvoicesPulseAggregates {
+  due_soon_count: number;
+  due_soon_sum: number;
+  due_soon_customer_count: number;
 }
 
 export interface InvoicesTodaysRead {
-  needs_attention: InvoiceCalloutRow[];
-  top_spenders: InvoiceCalloutRow[];
-  top_risers: InvoiceTopRiserRow[];
+  largest_overdue: InvoiceCalloutRow[];
+  newly_overdue: InvoiceCalloutRow[];
+  due_soon: InvoiceCalloutRow[];
 }
 
 export interface TenantInvoicesResponse {
   period: SellerLandingPeriodMeta;
   kpis: InvoicesKpis;
+  pulse_aggregates: InvoicesPulseAggregates;
   todays_read: InvoicesTodaysRead;
   invoices: InvoiceLandingRow[];
   filters?: LandingFilterMeta;

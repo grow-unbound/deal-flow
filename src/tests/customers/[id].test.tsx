@@ -197,14 +197,14 @@ describe('customers/[id] detail shell', () => {
     useRoleMock.mockReturnValue({ isSellerAdmin: true, isSellerAssistant: false });
     renderPage();
 
-    expect(screen.getByRole('button', { name: /Details/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Performance/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Orders/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Estimates/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Invoices/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Customer Groups/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Price Lists/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Activity/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Details/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Performance/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Orders/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Estimates/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Invoices/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Customer Groups/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Price Lists/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Activity/i })).toBeInTheDocument();
   });
 
   it('keeps buyer since in subtitle and not as a meta tile', () => {
@@ -219,9 +219,9 @@ describe('customers/[id] detail shell', () => {
     renderPage();
 
     expect(screen.getByText('Credit used')).toBeInTheDocument();
-    expect(screen.getByText(/of ₹1.00L · 64%/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Orders/i })).toBeInTheDocument();
-    const ordersTile = screen.getByText('Orders · MTD').closest('article');
+    expect(screen.getByText(/of ₹1L · 64%/i)).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Orders/i })).toBeInTheDocument();
+    const ordersTile = screen.getByText('Invoices · 90D').closest('article');
     expect(ordersTile).not.toBeNull();
     expect(within(ordersTile as HTMLElement).getByText('4')).toBeInTheDocument();
   });
@@ -230,21 +230,21 @@ describe('customers/[id] detail shell', () => {
     useRoleMock.mockReturnValue({ isSellerAdmin: true, isSellerAssistant: false });
     renderPage();
 
-    expect(screen.getByRole('button', { name: /Performance/i })).toHaveClass('border-teal-500');
+    expect(screen.getByRole('tab', { name: /Performance/i })).toHaveClass('border-ember-500');
   });
 
   it('hides Performance tab for seller assistants', () => {
     useRoleMock.mockReturnValue({ isSellerAdmin: false, isSellerAssistant: true });
     renderPage();
 
-    expect(screen.queryByRole('button', { name: /Performance/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Details/i })).toHaveClass('border-teal-500');
+    expect(screen.queryByRole('tab', { name: /Performance/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Details/i })).toHaveClass('border-ember-500');
   });
 
   it('renders assigned price list cards with source label and validity copy', () => {
     renderPage();
 
-    fireEvent.click(screen.getByRole('button', { name: /Price Lists/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /Price Lists/i }));
 
     expect(screen.getByText('Assigned price lists')).toBeInTheDocument();
     expect(screen.getByText('North Premium Pricing')).toBeInTheDocument();
@@ -261,7 +261,7 @@ describe('customers/[id] detail shell', () => {
     expect(screen.getByRole('button', { name: /Edit Buyer/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Delete Buyer/i })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /Details/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /Details/i }));
 
     expect(screen.getByText('Buyer details')).toBeInTheDocument();
     expect(screen.getByText('Default pricelist')).toBeInTheDocument();

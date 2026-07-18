@@ -46,12 +46,16 @@ export async function GET(request: NextRequest) {
     }
 
     const activeCount = Number(setupRes.data.active_product_count ?? 0);
+    const asOf = setupRes.data.computed_at ?? setupRes.data.updated_at ?? null;
     return NextResponse.json(
       {
         total_count: activeCount,
         active_count: activeCount,
         low_stock_count: lowStockRes.count ?? 0,
-        refreshed_at: setupRes.data.computed_at ?? setupRes.data.updated_at ?? null,
+        refreshed_at: asOf,
+        as_of: asOf,
+        commercial_horizon_days: 90,
+        table_period: null,
       },
       { headers: SELLER_CACHE_PERSONAL },
     );

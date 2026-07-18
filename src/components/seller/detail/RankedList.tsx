@@ -5,10 +5,12 @@ import { CardEmptyState } from './CardEmptyState';
 
 export interface RankedListItem {
   id: string;
-  label: string;
+  label: ReactNode;
   meta?: ReactNode;
+  metaClassName?: string;
   value?: ReactNode;
   supporting?: ReactNode;
+  valueSupporting?: ReactNode;
   initials?: string;
   hue?: 'teal' | 'ember' | 'cream';
 }
@@ -77,11 +79,12 @@ export function RankedList({
             ) : null}
           </div>
           <div className="min-w-0">
-            <p className="truncate text-base font-medium text-cream-900">{item.label}</p>
-            {item.meta ? <p className="mt-0.5 truncate text-xs uppercase tracking-[0.06em] text-cream-700">{item.meta}</p> : null}
+            <div className="min-w-0 text-base font-medium text-cream-900">{item.label}</div>
+            {item.meta ? <div className={cn('mt-0.5 truncate text-xs text-cream-700', item.metaClassName)}>{item.meta}</div> : null}
           </div>
           <div className="text-right">
             {item.value ? <p className="font-display text-md leading-none text-cream-950">{item.value}</p> : null}
+            {item.valueSupporting ? <p className="mt-1 text-xs text-cream-700">{item.valueSupporting}</p> : null}
             {item.supporting ? <p className="mt-1 text-xs text-cream-700">{item.supporting}</p> : null}
           </div>
         </div>

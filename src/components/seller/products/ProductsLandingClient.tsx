@@ -10,7 +10,6 @@ import {
   EntityAvatar,
   FilterBar,
   type FilterBarGroup,
-  GrowthPill,
   InsightStrip4,
   LandingTable,
   PageHeader,
@@ -24,12 +23,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRetainedValue } from '@/hooks/useRetainedValue';
 import { useRouteScrollRestoration, useRouteSnapshot, useSeedRouteSearch } from '@/hooks/useRouteSnapshot';
 import { useRole } from '@/hooks/useRole';
-import { useSellerLandingPeriod } from '@/hooks/useSellerLandingPeriod';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { useTenantProducts, useTenantProductsInfinite, type TenantProduct, type TenantProductsResponse } from '@/hooks/useProducts';
 import { formatCompactInr } from '@/lib/utils';
-import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { ProductsLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 import { LandingTableRowsSkeleton } from '@/components/seller/layout/LandingTableRowsSkeleton';
 
@@ -138,16 +135,16 @@ function ProductLandingDataSkeleton() {
 
 function ProductsLandingContent({
   initialData,
-  initialPeriod,
   initialSearch,
 }: {
   initialData: TenantProductsResponse | null;
-  initialPeriod: SellerLandingPeriod;
   initialSearch?: string;
 }) {
   const router = useRouter();
   const { isSellerAssistant } = useRole();
-  const { period, setPeriod, horizonLabel, metricSuffix, options } = useSellerLandingPeriod(initialPeriod);
+  const period = 'last90';
+  const horizonLabel = 'Trailing 90 days';
+  const metricSuffix = '90D';
   const summaryQuery = useTenantProducts(period, initialData);
   const summaryData = useRetainedValue(summaryQuery.data ?? initialData);
   const { state: routeState, setState: setRouteState } = useRouteSnapshot({
@@ -265,9 +262,10 @@ function ProductsLandingContent({
   const showRefreshingState = isLoading && !data;
 
   const kpis = summaryData?.kpis;
-  const outOfStock = kpis?.out_of_stock ?? summaryProducts.filter((p) => Number(p.on_hand ?? 0) === 0).length;
+  const recentlySoldOutOfStock = kpis?.recently_sold_out_of_stock ?? 0;
   const lowStock = kpis?.low_stock ?? summaryProducts.filter((p) => Number(p.on_hand ?? 0) > 0 && Number(p.days_cover ?? 0) < 14).length;
-  const growth = kpis?.revenue_growth_pct ?? 0;
+  const productsSold = kpis?.products_sold ?? summaryProducts.filter((product) => Number(product.units_mtd ?? 0) > 0).length;
+  const categoryCount = kpis?.category_count ?? 0;
   const groups: FilterBarGroup[] = (summaryData?.filters?.groups ?? []).map((group) => ({
     key: group.key,
     label: group.label,
@@ -284,11 +282,9 @@ function ProductsLandingContent({
         <PageHeader
           eyebrow="Catalog"
           title="Products"
-          subtitle={`${summaryTotal} active products across ${summaryBrands} brands. Stock risk and billed sales are the default view here.`}
+          subtitle={`${summaryTotal} active products across ${summaryBrands} brands and ${categoryCount} categories.`}
           horizon={horizonLabel}
-        period={period}
-        periodOptions={options}
-        onPeriodChange={setPeriod}
+          showHorizonControl={false}
         secondary={{
           label: 'Bulk import',
           icon: <Upload size={13} />,
@@ -318,10 +314,10 @@ function ProductsLandingContent({
             tone: 'accent',
           },
           {
-            label: 'Products out of stock',
-            value: `${outOfStock}`,
-            sub: 'immediate stock risk',
-            tone: 'warn',
+            label: 'Recently sold products now out of stock',
+            value: `${recentlySoldOutOfStock}`,
+            sub: 'sold in the last 90 days',
+            tone: recentlySoldOutOfStock > 0 ? 'warn' : undefined,
           },
           {
             label: 'Products running low',
@@ -330,8 +326,8 @@ function ProductsLandingContent({
           },
           {
             label: 'Products that sold',
-            value: `${summaryProducts.filter((product) => Number(product.units_mtd ?? 0) > 0).length}`,
-            sub: `${growth >= 0 ? '↑ +' : '↓ '}${Math.abs(growth)}% vs last period`,
+            value: `${productsSold}`,
+            sub: 'in the last 90 days',
           },
         ]}
       />
@@ -339,41 +335,50 @@ function ProductsLandingContent({
       <V3CalloutPanel
         items={[
           {
+            id: 'recently_sold_out_of_stock',
             kind: 'risk' as const,
-            eyebrow: 'Stock risk',
-            hint: `${summaryData?.todays_read?.needs_attention?.length ?? 0}`,
-            rows: (summaryData?.todays_read?.needs_attention ?? []).map((row) => ({
+            eyebrow: 'Recently sold, now out of stock',
+            hint: `${recentlySoldOutOfStock}`,
+            getHref: (row) => `/products/${row.id}`,
+            rows: (summaryData?.todays_read?.recently_sold_out_of_stock ?? []).map((row) => ({
+              id: row.id,
               initials: row.brand_initials,
               hue: row.brand_hue,
               name: row.name,
-              reason: `${row.status.label} · ${row.on_hand} on hand · ${formatDaysCover(row.days_cover)} cover`,
-              trailing: <GrowthPill value={row.growth_pct} />,
-            })),
-          },
-          ...(isSellerAssistant ? [] : [{
-            kind: 'info' as const,
-            eyebrow: 'Best sellers',
-            hint: 'by invoiced sales',
-            rows: (summaryData?.todays_read?.top_performers ?? []).map((row) => ({
-              initials: row.brand_initials,
-              hue: row.brand_hue,
-              name: row.name,
-              reason: `${row.units_mtd} units · ${row.brand}`,
-              trailing: formatCompactInr(row.gmv_mtd),
+              reason: `${row.sku} · ${row.units_mtd} units · ${formatCompactInr(row.gmv_mtd)}`,
+              trailing: `${row.on_hand} on hand`,
             })),
           },
           {
-            kind: 'opportunity' as const,
-            eyebrow: 'Sales movers',
-            hint: 'fastest recent change',
-            rows: (summaryData?.todays_read?.top_risers ?? []).map((row) => ({
+            id: 'running_low',
+            kind: 'info' as const,
+            eyebrow: 'Products running low',
+            hint: `${lowStock}`,
+            getHref: (row) => `/products/${row.id}`,
+            rows: (summaryData?.todays_read?.running_low ?? []).map((row) => ({
+              id: row.id,
               initials: row.brand_initials,
               hue: row.brand_hue,
               name: row.name,
-              reason: `${row.brand} · ${formatCompactInr(row.gmv_mtd)} ${metricSuffix}`,
-              trailing: <GrowthPill value={row.growth_pct} />,
+              reason: `${row.sku} · ${formatDaysCover(row.days_cover)} cover`,
+              trailing: `${row.on_hand} on hand`,
             })),
-          }]),
+          },
+          {
+            id: 'no_sale_90d',
+            kind: 'opportunity' as const,
+            eyebrow: 'Stock with no sale in 90 days',
+            hint: `${summaryData?.todays_read?.no_sale_90d?.length ?? 0}`,
+            getHref: (row) => `/products/${row.id}`,
+            rows: (summaryData?.todays_read?.no_sale_90d ?? []).map((row) => ({
+              id: row.id,
+              initials: row.brand_initials,
+              hue: row.brand_hue,
+              name: row.name,
+              reason: `${row.sku} · ${row.brand}`,
+              trailing: `${row.on_hand} on hand`,
+            })),
+          },
         ]}
       />
 
@@ -424,8 +429,7 @@ function ProductsLandingContent({
           { label: 'Available stock', align: 'right', width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
           { label: 'Stock days left', align: 'right', width: 130, minWidth: 130, maxWidth: 160, className: 'px-5' },
           { label: `Units sold · ${metricSuffix}`, align: 'right', width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
-          { label: 'Invoiced sales', align: 'right' as const, width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
-          { label: 'Trend', width: 120, minWidth: 120, maxWidth: 150, className: 'px-5' },
+          { label: `Invoiced sales · ${metricSuffix}`, align: 'right' as const, width: 140, minWidth: 140, maxWidth: 180, className: 'px-5' },
           { label: 'Status', width: 150, minWidth: 150, maxWidth: 190, className: 'px-5' },
           { width: 40, className: 'px-4' },
         ]}
@@ -437,9 +441,8 @@ function ProductsLandingContent({
           const daysCover = product.days_cover ?? null;
           const unitsMtd = Number(product.units_mtd ?? 0);
           const gmvMtd = Number(product.gmv_mtd ?? 0);
-          const growthPct = Number(product.growth_pct ?? 0);
           const sku = product.master_product?.master_sku ?? product.internal_sku;
-          const category = product.category_name ?? 'Uncategorized';
+          const category = product.category_name ?? '-';
           const uom = product.default_uom ?? 'units';
           const tone = product.status_tone ?? (onHand === 0 ? 'danger' : daysCover != null && daysCover < 14 ? 'warning' : 'success');
           const label = product.status_label ?? (onHand === 0 ? 'Out of stock' : daysCover != null && daysCover < 14 ? 'Low stock' : 'On pace');
@@ -488,18 +491,15 @@ function ProductsLandingContent({
                   ) : daysCover === 0 ? (
                     <span className="font-semibold text-danger-700">0d</span>
                   ) : daysCover < 7 ? (
-                    <span className="font-semibold text-warning-700">{daysCover}d</span>
+                    <span className="font-semibold text-warning-700">{Math.round(daysCover)}d</span>
                   ) : (
-                    <span>{daysCover}d</span>
+                    <span>{Math.round(daysCover)}d</span>
                   )}
                 </div>
               </td>
               <td className="px-5 py-3.5 text-right font-mono text-base tabular-nums text-cream-900">{unitsMtd}</td>
               <td className="px-5 py-3.5 text-right text-base text-cream-900">
                 <span className="font-display text-md font-medium tabular-nums text-cream-900">{formatCompactInr(gmvMtd)}</span>
-              </td>
-              <td className="px-5 py-3.5 text-base text-cream-900">
-                <GrowthPill value={growthPct} />
               </td>
               <td className="px-5 py-3.5 text-base text-cream-900">
                 <StatusTag tone={tone} label={label} />
@@ -526,16 +526,14 @@ function ProductsLandingContent({
 
 export function ProductsLandingClient({
   initialData,
-  initialPeriod,
   initialSearch,
 }: {
   initialData: TenantProductsResponse | null;
-  initialPeriod: SellerLandingPeriod;
   initialSearch?: string;
 }) {
   return (
     <FeatureGate flag="BRAND_PRODUCT_MASTER">
-      <ProductsLandingContent initialData={initialData} initialPeriod={initialPeriod} initialSearch={initialSearch} />
+      <ProductsLandingContent initialData={initialData} initialSearch={initialSearch} />
     </FeatureGate>
   );
 }

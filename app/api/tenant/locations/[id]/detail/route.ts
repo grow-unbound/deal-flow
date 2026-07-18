@@ -37,6 +37,20 @@ function sumNumberField(rows: Array<Record<string, unknown>>, field: string): nu
   return rows.reduce((sum, row) => sum + Number(row[field] ?? 0), 0);
 }
 
+/** Statuses mirroring app.estimate_status_is_open / app.order_status_is_open (SQL, prod_bootstrap migration). */
+const OPEN_ESTIMATE_STATUSES = ['draft', 'sent'];
+const OPEN_ORDER_STATUSES = [
+  'draft',
+  'open',
+  'accepted',
+  'received',
+  'confirmed',
+  'partially_dispatched',
+  'dispatched',
+  'partially_invoiced',
+  'overdue',
+];
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -74,7 +88,7 @@ export async function GET(
     return timedJson({ error: 'Not found' }, { status: 404 });
   }
 
-  const [detailV2Res, ordersRes, estimatesRes, invoicesRes, activityRes] = await Promise.all([
+  const [detailV2Res, ordersRes, estimatesRes, invoicesRes, activityRes, demandKindRes] = await Promise.all([
     db.schema('app').rpc('get_seller_location_detail_v2', {
       p_tenant_id: tenantId,
       p_location_id: id,
@@ -116,9 +130,13 @@ export async function GET(
       .eq('entity_id', id)
       .order('ts', { ascending: false })
       .limit(20),
+    // Primary demand resolution (spec §2, lines 109-132): Orders win when enabled, else Estimates,
+    // else 'none'. Resolved once via the shared RPC — never re-derived from activity heuristics.
+    db.schema('app').rpc('metrics_v2_primary_demand_kind', { p_tenant_id: tenantId }),
   ]);
 
-  const firstError = detailV2Res.error ?? ordersRes.error ?? estimatesRes.error ?? invoicesRes.error ?? activityRes.error;
+  const firstError =
+    detailV2Res.error ?? ordersRes.error ?? estimatesRes.error ?? invoicesRes.error ?? activityRes.error ?? demandKindRes.error;
   if (firstError) {
     console.error('[GET /api/tenant/locations/[id]/detail]', firstError.code, firstError.message);
     return timedJson({ error: 'Failed to fetch location detail data' }, { status: 500 });
@@ -129,11 +147,58 @@ export async function GET(
   const trendCard = (detailV2.performance_cards ?? []).find((card: any) => card.id === 'sales-over-time');
   const trendPoints = trendCard?.body?.points ?? [];
   const gmv_mtd = Number(kpiByLabel.get('Invoiced sales 90D') ?? 0);
-  const outstanding_dues = Number(kpiByLabel.get('Receivable') ?? 0);
+  const overdue_amount = Number(kpiByLabel.get('Overdue') ?? 0);
   const purchasingCustomers = Number(kpiByLabel.get('Purchasing customers 90D') ?? 0);
   const invoices = invoicesRes.data ?? [];
   const estimates = estimatesRes.data ?? [];
   const orders = ordersRes.data ?? [];
+
+  const primaryDemandKind = (typeof demandKindRes.data === 'string' ? demandKindRes.data : 'none') as
+    | 'orders'
+    | 'estimates'
+    | 'none';
+
+  // "Open primary demand value" (doc line 830): open estimate value for Estimate-primary tenants,
+  // open order value for Order-primary tenants, scoped to this location. Reuses app.estimates/
+  // app.orders directly with the exact open-status sets from app.estimate_status_is_open /
+  // app.order_status_is_open (supabase/migrations/20260709000001_prod_bootstrap.sql).
+  let openPrimaryDemandValue = 0;
+  let openPrimaryDemandCount = 0;
+  if (primaryDemandKind === 'estimates') {
+    const { data, error } = await db
+      .schema('app')
+      .from('estimates')
+      .select('total_amount')
+      .eq('tenant_id', tenantId)
+      .eq('location_id', id)
+      .is('deleted_at', null)
+      .in('status', OPEN_ESTIMATE_STATUSES)
+      .limit(2000);
+    if (error) {
+      console.error('[GET /api/tenant/locations/[id]/detail] open estimate value', error.code, error.message);
+      return timedJson({ error: 'Failed to fetch location detail data' }, { status: 500 });
+    }
+    const rows = (data ?? []) as Array<{ total_amount: number | string | null }>;
+    openPrimaryDemandCount = rows.length;
+    openPrimaryDemandValue = rows.reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
+  } else if (primaryDemandKind === 'orders') {
+    const { data, error } = await db
+      .schema('app')
+      .from('orders')
+      .select('total_amount')
+      .eq('tenant_id', tenantId)
+      .eq('location_id', id)
+      .is('deleted_at', null)
+      .in('status', OPEN_ORDER_STATUSES)
+      .limit(2000);
+    if (error) {
+      console.error('[GET /api/tenant/locations/[id]/detail] open order value', error.code, error.message);
+      return timedJson({ error: 'Failed to fetch location detail data' }, { status: 500 });
+    }
+    const rows = (data ?? []) as Array<{ total_amount: number | string | null }>;
+    openPrimaryDemandCount = rows.length;
+    openPrimaryDemandValue = rows.reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
+  }
 
   const buyerIds = Array.from(new Set([
     ...orders.map((row: any) => row.buyer_id).filter(Boolean),
@@ -157,12 +222,17 @@ export async function GET(
     meta_strip: {
       gmv_mtd,
       growth_pct: 0,
-      outstanding_dues,
+      outstanding_dues: overdue_amount,
+      overdue_amount,
       invoice_count: invoices.length,
       unpaid_invoice_count: invoices.filter((invoice: any) => Number(invoice.outstanding_balance ?? 0) > 0).length,
       total_invoice_count: invoices.length,
       open_estimate_count: estimates.filter((estimate: any) => !['converted', 'expired', 'void'].includes(String(estimate.status))).length,
       total_estimate_count: estimates.length,
+      purchasing_customers_90d: purchasingCustomers,
+      open_primary_demand_kind: primaryDemandKind,
+      open_primary_demand_value: openPrimaryDemandValue,
+      open_primary_demand_count: openPrimaryDemandCount,
     },
     overview: {
       gmv_trend: trendPoints.map((point: any) => ({
@@ -183,7 +253,7 @@ export async function GET(
         city: getCity(baseLocation.address),
         initials: 'PC',
         spend_mtd: gmv_mtd,
-        outstanding_dues,
+        outstanding_dues: overdue_amount,
       }] : [],
     },
     orders: orders.map((order: any) => {

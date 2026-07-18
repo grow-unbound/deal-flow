@@ -2,7 +2,6 @@ import { FeatureForbiddenPage } from '@/components/seller/layout/ForbiddenPage';
 import { ProductsLandingClient } from '@/components/seller/products/ProductsLandingClient';
 import type { TenantProductsResponse } from '@/hooks/useProducts';
 import { resolveOptionalSearchParam } from '@/lib/server/read-search-param';
-import { resolveSellerLandingPeriod } from '@/lib/server/seller-period';
 import { fetchSellerPageBootstrap } from '@/lib/server/seller-page-bootstrap';
 import { requireSellerServerTenantId } from '@/lib/server/seller-server-claims';
 
@@ -13,9 +12,8 @@ export default async function ProductsPage({
 }) {
   await requireSellerServerTenantId();
 
-  const period = await resolveSellerLandingPeriod(searchParams);
   const initialSearch = await resolveOptionalSearchParam(searchParams);
-  const { data: initialData, status } = await fetchSellerPageBootstrap<TenantProductsResponse>(`/api/tenant/products?period=${period}`);
+  const { data: initialData, status } = await fetchSellerPageBootstrap<TenantProductsResponse>('/api/tenant/products?period=last90');
   if (status === 403) return <FeatureForbiddenPage />;
-  return <ProductsLandingClient initialData={initialData} initialPeriod={period} initialSearch={initialSearch} />;
+  return <ProductsLandingClient initialData={initialData} initialSearch={initialSearch} />;
 }

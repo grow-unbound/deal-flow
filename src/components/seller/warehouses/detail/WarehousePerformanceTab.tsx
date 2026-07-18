@@ -11,7 +11,15 @@ export function WarehousePerformanceTab({
   data: WarehouseDetailResponse['performance'];
   performanceCards?: unknown[];
 }) {
-  if (performanceCards?.length) {
+  // get_seller_warehouse_detail_v2 always returns 3 cards, but ships them all
+  // `availability: 'unavailable'` (no V2 warehouse read model exists yet) — only
+  // take the v2 path once at least one card is actually usable, otherwise fall
+  // through to the real inventory-backed cards below.
+  const hasUsableV2Card = (performanceCards as DetailCardPayload[] | undefined)?.some(
+    (card) => card.availability !== 'unavailable',
+  );
+
+  if (hasUsableV2Card) {
     return (
       <section className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
         {(performanceCards as DetailCardPayload[]).map((card) => (

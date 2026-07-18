@@ -24,6 +24,7 @@ export interface TransactionTableRow {
   campaign_name: string | null;
   items_count: number;
   total_amount: number;
+  outstanding_amount?: number | null;
   amount_subtext?: string | null;
   status_label: string;
   status_tone: 'success' | 'warning' | 'danger' | 'neutral';
@@ -54,15 +55,19 @@ function deriveInitials(name: string) {
     .toUpperCase();
 }
 
-function shouldShowSource(kind: TransactionTableKind, sourceKind: TransactionSourceKind) {
-  if (kind === 'estimate') return sourceKind === 'buyer_app';
-  return sourceKind === 'buyer_app' || sourceKind === 'converted';
+function sourceDisplayLabel(row: Pick<TransactionTableRow, 'source_kind' | 'source_label'>): string {
+  if (row.source_label) return row.source_label;
+  if (row.source_kind === 'buyer_app') return 'Buyer App';
+  if (row.source_kind === 'converted') return 'Converted';
+  if (row.source_kind === 'seller') return 'Direct';
+  return 'Direct';
 }
 
 function columnWidths(kind: TransactionTableKind, showCampaignColumn: boolean) {
   const base = {
     document: { width: 180, minWidth: 160, maxWidth: 200 },
     buyer: { width: 270, minWidth: 240, maxWidth: 300 },
+    source: { width: 110, minWidth: 96, maxWidth: 130 },
     location: { width: 150, minWidth: 130, maxWidth: 170 },
     campaign: { width: 200, minWidth: 180, maxWidth: 260 },
     items: { width: 60, minWidth: 40, maxWidth: 80 },
@@ -76,6 +81,7 @@ function columnWidths(kind: TransactionTableKind, showCampaignColumn: boolean) {
   if (kind === 'estimate') {
     return [
       { label: 'Estimate Number', ...base.document },
+      { label: 'Source', ...base.source },
       { label: 'Buyer Name', ...base.buyer },
       { label: 'Location', ...base.location },
       ...(showCampaignColumn ? [{ label: 'Campaign', ...base.campaign }] : []),
@@ -90,6 +96,7 @@ function columnWidths(kind: TransactionTableKind, showCampaignColumn: boolean) {
   if (kind === 'order') {
     return [
       { label: 'Order Number', ...base.document },
+      { label: 'Source', ...base.source },
       { label: 'Buyer Name', ...base.buyer },
       { label: 'Location', ...base.location },
       ...(showCampaignColumn ? [{ label: 'Campaign', ...base.campaign }] : []),
@@ -102,13 +109,15 @@ function columnWidths(kind: TransactionTableKind, showCampaignColumn: boolean) {
 
   return [
     { label: 'Invoice Number', ...base.document },
+    { label: 'Source', ...base.source },
     { label: 'Buyer Name', ...base.buyer },
+    { label: 'Place of Supply', ...base.location },
     { label: 'Location', ...base.location },
     ...(showCampaignColumn ? [{ label: 'Campaign', ...base.campaign }] : []),
-    { label: 'Items', align: 'right' as const, ...base.items },
     { label: 'Total Amount', align: 'right' as const, ...base.total },
+    { label: 'Outstanding', align: 'right' as const, ...base.total },
     { label: 'Status', ...base.status },
-    { label: 'Created', ...base.created },
+    { label: 'Invoice Date', ...base.created },
     { label: 'Due', ...base.due },
   ];
 }
@@ -134,7 +143,6 @@ export function TransactionTable({
       tableMinWidth={tableMinWidth}
     >
       {rows.map((row) => {
-        const showSource = shouldShowSource(kind, row.source_kind);
         const initials = row.buyer_initials ?? deriveInitials(row.buyer_name);
         const hue = row.buyer_hue ?? 'teal';
         const click = onRowClick ?? ((current: TransactionTableRow) => router.push(current.href));
@@ -146,19 +154,14 @@ export function TransactionTable({
             onClick={() => click(row)}
           >
             <td className="px-5 py-3.5">
-              <div className="flex items-start gap-2">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="font-mono text-sm font-medium text-cream-900">{row.document_number}</p>
-                    {row.realtime_badge ? <RealtimeBadge type={row.realtime_badge} className="shrink-0" /> : null}
-                  </div>
-                  {showSource && row.source_label ? (
-                    <p className="mt-0.5 truncate text-xs font-medium uppercase tracking-[0.08em] text-cream-600">
-                      {row.source_label}
-                    </p>
-                  ) : null}
-                </div>
+              <div className="flex items-center gap-2">
+                <p className="font-mono text-sm font-medium text-cream-900">{row.document_number}</p>
+                {row.realtime_badge ? <RealtimeBadge type={row.realtime_badge} className="shrink-0" /> : null}
               </div>
+            </td>
+
+            <td className="px-5 py-3.5 text-xs font-medium uppercase tracking-[0.08em] text-cream-600">
+              {sourceDisplayLabel(row)}
             </td>
 
             <td className="px-5 py-3.5">
@@ -171,13 +174,19 @@ export function TransactionTable({
               </div>
             </td>
 
+            {kind === 'invoice' ? (
+              <td className="px-5 py-3.5 text-sm text-cream-900">{row.buyer_place_of_supply ?? '—'}</td>
+            ) : null}
+
             <td className="px-5 py-3.5 text-sm text-cream-900">{row.location_name ?? '—'}</td>
 
             {showCampaignColumn ? (
               <td className="px-5 py-3.5 text-sm text-cream-900">{row.campaign_name ?? '—'}</td>
             ) : null}
 
-            <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{row.items_count}</td>
+            {kind !== 'invoice' ? (
+              <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">{row.items_count}</td>
+            ) : null}
 
             <td className="px-5 py-3.5 text-right">
               <p className="font-display text-md text-cream-950">{formatCompactInr(row.total_amount)}</p>
@@ -185,6 +194,12 @@ export function TransactionTable({
                 <p className="mt-0.5 text-xs text-cream-600">{row.amount_subtext}</p>
               ) : null}
             </td>
+
+            {kind === 'invoice' ? (
+              <td className="px-5 py-3.5 text-right font-mono text-base text-cream-900">
+                {formatCompactInr(row.outstanding_amount ?? 0)}
+              </td>
+            ) : null}
 
             <td className="px-5 py-3.5">
               <StatusTag label={row.status_label} tone={row.status_tone} />

@@ -13,7 +13,6 @@ import {
   InsightStrip4,
   PageHeader,
   PageWrap,
-  StatusTag,
   V3CalloutPanel,
 } from '@/components/seller/layout';
 import { TransactionTable } from '@/components/seller/transactional';
@@ -28,13 +27,12 @@ import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { cn, formatCompactInr, formatDate } from '@/lib/utils';
+import { formatCompactInr, formatDate, formatMetricValue } from '@/lib/utils';
 import { sellerLandingMetricSuffix, type SellerLandingPeriod } from '@/lib/seller-period';
 import { EstimatesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
 type SortOption = 'Recent first' | 'Total amount (high → low)' | 'Status (workflow order)' | 'Expiry (soonest first)';
 const SORT_OPTIONS: SortOption[] = ['Recent first', 'Total amount (high → low)', 'Status (workflow order)', 'Expiry (soonest first)'];
-const DAY_MS = 24 * 60 * 60 * 1000;
 const STATUS_SORT_RANK: Record<EstimateLandingRow['status']['value'], number> = {
   draft: 0,
   sent: 1,
@@ -47,37 +45,13 @@ const STATUS_SORT_RANK: Record<EstimateLandingRow['status']['value'], number> = 
   pending: 8,
 };
 
-function mapRowToCallout(row: Pick<EstimateLandingRow, 'buyer_initials' | 'buyer_hue' | 'buyer_name'>) {
+function mapRowToCallout(row: Pick<EstimateLandingRow, 'id' | 'buyer_initials' | 'buyer_hue' | 'buyer_name'>) {
   return {
+    id: row.id,
     initials: row.buyer_initials,
     hue: row.buyer_hue,
     name: row.buyer_name,
   };
-}
-
-function isOpenStatusValue(value: string): boolean {
-  return value === 'draft' || value === 'sent' || value === 'accepted';
-}
-
-function countFollowUpCandidates(rows: EstimateLandingRow[]): number {
-  const cutoff = Date.now() - 3 * DAY_MS;
-  return rows.filter(
-    (r) => r.status.value === 'sent' && r.sent_at && new Date(r.sent_at).getTime() < cutoff,
-  ).length;
-}
-
-function countExpiringSoonOpen(rows: EstimateLandingRow[]): number {
-  const limit = Date.now() + 7 * DAY_MS;
-  return rows.filter((r) => {
-    if (!isOpenStatusValue(r.status.value) || !r.expires_at) return false;
-    const ex = new Date(r.expires_at).getTime();
-    return ex <= limit;
-  }).length;
-}
-
-function daysUntil(iso: string | null): number {
-  if (!iso) return 0;
-  return Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / DAY_MS));
 }
 
 function compareStatusRows(a: EstimateLandingRow, b: EstimateLandingRow) {
@@ -256,8 +230,9 @@ function EstimatesLandingContent({
     return `${kpis.total_estimates_this_period} estimates in ${horizonLabel.toLowerCase()}.`;
   }, [horizonLabel, lowerLabel, summaryData?.kpis]);
 
-  const followUpHint = useMemo(() => `${countFollowUpCandidates(allEstimates)}`, [allEstimates]);
-  const expiringHint = useMemo(() => `${countExpiringSoonOpen(allEstimates)}`, [allEstimates]);
+  const pulseAggregates = summaryData?.pulse_aggregates;
+  const followUpHint = `${pulseAggregates?.sent_awaiting_count ?? 0}`;
+  const expiringHint = `${pulseAggregates?.expiring_soon_count ?? 0}`;
 
   if (isLoading && !data) return <EstimatesLandingSkeleton />;
 
@@ -274,16 +249,25 @@ function EstimatesLandingContent({
 
   const kpis = summaryData?.kpis;
   const read = summaryData?.todays_read;
-  const groups: FilterBarGroup[] = (summaryData?.filters?.groups ?? []).map((group) => ({
-    key: group.key,
-    label: group.label,
-    options: group.options,
-    values: filters[group.key as keyof typeof filters] ?? [],
-    onChange: (values) => setRouteState((current) => ({
-      ...current,
-      filters: { ...(current.filters ?? filters), [group.key]: values },
+  const groups: FilterBarGroup[] = [
+    {
+      key: 'period',
+      label: 'Period',
+      options,
+      values: [period],
+      onChange: (values: string[]) => setPeriod((values[0] as SellerLandingPeriod | undefined) ?? 'month'),
+    },
+    ...(summaryData?.filters?.groups ?? []).map((group) => ({
+      key: group.key,
+      label: group.label,
+      options: group.options,
+      values: filters[group.key as keyof typeof filters] ?? [],
+      onChange: (values: string[]) => setRouteState((current) => ({
+        ...current,
+        filters: { ...(current.filters ?? filters), [group.key]: values },
+      })),
     })),
-  }));
+  ];
 
   return (
     <>
@@ -293,9 +277,7 @@ function EstimatesLandingContent({
           title="Estimates"
           subtitle={subtitle}
           horizon={horizonLabel}
-          period={period}
-          periodOptions={options}
-          onPeriodChange={setPeriod}
+          showHorizonControl={false}
           primary={createEstimates ? 'Add an estimate' : undefined}
           onPrimaryClick={createEstimates ? () => router.push('/estimates/new') : undefined}
         />
@@ -313,24 +295,24 @@ function EstimatesLandingContent({
               tiles={[
                 {
                   label: 'Estimate value created',
-                  value: formatCompactInr(kpis?.total_gmv_this_period ?? 0),
-                  sub: `${kpis?.total_estimates_this_period ?? 0} estimates this period`,
+                  value: formatMetricValue('estimate value', kpis?.total_gmv_this_period ?? 0),
+                  sub: `${kpis?.total_estimates_this_period ?? 0} estimates ${period}`,
                 },
                 {
                   label: 'Open estimates',
-                  value: `${kpis?.open_estimates_this_period ?? 0}`,
-                  sub: `${kpis?.open_drafts ?? 0} draft · ${kpis?.open_sent ?? 0} sent · ${kpis?.open_accepted ?? 0} accepted`,
+                  value: formatMetricValue('estimate value', kpis?.open_estimate_value ?? 0),
+                  sub: `${kpis?.open_estimates_this_period ?? 0} open estimates ${period}`,
                   tone: 'accent',
                 },
                 {
                   label: 'Awaiting action 3+ days',
-                  value: `${countFollowUpCandidates(allEstimates)}`,
-                  sub: `${kpis?.open_sent ?? 0} sent and pending`,
+                  value: formatMetricValue('estimate value', pulseAggregates?.sent_awaiting_value ?? 0),
+                  sub: `${pulseAggregates?.sent_awaiting_count ?? 0} sent and pending ${period}`,
                 },
                 {
                   label: 'Expiring in 7 days',
-                  value: `${countExpiringSoonOpen(allEstimates)}`,
-                  sub: 'unresolved estimates',
+                  value: formatMetricValue('estimate value', pulseAggregates?.expiring_soon_value ?? 0),
+                  sub: `${pulseAggregates?.expiring_soon_count ?? 0} unresolved estimates ${period}`,
                 },
               ]}
             />
@@ -338,9 +320,11 @@ function EstimatesLandingContent({
             <V3CalloutPanel
               items={[
                 {
+                  id: 'needs_follow_up',
                   kind: 'risk',
                   eyebrow: 'Sent awaiting action',
                   hint: followUpHint,
+                  getHref: (row) => `/estimates/${row.id}`,
                   rows: (read?.needs_follow_up ?? []).map((row) => ({
                     ...mapRowToCallout(row),
                     reason: `${row.estimate_number} · Sent ${row.sent_at ? formatDate(row.sent_at) : '—'}`,
@@ -348,27 +332,27 @@ function EstimatesLandingContent({
                   })),
                 },
                 {
+                  id: 'drafts_not_sent',
                   kind: 'info',
                   eyebrow: 'Drafts not sent',
                   hint: `${kpis?.open_drafts ?? 0}`,
-                  rows: (read?.ready_to_convert ?? []).map((row) => ({
+                  getHref: (row) => `/estimates/${row.id}`,
+                  rows: (read?.drafts_not_sent ?? []).map((row) => ({
                     ...mapRowToCallout(row),
-                    reason: `${row.estimate_number} · ${row.items_count} items`,
+                    reason: `${row.estimate_number} · ${row.estimate_date ? formatDate(row.estimate_date) : '—'}`,
                     trailing: formatCompactInr(row.total_amount),
                   })),
                 },
                 {
+                  id: 'expiring_soon',
                   kind: 'opportunity',
                   eyebrow: 'Expiring unresolved',
                   hint: expiringHint,
+                  getHref: (row) => `/estimates/${row.id}`,
                   rows: (read?.expiring_soon ?? []).map((row) => ({
                     ...mapRowToCallout(row),
-                    reason: `${row.estimate_number} · expires in ${daysUntil(row.expires_at)}d`,
-                    trailing: (
-                      <span className="inline-flex font-sans">
-                        <StatusTag label={row.status.label} tone={row.status.tone} />
-                      </span>
-                    ),
+                    reason: `${row.estimate_number} · Expires ${row.expires_at ? formatDate(row.expires_at) : '—'}`,
+                    trailing: formatCompactInr(row.total_amount),
                   })),
                 },
               ]}

@@ -5,6 +5,8 @@ const useCohortDetailMock = vi.fn();
 
 vi.mock('@/hooks/useCohorts', () => ({
   useCohortDetail: () => useCohortDetailMock(),
+  useRefreshCohort: () => ({ mutate: vi.fn(), isPending: false }),
+  useTenantCohortOptions: () => ({ data: undefined, isLoading: false }),
 }));
 
 vi.mock('@/hooks/useRole', () => ({
@@ -102,13 +104,13 @@ describe('cohort detail page', () => {
 
     render(<CohortDetailPage id="c1" />);
 
-    expect(screen.getByRole('button', { name: 'Buyers' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Performance' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Edit cohort/i })).toHaveAttribute('href', '/cohorts/c1/edit');
+    expect(screen.getByRole('tab', { name: 'Buyers' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Performance' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Edit customer group/i })).toHaveAttribute('href', '/customer-groups/c1/edit');
     expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Activity' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Members/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Catalogs/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Activity' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Members/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Catalogs/i })).not.toBeInTheDocument();
   });
 
   it('renders Buyers tab rules and table when selected', () => {
@@ -137,7 +139,7 @@ describe('cohort detail page', () => {
     });
 
     render(<CohortDetailPage id="c1" />);
-    fireEvent.click(screen.getByRole('button', { name: 'Buyers' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Buyers' }));
 
     expect(screen.getByText('Filters applied')).toBeInTheDocument();
     expect(screen.getByText('Mehta Brothers')).toBeInTheDocument();
@@ -152,31 +154,34 @@ describe('cohort detail page', () => {
 
     render(<CohortDetailPage id="c1" />);
 
-    const metaStripSection = screen.getByText('GMV · MTD').closest('section');
+    const metaStripSection = screen.getByText('Invoiced sales 90D').closest('section');
     expect(metaStripSection).toBeTruthy();
     const withinMeta = within(metaStripSection!);
 
-    expect(withinMeta.getByText('GMV · MTD')).toBeInTheDocument();
-    expect(withinMeta.getByText('Active members')).toBeInTheDocument();
-    expect(withinMeta.getByText(/^AOV$/)).toBeInTheDocument();
-    expect(withinMeta.getByText('Conversion')).toBeInTheDocument();
+    expect(withinMeta.getByText('Invoiced sales 90D')).toBeInTheDocument();
+    expect(withinMeta.getByText('Members who purchased')).toBeInTheDocument();
+    expect(withinMeta.getByText('Avg invoice value')).toBeInTheDocument();
+    expect(withinMeta.getByText('Response rate')).toBeInTheDocument();
     expect(screen.queryByText(/^Members$/i)).not.toBeInTheDocument();
     expect(screen.getByText('20 of 100 buyers')).toBeInTheDocument();
   });
 
-  it('renders v2 performance sections and See all actions', () => {
+  it('renders performance tab with card-based layout', () => {
     useCohortDetailMock.mockReturnValue({
       isLoading: false,
       isError: false,
-      data: cohortDetailFixture(),
+      data: cohortDetailFixture({
+        performance_cards: [
+          { id: 'c1', title: 'Invoiced Sales Trend', representation: 'unavailable', availability: 'unavailable' },
+          { id: 'c2', title: 'Member Engagement', representation: 'unavailable', availability: 'unavailable' },
+        ],
+      }),
     });
 
     render(<CohortDetailPage id="c1" />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Performance' }));
 
-    expect(screen.getByText('GMV trend')).toBeInTheDocument();
-    expect(screen.getByText('Engagement')).toBeInTheDocument();
-    expect(screen.getByText('Top members')).toBeInTheDocument();
-    expect(screen.getByText('Catalogs to this cohort')).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'See all →' })).toHaveLength(2);
+    expect(screen.getByText('Invoiced Sales Trend')).toBeInTheDocument();
+    expect(screen.getByText('Member Engagement')).toBeInTheDocument();
   });
 });

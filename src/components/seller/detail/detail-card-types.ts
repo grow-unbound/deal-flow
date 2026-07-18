@@ -55,6 +55,7 @@ export interface DetailDistributionCardBody {
 export interface DetailMetricGridCardBody {
   tiles: MetricTile[];
   showSupportingText?: boolean;
+  columns?: 'auto' | 'two-by-two';
 }
 
 export interface DetailEmptyCardBody {

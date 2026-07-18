@@ -251,7 +251,9 @@ export async function GET(req: NextRequest) {
       estimateTotalQuery = estimateTotalQuery.in('location_id', locationParams);
     }
 
-    const buildEstimateCalloutQuery = (mode: 'needs_follow_up' | 'ready_to_convert' | 'expiring_soon') => {
+    const SEE_ALL_LIMIT = PAGE_SIZE.MAX;
+
+    const buildEstimateCalloutQuery = (mode: 'needs_follow_up' | 'drafts_not_sent' | 'expiring_soon') => {
       let query = buildBaseEstimateQuery() as any;
 
       if (mode === 'needs_follow_up') {
@@ -259,15 +261,17 @@ export async function GET(req: NextRequest) {
           .eq('status', 'sent')
           .order('sent_at', { ascending: true, nullsFirst: false })
           .order('id', { ascending: false })
-          .limit(3);
+          .limit(SEE_ALL_LIMIT);
       }
 
-      if (mode === 'ready_to_convert') {
+      if (mode === 'drafts_not_sent') {
         return query
-          .eq('status', 'accepted')
+          .eq('status', 'draft')
+          .order('estimate_date', { ascending: true, nullsFirst: false })
+          .order('created_at', { ascending: true })
           .order('total_amount', { ascending: false })
           .order('id', { ascending: false })
-          .limit(3);
+          .limit(SEE_ALL_LIMIT);
       }
 
       return query
@@ -275,8 +279,33 @@ export async function GET(req: NextRequest) {
         .lte('expires_at', new Date(Date.now() + 7 * DAY_MS).toISOString())
         .order('expires_at', { ascending: true, nullsFirst: false })
         .order('id', { ascending: false })
-        .limit(3);
+        .limit(SEE_ALL_LIMIT);
     };
+
+    // Pulse-card aggregates (true count+value, not the ≤SEE_ALL_LIMIT callout
+    // sample above) for "Sent estimates awaiting action for 3+ days" and
+    // "Expiring in 7 days" -- both NOW-relative-to-clock conditions that
+    // aren't precomputed in a daily snapshot, same reasoning as the callout
+    // queries themselves.
+    const sentAwaitingAggPromise = applySellerLocationScope(
+      db.schema('app').from('estimates')
+        .select('total_amount', { count: 'exact' })
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .eq('status', 'sent')
+        .lt('sent_at', new Date(Date.now() - 3 * DAY_MS).toISOString()) as any,
+      claims,
+    );
+    const expiringAggPromise = applySellerLocationScope(
+      db.schema('app').from('estimates')
+        .select('total_amount', { count: 'exact' })
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .in('status', ['draft', 'sent', 'accepted'])
+        .not('expires_at', 'is', null)
+        .lte('expires_at', new Date(Date.now() + 7 * DAY_MS).toISOString()) as any,
+      claims,
+    );
 
     const landingMetricsPromise = db.schema('app').rpc('metrics_v2_transaction_landing', {
       p_tenant_id: tenantId,
@@ -284,19 +313,36 @@ export async function GET(req: NextRequest) {
       p_location_ids: aggregateScope === 'location' ? scopedLocationIds : null,
     });
 
-    const [estimatesRes, estimateTotalRes, landingMetricsRes, needsFollowUpRes, readyToConvertRes, expiringSoonRes] = await Promise.all([
+    const [
+      estimatesRes,
+      estimateTotalRes,
+      landingMetricsRes,
+      needsFollowUpRes,
+      draftsNotSentRes,
+      expiringSoonRes,
+      sentAwaitingAggRes,
+      expiringAggRes,
+    ] = await Promise.all([
       scopedEstimatesQuery,
       estimateTotalQuery,
       landingMetricsPromise,
       buildEstimateCalloutQuery('needs_follow_up'),
-      buildEstimateCalloutQuery('ready_to_convert'),
+      buildEstimateCalloutQuery('drafts_not_sent'),
       buildEstimateCalloutQuery('expiring_soon'),
+      sentAwaitingAggPromise,
+      expiringAggPromise,
     ]);
 
-    if (estimatesRes.error || estimateTotalRes.error || landingMetricsRes.error || needsFollowUpRes.error || readyToConvertRes.error || expiringSoonRes.error) {
+    if (
+      estimatesRes.error || estimateTotalRes.error || landingMetricsRes.error
+      || needsFollowUpRes.error || draftsNotSentRes.error || expiringSoonRes.error
+      || sentAwaitingAggRes.error || expiringAggRes.error
+    ) {
       console.error(
         '[GET /api/tenant/estimates] query error:',
-        estimatesRes.error || estimateTotalRes.error || landingMetricsRes.error || needsFollowUpRes.error || readyToConvertRes.error || expiringSoonRes.error,
+        estimatesRes.error || estimateTotalRes.error || landingMetricsRes.error
+          || needsFollowUpRes.error || draftsNotSentRes.error || expiringSoonRes.error
+          || sentAwaitingAggRes.error || expiringAggRes.error,
       );
       return timedJson({ error: 'Failed to fetch estimates' }, { status: 500 });
     }
@@ -310,7 +356,7 @@ export async function GET(req: NextRequest) {
       : null;
     const calloutRows = [
       ...((needsFollowUpRes.data ?? []) as EstimateDbRow[]),
-      ...((readyToConvertRes.data ?? []) as EstimateDbRow[]),
+      ...((draftsNotSentRes.data ?? []) as EstimateDbRow[]),
       ...((expiringSoonRes.data ?? []) as EstimateDbRow[]),
     ];
     const lookupRows = Array.from(new Map([...rawEstimates, ...calloutRows].map((row) => [row.id, row])).values());
@@ -450,6 +496,7 @@ export async function GET(req: NextRequest) {
       total_gmv_prev_period: 0,
       aov: 0,
       open_estimates_this_period: 0,
+      open_estimate_value: 0,
       converted_this_period: 0,
       open_total: 0,
       open_drafts: 0,
@@ -461,6 +508,15 @@ export async function GET(req: NextRequest) {
       buyer_app_created_this_period: 0,
     }) as EstimatesKpis;
 
+    const sentAwaitingRows = (sentAwaitingAggRes.data ?? []) as Array<{ total_amount: number | string | null }>;
+    const expiringAggRows = (expiringAggRes.data ?? []) as Array<{ total_amount: number | string | null }>;
+    const pulse_aggregates = {
+      sent_awaiting_count: sentAwaitingAggRes.count ?? sentAwaitingRows.length,
+      sent_awaiting_value: sumMetric(sentAwaitingRows as Array<Record<string, unknown>>, 'total_amount'),
+      expiring_soon_count: expiringAggRes.count ?? expiringAggRows.length,
+      expiring_soon_value: sumMetric(expiringAggRows as Array<Record<string, unknown>>, 'total_amount'),
+    };
+
     const toCalloutRow = (landing: EstimateLandingRow): EstimateCalloutRow => ({
       id: landing.id,
       estimate_number: landing.estimate_number,
@@ -469,6 +525,7 @@ export async function GET(req: NextRequest) {
       buyer_hue: landing.buyer_hue,
       items_count: landing.items_count,
       total_amount: landing.total_amount,
+      estimate_date: landing.created_at,
       sent_at: landing.sent_at,
       expires_at: landing.expires_at,
       status: { label: landing.status.label, tone: landing.status.tone },
@@ -480,7 +537,7 @@ export async function GET(req: NextRequest) {
       .filter((entry) => entry.row.sent_at && new Date(entry.row.sent_at).getTime() < threeDaysAgo)
       .map((entry) => toCalloutRow(entry.landing));
 
-    const readyCallout = ((readyToConvertRes.data ?? []) as EstimateDbRow[])
+    const draftsCallout = ((draftsNotSentRes.data ?? []) as EstimateDbRow[])
       .map((row, index) => normalizeLanding(row, index))
       .map((entry) => toCalloutRow(entry.landing));
 
@@ -492,7 +549,7 @@ export async function GET(req: NextRequest) {
 
     const todays_read: EstimatesTodaysRead = {
       needs_follow_up: needsFollowUp,
-      ready_to_convert: readyCallout,
+      drafts_not_sent: draftsCallout,
       expiring_soon: expiringCallout,
     };
 
@@ -523,6 +580,7 @@ export async function GET(req: NextRequest) {
     const payload = {
       period,
       kpis,
+      pulse_aggregates,
       todays_read,
       estimates,
       filters,

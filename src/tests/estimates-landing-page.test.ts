@@ -81,7 +81,7 @@ vi.mock('@/lib/server/seller-features', () => ({
 vi.mock('@/lib/supabase', () => {
   class QueryMock {
     private table: string;
-    private conditions: Array<{ kind: 'eq' | 'is' | 'gte' | 'lt' | 'lte' | 'in'; column: string; value: unknown }> = [];
+    private conditions: Array<{ kind: 'eq' | 'is' | 'gte' | 'lt' | 'lte' | 'in' | 'not_is_null'; column: string; value: unknown }> = [];
     private orderBy: { column: string; ascending: boolean } | null = null;
     private take: number | null = null;
     private head = false;
@@ -129,6 +129,12 @@ vi.mock('@/lib/supabase', () => {
       this.conditions.push({ kind: 'lte', column, value });
       return this;
     }
+    not(column: string, operator: string, value: unknown) {
+      if (operator === 'is' && value === null) {
+        this.conditions.push({ kind: 'not_is_null', column, value: null });
+      }
+      return this;
+    }
     or(filter: string) {
       const match = filter.match(
         /and\(estimate_date\.gte\.([^,]+),estimate_date\.lt\.([^)]+)\),and\(estimate_date\.is\.null,created_at\.gte\.([^,]+),created_at\.lt\.([^)]+)\)/,
@@ -165,6 +171,10 @@ vi.mock('@/lib/supabase', () => {
           if (condition.kind === 'in') {
             const values = Array.isArray(condition.value) ? condition.value : [];
             result = result.filter((row) => values.includes(row[condition.column]));
+            continue;
+          }
+          if (condition.kind === 'not_is_null') {
+            result = result.filter((row) => row[condition.column] != null);
             continue;
           }
           if (condition.kind === 'gte' || condition.kind === 'lt' || condition.kind === 'lte') {

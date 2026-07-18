@@ -43,6 +43,25 @@ export function DetailCardRenderer({
 }
 
 function renderCardBody(card: DetailCardPayload, isUnavailable: boolean) {
+  // Cards flagged unavailable (availability: 'unavailable') always render the generic
+  // empty state, even when `representation` names a concrete chart type (e.g. a stub
+  // card whose body only has {title, description, tone} instead of {items, emptyTitle}).
+  // Dispatching on representation first would crash — e.g. DistributionList/RankedList
+  // read `body.items.length`, and `items` is undefined on an unavailable stub body.
+  if (isUnavailable) {
+    const body = card.body as Partial<DetailEmptyCardBody>;
+    return (
+      <div className="p-5">
+        <CardEmptyState
+          title={body.title ?? 'Unavailable'}
+          description={body.description}
+          tone={body.tone ?? 'unavailable'}
+          compact={body.compact}
+        />
+      </div>
+    );
+  }
+
   if (card.representation === 'trend') {
     const body = card.body as DetailTrendCardBody;
     return (
@@ -85,7 +104,12 @@ function renderCardBody(card: DetailCardPayload, isUnavailable: boolean) {
     const body = card.body as DetailMetricGridCardBody;
     return (
       <div className="p-5">
-        <MetricGrid className="mt-0" tiles={body.tiles} showSupportingText={body.showSupportingText} />
+        <MetricGrid
+          className="mt-0"
+          tiles={body.tiles}
+          showSupportingText={body.showSupportingText}
+          columns={body.columns}
+        />
       </div>
     );
   }

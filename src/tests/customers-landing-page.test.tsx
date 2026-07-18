@@ -4,7 +4,6 @@ import { render, screen } from '@testing-library/react';
 const useCustomersLandingMock = vi.fn();
 const useFlagMock = vi.fn();
 const requireSellerServerTenantIdMock = vi.fn();
-const resolveSellerLandingPeriodMock = vi.fn();
 const fetchSellerPageBootstrapMock = vi.fn();
 
 vi.mock('next/navigation', () => ({
@@ -28,10 +27,6 @@ vi.mock('@/lib/server/seller-server-claims', () => ({
   requireSellerServerTenantId: (...args: unknown[]) => requireSellerServerTenantIdMock(...args),
 }));
 
-vi.mock('@/lib/server/seller-period', () => ({
-  resolveSellerLandingPeriod: (...args: unknown[]) => resolveSellerLandingPeriodMock(...args),
-}));
-
 vi.mock('@/lib/server/seller-page-bootstrap', () => ({
   fetchSellerPageBootstrap: (...args: unknown[]) => fetchSellerPageBootstrapMock(...args),
 }));
@@ -43,10 +38,8 @@ describe('customers landing integration', () => {
     useCustomersLandingMock.mockReset();
     useFlagMock.mockReset();
     requireSellerServerTenantIdMock.mockReset();
-    resolveSellerLandingPeriodMock.mockReset();
     fetchSellerPageBootstrapMock.mockReset();
     requireSellerServerTenantIdMock.mockResolvedValue('tenant-1');
-    resolveSellerLandingPeriodMock.mockResolvedValue('month');
     fetchSellerPageBootstrapMock.mockResolvedValue({ data: null, status: 200 });
   });
 

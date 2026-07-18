@@ -26,13 +26,12 @@ export interface BuyerAppLocation {
   share_pct: number | null;
 }
 
-export interface BuyerAppTopBuyer {
-  buyer_id: string;
-  name: string;
-  initials: string;
-  city: string;
-  gmv: number;
-  orders: number;
+export interface BuyerAppContributionMonth {
+  month: string;
+  app_demand_value: number;
+  total_demand_value: number;
+  app_invoice_value: number;
+  total_invoice_value: number;
 }
 
 export interface BuyerAppLandingResponse {
@@ -66,11 +65,12 @@ export interface BuyerAppLandingResponse {
     converted_order_count_mtd: number;
     invoiced_app_value_mtd: number;
     invoiced_app_count_mtd: number;
+    invoiced_share_of_total_pct: number;
     not_ordering_buyers: BuyerAppCalloutBuyer[];
-    top_app_buyers_callout: BuyerAppCalloutBuyer[];
+    used_no_demand_buyers: BuyerAppCalloutBuyer[];
     no_app_buyers: BuyerAppCalloutBuyer[];
-    top_app_buyers_card: BuyerAppTopBuyer[];
     top_locations: BuyerAppLocation[];
+    contribution_over_time: BuyerAppContributionMonth[];
     refreshed_at: string;
   } | null;
 }

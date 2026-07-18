@@ -46,11 +46,11 @@ describe('brand-detail-page integration', () => {
   it('loads performance by default and allows switching tabs', () => {
     render(<BrandDetailPage id="b1" />);
 
-    expect(screen.getByRole('button', { name: /Performance/i })).toHaveClass('border-teal-500');
-    fireEvent.click(screen.getByRole('button', { name: /Buyers/i }));
+    expect(screen.getByRole('tab', { name: /Performance/i })).toHaveClass('border-ember-500');
+    fireEvent.click(screen.getByRole('tab', { name: /Buyers/i }));
     expect(screen.getByText('Singh Hospitality')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /Activity/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /Activity/i }));
     expect(screen.getByText('updated tenant_brand')).toBeInTheDocument();
   });
 });

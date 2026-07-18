@@ -10,11 +10,24 @@ import { mergeSellerLandingPages } from '@/lib/merge-seller-landing-pages';
 // ─── Landing types ────────────────────────────────────────────────────────────
 
 export interface CategoryLandingKpis {
+  /** Total active categories (metrics_tenant_setup_snapshot.active_category_count). */
   active_count: number;
   low_stock_count: number;
   top_category_name: string | null;
   top_category_share_pct: number;
+  /**
+   * get_seller_category_landing_summary_v2's `uncategorized_count` field counts
+   * active categories with zero invoiced sales in the period — NOT products
+   * lacking a category (that meaning was retired in the phase-9 rework). Use it
+   * only as "categories with no sale in 90 days".
+   */
   uncategorized_count: number;
+  /** Active products with no tenant_category_id — sourced separately, see categories-landing.ts. */
+  uncategorised_active_product_count: number;
+  /** Active products with a tenant_category_id assigned. */
+  categorised_active_product_count: number;
+  /** Total active products (categorised + uncategorised). */
+  active_product_count: number;
 }
 
 export interface CategoryTableRow {
@@ -142,11 +155,15 @@ export interface CategoryDetailHeader {
 
 export interface CategoryDetailMetaStrip {
   gmv_mtd: number;
-  growth_pct: number;
+  /** Product count supporting invoiced sales (doc: "Invoiced sales - amount + product count"). */
+  product_count: number;
+  /** Units sold in the last 90 days, from get_seller_category_detail_v2's kpi_grid. */
+  units_90d: number;
+  /** Products with invoiced sales > 0 in the last 90 days (from product-action-list, capped at 20 items). */
+  sold_sku_count: number;
   active_sku_count: number;
   oos_sku_count: number;
   low_stock_sku_count: number;
-  active_buyer_count: number;
 }
 
 export interface CategoryDetailOverview {

@@ -95,11 +95,11 @@ describe('cohort detail page integration', () => {
 
     render(<CohortDetailPage id="c1" />);
 
-    expect(screen.getByRole('button', { name: 'Buyers' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Performance' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Activity' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Members/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Catalogs/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Buyers' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Performance' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Activity' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Members/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Catalogs/i })).not.toBeInTheDocument();
     expect(screen.getAllByText('30.0%').length).toBeGreaterThanOrEqual(1);
     const editLink = screen.getByRole('link', { name: /Edit customer group/i });
     expect(editLink).toBeInTheDocument();

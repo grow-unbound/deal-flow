@@ -187,7 +187,7 @@ describe('product detail page', () => {
 
     render(<ProductDetailPage id="p1" />);
 
-    expect(screen.queryByRole('button', { name: /Performance/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Details/i })).toHaveClass('border-teal-500');
+    expect(screen.queryByRole('tab', { name: /Performance/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Details/i })).toHaveClass('border-ember-500');
   });
 });

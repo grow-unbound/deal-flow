@@ -276,7 +276,7 @@ export function CatalogDetailPage({ id }: CatalogDetailPageProps) {
       ) : null}
 
       {tab === 'performance' ? (
-        <CatalogPerformanceTab performance={data.performance} performanceCards={data.performance_cards} />
+        <CatalogPerformanceTab performanceCards={data.performance_cards} />
       ) : null}
       {tab === 'buyers' ? <CatalogBuyersTab catalogId={id} buyers={data.buyers} selectedCohort={data.header.selected_cohort} /> : null}
     </PageWrap>

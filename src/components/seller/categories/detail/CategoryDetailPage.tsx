@@ -20,8 +20,8 @@ import { CategoryProductsTab } from './CategoryProductsTab';
 import { CategoryBrandsTab } from './CategoryBrandsTab';
 import { CategoryActivityTab } from './CategoryActivityTab';
 
-const CategoryOverviewTab = dynamic(
-  () => import('./CategoryOverviewTab').then((m) => m.CategoryOverviewTab),
+const CategoryPerformanceTab = dynamic(
+  () => import('./CategoryPerformanceTab').then((m) => m.CategoryPerformanceTab),
   { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
 );
 
@@ -78,22 +78,17 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
     const m = data.meta_strip_4;
     return [
       {
+        // get_seller_category_detail_v2 has no prior-period comparison, so this used
+        // to show a fabricated "↑ +0%" growth badge. Show the doc-recommended
+        // supporting value (product count) instead — see doc line 962.
         label: 'Invoiced sales 90D',
         value: formatCompactInr(m.gmv_mtd),
-        sub: (
-          <span>
-            <span className={m.growth_pct >= 0 ? 'up' : 'down'}>
-              {m.growth_pct >= 0 ? '↑ +' : '↓ '}
-              {Math.abs(m.growth_pct)}%
-            </span>{' '}
-            vs last month
-          </span>
-        ),
+        sub: `${m.product_count} product${m.product_count !== 1 ? 's' : ''}`,
       },
       {
-        label: 'Customers who purchased',
-        value: `${m.active_buyer_count}`,
-        sub: 'in the last 90 days',
+        label: 'Units sold',
+        value: `${m.units_90d}`,
+        sub: `${m.sold_sku_count} products that sold`,
       },
       {
         label: 'Recent sellers low/out of stock',
@@ -179,7 +174,7 @@ export function CategoryDetailPage({ id }: CategoryDetailPageProps) {
       />
 
       {tab === 'performance' ? (
-        <CategoryOverviewTab overview={data.overview} performanceCards={data.performance_cards} />
+        <CategoryPerformanceTab performanceCards={data.performance_cards} />
       ) : null}
       {tab === 'products' ? <CategoryProductsTab products={data.products} categoryId={id} /> : null}
       {tab === 'brands' ? <CategoryBrandsTab brands={data.brands} /> : null}

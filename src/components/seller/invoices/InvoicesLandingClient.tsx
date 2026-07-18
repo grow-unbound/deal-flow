@@ -26,7 +26,7 @@ import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { ErrorState, EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatCompactInr, formatDate, formatInr } from '@/lib/utils';
+import { formatCompactInr, formatDate } from '@/lib/utils';
 import type { SellerLandingPeriod } from '@/lib/seller-period';
 import { InvoicesLandingSkeleton } from '@/components/seller/loading/SellerLoadingSkeletons';
 
@@ -52,8 +52,9 @@ function buyerGeographyLabel(row: Pick<TenantInvoicesResponse['invoices'][number
   return [row.buyer_city, row.buyer_state].filter(Boolean).join(', ') || '—';
 }
 
-function mapRowToCallout(row: Pick<TenantInvoicesResponse['invoices'][number], 'buyer_initials' | 'buyer_hue' | 'buyer_name'>) {
+function mapRowToCallout(row: { id: string; buyer_initials: string; buyer_hue: TenantInvoicesResponse['invoices'][number]['buyer_hue']; buyer_name: string }) {
   return {
+    id: row.id,
     initials: row.buyer_initials,
     hue: row.buyer_hue,
     name: row.buyer_name,
@@ -206,28 +207,15 @@ function InvoicesLandingContent({
 
   const displayRows = filteredRows;
   const showTableSkeleton = (isLoading || isFetching || isFetchingNextPage) && displayRows.length === 0;
-  const latestInvoiceByBuyer = useMemo(() => {
-    const latest = new Map<string, TenantInvoicesResponse['invoices'][number]>();
-
-    for (const invoice of summaryData?.invoices ?? []) {
-      const currentTime = new Date(invoice.invoice_date).getTime();
-      const existing = latest.get(invoice.buyer_id);
-      const existingTime = existing ? new Date(existing.invoice_date).getTime() : Number.NEGATIVE_INFINITY;
-      if (!existing || currentTime >= existingTime) {
-        latest.set(invoice.buyer_id, invoice);
-      }
-    }
-
-    return latest;
-  }, [summaryData?.invoices]);
 
   const subtitle = useMemo(() => {
     const kpis = summaryData?.kpis;
     if (!kpis) {
       return `Track receivables and collections ${lowerLabel}.`;
     }
-    return `${kpis.invoices_this_period} invoices ${lowerLabel} with ${formatCompactInr(kpis.gmv_this_period)} GMV. ${kpis.outstanding_count} still due and ${kpis.overdue_count} overdue.`;
-  }, [lowerLabel, summaryData?.kpis]);
+    return `${kpis.invoices_this_period} invoices in ${horizonLabel.toLowerCase()}.`;
+  }, [horizonLabel, lowerLabel, summaryData?.kpis]);
+  const pulseAggregates = summaryData?.pulse_aggregates;
 
   if (isLoading && !data) return <InvoicesLandingSkeleton />;
 
@@ -242,16 +230,25 @@ function InvoicesLandingContent({
   if (!data) return <InvoicesLandingSkeleton />;
   const showRefreshingState = isLoading && !data;
   const kpis = summaryData?.kpis;
-  const groups: FilterBarGroup[] = (summaryData?.filters?.groups ?? []).map((group) => ({
-    key: group.key,
-    label: group.label,
-    options: group.options,
-    values: filters[group.key as keyof typeof filters] ?? [],
-    onChange: (values) => setRouteState((current) => ({
-      ...current,
-      filters: { ...(current.filters ?? filters), [group.key]: values },
+  const groups: FilterBarGroup[] = [
+    {
+      key: 'period',
+      label: 'Period',
+      options,
+      values: [period],
+      onChange: (values: string[]) => setPeriod((values[0] as SellerLandingPeriod | undefined) ?? 'month'),
+    },
+    ...(summaryData?.filters?.groups ?? []).map((group) => ({
+      key: group.key,
+      label: group.label,
+      options: group.options,
+      values: filters[group.key as keyof typeof filters] ?? [],
+      onChange: (values: string[]) => setRouteState((current) => ({
+        ...current,
+        filters: { ...(current.filters ?? filters), [group.key]: values },
+      })),
     })),
-  }));
+  ];
 
   return (
     <PageWrap className="max-w-[1920px]">
@@ -260,9 +257,7 @@ function InvoicesLandingContent({
         title="Invoices"
         subtitle={subtitle}
         horizon={horizonLabel}
-        period={period}
-        periodOptions={options}
-        onPeriodChange={setPeriod}
+        showHorizonControl={false}
         primary={createInvoices ? 'Add an invoice' : undefined}
         onPrimaryClick={createInvoices ? () => router.push('/invoices/new') : undefined}
       />
@@ -281,19 +276,19 @@ function InvoicesLandingContent({
               {
                 label: 'Outstanding amount',
                 value: formatCompactInr(kpis?.outstanding_sum ?? 0),
-                sub: `${kpis?.outstanding_count ?? 0} invoice${(kpis?.outstanding_count ?? 0) === 1 ? '' : 's'} due`,
+                sub: `${kpis?.outstanding_count ?? 0} invoices · ${kpis?.outstanding_customer_count ?? 0} customers`,
                 tone: 'accent',
               },
               {
                 label: 'Overdue amount',
                 value: formatCompactInr(kpis?.overdue_sum ?? 0),
-                sub: `${kpis?.overdue_count ?? 0} overdue invoice${(kpis?.overdue_count ?? 0) === 1 ? '' : 's'}`,
+                sub: `${kpis?.overdue_count ?? 0} invoices · ${kpis?.overdue_customer_count ?? 0} customers`,
                 tone: (kpis?.overdue_count ?? 0) > 0 ? 'warn' : undefined,
               },
               {
                 label: 'Due in 7 days',
-                value: `${summaryData?.todays_read?.needs_attention?.length ?? 0}`,
-                sub: 'upcoming collections',
+                value: formatCompactInr(pulseAggregates?.due_soon_sum ?? 0),
+                sub: `${pulseAggregates?.due_soon_count ?? 0} invoices · ${pulseAggregates?.due_soon_customer_count ?? 0} customers`,
               },
             ]}
           />
@@ -301,41 +296,40 @@ function InvoicesLandingContent({
           <V3CalloutPanel
             items={[
               {
+                id: 'largest_overdue',
                 kind: 'risk',
                 eyebrow: 'Largest overdue balances',
-                hint: `${summaryData?.todays_read?.needs_attention?.length ?? 0}`,
-                rows: (summaryData?.todays_read?.needs_attention ?? []).map((row) => ({
+                hint: `${kpis?.overdue_count ?? 0}`,
+                getHref: (row) => `/invoices/${row.id}`,
+                rows: (summaryData?.todays_read?.largest_overdue ?? []).map((row) => ({
                   ...mapRowToCallout(row),
                   reason: invoiceSupportText(row),
                   trailing: formatCompactInr(row.outstanding_amount),
                 })),
               },
               {
+                id: 'due_soon',
                 kind: 'info',
                 eyebrow: 'High-value invoices due soon',
-                hint: `${summaryData?.todays_read?.top_spenders?.length ?? 0}`,
-                rows: (summaryData?.todays_read?.top_spenders ?? []).map((row) => ({
+                hint: `${pulseAggregates?.due_soon_count ?? 0}`,
+                getHref: (row) => `/invoices/${row.id}`,
+                rows: (summaryData?.todays_read?.due_soon ?? []).map((row) => ({
                   ...mapRowToCallout(row),
                   reason: invoiceSupportText(row),
-                  trailing: formatCompactInr(row.total_amount),
+                  trailing: formatCompactInr(row.outstanding_amount),
                 })),
               },
               {
+                id: 'newly_overdue',
                 kind: 'opportunity',
                 eyebrow: 'Newly overdue invoices',
-                hint: `${summaryData?.todays_read?.top_risers?.length ?? 0}`,
-                rows: (summaryData?.todays_read?.top_risers ?? []).map((row) => {
-                  const latestInvoice = latestInvoiceByBuyer.get(row.buyer_id);
-                  return {
-                    initials: row.buyer_initials,
-                    hue: row.buyer_hue,
-                    name: row.buyer_name,
-                    reason: latestInvoice
-                      ? invoiceSupportText(latestInvoice)
-                      : `${buyerGeographyLabel(row)} · +${formatCompactInr(row.delta_gmv)} vs last period`,
-                    trailing: formatCompactInr(row.current_gmv),
-                  };
-                }),
+                hint: `${summaryData?.todays_read?.newly_overdue?.length ?? 0}`,
+                getHref: (row) => `/invoices/${row.id}`,
+                rows: (summaryData?.todays_read?.newly_overdue ?? []).map((row) => ({
+                  ...mapRowToCallout(row),
+                  reason: invoiceSupportText(row),
+                  trailing: formatCompactInr(row.outstanding_amount),
+                })),
               },
             ]}
           />
@@ -396,7 +390,8 @@ function InvoicesLandingContent({
                   campaign_name: row.campaign_name,
                   items_count: row.items_count,
                   total_amount: row.total_amount,
-                  amount_subtext: row.outstanding_amount > 0 ? `${formatInr(row.outstanding_amount)} due` : null,
+                  outstanding_amount: row.outstanding_amount,
+                  amount_subtext: null,
                   status_label: row.status.label,
                   status_tone: row.status.tone,
                   created_at: row.created_at,

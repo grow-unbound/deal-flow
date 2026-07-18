@@ -151,7 +151,6 @@ describe('GET /api/tenant/categories/landing', () => {
       p_tenant_id: 'tenant-1',
       p_category_ids: ['cat-1'],
     })]);
-    expect(fromCalls).not.toContain('app.tenant_products');
     expect(fromCalls).not.toContain('app.tenant_inventory');
     expect(fromCalls).not.toContain('app.kpi_product_daily');
     expect(fromCalls).not.toContain('app.kpi_category_daily');

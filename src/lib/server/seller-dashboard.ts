@@ -14,6 +14,7 @@ import {
 import { loadBuyerCreditSnapshots } from '@/lib/server/buyer-credit';
 import { getSellerShellFeatureAvailability } from '@/lib/server/seller-features';
 import { supabaseAdmin } from '@/lib/supabase';
+import { formatCurrency, formatNumber } from '@/lib/utils';
 import type {
   SellerDashboardResponse,
   SellerDashboardMetric,
@@ -22,10 +23,10 @@ import type {
   SellerDashboardFeed,
   SellerDashboardFeedRow,
   SellerDashboardRecentActivityRow,
-  SellerDashboardBrandRow,
   SellerDashboardRole,
   SellerDashboardTenantSummary,
   MetricsV2DashboardPortfolio,
+  SellerDashboardBusinessFlowMeta,
 } from '@/types/seller-dashboard';
 
 type BuyerRow = {
@@ -33,6 +34,14 @@ type BuyerRow = {
   business_name: string;
   credit_limit: number | null;
   geography: Record<string, unknown> | null;
+  buyer_app_enabled: boolean | null;
+};
+
+type BuyerSnapshotRow = {
+  buyer_id: string;
+  invoice_count_90d: number | string | null;
+  invoice_value_90d: number | string | null;
+  app_invoice_value_90d: number | string | null;
 };
 
 type OrderRow = {
@@ -46,6 +55,11 @@ type OrderRow = {
   placed_at: string | null;
   created_at: string;
   updated_at: string | null;
+  buyers?: {
+    business_name: string | null;
+  } | Array<{
+    business_name: string | null;
+  }> | null;
 };
 
 type EstimateRow = {
@@ -58,6 +72,11 @@ type EstimateRow = {
   estimate_date: string | null;
   created_at: string;
   updated_at: string | null;
+  buyers?: {
+    business_name: string | null;
+  } | Array<{
+    business_name: string | null;
+  }> | null;
 };
 
 type InvoiceRow = {
@@ -72,14 +91,11 @@ type InvoiceRow = {
   due_date: string | null;
   created_at: string;
   updated_at: string | null;
-};
-
-type CatalogRow = {
-  id: string;
-  name: string;
-  status: string;
-  valid_to: string | null;
-  updated_at: string | null;
+  buyers?: {
+    business_name: string | null;
+  } | Array<{
+    business_name: string | null;
+  }> | null;
 };
 
 type InventoryRow = {
@@ -90,27 +106,6 @@ type InventoryRow = {
   warehouses?: {
     location_id: string | null;
   } | null;
-};
-
-type MetricsProductRevenueRow = {
-  tenant_product_id: string;
-  invoice_value_90d: number | string | null;
-};
-
-type TenantProductBrandRow = {
-  id: string;
-  tenant_brand_id: string | null;
-};
-
-type TenantBrandRow = {
-  id: string;
-  display_name_override: string | null;
-  master_brand_id: string | null;
-};
-
-type MasterBrandRow = {
-  id: string;
-  name: string;
 };
 
 type TenantRow = {
@@ -124,11 +119,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 function sumNumbers<T>(rows: T[], getter: (row: T) => number) {
   return rows.reduce((total, row) => total + getter(row), 0);
-}
-
-function growthDelta(current: number, previous: number) {
-  if (previous <= 0) return current > 0 ? 100 : 0;
-  return Math.round(((current - previous) / previous) * 100);
 }
 
 function formatInitials(name: string) {
@@ -147,11 +137,6 @@ function hueByIndex(index: number): 'teal' | 'ember' | 'cream' {
   return 'cream';
 }
 
-function cityFromGeography(geography: Record<string, unknown> | null) {
-  const city = geography?.city;
-  return typeof city === 'string' && city.trim().length > 0 ? city.trim() : 'Unknown city';
-}
-
 function formatTimeAgo(iso: string) {
   const deltaMs = Date.now() - new Date(iso).getTime();
   const deltaHours = Math.max(0, Math.round(deltaMs / (60 * 60 * 1000)));
@@ -160,6 +145,14 @@ function formatTimeAgo(iso: string) {
   const deltaDays = Math.round(deltaHours / 24);
   if (deltaDays < 7) return `${deltaDays}d ago`;
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+}
+
+function buyerNameFor(
+  row: { buyer_id: string; buyers?: { business_name: string | null } | Array<{ business_name: string | null }> | null },
+  buyersById: Map<string, BuyerRow>,
+) {
+  const joinedBuyer = Array.isArray(row.buyers) ? row.buyers[0] : row.buyers;
+  return joinedBuyer?.business_name ?? buyersById.get(row.buyer_id)?.business_name ?? 'Unknown buyer';
 }
 
 function statusToneForOrder(status: string): 'success' | 'warning' | 'danger' | 'neutral' {
@@ -209,16 +202,22 @@ function invoiceEventAt(row: Pick<InvoiceRow, 'invoice_date' | 'created_at'>) {
   return row.invoice_date ?? row.created_at;
 }
 
-function buildRecentFeedRows<T extends { id: string; buyer_id: string; total_amount: number | null; updated_at: string | null; created_at: string }>(
+function buildRecentFeedRows<T extends {
+  id: string;
+  buyer_id: string;
+  total_amount: number | null;
+  updated_at: string | null;
+  created_at: string;
+  buyers?: { business_name: string | null } | Array<{ business_name: string | null }> | null;
+}>(
   rows: T[],
   buyersById: Map<string, BuyerRow>,
   builder: (row: T) => Omit<SellerDashboardFeedRow, 'customer_name' | 'amount' | 'updated_at'>,
 ): SellerDashboardFeedRow[] {
   return rows.map((row) => {
-    const buyer = buyersById.get(row.buyer_id);
     return {
       ...builder(row),
-      customer_name: buyer?.business_name ?? 'Unknown buyer',
+      customer_name: buyerNameFor(row, buyersById),
       amount: Number(row.total_amount ?? 0),
       updated_at: row.updated_at ?? row.created_at,
     };
@@ -257,88 +256,44 @@ function portfolioItem(portfolio: MetricsV2DashboardPortfolio | null, section: '
   return portfolio?.[section]?.find((item) => item.id === id) ?? null;
 }
 
+function withDashboardAvailabilityMeta(
+  portfolio: MetricsV2DashboardPortfolio | null,
+  featureAvailability: Awaited<ReturnType<typeof getSellerShellFeatureAvailability>>,
+) {
+  if (!portfolio) return portfolio;
+
+  return {
+    ...portfolio,
+    explore: portfolio.explore.map((item) => {
+      if (item.id !== 'business_flow') return item;
+
+      const meta = ((item.meta as SellerDashboardBusinessFlowMeta | undefined) ?? {});
+      return {
+        ...item,
+        meta: {
+          ...meta,
+          orders_enabled: featureAvailability.salesOrders,
+          estimates_enabled: featureAvailability.estimates,
+        },
+      };
+    }),
+  };
+}
+
 function portfolioNumber(portfolio: MetricsV2DashboardPortfolio | null, section: 'metrics' | 'actions' | 'explore', id: string, key: 'value' | 'count', fallback: number) {
   const value = portfolioItem(portfolio, section, id)?.[key];
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-}
-
-async function fetchBrandRows(
-  tenantId: string,
-): Promise<SellerDashboardBrandRow[]> {
-  if (!supabaseAdmin) return [];
-
-  const db = supabaseAdmin;
-  const { data: productMetricRows } = await db
-    .schema('app')
-    .from('metrics_product_snapshot')
-    .select('tenant_product_id, invoice_value_90d')
-    .eq('tenant_id', tenantId)
-    .is('deleted_at', null)
-    .order('invoice_value_90d', { ascending: false })
-    .limit(80);
-
-  const revenueByProduct = new Map<string, number>();
-  for (const row of (productMetricRows ?? []) as MetricsProductRevenueRow[]) {
-    revenueByProduct.set(row.tenant_product_id, Number(row.invoice_value_90d ?? 0));
-  }
-
-  const topProductIds = Array.from(revenueByProduct.keys()).slice(0, 80);
-  if (topProductIds.length === 0) return [];
-
-  const [{ data: tenantProducts }, { data: tenantBrands }] = await Promise.all([
-    db
-      .schema('app')
-      .from('tenant_products')
-      .select('id, tenant_brand_id')
-      .eq('tenant_id', tenantId)
-      .in('id', topProductIds)
-      .is('deleted_at', null),
-    db
-      .schema('app')
-      .from('tenant_brands')
-      .select('id, display_name_override, master_brand_id')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null),
-  ]);
-
-  const masterBrandIds = Array.from(new Set(((tenantBrands ?? []) as TenantBrandRow[]).map((row) => row.master_brand_id).filter(Boolean)));
-  const { data: masterBrands } = masterBrandIds.length > 0
-    ? await db.schema('catalog').from('brands').select('id, name').in('id', masterBrandIds).is('deleted_at', null)
-    : { data: [] as MasterBrandRow[] };
-
-  const tenantBrandById = new Map(((tenantBrands ?? []) as TenantBrandRow[]).map((row) => [row.id, row]));
-  const masterBrandById = new Map(((masterBrands ?? []) as MasterBrandRow[]).map((row) => [row.id, row.name]));
-
-  const revenueByBrand = new Map<string, number>();
-  for (const product of (tenantProducts ?? []) as TenantProductBrandRow[]) {
-    const revenue = revenueByProduct.get(product.id) ?? 0;
-    const tenantBrand = product.tenant_brand_id ? tenantBrandById.get(product.tenant_brand_id) : null;
-    const brandName =
-      tenantBrand?.display_name_override
-      ?? (tenantBrand?.master_brand_id ? masterBrandById.get(tenantBrand.master_brand_id) : null)
-      ?? 'Unknown brand';
-    revenueByBrand.set(brandName, (revenueByBrand.get(brandName) ?? 0) + revenue);
-  }
-
-  const totalRevenue = sumNumbers(Array.from(revenueByBrand.values()), (value) => value);
-  return Array.from(revenueByBrand.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([name, revenue], index) => ({
-      id: `${name}-${index}`,
-      initials: formatInitials(name),
-      name,
-      pct: totalRevenue > 0 ? Math.max(8, Math.round((revenue / totalRevenue) * 100)) : 0,
-      trend_label: `${Math.round(totalRevenue > 0 ? (revenue / totalRevenue) * 100 : 0)}% share`,
-      hue: hueByIndex(index),
-    }));
 }
 
 async function fetchSellerDashboardData(
   tenantId: string,
   claims: Pick<JWTClaims, 'sub' | 'role' | 'location_ids'>,
   period: SellerLandingPeriodMeta,
+  options: { fullCalloutId?: string } = {},
 ): Promise<SellerDashboardResponse> {
+  const previewRows = <T,>(calloutId: string, rows: T[]) => (
+    options.fullCalloutId === calloutId ? rows : rows.slice(0, 3)
+  );
   const role = (claims.role === ROLES.SELLER_ASSISTANT ? ROLES.SELLER_ASSISTANT : ROLES.SELLER_ADMIN) as SellerDashboardRole;
 
   if (!supabaseAdmin) {
@@ -346,7 +301,7 @@ async function fetchSellerDashboardData(
       role,
       period,
       tenant: buildTenantSummary(null, []),
-      admin: role === ROLES.SELLER_ADMIN ? { metrics: [], callouts: [], top_brands: [], recent_activity: [] } : undefined,
+      admin: role === ROLES.SELLER_ADMIN ? { metrics: [], callouts: [], recent_activity: [] } : undefined,
       assistant: role === ROLES.SELLER_ASSISTANT ? { metrics: [], callouts: [], feeds: [] } : undefined,
     };
   }
@@ -377,7 +332,7 @@ async function fetchSellerDashboardData(
     inventoryQuery = inventoryQuery.eq('warehouse_id', '00000000-0000-0000-0000-000000000000');
   }
 
-  const [portfolioRes, buyersRes, catalogsRes, inventoryRes, ordersRes, estimatesRes, invoicesRes] = await Promise.all([
+  const [portfolioRes, buyersRes, inventoryRes, ordersRes, estimatesRes, invoicesRes, buyerSnapshotRes] = await Promise.all([
     db
       .schema('app')
       .rpc('get_metrics_v2_seller_dashboard', {
@@ -388,21 +343,14 @@ async function fetchSellerDashboardData(
     db
       .schema('app')
       .from('buyers')
-      .select('id, business_name, credit_limit, geography')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null),
-    db
-      .schema('app')
-      .from('campaigns')
-      .select('id, name, status, valid_to, updated_at')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null),
+      .select('id, business_name, credit_limit, geography, buyer_app_enabled')
+      .eq('tenant_id', tenantId),
     inventoryQuery,
     applySellerLocationScope(
       db
         .schema('app')
         .from('orders')
-        .select('id, location_id, buyer_id, order_number, status, total_amount, order_date, placed_at, created_at, updated_at')
+        .select('id, location_id, buyer_id, order_number, status, total_amount, order_date, placed_at, created_at, updated_at, buyers!buyer_id(business_name)')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null),
       claims,
@@ -411,7 +359,7 @@ async function fetchSellerDashboardData(
       db
         .schema('app')
         .from('estimates')
-        .select('id, location_id, buyer_id, estimate_number, status, total_amount, estimate_date, created_at, updated_at')
+        .select('id, location_id, buyer_id, estimate_number, status, total_amount, estimate_date, created_at, updated_at, buyers!buyer_id(business_name)')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null),
       claims,
@@ -420,20 +368,25 @@ async function fetchSellerDashboardData(
       db
         .schema('app')
         .from('invoices')
-        .select('id, location_id, buyer_id, invoice_number, status, total_amount, outstanding_balance, invoice_date, due_date, created_at, updated_at')
+        .select('id, location_id, buyer_id, invoice_number, status, total_amount, outstanding_balance, invoice_date, due_date, created_at, updated_at, buyers!buyer_id(business_name)')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null),
       claims,
     ),
+    db
+      .schema('app')
+      .from('metrics_buyer_snapshot')
+      .select('buyer_id, invoice_count_90d, invoice_value_90d, app_invoice_value_90d')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null),
   ]);
 
   const rawBuyers = (buyersRes.data ?? []) as BuyerRow[];
-  const catalogs = (catalogsRes.data ?? []) as CatalogRow[];
   const inventoryRows = (inventoryRes.data ?? []) as InventoryRow[];
   const orders = (ordersRes.data ?? []) as OrderRow[];
   const estimates = (estimatesRes.data ?? []) as EstimateRow[];
   const invoices = (invoicesRes.data ?? []) as InvoiceRow[];
-  const portfolio = normalizeDashboardPortfolio(portfolioRes.data);
+  const portfolio = withDashboardAvailabilityMeta(normalizeDashboardPortfolio(portfolioRes.data), featureAvailability);
   const scopedBuyerIds = role === ROLES.SELLER_ASSISTANT
     ? new Set(
         [...orders, ...estimates, ...invoices]
@@ -452,45 +405,36 @@ async function fetchSellerDashboardData(
     return reorder > 0 && qty <= reorder;
   }).length;
 
-  const activeCatalogs = catalogs.filter((catalog) => catalog.status === 'published').length;
-  const expiringCatalogs = catalogs.filter((catalog) => {
-    if (catalog.status !== 'published' || !catalog.valid_to) return false;
-    const daysUntilExpiry = (new Date(catalog.valid_to).getTime() - Date.now()) / DAY_MS;
-    return daysUntilExpiry > 0 && daysUntilExpiry <= 7;
-  }).length;
-
   const currentOrders = orders.filter((row) => inPeriod(orderEventAt(row), period.current_start, period.current_end_exclusive));
-  const previousOrders = orders.filter((row) => inPeriod(orderEventAt(row), period.previous_start, period.previous_end_exclusive));
   const currentInvoices = invoices.filter((row) => inPeriod(invoiceEventAt(row), period.current_start, period.current_end_exclusive));
-  const previousInvoices = invoices.filter((row) => inPeriod(invoiceEventAt(row), period.previous_start, period.previous_end_exclusive));
   const currentOrdersCount = currentOrders.length;
-  const previousOrdersCount = previousOrders.length;
   const currentGmv = sumNumbers(currentInvoices, (row) => Number(row.total_amount ?? 0));
-  const previousGmv = sumNumbers(previousInvoices, (row) => Number(row.total_amount ?? 0));
 
   const allOrdersSorted = [...orders].sort((a, b) => new Date(b.updated_at ?? b.created_at).getTime() - new Date(a.updated_at ?? a.created_at).getTime());
   const allEstimatesSorted = [...estimates].sort((a, b) => new Date(b.updated_at ?? b.created_at).getTime() - new Date(a.updated_at ?? a.created_at).getTime());
   const allInvoicesSorted = [...invoices].sort((a, b) => new Date(b.updated_at ?? b.created_at).getTime() - new Date(a.updated_at ?? a.created_at).getTime());
 
   if (role === ROLES.SELLER_ADMIN) {
-    const topBrands = await fetchBrandRows(tenantId);
     const overdueInvoices = invoices.filter((invoice) => invoicePresentation(invoice).label === 'Overdue');
+    const invoicedCustomersThisMonth = new Set(currentInvoices.map((row) => row.buyer_id)).size;
+    const overdueCustomerCount = new Set(overdueInvoices.map((row) => row.buyer_id)).size;
+    const primaryKind = portfolio?.primary_demand_kind ?? 'orders';
+
     const adminMetrics: SellerDashboardMetric[] = [
       {
         label: 'Invoiced sales · This month',
         value: portfolioNumber(portfolio, 'metrics', 'invoiced_sales', 'value', currentGmv),
-        delta: growthDelta(currentGmv, previousGmv),
-        delta_label: 'vs previous month',
+        sub: `${invoicedCustomersThisMonth} customer${invoicedCustomersThisMonth === 1 ? '' : 's'}`,
       },
       {
         label: 'Open primary demand',
         value: portfolioNumber(portfolio, 'metrics', 'open_primary_demand_value', 'value', currentOrdersCount),
-        sub: portfolio?.primary_demand_kind === 'estimates' ? 'Open estimate value' : 'Open order value',
+        sub: `${portfolioNumber(portfolio, 'metrics', 'open_primary_demand_value', 'count', 0)} open ${primaryKind === 'estimates' ? 'estimates' : 'orders'}`,
       },
       {
         label: 'Overdue receivables',
         value: portfolioNumber(portfolio, 'metrics', 'overdue_receivables', 'value', overdueInvoices.reduce((sum, invoice) => sum + Number(invoice.outstanding_balance ?? 0), 0)),
-        sub: `${portfolioNumber(portfolio, 'metrics', 'overdue_receivables', 'count', overdueInvoices.length)} overdue invoices`,
+        sub: `${overdueCustomerCount} customer${overdueCustomerCount === 1 ? '' : 's'}`,
         tone: overdueInvoices.length > 0 ? 'warn' : undefined,
       },
       {
@@ -501,55 +445,108 @@ async function fetchSellerDashboardData(
       },
     ];
 
+    // Primary demand action: Estimate follow-up when Estimates are primary,
+    // Order execution otherwise — ranked by value (proxy for value+age).
+    const primaryDemandRowsAll: SellerDashboardCalloutRow[] = primaryKind === 'estimates'
+      ? estimates
+          .filter((row) => row.status === 'draft' || row.status === 'sent')
+          .sort((a, b) => Number(b.total_amount ?? 0) - Number(a.total_amount ?? 0))
+          .map((row, index) => ({
+            id: row.id,
+            initials: formatInitials(buyerNameFor(row, buyersById) || 'Buyer'),
+            hue: hueByIndex(index),
+            name: buyerNameFor(row, buyersById),
+            reason: `${row.estimate_number ?? 'Draft estimate'} · ${estimateStatusLabel(row.status)}`,
+            trailing: formatCurrency(Number(row.total_amount ?? 0), { compactFractionDigits: 2 }),
+            href: `/estimates/${row.id}`,
+          }))
+      : orders
+          .filter((row) => row.status === 'received' || row.status === 'confirmed')
+          .sort((a, b) => Number(b.total_amount ?? 0) - Number(a.total_amount ?? 0))
+          .map((row, index) => ({
+            id: row.id,
+            initials: formatInitials(buyerNameFor(row, buyersById) || 'Buyer'),
+            hue: hueByIndex(index),
+            name: buyerNameFor(row, buyersById),
+            reason: `${row.order_number} · ${orderStatusLabel(row.status)}`,
+            trailing: formatCurrency(Number(row.total_amount ?? 0), { compactFractionDigits: 2 }),
+            href: `/sales-orders/${row.id}`,
+          }));
+
+    // Collections: overdue invoices aggregated per buyer (amount, invoice
+    // count, oldest-due age) — ranked by amount, not the first 3 unsorted rows.
+    const overdueByBuyer = new Map<string, { amount: number; count: number; oldestDue: string | null }>();
+    for (const invoice of overdueInvoices) {
+      const agg = overdueByBuyer.get(invoice.buyer_id) ?? { amount: 0, count: 0, oldestDue: null };
+      agg.amount += Number(invoice.outstanding_balance ?? 0);
+      agg.count += 1;
+      if (invoice.due_date && (!agg.oldestDue || new Date(invoice.due_date) < new Date(agg.oldestDue))) {
+        agg.oldestDue = invoice.due_date;
+      }
+      overdueByBuyer.set(invoice.buyer_id, agg);
+    }
+    const collectionsRowsAll: SellerDashboardCalloutRow[] = Array.from(overdueByBuyer.entries())
+      .sort((a, b) => b[1].amount - a[1].amount)
+      .map(([buyerId, agg], index) => {
+        const daysOverdue = agg.oldestDue ? Math.max(0, Math.round((Date.now() - new Date(agg.oldestDue).getTime()) / DAY_MS)) : null;
+        return {
+          id: buyerId,
+          initials: formatInitials(buyersById.get(buyerId)?.business_name ?? 'Buyer'),
+          hue: hueByIndex(index),
+          name: buyersById.get(buyerId)?.business_name ?? 'Unknown buyer',
+          reason: `${formatNumber(agg.count)} invoice${agg.count === 1 ? '' : 's'}${daysOverdue != null ? ` · ${daysOverdue}d overdue` : ''}`,
+          trailing: formatCurrency(agg.amount, { compactFractionDigits: 2 }),
+          href: `/customers/${buyerId}`,
+        };
+      });
+
+    // Buyer App activation: valuable customers (real invoiced value in the
+    // last 90 days) who are either not on the Buyer App or enabled but not
+    // ordering through it — ranked by their commercial value.
+    const buyerSnapshotByBuyer = new Map(((buyerSnapshotRes.data ?? []) as BuyerSnapshotRow[]).map((row) => [row.buyer_id, row]));
+    const buyerAppRowsAll: SellerDashboardCalloutRow[] = buyers
+      .map((buyer) => {
+        const snapshot = buyerSnapshotByBuyer.get(buyer.id);
+        return {
+          buyer,
+          invoiceValue90d: Number(snapshot?.invoice_value_90d ?? 0),
+          invoiceCount90d: Number(snapshot?.invoice_count_90d ?? 0),
+          appValue90d: Number(snapshot?.app_invoice_value_90d ?? 0),
+        };
+      })
+      .filter((row) => row.invoiceValue90d > 0 && (!row.buyer.buyer_app_enabled || row.appValue90d === 0))
+      .sort((a, b) => b.invoiceValue90d - a.invoiceValue90d)
+      .map((row, index) => ({
+        id: row.buyer.id,
+        initials: formatInitials(row.buyer.business_name),
+        hue: hueByIndex(index),
+        name: row.buyer.business_name,
+        reason: `${row.buyer.buyer_app_enabled ? 'App enabled, unused' : 'Not on Buyer App'} · ${formatNumber(row.invoiceCount90d)} invoices 90d`,
+        trailing: formatCurrency(row.invoiceValue90d, { compactFractionDigits: 2 }),
+        href: `/customers/${row.buyer.id}`,
+      }));
+
     const adminCallouts: SellerDashboardCalloutItem[] = [
       {
+        id: primaryKind === 'estimates' ? 'estimate_follow_up' : 'order_execution',
         kind: 'info',
-        eyebrow: 'Orders pulse',
-        hint: `${currentOrdersCount} in scope`,
-        rows: currentOrders
-          .filter((order) => order.status === 'received' || order.status === 'confirmed')
-          .slice(0, 3)
-          .map((order, index): SellerDashboardCalloutRow => ({
-            id: order.id,
-            initials: formatInitials(buyersById.get(order.buyer_id)?.business_name ?? 'Buyer'),
-            hue: hueByIndex(index),
-            name: buyersById.get(order.buyer_id)?.business_name ?? 'Unknown buyer',
-            reason: `${orderStatusLabel(order.status)} · ${cityFromGeography(buyersById.get(order.buyer_id)?.geography ?? null)}`,
-            trailing: formatTimeAgo(order.updated_at ?? order.created_at),
-            href: `/sales-orders/${order.id}`,
-          })),
+        eyebrow: primaryKind === 'estimates' ? 'Estimate follow-up' : 'Order execution',
+        hint: formatNumber(primaryDemandRowsAll.length),
+        rows: previewRows(primaryKind === 'estimates' ? 'estimate_follow_up' : 'order_execution', primaryDemandRowsAll),
       },
       {
-        kind: 'opportunity',
-        eyebrow: 'Catalog watch',
-        hint: `${expiringCatalogs} expiring`,
-        rows: catalogs
-          .filter((catalog) => catalog.status === 'published' && catalog.valid_to)
-          .sort((a, b) => new Date(a.valid_to ?? '').getTime() - new Date(b.valid_to ?? '').getTime())
-          .slice(0, 3)
-          .map((catalog, index): SellerDashboardCalloutRow => ({
-            id: catalog.id,
-            initials: formatInitials(catalog.name),
-            hue: hueByIndex(index),
-            name: catalog.name,
-            reason: catalog.valid_to ? `Valid until ${new Date(catalog.valid_to).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}` : 'No end date',
-            trailing: catalog.status === 'published' ? 'Published' : orderStatusLabel(catalog.status),
-            href: `/catalogs/${catalog.id}`,
-          })),
-      },
-      {
+        id: 'collections',
         kind: 'risk',
         eyebrow: 'Collections',
-        hint: `${overdueInvoices.length} overdue`,
-        rows: overdueInvoices.slice(0, 3).map((invoice, index): SellerDashboardCalloutRow => ({
-          id: invoice.id,
-          initials: formatInitials(buyersById.get(invoice.buyer_id)?.business_name ?? 'Buyer'),
-          hue: hueByIndex(index),
-          name: buyersById.get(invoice.buyer_id)?.business_name ?? 'Unknown buyer',
-          reason: `${invoice.invoice_number} overdue`,
-          trailing: `₹${Math.round(Number(invoice.outstanding_balance ?? 0)).toLocaleString('en-IN')}`,
-          href: `/invoices/${invoice.id}`,
-        })),
+        hint: `${formatNumber(overdueByBuyer.size)}`,
+        rows: previewRows('collections', collectionsRowsAll),
+      },
+      {
+        id: 'buyer_app_activation',
+        kind: 'opportunity',
+        eyebrow: 'Buyer App activation',
+        hint: formatNumber(buyerAppRowsAll.length),
+        rows: previewRows('buyer_app_activation', buyerAppRowsAll),
       },
     ];
 
@@ -559,7 +556,7 @@ async function fetchSellerDashboardData(
         kind: 'order' as const,
         href: `/sales-orders/${row.id}`,
         document_number: row.order_number,
-        customer_name: buyersById.get(row.buyer_id)?.business_name ?? 'Unknown buyer',
+        customer_name: buyerNameFor(row, buyersById),
         status: { label: orderStatusLabel(row.status), tone: statusToneForOrder(row.status) },
         amount: Number(row.total_amount ?? 0),
         updated_at: row.updated_at ?? row.created_at,
@@ -569,7 +566,7 @@ async function fetchSellerDashboardData(
         kind: 'estimate' as const,
         href: `/estimates/${row.id}`,
         document_number: row.estimate_number ?? 'Draft estimate',
-        customer_name: buyersById.get(row.buyer_id)?.business_name ?? 'Unknown buyer',
+        customer_name: buyerNameFor(row, buyersById),
         status: { label: estimateStatusLabel(row.status), tone: estimateStatusTone(row.status) },
         amount: Number(row.total_amount ?? 0),
         updated_at: row.updated_at ?? row.created_at,
@@ -581,7 +578,7 @@ async function fetchSellerDashboardData(
           kind: 'invoice' as const,
           href: `/invoices/${row.id}`,
           document_number: row.invoice_number,
-          customer_name: buyersById.get(row.buyer_id)?.business_name ?? 'Unknown buyer',
+          customer_name: buyerNameFor(row, buyersById),
           status: presentation,
           amount: Number(row.total_amount ?? 0),
           updated_at: row.updated_at ?? row.created_at,
@@ -599,7 +596,6 @@ async function fetchSellerDashboardData(
       admin: {
         metrics: adminMetrics,
         callouts: adminCallouts,
-        top_brands: topBrands,
         recent_activity: recentActivity,
       },
     };
@@ -724,7 +720,7 @@ async function fetchSellerDashboardData(
       hue: hueByIndex(index),
       name: row.buyer.business_name,
       reason: row.dues > 0
-        ? `Overdue ₹${Math.round(row.dues).toLocaleString('en-IN')} · last order ${row.lastOrder ? formatTimeAgo(orderEventAt(row.lastOrder)) : 'never'}`
+        ? `Overdue ${formatCurrency(row.dues, { compactFractionDigits: 2 })} · last order ${row.lastOrder ? formatTimeAgo(orderEventAt(row.lastOrder)) : 'never'}`
         : `Credit usage ${row.utilization}% · last order ${row.lastOrder ? formatTimeAgo(orderEventAt(row.lastOrder)) : 'never'}`,
       trailing: row.utilization > 0 ? `${row.utilization}% used` : 'Needs follow-up',
       href: '/customers',
@@ -739,8 +735,8 @@ async function fetchSellerDashboardData(
         initials: formatInitials(row.order_number),
         hue: hueByIndex(index),
         name: row.order_number,
-        reason: `${buyersById.get(row.buyer_id)?.business_name ?? 'Unknown buyer'} · ${orderStatusLabel(row.status)}`,
-        trailing: `₹${Math.round(Number(row.total_amount ?? 0)).toLocaleString('en-IN')}`,
+        reason: `${buyerNameFor(row, buyersById)} · ${orderStatusLabel(row.status)}`,
+        trailing: formatCurrency(Number(row.total_amount ?? 0), { compactFractionDigits: 2 }),
         href: `/sales-orders/${row.id}`,
       })),
     ...allEstimatesSorted
@@ -751,8 +747,8 @@ async function fetchSellerDashboardData(
         initials: formatInitials(row.estimate_number ?? 'EST'),
         hue: hueByIndex(index + 1),
         name: row.estimate_number ?? 'Draft estimate',
-        reason: `${buyersById.get(row.buyer_id)?.business_name ?? 'Unknown buyer'} · ${estimateStatusLabel(row.status)}`,
-        trailing: `₹${Math.round(Number(row.total_amount ?? 0)).toLocaleString('en-IN')}`,
+        reason: `${buyerNameFor(row, buyersById)} · ${estimateStatusLabel(row.status)}`,
+        trailing: formatCurrency(Number(row.total_amount ?? 0), { compactFractionDigits: 2 }),
         href: `/estimates/${row.id}`,
       })),
     ...allInvoicesSorted
@@ -763,8 +759,8 @@ async function fetchSellerDashboardData(
         initials: formatInitials(row.invoice_number),
         hue: hueByIndex(index + 2),
         name: row.invoice_number,
-        reason: `${buyersById.get(row.buyer_id)?.business_name ?? 'Unknown buyer'} · ${invoicePresentation(row).label}`,
-        trailing: `₹${Math.round(Number(row.total_amount ?? 0)).toLocaleString('en-IN')}`,
+        reason: `${buyerNameFor(row, buyersById)} · ${invoicePresentation(row).label}`,
+        trailing: formatCurrency(Number(row.total_amount ?? 0), { compactFractionDigits: 2 }),
         href: `/invoices/${row.id}`,
       })),
   ]
@@ -780,14 +776,14 @@ async function fetchSellerDashboardData(
     .filter((row) => row.lastOrder && (Date.now() - new Date(orderEventAt(row.lastOrder)).getTime()) / DAY_MS > 30)
     .slice(0, 4)
     .map((row, index): SellerDashboardCalloutRow => ({
-      id: row.buyer.id,
-      initials: formatInitials(row.buyer.business_name),
-      hue: hueByIndex(index),
-      name: row.buyer.business_name,
-      reason: `Last order ${new Date(orderEventAt(row.lastOrder!)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`,
-      trailing: `₹${Math.round(Number(row.lastOrder?.total_amount ?? 0)).toLocaleString('en-IN')}`,
-      href: '/customers',
-    }));
+        id: row.buyer.id,
+        initials: formatInitials(row.buyer.business_name),
+        hue: hueByIndex(index),
+        name: row.buyer.business_name,
+        reason: `Last order ${new Date(orderEventAt(row.lastOrder!)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`,
+        trailing: formatCurrency(Number(row.lastOrder?.total_amount ?? 0), { compactFractionDigits: 2 }),
+        href: '/customers',
+      }));
 
   const feeds: SellerDashboardFeed[] = [];
   if (featureAvailability.estimates) {
@@ -845,26 +841,29 @@ async function fetchSellerDashboardData(
     });
   }
 
-  const assistantCallouts: SellerDashboardCalloutItem[] = [
-    {
-      kind: 'risk',
-      eyebrow: 'Needs action',
-      hint: `${overdueInvoices.length} overdue`,
-      rows: needsActionRows,
-    },
-    {
-      kind: 'info',
-      eyebrow: 'Recent activity',
-      hint: sellerLandingPeriodLabel(period.selected),
-      rows: recentActivityRows,
-    },
-    {
-      kind: 'opportunity',
-      eyebrow: 'Re-engage',
-      hint: 'Dormant for 30+ days',
-      rows: reengageRows,
-    },
-  ];
+    const assistantCallouts: SellerDashboardCalloutItem[] = [
+      {
+        id: 'needs_action',
+        kind: 'risk',
+        eyebrow: 'Needs action',
+        hint: `${overdueInvoices.length} overdue`,
+        rows: previewRows('needs_action', needsActionRows),
+      },
+      {
+        id: 'recent_activity',
+        kind: 'info',
+        eyebrow: 'Recent activity',
+        hint: sellerLandingPeriodLabel(period.selected),
+        rows: previewRows('recent_activity', recentActivityRows),
+      },
+      {
+        id: 're_engage',
+        kind: 'opportunity',
+        eyebrow: 'Re-engage',
+        hint: 'Dormant for 30+ days',
+        rows: previewRows('re_engage', reengageRows),
+      },
+    ];
 
   return {
     role,
@@ -883,6 +882,7 @@ export async function getSellerDashboardData(
   tenantId: string,
   claims: Pick<JWTClaims, 'sub' | 'role' | 'location_ids'>,
   period: SellerLandingPeriodMeta,
+  options: { fullCalloutId?: string } = {},
 ) {
   const cacheKey = [
     'seller-dashboard',
@@ -895,10 +895,11 @@ export async function getSellerDashboardData(
     period.current_end_exclusive.slice(0, 10),
     period.previous_start.slice(0, 10),
     period.previous_end_exclusive.slice(0, 10),
+    options.fullCalloutId ?? 'preview',
   ];
 
   return unstable_cache(
-    () => fetchSellerDashboardData(tenantId, claims, period),
+    () => fetchSellerDashboardData(tenantId, claims, period, options),
     cacheKey,
     { revalidate: 30, tags: [`seller-dashboard:${tenantId}`] },
   )();

@@ -240,7 +240,7 @@ function LocationsLandingContent({
       <PageHeader
         eyebrow="Operations"
         title="Locations"
-        subtitle="Branches and sales touchpoints. Use this page for sales contribution, overdue balances, and stock-linked exceptions."
+        subtitle={`${kpis.active_locations} active locations · ${kpis.linked_warehouse_count} linked warehouses.`}
         horizon={horizonLabel}
         primary="Add location"
         onPrimaryClick={() => setSheetOpen(true)}
@@ -275,9 +275,17 @@ function LocationsLandingContent({
                 sub: 'location-linked sales activity',
               },
               {
-                label: 'Open estimates',
-                value: `${kpis.open_estimate_count}`,
-                sub: 'current location-level follow-up',
+                label:
+                  kpis.open_primary_demand_kind === 'orders'
+                    ? 'Open order value'
+                    : kpis.open_primary_demand_kind === 'estimates'
+                      ? 'Open estimate value'
+                      : 'Open primary demand value',
+                value: kpis.open_primary_demand_kind === 'none' ? '—' : formatCompactInr(kpis.open_primary_demand_value),
+                sub:
+                  kpis.open_primary_demand_kind === 'none'
+                    ? 'Enable Estimates or Sales Orders'
+                    : 'current location-level workload',
               },
             ]}
           />
@@ -285,6 +293,7 @@ function LocationsLandingContent({
           <V3CalloutPanel
             items={[
               {
+                id: 'conversions',
                 kind: 'info',
                 eyebrow: 'Locations with expiring estimates',
                 hint: `${callouts.conversions.length} estimates expiring`,
@@ -297,6 +306,7 @@ function LocationsLandingContent({
                 })),
               },
               {
+                id: 'top_locations',
                 kind: 'info',
                 eyebrow: 'Locations driving sales',
                 hint: 'by invoiced sales',
@@ -309,6 +319,7 @@ function LocationsLandingContent({
                 })),
               },
               {
+                id: 'collections_overdue',
                 kind: 'risk',
                 eyebrow: 'Locations with overdue balances',
                 hint: `${callouts.collections_overdue.length} locations`,
